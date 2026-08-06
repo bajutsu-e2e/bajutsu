@@ -51,10 +51,11 @@ tree cannot: *where did this tap land, and how far did this swipe travel*.
 | Field | Meaning |
 |---|---|
 | `gesture` | the driver primitive — `tap`, `doubleTap`, `longPress`, `swipe`, `scroll`, `pinch`, `rotate`, the text primitives, `selectOption`, `systemAlert`, `back` |
-| `via` | how the gesture reached its target: `coordinate` (the driver computed a point and sent it), `handle` (XCUITest actuated a snapshot handle), `identity` (the Android device resolved the element and chose the point), `focused` (a text primitive on whatever field holds focus), `key`, `history` |
+| `via` | how the gesture reached its target: `coordinate` (the driver computed a point and sent it), `handle` (XCUITest actuated a snapshot handle), `identity` (the Android device resolved the element and chose the point), `bridge` (a WebView call addressed by element id), `focused` (a text primitive on whatever field holds focus), `key`, `history` |
 | `unit` | the coordinate space: `point` (iOS), `pixel` (Android), `cssPixel` (a browser page, or a WebView's own space) |
 | `points` | the contact points touched, in order — one for a tap, two for a drag |
 | `frame` · `target` | the resolved element's bounds and its accessibility identifier |
+| `accepted` | whether the platform accepted this attempt, on the two channels that answer (XCUITest's handle actuation, Android's device-side endpoint). A refused attempt is shown struck through, so a stale-retried tap does not read as several taps; `None` means the channel gave no separate answer |
 | `duration_s` · `scale` · `radians` | the gesture's non-positional parameters, where it has any |
 
 Three rules bound what a record may say, and every backend honors them:
@@ -71,9 +72,15 @@ Three rules bound what a record may say, and every backend honors them:
   accessibility label. `target` is always the resolved accessibility identifier and nothing else, so it
   is unset for an element that has none.
 
+A record is written when the gesture is *attempted*, before its transport answers, so a step that
+failed to actuate still shows what it aimed at. The step's own result says whether the step worked.
+
 One actuation belongs to no step: the reactive system-alert guard also fires before the scenario-level
 `expect` re-check, so its record lands on the scenario's `expect_actuations` beside `expect_alerts`.
 A backend that does not implement the record simply contributes none, and the run is unchanged.
+The driver's log is bounded, so a pathological step (a `maxScrolls` in the hundreds) can lose its
+earliest records — `dropped_actuations` counts them and the report says the record is truncated rather
+than showing it as complete.
 
 **Default modifiers**: the always-on instant baseline (below) is `before` — captured before the step
 acts, not after. A `capturePolicy` rule or inline `capture:` still defaults an unmodified instant

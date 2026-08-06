@@ -40,7 +40,7 @@ from xml.etree import ElementTree as ET
 
 from bajutsu import adb
 from bajutsu.drivers import base
-from bajutsu.drivers.actuation import Actuation, ActuationLog
+from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
 from bajutsu.drivers.coordinate_tree import CoordinateTreeDriver, StableKey
 from bajutsu.elements import screen_size_from_elements
 from bajutsu.evidence import intervals
@@ -568,6 +568,7 @@ class AdbDriver(CoordinateTreeDriver):
                     )
                 return read.text
             except AdbResidentError as exc:
+                self._actuations.settle(False)
                 logger.warning(
                     "resident hierarchy read failed (%s); falling back to `uiautomator dump` "
                     "for the rest of this lease",
@@ -828,7 +829,7 @@ class AdbDriver(CoordinateTreeDriver):
         )
         return tree
 
-    def drain_actuations(self) -> list[Actuation]:
+    def drain_actuations(self) -> Drained:
         """The concrete actuations performed since the last drain (`ActuationReporter`)."""
         return self._actuations.drain()
 
@@ -845,10 +846,10 @@ class AdbDriver(CoordinateTreeDriver):
         """Record a host-injected coordinate aimed at an element the driver resolved itself."""
         self._actuations.record(
             Actuation(
-                gesture,
-                "coordinate",
-                _UNIT,
-                points=[point],
+                gesture=gesture,
+                via="coordinate",
+                unit=_UNIT,
+                points=(point,),
                 frame=el["frame"],
                 target=el["identifier"],
                 duration_s=duration_s,
@@ -861,9 +862,9 @@ class AdbDriver(CoordinateTreeDriver):
         """Record a device-side actuation: the element it named, and no coordinate (the device chose it)."""
         self._actuations.record(
             Actuation(
-                gesture,
-                "identity",
-                _UNIT,
+                gesture=gesture,
+                via="identity",
+                unit=_UNIT,
                 frame=el["frame"],
                 target=el["identifier"],
                 duration_s=None if duration_ms is None else duration_ms / 1000,
@@ -1035,6 +1036,7 @@ class AdbDriver(CoordinateTreeDriver):
             try:
                 acted = self._act_fn(request)
             except AdbActUnsupported as exc:
+                self._actuations.settle(False)
                 # Permanent for this lease: stop probing, so the degrade costs one round trip rather
                 # than one per gesture (BE-0234).
                 self._act_unavailable = True
@@ -1047,6 +1049,8 @@ class AdbDriver(CoordinateTreeDriver):
                     )
                 return False
             except AdbActUncertain as exc:
+                # The record is deliberately left unsettled here, so `accepted` stays None — "the
+                # driver could not tell", the honest reading of a reply that never arrived.
                 # The request went out and the device injects before it answers, so a coordinate
                 # injection here could be the *second* touch. Treat the gesture as having happened and
                 # arm the barrier for it: if it did not, the step's own condition wait fails loudly on
@@ -1072,6 +1076,7 @@ class AdbDriver(CoordinateTreeDriver):
                     exc,
                 )
                 return False
+            self._actuations.settle(acted)
             if acted:
                 logger.debug(
                     "device %s on %r: identity %r, %d of %d", kind, sel, identity, index, len(same)
@@ -1097,7 +1102,7 @@ class AdbDriver(CoordinateTreeDriver):
         self._actuate_centered(adb.tap_cmd(self.serial, x, y))
 
     def tap_point(self, p: base.Point) -> None:
-        self._actuations.record(Actuation("tap", "coordinate", _UNIT, points=[p]))
+        self._actuations.record(Actuation(gesture="tap", via="coordinate", unit=_UNIT, points=(p,)))
         self._act(adb.tap_cmd(self.serial, p[0], p[1]))
 
     def double_tap(self, sel: base.Selector) -> None:
@@ -1161,7 +1166,9 @@ class AdbDriver(CoordinateTreeDriver):
     def swipe(self, frm: base.Point, to: base.Point) -> None:
         pre_key = self._pan_baseline()
         mark = self._capture_mark()
-        self._actuations.record(Actuation("swipe", "coordinate", _UNIT, points=[frm, to]))
+        self._actuations.record(
+            Actuation(gesture="swipe", via="coordinate", unit=_UNIT, points=(frm, to))
+        )
         self._act(adb.swipe_cmd(self.serial, frm[0], frm[1], to[0], to[1]))
         self._arm_catchup(pre_key, mark)
 
@@ -1218,10 +1225,10 @@ class AdbDriver(CoordinateTreeDriver):
         mark = self._capture_mark()
         self._actuations.record(
             Actuation(
-                "scroll",
-                "coordinate",
-                _UNIT,
-                points=[frm, to],
+                gesture="scroll",
+                via="coordinate",
+                unit=_UNIT,
+                points=(frm, to),
                 duration_s=self._SCROLL_DURATION_MS / 1000,
             )
         )
@@ -1233,7 +1240,7 @@ class AdbDriver(CoordinateTreeDriver):
     def back(self) -> None:
         # The true system back: a KEYCODE_BACK key event. Android has no on-screen "back" element to
         # tap (unlike iOS's OS back button), so this is a key event, not a coordinate — BE-0210.
-        self._actuations.record(Actuation("back", "key", _UNIT))
+        self._actuations.record(Actuation(gesture="back", via="key", unit=_UNIT))
         self._act(adb.keyevent_cmd(self.serial, adb.KEYCODE_BACK))
 
     def pinch(self, sel: base.Selector, scale: float) -> None:
@@ -1333,7 +1340,7 @@ class AdbDriver(CoordinateTreeDriver):
 
     def type_text(self, text: str) -> None:
         # `text` is deliberately absent from the record — not even its length (see `actuation.py`).
-        self._actuations.record(Actuation("typeText", "focused", _UNIT))
+        self._actuations.record(Actuation(gesture="typeText", via="focused", unit=_UNIT))
         # Feed the `input text` command to `adb shell` over stdin, not on the argv, so a secret / OTP
         # never lands in the adb process command line where `ps` could read it (BE-0155). Routed
         # through a class-level attribute so tests can patch it.
@@ -1350,17 +1357,17 @@ class AdbDriver(CoordinateTreeDriver):
     def delete_text(self, count: int) -> None:
         # `count` backspaces (KEYCODE_DEL) in one `input keyevent` call. The orchestrator focuses the
         # field first, so the deletes land in it (BE-0265).
-        self._actuations.record(Actuation("deleteText", "focused", _UNIT))
+        self._actuations.record(Actuation(gesture="deleteText", via="focused", unit=_UNIT))
         self._act(adb.keyevents_cmd(self.serial, [adb.KEYCODE_DEL] * count))
 
     def select_all(self) -> None:
         # Ctrl+A selects the focused field's whole content (BE-0265).
-        self._actuations.record(Actuation("selectAll", "focused", _UNIT))
+        self._actuations.record(Actuation(gesture="selectAll", via="focused", unit=_UNIT))
         self._act(adb.keycombination_cmd(self.serial, [adb.KEYCODE_CTRL_LEFT, adb.KEYCODE_A]))
 
     def copy_selection(self) -> None:
         # Ctrl+C copies the active selection to the clipboard, read back by the `clipboard` assertion.
-        self._actuations.record(Actuation("copy", "focused", _UNIT))
+        self._actuations.record(Actuation(gesture="copy", via="focused", unit=_UNIT))
         self._act(adb.keycombination_cmd(self.serial, [adb.KEYCODE_CTRL_LEFT, adb.KEYCODE_C]))
 
     def screenshot(self, path: str) -> None:

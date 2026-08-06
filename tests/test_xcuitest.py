@@ -126,9 +126,9 @@ def test_the_actuation_record_states_the_handle_and_no_coordinate() -> None:
 
     driver = _driver(transport)
     driver.long_press({"id": "ok"}, 0.7)
-    (record,) = driver.drain_actuations()
+    (record,) = driver.drain_actuations().records
     assert (record.gesture, record.via, record.unit) == ("longPress", "handle", "point")
-    assert record.points == []
+    assert record.points == ()
     assert (record.frame, record.target, record.duration_s) == ((4.0, 8.0, 20.0, 12.0), "ok", 0.7)
 
 
@@ -150,9 +150,12 @@ def test_a_stale_retry_records_both_attempts_and_ends_on_the_actuated_element() 
 
     driver = _driver(transport)
     driver.tap({"id": "ok"})
-    first, second = driver.drain_actuations()
+    first, second = driver.drain_actuations().records
     assert first.frame == (0.0, 0.0, 10.0, 10.0)
     assert second.frame == (0.0, 40.0, 10.0, 10.0)
+    # Without the accepted stamp the two would be indistinguishable and the report would show one tap
+    # as two — the refused attempt has to say it was refused.
+    assert (first.accepted, second.accepted) == (False, True)
 
 
 def test_a_coordinate_primitive_records_the_points_it_sent() -> None:
@@ -160,9 +163,9 @@ def test_a_coordinate_primitive_records_the_points_it_sent() -> None:
     # every other primitive here they do state a point — the one that crossed to the runner.
     driver = _driver(lambda m, p, b: _Reply(status="ok"))
     driver.swipe((10.0, 200.0), (10.0, 40.0))
-    (record,) = driver.drain_actuations()
+    (record,) = driver.drain_actuations().records
     assert (record.gesture, record.via) == ("swipe", "coordinate")
-    assert record.points == [(10.0, 200.0), (10.0, 40.0)]
+    assert record.points == ((10.0, 200.0), (10.0, 40.0))
 
 
 def test_tap_resolves_through_a_content_identical_duplicate_registration() -> None:

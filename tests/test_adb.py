@@ -1747,17 +1747,19 @@ def test_the_actuation_record_names_the_channel_that_carried_the_gesture() -> No
     run, _ = _capturing_run([FIXTURE])
     driver = AdbDriver("U", run=run, act=act)
     driver.tap({"id": "stable.submit"})
-    (device,) = driver.drain_actuations()
+    (device,) = driver.drain_actuations().records
     assert (device.gesture, device.via, device.unit) == ("tap", "identity", "pixel")
-    assert device.points == []
+    assert device.points == ()
     assert device.frame == (0.0, 200.0, 200.0, 100.0)
     assert [r.kind for r in seen] == ["tap"]  # it really went device-side
 
     coordinate_only = AdbDriver("U", run=lambda a: FIXTURE)  # no `/act` channel at all
     coordinate_only.tap({"id": "stable_refresh"})
-    (host,) = coordinate_only.drain_actuations()
+    (host,) = coordinate_only.drain_actuations().records
     assert (host.gesture, host.via) == ("tap", "coordinate")
-    assert host.points == [(100.0, 150.0)]  # centre of (0,100,200,100), the point actually injected
+    assert host.points == (
+        (100.0, 150.0),
+    )  # centre of (0,100,200,100), the point actually injected
 
 
 def test_a_declined_device_gesture_records_both_the_attempt_and_the_fallback() -> None:
@@ -1767,11 +1769,11 @@ def test_a_declined_device_gesture_records_both_the_attempt_and_the_fallback() -
     run, _ = _capturing_run([FIXTURE] * 8)
     driver = AdbDriver("U", run=run, act=act)
     driver.tap({"id": "stable.submit"})
-    assert [(a.via, bool(a.points)) for a in driver.drain_actuations()] == [
-        ("identity", False),
-        ("identity", False),
-        ("identity", False),  # the bounded stale retry
-        ("coordinate", True),
+    assert [(a.via, bool(a.points), a.accepted) for a in driver.drain_actuations().records] == [
+        ("identity", False, False),
+        ("identity", False, False),
+        ("identity", False, False),  # the bounded stale retry, each attempt marked as declined
+        ("coordinate", True, None),  # the injection answers nothing, so it claims nothing
     ]
 
 
@@ -1785,7 +1787,7 @@ def test_the_record_never_carries_the_device_identity_tuple() -> None:
     run, _ = _capturing_run([FIXTURE])
     driver = AdbDriver("U", run=run, act=act)
     driver.tap({"id": "stable.submit"})
-    (record,) = driver.drain_actuations()
+    (record,) = driver.drain_actuations().records
     assert record.target == "stable.submit"
     assert seen[0].identity == ("stable.submit", "sent", "送信", "android.widget.Button")
     assert "送信" not in repr(record) and "sent" not in repr(record)

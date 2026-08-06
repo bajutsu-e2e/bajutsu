@@ -91,10 +91,10 @@ def test_html_shows_what_the_step_actuated() -> None:
                 started_at=0.0,
                 actuations=[
                     Actuation(
-                        "tap",
-                        "coordinate",
-                        "pixel",
-                        points=[(100.0, 150.0)],
+                        gesture="tap",
+                        via="coordinate",
+                        unit="pixel",
+                        points=((100.0, 150.0),),
                         frame=(0.0, 100.0, 200.0, 100.0),
                         target="stable.submit",
                     )
@@ -123,7 +123,13 @@ def test_html_shows_a_handle_actuation_by_its_frame() -> None:
                 ok=True,
                 started_at=0.0,
                 actuations=[
-                    Actuation("tap", "handle", "point", frame=(4.0, 8.0, 20.0, 12.0), target="ok")
+                    Actuation(
+                        gesture="tap",
+                        via="handle",
+                        unit="point",
+                        frame=(4.0, 8.0, 20.0, 12.0),
+                        target="ok",
+                    )
                 ],
             )
         ],
@@ -139,7 +145,9 @@ def test_html_shows_an_expect_phase_actuation_under_the_expectations() -> None:
     # The guard's dismissing tap during the scenario-level re-check belongs to no step, so it is noted
     # under the expectations table beside its alert — recorded and shown, never dropped.
     r = _passing()
-    r.expect_actuations = [Actuation("systemAlert", "handle", "point", target="alert.ok")]
+    r.expect_actuations = [
+        Actuation(gesture="systemAlert", via="handle", unit="point", target="alert.ok")
+    ]
     out = html_report("run1", [r])
     assert 'class="actnote"' in out
     assert '<span class="tk id">alert.ok</span>' in out

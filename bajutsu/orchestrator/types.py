@@ -14,7 +14,7 @@ from typing import Literal, Protocol
 
 from bajutsu.assertions import AssertionResult
 from bajutsu.drivers import base
-from bajutsu.drivers.actuation import Actuation, ActuationReporter
+from bajutsu.drivers.actuation import Actuation, ActuationReporter, Drained
 from bajutsu.evidence import Artifact
 from bajutsu.evidence.network import NetworkExchange
 from bajutsu.mailbox import MailboxMessage
@@ -133,6 +133,10 @@ class StepOutcome:
     # the driver once per step, so a step that ran its body twice (an alert the guard dismissed, then a
     # retry) carries both attempts. Evidence only — nothing on the verdict path reads it.
     actuations: list[Actuation] = field(default_factory=list)
+    # How many of this step's actuations the driver's bounded log discarded to make room for later
+    # ones. Non-zero only for a pathological step (a `maxScrolls` in the hundreds), and recorded
+    # rather than left implicit so a truncated list is never read as a complete one.
+    dropped_actuations: int = 0
 
 
 @dataclass
@@ -298,13 +302,15 @@ class AlertGuardConfig:
         return self.vision(driver)
 
 
-def drain_actuations(driver: base.Driver) -> list[Actuation]:
-    """The actuations `driver` has performed since the last drain, or [] if it reports none.
+def drain_actuations(driver: base.Driver) -> Drained:
+    """The actuations `driver` has performed since the last drain, or an empty drain if it reports none.
 
     The one place the `ActuationReporter` opt-in is read, so a backend that does not implement it
     simply contributes nothing rather than needing a stub.
     """
-    return driver.drain_actuations() if isinstance(driver, ActuationReporter) else []
+    if isinstance(driver, ActuationReporter):
+        return driver.drain_actuations()
+    return Drained(records=[], dropped=0)
 
 
 def scenario_slug(name: str) -> str:

@@ -13,18 +13,22 @@ newer-only views simply absent rather than failing.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, fields
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
 from bajutsu.assertions import AssertionResult, VisualEvidence
 from bajutsu.drivers.actuation import Actuation
+from bajutsu.drivers.base import Frame, Point
 from bajutsu.evidence import Artifact
 from bajutsu.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
 from bajutsu.report.html import html_report, scenario_render_inputs, write_html_and_junit
 from bajutsu.scenario import load_scenario_file
+
+_logger = logging.getLogger("bajutsu.report.load")
 
 
 # `manifest_dict` serializes via `asdict`; these reconstruct the inverse. `_kw` filters to the
@@ -45,33 +49,75 @@ def _assertion(d: dict[str, Any]) -> AssertionResult:
     return AssertionResult(**{**_kw(AssertionResult, d), "visual": _visual(d.get("visual"))})
 
 
-def _point(v: Any) -> tuple[float, ...] | None:
-    """A JSON array back into the tuple the actuation record's type declares.
+def _numbers(v: Any, arity: int) -> tuple[float, ...] | None:
+    """A JSON array back into the fixed-arity tuple an actuation record's geometry declares.
 
     JSON has no tuple, so `points` / `frame` arrive as lists and would otherwise compare unequal to
-    what the run wrote — which the manifest round-trip test exists to catch. A malformed entry (not a
-    sequence of numbers) degrades to None rather than failing the whole load, matching this module's
-    read-what-you-know contract.
+    what the run wrote — which the manifest round-trip test exists to catch. None for anything that is
+    not exactly `arity` plain numbers, so the caller can drop the record rather than reconstruct a
+    shape no writer produces.
     """
-    if not isinstance(v, (list, tuple)):
+    if not isinstance(v, (list, tuple)) or len(v) != arity:
         return None
     if not all(isinstance(n, (int, float)) and not isinstance(n, bool) for n in v):
         return None
     return tuple(float(n) for n in v)
 
 
-def _actuation(d: dict[str, Any]) -> Actuation:
-    # A tuple of the wrong arity is dropped rather than reconstructed: a 3-number "point" is not a
-    # point, and letting it through would put a value in the record that no writer can produce.
-    frame = _point(d.get("frame"))
-    points = (_point(v) for v in d.get("points") or [])
+def _actuation(d: dict[str, Any]) -> Actuation | None:
+    """One actuation record, or None when the entry is malformed.
+
+    Degradation is per *record*, not per field, and that is the whole point: a swipe whose second
+    point is corrupt would otherwise reconstruct as a plausible one-point gesture, and a corrupt
+    `frame` would become `None` — which in this schema *means* "the driver resolved no element", so a
+    reader could not tell damage from a handle-based tap. Dropping the record instead keeps every
+    surviving record trustworthy, and the caller counts what it dropped so the gap is disclosed.
+    A missing required key drops the same way rather than raising, so one bad entry costs that entry
+    and not the whole report render.
+    """
+    known = _kw(Actuation, d)
+    if not all(isinstance(known.get(k), str) for k in ("gesture", "via", "unit")):
+        return None
+    raw_points = d.get("points") or []
+    if not isinstance(raw_points, list):
+        return None
+    points = [_numbers(v, 2) for v in raw_points]
+    if any(p is None for p in points):
+        return None
+    frame = None
+    if d.get("frame") is not None:
+        frame = _numbers(d["frame"], 4)
+        if frame is None:
+            return None
+    # Explicit keyword arguments rather than a `**` unpack of `dict[str, Any]`: this is the one
+    # function here that parses untrusted geometry, and unpacking would switch mypy off at exactly
+    # that boundary — the runtime checks above would become the only thing keeping the record typed.
     return Actuation(
-        **{
-            **_kw(Actuation, d),
-            "points": [p for p in points if p is not None and len(p) == 2],
-            "frame": frame if frame is not None and len(frame) == 4 else None,
-        }
+        gesture=str(known["gesture"]),
+        via=str(known["via"]),
+        unit=str(known["unit"]),
+        points=cast("tuple[Point, ...]", tuple(p for p in points if p is not None)),
+        frame=cast("Frame | None", frame),
+        target=known.get("target"),
+        accepted=known.get("accepted"),
+        duration_s=known.get("duration_s"),
+        scale=known.get("scale"),
+        radians=known.get("radians"),
     )
+
+
+def _actuations(entries: Any) -> list[Actuation]:
+    """Every readable actuation record in `entries`, skipping (and logging) the malformed ones."""
+    out, dropped = [], 0
+    for e in entries or []:
+        record = _actuation(e) if isinstance(e, dict) else None
+        if record is None:
+            dropped += 1
+        else:
+            out.append(record)
+    if dropped:
+        _logger.warning("dropped %d malformed actuation record(s) while loading a run", dropped)
+    return out
 
 
 def _step(d: dict[str, Any]) -> StepOutcome:
@@ -81,7 +127,7 @@ def _step(d: dict[str, Any]) -> StepOutcome:
             "assertion_results": [_assertion(a) for a in d.get("assertion_results") or []],
             "artifacts": [Artifact(**_kw(Artifact, a)) for a in d.get("artifacts") or []],
             "alerts": [AlertEvent(**_kw(AlertEvent, a)) for a in d.get("alerts") or []],
-            "actuations": [_actuation(a) for a in d.get("actuations") or []],
+            "actuations": _actuations(d.get("actuations")),
         }
     )
 
@@ -96,7 +142,7 @@ def _result(d: dict[str, Any]) -> RunResult:
             "expect_alerts": [
                 AlertEvent(**_kw(AlertEvent, a)) for a in d.get("expect_alerts") or []
             ],
-            "expect_actuations": [_actuation(a) for a in d.get("expect_actuations") or []],
+            "expect_actuations": _actuations(d.get("expect_actuations")),
             "skipped_captures": [
                 SkippedCapture(**_kw(SkippedCapture, c)) for c in d.get("skipped_captures") or []
             ],

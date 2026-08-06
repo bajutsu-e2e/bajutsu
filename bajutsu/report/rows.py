@@ -164,6 +164,7 @@ def _step_run_row(
         "expand": None,
         "alerts": [{"label": a.label} for a in out.alerts],
         "actuations": _actuation_rows(out.actuations),
+        "dropped_actuations": out.dropped_actuations,
     }
 
 
@@ -191,11 +192,17 @@ def _actuation_rows(actuations: list[Actuation]) -> list[dict[str, Any]]:
             {
                 "gesture": a.gesture,
                 "via": a.via,
-                "unit": a.unit if a.points else "",
+                # Shown for a frame too, not only a point: a frame is in a coordinate space as much as
+                # a coordinate is, and on a WebView record that space is the WebView's own — the
+                # difference between a comparable number and a misleading one.
+                "unit": a.unit if (a.points or a.frame) else "",
                 "points": points,
                 "frame": frame,
                 "target": a.target or "",
                 "params": " · ".join(params),
+                # A refused attempt (a stale handle, a declined device-side gesture) must not read as
+                # one that landed; `None` means the channel gave no separate answer.
+                "refused": a.accepted is False,
             }
         )
     return rows

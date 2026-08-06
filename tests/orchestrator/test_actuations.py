@@ -15,6 +15,7 @@ from _orch import FakeClock, _scenario
 from conftest import el
 
 from bajutsu.drivers import base
+from bajutsu.drivers.actuation import MAX_RECORDS, Actuation, ActuationLog
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import AlertEvent, AlertGuardConfig, run_scenario
 from bajutsu.orchestrator.actions.handlers.gestures import _scroll_gesture
@@ -45,7 +46,7 @@ def test_tap_records_the_resolved_frame_center_and_identifier() -> None:
     assert tap.gesture == "tap"
     assert tap.via == "coordinate"
     assert tap.unit == "point"
-    assert tap.points == [(60.0, 120.0)]  # the seeded frame's centre, computed here independently
+    assert tap.points == ((60.0, 120.0),)  # the seeded frame's centre, computed here independently
     assert tap.frame == (20.0, 100.0, 80.0, 40.0)
     assert tap.target == "settings.open"
 
@@ -56,7 +57,7 @@ def test_long_press_records_its_duration() -> None:
     (press,) = _run([{"longPress": {"sel": {"id": "settings.open"}, "duration": 1.5}}], driver)[0]
 
     assert (press.gesture, press.duration_s) == ("longPress", 1.5)
-    assert press.points == [(60.0, 120.0)]
+    assert press.points == ((60.0, 120.0),)
 
 
 def test_directional_swipe_records_the_endpoints_the_handler_computed() -> None:
@@ -68,7 +69,7 @@ def test_directional_swipe_records_the_endpoints_the_handler_computed() -> None:
     screen = driver.viewport()
     frm, to = _scroll_gesture(base.frame_center(_BUTTON["frame"]), "up", None, screen)
     assert scroll.gesture == "scroll"  # a directional swipe routes to `driver.scroll`
-    assert scroll.points == [frm, to]
+    assert scroll.points == (frm, to)
 
 
 def test_pinch_records_its_scale_and_the_resolved_frame() -> None:
@@ -91,11 +92,11 @@ def test_a_scrolled_screen_records_the_translated_centre() -> None:
     driver.scroll((100.0, 300.0), (100.0, 100.0))  # pans the content offset down by 200
     driver.tap({"id": "row.9"})
 
-    _scroll, tap = driver.drain_actuations()
+    _scroll, tap = driver.drain_actuations().records
     # The row's seeded frame is unchanged at y=900; the offset puts it at y=700 on screen, and that
     # is where a touch actually has to land.
     assert tap.frame == (0.0, 700.0, 200.0, 40.0)
-    assert tap.points == [(100.0, 720.0)]
+    assert tap.points == ((100.0, 720.0),)
 
 
 # --- attribution: each step carries exactly its own actuations ---
@@ -194,7 +195,7 @@ def test_an_element_with_only_a_label_records_no_target() -> None:
     (tap,) = _run([{"tap": {"label": "Reveal ${secrets.token}"}}], driver)[0]
 
     assert tap.target is None
-    assert tap.points == [(20.0, 10.0)]  # still localized, by coordinate and frame
+    assert tap.points == ((20.0, 10.0),)  # still localized, by coordinate and frame
 
 
 def test_a_type_step_records_nothing_derived_from_its_text() -> None:
@@ -205,7 +206,55 @@ def test_a_type_step_records_nothing_derived_from_its_text() -> None:
 
     assert (tap.gesture, tap.via) == ("tap", "coordinate")  # focusing the field
     assert (typed.gesture, typed.via) == ("typeText", "focused")
-    assert typed.points == [] and typed.target is None
+    assert typed.points == () and typed.target is None
     # Nothing on the record carries the text or its length (7 characters).
     assert 7 not in {typed.duration_s, typed.scale, typed.radians}
     assert "hunter2" not in repr(typed)
+
+
+# --- the accumulator: a refused attempt, and a truncated record that says it is truncated ---
+
+
+def test_settle_marks_the_attempt_the_platform_refused() -> None:
+    # Without this, a stale-retried tap leaves several identical records and nothing says which one
+    # the device honored — the report would render one tap as three.
+    log = ActuationLog()
+    log.record(Actuation(gesture="tap", via="handle", unit="point", target="ok"))
+    log.settle(False)
+    log.record(Actuation(gesture="tap", via="handle", unit="point", target="ok"))
+    log.settle(True)
+
+    assert [a.accepted for a in log.drain().records] == [False, True]
+
+
+def test_settle_on_an_empty_log_cannot_corrupt_an_already_drained_record() -> None:
+    log = ActuationLog()
+    log.record(Actuation(gesture="tap", via="handle", unit="point"))
+    drained = log.drain()
+
+    log.settle(False)  # the record it would have stamped is already gone
+
+    assert drained.records[0].accepted is None
+    assert log.drain().records == []
+
+
+def test_a_truncated_log_reports_what_it_dropped() -> None:
+    # The cap exists for a consumer that never drains, but the earliest gestures of a step are exactly
+    # what "the scroll never reached its target" needs — so a truncated record must say so rather than
+    # read as complete.
+    log = ActuationLog(maxlen=3)
+    for i in range(5):
+        log.record(Actuation(gesture="scroll", via="coordinate", unit="pixel", target=f"s{i}"))
+
+    drained = log.drain()
+
+    assert [a.target for a in drained.records] == ["s2", "s3", "s4"]
+    assert drained.dropped == 2
+    # The count resets with the records, so the next step is not blamed for this one's truncation.
+    assert log.drain().dropped == 0
+
+
+def test_the_default_cap_is_far_above_a_real_step() -> None:
+    # A `scroll` step spends up to `maxScrolls` gestures (default 15, author-settable); the cap must
+    # sit well clear of that, or an ordinary run would start losing records.
+    assert MAX_RECORDS >= 512

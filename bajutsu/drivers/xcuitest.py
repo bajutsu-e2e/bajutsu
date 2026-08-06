@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu.drivers import base
-from bajutsu.drivers.actuation import Actuation, ActuationLog
+from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
 
 
 class XcuitestChannelError(RuntimeError):
@@ -588,9 +588,9 @@ class XcuitestDriver:
             # touch point on the far side of the handle, so the driver has no coordinate to state.
             self._actuations.record(
                 Actuation(
-                    gesture,
-                    "handle",
-                    _UNIT,
+                    gesture=gesture,
+                    via="handle",
+                    unit=_UNIT,
                     frame=element["frame"],
                     target=element["identifier"],
                     duration_s=_as_float(body.get("duration")),
@@ -599,6 +599,9 @@ class XcuitestDriver:
                 )
             )
             reply = self._transport("POST", path, request)
+            # Stamp the attempt just recorded with the runner's answer, so a stale-retried gesture
+            # does not leave several identical records with nothing saying which one landed.
+            self._actuations.settle(reply.status == _OK)
             if reply.status == _OK:
                 return
             if reply.status == _STALE:
@@ -617,7 +620,7 @@ class XcuitestDriver:
 
     # --- Driver Protocol ---
 
-    def drain_actuations(self) -> list[Actuation]:
+    def drain_actuations(self) -> Drained:
         """The concrete actuations performed since the last drain (`ActuationReporter`)."""
         return self._actuations.drain()
 
@@ -645,7 +648,7 @@ class XcuitestDriver:
 
     def tap_point(self, p: base.Point) -> None:
         # A raw coordinate tap (system alerts and the like), the one path with no element/handle.
-        self._actuations.record(Actuation("tap", "coordinate", _UNIT, points=[p]))
+        self._actuations.record(Actuation(gesture="tap", via="coordinate", unit=_UNIT, points=(p,)))
         reply = self._transport("POST", "/tap", {"point": [p[0], p[1]]})
         if reply.status != _OK:
             raise XcuitestChannelError(f"coordinate tap failed ({reply.status}) at {p}")
@@ -671,7 +674,9 @@ class XcuitestDriver:
         )
 
     def swipe(self, frm: base.Point, to: base.Point) -> None:
-        self._actuations.record(Actuation("swipe", "coordinate", _UNIT, points=[frm, to]))
+        self._actuations.record(
+            Actuation(gesture="swipe", via="coordinate", unit=_UNIT, points=(frm, to))
+        )
         reply = self._transport("POST", "/swipe", {"from": [frm[0], frm[1]], "to": [to[0], to[1]]})
         if reply.status != _OK:
             raise XcuitestChannelError(f"swipe failed ({reply.status})")
@@ -693,7 +698,9 @@ class XcuitestDriver:
         # before lifting, so the scroll view settles where the gesture left it rather than flinging
         # past the target — the contract the `scroll` action's bounded re-query loop relies on. A
         # plain `/swipe` lifts with residual velocity, so iOS carries the content onward.
-        self._actuations.record(Actuation("scroll", "coordinate", _UNIT, points=[frm, to]))
+        self._actuations.record(
+            Actuation(gesture="scroll", via="coordinate", unit=_UNIT, points=(frm, to))
+        )
         reply = self._transport("POST", "/scroll", {"from": [frm[0], frm[1]], "to": [to[0], to[1]]})
         if reply.status != _OK:
             raise XcuitestChannelError(f"scroll failed ({reply.status})")
@@ -726,7 +733,13 @@ class XcuitestDriver:
         # no point. `target` is usually unset: a SpringBoard button is addressed by visible label and
         # generally carries no identifier, and the label is a redaction risk the record won't take.
         self._actuations.record(
-            Actuation("systemAlert", "handle", _UNIT, frame=el["frame"], target=el["identifier"])
+            Actuation(
+                gesture="systemAlert",
+                via="handle",
+                unit=_UNIT,
+                frame=el["frame"],
+                target=el["identifier"],
+            )
         )
         reply = self._transport("POST", "/systemAlert/tap", {"handle": handles[id(el)]})
         if reply.status != _OK:
@@ -753,26 +766,26 @@ class XcuitestDriver:
 
     def type_text(self, text: str) -> None:
         # `text` is deliberately absent from the record — not even its length (see `actuation.py`).
-        self._actuations.record(Actuation("typeText", "focused", _UNIT))
+        self._actuations.record(Actuation(gesture="typeText", via="focused", unit=_UNIT))
         reply = self._transport("POST", "/type", {"text": text})
         if reply.status != _OK:
             raise XcuitestChannelError(f"type failed ({reply.status})")
 
     def delete_text(self, count: int) -> None:
         # A run of backspaces on the focused field (BE-0265); XCUIElement types the delete key natively.
-        self._actuations.record(Actuation("deleteText", "focused", _UNIT))
+        self._actuations.record(Actuation(gesture="deleteText", via="focused", unit=_UNIT))
         reply = self._transport("POST", "/deleteText", {"count": count})
         if reply.status != _OK:
             raise XcuitestChannelError(f"deleteText failed ({reply.status})")
 
     def select_all(self) -> None:
-        self._actuations.record(Actuation("selectAll", "focused", _UNIT))
+        self._actuations.record(Actuation(gesture="selectAll", via="focused", unit=_UNIT))
         reply = self._transport("POST", "/selectAll", {})
         if reply.status != _OK:
             raise XcuitestChannelError(f"selectAll failed ({reply.status})")
 
     def copy_selection(self) -> None:
-        self._actuations.record(Actuation("copy", "focused", _UNIT))
+        self._actuations.record(Actuation(gesture="copy", via="focused", unit=_UNIT))
         reply = self._transport("POST", "/copy", {})
         if reply.status != _OK:
             raise XcuitestChannelError(f"copy failed ({reply.status})")

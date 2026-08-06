@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu.drivers import base
-from bajutsu.drivers.actuation import Actuation, ActuationLog
+from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
 from bajutsu.evidence import intervals
 
 # The W3C element-reference key: `findElements` returns each element as `{ELEMENT_KEY: "<id>"}`, and
@@ -283,7 +283,7 @@ class XcuitestLiveDriver:
         # What this driver actually actuated, drained per step by the run loop.
         self._actuations = ActuationLog()
 
-    def drain_actuations(self) -> list[Actuation]:
+    def drain_actuations(self) -> Drained:
         """The concrete actuations performed since the last drain (`ActuationReporter`)."""
         return self._actuations.drain()
 
@@ -364,9 +364,9 @@ class XcuitestLiveDriver:
         """Record an element-targeted gesture; the WebDriver server picks the touch point, so no point."""
         self._actuations.record(
             Actuation(
-                gesture,
-                "handle",
-                _UNIT,
+                gesture=gesture,
+                via="handle",
+                unit=_UNIT,
                 frame=el["frame"],
                 target=el["identifier"],
                 duration_s=duration_s,
@@ -409,7 +409,7 @@ class XcuitestLiveDriver:
 
     def tap_point(self, p: base.Point) -> None:
         # A raw coordinate tap (system alerts and the like), the one path with no element/handle.
-        self._actuations.record(Actuation("tap", "coordinate", _UNIT, points=[p]))
+        self._actuations.record(Actuation(gesture="tap", via="coordinate", unit=_UNIT, points=(p,)))
         self._client.execute("mobile: tap", [{"x": p[0], "y": p[1]}])
 
     def double_tap(self, sel: base.Selector) -> None:
@@ -423,7 +423,9 @@ class XcuitestLiveDriver:
         self._client.execute("mobile: touchAndHold", [{"elementId": handle, "duration": duration}])
 
     def swipe(self, frm: base.Point, to: base.Point) -> None:
-        self._actuations.record(Actuation("swipe", "coordinate", _UNIT, points=[frm, to]))
+        self._actuations.record(
+            Actuation(gesture="swipe", via="coordinate", unit=_UNIT, points=(frm, to))
+        )
         self._client.execute(
             "mobile: dragFromToForDuration",
             [
@@ -448,7 +450,9 @@ class XcuitestLiveDriver:
         return self._screen
 
     def scroll(self, frm: base.Point, to: base.Point) -> None:
-        self._actuations.record(Actuation("scroll", "coordinate", _UNIT, points=[frm, to]))
+        self._actuations.record(
+            Actuation(gesture="scroll", via="coordinate", unit=_UNIT, points=(frm, to))
+        )
         # A non-inertial pan (BE-0326): `mobile: dragFromToForDuration` over a longer duration than a
         # plain drag keeps the scroll view moving with the finger and settling where it ends, leaving
         # no fling momentum. A quick flick's post-lift travel is device- and frame-rate-dependent —
@@ -498,12 +502,12 @@ class XcuitestLiveDriver:
         # Type into the focused field, as the runner's `/type` does: W3C send-keys to the active
         # element (Appium's XCUITest driver focuses the field the scenario tapped first).
         # `text` is deliberately absent from the record — not even its length (see `actuation.py`).
-        self._actuations.record(Actuation("typeText", "focused", _UNIT))
+        self._actuations.record(Actuation(gesture="typeText", via="focused", unit=_UNIT))
         self._client.send_keys(self._client.active_element(), text)
 
     def delete_text(self, count: int) -> None:
         # A run of backspaces on the focused field (BE-0265) — the W3C backspace key, once per count.
-        self._actuations.record(Actuation("deleteText", "focused", _UNIT))
+        self._actuations.record(Actuation(gesture="deleteText", via="focused", unit=_UNIT))
         self._client.send_keys(self._client.active_element(), BACKSPACE_KEY * count)
 
     def select_all(self) -> None:

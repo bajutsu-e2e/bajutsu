@@ -126,11 +126,12 @@ primitive a driver performed:
 | Field | Meaning |
 |---|---|
 | `gesture` | the driver primitive, e.g. `tap`, `doubleTap`, `longPress`, `swipe`, `scroll`, `pinch`, `rotate`, `typeText`, `deleteText`, `selectAll`, `copy`, `selectOption`, `systemAlert`, `back` |
-| `via` | how the gesture reached its target: `coordinate` (the driver computed a point and sent it), `handle` (XCUITest actuated a snapshot handle), `identity` (the Android device resolved the element and chose the point), `focused` (a text primitive on whatever field holds focus, addressing nothing), `key` (a key event), `history` (browser history) |
+| `via` | how the gesture reached its target: `coordinate` (the driver computed a point and sent it), `handle` (XCUITest actuated a snapshot handle), `identity` (the Android device resolved the element and chose the point), `bridge` (a WebView bridge call addressed by element id), `focused` (a text primitive on whatever field holds focus, addressing nothing), `key` (a key event), `history` (browser history) |
 | `unit` | the coordinate space the numbers are in: `point` (iOS), `pixel` (Android), `cssPixel` (a browser page, and a WebView's own space) |
 | `points` | the contact points the gesture touched, in order — one for a tap, two for a drag's start and end, empty when the driver chose no coordinate |
 | `frame` | the resolved element's frame `(x, y, w, h)`, where the driver resolved one |
 | `target` | always the resolved `Element["identifier"]` and nothing else, so the field cannot carry free text; unset for an element with no identifier (rule three above) |
+| `accepted` | whether the platform accepted this attempt, on the two channels that can refuse and be retried (XCUITest's handle actuation, Android's device-side endpoint); `None` where the driver got no separate answer, in which case the step's own `ok` / `reason` is what says whether the step worked |
 | `duration_s` · `scale` · `radians` | the gesture's non-positional parameters, each set only where its gesture has one. A string parameter (`type`'s text, `selectOption`'s option) is deliberately absent, in any form — see rule three above |
 
 `gesture` and `via` are `str`, not `Literal`, deliberately. The report renderer reconstructs these
@@ -149,8 +150,10 @@ is sized well above the worst case for a single drained step, which is not the h
 `bajutsu/scenario/models/actions.py:332`), and on Android a plain `tap` can add three more swipes as
 `_scroll_into_view` brings its target on screen (`adb.py:398`). Dropping is also disclosed rather than
 silent, since the earliest gestures of a step are exactly what "the scroll never reached the target"
-needs: the log counts what it dropped and warns on the first drop, so a truncated record is visible as
-a truncation. `ActuationReporter` is the narrow, `runtime_checkable` protocol
+needs: `drain()` returns the count alongside the records, the loop puts it on
+`StepOutcome.dropped_actuations`, and the report and the timeline show a truncated record *as*
+truncated. A log line would not do — this item's own Alternatives section rejects exactly that, since a
+log line is absent unless someone raised the level before the run and never reaches the run directory. `ActuationReporter` is the narrow, `runtime_checkable` protocol
 the orchestrator reads the log through — one method, `drain_actuations()`. A backend that does not
 implement the protocol simply records nothing and the run is unchanged, exactly as `ViewportProvider`,
 `ReadLagProvider`, and `SettledReadProvider` (`bajutsu/drivers/base.py`) already work. The module is
@@ -177,6 +180,13 @@ grow a dependency on `serve`, `triage`, the agents, the orchestrator, the runner
    tried; the step's own `ok` / `reason` carries the verdict, and the drain in unit 3 runs regardless of
    it. Android's fallback therefore records two entries for one `tap`, the declined `identity` attempt
    and the `coordinate` injection that followed, in that order — which is the sequence a reader needs.
+   Recording the attempt is only half of it, though: on the two channels that *answer* — XCUITest's
+   handle actuation and Android's `/act` endpoint, both of which can refuse and be retried — the driver
+   stamps the record with that answer as soon as it arrives (`ActuationLog.settle`). Without it a
+   stale-retried tap would leave three byte-identical records and nothing saying which one the device
+   honored, so a report would render one tap as three. A channel that gives no separate answer leaves
+   `accepted` unset rather than claiming success, which is also how Android's "the request went out but
+   the reply was lost" case reads.
    The recording site is wherever the concrete value already sits, so no driver resolves anything twice:
    - **XCUITest** (`bajutsu/drivers/xcuitest.py`) constructs the record in one place, `_actuate`, the
      function every handle-based gesture routes through. `_actuate` today receives only `path`, `body`,
@@ -230,8 +240,11 @@ grow a dependency on `serve`, `triage`, the agents, the orchestrator, the runner
      point unchanged — in every case a coordinate crossed to the WebView, which is what rule one asks
      for. The point is in the WebView's own coordinate space rather
      than the device screen's, so `unit` is `cssPixel` and the record is read against the WebView, not
-     the device. `type_text` records `via: focused`; every other primitive raises `UnsupportedAction`
-     in this first slice and records nothing.
+     the device. `tap` also scrolls its target into view first (`scroll_to`, by element id), which is
+     recorded as its own `via: bridge` entry: it moves the content the tap's point was computed
+     against, which is precisely the failure class this record exists to expose, so leaving it out
+     would hide the very thing a reader is looking for. `type_text` records `via: focused`; every
+     other primitive raises `UnsupportedAction` in this first slice and records nothing.
    - **`FakeDriver`** (`bajutsu/drivers/fake.py`) records `via: coordinate` with the frame center it
      computes for the record, which is legitimate under rule one because the fake is the thing that
      would choose the point: it is a coordinate backend whose device is memory. The center is taken in

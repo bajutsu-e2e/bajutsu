@@ -186,6 +186,15 @@ def _at(value: Any) -> float:
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
 
 
+def _coordinate(p: Any) -> str | None:
+    """One recorded point rendered, or None when it is not two plain numbers."""
+    if not isinstance(p, (list, tuple)) or len(p) != 2:
+        return None
+    if not all(isinstance(n, (int, float)) and not isinstance(n, bool) for n in p):
+        return None
+    return f"({p[0]:g}, {p[1]:g})"
+
+
 def _actuation_summary(step: dict[str, Any]) -> str:
     """What the step actually did to the screen, one segment per actuation.
 
@@ -196,10 +205,18 @@ def _actuation_summary(step: dict[str, Any]) -> str:
     out: list[str] = []
     for a in step.get("actuations") or []:
         if not isinstance(a, dict):
+            out.append("? [unreadable record]")
             continue
-        points = [p for p in a.get("points") or [] if isinstance(p, (list, tuple)) and len(p) == 2]
-        where = " → ".join(f"({_at(p[0]):g}, {_at(p[1]):g})" for p in points)
-        out.append(f"{a.get('gesture', '')}{f' {where}' if where else ''} [{a.get('via', '')}]")
+        points = [_coordinate(p) for p in a.get("points") or []]
+        # A point that is not two plain numbers is shown as unreadable rather than coerced: `_at`
+        # would turn it into `(0, 0)`, inventing a coordinate — the one thing the record must never do.
+        where = " → ".join(p if p is not None else "(?)" for p in points)
+        refused = "" if a.get("accepted") is not False else " ✗refused"
+        out.append(
+            f"{a.get('gesture', '')}{f' {where}' if where else ''} [{a.get('via', '')}]{refused}"
+        )
+    if dropped := step.get("dropped_actuations"):
+        out.append(f"(+{dropped} earlier dropped)")
     return "   · ".join(out)
 
 

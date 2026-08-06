@@ -25,14 +25,11 @@ so it cannot influence pass/fail (prime directive 1).
 
 from __future__ import annotations
 
-import logging
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace
 from typing import Protocol, runtime_checkable
 
 from bajutsu.drivers.base import Frame, Point
-
-logger = logging.getLogger("bajutsu.actuation")
 
 # The driver primitives a record may name. `str` rather than a Literal on purpose: the report
 # reconstructs these records from a manifest an older or newer version of the tool wrote (BE-0068
@@ -60,6 +57,7 @@ CHANNELS: tuple[str, ...] = (
     "coordinate",  # the driver computed (or was handed) a point and sent it
     "handle",  # XCUITest actuated a snapshot handle; it chose the point
     "identity",  # the Android device resolved the element and chose the point
+    "bridge",  # a WebView bridge call addressed by element id, which picks its own coordinate
     "focused",  # a text primitive on whatever field holds focus, addressing no element
     "key",  # a key event (Android's system back), no coordinate at all
     "history",  # browser history navigation
@@ -77,20 +75,32 @@ UNITS: tuple[str, ...] = ("point", "pixel", "cssPixel")
 MAX_RECORDS = 512
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Actuation:
     """One primitive a driver performed on the device.
+
+    Keyword-only by construction: `gesture`, `via`, and `unit` are three adjacent `str`s that no type
+    checker could tell apart positionally, so naming them at every call site is the one invariant here
+    that the type can enforce rather than leave to prose.
 
     Args:
         gesture: Which primitive ran, from `GESTURES`.
         via: How it reached its target, from `CHANNELS`.
         unit: The coordinate space `points` and `frame` are in, from `UNITS`. Always set, even for a
             record carrying neither, so every backend's records read uniformly.
-        points: The contact points touched, in order — one for a tap, two for a drag's start and end.
-            Empty whenever no coordinate crossed to the platform (rule 1 above).
+        points: The coordinates the driver sent, in order — one for a tap, two for a drag's start and
+            end. Empty whenever no coordinate crossed to the platform (rule 1 above). A two-finger
+            gesture records the single anchor it derived its contacts from, not the contacts
+            themselves: the anchor plus `frame` and `scale`/`radians` determine both fingers, while the
+            contacts alone would read as two independent touches.
         frame: The resolved element's bounds, where the driver resolved an element.
         target: The resolved element's accessibility identifier, and nothing else — never a label or a
             backend's richer addressing value, so the field cannot carry authored text (rule 3).
+        accepted: Whether the platform accepted this attempt, on the two channels that answer —
+            XCUITest's handle actuation and Android's device-side endpoint, both of which can refuse
+            and be retried. `None` means the driver got no separate answer (a fire-and-forget
+            injection, or Android's "the request went out but the reply was lost"), in which case the
+            step's own `ok` / `reason` is what says whether the step worked.
         duration_s: How long a press or drag was held.
         scale: A pinch's spread factor.
         radians: A rotation's angle.
@@ -99,49 +109,65 @@ class Actuation:
     gesture: str
     via: str
     unit: str
-    points: list[Point] = field(default_factory=list)
+    points: tuple[Point, ...] = ()
     frame: Frame | None = None
     target: str | None = None
+    accepted: bool | None = None
     duration_s: float | None = None
     scale: float | None = None
     radians: float | None = None
+
+
+@dataclass(frozen=True)
+class Drained:
+    """One drain's worth of records, plus what the cap discarded to make room for them.
+
+    `dropped` travels with the records rather than staying a log-side counter so a truncated record
+    can be *disclosed as truncated* wherever it is shown. A warning line would not do: this item's own
+    reasoning for existing is that a log line is not evidence — absent unless someone raised the level
+    before the run, and it never reaches the run directory.
+    """
+
+    records: list[Actuation]
+    dropped: int
 
 
 class ActuationLog:
     """The actuations a driver has performed since the last drain.
 
     Bounded (see `MAX_RECORDS`) so an undraining consumer keeps the most recent records instead of
-    growing with the session. Dropping is counted and warned about rather than silent: the earliest
-    gestures of a step are exactly what "the scroll never reached its target" needs to show.
+    growing with the session. Dropping is counted, not silent: the earliest gestures of a step are
+    exactly what "the scroll never reached its target" needs to show.
     """
 
     def __init__(self, maxlen: int = MAX_RECORDS) -> None:
         self._records: deque[Actuation] = deque(maxlen=maxlen)
         self._dropped = 0
 
-    @property
-    def dropped(self) -> int:
-        """How many records the cap has discarded over this log's lifetime."""
-        return self._dropped
-
     def record(self, actuation: Actuation) -> None:
         """Append one actuation, discarding the oldest if the log is already full."""
         if len(self._records) == self._records.maxlen:
             self._dropped += 1
-            if self._dropped == 1:
-                # Once per log: a pathological step (or an undraining consumer) would otherwise
-                # repeat this line per gesture, and one line already says the record is truncated.
-                logger.warning(
-                    "actuation log full at %d records; dropping the oldest — the earliest gestures "
-                    "of this step are no longer in the record",
-                    self._records.maxlen,
-                )
         self._records.append(actuation)
 
-    def drain(self) -> list[Actuation]:
+    def settle(self, accepted: bool) -> None:
+        """Stamp the most recent record with the answer the platform just gave.
+
+        A record is written before its transport answers, so a gesture that failed still shows what it
+        aimed at. On the two channels that *can* refuse and be retried, this is how a refused attempt
+        stops reading as one that landed — without it, a stale-retried tap leaves three identical
+        records and nothing saying which one the device honored. A no-op on an empty log, so a driver
+        that settles without having recorded cannot corrupt the previous step's last record: the drain
+        already took it.
+        """
+        if self._records:
+            self._records[-1] = replace(self._records[-1], accepted=accepted)
+
+    def drain(self) -> Drained:
         """Everything recorded since the last drain, oldest first, emptying the log."""
-        out = list(self._records)
+        out = Drained(records=list(self._records), dropped=self._dropped)
         self._records.clear()
+        self._dropped = 0
         return out
 
 
@@ -155,4 +181,4 @@ class ActuationReporter(Protocol):
     carries exactly the actuations that step performed.
     """
 
-    def drain_actuations(self) -> list[Actuation]: ...
+    def drain_actuations(self) -> Drained: ...

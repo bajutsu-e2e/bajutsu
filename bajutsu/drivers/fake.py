@@ -10,7 +10,7 @@ import time
 from collections.abc import Callable, Sequence
 
 from bajutsu.drivers import base
-from bajutsu.drivers.actuation import Actuation, ActuationLog
+from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
 from bajutsu.evidence.network import NetworkExchange, ScreenTransition
 
 # Hook that mutates state in response to an action: react(driver, kind, arg)
@@ -107,7 +107,7 @@ class FakeDriver:
         self._record("tap", sel)
 
     def tap_point(self, p: base.Point) -> None:
-        self._actuations.record(Actuation("tap", "coordinate", _UNIT, points=[p]))
+        self._actuations.record(Actuation(gesture="tap", via="coordinate", unit=_UNIT, points=(p,)))
         self._record("tap_point", p)
 
     def double_tap(self, sel: base.Selector) -> None:
@@ -119,13 +119,17 @@ class FakeDriver:
         self._record("long_press", (sel, duration))
 
     def swipe(self, frm: base.Point, to: base.Point) -> None:
-        self._actuations.record(Actuation("swipe", "coordinate", _UNIT, points=[frm, to]))
+        self._actuations.record(
+            Actuation(gesture="swipe", via="coordinate", unit=_UNIT, points=(frm, to))
+        )
         self._record("swipe", (frm, to))
 
     def scroll(self, frm: base.Point, to: base.Point) -> None:
         # Recorded before the pan: `frm`/`to` are the caller's coordinates, so they are already in the
         # space `query()` reports, and the offset this call is about to move must not shift them.
-        self._actuations.record(Actuation("scroll", "coordinate", _UNIT, points=[frm, to]))
+        self._actuations.record(
+            Actuation(gesture="scroll", via="coordinate", unit=_UNIT, points=(frm, to))
+        )
         if self._viewport is not None:
             # Pan the offset by the gesture's travel (content moves opposite the finger), clamped to
             # the content bounds — so once the region has bottomed out the offset (and thus every
@@ -151,7 +155,7 @@ class FakeDriver:
         return (w, h)
 
     def back(self) -> None:
-        self._actuations.record(Actuation("back", "key", _UNIT))
+        self._actuations.record(Actuation(gesture="back", via="key", unit=_UNIT))
         self._record("back", None)
 
     def pinch(self, sel: base.Selector, scale: float) -> None:
@@ -164,19 +168,19 @@ class FakeDriver:
 
     def type_text(self, text: str) -> None:
         # `text` is deliberately absent from the record — not even its length (see `actuation.py`).
-        self._actuations.record(Actuation("typeText", "focused", _UNIT))
+        self._actuations.record(Actuation(gesture="typeText", via="focused", unit=_UNIT))
         self._record("type", text)
 
     def delete_text(self, count: int) -> None:
-        self._actuations.record(Actuation("deleteText", "focused", _UNIT))
+        self._actuations.record(Actuation(gesture="deleteText", via="focused", unit=_UNIT))
         self._record("delete_text", count)
 
     def select_all(self) -> None:
-        self._actuations.record(Actuation("selectAll", "focused", _UNIT))
+        self._actuations.record(Actuation(gesture="selectAll", via="focused", unit=_UNIT))
         self._record("select_all", None)
 
     def copy_selection(self) -> None:
-        self._actuations.record(Actuation("copy", "focused", _UNIT))
+        self._actuations.record(Actuation(gesture="copy", via="focused", unit=_UNIT))
         self._record("copy_selection", None)
 
     def select_option(self, sel: base.Selector, option: str) -> None:
@@ -193,7 +197,7 @@ class FakeDriver:
         button = base.resolve_unique(self.system_alert_buttons, sel)
         # Handle-based like the real backend, and out of the app's own coordinate space, so no point.
         self._actuations.record(
-            Actuation("systemAlert", "handle", _UNIT, target=button["identifier"])
+            Actuation(gesture="systemAlert", via="handle", unit=_UNIT, target=button["identifier"])
         )
         self._record("handle_system_alert", (sel, timeout))
 
@@ -235,7 +239,7 @@ class FakeDriver:
         """A deterministic collector over the seeded exchanges (read-only evidence; BE-0020)."""
         return FakeNetworkCollector(self._exchanges or [])
 
-    def drain_actuations(self) -> list[Actuation]:
+    def drain_actuations(self) -> Drained:
         """The concrete actuations performed since the last drain (`ActuationReporter`)."""
         return self._actuations.drain()
 
@@ -259,10 +263,10 @@ class FakeDriver:
         frame = self._visible_frame(el["frame"])
         self._actuations.record(
             Actuation(
-                gesture,
-                "coordinate",
-                _UNIT,
-                points=[base.frame_center(frame)],
+                gesture=gesture,
+                via="coordinate",
+                unit=_UNIT,
+                points=(base.frame_center(frame),),
                 frame=frame,
                 target=el["identifier"],
                 duration_s=duration_s,

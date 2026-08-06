@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, cast
 from bajutsu import simctl
 from bajutsu.dom import QUERY_JS, parse_dom
 from bajutsu.drivers import base
-from bajutsu.drivers.actuation import Actuation, ActuationLog
+from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
 from bajutsu.evidence import intervals
 
 if TYPE_CHECKING:
@@ -533,7 +533,7 @@ class PlaywrightDriver:
         el = base.resolve_unique(self.query(), sel)
         return base.frame_center(el["frame"]), el
 
-    def drain_actuations(self) -> list[Actuation]:
+    def drain_actuations(self) -> Drained:
         """The concrete actuations performed since the last drain (`ActuationReporter`)."""
         return self._actuations.drain()
 
@@ -550,10 +550,10 @@ class PlaywrightDriver:
         """Record a click / gesture the driver aimed at a point it computed itself."""
         self._actuations.record(
             Actuation(
-                gesture,
-                "coordinate",
-                _UNIT,
-                points=[point],
+                gesture=gesture,
+                via="coordinate",
+                unit=_UNIT,
+                points=(point,),
                 frame=el["frame"],
                 target=el["identifier"],
                 duration_s=duration_s,
@@ -570,7 +570,7 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def tap_point(self, p: base.Point) -> None:
-        self._actuations.record(Actuation("tap", "coordinate", _UNIT, points=[p]))
+        self._actuations.record(Actuation(gesture="tap", via="coordinate", unit=_UNIT, points=(p,)))
         self._page.mouse.click(p[0], p[1])
 
     @_wedge_guard
@@ -590,7 +590,9 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def swipe(self, frm: base.Point, to: base.Point) -> None:
-        self._actuations.record(Actuation("swipe", "coordinate", _UNIT, points=[frm, to]))
+        self._actuations.record(
+            Actuation(gesture="swipe", via="coordinate", unit=_UNIT, points=(frm, to))
+        )
         # A literal pointer drag — the coordinate `swipe` form (canvas / map pan) and the `drag`
         # action (a resize divider, a slider thumb). Keyed on input mode like `scroll` (BE-0227): a
         # touch context uses a real touch drag (the pinch/rotate path) so a touch-bound handle
@@ -606,7 +608,9 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def scroll(self, frm: base.Point, to: base.Point) -> None:
-        self._actuations.record(Actuation("scroll", "coordinate", _UNIT, points=[frm, to]))
+        self._actuations.record(
+            Actuation(gesture="scroll", via="coordinate", unit=_UNIT, points=(frm, to))
+        )
         # A directional scroll (see base.Driver.scroll). A mouse drag leaves the page inert, so
         # dispatch the primitive that actually scrolls, keyed on the context's input mode (BE-0228): a
         # touch context uses a real single-finger touch drag (the pinch/rotate path, so touch/scroll
@@ -661,7 +665,7 @@ class PlaywrightDriver:
     def back(self) -> None:
         # The web's "back" is browser history; the platform peer of Android's system back key and
         # iOS's OS back button (BE-0210).
-        self._actuations.record(Actuation("back", "history", _UNIT))
+        self._actuations.record(Actuation(gesture="back", via="history", unit=_UNIT))
         self._page.go_back()
 
     @_wedge_guard
@@ -733,27 +737,27 @@ class PlaywrightDriver:
         # The orchestrator taps `into` before this (see _do_type), focusing the field — same
         # contract every backend relies on, so typing always lands in the just-focused element.
         # `text` is deliberately absent from the record — not even its length (see `actuation.py`).
-        self._actuations.record(Actuation("typeText", "focused", _UNIT))
+        self._actuations.record(Actuation(gesture="typeText", via="focused", unit=_UNIT))
         self._page.keyboard.type(text)
 
     @_wedge_guard
     def delete_text(self, count: int) -> None:
         # `count` backspaces on the focused field (BE-0265). `press` per key, since Playwright has no
         # repeat-count on a single press.
-        self._actuations.record(Actuation("deleteText", "focused", _UNIT))
+        self._actuations.record(Actuation(gesture="deleteText", via="focused", unit=_UNIT))
         for _ in range(count):
             self._page.keyboard.press("Backspace")
 
     @_wedge_guard
     def select_all(self) -> None:
         # Ctrl+A selects the focused field's whole content (BE-0265).
-        self._actuations.record(Actuation("selectAll", "focused", _UNIT))
+        self._actuations.record(Actuation(gesture="selectAll", via="focused", unit=_UNIT))
         self._page.keyboard.press("Control+a")
 
     @_wedge_guard
     def copy_selection(self) -> None:
         # Ctrl+C copies the active selection to the clipboard (BE-0265).
-        self._actuations.record(Actuation("copy", "focused", _UNIT))
+        self._actuations.record(Actuation(gesture="copy", via="focused", unit=_UNIT))
         self._page.keyboard.press("Control+c")
 
     @_wedge_guard

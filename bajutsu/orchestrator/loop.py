@@ -488,7 +488,7 @@ def run_scenario(
                 event = alert_guard(driver)
                 if event is not None:
                     expect_alerts.append(event)
-                    expect_actuations.extend(drain_actuations(driver))
+                    expect_actuations.extend(drain_actuations(driver).records)
                     if ctx.visual is not None:
                         driver.screenshot(str(ctx.visual.screenshot_path))
                     # Re-read the clipboard too: clearing the block may have let the app update the
@@ -956,6 +956,12 @@ class _StepRunner:
         except UncoveredSystemAlertLocale as exc:
             outcome.ok, outcome.reason = False, str(exc)
             outcome.duration_s = self.cfg.clock.now() - start
+            # Drained here too, like the `last_leaf` assignment below: nothing can have actuated this
+            # early today (only the pre-step baseline capture has run), but leaving the one early
+            # return as the single path that skips the drain is how a record would later be stranded
+            # into the *next* step's outcome, silently and only for this failure.
+            drained = drain_actuations(active_driver)
+            outcome.actuations, outcome.dropped_actuations = drained.records, drained.dropped
             self.state.outcomes.append(outcome)
             # This early return skips the rest of the function, including the `last_leaf`
             # assignment at its end — set it here too, so a scenario that ends on this failure
@@ -1106,7 +1112,8 @@ class _StepRunner:
         # as does the guard's own dismissing tap, on the step it interrupted. `active_driver`, not
         # `cfg.driver`, because a step inside a `web` block actuates the WebView driver; nothing
         # actuates the native driver during such a step, so nothing is stranded.
-        outcome.actuations = drain_actuations(active_driver)
+        drained = drain_actuations(active_driver)
+        outcome.actuations, outcome.dropped_actuations = drained.records, drained.dropped
 
         # The post-step read is lazy (BE-0234 Unit 2): `.get()` reads (once) only where a
         # consumer needs the tree, so a step with no consumer under a NullSink never reads. A
