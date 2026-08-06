@@ -45,6 +45,7 @@ import pytest
 from bajutsu import adb
 from bajutsu.config import Effective, load_config, resolve
 from bajutsu.drivers import base
+from bajutsu.evidence import intervals
 from bajutsu.runner.launch import launch_driver
 
 pytestmark = pytest.mark.ondevice
@@ -107,7 +108,13 @@ def _adb_driver(_eff: Effective) -> base.Driver:
 @pytest.fixture(autouse=True)
 def _evidence(request: pytest.FixtureRequest) -> Iterator[None]:
     """Video + deviceLog for this case, kept only on failure (the CI job otherwise has neither)."""
-    yield from ondevice_evidence.capture(SERIAL, "fault-injection-adb", request)
+    yield from ondevice_evidence.capture(
+        SERIAL,
+        "fault-injection-adb",
+        request,
+        start_video=ondevice_evidence.android_screenrecord,
+        start_log=intervals.start_logcat,
+    )
 
 
 @pytest.fixture

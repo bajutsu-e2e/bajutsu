@@ -8,7 +8,11 @@ keep-on-failure / discard-on-pass behavior is pinned on the fast gate, without a
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import ondevice_evidence
+
+from bajutsu.evidence import intervals
 
 # The inner conftest registers the real plugin, the same way the real on-device suites' own
 # conftest.py does, so its `pytest_runtest_makereport` hook tags each item's stash.
@@ -193,6 +197,71 @@ def test_stops_the_log_even_when_stopping_the_video_raises(pytester) -> None:
         "test_stops_the_log_even_when_stopping_the_video_raises.py::test_body"
     )
     assert not (pytester.path / "runs" / "fake-lane" / slug).exists()
+
+
+def test_discards_evidence_once_a_crashed_attempt_recovers_and_passes(pytester) -> None:
+    # `backend_crash_recovery` (BE-0334, used by the iOS conformance suite) re-runs a WHOLE item via
+    # `_initrequest()` on an infra-fault retry, reusing the same `pytest.Item` — so `item.stash`
+    # persists across attempts. If the makereport hook only ever latched `_FAILED` true and never
+    # cleared it, the crashed attempt's tag would still read true on the later, recovered, passing
+    # attempt, wrongly keeping evidence a passing test does not need (and by then holding only the
+    # passing attempt's own recording anyway, since `capture` reuses the same file path per attempt).
+    pytester.makeconftest("pytest_plugins = ['ondevice_evidence', 'backend_crash_recovery']\n")
+    pytester.makepyfile(
+        _IMPORTS
+        + "from bajutsu.drivers import base\n\n\n"
+        + _FAKE_STARTERS
+        + _EVIDENCE_FIXTURE
+        + "pytestmark = pytest.mark.backend_crash_recovery\n"
+        + "_LAUNCHES = {'n': 0}\n\n\n"
+        + "class _FakeDriver:\n"
+        + "    def __init__(self, crash):\n"
+        + "        self._crash = crash\n\n"
+        + "    def act(self):\n"
+        + "        if self._crash:\n"
+        + "            raise base.BackendCrashError('fake runner crashed mid-test')\n\n"
+        + "    def close(self):\n"
+        + "        pass\n\n\n"
+        + "@pytest.fixture(scope='module')\n"
+        + "def _backend_launch():\n"
+        + "    def launch():\n"
+        + "        _LAUNCHES['n'] += 1\n"
+        + "        return _FakeDriver(crash=_LAUNCHES['n'] == 1)  # only the first lease crashes\n"
+        + "    return launch\n\n\n"
+        + "@pytest.fixture\n"
+        + "def driver(_backend_lease_holder):\n"
+        + "    return _backend_lease_holder.driver\n\n\n"
+        + "def test_acts(driver):\n"
+        + "    driver.act()\n"
+        + "    assert _LAUNCHES['n'] == 2  # crashed once, recovered on the cold respawn\n"
+    )
+    result = pytester.runpytest_inprocess()
+    result.assert_outcomes(passed=1)
+    slug = ondevice_evidence._slug(
+        "test_discards_evidence_once_a_crashed_attempt_recovers_and_passes.py::test_acts"
+    )
+    assert not (pytester.path / "runs" / "fake-lane" / slug).exists()
+
+
+def test_android_screenrecord_forwards_this_modules_pinned_bounds(monkeypatch) -> None:
+    calls = []
+
+    def fake_start_screenrecord(serial, path, *, time_limit=None, size=None, bit_rate=None):
+        calls.append((serial, path, time_limit, size, bit_rate))
+        return "sentinel"
+
+    monkeypatch.setattr(intervals, "start_screenrecord", fake_start_screenrecord)
+    result = ondevice_evidence.android_screenrecord("serial-1", Path("video.mp4"))
+    assert result == "sentinel"
+    assert calls == [
+        (
+            "serial-1",
+            Path("video.mp4"),
+            ondevice_evidence._TIME_LIMIT_S,
+            ondevice_evidence._SIZE,
+            ondevice_evidence._BIT_RATE,
+        )
+    ]
 
 
 def test_slug_is_filesystem_safe_and_stable_per_nodeid() -> None:

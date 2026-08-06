@@ -852,6 +852,17 @@ jobs:
           path: conformance-recovery.json
           if-no-files-found: ignore
 
+      # The suite's own per-test video/deviceLog evidence (kept only on a failing test), the same
+      # `runs/` path every scenario-driven job populates — this job had none before, unlike its adb
+      # twin and the recovery report just above.
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ios-e2e-conformance-run
+          path: runs/
+          if-no-files-found: ignore
+
   # Fault injection for the runner channel's resilience layers (BE-0305). Every job above drives a
   # healthy runner, so BE-0207's transient retry and BE-0287's crash recovery — the two mechanisms that
   # exist for a runner that stops answering mid-run — are exercised only by a synthetic exception in the

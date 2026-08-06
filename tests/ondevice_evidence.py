@@ -1,13 +1,16 @@
-"""Per-test video + deviceLog capture for the Android on-device adb pytest suites.
+"""Per-test video + deviceLog capture for the on-device adb/XCUITest pytest suites.
 
-`conformance (adb)` and `fault-injection (adb)` drive the adb driver straight from pytest
-(`launch_driver`, never `bajutsu run`), so neither inherits the scenario pipeline's evidence capture
-(`bajutsu/evidence/core.py`'s `capture:`-driven `FileSink`) — a failure in either lane has no video
-or `device.log` to diagnose it, unlike every scenario-driven Android CI job. This module wires the
-same interval primitives the pipeline itself uses (`bajutsu.evidence.intervals`) directly around
-each test, the way `demos/showcase/android/screenrecord.py` already does for the codegen lane's
-`connectedAndroidTest` — no bajutsu runtime there either, so no scenario/YAML `capture:` machinery
-to hook into.
+`conformance (adb)`, `fault-injection (adb)`, and their iOS twins drive their backend straight from
+pytest (`launch_driver`, never `bajutsu run`), so none of them inherits the scenario pipeline's
+evidence capture (`bajutsu/evidence/core.py`'s `capture:`-driven `FileSink`) — a failure in any of
+them has no video or device log to diagnose it, unlike every scenario-driven CI job. This module
+wires the same interval primitives the pipeline itself uses (`bajutsu.evidence.intervals`) directly
+around each test, the way `demos/showcase/android/screenrecord.py` already does for the codegen
+lane's `connectedAndroidTest` — no bajutsu runtime there either, so no scenario/YAML `capture:`
+machinery to hook into. `capture()` itself is backend-agnostic: the caller supplies `start_video`/
+`start_log`, e.g. `intervals.start_screenrecord`/`start_logcat` for adb or `intervals.start_video`/
+`start_device_log` for XCUITest — `android_screenrecord` below pre-binds the adb video bound both
+Android suites share.
 
 Recorded per test, not per module: `screenrecord`'s ~180s device-side ceiling (see
 `screenrecord.py`) would truncate a single video spanning the whole conformance module, and a
@@ -20,7 +23,10 @@ A module opts in with one autouse fixture:
 
     @pytest.fixture(autouse=True)
     def _evidence(request: pytest.FixtureRequest) -> Iterator[None]:
-        yield from capture(SERIAL, "conformance-adb", request)
+        yield from capture(
+            SERIAL, "conformance-adb", request,
+            start_video=android_screenrecord, start_log=intervals.start_logcat,
+        )
 """
 
 from __future__ import annotations
@@ -35,9 +41,14 @@ import pytest
 
 from bajutsu.evidence import intervals
 
-# Set on the item's stash by the makereport hook below when any phase (setup/call/teardown) fails —
-# the only way a fixture finalizer can learn pytest's own outcome, since a `TestReport` is not
-# otherwise visible from teardown.
+# Set on the item's stash by the makereport hook below to the *current* report's outcome — the only
+# way a fixture finalizer can learn pytest's own outcome, since a `TestReport` is not otherwise
+# visible from teardown. Always overwritten, never just latched: `backend_crash_recovery` (BE-0334)
+# re-runs a whole item via `_initrequest()` on an infra-fault retry, reusing the same `pytest.Item`,
+# so a stash that only ever turned True would still read True on a later attempt that recovered and
+# passed — keeping a crashed attempt's evidence after it stopped mattering, and worse, doing so after
+# that same attempt's `capture()` call already overwrote the video/log files a passing attempt no
+# longer needs kept.
 _FAILED: pytest.StashKey[bool] = pytest.StashKey()
 
 # Mirrors screenrecord.py's bound: small enough for `/sdcard` and the artifact upload, well under
@@ -47,12 +58,18 @@ _SIZE = "540x1200"
 _BIT_RATE = 2_000_000
 
 
+def android_screenrecord(serial: str, path: Path) -> intervals.Interval:
+    """`intervals.start_screenrecord` pre-bound to this module's size/bit-rate/time-limit bounds."""
+    return intervals.start_screenrecord(
+        serial, path, time_limit=_TIME_LIMIT_S, size=_SIZE, bit_rate=_BIT_RATE
+    )
+
+
 @pytest.hookimpl(wrapper=True)
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
-    """Tag the item's stash so `capture`'s finalizer can tell a failure from a clean run."""
+    """Tag the item's stash with the current report's outcome, for `capture`'s finalizer to read."""
     report = yield
-    if report.failed:
-        item.stash[_FAILED] = True
+    item.stash[_FAILED] = report.failed
     return report
 
 
@@ -74,14 +91,16 @@ def capture(
     lane: str,
     request: pytest.FixtureRequest,
     *,
-    start_video: Callable[..., intervals.Interval] = intervals.start_screenrecord,
-    start_log: Callable[..., intervals.Interval] = intervals.start_logcat,
+    start_video: Callable[[str, Path], intervals.Interval],
+    start_log: Callable[[str, Path], intervals.Interval],
 ) -> Iterator[None]:
     """Record video + deviceLog for `request`'s test; keep the files under `runs/` only if it failed.
 
     `lane` names the CI job (e.g. "conformance-adb") so its own uploaded artifact is self-contained.
-    `start_video`/`start_log` are injectable (mirroring `intervals.start_screenrecord`/`start_logcat`'s
-    own `spawn`/`run` seams) so a test can exercise this without a real device.
+    `start_video`/`start_log` take only `(serial_or_udid, path)` — this function is backend-agnostic,
+    so every caller states explicitly which backend's primitives it wants (`android_screenrecord` +
+    `intervals.start_logcat` for adb, `intervals.start_video` + `start_device_log` for XCUITest) —
+    and a test can pass a fake pair to exercise this without a real device.
     """
     dest = Path("runs") / lane / _slug(request.node.nodeid)
     dest.mkdir(parents=True, exist_ok=True)
@@ -95,9 +114,7 @@ def capture(
     # and defaulting to discard would delete the one piece of evidence that setup failure needs most.
     keep = True
     try:
-        video = start_video(
-            serial, dest / "video.mp4", time_limit=_TIME_LIMIT_S, size=_SIZE, bit_rate=_BIT_RATE
-        )
+        video = start_video(serial, dest / "video.mp4")
         log = start_log(serial, dest / "device.log")
         yield
         keep = request.node.stash.get(_FAILED, False)

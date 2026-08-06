@@ -49,6 +49,7 @@ from driver_conformance import (
 from bajutsu import adb
 from bajutsu.config import Effective, load_config, require_android, resolve
 from bajutsu.drivers import base
+from bajutsu.evidence import intervals
 from bajutsu.runner.launch import launch_driver
 
 pytestmark = pytest.mark.ondevice
@@ -135,7 +136,13 @@ def _component(_eff: Effective) -> str:
 @pytest.fixture(autouse=True)
 def _evidence(request: pytest.FixtureRequest) -> Iterator[None]:
     """Video + deviceLog for this case, kept only on failure (the CI job otherwise has neither)."""
-    yield from ondevice_evidence.capture(SERIAL, "conformance-adb", request)
+    yield from ondevice_evidence.capture(
+        SERIAL,
+        "conformance-adb",
+        request,
+        start_video=ondevice_evidence.android_screenrecord,
+        start_log=intervals.start_logcat,
+    )
 
 
 class TestAdbDriverConformance(DriverConformanceContract):
