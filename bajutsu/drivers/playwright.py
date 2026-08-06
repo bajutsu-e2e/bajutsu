@@ -509,7 +509,11 @@ class PlaywrightDriver:
         # "expected, not a defect" case `relaunch` above already suppresses per handle — but the
         # `pw` process must still be stopped or it leaks, so each handle gets its own guard rather
         # than one combined try (BE-0342: the pool's end-of-lease teardown now escalates anything
-        # this doesn't suppress into a run-failing wiring defect).
+        # this doesn't suppress into a run-failing wiring defect). Clearing the handles afterwards,
+        # like `relaunch` does, makes a second call (the caller's own failure path, per
+        # `launch_driver`'s contract) a genuine no-op instead of re-entering an already-stopped `pw`
+        # — whose failure is a driver-connection error, not a `playwright.sync_api.Error`, so the
+        # suppress above wouldn't cover it.
         pw_errors = _playwright_error_types()
         if self._browser is not None:
             with contextlib.suppress(*pw_errors):
@@ -517,6 +521,7 @@ class PlaywrightDriver:
         if self._pw is not None:
             with contextlib.suppress(*pw_errors):
                 self._pw.stop()
+        self._pw = self._browser = self._context = None
 
     # --- Driver Protocol ---
 

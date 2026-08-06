@@ -18,6 +18,7 @@ controller, relaunch deferred to Slice B).
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
@@ -27,6 +28,7 @@ from bajutsu.drivers import base
 from bajutsu.drivers.xcuitest_live import (
     WdTransportFn,
     WebDriverClient,
+    WebDriverError,
     XcuitestLiveDriver,
     _raw_wd_transport,
 )
@@ -137,9 +139,15 @@ class XcuitestLiveEnvironment(_DeviceEnvironment):
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
         # Close the WebDriver session; the grid, not this run, owns the device, so there is no simctl
-        # terminate (the base's teardown) to run.
+        # terminate (the base's teardown) to run. A grid that already expired the session, or a
+        # connection reset while the run winds down, is the same "already-gone resource" the guarded
+        # teardown pair (CalledProcessError/OSError) exists to warn away — but `WebDriverError`
+        # subclasses `RuntimeError`, not `OSError`, so it is suppressed here, at the backend, rather
+        # than grow that pair with a fifth class (BE-0342, mirroring `PlaywrightDriver.close()`'s own
+        # suppression). Clearing `self._client` unconditionally also makes a second call a no-op.
         if self._client is not None:
-            self._client.delete_session()
+            with contextlib.suppress(WebDriverError):
+                self._client.delete_session()
             self._client = None
 
     def resolve_device(self, udid: str) -> str:

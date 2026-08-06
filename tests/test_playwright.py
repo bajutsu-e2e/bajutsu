@@ -990,6 +990,31 @@ def test_close_stops_playwright_even_if_browser_close_fails(
     assert pw.stopped == 1  # pw stopped despite the browser's close() raising — no process leak
 
 
+def test_close_is_idempotent_after_clearing_its_handles() -> None:
+    """BE-0342: `launch_driver`'s failure path can call `close()` a second time — every backend's
+    teardown must now tolerate that. A second `_pw.stop()` on an already-stopped Playwright is a
+    driver-connection error, not a `playwright.sync_api.Error`, so it would escape `close()`'s own
+    suppress and fail the run — unless the first call already cleared the handles, the same reason
+    `relaunch` above clears them before starting fresh."""
+
+    class _OnceOnlyPw(_FakePw):
+        def stop(self) -> None:
+            if self.stopped:
+                raise RuntimeError("driver connection already closed")
+            super().stop()
+
+    pw = _OnceOnlyPw()
+    drv = PlaywrightDriver(
+        "http://app.test/",
+        starter=lambda _h: (pw, _FakeBrowser([]), _FakeContext(_FakePage([])), _FakePage([])),
+    )
+
+    drv.close()
+    drv.close()  # must not raise — the first call already cleared the handles
+
+    assert pw.stopped == 1  # stopped exactly once, never retried against an already-stopped process
+
+
 def test_relaunch_is_a_noop_for_an_injected_page() -> None:
     drv, _ = _driver([])  # an injected test page has no real browser to relaunch
     drv.relaunch()  # must not raise
