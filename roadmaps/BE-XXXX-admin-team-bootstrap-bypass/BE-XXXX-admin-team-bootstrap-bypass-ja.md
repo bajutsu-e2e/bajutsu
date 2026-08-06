@@ -281,7 +281,7 @@ admin Team のメンバー以外は現時点でサインインして直せない
 含まれるか）は、`role_for` が admin ロールを解決するときに使う判定と同じです。そのため、この項目は
 同じ式を2箇所に書くのではなく、1つの共有ヘルパー `in_admin_team` にまとめます。約120行離れた2つの
 関数に同じ規則が2つ存在すると、どちらか一方だけへの後からの独立した変更でずれが生じかねません。
-ゲート側の判定だけが通す login は、role の判定は通らず viewer に解決されます。これは、`orgs:` が
+そうしてずれた場合、ゲート側の判定だけが通した login は、role の判定を通らず viewer に解決されます。これは、`orgs:` が
 一度も認可していない login のためのセッションであり、しかもその login を通した理由そのものである
 admin 権限を持ちません。1つのヘルパーにまとめることで、このずれは構造的に起こり得なくなります。
 
@@ -532,7 +532,7 @@ login（最後のものは、
       organization を指す必要があると明記する。この値はいまサインインの資格情報でもあるためです。
       起動時警告そのものを self-hosting ガイド（両言語）と `.env.example` に名指しし、
       アップグレードする運用者がログの最初の数行を確認するべきだとわかるようにする。加えて
-      `event=server.startup_warning`、`event=oauth.login`、`event=oauth.denied` も、*運用ログ* 節の
+      `event=server.startup_warning` と `event=oauth.denied` も、*運用ログ* 節の
       event 一覧だけでなく移行手順の近くと `.env.example` に名指しし、ガイド自体が alert を組める経路を
       示すようにする。`oauth.login` が携える `bypass` フィールドは、迂回による許可が残す唯一の記録
       なので、`BAJUTSU_OAUTH_ADMIN_TEAMS` をサインインの資格情報として使う場合は、これをアラートの

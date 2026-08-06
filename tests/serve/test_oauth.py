@@ -420,6 +420,31 @@ def test_oauth_callback_denial_warns_when_admin_teams_is_entirely_malformed(
     assert "no admin Team matched" not in record.getMessage()
 
 
+def test_oauth_callback_denial_stays_info_when_only_some_admin_teams_entries_are_malformed(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A partly-malformed list is NOT the lockout an empty or entirely-malformed one is: an admin in
+    # `acme-gh/ops` can still sign in and repair `orgs:`, so this must read as an ordinary membership
+    # miss at INFO. This mixed shape is the only input that tells `admin_teams_unusable`'s `all(...)`
+    # apart from `any(...)`; without it, that quantifier is unpinned.
+    state = _state(
+        tmp_path,
+        oauth=FakeOAuthClient(login="bob", orgs=[], teams=["some-other/team"]),
+        config=_config_file(tmp_path),
+        admin_teams=["acme-gh/ops", "other-gh/root extra"],
+    )
+    with caplog.at_level(logging.INFO):
+        _payload, status, sid = ops.oauth_callback(
+            state, code="ok", state_param="s", state_cookie="s"
+        )
+    assert status == 403
+    assert sid is None
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
+    assert record.levelno == logging.INFO
+    assert "no admin Team matched" in record.getMessage()
+    assert "no usable admin Team is configured" not in record.getMessage()
+
+
 def test_oauth_callback_ordinary_admin_team_bypass_logs_at_info(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
