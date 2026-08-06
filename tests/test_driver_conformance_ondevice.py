@@ -134,8 +134,8 @@ def _evidence(request: pytest.FixtureRequest) -> Iterator[None]:
 
     Also correct across an infra-fault retry: `backend_crash_recovery` re-runs this whole item (and
     every function-scoped fixture, this one included) on a crash, so a crashed attempt's recording is
-    overwritten by the next attempt's — exactly right, since only the terminal (published) attempt's
-    evidence should survive.
+    cleared by the next attempt's (`capture()`'s own leading `rmtree`) before that attempt records its
+    own — exactly right, since only the terminal (published) attempt's evidence should survive.
     """
     yield from ondevice_evidence.capture(
         UDID,

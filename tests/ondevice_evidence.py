@@ -142,14 +142,22 @@ def capture(
     log: intervals.Interval | None = None
     try:
         video = start_video(serial, dest / "video.mp4")
-        log = start_log(serial, dest / "device.log")
     except Exception:
         # Diagnostic evidence is best-effort: a transient `xcrun`/`adb` hiccup *starting* a capture
-        # (a fork failure, the binary transiently missing, an `OSError` opening `device.log`) must
-        # not decide a gating driver-contract verdict — both `conformance` suites sit inside the
-        # required `E2E` aggregates. Whatever did start is still stopped in the `finally` below.
+        # (a fork failure, the binary transiently missing) must not decide a gating driver-contract
+        # verdict — both `conformance` suites sit inside the required `E2E` aggregates. Whatever did
+        # start is still stopped in the `finally` below.
         _logger.warning(
-            "%s: could not start the capture; the test runs without it", dest, exc_info=True
+            "%s: could not start the video; the test runs without it", dest, exc_info=True
+        )
+    try:
+        log = start_log(serial, dest / "device.log")
+    except Exception:
+        # Caught separately from the video above: the two fail for unrelated reasons (an `OSError`
+        # opening `device.log` says nothing about `recordVideo`), and sharing one `try` would drop
+        # the cheaper, more diagnostic artifact whenever the video's spawn happened to fail first.
+        _logger.warning(
+            "%s: could not start the device log; the test runs without it", dest, exc_info=True
         )
     finally:
         # Registered regardless of whether either starter succeeded: a start failure is warned

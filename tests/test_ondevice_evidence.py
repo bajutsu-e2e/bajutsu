@@ -205,6 +205,59 @@ def test_stops_the_started_video_when_start_log_raises(pytester) -> None:
     assert not (pytester.path / "runs" / "fake-lane" / slug).exists()
 
 
+def test_still_starts_the_log_when_start_video_raises(pytester) -> None:
+    # The reverse order: a `start_video` failure (a fork failure, `xcrun`/`adb` transiently missing)
+    # must not suppress `start_log` too. The two are independent processes failing for independent
+    # reasons, and the device log is the cheaper, more diagnostic artifact of the two — losing it
+    # over an unrelated video-side hiccup would leave a failing case with nothing to read at all.
+    pytester.makeconftest(_INNER_CONFTEST)
+    pytester.makepyfile(
+        "import pathlib\n"
+        "\n"
+        "import ondevice_evidence\n"
+        "import pytest\n"
+        "\n"
+        "\n"
+        "def _fake_start_video_raises(serial, path, **kwargs):\n"
+        "    raise RuntimeError('adb screenrecord failed to start')\n"
+        "\n"
+        "\n"
+        "class _FakeLog:\n"
+        "    def __init__(self, path):\n"
+        "        self.path = path\n"
+        "\n"
+        "    def stop(self):\n"
+        "        self.path.parent.mkdir(parents=True, exist_ok=True)\n"
+        "        self.path.write_text('a real device log')\n"
+        "        return self.path\n"
+        "\n"
+        "\n"
+        "def _fake_start_log(serial, path, **kwargs):\n"
+        "    return _FakeLog(path)\n"
+        "\n"
+        "\n"
+        "@pytest.fixture(autouse=True)\n"
+        "def _evidence(request):\n"
+        "    yield from ondevice_evidence.capture(\n"
+        "        'fake-serial', 'fake-lane', request,\n"
+        "        start_video=_fake_start_video_raises, start_log=_fake_start_log,\n"
+        "    )\n"
+        "\n"
+        "\n"
+        "def test_broken():\n"
+        "    assert False\n"
+    )
+    result = pytester.runpytest_inprocess()
+    result.assert_outcomes(failed=1)  # the driver contract itself failed; the case stays red
+    slug = ondevice_evidence._slug(
+        "test_still_starts_the_log_when_start_video_raises.py::test_broken"
+    )
+    kept = pytester.path / "runs" / "fake-lane" / slug
+    assert kept.exists()
+    assert not (kept / "video.mp4").exists()  # start_video never ran
+    assert (kept / "device.log").read_text() == "a real device log"
+
+
 class _FakeNode:
     def __init__(self, nodeid: str) -> None:
         self.nodeid = nodeid
@@ -382,7 +435,8 @@ def test_discards_evidence_once_a_crashed_attempt_recovers_and_passes(pytester) 
     # persists across attempts. If the makereport hook only ever latched `_FAILED` true and never
     # cleared it, the crashed attempt's tag would still read true on the later, recovered, passing
     # attempt, wrongly keeping evidence a passing test does not need (and by then holding only the
-    # passing attempt's own recording anyway, since `capture` reuses the same file path per attempt).
+    # passing attempt's own recording anyway, since `capture`'s leading `rmtree` clears the directory
+    # at the start of every attempt).
     pytester.makeconftest("pytest_plugins = ['ondevice_evidence', 'backend_crash_recovery']\n")
     pytester.makepyfile(
         _IMPORTS

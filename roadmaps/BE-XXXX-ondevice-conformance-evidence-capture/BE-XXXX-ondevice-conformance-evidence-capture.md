@@ -95,11 +95,12 @@ puts the display back to a known state, and a display that will not wake is exac
 recording exists to explain. Defer the decision to a `pytest_runtest_makereport` hook instead — the
 same mechanism `tests/backend_crash_recovery.py` already uses to classify a report for the on-device
 conformance suite (BE-0334) — specifically to the hook's own "teardown" invocation, the first point
-that has actually seen the whole attempt. The fixture registers its directory as eligible for that
-hook to sweep only once its own two `start_*` calls have already succeeded, so a setup failure in the
-fixture itself leaves the directory unregistered, and therefore un-swept, by default. A green run
-then uploads nothing, so the existing "Upload run artifacts" step's `if-no-files-found: ignore` keeps
-no-opping on a clean suite and starts filling only on the first real failure.
+that has actually seen the whole attempt. The fixture registers its directory for that hook to sweep
+unconditionally, whether or not either `start_*` call succeeded: a start failure is warned about, not
+raised, so it never reaches the outcome tag — leaving the directory unregistered would strand
+whatever the video alone managed to record on a test that then passes. A green run then uploads
+nothing, so the existing "Upload run artifacts" step's `if-no-files-found: ignore` keeps no-opping on
+a clean suite and starts filling only on the first real failure.
 
 The per-attempt outcome the hook tracks must be reset at each "setup" report and only accumulated
 (never reset) afterward, rather than latched true forever, because the iOS conformance suite's own
@@ -107,7 +108,7 @@ The per-attempt outcome the hook tracks must be reset at each "setup" report and
 `_initrequest()` on an infrastructure-fault retry, reusing the same `pytest.Item` and therefore the
 same stash across attempts. A tag that only ever turned true would still read "failed" on a later
 attempt that recovered and passed, wrongly keeping evidence a passing test does not need — and by
-then the crashed attempt's own recording is already gone anyway, overwritten at the same file path by
+then the crashed attempt's own recording is already gone anyway, cleared from the same directory by
 the attempt that superseded it. Resetting at each attempt's own "setup" report keeps only the
 terminal attempt's outcome in view, which is exactly the attempt `backend_crash_recovery` itself
 publishes.
