@@ -366,8 +366,9 @@ def _build_server_state(
     # Collected alongside each `print` below (nothing is configured to route through `oplog` this
     # early) so `serve()` can re-emit them once logging is live — see `ServeState.startup_warnings`.
     # Each entry pairs a stable *check* name with the human-readable *msg*, so an operator's alert can
-    # key on `check=` (a registered `oplog` field) instead of substring-matching free text that
-    # rewords out from under it.
+    # key on `check=` -- a plain structured field `oplog` passes through as-is, not one it validates
+    # the way it validates an `event` name -- instead of substring-matching free text that rewords
+    # out from under it.
     startup_warnings: list[tuple[str, str]] = []
 
     def _warn(check: str, msg: str) -> None:

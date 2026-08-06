@@ -601,7 +601,11 @@ def test_build_state_server_warns_on_a_malformed_admin_teams_entry(
         backend="server",
     )
     assert state.auth.oauth_admin_teams == ("acme-gh/ops other-gh/root",)
-    assert "will never match" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "will never match" in err
+    # Pin the `check` discriminator, not just the message: it is the field docs/self-hosting.md and
+    # .env.example both tell an operator to alert on, and nothing else in the suite names it.
+    assert any(c == "admin_teams_malformed" for c, _m in state.startup_warnings)
 
 
 def test_build_state_server_warns_on_an_empty_side_or_inner_space(
