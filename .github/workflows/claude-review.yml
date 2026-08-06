@@ -27,8 +27,9 @@
 # re-post one — it dedupes by suppressing repeats, not by narrowing what it looks at. A genuinely new
 # issue, even on code an earlier run overlooked, is still raised. The on-demand path is gated to
 # trusted actors (OWNER / MEMBER / COLLABORATOR), so a comment from anyone else is ignored — and
-# because that drop is silent, a requester must confirm its run actually started rather than reading
-# the silence as a clean review.
+# because that drop is silent, a requester must confirm the run's `claude review` job actually started
+# (a dropped request still leaves a completed green run with that job `skipped`, since the gate is a
+# job-level `if:`) rather than reading the silence as a clean review.
 #
 # HARD BOUNDARY (prime directive 1): this review is *advisory*. It is deliberately NOT added to
 # `main`'s branch-protection `required_status_checks`, and the job's own result is decoupled from

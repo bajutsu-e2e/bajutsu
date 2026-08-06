@@ -579,10 +579,13 @@ you would any reviewer's, under the reply rules above.
   prior-findings dedup — so a thread reply also runs a full pass rather than answering that thread
   alone. This path is gated to trusted actors (OWNER / MEMBER / COLLABORATOR), because comment events
   run with repo secrets even on fork PRs, so `@claude review` from anyone else is ignored. GitHub
-  shows nothing on the PR when a request is dropped that way, so whoever asks should confirm the run
-  started (`gh run list --workflow "Claude review" --created ">TIMESTAMP"`, with a timestamp captured
-  before posting — a comment-triggered run executes against the default branch, so filtering by the PR
-  branch can never match it) rather than read the silence as a clean review.
+  shows nothing on the PR when a request is dropped that way, so whoever asks should confirm the
+  review ran rather than read the silence as a clean review. Check the **job**, not the run: the gate
+  is a job-level `if:`, so a dropped request still creates a run that completes green with its
+  `claude review` job `skipped`. Find the run with `gh run list --workflow "Claude review" --event
+  issue_comment --user <account> --created ">TIMESTAMP"` (a timestamp captured before posting; a
+  comment-triggered run executes against the default branch, so filtering by the PR branch can never
+  match it), then read that job's conclusion with `gh run view <id> --json jobs`.
 - **Forks.** A plain `pull_request` event from a fork does not expose secrets (by GitHub's design),
   so auto-review covers same-repo `claude/<topic>` / `<user>/<topic>` branches; a fork PR is
   reviewed on demand by a maintainer instead.

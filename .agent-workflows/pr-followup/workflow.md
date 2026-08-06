@@ -94,24 +94,34 @@ green and no new comments arrived), since there is nothing new to self-review or
   gh pr comment <PR> --body "@claude review"
   ```
   Skip the request when nothing was pushed this iteration, or when step 4 escalated instead of
-  clearing — the PR is not yet in a stable state to review. Then confirm the requested run actually
-  started. A comment-triggered run executes against the repository's default branch, so its
-  `head_branch` is never the PR branch — filter by creation time, not `--branch`, and allow a few
-  seconds for the run to be created before concluding it never started:
+  clearing — the PR is not yet in a stable state to review. Then confirm the review actually ran,
+  checking the **job** rather than the run. The workflow's trusted-actor gate is a job-level `if:`,
+  so a comment event creates a workflow run even when the request is dropped: the run appears,
+  completed and green, with its `claude review` job merely `skipped`. Run existence proves nothing.
+  Pin the run to this request's own comment with `--user`, since any comment in the repository
+  creates a run in the same window; filter by creation time rather than `--branch`, since a
+  comment-triggered run executes against the default branch and its `head_branch` is never the PR
+  branch; and allow a few seconds for the run to be created:
   ```bash
-  gh run list --workflow "Claude review" --event issue_comment --created ">$REQUESTED_AT"
+  RUN_ID=$(gh run list --workflow "Claude review" --event issue_comment \
+    --user "$(gh api user --jq .login)" --created ">$REQUESTED_AT" \
+    --json databaseId --jq '.[0].databaseId')
+  gh run view "$RUN_ID" --json jobs \
+    --jq '.jobs[] | select(.name == "claude review") | .conclusion // .status'
   ```
-  The workflow drops a request whose commenter is not `OWNER`/`MEMBER`/`COLLABORATOR`, and it
-  leaves no trace on the pull request when it does. An unstarted run is therefore indistinguishable
-  from a review that found nothing, so a follow-up poll would read the silence as a quiet PR.
-  Escalate when no run appears.
+  The review counts as started only when that job is `queued`, `in_progress`, or completed with a
+  conclusion other than `skipped`. A dropped request's run completes within seconds with the job
+  `skipped`, and the workflow leaves no trace on the pull request when it drops one — so the silence
+  is indistinguishable from a review that found nothing, and a follow-up poll would read it as a
+  quiet PR. Escalate on `skipped`, or when no run by this account appears.
 - Report what was fixed and what remains.
 
 ## Escalation
 
-Escalate, rather than pressing on, when step 5's `@claude review` request leaves no run behind: the
-live pass a later poll is waiting for will never arrive, and only a human can grant the trusted-actor
-association the workflow requires.
+Escalate, rather than pressing on, when step 5 finds its `@claude review` request was dropped — its
+run's `claude review` job `skipped`, or no run by this account at all: the live pass a later poll is
+waiting for will never arrive, and only a human can grant the trusted-actor association the workflow
+requires.
 
 If a review comment asks for a **fundamental design change** (new approach,
 architectural rethink, or trade-off the user should weigh), do NOT attempt the
