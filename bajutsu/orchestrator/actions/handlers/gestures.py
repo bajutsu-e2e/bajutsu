@@ -64,7 +64,16 @@ def _tap_with_recovery(
         except base.ElementNotFound as exc:
             exhausted = exc
             continue
-        actuate()
+        try:
+            actuate()
+        except base.ElementNotTappable as exc:
+            # The retry raced: the cover re-settled between the stop check and the actuation.
+            # Keep the newer, more accurate obstruction and let the next direction try.
+            obstruction = exc
+            exhausted = base.ElementNotFound(
+                f"scroll: {sel!r} became tappable but was covered again on the retry"
+            )
+            continue
         return
     assert exhausted is not None
     raise base.ElementNotTappable(
