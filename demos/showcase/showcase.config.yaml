@@ -18,6 +18,12 @@ defaults:
   backend: [ios]
   device: "iPhone 17 Pro"
   reservedNamespaces: []   # no shared cross-screen ids; the back is the OS BackButton (DESIGN §7.3)
+  # The schema's own lightweight 3 (screenshot.after/elements/actionLog), plus rawTree: normally an
+  # opt-in-only kind (never in Defaults.capture), enabled project-wide here as a deliberate exception —
+  # this suite is where a resolved-coordinate/real-screen mismatch has actually been diagnosed before,
+  # and persisting the raw dump behind each step's elements.json (adb's UI Automator dump, XCUITest's
+  # `GET /elements` body) means the next one doesn't need the flake reproduced first to investigate it.
+  capture: [screenshot.after, elements, actionLog, rawTree]
 
 targets:
   # ---- SwiftUI, accessibility ON (the `run` / `doctor`-Ready target) -------------

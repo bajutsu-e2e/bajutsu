@@ -279,6 +279,33 @@ def _scripted(responses: list[str]) -> tuple[object, list[int]]:
     return run, calls
 
 
+def test_last_raw_source_is_none_before_the_first_read() -> None:
+    driver = AdbDriver("U", run=lambda args: "")  # type: ignore[arg-type]
+    assert driver.last_raw_source() is None
+
+
+def test_describe_records_the_raw_dump_text_on_the_subprocess_path() -> None:
+    run, _ = _scripted([FIXTURE])
+    driver = AdbDriver("U", run=run)  # type: ignore[arg-type]
+    driver.query()
+    raw = driver.last_raw_source()
+    assert raw is not None
+    assert raw.text == FIXTURE
+    assert raw.pre_transform is None  # no narrowing on the dump-subprocess path
+
+
+def test_describe_records_the_pre_narrow_body_on_the_resident_path() -> None:
+    def fetch(_since: float | None) -> HierarchyRead:
+        return HierarchyRead(FIXTURE, mark=1.0, raw="<hierarchy>pre-narrow body</hierarchy>")
+
+    driver = AdbDriver("U", run=lambda args: "", fetch_hierarchy=fetch)
+    driver.query()
+    raw = driver.last_raw_source()
+    assert raw is not None
+    assert raw.text == FIXTURE
+    assert raw.pre_transform == "<hierarchy>pre-narrow body</hierarchy>"
+
+
 def test_query_retries_through_transient_empty() -> None:
     run, calls = _scripted([FIXTURE, NULL_ROOT, FIXTURE])
     driver = AdbDriver("U", run=run)  # type: ignore[arg-type]
@@ -762,6 +789,45 @@ def test_parse_hierarchy_malformed_xml_is_empty() -> None:
     assert parse_hierarchy("<hierarchy><node bounds=</hierarchy>") == []
 
 
+def test_bounds_with_no_attribute_defaults_silently(caplog: pytest.LogCaptureFixture) -> None:
+    # A node genuinely carrying no `bounds` attribute is not a fault — this is the expected shape of,
+    # e.g., a root container — so it defaults to the origin frame with no warning.
+    no_bounds = FIXTURE.replace(' bounds="[0,100][200,200]"', "")
+    with caplog.at_level(logging.WARNING):
+        els = parse_hierarchy(no_bounds)
+    assert _by_id(els, "stable_refresh")["frame"] == (0.0, 0.0, 0.0, 0.0)
+    assert caplog.records == []
+
+
+def test_bounds_with_a_malformed_attribute_warns_rather_than_defaulting_silently(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # An attribute present but unparseable is a different case: not "this node has no bounds" but
+    # "something in the dump did not look like UI Automator's own format" — that must be loud, not
+    # indistinguishable from the expected-default case above.
+    malformed = FIXTURE.replace('bounds="[0,100][200,200]"', 'bounds="not-a-bounds-string"')
+    with caplog.at_level(logging.WARNING):
+        els = parse_hierarchy(malformed)
+    assert _by_id(els, "stable_refresh")["frame"] == (0.0, 0.0, 0.0, 0.0)
+    assert any("did not match the expected format" in r.message for r in caplog.records)
+
+
+def test_bounds_malformed_on_many_nodes_warns_once_per_parse_not_once_per_node(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # A dump with many malformed-bounds nodes must not flood the log once per node: `_settle`'s poll
+    # can issue up to ~80 reads in a single call, so a per-node warning would multiply into thousands
+    # of lines. One summary line per parse, naming the count, replaces that.
+    malformed = FIXTURE.replace('bounds="[0,100][200,200]"', 'bounds="bad"').replace(
+        'bounds="[0,200][200,300]"', 'bounds="also-bad"'
+    )
+    with caplog.at_level(logging.WARNING):
+        parse_hierarchy(malformed)
+    warnings = [r for r in caplog.records if "did not match the expected format" in r.message]
+    assert len(warnings) == 1
+    assert "2 node(s)" in warnings[0].message
+
+
 # `getevent -lp` on the Android emulator: several identical `virtio_input_multi_touch_*` nodes, of
 # which only the lowest-numbered `/dev/input/eventN` is wired to the display (BE-0208), plus a
 # non-touch key node that must be ignored. Trimmed to the axes the parser reads.
@@ -1076,6 +1142,107 @@ def test_settle_gives_up_at_the_wall_clock_deadline_when_never_stable(
     # Bounded by the deadline: ~0.5s / 0.1s poll ⇒ a handful of extra reads, then it stops.
     assert clock.t >= driver._SETTLE_DEADLINE_S
     assert 3 < (reads[0] - before) <= 8  # more than the old 3-poll cap, but bounded by wall-clock
+
+
+def test_settle_does_not_trust_a_coincidental_match_with_no_catchup_pending() -> None:
+    # The `gestures` flake, reproduced directly: with no gesture pending, `_last_stable_key` is just
+    # whatever the most recent `query()` happened to see — a `wait`'s own poll, a bare `assert` — never
+    # itself proved to be a rest state. Here two such reads (mimicking a `wait` then an `assert`) land
+    # on the same transient ANIMATING frame by pure coincidence (no catch-up barrier involved at all),
+    # and `_settle`'s own fresh read lands on it a third time — under the old "trust a bare match
+    # against `_last_stable_key`" logic this alone would be indistinguishable from a real two-consecutive
+    # -reads proof and return immediately. It must not: the true rest frame is FIXTURE, one poll further.
+    run, calls = _scripted([ANIMATING, ANIMATING, ANIMATING, FIXTURE, FIXTURE])
+    driver = AdbDriver("U", run=run)  # type: ignore[arg-type]
+    driver._SETTLE_POLL_S = 0
+    driver.query()  # a `wait`-like read: lands on the transient ANIMATING frame
+    driver.query()  # an `assert`-like read: coincidentally the same frame — no gesture pending
+    assert driver._catchup is None  # nothing armed; the match above is pure coincidence
+    tree = driver._settle()
+    # Settled on the true rest frame (FIXTURE), not the coincidentally-repeated transient one —
+    # proves `_settle` polled past it rather than trusting the bare match.
+    assert _by_id(tree, "stable_refresh")["frame"] == (0.0, 100.0, 200.0, 100.0)
+    assert calls[0] == 5  # the 2 external reads, _settle's own fresh read, then 2 more to converge
+
+
+def test_settle_fast_path_trusts_a_key_it_proved_itself() -> None:
+    # The counterpart to the regression above: once `_settle` has itself proved a key stable via two
+    # consecutive equal reads, a later call whose fresh read matches that same key is trusted at once —
+    # the fast path is not disabled outright, only gated on real proof.
+    run, calls = _scripted([FIXTURE, FIXTURE, FIXTURE])
+    driver = AdbDriver("U", run=run)  # type: ignore[arg-type]
+    driver._SETTLE_POLL_S = 0
+    driver.query()  # cache FIXTURE
+    driver._settle()  # first call: no catchup, no prior _settled_key ⇒ polls once, proves FIXTURE
+    assert driver._settled_key is not None
+    before = calls[0]
+    driver._settle()  # second call: fresh read matches the now-proven key ⇒ trusted, no poll
+    assert calls[0] == before + 1  # exactly one fresh read, no extra polling reads
+
+
+def test_settled_key_resets_when_the_poll_never_converges(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A tree that never stops moving must not leave behind a "proven" key either — the poll gave up
+    # without ever seeing two consecutive reads agree, so a later bare match against wherever it landed
+    # is exactly the coincidence the fix above guards against.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    reads = [0]
+
+    def run(args: list[str]) -> str:
+        if "dump" in args:
+            reads[0] += 1
+            return _moved(100 + reads[0] * 5)  # every read is a new frame — never settles
+        return ""
+
+    driver = AdbDriver("U", run=run)  # type: ignore[arg-type]
+    driver._SETTLE_POLL_S = 0.1
+    driver._SETTLE_DEADLINE_S = 0.5
+    driver.query()
+    driver._settle()
+    assert driver._settled_key is None
+
+
+def test_catchup_dwell_close_sets_the_settled_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # `_advance_catchup`'s projection-dwell closing a barrier is itself a two-observations-apart proof
+    # of rest, so it earns `_settle`'s fast path exactly like `_settle`'s own poll would (this is what
+    # keeps `test_reads_the_runner_already_takes_close_the_barrier_for_free` free of extra polling).
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    run, _ = _capturing_run([FIXTURE, _scrolled(_SCROLLED_BY)])
+    driver = AdbDriver("U", run=run)
+    driver.query()
+    driver.swipe((10, 300), (10, 100))
+    driver.query()  # starts the dwell
+    clock.sleep(AdbDriver._CATCHUP_DWELL_S + 0.1)
+    driver.query()  # dwell satisfied: closes the barrier
+    assert driver._catchup is None
+    assert driver._settled_key is not None  # dwell-close proved rest
+
+
+def test_catchup_mark_postdate_close_does_not_set_the_settled_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A mark-postdate close (the resident channel) proves only order — this read is not stale relative
+    # to the gesture — never rest: a still-moving fling can keep publishing well past the first read
+    # that postdates the actuation mark. Crediting it as "proven" here would resurrect the `gestures`
+    # flake on the resident channel specifically, which is the path the real regression ran on.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    driver, _ = _resident_driver(
+        reads=[(FIXTURE, 1000.0), (FIXTURE, 1000.0), (FIXTURE, 1001.0)],
+        clocks=[1000.0],
+    )
+    driver.query()  # the pre-gesture resolve read (event mark 1000)
+    driver.swipe((10, 300), (10, 100))  # takes the mark 1000 and arms the barrier
+    driver.query()  # a post-gesture read carrying the same mark 1000 — still stale
+    assert driver._catchup is not None
+    driver.query()  # mark 1001 postdates the actuation → caught up, on the mark alone
+    assert driver._catchup is None
+    assert driver._settled_key is None  # order proved, rest was not
 
 
 def test_settle_defaults_bound_by_wall_clock_not_read_count() -> None:
@@ -1526,9 +1693,11 @@ def test_every_actuator_invalidates_the_cached_tree() -> None:
     for actuate in actuations:
         driver = AdbDriver("U", run=_root_touch_run(calls))
         driver.query()
+        driver._settled_key = ()  # seed a stale "proven" key `_settle` must not trust after this actuation
         assert driver._tree_current, "a read must mark the cached projection current"
         actuate(driver)
         assert not driver._tree_current, f"{actuate} left the cached projection marked current"
+        assert driver._settled_key is None, f"{actuate} left a stale _settled_key trustable"
 
 
 def test_type_text_invalidates_the_cached_tree(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1538,8 +1707,10 @@ def test_type_text_invalidates_the_cached_tree(monkeypatch: pytest.MonkeyPatch) 
     run, _ = _capturing_run([FIXTURE])
     driver = AdbDriver("U", run=run)
     driver.query()
+    driver._settled_key = ()  # seed a stale "proven" key `_settle` must not trust after this input
     driver.type_text("horse")
     assert not driver._tree_current
+    assert driver._settled_key is None
 
 
 def test_catch_up_gives_up_loudly_at_the_lag_budget_when_the_pan_changed_nothing(
@@ -1757,6 +1928,29 @@ def test_tap_goes_to_the_device_and_injects_no_coordinate() -> None:
     assert seen[0].identity == ("stable.submit", "sent", "送信", "android.widget.Button")
     assert (seen[0].index, seen[0].count) == (0, 1)
     assert not [c for c in calls if "input" in c]
+
+
+def test_device_act_success_invalidates_settled_key() -> None:
+    # `_device_act` is the primary path for tap/doubleTap/longPress whenever the resident channel
+    # answers normally — a proven-stable key from before this gesture must not survive it, the same
+    # invalidation `_act`'s coordinate path already gets.
+    act, _ = _recording_act([True])
+    run, _ = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver._settled_key = ()  # seed a stale "proven" key `_settle` must not trust after this gesture
+    driver.tap({"id": "stable.submit"})
+    assert driver._settled_key is None
+
+
+def test_device_act_uncertain_invalidates_settled_key() -> None:
+    # The "reply lost" path treats the gesture as having landed (see the reply-lost test below), so it
+    # must invalidate exactly as the confirmed-success path does.
+    act, _ = _recording_act([adb_driver_mod.AdbActUncertain("reply lost")])
+    run, _ = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver._settled_key = ()
+    driver.tap({"id": "stable.submit"})
+    assert driver._settled_key is None
 
 
 def test_the_actuation_record_names_the_channel_that_carried_the_gesture() -> None:

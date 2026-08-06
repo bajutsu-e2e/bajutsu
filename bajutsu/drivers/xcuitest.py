@@ -71,13 +71,17 @@ class _Reply:
     """A decoded runner response.
 
     `elements` carries the `GET /elements` payload (each item is the normalized element fields plus
-    its `handle`); `png` carries raw `GET /screenshot` bytes.
+    its `handle`); `png` carries raw `GET /screenshot` bytes. `raw` is the undecoded JSON body — kept
+    alongside the parsed fields (not just for `/elements`; cheap, it is the same bytes already read)
+    so `_query_with_handles` can hand the tree query's body to `RawSourceProvider` without a second
+    round trip.
     """
 
     status: str
     elements: list[dict[str, Any]] | None = None
     png: bytes | None = field(default=None, repr=False)
     size: base.Point | None = None  # the `GET /screen` viewport (w, h), BE-0326
+    raw: bytes | None = field(default=None, repr=False)
 
 
 # (method, path, json body) -> decoded reply. Injectable so the channel logic is tested without a
@@ -197,7 +201,7 @@ def _decode(path: str, status_code: int, body: bytes) -> _Reply:
     # `GET /screen` (BE-0326) carries the viewport as width/height; absent on every other endpoint.
     width, height = data.get("width"), data.get("height")
     size = (float(width), float(height)) if width is not None and height is not None else None
-    return _Reply(status=str(status), elements=elements, size=size)
+    return _Reply(status=str(status), elements=elements, size=size, raw=body)
 
 
 class _TransportFailure(Exception):
@@ -516,6 +520,12 @@ class XcuitestDriver:
         self._screen: base.Point | None = None
         # What this driver actually actuated, drained per step by the run loop.
         self._actuations = ActuationLog()
+        # The raw `GET /elements` body behind the last query (`base.RawSourceProvider`, the `rawTree`
+        # capture kind), kept undecoded: `last_raw_source()` is read only on the rare step that actually
+        # requests `rawTree` capture, so decoding here on every query — the common, capture-off case —
+        # would be pure waste. None until the first read. No `pre_transform`: unlike adb's resident
+        # channel, nothing here narrows the runner's own reply before it becomes `elements`.
+        self._raw_bytes: bytes | None = None
 
     # --- the channel ---
 
@@ -526,7 +536,9 @@ class XcuitestDriver:
         the resolved element's handle is an O(1) identity lookup — the element is acted on by the
         exact handle the runner minted for it, never re-resolved on the runner side.
         """
-        return self._parse_elements(self._transport("GET", "/elements", None))
+        reply = self._transport("GET", "/elements", None)
+        self._raw_bytes = reply.raw
+        return self._parse_elements(reply)
 
     @staticmethod
     def _parse_elements(reply: _Reply) -> tuple[list[base.Element], dict[int, str]]:
@@ -623,6 +635,16 @@ class XcuitestDriver:
     def drain_actuations(self) -> Drained:
         """The concrete actuations performed since the last drain (`ActuationReporter`)."""
         return self._actuations.drain()
+
+    def last_raw_source(self) -> base.RawSource | None:
+        """The raw `GET /elements` body behind the last query (`base.RawSourceProvider`).
+
+        Decoded here, not at query time: this is read only on the rare step that requests `rawTree`
+        capture, so paying the decode on every query — the common, capture-off case — would be waste.
+        """
+        if self._raw_bytes is None:
+            return None
+        return base.RawSource(text=self._raw_bytes.decode("utf-8"))
 
     def query(self) -> list[base.Element]:
         elements, _ = self._query_with_handles()

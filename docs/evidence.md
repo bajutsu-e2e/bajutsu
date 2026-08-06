@@ -35,11 +35,20 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 | `deviceLog` | `simctl spawn log stream` | interval | ✅ captured (needs udid) |
 | `network` | the in-app collector (BajutsuKit → `network.json`) | interval | ✅ captured (the `--network` run flag) |
 | `appTrace` | `simctl spawn log stream` over the app's os_log subsystem | interval | ✅ captured (needs udid + subsystem) |
+| `rawTree` | the raw dump text behind `elements` (`base.RawSourceProvider`; adb and XCUITest today) | instant | ✅ captured (opt-in, no-op elsewhere) |
 
 > `appTrace` pairs the app's `os_signpost` / `os_log` `<name> started` / `<name> finished` markers
 > into timed intervals (`intervals.parse_app_trace`). `network` is produced by the request collector
 > rather than the interval system — its exchanges are written to `<sid>/network.json`
 > ([network observation](drivers.md), the `--network` flag).
+
+> `rawTree` writes `hierarchy.raw.xml` — what the driver actually parsed into `elements.json`: adb's
+> `_describe()` output, or XCUITest's undecoded `GET /elements` body. On adb's resident channel, when
+> narrowing changed something, it also writes `hierarchy.pre-narrow.xml` (the dump before SystemUI
+> decor windows were stripped) — XCUITest applies no such transform, so it never writes a second file.
+> It exists to diagnose a mismatch between a resolved coordinate and the real screen: whether the
+> device's/runner's own reply already looked wrong, or bajutsu's own parsing changed it. Never in the
+> default capture list — a scenario opts in with `capture: [rawTree, ...]`.
 
 ### `actionLog` — what each step actually did to the screen
 

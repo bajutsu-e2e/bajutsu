@@ -10,7 +10,9 @@ import pytest
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence import FileSink, capture, write_elements, write_screenshot
+from bajutsu.evidence import FileSink, capture, write_elements, write_raw_tree, write_screenshot
+from bajutsu.evidence.redaction import Redactor
+from bajutsu.scenario import Redact
 
 
 class _StubInterval:
@@ -73,6 +75,86 @@ def test_capture_elements_and_screenshot(tmp_path: Path) -> None:
     assert (tmp_path / "step0" / "elements.json").exists()
     # FakeDriver records the screenshot call with the path it was given.
     assert ("screenshot", str(tmp_path / "step0" / "after.png")) in driver.actions
+
+
+class _RawSourceStub:
+    """The narrowest possible `base.RawSourceProvider` — no other `Driver` method needed for
+    `isinstance` to recognize it, since the protocol is `@runtime_checkable` and structural."""
+
+    def __init__(self, raw: base.RawSource | None) -> None:
+        self._raw = raw
+
+    def last_raw_source(self) -> base.RawSource | None:
+        return self._raw
+
+
+def test_write_raw_tree_is_a_noop_for_a_backend_without_the_protocol(tmp_path: Path) -> None:
+    driver = FakeDriver([_el("a", "A")])  # FakeDriver implements no RawSourceProvider
+    assert write_raw_tree(driver, tmp_path / "step0") == []
+    assert not (tmp_path / "step0").exists()  # never even created the dir
+
+
+def test_write_raw_tree_is_a_noop_before_the_first_read() -> None:
+    driver = _RawSourceStub(None)
+    assert write_raw_tree(driver, Path("/nonexistent")) == []
+
+
+def test_write_raw_tree_writes_the_raw_dump(tmp_path: Path) -> None:
+    driver = _RawSourceStub(base.RawSource(text="<hierarchy>raw</hierarchy>"))
+    paths = write_raw_tree(driver, tmp_path / "step0")
+    assert [p.name for p in paths] == ["hierarchy.raw.xml"]  # no pre-narrow file: none given
+    assert paths[0].read_text(encoding="utf-8") == "<hierarchy>raw</hierarchy>"
+
+
+def test_write_raw_tree_writes_the_pre_narrow_body_when_present(tmp_path: Path) -> None:
+    driver = _RawSourceStub(
+        base.RawSource(
+            text="<hierarchy>narrowed</hierarchy>", pre_transform="<hierarchy>wide</hierarchy>"
+        )
+    )
+    paths = write_raw_tree(driver, tmp_path / "step0")
+    assert {p.name for p in paths} == {"hierarchy.raw.xml", "hierarchy.pre-narrow.xml"}
+    assert (tmp_path / "step0" / "hierarchy.pre-narrow.xml").read_text(
+        encoding="utf-8"
+    ) == "<hierarchy>wide</hierarchy>"
+
+
+def test_write_raw_tree_redacts_a_configured_secret(tmp_path: Path) -> None:
+    driver = _RawSourceStub(base.RawSource(text='<node text="s3kr3t" />'))
+    redactor = Redactor(Redact(), values=["s3kr3t"])
+    paths = write_raw_tree(driver, tmp_path / "step0", redactor)
+    assert "s3kr3t" not in paths[0].read_text(encoding="utf-8")
+
+
+def test_write_raw_tree_redacts_the_pre_narrow_body_too(tmp_path: Path) -> None:
+    # The secret could just as easily live only in the pre-narrow body (e.g. a system dialog
+    # narrow_to_active_window strips out) — both files go through the same redaction call, and both
+    # must actually come out clean, not just the primary hierarchy.raw.xml.
+    driver = _RawSourceStub(
+        base.RawSource(text='<node text="clean" />', pre_transform='<node text="s3kr3t" />')
+    )
+    redactor = Redactor(Redact(), values=["s3kr3t"])
+    paths = write_raw_tree(driver, tmp_path / "step0", redactor)
+    pre_narrow = next(p for p in paths if p.name == "hierarchy.pre-narrow.xml")
+    assert "s3kr3t" not in pre_narrow.read_text(encoding="utf-8")
+
+
+def test_capture_raw_tree_kind_produces_artifacts(tmp_path: Path) -> None:
+    driver = _RawSourceStub(
+        base.RawSource(
+            text="<hierarchy>narrowed</hierarchy>", pre_transform="<hierarchy>wide</hierarchy>"
+        )
+    )
+    written = capture(driver, tmp_path / "step0", ["rawTree"])
+    assert {(a.name, a.kind, a.provider) for a in written} == {
+        ("hierarchy.raw.xml", "rawTree", "driver"),
+        ("hierarchy.pre-narrow.xml", "rawTree", "driver"),
+    }
+
+
+def test_capture_raw_tree_kind_on_an_unsupported_backend_produces_nothing(tmp_path: Path) -> None:
+    driver = FakeDriver([_el("a", "A")])
+    assert capture(driver, tmp_path / "step0", ["rawTree"]) == []
 
 
 def test_file_sink_wait_diagnostic_writes_provenance_stamped_artifact(tmp_path: Path) -> None:

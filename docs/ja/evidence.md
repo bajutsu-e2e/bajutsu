@@ -33,8 +33,11 @@
 | `deviceLog` | `simctl spawn log stream` | 区間 | ✅ 取得（要 udid） |
 | `network` | アプリ内 collector（BajutsuKit → `network.json`） | 区間 | ✅ 取得（`--network` フラグ） |
 | `appTrace` | `simctl spawn log stream`（アプリの os_log subsystem） | 区間 | ✅ 取得（要 udid + subsystem） |
+| `rawTree` | `elements` の元になった生ダンプ（`base.RawSourceProvider`。現状 adb と XCUITest） | 瞬時 | ✅ 取得（opt-in。他のバックエンドでは何もしません） |
 
 > `appTrace` はアプリの `os_signpost` / `os_log` が出す `<name> started` / `<name> finished` マーカーを、時刻つきの区間にペアリングします（`intervals.parse_app_trace`）。`network` は区間システムではなく request collector が生成し、その exchange を `<sid>/network.json` に書き出します（[network observation](drivers.md)、`--network` フラグ）。
+
+> `rawTree` は、ドライバが実際に `elements.json` へパースした生データを `hierarchy.raw.xml` として書き出します。adb なら `_describe()` の出力、XCUITest なら `GET /elements` の未デコードのボディです。adb の resident channel で narrowing が何かを変えた場合に限り、SystemUI の装飾ウィンドウを取り除く前のダンプも `hierarchy.pre-narrow.xml` として併せて書き出します。XCUITest はこの種の変換を一切行わないため、2 つ目のファイルを書き出すことはありません。狙いは、解決した座標と実際の画面がずれたときに、デバイス側・runner 側の応答がすでにおかしかったのか、bajutsu 側のパースで変わったのかを切り分けることです。既定の capture リストには含まれず、シナリオが `capture: [rawTree, ...]` で明示的に指定したときだけ取得します。
 
 ### 各ステップが画面に対して実際に行ったこと（`actionLog`）
 

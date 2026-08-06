@@ -282,7 +282,7 @@ ResponseSchemaMatch ::= { request: <RequestMatch>, schema: string }   # `schema`
 
 # ── 証跡キャプチャ ─────────────────────────────────────────────────────
 CaptureToken ::= <Kind> ( "." <Modifier> )?
-Kind     ::= "screenshot" | "elements" | "actionLog" | "deviceLog" | "network" | "video" | "appTrace"
+Kind     ::= "screenshot" | "elements" | "actionLog" | "deviceLog" | "network" | "video" | "appTrace" | "rawTree"
 Modifier ::= "before" | "after" | "around" | "onError"
 
 CaptureRule ::= { on: <Trigger>, capture: list(<CaptureToken>), from?: string }

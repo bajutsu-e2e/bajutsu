@@ -15,6 +15,7 @@ import functools
 import re
 import time
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, TypedDict, cast, runtime_checkable
 
 if TYPE_CHECKING:
@@ -367,6 +368,41 @@ class SettledReadProvider(Protocol):
 
     # A tree fit to resolve an actuation target from: settled, and past any pending read-lag barrier.
     def settled_query(self) -> list[Element]: ...
+
+
+@dataclass(frozen=True)
+class RawSource:
+    """The pre-processing dump text a backend's last `_describe()` actually parsed.
+
+    `text` is what was handed to the parser (adb: UI Automator's XML). `pre_transform` is the same
+    read *before* a backend's own structural transform of it — adb's resident channel strips SystemUI
+    decor windows (`narrow_to_active_window`) before `text` is set — so a diagnosis can tell "the raw
+    device dump already looked wrong" apart from "our own transform changed it". `None` when the
+    backend applies no such transform (the dump-subprocess path) or the transform left `text`
+    unchanged.
+    """
+
+    text: str
+    pre_transform: str | None = None
+
+
+@runtime_checkable
+class RawSourceProvider(Protocol):
+    """A backend that retains the raw dump behind its last parsed tree, for the `rawTree` capture kind.
+
+    Every coordinate-tree backend's frame computation is normally a black box once parsed into
+    `Element`s: diagnosing whether a mismatch between the screen and a resolved coordinate comes from
+    the device's own dump or from bajutsu's parsing of it needs the dump itself, which `_describe()`
+    otherwise discards as a local variable the moment it is parsed. A backend that keeps it exposes
+    this seam so `bajutsu/evidence/core.py`'s `write_raw_tree` can persist it alongside `elements.json`
+    — opt-in (a scenario's `capture: [rawTree, ...]`), never in the default capture list, since it adds
+    a same-sized text artifact per captured step. `AdbDriver` and `XcuitestDriver` implement it (the raw
+    UI Automator dump, the raw `GET /elements` body). Not implementing this means "no raw dump to
+    persist", which keeps every other backend (`FakeDriver`, Playwright) exactly as before — the same
+    narrow opt-in as the protocols above.
+    """
+
+    def last_raw_source(self) -> RawSource | None: ...
 
 
 @runtime_checkable

@@ -70,6 +70,36 @@ def test_narrow_returns_unparseable_input_unchanged() -> None:
     assert adb_resident.narrow_to_active_window("null root node") == "null root node"
 
 
+# A second non-SystemUI window (a permission dialog, say) — same shape as `_APP_WINDOW` but its own
+# package, simulating the multi-window-mid-transition case the function's own docstring names as an
+# unaddressed gap.
+_DIALOG_WINDOW = """  <node index="0" class="android.widget.FrameLayout" \
+package="com.android.permissioncontroller" bounds="[100,800][980,1600]">
+    <node index="0" text="許可" resource-id="permission_allow_button" \
+class="android.widget.Button" content-desc="" enabled="true" bounds="[400,1400][680,1500]" />
+  </node>"""
+
+
+def test_narrow_characterizes_two_simultaneous_non_systemui_windows() -> None:
+    # Characterization, not a fix: `narrow_to_active_window` filters SystemUI decor only, by package
+    # name — it has no notion of "the one active window" among several non-SystemUI windows. Both
+    # survive narrowing and both windows' nodes appear in the parsed tree, exactly as `dumpWindowHierarchy`
+    # produced them; a real `uiautomator dump` (active-window-only) would show just one. This fixes the
+    # current behavior in place so a change to it shows up as a diff here rather than silently, and
+    # documents the gap the module's own docstring names but does not yet close.
+    multi = (
+        "<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>\n"
+        f'<hierarchy rotation="0">\n{_SYSTEMUI_WINDOW}\n{_APP_WINDOW}\n{_DIALOG_WINDOW}\n</hierarchy>'
+    )
+    narrowed = adb_resident.narrow_to_active_window(multi)
+    els = parse_hierarchy(narrowed)
+    # SystemUI is gone, but both the app window and the dialog window remain — neither was chosen
+    # over the other.
+    assert any(e["identifier"] == "stable.submit" for e in els)
+    assert any(e["identifier"] == "permission_allow_button" for e in els)
+    assert not any((e["label"] or "") == "12:00" for e in els)  # the SystemUI clock, gone
+
+
 class _SourceHandler(http.server.BaseHTTPRequestHandler):
     body = _MULTI_WINDOW
     status = 200
@@ -315,6 +345,45 @@ def test_start_installs_forwards_and_returns_a_working_fetch(tmp_path: Path) -> 
     assert calls[4] == adb.forward_cmd("U")
     # The returned fetch reads over the channel and narrows to the active window (no SystemUI window).
     assert parse_hierarchy(channel.fetch(None).text) == parse_hierarchy(_APP_ONLY)
+
+
+def test_start_returned_fetch_carries_the_pre_narrow_body_when_narrowing_changed_it(
+    tmp_path: Path,
+) -> None:
+    # `RawSourceProvider`/`rawTree`: narrowing is the one real structural transform in the whole
+    # raw-dump-to-Element pipeline, so a raw-tree diagnostic needs the body from *before* it, not just
+    # the narrowed `text` every other caller already gets.
+    server_apk, test_apk = _apks(tmp_path)
+    srv = adb_resident.ResidentServer(
+        "U",
+        run=lambda args: "41000\n" if "forward" in args and "--remove" not in args else "",
+        spawn=lambda argv: _FakeProc(),
+        fetch=lambda port, _since: HierarchyRead(_MULTI_WINDOW),
+        server_apk=server_apk,
+        test_apk=test_apk,
+    )
+    channel = srv.start()
+    read = channel.fetch(None)
+    assert read.raw == _MULTI_WINDOW  # the untouched, pre-narrow body
+    assert read.raw != read.text  # narrowing genuinely changed something
+
+
+def test_start_returned_fetch_carries_no_raw_body_when_narrowing_is_a_no_op(
+    tmp_path: Path,
+) -> None:
+    # An active-window-only dump (no SystemUI window to strip) passes through narrow_to_active_window
+    # unchanged — carrying an identical `raw` alongside `text` here would just double-write it.
+    server_apk, test_apk = _apks(tmp_path)
+    srv = adb_resident.ResidentServer(
+        "U",
+        run=lambda args: "41000\n" if "forward" in args and "--remove" not in args else "",
+        spawn=lambda argv: _FakeProc(),
+        fetch=lambda port, _since: HierarchyRead(_APP_ONLY),
+        server_apk=server_apk,
+        test_apk=test_apk,
+    )
+    channel = srv.start()
+    assert channel.fetch(None).raw is None
 
 
 def test_fetch_fault_stops_the_server_before_it_propagates(tmp_path: Path) -> None:

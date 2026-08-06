@@ -94,6 +94,44 @@ def write_screenshot(
     return path
 
 
+def write_raw_tree(
+    driver: base.Driver, step_dir: Path, redactor: Redactor | None = None, *, mkdir: bool = True
+) -> list[Path]:
+    """Write the raw dump text behind the driver's last read (`rawTree` capture kind), if it has any.
+
+    A no-op for any backend that does not implement `base.RawSourceProvider` (every backend but `adb`
+    and XCUITest today) or has not read yet — so a scenario that requests `rawTree` on a backend without
+    one simply gets nothing, the same degrade `ViewportProvider`/`ReadLagProvider` callers already make.
+    Writes `hierarchy.raw.xml` (what the driver actually parsed — adb's `_describe()` output, XCUITest's
+    undecoded `GET /elements` body) and, only when the backend applied a structural transform that
+    changed it (adb's resident channel stripping SystemUI decor windows), `hierarchy.pre-narrow.xml` —
+    so a mismatch between a resolved coordinate and the real screen can be traced to the device's/
+    runner's own reply versus bajutsu's processing of it. `mkdir` creates the step dir first, and is
+    skipped when the caller already made it.
+    """
+    if not isinstance(driver, base.RawSourceProvider):
+        return []
+    raw = driver.last_raw_source()
+    if raw is None:
+        return []
+    if mkdir:
+        step_dir.mkdir(parents=True, exist_ok=True)
+    out: list[Path] = []
+    for name, text in (
+        ("hierarchy.raw.xml", raw.text),
+        ("hierarchy.pre-narrow.xml", raw.pre_transform),
+    ):
+        if text is None:
+            continue
+        body = redactor.redact_text(text) if redactor is not None else text
+        path = step_dir / name
+        path.write_text(body, encoding="utf-8")
+        # Same sensitivity as elements.json — the dump holds on-screen text (BE-0131).
+        restrict_file(path)
+        out.append(path)
+    return out
+
+
 def write_wait_diagnostic(
     step_dir: Path,
     *,
@@ -154,12 +192,17 @@ def capture(
     # Create the step dir once here, only for kinds we actually write, so the per-kind
     # writers can skip their own mkdir (every kind targets the same step_dir, so repeating
     # it per writer is wasted syscalls); unmatched-only kinds leave the dir untouched as before.
-    if any(token.partition(".")[0] in ("elements", "screenshot") for token in kinds):
+    if any(token.partition(".")[0] in ("elements", "screenshot", "rawTree") for token in kinds):
         step_dir.mkdir(parents=True, exist_ok=True)
     out: list[Artifact] = []
     for token in kinds:
         kind, _, modifier = token.partition(".")
-        if kind == "elements":
+        if kind == "rawTree":
+            out.extend(
+                Artifact(path.name, "rawTree", "driver")
+                for path in write_raw_tree(driver, step_dir, redactor, mkdir=False)
+            )
+        elif kind == "elements":
             out.append(
                 Artifact(
                     write_elements(driver, step_dir, redactor, elements=elements, mkdir=False).name,

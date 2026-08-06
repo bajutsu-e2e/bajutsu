@@ -505,8 +505,8 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
   capability, a non-enumerable blocking surface, or a free-text `instruction` the native path can't
   resolve to one label); on by default, `false` disables it per scenario
 - Evidence: instant (`screenshot`/`elements`/`actionLog` — the last carrying each step's concrete
-  actuations: the coordinate sent, the gesture's geometry, the channel that carried it) + interval
-  (`video`/`deviceLog`/`appTrace`)
+  actuations: the coordinate sent, the gesture's geometry, the channel that carried it — /`rawTree`, the
+  raw dump behind `elements`, opt-in, adb and XCUITest) + interval (`video`/`deviceLog`/`appTrace`)
   + the network collector (`network.json`) + **visual regression** (`visual` vs. a baseline; the
   `approve` command promotes baselines) + `capturePolicy` firing + **redaction applied** to logs /
   element trees / network exchanges before they are written

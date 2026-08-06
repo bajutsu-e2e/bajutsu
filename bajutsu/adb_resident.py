@@ -359,7 +359,12 @@ class ResidentServer:
         def fetch(since: float | None) -> HierarchyRead:
             try:
                 read = self._fetch(port, since)
-                return HierarchyRead(narrow_to_active_window(read.text), read.mark)
+                narrowed = narrow_to_active_window(read.text)
+                # Only when narrowing actually changed something: an active-window dump with no system
+                # decor to strip passes through unchanged, and carrying an identical `raw` alongside
+                # `text` would make every `rawTree` capture write two copies of the same body.
+                raw = read.text if narrowed != read.text else None
+                return HierarchyRead(narrowed, read.mark, raw=raw)
             except AdbResidentError:
                 # Stop the resident server before the driver degrades to `uiautomator dump`. A read
                 # fault is usually a wedged-but-alive instrumentation — a read that outran the socket
