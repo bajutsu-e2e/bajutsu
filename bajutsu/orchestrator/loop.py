@@ -16,6 +16,7 @@ from functools import partial
 from bajutsu import assertions, interp
 from bajutsu.assertions import AssertionResult, EvalContext
 from bajutsu.drivers import base
+from bajutsu.drivers.actuation import Actuation
 from bajutsu.evidence import Artifact, EvidenceSink, NullSink, intervals
 from bajutsu.evidence.network import TransitionSource, _no_transitions
 from bajutsu.mailbox import extract_value, select
@@ -46,6 +47,7 @@ from bajutsu.orchestrator.types import (
     SelectionState,
     StepOutcome,
     _no_network,
+    drain_actuations,
     scenario_slug,
 )
 from bajutsu.orchestrator.waits import (
@@ -440,6 +442,10 @@ def run_scenario(
     outcomes: list[StepOutcome] = []
     expect_results: list[AssertionResult] = []
     expect_alerts: list[AlertEvent] = []
+    # The guard's expect-phase dismissing tap: the one actuation that happens outside the step loop, so
+    # it is drained here rather than left in the driver's log with no step to carry it (see BE-0315's
+    # `expect_alerts` beside it).
+    expect_actuations: list[Actuation] = []
     failure: str | None = None
     artifacts: list[Artifact] = []
     scenario_start = clock.now()  # ~video start; step offsets are measured from here
@@ -482,6 +488,7 @@ def run_scenario(
                 event = alert_guard(driver)
                 if event is not None:
                     expect_alerts.append(event)
+                    expect_actuations.extend(drain_actuations(driver).records)
                     if ctx.visual is not None:
                         driver.screenshot(str(ctx.visual.screenshot_path))
                     # Re-read the clipboard too: clearing the block may have let the app update the
@@ -505,6 +512,7 @@ def run_scenario(
         backend=getattr(driver, "name", ""),
         duration_s=max(0.0, clock.now() - scenario_start),
         expect_alerts=expect_alerts,
+        expect_actuations=expect_actuations,
     )
 
 
@@ -948,6 +956,12 @@ class _StepRunner:
         except UncoveredSystemAlertLocale as exc:
             outcome.ok, outcome.reason = False, str(exc)
             outcome.duration_s = self.cfg.clock.now() - start
+            # Drained here too, like the `last_leaf` assignment below: nothing can have actuated this
+            # early today (only the pre-step baseline capture has run), but leaving the one early
+            # return as the single path that skips the drain is how a record would later be stranded
+            # into the *next* step's outcome, silently and only for this failure.
+            drained = drain_actuations(active_driver)
+            outcome.actuations, outcome.dropped_actuations = drained.records, drained.dropped
             self.state.outcomes.append(outcome)
             # This early return skips the rest of the function, including the `last_leaf`
             # assignment at its end — set it here too, so a scenario that ends on this failure
@@ -1092,6 +1106,14 @@ class _StepRunner:
                 ok, reason = False, guard.failure
         outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
         outcome.duration_s = self.cfg.clock.now() - start
+        # What the driver actually did to the screen during this step. Drained once, after the body has
+        # finished, rather than per attempt: when the alert guard dismissed a prompt and retried, both
+        # attempts really happened to the device and belong on this step in the order they occurred —
+        # as does the guard's own dismissing tap, on the step it interrupted. `active_driver`, not
+        # `cfg.driver`, because a step inside a `web` block actuates the WebView driver; nothing
+        # actuates the native driver during such a step, so nothing is stranded.
+        drained = drain_actuations(active_driver)
+        outcome.actuations, outcome.dropped_actuations = drained.records, drained.dropped
 
         # The post-step read is lazy (BE-0234 Unit 2): `.get()` reads (once) only where a
         # consumer needs the tree, so a step with no consumer under a NullSink never reads. A

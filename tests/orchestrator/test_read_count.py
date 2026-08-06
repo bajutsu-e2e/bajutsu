@@ -87,6 +87,23 @@ def test_plain_tap_issues_no_runner_read() -> None:
     assert driver.queries == 0
 
 
+def test_draining_the_actuation_record_issues_no_runner_read() -> None:
+    # The actuation record must cost no device work: every value it carries is one the actuator already
+    # had, and the drain itself only empties an in-memory log. So a step that records an actuation reads
+    # the screen exactly as often as one that records none — the floor
+    # `test_plain_tap_issues_no_runner_read` pins stays at zero.
+    driver = _CountingDriver([el("go", "Go", ["button"])])
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"tap": {"id": "go"}}]}),
+        clock=FakeClock(),
+        sink=_KindsSink(),
+    )
+    assert result.ok
+    assert driver.queries == 0
+    assert len(result.steps[0].actuations) == 1  # the record was produced, and cost no read
+
+
 def test_pre_step_baseline_issues_no_extra_runner_read() -> None:
     # The pre-step baseline capture (BE-0341) must defer to the sink exactly like the post-step one
     # already does: passing whatever `prev_after` holds, never forcing a `query()` of its own. A

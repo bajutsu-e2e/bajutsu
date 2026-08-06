@@ -13,6 +13,7 @@ import urllib.request
 from typing import Protocol
 
 from bajutsu.dom import parse_dom
+from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
 from bajutsu.drivers.base import (
     Capability,
     Element,
@@ -20,8 +21,13 @@ from bajutsu.drivers.base import (
     Selector,
     UnsupportedAction,
     find_all,
+    frame_center,
     resolve_unique,
 )
+
+# A WebView reports its DOM rects in CSS pixels, in the WebView's own coordinate space rather than the
+# device screen's — so a recorded point is read against the WebView, not against a device screenshot.
+_UNIT = "cssPixel"
 
 
 class WebViewBridge:
@@ -116,6 +122,14 @@ class WebContextDriver:
     def __init__(self, bridge: DomSource, webview_id: str) -> None:
         self._bridge = bridge
         self._webview_id = webview_id
+        # What this driver actually actuated, drained per step by the run loop. The bridge takes a
+        # point, so this driver chooses its own coordinates — in the WebView's own space, not the
+        # device screen's.
+        self._actuations = ActuationLog()
+
+    def drain_actuations(self) -> Drained:
+        """The concrete actuations performed since the last drain (`ActuationReporter`)."""
+        return self._actuations.drain()
 
     def query(self) -> list[Element]:
         return self._bridge.query_dom(self._webview_id)
@@ -125,19 +139,44 @@ class WebContextDriver:
         x, y, w, h = el["frame"]
         return (x + w / 2, y + h / 2)
 
+    def _log_point(self, gesture: str, point: Point, el: Element) -> None:
+        """Record a gesture at a point this driver computed and handed the bridge."""
+        self._actuations.record(
+            Actuation(
+                gesture=gesture,
+                via="coordinate",
+                unit=_UNIT,
+                points=(point,),
+                frame=el["frame"],
+                target=el["identifier"],
+            )
+        )
+
     def tap(self, sel: Selector) -> None:
         el = resolve_unique(self.query(), sel)
         eid = el.get("identifier")
         if eid:
+            # Recorded as its own actuation: it moves the content the tap's point was computed
+            # against, which is exactly the "the coordinate was computed against a screen that then
+            # changed" class the record exists to make visible. The bridge scrolls by element, not by
+            # coordinate, so there is no point to state.
+            self._actuations.record(
+                Actuation(gesture="scroll", via="bridge", unit=_UNIT, target=eid)
+            )
             self._bridge.scroll_to(self._webview_id, eid)
         x, y, w, h = el["frame"]
-        self._bridge.tap_element(self._webview_id, (x + w / 2, y + h / 2))
+        point = (x + w / 2, y + h / 2)
+        self._log_point("tap", point, el)
+        self._bridge.tap_element(self._webview_id, point)
 
     def tap_point(self, p: Point) -> None:
+        self._actuations.record(Actuation(gesture="tap", via="coordinate", unit=_UNIT, points=(p,)))
         self._bridge.tap_element(self._webview_id, p)
 
     def double_tap(self, sel: Selector) -> None:
-        point = self._center(sel)
+        el = resolve_unique(self.query(), sel)
+        point = frame_center(el["frame"])
+        self._log_point("doubleTap", point, el)
         self._bridge.tap_element(self._webview_id, point)
 
     def long_press(self, sel: Selector, duration: float) -> None:
@@ -159,6 +198,8 @@ class WebContextDriver:
         raise UnsupportedAction("rotate is not supported in web context (first slice)")
 
     def type_text(self, text: str) -> None:
+        # `text` is deliberately absent from the record — not even its length (see `actuation.py`).
+        self._actuations.record(Actuation(gesture="typeText", via="focused", unit=_UNIT))
         self._bridge.type_text(self._webview_id, text)
 
     def delete_text(self, count: int) -> None:

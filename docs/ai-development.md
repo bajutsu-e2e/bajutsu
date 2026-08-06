@@ -526,8 +526,12 @@ genuinely new issue is still raised even on code an earlier run overlooked. Unti
 a credential is provisioned the workflow is a dormant green no-op — it posts nothing and never
 blocks — so no review appearing on a PR yet just means the Environment isn't configured. The
 prompt points the reviewer at *this repository's* contract — the three
-[prime directives](../CLAUDE.md#prime-directives-do-not-violate), the docstring standard, the
-bilingual-docs rule, the BE-ID lifecycle — so it catches what a generic reviewer cannot. It runs on
+[prime directives](../CLAUDE.md#prime-directives-do-not-violate), design/maintenance debt with a
+concrete future-bug cost, security, silent failures, and the two prose-quality lenses — so it
+catches what a generic reviewer cannot. The floor is deliberately functional-impact only: a
+finding whose only cost is style, naming, or documentation-formatting taste (docstring format,
+bilingual-doc sync, terminology consistency, roadmap-link hygiene) is left to human review instead,
+since posting it would cost the author a fix-and-rerun cycle for no functional gain. It runs on
 Opus (not the action's default Sonnet) for sharper severity triage, and posts only `issue`,
 `suggestion`, and `question` findings — `nitpick` and `praise` are suppressed so an advisory review
 that re-runs on every push doesn't accrete low-value noise.

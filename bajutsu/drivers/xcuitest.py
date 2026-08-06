@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu.drivers import base
+from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
 
 
 class XcuitestChannelError(RuntimeError):
@@ -142,6 +143,16 @@ _RECOVERY_TIMEOUT_SECONDS = 60
 # appear (BE-0316). A fixed inter-poll interval bounded by the step's own `timeout` — a condition
 # wait, not a fixed up-front sleep: the loop returns the instant the alert's buttons are present.
 _SYSTEM_ALERT_POLL_SECONDS = 0.2
+
+# iOS reports every frame and coordinate in points, so that is the space stamped on this backend's
+# actuation records.
+_UNIT = "point"
+
+
+def _as_float(value: Any) -> float | None:
+    """A request body's numeric parameter as a float, or None when absent (for the actuation record)."""
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
 
 # How many *consecutive* mid-run crashes the recovery layer rides out before failing loudly. Recovery
 # re-issues an idempotent call once the runner is back; a runner that crashes *again* on that re-issue
@@ -503,6 +514,8 @@ class XcuitestDriver:
         self._sleep = sleep
         # The device screen size (BE-0326), fetched once from the runner; fixed for a run.
         self._screen: base.Point | None = None
+        # What this driver actually actuated, drained per step by the run loop.
+        self._actuations = ActuationLog()
 
     # --- the channel ---
 
@@ -534,16 +547,30 @@ class XcuitestDriver:
             handles[id(el)] = str(handle)
         return elements, handles
 
-    def _resolve_handle(self, sel: base.Selector) -> str:
-        """Resolve *sel* to a unique element Python-side and return its snapshot handle.
+    def _resolve_handle(self, sel: base.Selector) -> tuple[str, base.Element]:
+        """Resolve *sel* to a unique element Python-side; return its snapshot handle and the element.
 
-        Raises `AmbiguousSelector` / `ElementNotFound` before any actuation request is sent.
+        The element travels with the handle so the caller can record what it actuated without paying a
+        second `/elements` round trip for the same resolution.
+
+        Raises:
+            ElementNotFound: Nothing matched.
+            AmbiguousSelector: Several elements matched, with no `index` to disambiguate. Both are
+                raised before any actuation request is sent.
         """
         elements, handles = self._query_with_handles()
         el = base.resolve_unique(elements, sel)
-        return handles[id(el)]
+        return handles[id(el)], el
 
-    def _actuate(self, path: str, body: Mapping[str, Any], sel: base.Selector) -> None:
+    def _actuate(
+        self,
+        path: str,
+        body: Mapping[str, Any],
+        sel: base.Selector,
+        *,
+        gesture: str,
+        element: base.Element,
+    ) -> None:
         # A `stale` reply means the handle no longer maps to a live element, from one of two
         # pre-actuation points: the runner's `store.lookup` returns `stale` before touching anything
         # when the screen re-snapshotted, or the interaction itself raised an element-resolution
@@ -555,14 +582,33 @@ class XcuitestDriver:
         # `_resolve_handle` and fail immediately, spending no further attempts.
         request: dict[str, Any] = dict(body)
         for attempt in range(1, _STALE_MAX_ATTEMPTS + 1):
+            # Recorded per attempt, before the transport answers: a step that failed to actuate still
+            # shows what it aimed at, and a stale-retried gesture shows both the element that went
+            # stale and the one that was finally actuated. `points` stays empty — the runner picks the
+            # touch point on the far side of the handle, so the driver has no coordinate to state.
+            self._actuations.record(
+                Actuation(
+                    gesture=gesture,
+                    via="handle",
+                    unit=_UNIT,
+                    frame=element["frame"],
+                    target=element["identifier"],
+                    duration_s=_as_float(body.get("duration")),
+                    scale=_as_float(body.get("scale")),
+                    radians=_as_float(body.get("radians")),
+                )
+            )
             reply = self._transport("POST", path, request)
+            # Stamp the attempt just recorded with the runner's answer, so a stale-retried gesture
+            # does not leave several identical records with nothing saying which one landed.
+            self._actuations.settle(reply.status == _OK)
             if reply.status == _OK:
                 return
             if reply.status == _STALE:
                 if attempt == _STALE_MAX_ATTEMPTS:
                     raise base.ElementNotFound(f"element vanished (stale handle): {sel!r}")
                 self._sleep(_STALE_BACKOFF_BASE_SECONDS * 2 ** (attempt - 1))
-                request["handle"] = self._resolve_handle(sel)
+                request["handle"], element = self._resolve_handle(sel)
                 continue
             if reply.status == _NOT_FOUND:
                 raise base.ElementNotFound(f"no actuatable element for: {sel!r}")
@@ -574,34 +620,63 @@ class XcuitestDriver:
 
     # --- Driver Protocol ---
 
+    def drain_actuations(self) -> Drained:
+        """The concrete actuations performed since the last drain (`ActuationReporter`)."""
+        return self._actuations.drain()
+
     def query(self) -> list[base.Element]:
         elements, _ = self._query_with_handles()
         return elements
 
     def tap(self, sel: base.Selector) -> None:
-        self._actuate("/tap", {"handle": self._resolve_handle(sel)}, sel)
+        handle, el = self._resolve_handle(sel)
+        self._actuate("/tap", {"handle": handle}, sel, gesture="tap", element=el)
 
     def double_tap(self, sel: base.Selector) -> None:
-        self._actuate("/tap", {"handle": self._resolve_handle(sel), "taps": 2}, sel)
+        handle, el = self._resolve_handle(sel)
+        self._actuate("/tap", {"handle": handle, "taps": 2}, sel, gesture="doubleTap", element=el)
 
     def long_press(self, sel: base.Selector, duration: float) -> None:
-        self._actuate("/tap", {"handle": self._resolve_handle(sel), "duration": duration}, sel)
+        handle, el = self._resolve_handle(sel)
+        self._actuate(
+            "/tap",
+            {"handle": handle, "duration": duration},
+            sel,
+            gesture="longPress",
+            element=el,
+        )
 
     def tap_point(self, p: base.Point) -> None:
         # A raw coordinate tap (system alerts and the like), the one path with no element/handle.
+        self._actuations.record(Actuation(gesture="tap", via="coordinate", unit=_UNIT, points=(p,)))
         reply = self._transport("POST", "/tap", {"point": [p[0], p[1]]})
         if reply.status != _OK:
             raise XcuitestChannelError(f"coordinate tap failed ({reply.status}) at {p}")
 
     def pinch(self, sel: base.Selector, scale: float) -> None:
-        handle = self._resolve_handle(sel)
-        self._actuate("/gesture", {"handle": handle, "kind": "pinch", "scale": scale}, sel)
+        handle, el = self._resolve_handle(sel)
+        self._actuate(
+            "/gesture",
+            {"handle": handle, "kind": "pinch", "scale": scale},
+            sel,
+            gesture="pinch",
+            element=el,
+        )
 
     def rotate(self, sel: base.Selector, radians: float) -> None:
-        handle = self._resolve_handle(sel)
-        self._actuate("/gesture", {"handle": handle, "kind": "rotate", "radians": radians}, sel)
+        handle, el = self._resolve_handle(sel)
+        self._actuate(
+            "/gesture",
+            {"handle": handle, "kind": "rotate", "radians": radians},
+            sel,
+            gesture="rotate",
+            element=el,
+        )
 
     def swipe(self, frm: base.Point, to: base.Point) -> None:
+        self._actuations.record(
+            Actuation(gesture="swipe", via="coordinate", unit=_UNIT, points=(frm, to))
+        )
         reply = self._transport("POST", "/swipe", {"from": [frm[0], frm[1]], "to": [to[0], to[1]]})
         if reply.status != _OK:
             raise XcuitestChannelError(f"swipe failed ({reply.status})")
@@ -623,6 +698,9 @@ class XcuitestDriver:
         # before lifting, so the scroll view settles where the gesture left it rather than flinging
         # past the target — the contract the `scroll` action's bounded re-query loop relies on. A
         # plain `/swipe` lifts with residual velocity, so iOS carries the content onward.
+        self._actuations.record(
+            Actuation(gesture="scroll", via="coordinate", unit=_UNIT, points=(frm, to))
+        )
         reply = self._transport("POST", "/scroll", {"from": [frm[0], frm[1]], "to": [to[0], to[1]]})
         if reply.status != _OK:
             raise XcuitestChannelError(f"scroll failed ({reply.status})")
@@ -651,6 +729,18 @@ class XcuitestDriver:
                 raise base.ElementNotFound(f"no system alert appeared within {timeout}s: {sel!r}")
             self._sleep(_SYSTEM_ALERT_POLL_SECONDS)
         el = base.resolve_unique(buttons, sel)
+        # Handle-based like every other actuation here, and out of the app's own coordinate space, so
+        # no point. `target` is usually unset: a SpringBoard button is addressed by visible label and
+        # generally carries no identifier, and the label is a redaction risk the record won't take.
+        self._actuations.record(
+            Actuation(
+                gesture="systemAlert",
+                via="handle",
+                unit=_UNIT,
+                frame=el["frame"],
+                target=el["identifier"],
+            )
+        )
         reply = self._transport("POST", "/systemAlert/tap", {"handle": handles[id(el)]})
         if reply.status != _OK:
             # The alert vanished between query and tap (dismissed itself, or the button moved off).
@@ -675,22 +765,27 @@ class XcuitestDriver:
         self.tap({"id": base.OS_BACK_BUTTON})
 
     def type_text(self, text: str) -> None:
+        # `text` is deliberately absent from the record — not even its length (see `actuation.py`).
+        self._actuations.record(Actuation(gesture="typeText", via="focused", unit=_UNIT))
         reply = self._transport("POST", "/type", {"text": text})
         if reply.status != _OK:
             raise XcuitestChannelError(f"type failed ({reply.status})")
 
     def delete_text(self, count: int) -> None:
         # A run of backspaces on the focused field (BE-0265); XCUIElement types the delete key natively.
+        self._actuations.record(Actuation(gesture="deleteText", via="focused", unit=_UNIT))
         reply = self._transport("POST", "/deleteText", {"count": count})
         if reply.status != _OK:
             raise XcuitestChannelError(f"deleteText failed ({reply.status})")
 
     def select_all(self) -> None:
+        self._actuations.record(Actuation(gesture="selectAll", via="focused", unit=_UNIT))
         reply = self._transport("POST", "/selectAll", {})
         if reply.status != _OK:
             raise XcuitestChannelError(f"selectAll failed ({reply.status})")
 
     def copy_selection(self) -> None:
+        self._actuations.record(Actuation(gesture="copy", via="focused", unit=_UNIT))
         reply = self._transport("POST", "/copy", {})
         if reply.status != _OK:
             raise XcuitestChannelError(f"copy failed ({reply.status})")

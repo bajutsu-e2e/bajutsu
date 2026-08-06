@@ -66,7 +66,13 @@ verbatim.
 - `backend`: the actuator that drove the run (`xcuitest`, or `fake` in tests). One actuator is fixed
   per run, so the top-level value is normally a single name; each scenario also carries its own
   `backend` ([drivers](drivers.md#backend-selection-and-the-actuator)).
-- `steps[].duration_s`: each step's timing (the `actionLog`-equivalent information).
+- `steps[].duration_s`: each step's timing.
+- `steps[].actuations`: what the driver actually did to the screen during that step — the coordinate a
+  tap sent, the endpoints a swipe travelled, the channel that carried each gesture. This is the
+  `actionLog` evidence kind, inherent in the manifest rather than a file
+  ([evidence](evidence.md#actionlog--what-each-step-actually-did-to-the-screen)). A run recorded before
+  `schemaVersion` 5 carries none. `expect_actuations` holds the same for the scenario-level `expect`
+  re-check, where the system-alert guard can actuate with no step to attribute it to.
 - `steps[].artifacts`: the provenance of evidence captured for that step
   ([evidence](evidence.md#artifact-provenance-provider)).
 - `failure`: a summary on failure (e.g. `"step 3 (tap): no match: {...}"`). null on success.
@@ -77,7 +83,7 @@ verbatim.
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
   It groups accumulated runs by identity, so a verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. Pure metadata — it never enters
-  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `4` today.)
+  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `5` today.)
 - `idb` (top, optional, legacy): older manifests may carry an `idb_companion` / client version
   block (BE-0005). It was retired with the idb backend (BE-0290) and is no longer written; an old
   manifest that still has it loads fine, since an unknown top-level key is ignored.
@@ -87,7 +93,7 @@ verbatim.
   `{ engines, scenarios, cells: { "<scenario>": { "<engine>": { ok, sid, failure } } } }` — a pure
   aggregation of those per-engine verdicts (the report renders it as a grid). `ok` is all-must-pass
   across every engine × scenario. Omitted for a single-engine / iOS run. (`schemaVersion` is `4`
-  once this block can appear.)
+  or higher once this block can appear.)
 
 ## junit.xml
 

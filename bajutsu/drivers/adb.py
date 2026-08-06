@@ -40,6 +40,7 @@ from xml.etree import ElementTree as ET
 
 from bajutsu import adb
 from bajutsu.drivers import base
+from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
 from bajutsu.drivers.coordinate_tree import CoordinateTreeDriver, StableKey
 from bajutsu.elements import screen_size_from_elements
 from bajutsu.evidence import intervals
@@ -108,6 +109,10 @@ class ActRequest:
 ActFn = Callable[[ActRequest], bool]
 
 logger = logging.getLogger("bajutsu.adb.resident")
+
+# Android's `uiautomator` dump reports bounds in raw display pixels, so that is the space stamped on
+# this backend's actuation records — a coordinate only means something alongside its unit.
+_UNIT = "pixel"
 
 
 class AdbResidentError(RuntimeError):
@@ -446,6 +451,10 @@ class AdbDriver(CoordinateTreeDriver):
         # what the device needs. Rebuilt on every read; a stale key simply misses and degrades.
         self._identities: dict[int, NodeIdentity] = {}
         self._last_tree: list[base.Element] = []
+        # What this driver actually actuated, drained per step by the run loop. Android is the one
+        # backend with two actuation channels, so the record's `via` is what tells a reader whether a
+        # gesture went device-side (`identity`) or fell back to a host coordinate (`coordinate`).
+        self._actuations = ActuationLog()
         # Latches the first device-actuation fault so a channel that answers reads but not `/act` — an
         # older server — degrades to coordinates once loudly rather than on every gesture.
         self._act_warned = False
@@ -559,6 +568,7 @@ class AdbDriver(CoordinateTreeDriver):
                     )
                 return read.text
             except AdbResidentError as exc:
+                self._actuations.settle(False)
                 logger.warning(
                     "resident hierarchy read failed (%s); falling back to `uiautomator dump` "
                     "for the rest of this lease",
@@ -819,22 +829,70 @@ class AdbDriver(CoordinateTreeDriver):
         )
         return tree
 
-    def _center(self, sel: base.Selector) -> base.Point:
-        point, _ = self._center_with_screen(sel)
-        return point
+    def drain_actuations(self) -> Drained:
+        """The concrete actuations performed since the last drain (`ActuationReporter`)."""
+        return self._actuations.drain()
 
-    def _center_with_screen(self, sel: base.Selector) -> tuple[base.Point, base.Point]:
+    def _log_coordinate(
+        self,
+        gesture: str,
+        point: base.Point,
+        el: base.Element,
+        *,
+        duration_s: float | None = None,
+        scale: float | None = None,
+        radians: float | None = None,
+    ) -> None:
+        """Record a host-injected coordinate aimed at an element the driver resolved itself."""
+        self._actuations.record(
+            Actuation(
+                gesture=gesture,
+                via="coordinate",
+                unit=_UNIT,
+                points=(point,),
+                frame=el["frame"],
+                target=el["identifier"],
+                duration_s=duration_s,
+                scale=scale,
+                radians=radians,
+            )
+        )
+
+    def _log_identity(self, gesture: str, el: base.Element, duration_ms: int | None) -> None:
+        """Record a device-side actuation: the element it named, and no coordinate (the device chose it)."""
+        self._actuations.record(
+            Actuation(
+                gesture=gesture,
+                via="identity",
+                unit=_UNIT,
+                frame=el["frame"],
+                target=el["identifier"],
+                duration_s=None if duration_ms is None else duration_ms / 1000,
+            )
+        )
+
+    def _center(self, sel: base.Selector) -> tuple[base.Point, base.Element]:
+        """The target's frame center, plus the element it came from (for the actuation record)."""
+        point, _, el = self._center_with_screen(sel)
+        return point, el
+
+    def _center_with_screen(
+        self, sel: base.Selector
+    ) -> tuple[base.Point, base.Point, base.Element]:
         """The target's frame center and the screen extent, both in tree (pixel) coordinates.
 
         The screen extent lets the sendevent double-tap scale a center into the touch device's raw
         range (BE-0208); it is constant across a scroll, so the settled tree gives it even when the
-        target itself was only reached by scrolling.
+        target itself was only reached by scrolling. The resolved element travels with them so the
+        caller records what it actuated without resolving twice.
         """
-        frame, screen = self._resolve_frame_and_screen(sel)
-        return base.frame_center(frame), screen
+        frame, screen, el = self._resolve_frame_and_screen(sel)
+        return base.frame_center(frame), screen, el
 
-    def _resolve_frame_and_screen(self, sel: base.Selector) -> tuple[base.Frame, base.Point]:
-        """The target's frame and the screen extent, both in tree (pixel) coordinates.
+    def _resolve_frame_and_screen(
+        self, sel: base.Selector
+    ) -> tuple[base.Frame, base.Point, base.Element]:
+        """The target's frame, the screen extent (both in tree pixels), and the resolved element.
 
         Shared by the center-based actuators (tap / double-tap) and the two-finger gestures (BE-0232),
         which need the frame's size, not just its center.
@@ -852,7 +910,7 @@ class AdbDriver(CoordinateTreeDriver):
         # to touch, and the tree it came from. A frame from a stale read looks entirely ordinary on
         # its own — it is only wrong relative to where the content actually is.
         logger.debug("resolved %r to frame %s of %d elements", sel, el["frame"], len(tree))
-        return el["frame"], screen_size_from_elements(tree)
+        return el["frame"], screen_size_from_elements(tree), el
 
     def _scroll_into_view(self, sel: base.Selector, tree: list[base.Element]) -> base.Element:
         """Scroll toward `sel` and re-query, bounded by `_SCROLL_RETRIES`, then fail deterministically.
@@ -968,9 +1026,17 @@ class AdbDriver(CoordinateTreeDriver):
             )
             pre_key = self._last_stable_key
             mark = request.since
+            # Recorded per attempt, before the endpoint answers, so a declined or faulted request still
+            # shows what it aimed at — and a gesture that then falls back records the coordinate
+            # injection after this, in the order the two happened. The device picks the touch point
+            # from its own dump, so there is no point to state here; `target` is the *normalized*
+            # identifier, never the `NodeIdentity` tuple sent over the wire, whose `content-desc` and
+            # `text` components can hold a resolved `${secrets.*}` (see `actuation.py`, rule 3).
+            self._log_identity(kind, el, duration_ms)
             try:
                 acted = self._act_fn(request)
             except AdbActUnsupported as exc:
+                self._actuations.settle(False)
                 # Permanent for this lease: stop probing, so the degrade costs one round trip rather
                 # than one per gesture (BE-0234).
                 self._act_unavailable = True
@@ -983,6 +1049,8 @@ class AdbDriver(CoordinateTreeDriver):
                     )
                 return False
             except AdbActUncertain as exc:
+                # The record is deliberately left unsettled here, so `accepted` stays None — "the
+                # driver could not tell", the honest reading of a reply that never arrived.
                 # The request went out and the device injects before it answers, so a coordinate
                 # injection here could be the *second* touch. Treat the gesture as having happened and
                 # arm the barrier for it: if it did not, the step's own condition wait fails loudly on
@@ -1008,6 +1076,7 @@ class AdbDriver(CoordinateTreeDriver):
                     exc,
                 )
                 return False
+            self._actuations.settle(acted)
             if acted:
                 logger.debug(
                     "device %s on %r: identity %r, %d of %d", kind, sel, identity, index, len(same)
@@ -1028,10 +1097,12 @@ class AdbDriver(CoordinateTreeDriver):
     def tap(self, sel: base.Selector) -> None:
         if self._device_act(sel, "tap"):
             return
-        x, y = self._center(sel)
+        (x, y), el = self._center(sel)
+        self._log_coordinate("tap", (x, y), el)
         self._actuate_centered(adb.tap_cmd(self.serial, x, y))
 
     def tap_point(self, p: base.Point) -> None:
+        self._actuations.record(Actuation(gesture="tap", via="coordinate", unit=_UNIT, points=(p,)))
         self._act(adb.tap_cmd(self.serial, p[0], p[1]))
 
     def double_tap(self, sel: base.Selector) -> None:
@@ -1049,7 +1120,11 @@ class AdbDriver(CoordinateTreeDriver):
         # narrows that gap to five process spawns (BE-0208), though a loaded host can still miss the
         # window and land the touches as two single taps. Both stay as the degraded path for a device
         # with no resident channel.
-        point, screen = self._center_with_screen(sel)
+        point, screen, el = self._center_with_screen(sel)
+        # The tree-space point, not the raw touch-device range `scale_to_touch` maps it into below: the
+        # raw range is an artifact of the injection method, and recording it would make two double-taps
+        # on the same element look like different coordinates.
+        self._log_coordinate("doubleTap", point, el)
         dev = self._touch_device() if self._rooted() else None
         if dev is not None:
             raw_x, raw_y = adb.scale_to_touch(point, screen, dev)
@@ -1084,12 +1159,16 @@ class AdbDriver(CoordinateTreeDriver):
         if self._device_act(sel, "longPress", duration_ms=ms):
             return
         # `input` has no press-and-hold, so a zero-length swipe with a duration acts as a long press.
-        x, y = self._center(sel)
+        (x, y), el = self._center(sel)
+        self._log_coordinate("longPress", (x, y), el, duration_s=duration)
         self._actuate_centered(adb.swipe_cmd(self.serial, x, y, x, y, ms))
 
     def swipe(self, frm: base.Point, to: base.Point) -> None:
         pre_key = self._pan_baseline()
         mark = self._capture_mark()
+        self._actuations.record(
+            Actuation(gesture="swipe", via="coordinate", unit=_UNIT, points=(frm, to))
+        )
         self._act(adb.swipe_cmd(self.serial, frm[0], frm[1], to[0], to[1]))
         self._arm_catchup(pre_key, mark)
 
@@ -1144,6 +1223,15 @@ class AdbDriver(CoordinateTreeDriver):
         # travel varies by device, which is exactly the non-determinism the `scroll` action removes.
         pre_key = self._pan_baseline()
         mark = self._capture_mark()
+        self._actuations.record(
+            Actuation(
+                gesture="scroll",
+                via="coordinate",
+                unit=_UNIT,
+                points=(frm, to),
+                duration_s=self._SCROLL_DURATION_MS / 1000,
+            )
+        )
         self._act(
             adb.swipe_cmd(self.serial, frm[0], frm[1], to[0], to[1], self._SCROLL_DURATION_MS)
         )
@@ -1152,17 +1240,28 @@ class AdbDriver(CoordinateTreeDriver):
     def back(self) -> None:
         # The true system back: a KEYCODE_BACK key event. Android has no on-screen "back" element to
         # tap (unlike iOS's OS back button), so this is a key event, not a coordinate — BE-0210.
+        self._actuations.record(Actuation(gesture="back", via="key", unit=_UNIT))
         self._act(adb.keyevent_cmd(self.serial, adb.KEYCODE_BACK))
 
     def pinch(self, sel: base.Selector, scale: float) -> None:
         # Two contacts spread from / close to the target centre by `scale`, driven as a raw two-slot
         # `sendevent` sweep (BE-0232) — the machinery the double-tap established, one slot to two.
-        self._two_finger_gesture(sel, "pinch", lambda c, half: adb.pinch_contacts(c, half, scale))
+        self._two_finger_gesture(
+            sel,
+            "pinch",
+            lambda c, half: adb.pinch_contacts(c, half, scale),
+            gesture="pinch",
+            scale=scale,
+        )
 
     def rotate(self, sel: base.Selector, radians: float) -> None:
         # Two contacts sweep a diameter of the target through `radians` about its centre (BE-0232).
         self._two_finger_gesture(
-            sel, "rotate", lambda c, half: adb.rotate_contacts(c, half, radians)
+            sel,
+            "rotate",
+            lambda c, half: adb.rotate_contacts(c, half, radians),
+            gesture="rotate",
+            radians=radians,
         )
 
     def _two_finger_gesture(
@@ -1172,6 +1271,10 @@ class AdbDriver(CoordinateTreeDriver):
         contacts: Callable[
             [base.Point, float], tuple[tuple[base.Point, base.Point], tuple[base.Point, base.Point]]
         ],
+        *,
+        gesture: str,
+        scale: float | None = None,
+        radians: float | None = None,
     ) -> None:
         """Drive a two-finger gesture: resolve the target, then emit the raw two-slot sweep (BE-0232).
 
@@ -1189,7 +1292,7 @@ class AdbDriver(CoordinateTreeDriver):
             raise base.UnsupportedAction(
                 f"{action} 不可（touchscreen node が getevent に見つからず、二本指の接点を撃てない）"
             )
-        frame, screen = self._resolve_frame_and_screen(sel)
+        frame, screen, el = self._resolve_frame_and_screen(sel)
         # gesture_anchor keeps both fingers (and a ~2x pinch-out) inside the target (BE-0251).
         cx, cy, half = base.gesture_anchor(frame)
         if half <= 0:
@@ -1211,6 +1314,10 @@ class AdbDriver(CoordinateTreeDriver):
         # read the tree, so the baseline costs nothing here.
         pre_key = self._pan_baseline()
         mark = self._capture_mark()
+        # The anchor in tree space, not the raw touch-device range: `gesture_anchor`'s rule plus the
+        # frame and the scale/rotation fully determine the two contacts from it, and the raw range is
+        # an artifact of the injection method (as it is for the sendevent double-tap).
+        self._log_coordinate(gesture, (cx, cy), el, scale=scale, radians=radians)
         self._act(adb.sendevent_gesture_cmd(self.serial, dev.path, raw_start, raw_end))
         self._arm_catchup(pre_key, mark)
 
@@ -1232,6 +1339,8 @@ class AdbDriver(CoordinateTreeDriver):
         return []
 
     def type_text(self, text: str) -> None:
+        # `text` is deliberately absent from the record — not even its length (see `actuation.py`).
+        self._actuations.record(Actuation(gesture="typeText", via="focused", unit=_UNIT))
         # Feed the `input text` command to `adb shell` over stdin, not on the argv, so a secret / OTP
         # never lands in the adb process command line where `ps` could read it (BE-0155). Routed
         # through a class-level attribute so tests can patch it.
@@ -1248,14 +1357,17 @@ class AdbDriver(CoordinateTreeDriver):
     def delete_text(self, count: int) -> None:
         # `count` backspaces (KEYCODE_DEL) in one `input keyevent` call. The orchestrator focuses the
         # field first, so the deletes land in it (BE-0265).
+        self._actuations.record(Actuation(gesture="deleteText", via="focused", unit=_UNIT))
         self._act(adb.keyevents_cmd(self.serial, [adb.KEYCODE_DEL] * count))
 
     def select_all(self) -> None:
         # Ctrl+A selects the focused field's whole content (BE-0265).
+        self._actuations.record(Actuation(gesture="selectAll", via="focused", unit=_UNIT))
         self._act(adb.keycombination_cmd(self.serial, [adb.KEYCODE_CTRL_LEFT, adb.KEYCODE_A]))
 
     def copy_selection(self) -> None:
         # Ctrl+C copies the active selection to the clipboard, read back by the `clipboard` assertion.
+        self._actuations.record(Actuation(gesture="copy", via="focused", unit=_UNIT))
         self._act(adb.keycombination_cmd(self.serial, [adb.KEYCODE_CTRL_LEFT, adb.KEYCODE_C]))
 
     def screenshot(self, path: str) -> None:

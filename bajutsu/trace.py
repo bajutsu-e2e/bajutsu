@@ -186,12 +186,48 @@ def _at(value: Any) -> float:
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
 
 
+def _coordinate(p: Any) -> str | None:
+    """One recorded point rendered, or None when it is not two plain numbers."""
+    if not isinstance(p, (list, tuple)) or len(p) != 2:
+        return None
+    if not all(isinstance(n, (int, float)) and not isinstance(n, bool) for n in p):
+        return None
+    return f"({p[0]:g}, {p[1]:g})"
+
+
+def _actuation_summary(step: dict[str, Any]) -> str:
+    """What the step actually did to the screen, one segment per actuation.
+
+    Read straight from the manifest dict (no loader involved): the coordinate the driver sent, or the
+    resolved frame's center for a gesture whose point the platform chose, plus the channel. An older
+    run recorded none, so this is simply empty for it.
+    """
+    out: list[str] = []
+    for a in step.get("actuations") or []:
+        if not isinstance(a, dict):
+            out.append("? [unreadable record]")
+            continue
+        points = [_coordinate(p) for p in a.get("points") or []]
+        # A point that is not two plain numbers is shown as unreadable rather than coerced: `_at`
+        # would turn it into `(0, 0)`, inventing a coordinate — the one thing the record must never do.
+        where = " → ".join(p if p is not None else "(?)" for p in points)
+        refused = "" if a.get("accepted") is not False else " ✗refused"
+        out.append(
+            f"{a.get('gesture', '')}{f' {where}' if where else ''} [{a.get('via', '')}]{refused}"
+        )
+    if dropped := step.get("dropped_actuations"):
+        out.append(f"(+{dropped} earlier dropped)")
+    return "   · ".join(out)
+
+
 def _step_event(step: dict[str, Any], from_: str | None = None) -> tuple[float, str]:
     mark = "✓" if step.get("ok") else "✗"
     desc = f"{mark} {step.get('action', '')!s:<9}"
     dur = step.get("duration_s")
     if isinstance(dur, (int, float)) and not isinstance(dur, bool):
         desc += f"  ({dur:.2f}s)"
+    if summary := _actuation_summary(step):
+        desc += f"   {summary}"
     if from_:  # the natural-language phrase this step was recorded from (BE-0044), if shown here
         desc += f'   ← "{from_}"'
     if not step.get("ok") and step.get("reason"):
