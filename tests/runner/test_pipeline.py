@@ -992,10 +992,10 @@ def test_write_network_stamps_the_given_provider(tmp_path: Path) -> None:
 
 
 def test_write_network_started_at_never_goes_negative(tmp_path: Path) -> None:
-    # A video_anchor_s after the exchange's own received time (an implausible confirmation, or a
-    # scenario with no video at all leaving the default 0.0 while `received` is itself small) must
-    # not produce a negative startedAt — the same non-negative guarantee the step-side started_at
-    # has (`max(0.0, ...)` in loop.py).
+    # A video_anchor_s after the exchange's own received time (an implausible confirmation) must not
+    # produce a negative startedAt — the same non-negative guarantee the step-side started_at has
+    # (`max(0.0, ...)` in loop.py). Defensive: `_run_on_lease` always passes `result.video_anchor_s`,
+    # which is `scenario_start + offset` and so a real instant even for a scenario with no video.
     from bajutsu.evidence.redaction import Redactor
     from bajutsu.runner.pipeline import _write_network
 
