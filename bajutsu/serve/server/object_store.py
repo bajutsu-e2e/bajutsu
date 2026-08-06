@@ -11,7 +11,7 @@ re-exported here for the existing server imports. `object_store_from_env` (BE-02
 server factory on that same URI machinery — `store_target_from_uri`, the "URI → (store, prefix)"
 resolution ``--evidence-store``'s `evidence_target_from_uri` also builds on — instead of hand-rolling
 an S3-only ``boto3`` client, so both cloud SDKs stay lazy imports and the default path stays
-SDK-free (#117 import guard).
+SDK-free (the import guard).
 """
 
 from __future__ import annotations

@@ -12,7 +12,7 @@ path) so a remote worker writes it before running — no path ever exists on the
 ``out_path`` (record's authoring output) is still worker-side and not served yet.
 
 This module imports no storage SDK — `ScenarioStorage` is injected — so it's unit-tested with a
-fake and the default path stays server-free (#117 import guard).
+fake and the default path stays server-free (the import guard).
 """
 
 from __future__ import annotations
