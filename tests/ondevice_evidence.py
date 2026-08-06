@@ -19,6 +19,12 @@ long recording. Kept only on failure — the same policy `screenrecord.py`'s own
 already applies to the codegen lane — so a green run uploads nothing and CI artifact storage tracks
 failures, not suite size.
 
+The keep/discard decision cannot live inside `capture`'s own fixture teardown: pytest builds the
+"teardown" `TestReport` only *after* every finalizer for the item has run, `capture`'s own included,
+so a fixture cannot see whether a *later-torn-down sibling fixture's* teardown half also failed.
+The decision is deferred to the `pytest_runtest_makereport` hook below instead, which fires again
+once that "teardown" report exists — the one point that has seen the whole attempt.
+
 A module opts in with one autouse fixture:
 
     @pytest.fixture(autouse=True)
@@ -41,18 +47,23 @@ import pytest
 
 from bajutsu.evidence import intervals
 
-# Set on the item's stash by the makereport hook below to the *current* report's outcome — the only
-# way a fixture finalizer can learn pytest's own outcome, since a `TestReport` is not otherwise
-# visible from teardown. Always overwritten, never just latched: `backend_crash_recovery` (BE-0334)
-# re-runs a whole item via `_initrequest()` on an infra-fault retry, reusing the same `pytest.Item`,
-# so a stash that only ever turned True would still read True on a later attempt that recovered and
-# passed — keeping a crashed attempt's evidence after it stopped mattering, and worse, doing so after
-# that same attempt's `capture()` call already overwrote the video/log files a passing attempt no
-# longer needs kept.
+# This attempt's outcome so far, reset at "setup" and OR-accumulated afterward — reset, not just
+# latched, because `backend_crash_recovery` (BE-0334) re-runs a whole item via `_initrequest()` on an
+# infra-fault retry, reusing the same `pytest.Item` (and stash): a flag that only ever turned True
+# would still read failed on a later, recovered, passing attempt.
 _FAILED: pytest.StashKey[bool] = pytest.StashKey()
 
-# Mirrors screenrecord.py's bound: small enough for `/sdcard` and the artifact upload, well under
-# the platform's ~180s ceiling for any single conformance/fault-injection case.
+# Evidence directories `capture()` registered this attempt, swept by the hook below once the
+# "teardown" report says the attempt is clean — never inside `capture()` itself (see the module
+# docstring). Registered only once both `start_*` calls below have succeeded, so a setup failure
+# leaves its directory unregistered and therefore un-swept, keeping by default exactly what a setup
+# failure needs kept.
+_PENDING: pytest.StashKey[list[Path]] = pytest.StashKey()
+
+# Mirrors screenrecord.py's bound. 180 is the platform's hard maximum, not a soft default: AOSP's
+# screenrecord rejects any --time-limit above kMaxTimeLimitSec (180) with an error instead of
+# clamping, so this cannot be raised. --size/--bit-rate keep the mp4 small enough for `/sdcard` and
+# the artifact upload; a single conformance/fault-injection case is far shorter than the cap.
 _TIME_LIMIT_S = 180
 _SIZE = "540x1200"
 _BIT_RATE = 2_000_000
@@ -67,9 +78,23 @@ def android_screenrecord(serial: str, path: Path) -> intervals.Interval:
 
 @pytest.hookimpl(wrapper=True)
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
-    """Tag the item's stash with the current report's outcome, for `capture`'s finalizer to read."""
+    """Track this attempt's outcome, and sweep its pending evidence once teardown is the last word.
+
+    Deferred to the "teardown" report specifically: by the time it exists, every finalizer for this
+    attempt — `capture`'s own and any sibling fixture's — has already run, so this is the first point
+    that has actually seen the whole attempt, not just its "call" phase.
+    """
     report = yield
-    item.stash[_FAILED] = report.failed
+    if report.when == "setup":
+        item.stash[_FAILED] = report.failed
+    else:
+        item.stash[_FAILED] = item.stash.get(_FAILED, False) or report.failed
+    if report.when == "teardown":
+        pending = item.stash.get(_PENDING, [])
+        item.stash[_PENDING] = []
+        if not item.stash.get(_FAILED, False):
+            for dest in pending:
+                shutil.rmtree(dest, ignore_errors=True)
     return report
 
 
@@ -106,34 +131,25 @@ def capture(
     dest.mkdir(parents=True, exist_ok=True)
     video: intervals.Interval | None = None
     log: intervals.Interval | None = None
-    # Default to keeping the evidence. The only way to *prove* it may be discarded is to reach past
-    # `yield` and read a "call"-phase report that already says the test passed — reachable only when
-    # this function's own setup (the two `start_*` calls above) also succeeded. If either raises
-    # before `yield`, the `finally` below runs as part of that very unwind, strictly before pytest's
-    # own "setup"-phase report is even produced — so the stash could never carry `_FAILED` in time,
-    # and defaulting to discard would delete the one piece of evidence that setup failure needs most.
-    keep = True
     try:
         video = start_video(serial, dest / "video.mp4")
         log = start_log(serial, dest / "device.log")
+        # Register only now that both starters have succeeded — see `_PENDING`'s own comment for
+        # why a setup failure must leave this unregistered rather than decide anything here.
+        request.node.stash.setdefault(_PENDING, []).append(dest)
         yield
-        keep = request.node.stash.get(_FAILED, False)
     finally:
-        # Stop whichever of the two actually started, before the keep/discard decision, so a test that
-        # crashed — or a `start_log` that raised right after a real `start_video` spawned a device-side
-        # `screenrecord` — never leaves a recording running past its own test. Nested twice: the inner
-        # pair lets a raising `video.stop()` (e.g. a failed `adb pull`, which `start_screenrecord`
-        # deliberately lets propagate) still leave `log.stop()` called rather than orphaning the logcat
-        # process; the outer pair lets the keep/discard decision run even when a `stop()` call itself
-        # raised, so a transient stop failure on an otherwise-passing test still discards its evidence
-        # rather than leaving it behind by accident.
+        # Stop whichever of the two actually started, so a test that crashed — or a `start_log` that
+        # raised right after a real `start_video` spawned a device-side `screenrecord` — never leaves
+        # a recording running past its own test. Nested so a raising `video.stop()` (e.g. a failed
+        # `adb pull`, which `start_screenrecord` deliberately lets propagate) still leaves `log.stop()`
+        # called rather than orphaning the logcat process; if either stop raises, that failure is this
+        # fixture's own teardown failing, which the hook above folds into the attempt's outcome — so a
+        # stop failure on an otherwise-passing test keeps its evidence rather than discarding it, the
+        # same as any other teardown failure.
         try:
-            try:
-                if video is not None:
-                    video.stop()
-            finally:
-                if log is not None:
-                    log.stop()
+            if video is not None:
+                video.stop()
         finally:
-            if not keep:
-                shutil.rmtree(dest, ignore_errors=True)
+            if log is not None:
+                log.stop()

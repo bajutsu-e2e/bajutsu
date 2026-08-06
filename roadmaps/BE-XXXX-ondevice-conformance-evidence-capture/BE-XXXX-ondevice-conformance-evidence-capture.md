@@ -82,22 +82,35 @@ recording for the moment it happened.
 
 Discard the recorded video and device log when the test they wrap passes; keep them under
 `runs/<lane>/<test-id>/` only when it fails, mirroring the failure-only retention
-`screenrecord.py`'s own Makefile target already applies to the codegen lane. Telling pass from fail
-inside a fixture's teardown needs the test's own report, which a fixture does not otherwise see;
-tag it with a `pytest_runtest_makereport` hook, the same mechanism
-`tests/backend_crash_recovery.py` already uses to classify a report for the on-device conformance
-suite (BE-0334) at the same hook point. A green run then uploads nothing, so the existing "Upload
-run artifacts" step's `if-no-files-found: ignore` keeps no-opping on a clean suite and starts
-filling only on the first real failure.
+`screenrecord.py`'s own Makefile target already applies to the codegen lane.
 
-The tag must be overwritten by every report, never only latched true, because the iOS conformance
-suite's own `backend_crash_recovery` marker (BE-0334) re-runs a whole item — this fixture included —
-via `_initrequest()` on an infrastructure-fault retry, reusing the same `pytest.Item` and therefore
-the same stash across attempts. A latch-only tag would still read "failed" on a later attempt that
-recovered and passed, wrongly keeping evidence a passing test does not need — and by then the
-crashed attempt's own recording is already gone anyway, overwritten at the same file path by the
-attempt that superseded it. Overwriting the tag on every report keeps only the terminal attempt's
-outcome in view, which is exactly the attempt `backend_crash_recovery` itself publishes.
+The decision cannot live inside the fixture's own teardown. `_evidence` is autouse, so it is set up
+first among a test's fixtures and therefore torn down last; pytest only builds the "teardown"
+`TestReport` after every finalizer for the item — the fixture's own included — has already run. A
+fixture reading its test's outcome from inside its own teardown code can see the "call" phase's
+report (already produced by then), but never a *later-torn-down sibling fixture's own teardown
+failure*, since that failure has not been reported yet at the point the fixture's code runs. That is
+not a corner case for the fault-injection suites: their per-test `driver` fixture's post-`yield` half
+puts the display back to a known state, and a display that will not wake is exactly the failure a
+recording exists to explain. Defer the decision to a `pytest_runtest_makereport` hook instead — the
+same mechanism `tests/backend_crash_recovery.py` already uses to classify a report for the on-device
+conformance suite (BE-0334) — specifically to the hook's own "teardown" invocation, the first point
+that has actually seen the whole attempt. The fixture registers its directory as eligible for that
+hook to sweep only once its own two `start_*` calls have already succeeded, so a setup failure in the
+fixture itself leaves the directory unregistered, and therefore un-swept, by default. A green run
+then uploads nothing, so the existing "Upload run artifacts" step's `if-no-files-found: ignore` keeps
+no-opping on a clean suite and starts filling only on the first real failure.
+
+The per-attempt outcome the hook tracks must be reset at each "setup" report and only accumulated
+(never reset) afterward, rather than latched true forever, because the iOS conformance suite's own
+`backend_crash_recovery` marker (BE-0334) re-runs a whole item — this fixture included — via
+`_initrequest()` on an infrastructure-fault retry, reusing the same `pytest.Item` and therefore the
+same stash across attempts. A tag that only ever turned true would still read "failed" on a later
+attempt that recovered and passed, wrongly keeping evidence a passing test does not need — and by
+then the crashed attempt's own recording is already gone anyway, overwritten at the same file path by
+the attempt that superseded it. Resetting at each attempt's own "setup" report keeps only the
+terminal attempt's outcome in view, which is exactly the attempt `backend_crash_recovery` itself
+publishes.
 
 ### Unit 3 — Wire the fixture into all four suites, autouse
 
@@ -144,8 +157,9 @@ since the workflow never picked it up.
 - [x] Unit 1 — a per-test, backend-agnostic capture fixture built on
       `intervals.start_screenrecord`/`start_logcat` (adb) and `intervals.start_video`/
       `start_device_log` (XCUITest).
-- [x] Unit 2 — keep the video and device log only for a failing test, tagged via a
-      `pytest_runtest_makereport` hook that overwrites (never just latches) the item's stash.
+- [x] Unit 2 — keep the video and device log only for a failing test, decided from a
+      `pytest_runtest_makereport` hook's "teardown" report rather than the fixture's own teardown,
+      with the per-attempt outcome reset (never just latched) at each "setup" report.
 - [x] Unit 3 — wire the fixture into all four suites (`conformance`/`fault-injection` × adb/XCUITest)
       as an autouse fixture.
 - [x] Unit 4 — add the missing "Upload run artifacts" step to `conformance (xcuitest)`.

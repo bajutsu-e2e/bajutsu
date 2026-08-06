@@ -149,7 +149,9 @@ def test_stops_the_started_video_when_start_log_raises(pytester) -> None:
 def test_stops_the_log_even_when_stopping_the_video_raises(pytester) -> None:
     # `start_screenrecord`'s own transform deliberately lets a failed `adb pull` propagate out of
     # `stop()` (its own docstring: swallowing it would turn a real problem into a silent one) — that
-    # must not skip stopping the logcat process alongside it.
+    # must not skip stopping the logcat process alongside it. A raising `stop()` is itself this
+    # fixture's own teardown failing, which the hook folds into the attempt's outcome — so, like any
+    # other teardown failure, the evidence is kept rather than discarded.
     pytester.makeconftest(_INNER_CONFTEST)
     pytester.makepyfile(
         "import pathlib\n"
@@ -191,12 +193,42 @@ def test_stops_the_log_even_when_stopping_the_video_raises(pytester) -> None:
     result = pytester.runpytest_inprocess()
     result.assert_outcomes(passed=1, errors=1)  # the test body passes; teardown then raises
     assert (pytester.path / "stopped_log.marker").read_text() == "stopped"
-    # A `stop()` failure must not skip the keep/discard decision either: the passing test's evidence
-    # is still discarded, not left behind by accident because the cleanup itself hit an error.
     slug = ondevice_evidence._slug(
         "test_stops_the_log_even_when_stopping_the_video_raises.py::test_body"
     )
-    assert not (pytester.path / "runs" / "fake-lane" / slug).exists()
+    assert (pytester.path / "runs" / "fake-lane" / slug).exists()
+
+
+def test_keeps_evidence_when_a_sibling_fixtures_teardown_fails_after_a_passing_test(
+    pytester,
+) -> None:
+    # The exact gap a review found: `_evidence` is autouse, so it is set up first and torn down
+    # LAST. pytest builds the "teardown" `TestReport` only after every finalizer for the item has
+    # run — `_evidence`'s own included — so a fixture cannot see a fixture torn down *before* it
+    # (like `driver` in the real fault-injection suite, whose post-`yield` half is `_wake()` +
+    # `_await_wakefulness`) fail its own teardown. The test body passes; a sibling's teardown then
+    # raises; the evidence must still be kept — that failure is exactly the one it exists to explain.
+    pytester.makeconftest(_INNER_CONFTEST)
+    pytester.makepyfile(
+        _IMPORTS
+        + _FAKE_STARTERS
+        + _EVIDENCE_FIXTURE
+        + "@pytest.fixture\n"
+        + "def wonky_teardown():\n"
+        + "    yield\n"
+        + "    raise RuntimeError('display would not wake back up')\n\n\n"
+        + "def test_body(wonky_teardown):\n"
+        + "    assert True\n"
+    )
+    result = pytester.runpytest_inprocess()
+    result.assert_outcomes(passed=1, errors=1)  # the test body passes; teardown then raises
+    slug = ondevice_evidence._slug(
+        "test_keeps_evidence_when_a_sibling_fixtures_teardown_fails_after_a_passing_test.py"
+        "::test_body"
+    )
+    kept = pytester.path / "runs" / "fake-lane" / slug
+    assert (kept / "video.mp4").read_text() == "captured"
+    assert (kept / "device.log").read_text() == "captured"
 
 
 def test_discards_evidence_once_a_crashed_attempt_recovers_and_passes(pytester) -> None:
