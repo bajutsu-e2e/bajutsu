@@ -1,6 +1,6 @@
 [English](BE-XXXX-bounded-ci-review-cycle.md) · **日本語**
 
-# BE-XXXX — Bound the CI review cycle with a local Fable-plan, Sonnet/Opus-fix loop requested on demand
+# BE-XXXX — ローカルの Fable による計画と Sonnet/Opus による修正、そしてオンデマンドのレビュー依頼で、CI のレビューサイクルに上限を設ける
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
