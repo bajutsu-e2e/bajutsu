@@ -33,20 +33,22 @@ def _tap_with_recovery(
 
     Any failure along the recovery path — the scroll bound exhausted while still not tappable, or
     the retried `actuate()` finding the target still not tappable — surfaces as a single
-    `ElementNotTappable`, chained (`raise … from`) so the underlying cause survives in the
-    traceback; it never falls back to the misleading `ElementNotFound` a scroll timeout would
-    otherwise raise.
+    `ElementNotTappable`. The first attempt's own exception (which names what covered the target,
+    via `base.raise_if_covered`) is interpolated into that message rather than dropped, so the
+    fact a CI log needs to avoid reproducing the screen by hand survives; the scroll failure that
+    triggered the recovery is chained (`raise … from`) alongside it. It never falls back to the
+    misleading `ElementNotFound` a scroll timeout would otherwise raise.
     """
     try:
         actuate()
         return
-    except base.ElementNotTappable:
-        pass
+    except base.ElementNotTappable as obstruction_exc:
+        obstruction = obstruction_exc
     try:
         scroll_until_tappable(driver, sel, "down", None, _TAP_RECOVERY_MAX_SCROLLS)
     except base.ElementNotFound as exc:
         raise base.ElementNotTappable(
-            f"still not tappable after a bounded scroll attempt: {sel!r}"
+            f"still not tappable after a bounded scroll attempt: {obstruction}"
         ) from exc
     actuate()
 

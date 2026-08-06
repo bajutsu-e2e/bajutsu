@@ -130,6 +130,10 @@ def test_tap_fails_as_element_not_tappable_when_recovery_is_exhausted() -> None:
     # Never reads as the misleading ElementNotFound a scroll timeout would otherwise raise:
     # `_tap_with_recovery`'s own message, not `scroll_to_target`'s "scroll: … not on-screen".
     assert reason.startswith("still not tappable")
+    # The first attempt's own ElementNotTappable (naming what covered the target, via
+    # `base.raise_if_covered`) is interpolated in, not dropped — the one fact a CI log would
+    # otherwise force reproducing the screen by hand to learn.
+    assert "'overlay'" in reason
 
 
 def test_tap_recovery_never_succeeds_by_scrolling_the_target_out_of_view() -> None:
