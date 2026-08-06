@@ -551,6 +551,25 @@ class AdbDriver(CoordinateTreeDriver):
         # (`screenshot`, `wm size`) stay on `_run`, so they neither clear nor re-set it.
         self._tree_current = False
 
+    def invalidate_settled_cache(self) -> None:
+        """Clear every cache `_settle()`/`_pan_baseline` trust (`base.SettledCacheInvalidator`).
+
+        For a change to the screen this driver did not itself actuate. `_act()` and its
+        device-side/text-entry equivalents call this for the driver's own gestures.
+        But an app relaunch or a crawl reset replaces the screen through `adb.Env` directly — never
+        through this driver's actuators — so nothing upstream of this method would otherwise know to
+        distrust a key proved on the screen before it. If the relaunched screen's projection happens
+        to coincide with that stale key (the common case: a scenario starting and ending on the same
+        home screen), `_settle`'s fast path would trust a single read of a screen this driver never
+        proved at rest — the same class of bug `_settled_key` exists to close, reached through a door
+        outside the driver's own actuators. One method, one place every such caller reaches for,
+        rather than each hand-rolling the same three-field reset (which is exactly how the
+        `_device_act`/`type_text` gaps this same item fixed were introduced in the first place).
+        """
+        self._tree_current = False
+        self._read_ordered = False
+        self._settled_key = None
+
     def _act(self, args: list[str]) -> str:
         """Issue an adb command that changes the screen, marking the cached projection stale.
 
@@ -567,9 +586,7 @@ class AdbDriver(CoordinateTreeDriver):
         actuation may have just changed, so `_settle`'s fast path must not trust a later coincidental
         match against it — the same staleness `_read_ordered` guards against, one cache higher.
         """
-        self._tree_current = False
-        self._read_ordered = False
-        self._settled_key = None
+        self.invalidate_settled_cache()
         return self._run(args)
 
     def _describe(self) -> list[base.Element]:
@@ -1146,9 +1163,7 @@ class AdbDriver(CoordinateTreeDriver):
                     "rather than injecting a coordinate on top of it",
                     exc,
                 )
-                self._tree_current = False
-                self._read_ordered = False
-                self._settled_key = None
+                self.invalidate_settled_cache()
                 self._arm_catchup(pre_key, mark)
                 return True
             except AdbResidentError as exc:
@@ -1170,9 +1185,7 @@ class AdbDriver(CoordinateTreeDriver):
                 )
                 # The gesture happened on the device, so the cached tree is stale and the next read must
                 # postdate it — the same bookkeeping `_act` does for a coordinate injection.
-                self._tree_current = False
-                self._read_ordered = False
-                self._settled_key = None
+                self.invalidate_settled_cache()
                 self._arm_catchup(pre_key, mark)
                 return True
             logger.debug("device %s on %r: the device called it stale; re-resolving", kind, sel)
@@ -1429,12 +1442,9 @@ class AdbDriver(CoordinateTreeDriver):
         # Feed the `input text` command to `adb shell` over stdin, not on the argv, so a secret / OTP
         # never lands in the adb process command line where `ps` could read it (BE-0155). Routed
         # through a class-level attribute so tests can patch it.
-        # `_run_text` bypasses `_act`, so mirror its three invalidations by hand: the cached tree is
-        # stale, any order confirmed for a prior actuation no longer holds (BE-0332 Unit 3), and a key
-        # `_settle` proved stable before this input describes a screen this input may have just changed.
-        self._tree_current = False
-        self._read_ordered = False
-        self._settled_key = None
+        # `_run_text` bypasses `_act`, so invalidate by hand: the input may have just changed the
+        # screen exactly as any other actuation would.
+        self.invalidate_settled_cache()
         self._run_text(adb.shell_cmd(self.serial), adb.text_script(text))
 
     @staticmethod

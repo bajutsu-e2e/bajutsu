@@ -209,7 +209,12 @@ def capture(
     if any(token.partition(".")[0] in ("elements", "screenshot", "rawTree") for token in kinds):
         step_dir.mkdir(parents=True, exist_ok=True)
     out: list[Artifact] = []
-    for token in kinds:
+    # `rawTree` last, whatever order the scenario listed the kinds in: `write_elements` may issue the
+    # read itself (`elements is None`, line 69 above), and `write_raw_tree` persists the driver's
+    # *last* read — so a `[rawTree, elements]` order would pair a stale dump with a fresh
+    # elements.json, exactly the mismatch this pair of artifacts exists to rule out. `sorted` is
+    # stable, so no other kind's relative order moves.
+    for token in sorted(kinds, key=lambda t: t.partition(".")[0] == "rawTree"):
         kind, _, modifier = token.partition(".")
         if kind == "rawTree":
             out.extend(

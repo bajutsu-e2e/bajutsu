@@ -176,6 +176,34 @@ def test_capture_raw_tree_kind_on_an_unsupported_backend_produces_nothing(tmp_pa
     assert capture(driver, tmp_path / "step0", ["rawTree"]) == []
 
 
+class _RawSourceQueryStub:
+    """A driver whose raw source updates on `query()`, mirroring how AdbDriver/XcuitestDriver's
+    `last_raw_source()` always reflects whichever read happened most recently."""
+
+    def __init__(self) -> None:
+        self.reads = 0
+
+    def query(self) -> list[base.Element]:
+        self.reads += 1
+        return [_el(f"e{self.reads}", "L")]
+
+    def last_raw_source(self) -> base.RawSource:
+        return base.RawSource(text=f"read-{self.reads}")
+
+
+def test_capture_pairs_raw_tree_with_the_read_elements_json_took_regardless_of_kinds_order(
+    tmp_path: Path,
+) -> None:
+    # `write_elements` issues its own `query()` when no pre-fetched `elements` is passed (the
+    # `elements=None` path `orchestrator/loop.py` takes for a step with no fresh tree). If a scenario
+    # lists `capture: [rawTree, elements]` (rawTree first), `rawTree` must not run before that query
+    # and capture a now-stale read — the two files must always describe the same one.
+    driver = _RawSourceQueryStub()
+    capture(driver, tmp_path / "step0", ["rawTree", "elements"])
+    assert (tmp_path / "step0" / "hierarchy.raw.xml").read_text(encoding="utf-8") == "read-1"
+    assert driver.reads == 1  # elements.json's own query() is the only read, and rawTree saw it
+
+
 def test_file_sink_wait_diagnostic_writes_provenance_stamped_artifact(tmp_path: Path) -> None:
     # BE-0231 Unit 1: a first-wait timeout writes a self-contained diagnostic — the element tree at
     # timeout, the readiness signal, the poll trace, and the provenance stamp — so a rerun-to-green
