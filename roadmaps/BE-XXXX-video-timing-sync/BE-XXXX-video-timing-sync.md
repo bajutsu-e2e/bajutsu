@@ -74,9 +74,11 @@ creation latency is negligible next to a subprocess spawn's.
 
 **2. Confirm only where it changes behavior.** `confirm_started=True` is passed at two production
 call sites: `FileSink._start_simctl_interval`'s video branch (`bajutsu/evidence/core.py`, iOS's
-on-demand start — the one place this item adds latency, bounded and small, to the scenario's
-critical path) and `AndroidEnvironment._prestart_video` (`bajutsu/platform_lifecycle/environments/android.py`,
-which runs during a pre-launch window that already exists, so the wait adds none). `AdbDriver.driver_interval`
+on-demand start) and `AndroidEnvironment._prestart_video`
+(`bajutsu/platform_lifecycle/environments/android.py`). Both waits sit on the scenario's critical
+path: the prestart is immediately followed by `e.launch(...)`, with nothing running concurrently, so
+its poll delays `am start` too. Both are bounded and small — a probe round trip plus at most
+`_VIDEO_START_TIMEOUT` (5s) when the signal never arrives. `AdbDriver.driver_interval`
 (`bajutsu/drivers/adb.py`) passes it too, so a caller reaching that driver directly gets the same
 confirmation rather than a silent regression to the uncorrected behavior; the device pool never
 reaches it today, because `AndroidEnvironment` always prestarts. Every other caller, and every

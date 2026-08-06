@@ -32,8 +32,9 @@ call site shares one format. `stepId` is `step.name` or `step<i>`.
 
 ## manifest.json
 
-`RunResult` and its parts are all dataclasses, so `asdict()` drops the step / expect results
-verbatim.
+`RunResult` and its parts are all dataclasses, so `manifest_dict` drops the step / expect results
+verbatim — minus `video_anchor_s`, a same-process-only `time.monotonic()` instant with no meaning
+once persisted (see [evidence](evidence.md#interval-evidence-video--devicelog--apptrace)).
 
 ```json
 {
@@ -67,8 +68,15 @@ verbatim.
   per run, so the top-level value is normally a single name; each scenario also carries its own
   `backend` ([drivers](drivers.md#backend-selection-and-the-actuator)).
 - `steps[].duration_s`: each step's timing (the `actionLog`-equivalent information).
+- `steps[].started_at`: the step's report-relative timestamp, anchored to the scenario video's
+  confirmed or best-known real start rather than the raw moment the scenario's step loop began
+  ([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)); [report.html](#reporthtml)
+  uses it to seek the recording and as the **steps** table's `at` column.
 - `steps[].artifacts`: the provenance of evidence captured for that step
   ([evidence](evidence.md#artifact-provenance-provider)).
+- `network.json`'s `startedAt` (one file per scenario, not shown in the manifest above): each
+  observed exchange's report-relative timestamp, on the same anchor as `steps[].started_at` — see
+  [report.html](#reporthtml) for how the two are interleaved into one timeline.
 - `failure`: a summary on failure (e.g. `"step 3 (tap): no match: {...}"`). null on success.
 - `provenance` (top, optional): a run-identity stamp ([BE-0049](../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md))
   — `scenarioHash` (a `sha256:` fingerprint of the executed `scenario.yaml`), `toolVersion`

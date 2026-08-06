@@ -30,7 +30,7 @@ runs/<runId>/
 
 ## manifest.json
 
-`RunResult` 以下はすべて dataclass なので、`asdict()` でステップ / expect の結果がそのまま落ちます。
+`RunResult` 以下はすべて dataclass なので、`manifest_dict` でステップ / expect の結果がそのまま落ちます。ただし`video_anchor_s`は例外です。これは同一プロセス内でのみ意味を持つ`time.monotonic()`の値であり、永続化後は意味を持たないため除外されます（[evidence](evidence.md#区間証跡video--devicelog--apptrace)参照）。
 
 ```json
 {
@@ -64,7 +64,9 @@ runs/<runId>/
   run ごとに 1 つ固定なので、トップレベルは通常 1 つの名前です。各シナリオも自分の `backend` を持ちます
   （[drivers](drivers.md#バックエンド選択と-actuator)）。
 - `steps[].duration_s`: 各ステップの計時です（`actionLog` 相当の情報）。
+- `steps[].started_at`: そのステップのレポート上の相対タイムスタンプです。シナリオのステップループが始まった生の瞬間ではなく、シナリオ動画の確認済みまたは最善推定の実際の開始を基準にしています（[evidence](evidence.md#区間証跡video--devicelog--apptrace)）。[report.html](#reporthtml)は、この値を録画のシーク先として、また**steps**テーブルの`at`列として使います。
 - `steps[].artifacts`: そのステップで取れた証跡の来歴です（[evidence](evidence.md#アーティファクトの来歴provider)）。
+- `network.json`の`startedAt`（シナリオごとに1ファイルで、上のmanifestには出てきません）: 観測した各通信の、レポート上の相対タイムスタンプです。基準は`steps[].started_at`と同じです。両者がどのように1本のタイムラインへ織り込まれるかは[report.html](#reporthtml)を参照してください。
 - `failure`: 失敗時の要約です（例 `"step 3 (tap): 一致なし: {...}"`）。成功なら null です。
 - `provenance`（トップ、任意）: run の同一性スタンプです（[BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。`scenarioHash`（実行した `scenario.yaml` の `sha256:` フィンガープリント）、`toolVersion`（`bajutsu.__version__`）、`gitRevision`（コミット。git チェックアウト内の run のときだけ付く）、そして config が Git ソース由来のとき（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）は `configSource`（`{ host, owner, repo, ref, sha }`。ブランチ指定の run が実際に実行した正確なコミット）を持ちます。蓄積した run を同一性でグルーピングできるので、フィンガープリントが変わっていないのに判定が反転すれば、それは編集ではなく**真の flakiness** だと分かります。純粋なメタデータで、`ok` には一切入りません。（このブロックが出るようになった時点で `schemaVersion` は `3` 以上です。現在は `4` です。）
 - `idb`（トップ、任意、レガシー）: 古い manifest には `idb_companion` / client のバージョンブロックが残っていることがあります（BE-0005）。idb バックエンドとともに BE-0290 で廃止され、今は書き出されません。未知のトップレベルキーは読み込み時に無視されるため、これを含む古い manifest も問題なく読めます。
