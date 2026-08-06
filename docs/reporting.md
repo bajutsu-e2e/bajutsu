@@ -33,8 +33,9 @@ call site shares one format. `stepId` is `step.name` or `step<i>`.
 ## manifest.json
 
 `RunResult` and its parts are all dataclasses, so `manifest_dict` drops the step / expect results
-verbatim — every field, excluding none. Timestamps are absolute wall-clock instants (epoch seconds),
-so each one still means the same thing after the run that produced it exits
+verbatim — minus `wall_offset_s`, an in-run-only conversion constant with no meaning once persisted
+(see below). Every other timestamp is an absolute wall-clock instant (epoch seconds), so it still
+means the same thing after the run that produced it exits
 (see [evidence](evidence.md#interval-evidence-video--devicelog--apptrace)).
 
 ```json
@@ -84,9 +85,10 @@ so each one still means the same thing after the run that produced it exits
   ([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)). Every viewer subtracts it.
   A run recorded before `schemaVersion` 6 carries no anchor. Its `started_at` values are already
   video-relative, so a viewer reads the missing anchor as `0.0` and renders them unchanged.
-- `wall_offset_s` (per scenario): what the run added to a monotonic instant to reach its wall-clock
-  epoch. It carries the network exchanges below onto the same anchor the steps use. The run records
-  it rather than leaving a viewer to recompute it, so both sides come from one wall-clock reading.
+- `wall_offset_s` (in-run only, not persisted): what the run adds to one of its own monotonic
+  instants to reach a wall-clock epoch, so it can carry a network exchange's monotonic receive time
+  onto the same anchor `video_anchor_s` uses. It never survives into the manifest — no monotonic
+  instant does either, so a later reader would have nothing left to convert with it.
 - `steps[].artifacts`: the provenance of evidence captured for that step
   ([evidence](evidence.md#artifact-provenance-provider)).
 - `steps[].actuations`: what the driver actually did to the screen during that step — the coordinate a
@@ -238,14 +240,15 @@ it `POST`s `/api/approve` and so works only when the report is opened through `b
 hidden for a report opened from disk). The CLI twin is [`bajutsu approve`](cli.md#approve).
 
 Failing rows have a red background. Clicking a step seeks the recording to that step **without
-auto-playing** (a paused video stays paused; a playing one keeps playing) — the seek target is each
-step's `started_at`, anchored to the video's confirmed or best-known real start rather than the raw
-moment the scenario's step loop began, so the seek lands on what the row actually shows
-([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)). One visible consequence: for a
-video-capturing Android or web scenario, a step's `started_at` (and the **steps** table's `at`
-column) can exceed the scenario's own `duration_s`, because the two measure different things on
-purpose — the video's timeline starts before the run's own step loop does, while `duration_s`
-measures the loop itself. That is expected, not a sign either number is wrong. Clicking a step's
+auto-playing** (a paused video stays paused; a playing one keeps playing) — the seek target is the
+step's `started_at` minus `video_anchor_s` (the **steps** table's `at` column), anchored to the
+video's confirmed or best-known real start rather than the raw moment the scenario's step loop
+began, so the seek lands on what the row actually shows
+([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)). One visible consequence: for
+a video-capturing Android or web scenario, that derived seconds-into-the-recording value can exceed
+the scenario's own `duration_s`, because the two measure different things on purpose — the video's
+timeline starts before the run's own step loop does, while `duration_s` measures the loop itself.
+That is expected, not a sign either number is wrong. Clicking a step's
 screenshot opens a full-size lightbox; **← / →** (or the on-screen arrows) then walk through every
 screenshot in the run, across scenario boundaries, with a caption showing the scenario, step, and
 position. The run's actuator backend is shown as a `driver: <backend>` chip in the header and a small

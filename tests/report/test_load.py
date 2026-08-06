@@ -30,7 +30,7 @@ def _result() -> RunResult:
                 action="tap home.start",
                 ok=True,
                 duration_s=0.5,
-                started_at=0.0,
+                started_at=1_700_000_000.25,
                 assertion_results=[AssertionResult(ok=True, kind="exists", detail="home.title")],
                 artifacts=[Artifact("0/shot.png", "screenshot", "simctl")],
                 alerts=[AlertEvent("Allow")],
@@ -72,6 +72,10 @@ def _result() -> RunResult:
         device_name="iPhone 17 Pro",
         device_runtime="iOS 26",
         duration_s=2.5,
+        video_anchor_s=1_700_000_000.0,
+        # wall_offset_s is deliberately left at its default: manifest_dict excludes it (BE-0348 —
+        # see test_manifest.py's test_manifest_excludes_wall_offset_s), so a non-default value here
+        # would make this round-trip test fail for a reason unrelated to what it checks.
         expect_alerts=[AlertEvent("Dismiss")],
         expect_actuations=[
             Actuation(gesture="systemAlert", via="handle", unit="point", target="alert.dismiss")

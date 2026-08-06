@@ -214,17 +214,31 @@ def test_manifest_records_scenario_duration() -> None:
     assert manifest_dict("run1", [r])["scenarios"][0]["duration_s"] == 2.5
 
 
-def test_manifest_persists_every_run_result_field() -> None:
+def test_manifest_persists_video_anchor_s() -> None:
     # video_anchor_s is now an absolute wall-clock instant, so it means the same thing after the run
     # as during it — and a report needs it to derive a step's video-relative seconds from the
-    # absolute started_at beside it (BE-0348). It must therefore reach the persisted manifest, and
-    # with it the last field manifest_dict used to drop: nothing is excluded any more.
-    from dataclasses import fields
-
+    # absolute started_at beside it (BE-0348). Unlike before this item, it must reach the persisted
+    # manifest.
     r = RunResult(scenario="s1", ok=True, steps=[], video_anchor_s=1_700_000_000.5)
     scenario = manifest_dict("run1", [r])["scenarios"][0]
     assert scenario["video_anchor_s"] == 1_700_000_000.5
-    assert {f.name for f in fields(RunResult)} - set(scenario) == set()
+
+
+def test_manifest_excludes_wall_offset_s() -> None:
+    # wall_offset_s is scenario_wall_start - scenario_start: a delta that converts *this run's*
+    # time.monotonic() instants to wall-clock ones. No monotonic instant survives into the manifest
+    # for a later reader to convert with it, so — unlike video_anchor_s, which is itself already an
+    # absolute instant — it stays excluded, the same way video_anchor_s used to be before BE-0348. A
+    # non-default value here proves the exclusion is real, not merely a coincidence of an unset field
+    # looking absent.
+    from dataclasses import fields
+
+    r = RunResult(scenario="s1", ok=True, steps=[], wall_offset_s=123456.789)
+    scenario = manifest_dict("run1", [r])["scenarios"][0]
+    assert "wall_offset_s" not in scenario
+    # Exactly this one field is missing — not a different field excluded by mistake, and not this
+    # field plus others dropped by a broader (over-eager) exclusion.
+    assert {f.name for f in fields(RunResult)} - set(scenario) == {"wall_offset_s"}
 
 
 def test_manifest_records_device_environment() -> None:

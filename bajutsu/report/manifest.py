@@ -130,11 +130,12 @@ def manifest_dict(
 ) -> dict[str, object]:
     """Build the manifest — the run's canonical, versioned render model (BE-0068).
 
-    RunResult and its parts are dataclasses, so `asdict` captures step/expect outcomes verbatim —
-    every field, since BE-0348 left none whose value stops meaning anything once persisted.
-    `backend` is the actuator that drove the run (each scenario also carries its own `backend`);
-    `sourceName` is the label the report's YAML toggle shows, persisted here so a re-render can
-    recover it.
+    RunResult and its parts are dataclasses, so `_scenario_dict` captures step/expect outcomes
+    verbatim — minus `wall_offset_s`, a same-process-only conversion constant with no meaning once
+    persisted (BE-0348 kept `video_anchor_s`, an absolute instant, but not this one — see
+    `_scenario_dict`). `backend` is the actuator that drove the run (each scenario also carries its
+    own `backend`); `sourceName` is the label the report's YAML toggle shows, persisted here so a
+    re-render can recover it.
 
     `provenance` is the run-identity stamp from `run_provenance` (BE-0049), never part of the verdict.
     """
@@ -144,7 +145,7 @@ def manifest_dict(
         "ok": all(r.ok for r in results),
         "backend": _run_backend(results),
         "sourceName": source_name,
-        "scenarios": [asdict(r) for r in results],
+        "scenarios": [_scenario_dict(r) for r in results],
     }
     if provenance:
         manifest["provenance"] = provenance
@@ -154,6 +155,21 @@ def manifest_dict(
     if (matrix := _matrix(results)) is not None:
         manifest["matrix"] = matrix
     return manifest
+
+
+def _scenario_dict(r: RunResult) -> dict[str, object]:
+    """`asdict(r)`, minus `wall_offset_s`.
+
+    `wall_offset_s` is `scenario_wall_start - scenario_start` — a delta that converts *this run's*
+    `time.monotonic()` instants to wall-clock ones. It exists only for `pipeline.py` to carry a
+    network exchange's monotonic receive time onto the same absolute footing as `video_anchor_s`
+    while the run is still in-process; no monotonic instant survives into the manifest for a later
+    reader to convert with it, so persisting it would be noise at best. `video_anchor_s`, by
+    contrast, is itself already an absolute instant (BE-0348) and stays.
+    """
+    d = asdict(r)
+    d.pop("wall_offset_s", None)
+    return d
 
 
 def _details(r: RunResult) -> str:

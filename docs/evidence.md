@@ -216,7 +216,7 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   that gives up costs the whole scenario its correction. So the ceiling takes an override:
   `BAJUTSU_VIDEO_START_TIMEOUT` (seconds) replaces the 5-second compiled default, and
   [`.github/workflows/ios-e2e.yml`](../.github/workflows/ios-e2e.yml) raises it for the iOS lane
-  alongside the four `BAJUTSU_XCUITEST_*` timeouts that already work this way. Raising it costs
+  alongside the three `BAJUTSU_XCUITEST_*` timeouts that already work this way. Raising it costs
   nothing on the healthy path, because the poll returns the moment the recording confirms.
 - **The recorded timestamps are absolute; a viewer derives the video-relative offset when it
   renders.** `run_scenario` reads the wall clock once, beside its `time.monotonic()` stamp, giving

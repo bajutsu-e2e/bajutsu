@@ -35,6 +35,10 @@ _logger = logging.getLogger("bajutsu.report.load")
 # dataclass's fields, so a new *scalar* field flows through automatically and an older / newer
 # manifest still loads; a new *nested* field (a list of sub-dataclasses) needs a line below, which
 # the round-trip test (`test_round_trip_through_manifest_is_lossless`) catches by exercising each.
+# `RunResult.wall_offset_s` is the one deliberate exception: `manifest_dict` excludes it (a
+# same-process-only conversion constant with no meaning once persisted, BE-0348), so it always
+# reconstructs at its default rather than round-tripping — don't read the guarantee above as
+# covering it, and don't "fix" the round-trip test to assert otherwise.
 def _kw(cls: type, data: dict[str, Any]) -> dict[str, Any]:
     """The subset of `data` that names a field of dataclass `cls` (drops unknown / newer keys)."""
     names = {f.name for f in fields(cls)}
