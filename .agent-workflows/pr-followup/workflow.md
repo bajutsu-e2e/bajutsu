@@ -59,15 +59,17 @@ gh pr checks <PR>
 
 If step 2 or 3 made a change this iteration, mirror the CI "Claude review" workflow locally before
 pushing whatever hasn't shipped yet, following [`ideation`](../ideation/workflow.md) step 5's
-procedure exactly, with three differences. First, give the subagent a local `git diff` against the
+two-role procedure exactly — a review/plan pass that classifies findings and never edits, then an
+implement pass that applies its instructions (BE-0347) — with three differences. First, give the
+review/plan pass a local `git diff` against the
 PR's remote branch instead of a fresh diff against `origin/main` — unlike `gh pr diff <PR>`, which
 only shows what GitHub's remote head already has, a local diff sees this iteration's not-yet-pushed
 fixes — and stage whatever step 2 or 3 touched first (`git add <paths>`), the same guard `ideation`
 applies to its own new files, so a file this iteration newly introduced doesn't stay untracked and
 skip the diff entirely. Second, don't scope that diff to `roadmaps/` — unlike `ideation`, whose
 fixes only ever land there, this skill's fixes can land anywhere the CI failure or review comment
-points to. Third, give the subagent `gh pr view <PR> --comments` for the discussion (there is a
-live PR here, unlike `ideation`'s pre-PR case), and route a genuine design-change finding to this
+points to. Third, give the review/plan pass `gh pr view <PR> --comments` for the discussion (there
+is a live PR here, unlike `ideation`'s pre-PR case), and route a review/plan escalation to this
 skill's own Escalation section instead of `ideation`'s, reporting it directly in this iteration's
 summary rather than leaving a review thread open, since there is no PR conversation to leave
 unresolved for a self-review-only finding. Run `make check` after every fix, the same as steps 2
@@ -79,12 +81,37 @@ extra local check rather than the round-trip savings it buys for step 3 (BE-0203
 when nothing changed this iteration (for example, a follow-up poll where CI is already
 green and no new comments arrived), since there is nothing new to self-review or push.
 
-### 5. Push and report
+### 5. Push, request a live review, and report
 
 - Push all fixes in one commit (or logical commits if changes are independent).
+- **Request the live review on demand.** The "Claude review" workflow no longer re-reviews on every
+  push (BE-0347): it runs automatically only when a pull request opens or reopens, and every later
+  pass is requested. So when this iteration pushed something and step 4's self-review came back
+  clean, ask for that pass yourself — capturing a timestamp first, because that is how the run is
+  found again below:
+  ```bash
+  REQUESTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  gh pr comment <PR> --body "@claude review"
+  ```
+  Skip the request when nothing was pushed this iteration, or when step 4 escalated instead of
+  clearing — the PR is not yet in a stable state to review. Then confirm the requested run actually
+  started. A comment-triggered run executes against the repository's default branch, so its
+  `head_branch` is never the PR branch — filter by creation time, not `--branch`, and allow a few
+  seconds for the run to be created before concluding it never started:
+  ```bash
+  gh run list --workflow "Claude review" --event issue_comment --created ">$REQUESTED_AT"
+  ```
+  The workflow drops a request whose commenter is not `OWNER`/`MEMBER`/`COLLABORATOR`, and it
+  leaves no trace on the pull request when it does. An unstarted run is therefore indistinguishable
+  from a review that found nothing, so a follow-up poll would read the silence as a quiet PR.
+  Escalate when no run appears.
 - Report what was fixed and what remains.
 
 ## Escalation
+
+Escalate, rather than pressing on, when step 5's `@claude review` request leaves no run behind: the
+live pass a later poll is waiting for will never arrive, and only a human can grant the trusted-actor
+association the workflow requires.
 
 If a review comment asks for a **fundamental design change** (new approach,
 architectural rethink, or trade-off the user should weigh), do NOT attempt the

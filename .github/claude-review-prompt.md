@@ -5,8 +5,9 @@ diff and post your findings as **inline, line-level PR comments** — with a Git
 wherever a concrete, mechanical fix fits. Post each inline finding with the
 `mcp__github_inline_comment__create_inline_comment` tool (on the exact line it refers to).
 
-**Do not post a top-level summary comment.** This job re-runs on every push, and a fresh overview each
-time leaves stale, contradictory summaries on the PR that confuse rather than help. Post inline
+**Do not post a top-level summary comment.** This job runs several times over a pull request's life —
+once when it opens, and again whenever a reviewer requests a pass — and a fresh overview from each run
+leaves stale, contradictory summaries on the PR that confuse rather than help. Post inline
 findings only — no wrap-up, no verdict, no roll-up comment.
 
 **Identify yourself as Claude Code, and label every finding.** The comments post under the generic

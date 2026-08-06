@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0347](BE-0347-bounded-ci-review-cycle.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0347") |
+| Implementing PR | TBD |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -88,7 +89,9 @@ loop also gains a round cap on the live cycle itself, with escalation to a human
    the request when nothing was pushed this
    iteration, or when the self-review escalated instead of clearing — the pull request is not yet in
    a stable state to review. After posting, confirm the requested run actually started (for example
-   `gh run list --workflow "Claude review" --event issue_comment --branch <branch>`) and escalate
+   `gh run list --workflow "Claude review" --event issue_comment --created ">TIMESTAMP"`, with the
+   timestamp captured before posting — a comment-triggered run executes against the default branch,
+   so `--branch` can never match it) and escalate
    when it did not: the workflow drops a request whose commenter is not
    `OWNER`/`MEMBER`/`COLLABORATOR` without any signal on the pull request, and unit 5 would read
    that silence as a quiet poll.
@@ -173,14 +176,14 @@ adjacent after each push.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — split `ideation` step 5 into a review/plan pass and an implement pass.
-- [ ] Unit 2 — point `pr-followup` step 4 at the two-role procedure.
-- [ ] Unit 3 — `pr-followup` step 5 requests a live review on demand after a clean local pass.
-- [ ] Unit 4 — point `propose-and-build` Phase A at the two-role procedure.
-- [ ] Unit 5 — `implement-be` step 12 gains the live-cycle round cap and escalation.
-- [ ] Unit 6 — narrow `claude-review.yml`'s automatic trigger to `opened`/`reopened`.
-- [ ] Unit 7 — document the split and the trigger change in `docs/ai-development.md` (+ Japanese).
-- [ ] Unit 8 — pin the concrete models in the four affected `SKILL.md` adapters.
+- [x] Unit 1 — split `ideation` step 5 into a review/plan pass and an implement pass.
+- [x] Unit 2 — point `pr-followup` step 4 at the two-role procedure.
+- [x] Unit 3 — `pr-followup` step 5 requests a live review on demand after a clean local pass.
+- [x] Unit 4 — point `propose-and-build` Phase A at the two-role procedure.
+- [x] Unit 5 — `implement-be` step 12 gains the live-cycle round cap and escalation.
+- [x] Unit 6 — narrow `claude-review.yml`'s automatic trigger to `opened`/`reopened`.
+- [x] Unit 7 — document the split and the trigger change in `docs/ai-development.md` (+ Japanese).
+- [x] Unit 8 — pin the concrete models in the four affected `SKILL.md` adapters.
 
 ## References
 
