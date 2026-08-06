@@ -539,8 +539,8 @@ class ServeState:
     auth: SessionManager = field(default_factory=SessionManager)
     # Messages `_build_server_state` already printed to stderr (nothing is configured that early),
     # re-emitted through `oplog` once `serve()` calls `_configure_oplog` -- so an operator's alert
-    # keyed on `event` catches "this deployment has no admin and no way to sign in and get one" too,
-    # not only what the operator happens to read from raw boot output. Empty on local serve.
+    # keyed on `event` catches whichever misconfiguration this deployment hit too, not only what the
+    # operator happens to read from raw boot output. Empty on local serve.
     startup_warnings: tuple[str, ...] = ()
     # Per-org store factory (BE-0015 multi-tenancy). None on local serve (one tenant); a server
     # backend sets a closure that builds object stores prefixed for the given org. `for_org` falls

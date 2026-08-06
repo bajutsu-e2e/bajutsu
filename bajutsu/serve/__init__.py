@@ -367,14 +367,17 @@ def _build_server_state(
     # early) so `serve()` can re-emit them once logging is live — see `ServeState.startup_warnings`.
     startup_warnings: list[str] = []
     # A half-configured deployment (one of the three BAJUTSU_OAUTH_GITHUB_* vars unset) falls back
-    # to token auth silently and then 404s every login — the one shape where nobody can sign in at
-    # all, and the one shape the three checks below cannot reach, since each reads `oauth is None`
-    # as "token-auth-only, deliberately" rather than "OAuth half-configured by mistake". This check
-    # is deliberately the opposite gate from the three below it.
+    # to token auth silently: every GitHub sign-in 404s and `POST /api/login` re-enables itself, so
+    # the deployment runs wide open on the shared token (a token session has no identity, so
+    # `forbidden_for_role` never applies) while the operator believes OAuth is gating it. The three
+    # checks below cannot reach this shape, since each reads `oauth is None` as "token-auth-only,
+    # deliberately" rather than "OAuth half-configured by mistake". This check is deliberately the
+    # opposite gate from the three below it.
     if oauth is None and any((cid, secret, redirect)):
         msg = (
             "GitHub OAuth is only partly configured — BAJUTSU_OAUTH_GITHUB_CLIENT_ID, "
-            "_CLIENT_SECRET and _REDIRECT_URI must all be set; OAuth is off, so every login will 404"
+            "_CLIENT_SECRET and _REDIRECT_URI must all be set; OAuth is off, so every GitHub "
+            "sign-in will 404 and the shared-token login is enabled instead"
         )
         print(f"bajutsu serve: {msg}", file=sys.stderr)  # noqa: T201
         startup_warnings.append(msg)
@@ -559,14 +562,14 @@ def _configure_oplog(state: ServeState) -> None:
 
 
 def _emit_startup_warnings(state: ServeState) -> None:
-    """Re-emit `_build_server_state`'s admin-Team startup warnings (already printed to stderr, since
-    nothing was configured that early) through the now-live log sink, under the registered
+    """Re-emit `_build_server_state`'s startup warnings (already printed to stderr, since nothing was
+    configured that early) through the now-live log sink, under the registered
     `"server.startup_warning"` event. A separately-callable boot seam, like its two siblings below,
     rather than an inline loop in `serve()` — so a rename or drop of that event name from
     `oplog.EVENTS` has a direct test to fail, instead of only surfacing as a boot-time `ValueError`
     on the first deployment that actually has a startup warning to re-emit. An operator's alert keyed
-    on `event=server.startup_warning` must be able to see "this deployment has no admin and no way to
-    sign in and get one" too, not only whatever they happen to read from boot output. A no-op when
+    on `event=server.startup_warning` must be able to see whichever misconfiguration this deployment
+    hit too, not only whatever they happen to read from boot output. A no-op when
     `state.startup_warnings` is empty (local serve, or a server deployment with nothing to warn about)."""
     for msg in state.startup_warnings:
         oplog.log_event(_logger, "server.startup_warning", msg, level=logging.WARNING)

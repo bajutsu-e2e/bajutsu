@@ -327,8 +327,9 @@ def test_build_state_server_warns_on_a_half_configured_oauth(
 ) -> None:
     # A single missing/mistyped GitHub OAuth var collapses `oauth` to None -- indistinguishable
     # from a deliberate token-auth-only backend to the three checks below, which all gate on
-    # `oauth is not None`. This is the one shape where nobody can sign in at all, so it needs its
-    # own check, gated the opposite way.
+    # `oauth is not None`. Not a lockout (the shared-token login re-enables on this same `None`),
+    # but a silent, unintended fallback the operator needs to know about, so it needs its own check,
+    # gated the opposite way.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")

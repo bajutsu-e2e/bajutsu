@@ -409,9 +409,10 @@ admin and editor as a Team membership before cutting over — anyone not yet cov
 older, singular `BAJUTSU_OAUTH_ADMIN_TEAM` renames it to `BAJUTSU_OAUTH_ADMIN_TEAMS` at the same
 time — the old name is no longer read. `serve` warns on stderr at startup when the retired name is
 still set, when `BAJUTSU_OAUTH_ADMIN_TEAMS` resolves to an empty list, when an entry is not a
-well-formed `"<github-org>/<team-slug>"` pair, and when GitHub OAuth is only partly configured —
-one of `BAJUTSU_OAUTH_GITHUB_CLIENT_ID` / `_CLIENT_SECRET` / `_REDIRECT_URI` left unset turns OAuth
-off entirely and 404s every login. Read the first lines of the log after upgrading.
+well-formed `"<github-org>/<team-slug>"` pair, and when GitHub OAuth is only partly configured — one
+of `BAJUTSU_OAUTH_GITHUB_CLIENT_ID` / `_CLIENT_SECRET` / `_REDIRECT_URI` left unset 404s every GitHub
+sign-in and silently re-enables the shared-token login instead. Read the first lines of the log after
+upgrading.
 
 A third thing: disabling `POST /api/login` stops **minting** new token-cookie sessions once OAuth is
 configured, but it doesn't invalidate one already issued — a browser that logged in with the shared

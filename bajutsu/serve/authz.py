@@ -87,14 +87,16 @@ def oauth_callback(
     Returns ``(payload, status, session_id | None)``."""
     if state.auth.oauth is None:
         # A half-configured deployment (one of the three BAJUTSU_OAUTH_GITHUB_* vars unset) 404s
-        # here for every login -- the same "config is broken and nobody can sign in" class of
-        # failure this item exists to make visible. But `oauth is None` is a static property of the
-        # deployment, not a per-request signal, and this endpoint takes unauthenticated traffic
-        # unconditionally -- a loop against it would write one WARNING per request forever, on a
-        # deployment that may not even use OAuth. INFO still leaves a record; the loud, once-per-boot
-        # signal for this deployment shape is `_build_server_state`'s "oauth is only partly
-        # configured" `server.startup_warning`, not a per-request WARNING an anonymous caller sets
-        # the volume of.
+        # here for every GitHub sign-in -- but that is not a lockout: `login`'s shared-token path is
+        # disabled only when `oauth is not None`, so this same `None` re-enables it, and the
+        # deployment silently reverts to the shared-token login it was meant to replace (a token
+        # session carries no identity, so `forbidden_for_role` short-circuits and has full access).
+        # `oauth is None` is a static property of the deployment, not a per-request signal, and this
+        # endpoint takes unauthenticated traffic unconditionally -- a loop against it would write one
+        # WARNING per request forever, on a deployment that may not even use OAuth. INFO still leaves
+        # a record; the loud, once-per-boot signal for this deployment shape is
+        # `_build_server_state`'s "oauth is only partly configured" `server.startup_warning`, not a
+        # per-request WARNING an anonymous caller sets the volume of.
         oplog.log_event(_logger, "oauth.denied", "oauth not configured", level=logging.INFO)
         return {"error": "oauth not configured"}, 404, None
     if not (state_param and state_cookie and secrets.compare_digest(state_param, state_cookie)):

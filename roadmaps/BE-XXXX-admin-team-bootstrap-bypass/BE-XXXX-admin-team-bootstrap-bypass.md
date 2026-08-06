@@ -63,11 +63,14 @@ comes first: `oauth` is built as `GitHubOAuthClient(...) if cid and secret and r
 a single missing or mistyped `BAJUTSU_OAUTH_GITHUB_*` variable collapses to `None` — indistinguishable,
 to the three checks below, from a deliberate token-auth-only deployment that never set any of them. An
 operator who sets `BAJUTSU_OAUTH_ADMIN_TEAMS` correctly and typos one GitHub OAuth variable gets no
-output from any of the three, and every login then 404s: not just no admin, but no sign-in for anyone,
-strictly worse than an empty admin-Team list. This check fires precisely when `oauth is None` *and* at
-least one of the three GitHub vars is set — a half-configured deployment, not a deliberately
-token-auth-only one — printing that GitHub OAuth is only partly configured and that every login will
-404 until all three are set.
+output from any of the three, and every GitHub sign-in then 404s. That is not a lockout: `POST
+/api/login` is enabled precisely when `oauth is None`, so the deployment silently reverts to the
+shared-token login it was meant to replace — and a token session carries no identity, so
+`forbidden_for_role` short-circuits and every such session has full access while the operator believes
+GitHub OAuth is gating the server. This check fires precisely when `oauth is None` *and* at least one
+of the three GitHub vars is set — a half-configured deployment, not a deliberately token-auth-only one
+— printing that GitHub OAuth is only partly configured and that GitHub sign-in will 404, with the
+shared-token login enabled instead, until all three are set.
 
 `_build_server_state`
 ([`bajutsu/serve/__init__.py`](../../bajutsu/serve/__init__.py)) prints a stderr warning whenever
@@ -151,9 +154,10 @@ read, or was declared empty on purpose, sends an operator chasing the wrong fix.
 shape is not a corner case — it is the item's own headline scenario (*Motivation*: "A
 GitHub OAuth deployment that starts up with no `orgs:` block … locks out every admin along with
 everyone else"). `oauth_callback` has five places it can end a sign-in without success, and this item
-now records all five: the other four — OAuth not configured (a half-configured deployment 404s for
-every login, the same "config is broken and nobody can sign in" class of failure this item exists to
-make visible), a CSRF state mismatch, an exchange that raised, an exchange that returned no identity —
+now records all five: the other four — OAuth not configured (a half-configured deployment 404s every
+GitHub sign-in and silently re-enables the shared-token login instead — not a lockout, but a hazard the
+operator needs to know about), a CSRF state mismatch, an exchange that raised, an exchange that
+returned no identity —
 get the same `"oauth.denied"` event, since the reasoning above applies to them just as much (a bare
 404/403/502 a user's "I can't sign in" report can't be correlated against). All four of those earlier
 records fire at `INFO`, not `WARNING` — the only one this item gives `WARNING` is the org-gate denial
@@ -395,8 +399,10 @@ mapping.
       token-auth-only deployment is warned about an admin role it never had. A fourth check, gated
       the opposite way (`oauth is None` but at least one GitHub OAuth var is set), warns on a
       half-configured deployment: the three checks above cannot reach it, since each reads
-      `oauth is None` as "deliberately token-auth-only," and it is strictly worse than an empty
-      admin-Team list — every login 404s, not just admin ones.
+      `oauth is None` as "deliberately token-auth-only." Not a lockout — `POST /api/login` re-enables
+      on this same `oauth is None`, so the deployment silently reverts to the shared-token login it
+      was meant to replace, with full access on every such session — but a hazard the operator needs
+      to know about, not one they can infer from an admin-team-focused check.
 - [x] Add the admin-Team bypass to the sign-in gate in `oauth_callback`, alongside
       `identity_matches_org`, using the Team list already fetched for role resolution. Import
       `Identity` under `TYPE_CHECKING` (an annotation-only need, since `from __future__ import

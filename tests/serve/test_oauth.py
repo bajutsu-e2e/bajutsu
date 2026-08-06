@@ -97,8 +97,8 @@ def test_oauth_callback_rejects_when_oauth_is_not_configured(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     # A half-configured deployment (one of the three BAJUTSU_OAUTH_GITHUB_* vars unset) 404s here
-    # for every login -- the same "config is broken and nobody can sign in" class of failure this
-    # item exists to make visible, so it needs a record too. `oauth is None` is a static property
+    # for every GitHub sign-in -- not a lockout, since `login`'s shared-token path re-enables itself
+    # on this same `oauth is None`, but still needs a record. `oauth is None` is a static property
     # of the deployment an anonymous caller can hit at request rate, so this records at INFO, not a
     # per-request WARNING -- the loud once-per-boot signal lives in `server.startup_warning`.
     state = _state(tmp_path, config=_config_file(tmp_path))
