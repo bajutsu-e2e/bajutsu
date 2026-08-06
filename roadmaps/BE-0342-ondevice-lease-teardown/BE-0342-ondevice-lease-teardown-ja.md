@@ -223,7 +223,7 @@ Android の実機スイートが将来追加されたときに、それが構成
 
 - 2026-08-05 — ユニット 1 から 3（[#1491](https://github.com/bajutsu-e2e/bajutsu/pull/1491)）。
   両方のオンデバイススイートが、新設した `tests/xcuitest_lease.py` の `xcuitest_lease_launch` という
-  ひとつの thunk ファクトリを共有します（バックエンド非依存な `backend_crash_recovery` プラグインの
+  ひとつの thunk ファクトリを共有します（バックエンドに依存しない `backend_crash_recovery` プラグインの
   外に置きました）。この thunk が lease ごとに新しい environment を作り、driver と一緒にその teardown を
   返すようになりました。これにより `LeaseHolder` は `driver.close()` ではなく、プラットフォーム自身の
   teardown を通して lease を破棄します。ユニット 1 が残していた選択は、`launch_driver` 自身がガードを
@@ -233,7 +233,7 @@ Android の実機スイートが将来追加されたときに、それが構成
   ループ）、`launch_driver`、lease の破棄が共有します。実行中の配線の欠陥は、debug ではなく warning で
   報告されるようになりました。`shutdown()` は掃除を最後までやり切ってから、最初に捕まえた欠陥を伝播させます。
   1 台の欠陥で、残りのデバイスの runner とコレクタのソケットを取りこぼさないためです。`release()` も
-  lease の通常の終わりで同じガードを持ちます。`end_lease` が終わらなかった warm な resident は退避させ
+  lease の通常の終わりで同じガードを持ちます。`end_lease` が終わらなかった warm な resident は破棄し
   （フルの teardown まで実施します）、半分だけ終わったアプリを次の lease が引き継がないようにします。
   状態を実装済みへ。
 
