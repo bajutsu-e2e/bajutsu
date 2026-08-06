@@ -361,6 +361,41 @@ def test_dismiss_from_tree_taps_a_showing_at_most_once() -> None:
     assert alerts == [AlertEvent(label="今はしない")]  # exactly one dismissal recorded, not several
 
 
+def test_dismiss_from_tree_declines_on_not_yet_tappable_then_dismisses() -> None:
+    # A sheet's own scrim can still cover its button for a poll or two while the presentation
+    # animation finishes, the platform's hit-test (`isHittable` / `topmost_at_point`) reading the
+    # button as unreachable until it settles. `ElementNotTappable` here is the same benign,
+    # self-resolved race `ElementNotFound` and `AmbiguousSelector` already forgive — not a reason
+    # to fail the wait.
+    from bajutsu.orchestrator.waits import _wait
+
+    target = _button("R")
+    target["identifier"] = "ready"
+    prompt_button = _button("今はしない")
+
+    class _NotYetTappableDismiss(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([prompt_button])
+            self.tap_calls = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_calls += 1
+            if self.tap_calls < 3:  # the scrim is still animating away
+                raise base.ElementNotTappable("covered by the sheet's own scrim")
+            super().tap(sel)
+            self.screen = [target]  # the animation finishes; the screen updates
+
+    driver = _NotYetTappableDismiss()
+    guard = AlertGuardConfig(vision=_never_vision, labels=["今はしない"], poll_interval=1.0)
+    alerts: list[AlertEvent] = []
+    ok, _reason, _tree = _wait(
+        driver, _for_wait("ready", 3.0), _LogicalClock(), alert_guard=guard, alerts=alerts
+    )
+    assert ok
+    assert driver.tap_calls == 3  # declined twice, then dismissed
+    assert alerts == [AlertEvent(label="今はしない")]
+
+
 def test_dismiss_from_tree_declines_on_an_in_app_label_collision() -> None:
     # A system-owned identifier-less button and an app-authored one share a configured label:
     # pick_alert_label resolves uniquely over the identifier-less subset, but the whole-tree tap

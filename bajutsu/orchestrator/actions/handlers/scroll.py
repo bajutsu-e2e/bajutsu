@@ -567,6 +567,15 @@ def scroll_until_tappable(
     (`ElementNotFound` on a bottomed-out region or an exhausted bound) rather than being read as
     "not tappable".
 
+    The stop condition conjoins `_center_in_viewport` with `is_tappable` rather than using
+    `is_tappable` alone: several backends deliberately read an *off*-viewport point as "not covered"
+    (a below-the-fold target is a `scroll` question, not an occlusion one — see `is_tappable`'s own
+    docstring per backend), so `is_tappable` alone can read `True` for a target this `down`-only
+    scroll has pushed *past* the viewport, not just for one it cleared. Requiring both keeps the
+    roadmap's invariant symmetric: "scrolled into the viewport" must never read as "tappable" (the
+    reason `scroll_to_target`'s own default couldn't be reused unmodified, above), and just as much,
+    "scrolled *out* of the viewport" must never read as "tappable" either.
+
     Raises:
         ElementNotFound: reworded from `scroll_to_target`'s own raise. That message is written for
             its default "on-screen" stop condition and talks about the region going missing or
@@ -582,7 +591,9 @@ def scroll_until_tappable(
             direction,
             within,
             max_scrolls,
-            stop=lambda _frame, _viewport: driver.is_tappable(sel),
+            stop=lambda frame, viewport: (
+                _center_in_viewport(frame, viewport) and driver.is_tappable(sel)
+            ),
         )
     except base.ElementNotFound as exc:
         raise base.ElementNotFound(

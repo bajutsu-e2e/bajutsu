@@ -68,6 +68,36 @@ class _NeverClearsOverlayDriver(FakeDriver):
         target["frame"] = (x, y + 10.0, w, h)
 
 
+class _ClearsOverlayButScrollsPastTheViewportDriver(FakeDriver):
+    """`target` clears `overlay` only after it has already scrolled past the viewport's bottom.
+
+    `FakeDriver.is_tappable` (like adb's and the live iOS route's) checks `topmost_at_point` alone,
+    with no notion of the viewport at all — so by the time `target` stops overlapping `overlay`,
+    `is_tappable` on its own would already read `True` even though `target`'s center has moved past
+    `viewport()`'s height. This pins the companion regression to the one
+    `_NeverClearsOverlayDriver` pins above: `scroll_until_tappable`'s stop condition must require
+    `_center_in_viewport` *and* `is_tappable`, not `is_tappable` alone — otherwise the recovery loop
+    can "succeed" by scrolling the target out of view instead of clear of the obstruction, and a
+    coordinate tap that follows lands outside the viewport, silently touching nothing.
+    """
+
+    def __init__(self) -> None:
+        target = el("target", frame=(10.0, 10.0, 100.0, 20.0))
+        overlay = el("overlay", frame=(0.0, 0.0, 300.0, 120.0))  # covers y in [0, 120]
+        super().__init__([target, overlay])
+        self.scroll_calls = 0
+
+    def viewport(self) -> base.Point:
+        return (400.0, 100.0)
+
+    def scroll(self, frm: base.Point, to: base.Point) -> None:
+        super().scroll(frm, to)
+        self.scroll_calls += 1
+        target = base.resolve_unique(self.screen, {"id": "target"})
+        x, y, w, h = target["frame"]
+        target["frame"] = (x, y + 70.0, w, h)
+
+
 def _run(driver: FakeDriver, action: dict[str, object]) -> tuple[bool, str, list[str]]:
     result = run_scenario(
         driver, _scenario({"name": "recovery", "steps": [action]}), clock=FakeClock()
@@ -97,8 +127,17 @@ def test_tap_fails_as_element_not_tappable_when_recovery_is_exhausted() -> None:
     ok, reason, _gestures = _run(driver, {"tap": {"id": "target"}})
     assert ok is False
     assert "target" in reason  # the selector repr, not a generic message
-    # Never reads as the misleading ElementNotFound a scroll timeout would otherwise raise.
-    assert "ElementNotFound" not in reason
+    # Never reads as the misleading ElementNotFound a scroll timeout would otherwise raise:
+    # `_tap_with_recovery`'s own message, not `scroll_to_target`'s "scroll: … not on-screen".
+    assert reason.startswith("still not tappable")
+
+
+def test_tap_recovery_never_succeeds_by_scrolling_the_target_out_of_view() -> None:
+    driver = _ClearsOverlayButScrollsPastTheViewportDriver()
+    ok, reason, _gestures = _run(driver, {"tap": {"id": "target"}})
+    assert ok is False
+    assert reason.startswith("still not tappable")
+    assert driver.scroll_calls == 3  # the bound is spent, not stopped early on a false "clear"
 
 
 def test_tap_recovery_never_exceeds_its_own_bound() -> None:

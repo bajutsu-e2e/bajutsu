@@ -333,6 +333,11 @@ class _AlertGuardGate:
             # poll's tree read (checked unique above) and the tap. Declines rather than risk tapping
             # the wrong one.
             return None
+        except base.ElementNotTappable:
+            # Not yet reachable — a scrim the sheet draws over its own button before finishing its
+            # presentation animation. The next poll's tree read tries again: the same benign
+            # self-resolved race as the two branches above, not a reason to fail the wait.
+            return None
         self._tree_dismiss_pending = label
         return AlertEvent(label=label)
 
