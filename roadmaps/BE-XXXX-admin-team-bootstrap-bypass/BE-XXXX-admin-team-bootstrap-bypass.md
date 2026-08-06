@@ -94,6 +94,19 @@ server backend `BAJUTSU_OAUTH_ADMIN_TEAMS` decides nothing, so a stale or malfor
 environment there must stay quiet rather than warn about an admin role that deployment shape never
 had.
 
+These three checks run inside `_build_server_state`, before anything is configured, so their only
+option at that point is a bare `print(..., file=sys.stderr)` — unstructured text with no registered
+`event`, no correlation fields, and no redaction, interleaved with the JSON `oplog` writes to stdout
+once logging comes up. That is exactly the shape a log pipeline drops or fails to parse, and it is the
+condition an operator most needs to alert on: "this deployment has no admin and no way to sign in and
+get one." `_build_server_state` collects each message it prints onto a new `ServeState.startup_warnings`
+field, and `serve()` re-emits them through `oplog.log_event`, under a new `"server.startup_warning"`
+entry in `oplog.EVENTS`, right after it calls `_configure_oplog` — the same placement
+`restore_persisted_provider_settings` already uses, and for the same reason ("a malformed-file warning
+reaches the live log sink"). The `print` calls stay: nothing is configured yet at the point they run,
+so they are still the only way a deployment starting up entirely broken (no store, no database) sees
+anything at all.
+
 `oauth_callback` ([`bajutsu/serve/authz.py`](../../bajutsu/serve/authz.py)) already fetches the
 login's GitHub Team memberships (`identity.teams`, via `fetch_identity`) before it runs the
 org-membership gate, because that same fetch also supplies the `editorTeam` role check further down.
@@ -107,21 +120,28 @@ entry in `oplog.EVENTS` rather than folded into `"oauth.login"` (which stays "lo
 reasoning below). A rejection is the one failure this item exists to make recoverable — a broken or
 missing `orgs:` block plus no matching admin Team — so it needs the same audit-style visibility a
 successful sign-in gets, not a bare 403 with nothing an operator can correlate a user's "I can't sign
-in" report against. The denial message names which of the two ways it can happen: the config failed
-to load, or a real org roster simply doesn't list this login — the same triage the success record
-gives an operator for a bypass admission, and for the same reason: when the config itself fails to
-load, `orgs` collapses to `{}` and *every* non-admin login is denied, so blaming an org roster that
-was never actually read sends an operator to edit `orgs:` when the real fault is the file failing to
-load. `oauth_callback` has five places it can end a sign-in without success, and this item now
-records all five: the other four — OAuth not configured (a half-configured deployment 404s for every
-login, the same "config is broken and nobody can sign in" class of failure this item exists to make
-visible), a CSRF state mismatch, an exchange that raised, an exchange that returned no identity — get
-the same `"oauth.denied"` event, since the reasoning above applies to them just as much (a bare
+in" report against. The denial message names which of two config-level shapes it is, when it is one:
+the config failed to load, or the config declares no `orgs:` block at all — the same triage the
+success record gives an operator for a bypass admission (below), and for the same reason: either
+shape collapses `orgs` to `{}` and denies *every* non-admin login, so blaming an org roster that was
+never actually read, or was declared empty on purpose, sends an operator chasing the wrong fix. The
+missing-block shape is not a corner case — it is the item's own headline scenario (*Motivation*: "A
+GitHub OAuth deployment that starts up with no `orgs:` block … locks out every admin along with
+everyone else"). `oauth_callback` has five places it can end a sign-in without success, and this item
+now records all five: the other four — OAuth not configured (a half-configured deployment 404s for
+every login, the same "config is broken and nobody can sign in" class of failure this item exists to
+make visible), a CSRF state mismatch, an exchange that raised, an exchange that returned no identity —
+get the same `"oauth.denied"` event, since the reasoning above applies to them just as much (a bare
 404/403/502 a user's "I can't sign in" report can't be correlated against). The CSRF branch is also
 worth its own record on a different ground: repeated state mismatches are the signature of a
-login-CSRF attempt, not just an expired cookie, and were invisible before this item. No `login` is
-known yet at these four earlier points, so their records carry no `actor` field — only the later,
-gate-level denial and every successful sign-in do. `oauth_callback`
+login-CSRF attempt, not just an expired cookie, and were invisible before this item — but a callback
+carrying no state at all (no cookie, no query value) is the cheapest possible unauthenticated request
+against this public endpoint, not a presented-and-differed mismatch, so it records at `INFO` rather
+than `WARNING`: a loop against it would otherwise write one `WARNING` per request into the same
+`event`-keyed stream an operator greps for the gate-level denials, burying the signal this item exists
+to add under free amplification anyone can trigger. No `login` is known yet at these four earlier
+points, so their records carry no `actor` field — only the later, gate-level denial and every
+successful sign-in do. `oauth_callback`
 now records every successful sign-in through `oplog.log_event`
 ([`bajutsu/serve/oplog.py`](../../bajutsu/serve/oplog.py)), under the already-reserved `"oauth.login"`
 event and the login itself as the `actor` correlation field — not a bare logging call, so the record
@@ -135,11 +155,11 @@ that event name would expect. A per-record `bypass` field (`True` only when the 
 not `orgs:`, is what admitted the login) and the message and level vary accordingly — `WARNING` and
 an "admin-Team bypass admitted …" message for a bypass, `INFO` and a plain "… signed in" message
 otherwise — so the field carries real information instead of being a constant `True` on every record.
-The bypass message also names which of the three ways `matched_org` can be `False`: the config failed
-to load, GitHub reported no orgs for this login, or no `orgs:` entry matched — because an operator
-paged by the `WARNING` needs to know which one, not just that the org gate didn't admit this login. A
-config-load failure sends them to the config; the other two send them to the org roster instead — a
-distinction the message would otherwise hide behind one fixed phrase.
+The bypass message also names which of the four ways `matched_org` can be `False`: the config failed
+to load, the config declares no `orgs:` block, GitHub reported no orgs for this login, or no `orgs:`
+entry matched — because an operator paged by the `WARNING` needs to know which one, not just that the
+org gate didn't admit this login. The first two send them to the config; the other two send them to
+the org roster instead — a distinction the message would otherwise hide behind one fixed phrase.
 The bypass remains the one sign-in path `orgs:` did not authorize, so it is the one path an operator
 auditing who signed in, and when, would otherwise have no record of at all; the `bypass` field is what
 lets that same event stream distinguish it from an ordinary org-gated login.
@@ -333,25 +353,37 @@ mapping.
       the `actor` field, and a `bypass` field `True` only for a bypass-only admission), so the one
       sign-in path `orgs:` did not authorize still leaves a record an operator's `event`-keyed alert
       can see. Record every one of the five ways this function ends a sign-in without success under a
-      separate `"oauth.denied"` event: OAuth not configured, a CSRF state mismatch, an exchange that
-      raised or returned no identity, and a login clearing neither the org gate nor the bypass — the last naming which of
-      two shapes left `orgs:` unmatched (a config-load failure vs. a real, unmatching roster), so a
-      broken or missing `orgs:` block with no matching admin Team is recoverable rather than a bare
-      403/502 with nothing to correlate a user's report against. When persisting the identity, keep
-      an existing login's already-recorded org rather than relocating it to `default`, but only on a
-      config-load failure — an unambiguous signal — not on an empty `/user/orgs` response, which is
-      equally the shape of a login that genuinely has no GitHub org.
+      separate `"oauth.denied"` event: OAuth not configured, a CSRF state mismatch (at `INFO` rather
+      than `WARNING` when the callback carries no state at all — an anonymous probe, not a
+      presented-and-differed mismatch, since anyone can trigger it against this unauthenticated
+      endpoint), an exchange that raised or returned no identity, and a login clearing neither the org
+      gate nor the bypass — the last naming which of four shapes left `orgs:` unmatched (a config-load
+      failure, a config with no `orgs:` block, GitHub reporting no orgs, or a real, unmatching
+      roster), so a broken or missing `orgs:` block with no matching admin Team is recoverable rather
+      than a bare 404/403/502 with nothing to correlate a user's report against. When persisting the
+      identity, keep an existing login's already-recorded org rather than relocating it to `default`,
+      but only on a config-load failure — an unambiguous signal — not on an empty `/user/orgs`
+      response, which is equally the shape of a login that genuinely has no GitHub org.
+- [x] Collect `_build_server_state`'s three admin-Team startup warnings onto a new
+      `ServeState.startup_warnings` field instead of only printing them, and have `serve()` re-emit
+      each through `oplog.log_event` under a new `"server.startup_warning"` event right after
+      `_configure_oplog` — the same placement `restore_persisted_provider_settings` already uses — so
+      an operator's `event`-keyed alert can see "no admin, no way to sign in and get one" too, not
+      only whatever they happen to read from raw boot output.
 - [x] Update the self-hosting and configuration docs (both languages) and `.env.example` to describe
       the renamed variable and the bypass. BE-0313's claim that the `default` org is unreachable
       through OAuth sign-in is superseded in this item's *Detailed design* instead: no `docs/` page
       states it, so none needed the edit. State plainly that every entry must name a GitHub
       organization the deployment actually controls, since the value is now a sign-in credential.
+      Name the three startup warnings themselves in the self-hosting guide (both languages) and
+      `.env.example`, so an upgrading operator knows to read the first lines of the log.
 - [x] Tests: sign-in accepted for an admin-Team member with no matching `orgs:` entry and with no
       `orgs:` block at all; resolved role is admin in both cases; a login matching neither the org
-      gate nor the admin-Team list is still rejected and logs `"oauth.denied"` naming the config-load
-      shape distinctly from the unmatched-roster shape; OAuth not configured, a CSRF state mismatch,
-      a raising exchange, and an exchange returning no identity each log `"oauth.denied"` too; the renamed variable
-      parses a multi-Team list;
+      gate nor the admin-Team list is still rejected and logs `"oauth.denied"` naming which of the
+      four `orgs:`-unmatched shapes it is; OAuth not configured, a CSRF state mismatch (at both
+      levels), a raising exchange, and an exchange returning no identity each log `"oauth.denied"`
+      too; `_build_state` returns the collected `startup_warnings` matching what was printed; the
+      renamed variable parses a multi-Team list;
       a bypassing admin is placed in the `default` org; an existing member's recorded org survives a
       failure to load the config itself, but a genuinely revoked member re-resolves to `default` on
       their next login rather than staying pinned, and so does a `githubOrgs`-only member relocated
@@ -374,7 +406,10 @@ mapping.
   `_fetch_teams`, whose docstrings this item updates: the same fail-closed behavior on a GitHub API
   failure now sometimes costs sign-in itself, not only a role, for a login the bypass alone admits.
 - [`bajutsu/serve/state.py`](../../bajutsu/serve/state.py) — `SessionManager`, whose
-  `oauth_admin_team` field this item renames to `oauth_admin_teams` and widens to a tuple of Teams.
+  `oauth_admin_team` field this item renames to `oauth_admin_teams` and widens to a tuple of Teams;
+  `ServeState`, which this item gives a new `startup_warnings` field.
+- [`bajutsu/serve/oplog.py`](../../bajutsu/serve/oplog.py) — `oplog.EVENTS`, into which this item adds
+  `"oauth.denied"` and `"server.startup_warning"`.
 - [`docs/self-hosting.md`](../../docs/self-hosting.md) — the self-hosting guide's GitHub OAuth
   section, which documented the gap this item closes ("An admin still has to clear the sign-in gate
   above first") until this item removed that caveat.

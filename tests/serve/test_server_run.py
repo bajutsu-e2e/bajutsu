@@ -348,6 +348,12 @@ def test_build_state_server_warns_on_the_retired_singular_admin_team_var(
     err = capsys.readouterr().err
     assert "BAJUTSU_OAUTH_ADMIN_TEAMS is empty" in err
     assert "BAJUTSU_OAUTH_ADMIN_TEAM is retired" in err
+    # Collected for serve() to re-emit through oplog once logging is live, not just printed --
+    # both fired here, so both must be on the state, not just whichever one this test happened to
+    # grep stderr for.
+    assert len(state.startup_warnings) == 2
+    assert any("BAJUTSU_OAUTH_ADMIN_TEAMS is empty" in w for w in state.startup_warnings)
+    assert any("BAJUTSU_OAUTH_ADMIN_TEAM is retired" in w for w in state.startup_warnings)
 
 
 def test_build_state_server_warns_when_admin_teams_was_never_set(
@@ -507,7 +513,10 @@ def test_build_state_server_warns_on_an_empty_side_or_inner_space(
         backend="server",
     )
     assert state.auth.oauth_admin_teams == ("acme-gh/", "/ops", "acme-gh/ ops")
-    assert "will never match" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "will never match" in err
+    for entry in ("acme-gh/", "/ops", "acme-gh/ ops"):
+        assert repr(entry) in err  # all three shapes named, not just whichever one the regex caught
 
 
 def test_build_state_server_does_not_warn_on_an_uppercase_slug(

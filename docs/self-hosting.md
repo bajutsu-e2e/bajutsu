@@ -407,7 +407,9 @@ these memberships, so the consent screen mentions organization access.
 admin and editor as a Team membership before cutting over — anyone not yet covered by `editorTeam` or
 `BAJUTSU_OAUTH_ADMIN_TEAMS` drops to viewer on their next login. A deployment that already set the
 older, singular `BAJUTSU_OAUTH_ADMIN_TEAM` renames it to `BAJUTSU_OAUTH_ADMIN_TEAMS` at the same
-time — the old name is no longer read.
+time — the old name is no longer read. `serve` warns on stderr at startup when the retired name is
+still set, when `BAJUTSU_OAUTH_ADMIN_TEAMS` resolves to an empty list, and when an entry is not a
+well-formed `"<github-org>/<team-slug>"` pair, so read the first lines of the log after upgrading.
 
 A third thing: disabling `POST /api/login` stops **minting** new token-cookie sessions once OAuth is
 configured, but it doesn't invalidate one already issued — a browser that logged in with the shared

@@ -61,8 +61,16 @@ def oauth_callback(
         return {"error": "oauth not configured"}, 404, None
     if not (state_param and state_cookie and secrets.compare_digest(state_param, state_cookie)):
         # Repeated mismatches are the signature of a login-CSRF attempt, not just an expired
-        # cookie, and no login is known yet to blame it on -- worth its own record either way.
-        oplog.log_event(_logger, "oauth.denied", "oauth state mismatch", level=logging.WARNING)
+        # cookie, and no login is known yet to blame it on -- worth its own record either way. A
+        # callback carrying no state at all is an anonymous probe rather than a mismatch, so it
+        # records at INFO: this endpoint takes unauthenticated traffic, and a WARNING per request
+        # would let anyone bury the gate-level denials below under their own noise.
+        oplog.log_event(
+            _logger,
+            "oauth.denied",
+            "oauth state mismatch",
+            level=logging.WARNING if state_param and state_cookie else logging.INFO,
+        )
         return {"error": "invalid oauth state"}, 403, None
     try:
         identity = state.auth.oauth.fetch_identity(code)
@@ -97,12 +105,14 @@ def oauth_callback(
         # too — under its own event rather than `oauth.login`, which stays "login count" (see the
         # `bypass` reasoning below) rather than absorbing a "denied" outcome it never admitted.
         # Name which shape left `orgs:` unmatched, as the success record below does: a config that
-        # never loaded sends an operator to the config itself, an unmatched roster to `orgs:`.
-        cause = (
-            "the serve config failed to load"
-            if parsed is None
-            else "no orgs: entry matched this login"
-        )
+        # never loaded or that declares no `orgs:` block sends an operator to the config itself, an
+        # unmatched roster to `orgs:`.
+        if parsed is None:
+            cause = "the serve config failed to load"
+        elif not orgs:
+            cause = "the serve config declares no orgs: block"
+        else:
+            cause = "no orgs: entry matched this login"
         oplog.log_event(
             _logger,
             "oauth.denied",
@@ -160,10 +170,13 @@ def oauth_callback(
     # this one — the one sign-in path `orgs:` did not authorize is still the interesting case, but
     # emitting the event only for that case would make `event=oauth.login` mean "bypass" instead of
     # "login", the opposite of what an operator's alert on the event name would expect. Name which of
-    # the three shapes left `orgs:` unmatched: a config that never loaded sends an operator to a
-    # different fix (the config itself) than an org roster that genuinely does not list this login.
+    # the four shapes left `orgs:` unmatched: a config that never loaded, or that declares no
+    # `orgs:` block, sends an operator to a different fix (the config itself) than an org roster
+    # that genuinely does not list this login.
     if parsed is None:
         why = "the serve config failed to load"
+    elif not orgs:
+        why = "the serve config declares no orgs: block"
     elif not identity.orgs:
         why = "GitHub returned no orgs for this login"
     else:

@@ -124,6 +124,23 @@ def test_oauth_callback_rejects_a_state_mismatch(
     assert any(getattr(r, "event", None) == "oauth.denied" for r in caplog.records)
 
 
+def test_oauth_callback_rejects_an_anonymous_probe_with_no_state_at_the_info_level(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A callback carrying no state at all (no cookie, no query value) is the cheapest possible
+    # unauthenticated request against this endpoint, not a presented-and-differed mismatch -- it
+    # must not compete at WARNING with the CSRF signal a real mismatch is meant to raise.
+    state = _state(tmp_path, oauth=FakeOAuthClient(), config=_config_file(tmp_path))
+    with caplog.at_level(logging.INFO):
+        _payload, status, sid = ops.oauth_callback(
+            state, code="ok", state_param="", state_cookie=""
+        )
+    assert status == 403
+    assert sid is None
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
+    assert record.levelno == logging.INFO
+
+
 def test_oauth_callback_allows_an_org_member_and_binds_identity(tmp_path: Path) -> None:
     # alice is an explicit `members` entry, so the org gate admits her (BE-0313).
     state = _state(tmp_path, oauth=FakeOAuthClient(login="alice"), config=_config_file(tmp_path))
@@ -268,6 +285,48 @@ def test_oauth_callback_admin_team_bypasses_the_org_gate_with_no_matching_org(
     _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
     assert status == 200
     assert sid is not None
+
+
+def test_oauth_callback_admin_team_bypass_warning_names_a_missing_orgs_block(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # This is the item's own headline scenario (Motivation): no `orgs:` block declared at all.
+    # mallory has real GitHub orgs, so an operator must not be told "GitHub returned no orgs" --
+    # that would send them chasing GitHub when the fix is declaring an `orgs:` block.
+    body = "targets:\n  demo: { bundleId: com.example.demo }\n"
+    state = _state(
+        tmp_path,
+        oauth=FakeOAuthClient(login="mallory", orgs=["acme-gh"], teams=["ops-gh/root"]),
+        config=_config_file(tmp_path, body),
+        admin_teams=["ops-gh/root"],
+    )
+    with caplog.at_level(logging.WARNING):
+        ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.login")
+    assert "declares no orgs: block" in record.getMessage()
+    assert "GitHub returned no orgs" not in record.getMessage()
+
+
+def test_oauth_callback_denial_names_a_missing_orgs_block(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The complement of the test above, for the outright-rejected login rather than the bypass.
+    body = "targets:\n  demo: { bundleId: com.example.demo }\n"
+    state = _state(
+        tmp_path,
+        oauth=FakeOAuthClient(login="mallory", orgs=["acme-gh"], teams=["some-other/team"]),
+        config=_config_file(tmp_path, body),
+        admin_teams=["ops-gh/root"],
+    )
+    with caplog.at_level(logging.WARNING):
+        _payload, status, sid = ops.oauth_callback(
+            state, code="ok", state_param="s", state_cookie="s"
+        )
+    assert status == 403
+    assert sid is None
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
+    assert "declares no orgs: block" in record.getMessage()
+    assert "no orgs: entry matched this login" not in record.getMessage()
 
 
 def test_oauth_callback_admin_team_bypass_logs_a_warning(

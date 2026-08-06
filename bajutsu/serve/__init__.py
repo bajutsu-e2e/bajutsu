@@ -21,6 +21,7 @@ Split into submodules:
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import sys
@@ -30,7 +31,7 @@ from typing import Any
 
 from bajutsu.config_source import _bajutsu_cache_root
 from bajutsu.object_store import EvidenceTarget
-from bajutsu.serve import gate
+from bajutsu.serve import gate, oplog
 from bajutsu.serve.artifacts import Artifact, ArtifactStore, LocalArtifactStore
 from bajutsu.serve.commands import (
     _int,
@@ -138,6 +139,8 @@ __all__ = [
 # The serve backends `_build_state` can assemble — the source of truth the CLI validates against.
 # `local` runs in-process; `server` wires the hosted seams (DB-backed queue/log bus + object storage).
 SERVE_BACKENDS: tuple[str, ...] = ("local", "server")
+
+_logger = logging.getLogger(__name__)
 
 
 def _session_ttl_from_env(raw: str | None, default: int) -> int:
@@ -360,35 +363,41 @@ def _build_server_state(
     oauth_admin_teams = tuple(
         t.strip() for t in os.environ.get("BAJUTSU_OAUTH_ADMIN_TEAMS", "").split(",") if t.strip()
     )
+    # Collected alongside each `print` below (nothing is configured to route through `oplog` this
+    # early) so `serve()` can re-emit them once logging is live — see `ServeState.startup_warnings`.
+    startup_warnings: list[str] = []
     # Never lose an admin quietly to the rename itself: a deployment that adds the new plural name
     # but leaves the old singular one set (the likelier migration mistake — an operator remembers
     # one Team, not that the old name must go) has that Team silently drop out of both the role and
     # the sign-in gate, with `oauth_admin_teams` non-empty so the check below never fires. This check
     # is independent of whether the list ends up empty, so it runs even when it isn't.
     if oauth is not None and os.environ.get("BAJUTSU_OAUTH_ADMIN_TEAM"):
-        print(  # noqa: T201
-            "bajutsu serve: BAJUTSU_OAUTH_ADMIN_TEAM is retired and no longer read — rename it to "
-            "BAJUTSU_OAUTH_ADMIN_TEAMS (comma-separated), folding in every Team it named",
-            file=sys.stderr,
+        msg = (
+            "BAJUTSU_OAUTH_ADMIN_TEAM is retired and no longer read — rename it to "
+            "BAJUTSU_OAUTH_ADMIN_TEAMS (comma-separated), folding in every Team it named"
         )
+        print(f"bajutsu serve: {msg}", file=sys.stderr)  # noqa: T201
+        startup_warnings.append(msg)
     # Never lose every admin quietly. An empty list with OAuth wired means no login can ever
     # resolve to admin — whether because the rename's hard cutover (BE-0313's own precedent for
     # retiring BAJUTSU_OAUTH_ADMINS) left only the retired singular name set, or because the new
     # name was simply never set at all — and since this same list is now a sign-in credential, that
     # deployment also has no admin left to sign in and repair a broken `orgs:` block.
     if oauth is not None and not oauth_admin_teams:
-        print(  # noqa: T201
-            "bajutsu serve: BAJUTSU_OAUTH_ADMIN_TEAMS is empty, so no login will have admin "
-            "access and no admin can sign in to repair a broken `orgs:` block",
-            file=sys.stderr,
+        msg = (
+            "BAJUTSU_OAUTH_ADMIN_TEAMS is empty, so no login will have admin access and no admin "
+            "can sign in to repair a broken `orgs:` block"
         )
+        print(f"bajutsu serve: {msg}", file=sys.stderr)  # noqa: T201
+        startup_warnings.append(msg)
     malformed = [t for t in oauth_admin_teams if not re.fullmatch(r"[^\s/]+/[^\s/]+", t)]
     if oauth is not None and malformed:
-        print(  # noqa: T201
-            "bajutsu serve: BAJUTSU_OAUTH_ADMIN_TEAMS entries must each be "
-            f'"<github-org>/<team-slug>"; these will never match: {malformed}',
-            file=sys.stderr,
+        msg = (
+            'BAJUTSU_OAUTH_ADMIN_TEAMS entries must each be "<github-org>/<team-slug>"; '
+            f"these will never match: {malformed}"
         )
+        print(f"bajutsu serve: {msg}", file=sys.stderr)  # noqa: T201
+        startup_warnings.append(msg)
 
     repo = repository_from_env()
 
@@ -457,6 +466,7 @@ def _build_server_state(
             oauth=oauth,
             oauth_admin_teams=oauth_admin_teams,
         ),
+        startup_warnings=tuple(startup_warnings),
     )
 
     # Build the object-storage seams per org (BE-0015 multi-tenancy): each org's artifacts/
@@ -601,6 +611,13 @@ def serve(
     # sha256 (BE-0243), as valid a cache hit moments after a restart as one extracted just before
     # it — the same reason nothing sweeps the Git source's own checkout cache at startup either.
     _configure_oplog(state)
+    # Re-emit `_build_server_state`'s admin-Team startup warnings (already printed to stderr, since
+    # nothing was configured that early) through the now-live log sink, the same placement
+    # `restore_persisted_provider_settings` below uses for exactly this reason: an operator's alert
+    # keyed on `event=server.startup_warning` must be able to see "this deployment has no admin and
+    # no way to sign in and get one" too, not only whatever they happen to read from boot output.
+    for msg in state.startup_warnings:
+        oplog.log_event(_logger, "server.startup_warning", msg, level=logging.WARNING)
     # Restore the operator's last-saved provider/model/effort before the first request, so a restart
     # reflects it rather than resetting to the launch environment (BE-0184). After `_configure_oplog`
     # so a malformed-file warning reaches the live log sink; a no-op when nothing is persisted (BE-0101).
