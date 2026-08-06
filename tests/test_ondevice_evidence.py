@@ -9,9 +9,11 @@ keep-on-failure / discard-on-pass behavior is pinned on the fast gate, without a
 from __future__ import annotations
 
 import inspect
+import logging
 from pathlib import Path
 
 import ondevice_evidence
+import pytest
 
 from bajutsu.evidence import intervals
 
@@ -151,7 +153,8 @@ def test_clears_a_stale_directory_before_recording(pytester) -> None:
 
 def test_stops_the_started_video_when_start_log_raises(pytester) -> None:
     # `start_video` can succeed (spawning a real device-side `screenrecord`) and then `start_log`
-    # raise — a transient adb hiccup starting the second process must not orphan the first.
+    # raise — a transient adb hiccup starting the second process must neither orphan the first nor
+    # fail a test the driver contract never touched: starting the capture is itself best-effort.
     pytester.makeconftest(_INNER_CONFTEST)
     pytester.makepyfile(
         "import pathlib\n"
@@ -186,15 +189,51 @@ def test_stops_the_started_video_when_start_log_raises(pytester) -> None:
         "    assert True\n"
     )
     result = pytester.runpytest_inprocess()
-    result.assert_outcomes(errors=1)  # the fixture's own setup raised (start_log)
+    result.assert_outcomes(passed=1)  # the start failure is logged, not raised
     assert (pytester.path / "stopped_video.marker").read_text() == "stopped"
-    # `capture`'s own setup failing must not itself decide "the test passed": the evidence directory
-    # (created by `dest.mkdir` before either `start_*` call) must survive, not be swept by a keep/
-    # discard decision this early failure never got the chance to prove safe.
-    slug = ondevice_evidence._slug(
-        "test_stops_the_started_video_when_start_log_raises.py::test_body"
+
+
+class _FakeNode:
+    def __init__(self, nodeid: str) -> None:
+        self.nodeid = nodeid
+        self.stash: pytest.Stash = pytest.Stash()
+
+
+class _FakeRequest:
+    """A minimal stand-in for `pytest.FixtureRequest`: `capture()` only ever reads `.node`."""
+
+    def __init__(self, nodeid: str) -> None:
+        self.node = _FakeNode(nodeid)
+
+
+def test_warns_about_a_missing_or_empty_artifact(caplog, monkeypatch, tmp_path) -> None:
+    # `_spawn` discards the child's stderr, so a `recordVideo`/`screenrecord` that refused to start
+    # or died leaves no other trace, and `if-no-files-found: ignore` on the CI upload step would let
+    # an entirely blind capture pass for a clean one. Drive `capture()` directly as a plain generator
+    # (it is one; only its callers wrap it as a fixture) rather than through `pytester`, since this
+    # only needs to inspect a log record, not a whole inner pytest session.
+    monkeypatch.chdir(tmp_path)
+
+    class _NullInterval:
+        def stop(self) -> None:
+            return None
+
+    def start_records_nothing(serial: str, path: Path) -> _NullInterval:
+        return _NullInterval()  # nothing ever writes to `path`
+
+    caplog.set_level(logging.WARNING)
+    gen = ondevice_evidence.capture(
+        "fake-serial",
+        "fake-lane",
+        _FakeRequest("fake::test"),
+        start_video=start_records_nothing,
+        start_log=start_records_nothing,
     )
-    assert (pytester.path / "runs" / "fake-lane" / slug).exists()
+    next(gen)
+    with pytest.raises(StopIteration):
+        next(gen)
+    missing_warnings = [r for r in caplog.records if "is missing or empty" in r.message]
+    assert len(missing_warnings) == 2  # video.mp4 and device.log, both never written
 
 
 def test_stops_the_log_even_when_stopping_the_video_raises(pytester) -> None:

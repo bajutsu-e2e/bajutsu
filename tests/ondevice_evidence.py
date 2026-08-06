@@ -9,8 +9,8 @@ around each test, the way `demos/showcase/android/screenrecord.py` already does 
 lane's `connectedAndroidTest` — no bajutsu runtime there either, so no scenario/YAML `capture:`
 machinery to hook into. `capture()` itself is backend-agnostic: the caller supplies `start_video`/
 `start_log`, e.g. `intervals.start_screenrecord`/`start_logcat` for adb or `intervals.start_video`/
-`start_device_log` for XCUITest — `android_screenrecord` below pre-binds the adb video bound both
-Android suites share.
+`start_device_log` for XCUITest — `android_screenrecord` below pre-binds the adb-specific video
+bounds both Android suites share.
 
 Recorded per test, not per module: `screenrecord`'s ~180s device-side ceiling (see
 `screenrecord.py`) would truncate a single video spanning the whole conformance module, and a
@@ -143,9 +143,20 @@ def capture(
     try:
         video = start_video(serial, dest / "video.mp4")
         log = start_log(serial, dest / "device.log")
+    except Exception:
+        # Diagnostic evidence is best-effort: a transient `xcrun`/`adb` hiccup *starting* a capture
+        # (a fork failure, the binary transiently missing, an `OSError` opening `device.log`) must
+        # not decide a gating driver-contract verdict — both `conformance` suites sit inside the
+        # required `E2E` aggregates. Whatever did start is still stopped in the `finally` below; the
+        # directory stays unregistered either way — see `_PENDING`'s own comment.
+        _logger.warning(
+            "%s: could not start the capture; the test runs without it", dest, exc_info=True
+        )
+    else:
         # Register only now that both starters have succeeded — see `_PENDING`'s own comment for
         # why a setup failure must leave this unregistered rather than decide anything here.
         request.node.stash.setdefault(_PENDING, []).append(dest)
+    try:
         yield
     finally:
         # Stop whichever of the two actually started, so a test that crashed — or a `start_log` that
@@ -180,3 +191,10 @@ def capture(
                 dest,
                 exc_info=True,
             )
+        for artifact in (dest / "video.mp4", dest / "device.log"):
+            # The only remaining signal that a capture actually recorded: `_spawn` discards the
+            # child's stderr, so a `recordVideo`/`screenrecord` that refused to start or died leaves
+            # no other trace, and `if-no-files-found: ignore` on the CI upload step would let the
+            # silence pass for a clean run.
+            if not artifact.exists() or artifact.stat().st_size == 0:
+                _logger.warning("%s is missing or empty: this test recorded no evidence", artifact)
