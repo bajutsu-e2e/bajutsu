@@ -1,14 +1,14 @@
-[English](BE-XXXX-bounded-ci-review-cycle.md) · **日本語**
+[English](BE-0347-bounded-ci-review-cycle.md) · **日本語**
 
-# BE-XXXX — ローカルの Fable による計画と Sonnet/Opus による修正、そしてオンデマンドのレビュー依頼で、CI のレビューサイクルに上限を設ける
+# BE-0347 — ローカルの Fable による計画と Sonnet/Opus による修正、そしてオンデマンドのレビュー依頼で、CI のレビューサイクルに上限を設ける
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-bounded-ci-review-cycle-ja.md) |
+| 提案 | [BE-0347](BE-0347-bounded-ci-review-cycle-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0347") |
 | トピック | Contributor workflow |
 <!-- /BE-METADATA -->
 

@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-bounded-ci-review-cycle-ja.md)
+**English** · [日本語](BE-0347-bounded-ci-review-cycle-ja.md)
 
-# BE-XXXX — Bound the CI review cycle with a local Fable-plan, Sonnet/Opus-fix loop requested on demand
+# BE-0347 — Bound the CI review cycle with a local Fable-plan, Sonnet/Opus-fix loop requested on demand
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-bounded-ci-review-cycle.md) |
+| Proposal | [BE-0347](BE-0347-bounded-ci-review-cycle.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0347") |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
