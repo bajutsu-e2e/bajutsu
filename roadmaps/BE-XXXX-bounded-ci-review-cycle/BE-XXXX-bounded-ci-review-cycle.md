@@ -101,9 +101,10 @@ loop also gains a round cap on the live cycle itself, with escalation to a human
    prose at the two-role procedure and say which role receives the contract text and the
    steps-8-and-10-are-pending caveat.
 5. **`implement-be` step 12 — bound the live cycle with a round cap.** The loop's "two consecutive
-   quiet polls" stop condition today means "no `synchronize`-triggered review fired." Redefine
-   quiet as "no live review was requested this iteration, or the one requested came back with
-   nothing new," matching unit 6's trigger change. Add a third counter alongside the loop's existing
+   quiet polls" stop condition today means "no new review comment from any reviewer, human or bot."
+   Keep the human half intact and redefine only the bot half: a poll is quiet when it finds no new
+   human review comment, and either no live review was requested this iteration or the one requested
+   came back with nothing new. Add a third counter alongside the loop's existing
    Review-wait (20 iterations) and CI-wait (30 iterations) backstops. Increment it whenever an
    iteration reports that its local self-review was clean, a live review was requested, and the next
    poll still found a new review comment; reset it whenever a live review comes back clean. Cap it at
