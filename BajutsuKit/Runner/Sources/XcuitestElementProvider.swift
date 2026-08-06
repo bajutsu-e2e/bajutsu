@@ -54,19 +54,25 @@ final class XcuitestElementProvider: ElementProviding {
         return (Double(frame.width), Double(frame.height))
     }
 
+    // `isHittable` reads `false` both for "covered" and for "offscreen" (Apple's own docs say so) —
+    // but only the former is `tap` / `isHittable(backingElement:)`'s question; a not-yet-scrolled-to
+    // target is a `scroll` question (docs/drivers.md), not this one. Tested on the same point a
+    // following tap would actually land on (the frame's center), matching the web guard's own
+    // point-based question (`_point_hits`, playwright.py) rather than a frame-overlap test:
+    // `intersects` would still guard a target straddling the fold whose center has already scrolled
+    // off, reaching `isHittable` for a question this check does not ask, and reading differently
+    // from web for the identical screen. `app.frame` is the stable window/screen bounds
+    // `screenSize()` above already uses for the same viewport-vs-content-extent distinction. A
+    // single shared predicate, not one copy per caller, so `tap` and `isHittable(backingElement:)` —
+    // which the recovery loop requires to agree — cannot drift apart on this question.
+    private func centerIsOnScreen(_ el: XCUIElement) -> Bool {
+        app.frame.contains(CGPoint(x: el.frame.midX, y: el.frame.midY))
+    }
+
     func tap(backingElement: AnyObject, taps: Int, duration: TimeInterval) -> TapResult {
         guard let backing = backingElement as? PositionPathBacking else { return .notFound }
         guard let el = liveElement(for: backing) else { return .stale }
-        // `isHittable` reads `false` both for "covered" and for "offscreen" (Apple's own docs say
-        // so) — but only the former is this check's question; a not-yet-scrolled-to target is a
-        // `scroll` question (docs/drivers.md), not this one. Tested on the same point a following
-        // tap would actually land on (the frame's center), matching the web guard's own point-based
-        // question (`_point_hits`, playwright.py) rather than a frame-overlap test: `intersects`
-        // would still guard a target straddling the fold whose center has already scrolled off,
-        // reaching `isHittable` for a question this check does not ask, and reading differently
-        // from web for the identical screen. `app.frame` is the stable window/screen bounds
-        // `screenSize()` above already uses for the same viewport-vs-content-extent distinction.
-        if app.frame.contains(CGPoint(x: el.frame.midX, y: el.frame.midY)) {
+        if centerIsOnScreen(el) {
             guard el.isHittable else { return .notHittable }
         }
         if duration > 0 {
@@ -82,7 +88,7 @@ final class XcuitestElementProvider: ElementProviding {
     func isHittable(backingElement: AnyObject) -> TapResult {
         guard let backing = backingElement as? PositionPathBacking else { return .notFound }
         guard let el = liveElement(for: backing) else { return .stale }
-        if !app.frame.contains(CGPoint(x: el.frame.midX, y: el.frame.midY)) { return .ok }
+        guard centerIsOnScreen(el) else { return .ok }
         return el.isHittable ? .ok : .notHittable
     }
 

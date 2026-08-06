@@ -94,7 +94,7 @@ class FakeConformanceHarness:
         # element, not a descendant or an ancestor (`topmost_at_point`'s own contract).
         field = element(identifier=FIELD_ID, value="", frame=_FIELD_FRAME)
         target = element(identifier=OBSTRUCTION_TARGET_ID, frame=(0.0, 0.0, 100.0, 20.0))
-        cover = element(identifier=OBSTRUCTION_COVER_ID, frame=(0.0, 0.0, 300.0, 10.0))
+        cover = element(identifier=OBSTRUCTION_COVER_ID, frame=(0.0, 0.0, 300.0, 15.0))
         clear = element(identifier=OBSTRUCTION_CLEAR_ID, frame=(0.0, 500.0, 100.0, 20.0))
         return FakeDriver(screen=[target, cover, clear, field], react=_text_field_react(field))
 

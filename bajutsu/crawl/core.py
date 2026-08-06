@@ -1009,7 +1009,8 @@ def crawl(
                 action.perform(d)
                 landed, dismissed = _observe(d)
             except (base.SelectorError, base.ElementNotTappable):
-                coord.cancel_action()  # the selector no longer resolves — drop it, reset, move on
+                # the selector no longer resolves, or resolves but is covered — drop it, move on
+                coord.cancel_action()
                 current_fp = None
                 continue
             except device_errors.DeviceError:
