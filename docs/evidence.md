@@ -50,6 +50,13 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 > It exists to diagnose a mismatch between a resolved coordinate and the real screen: whether the
 > device's/runner's own reply already looked wrong, or bajutsu's own parsing changed it. Never in the
 > default capture list — a scenario opts in with `capture: [rawTree, ...]`.
+>
+> One redaction rule refuses it outright: when `redact.labels` is configured, `rawTree` writes
+> nothing for the whole run and logs why. `redact.labels` masks a labeled element's value
+> *structurally* — `elements.json` is written from the parsed tree, so the writer knows which value to
+> blank — but the raw dump is free text with no such structure, so it would ship an unmasked superset
+> of what `elements.json` just masked. Every other redaction rule (`headers`, `fields`, resolved
+> secret values) applies to the dump as free text and leaves `rawTree` enabled.
 
 ### `actionLog` — what each step actually did to the screen
 
