@@ -420,7 +420,7 @@ gate turned away is recorded under `event=oauth.denied`, naming the reason `orgs
 is `WARNING` only when no admin Team is *usable* — the list is empty, or every entry is malformed, so
 no admin can sign in to fix `orgs:` either — and `INFO` for an ordinary denial (a configured admin
 Team simply didn't match this login) and for four earlier failures reachable with no GitHub account
-at all — OAuth not configured, a CSRF state mismatch, and an exchange that raised or returned no
+at all — OAuth not configured, a CSRF state mismatch, an exchange that raised, and one that returned no
 identity. Anyone with a GitHub account can otherwise reach an ordinary denial, so key an alert on
 `WARNING` rather than on the bare event name, or a curious visitor's sign-in attempt buries the shape
 worth paging on.
