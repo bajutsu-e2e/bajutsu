@@ -372,20 +372,18 @@ class AdbDriver(CoordinateTreeDriver):
 
     name = "adb"
 
-    # Settle is bounded by wall-clock, not a fixed read count (BE-0245). BE-0234 Unit 3 set a 3-poll
-    # cap with `_SETTLE_POLL_S = 0` on the premise that the ~2.4s dump read itself paced the loop, so
-    # three reads spanned ~7s — long enough for a fling to stop. The resident channel's ~0.1s read
-    # (BE-0245) breaks that premise: three fast reads span a fraction of a second and a still-moving
-    # tree passes as settled, so a tap fires on a stale coordinate. Bounding by elapsed time instead
-    # keeps the settle window spanning a real animation whatever the read costs: the loop polls until
-    # two consecutive reads share a frame projection, or `_SETTLE_DEADLINE_S` elapses. A stable screen
-    # still settles in a single read (the first `query()` matches the cached key); only a genuinely-
-    # animating screen polls, and `_SETTLE_POLL_S` is a small non-zero cadence so a fast read does not
-    # busy-spin (on the dump path the read dwarfs it).
-    # Set comfortably above the ~2.4s `uiautomator dump` read so the slow (fallback/dump) path still
-    # gets several attempts inside the window — the deadline is checked before each read, so a value
-    # near the read latency would grant only one extra poll and shrink the settle window below the
-    # old 3-read/~7s span. A fast resident read (~0.1s) simply returns early on stability.
+    # Settle is bounded by wall-clock, not a fixed read count (BE-0245): a count-based cap ties the
+    # settle window to how long each read happens to take, so a fast channel's reads could span only a
+    # fraction of a second — short enough that a still-moving tree passes as settled and a tap fires on
+    # a stale coordinate. Bounding by elapsed time instead keeps the window spanning a real animation
+    # whatever the read costs: the loop polls until two consecutive reads share a frame projection, or
+    # `_SETTLE_DEADLINE_S` elapses. A stable screen still settles in a single read (the first `query()`
+    # matches the cached key); only a genuinely-animating screen polls, and `_SETTLE_POLL_S` is a small
+    # non-zero cadence so a fast read does not busy-spin (on the dump path the read dwarfs it).
+    # Set comfortably above the slow `uiautomator dump` read so that fallback path still gets several
+    # attempts inside the window — the deadline is checked before each read, so a value near the read
+    # latency would grant only one extra poll and shrink the settle window too far. A fast resident
+    # read simply returns early on stability.
     _SETTLE_DEADLINE_S = 8.0  # ceiling on waiting for the tree to stop moving (spans a fling)
     _SETTLE_POLL_S = 0.1  # inter-read cadence on a fast channel; negligible against the dump read
     # Scroll-into-view (BE-0210): an action target that resolves to nothing in the current viewport
@@ -403,28 +401,19 @@ class AdbDriver(CoordinateTreeDriver):
     # number for one phenomenon, shared by two consumers: `read_lag()` hands it to the `scroll` loop
     # (BE-0326), and `_await_catchup` spends it on the actuator path. Android publishes the
     # accessibility update *after* the gesture has applied, so a read taken in between describes the
-    # pre-gesture screen — self-consistently, for over a second.
-    #
-    # Sized from two independent measurements on the CI emulator. From the `scroll` end-of-content
-    # failure: of 14 steps whose first read looked unchanged, 12 showed the change on a re-read well
-    # inside this budget, and six full repeats of the scroll conformance tests then passed. The
-    # remaining 2 changed only once the gesture was re-issued, so they are not explained by read lag
-    # alone — a longer budget would not have helped them, and their leading candidate, a read that
-    # cannot show motion behind an element taller than the viewport, is what BE-0329's motion
-    # decisions address.
-    #
-    # From `smoke (adb)`'s intermittent `gestures` failure: a `swipe` moved the Log form
-    # 73px, and four consecutive reads spanning 1.2s past the gesture still reported the pre-swipe
-    # frames, so `long_press` aimed 10px below the target's real bottom edge and pressed the gap.
+    # pre-gesture screen — self-consistently, and for longer than a single retry would ride out.
     #
     # Generous on purpose, because it is only ever spent on a read that still matches the pre-gesture
-    # screen: a read that already caught up costs nothing.
+    # screen: a read that already caught up costs nothing. A gesture whose lag can outlast even this
+    # budget (e.g. motion behind an element taller than the viewport) is a distinct case handled by
+    # BE-0329's motion decisions, not by widening this ceiling further.
     _READ_LAG_S = 4.0
     # How long a changed projection must hold before it counts as caught up (see `_advance_catchup`).
-    # Above the widest tear the failing run showed: its post-press read had `log.submit` republished
-    # but every frame below it still pre-pan, and the next read 0.37s later was whole — so a dwell
-    # under that could return the torn frames. Comfortably inside `_READ_LAG_S`, and paid only on a
-    # read that was still describing the pre-pan screen.
+    # Android republishes node bounds one node at a time rather than atomically, so a read taken
+    # mid-catch-up can be torn — some frames already new, the rest still pre-gesture — and a dwell
+    # requirement rides out that tear rather than closing the barrier on a half-updated tree.
+    # Comfortably inside `_READ_LAG_S`, and paid only on a read that was still describing the pre-pan
+    # screen.
     _CATCHUP_DWELL_S = 0.5
 
     def __init__(
@@ -1057,9 +1046,9 @@ class AdbDriver(CoordinateTreeDriver):
         # adb has no native double-tap. `input tap ; input tap` chains both taps in one round-trip,
         # but each `input` starts a JVM, so the gap still overruns the platform's double-tap window
         # (BE-0210). On a rooted device with a discoverable touchscreen, a raw `sendevent` sequence
-        # narrows that gap to five process spawns (BE-0208) — enough on a fast emulator, and observed
-        # missing the window on a loaded CI one, with the touches landing and the app reading them as
-        # two single taps. Both stay as the degraded path for a device with no resident channel.
+        # narrows that gap to five process spawns (BE-0208), though a loaded host can still miss the
+        # window and land the touches as two single taps. Both stay as the degraded path for a device
+        # with no resident channel.
         point, screen = self._center_with_screen(sel)
         dev = self._touch_device() if self._rooted() else None
         if dev is not None:
@@ -1117,13 +1106,13 @@ class AdbDriver(CoordinateTreeDriver):
     def read_lag(self) -> float:
         # How long a read may describe the screen as it was before the last gesture (BE-0326). Android
         # publishes the accessibility update *after* the scroll has moved the content, so a `query()`
-        # taken in between returns the pre-scroll tree: on the CI emulator every step that looked
-        # unchanged had in fact moved the screen's pixels. `waitForIdle` alone does not close that window
-        # (BE-0245) — the queue looks idle before the update lands — so the `scroll` loop is told to keep
-        # re-reading rather than call the first unchanged read the end of content. This budget is the
-        # ceiling for reads that carry no device mark (the `uiautomator dump` fallback); the resident
-        # channel now closes the window exactly with the mark (BE-0332 Unit 4). Only ever spent on a
-        # region that looks stopped, never on a step that landed.
+        # taken in between can return the pre-scroll tree even though the content already moved.
+        # `waitForIdle` alone does not close that window (BE-0245) — the queue looks idle before the
+        # update lands — so the `scroll` loop is told to keep re-reading rather than call the first
+        # unchanged read the end of content. This budget is the ceiling for reads that carry no device
+        # mark (the `uiautomator dump` fallback); the resident channel now closes the window exactly
+        # with the mark (BE-0332 Unit 4). Only ever spent on a region that looks stopped, never on a
+        # step that landed.
         return self._READ_LAG_S
 
     def read_postdates_actuation(self) -> bool:

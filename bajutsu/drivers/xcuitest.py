@@ -100,8 +100,8 @@ _SOCKET_TIMEOUT_SECONDS = 15
 # a two-finger gesture on a loaded CI host can take longer than a read — and BE-0207 must NOT re-issue
 # a write after delivery (double-actuation risk), so a write cannot lean on the retry the way a read
 # does. It gets ONE longer but still bounded window instead: enough headroom for a slow actuation on a
-# contended host (the observed `POST /gesture failed: timed out` flake), while a genuinely wedged
-# runner still fails loudly rather than hanging. Kept ≤ the job's per-step budget by a wide margin.
+# contended host, while a genuinely wedged runner still fails loudly rather than hanging. Kept ≤ the
+# job's per-step budget by a wide margin.
 _ACTUATION_TIMEOUT_SECONDS = 30
 
 
@@ -133,9 +133,9 @@ _STALE_MAX_ATTEMPTS = 3
 _STALE_BACKOFF_BASE_SECONDS = 0.5
 
 # How long a mid-run crash-recovery (BE-0287) waits for a crashed runner to come back before failing
-# loudly. A different concern from the transient retry above: the observed flake left the runner gone
-# for ~30s, far beyond the retry's ~1.5s budget, so this is generous enough to ride that out yet still
-# bounded — a runner that is truly gone fails the run rather than hanging it.
+# loudly. A different concern from the transient retry above, which bounds a sub-second blip: a crash
+# can leave the runner gone far longer than that as it relaunches, so this budget is generous enough to
+# ride that out yet still bounded — a runner that is truly gone fails the run rather than hanging it.
 _RECOVERY_TIMEOUT_SECONDS = 60
 
 # How often `handle_system_alert` re-queries SpringBoard while waiting for the permission prompt to
@@ -145,9 +145,6 @@ _SYSTEM_ALERT_POLL_SECONDS = 0.2
 
 # How many *consecutive* mid-run crashes the recovery layer rides out before failing loudly. Recovery
 # re-issues an idempotent call once the runner is back; a runner that crashes *again* on that re-issue
-# — observed crashing on back-to-back `/screenshot` calls on CI only, once BE-0310 added the
-# `viewDidAppear` hook's per-appearance report (see `_MAX_WARM_REUSES` in
-# `platform_lifecycle/environments/xcuitest.py` for the likely root cause and its direct fix) —
 # used to propagate uncaught and fail the run on the second crash. Retrying the recovery a bounded
 # number of times rides out a runner that flaps across a few calls, while a runner that never
 # stabilizes still fails the run rather than looping forever. Each attempt re-uses `recovery_timeout`
@@ -387,9 +384,8 @@ def _with_crash_recovery(
                 )
                 # Loop to re-issue. A re-issue that crashes again is caught here and recovered anew, up
                 # to max_recoveries, so a runner that flaps across consecutive calls is ridden out
-                # instead of failing the run on the second crash (the observed back-to-back /screenshot
-                # crash). `_is_retry_eligible` still gates every attempt, so a delivered write is never
-                # re-sent even once.
+                # instead of failing the run on the second crash. `_is_retry_eligible` still gates every
+                # attempt, so a delivered write is never re-sent even once.
 
     return transport
 
