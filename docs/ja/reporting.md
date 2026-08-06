@@ -64,7 +64,7 @@ runs/<runId>/
   run ごとに 1 つ固定なので、トップレベルは通常 1 つの名前です。各シナリオも自分の `backend` を持ちます
   （[drivers](drivers.md#バックエンド選択と-actuator)）。
 - `steps[].duration_s`: 各ステップの計時です（`actionLog` 相当の情報）。
-- `steps[].started_at`: そのステップのレポート上の相対タイムスタンプです。シナリオのステップループが始まった生の瞬間ではなく、シナリオ動画の確認済みまたは最善推定の実際の開始を基準にしています（[evidence](evidence.md#区間証跡video--devicelog--apptrace)）。[report.html](#reporthtml)は、この値を録画のシーク先として、また**steps**テーブルの`at`列として使います。
+- `steps[].started_at`: そのステップのレポート上の相対タイムスタンプです。シナリオのステップループが始まった生の瞬間ではなく、確認できた、あるいは分かっている範囲でもっとも確からしいシナリオ動画の実際の開始時刻を基準にしています（[evidence](evidence.md#区間証跡video--devicelog--apptrace)）。[report.html](#reporthtml)は、この値を録画のシーク先として、また**steps**テーブルの`at`列として使います。
 - `steps[].artifacts`: そのステップで取れた証跡の来歴です（[evidence](evidence.md#アーティファクトの来歴provider)）。
 - `network.json`の`startedAt`（シナリオごとに1ファイルで、上のmanifestには出てきません）: 観測した各通信の、レポート上の相対タイムスタンプです。基準は`steps[].started_at`と同じです。両者がどのように1本のタイムラインへ織り込まれるかは[report.html](#reporthtml)を参照してください。
 - `failure`: 失敗時の要約です（例 `"step 3 (tap): 一致なし: {...}"`）。成功なら null です。
