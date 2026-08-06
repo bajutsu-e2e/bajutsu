@@ -211,19 +211,27 @@ several hundred lines of BE-0329 motion and end-of-content bookkeeping. Its loop
 (`scroll.py:474`–`537`) takes its stop predicate as a parameter instead of hard-coding
 `_center_in_viewport`; `scroll_to_target` keeps its existing signature and behavior, supplying
 `_center_in_viewport` as the default, and a new function, `scroll_until_tappable(driver, sel,
-direction, within, max_scrolls)`, supplies `lambda target: driver.is_tappable(sel)` instead. Every
-other line — end-of-content fail-fast, overshoot detection, the read-lag re-read budget, the
-viewport contract — stays shared and unchanged.
+direction, within, max_scrolls)`, supplies `lambda frame, viewport: _center_in_viewport(frame,
+viewport) and driver.is_tappable(sel)` instead. Every other line — end-of-content fail-fast,
+overshoot detection, the read-lag re-read budget, the viewport contract — stays shared and
+unchanged.
 
-This stop predicate must never be relaxed to a weaker signal. `scroll_until_tappable` succeeds only
-when `is_tappable` itself returns `true`; a target that scrolled into the viewport, or one for which
-`ElementNotFound` stopped firing, is not evidence of tappability and must never be treated as such.
-Exhausting the scroll bound while `is_tappable` still reads `false` is always a failure, surfaced as
-`ElementNotTappable`, regardless of which internal signal (viewport membership, end-of-content, a
-bare re-query) looked satisfied along the way. Both the unit that adds `scroll_until_tappable` and
-the unit that tests it state this invariant explicitly, and the test suite carries a case that
-scrolls a target into the viewport while a second element still covers it, to confirm this does not
-regress into a false success.
+The stop predicate conjoins both checks rather than relaxing to either alone, because the
+invariant this proposal exists to hold cuts both ways. `scroll_until_tappable` must never treat
+"scrolled into the viewport" as evidence of tappability — an occluded target's center is already
+inside the viewport, which is exactly why `_center_in_viewport` alone is a no-op stop check here —
+but it must just as much never treat "scrolled *out* of the viewport" as evidence of tappability
+either: several backends deliberately read an off-viewport point as "not covered" (a below-the-fold
+target is a `scroll` question, not an occlusion one), so `is_tappable` alone would let the loop
+"succeed" by scrolling the occluded target past the viewport instead of clear of the obstruction,
+and a coordinate tap that follows would land outside the viewport, touching nothing. Exhausting the
+scroll bound while either check still fails is always a failure, surfaced as `ElementNotTappable`,
+regardless of which internal signal (viewport membership, end-of-content, a bare re-query) looked
+satisfied along the way. Both the unit that adds `scroll_until_tappable` and the unit that tests it
+state this two-sided invariant explicitly, and the test suite carries a case that scrolls a target
+into the viewport while a second element still covers it, plus a case that clears the cover only
+after scrolling the target past the viewport, to confirm neither direction regresses into a false
+success.
 
 `scroll.py` already imports `_SWIPE_FRACTION` and `_scroll_gesture` from `gestures.py`. Placing the
 recovery wiring in `gestures.py` (where `_do_tap` / `_do_double_tap` / `_do_long_press` already live)
@@ -237,8 +245,11 @@ The wiring itself is a small wrapper in `gestures.py`, `_tap_with_recovery(actua
 that calls the specific `driver.tap(sel)` / `driver.double_tap(sel)` / `driver.long_press(sel,
 duration)`, and on `base.ElementNotTappable` calls `scroll_until_tappable(driver, sel, "down", None,
 _TAP_RECOVERY_MAX_SCROLLS)` once, then retries the actuation exactly once. Any failure along that
-path collapses to a single `base.ElementNotTappable`, chained (`raise ... from exc`) so the
-underlying cause survives in the traceback. `_do_tap`, `_do_double_tap`, `_do_long_press`, and the
+path collapses to a single `base.ElementNotTappable`: the first attempt's own exception — which
+names what covered the target, via `base.raise_if_covered` — is interpolated into the final
+message rather than dropped, and the scroll failure that triggered the recovery is chained
+(`raise ... from exc`) alongside it, so neither fact is lost. `_do_tap`, `_do_double_tap`,
+`_do_long_press`, and the
 focus-tap call sites inside `_do_type`, `_do_clear`, `_do_delete`, and `_do_select` all switch their
 bare `driver.tap(sel)` call to this one shared wrapper, rather than seven copies of the same
 try/except. `_TAP_RECOVERY_MAX_SCROLLS` stays small, well under `scroll`'s own default of 15, and

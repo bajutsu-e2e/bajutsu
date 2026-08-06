@@ -88,6 +88,13 @@ _GUARD_DEBOUNCE_POLLS = 3  # consecutive collapsed polls before acting
 _GUARD_MAX_ATTEMPTS = 2
 # Min seconds between attempts, so a stuck collapse can't hot-loop the guard.
 _GUARD_COOLDOWN = 1.0
+# Consecutive `ElementNotTappable` declines `_dismiss_from_tree` tolerates for one showing of a
+# label before it stops attempting the tap: unlike `ElementNotFound` (the button left the tree, so
+# the next poll can't re-match it) and `AmbiguousSelector` (guarded by the uniqueness pre-check
+# above it), a genuinely stuck obstruction — a scrim that never lifts, an `elevation` false
+# positive — has neither property, so without its own bound this decline would re-issue a real
+# actuation attempt every `_POLL` for the rest of the wait.
+_TREE_DISMISS_MAX_DECLINES = 5
 
 
 @dataclass
@@ -179,6 +186,8 @@ class _AlertGuardGate:
     _last_attempt: float | None = None
     _gave_up: bool = False
     _tree_dismiss_pending: str | None = None
+    _tree_not_tappable_label: str | None = None
+    _tree_not_tappable_declines: int = 0
 
     def __post_init__(self) -> None:
         self._native = base.Capability.HANDLE_SYSTEM_ALERT in self.driver.capabilities()
@@ -296,6 +305,14 @@ class _AlertGuardGate:
         actuating the app repeatedly. `_tree_dismiss_pending` remembers the label just tapped and
         skips re-tapping it while it is still the poll's match, until the tree stops matching it
         (dismissed, or a different label appears), only then re-arming.
+
+        A not-yet-reachable button (`ElementNotTappable`) gets the same per-showing bound as the
+        two decline branches below it, `_TREE_DISMISS_MAX_DECLINES` deep: unlike a vanished button
+        or a transient ambiguity, an obstruction can be permanent (a scrim that never lifts, an
+        `elevation` false positive in `topmost_at_point`), and the button staying in the tree means
+        nothing here re-arms `_tree_dismiss_pending` to stop the retries on its own — so a stuck
+        obstruction still degrades to the wait's own timeout instead of hammering the device for
+        its entire remainder.
         """
         candidates = self.guard.labels
         buttons = [
@@ -307,7 +324,14 @@ class _AlertGuardGate:
         if label is None or label == self._tree_dismiss_pending:
             if label is None:
                 self._tree_dismiss_pending = None
+                self._tree_not_tappable_label = None
+                self._tree_not_tappable_declines = 0
             return None
+        if label != self._tree_not_tappable_label:
+            self._tree_not_tappable_label = label
+            self._tree_not_tappable_declines = 0
+        elif self._tree_not_tappable_declines >= _TREE_DISMISS_MAX_DECLINES:
+            return None  # gave up on this showing; the wait's own timeout takes over
         # Scope the tap to `traits: [BUTTON]`, the same constraint `buttons` above already applied
         # when resolving `label` — matching a bare `{"label": label}` selector against `matches()`
         # (base.py) ignores `traits` entirely, so a non-button element sharing the exact text (a
@@ -335,10 +359,14 @@ class _AlertGuardGate:
             return None
         except base.ElementNotTappable:
             # Not yet reachable — a scrim the sheet draws over its own button before finishing its
-            # presentation animation. The next poll's tree read tries again: the same benign
-            # self-resolved race as the two branches above, not a reason to fail the wait.
+            # presentation animation. The next poll's tree read tries again, up to the bound above:
+            # the same benign self-resolved race as the two branches above, not a reason to fail the
+            # wait, but not assumed to always self-resolve either.
+            self._tree_not_tappable_declines += 1
             return None
         self._tree_dismiss_pending = label
+        self._tree_not_tappable_label = None
+        self._tree_not_tappable_declines = 0
         return AlertEvent(label=label)
 
 

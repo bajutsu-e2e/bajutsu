@@ -9,6 +9,7 @@ is called — the FakeDriver counterpart of scrolling a row out from under a sti
 
 from __future__ import annotations
 
+import pytest
 from _orch import FakeClock, _scenario
 from conftest import el
 
@@ -179,3 +180,34 @@ def test_long_press_also_recovers_through_the_same_wrapper() -> None:
     ok, reason, gestures = _run(driver, {"longPress": {"sel": {"id": "target"}, "duration": 0.1}})
     assert (ok, reason) == (True, "")
     assert gestures == ["scroll", "scroll", "longPress"]
+
+
+@pytest.mark.parametrize(
+    ("step", "expected_gestures"),
+    [
+        (
+            {"type": {"into": {"id": "target"}, "text": "x"}},
+            ["scroll", "scroll", "tap", "typeText"],
+        ),
+        ({"clear": {"into": {"id": "target"}}}, ["scroll", "scroll", "tap"]),
+        (
+            {"delete": {"into": {"id": "target"}, "count": 3}},
+            ["scroll", "scroll", "tap", "deleteText"],
+        ),
+        ({"select": {"into": {"id": "target"}}}, ["scroll", "scroll", "tap", "selectAll"]),
+    ],
+    ids=["type", "clear", "delete", "select"],
+)
+def test_focus_tap_also_recovers_through_the_same_wrapper(
+    step: dict[str, object], expected_gestures: list[str]
+) -> None:
+    # `_do_type` / `_do_clear` / `_do_delete` / `_do_select` all route their focus-tap through
+    # `_tap_with_recovery` too — the same wrapper `_do_tap` / `_do_double_tap` / `_do_long_press`
+    # use above, not four more copies of the bare `driver.tap(sel)` call. `docs/selectors.md`
+    # promises the check and the recovery for these focus-taps explicitly, so a regression here
+    # (reverting any of the four to a bare `driver.tap(sel)`) would silently drop advertised
+    # behavior without `make check` ever noticing.
+    driver = _ClearsOverlayAfterTwoScrollsDriver()
+    ok, reason, gestures = _run(driver, step)
+    assert (ok, reason) == (True, "")
+    assert gestures == expected_gestures
