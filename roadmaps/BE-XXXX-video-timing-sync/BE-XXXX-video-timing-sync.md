@@ -41,8 +41,11 @@ mismatch. The fix must not reassign `scenario_start` after the fact, because the
 produces the scenario's reported `duration_s`, so the video correction is layered on top of it as a
 separate offset rather than folded into it — except on iOS, where confirming the video's start
 *before* `scenario_start` is stamped (Detailed design 1–2) means the confirmation wait itself
-delays that stamp, and `duration_s` on iOS then includes that wait. That is the intended trade-off
-this item accepts for iOS, stated outright rather than left for a reader to infer.
+delays that stamp. `duration_s` on iOS therefore *excludes* that wait: `run_scenario` stamps
+`scenario_start` only after `sink.start_scenario_intervals` returns, so up to
+`_VIDEO_START_TIMEOUT` (5s) of real time is charged to the run's wall-clock without ever appearing
+in the scenario's reported duration. That is the intended trade-off this item accepts for iOS,
+stated outright rather than left for a reader to infer.
 
 ## Detailed design
 

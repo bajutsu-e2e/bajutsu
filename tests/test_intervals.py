@@ -473,6 +473,19 @@ def test_await_screenrecord_started_warns_on_persistent_probe_error(monkeypatch,
     assert any("did not appear" in r.message for r in caplog.records)
 
 
+def test_screenrecord_pids_warns_when_the_baseline_probe_fails(caplog) -> None:
+    # The adb twin of `_file_size(disclose=True)`: an empty baseline reads as "nothing was running
+    # device-side", so a failed pre-spawn probe silently disables the leaked-process guard the
+    # baseline exists for — it must disclose rather than mistime the scenario silently.
+    def run(argv: list[str]) -> str:
+        raise OSError("adb gone")
+
+    with caplog.at_level("WARNING"):
+        pids = intervals._screenrecord_pids("SER", run)
+    assert pids == set()
+    assert any("could not probe device-side screenrecord" in r.message for r in caplog.records)
+
+
 def test_start_screenrecord_pull_failure_surfaces(tmp_path: Path) -> None:
     # The pull is deliberately NOT suppressed: swallowing it would leave a video artifact path with
     # no file behind it. A failed pull must propagate out of stop() (the FileSink then drops it).
