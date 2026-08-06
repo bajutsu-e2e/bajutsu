@@ -56,7 +56,14 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 > *structurally* — `elements.json` is written from the parsed tree, so the writer knows which value to
 > blank — but the raw dump is free text with no such structure, so it would ship an unmasked superset
 > of what `elements.json` just masked. Every other redaction rule (`headers`, `fields`, resolved
-> secret values) applies to the dump as free text and leaves `rawTree` enabled.
+> secret values) applies to the dump as free text and leaves `rawTree` enabled — with one caveat for
+> `redact.headers`/`redact.fields`: their key-pattern masking is written for multi-line logs, where a
+> matched value ends at the next newline, but a UI Automator dump is emitted as a single line. A
+> configured key that happens to match text inside the dump itself (an on-screen label or
+> `content-desc` reading like `Token: ...`) therefore masks everything after that match to the end of
+> the file, not just the matched value — the dump still ships, just truncated. A resolved secret value
+> (bound via `${secrets.*}`) is unaffected, since it is masked by matching a known literal rather than
+> a key pattern.
 
 ### `actionLog` — what each step actually did to the screen
 

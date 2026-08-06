@@ -89,6 +89,26 @@ on the resident channel specifically, which is the channel the diagnosed flake r
 `_settled_key` resets to `None` whenever the poll runs out its wall-clock budget without two reads
 ever agreeing, so a later call cannot treat wherever it happened to land as proven either.
 
+`_settled_key` is invalidated, not just written: every actuation clears it, since a key proven
+stable before the actuation describes a screen the actuation may have just changed. `_act()` (every
+gesture) and `_device_act()`'s success/uncertain branches and `type_text()` (the two gaps a
+self-review round found, closed the same way as the two write sites above) each used to reset it
+inline; they now share one method, `AdbDriver.invalidate_settled_cache()`, which also resets
+`_tree_current` and `_read_ordered` — the two other per-actuation caches this same reset already
+covered — so a future actuator gains all three invalidations by construction rather than by copying
+the pattern correctly. A screen can also change outside the driver's own actuators entirely: an app
+relaunch and a crawl reset both replace it through `adb.Env` directly, never through `AdbDriver`, so
+nothing upstream would otherwise know to distrust a key proved on the screen before the replacement
+— and if the new screen's projection happens to coincide with the stale key (unremarkable: many
+scenarios start and end on the same home screen), `_settle`'s fast path would trust a single read of
+a screen it never itself proved at rest, the same class of bug this item exists to close, reached
+through a door outside the driver's own actuators. `base.SettledCacheInvalidator` (a
+`runtime_checkable` `Protocol` exposing `invalidate_settled_cache()`, the same narrow opt-in shape as
+`RawSourceProvider` below) is `AdbDriver`'s way of publishing that method to a caller that has no
+other reason to import the concrete driver; `AndroidEnvironment.relauncher()` and `crawl_reset()`
+(`bajutsu/platform_lifecycle/environments/android.py`) each call it right after `adb.Env` replaces
+the screen.
+
 ### 2. A `rawTree` capture kind
 
 `_describe()` (`bajutsu/drivers/adb.py`) previously parsed the raw dump text and discarded it as a
@@ -105,6 +125,30 @@ in with `capture: [rawTree, ...]`, since it adds a same-sized text artifact per 
 does not fix the cache bug above; it exists so that if a mismatch between a resolved coordinate and
 the real screen recurs, the raw device dump behind the mismatch is available directly, rather than
 requiring the multi-run screenshot-and-`elements.json` forensics this investigation needed.
+
+Four smaller correctness properties keep the raw dump paired with the right `elements.json`, or
+withheld rather than mismatched:
+
+- `capture()` sorts `rawTree` after any kind that can trigger its own read (`elements`, whose writer
+  queries the driver itself when no tree was already read) — `sorted` is stable, so no other kind's
+  relative order moves — so `hierarchy.raw<suffix>` always describes the same read `elements.json`
+  came from, regardless of the order a scenario lists the tokens in.
+- A step's pre-step baseline (`screenshot.before` + `elements`, written before the step acts) also
+  writes `rawTree` when the step's own inline `capture` names it, rather than deferring it to the
+  post-step capture: `write_raw_tree` persists the driver's *last* read, and that read is the
+  pre-action one the baseline's `elements` token already wrote, not this step's own action —
+  deferring would pair the dump with a post-action read instead, exactly the mismatch the sort above
+  rules out for capture *order* but not for capture *timing*.
+- Inside a `web` block, that same post-step capture always targets the native driver (a
+  `WebContextDriver` cannot screenshot), but `elements.json` there is written from the *web* driver's
+  tree. A `rawTree` request is dropped rather than serviced there — the native driver's dump would
+  describe an unrelated backend and read entirely, worse than no artifact.
+- `write_raw_tree` refuses the artifact outright — logging why, writing neither file — when
+  `redactor.has_label_rules` (`redact.labels` configured): `redact_elements` masks a labeled
+  element's `value` structurally, using the parsed tree it has; the raw dump is free text with no
+  such structure, so `redact_text`'s key/literal-value masking alone would ship an unmasked superset
+  of what `elements.json` just masked. Every other redaction rule applies to the dump as free text
+  and leaves it enabled.
 
 ### 3. Two smaller, related observations
 
@@ -133,10 +177,19 @@ pre-fix code; `test_settle_fast_path_trusts_a_key_it_proved_itself`,
 `test_catchup_mark_postdate_close_does_not_set_the_settled_key` pin the rest of the new state
 machine. The full existing `_settle` / catch-up suite (including
 `test_reads_the_runner_already_takes_close_the_barrier_for_free`) passes unchanged, confirming the
-existing free-settle optimization survives. `tests/test_evidence.py` and
+existing free-settle optimization survives. `tests/test_adb_lifecycle.py`'s
+`test_relauncher_invalidates_the_driver_settled_cache` and
+`test_crawl_reset_invalidates_the_driver_settled_cache` pin the two lifecycle call sites that reach
+`invalidate_settled_cache()` from outside the driver's own actuators. `tests/test_evidence.py` and
 `tests/test_adb_resident.py` cover `write_raw_tree`'s redaction and no-op behavior, the
-pre-transform body's presence/absence, and the multi-window characterization. `make check` is the
-judge; nothing here touches a verdict path (prime directive 1).
+pre-transform body's presence/absence, the multi-window characterization, the label-rule refusal,
+and the same-read pairing `capture()`'s stable sort guarantees regardless of token order.
+`tests/test_capture_firing.py`'s `test_inline_raw_tree_joins_the_pre_step_baseline` and
+`test_inline_raw_tree_is_dropped_inside_a_web_block` pin the run loop's two remaining pairing
+properties: an inline `rawTree` request is serviced pre-action, next to the same read `elements`
+took, rather than a mismatched post-action one, and dropped rather than mismatched when `active_driver`
+is a `web` block's driver rather than the native one `rawTree` reads from. `make check` is the judge;
+nothing here touches a verdict path (prime directive 1).
 
 ## Alternatives considered
 
@@ -163,15 +216,24 @@ with the catch-up barrier's own, already-validated dwell proof.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [x] Unit 1 — `_settled_key`, the rewritten `_settle()` fast path, and the two `_advance_catchup`
-      write sites (dwell proves rest, mark-postdate does not).
+- [x] Unit 1 — `_settled_key`, the rewritten `_settle()` fast path, the two `_advance_catchup` write
+      sites (dwell proves rest, mark-postdate does not), and its invalidation seam:
+      `AdbDriver.invalidate_settled_cache()` (consolidating `_act()`, `_device_act()`'s
+      success/uncertain branches, and `type_text()`), `base.SettledCacheInvalidator`, and the two
+      lifecycle call sites outside the driver's own actuators (`AndroidEnvironment.relauncher()`,
+      `crawl_reset()`).
 - [x] Unit 2 — the `rawTree` capture kind: `base.RawSource` / `RawSourceProvider`, `AdbDriver`
       retaining the raw dump and the resident channel's pre-transform body, `write_raw_tree`, the
-      `capture()` branch, and the scenario capture-token grammar.
+      `capture()` branch, and the scenario capture-token grammar. Plus four correctness properties
+      keeping the artifact paired with the right `elements.json` or withheld rather than mismatched:
+      `capture()`'s same-read stable sort, the run loop capturing an inline request pre-action rather
+      than post-action, dropping it inside a `web` block, and `Redactor.has_label_rules` refusing the
+      artifact outright when `redact.labels` is configured.
 - [x] Unit 3 — `_bounds()` warns on a malformed (not merely absent) `bounds` attribute; a
       characterization test pins `narrow_to_active_window`'s current multi-window behavior.
-- [x] Unit 4 — deterministic coverage for all three units, and `docs/evidence.md` /
-      `docs/ja/evidence.md` updated for the new capture kind.
+- [x] Unit 4 — deterministic coverage for all four units, and `docs/evidence.md` /
+      `docs/ja/evidence.md` updated for the new capture kind, including the redaction-truncation
+      caveat `redact.headers`/`redact.fields` carries for a single-line dump.
 
 ## References
 

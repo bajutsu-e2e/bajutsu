@@ -93,6 +93,33 @@ channel 上で再び開けてしまいます。今回診断したフレークが
 は`None`に戻ります。後続の呼び出しが、たまたま着地した先を証明済みとして扱わないようにするため
 です。
 
+`_settled_key`は書き込まれるだけでなく、無効化もされます。あらゆるアクチュエーションがこれを
+クリアします。証明済みのキーが指す画面は、そのアクチュエーションより後も同じとは限らない
+からです。
+
+`_act()`（すべてのジェスチャー）は、これまで個別にこれをリセットしていました。
+`_device_act()`の成功時・不確定時の各分岐と`type_text()`も同様です。この 2 つは、自己レビューの
+中で見つかった隙間でした。上の 2 つの書き込み箇所と同じやり方で塞ぎました。今はこの 3 箇所とも、
+1 つのメソッド`AdbDriver.invalidate_settled_cache()`を共有します。このメソッドは
+`_tree_current`と`_read_ordered`も同時にリセットします。この 2 つは、同じリセットがすでに
+カバーしていたキャッシュです。これにより、後から追加するアクチュエータは、同じ処理を自分で
+複製しなくても、構造として 3 つの無効化を手に入れます。
+
+画面はドライバ自身のアクチュエータの外でも変わります。アプリの再起動と crawl のリセットは、
+どちらも`adb.Env`を通じて画面を直接置き換えます。`AdbDriver`は経由しません。そのため、
+置き換えの前に証明されたキーを、上流の誰も疑いません。新しい画面の projection が、たまたま
+古いキーと一致することもあります。多くのシナリオは同じホーム画面で始まり終わるため、これは
+珍しくありません。すると`_settle`の高速経路は、自分自身では静止を証明していない画面の
+読み取りを、1 回だけで信用してしまいます。これは本項目が閉じようとしている不具合と同じ種類です。
+ドライバ自身のアクチュエータの外にある入り口から、同じ不具合が再び入り込む形です。
+
+`base.SettledCacheInvalidator`は、`invalidate_settled_cache()`を公開する`runtime_checkable`な
+`Protocol`です。下記の`RawSourceProvider`と同じ、狭い opt-in の形をとります。`AdbDriver`は、
+このプロトコルを通じてこのメソッドを公開します。具象ドライバをインポートする他の理由を持たない
+呼び出し元へ届けるためです。`AndroidEnvironment.relauncher()`と`crawl_reset()`が、それぞれこれを
+呼び出します。呼び出す場所は、`adb.Env`が画面を置き換えた直後です。実装は
+`bajutsu/platform_lifecycle/environments/android.py`にあります。
+
 ### 2. `rawTree` capture 種別
 
 `_describe()`（`bajutsu/drivers/adb.py`）は、それまで生のダンプ文字列をパースした直後にローカル
@@ -111,6 +138,35 @@ XCUITest の未デコードの`GET /elements`ボディは`.json`）。`capture()
 実際の画面がずれるという事態が再発したとき、今回の調査に必要だった複数ランにまたがる
 スクリーンショットと`elements.json`の突き合わせなしに、その裏の生のデバイスダンプへ直接
 アクセスできるようにするためのものです。
+
+生ダンプを正しい`elements.json`と対応づけたまま保つか、対応づけられないときは書き出さない
+ようにするための、4 つの小さな正しさの性質があります。
+
+- `capture()`は、自分自身の読み取りを引き起こしうる種別（`elements`。書き出し側は、まだ読み
+  取っていなければドライバ自身に問い合わせます）より後に`rawTree`が来るよう並べ替えます。
+  `sorted`は安定ソートなので、他の種別同士の相対順序は変わりません。これにより、シナリオが
+  トークンをどの順序で並べても、`hierarchy.raw<suffix>`は常に`elements.json`と同じ読み取りを
+  指します。
+- ステップの pre-step baseline（ステップが動く前に書き出す`screenshot.before` + `elements`）が
+  あります。ステップ自身のインラインの`capture`が`rawTree`を指定していれば、それも一緒に
+  書き出します。post-step の取得には委ねません。`write_raw_tree`はドライバの**直近**の読み取り
+  を保存するものです。その読み取りは baseline の`elements`トークンがすでに書き出した
+  pre-action の読み取りです。このステップ自身のアクションではありません。委ねてしまうと、
+  ダンプが post-action の
+  読み取りと対応づいてしまいます。上記の並べ替えが順序について塞いだのと同じ食い違いが、今度は
+  タイミングについて再び開いてしまいます。
+- `web`ブロックの内部では、この同じ post-step の取得は常にネイティブドライバを対象にします
+  （`WebContextDriver`はスクリーンショットを撮れません）。しかしそこでの`elements.json`は
+  **web**ドライバのツリーから書き出されています。`rawTree`の要求は、そこでは応じるのでは
+  なく取り下げます。ネイティブドライバのダンプは、まったく別のバックエンドの、まったく別の
+  読み取りを指してしまいます。アーティファクトがないよりも悪い結果になるからです。
+- `redactor.has_label_rules`（`redact.labels`の設定時）には、`write_raw_tree`が理由をログに
+  出しつつ、アーティファクトそのものを拒否します。両方のファイルを書き出しません。
+  `redact_elements`は、パース済みのツリーを持っているため、ラベルが設定された要素の`value`
+  を構造的にマスクできます。しかし生ダンプは、そのような構造を持たないフリーテキストなので、
+  `redact_text`のキー・リテラル値によるマスクだけでは、`elements.json`がすでにマスクした
+  内容の無防備な上位集合を書き出してしまいます。それ以外の redact の規則は、生ダンプにも
+  フリーテキストとしてそのまま適用され、取得を妨げません。
 
 ### 3. あわせて見つかった 2 つの小さな課題
 
@@ -141,10 +197,23 @@ XCUITest の未デコードの`GET /elements`ボディは`.json`）。`capture()
 `test_catchup_mark_postdate_close_does_not_set_the_settled_key`が、新しい状態遷移の残りを固定
 します。既存の`_settle` / catch-up 一式のテスト（
 `test_reads_the_runner_already_takes_close_the_barrier_for_free`を含む）は変更なしでとおり、
-既存の free-settle 最適化が保たれていることを裏づけます。`tests/test_evidence.py`と
-`tests/test_adb_resident.py`は、`write_raw_tree`の redaction と no-op 挙動、narrow 前ボディの
-有無、複数ウィンドウの特性化をカバーします。判定者は`make check`であり、ここでの変更は
-どれも判定経路には触れません（第一原則）。
+既存の free-settle 最適化が保たれていることを裏づけます。`tests/test_adb_lifecycle.py`の
+`test_relauncher_invalidates_the_driver_settled_cache`と
+`test_crawl_reset_invalidates_the_driver_settled_cache`は、ドライバ自身のアクチュエータの外から
+`invalidate_settled_cache()`に到達する 2 つの lifecycle 呼び出し箇所を固定します。
+`tests/test_evidence.py`と`tests/test_adb_resident.py`は、`write_raw_tree`の redaction と
+no-op 挙動、narrow 前ボディの有無、複数ウィンドウの特性化をカバーします。ラベル規則による拒否と、
+`capture()`の安定ソートが保証する同一読み取りの対応づけも、あわせてカバーします。この対応づけは、
+トークンの順序を問いません。
+
+`tests/test_capture_firing.py`の`test_inline_raw_tree_joins_the_pre_step_baseline`と
+`test_inline_raw_tree_is_dropped_inside_a_web_block`は、run loop に残る 2 つの対応づけの性質を
+固定します。1 つ目は、インラインの`rawTree`要求が pre-action の読み取りに対して取得されること
+です。この読み取りは`elements`が読み取ったのと同じものです。post-action の食い違った読み取りに
+対しては取得しません。2 つ目は、`active_driver`が`web`ブロックのドライバであるときの挙動です。
+このとき`rawTree`が本来読み取るべきネイティブドライバとは異なるため、食い違ったまま取得する
+のではなく取り下げます。判定者は`make check`であり、ここでの変更はどれも判定経路には触れません
+（第一原則）。
 
 ## 検討した代替案
 
@@ -172,15 +241,21 @@ XCUITest の未デコードの`GET /elements`ボディは`.json`）。`capture()
 > ともに記録します。
 
 - [x] Unit 1 — `_settled_key`、書き換えた`_settle()`の高速経路、`_advance_catchup`の 2 つの
-      書き込み箇所（dwell は静止を証明し、マーク postdate は証明しない）。
+      書き込み箇所（dwell は静止を証明し、マーク postdate は証明しない）。その無効化の経路
+      （`AdbDriver.invalidate_settled_cache()`が`_act()`・`_device_act()`の分岐・`type_text()`
+      を集約）。`base.SettledCacheInvalidator`と、`AndroidEnvironment.relauncher()` /
+      `crawl_reset()`の 2 つの lifecycle 呼び出し箇所。
 - [x] Unit 2 — `rawTree` capture 種別。`base.RawSource` / `RawSourceProvider`、`AdbDriver`が
       生のダンプと resident channel の narrow 前ボディを保持すること、`write_raw_tree`、
-      `capture()`の分岐、シナリオの capture トークン文法。
+      `capture()`の分岐、シナリオの capture トークン文法。加えて、正しい対応づけを保つ 4 つの
+      性質。`capture()`の同一読み取りソート、pre-action での取得、`web`ブロックでの取り下げ、
+      `Redactor.has_label_rules`によるラベル規則時の拒否。
 - [x] Unit 3 — `_bounds()`が不正な（単に存在しないだけではない）`bounds`属性に警告を出す
       こと。特性化テストが`narrow_to_active_window`の現状の複数ウィンドウ挙動を固定する
       こと。
-- [x] Unit 4 — 3 つの Unit すべての決定的なテストカバレッジ、および新しい capture 種別に
-      合わせた`docs/evidence.md` / `docs/ja/evidence.md`の更新。
+- [x] Unit 4 — 4 つの Unit すべての決定的なテストカバレッジ、および新しい capture 種別に
+      合わせた`docs/evidence.md` / `docs/ja/evidence.md`の更新。`redact.headers` /
+      `redact.fields`が単一行のダンプに対して持つ、末尾が欠ける注意点も含みます。
 
 ## 参考
 
