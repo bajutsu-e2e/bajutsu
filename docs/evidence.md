@@ -79,8 +79,8 @@ One actuation belongs to no step: the reactive system-alert guard also fires bef
 `expect` re-check, so its record lands on the scenario's `expect_actuations` beside `expect_alerts`.
 A backend that does not implement the record simply contributes none, and the run is unchanged.
 The driver's log is bounded, so a pathological step (a `maxScrolls` in the hundreds) can lose its
-earliest records — `dropped_actuations` counts them and the report says the record is truncated rather
-than showing it as complete.
+earliest records, and a damaged record can be lost the same way when a report loads a manifest back —
+`dropped_actuations` counts either kind rather than letting the list read as complete.
 
 **Default modifiers**: the always-on instant baseline (below) is `before` — captured before the step
 acts, not after. A `capturePolicy` rule or inline `capture:` still defaults an unmodified instant

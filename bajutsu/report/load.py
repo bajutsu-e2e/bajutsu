@@ -74,6 +74,26 @@ def _scalar(v: Any) -> float | None:
     return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
 
+def _typed(v: Any, t: type) -> Any:
+    """`v` unchanged if it is exactly type `t`, else None — the same degrade `_scalar` gives a number."""
+    return v if isinstance(v, t) else None
+
+
+def _dropped_count(v: Any) -> int:
+    """A manifest's own drop counter as a plain non-negative int, or 0 when it is not one.
+
+    This field exists to disclose a gap; a wrong-typed or negative value in it must not render as a
+    nonsensical count (or crash the report the way a bad geometry value would) — that would make the
+    disclosure mechanism the very failure it exists to catch.
+    """
+    return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else 0
+
+
+def _dropped_total(kw: dict[str, Any], key: str, extra: int) -> int:
+    """The manifest's own disclosed drop count under `key`, plus a fresh drop the loader just counted."""
+    return _dropped_count(kw.get(key)) + extra
+
+
 def _actuation(d: dict[str, Any]) -> Actuation | None:
     """One actuation record, or None when the entry is malformed.
 
@@ -99,11 +119,9 @@ def _actuation(d: dict[str, Any]) -> Actuation | None:
         frame = _numbers(d["frame"], 4)
         if frame is None:
             return None
-    target = known.get("target")
-    accepted = known.get("accepted")
     # Explicit keyword arguments rather than a `**` unpack of `dict[str, Any]`: this is the one
     # function here that parses untrusted geometry, and unpacking would switch mypy off at exactly
-    # that boundary — the runtime checks above (plus the `isinstance`/`_scalar` guards below) are what
+    # that boundary — the runtime checks above (plus the `_typed`/`_scalar` guards below) are what
     # keep the whole record typed, not just the fields with dedicated checks.
     return Actuation(
         gesture=str(known["gesture"]),
@@ -111,8 +129,8 @@ def _actuation(d: dict[str, Any]) -> Actuation | None:
         unit=str(known["unit"]),
         points=cast("tuple[Point, ...]", tuple(p for p in points if p is not None)),
         frame=cast("Frame | None", frame),
-        target=target if isinstance(target, str) else None,
-        accepted=accepted if isinstance(accepted, bool) else None,
+        target=_typed(known.get("target"), str),
+        accepted=_typed(known.get("accepted"), bool),
         duration_s=_scalar(known.get("duration_s")),
         scale=_scalar(known.get("scale")),
         radians=_scalar(known.get("radians")),
@@ -146,22 +164,29 @@ def _step(d: dict[str, Any]) -> StepOutcome:
             # `dropped` is the loader's own casualty, on top of whatever the run itself already
             # disclosed (a driver-side truncation) in the same field — a run that also loads with a
             # damaged record must not read as more complete than either gap alone.
-            "dropped_actuations": kw.get("dropped_actuations", 0) + dropped,
+            "dropped_actuations": _dropped_total(kw, "dropped_actuations", dropped),
         }
     )
 
 
 def _result(d: dict[str, Any]) -> RunResult:
+    expect_actuations, expect_dropped = _actuations(d.get("expect_actuations"))
+    kw = _kw(RunResult, d)
     return RunResult(
         **{
-            **_kw(RunResult, d),
+            **kw,
             "steps": [_step(s) for s in d.get("steps") or []],
             "expect_results": [_assertion(a) for a in d.get("expect_results") or []],
             "artifacts": [Artifact(**_kw(Artifact, a)) for a in d.get("artifacts") or []],
             "expect_alerts": [
                 AlertEvent(**_kw(AlertEvent, a)) for a in d.get("expect_alerts") or []
             ],
-            "expect_actuations": _actuations(d.get("expect_actuations"))[0],
+            "expect_actuations": expect_actuations,
+            # The one other place an `Actuation` list lives on the manifest — a malformed entry here
+            # must be disclosed the same way a step's own dropped actuation is, not silently swallowed.
+            "dropped_expect_actuations": _dropped_total(
+                kw, "dropped_expect_actuations", expect_dropped
+            ),
             "skipped_captures": [
                 SkippedCapture(**_kw(SkippedCapture, c)) for c in d.get("skipped_captures") or []
             ],

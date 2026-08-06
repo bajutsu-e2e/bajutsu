@@ -434,6 +434,7 @@ def _expects_data(r: RunResult, definition: dict[str, Any] | None) -> dict[str, 
             "rows": rows,
             "alerts": [{"label": a.label} for a in r.expect_alerts],
             "actuations": _actuation_rows(r.expect_actuations),
+            "dropped_expect_actuations": r.dropped_expect_actuations,
         }
     if not planned:
         return None

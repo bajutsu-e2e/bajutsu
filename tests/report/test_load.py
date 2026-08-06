@@ -171,6 +171,50 @@ def test_a_loader_side_drop_is_disclosed_through_dropped_actuations() -> None:
     assert restored.steps[0].dropped_actuations == 3
 
 
+def test_a_wrong_typed_dropped_actuations_count_does_not_crash_the_render() -> None:
+    # `dropped_actuations` is itself a disclosure mechanism: a wrong-typed value stored under it (a
+    # hand-edited or corrupted manifest) must degrade to "nothing extra disclosed", not raise out of
+    # `results_from_manifest` and take the whole report down with it.
+    data = json.loads(json.dumps(manifest_dict("r1", [_result()])))
+    step = data["scenarios"][0]["steps"][0]  # type: ignore[index]
+    step["dropped_actuations"] = "oops"
+
+    [restored] = results_from_manifest(data)
+
+    assert restored.steps[0].dropped_actuations == 0
+
+
+def test_a_negative_dropped_actuations_count_degrades_to_zero() -> None:
+    # A count is disclosure, not just a type: a negative value is exactly as nonsensical to render
+    # ("+-1 actuation(s) missing") as a wrong-typed one, so it must degrade the same way.
+    data = json.loads(json.dumps(manifest_dict("r1", [_result()])))
+    step = data["scenarios"][0]["steps"][0]  # type: ignore[index]
+    step["dropped_actuations"] = -1
+
+    [restored] = results_from_manifest(data)
+
+    assert restored.steps[0].dropped_actuations == 0
+
+
+def test_a_malformed_expect_actuation_is_disclosed_through_its_own_dropped_count() -> None:
+    # `expect_actuations` is the one other place an `Actuation` list lives on the manifest (the
+    # alert-guard's expect-phase dismissing tap, which belongs to no step), so a damaged record there
+    # must be disclosed the same way a step's own dropped actuation already is, not silently vanish.
+    data = manifest_dict("r1", [_result()])
+    data["scenarios"][0]["expect_actuations"] = [  # type: ignore[index]
+        {"gesture": "tap", "via": "coordinate", "unit": "point", "points": [["a", "b"]]},
+        {"gesture": "tap", "via": "coordinate", "unit": "point", "points": [[9, 9]]},
+    ]
+    data["scenarios"][0]["dropped_expect_actuations"] = 2  # type: ignore[index]
+
+    [restored] = results_from_manifest(data)
+
+    # The loader's one fresh drop adds to the two the run already disclosed, rather than replacing or
+    # ignoring them.
+    assert len(restored.expect_actuations) == 1
+    assert restored.dropped_expect_actuations == 3
+
+
 def test_a_wrong_typed_scalar_field_degrades_to_none_not_a_string() -> None:
     # `target` / `accepted` / `duration_s` / `scale` / `radians` carry no runtime check of their own
     # today, so a corrupt value among them reconstructs into an `Actuation` whose field holds a string

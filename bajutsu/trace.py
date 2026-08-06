@@ -216,7 +216,7 @@ def _actuation_summary(step: dict[str, Any]) -> str:
             f"{a.get('gesture', '')}{f' {where}' if where else ''} [{a.get('via', '')}]{refused}"
         )
     if dropped := step.get("dropped_actuations"):
-        out.append(f"(+{dropped} earlier dropped)")
+        out.append(f"(+{dropped} missing)")
     return "   · ".join(out)
 
 
