@@ -38,6 +38,7 @@ A module opts in with one autouse fixture:
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 import shutil
 from collections.abc import Callable, Iterator
@@ -46,6 +47,8 @@ from pathlib import Path
 import pytest
 
 from bajutsu.evidence import intervals
+
+_logger = logging.getLogger(__name__)
 
 # This attempt's outcome so far, reset at "setup" and OR-accumulated afterward — reset, not just
 # latched, because `backend_crash_recovery` (BE-0334) re-runs a whole item via `_initrequest()` on an
@@ -143,13 +146,29 @@ def capture(
         # raised right after a real `start_video` spawned a device-side `screenrecord` — never leaves
         # a recording running past its own test. Nested so a raising `video.stop()` (e.g. a failed
         # `adb pull`, which `start_screenrecord` deliberately lets propagate) still leaves `log.stop()`
-        # called rather than orphaning the logcat process; if either stop raises, that failure is this
-        # fixture's own teardown failing, which the hook above folds into the attempt's outcome — so a
-        # stop failure on an otherwise-passing test keeps its evidence rather than discarding it, the
-        # same as any other teardown failure.
+        # called rather than orphaning the logcat process.
+        #
+        # Whether that propagates past this fixture depends on what the attempt has shown so far: if
+        # setup or the test's own call already failed, this is already going to redden the lane, so
+        # let it surface loudly, same as any other teardown failure. If the test passed, though, a
+        # transient `adb pull` / finalize hiccup is the capture tooling glitching, not the driver
+        # contract under test — and the hook above is about to discard this very directory regardless,
+        # since the attempt is clean — so failing the case over it would only turn a passing test red
+        # for evidence nobody keeps. Warn instead.
+        already_failing = request.node.stash.get(_FAILED, False)
         try:
-            if video is not None:
-                video.stop()
-        finally:
-            if log is not None:
-                log.stop()
+            try:
+                if video is not None:
+                    video.stop()
+            finally:
+                if log is not None:
+                    log.stop()
+        except Exception:
+            if already_failing:
+                raise
+            _logger.warning(
+                "%s's capture failed to stop cleanly on an otherwise-passing test; discarding it "
+                "anyway",
+                dest,
+                exc_info=True,
+            )

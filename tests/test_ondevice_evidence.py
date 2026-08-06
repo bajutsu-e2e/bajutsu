@@ -1,8 +1,8 @@
-"""The Android on-device suites' per-test evidence capture (`ondevice_evidence.py`).
+"""The on-device suites' per-test evidence capture (`ondevice_evidence.py`).
 
 Exercises the real plugin through `pytester`: a real inner pytest session runs the real
 `ondevice_evidence` plugin and the real `capture` fixture generator, with fake `start_video`/
-`start_log` callables standing in for `intervals.start_screenrecord`/`start_logcat` — so the
+`start_log` callables standing in for the adb and XCUITest interval starters alike — so the
 keep-on-failure / discard-on-pass behavior is pinned on the fast gate, without a device.
 """
 
@@ -149,9 +149,10 @@ def test_stops_the_started_video_when_start_log_raises(pytester) -> None:
 def test_stops_the_log_even_when_stopping_the_video_raises(pytester) -> None:
     # `start_screenrecord`'s own transform deliberately lets a failed `adb pull` propagate out of
     # `stop()` (its own docstring: swallowing it would turn a real problem into a silent one) — that
-    # must not skip stopping the logcat process alongside it. A raising `stop()` is itself this
-    # fixture's own teardown failing, which the hook folds into the attempt's outcome — so, like any
-    # other teardown failure, the evidence is kept rather than discarded.
+    # must not skip stopping the logcat process alongside it. The test body itself passed, and the
+    # hook is about to discard this very directory regardless, so the stop failure is logged rather
+    # than raised — a transient pull hiccup on a passing case must not redden the lane over evidence
+    # nobody keeps.
     pytester.makeconftest(_INNER_CONFTEST)
     pytester.makepyfile(
         "import pathlib\n"
@@ -191,10 +192,52 @@ def test_stops_the_log_even_when_stopping_the_video_raises(pytester) -> None:
         "    assert True\n"
     )
     result = pytester.runpytest_inprocess()
-    result.assert_outcomes(passed=1, errors=1)  # the test body passes; teardown then raises
+    result.assert_outcomes(passed=1)  # the stop failure is logged, not raised
     assert (pytester.path / "stopped_log.marker").read_text() == "stopped"
     slug = ondevice_evidence._slug(
         "test_stops_the_log_even_when_stopping_the_video_raises.py::test_body"
+    )
+    assert not (pytester.path / "runs" / "fake-lane" / slug).exists()
+
+
+def test_a_stop_failure_still_raises_when_the_test_already_failed(pytester) -> None:
+    # The other half of the same fix: a stop failure is only ever *swallowed* because the attempt is
+    # already clean and the evidence was going to be discarded regardless. When the test itself
+    # already failed, the lane is already red, and swallowing here would just hide a second, distinct
+    # failure behind the first.
+    pytester.makeconftest(_INNER_CONFTEST)
+    pytester.makepyfile(
+        "import ondevice_evidence\n"
+        "import pytest\n"
+        "\n"
+        "\n"
+        "class _FakeVideoRaisesOnStop:\n"
+        "    def stop(self):\n"
+        "        raise RuntimeError('adb pull failed')\n"
+        "\n"
+        "\n"
+        "def _fake_start_video_raises_on_stop(serial, path, **kwargs):\n"
+        "    return _FakeVideoRaisesOnStop()\n"
+        "\n"
+        "\n"
+        "@pytest.fixture(autouse=True)\n"
+        "def _evidence(request):\n"
+        "    yield from ondevice_evidence.capture(\n"
+        "        'fake-serial', 'fake-lane', request,\n"
+        "        start_video=_fake_start_video_raises_on_stop,\n"
+        "        start_log=_fake_start_video_raises_on_stop,\n"
+        "    )\n"
+        "\n"
+        "\n"
+        "def test_broken():\n"
+        "    assert False\n"
+    )
+    result = pytester.runpytest_inprocess()
+    # The call phase fails on its own assertion, then the stop failure surfaces as a second,
+    # separate teardown error — both visible, neither swallowed.
+    result.assert_outcomes(failed=1, errors=1)
+    slug = ondevice_evidence._slug(
+        "test_a_stop_failure_still_raises_when_the_test_already_failed.py::test_broken"
     )
     assert (pytester.path / "runs" / "fake-lane" / slug).exists()
 
