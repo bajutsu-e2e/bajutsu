@@ -415,10 +415,12 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
   scenario already gets by declaring `erase: true` — a Simulator restart (`simctl shutdown → erase →
   boot`) on the XCUITest backend, an app-level clean state on adb — instead of a bare in-place
   respawn onto the very device that just crashed it. Skipped when the scenario declares `reinstall:
-  overwrite` or pins `erase: false` to keep its app's data across the lease, and on the two XCUITest
-  routes that reject any `erase` precondition outright (a real device, `xcuitest.deviceType: device`;
-  the live WebDriver endpoint) — forcing it there would abort the run instead of retrying the one
-  scenario. A second,
+  overwrite` to keep its app's data across the lease (a plain `erase: false` is not enough to skip
+  it: the CLI resolves every scenario's `erase` to a concrete bool, most commonly `false`, before the
+  pipeline ever sees it, so a guard on that value would disable the forced retry on the very path it
+  was written for), and on the two XCUITest routes that reject any `erase` precondition outright (a
+  real device, `xcuitest.deviceType: device`; the live WebDriver endpoint) — forcing it there would
+  abort the run instead of retrying the one scenario. A second,
   run-scoped wall-clock budget (`run_crash_recovery_budget`, also unset by
   default) bounds crash-recovery time across the whole run rather than resetting per scenario, so a
   device that keeps degrading fails the run loudly instead of each scenario silently re-spending its

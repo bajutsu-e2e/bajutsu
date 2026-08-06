@@ -293,18 +293,24 @@ class _ScenarioRunner:
                 # declaring `erase: true`, instead of a bare in-place respawn: a fresh runner process
                 # answering /health normally says nothing about a device whose rendering has wedged, so a
                 # respawn onto the very device that just crashed it reproduces the same crash. Skipped
-                # whenever the scenario's own precondition says otherwise — `reinstall: overwrite` (it
-                # needs its app's data container preserved across a lease) or an explicit `erase: false`
-                # (it pins erase off for itself) — since forcing `erase` would silently override exactly
-                # the precondition the scenario was written against. Also skipped wherever forcing `erase`
-                # would itself raise (a real device or the live WebDriver route,
-                # `erase_precondition_supported` in `bajutsu/backends.py`): that would abort the whole run
-                # past this loop's own `except BackendCrashError`, not merely fail this one scenario.
+                # when the scenario declares `reinstall: overwrite` — its explicit declaration that it
+                # needs its app's data container preserved across a lease — since forcing `erase` would
+                # silently override exactly the precondition the scenario was written against. NOT
+                # skipped on `preconditions.erase is False`: by the time a scenario reaches here, the CLI
+                # (`_filter_scenarios` in `bajutsu/cli/commands/run.py`) has already resolved every
+                # scenario's `erase` to a concrete bool — most commonly `False`, the built-in default a
+                # scenario never asked for — so a guard on that value would silently disable this whole
+                # unit on the one path it was written for (see *Alternatives considered*: only
+                # `reinstall: overwrite` actually protects app data; a bare `erase: false` does not, since
+                # `reinstall`'s own default `"clean"` wipes the app's data regardless of `erase`). Also
+                # skipped wherever forcing `erase` would itself raise (a real device or the live WebDriver
+                # route, `erase_precondition_supported` in `bajutsu/backends.py`): that would abort the
+                # whole run past this loop's own `except BackendCrashError`, not merely fail this one
+                # scenario.
                 retry_scenario = s
                 if (
                     attempt > 1
                     and s.preconditions.reinstall != "overwrite"
-                    and s.preconditions.erase is not False
                     and erase_precondition_supported(actuator, self.eff, self.udid_spec)
                 ):
                     retry_scenario = s.model_copy(

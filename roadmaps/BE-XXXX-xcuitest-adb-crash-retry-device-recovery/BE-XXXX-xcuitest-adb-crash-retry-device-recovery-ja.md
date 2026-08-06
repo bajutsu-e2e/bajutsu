@@ -107,7 +107,6 @@ runner channel GET /screenshot: the runner recovered from a mid-run crash; re-is
    if (
        attempt > 1
        and s.preconditions.reinstall != "overwrite"
-       and s.preconditions.erase is not False
        and erase_precondition_supported(actuator, self.eff, self.udid_spec)
    ):
        retry_scenario = s.model_copy(
@@ -134,11 +133,19 @@ runner channel GET /screenshot: the runner recovered from a mid-run crash; re-is
    `pre.reinstall` が `clean` のいずれかのときに自分の消去を実行しています）。`erase` を
    無条件に強制すれば、そのシナリオが保持しようとしていた状態そのものを黙って消去してしまいます。
    そのためこのシナリオの再試行は、今日と同じその場での respawn のままにします。
-   `erase is not False` という条件は、同じ種類の判断を1段上で扱うものです。
-   `Preconditions.erase` は `bool | None` であり（`None` はターゲット自身の `erase` の既定値を
-   継承し、明示的な `true`/`false` はこのシナリオに固定します）、`erase: false` を明示的に固定した
-   シナリオも、`reinstall: overwrite` と同じ種類の意図的な上書きを行っているため、強制された
-   再試行がそれを覆してはいけません。
+
+   `preconditions.erase` にはあえて同じガードを設けません。初期版では
+   `s.preconditions.erase is not False` を確認していました。`erase: false` の明示的な指定も
+   `reinstall: overwrite` と同じ種類の意図的な上書きだ、という理屈です。しかし実際の CLI 経路を
+   追跡すると、このガードは本番環境でこの機能全体を黙って無効化していました。
+   `bajutsu/cli/commands/run.py` の `_filter_scenarios` は、`run_all` が受け取る前に、どの
+   シナリオの `erase` も `None` からターゲット設定自身の既定値（ターゲットが明示的に opt-in しない
+   限り `False`）へすでに解決してしまいます。これはこの関数自身の docstring が意図した設計です
+   （「downstream never sees the unset `None`」）。そのため `erase` が `False` の状態で
+   `run_one` に届くシナリオは、（誰も何も指定しなかった）ありふれたケースであり、このガードが
+   想定していた稀な明示的オプトアウトのケースではありません。しかもパイプラインに届く時点では
+   両者はもはや区別できません。なぜガードを削除する方を選び、CLI 解決前のシグナルをそのまま
+   通す方を選ばなかったかは「検討した代替案」を参照してください。
 
    `erase_precondition_supported` を設けたのは、2つの XCUITest 経路が `erase` の precondition を
    そもそも受け付けず、黙って no-op にする代わりに例外を送出するからです。実機
@@ -246,6 +253,24 @@ runner channel GET /screenshot: the runner recovered from a mid-run crash; re-is
   代わりに、無関係なアサーション失敗（あるいは偽の成功）を生みます。現時点でリポジトリ内に
   `reinstall: overwrite` を設定しているシナリオはありませんが、このガードの追加コストは比較
   1回分だけであり、いつかそのようなシナリオが現れた日のために、再試行を正直なものに保ちます。
+- **明示的な `erase: false` では強制再試行をスキップし、CLI 解決前のシナリオの `erase` 値を
+  ガードで見る代わりに、パイプラインまで通す。** 最初の実装はこれと逆で、解決後の値を見るガード
+  （`s.preconditions.erase is not False`）を積んでいました。`erase: false` の明示的な指定も
+  `reinstall: overwrite` と同じ種類の意図的な上書きだ、という理屈です。実際の CLI 経路を
+  追跡した結果、このガードは本番の `bajutsu run` 経路でこの機能全体を無効化していました。
+  `_filter_scenarios`（`bajutsu/cli/commands/run.py`）は、`run_all` が受け取る前に、未設定の
+  シナリオの `erase` をターゲット自身の既定値（ターゲットが opt-in しない限り `False`）に
+  すでに解決しているため、「シナリオが明示的に `erase: false` と書いた」場合と「何も言わなかった」
+  場合が、パイプラインに届く時点では同じ値になってしまいます。解決前のシグナルをそのまま通す
+  （`Scenario` に別フィールドを持たせる、あるいは CLI の解決自体を遅らせる）ことで区別を
+  取り戻す道もありますが、CLI・`Preconditions`、さらにはこの解決ステップ自身の docstring が
+  約束している不変条件（「downstream never sees the unset `None`」）にすでに依存している
+  他のコードにまで手を入れることになり、割に合いません。単なる `erase: false` は、そもそも
+  何も保護していないという事実に照らせば、これは不釣り合いな対応でした。`reinstall` の既定値
+  （`clean`）は `erase` の値にかかわらずアプリのデータを消去するため、本当に上書きから守る
+  必要がある precondition は `reinstall: overwrite` だけであり、そちらにはすでに独自のガードが
+  あります。`erase: false` のガードを削除しても、今日どのシナリオも当てにしているものは
+  何も失われません。
 - **クラッシュ起点の再試行の1回目からではなく、素の respawn を数回試してから完全なデバイス
   復旧に格上げする。** 却下しました。上記のインシデントは、素の respawn がその場で描画劣化した
   デバイスをすでに解消できていないことを示しており、格上げの前に何度も素の respawn を待つのは、
@@ -307,10 +332,11 @@ runner channel GET /screenshot: the runner recovered from a mid-run crash; re-is
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [x] Unit 1 — クラッシュ起点の再試行の2回目以降の試行で、シナリオが `reinstall: overwrite` や
-      `erase: false` を宣言している場合、および経路自体が `erase` をそもそも拒否する場合
+- [x] Unit 1 — クラッシュ起点の再試行の2回目以降の試行で、シナリオが `reinstall: overwrite` を
+      宣言している場合、または経路自体が `erase` をそもそも拒否する場合
       （`bajutsu/backends.py` の `erase_precondition_supported`）を除き、XCUITest・adb 両
-      バックエンドについて `preconditions.erase=True` を強制する。
+      バックエンドについて `preconditions.erase=True` を強制する。`erase is False` だけでは
+      スキップしない（「検討した代替案」を参照）。
 - [x] Unit 2 — `RunCrashRecoveryBudget`（デッドライン方式ではなく、累積した実際の復旧時間を
       課金する方式）を追加し、`run_crash_recovery_budget` / `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET`
       を `run_all` に配線し、ワークフローの env knob を追加し、`docs/architecture.md` /

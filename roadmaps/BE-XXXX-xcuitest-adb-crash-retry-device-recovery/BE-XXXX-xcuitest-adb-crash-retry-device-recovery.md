@@ -99,7 +99,6 @@ Two independent units.
    if (
        attempt > 1
        and s.preconditions.reinstall != "overwrite"
-       and s.preconditions.erase is not False
        and erase_precondition_supported(actuator, self.eff, self.udid_spec)
    ):
        retry_scenario = s.model_copy(
@@ -122,11 +121,19 @@ Two independent units.
    declaration that it needs its app's data container preserved across a lease (`reinstall`'s default
    is `clean`, and both backends already gate their own wipe on `pre.erase or pre.reinstall ==
    "clean"`). Forcing `erase` unconditionally would silently wipe exactly the state such a scenario
-   was written to keep, so a retry for that scenario keeps today's bare in-place respawn instead. The
-   `erase is not False` guard covers the same case a level up: `Preconditions.erase` is `bool | None`
-   (`None` inherits the target's own `erase` default; an explicit `true`/`false` pins it for this
-   scenario), so a scenario that explicitly pins `erase: false` has made the identical kind of
-   deliberate override, and a forced retry must not overrule it either.
+   was written to keep, so a retry for that scenario keeps today's bare in-place respawn instead.
+
+   `preconditions.erase` deliberately does **not** get the same guard: an early version checked
+   `s.preconditions.erase is not False` on the theory that an explicit `erase: false` is the same kind
+   of deliberate override `reinstall: overwrite` is. Traced against the real CLI path, that guard
+   silently disabled this whole unit in production. `bajutsu/cli/commands/run.py`'s `_filter_scenarios`
+   resolves every scenario's `erase` from `None` to a concrete `bool` — the target config's own default
+   (`False` unless a target opts in) when the scenario itself never set one — *before* `run_all` ever
+   sees it, by its own docstring's design ("Leaves every scenario with a concrete bool, so downstream
+   never sees the unset `None`"). So a scenario reaching `run_one` with `erase is False` is the *common*
+   case (nobody asked for erase), not the rare explicit-opt-out case the guard was written for, and the
+   two are indistinguishable by the time the pipeline sees them. See *Alternatives considered* for why
+   dropping this guard, rather than threading the pre-resolution signal through, is the right fix.
 
    `erase_precondition_supported` exists because two XCUITest routes reject any `erase` precondition
    outright instead of honoring it: a real device (`xcuitest.deviceType: device`) and the live
@@ -227,6 +234,22 @@ Two independent units.
   assertion failure (or a false pass) instead of a clean retry. No scenario in the repository sets
   `reinstall: overwrite` today, but the guard costs one comparison and keeps the retry honest for the
   day one does.
+- **Skip the forced-erase retry on an explicit `erase: false`, and thread the scenario's
+  pre-CLI-resolution `erase` value through to the runner instead of dropping the guard.** The first
+  implementation did the opposite of this and shipped a guard on the *post-resolution* value
+  (`s.preconditions.erase is not False`), which turned out to disable the whole unit on the real
+  `bajutsu run` CLI path: `_filter_scenarios` (`bajutsu/cli/commands/run.py`) always resolves an unset
+  scenario's `erase` to the target's own default (`False` unless a target config opts in) before
+  `run_all` ever sees it, so "the scenario explicitly wrote `erase: false`" and "nobody said anything"
+  become the same value by the time the pipeline can look. Threading the pre-resolution signal through
+  instead — a second field on `Scenario`, or deferring the CLI's resolution until later — would restore
+  the distinction, but at the cost of touching the CLI, `Preconditions`, and (per the resolution
+  step's own stated invariant, "downstream never sees the unset `None`") likely other code that already
+  assumes every scenario reaches the pipeline pre-resolved. Rejected as disproportionate to what a bare
+  `erase: false` actually protects: nothing does, on its own — `reinstall`'s own default (`clean`) wipes
+  the app's data regardless of `erase`, so `reinstall: overwrite` is the only precondition that
+  genuinely needs protecting from an override, and it already has its own guard. Dropping the
+  `erase: false` guard costs nothing a scenario relies on today.
 - **Escalate to a full device recovery only after several bare respawns, not from the first retry.**
   Rejected: the incident above shows a bare in-place respawn already fails to clear a
   rendering-degraded device, so waiting through several of them before escalating would spend exactly
@@ -281,9 +304,9 @@ Two independent units.
 > (oldest first), linking the PRs.
 
 - [x] Unit 1 — force `preconditions.erase=True` on attempt 2 and later of a crash-triggered retry,
-      unless the scenario declared `reinstall: overwrite` or `erase: false`, or the route rejects
-      `erase` outright (`erase_precondition_supported` in `bajutsu/backends.py`), on both the XCUITest
-      and adb backends.
+      unless the scenario declared `reinstall: overwrite`, or the route rejects `erase` outright
+      (`erase_precondition_supported` in `bajutsu/backends.py`), on both the XCUITest and adb
+      backends. Deliberately not skipped on `erase is False` alone — see *Alternatives considered*.
 - [x] Unit 2 — add `RunCrashRecoveryBudget` (accumulated-recovery-time, not deadline-based), wire
       `run_crash_recovery_budget` / `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` through `run_all`, add the
       workflow env knobs, and update `docs/architecture.md` / `docs/run-loop.md` and their `docs/ja/`

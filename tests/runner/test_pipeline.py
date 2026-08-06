@@ -241,6 +241,36 @@ def test_run_all_forces_erase_on_a_crash_triggered_retry() -> None:
     assert erase_seen == [None, True]  # attempt 1 unmodified, attempt 2 forces erase
 
 
+def test_run_all_forces_erase_on_a_crash_triggered_retry_against_an_xcuitest_simulator() -> None:
+    # The production route this unit was written for: XCUITest against a Simulator (no
+    # `xcuitest.deviceType: device`, no live WebDriver udid spec). The test above passes
+    # `actuator=None`, which short-circuits `erase_precondition_supported` at its very first branch
+    # (`actuator != "xcuitest" -> True`) without ever exercising `xcuitest_targets_real_device` /
+    # `is_webdriver_endpoint` — so it proves nothing about the iOS lane specifically. This pins the
+    # positive half of that guard on the one route the whole item exists for.
+    state = {"n": 0}
+    erase_seen: list[bool | None] = []
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        erase_seen.append(scenario.preconditions.erase)
+        if state["n"] == 1:
+            raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+        return Lease(
+            driver=_fake_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_ios_eff(), scenarios, lease, actuator="xcuitest")
+    assert results[0].ok
+    assert erase_seen == [None, True]  # attempt 1 unmodified, attempt 2 forces erase
+
+
 def test_run_all_skips_forced_erase_when_scenario_declares_reinstall_overwrite() -> None:
     # `reinstall: overwrite` is a scenario's explicit declaration that it needs its app's data
     # container preserved across a lease. Forcing `erase` on a retry would silently wipe exactly the
@@ -276,10 +306,16 @@ def test_run_all_skips_forced_erase_when_scenario_declares_reinstall_overwrite()
     assert erase_seen == [None, None]  # never forced, on either attempt
 
 
-def test_run_all_skips_forced_erase_when_scenario_pins_erase_false() -> None:
-    # An explicit `erase: false` pins erase off for this scenario (as opposed to `None`, which
-    # inherits the target's own default) — the same kind of deliberate precondition override
-    # `reinstall: overwrite` is, so a crash-triggered retry must not silently overrule it either.
+def test_run_all_forces_erase_even_when_preconditions_erase_is_already_false() -> None:
+    # A scenario reaching here with `preconditions.erase is False` is indistinguishable from "the CLI
+    # already resolved an unset scenario to the target's default" — `_filter_scenarios`
+    # (`bajutsu/cli/commands/run.py`) always leaves every scenario with a concrete bool before
+    # `run_all` ever sees it, and that default is `False` unless a target config opts in. That is the
+    # *common* production case, not an edge case, so a guard on `erase is False` would silently
+    # disable this whole unit on the one path it was written for. Only `reinstall: overwrite` skips
+    # the forced erase — it alone actually protects app data, since `reinstall`'s own default
+    # `"clean"` wipes it regardless of `erase`, so a bare `erase: false` never protected anything a
+    # forced retry needs to respect.
     state = {"n": 0}
     erase_seen: list[bool | None] = []
 
@@ -304,7 +340,7 @@ def test_run_all_skips_forced_erase_when_scenario_pins_erase_false() -> None:
     ]
     results = run_all(_eff(), scenarios, lease)
     assert results[0].ok
-    assert erase_seen == [False, False]  # the explicit pin survives both attempts
+    assert erase_seen == [False, True]  # attempt 1 unmodified, attempt 2 forces erase regardless
 
 
 def test_run_all_skips_forced_erase_on_a_real_device() -> None:

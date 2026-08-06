@@ -205,9 +205,14 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > The retry also forces the same `erase` precondition a scenario already gets by declaring
 > `erase: true` — a Simulator restart on XCUITest, an app-level clean state on adb — instead of a bare
 > in-place respawn onto the very device that just crashed it, unless the scenario declares
-> `reinstall: overwrite` or pins `erase: false` to keep its app's data across the lease, or the route
-> itself rejects any `erase` precondition outright (a real device, `xcuitest.deviceType: device`, or
-> the live WebDriver endpoint). Because the replayed app's data is wiped by default, the retry is safe
+> `reinstall: overwrite` to keep its app's data across the lease, or the route itself rejects any
+> `erase` precondition outright (a real device, `xcuitest.deviceType: device`, or the live WebDriver
+> endpoint). A plain `erase: false` does *not* skip the forced retry: the CLI (`_filter_scenarios` in
+> `bajutsu/cli/commands/run.py`) resolves every scenario's `erase` to a concrete bool, most commonly
+> `false`, before the pipeline ever sees it, so a guard on that value alone would disable the forced
+> retry on the very production path it exists for — only `reinstall: overwrite` genuinely protects a
+> scenario's data, since `reinstall`'s own default (`clean`) wipes it regardless of `erase` anyway.
+> Because the replayed app's data is wiped by default, the retry is safe
 > only for a scenario idempotent up to its crash point; one with a persistent side effect before the
 > crash (e.g. a server-side write), or one that depends on state a prior step in the same scenario
 > already set up, can fail, or pass against the wrong state, on replay. The decision logic lives in
