@@ -121,9 +121,12 @@ loop also gains a round cap on the live cycle itself, with escalation to a human
    to `OWNER`/`MEMBER`/`COLLABORATOR`), typically issued by unit 3. Update the file's own
    top-of-file comment block to describe this model, and to state why the workflow stays rather than
    being removed: a fork pull request, and any commit made outside these Claude Code skills, never
-   goes through the local self-review pass, and would otherwise get no review at all. The workflow's
-   concurrency group and its dedup-by-prior-findings mechanism both remain correct under the narrowed
-   trigger set, so neither needs a change.
+   goes through the local self-review pass, and would otherwise get no review at all. Extend the
+   "Compute the review inputs (prior findings)" step to the comment events too: it is gated on
+   `github.event_name == 'pull_request'` today, so an on-demand run would otherwise start with an
+   empty prior-findings list and re-post settled findings. Note also that `cancel-in-progress` is
+   true only for `pull_request`, so two on-demand requests in quick succession run concurrently
+   rather than superseding each other.
 7. **`docs/ai-development.md` and its Japanese mirror — document the split and the trigger change.**
    Add a subsection to the "Right-sizing the model and reasoning effort" section. Name Fable as the
    local pass's reviewer and planner, state the Sonnet-default, Opus-for-product-code rule for its
