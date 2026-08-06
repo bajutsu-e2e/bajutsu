@@ -2,10 +2,11 @@
 
 A run/record/crawl job streams output line by line. `LogBus` is the one point where delivery
 diverges between local and server hosting: locally lines are buffered in process
-(`InMemoryLogBus`), while a server backend would publish them to a Redis stream consumed by other
-replicas. A subscriber gets the backlog already published plus any live lines, and the stream
-ends once the job is `close`d — so a subscriber that attaches after the job finished still
-replays everything.
+(`InMemoryLogBus`); the server backend instead uses `PostCompletionLogBus` (BE-0106), which
+serves heartbeats while a job is in flight and the full log from object storage once it
+completes, rather than relaying individual lines. A subscriber gets the backlog already
+published plus any live lines, and the stream ends once the job is `close`d — so a subscriber
+that attaches after the job finished still replays everything.
 """
 
 from __future__ import annotations
@@ -49,7 +50,8 @@ class InMemoryLogBus:
     """Buffers each job's lines in memory — the default for `bajutsu serve`.
 
     The buffer (not a fire-and-forget pub/sub) is what lets a late subscriber replay the whole
-    log; a Redis-backed bus gets the same property from a persisted stream.
+    log; the server backend's `PostCompletionLogBus` gets the same property by reading the
+    worker's uploaded console.log after the job completes.
     """
 
     def __init__(self) -> None:

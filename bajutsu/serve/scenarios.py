@@ -3,7 +3,7 @@
 Scenario resolution is the most security-sensitive serve surface: a client must never be able to
 run or read an arbitrary file path on the host (BE-0051). `ScenarioStore` is the one point where
 this diverges between local and server hosting: the local store confines everything to the app's
-scenarios dir on disk (`LocalScenarioStore`), while a server store would fetch by id from
+scenarios dir on disk (`LocalScenarioStore`), while the server store fetches by id from
 per-project storage — where a path never exists, so arbitrary-path execution is impossible by
 construction. The containment and the `runnable` guard live here, in one place.
 """

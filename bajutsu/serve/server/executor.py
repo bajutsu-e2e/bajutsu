@@ -1,12 +1,13 @@
-"""A queue-based `RunExecutor` for the hosted backend (BE-0015 server phase).
+"""An RQ/Redis-backed `RunExecutor` for the hosted backend (BE-0015 server phase, legacy).
 
 Where `LocalExecutor` runs each job on an in-process thread, `QueueExecutor` serializes the job and
-**enqueues** it for a remote `bajutsu worker` to consume. It's the one server piece on the job
-dispatch path; everything `run_job` does is unchanged.
+**enqueues** it for a remote `bajutsu worker` to consume; everything `run_job` does is unchanged.
+Superseded by `db_executor.DbQueueExecutor` (BE-0106), which dispatches without Redis and is what
+the server backend wires today.
 
 The queue is **injected**, so the only thing that touches RQ/Redis is whoever constructs the real
-queue (the worker / the server wiring) — this module imports neither, so it's safe to import (and
-unit-test with a fake queue) without the ``worker`` extra installed.
+queue — this module imports neither, so it's safe to import (and unit-test with a fake queue)
+without the ``worker`` extra installed.
 """
 
 from __future__ import annotations
