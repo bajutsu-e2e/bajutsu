@@ -86,9 +86,11 @@ def android_screenrecord(serial: str, path: Path) -> intervals.Interval:
     device; if the *next* test's own recording then fails to start — `confirm_started` only warns,
     it does not skip the pull — that stale clip gets pulled in as the next test's evidence: non-empty,
     so `capture()`'s missing/empty check never notices. Clearing the device-side file before every
-    spawn closes both causes; a failure to remove it is not fatal, since the very next line would
-    overwrite it anyway.
-    """
+    so `capture()`'s missing/empty check never notices. Clearing the device-side file before every
+    spawn closes both causes; a failure to remove it is suppressed rather than raised, since
+    refusing to record would cost this test its own evidence too — but it does leave that window
+    open, because the path is overwritten only if the spawn that follows actually starts, which is
+    exactly what the case above does not do.
     with contextlib.suppress(subprocess.CalledProcessError, OSError):
         adb._real_run(adb.rm_cmd(serial, adb.VIDEO_DEVICE_PATH))
     return intervals.start_screenrecord(
