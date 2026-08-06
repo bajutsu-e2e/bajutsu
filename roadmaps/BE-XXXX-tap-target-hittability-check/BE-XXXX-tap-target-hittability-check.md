@@ -88,7 +88,10 @@ failure, which is a non-reproduction in one environment, not proof the issue doe
 elsewhere. `XcuitestElementProvider.tap(backingElement:taps:duration:)`
 (`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift:57`) gains a guard immediately before its
 native tap calls: `guard el.isHittable else { return .notHittable }`. `TapResult`
-(`BajutsuKit/Sources/BajutsuRunner/ElementProviding.swift:31`) gains a `.notHittable` case alongside
+(`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift:57`) gains a guard immediately before its
+native tap calls — but only when the element's center lies inside `app.frame` (`centerIsOnScreen`),
+so a not-yet-scrolled-to target stays a `scroll` question rather than reading as covered:
+`if centerIsOnScreen(el) { guard el.isHittable else { return .notHittable } }`. `TapResult`
 its existing `.ok` / `.stale` / `.notFound`, and `xcuitest.py`'s `_actuate` gains a fourth status
 constant and branch that raises `base.ElementNotTappable`, parallel to its existing stale/not-found
 handling. `is_tappable(sel)` is realized as a lightweight variant of the same round trip: resolve the
