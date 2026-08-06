@@ -111,24 +111,11 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             self.wfile.write(body)
 
         def _respond_uncaught(self, exc: Exception) -> None:
-            """Turn an uncaught dispatch exception into a JSON 500 (BE-0264).
-
-            Without this, an operation that *raises* (rather than returning an error tuple)
-            propagates to ``socketserver``, which drops the connection with no body — leaving the
-            browser at ``Unexpected end of JSON input``. The full traceback is always logged (with
-            the request id bound via ``oplog``) so the operator keeps the diagnostic; the client
-            gets the exception's *message* — deliberately (design Unit 3): the readable operation
-            error is the whole point (e.g. "xcuitest backend requires a runner_port"), so we echo
-            it rather than a generic string, at the cost of a message that may name an internal
-            path. The traceback itself is never sent.
-
-            Writing the 500 can itself fail if the client already went away (a `wfile` write on a
-            dead socket): the wrapped dispatch under the boundary hits the operation *before* any
-            bytes are written, so a normal raise reaches here pre-response — but a disconnect
-            mid-write would. In that case we've already logged the real error, so we only close the
-            connection rather than let the write error re-propagate to ``socketserver`` (which is
-            exactly the empty-body drop this boundary exists to prevent).
-            """
+            """Turn an uncaught dispatch exception into a JSON 500 (BE-0264) instead of the empty-body
+            drop `socketserver` gives an operation that raises; the full traceback is always logged,
+            but the client gets only the exception's message (deliberately — the readable operation
+            error, e.g. "xcuitest backend requires a runner_port", is the diagnostic). If writing the
+            500 itself fails (client already gone), just close the connection rather than re-raise."""
             logging.getLogger(__name__).exception(
                 "unhandled error dispatching %s %s", self.command, self.path
             )
@@ -253,12 +240,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
 
         def _serve_streaming_get(self, path: str) -> bool:
             """Dispatch the streaming/binary GET routes kept outside do_GET's JSON-500 boundary
-            (BE-0264); returns True when it handled the request.
-
-            Order mirrors the old match: the `/api/jobs/<id>/events` SSE stream before the
-            non-streaming `/api/jobs/<id>` view (which stays under the boundary), and the
-            `.../archive.zip` route before the generic run-file serve.
-            """
+            (BE-0264); order matters (`archive.zip` before the generic run-file serve). Returns
+            True when it handled the request."""
             if path.startswith("/api/jobs/") and path.endswith("/events"):
                 self._sse_job(path[len("/api/jobs/") : -len("/events")])
             elif path.startswith("/runs/") and path.endswith("/archive.zip"):
@@ -272,12 +255,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             return True
 
         def _dispatch_registry(self, method: str, path: str, body: dict[str, Any]) -> None:
-            """Dispatch a uniform (JSON or text) route from the shared registry (BE-0253).
-
-            `off_loop` routes write their own responses and are handled bespoke by the caller
-            before this runs, so an unmatched path — or a match that carries no handle — is the
-            same not-found the old per-backend `match` fell through to.
-            """
+            """Dispatch a uniform (JSON or text) route from the shared registry (BE-0253). `off_loop`
+            routes are handled bespoke by the caller before this runs, so an unmatched path — or a
+            match with no handle — falls through to the same 404."""
             matched = match_route(ROUTES, method, path)
             if matched is None:
                 self._json({"error": "not found"}, 404)
@@ -457,7 +437,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             # This raw-body route dispatches before do_POST's JSON-500 boundary (it reads the body
             # itself), so it needs its own: a raise from `bind_upload_config` — not the streaming
             # errors `_stream_bounded_body` already turns into JSON — would otherwise hit the
-            # empty-body drop BE-0264 exists to eliminate (#1089).
+            # empty-body drop BE-0264 exists to eliminate.
             try:
                 self._json(
                     *ops.bind_upload_config(
@@ -483,7 +463,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 return
             # Same as `_handle_upload`: this raw-body route sits before do_POST's boundary, so a
             # raise from `bind_artifact` gets its own JSON-500 conversion rather than dropping the
-            # connection empty-bodied (BE-0264 follow-up on #1089).
+            # connection empty-bodied (the same BE-0264 fix `_handle_upload` applies).
             try:
                 self._json(
                     *ops.bind_artifact(

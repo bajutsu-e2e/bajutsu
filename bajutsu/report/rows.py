@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from bajutsu.drivers.actuation import Actuation
 from bajutsu.from_grouping import grouped_provenance
 from bajutsu.orchestrator import RunResult
 from bajutsu.report.format import (
@@ -162,7 +163,49 @@ def _step_run_row(
         "reason": out.reason if (not out.ok and out.reason) else None,
         "expand": None,
         "alerts": [{"label": a.label} for a in out.alerts],
+        "actuations": _actuation_rows(out.actuations),
+        "dropped_actuations": out.dropped_actuations,
     }
+
+
+def _actuation_rows(actuations: list[Actuation]) -> list[dict[str, Any]]:
+    """One display row per actuation: the gesture, its geometry, and the channel that carried it.
+
+    A record with no coordinate (a handle-based iOS tap, an Android device-side gesture) shows its
+    resolved frame instead, so a reader always sees *where* — and `via` says whether the number is the
+    point that was sent or the bounds the far side resolved from.
+    """
+    rows = []
+    for a in actuations:
+        points = " → ".join(f"({_gnum(x)}, {_gnum(y)})" for x, y in a.points)
+        frame = (
+            f"[{_gnum(a.frame[0])}, {_gnum(a.frame[1])} {_gnum(a.frame[2])}×{_gnum(a.frame[3])}]"
+            if a.frame is not None
+            else ""
+        )
+        params = [
+            f"{name} {_gnum(v)}"
+            for name, v in (("for", a.duration_s), ("scale", a.scale), ("rad", a.radians))
+            if v is not None
+        ]
+        rows.append(
+            {
+                "gesture": a.gesture,
+                "via": a.via,
+                # Shown for a frame too, not only a point: a frame is in a coordinate space as much as
+                # a coordinate is, and on a WebView record that space is the WebView's own — the
+                # difference between a comparable number and a misleading one.
+                "unit": a.unit if (a.points or a.frame) else "",
+                "points": points,
+                "frame": frame,
+                "target": a.target or "",
+                "params": " · ".join(params),
+                # A refused attempt (a stale handle, a declined device-side gesture) must not read as
+                # one that landed; `None` means the channel gave no separate answer.
+                "refused": a.accepted is False,
+            }
+        )
+    return rows
 
 
 def _step_skip_row(
@@ -390,6 +433,7 @@ def _expects_data(r: RunResult, definition: dict[str, Any] | None) -> dict[str, 
             "label": "expectations",
             "rows": rows,
             "alerts": [{"label": a.label} for a in r.expect_alerts],
+            "actuations": _actuation_rows(r.expect_actuations),
         }
     if not planned:
         return None

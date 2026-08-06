@@ -14,6 +14,7 @@ from typing import Literal, Protocol
 
 from bajutsu.assertions import AssertionResult
 from bajutsu.drivers import base
+from bajutsu.drivers.actuation import Actuation, ActuationReporter, Drained
 from bajutsu.evidence import Artifact
 from bajutsu.evidence.network import NetworkExchange
 from bajutsu.mailbox import MailboxMessage
@@ -127,6 +128,15 @@ class StepOutcome:
     artifacts: list[Artifact] = field(default_factory=list)
     # System prompts the guard cleared before this step succeeded (usually 0 or 1).
     alerts: list[AlertEvent] = field(default_factory=list)
+    # What the driver actually did to the screen during this step, in order: the coordinate a tap
+    # injected, the endpoints a swipe travelled, the channel that carried each gesture. Drained from
+    # the driver once per step, so a step that ran its body twice (an alert the guard dismissed, then a
+    # retry) carries both attempts. Evidence only — nothing on the verdict path reads it.
+    actuations: list[Actuation] = field(default_factory=list)
+    # How many of this step's actuations the driver's bounded log discarded to make room for later
+    # ones. Non-zero only for a pathological step (a `maxScrolls` in the hundreds), and recorded
+    # rather than left implicit so a truncated list is never read as a complete one.
+    dropped_actuations: int = 0
 
 
 @dataclass
@@ -175,6 +185,10 @@ class RunResult:
     video_anchor_s: float = 0.0
     # System prompts the guard cleared before the scenario-level `expect` re-checked.
     expect_alerts: list[AlertEvent] = field(default_factory=list)
+    # Actuations the guard performed for that same expect-phase retry — the one place a gesture happens
+    # with no step to attribute it to, so it is recorded here beside `expect_alerts` rather than left in
+    # the driver's log and silently discarded.
+    expect_actuations: list[Actuation] = field(default_factory=list)
     # Evidence kinds the run couldn't supply (no eligible backend) — disclosed, not silent (BE-0020).
     skipped_captures: list[SkippedCapture] = field(default_factory=list)
 
@@ -291,6 +305,17 @@ class AlertGuardConfig:
         # `springboard.alerts` query cannot enumerate (e.g. an action sheet), and no-ops without a
         # credential. It stays off the pass/fail verdict either way (prime directive 1).
         return self.vision(driver)
+
+
+def drain_actuations(driver: base.Driver) -> Drained:
+    """The actuations `driver` has performed since the last drain, or an empty drain if it reports none.
+
+    The one place the `ActuationReporter` opt-in is read, so a backend that does not implement it
+    simply contributes nothing rather than needing a stub.
+    """
+    if isinstance(driver, ActuationReporter):
+        return driver.drain_actuations()
+    return Drained(records=[], dropped=0)
 
 
 def scenario_slug(name: str) -> str:

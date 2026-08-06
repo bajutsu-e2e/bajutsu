@@ -30,7 +30,7 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 |---|---|---|---|
 | `screenshot` | the driver (XCUITest's own `/screenshot` endpoint, `adb`'s `screencap`, Playwright natively) | instant | ✅ captured |
 | `elements` (a11y / accessibility tree) | `driver.query()` as JSON | instant | ✅ captured |
-| `actionLog` | orchestrator internals (action · duration) | — | ✅ inherent in the manifest |
+| `actionLog` | orchestrator internals (action · duration) plus each driver's own actuation records | — | ✅ inherent in the manifest |
 | `video` | `simctl io recordVideo` | interval | ✅ captured (needs udid) |
 | `deviceLog` | `simctl spawn log stream` | interval | ✅ captured (needs udid) |
 | `network` | the in-app collector (BajutsuKit → `network.json`) | interval | ✅ captured (the `--network` run flag) |
@@ -40,6 +40,47 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 > into timed intervals (`intervals.parse_app_trace`). `network` is produced by the request collector
 > rather than the interval system — its exchanges are written to `<sid>/network.json`
 > ([network observation](drivers.md), the `--network` flag).
+
+### `actionLog` — what each step actually did to the screen
+
+`actionLog` needs no capture request and writes no file of its own: every step's outcome carries an
+`actuations` list in `manifest.json`, one entry per primitive the driver performed, and the report and
+the `bajutsu trace` timeline read it from there. It answers the question a screenshot and an element
+tree cannot: *where did this tap land, and how far did this swipe travel*.
+
+| Field | Meaning |
+|---|---|
+| `gesture` | the driver primitive — `tap`, `doubleTap`, `longPress`, `swipe`, `scroll`, `pinch`, `rotate`, the text primitives, `selectOption`, `systemAlert`, `back` |
+| `via` | how the gesture reached its target: `coordinate` (the driver computed a point and sent it), `handle` (XCUITest actuated a snapshot handle), `identity` (the Android device resolved the element and chose the point), `bridge` (a WebView call addressed by element id), `focused` (a text primitive on whatever field holds focus), `key`, `history` |
+| `unit` | the coordinate space: `point` (iOS), `pixel` (Android), `cssPixel` (a browser page, or a WebView's own space) |
+| `points` | the contact points touched, in order — one for a tap, two for a drag |
+| `frame` · `target` | the resolved element's bounds and its accessibility identifier |
+| `accepted` | whether the platform accepted this attempt, on the two channels that answer (XCUITest's handle actuation, Android's device-side endpoint). A refused attempt is shown struck through, so a stale-retried tap does not read as several taps; `None` means the channel gave no separate answer |
+| `duration_s` · `scale` · `radians` | the gesture's non-positional parameters, where it has any |
+
+Three rules bound what a record may say, and every backend honors them:
+
+- **Only a coordinate that was really sent.** `points` is empty whenever no coordinate crossed to the
+  platform — a handle-based iOS tap, an Android device-side gesture — because the point was chosen on
+  the far side. The record shows the resolved `frame` instead rather than presenting the frame's centre
+  as a measurement it did not take.
+- **No device work.** Every value is one the actuator already had, so recording costs no extra query,
+  read, or round trip.
+- **No authored string, ever.** `manifest.json` is written without a redactor, so the record carries
+  neither a `type` step's text (not even its length — `Redactor` uses a fixed-width placeholder
+  precisely so no artifact discloses a secret's length), nor a `selectOption`'s option, nor an element's
+  accessibility label. `target` is always the resolved accessibility identifier and nothing else, so it
+  is unset for an element that has none.
+
+A record is written when the gesture is *attempted*, before its transport answers, so a step that
+failed to actuate still shows what it aimed at. The step's own result says whether the step worked.
+
+One actuation belongs to no step: the reactive system-alert guard also fires before the scenario-level
+`expect` re-check, so its record lands on the scenario's `expect_actuations` beside `expect_alerts`.
+A backend that does not implement the record simply contributes none, and the run is unchanged.
+The driver's log is bounded, so a pathological step (a `maxScrolls` in the hundreds) can lose its
+earliest records — `dropped_actuations` counts them and the report says the record is truncated rather
+than showing it as complete.
 
 **Default modifiers**: the always-on instant baseline (below) is `before` — captured before the step
 acts, not after. A `capturePolicy` rule or inline `capture:` still defaults an unmodified instant

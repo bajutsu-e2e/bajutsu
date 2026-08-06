@@ -39,11 +39,10 @@ from bajutsu.scenario import Preconditions
 _logger = logging.getLogger(__name__)
 
 # Overrides the directory the runner subprocess's combined stdout/stderr is captured into, one file
-# per cold spawn. Capture is on by default (BE-0319 unit 1): the first CI flake — and a mid-run
-# crash, see `_MAX_WARM_REUSES` below for what this repeatedly surfaced in CI — is diagnosable
-# without a human pre-arming this, so the variable now only redirects the capture directory. A
-# default (env-unset) capture goes to `_DEFAULT_RUNNER_LOG_DIR` and is pruned on teardown; an
-# explicit directory is kept, since the operator asked for it.
+# per cold spawn. Capture is on by default (BE-0319 unit 1): a startup failure or mid-run crash is
+# diagnosable without a human pre-arming this, so the variable now only redirects the capture
+# directory. A default (env-unset) capture goes to `_DEFAULT_RUNNER_LOG_DIR` and is pruned on
+# teardown; an explicit directory is kept, since the operator asked for it.
 _RUNNER_LOG_ENV = "BAJUTSU_XCUITEST_RUNNER_LOG"
 
 # Where a default (env-unset) capture goes — a run-scoped temporary area teardown can prune, so a
@@ -69,14 +68,13 @@ _COLD_SPAWN_ATTEMPTS = 2
 _COLD_POLL_SECONDS = 0.1
 
 # The captured lines that say the XCTest run reached its end, so this runner will never bind its
-# port. `xcodebuild` outlives its own test run by a long way: on the observed ios-e2e flake the app
-# launch timed out and the suite reported failure 225s before the 300s ceiling expired, yet the
-# process stayed alive the whole time, so the liveness check (which watches the *process*) saw
-# nothing and the wait ran to the ceiling. That dead time is exactly the budget the shared ceiling
-# needed to fund a retry, so the failure BE-0319's retry exists to absorb was the one failure it
-# could never reach. Reading the terminal marker out of the capture ends the wait when the run
-# actually ended. Both outcomes end the run — a suite that passed has exited too — so neither can be
-# a runner still on its way up.
+# port. `xcodebuild` outlives its own test run by a long way: when the app launch itself times out,
+# the suite can report failure long before the process exits, so the liveness check (which watches
+# the *process*) sees nothing and the wait runs out the whole ceiling for no reason — exactly the
+# failure BE-0319's retry exists to absorb, and the one it could never reach without this marker.
+# Reading the terminal marker out of the capture ends the wait as soon as the run actually ended.
+# Both outcomes end the run — a suite that passed has exited too — so neither can be a runner still
+# on its way up.
 _RUN_ENDED_MARKERS = (b"Test Suite 'All tests' failed", b"Test Suite 'All tests' passed")
 
 # `XCUIApplication.launch()` giving up on the app under test — the dominant CI signature, and the one
@@ -149,8 +147,7 @@ def _allocate_port() -> int:
 # Cold `xcodebuild test-without-building` startup (XCTest host boot + app launch before the runner's
 # server answers /health) routinely exceeds the driver's 10s default on a loaded CI runner; a warm
 # start still returns as soon as /health is ready, so this only raises the ceiling for the cold case.
-# Overridable per lane so a contended CI host can extend the ceiling without a code change (the
-# ios-e2e workflow raises it to 300s); a warm start still returns at once, so this is a cap.
+# Overridable per lane so a contended CI host can extend the ceiling without a code change.
 _RUNNER_STARTUP_TIMEOUT = 120.0
 _RUNNER_STARTUP_TIMEOUT_ENV = "BAJUTSU_XCUITEST_STARTUP_TIMEOUT"
 
@@ -216,22 +213,16 @@ def _respawn_timeout() -> float | None:
 # quickly and respawned, not waited on for the cold ceiling.
 _WARM_HEALTH_TIMEOUT = 10.0
 
-# CI observation, not a documented platform limit: this PR's own `golden` / `visual` /
-# `xcuitest (multi-touch)` lanes crashed the resident runner mid-run on nearly every attempt, on
-# CI hardware only — never reproduced locally on a real Mac across dozens of runs, including the
-# exact same multi-scenario sequences these lanes exercise. The most likely cause, since it appeared
-# only alongside BE-0310, is `BajutsuScreen`'s `viewDidAppear` hook doing JSON-encode-and-POST work
-# synchronously on the main thread on every screen appearance — new work in a callback the XCTest
-# accessibility bridge is already timing-sensitive around on slower/contended CI hosts. That work is
-# now dispatched off the main thread (`BajutsuNet.postJSON`), which should remove the cause directly.
-# This bound stays as defense-in-depth for the reactive case the BE-0291 warm probe only detects
-# after the fact — each warm reuse re-attaches the XCTest automation session to a freshly launched
-# app, and that session can still destabilize after enough cycles even without the crash this PR
-# introduced. Bounding the reuse count makes the respawn *proactive*: after this many warm reuses,
-# `start` respawns the runner cold (a fresh XCTest session) before the next launch can tip it over,
-# so a run never hits the mid-scenario crash. A cold spawn resets the count. Kept below "a handful"
-# with headroom; overridable per lane for on-device tuning without a code change. 0 disables warm
-# reuse entirely (always cold).
+# Empirical cap, not a documented platform limit: each warm reuse re-attaches the XCTest automation
+# session to a freshly launched app, and that session can destabilize after enough app.launch()
+# cycles on a slower/contended host, even with the offending main-thread work in `BajutsuScreen`'s
+# `viewDidAppear` hook moved off-thread (`BajutsuNet.postJSON`). This bound stays as defense-in-depth
+# for that reactive case, which the BE-0291 warm probe only detects after the fact. Bounding the
+# reuse count makes the respawn *proactive*: after this many warm reuses, `start` respawns the runner
+# cold (a fresh XCTest session) before the next launch can tip it over, so a run never hits the
+# mid-scenario crash. A cold spawn resets the count. Kept below "a handful" with headroom;
+# overridable per lane for on-device tuning without a code change. 0 disables warm reuse entirely
+# (always cold).
 _MAX_WARM_REUSES = 3
 _MAX_WARM_REUSES_ENV = "BAJUTSU_XCUITEST_MAX_WARM_REUSES"
 
@@ -429,8 +420,8 @@ def _spawn_cold_with_retry(
 
     Worst-case wall time is therefore `attempts` ceilings plus whatever `recover` spends repairing the
     device, which `_recovery_timeout()` bounds — plus, when a repair earns a fresh budget, the same
-    unbounded re-prep the first cold bring-up already pays before this loop even starts. The ios-e2e
-    lane's headroom is set against that (see the workflow's env block).
+    unbounded re-prep the first cold bring-up already pays before this loop even starts. A lane's
+    startup-timeout headroom should be set against that worst case.
     """
     from bajutsu.drivers.xcuitest import XcuitestChannelError
 
@@ -525,7 +516,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # True once this instance has cold-spawned at least once: a *second* `_spawn_cold` on the same
         # environment is an in-place respawn (its warm resident died, so `start` discards it and
         # re-spawns cold), so it too takes the respawn ceiling — the ceiling must not depend only on
-        # `_respawn`, which a reused instance built at first bring-up never has set (see the PR review).
+        # `_respawn`, which a reused instance built at first bring-up never has set.
         self._cold_spawned_before = False
         self._runner_proc: subprocess.Popen[bytes] | None = None
         self._runner_port: int = 0
@@ -971,7 +962,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 # SIGTERM/SIGKILL bypassing Python's cleanup entirely (`bajutsu/` installs no signal
                 # handler) — either would orphan `xcodebuild` and its children in their own session, a
                 # narrower version of the wedged-Simulator failure this unit exists to clear, left as a
-                # known gap rather than closed with signal-handling machinery this PR does not
+                # known gap rather than closed with signal-handling machinery this module does not
                 # otherwise need.
                 start_new_session=True,
             )

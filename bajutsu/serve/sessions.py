@@ -4,8 +4,9 @@
 A session may carry an *identity* (the GitHub login from an OAuth login, BE-0015 7b-2) so a later
 layer (RBAC, 7c) can map a session back to a user; a shared-token login carries none.
 `InMemorySessionStore` is the local default — sessions live in this process, so a restart drops them
-(re-login). The server backend swaps in a Redis-backed store so sessions survive restarts and span
-control-plane processes; the seam keeps `ServeState` and the auth layer unaware of which is in use."""
+(re-login). The server backend swaps in a database-backed store (`SqlSessionStore`) so sessions
+survive restarts and span control-plane processes; the seam keeps `ServeState` and the auth layer
+unaware of which is in use."""
 
 from __future__ import annotations
 

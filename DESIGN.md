@@ -481,7 +481,7 @@ redact:                       # 保存前にマスクする対象（§9 注意�
 | `screenshot` | `simctl io screenshot` | 瞬時 | 低 |
 | `video` | `simctl io <udid> recordVideo`（start/stop） | 区間 | 高 |
 | `elements`（a11y ツリー） | XCUITest のオートメーションスナップショット | 瞬時 | 低 |
-| `actionLog` | オーケストレータ内部（操作・引数・結果・所要時間） | 瞬時 | 極低 |
+| `actionLog` | オーケストレータ内部（操作・結果・所要時間）と、各ドライバが実際に行った actuation の記録（送った座標、ジェスチャの端点、経路） | 瞬時 | 極低 |
 | `deviceLog` | `simctl spawn <udid> log stream/collect`（subsystem/process で絞る） | 区間 | 中 |
 | `network` | in-protocol の network collector（§3.2） | 区間 | 中 |
 | `appTrace` | アプリの `os_signpost` / `OSLog`（subsystem 指定で log stream から収集） | 区間 | 中 |
@@ -541,6 +541,7 @@ runs/<runId>/
 - [ ] 失敗時に必ずスクリーンショット + 要素ダンプを残す
 - [ ] カバレッジを切り詰めた箇所（リトライ無し、証跡 skip 等）はログ / manifest に明示
 - [ ] 座標 / index フォールバック（stability ladder 順 3〜4）を使ったステップは manifest に degradation として明示（§5）
+  - 半分は済んでいます。ステップごとの actuation の記録（§9 の `actionLog`）が経路を明示するので、adb で常駐エンドポイントを使えず座標へ落ちた tap / longPress / doubleTap は、`identity` ではなく `coordinate` として現れます。ただしトークン単体を縮退と読むことはできません。`coordinate` は Playwright、WebView、iOS の swipe / scroll / tapPoint では通常の経路でもあるので、判断には backend が要ります。`index` セレクタへの縮退（actuation ではなくセレクタ解決の問題）は未着手です
 
 ---
 

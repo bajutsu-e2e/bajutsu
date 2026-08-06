@@ -88,6 +88,74 @@ def test_trace_run_renders_timeline(tmp_path: Path) -> None:
     assert "evidence: appTrace · network" in out
 
 
+def test_trace_shows_what_each_step_actually_actuated(tmp_path: Path) -> None:
+    # The timeline reads the manifest dict directly, so it needs no loader: the coordinate a tap sent and
+    # the channel that carried it appear on the step's own line, which is where someone asking "where did
+    # this tap land" is already looking.
+    run = _write_run(tmp_path, "20250101-000000")
+    manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
+    manifest["scenarios"][0]["steps"][0]["actuations"] = [
+        {
+            "gesture": "tap",
+            "via": "coordinate",
+            "unit": "pixel",
+            "points": [[100.0, 150.0]],
+            "frame": [0.0, 100.0, 200.0, 100.0],
+            "target": "stable.submit",
+        },
+        {"gesture": "typeText", "via": "focused", "unit": "pixel", "points": []},
+    ]
+    (run / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    out = trace.trace_run(run)
+
+    assert "tap (100, 150) [coordinate]" in out
+    assert "typeText [focused]" in out  # no point to show, so the channel alone
+
+
+def test_trace_never_invents_a_coordinate_for_a_malformed_point(tmp_path: Path) -> None:
+    # The timeline's float coercion would render `["a","b"]` as the entirely plausible `(0, 0)`.
+    # Inventing a coordinate is the one thing this record must never do, so it shows unreadable.
+    run = _write_run(tmp_path, "20250101-000000")
+    manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
+    manifest["scenarios"][0]["steps"][0]["actuations"] = [
+        {"gesture": "tap", "via": "coordinate", "unit": "pixel", "points": [["a", "b"]]}
+    ]
+    (run / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    out = trace.trace_run(run)
+
+    assert "(0, 0)" not in out
+    assert "tap (?) [coordinate]" in out
+
+
+def test_trace_marks_a_refused_attempt_and_a_truncated_record(tmp_path: Path) -> None:
+    # A gesture the platform refused must not read as one that landed, and a record the driver's
+    # bounded log truncated must say so rather than look complete.
+    run = _write_run(tmp_path, "20250101-000000")
+    manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
+    step = manifest["scenarios"][0]["steps"][0]
+    step["actuations"] = [
+        {"gesture": "tap", "via": "handle", "unit": "point", "points": [], "accepted": False},
+        {"gesture": "tap", "via": "handle", "unit": "point", "points": [], "accepted": True},
+    ]
+    step["dropped_actuations"] = 7
+    (run / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    out = trace.trace_run(run)
+
+    assert "tap [handle] ✗refused" in out
+    assert "(+7 earlier dropped)" in out
+
+
+def test_trace_of_a_run_recorded_before_actuations_shows_no_summary(tmp_path: Path) -> None:
+    # An older manifest carries no `actuations`, so the line renders exactly as it always did rather
+    # than showing an empty segment (the BE-0068 forward/backward-compatible read).
+    out = trace.trace_run(_write_run(tmp_path, "20250101-000000"))
+    assert "[coordinate]" not in out
+    assert "✓ tap" in out
+
+
 def test_trace_failure_shows_reason(tmp_path: Path) -> None:
     out = trace.trace_run(_write_run(tmp_path / "runs", "20260101-000001", ok=False))
     assert "FAIL" in out and "✗ wait" in out and "timeout" in out

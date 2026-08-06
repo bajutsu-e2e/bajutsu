@@ -315,8 +315,8 @@ class SessionManager:
     `token` is the optional shared token (None = open, the loopback-only legacy behavior; once
     `oauth` is set it narrows to worker traffic, BE-0313); a login exchanges it for an opaque session
     id held by `sessions` — the token itself never lives in the browser. `sessions` is a swappable
-    `SessionStore` seam (in-memory by default; a server backend swaps in a Redis/SQL store, BE-0015
-    7b). `oauth` is the GitHub OAuth client (None = OAuth not configured); sign-in and the
+    `SessionStore` seam (in-memory by default; a server backend swaps in a database-backed store,
+    BE-0015 7b / BE-0106). `oauth` is the GitHub OAuth client (None = OAuth not configured); sign-in and the
     viewer/editor role then follow GitHub org and Team membership (`authz.py`, BE-0313), and
     `oauth_admin_team` is the one server-wide GitHub Team (`"<github-org>/<team-slug>"`) whose members
     are admin. The OAuth fields are fixed at server construction and never change after, so they
@@ -487,8 +487,8 @@ class ServeState:
     # How a created job gets executed. Defaults to in-process threads (LocalExecutor); a server
     # backend swaps in a queue-based executor without touching the handler or run_job (BE-0015).
     executor: RunExecutor = field(default_factory=LocalExecutor)
-    # Live-log delivery. In-memory buffer by default; a server backend swaps in a Redis stream
-    # so any replica can serve any job's `/events` (BE-0015).
+    # Live-log delivery. In-memory buffer by default; a server backend swaps in `PostCompletionLogBus`
+    # (BE-0106), which serves any replica any job's `/events` from the jobs table + object storage.
     logbus: LogBus = field(default_factory=InMemoryLogBus)
     # Run-artifact reads. Filesystem-confined by default; a server backend swaps in an
     # object-storage store (set after construction) that may serve signed-URL redirects (BE-0015).

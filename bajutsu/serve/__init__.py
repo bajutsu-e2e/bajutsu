@@ -134,7 +134,7 @@ __all__ = [
 
 
 # The serve backends `_build_state` can assemble — the source of truth the CLI validates against.
-# `local` runs in-process; `server` wires the hosted seams (Redis queue/log bus + object storage).
+# `local` runs in-process; `server` wires the hosted seams (DB-backed queue/log bus + object storage).
 SERVE_BACKENDS: tuple[str, ...] = ("local", "server")
 
 
@@ -189,7 +189,8 @@ def _run_retention_from_env(raw: str | None) -> int:
 
 
 class MissingServerExtra(ImportError):
-    """A server-backend optional extra (Redis/RQ, object storage, the database) is not installed.
+    """A server-backend optional extra (FastAPI/uvicorn, the database, object storage) is not
+    installed.
 
     Carries the install hint and lets the CLI exit cleanly. Distinct from a plain ImportError so a
     genuine `bajutsu.*` import bug is never mistaken for a missing dependency and swallowed."""
@@ -216,7 +217,7 @@ def _build_state(
     """Assemble the `ServeState` for *backend* — the one place the serve seams are wired.
 
     ``local`` runs in-process (thread executor, in-memory log bus, filesystem artifacts, on-disk
-    scenarios). ``server`` wires the hosted seams (Redis-backed queue + log bus, object-storage
+    scenarios). ``server`` wires the hosted seams (a database-backed queue + log bus, object-storage
     artifacts + scenarios) from the environment. An unknown backend fails loudly rather than
     silently falling back to local. The transport (stdlib vs uvicorn) is a separate choice."""
     if backend not in SERVE_BACKENDS:
@@ -227,7 +228,7 @@ def _build_state(
         scenarios_dir / "baselines" if scenarios_dir else Path("baselines")
     )
     if backend == "server":
-        # The server backend's seams (Redis/RQ, object storage, the database) live behind the
+        # The server backend's seams (FastAPI/uvicorn, object storage, the database) live behind the
         # optional extras and import lazily. If any is missing, surface one clear install hint
         # rather than a raw ImportError naming whichever module happened to load first.
         try:
@@ -503,8 +504,8 @@ def _configure_oplog(state: ServeState) -> None:
 def make_asgi_server(state: ServeState, host: str = "127.0.0.1", port: int = 8765) -> Any:
     """A uvicorn ``Server`` running the FastAPI control-plane app over *state*. uvicorn and the app
     (FastAPI) are imported lazily — only when the ASGI transport is selected — so the default path
-    and the import guard (#117) stay server-free. (Return type is Any so the module needn't import
-    uvicorn to annotate it.)"""
+    stays server-free (`tests/serve/test_import_guard.py`). (Return type is Any so the module
+    needn't import uvicorn to annotate it.)"""
     try:
         import uvicorn
 

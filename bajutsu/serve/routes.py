@@ -213,8 +213,9 @@ ROUTES: tuple[Route, ...] = (
         "/api/crawl/runs",
         lambda state, ctx: ops.crawl_runs_payload(state, actor=ctx.actor()),
     ),
-    # Static path; the exact-segment matcher can't confuse `/api/runs/trash` (3 segments) with the
-    # `/api/runs/{run_id}/…` templates (4+), and there is no GET `/api/runs/{run_id}` to shadow it.
+    # Static path; `/api/runs/trash` (4 segments) matches the bare `/api/runs/{run_id}` template's
+    # segment count, but match_route filters by HTTP method first and that template is DELETE-only,
+    # so it can't shadow this GET route.
     Route(
         "GET",
         "/api/runs/trash",
