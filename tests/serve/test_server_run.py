@@ -10,6 +10,7 @@ test_server_app.py), so the actual serving path — middleware, routing — is c
 
 from __future__ import annotations
 
+import logging
 import socket
 import threading
 import time
@@ -379,7 +380,10 @@ def test_build_state_server_does_not_warn_when_oauth_is_fully_unset(
 
 
 def test_build_state_server_warns_on_the_retired_singular_admin_team_var(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     # A deployment still on the old BAJUTSU_OAUTH_ADMIN_TEAM (no BAJUTSU_OAUTH_ADMIN_TEAMS) would
     # otherwise lose every admin silently on this hard cutover — it must warn loudly instead.
@@ -411,6 +415,16 @@ def test_build_state_server_warns_on_the_retired_singular_admin_team_var(
     assert len(state.startup_warnings) == 2
     assert any("BAJUTSU_OAUTH_ADMIN_TEAMS is empty" in w for w in state.startup_warnings)
     assert any("BAJUTSU_OAUTH_ADMIN_TEAM is retired" in w for w in state.startup_warnings)
+    # The actual re-emission through oplog once logging is live -- `serve()` itself isn't
+    # exercised by this suite, so this is the one thing that actually drives
+    # `_emit_startup_warnings` and would catch a rename/drop of "server.startup_warning" from
+    # `oplog.EVENTS` (which `log_event` would otherwise only surface as a boot-time ValueError on
+    # the first deployment that actually has a warning to re-emit).
+    with caplog.at_level(logging.WARNING):
+        srv._emit_startup_warnings(state)
+    records = [r for r in caplog.records if getattr(r, "event", None) == "server.startup_warning"]
+    assert len(records) == 2
+    assert all(r.levelno == logging.WARNING for r in records)
 
 
 def test_build_state_server_warns_when_admin_teams_was_never_set(

@@ -112,13 +112,23 @@ correlation フィールドも redaction もない、構造化されていない
 JSON 形式の `oplog` の stdout 書き込みと混在します。これはまさに、ログ pipeline が捨ててしまうか
 パースに失敗する形であり、しかも運用者が最も alert を組みたい状態、つまり「このデプロイには admin が
 おらず、サインインして admin を得る手段もない」という状態そのものです。`_build_server_state` は、
-出力する各メッセージを新しい `ServeState.startup_warnings` フィールドに集約するようになり、
-`serve()` はそれらを `oplog.log_event` を通じて再発行します。`oplog.EVENTS` の新しいエントリ
-`"server.startup_warning"` として、`_configure_oplog` を呼んだ直後に発行します。これは
+出力する各メッセージを新しい `ServeState.startup_warnings` フィールドに集約するようになります。
+`serve()` は、`_configure_oplog` の直後に新しい `_emit_startup_warnings(state)` を呼びます。これは
 `restore_persisted_provider_settings` がすでに使っている配置と同じであり、理由も同じです
-（「malformed-file の警告が live のログシンクに届くように」）。`print` の呼び出しはそのまま残します。
-それらが動く時点では何も構成されていないため、store もデータベースも無いまったく壊れたデプロイが
-起動したときに、何かを見る手段は依然としてそれしかないからです。
+（「malformed-file の警告が live のログシンクに届くように」）。この関数が、集約した各メッセージを
+`oplog.log_event` を通じて、`oplog.EVENTS` の新しいエントリ `"server.startup_warning"` として
+再発行します。この関数は、その2つの隣人がすでに立てているパターンに合わせて、`serve()` 内の
+インラインな loop ではなく、単独で呼び出せる boot seam です。`serve()` は実際にサーバの loop を
+走らせる関数であり、高速なテストスイートでは実行されません。そのため、インラインな loop のテスト
+網羅は「クラッシュしないこと」だけになってしまいます。`log_event` は、未登録の event に対しては
+仕様として `ValueError` を発生させるため、後になって `"server.startup_warning"` が `oplog.EVENTS`
+から改名または削除されると、テストスイート全体は green のままなのに、実際に再発行すべき起動時警告を
+持つデプロイが起動時に、`_configure_oplog` の後、`restore_persisted_provider_settings` の前で
+クラッシュします。まさにこの項目が助けようとしている構成ミスのデプロイが、admin を欠くだけでなく
+まったく起動できなくなるということです。専用のテストが `_emit_startup_warnings` を直接動かします。
+`print` の呼び出しはそのまま残します。それらが動く時点では何も構成されていないため、store も
+データベースも無いまったく壊れたデプロイが起動したときに、何かを見る手段は依然としてそれしかない
+からです。
 
 `oauth_callback`（[`bajutsu/serve/authz.py`](../../bajutsu/serve/authz.py)）は、Organization
 メンバーシップのゲートを実行する前に、すでに login の GitHub Team メンバーシップを取得しています
@@ -413,10 +423,12 @@ GitHub organization を誰が管理しているかをコードで確認する方
       config 自体の読み込みが失敗した場合（曖昧さのない手がかり）に限る。`/user/orgs` が空を返した
       場合には適用しない。これは、GitHub のどの org にも本当に属していない login と同じ形だからである。
 - [x] `_build_server_state` の4つの起動時警告を、出力するだけでなく新しい
-      `ServeState.startup_warnings` フィールドに集約するようにする。`serve()` はそれぞれを
-      `oplog.log_event` を通じて、`oplog.EVENTS` の新しいエントリ `"server.startup_warning"` として、
-      `_configure_oplog` の直後に再発行する。これは `restore_persisted_provider_settings` がすでに
-      使っている配置と同じである。これにより、運用者の `event` 別 alert は「admin がおらず、
+      `ServeState.startup_warnings` フィールドに集約するようにする。新しい `_emit_startup_warnings`
+      boot seam を追加する。`restore_persisted_provider_settings` や `register_launch_project` と
+      並ぶ、単独で呼び出せる関数であり、`serve()` 内のインラインな loop ではない。この関数が、集約
+      した各警告を `oplog.log_event` を通じて、`oplog.EVENTS` の新しいエントリ
+      `"server.startup_warning"` として、`_configure_oplog` の直後に再発行する。これはその隣人たちが
+      すでに使っている配置と同じである。これにより、運用者の `event` 別 alert は「admin がおらず、
       サインインして admin を得る手段もない」という状態も、運用者がたまたま生のブート出力から読んだ
       場合だけでなく、確実に見られるようになる。
 - [x] セルフホスティングと設定のドキュメント（両言語）、`.env.example` を、改名した変数とこの迂回の
@@ -435,7 +447,10 @@ GitHub organization を誰が管理しているかをコードで確認する方
       exchange、identity を返さなかった exchange のそれぞれが `"oauth.denied"` を `INFO` で記録する
       ことを確認する。構成が半端な OAuth デプロイが警告し、完全に未設定のデプロイは警告しない
       ことを確認する。`_build_state` が、出力した内容と一致する `startup_warnings` を
-      返すことを確認する。改名した変数が
+      返すことを確認する。`_emit_startup_warnings` が、集約した各警告を実際に `oplog.log_event` を
+      通じて `"server.startup_warning"` の下で再発行することを確認する。これにより、後で
+      `oplog.EVENTS` からその名前が改名または削除されると、boot 時の `ValueError` だけでなく、
+      失敗するテストが存在するようになる。改名した変数が
       複数の Team を持つリストとしてパースされることを
       確認する。迂回した admin が `default` org に配置されることを確認する。既存メンバーの記録済み org が
       config 自体の読み込み失敗を乗り越えて残る一方で、実際に revoke されたメンバーは次回のサインインで

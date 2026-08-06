@@ -112,12 +112,20 @@ option at that point is a bare `print(..., file=sys.stderr)` — unstructured te
 once logging comes up. That is exactly the shape a log pipeline drops or fails to parse, and it is the
 condition an operator most needs to alert on: "this deployment has no admin and no way to sign in and
 get one." `_build_server_state` collects each message it prints onto a new `ServeState.startup_warnings`
-field, and `serve()` re-emits them through `oplog.log_event`, under a new `"server.startup_warning"`
-entry in `oplog.EVENTS`, right after it calls `_configure_oplog` — the same placement
-`restore_persisted_provider_settings` already uses, and for the same reason ("a malformed-file warning
-reaches the live log sink"). The `print` calls stay: nothing is configured yet at the point they run,
-so they are still the only way a deployment starting up entirely broken (no store, no database) sees
-anything at all.
+field. `serve()` calls a new `_emit_startup_warnings(state)` right after `_configure_oplog` — the same
+placement `restore_persisted_provider_settings` already uses, and for the same reason ("a malformed-file
+warning reaches the live log sink") — which re-emits each through `oplog.log_event`, under a new
+`"server.startup_warning"` entry in `oplog.EVENTS`. That function is a separately-callable boot seam,
+matching the pattern its two neighbors already set, rather than an inline loop in `serve()` itself:
+`serve()` runs an actual server loop and isn't exercised by the fast test suite, so an inline loop's
+only test coverage would be the *absence* of a crash — and `log_event` raises `ValueError` on an
+unregistered event by design, so a later rename or drop of `"server.startup_warning"` from
+`oplog.EVENTS` would leave the whole suite green right up until a real deployment with a startup
+warning to re-emit crashed at boot, after `_configure_oplog` and before `restore_persisted_provider_settings`
+— the exact misconfigured deployment this item exists to help, now unable to start at all rather than
+merely missing an admin. A direct test drives `_emit_startup_warnings` instead. The `print` calls stay:
+nothing is configured yet at the point they run, so they are still the only way a deployment starting
+up entirely broken (no store, no database) sees anything at all.
 
 `oauth_callback` ([`bajutsu/serve/authz.py`](../../bajutsu/serve/authz.py)) already fetches the
 login's GitHub Team memberships (`identity.teams`, via `fetch_identity`) before it runs the
@@ -399,11 +407,13 @@ mapping.
       but only on a config-load failure — an unambiguous signal — not on an empty `/user/orgs`
       response, which is equally the shape of a login that genuinely has no GitHub org.
 - [x] Collect `_build_server_state`'s four startup warnings onto a new
-      `ServeState.startup_warnings` field instead of only printing them, and have `serve()` re-emit
-      each through `oplog.log_event` under a new `"server.startup_warning"` event right after
-      `_configure_oplog` — the same placement `restore_persisted_provider_settings` already uses — so
-      an operator's `event`-keyed alert can see "no admin, no way to sign in and get one" too, not
-      only whatever they happen to read from raw boot output.
+      `ServeState.startup_warnings` field instead of only printing them, and add a new
+      `_emit_startup_warnings` boot seam — a separately-callable function alongside
+      `restore_persisted_provider_settings`'s and `register_launch_project`'s, not an inline loop in
+      `serve()` — that re-emits each through `oplog.log_event` under a new `"server.startup_warning"`
+      event right after `_configure_oplog`, the same placement its neighbors already use, so an
+      operator's `event`-keyed alert can see "no admin, no way to sign in and get one" too, not only
+      whatever they happen to read from raw boot output.
 - [x] Update the self-hosting and configuration docs (both languages) and `.env.example` to describe
       the renamed variable and the bypass. BE-0313's claim that the `default` org is unreachable
       through OAuth sign-in is superseded in this item's *Detailed design* instead: no `docs/` page
@@ -418,7 +428,10 @@ mapping.
       no-state probe, a CSRF check bypassed with matching fake values, a raising exchange, and an
       exchange returning no identity each log `"oauth.denied"` at `INFO`; a half-configured OAuth
       deployment warns (and a fully-unset one does not); `_build_state`
-      returns the collected `startup_warnings` matching what was printed; the renamed variable
+      returns the collected `startup_warnings` matching what was printed; `_emit_startup_warnings`
+      actually re-emits each collected warning through `oplog.log_event` under
+      `"server.startup_warning"`, so a later rename or drop of that name from `oplog.EVENTS` has a
+      test to fail rather than only a boot-time `ValueError`; the renamed variable
       parses a multi-Team list;
       a bypassing admin is placed in the `default` org; an existing member's recorded org survives a
       failure to load the config itself, but a genuinely revoked member re-resolves to `default` on

@@ -558,6 +558,20 @@ def _configure_oplog(state: ServeState) -> None:
     )
 
 
+def _emit_startup_warnings(state: ServeState) -> None:
+    """Re-emit `_build_server_state`'s admin-Team startup warnings (already printed to stderr, since
+    nothing was configured that early) through the now-live log sink, under the registered
+    `"server.startup_warning"` event. A separately-callable boot seam, like its two siblings below,
+    rather than an inline loop in `serve()` — so a rename or drop of that event name from
+    `oplog.EVENTS` has a direct test to fail, instead of only surfacing as a boot-time `ValueError`
+    on the first deployment that actually has a startup warning to re-emit. An operator's alert keyed
+    on `event=server.startup_warning` must be able to see "this deployment has no admin and no way to
+    sign in and get one" too, not only whatever they happen to read from boot output. A no-op when
+    `state.startup_warnings` is empty (local serve, or a server deployment with nothing to warn about)."""
+    for msg in state.startup_warnings:
+        oplog.log_event(_logger, "server.startup_warning", msg, level=logging.WARNING)
+
+
 def make_asgi_server(state: ServeState, host: str = "127.0.0.1", port: int = 8765) -> Any:
     """A uvicorn ``Server`` running the FastAPI control-plane app over *state*. uvicorn and the app
     (FastAPI) are imported lazily — only when the ASGI transport is selected — so the default path
@@ -623,13 +637,9 @@ def serve(
     # sha256 (BE-0243), as valid a cache hit moments after a restart as one extracted just before
     # it — the same reason nothing sweeps the Git source's own checkout cache at startup either.
     _configure_oplog(state)
-    # Re-emit `_build_server_state`'s admin-Team startup warnings (already printed to stderr, since
-    # nothing was configured that early) through the now-live log sink, the same placement
-    # `restore_persisted_provider_settings` below uses for exactly this reason: an operator's alert
-    # keyed on `event=server.startup_warning` must be able to see "this deployment has no admin and
-    # no way to sign in and get one" too, not only whatever they happen to read from boot output.
-    for msg in state.startup_warnings:
-        oplog.log_event(_logger, "server.startup_warning", msg, level=logging.WARNING)
+    # After `_configure_oplog`, the same placement `restore_persisted_provider_settings` below uses,
+    # and for the same reason: a warning from before logging was live must still reach the live sink.
+    _emit_startup_warnings(state)
     # Restore the operator's last-saved provider/model/effort before the first request, so a restart
     # reflects it rather than resetting to the launch environment (BE-0184). After `_configure_oplog`
     # so a malformed-file warning reaches the live log sink; a no-op when nothing is persisted (BE-0101).
