@@ -53,6 +53,19 @@ def _as_float(v: Any) -> float:
     return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else 0.0
 
 
+def video_seconds(started_at: float, video_anchor_s: float) -> float:
+    """How far into the recording an absolute `started_at` (epoch seconds) falls (BE-0348).
+
+    The one place a video-relative number is produced: steps and network exchanges both record
+    absolute instants, so recomputing this — after an improved anchor-resolution strategy, or from a
+    manifest read back long after the run — means changing only the anchor passed here. Clamped at
+    zero because a seek target cannot precede the recording; an exchange that began fractionally
+    before the scenario's own anchor is the case that reaches it. A run recorded before this item
+    persisted an anchor passes `0.0` and gets its already-relative value back unchanged.
+    """
+    return max(0.0, started_at - video_anchor_s)
+
+
 def _truncate(body: str) -> str:
     return body if len(body) <= _BODY_MAX else body[:_BODY_MAX] + "\n… (truncated)"
 

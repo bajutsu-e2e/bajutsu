@@ -53,7 +53,11 @@ def _run_backend(results: list[RunResult]) -> str:
 # v5: per-step "actuations" (and per-scenario "expect_actuations") — what the driver actually did to the
 #   screen, the coordinate/geometry half of the `actionLog` evidence kind. An older run simply has none,
 #   so the report shows no actuation row for it rather than failing to load.
-SCHEMA_VERSION = 5
+# v6 (BE-0348): "started_at" (and network.json's "startedAt") are absolute wall-clock epoch seconds
+#   rather than video-relative offsets, and the anchor to subtract from them — "video_anchor_s", now
+#   itself absolute — is persisted instead of dropped. A v5-or-older run carries no anchor, so a
+#   reader derives 0.0 for it and its already-relative timestamps render unchanged.
+SCHEMA_VERSION = 6
 
 
 def _matrix(results: list[RunResult]) -> dict[str, object] | None:
@@ -126,8 +130,8 @@ def manifest_dict(
 ) -> dict[str, object]:
     """Build the manifest — the run's canonical, versioned render model (BE-0068).
 
-    RunResult and its parts are dataclasses, so `_scenario_dict` captures step/expect outcomes
-    verbatim — minus `video_anchor_s`, a process-local instant with no meaning once persisted.
+    RunResult and its parts are dataclasses, so `asdict` captures step/expect outcomes verbatim —
+    every field, since BE-0348 left none whose value stops meaning anything once persisted.
     `backend` is the actuator that drove the run (each scenario also carries its own `backend`);
     `sourceName` is the label the report's YAML toggle shows, persisted here so a re-render can
     recover it.
@@ -140,7 +144,7 @@ def manifest_dict(
         "ok": all(r.ok for r in results),
         "backend": _run_backend(results),
         "sourceName": source_name,
-        "scenarios": [_scenario_dict(r) for r in results],
+        "scenarios": [asdict(r) for r in results],
     }
     if provenance:
         manifest["provenance"] = provenance
@@ -150,20 +154,6 @@ def manifest_dict(
     if (matrix := _matrix(results)) is not None:
         manifest["matrix"] = matrix
     return manifest
-
-
-def _scenario_dict(r: RunResult) -> dict[str, object]:
-    """`asdict(r)`, minus `video_anchor_s`.
-
-    `video_anchor_s` is a raw `time.monotonic()` instant — a same-process handoff from
-    `run_scenario` to the pipeline's network-timestamp calculation, meaningful only during the run
-    that produced it. Every value derived from it (`started_at`, network `startedAt`) is already a
-    relative offset and carries the real information; the absolute instant itself would be noise
-    (or actively misleading) once persisted here.
-    """
-    d = asdict(r)
-    d.pop("video_anchor_s", None)
-    return d
 
 
 def _details(r: RunResult) -> str:

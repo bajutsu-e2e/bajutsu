@@ -214,20 +214,17 @@ def test_manifest_records_scenario_duration() -> None:
     assert manifest_dict("run1", [r])["scenarios"][0]["duration_s"] == 2.5
 
 
-def test_manifest_excludes_video_anchor_s() -> None:
-    # video_anchor_s is a raw time.monotonic() instant — a same-process handoff from run_scenario to
-    # pipeline.py's network-timestamp calculation, meaningful only during the run that produced it.
-    # It must never reach the persisted manifest, where it would be noise at best (or a value a
-    # future reader mistakes for something meaningful). A non-default value here proves the
-    # exclusion is real, not merely a coincidence of an unset field looking absent.
+def test_manifest_persists_every_run_result_field() -> None:
+    # video_anchor_s is now an absolute wall-clock instant, so it means the same thing after the run
+    # as during it — and a report needs it to derive a step's video-relative seconds from the
+    # absolute started_at beside it (BE-0348). It must therefore reach the persisted manifest, and
+    # with it the last field manifest_dict used to drop: nothing is excluded any more.
     from dataclasses import fields
 
-    r = RunResult(scenario="s1", ok=True, steps=[], video_anchor_s=123456.789)
+    r = RunResult(scenario="s1", ok=True, steps=[], video_anchor_s=1_700_000_000.5)
     scenario = manifest_dict("run1", [r])["scenarios"][0]
-    assert "video_anchor_s" not in scenario
-    # Exactly this one field is missing — not a different field excluded by mistake, and not this
-    # field plus others dropped by a broader (over-eager) exclusion.
-    assert {f.name for f in fields(RunResult)} - set(scenario) == {"video_anchor_s"}
+    assert scenario["video_anchor_s"] == 1_700_000_000.5
+    assert {f.name for f in fields(RunResult)} - set(scenario) == set()
 
 
 def test_manifest_records_device_environment() -> None:

@@ -16,6 +16,7 @@ from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import NullSink
 from bajutsu.evidence.network import NetworkExchange, ScreenTransition
 from bajutsu.orchestrator import RunResult
+from bajutsu.report.format import video_seconds
 from bajutsu.runner import (
     Lease,
     run_all,
@@ -991,27 +992,27 @@ def test_write_network_stamps_the_given_provider(tmp_path: Path) -> None:
     assert art is not None and art.provider == "fake (fallback)"
 
 
-def test_write_network_started_at_never_goes_negative(tmp_path: Path) -> None:
-    # A video_anchor_s after the exchange's own received time (an implausible confirmation) must not
-    # produce a negative startedAt — the same non-negative guarantee the step-side started_at has
-    # (`max(0.0, ...)` in loop.py). Defensive: `_run_on_lease` always passes `result.video_anchor_s`,
-    # which is `scenario_start + offset` and so a real instant even for a scenario with no video.
+def test_write_network_started_at_is_an_absolute_wall_clock_instant(tmp_path: Path) -> None:
+    # The collector stamps a monotonic receive time; `wall_offset_s` converts it through the
+    # scenario's own anchor pair, so network.json records the absolute instant the exchange started
+    # (received + offset - duration) rather than an already-relative number (BE-0348). No clamp: an
+    # absolute epoch has no floor to clamp to, and the report applies its own at render time.
     from bajutsu.evidence.redaction import Redactor
     from bajutsu.runner.pipeline import _write_network
 
-    ex = NetworkExchange(method="GET", path="/a", status=200)
-    art = _write_network([(ex, 1.0)], 10.0, tmp_path, "00-s", Redactor(None))
+    ex = NetworkExchange(method="GET", path="/a", status=200, durationMs=250.0)
+    art = _write_network([(ex, 1.0)], 1_700_000_000.0, tmp_path, "00-s", Redactor(None))
     assert art is not None
     data = json.loads((tmp_path / "00-s" / "network.json").read_text(encoding="utf-8"))
-    assert data[0]["startedAt"] == 0.0
+    assert data[0]["startedAt"] == 1_700_000_000.75
 
 
 def test_network_json_anchors_to_the_video_corrected_start(tmp_path: Path) -> None:
-    # The scenario's own scenario_start-based stamp must not leak into network.json: the anchor
-    # `_run_on_lease` passes to `_write_network` is `result.video_anchor_s`, the same corrected
-    # origin the scenario's steps are relative to — proven here by a video whose confirmed
-    # `true_start` precedes scenario_start, so a naive (uncorrected) anchor would produce a
-    # different `startedAt` than the one actually written.
+    # The scenario's own stamp must not leak into network.json: an exchange's absolute `startedAt`
+    # and the scenario's `video_anchor_s` must place it on the same timeline the steps are on, so
+    # that the report's render-time derivation reproduces the video-corrected seconds. Proven here
+    # by a video whose confirmed `true_start` precedes scenario_start, so an uncorrected anchor
+    # would yield a different number than the one derived.
     from bajutsu.evidence import FileSink
     from bajutsu.evidence.intervals import Interval
 
@@ -1042,12 +1043,19 @@ def test_network_json_anchors_to_the_video_corrected_start(tmp_path: Path) -> No
             release=lambda: None,
         )
 
-    run_and_report(_eff(), [scn], lease, tmp_path / "runs", "run1", clock=_AdvancingClock())
+    results, _ = run_and_report(
+        _eff(), [scn], lease, tmp_path / "runs", "run1", clock=_AdvancingClock()
+    )
     data = json.loads((run_dir / "00-net" / "network.json").read_text(encoding="utf-8"))
-    # scenario_start is 0.0 on this clock (nothing here calls sleep), so an uncorrected anchor would
-    # produce startedAt == 0.0 (clamped). The corrected anchor is 2.5s earlier (video_anchor_s ==
-    # scenario_start + video_start_offset == 0.0 + (-2.5)), so startedAt == 0.0 - (-2.5) == 2.5.
-    assert data[0]["startedAt"] == 2.5
+    # scenario_start is 0.0 on this clock (nothing here calls sleep), so the exchange's own absolute
+    # start coincides with the scenario's wall anchor and an uncorrected anchor would derive 0.0. The
+    # corrected anchor is 2.5s earlier (video_anchor_s == scenario_wall_start + (-2.5)), so the
+    # rendered offset is 2.5 — the same number the pre-BE-0348 in-flight calculation produced.
+    # Approximate to the millisecond: network.json rounds `startedAt` to 3 decimals (as it always
+    # has), which now quantizes an epoch-magnitude value rather than a small offset.
+    assert video_seconds(data[0]["startedAt"], results[0].video_anchor_s) == pytest.approx(
+        2.5, abs=1e-3
+    )
 
 
 class _ConstantCollector:

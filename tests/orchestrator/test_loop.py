@@ -14,6 +14,7 @@ from bajutsu.evidence import Artifact, FileSink
 from bajutsu.evidence.intervals import Interval
 from bajutsu.orchestrator import run_scenario
 from bajutsu.orchestrator.waits import WaitTrace
+from bajutsu.report.format import video_seconds
 from bajutsu.scenario import Interrupt, Relaunch
 
 
@@ -814,75 +815,89 @@ class _VideoSink:
         return []
 
 
-def _run_with_video(true_start: float | None):
+# The fixed wall clock every test below injects. A `FakeClock` puts scenario_start at 0.0, so a
+# recorded timestamp reads as this epoch plus the elapsed monotonic time — which is exactly the
+# anchor-pair conversion under test (BE-0348).
+_WALL = 1_700_000_000.0
+
+
+def _run_with_video(true_start: float | None, wall_clock=lambda: _WALL):
     driver = FakeDriver([el("go", "Go", ["button"])])
     return run_scenario(
         driver,
         _scenario({"name": "x", "steps": [{"tap": {"id": "go"}}]}),
         clock=FakeClock(),
         sink=_VideoSink(true_start),
+        wall_clock=wall_clock,
     )
 
 
-def test_started_at_uncorrected_when_true_start_unconfirmed() -> None:
-    # true_start is None (no confirmation, or the sink returned no video): the offset is 0.0, so
-    # started_at is exactly what it was before this correction existed.
-    result = _run_with_video(None)
-    assert result.steps[0].started_at == 0.0
-    assert result.video_anchor_s == 0.0
+def test_started_at_is_absolute_and_carries_no_video_correction() -> None:
+    # A step records the wall-clock instant it began, never a video-relative offset (BE-0348) — so
+    # the confirmed true_start moves the *anchor*, not the step's own timestamp. Both the confirmed
+    # and the unconfirmed case therefore stamp the same started_at; only video_anchor_s differs.
+    unconfirmed = _run_with_video(None)
+    assert unconfirmed.steps[0].started_at == _WALL
+    assert unconfirmed.video_anchor_s == _WALL
+
+    # The Android/web case: true_start precedes scenario_start by 2.5s, so the anchor moves 2.5s
+    # earlier — canceling the extra pre-launch footage the video already carries.
+    confirmed = _run_with_video(true_start=-2.5)
+    assert confirmed.steps[0].started_at == _WALL
+    assert confirmed.video_anchor_s == _WALL - 2.5
 
 
-def test_started_at_shifts_later_when_video_started_before_scenario_start() -> None:
-    # The Android/web case: true_start precedes scenario_start (here, by 2.5s on a clock that never
-    # advances, so scenario_start == 0.0), so video_start_offset is -2.5 and started_at increases by
-    # 2.5 — canceling the extra pre-launch footage the video already carries.
-    result = _run_with_video(true_start=-2.5)
-    assert result.steps[0].started_at == 2.5
-    assert result.video_anchor_s == -2.5  # scenario_start (0.0) + video_start_offset (-2.5)
+def test_the_report_derives_the_same_video_relative_seconds_the_run_used_to_bake_in() -> None:
+    # The behavior a report reader sees must be unchanged by the move to absolute storage: the
+    # video-relative seek offset is now computed at render time from the two persisted values, and it
+    # is the same number the run loop used to compute in-flight (0.0 uncorrected, 2.5 corrected).
+    for true_start, expected in ((None, 0.0), (-2.5, 2.5)):
+        result = _run_with_video(true_start)
+        assert video_seconds(result.steps[0].started_at, result.video_anchor_s) == expected
 
 
-def test_started_at_reflects_elapsed_time_between_steps_not_only_the_offset() -> None:
-    # Every sibling test here uses a FakeClock that never advances between steps, so a step's
-    # started_at is always `0 - video_start_offset` in them — a regression that dropped the real
-    # `(start - scenario_start)` elapsed-time term entirely would still pass every one. Prove both
-    # terms are load-bearing with a clock that genuinely advances: a `wait` step's poll-sleep moves
-    # time forward before the following `tap`, so that step's started_at must reflect real elapsed
-    # time *plus* the video correction, not the correction alone.
+def test_the_wall_clock_is_read_once_so_every_step_shares_one_anchor() -> None:
+    # The anchor pair is what makes a step's timestamp a *derived* value. A regression that stamped
+    # each step from its own `time.time()` read would still produce plausible absolute numbers, so
+    # prove the derivation with a wall clock that moves on every call: read once, every step's
+    # timestamp is `_WALL + elapsed`; read per step, the second step would carry the later reading.
+    readings = iter([_WALL, _WALL + 100.0, _WALL + 200.0])
     here = el("here", "H")
-    scn = _scenario(
-        {
-            "name": "x",
-            "steps": [
-                {"wait": {"for": {"id": "here"}, "timeout": 1}},
-                {"tap": {"id": "here"}},
-            ],
-        }
-    )
-
     driver = FakeDriver([])
 
     def appear(_t: float) -> None:
         driver.screen = [here]
 
-    uncorrected = run_scenario(driver, scn, clock=FakeClock(appear), sink=_VideoSink(None))
-    elapsed = uncorrected.steps[1].started_at
-    assert elapsed > 0.0  # real time passed waiting for `here` to appear
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {"wait": {"for": {"id": "here"}, "timeout": 1}},
+                    {"tap": {"id": "here"}},
+                ],
+            }
+        ),
+        clock=FakeClock(appear),
+        sink=_VideoSink(None),
+        wall_clock=lambda: next(readings),
+    )
+    # A `wait` step's poll-sleep advances the monotonic clock, so the elapsed term is load-bearing
+    # too: the second step postdates the first, but by real elapsed time well under the 100s a
+    # second wall-clock reading would have injected.
+    first, second = (s.started_at for s in result.steps)
+    assert first == _WALL
+    assert _WALL < second < _WALL + 100.0
+    assert result.wall_offset_s == _WALL  # scenario_start is 0.0 on a FakeClock
 
-    driver2 = FakeDriver([])
 
-    def appear2(_t: float) -> None:
-        driver2.screen = [here]
-
-    corrected = run_scenario(driver2, scn, clock=FakeClock(appear2), sink=_VideoSink(-2.5))
-    assert corrected.steps[1].started_at == elapsed + 2.5
-
-
-def test_started_at_never_goes_negative(caplog) -> None:
-    # true_start after scenario_start is not expected in production (the item's Motivation), so the
-    # offset is not trusted at all — it is suppressed with a warning rather than applied and then
-    # clamped, which would otherwise flatten every early step's started_at to 0.0 unremarked.
+def test_an_untrusted_positive_offset_leaves_the_anchor_uncorrected(caplog) -> None:
+    # true_start after scenario_start is not expected in production (BE-0346's Motivation), so the
+    # offset is not trusted at all — it is suppressed with a warning rather than applied, which would
+    # otherwise pull the anchor *past* the steps it anchors and flatten their derived seconds to 0.0.
     with caplog.at_level("WARNING"):
         result = _run_with_video(true_start=10.0)
-    assert result.steps[0].started_at == 0.0
-    assert result.video_anchor_s == 0.0
+    assert result.steps[0].started_at == _WALL
+    assert result.video_anchor_s == _WALL
     assert any("is after scenario_start" in r.message for r in caplog.records)

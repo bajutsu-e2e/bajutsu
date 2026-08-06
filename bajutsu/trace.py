@@ -186,6 +186,17 @@ def _at(value: Any) -> float:
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
 
 
+def _video_at(value: Any, video_anchor_s: float) -> float:
+    """A recorded absolute instant as seconds into the scenario's recording (BE-0348).
+
+    The timeline's own copy of the report's `video_seconds` derivation, kept here rather than
+    imported so `bajutsu trace <run-dir>` stays free of the report package (which pulls in the
+    orchestrator). A run recorded before the anchor was persisted supplies `0.0`, so its
+    already-relative timestamps pass through unchanged.
+    """
+    return max(0.0, _at(value) - video_anchor_s)
+
+
 def _coordinate(p: Any) -> str | None:
     """One recorded point rendered, or None when it is not two plain numbers."""
     if not isinstance(p, (list, tuple)) or len(p) != 2:
@@ -220,7 +231,9 @@ def _actuation_summary(step: dict[str, Any]) -> str:
     return "   · ".join(out)
 
 
-def _step_event(step: dict[str, Any], from_: str | None = None) -> tuple[float, str]:
+def _step_event(
+    step: dict[str, Any], video_anchor_s: float, from_: str | None = None
+) -> tuple[float, str]:
     mark = "✓" if step.get("ok") else "✗"
     desc = f"{mark} {step.get('action', '')!s:<9}"
     dur = step.get("duration_s")
@@ -232,10 +245,10 @@ def _step_event(step: dict[str, Any], from_: str | None = None) -> tuple[float, 
         desc += f'   ← "{from_}"'
     if not step.get("ok") and step.get("reason"):
         desc += f"   ✗ {step['reason']}"
-    return _at(step.get("started_at")), desc
+    return _video_at(step.get("started_at"), video_anchor_s), desc
 
 
-def _net_event(exchange: dict[str, Any]) -> tuple[float, str]:
+def _net_event(exchange: dict[str, Any], video_anchor_s: float) -> tuple[float, str]:
     method = str(exchange.get("method") or "")
     target = str(exchange.get("path") or exchange.get("url") or "")
     status = exchange.get("status")
@@ -245,7 +258,7 @@ def _net_event(exchange: dict[str, Any]) -> tuple[float, str]:
         desc += f"  {dur:.0f}ms"
     if exchange.get("mocked"):
         desc += "  [mock]"
-    return _at(exchange.get("startedAt")), desc
+    return _video_at(exchange.get("startedAt"), video_anchor_s), desc
 
 
 def _provenance_by_scenario(run_dir: Path) -> dict[str, list[str | None]]:
@@ -287,13 +300,15 @@ def _scenario_lines(
     # Group over the full plan so the label collapses the same way the report does, then show each
     # executed step the value at its plan index.
     shown = grouped_provenance(plan_froms or [])
+    anchor = _at(scenario.get("video_anchor_s"))
     events: list[tuple[float, str]] = [
-        _step_event(s, shown[i] if 0 <= (i := _step_index(s)) < len(shown) else None) for s in steps
+        _step_event(s, anchor, shown[i] if 0 <= (i := _step_index(s)) < len(shown) else None)
+        for s in steps
     ]
     net_name = _artifact(scenario, "network")
     network = _read_json(run_dir / net_name) if net_name else None
     if isinstance(network, list):
-        events += [_net_event(ex) for ex in network if isinstance(ex, dict)]
+        events += [_net_event(ex, anchor) for ex in network if isinstance(ex, dict)]
     if events:
         lines.append("  timeline:")
         for at, desc in sorted(events, key=lambda e: e[0]):

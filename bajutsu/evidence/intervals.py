@@ -17,6 +17,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import os
 import re
 import shutil
 import signal
@@ -100,7 +101,22 @@ _VIDEO_FINALIZE_TIMEOUT = 120.0
 # How long `confirm_started` polls for a video's first written byte / device-side process before
 # giving up. Generous versus reported simctl/adb startup jitter, small versus the finalize timeouts
 # above — the report's video-sync correction just goes uncorrected for this scenario on timeout.
+# Overridable per lane, like the CI-sensitive xcuitest timeouts it sits beside: a loaded macOS CI
+# runner is measurably slower than a local one, and a timeout there costs the whole scenario its
+# anchor correction (BE-0348).
 _VIDEO_START_TIMEOUT = 5.0
+_VIDEO_START_TIMEOUT_ENV = "BAJUTSU_VIDEO_START_TIMEOUT"
+
+
+def _video_start_timeout() -> float:
+    """The recording-start confirmation ceiling in seconds, from the env override or the default."""
+    raw = os.environ.get(_VIDEO_START_TIMEOUT_ENV)
+    if not raw:
+        return _VIDEO_START_TIMEOUT
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return _VIDEO_START_TIMEOUT
 
 
 class Proc(Protocol):
@@ -268,7 +284,13 @@ def start_video(
     """
     baseline_size = _file_size(path, disclose=True) if confirm_started else 0
     proc = spawn(record_video_cmd(udid, str(path)), None)
-    true_start = _await_video_file_growing(path, baseline_size) if confirm_started else None
+    # Resolved per call, not bound as a parameter default: a default binds at import time and so
+    # could never see `BAJUTSU_VIDEO_START_TIMEOUT` (BE-0348).
+    true_start = (
+        _await_video_file_growing(path, baseline_size, _video_start_timeout())
+        if confirm_started
+        else None
+    )
     return Interval(
         kind="video",
         path=path,
@@ -426,8 +448,11 @@ def start_screenrecord(
         ),
         None,
     )
+    # Resolved per call for the same reason as `start_video`'s (BE-0348).
     true_start = (
-        _await_screenrecord_started(serial, run, baseline_pids) if confirm_started else None
+        _await_screenrecord_started(serial, run, baseline_pids, _video_start_timeout())
+        if confirm_started
+        else None
     )
 
     def transform(target: Path) -> Path:

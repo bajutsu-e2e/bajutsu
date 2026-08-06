@@ -206,12 +206,31 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   `adopt` even runs) is not lost. The web actuator stamps `true_start` right after the recording
   page is created, with no poll: `record_video_dir` enables recording for the pages in a context,
   but the video itself does not exist until a page does, so the stamp waits for `new_page()` rather
-  than `new_context()`. `run_scenario` resolves `video_start_offset = true_start - scenario_start` once per
-  scenario and applies it to every step's `started_at` (and, via `RunResult.video_anchor_s`, to
-  every network exchange's `startedAt`) — see [reporting](reporting.md#manifestjson) for what those
-  fields mean to a report reader. A poll that never confirms leaves `true_start` at `None`, so the
-  offset is `0.0` and the timestamp is exactly what it would have been without this correction —
-  never a guessed number.
+  than `new_context()`. `run_scenario` resolves `video_start_offset = true_start - scenario_start`
+  once per scenario and records the corrected origin as `RunResult.video_anchor_s`. A poll that
+  never confirms leaves `true_start` at `None`, so the offset is `0.0` and the anchor is exactly
+  what it would have been without this correction — never a guessed number.
+
+  How long that poll may run is the one knob here. Startup jitter in `simctl` and `adb` is
+  measurably worse on a loaded continuous-integration (CI) machine than on a developer's, and a poll
+  that gives up costs the whole scenario its correction. So the ceiling takes an override:
+  `BAJUTSU_VIDEO_START_TIMEOUT` (seconds) replaces the 5-second compiled default, and
+  [`.github/workflows/ios-e2e.yml`](../.github/workflows/ios-e2e.yml) raises it for the iOS lane
+  alongside the four `BAJUTSU_XCUITEST_*` timeouts that already work this way. Raising it costs
+  nothing on the healthy path, because the poll returns the moment the recording confirms.
+- **The recorded timestamps are absolute; a viewer derives the video-relative offset when it
+  renders.** `run_scenario` reads the wall clock once, beside its `time.monotonic()` stamp, giving
+  the scenario an anchor pair: any later monotonic instant `t` becomes the wall-clock instant
+  `scenario_wall_start + (t - scenario_start)`. Every step's `started_at` and every network
+  exchange's `startedAt` takes that form, so what survives the run is the raw timing data rather
+  than a number a correction has already reduced. A viewer — `report.html`, `bajutsu trace` —
+  subtracts `video_anchor_s` at render time to place an event on the recording's timeline. That is
+  what makes the placement recomputable from a saved run: after a fix to how the anchor resolves, a
+  re-render lands the events where they belong, with no need to run the scenario again
+  ([BE-0348](../roadmaps/BE-0348-absolute-timestamp-recording/BE-0348-absolute-timestamp-recording.md)).
+  Every timing *decision* still reads the monotonic clock alone, since a wall clock can jump
+  backward mid-run and would corrupt a wait's timeout or a step's duration. See
+  [reporting](reporting.md#manifestjson) for what each recorded field means to a report reader.
 
 ## Sinks (where evidence goes)
 

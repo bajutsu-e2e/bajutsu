@@ -88,6 +88,30 @@ def test_trace_run_renders_timeline(tmp_path: Path) -> None:
     assert "evidence: appTrace · network" in out
 
 
+def test_trace_derives_offsets_from_absolute_timestamps(tmp_path: Path) -> None:
+    # Steps and exchanges are recorded as absolute wall-clock instants, so the timeline subtracts the
+    # scenario's persisted `video_anchor_s` when it renders (BE-0348) — otherwise every line would
+    # read as an epoch second. Shifting the fixture's already-relative values by an anchor must
+    # reproduce its rendering exactly, including the chronological interleave.
+    anchor = 1_700_000_000.0
+    run = _write_run(tmp_path, "20260101-000000")
+    manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
+    scenario = manifest["scenarios"][0]
+    scenario["video_anchor_s"] = anchor
+    for step in scenario["steps"]:
+        step["started_at"] += anchor
+    (run / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    net = run / "00-s" / "network.json"
+    exchanges = json.loads(net.read_text(encoding="utf-8"))
+    exchanges[0]["startedAt"] += anchor
+    net.write_text(json.dumps(exchanges), encoding="utf-8")
+
+    out = trace.trace_run(run)
+    assert "0.0s  ✓ tap" in out and "0.4s  net  GET" in out and "0.7s  ✓ wait" in out
+    assert out.index("✓ tap") < out.index("net  GET") < out.index("✓ wait")
+    assert str(int(anchor)) not in out
+
+
 def test_trace_shows_what_each_step_actually_actuated(tmp_path: Path) -> None:
     # The timeline reads the manifest dict directly, so it needs no loader: the coordinate a tap sent and
     # the channel that carried it appear on the step's own line, which is where someone asking "where did

@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0348](BE-0348-absolute-timestamp-recording-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0348") |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0346](../BE-0346-video-timing-sync/BE-0346-video-timing-sync-ja.md) |
@@ -163,15 +163,15 @@ Unit 3で`manifest.json`が得るのと同じ「生データとしての性質�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] Unit 1 — 壁時計アンカー(`scenario_wall_start`)。`WallClock`コールバック経由で注入する。
-- [ ] Unit 2 — `StepOutcome.started_at`を絶対エポック時刻にする。
-- [ ] Unit 3 — `RunResult.video_anchor_s`を絶対的なアンカーにし、`manifest_dict`からの除外を
+- [x] Unit 1 — 壁時計アンカー(`scenario_wall_start`)。`WallClock`コールバック経由で注入する。
+- [x] Unit 2 — `StepOutcome.started_at`を絶対エポック時刻にする。
+- [x] Unit 3 — `RunResult.video_anchor_s`を絶対的なアンカーにし、`manifest_dict`からの除外を
       やめる。
-- [ ] Unit 4 — 通信ログのタイムスタンプを絶対インスタントとして保存する。
-- [ ] Unit 5 — `bajutsu/report/rows.py`が動画相対の`data-t`を描画時に計算するようにする。
-- [ ] Unit 6 — `BAJUTSU_VIDEO_START_TIMEOUT`環境変数での上書きを追加し、
+- [x] Unit 4 — 通信ログのタイムスタンプを絶対インスタントとして保存する。
+- [x] Unit 5 — `bajutsu/report/rows.py`が動画相対の`data-t`を描画時に計算するようにする。
+- [x] Unit 6 — `BAJUTSU_VIDEO_START_TIMEOUT`環境変数での上書きを追加し、
       `.github/workflows/ios-e2e.yml`で引き上げる。
-- [ ] Unit 7 — manifestの`schemaVersion`を引き上げ、`docs/reporting.md` / `docs/evidence.md`を
+- [x] Unit 7 — manifestの`schemaVersion`を引き上げ、`docs/reporting.md` / `docs/evidence.md`を
       両言語で更新する。
 
 ## 参考

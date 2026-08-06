@@ -29,6 +29,12 @@ RelaunchFn = Callable[[Relaunch], None]
 # Injected from the CLI (`--progress`) so the web UI can stream per-scenario/step progress; None
 # (the default everywhere) keeps the pipeline silent.
 ProgressFn = Callable[[str], None]
+# Reads the wall clock (epoch seconds), stamped once per scenario so every recorded timestamp is an
+# absolute instant that still means something after the process exits (BE-0348). Deliberately not a
+# method on `Clock`: a wall clock can jump backward on an NTP correction, so nothing that decides
+# whether a wait timed out may read it, and keeping it a separate injected callable also spares every
+# clock double in the suite a method none of them need. Injectable so a test can hold it fixed.
+WallClock = Callable[[], float]
 
 
 class MailboxReader(Protocol):
@@ -123,7 +129,12 @@ class StepOutcome:
     ok: bool = True
     reason: str = ""
     duration_s: float = 0.0
-    started_at: float = 0.0  # offset (s) from the scenario video's start, for video sync
+    # The absolute wall-clock instant (epoch seconds) the step began, derived from the scenario's
+    # anchor pair rather than measured with its own clock read (BE-0348). No video correction is
+    # applied here: a report subtracts `RunResult.video_anchor_s` at render time to get the seconds
+    # to seek the recording to, so the correction can be recomputed from a manifest read back long
+    # after the run instead of being baked in irreversibly.
+    started_at: float = 0.0
     assertion_results: list[AssertionResult] = field(default_factory=list)
     artifacts: list[Artifact] = field(default_factory=list)
     # System prompts the guard cleared before this step succeeded (usually 0 or 1).
@@ -179,11 +190,16 @@ class RunResult:
     device_runtime: str = ""
     # Wall-clock the scenario took end to end (steps + verification), for the report.
     duration_s: float = 0.0
-    # The resolved video anchor (scenario_start corrected by video_start_offset) every step's and
-    # network exchange's `started_at` is relative to — for a caller (`pipeline.py`) that computes
-    # its own report timestamps after run_scenario returns, so it shares the same corrected origin
-    # instead of stamping a second, independently drifting one.
+    # The absolute wall-clock instant (epoch seconds) the scenario's video started, corrected by
+    # `video_start_offset`. A report subtracts it from a step's or an exchange's `started_at` to get
+    # the seconds to seek the recording to (BE-0348); persisted, unlike the monotonic instant this
+    # used to be, so that derivation survives the run that produced it.
     video_anchor_s: float = 0.0
+    # Added to a raw `time.monotonic()` instant from this run to get its wall-clock epoch
+    # (`scenario_wall_start - scenario_start`). The network collector stamps monotonic receive times,
+    # so `pipeline.py` converts them through this rather than sampling its own wall/monotonic pair at
+    # write time — a second pair would drift from every other timestamp on an NTP correction.
+    wall_offset_s: float = 0.0
     # System prompts the guard cleared before the scenario-level `expect` re-checked.
     expect_alerts: list[AlertEvent] = field(default_factory=list)
     # Actuations the guard performed for that same expect-phase retry — the one place a gesture happens

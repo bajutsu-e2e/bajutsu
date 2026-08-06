@@ -89,8 +89,8 @@ def test_round_trip_through_manifest_is_lossless() -> None:
 
 def test_manifest_carries_schema_version_and_source_name() -> None:
     data = manifest_dict("r1", [_result()], source_name="smoke.yaml")
-    # bumped for the per-step actuation records (the coordinate/geometry half of `actionLog`)
-    assert data["schemaVersion"] == 5
+    # bumped for absolute wall-clock timestamps plus the persisted video anchor (BE-0348)
+    assert data["schemaVersion"] == 6
     assert data["sourceName"] == "smoke.yaml"
 
 
