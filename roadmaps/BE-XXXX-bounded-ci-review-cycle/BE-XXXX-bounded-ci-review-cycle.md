@@ -79,7 +79,13 @@ loop also gains a round cap on the live cycle itself, with escalation to a human
 3. **`pr-followup` step 5 — request a live check on demand.** After a push whose unit 2 self-review
    came back clean (not an escalation), post a comment containing `@claude review` on the pull
    request. This requests a live check through the workflow's existing on-demand path, instead of
-   relying on the automatic trigger unit 6 removes. Skip the request when nothing was pushed this
+   relying on the automatic trigger unit 6 removes. That path passes an empty `prompt` today and
+   falls through to the action's default `@claude` mention handling, so unit 6 must also supply, on
+   comment events, both the contract prompt and the prior-findings input that the "Compute the
+   review inputs" step builds only for a `pull_request` event today. Otherwise the requested review
+   runs without `.github/claude-review-prompt.md`, its severity floor, its `🤖 **Claude Code**`
+   prefix, and the dedup that keeps it from re-posting findings already on the pull request. Skip
+   the request when nothing was pushed this
    iteration, or when the self-review escalated instead of clearing — the pull request is not yet in
    a stable state to review.
 4. **`propose-and-build` Phase A — inherit the same split by reference.** This phase's self-review is
