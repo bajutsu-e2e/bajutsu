@@ -94,9 +94,12 @@ loop also gains a round cap on the live cycle itself, with escalation to a human
    that silence as a quiet poll.
 4. **`propose-and-build` Phase A — inherit the same split by reference.** This phase's self-review is
    a condensed restatement of `ideation` step 5. Point it at unit 1's two-role procedure, instead of
-   describing one subagent that both critiques and fixes. Phase B and `implement-be` steps 7 and 12
-   already reference `ideation` step 5 or `pr-followup` by name, so they inherit units 1 through 3
-   with no separate edit.
+   describing one subagent that both critiques and fixes. Phase B and `implement-be` step 12 already
+   reference `ideation` step 5 or `pr-followup` by name, so they inherit units 1 through 3 with no
+   separate edit. `implement-be` step 7 does not: it restates the single-agent shape itself ("hand it
+   to the fresh subagent as text," and its "two differences from that procedure"), so re-point that
+   prose at the two-role procedure and say which role receives the contract text and the
+   steps-8-and-10-are-pending caveat.
 5. **`implement-be` step 12 — bound the live cycle with a round cap.** The loop's "two consecutive
    quiet polls" stop condition today means "no `synchronize`-triggered review fired." Redefine
    quiet as "no live review was requested this iteration, or the one requested came back with
