@@ -653,6 +653,20 @@ def test_is_tappable_guards_against_a_below_viewport_point_before_hit_testing() 
     drv.is_tappable({"id": "x"})
     script = page.evaluated[-1]
     assert "window.innerWidth" in script and "window.innerHeight" in script
+
+
+def test_is_tappable_fallback_requires_a_name_match_not_just_a_rect_match() -> None:
+    # The no-`data-testid` fallback (real-browser behavior pinned by
+    # test_driver_conformance_web.py's identically-sized-cover test) must not accept a same-rect
+    # ancestor on rect alone: this only checks that the emitted JS carries the element's own
+    # accessible name (`label`) into the fallback's match condition, since the fake page returns a
+    # canned value rather than evaluating real JavaScript.
+    drv, page = _driver([_rec(identifier=None, label="Submit", frame=[10, 20, 40, 10])])
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
+    drv.is_tappable({"label": "Submit"})
+    script = page.evaluated[-1]
+    assert '"Submit"' in script
+    assert "sameName" in script and "sameRect" in script
     assert script.index("window.innerHeight") < script.index("elementFromPoint")
 
 
@@ -766,9 +780,12 @@ def test_select_option_sets_value_at_resolved_point() -> None:
     drv, page = _driver(
         [_rec(identifier="nav.theme-picker", role="select", frame=[10, 20, 40, 10])]
     )
+    # First return serves `_center_checked`'s own occlusion check (`_point_hits`); second is the
+    # select JS's own result.
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}, "ok"]
     drv.select_option({"id": "nav.theme-picker"}, "midnight")
-    # The last evaluate() is the select JS (the first is query()); it reads the resolved center
-    # (30, 25) via elementFromPoint and assigns the requested option value.
+    # The last evaluate() is the select JS; it reads the resolved center (30, 25) via
+    # elementFromPoint and assigns the requested option value.
     select_js = page.evaluated[-1]
     assert "elementFromPoint(30.0, 25.0)" in select_js
     assert '"midnight"' in select_js
@@ -790,9 +807,10 @@ def test_select_option_ambiguous_raises() -> None:
 
 def test_select_option_raises_element_not_found_when_not_a_select() -> None:
     # When JS returns 'no-select' (the resolved element is not a <select>), the driver raises
-    # ElementNotFound rather than letting _wedge_guard turn it into a DeviceError crash.
+    # ElementNotFound rather than letting _wedge_guard turn it into a DeviceError crash. First
+    # return serves the occlusion check (`_center_checked`); the <select> itself is not covered.
     drv, page = _driver([_rec(identifier="nav.theme-picker", role="select", frame=[0, 0, 10, 10])])
-    page.evaluate_returns = ["no-select"]
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}, "no-select"]
     with pytest.raises(base.ElementNotFound, match="not a <select>"):
         drv.select_option({"id": "nav.theme-picker"}, "midnight")
 
@@ -801,9 +819,22 @@ def test_select_option_raises_element_not_found_when_no_matching_option() -> Non
     # When JS returns 'no-option' (no <option> has the requested value), the driver raises
     # ElementNotFound — the same taxonomy as a missing element, not a browser crash.
     drv, page = _driver([_rec(identifier="nav.theme-picker", role="select", frame=[0, 0, 10, 10])])
-    page.evaluate_returns = ["no-option"]
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}, "no-option"]
     with pytest.raises(base.ElementNotFound, match="no option with value"):
         drv.select_option({"id": "nav.theme-picker"}, "midnight")
+
+
+def test_select_option_raises_element_not_tappable_when_covered() -> None:
+    # An overlay covering the <select> makes `elementFromPoint` resolve to the overlay: the old
+    # unchecked path would then see `closest('select')` come back null and raise the factually
+    # wrong "not a <select>". Checking via `_center_checked` first raises `ElementNotTappable`
+    # naming the actual cover instead, before the select JS ever runs.
+    drv, page = _driver([_rec(identifier="nav.theme-picker", role="select", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [{"ok": False, "cover": "div#overlay", "rect": [0.0, 0.0, 10.0, 10.0]}]
+    with pytest.raises(base.ElementNotTappable, match="covered by another element"):
+        drv.select_option({"id": "nav.theme-picker"}, "midnight")
+    # The select JS itself never ran: only the occlusion check's own evaluate() was consumed.
+    assert len(page.evaluate_returns) == 0
 
 
 def _touch_points(params: Any) -> list[tuple[float, float]]:

@@ -22,10 +22,11 @@ point is actually reachable on screen. An element can be uniquely matched, carry
 still sit under a sticky header, a toast, or a dimmed modal backdrop, so the tap lands on the
 obstruction instead of the target. Each backend now checks, in the way most idiomatic to its own
 platform, that the resolved target is really the thing at its own point before acting. When it is
-not, the orchestrator takes a small, bounded, deterministic scroll — up to three steps — to try to
-clear the obstruction, then re-checks; if the target is still unreachable, the action fails with a
-new, dedicated error,
-`ElementNotTappable`, instead of the misleading `ElementNotFound`.
+not, the orchestrator takes a small, bounded, deterministic scroll to try to clear the obstruction —
+up to three `down` steps first, then, only if `down` never clears it, up to six `up` steps (widened,
+since `up` must first retrace the ground `down` already covered before it can make any net progress
+of its own) — then re-checks; if the target is still unreachable, the action fails with a new,
+dedicated error, `ElementNotTappable`, instead of the misleading `ElementNotFound`.
 
 ## Motivation
 
@@ -54,9 +55,10 @@ whole to this proposal. BE-0326 was rejecting implicit scrolling as a replacemen
 writing `scroll` when the author already knows a target starts off-screen. This proposal is not a
 substitute for that: an author who knows a target sits below the fold should still write `scroll`.
 This proposal is a correctness check on an element the selector already resolved, with a safety-net
-recovery that is deliberately narrow — a small step bound, one direction, triggered only by the new
-occlusion signal — the same shape adb's own not-found fallback already has, now generalized to the
-obstructed case and widened to every backend.
+recovery that is deliberately narrow — a small step bound tried in two directions (`down` first,
+then a wider `up` fallback for a top-anchored obstruction `down` alone cannot clear), triggered only
+by the new occlusion signal — the same shape adb's own not-found fallback already has, now
+generalized to the obstructed case and widened to every backend.
 
 ## Detailed design
 
@@ -87,11 +89,10 @@ returning a clean boolean; the spike's 60 total reads across five runs never rep
 failure, which is a non-reproduction in one environment, not proof the issue does not exist
 elsewhere. `XcuitestElementProvider.tap(backingElement:taps:duration:)`
 (`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift:57`) gains a guard immediately before its
-native tap calls: `guard el.isHittable else { return .notHittable }`. `TapResult`
-(`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift:57`) gains a guard immediately before its
 native tap calls — but only when the element's center lies inside `app.frame` (`centerIsOnScreen`),
 so a not-yet-scrolled-to target stays a `scroll` question rather than reading as covered:
 `if centerIsOnScreen(el) { guard el.isHittable else { return .notHittable } }`. `TapResult`
+(`BajutsuKit/Sources/BajutsuRunner/ElementProviding.swift`) gains a `.notHittable` case alongside
 its existing `.ok` / `.stale` / `.notFound`, and `xcuitest.py`'s `_actuate` gains a fourth status
 constant and branch that raises `base.ElementNotTappable`, parallel to its existing stale/not-found
 handling. `is_tappable(sel)` is realized as a lightweight variant of the same round trip: resolve the
@@ -247,13 +248,17 @@ unit.
 The wiring itself is a small wrapper in `gestures.py`, `_tap_with_recovery(actuate, driver, sel)`,
 that calls the specific `driver.tap(sel)` / `driver.double_tap(sel)` / `driver.long_press(sel,
 duration)`, and on `base.ElementNotTappable` calls `scroll_until_tappable(driver, sel, direction,
-None, _TAP_RECOVERY_MAX_SCROLLS)` once per direction in `_TAP_RECOVERY_DIRECTIONS = ("down", "up")`,
-stopping at the first direction that makes `sel` tappable, then retries the actuation exactly once.
-A single fixed direction cannot cover both common obstructions: `down`'s content motion moves the
-target toward the top of the screen, clearing a bottom-anchored cover (a toast, a snackbar, a sticky
-footer) but driving a target stuck under a top-anchored one (a sticky header) further underneath it,
-never out. `down` is tried first, since the bottom-anchored case is the more common one; `up` is
-tried only once `down`'s own bound is exhausted without success. Any failure along that path
+None, _TAP_RECOVERY_MAX_SCROLLS * (i + 1))` for each `i, direction` in
+`enumerate(_TAP_RECOVERY_DIRECTIONS = ("down", "up"))`, stopping at the first direction that makes
+`sel` tappable, then retries the actuation exactly once. A single fixed direction cannot cover both
+common obstructions: `down`'s content motion moves the target toward the top of the screen, clearing
+a bottom-anchored cover (a toast, a snackbar, a sticky footer) but driving a target stuck under a
+top-anchored one (a sticky header) further underneath it, never out. `down` is tried first, since the
+bottom-anchored case is the more common one; `up` is tried only once `down`'s own bound is exhausted
+without success — and, because `up` starts from wherever `down`'s own steps left the target, it needs
+to retrace that ground before it can make any net progress of its own, hence the widened bound
+(`_TAP_RECOVERY_MAX_SCROLLS` for `down`, `_TAP_RECOVERY_MAX_SCROLLS * 2` for `up`, nine scroll calls
+in the worst case — still well under `scroll`'s own default of 15). Any failure along that path
 collapses to a single `base.ElementNotTappable`: the first attempt's own exception — which names
 what covered the target, via `base.raise_if_covered` — is interpolated into the final message
 rather than dropped, and the last direction's scroll failure that triggered the recovery is chained
@@ -261,11 +266,10 @@ rather than dropped, and the last direction's scroll failure that triggered the 
 `_do_long_press`, and the
 focus-tap call sites inside `_do_type`, `_do_clear`, `_do_delete`, and `_do_select` all switch their
 bare `driver.tap(sel)` call to this one shared wrapper, rather than seven copies of the same
-try/except. `_TAP_RECOVERY_MAX_SCROLLS` stays small per direction, well under `scroll`'s own default
-of 15 even doubled across both: this is a safety net for the common case — a transient overlay, a
-sticky header or footer — not a search. An author who already knows a target needs scrolling in a
-specific direction, through a specific container, still writes the explicit `scroll` action; this net
-insures only against the case the author did not expect.
+try/except. This is a safety net for the common case — a transient overlay, a sticky header or
+footer — not a search. An author who already knows a target needs scrolling in a specific direction,
+through a specific container, still writes the explicit `scroll` action; this net insures only
+against the case the author did not expect.
 
 ### Work breakdown (`MECE`)
 
@@ -465,6 +469,29 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
   `down` is exhausted (`_TAP_RECOVERY_DIRECTIONS = ("down", "up")` in `gestures.py`), with a new
   `FakeDriver` regression case (`test_tap_recovery_falls_back_to_up_when_down_cannot_clear_a_top_anchored_cover`,
   `tests/orchestrator/test_tap_recovery.py`) pinning it.
+- Review found the `up` fallback's bound equal to `down`'s own could not actually clear a
+  top-anchored obstruction: `up` starts from the offset `down`'s own steps left behind, so it can
+  only retrace ground `down` already rejected within a flat three-step bound, never making net
+  progress past the original position. Fixed by widening each direction's bound to
+  `_TAP_RECOVERY_MAX_SCROLLS * (i + 1)` (three for `down`, six for `up`), so `up` can first undo
+  `down`'s displacement and still have budget to clear the obstruction. The regression fixture
+  (`_ClearsTopOverlayOnlyViaUpwardRecoveryDriver`) was also corrected to move the target by the same
+  magnitude in both directions, matching every real backend's single `_SWIPE_FRACTION` — its previous
+  asymmetric deltas modeled a recovery no real backend could produce and masked the bound-widening
+  need.
+- Review found that web's `_point_hits` fallback (used when the resolved target has no
+  `data-testid`, so the hit chain is walked by bounding rect rather than by that attribute) accepted
+  the first ancestor whose rect matched the target's, with no check that it was actually the target
+  rather than a same-sized cover — a transparent click-blocking overlay sized to exactly cover a
+  button shares its rect but not its name, so the fallback read straight through it. Fixed by also
+  requiring the hit's own accessible name (`aria-label` or trimmed `textContent`, truncated to the
+  same 200 characters `bajutsu/dom.py`'s `QUERY_JS` uses) to match the target's `label`, falling back
+  to rect-only when the target has no accessible name at all (the same residual ambiguity
+  `topmost_at_point` already accepts for an identically-framed pair on the other backends). Verified
+  against real Chromium (`test_is_tappable_false_for_an_identically_sized_cover_with_no_data_testid`,
+  `test_is_tappable_true_for_a_same_named_element_matched_without_a_data_testid` in
+  `tests/test_driver_conformance_web.py`), plus a wiring-level unit test pinning the guard's presence
+  in the emitted JS.
 
 ## References
 

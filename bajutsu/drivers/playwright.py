@@ -580,12 +580,19 @@ class PlaywrightDriver:
 
         Generalizes the `elementFromPoint` pattern already used by `select_option` below: walk the
         hit's ancestor chain looking for `el` — by its `data-testid` (the same attribute `QUERY_JS`,
-        `bajutsu/dom.py`, reads into `identifier`) when it has one, or by matching bounding rects
-        when it does not (an element `QUERY_JS` matched by tag/role/`aria-label` instead). A hit
-        chain that never reaches `el` means an unrelated element genuinely covers the point — named
-        in the returned `_HitResult.cover` / `.rect` (by `data-testid`, else tag plus DOM `id`) the
-        same way `base.raise_if_covered` names a cover on the other backends, so a failure message
-        does not force reproducing the screen by hand to learn what blocked the tap.
+        `bajutsu/dom.py`, reads into `identifier`) when it has one, or, when it does not (an element
+        `QUERY_JS` matched by tag/role/`aria-label` instead), by matching bounding rects *and* the
+        same accessible name `el["label"]` carries (`bajutsu/dom.py`'s own `aria-label` /
+        `textContent` precedence, truncated to the same 200 chars). The name check guards against the
+        geometry-only ambiguity a rect match alone would have: a transparent click-blocking overlay
+        sized to exactly cover a button shares its rect but, unlike the button itself, essentially
+        never shares its name. When `el["label"]` is `None` (no accessible name at all), the rect
+        match alone is all that is available, the same residual ambiguity `topmost_at_point` accepts
+        for an identically-framed pair on the other backends. A hit chain that never reaches `el`
+        means an unrelated element genuinely covers the point — named in the returned
+        `_HitResult.cover` / `.rect` (by `data-testid`, else tag plus DOM `id`) the same way
+        `base.raise_if_covered` names a cover on the other backends, so a failure message does not
+        force reproducing the screen by hand to learn what blocked the tap.
 
         A point outside the current viewport is a different question this check does not answer:
         `elementFromPoint` returns `null` there regardless of occlusion (`query()`'s frames are
@@ -598,6 +605,7 @@ class PlaywrightDriver:
         x, y = point
         tx, ty, tw, th = el["frame"]
         identifier = json.dumps(el["identifier"])
+        label = json.dumps(el["label"])
         result = self._page.evaluate(
             "(() => {"
             "const describe = (node) => {"
@@ -615,11 +623,15 @@ class PlaywrightDriver:
             '  return hit.closest(`[data-testid="${CSS.escape(identifier)}"]`) !== null'
             "    ? {ok: true, cover: null, rect: null} : describe(hit);"
             "}"
+            f"const label = {label};"
             "let node = hit;"
             "while (node) {"
             "  const r = node.getBoundingClientRect();"
-            f"  if (Math.abs(r.x - {tx}) < 1 && Math.abs(r.y - {ty}) < 1"
-            f"      && Math.abs(r.width - {tw}) < 1 && Math.abs(r.height - {th}) < 1) {{"
+            f"  const sameRect = Math.abs(r.x - {tx}) < 1 && Math.abs(r.y - {ty}) < 1"
+            f"      && Math.abs(r.width - {tw}) < 1 && Math.abs(r.height - {th}) < 1;"
+            "  const name = (node.getAttribute('aria-label') || node.textContent.trim()).slice(0, 200);"
+            "  const sameName = label === null || name === label;"
+            "  if (sameRect && sameName) {"
             "    return {ok: true, cover: null, rect: null};"
             "  }"
             "  node = node.parentElement;"
@@ -904,7 +916,13 @@ class PlaywrightDriver:
         # crash), so the two failure modes — not a <select>, option value absent — are surfaced as
         # sentinel strings and re-raised here as ElementNotFound (a SelectorError) so the run loop
         # can catch them with the same handler as any other selector failure.
-        (x, y), el = self._center_with_element(sel)
+        #
+        # Resolves through `_center_checked`, not `_center_with_element`: an overlay covering the
+        # <select> makes `elementFromPoint` return the overlay below, `closest('select')` come back
+        # null, and the old unchecked path raise the factually wrong "not a <select>" — the selector
+        # did resolve to a <select>, occlusion is why the point misses it. Checking first raises
+        # `ElementNotTappable` naming the actual cover, like every other web tap-family failure.
+        (x, y), el = self._center_checked(sel)
         # `option` never reaches the record: like a typed string, it can hold a resolved secret.
         self._log_coordinate("selectOption", (x, y), el)
         opt = json.dumps(option)

@@ -190,6 +190,48 @@ def test_is_tappable_true_for_a_below_the_fold_target_not_actually_covered(chrom
 
 
 @pytest.mark.web
+def test_is_tappable_false_for_an_identically_sized_cover_with_no_data_testid(
+    chromium: Any,
+) -> None:
+    """The no-`data-testid` fallback must not read a same-rect cover as the target itself.
+
+    `_point_hits`'s fallback (for a target `QUERY_JS` matched by tag/role/`aria-label` rather than
+    `data-testid`) walks the hit's ancestor chain comparing bounding rects. A rect match alone is
+    ambiguous: a transparent click-blocking overlay sized to exactly cover a button shares its rect
+    but not its accessible name, so the fallback must also require the hit's name to match — else a
+    same-sized overlay silently reads as the button underneath it, and a tap clicks straight through.
+    """
+    page = chromium.new_page()
+    try:
+        driver = PlaywrightDriver("about:blank", page=page)
+        page.set_content(
+            '<button style="position:absolute;left:0;top:0;width:100px;height:40px">Submit</button>'
+            '<div style="position:absolute;left:0;top:0;width:100px;height:40px"></div>'
+        )
+        assert driver.is_tappable({"label": "Submit"}) is False
+        with pytest.raises(base.ElementNotTappable):
+            driver.tap({"label": "Submit"})
+    finally:
+        page.close()
+
+
+@pytest.mark.web
+def test_is_tappable_true_for_a_same_named_element_matched_without_a_data_testid(
+    chromium: Any,
+) -> None:
+    """The no-`data-testid` fallback still accepts the target itself: rect *and* name both match."""
+    page = chromium.new_page()
+    try:
+        driver = PlaywrightDriver("about:blank", page=page)
+        page.set_content(
+            '<button style="position:absolute;left:0;top:0;width:100px;height:40px">Submit</button>'
+        )
+        assert driver.is_tappable({"label": "Submit"}) is True
+    finally:
+        page.close()
+
+
+@pytest.mark.web
 def test_native_checkbox_checked_reads_as_selected(chromium: Any) -> None:
     """A native checkbox's live checked state must surface as the `selected` trait.
 

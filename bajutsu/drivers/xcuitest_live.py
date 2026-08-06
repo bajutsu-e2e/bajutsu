@@ -406,8 +406,15 @@ class XcuitestLiveDriver:
 
     def back(self) -> None:
         # No hardware back on iOS: tap the OS navigation back button, the same element the other iOS
-        # backends tap (BE-0210), reusing `tap` so resolution stays Python-side.
-        self.tap({"id": base.OS_BACK_BUTTON})
+        # backends tap (BE-0210). Resolves via `_resolve_handle`, not `tap`'s `_resolve_handle_checked`
+        # occlusion check: on this route that check is only the `topmost_at_point` document-order
+        # proxy (this class has no native `isHittable`), and a full-screen sibling emitted after the
+        # nav bar in the page source can misjudge the back button as covered — with no recovery
+        # wrapper here (unlike an author's `tap` step, `_do_back` calls `driver.back()` directly), a
+        # false positive would fail the step outright rather than costing a few scroll steps.
+        handle, el = self._resolve_handle({"id": base.OS_BACK_BUTTON})
+        self._log_element("tap", el)
+        self._client.click(handle)
 
     def wait_for(self, sel: base.Selector) -> bool:
         """Single-shot: whether `sel` matches the current screen (BE-0118).

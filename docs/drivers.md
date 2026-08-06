@@ -289,14 +289,17 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   > showcase fixture once used. The adb auto-scroll remains a robustness net under `tap` for the
   > not-found case specifically, not the portable idiom.
   >
-  > A **different, narrower** safety net now covers every backend: before acting, `tap` /
-  > `double_tap` / `long_press` check that the resolved target is actually reachable at its own
-  > point — not covered by another on-screen element — using the idiomatic signal each platform
-  > offers (iOS: native `isHittable`; web: a `document.elementFromPoint` hit-test; adb: a
+  > A **different, narrower** safety net now covers every backend that can hit-test a point (all
+  > except the app-embedded WebView bridge, `WebContextDriver`, whose protocol exposes none): before
+  > acting, `tap` / `double_tap` / `long_press` check that the resolved target is actually reachable
+  > at its own point — not covered by another on-screen element — using the idiomatic signal each
+  > platform offers (iOS: native `isHittable`; web: a `document.elementFromPoint` hit-test; adb: a
   > document-order geometric proxy, `Driver.is_tappable` /
   > [`topmost_at_point`](../bajutsu/drivers/base.py)). When the check fails, the orchestrator takes
   > a small, bounded scroll — up to three `down` steps, then, only if `down` never clears it, up to
-  > three `up` steps — and retries the action once, rather than failing immediately — see
+  > six `up` steps (widened, since `up` must first retrace the ground `down` already covered before
+  > it can make any net progress of its own) — and retries the action once, rather than failing
+  > immediately — see
   > [`selectors.md`](selectors.md#elementnottappable-a-resolved-but-unreachable-target). This is not
   > a substitute for the explicit `scroll` action above: an author who already knows a target starts
   > off-screen still writes `scroll`. It only insures against an obstruction the author did not

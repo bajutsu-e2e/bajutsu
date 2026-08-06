@@ -11,11 +11,13 @@ from bajutsu.orchestrator.actions.handlers._gesture_math import _scroll_gesture
 from bajutsu.orchestrator.actions.handlers.scroll import scroll_until_tappable
 from bajutsu.scenario import Step
 
-# The recovery scroll's step bound: small, well under `scroll`'s own default of 15, per direction
-# tried below. This is a safety net for the common case (a transient overlay, a sticky header/footer
-# settling out of the way) — not a search. An author who already knows a target needs scrolling in a
-# specific direction, through a specific container, still writes the explicit `scroll` action; this
-# net only insures against the obstruction the author did not expect.
+# The recovery scroll's step bound: small, well under `scroll`'s own default of 15, for the first
+# direction tried below. A later direction gets a multiple of this bound, since it must first undo
+# the offset its predecessors left behind before it can make any net progress of its own. This is a
+# safety net for the common case (a transient overlay, a sticky header/footer settling out of the
+# way) — not a search. An author who already knows a target needs scrolling in a specific direction,
+# through a specific container, still writes the explicit `scroll` action; this net only insures
+# against the obstruction the author did not expect.
 _TAP_RECOVERY_MAX_SCROLLS = 3
 
 # Tried in this order: `down` first, since a bottom-anchored obstruction (a toast, a snackbar, a
@@ -38,8 +40,10 @@ def _tap_with_recovery(
     A single fixed direction cannot clear every obstruction: `down` (content moving toward the top
     of the screen) clears a bottom-anchored cover but drives a target under a top-anchored one
     further underneath it. `_TAP_RECOVERY_DIRECTIONS` tries `down`, then — only once `down` is
-    exhausted without success — `up`, each bounded independently by `_TAP_RECOVERY_MAX_SCROLLS`; the
-    first direction to make `sel` tappable wins and the actuation is retried immediately. This is
+    exhausted without success — `up`. `up` starts from the offset `down`'s own steps left behind, so
+    it needs to retrace that ground before it can make any net progress of its own; each direction's
+    bound is therefore `_TAP_RECOVERY_MAX_SCROLLS * (i + 1)` rather than a flat, independent bound.
+    The first direction to make `sel` tappable wins and the actuation is retried immediately. This is
     still a bounded safety net, not a search in an author-chosen direction: an author who already
     knows a target needs scrolling through a specific container still writes the explicit `scroll`
     action.
@@ -57,10 +61,12 @@ def _tap_with_recovery(
         return
     except base.ElementNotTappable as obstruction_exc:
         obstruction = obstruction_exc
-    exhausted: base.ElementNotFound | None = None
-    for direction in _TAP_RECOVERY_DIRECTIONS:
+    exhausted: Exception | None = None
+    for i, direction in enumerate(_TAP_RECOVERY_DIRECTIONS):
+        # A later direction starts from the offset its predecessors left behind, so it has to undo
+        # those steps before it makes any net progress of its own — hence the widened bound.
         try:
-            scroll_until_tappable(driver, sel, direction, None, _TAP_RECOVERY_MAX_SCROLLS)
+            scroll_until_tappable(driver, sel, direction, None, _TAP_RECOVERY_MAX_SCROLLS * (i + 1))
         except base.ElementNotFound as exc:
             exhausted = exc
             continue
@@ -70,7 +76,7 @@ def _tap_with_recovery(
             # The retry raced: the cover re-settled between the stop check and the actuation.
             # Keep the newer, more accurate obstruction and let the next direction try.
             obstruction = exc
-            exhausted = base.ElementNotFound(
+            exhausted = base.ElementNotTappable(
                 f"scroll: {sel!r} became tappable but was covered again on the retry"
             )
             continue

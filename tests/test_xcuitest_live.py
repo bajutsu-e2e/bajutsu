@@ -262,6 +262,47 @@ def test_tap_raises_element_not_tappable_when_covered() -> None:
     assert grid.clicked == []  # never clicked through the obstruction
 
 
+def test_back_taps_the_nav_bar_button_even_when_a_full_screen_sibling_would_read_as_covering_it() -> (
+    None
+):
+    # A full-screen scroll view/content sibling emitted after the nav bar in the page source is
+    # exactly the shape that makes `topmost_at_point` misjudge the back button as covered — this
+    # route has no native `isHittable`, only that document-order proxy. `back()` must not route
+    # through `tap`'s occlusion check the way an author's own `tap` step does: there is no recovery
+    # wrapper above `driver.back()` (`_do_back` calls it directly), so a false positive here would
+    # fail the step outright rather than costing a few scroll steps.
+    grid = _FakeGrid(
+        [
+            {
+                "id": "e1",
+                "name": base.OS_BACK_BUTTON,
+                "label": None,
+                "value": None,
+                "type": "XCUIElementTypeButton",
+                "enabled": "true",
+                "selected": "false",
+                "rect": _rect(0, 0, 60, 30),
+            },
+            {
+                "id": "e2",
+                "name": "content",
+                "label": None,
+                "value": None,
+                "type": "XCUIElementTypeOther",
+                "enabled": "true",
+                "selected": "false",
+                "rect": _rect(0, 0, 400, 800),
+            },
+        ]
+    )
+    client = WebDriverClient(grid)
+    client.new_session({})
+    XcuitestLiveDriver(client).back()
+    assert grid.clicked == [
+        "e1"
+    ]  # the nav bar button itself, not blocked by the "covering" sibling
+
+
 def test_is_tappable_reflects_document_order_occlusion() -> None:
     grid = _FakeGrid(
         [

@@ -10,7 +10,8 @@ moves on-screen content toward the top of the screen (`y` *decreasing*) — the 
 inversion `scroll.py`'s own `_CONTENT_TO_FINGER` applies — so these drivers *decrease*
 `target["frame"]`'s `y` by a fixed amount per call. `_ClearsTopOverlayOnlyViaUpwardRecoveryDriver`
 below instead models a top-anchored cover (a sticky header) that only the `up` fallback direction
-clears, and moves `y` in whichever way the requested direction's finger travel actually implies.
+clears, and moves `y` in whichever way the requested direction's finger travel actually implies, by
+the same magnitude in both directions — matching every real backend's single `_SWIPE_FRACTION`.
 """
 
 from __future__ import annotations
@@ -111,15 +112,20 @@ class _ClearsOverlayButScrollsPastTheViewportDriver(FakeDriver):
 
 class _ClearsTopOverlayOnlyViaUpwardRecoveryDriver(FakeDriver):
     """`target` starts under a top-anchored `overlay` (a sticky header) that the `down` direction
-    `_tap_with_recovery` tries first cannot clear — it only nudges `target` deeper under the header
-    without ever escaping it — and that only the `up` fallback direction clears, within its own
-    bound. Pins the direction-gap fix: a fixed `down`-only recovery would exhaust its bound here and
-    never retry `up`, so this driver only ever reports tappable once the fallback direction runs.
+    `_tap_with_recovery` tries first cannot clear — it only nudges `target` deeper under the header,
+    off the top of the viewport, without ever escaping it — and that only the `up` fallback
+    direction clears, within its own (widened) bound. Pins both the direction-gap fix (a fixed
+    `down`-only recovery would exhaust its bound here and never retry `up`) and the widened-bound
+    fix (`up` must first retrace the ground `down` already covered before it can make any net
+    progress of its own, so a bound equal to `down`'s own would exhaust before ever clearing).
 
     Unlike the drivers above, `scroll()` here reads the requested direction back out of `frm`/`to`
     rather than assuming `down`: `scroll.py`'s `_CONTENT_TO_FINGER` inversion means a `down` content
     scroll is a finger swipe *up* (`to`'s `y` smaller than `frm`'s), and `up` a finger swipe *down*
-    (`to`'s `y` larger) — the same sign `_step_endpoints` produces for a real backend.
+    (`to`'s `y` larger) — the same sign `_step_endpoints` produces for a real backend. The per-step
+    travel is the same 5px magnitude in both directions, matching every real backend's single
+    `_SWIPE_FRACTION` for either direction — asymmetric travel here would model a recovery no real
+    backend can produce.
     """
 
     def __init__(self) -> None:
@@ -136,9 +142,10 @@ class _ClearsTopOverlayOnlyViaUpwardRecoveryDriver(FakeDriver):
         self.scroll_calls += 1
         target = base.resolve_unique(self.screen, {"id": "target"})
         x, y, w, h = target["frame"]
-        # `down` (finger up, `to`'s y < `frm`'s) drives `target` only 5px deeper under the header,
-        # never clear of it within the bound; `up` (finger down) moves it 15px clear per step.
-        delta = 15.0 if to[1] > frm[1] else -5.0
+        # `down` (finger up, `to`'s y < `frm`'s) drives `target` deeper under the header and off the
+        # top of the viewport; `up` (finger down, the same 5px magnitude) retraces that ground before
+        # clearing the header on its fifth step.
+        delta = 5.0 if to[1] > frm[1] else -5.0
         target["frame"] = (x, y + delta, w, h)
 
 
@@ -185,17 +192,19 @@ def test_tap_recovery_never_succeeds_by_scrolling_the_target_out_of_view() -> No
     ok, reason, _gestures = _run(driver, {"tap": {"id": "target"}})
     assert ok is False
     assert reason.startswith("still not tappable")
-    # Both directions' bounds are spent (3 + 3), not stopped early on a false "clear".
-    assert driver.scroll_calls == 6
+    # Both directions' bounds are spent (3 `down`, then 6 `up` — widened since `up` must first
+    # retrace `down`'s own steps), not stopped early on a false "clear".
+    assert driver.scroll_calls == 9
 
 
 def test_tap_recovery_never_exceeds_its_own_bound() -> None:
-    # However far short of clearing falls, the safety net never scrolls past its bound — three steps
-    # per direction, `down` then `up` — searching for a way out; that would make it a search, not a
-    # bounded net.
+    # However far short of clearing falls, the safety net never scrolls past its own bound —
+    # three `down` steps, then up to six `up` steps (`_TAP_RECOVERY_MAX_SCROLLS * (i + 1)`, widened
+    # since `up` must first retrace `down`'s own steps before making any net progress) — searching
+    # for a way out; that would make it a search, not a bounded net.
     driver = _NeverClearsOverlayDriver()
     _run(driver, {"tap": {"id": "target"}})
-    assert driver.scroll_calls == 6
+    assert driver.scroll_calls == 9
 
 
 def test_tap_recovery_falls_back_to_up_when_down_cannot_clear_a_top_anchored_cover() -> None:
@@ -204,9 +213,11 @@ def test_tap_recovery_falls_back_to_up_when_down_cannot_clear_a_top_anchored_cov
     driver = _ClearsTopOverlayOnlyViaUpwardRecoveryDriver()
     ok, reason, gestures = _run(driver, {"tap": {"id": "target"}})
     assert (ok, reason) == (True, "")
-    # 3 `down` scrolls exhaust without clearing the header, then 2 `up` scrolls clear it.
-    assert driver.scroll_calls == 5
-    assert gestures == ["scroll", "scroll", "scroll", "scroll", "scroll", "tap"]
+    # 3 `down` scrolls exhaust without clearing the header; `up` then has to retrace those 3 steps
+    # before it can make net progress of its own, clearing the header on its 5th step (8 total) —
+    # within `up`'s widened bound of 6 (`_TAP_RECOVERY_MAX_SCROLLS * (i + 1)`), never a flat 3.
+    assert driver.scroll_calls == 8
+    assert gestures == ["scroll"] * 8 + ["tap"]
 
 
 def test_ambiguous_selector_never_reaches_recovery() -> None:
