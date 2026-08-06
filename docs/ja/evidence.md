@@ -28,13 +28,37 @@
 |---|---|---|---|
 | `screenshot` | ドライバ（XCUITest 自身の `/screenshot` エンドポイント、`adb` の `screencap`、Playwright はネイティブに取得） | 瞬時 | ✅ 取得 |
 | `elements`（a11y＝アクセシビリティのツリー） | `driver.query()` を JSON 化 | 瞬時 | ✅ 取得 |
-| `actionLog` | orchestrator 内部（操作と所要時間） | — | ✅ manifest に内在 |
+| `actionLog` | orchestrator 内部（操作と所要時間）と、各ドライバ自身の actuation の記録 | — | ✅ manifest に内在 |
 | `video` | `simctl io recordVideo` | 区間 | ✅ 取得（要 udid） |
 | `deviceLog` | `simctl spawn log stream` | 区間 | ✅ 取得（要 udid） |
 | `network` | アプリ内 collector（BajutsuKit → `network.json`） | 区間 | ✅ 取得（`--network` フラグ） |
 | `appTrace` | `simctl spawn log stream`（アプリの os_log subsystem） | 区間 | ✅ 取得（要 udid + subsystem） |
 
 > `appTrace` はアプリの `os_signpost` / `os_log` が出す `<name> started` / `<name> finished` マーカーを、時刻つきの区間にペアリングします（`intervals.parse_app_trace`）。`network` は区間システムではなく request collector が生成し、その exchange を `<sid>/network.json` に書き出します（[network observation](drivers.md)、`--network` フラグ）。
+
+### 各ステップが画面に対して実際に行ったこと（`actionLog`）
+
+`actionLog` は取得の要求を必要とせず、独自のファイルも書きません。すべてのステップの結果が `manifest.json` の `actuations` に、ドライバが行ったプリミティブごとに 1 件を持ち、レポートと `bajutsu trace` のタイムラインはそこから読みます。これは、スクリーンショットと要素ツリーでは答えられない問いに答えます。このタップはどこに着地したのか、このスワイプはどれだけ動いたのか、という問いです。
+
+| フィールド | 意味 |
+|---|---|
+| `gesture` | ドライバのプリミティブ。`tap`、`doubleTap`、`longPress`、`swipe`、`scroll`、`pinch`、`rotate`、文字系のプリミティブ、`selectOption`、`systemAlert`、`back` |
+| `via` | ジェスチャが対象へ届いた方法。`coordinate`（ドライバが点を計算して送った）、`handle`（XCUITest がスナップショットの handle を操作した）、`identity`（Android の端末が要素を解決して点を選んだ）、`bridge`（WebView を要素 id で呼んだ）、`focused`（フォーカスを持つ入力欄に対する文字系のプリミティブ）、`key`、`history` |
+| `unit` | 座標系。`point`（iOS）、`pixel`（Android）、`cssPixel`（ブラウザのページ、または WebView 自身の空間） |
+| `points` | 触れた接触点を順に並べたもの。タップは 1 点、ドラッグは 2 点 |
+| `frame` / `target` | 解決した要素の領域と、そのアクセシビリティ識別子 |
+| `accepted` | その試行をプラットフォームが受け入れたかどうか。答えを返す 2 つの経路（XCUITest の handle 操作と Android の端末側エンドポイント）で設定されます。拒否された試行は打ち消し線で表示されるので、stale で再試行したタップが複数回のタップには見えません。`None` はその経路が個別の答えを返さなかったことを意味します |
+| `duration_s` / `scale` / `radians` | ジェスチャが持つ場合の、位置以外のパラメータ |
+
+記録が書ける内容には 3 つの規則があり、すべてのバックエンドがこれを守ります。
+
+- **実際に送った座標だけを書きます。** プラットフォームへ座標が渡っていない場合、`points` は空です。handle 経由の iOS のタップや Android の端末側のジェスチャでは、点を選んだのが向こう側だからです。そのときは代わりに解決した `frame` を示し、取っていない測定値として frame の中心を差し出すことはしません。
+- **端末側の処理を増やしません。** 記録が持つ値はどれも actuator がすでに手にしていた値なので、query も read も往復も追加で発生しません。
+- **著者が書いた文字列は決して持ちません。** `manifest.json` は秘匿処理を通さずに書き出されるので、記録は `type` ステップのテキスト（文字数さえ持ちません。`Redactor` が固定長のプレースホルダを使うのは、秘匿情報の長さがどの成果物にも出ないようにするためです）、`selectOption` の option、要素のアクセシビリティ label のいずれも持ちません。`target` は常に解決したアクセシビリティ識別子だけなので、識別子を持たない要素では未設定になります。
+
+記録はジェスチャを「試行した」時点、つまり通信が答える前に書きます。そのため操作に失敗したステップでも、何を狙ったかは残ります。ステップが動いたかどうかを語るのはステップ自身の結果です。
+
+どのステップにも属さない actuation が 1 つあります。反応型のシステムアラートガードはシナリオ末尾の `expect` の再チェックの前にも発火するので、その記録は `expect_alerts` の隣、シナリオの `expect_actuations` に載ります。記録を実装していないバックエンドは何も持たず、run の挙動は変わりません。ドライバの蓄積器には上限があるので、極端なステップ（`maxScrolls` が数百のような場合）は最初のほうの記録を失うことがあります。その件数は `dropped_actuations` が数え、レポートは記録を完全なものとしてではなく、切り詰められたものとして示します。
 
 **修飾子の既定**：常時発火するベースライン（後述）は `before` です。ステップが動作したあとではなく、動作する前に取得します。`capturePolicy` ルールやインラインの `capture:` が発火したときは、修飾子なしの瞬時種別は従来どおり `after` が既定のままです。区間系（`video`/`deviceLog`）は `around`（操作前に開始し、ステップ後に停止）です。ルール・インラインで `screenshot.before` を明示しても、ベースラインと重複するため撮り直されません。
 

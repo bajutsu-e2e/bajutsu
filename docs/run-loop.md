@@ -108,7 +108,8 @@ class StepOutcome:
     action: str                  # "tap" / "wait" / ...
     ok: bool
     reason: str                  # failure reason
-    duration_s: float            # timing (the actionLog equivalent)
+    duration_s: float            # timing
+    actuations: list[Actuation]  # what the driver actually did: the coordinate/gesture it sent
     assertion_results: list[AssertionResult]
     artifacts: list[Artifact]    # evidence captured for this step
 

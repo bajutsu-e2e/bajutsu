@@ -261,6 +261,7 @@ source_modules = [
     "bajutsu.orchestrator",
     "bajutsu.runner",
     "bajutsu.drivers.base",
+    "bajutsu.drivers.actuation",
     "bajutsu.assertions",
     "bajutsu.evidence",
     "bajutsu.report",
@@ -320,6 +321,9 @@ type = "forbidden"
 source_modules = [
     "bajutsu.scenario",
     "bajutsu.drivers.base",
+    # The actuation record is part of the same portable contract: a consumer implementing a `Driver`
+    # gets the record type without pulling in the orchestrator / runner / report.
+    "bajutsu.drivers.actuation",
 ]
 forbidden_modules = [
     "bajutsu.orchestrator",
