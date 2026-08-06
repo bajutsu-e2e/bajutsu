@@ -133,9 +133,10 @@ class StepOutcome:
     # the driver once per step, so a step that ran its body twice (an alert the guard dismissed, then a
     # retry) carries both attempts. Evidence only — nothing on the verdict path reads it.
     actuations: list[Actuation] = field(default_factory=list)
-    # How many of this step's actuations the driver's bounded log discarded to make room for later
-    # ones. Non-zero only for a pathological step (a `maxScrolls` in the hundreds), and recorded
-    # rather than left implicit so a truncated list is never read as a complete one.
+    # How many of this step's actuations are missing from the list above: the driver's bounded log
+    # discarding the oldest to make room for later ones (a pathological step, e.g. a `maxScrolls` in
+    # the hundreds), a damaged record the report loader had to drop on a later read, or both. Recorded
+    # rather than left implicit either way, so the list is never read as more complete than it is.
     dropped_actuations: int = 0
 
 
@@ -184,6 +185,9 @@ class RunResult:
     # with no step to attribute it to, so it is recorded here beside `expect_alerts` rather than left in
     # the driver's log and silently discarded.
     expect_actuations: list[Actuation] = field(default_factory=list)
+    # A damaged `expect_actuations` record the report loader had to drop — `dropped_actuations`'
+    # scenario-level counterpart, since this list has no step of its own to carry the disclosure.
+    dropped_expect_actuations: int = 0
     # Evidence kinds the run couldn't supply (no eligible backend) — disclosed, not silent (BE-0020).
     skipped_captures: list[SkippedCapture] = field(default_factory=list)
 

@@ -198,9 +198,9 @@ def _coordinate(p: Any) -> str | None:
 def _actuation_summary(step: dict[str, Any]) -> str:
     """What the step actually did to the screen, one segment per actuation.
 
-    Read straight from the manifest dict (no loader involved): the coordinate the driver sent, or the
-    resolved frame's center for a gesture whose point the platform chose, plus the channel. An older
-    run recorded none, so this is simply empty for it.
+    Read straight from the manifest dict (no loader involved): the coordinate the driver sent, plus
+    the channel that carried it. A record whose point the platform chose states no coordinate here
+    rather than a reconstructed one. An older run recorded none, so this is simply empty for it.
     """
     out: list[str] = []
     for a in step.get("actuations") or []:
@@ -216,7 +216,7 @@ def _actuation_summary(step: dict[str, Any]) -> str:
             f"{a.get('gesture', '')}{f' {where}' if where else ''} [{a.get('via', '')}]{refused}"
         )
     if dropped := step.get("dropped_actuations"):
-        out.append(f"(+{dropped} earlier dropped)")
+        out.append(f"(+{dropped} missing)")
     return "   · ".join(out)
 
 

@@ -145,7 +145,7 @@ def test_trace_marks_a_refused_attempt_and_a_truncated_record(tmp_path: Path) ->
     out = trace.trace_run(run)
 
     assert "tap [handle] ✗refused" in out
-    assert "(+7 earlier dropped)" in out
+    assert "(+7 missing)" in out
 
 
 def test_trace_of_a_run_recorded_before_actuations_shows_no_summary(tmp_path: Path) -> None:

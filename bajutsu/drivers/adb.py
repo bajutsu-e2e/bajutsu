@@ -568,7 +568,6 @@ class AdbDriver(CoordinateTreeDriver):
                     )
                 return read.text
             except AdbResidentError as exc:
-                self._actuations.settle(False)
                 logger.warning(
                     "resident hierarchy read failed (%s); falling back to `uiautomator dump` "
                     "for the rest of this lease",
@@ -1070,6 +1069,7 @@ class AdbDriver(CoordinateTreeDriver):
                 # the channel: the read path makes the same choice, retrying per read rather than
                 # disabling itself, and latching here would hand every later gesture back to the
                 # coordinate path precisely when the device is least settled.
+                self._actuations.settle(False)
                 logger.warning(
                     "resident actuation faulted (%s); this gesture falls back to coordinate "
                     "injection, the channel stays in use",
@@ -1250,7 +1250,6 @@ class AdbDriver(CoordinateTreeDriver):
             sel,
             "pinch",
             lambda c, half: adb.pinch_contacts(c, half, scale),
-            gesture="pinch",
             scale=scale,
         )
 
@@ -1260,7 +1259,6 @@ class AdbDriver(CoordinateTreeDriver):
             sel,
             "rotate",
             lambda c, half: adb.rotate_contacts(c, half, radians),
-            gesture="rotate",
             radians=radians,
         )
 
@@ -1272,7 +1270,6 @@ class AdbDriver(CoordinateTreeDriver):
             [base.Point, float], tuple[tuple[base.Point, base.Point], tuple[base.Point, base.Point]]
         ],
         *,
-        gesture: str,
         scale: float | None = None,
         radians: float | None = None,
     ) -> None:
@@ -1317,7 +1314,7 @@ class AdbDriver(CoordinateTreeDriver):
         # The anchor in tree space, not the raw touch-device range: `gesture_anchor`'s rule plus the
         # frame and the scale/rotation fully determine the two contacts from it, and the raw range is
         # an artifact of the injection method (as it is for the sendevent double-tap).
-        self._log_coordinate(gesture, (cx, cy), el, scale=scale, radians=radians)
+        self._log_coordinate(action, (cx, cy), el, scale=scale, radians=radians)
         self._act(adb.sendevent_gesture_cmd(self.serial, dev.path, raw_start, raw_end))
         self._arm_catchup(pre_key, mark)
 
