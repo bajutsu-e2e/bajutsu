@@ -306,11 +306,17 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 8. **Driver conformance suite.** Add an obstruction case to
    [`tests/driver_conformance.py`](../../tests/driver_conformance.py): a screen with a target and a
    second element sharing its point, placed to be "on top" in whatever way each backend's fixture
-   expresses that. Assert `is_tappable` is false while covered and true once cleared; assert `tap`
-   raises `ElementNotTappable` after the recovery bound is exhausted, and succeeds once the safety
-   net clears the obstruction. Runs on `FakeDriver` on the fast gate and against each real backend's
-   own harness, per [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md)'s
-   existing pattern of one shared spec across every backend.
+   expresses that. Assert `is_tappable` is false while covered and true for a separate, genuinely
+   uncovered element on the same screen; assert `driver.tap` itself raises `ElementNotTappable` for
+   the covered target — both at the driver seam directly, per
+   [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md)'s existing
+   pattern of one shared spec across every backend that implements the case (`FakeDriver` on the
+   fast gate, Playwright's real-Chromium harness; the on-device iOS/Android harnesses do not yet).
+   The *orchestrator's* bounded-scroll recovery — raising `ElementNotTappable` only once the bound
+   is exhausted, and succeeding once a scroll clears the obstruction — is a distinct behavior this
+   suite does not exercise (it calls `driver.tap` directly, never `_tap_with_recovery`), so it stays
+   covered generically against `FakeDriver` in Unit 10's
+   `tests/orchestrator/test_tap_recovery.py`, not per real backend.
 9. **Docs.** Update the [`docs/drivers.md`](../../docs/drivers.md) note (currently describing adb's
    not-found scroll recovery as adb-only and a robustness net, not the portable idiom) to describe
    the now-portable tappability check and its scroll safety net, keeping the same framing: the
@@ -335,12 +341,19 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
   this path. A step that
   ultimately fails still fails through the ordinary `ElementNotTappable` step-failure path, the same
   shape as any other selector or actuation failure.
-- **Determinism first.** `is_tappable` is a single-shot, side-effect-free query, not a poll with
-  hidden waiting. The recovery loop is `scroll_to_target`'s own already-deterministic, no-fixed-sleep,
-  bounded stepping machinery, reused apart from its stop predicate — the same end-of-content
-  fail-fast, the same read-lag budget, the same overshoot handling. Selector ambiguity is untouched:
-  `resolve_unique` still fails immediately on two or more matches, before any tappability question is
-  asked, and the recovery path is never entered for that case.
+- **Determinism first.** `is_tappable` never actuates and never has a fixed sleep, so it is safe to
+  call repeatedly with no side effects — but on adb it is not a bare single-shot read either: it
+  settles the tree first (a bounded catch-up read plus a stability poll, up to
+  `_SETTLE_DEADLINE_S = 8.0` s) and resolves with its own bounded retry (`_RESOLVE_TIMEOUT_S`) when
+  the target is momentarily absent, both deliberate (a transient empty read must still resolve
+  against the tree it settles to). `scroll_until_tappable`'s stop predicate calls it once per loop
+  iteration, so a bounded recovery on adb can spend real, bounded-but-nonzero time settling on top
+  of the settle each scroll step already pays for, rather than being free. The recovery loop itself
+  is `scroll_to_target`'s own already-deterministic, no-fixed-sleep, bounded stepping machinery,
+  reused apart from its stop predicate — the same end-of-content fail-fast, the same read-lag
+  budget, the same overshoot handling. Selector ambiguity is untouched: `resolve_unique` still fails
+  immediately on two or more matches, before any tappability question is asked, and the recovery
+  path is never entered for that case.
 - **App-agnostic.** The check is per-platform, not per-app — the kind of difference the driver layer
   already exists to hold. The generic policy, "if not tappable, scroll a bounded amount and re-check,
   else fail with a named error," lives once in the orchestrator layer, shared by every backend, with

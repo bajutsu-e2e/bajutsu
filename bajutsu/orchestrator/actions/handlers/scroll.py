@@ -579,10 +579,13 @@ def scroll_until_tappable(
     Raises:
         ElementNotFound: reworded from `scroll_to_target`'s own raise. That message is written for
             its default "on-screen" stop condition and talks about the region going missing or
-            bottoming out; here `sel` resolved on every step and only tappability never came true, so
-            the original wording is replaced rather than passed through — otherwise a caller chaining
-            this into a further exception (as `_tap_with_recovery` does) would carry a misleading
-            "not found" cause for a target that was on-screen the whole time.
+            bottoming out; here the stop condition is tappability, so the original wording is
+            replaced rather than passed through — otherwise a caller chaining this into a further
+            exception (as `_tap_with_recovery` does) would carry a misleadingly specific "not found"
+            cause. The rewording makes no claim about whether `sel` resolved on every step: it may
+            have stopped resolving partway through this call (e.g. a recovery scroll pushes the
+            target out of the tree entirely, not just out of the viewport), so it says only that
+            tappability was never reached, not that resolution held throughout.
     """
     try:
         scroll_to_target(
@@ -597,8 +600,7 @@ def scroll_until_tappable(
         )
     except base.ElementNotFound as exc:
         raise base.ElementNotFound(
-            f"scroll: {sel!r} resolved but never became tappable within {max_scrolls} scroll(s) "
-            f"({exc})"
+            f"scroll: {sel!r} never became tappable within {max_scrolls} scroll(s) ({exc})"
         ) from exc
 
 

@@ -930,6 +930,14 @@ class AdbDriver(CoordinateTreeDriver):
         matching every other backend's convention for a target not yet in the tree; an ambiguous
         selector still raises `AmbiguousSelector`, since occlusion is a different question from
         selector ambiguity.
+
+        Never actuates and never has a fixed sleep, so it is safe to call repeatedly with no side
+        effects — but it is not a bare single-shot read either: `_settle()` below is a bounded
+        catch-up read plus a stability poll (up to `_SETTLE_DEADLINE_S`), and `_resolve` carries its
+        own bounded retry (`_RESOLVE_TIMEOUT_S`) for a target that is only momentarily absent. Both
+        bounded waits are deliberate, not incidental, so a caller polling this in a loop (the
+        recovery path above) pays real, if bounded, time on top of what each scroll step already
+        settles for.
         """
         tree = self._settle()
         try:

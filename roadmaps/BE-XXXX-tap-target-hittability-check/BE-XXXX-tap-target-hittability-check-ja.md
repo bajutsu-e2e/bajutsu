@@ -140,9 +140,11 @@ class ElementNotTappable(Exception):
 
    [`tests/driver_conformance.py`](../../tests/driver_conformance.py) に、遮蔽のケースを追加する。
    対象と、その点を共有する 2 つ目の要素を持つ画面を用意し、各バックエンドのフィクスチャがそれぞれの流儀で「手前にある」と表現できる形にする。
-   覆われている間は `is_tappable` が偽であり、取り除かれると真になることを確認する。
-   回復の上限を使い切ると `tap` が `ElementNotTappable` を送出し、安全網が遮蔽を取り除くと成功することを確認する。
-   [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) の、全バックエンドに共通する仕様 1 本という既存のパターンに従い、`FakeDriver` 上と各バックエンド実機のハーネス上の両方で走らせる。
+   覆われている間は `is_tappable` が偽であり、同じ画面上の別の、実際に覆われていない要素では真になることを確認する。
+   覆われている対象に対しては、`driver.tap` 自身が `ElementNotTappable` を送出することを確認する。
+   どちらもドライバの継ぎ目で直接確認するもので、
+   [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) の、全バックエンドに共通する仕様 1 本という既存のパターンに従い、このケースを実装している各バックエンド(`FakeDriver`、Playwright の実 Chromium ハーネス。実機の iOS/Android ハーネスはまだ実装していません)で走らせる。
+   オーケストレータ側の、回数を区切ったスクロール回復(上限を使い切って初めて `ElementNotTappable` を送出し、スクロールが遮蔽を取り除けば成功する)は別の挙動であり、この適合スイートは確認しません(`driver.tap` を直接呼ぶだけで、`_tap_with_recovery` は経由しません)。そのため、この部分は実バックエンドごとではなく、Unit 10 の `tests/orchestrator/test_tap_recovery.py` で `FakeDriver` に対して汎用的に確認したままとします。
 
 9. **ドキュメント。**
 
@@ -173,8 +175,9 @@ class ElementNotTappable(Exception):
   最終的に失敗するステップも、他のセレクタや操作の失敗と同じ形の、通常の `ElementNotTappable` によるステップ失敗の経路をたどる。
 
 - **決定性が第一。**
-  `is_tappable` は、隠れた待機を持たない単発の、副作用のない問い合わせ。
-  回復ループは、`scroll_to_target` がすでに持つ、固定 `sleep` のない決定的で回数を区切ったステップの仕組みを、停止述語だけを差し替えて再利用する。
+  `is_tappable` は決してアクチュエートせず、固定 `sleep` も持たないため、副作用なく何度でも呼び出せる。
+  ただし、単なる単発の読み取りとは言い切れない。adb では、境界のあるキャッチアップ読み取りと安定性ポーリング(`_SETTLE_DEADLINE_S = 8.0` 秒まで)による settle と、対象が一時的に不在のときの境界のある再解決(`_RESOLVE_TIMEOUT_S`)を経る。どちらも意図的な設計であり、`scroll_until_tappable` の停止述語がループのたびにこれを呼ぶ以上、adb 上の回数を区切った回復は、各スクロールステップがすでに支払っている settle に加えて、実際の(境界はあるが無視できない)時間を費やしうる。
+  回復ループそのものは、`scroll_to_target` がすでに持つ、固定 `sleep` のない決定的で回数を区切ったステップの仕組みを、停止述語だけを差し替えて再利用する。
   末尾検出、read-lag の予算、行き過ぎの扱いも同じもの。
   セレクタの曖昧性の扱いは変わらない。
   `resolve_unique` は、タップ可能性の問いが立つ前に、2 件以上の一致で相変わらず即座に失敗する。
