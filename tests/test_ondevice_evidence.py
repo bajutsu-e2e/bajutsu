@@ -155,6 +155,9 @@ def test_stops_the_started_video_when_start_log_raises(pytester) -> None:
     # `start_video` can succeed (spawning a real device-side `screenrecord`) and then `start_log`
     # raise — a transient adb hiccup starting the second process must neither orphan the first nor
     # fail a test the driver contract never touched: starting the capture is itself best-effort.
+    # `start_video`'s own success still writes a real `video.mp4` (a real `adb pull`, on adb) —
+    # which must not be left behind on this *passing* test just because `_PENDING` registration
+    # used to be gated on both starters succeeding.
     pytester.makeconftest(_INNER_CONFTEST)
     pytester.makepyfile(
         "import pathlib\n"
@@ -164,13 +167,18 @@ def test_stops_the_started_video_when_start_log_raises(pytester) -> None:
         "\n"
         "\n"
         "class _FakeVideo:\n"
+        "    def __init__(self, path):\n"
+        "        self.path = path\n"
+        "\n"
         "    def stop(self):\n"
         "        pathlib.Path('stopped_video.marker').write_text('stopped')\n"
-        "        return pathlib.Path('stopped_video.marker')\n"
+        "        self.path.parent.mkdir(parents=True, exist_ok=True)\n"
+        "        self.path.write_text('a real pulled video')\n"
+        "        return self.path\n"
         "\n"
         "\n"
         "def _fake_start_video(serial, path, **kwargs):\n"
-        "    return _FakeVideo()\n"
+        "    return _FakeVideo(path)\n"
         "\n"
         "\n"
         "def _fake_start_log_raises(serial, path, **kwargs):\n"
@@ -191,6 +199,10 @@ def test_stops_the_started_video_when_start_log_raises(pytester) -> None:
     result = pytester.runpytest_inprocess()
     result.assert_outcomes(passed=1)  # the start failure is logged, not raised
     assert (pytester.path / "stopped_video.marker").read_text() == "stopped"
+    slug = ondevice_evidence._slug(
+        "test_stops_the_started_video_when_start_log_raises.py::test_body"
+    )
+    assert not (pytester.path / "runs" / "fake-lane" / slug).exists()
 
 
 class _FakeNode:

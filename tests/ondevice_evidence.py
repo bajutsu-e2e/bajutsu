@@ -21,7 +21,7 @@ failures, not suite size.
 
 The keep/discard decision cannot live inside `capture`'s own fixture teardown: pytest builds the
 "teardown" `TestReport` only *after* every finalizer for the item has run, `capture`'s own included,
-so a fixture cannot see whether a *later-torn-down sibling fixture's* teardown half also failed.
+so a fixture cannot see whether an *earlier-torn-down sibling fixture's* teardown half also failed.
 The decision is deferred to the `pytest_runtest_makereport` hook below instead, which fires again
 once that "teardown" report exists — the one point that has seen the whole attempt.
 
@@ -58,9 +58,9 @@ _FAILED: pytest.StashKey[bool] = pytest.StashKey()
 
 # Evidence directories `capture()` registered this attempt, swept by the hook below once the
 # "teardown" report says the attempt is clean — never inside `capture()` itself (see the module
-# docstring). Registered only once both `start_*` calls below have succeeded, so a setup failure
-# leaves its directory unregistered and therefore un-swept, keeping by default exactly what a setup
-# failure needs kept.
+# docstring). Registered unconditionally, regardless of whether either `start_*` call below
+# succeeded: `_FAILED` alone decides keep vs. discard, so a directory left unregistered here would
+# never be swept even on a passing test — the opposite of "kept only on failure".
 _PENDING: pytest.StashKey[list[Path]] = pytest.StashKey()
 
 # Mirrors screenrecord.py's bound. 180 is the platform's hard maximum, not a soft default: AOSP's
@@ -147,14 +147,16 @@ def capture(
         # Diagnostic evidence is best-effort: a transient `xcrun`/`adb` hiccup *starting* a capture
         # (a fork failure, the binary transiently missing, an `OSError` opening `device.log`) must
         # not decide a gating driver-contract verdict — both `conformance` suites sit inside the
-        # required `E2E` aggregates. Whatever did start is still stopped in the `finally` below; the
-        # directory stays unregistered either way — see `_PENDING`'s own comment.
+        # required `E2E` aggregates. Whatever did start is still stopped in the `finally` below.
         _logger.warning(
             "%s: could not start the capture; the test runs without it", dest, exc_info=True
         )
-    else:
-        # Register only now that both starters have succeeded — see `_PENDING`'s own comment for
-        # why a setup failure must leave this unregistered rather than decide anything here.
+    finally:
+        # Registered regardless of whether either starter succeeded: a start failure is warned
+        # about above, not raised, so it never reaches `_FAILED` — leaving `dest` unregistered here
+        # would keep whatever `start_video` alone managed to record (a real `adb pull`ed video.mp4,
+        # on adb) on a test that then *passes*. `_FAILED` is the only thing that decides keep vs.
+        # discard now; see `_PENDING`'s own comment.
         request.node.stash.setdefault(_PENDING, []).append(dest)
     try:
         yield

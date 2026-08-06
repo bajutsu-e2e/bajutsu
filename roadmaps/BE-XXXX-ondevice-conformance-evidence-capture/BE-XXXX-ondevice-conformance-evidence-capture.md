@@ -88,7 +88,7 @@ The decision cannot live inside the fixture's own teardown. `_evidence` is autou
 first among a test's fixtures and therefore torn down last; pytest only builds the "teardown"
 `TestReport` after every finalizer for the item — the fixture's own included — has already run. A
 fixture reading its test's outcome from inside its own teardown code can see the "call" phase's
-report (already produced by then), but never a *later-torn-down sibling fixture's own teardown
+report (already produced by then), but never an *earlier-torn-down sibling fixture's own teardown
 failure*, since that failure has not been reported yet at the point the fixture's code runs. That is
 not a corner case for the fault-injection suites: their per-test `driver` fixture's post-`yield` half
 puts the display back to a known state, and a display that will not wake is exactly the failure a
