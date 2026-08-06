@@ -51,7 +51,8 @@ infrastructure-fault recovery for the identical reason: bypassing the pipeline b
 driver-level contract test, and it costs them everything the pipeline supplies for free, evidence
 capture included. The iOS conformance job carries a second layer of the same gap: its CI workflow
 (`ios-e2e.yml`) uploads a BE-0334 recovery-count report for it, but never an "Upload run artifacts"
-step for `runs/` at all — unlike every other job in that workflow.
+step for `runs/` at all — unlike the `fault-injection (xcuitest)` and `visual (xcuitest)` jobs beside
+it, and unlike every on-device job in `android-e2e.yml`.
 
 ## Detailed design
 
@@ -126,10 +127,10 @@ artifact stays self-contained and none collide on the same path.
 
 ### Unit 4 — Give the iOS conformance job an "Upload run artifacts" step
 
-Add the same `path: runs/`, `if-no-files-found: ignore` upload step every other on-device job in
-`ios-e2e.yml`/`android-e2e.yml` already carries to the `conformance (xcuitest)` job, which had none
-at all before this item — Unit 3's fixture would otherwise populate `runs/` in that job for nothing,
-since the workflow never picked it up.
+Add the same `path: runs/`, `if-no-files-found: ignore` upload step the `fault-injection (xcuitest)`
+and `visual (xcuitest)` jobs beside it — and every on-device job in `android-e2e.yml` — already carry
+to the `conformance (xcuitest)` job, which had none at all before this item — Unit 3's fixture would
+otherwise populate `runs/` in that job for nothing, since the workflow never picked it up.
 
 ## Alternatives considered
 

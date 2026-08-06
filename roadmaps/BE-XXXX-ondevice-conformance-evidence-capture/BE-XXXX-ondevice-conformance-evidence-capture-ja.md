@@ -50,7 +50,8 @@ region did not change ... (end of content)`で失敗しました。これはま�
 取得を含め、パイプラインが無償で提供するものすべてを失う、という代償を払っています。iOSのconformance
 ジョブには、同じギャップがもう一段重なっています。そのCIワークフロー（`ios-e2e.yml`）はBE-0334の復旧
 回数レポートをアップロードするステップこそ持っていますが、`runs/`向けの「Upload run artifacts」ステップ
-自体がほかのどのジョブとも違って存在しません。
+自体が存在しません。同じワークフローの`fault-injection (xcuitest)`・`visual (xcuitest)`の各ジョブと、
+`android-e2e.yml`のオンデバイスジョブがいずれも持っているステップです。
 
 ## 詳細設計
 
@@ -122,8 +123,9 @@ region did not change ... (end of content)`で失敗しました。これはま�
 
 ### 単位4 — iOSのconformanceジョブに「Upload run artifacts」ステップを追加する
 
-`ios-e2e.yml`・`android-e2e.yml`の他のオンデバイスジョブがすでに持っている、`path: runs/`・
-`if-no-files-found: ignore`の同じアップロードステップを、`conformance (xcuitest)`ジョブに追加します。
+`fault-injection (xcuitest)`・`visual (xcuitest)`の各ジョブと`android-e2e.yml`のオンデバイスジョブが
+いずれもすでに持っている、`path: runs/`・`if-no-files-found: ignore`の同じアップロードステップを、
+`conformance (xcuitest)`ジョブに追加します。
 このジョブにはこれまで一切存在しませんでした。単位3のフィクスチャだけでは、このジョブの`runs/`に
 書き出しても、ワークフローがそれを一切拾わないため、無駄になってしまいます。
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+import subprocess
 from pathlib import Path
 
 import ondevice_evidence
@@ -493,7 +494,9 @@ def test_keeps_evidence_when_a_sibling_fixtures_teardown_fails_after_a_passing_t
     assert (kept / "device.log").read_text() == "captured"
 
 
-def test_discards_evidence_once_a_crashed_attempt_recovers_and_passes(pytester) -> None:
+def test_discards_evidence_once_a_crashed_attempt_recovers_and_passes(
+    monkeypatch, pytester
+) -> None:
     # `backend_crash_recovery` (BE-0334, used by the iOS conformance suite) re-runs a WHOLE item via
     # `_initrequest()` on an infra-fault retry, reusing the same `pytest.Item` — so `item.stash`
     # persists across attempts. If the makereport hook only ever latched `_FAILED` true and never
@@ -501,6 +504,12 @@ def test_discards_evidence_once_a_crashed_attempt_recovers_and_passes(pytester) 
     # attempt, wrongly keeping evidence a passing test does not need (and by then holding only the
     # passing attempt's own recording anyway, since `capture`'s leading `rmtree` clears the directory
     # at the start of every attempt).
+    #
+    # Pinned rather than left ambient: `backend_crash_recovery` reads `BAJUTSU_CRASH_RETRIES` from
+    # the real environment at run time, and this test needs at least one retry to reach the
+    # recovered-then-passing attempt it's pinning — a `0` in the developer's shell would fail this
+    # test over an unset env var, not over anything wrong in `ondevice_evidence.py`.
+    monkeypatch.setenv("BAJUTSU_CRASH_RETRIES", "1")
     pytester.makeconftest("pytest_plugins = ['ondevice_evidence', 'backend_crash_recovery']\n")
     pytester.makepyfile(
         _IMPORTS
@@ -583,6 +592,34 @@ def test_android_screenrecord_forwards_this_modules_pinned_bounds(monkeypatch) -
             True,
         )
     ]
+
+
+def test_android_screenrecord_clears_the_stale_device_side_file_first(monkeypatch) -> None:
+    # `start_screenrecord` always records to one fixed device-side path and pulls whatever is there
+    # unconditionally on stop — both Android suites reuse it once per test, so a prior test's clip
+    # left behind by a swallowed pull failure could otherwise be pulled in as this test's own
+    # evidence. Clearing it first, before every spawn, is what closes that.
+    run_calls = []
+    monkeypatch.setattr(ondevice_evidence.adb, "_real_run", lambda cmd: run_calls.append(cmd))
+    monkeypatch.setattr(intervals, "start_screenrecord", lambda *a, **kw: "sentinel")
+    result = ondevice_evidence.android_screenrecord("serial-1", Path("video.mp4"))
+    assert result == "sentinel"
+    assert run_calls == [
+        ondevice_evidence.adb.rm_cmd("serial-1", ondevice_evidence.adb.VIDEO_DEVICE_PATH)
+    ]
+
+
+def test_android_screenrecord_tolerates_a_failed_device_side_clear(monkeypatch) -> None:
+    # A transient failure to remove the stale file (device briefly unresponsive, nothing there to
+    # remove) must not stop the recording it precedes: the very next `screenrecord` spawn overwrites
+    # the same path regardless, so the clear is best-effort, not load-bearing.
+    def _raises(cmd):
+        raise subprocess.CalledProcessError(1, cmd)
+
+    monkeypatch.setattr(ondevice_evidence.adb, "_real_run", _raises)
+    monkeypatch.setattr(intervals, "start_screenrecord", lambda *a, **kw: "sentinel")
+    result = ondevice_evidence.android_screenrecord("serial-1", Path("video.mp4"))
+    assert result == "sentinel"
 
 
 def test_xcuitest_video_confirms_it_actually_started(monkeypatch) -> None:

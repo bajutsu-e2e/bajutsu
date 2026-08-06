@@ -16,8 +16,8 @@ Recorded per test, not per module: `screenrecord`'s ~180s device-side ceiling (s
 `intervals.SCREENRECORD_TIME_LIMIT_S`'s comment) would truncate a single video spanning the whole
 conformance module, and a per-test clip also lets a failure's video be found by its own test name
 rather than scrubbing one long recording. Kept only on failure — the same policy `screenrecord.py`'s
-own Makefile target already applies to the codegen lane — so a green run uploads nothing and CI
-artifact storage tracks failures, not suite size.
+own Makefile target already applies to the codegen lane — so the fixture itself contributes nothing
+to `runs/` on a green run, and CI artifact storage tracks failures, not suite size.
 
 The keep/discard decision cannot live inside `capture`'s own fixture teardown: pytest builds the
 "teardown" `TestReport` only *after* every finalizer for the item has run, `capture`'s own included,
@@ -37,15 +37,18 @@ A module opts in with one autouse fixture:
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import logging
 import re
 import shutil
+import subprocess
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
 
+from bajutsu import adb
 from bajutsu.evidence import intervals
 
 _logger = logging.getLogger(__name__)
@@ -74,7 +77,19 @@ def android_screenrecord(serial: str, path: Path) -> intervals.Interval:
     unplayable mp4 for it. It confirms less than the iOS signal does, though
     (`_await_screenrecord_started`: a live process is not proof frames are being emitted), and it
     warns rather than raises on timeout — `capture()`'s missing/empty check stays the backstop.
+
+    `start_screenrecord` always records to the one fixed device-side path `adb.VIDEO_DEVICE_PATH`,
+    and its post-stop transform pulls whatever is there unconditionally. Both Android suites reuse
+    that path once per test, so a prior test's `stop()` swallowing a transient pull failure
+    (`capture()`'s own backstop, on an otherwise-passing test) can leave its clip behind on the
+    device; if the *next* test's own recording then fails to start — `confirm_started` only warns,
+    it does not skip the pull — that stale clip gets pulled in as the next test's evidence: non-empty,
+    so `capture()`'s missing/empty check never notices. Clearing the device-side file before every
+    spawn closes both causes; a failure to remove it is not fatal, since the very next line would
+    overwrite it anyway.
     """
+    with contextlib.suppress(subprocess.CalledProcessError, OSError):
+        adb._real_run(adb.rm_cmd(serial, adb.VIDEO_DEVICE_PATH))
     return intervals.start_screenrecord(
         serial,
         path,
