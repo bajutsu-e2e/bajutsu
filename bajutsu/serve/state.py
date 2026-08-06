@@ -537,11 +537,12 @@ class ServeState:
     # configuration + the "authenticated as whom" methods, carved into `SessionManager` (BE-0051 /
     # BE-0015 7b). `ServeState` holds one and the transport/authz layers read through `state.auth`.
     auth: SessionManager = field(default_factory=SessionManager)
-    # Messages `_build_server_state` already printed to stderr (nothing is configured that early),
-    # re-emitted through `oplog` once `serve()` calls `_configure_oplog` -- so an operator's alert
-    # keyed on `event` catches whichever misconfiguration this deployment hit too, not only what the
-    # operator happens to read from raw boot output. Empty on local serve.
-    startup_warnings: tuple[str, ...] = ()
+    # (check, msg) pairs `_build_server_state` already printed to stderr (nothing is configured that
+    # early), re-emitted through `oplog` once `serve()` calls `_configure_oplog` -- *check* is a
+    # stable discriminator (e.g. "admin_teams_empty") carried as its own field, so an operator's alert
+    # keys on `check=` rather than substring-matching *msg*, which can reword out from under it. Empty
+    # on local serve.
+    startup_warnings: tuple[tuple[str, str], ...] = ()
     # Per-org store factory (BE-0015 multi-tenancy). None on local serve (one tenant); a server
     # backend sets a closure that builds object stores prefixed for the given org. `for_org` falls
     # back to the default stores when unset, so local behavior is unchanged.

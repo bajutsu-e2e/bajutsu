@@ -67,11 +67,18 @@ else None` として組み立てられるため、`BAJUTSU_OAUTH_GITHUB_*` の�
 これは締め出しではありません。`POST /api/login` は `oauth is None` のときにだけ有効なので、この
 デプロイは置き換えたはずの共有トークンのログインに静かに戻ります。しかもトークンで発行したセッションには
 identity が無いため `forbidden_for_role` が短絡し、そのセッションは全権を持ちます。運用者が GitHub
-OAuth にゲートされていると思い込んだまま、サーバは共有トークンだけで開いたままになるということです。この
+OAuth にゲートされていると思い込んだまま、サーバは共有トークンだけで開いたままになるということです。
+この「戻り先がある」という前提は、トークンが構成されていることを仮定しています。`BAJUTSU_SERVE_TOKEN`
+も未設定なら、戻り先すらありません。`SessionManager.check_token` は
+`self.token is not None and secrets.compare_digest(...)` なので `POST /api/login` は 401 になり、
+かつ両方の transport が同じ `token is None` を理由に認証と RBAC のゲートそのものをスキップします
+（`handler.py` の `_gate`、`server/app.py` のミドルウェア）。`_ADMIN_PATHS` を含むすべてのエンドポイントが
+認証なしで応答する、共有トークンへの後退よりもさらに悪い形です。この
 チェックは、`oauth is None` かつ GitHub 側の3変数のうち少なくとも1つが設定されている場合、つまり
 意図的なトークン認証専用デプロイではなく構成が半端な状態のときにだけ発火し、GitHub OAuth が部分的にしか
-構成されていないこと、そして3変数すべてが設定されるまでは GitHub のサインインが 404 になり、代わりに
-共有トークンのログインが有効になっていることを出力します。
+構成されていないこと、そして GitHub のサインインが 404 になることに加え、このデプロイが実際に
+落ち込んだ2つの戻り先のどちらかを名指しして出力します（`token` は `_build_server_state` の既存の
+引数なので、これは3変数すべてが設定されるまで続きます）。
 
 `_build_server_state`（[`bajutsu/serve/__init__.py`](../../bajutsu/serve/__init__.py)）は、
 GitHub OAuth を構成していて、廃止した `BAJUTSU_OAUTH_ADMIN_TEAM` がまだ設定されているとき、
@@ -117,10 +124,18 @@ JSON 形式の `oplog` の stdout 書き込みと混在します。これはま�
 パースに失敗する形であり、しかも運用者が最も alert を組みたい状態、つまり「このデプロイには admin が
 おらず、サインインして admin を得る手段もない」という状態そのものです。`_build_server_state` は、
 出力する各メッセージを新しい `ServeState.startup_warnings` フィールドに集約するようになります。
+これは裸のメッセージではなく `(check, msg)` の `tuple[tuple[str, str], ...]` です。4つの確認は
+以下で述べる1つの event を共有するため、メッセージだけでは運用者の alert が、いつか誰かが言い回しを
+変えると静かに壊れる自由文の部分一致に頼るしかなくなります。`check` は
+（`"oauth_half_configured"`、`"admin_team_retired_name"`、`"admin_teams_empty"`、
+`"admin_teams_malformed"`という）安定した識別子で、alert はこちらをキーにできます。これにより、
+意図的に OAuth を admin Team なしで運用しているデプロイが、他の3つを黙らせずにこの1つだけを
+抑制することもできるようになります。
 `serve()` は、`_configure_oplog` の直後に新しい `_emit_startup_warnings(state)` を呼びます。これは
 `restore_persisted_provider_settings` がすでに使っている配置と同じであり、理由も同じです
 （「malformed-file の警告が live のログシンクに届くように」）。この関数が、集約した各メッセージを
-`oplog.log_event` を通じて、`oplog.EVENTS` の新しいエントリ `"server.startup_warning"` として
+`oplog.log_event` を通じて、登録済みの `msg` と並ぶ1つのフィールドとして `check` を渡しながら、
+`oplog.EVENTS` の新しいエントリ `"server.startup_warning"` として
 再発行します。この関数は、その2つの隣人がすでに立てているパターンに合わせて、`serve()` 内の
 インラインな loop ではなく、単独で呼び出せる boot seam です。`serve()` は実際にサーバの loop を
 走らせる関数であり、高速なテストスイートでは実行されません。そのため、インラインな loop のテスト
@@ -129,10 +144,14 @@ JSON 形式の `oplog` の stdout 書き込みと混在します。これはま�
 から改名または削除されると、テストスイート全体は green のままなのに、実際に再発行すべき起動時警告を
 持つデプロイが起動時に、`_configure_oplog` の後、`restore_persisted_provider_settings` の前で
 クラッシュします。まさにこの項目が助けようとしている構成ミスのデプロイが、admin を欠くだけでなく
-まったく起動できなくなるということです。専用のテストが `_emit_startup_warnings` を直接動かします。
+まったく起動できなくなるということです。専用のテストが `_emit_startup_warnings` を直接動かし、
+メッセージだけでなく各レコードの `check` フィールドも固定します。
 `print` の呼び出しはそのまま残します。それらが動く時点では何も構成されていないため、store も
 データベースも無いまったく壊れたデプロイが起動したときに、何かを見る手段は依然としてそれしかない
-からです。
+からです。[`docs/self-hosting.md`](../../docs/self-hosting.md)は、`"server.startup_warning"` と
+`"oauth.denied"` の両方を、*運用ログ* 節の event 一覧だけでなく admin Team の移行手順の近くでも
+名前で挙げます。移行手順を読む運用者が、「ログの最初の数行を読んでください」だけでなく alert を
+組める経路も見られるようにするためです。
 
 `oauth_callback`（[`bajutsu/serve/authz.py`](../../bajutsu/serve/authz.py)）は、Organization
 メンバーシップのゲートを実行する前に、すでに login の GitHub Team メンバーシップを取得しています
@@ -421,7 +440,10 @@ GitHub organization を誰が管理しているかをコードで確認する方
       変数が少なくとも1つ設定されている）は、構成が半端なデプロイに警告する。上の3つの確認はここには
       届かない。どれも `oauth is None` を「意図的にトークン認証専用」と読むためである。締め出しでは
       ない。`POST /api/login` はこの同じ `oauth is None` のときにこそ有効になるので、このデプロイは
-      置き換えたはずの共有トークンのログインへ静かに戻り、そのセッションはすべて全権を持つ。運用者は
+      置き換えたはずの共有トークンのログインへ静かに戻り、そのセッションはすべて全権を持つ。ただし
+      `BAJUTSU_SERVE_TOKEN` も未設定なら、両方の transport が認証と RBAC のゲートそのものをスキップし、
+      すべてのエンドポイントが認証なしで応答する。メッセージは、このデプロイが実際に落ち込んだほうの
+      戻り先を名指しする。運用者は
       GitHub OAuth にゲートされていると思い込んだまま構成が半端なことに気づかない、という危険であり、
       admin Team に着目した上の3つの確認からは推測できない。
 - [x] `oauth_callback` のサインインゲートに、`identity_matches_org` と並ぶ admin Team の迂回を追加する。
@@ -451,10 +473,15 @@ login（最後のものは、
       状態）や、`/user/orgs` が空を返した場合には適用しない。後者は、GitHub のどの org にも本当に
       属していない login と同じ形だからである。
 - [x] `_build_server_state` の4つの起動時警告を、出力するだけでなく新しい
-      `ServeState.startup_warnings` フィールドに集約するようにする。新しい `_emit_startup_warnings`
+      `ServeState.startup_warnings` フィールドに集約するようにする。裸のメッセージではなく
+      `(check, msg)` の `tuple[tuple[str, str], ...]` とする。4つとも下記の1つの event を共有する
+      ため、`check`（`"oauth_half_configured"`、`"admin_team_retired_name"`、`"admin_teams_empty"`、
+      `"admin_teams_malformed"`）という安定した識別子がなければ、運用者の alert は言い回しが変わると
+      壊れる自由文の部分一致に頼るしかなくなる。新しい `_emit_startup_warnings`
       boot seam を追加する。`restore_persisted_provider_settings` や `register_launch_project` と
       並ぶ、単独で呼び出せる関数であり、`serve()` 内のインラインな loop ではない。この関数が、集約
-      した各警告を `oplog.log_event` を通じて、`oplog.EVENTS` の新しいエントリ
+      した各警告を `oplog.log_event` を通じて、`check` を登録済みの `msg` と並ぶフィールドとして渡し
+      ながら、`oplog.EVENTS` の新しいエントリ
       `"server.startup_warning"` として、`_configure_oplog` の直後に再発行する。これはその隣人たちが
       すでに使っている配置と同じである。これにより、運用者の `event` 別 alert は「admin がおらず、
       サインインして admin を得る手段もない」という状態も、運用者がたまたま生のブート出力から読んだ
@@ -465,7 +492,9 @@ login（最後のものは、
       述べていないため、ドキュメント側の修正は行わない。各エントリは実際に自分が管理する GitHub
       organization を指す必要があると明記する。この値はいまサインインの資格情報でもあるためである。
       起動時警告そのものを self-hosting ガイド（両言語）と `.env.example` に名指しし、
-      アップグレードする運用者がログの最初の数行を確認するべきだとわかるようにする。
+      アップグレードする運用者がログの最初の数行を確認するべきだとわかるようにする。加えて
+      `event=server.startup_warning` と `event=oauth.denied` も、*運用ログ* 節の event 一覧だけでなく
+      移行手順の近くと `.env.example` に名指しし、ガイド自体が alert を組める経路を示すようにする。
 - [x] テストを追加する。`orgs:` に一致するエントリがない場合と、`orgs:` ブロック自体がない場合の
       両方で、admin Team のメンバーがサインインできることを確認する。どちらの場合も解決したロールが
       admin になることを確認する。Organization ゲートにも admin Team のリストにも一致しない login が
@@ -475,10 +504,14 @@ login（最後のものは、
       を記録することを確認する。OAuth が構成されていない場合、実在する CSRF の state 不一致、state を
       まったく持たない probe、一致する偽の値で CSRF の確認を突破した場合、例外を発生させた
       exchange、identity を返さなかった exchange のそれぞれが `"oauth.denied"` を `INFO` で記録する
-      ことを確認する。構成が半端な OAuth デプロイが警告し、完全に未設定のデプロイは警告しない
-      ことを確認する。`_build_state` が、出力した内容と一致する `startup_warnings` を
-      返すことを確認する。`_emit_startup_warnings` が、集約した各警告を実際に `oplog.log_event` を
-      通じて `"server.startup_warning"` の下で再発行することを確認する。これにより、後で
+      ことを確認する。構成が半端な OAuth デプロイが、トークンが構成されているときは共有トークンへの
+      戻り先を名指しして警告し、構成されていないときは別に「unauthenticated」を名指しして警告する
+      こと（完全に未設定のデプロイはどちらも警告しない）ことを確認する。`_build_state` が、出力した
+      内容と一致する `startup_warnings` を返すこと、各エントリの `check` フィールドが4つの確認のうち
+      どれが発火したかを、メッセージだけでなく区別することを確認する。`_emit_startup_warnings` が、
+      集約した各警告を実際に `oplog.log_event` を
+      通じて `"server.startup_warning"` の下で、`check` を自身のフィールドとして携えたまま
+      再発行することを確認する。これにより、後で
       `oplog.EVENTS` からその名前が改名または削除されると、boot 時の `ValueError` だけでなく、
       失敗するテストが存在するようになる。改名した変数が
       複数の Team を持つリストとしてパースされることを

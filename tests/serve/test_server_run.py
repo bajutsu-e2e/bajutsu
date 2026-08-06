@@ -351,8 +351,45 @@ def test_build_state_server_warns_on_a_half_configured_oauth(
     assert state.auth.oauth is None
     err = capsys.readouterr().err
     assert "GitHub OAuth is only partly configured" in err
+    # No BAJUTSU_SERVE_TOKEN either (token=None above), so there is no shared-token fallback to fall
+    # back to -- both transports skip the auth+RBAC gate outright on `token is None`, serving every
+    # endpoint unauthenticated. The message must name THIS failure mode, not the reassuring one.
+    assert "no token is configured either" in err
+    assert "unauthenticated" in err
     assert len(state.startup_warnings) == 1
-    assert "GitHub OAuth is only partly configured" in state.startup_warnings[0]
+    check, msg = state.startup_warnings[0]
+    assert check == "oauth_half_configured"
+    assert "GitHub OAuth is only partly configured" in msg
+
+
+def test_build_state_server_warns_on_a_half_configured_oauth_with_a_token_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The other half of the same check: WITH a shared token configured, `POST /api/login` really
+    # does re-enable itself on this same `oauth is None` -- the message must name that fallback
+    # instead, not the "unauthenticated" one above.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _delenv_oauth(monkeypatch)
+    monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", "cid")
+    monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_SECRET", "secret")
+    # BAJUTSU_OAUTH_GITHUB_REDIRECT_URI deliberately left unset.
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token="shared-secret",
+        backend="server",
+    )
+    assert state.auth.oauth is None
+    err = capsys.readouterr().err
+    assert "the shared-token login is enabled instead" in err
+    assert "unauthenticated" not in err
 
 
 def test_build_state_server_does_not_warn_when_oauth_is_fully_unset(
@@ -414,8 +451,10 @@ def test_build_state_server_warns_on_the_retired_singular_admin_team_var(
     # both fired here, so both must be on the state, not just whichever one this test happened to
     # grep stderr for.
     assert len(state.startup_warnings) == 2
-    assert any("BAJUTSU_OAUTH_ADMIN_TEAMS is empty" in w for w in state.startup_warnings)
-    assert any("BAJUTSU_OAUTH_ADMIN_TEAM is retired" in w for w in state.startup_warnings)
+    checks = {c for c, _m in state.startup_warnings}
+    assert checks == {"admin_teams_empty", "admin_team_retired_name"}
+    assert any("BAJUTSU_OAUTH_ADMIN_TEAMS is empty" in m for _c, m in state.startup_warnings)
+    assert any("BAJUTSU_OAUTH_ADMIN_TEAM is retired" in m for _c, m in state.startup_warnings)
     # The actual re-emission through oplog once logging is live -- `serve()` itself isn't
     # exercised by this suite, so this is the one thing that actually drives
     # `_emit_startup_warnings` and would catch a rename/drop of "server.startup_warning" from
@@ -426,6 +465,9 @@ def test_build_state_server_warns_on_the_retired_singular_admin_team_var(
     records = [r for r in caplog.records if getattr(r, "event", None) == "server.startup_warning"]
     assert len(records) == 2
     assert all(r.levelno == logging.WARNING for r in records)
+    # Each record carries its own stable `check`, distinct from the free-text message -- the field
+    # an operator's alert should key on, per the record above.
+    assert {r.check for r in records} == checks
 
 
 def test_build_state_server_warns_when_admin_teams_was_never_set(

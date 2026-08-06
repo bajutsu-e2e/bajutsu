@@ -365,7 +365,10 @@ def _build_server_state(
     )
     # Collected alongside each `print` below (nothing is configured to route through `oplog` this
     # early) so `serve()` can re-emit them once logging is live — see `ServeState.startup_warnings`.
-    startup_warnings: list[str] = []
+    # Each entry pairs a stable *check* name with the human-readable *msg*, so an operator's alert can
+    # key on `check=` (a registered `oplog` field) instead of substring-matching free text that
+    # rewords out from under it.
+    startup_warnings: list[tuple[str, str]] = []
     # A half-configured deployment (one of the three BAJUTSU_OAUTH_GITHUB_* vars unset) falls back
     # to token auth silently: every GitHub sign-in 404s and `POST /api/login` re-enables itself, so
     # the deployment runs wide open on the shared token (a token session has no identity, so
@@ -373,14 +376,27 @@ def _build_server_state(
     # checks below cannot reach this shape, since each reads `oauth is None` as "token-auth-only,
     # deliberately" rather than "OAuth half-configured by mistake". This check is deliberately the
     # opposite gate from the three below it.
+    #
+    # When no BAJUTSU_SERVE_TOKEN is set either, there is no fallback at all: `SessionManager.check_
+    # token` is `self.token is not None and secrets.compare_digest(...)`, so `POST /api/login` 401s,
+    # and both transports skip the auth+RBAC gate outright on that same `token is None` (handler.py's
+    # `_gate`, server/app.py's middleware) -- every endpoint, `_ADMIN_PATHS` included, is served
+    # unauthenticated. Name which of the two this deployment actually fell into, since *token* is
+    # already a parameter here.
     if oauth is None and any((cid, secret, redirect)):
+        fallback = (
+            "the shared-token login is enabled instead"
+            if token is not None
+            else "no token is configured either, so the request gate is skipped entirely and every "
+            "endpoint is served unauthenticated"
+        )
         msg = (
             "GitHub OAuth is only partly configured — BAJUTSU_OAUTH_GITHUB_CLIENT_ID, "
             "_CLIENT_SECRET and _REDIRECT_URI must all be set; OAuth is off, so every GitHub "
-            "sign-in will 404 and the shared-token login is enabled instead"
+            f"sign-in will 404 and {fallback}"
         )
         print(f"bajutsu serve: {msg}", file=sys.stderr)  # noqa: T201
-        startup_warnings.append(msg)
+        startup_warnings.append(("oauth_half_configured", msg))
     # Never lose an admin quietly to the rename itself: a deployment that adds the new plural name
     # but leaves the old singular one set (the likelier migration mistake — an operator remembers
     # one Team, not that the old name must go) has that Team silently drop out of both the role and
@@ -392,7 +408,7 @@ def _build_server_state(
             "BAJUTSU_OAUTH_ADMIN_TEAMS (comma-separated), folding in every Team it named"
         )
         print(f"bajutsu serve: {msg}", file=sys.stderr)  # noqa: T201
-        startup_warnings.append(msg)
+        startup_warnings.append(("admin_team_retired_name", msg))
     # Never lose every admin quietly. An empty list with OAuth wired means no login can ever
     # resolve to admin — whether because the rename's hard cutover (BE-0313's own precedent for
     # retiring BAJUTSU_OAUTH_ADMINS) left only the retired singular name set, or because the new
@@ -404,7 +420,7 @@ def _build_server_state(
             "can sign in to repair a broken `orgs:` block"
         )
         print(f"bajutsu serve: {msg}", file=sys.stderr)  # noqa: T201
-        startup_warnings.append(msg)
+        startup_warnings.append(("admin_teams_empty", msg))
     malformed = [t for t in oauth_admin_teams if not re.fullmatch(r"[^\s/]+/[^\s/]+", t)]
     if oauth is not None and malformed:
         msg = (
@@ -412,7 +428,7 @@ def _build_server_state(
             f"these will never match: {malformed}"
         )
         print(f"bajutsu serve: {msg}", file=sys.stderr)  # noqa: T201
-        startup_warnings.append(msg)
+        startup_warnings.append(("admin_teams_malformed", msg))
 
     repo = repository_from_env()
 
@@ -567,12 +583,14 @@ def _emit_startup_warnings(state: ServeState) -> None:
     `"server.startup_warning"` event. A separately-callable boot seam, like its two siblings below,
     rather than an inline loop in `serve()` — so a rename or drop of that event name from
     `oplog.EVENTS` has a direct test to fail, instead of only surfacing as a boot-time `ValueError`
-    on the first deployment that actually has a startup warning to re-emit. An operator's alert keyed
-    on `event=server.startup_warning` must be able to see whichever misconfiguration this deployment
-    hit too, not only whatever they happen to read from boot output. A no-op when
-    `state.startup_warnings` is empty (local serve, or a server deployment with nothing to warn about)."""
-    for msg in state.startup_warnings:
-        oplog.log_event(_logger, "server.startup_warning", msg, level=logging.WARNING)
+    on the first deployment that actually has a startup warning to re-emit. Every check shares this
+    one event name, so each entry also carries its own stable `check` field (`"oauth_half_configured"`,
+    `"admin_team_retired_name"`, `"admin_teams_empty"`, `"admin_teams_malformed"`) — an operator's
+    alert keys on `check=`, not on substring-matching a message that can reword out from under it. A
+    no-op when `state.startup_warnings` is empty (local serve, or a server deployment with nothing to
+    warn about)."""
+    for check, msg in state.startup_warnings:
+        oplog.log_event(_logger, "server.startup_warning", msg, level=logging.WARNING, check=check)
 
 
 def make_asgi_server(state: ServeState, host: str = "127.0.0.1", port: int = 8765) -> Any:

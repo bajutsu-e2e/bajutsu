@@ -67,10 +67,16 @@ output from any of the three, and every GitHub sign-in then 404s. That is not a 
 /api/login` is enabled precisely when `oauth is None`, so the deployment silently reverts to the
 shared-token login it was meant to replace — and a token session carries no identity, so
 `forbidden_for_role` short-circuits and every such session has full access while the operator believes
-GitHub OAuth is gating the server. This check fires precisely when `oauth is None` *and* at least one
-of the three GitHub vars is set — a half-configured deployment, not a deliberately token-auth-only one
-— printing that GitHub OAuth is only partly configured and that GitHub sign-in will 404, with the
-shared-token login enabled instead, until all three are set.
+GitHub OAuth is gating the server. That reassuring half assumes a token exists. When
+`BAJUTSU_SERVE_TOKEN` is also unset, there is no fallback at all: `SessionManager.check_token` is
+`self.token is not None and secrets.compare_digest(...)`, so `POST /api/login` 401s, and both
+transports skip the auth+RBAC gate outright on that same `token is None` (`handler.py`'s `_gate`,
+`server/app.py`'s middleware) — every endpoint, including `_ADMIN_PATHS`, is served unauthenticated,
+a strictly worse shape than the shared-token fallback. This check fires precisely when `oauth is
+None` *and* at least one of the three GitHub vars is set — a half-configured deployment, not a
+deliberately token-auth-only one — printing that GitHub OAuth is only partly configured and that
+GitHub sign-in will 404, naming whichever of the two fallbacks this deployment actually fell into
+(`token` is already a parameter of `_build_server_state`), until all three GitHub vars are set.
 
 `_build_server_state`
 ([`bajutsu/serve/__init__.py`](../../bajutsu/serve/__init__.py)) prints a stderr warning whenever
@@ -115,9 +121,16 @@ option at that point is a bare `print(..., file=sys.stderr)` — unstructured te
 once logging comes up. That is exactly the shape a log pipeline drops or fails to parse, and it is the
 condition an operator most needs to alert on: "this deployment has no admin and no way to sign in and
 get one." `_build_server_state` collects each message it prints onto a new `ServeState.startup_warnings`
-field. `serve()` calls a new `_emit_startup_warnings(state)` right after `_configure_oplog` — the same
+field — `tuple[tuple[str, str], ...]` of `(check, msg)`, not bare messages: all four checks share the
+one `"server.startup_warning"` event below, so a message alone would force an operator's alert to
+substring-match free text that breaks silently the next time anyone rewords it. `check` is a stable
+discriminator (`"oauth_half_configured"`, `"admin_team_retired_name"`, `"admin_teams_empty"`,
+`"admin_teams_malformed"`) an alert can key on instead, and it also lets a deployment that deliberately
+runs OAuth with no admin Team suppress just that one check without silencing the other three.
+`serve()` calls a new `_emit_startup_warnings(state)` right after `_configure_oplog` — the same
 placement `restore_persisted_provider_settings` already uses, and for the same reason ("a malformed-file
-warning reaches the live log sink") — which re-emits each through `oplog.log_event`, under a new
+warning reaches the live log sink") — which re-emits each through `oplog.log_event`, passing `check` as
+a field alongside the registered `msg`, under a new
 `"server.startup_warning"` entry in `oplog.EVENTS`. That function is a separately-callable boot seam,
 matching the pattern its two neighbors already set, rather than an inline loop in `serve()` itself:
 `serve()` runs an actual server loop and isn't exercised by the fast test suite, so an inline loop's
@@ -126,9 +139,13 @@ unregistered event by design, so a later rename or drop of `"server.startup_warn
 `oplog.EVENTS` would leave the whole suite green right up until a real deployment with a startup
 warning to re-emit crashed at boot, after `_configure_oplog` and before `restore_persisted_provider_settings`
 — the exact misconfigured deployment this item exists to help, now unable to start at all rather than
-merely missing an admin. A direct test drives `_emit_startup_warnings` instead. The `print` calls stay:
+merely missing an admin. A direct test drives `_emit_startup_warnings` instead and pins each record's
+`check` field, not just its message. The `print` calls stay:
 nothing is configured yet at the point they run, so they are still the only way a deployment starting
-up entirely broken (no store, no database) sees anything at all.
+up entirely broken (no store, no database) sees anything at all. [`docs/self-hosting.md`](../../docs/self-hosting.md)
+names both `"server.startup_warning"` and `"oauth.denied"` next to the admin-Team migration guidance,
+not only in the *Operational logging* section's event list, so an operator reading the migration steps
+sees the alerting path rather than only "read the first lines of the log."
 
 `oauth_callback` ([`bajutsu/serve/authz.py`](../../bajutsu/serve/authz.py)) already fetches the
 login's GitHub Team memberships (`identity.teams`, via `fetch_identity`) before it runs the
@@ -401,8 +418,11 @@ mapping.
       half-configured deployment: the three checks above cannot reach it, since each reads
       `oauth is None` as "deliberately token-auth-only." Not a lockout — `POST /api/login` re-enables
       on this same `oauth is None`, so the deployment silently reverts to the shared-token login it
-      was meant to replace, with full access on every such session — but a hazard the operator needs
-      to know about, not one they can infer from an admin-team-focused check.
+      was meant to replace, with full access on every such session — unless no `BAJUTSU_SERVE_TOKEN`
+      is set either, in which case both transports skip the auth+RBAC gate outright and every endpoint
+      is served unauthenticated; the message names whichever fallback this deployment actually fell
+      into. A hazard the operator needs to know about, not one they can infer from an
+      admin-team-focused check.
 - [x] Add the admin-Team bypass to the sign-in gate in `oauth_callback`, alongside
       `identity_matches_org`, using the Team list already fetched for role resolution. Import
       `Identity` under `TYPE_CHECKING` (an annotation-only need, since `from __future__ import
@@ -431,20 +451,27 @@ mapping.
       hiccup) and not on an empty `/user/orgs` response, which is equally the shape of a login that
       genuinely has no GitHub org.
 - [x] Collect `_build_server_state`'s four startup warnings onto a new
-      `ServeState.startup_warnings` field instead of only printing them, and add a new
+      `ServeState.startup_warnings` field instead of only printing them — `tuple[tuple[str, str], ...]`
+      of `(check, msg)`, so all four checks sharing one event still let an operator's alert key on a
+      stable `check` (`"oauth_half_configured"`, `"admin_team_retired_name"`, `"admin_teams_empty"`,
+      `"admin_teams_malformed"`) rather than substring-matching *msg*. Add a new
       `_emit_startup_warnings` boot seam — a separately-callable function alongside
       `restore_persisted_provider_settings`'s and `register_launch_project`'s, not an inline loop in
       `serve()` — that re-emits each through `oplog.log_event` under a new `"server.startup_warning"`
-      event right after `_configure_oplog`, the same placement its neighbors already use, so an
-      operator's `event`-keyed alert can see "no admin, no way to sign in and get one" too, not only
-      whatever they happen to read from raw boot output.
+      event right after `_configure_oplog`, passing `check` through as a field, the same placement its
+      neighbors already use, so an operator's `event`-keyed alert can see "no admin, no way to sign in
+      and get one" too, not only whatever they happen to read from raw boot output.
 - [x] Update the self-hosting and configuration docs (both languages) and `.env.example` to describe
       the renamed variable and the bypass. BE-0313's claim that the `default` org is unreachable
       through OAuth sign-in is superseded in this item's *Detailed design* instead: no `docs/` page
       states it, so none needed the edit. State plainly that every entry must name a GitHub
       organization the deployment actually controls, since the value is now a sign-in credential.
       Name the startup warnings themselves in the self-hosting guide (both languages) and
-      `.env.example`, so an upgrading operator knows to read the first lines of the log.
+      `.env.example`, so an upgrading operator knows to read the first lines of the log — and name
+      `event=server.startup_warning` / `event=oauth.denied` there too, next to the migration steps and
+      in `.env.example`, not only in the *Operational logging* section's event list, so the guide
+      itself points at the alerting path instead of leaving it to be inferred from the general
+      structured-logging reference.
 - [x] Tests: sign-in accepted for an admin-Team member with no matching `orgs:` entry and with no
       `orgs:` block at all; resolved role is admin in both cases; a login matching neither the org
       gate nor the admin-Team list is still rejected and logs `"oauth.denied"` naming which of the
@@ -452,10 +479,14 @@ mapping.
       config that failed to load); OAuth not configured, a real CSRF state mismatch, a
       no-state probe, a CSRF check bypassed with matching fake values, a raising exchange, and an
       exchange returning no identity each log `"oauth.denied"` at `INFO`; a half-configured OAuth
-      deployment warns (and a fully-unset one does not); `_build_state`
-      returns the collected `startup_warnings` matching what was printed; `_emit_startup_warnings`
+      deployment warns naming the shared-token fallback when a token is configured, and separately
+      naming "unauthenticated" when it is not (and a fully-unset OAuth deployment warns about
+      neither); `_build_state`
+      returns the collected `startup_warnings` matching what was printed, each entry's `check` field
+      distinguishing which of the four checks fired, not just its message; `_emit_startup_warnings`
       actually re-emits each collected warning through `oplog.log_event` under
-      `"server.startup_warning"`, so a later rename or drop of that name from `oplog.EVENTS` has a
+      `"server.startup_warning"` with `check` carried through as its own field, so a later rename or
+      drop of that name from `oplog.EVENTS` has a
       test to fail rather than only a boot-time `ValueError`; the renamed variable
       parses a multi-Team list;
       a bypassing admin is placed in the `default` org; an existing member's recorded org survives a
