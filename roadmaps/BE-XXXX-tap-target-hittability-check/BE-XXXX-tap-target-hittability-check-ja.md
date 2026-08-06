@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| 実装 PR | TBD(PRを作成し次第記載します) |
+| 実装 PR | [#1524](https://github.com/bajutsu-e2e/bajutsu/pull/1524) |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element-ja.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md) |
 <!-- /BE-METADATA -->
@@ -256,7 +256,7 @@ class ElementNotTappable(Exception):
 ### ログ
 
 - 本提案の設計を確定させる前に、実機での経験的なスパイクを実施しました。ドキュメントや調査だけを信じるのではなく、設計の核となる前提を確認または反証するため、iOS シミュレータと Android エミュレータ上に使い捨ての最小限の画面を作りました。iOS では、XCUITest のテストを 5 回実行し、対象が固定オーバーレイの下にある間は `isHittable` が `false` を返し、スクロールがそれを取り除くと `true` を返すことを確認しました。コミュニティが報告する不安定さの再現はありませんでした。Android では、Compose と View システムのどちらでも通常のケースでは文書順が視覚的な順序と一致することを確認しました。Compose の `zIndex` はアクセシビリティツリーを視覚的な結果に合わせて並べ替える(盲点なし)ことを確認し、View の `elevation` はそうならない(実在し再現可能な盲点である)ことを確認しました。また、Compose のオフセットモディファイアに伴う別の bounds 陳腐化のリスクを見つけ、`AccessibilityWindowInfo.getLayer()` は実在するものの、もっとも一般的な 2 つのクロスウィンドウのケース(モーダルダイアログとトースト)には不十分だとわかりました。これが、ウィンドウレベルの遮蔽検出を先送りする決定につながりました(「検討した代替案」を参照)。スパイクのコードはすべて元に戻し、本提案の一部としては出荷していません。
-- 上記10個の作業単位はすべて、本提案を運ぶブランチ上でまとめて実装しました。`make check` は green です。上の「実装 PR」の行は、PRを作成し次第記載します。
+- 上記10個の作業単位はすべて、本提案を運ぶブランチ上でまとめて実装しました。`make check` は green です。詳細は上の「実装 PR」の行を参照してください。
 
 ## 参考
 

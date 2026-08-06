@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Implementing PR | TBD — filled in once the PR is opened |
+| Implementing PR | [#1524](https://github.com/bajutsu-e2e/bajutsu/pull/1524) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md) |
 <!-- /BE-METADATA -->
@@ -413,7 +413,7 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
   detection (see Alternatives considered). All spike code was reverted; none of it ships as part of
   this proposal.
 - All ten units above landed together on the branch that carries this proposal. `make check` is
-  green; the `Implementing PR` row above is filled in once the PR is opened.
+  green; see the `Implementing PR` row above.
 
 ## References
 
