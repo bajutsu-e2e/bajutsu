@@ -182,7 +182,7 @@ jobs:
           # profile scrolls a different number of rows per swipe and never reaches the target (BE-0208).
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 12288 -cores 3 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 3 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
