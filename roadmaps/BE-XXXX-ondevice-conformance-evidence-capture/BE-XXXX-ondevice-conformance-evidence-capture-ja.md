@@ -50,8 +50,10 @@ region did not change ... (end of content)`で失敗しました。これはま�
 取得を含め、パイプラインが無償で提供するものすべてを失う、という代償を払っています。iOSのconformance
 ジョブには、同じギャップがもう一段重なっています。そのCIワークフロー（`ios-e2e.yml`）はBE-0334の復旧
 回数レポートをアップロードするステップこそ持っていますが、`runs/`向けの「Upload run artifacts」ステップ
-自体が存在しません。同じワークフローの`fault-injection (xcuitest)`・`visual (xcuitest)`の各ジョブと、
-`android-e2e.yml`のオンデバイスジョブがいずれも持っているステップです。
+自体が存在しません。同じワークフローの他のジョブはいずれもこのステップを持っています。`run`・
+`actuation`・`golden`・`bundled-runner`は共有の`bajutsu-e2e`コンポジットアクションからこのステップを
+受け取り、`fault-injection`・`visual`は自身のインラインステップとして持ち、`android-e2e.yml`の
+オンデバイスジョブもいずれも持っています。
 
 ## 詳細設計
 
@@ -123,9 +125,10 @@ region did not change ... (end of content)`で失敗しました。これはま�
 
 ### 単位4 — iOSのconformanceジョブに「Upload run artifacts」ステップを追加する
 
-`fault-injection (xcuitest)`・`visual (xcuitest)`の各ジョブと`android-e2e.yml`のオンデバイスジョブが
-いずれもすでに持っている、`path: runs/`・`if-no-files-found: ignore`の同じアップロードステップを、
-`conformance (xcuitest)`ジョブに追加します。
+`ios-e2e.yml`の他のジョブがいずれもすでに持っている、`path: runs/`・`if-no-files-found: ignore`の
+同じアップロードステップを、`conformance (xcuitest)`ジョブに追加します。`run`・`actuation`・`golden`・
+`bundled-runner`は共有の`bajutsu-e2e`コンポジットアクション経由で、`fault-injection`・`visual`は自身の
+インラインステップとして持っており、`android-e2e.yml`のオンデバイスジョブもいずれもすでに持っています。
 このジョブにはこれまで一切存在しませんでした。単位3のフィクスチャだけでは、このジョブの`runs/`に
 書き出しても、ワークフローがそれを一切拾わないため、無駄になってしまいます。
 

@@ -580,6 +580,7 @@ def test_android_screenrecord_forwards_this_modules_pinned_bounds(monkeypatch) -
         return "sentinel"
 
     monkeypatch.setattr(intervals, "start_screenrecord", fake_start_screenrecord)
+    monkeypatch.setattr(ondevice_evidence.adb, "_real_run", lambda cmd: "")
     result = ondevice_evidence.android_screenrecord("serial-1", Path("video.mp4"))
     assert result == "sentinel"
     assert calls == [
