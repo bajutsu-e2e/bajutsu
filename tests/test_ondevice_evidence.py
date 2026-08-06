@@ -331,6 +331,40 @@ def test_warns_about_a_missing_or_empty_artifact(caplog, monkeypatch, tmp_path) 
     assert len(missing_warnings) == 2  # video.mp4 and device.log, both never written
 
 
+def test_warns_about_missing_evidence_even_when_a_stop_failure_reraises(
+    caplog, monkeypatch, tmp_path
+) -> None:
+    # The missing/empty check used to be plain trailing code after the stop try/except, so the
+    # `raise` on an already-failing attempt jumped straight past it — exactly the path whose
+    # directory the hook is about to *keep*, where a human downloading it most needs the signal.
+    # Moved into a `finally` so it always runs, including here.
+    monkeypatch.chdir(tmp_path)
+
+    class _RaisesOnStop:
+        def stop(self) -> None:
+            raise RuntimeError("adb pull failed")
+
+    def start_raises_on_stop(serial: str, path: Path) -> _RaisesOnStop:
+        return _RaisesOnStop()  # never writes to `path`
+
+    request = _FakeRequest("fake::test")
+    request.node.stash[ondevice_evidence._FAILED] = True  # the attempt is already failing
+
+    caplog.set_level(logging.WARNING)
+    gen = ondevice_evidence.capture(
+        "fake-serial",
+        "fake-lane",
+        request,
+        start_video=start_raises_on_stop,
+        start_log=start_raises_on_stop,
+    )
+    next(gen)
+    with pytest.raises(RuntimeError, match="adb pull failed"):
+        next(gen)
+    missing_warnings = [r for r in caplog.records if "is missing or empty" in r.message]
+    assert len(missing_warnings) == 2  # video.mp4 and device.log, both never written
+
+
 def test_stops_the_log_even_when_stopping_the_video_raises(pytester) -> None:
     # `start_screenrecord`'s own transform deliberately lets a failed `adb pull` propagate out of
     # `stop()` (its own docstring: swallowing it would turn a real problem into a silent one) — that

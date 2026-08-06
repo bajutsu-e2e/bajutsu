@@ -8,7 +8,7 @@ wires the same interval primitives the pipeline itself uses (`bajutsu.evidence.i
 around each test, the way `demos/showcase/android/screenrecord.py` already does for the codegen
 lane's `connectedAndroidTest` — no bajutsu runtime there either, so no scenario/YAML `capture:`
 machinery to hook into. `capture()` itself is backend-agnostic: the caller supplies `start_video`/
-`start_log`, e.g. `intervals.start_screenrecord`/`start_logcat` for adb or `intervals.start_video`/
+`start_log`, e.g. `android_screenrecord`/`intervals.start_logcat` for adb or `xcuitest_video`/
 `start_device_log` for XCUITest — `android_screenrecord` below pre-binds the adb-specific video
 bounds both Android suites share.
 
@@ -86,8 +86,10 @@ def android_screenrecord(serial: str, path: Path) -> intervals.Interval:
 
 
 def xcuitest_video(udid: str, path: Path) -> intervals.Interval:
-    """`intervals.start_video` with `confirm_started=True` — the XCUITest twin of the same bound
-    `android_screenrecord` pre-binds; see its docstring for why a bare spawn isn't enough."""
+    """`intervals.start_video` with `confirm_started=True` — the XCUITest twin of the start
+    confirmation `android_screenrecord` pre-binds; see its docstring for why a bare spawn isn't
+    enough. Only that: iOS has no counterpart to that helper's size/bit-rate/time-limit bounds, so a
+    `recordVideo` clip here is bounded only by how long its own test runs."""
     return intervals.start_video(udid, path, confirm_started=True)
 
 
@@ -139,7 +141,7 @@ def capture(
     `lane` names the CI job (e.g. "conformance-adb") so its own uploaded artifact is self-contained.
     `start_video`/`start_log` take only `(serial_or_udid, path)` — this function is backend-agnostic,
     so every caller states explicitly which backend's primitives it wants (`android_screenrecord` +
-    `intervals.start_logcat` for adb, `intervals.start_video` + `start_device_log` for XCUITest) —
+    `intervals.start_logcat` for adb, `xcuitest_video` + `start_device_log` for XCUITest) —
     and a test can pass a fake pair to exercise this without a real device.
     """
     dest = Path("runs") / lane / _slug(request.node.nodeid)
@@ -224,10 +226,16 @@ def capture(
                 dest,
                 exc_info=True,
             )
-        for artifact in (dest / "video.mp4", dest / "device.log"):
-            # The only remaining signal that a capture actually recorded: `_spawn` discards the
-            # child's stderr, so a `recordVideo`/`screenrecord` that refused to start or died leaves
-            # no other trace, and `if-no-files-found: ignore` on the CI upload step would let the
-            # silence pass for a clean run.
-            if not artifact.exists() or artifact.stat().st_size == 0:
-                _logger.warning("%s is missing or empty: this test recorded no evidence", artifact)
+        finally:
+            # In a `finally`, not plain trailing code: the `except` above re-raises when the attempt
+            # was already failing, and that is exactly the path whose directory the hook is about to
+            # *keep* — a human downloading it deserves the same missing/empty signal as every discard
+            # path gets. The only remaining signal that a capture actually recorded: `_spawn` discards
+            # the child's stderr, so a `recordVideo`/`screenrecord` that refused to start or died
+            # leaves no other trace, and `if-no-files-found: ignore` on the CI upload step would let
+            # the silence pass for a clean run.
+            for artifact in (dest / "video.mp4", dest / "device.log"):
+                if not artifact.exists() or artifact.stat().st_size == 0:
+                    _logger.warning(
+                        "%s is missing or empty: this test recorded no evidence", artifact
+                    )

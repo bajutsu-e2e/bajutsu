@@ -98,9 +98,11 @@ conformance suite (BE-0334) — specifically to the hook's own "teardown" invoca
 that has actually seen the whole attempt. The fixture registers its directory for that hook to sweep
 unconditionally, whether or not either `start_*` call succeeded: a start failure is warned about, not
 raised, so it never reaches the outcome tag — leaving the directory unregistered would strand
-whatever the video alone managed to record on a test that then passes. A green run then uploads
-nothing, so the existing "Upload run artifacts" step's `if-no-files-found: ignore` keeps no-opping on
-a clean suite and starts filling only on the first real failure.
+whatever the video alone managed to record on a test that then passes. A green run contributes
+nothing of its own, so the "Upload run artifacts" step carries only what the job already wrote to
+`runs/` — on `conformance (xcuitest)`, the workflow-level `BAJUTSU_XCUITEST_RUNNER_LOG`'s
+`runs/runner-logs`, which is why that job's missing step also discarded its runner log — and starts
+carrying per-test evidence only on the first real failure.
 
 The per-attempt outcome the hook tracks must be reset at each "setup" report and only accumulated
 (never reset) afterward, rather than latched true forever, because the iOS conformance suite's own
