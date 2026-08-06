@@ -347,7 +347,11 @@ of the server-wide admin Teams (`BAJUTSU_OAUTH_ADMIN_TEAMS`, see
 `"<github-org>/<team-slug>"`; a nested Team beneath either does not match. An OAuth deployment
 therefore must declare an `orgs:` block, or every login other than an admin Team member is turned
 away — a member of a configured admin Team can still sign in unless GitHub's Teams API is itself
-erroring, so a broken or missing `orgs:` block never locks every admin out on its own.
+erroring, so a broken or missing `orgs:` block never locks every admin out on its own. An admin
+admitted only by their Team is placed in the `default` org, since no `orgs:` entry claims them — so
+a deployment relying on that recovery should avoid declaring a real org named `default`, or the
+recovering admin's user row, audit entries, and object-storage prefix land inside that tenant instead
+of a neutral catch-all.
 
 ## Selecting from the CLI
 
