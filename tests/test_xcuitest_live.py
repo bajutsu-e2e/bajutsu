@@ -227,6 +227,73 @@ def test_tap_resolves_python_side_then_clicks_the_resolved_handle() -> None:
     assert grid.clicked == ["e2"]  # the element the selector resolved to, by its WebDriver handle
 
 
+def test_tap_raises_element_not_tappable_when_covered() -> None:
+    # `target` is listed first (earlier in document order) and `cover` after it, wider than it and
+    # not a subset of its frame — read as a genuine covering element, matching the same
+    # document-order proxy the adb backend uses (`topmost_at_point`).
+    grid = _FakeGrid(
+        [
+            {
+                "id": "e1",
+                "name": "target",
+                "label": None,
+                "value": None,
+                "type": "XCUIElementTypeButton",
+                "enabled": "true",
+                "selected": "false",
+                "rect": _rect(0, 0, 100, 20),
+            },
+            {
+                "id": "e2",
+                "name": "cover",
+                "label": None,
+                "value": None,
+                "type": "XCUIElementTypeOther",
+                "enabled": "true",
+                "selected": "false",
+                "rect": _rect(0, 0, 300, 30),
+            },
+        ]
+    )
+    client = WebDriverClient(grid)
+    client.new_session({})
+    with pytest.raises(base.ElementNotTappable, match="covered by another element"):
+        XcuitestLiveDriver(client).tap({"id": "target"})
+    assert grid.clicked == []  # never clicked through the obstruction
+
+
+def test_is_tappable_reflects_document_order_occlusion() -> None:
+    grid = _FakeGrid(
+        [
+            {
+                "id": "e1",
+                "name": "target",
+                "label": None,
+                "value": None,
+                "type": "XCUIElementTypeButton",
+                "enabled": "true",
+                "selected": "false",
+                "rect": _rect(0, 0, 100, 20),
+            },
+            {
+                "id": "e2",
+                "name": "cover",
+                "label": None,
+                "value": None,
+                "type": "XCUIElementTypeOther",
+                "enabled": "true",
+                "selected": "false",
+                "rect": _rect(0, 0, 300, 30),
+            },
+        ]
+    )
+    client = WebDriverClient(grid)
+    client.new_session({})
+    driver = XcuitestLiveDriver(client)
+    assert driver.is_tappable({"id": "target"}) is False
+    assert driver.is_tappable({"id": "cover"}) is True
+
+
 def test_tap_on_an_ambiguous_selector_fails_before_any_click() -> None:
     grid = _FakeGrid(
         [

@@ -24,6 +24,9 @@ from typing import Any
 import pytest
 from driver_conformance import (
     FIELD_ID,
+    OBSTRUCTION_CLEAR_ID,
+    OBSTRUCTION_COVER_ID,
+    OBSTRUCTION_TARGET_ID,
     SCROLL_ROW_COUNT,
     SCROLL_ROW_PREFIX,
     SCROLL_TALL_ID,
@@ -113,6 +116,25 @@ class PlaywrightConformanceHarness:
         )
         self._page.set_content(
             f"<!doctype html><html><body style='margin:0'>{rows}{tall}</body></html>"
+        )
+        return self._driver
+
+    def obstruction_screen(self) -> base.Driver:
+        # `cover` is later in the DOM than `target` and shares its top-left corner, so with no
+        # z-index set, normal stacking order paints it on top — a real `document.elementFromPoint`
+        # hit-test at `target`'s center resolves to `cover`, not `target` (BE-0326's own driver, not
+        # a fake). `cover` is taller than `target` (30px vs. 20px) so the center point (y=10) lands
+        # safely inside it rather than exactly on its bottom edge, which some engines read as just
+        # outside the box. `clear` sits far below, alone, so nothing covers it.
+        self._page.set_content(
+            "<!doctype html><html><body style='margin:0'>"
+            f'<div data-testid="{OBSTRUCTION_TARGET_ID}" '
+            'style="position:absolute;left:0;top:0;width:100px;height:20px"></div>'
+            f'<div data-testid="{OBSTRUCTION_COVER_ID}" '
+            'style="position:absolute;left:0;top:0;width:300px;height:30px"></div>'
+            f'<div data-testid="{OBSTRUCTION_CLEAR_ID}" '
+            'style="position:absolute;left:0;top:500px;width:100px;height:20px"></div>'
+            "</body></html>"
         )
         return self._driver
 

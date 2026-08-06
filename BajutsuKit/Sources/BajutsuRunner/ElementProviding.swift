@@ -27,11 +27,14 @@ public struct ElementSnapshot {
     }
 }
 
-/// The result of a tap attempt.
+/// The result of a tap attempt, or of an `isHittable` query reusing the same resolution outcomes.
 public enum TapResult {
     case ok
     case stale
     case notFound
+    /// Resolved to a live element, but it is not reachable at its own point right now (covered by
+    /// another on-screen element, or the platform's own hit-test refused it).
+    case notHittable
 }
 
 /// Abstraction over XCUITest element access. The library never imports XCTest;
@@ -47,6 +50,13 @@ public protocol ElementProviding: AnyObject {
 
     /// Tap the element identified by its backing reference.
     func tap(backingElement: AnyObject, taps: Int, duration: TimeInterval) -> TapResult
+
+    /// Whether the element identified by its backing reference is reachable at its own point right
+    /// now, without acting on it. `.ok` means hittable, `.notHittable` means resolved but covered
+    /// (or otherwise unreachable); `.stale` / `.notFound` mirror `tap`'s own resolution outcomes, so
+    /// a caller distinguishes "covered" from "the handle no longer resolves" the same way it already
+    /// does for a tap attempt.
+    func isHittable(backingElement: AnyObject) -> TapResult
 
     /// Tap a raw screen coordinate.
     func tapPoint(x: Double, y: Double) -> TapResult

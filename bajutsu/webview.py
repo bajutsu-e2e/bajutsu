@@ -17,6 +17,7 @@ from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
 from bajutsu.drivers.base import (
     Capability,
     Element,
+    ElementNotFound,
     Point,
     Selector,
     UnsupportedAction,
@@ -151,6 +152,18 @@ class WebContextDriver:
                 target=el["identifier"],
             )
         )
+
+    def is_tappable(self, sel: Selector) -> bool:
+        # The bridge protocol (`DomSource`) exposes no point-based hit-test, unlike the native web
+        # backend's `document.elementFromPoint` — a WebView-internal occlusion check is out of scope
+        # for this first slice, matching its other not-yet-supported gestures. Resolved-but-uncheckable
+        # counts as tappable, keeping today's behavior (no check) rather than silently disabling this
+        # driver's tap; unresolved still counts as not tappable, like every other backend.
+        try:
+            resolve_unique(self.query(), sel)
+        except ElementNotFound:
+            return False
+        return True
 
     def tap(self, sel: Selector) -> None:
         el = resolve_unique(self.query(), sel)

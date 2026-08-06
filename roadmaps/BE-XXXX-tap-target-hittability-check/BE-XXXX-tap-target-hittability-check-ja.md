@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-XXXX](BE-XXXX-tap-target-hittability-check-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| 実装 PR | TBD(PRを作成し次第記載します) |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element-ja.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md) |
 <!-- /BE-METADATA -->
@@ -240,21 +241,22 @@ class ElementNotTappable(Exception):
 > 作業分解(作業の単位ごとに 1 つ)に対応し、ログには変更内容と時期(古い順)を PR へのリンクと
 > ともに記録します。
 
-- [ ] Unit 0 — `gestures.py` / `scroll.py` の import 循環を断つための `_SWIPE_FRACTION` / `_scroll_gesture` の抽出
-- [ ] Unit 1 — `ElementNotTappable` エラーと `loop.py` の catch タプルへの配線
-- [ ] Unit 2 — `Driver.is_tappable`、差し替え可能な `scroll_to_target` 停止条件、`scroll_until_tappable`
-- [ ] Unit 3 — iOS の `isHittable` ヒットテスト
-- [ ] Unit 4 — web の `elementFromPoint` ヒットテスト
-- [ ] Unit 5 — Android の `topmost_at_point` 幾何学的ヒットテスト
-- [ ] Unit 6 — オーケストレータの `_tap_with_recovery` 配線
-- [ ] Unit 7 — `FakeDriver.is_tappable`
-- [ ] Unit 8 — ドライバ適合スイートの遮蔽ケース
-- [ ] Unit 9 — ドキュメント(`drivers.md`、`selectors.md`、それぞれの `ja` 対訳)
-- [ ] Unit 10 — テスト
+- [x] Unit 0 — `gestures.py` / `scroll.py` の import 循環を断つための `_SWIPE_FRACTION` / `_scroll_gesture` の抽出
+- [x] Unit 1 — `ElementNotTappable` エラーと `loop.py` の catch タプルへの配線
+- [x] Unit 2 — `Driver.is_tappable`、差し替え可能な `scroll_to_target` 停止条件、`scroll_until_tappable`
+- [x] Unit 3 — iOS の `isHittable` ヒットテスト
+- [x] Unit 4 — web の `elementFromPoint` ヒットテスト
+- [x] Unit 5 — Android の `topmost_at_point` 幾何学的ヒットテスト
+- [x] Unit 6 — オーケストレータの `_tap_with_recovery` 配線
+- [x] Unit 7 — `FakeDriver.is_tappable`
+- [x] Unit 8 — ドライバ適合スイートの遮蔽ケース
+- [x] Unit 9 — ドキュメント(`drivers.md`、`selectors.md`、それぞれの `ja` 対訳)
+- [x] Unit 10 — テスト
 
 ### ログ
 
 - 本提案の設計を確定させる前に、実機での経験的なスパイクを実施しました。ドキュメントや調査だけを信じるのではなく、設計の核となる前提を確認または反証するため、iOS シミュレータと Android エミュレータ上に使い捨ての最小限の画面を作りました。iOS では、XCUITest のテストを 5 回実行し、対象が固定オーバーレイの下にある間は `isHittable` が `false` を返し、スクロールがそれを取り除くと `true` を返すことを確認しました。コミュニティが報告する不安定さの再現はありませんでした。Android では、Compose と View システムのどちらでも通常のケースでは文書順が視覚的な順序と一致することを確認しました。Compose の `zIndex` はアクセシビリティツリーを視覚的な結果に合わせて並べ替える(盲点なし)ことを確認し、View の `elevation` はそうならない(実在し再現可能な盲点である)ことを確認しました。また、Compose のオフセットモディファイアに伴う別の bounds 陳腐化のリスクを見つけ、`AccessibilityWindowInfo.getLayer()` は実在するものの、もっとも一般的な 2 つのクロスウィンドウのケース(モーダルダイアログとトースト)には不十分だとわかりました。これが、ウィンドウレベルの遮蔽検出を先送りする決定につながりました(「検討した代替案」を参照)。スパイクのコードはすべて元に戻し、本提案の一部としては出荷していません。
+- 上記10個の作業単位はすべて、本提案を運ぶブランチ上でまとめて実装しました。`make check` は green です。上の「実装 PR」の行は、PRを作成し次第記載します。
 
 ## 参考
 

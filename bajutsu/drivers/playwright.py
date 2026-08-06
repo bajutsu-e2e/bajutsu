@@ -204,14 +204,15 @@ def _wedge_guard[F: Callable[..., Any]](method: F) -> F:
     A renderer crash, a hung page, a navigation timeout — any Playwright error from a page operation —
     re-raises as `simctl.DeviceError`, which a pool worker isolates (handing its frontier entry back and
     relaunching the browser) instead of sinking the crawl. Selection failures (`base.SelectorError`)
-    are not wedges and pass through unchanged, as do real bugs (any non-Playwright exception).
+    and an obstructed-target failure (`base.ElementNotTappable`) are not wedges and pass through
+    unchanged, as do real bugs (any non-Playwright exception).
     """
 
     @functools.wraps(method)
     def wrapper(self: PlaywrightDriver, *args: Any, **kwargs: Any) -> Any:
         try:
             return method(self, *args, **kwargs)
-        except base.SelectorError:
+        except (base.SelectorError, base.ElementNotTappable):
             raise
         except Exception as exc:
             if isinstance(exc, _playwright_error_types()):
@@ -561,6 +562,69 @@ class PlaywrightDriver:
         el = base.resolve_unique(self.query(), sel)
         return base.frame_center(el["frame"]), el
 
+    def _point_hits(self, point: base.Point, el: base.Element) -> bool:
+        """Whether `document.elementFromPoint` actually resolves to `el`, not an unrelated cover.
+
+        Generalizes the `elementFromPoint` pattern already used by `select_option` below: walk the
+        hit's ancestor chain looking for `el` — by its `data-testid` (the same attribute `QUERY_JS`,
+        `bajutsu/dom.py`, reads into `identifier`) when it has one, or by matching bounding rects
+        when it does not (an element `QUERY_JS` matched by tag/role/`aria-label` instead). A hit
+        chain that never reaches `el` means an unrelated element genuinely covers the point.
+        """
+        x, y = point
+        tx, ty, tw, th = el["frame"]
+        identifier = json.dumps(el["identifier"])
+        return bool(
+            self._page.evaluate(
+                "(() => {"
+                f"const hit = document.elementFromPoint({x}, {y});"
+                "if (!hit) return false;"
+                f"const identifier = {identifier};"
+                "if (identifier !== null) {"
+                '  return hit.closest(`[data-testid="${CSS.escape(identifier)}"]`) !== null;'
+                "}"
+                "let node = hit;"
+                "while (node) {"
+                "  const r = node.getBoundingClientRect();"
+                f"  if (Math.abs(r.x - {tx}) < 1 && Math.abs(r.y - {ty}) < 1"
+                f"      && Math.abs(r.width - {tw}) < 1 && Math.abs(r.height - {th}) < 1) {{"
+                "    return true;"
+                "  }"
+                "  node = node.parentElement;"
+                "}"
+                "return false;"
+                "})()"
+            )
+        )
+
+    @_wedge_guard
+    def is_tappable(self, sel: base.Selector) -> bool:
+        """Whether `sel` resolves to a unique element that a click at its center would actually hit.
+
+        A pure query: no actuation, so the scroll-recovery loop can call it repeatedly with no side
+        effects. Not found means "not tappable" (`False`), matching every other backend's convention
+        for a target not yet in the tree; an ambiguous selector still raises `AmbiguousSelector`
+        immediately, since occlusion is a different question from selector ambiguity.
+        """
+        try:
+            point, el = self._center_with_element(sel)
+        except base.ElementNotFound:
+            return False
+        return self._point_hits(point, el)
+
+    def _center_checked(self, sel: base.Selector) -> tuple[base.Point, base.Element]:
+        """`_center_with_element`, but raises `ElementNotTappable` when the point does not hit `sel`.
+
+        The one seam `tap` / `double_tap` / `long_press` route through, so the check applies once
+        rather than being duplicated at each call site.
+        """
+        point, el = self._center_with_element(sel)
+        if not self._point_hits(point, el):
+            raise base.ElementNotTappable(
+                f"element resolved but covered by another element: {sel!r}"
+            )
+        return point, el
+
     def drain_actuations(self) -> Drained:
         """The concrete actuations performed since the last drain (`ActuationReporter`)."""
         return self._actuations.drain()
@@ -592,7 +656,7 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def tap(self, sel: base.Selector) -> None:
-        (x, y), el = self._center_with_element(sel)
+        (x, y), el = self._center_checked(sel)
         self._log_coordinate("tap", (x, y), el)
         self._page.mouse.click(x, y)
 
@@ -603,13 +667,13 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def double_tap(self, sel: base.Selector) -> None:
-        (x, y), el = self._center_with_element(sel)
+        (x, y), el = self._center_checked(sel)
         self._log_coordinate("doubleTap", (x, y), el)
         self._page.mouse.dblclick(x, y)
 
     @_wedge_guard
     def long_press(self, sel: base.Selector, duration: float) -> None:
-        (x, y), el = self._center_with_element(sel)
+        (x, y), el = self._center_checked(sel)
         self._log_coordinate("longPress", (x, y), el, duration_s=duration)
         self._page.mouse.move(x, y)
         self._page.mouse.down()

@@ -551,6 +551,81 @@ def test_double_tap() -> None:
     assert page.mouse.calls == [("dblclick", 5.0, 5.0)]
 
 
+def test_tap_raises_element_not_tappable_when_covered() -> None:
+    # elementFromPoint's hit chain never reaches the resolved target: an unrelated element covers
+    # its point, so `tap` fails with the dedicated error rather than clicking through it.
+    drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [False]
+    with pytest.raises(base.ElementNotTappable, match="covered by another element"):
+        drv.tap({"id": "x"})
+    assert page.mouse.calls == []  # never clicked
+
+
+def test_double_tap_raises_element_not_tappable_when_covered() -> None:
+    drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [False]
+    with pytest.raises(base.ElementNotTappable):
+        drv.double_tap({"id": "x"})
+    assert page.mouse.calls == []
+
+
+def test_long_press_raises_element_not_tappable_when_covered() -> None:
+    drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [False]
+    with pytest.raises(base.ElementNotTappable):
+        drv.long_press({"id": "x"}, 0.0)
+    assert page.mouse.calls == []
+
+
+def test_tap_clicks_when_the_point_hits_the_element() -> None:
+    drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [True]
+    drv.tap({"id": "x"})
+    assert page.mouse.calls == [("click", 5.0, 5.0)]
+
+
+def test_is_tappable_true_when_the_point_hits_the_element() -> None:
+    drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [True]
+    assert drv.is_tappable({"id": "x"}) is True
+
+
+def test_is_tappable_false_when_covered() -> None:
+    drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [False]
+    assert drv.is_tappable({"id": "x"}) is False
+
+
+def test_is_tappable_false_when_not_found() -> None:
+    drv, _ = _driver([])
+    assert drv.is_tappable({"id": "missing"}) is False
+
+
+def test_is_tappable_propagates_ambiguous_selector() -> None:
+    drv, _ = _driver(
+        [
+            _rec(identifier="x", frame=[0, 0, 10, 10]),
+            _rec(identifier="x", frame=[0, 20, 10, 10]),
+        ]
+    )
+    with pytest.raises(base.AmbiguousSelector):
+        drv.is_tappable({"id": "x"})
+
+
+def test_is_tappable_never_clicks() -> None:
+    drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [True]
+    drv.is_tappable({"id": "x"})
+    assert page.mouse.calls == []
+
+
+def test_is_tappable_checks_element_from_point_at_the_frame_center() -> None:
+    drv, page = _driver([_rec(identifier="x", frame=[10, 20, 40, 10])])
+    page.evaluate_returns = [True]
+    drv.is_tappable({"id": "x"})
+    assert "elementFromPoint(30.0, 25.0)" in page.evaluated[-1]
+
+
 def test_back_goes_back_in_history() -> None:
     # The web's `back` is browser history (BE-0210), the platform peer of Android's system back key.
     drv, page = _driver([])

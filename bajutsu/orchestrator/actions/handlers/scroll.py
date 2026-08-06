@@ -28,13 +28,14 @@ import logging
 import tempfile
 import time
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
 
 from bajutsu.drivers import base
 from bajutsu.elements import screen_size_from_elements
 from bajutsu.orchestrator.actions._registry import _handler
-from bajutsu.orchestrator.actions.handlers.gestures import _SWIPE_FRACTION, _scroll_gesture
+from bajutsu.orchestrator.actions.handlers._gesture_math import _SWIPE_FRACTION, _scroll_gesture
 from bajutsu.scenario import Step
 
 _logger = logging.getLogger(__name__)
@@ -445,8 +446,19 @@ def scroll_to_target(
     direction: str,
     within: base.Selector | None,
     max_scrolls: int,
+    stop: Callable[[base.Frame, base.Point], bool] = _center_in_viewport,
 ) -> None:
-    """Scroll until `to` resolves on-screen, or fail at a bound (BE-0326, BE-0329).
+    """Scroll until `to` resolves and satisfies `stop`, or fail at a bound (BE-0326, BE-0329).
+
+    `stop` is checked only once `to` has resolved to an element this call; it never overrides that
+    resolution — an absent `to` keeps scrolling regardless of what `stop` would say. The default,
+    `_center_in_viewport`, is "on-screen"; `scroll_until_tappable` below supplies a different one to
+    reuse this same bounded, non-inertial loop for a different stop condition.
+
+    Args:
+        stop: Given the resolved element's frame and the true viewport, whether the loop may return.
+            Must be a pure predicate — this loop calls it every iteration once `to` resolves, so it
+            must never itself scroll or otherwise actuate.
 
     Raises:
         ElementNotFound: `to` is still off-screen after `max_scrolls` steps — the message says whether
@@ -473,7 +485,7 @@ def scroll_to_target(
     scrolls = 0
     while True:
         target = _resolve_target(elements, to)
-        if target is not None and _center_in_viewport(target["frame"], viewport):
+        if target is not None and stop(target["frame"], viewport):
             return
         view = _region_view(elements, within, viewport, axis)
         # Judge the step that produced this read — but only now that the target is known absent, so a
@@ -535,6 +547,48 @@ def scroll_to_target(
         reversed_step, reverse_next = reverse_next, False
         previous = view
         elements = _region_after_step(driver, previous, within, viewport, axis)
+
+
+def scroll_until_tappable(
+    driver: base.Driver,
+    sel: base.Selector,
+    direction: str,
+    within: base.Selector | None,
+    max_scrolls: int,
+) -> None:
+    """`scroll_to_target`, but the stop condition is tappability rather than mere on-screen presence.
+
+    A safety-net recovery for a target that resolves and is on-screen but is covered by another
+    element: `scroll_to_target`'s own default stop condition, "on-screen", is already true for such a
+    target (that is exactly why it is covered rather than off-screen), so calling it unmodified with
+    an occluded target would return immediately without a single scroll step. Supplying `is_tappable`
+    itself as the stop condition is what makes a scroll actually happen. `is_tappable` is checked
+    only when `sel` resolves, so an absent `sel` still gets the ordinary off-screen handling
+    (`ElementNotFound` on a bottomed-out region or an exhausted bound) rather than being read as
+    "not tappable".
+
+    Raises:
+        ElementNotFound: reworded from `scroll_to_target`'s own raise. That message is written for
+            its default "on-screen" stop condition and talks about the region going missing or
+            bottoming out; here `sel` resolved on every step and only tappability never came true, so
+            the original wording is replaced rather than passed through — otherwise a caller chaining
+            this into a further exception (as `_tap_with_recovery` does) would carry a misleading
+            "not found" cause for a target that was on-screen the whole time.
+    """
+    try:
+        scroll_to_target(
+            driver,
+            sel,
+            direction,
+            within,
+            max_scrolls,
+            stop=lambda _frame, _viewport: driver.is_tappable(sel),
+        )
+    except base.ElementNotFound as exc:
+        raise base.ElementNotFound(
+            f"scroll: {sel!r} resolved but never became tappable within {max_scrolls} scroll(s) "
+            f"({exc})"
+        ) from exc
 
 
 @_handler("scroll")

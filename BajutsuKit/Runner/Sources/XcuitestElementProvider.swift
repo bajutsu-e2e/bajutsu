@@ -57,6 +57,7 @@ final class XcuitestElementProvider: ElementProviding {
     func tap(backingElement: AnyObject, taps: Int, duration: TimeInterval) -> TapResult {
         guard let backing = backingElement as? PositionPathBacking else { return .notFound }
         guard let el = liveElement(for: backing) else { return .stale }
+        guard el.isHittable else { return .notHittable }
         if duration > 0 {
             el.press(forDuration: duration)
         } else if taps >= 2 {
@@ -65,6 +66,12 @@ final class XcuitestElementProvider: ElementProviding {
             el.tap()
         }
         return .ok
+    }
+
+    func isHittable(backingElement: AnyObject) -> TapResult {
+        guard let backing = backingElement as? PositionPathBacking else { return .notFound }
+        guard let el = liveElement(for: backing) else { return .stale }
+        return el.isHittable ? .ok : .notHittable
     }
 
     func tapPoint(x: Double, y: Double) -> TapResult {

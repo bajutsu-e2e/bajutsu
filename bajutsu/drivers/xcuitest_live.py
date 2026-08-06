@@ -375,10 +375,37 @@ class XcuitestLiveDriver:
             )
         )
 
+    def _resolve_handle_checked(self, sel: base.Selector) -> tuple[str, base.Element]:
+        """`_resolve_handle`, but raises `ElementNotTappable` when the target is covered.
+
+        Shares `is_tappable`'s own document-order proxy (`topmost_at_point`) directly over this
+        one query, rather than resolving twice by also calling `is_tappable`.
+        """
+        elements, handles = self._query_with_handles()
+        el = base.resolve_unique(elements, sel)
+        if base.topmost_at_point(elements, base.frame_center(el["frame"]), el) is not None:
+            raise base.ElementNotTappable(
+                f"element resolved but covered by another element: {sel!r}"
+            )
+        return handles[id(el)], el
+
     def tap(self, sel: base.Selector) -> None:
-        handle, el = self._resolve_handle(sel)
+        handle, el = self._resolve_handle_checked(sel)
         self._log_element("tap", el)
         self._client.click(handle)
+
+    def is_tappable(self, sel: base.Selector) -> bool:
+        # The local runner route (`drivers/xcuitest.py`) reads XCTest's own `isHittable` directly;
+        # this live route only has a W3C WebDriver page-source query, with no such property
+        # surfaced through Appium's XCUITest driver here. Falls back to the same document-order
+        # proxy adb uses (`topmost_at_point`), with the same caveat: a heuristic, not the native
+        # signal the local route gets.
+        try:
+            elements, _ = self._query_with_handles()
+            target = base.resolve_unique(elements, sel)
+        except base.ElementNotFound:
+            return False
+        return base.topmost_at_point(elements, base.frame_center(target["frame"]), target) is None
 
     def back(self) -> None:
         # No hardware back on iOS: tap the OS navigation back button, the same element the other iOS
@@ -413,12 +440,12 @@ class XcuitestLiveDriver:
         self._client.execute("mobile: tap", [{"x": p[0], "y": p[1]}])
 
     def double_tap(self, sel: base.Selector) -> None:
-        handle, el = self._resolve_handle(sel)
+        handle, el = self._resolve_handle_checked(sel)
         self._log_element("doubleTap", el)
         self._client.execute("mobile: doubleTap", [{"elementId": handle}])
 
     def long_press(self, sel: base.Selector, duration: float) -> None:
-        handle, el = self._resolve_handle(sel)
+        handle, el = self._resolve_handle_checked(sel)
         self._log_element("longPress", el, duration_s=duration)
         self._client.execute("mobile: touchAndHold", [{"elementId": handle, "duration": duration}])
 

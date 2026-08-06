@@ -894,30 +894,67 @@ class AdbDriver(CoordinateTreeDriver):
         """The target's frame, the screen extent (both in tree pixels), and the resolved element.
 
         Shared by the center-based actuators (tap / double-tap) and the two-finger gestures (BE-0232),
-        which need the frame's size, not just its center.
+        which need the frame's size, not just its center — so an occluded `pinch` / `rotate` target
+        also raises `ElementNotTappable` here, correctly, though the scroll safety net
+        (`_tap_with_recovery`, above the driver) wraps only the tap family in this first slice.
         """
         tree = self._settle()
         try:
-            el = self._resolve(sel, timeout=self._RESOLVE_TIMEOUT_S, initial_tree=tree)
+            el, tree = self._resolve(sel, timeout=self._RESOLVE_TIMEOUT_S, initial_tree=tree)
         except base.ElementNotFound:
             # Not in the current viewport — scroll toward it and re-query (BE-0210). An ambiguous
             # match still fails fast: only not-found triggers a scroll, so `resolve_unique`'s
             # AmbiguousSelector propagates unchanged. The settled tree seeds the first scroll so it
             # is oriented on stable frames rather than a fresh (possibly mid-transition) read.
-            el = self._scroll_into_view(sel, tree)
+            el, tree = self._scroll_into_view(sel, tree)
         # The single most useful line when an actuation lands on nothing: the coordinate it is about
         # to touch, and the tree it came from. A frame from a stale read looks entirely ordinary on
         # its own — it is only wrong relative to where the content actually is.
         logger.debug("resolved %r to frame %s of %d elements", sel, el["frame"], len(tree))
+        # Document order as a paint-order proxy (`base.topmost_at_point`): correct for Compose's
+        # `zIndex` and the ordinary undecorated case on either toolkit; can misjudge a View-based
+        # layout that uses `elevation`, which reorders drawing without reordering the accessibility
+        # tree (measured on-device during this feature's design spike, not merely theorized).
+        covering = base.topmost_at_point(tree, base.frame_center(el["frame"]), el)
+        if covering is not None:
+            raise base.ElementNotTappable(
+                f"element resolved but covered by another element: {sel!r}"
+            )
         return el["frame"], screen_size_from_elements(tree), el
 
-    def _scroll_into_view(self, sel: base.Selector, tree: list[base.Element]) -> base.Element:
+    def is_tappable(self, sel: base.Selector) -> bool:
+        """Whether `sel` resolves to a unique element that is not covered by another.
+
+        Enforces the same document-order proxy `_resolve_frame_and_screen` uses at actuation
+        time, but deliberately as its own settled read rather than a call through that method:
+        that method's not-found path calls `_scroll_into_view`, which actually scrolls — routing
+        this pure query through it would let a single call silently move the screen, which
+        `scroll_until_tappable`'s stop predicate (called repeatedly, once per scroll step) would
+        then double-count against its own step bound. Not found means "not tappable" (`False`),
+        matching every other backend's convention for a target not yet in the tree; an ambiguous
+        selector still raises `AmbiguousSelector`, since occlusion is a different question from
+        selector ambiguity.
+        """
+        tree = self._settle()
+        try:
+            el, tree = self._resolve(sel, timeout=self._RESOLVE_TIMEOUT_S, initial_tree=tree)
+        except base.ElementNotFound:
+            return False
+        return base.topmost_at_point(tree, base.frame_center(el["frame"]), el) is None
+
+    def _scroll_into_view(
+        self, sel: base.Selector, tree: list[base.Element]
+    ) -> tuple[base.Element, list[base.Element]]:
         """Scroll toward `sel` and re-query, bounded by `_SCROLL_RETRIES`, then fail deterministically.
 
         A condition wait, not a fixed sleep: each attempt swipes once (default up), then re-reads
         via `_settle` so the scroll's fling has stopped before the tree is resolved (a bare read
         right after the swipe can miss an element still sliding in, over-scrolling past it), and
         retries the unique resolve. A selector that never renders still raises ElementNotFound.
+
+        Returns the tree the resolution succeeded against alongside the element, so a caller that
+        also needs the current (post-scroll) screen — not the pre-scroll one it seeded this call
+        with — never has to re-query for it.
         """
         for attempt in range(1, self._SCROLL_RETRIES + 1):
             self._scroll_toward(tree)
@@ -932,7 +969,7 @@ class AdbDriver(CoordinateTreeDriver):
             logger.debug(
                 "scroll %d/%d brought %r into the tree", attempt, self._SCROLL_RETRIES, sel
             )
-            return el
+            return el, tree
         raise base.ElementNotFound(f"一致なし（scroll しても見つからず）: {sel!r}")
 
     def _scroll_toward(self, tree: list[base.Element]) -> None:
@@ -985,19 +1022,30 @@ class AdbDriver(CoordinateTreeDriver):
         into view — the determinism core is untouched. Only the *coordinate* moves to the device, which
         reads the element's bounds from its own dump microseconds before injecting.
 
-        Returns False, never raising, on every reason the device path cannot serve this gesture: no
-        channel, an element whose identity this read did not record, a `stale` reply that re-resolving
-        did not settle, or a channel fault. The caller then injects a coordinate exactly as before, so a
-        device without the endpoint is no worse off than one that never had it.
+        Returns False, never raising, on every *infrastructure* reason the device path cannot serve
+        this gesture: no channel, an element whose identity this read did not record, a `stale` reply
+        that re-resolving did not settle, or a channel fault. The caller then injects a coordinate
+        exactly as before, so a device without the endpoint is no worse off than one that never had
+        it. It does still raise `ElementNotTappable` — a real test outcome, not an infrastructure
+        fallback — when the resolved target is covered; see below.
+
+        This is the resident channel's own resolution, distinct from `_resolve_frame_and_screen`'s (the
+        coordinate-path fallback below): both enforce the same tappability check, since a resident
+        channel being available — the common case — must not silently exempt an occluded target from
+        it, only the *coordinate* moves to the device.
         """
         if self._act_fn is None or self._act_unavailable:
             return False
         for _ in range(self._STALE_MAX_ATTEMPTS):
             tree = self._settle()
             try:
-                el = self._resolve(sel, timeout=self._RESOLVE_TIMEOUT_S, initial_tree=tree)
+                el, tree = self._resolve(sel, timeout=self._RESOLVE_TIMEOUT_S, initial_tree=tree)
             except base.ElementNotFound:
-                el = self._scroll_into_view(sel, tree)
+                el, tree = self._scroll_into_view(sel, tree)
+            if base.topmost_at_point(tree, base.frame_center(el["frame"]), el) is not None:
+                raise base.ElementNotTappable(
+                    f"element resolved but covered by another element: {sel!r}"
+                )
             identity = self._identities.get(id(el))
             if identity is None:
                 # A seeded read: this driver never parsed that tree, so it recorded no identity to

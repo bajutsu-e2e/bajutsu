@@ -112,6 +112,14 @@ def resolve_unique(elements, sel):
 
 例外階層: `SelectorError`（基底） ← `ElementNotFound` / `AmbiguousSelector`。orchestrator と assertions はこれを捕捉して「ステップ失敗」「アサーション失敗」に変換します（例外を上に投げません）。
 
+### `ElementNotTappable`: 解決はしたが到達できない対象
+
+`resolve_unique` が判定するのは一致件数だけです。その一致した要素が実際に画面上で到達可能かどうかは判定しません。要素はセレクタに一意に一致し、有効な frame を持ちながら、固定ヘッダーやトースト、あるいは薄暗いモーダルの背景の下に置かれていることがあります。その場合、タップは対象ではなく遮蔽物に当たってしまいます。`tap` / `double_tap` / `long_press`（そして `type` / `clear` / `delete` / `select` の内部にあるフォーカスタップ）は、操作前にこれを確認するようになりました。各プラットフォームがもっとも自然に提供する手段（iOS のネイティブな `isHittable`、web の `document.elementFromPoint` によるヒットテスト、adb のドキュメント順による幾何学的な近似、`Driver.is_tappable`）を使います。この確認に失敗すると、ドライバは小さく回数を区切った `down` 方向のみのスクロールを 1 回試して再試行します。それでも対象へ到達できなければ、`ElementNotFound` ではなく `ElementNotTappable` を送出します。呼び出し側が「ツリーに存在すらしない」と誤解しかねない `ElementNotFound` の代わりです。
+
+`ElementNotTappable` は `SelectorError` の派生ではなく、その兄弟です。セレクタ自体は解決しているため、解決失敗と同じ扱いにまとめると「何が一致したか」と「到達可能か」という別の問いをぼかしてしまいます。orchestrator のステップ実行 catch は、`SelectorError` を扱うのと同じ形でこれを扱います。クリーンなステップ失敗であり、クラッシュではありません。
+
+この回数を区切ったスクロールは、作者が予見できない遮蔽（一時的なオーバーレイ、位置が定まりきっていないスティッキーヘッダーなど）に対する安全網です。明示的な[`scroll` アクション](scenarios.md#scroll)の代替ではありません。対象が最初から画面外にあるとすでに知っている作者は、それでも自分で `scroll` を書きます。このチェックが働くのは、すでに解決できた対象に対してだけです。
+
 ### バックエンドに依らず一元化される
 
 adb（Android）、playwright（web）、fake ドライバは semantic tap を持たないため、いずれも**常に `query()` で候補数を検証してから**操作し、確定した要素の frame 中心をタップします。XCUITest も同じ検証を経てから、座標ではなく識別子を指定して直接タップします。すべてのアクションが同じ `resolve_unique` を通るため、「曖昧なら失敗」の挙動はすべてのバックエンドで同一です（各ドライバの `tap` 実装は [drivers](drivers.md) を参照してください）。

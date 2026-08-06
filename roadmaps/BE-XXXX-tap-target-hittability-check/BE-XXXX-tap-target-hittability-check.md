@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-tap-target-hittability-check.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Implementing PR | TBD — filled in once the PR is opened |
 | Topic | Driver & backend architecture |
 | Related | [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md) |
 <!-- /BE-METADATA -->
@@ -382,19 +383,19 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 0 — extract `_SWIPE_FRACTION` / `_scroll_gesture` to break the `gestures.py` /
+- [x] Unit 0 — extract `_SWIPE_FRACTION` / `_scroll_gesture` to break the `gestures.py` /
       `scroll.py` import cycle
-- [ ] Unit 1 — `ElementNotTappable` error and the `loop.py` catch-tuple wiring
-- [ ] Unit 2 — `Driver.is_tappable`, the pluggable `scroll_to_target` stop condition, and
+- [x] Unit 1 — `ElementNotTappable` error and the `loop.py` catch-tuple wiring
+- [x] Unit 2 — `Driver.is_tappable`, the pluggable `scroll_to_target` stop condition, and
       `scroll_until_tappable`
-- [ ] Unit 3 — iOS `isHittable` hit-test
-- [ ] Unit 4 — web `elementFromPoint` hit-test
-- [ ] Unit 5 — Android `topmost_at_point` geometric hit-test
-- [ ] Unit 6 — orchestrator `_tap_with_recovery` wiring
-- [ ] Unit 7 — `FakeDriver.is_tappable`
-- [ ] Unit 8 — driver conformance suite obstruction case
-- [ ] Unit 9 — docs (`drivers.md`, `selectors.md`, and their `ja` mirrors)
-- [ ] Unit 10 — tests
+- [x] Unit 3 — iOS `isHittable` hit-test
+- [x] Unit 4 — web `elementFromPoint` hit-test
+- [x] Unit 5 — Android `topmost_at_point` geometric hit-test
+- [x] Unit 6 — orchestrator `_tap_with_recovery` wiring
+- [x] Unit 7 — `FakeDriver.is_tappable`
+- [x] Unit 8 — driver conformance suite obstruction case
+- [x] Unit 9 — docs (`drivers.md`, `selectors.md`, and their `ja` mirrors)
+- [x] Unit 10 — tests
 
 ### Log
 
@@ -411,6 +412,8 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
   cases (a modal dialog, a toast) — leading to the decision to defer window-level occlusion
   detection (see Alternatives considered). All spike code was reverted; none of it ships as part of
   this proposal.
+- All ten units above landed together on the branch that carries this proposal. `make check` is
+  green; the `Implementing PR` row above is filled in once the PR is opened.
 
 ## References
 
