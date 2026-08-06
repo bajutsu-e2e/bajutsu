@@ -206,11 +206,25 @@ def adopt(interval: Interval, target: Path) -> Interval:
     )
 
 
-def _file_size(path: Path) -> int:
-    """`path`'s size, or 0 if it doesn't exist yet (the common case: nothing has written to it)."""
+def _file_size(path: Path, *, disclose: bool = False) -> int:
+    """`path`'s size, or 0 if it doesn't exist yet (the common case: nothing has written to it).
+
+    `disclose` warns when the size can't be read for some *other* reason: a 0 from such a failure
+    reads as "no leftover bytes", so it silently disables the stale-retry guard the pre-spawn
+    baseline exists for. Only the baseline call sets it — a per-poll warning would be noise.
+    """
     try:
         return path.stat().st_size
-    except OSError:
+    except FileNotFoundError:
+        return 0
+    except OSError as exc:
+        if disclose:
+            _logger.warning(
+                "could not size %s before spawning recordVideo (%s); a finalized earlier "
+                "attempt's leftover bytes may now confirm a start that never happened",
+                path,
+                exc,
+            )
         return 0
 
 
@@ -252,7 +266,7 @@ def start_video(
     returned `Interval.true_start` reflects when it actually began rather than when the process was
     spawned.
     """
-    baseline_size = _file_size(path) if confirm_started else 0
+    baseline_size = _file_size(path, disclose=True) if confirm_started else 0
     proc = spawn(record_video_cmd(udid, str(path)), None)
     true_start = _await_video_file_growing(path, baseline_size) if confirm_started else None
     return Interval(

@@ -122,6 +122,43 @@ def test_await_video_file_growing_confirms_growth_past_a_nonzero_baseline(tmp_pa
     assert isinstance(result, float)
 
 
+def test_file_size_missing_file_stays_silent(caplog) -> None:
+    # The common case (recordVideo hasn't written anything yet) must not warn even when disclose
+    # is requested — only a genuine "can't tell" failure should.
+    with caplog.at_level("WARNING"):
+        result = intervals._file_size(Path("/nonexistent/never-written.mp4"), disclose=True)
+    assert result == 0
+    assert not caplog.records
+
+
+def test_file_size_disclose_warns_on_a_non_missing_error(monkeypatch, caplog) -> None:
+    # A 0 from a failure that is not "the file doesn't exist yet" (a permission error, EIO, an
+    # unreadable run dir) reads exactly like "no leftover bytes" and would silently defeat the
+    # stale-retry guard the pre-spawn baseline exists for — so, unlike the missing-file case, this
+    # must warn.
+    def raising_stat(self: Path) -> None:
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(Path, "stat", raising_stat)
+    with caplog.at_level("WARNING"):
+        result = intervals._file_size(Path("/some/path.mp4"), disclose=True)
+    assert result == 0
+    assert any("could not size" in r.message for r in caplog.records)
+
+
+def test_file_size_without_disclose_stays_silent_on_error(monkeypatch, caplog) -> None:
+    # The per-poll caller (inside _await_video_file_growing) must never warn on every failed poll —
+    # only the one-time baseline call opts into disclosure.
+    def raising_stat(self: Path) -> None:
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(Path, "stat", raising_stat)
+    with caplog.at_level("WARNING"):
+        result = intervals._file_size(Path("/some/path.mp4"))
+    assert result == 0
+    assert not caplog.records
+
+
 def test_await_video_file_growing_warns_on_timeout(tmp_path: Path, monkeypatch, caplog) -> None:
     # A file that never grows (recordVideo never wrote a frame) must not hang the caller — the poll
     # gives up at the deadline and leaves true_start unconfirmed, with a warning so a scenario whose

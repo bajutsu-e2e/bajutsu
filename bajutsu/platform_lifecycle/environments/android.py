@@ -238,7 +238,10 @@ class AndroidEnvironment:
 
         The device-side recording is adopted by the sink at scenario start and pulled to the artifact
         path on stop (`intervals.adopt` wrapping `start_screenrecord`'s pull). Filed under the serial
-        so concurrent device lanes writing into the shared dir never collide.
+        so concurrent device lanes writing into the shared dir never collide. `confirm_started`
+        makes this block until the device-side process is confirmed (or the confirmation times out)
+        — this call sits immediately before `start()`'s `e.launch(...)`, with nothing running
+        concurrently, so that wait lands on the scenario's critical path.
         """
         if record_video_dir is None:
             return
