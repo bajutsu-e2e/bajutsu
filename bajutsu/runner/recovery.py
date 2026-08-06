@@ -44,7 +44,9 @@ def guarded_teardown(teardown: Callable[[], None], *, mid_run: bool, what: str) 
     and swallowed. The pair covers the subprocess-driven backends (simctl, adb) and the collector's
     own socket close; `PlaywrightDriver.close()` suppresses its own already-gone-target failure
     before it ever reaches this function, the same way `reset_context`/`relaunch` already do, so an
-    ordinary dead browser never lands in the branch below either. Anything
+    ordinary dead browser never lands in the branch below either — and
+    `XcuitestLiveEnvironment.teardown()` suppresses its own already-expired-session `WebDriverError`
+    the same way, since that class subclasses `RuntimeError`, not `OSError`. Anything
     else is a wiring defect: at most call sites (`mid_run=True`) it is also swallowed into a warning
     so it cannot mask the fault that prompted the teardown, or abandon cleanup the caller still owes
     (the pool's `free.put(udid)`, on a site that runs ahead of its own `try`); only `mid_run=False`
