@@ -315,8 +315,10 @@ mechanical tail (CI fixes, replies), not the merge decision or a rebase.
   case where `pr-followup` has nothing to fix);
 - **three churn rounds** against the live reviewer (BE-0347). Increment a third counter whenever an
   iteration reports that its local self-review was clean, a live review was requested, and the next
-  poll still found a new review comment; reset it whenever a requested live review comes back clean.
-  Three such rounds means the local pass and the live reviewer keep disagreeing, and a fourth is
+  poll still found a new **bot** review comment; reset it whenever a requested live review comes back
+  clean. A new *human* comment is not churn — that is review working, and stop condition 3 already
+  keeps the loop running for it. Three such bot-churn rounds means the local pass and the live
+  reviewer keep disagreeing, and a fourth is
   unlikely to settle what three did not — the cap matches the local self-review loop's own 3-round
   cap, and holds for the same reason: an LLM-based reviewer is not fully deterministic and can keep
   surfacing a fresh marginal finding, possibly one its own previous fix introduced.

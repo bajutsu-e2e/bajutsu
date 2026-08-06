@@ -349,9 +349,12 @@ jobs:
           PR: ${{ github.event.pull_request.number || github.event.issue.number }}
         run: |
           set -euo pipefail
+          # Assign first so `set -e` fails the step on an API error — a here-string would swallow it
+          # (its own exit status is `read`'s, and the command substitution's is discarded).
           # A branch name cannot contain whitespace, so a tab-separated read splits these three safely.
-          read -r head_repo head_ref head_sha <<<"$(gh api "repos/$REPO/pulls/$PR" \
-            --jq '[.head.repo.full_name, .head.ref, .head.sha] | @tsv')"
+          head_tsv=$(gh api "repos/$REPO/pulls/$PR" \
+            --jq '[.head.repo.full_name, .head.ref, .head.sha] | @tsv')
+          read -r head_repo head_ref head_sha <<<"$head_tsv"
           {
             echo "number=$PR"
             echo "head_ref=$head_ref"

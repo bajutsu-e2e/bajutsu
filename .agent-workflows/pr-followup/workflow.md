@@ -101,11 +101,16 @@ green and no new comments arrived), since there is nothing new to self-review or
   Pin the run to this request's own comment with `--user`, since any comment in the repository
   creates a run in the same window; filter by creation time rather than `--branch`, since a
   comment-triggered run executes against the default branch and its `head_branch` is never the PR
-  branch; and allow a few seconds for the run to be created:
+  branch; and allow a few seconds for the run to be created, retrying rather than querying once —
+  a run is not normally listable the instant `gh pr comment` returns:
   ```bash
-  RUN_ID=$(gh run list --workflow "Claude review" --event issue_comment \
-    --user "$(gh api user --jq .login)" --created ">$REQUESTED_AT" \
-    --json databaseId --jq '.[0].databaseId')
+  for _ in $(seq 1 10); do
+    RUN_ID=$(gh run list --workflow "Claude review" --event issue_comment \
+      --user "$(gh api user --jq .login)" --created ">$REQUESTED_AT" \
+      --json databaseId --jq '.[0].databaseId')
+    [ -n "$RUN_ID" ] && break
+    sleep 3
+  done
   gh run view "$RUN_ID" --json jobs \
     --jq '.jobs[] | select(.name == "claude review") | .conclusion // .status'
   ```

@@ -10,7 +10,10 @@ silently breaks:
 - the prior-findings step or the review prompt staying gated to `pull_request` would leave the
   on-demand run — now the common path — without dedup or the review contract;
 - `prose-companion` staying gated to `pull_request` would strand every wording finding raised after
-  the open event, quietly disabling BE-0343 for the rest of the PR's life.
+  the open event, quietly disabling BE-0343 for the rest of the PR's life;
+- the same-repo and `prose-fix/` guards, moved from that job's `if:` into a shell step because an
+  `issue_comment` payload carries no PR head, silently dropping out of that step would let the
+  privileged App token check out and push from a fork-authored head.
 """
 
 from __future__ import annotations
@@ -78,3 +81,13 @@ def test_the_prose_companion_job_reaches_the_comment_events() -> None:
     # not start a companion PR either.
     assert "@claude review" in condition
     assert "COLLABORATOR" in condition
+
+
+def test_the_prose_companion_still_guards_forks_and_companion_branches() -> None:
+    """BE-0347 moved both trust guards out of the job's `if:`, where nothing else pins them."""
+    job = _workflow()["jobs"]["prose-companion"]
+    resolve = _step(job, "Resolve the pull request's head and eligibility")["run"]
+    assert 'head_repo" != "$REPO' in resolve
+    assert "prose-fix/" in resolve
+    mint = _step(job, "Mint a short-lived installation token for the automation App")
+    assert mint["if"] == "steps.pr.outputs.eligible == 'true'"
