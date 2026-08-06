@@ -326,6 +326,11 @@ class _ScenarioRunner:
                 # the retry leases afresh — a cold respawn, since the pool drops the dead warm runner.
                 try:
                     lz = self.lease(self.eff, retry_scenario)
+                    if recovery_started is not None:
+                        # Recovery ended when the lease came back; what follows is the scenario's own
+                        # work, not recovery. A mid-step crash below re-arms the clock.
+                        self.run_crash_budget.add_recovery_time(self._now() - recovery_started)
+                        recovery_started = None
                     return self._run_on_lease(lz, handler, i, s, sid)
                 except BackendCrashError as crash:
                     last_crash = crash
