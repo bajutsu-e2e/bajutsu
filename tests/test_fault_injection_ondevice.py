@@ -190,7 +190,7 @@ def _evidence(request: pytest.FixtureRequest) -> Iterator[None]:
         UDID,
         "fault-injection-xcuitest",
         request,
-        start_video=intervals.start_video,
+        start_video=ondevice_evidence.xcuitest_video,
         start_log=intervals.start_device_log,
     )
 

@@ -489,8 +489,10 @@ def test_the_real_starters_accept_captures_two_argument_call() -> None:
 def test_android_screenrecord_forwards_this_modules_pinned_bounds(monkeypatch) -> None:
     calls = []
 
-    def fake_start_screenrecord(serial, path, *, time_limit=None, size=None, bit_rate=None):
-        calls.append((serial, path, time_limit, size, bit_rate))
+    def fake_start_screenrecord(
+        serial, path, *, time_limit=None, size=None, bit_rate=None, confirm_started=False
+    ):
+        calls.append((serial, path, time_limit, size, bit_rate, confirm_started))
         return "sentinel"
 
     monkeypatch.setattr(intervals, "start_screenrecord", fake_start_screenrecord)
@@ -503,8 +505,25 @@ def test_android_screenrecord_forwards_this_modules_pinned_bounds(monkeypatch) -
             ondevice_evidence._TIME_LIMIT_S,
             ondevice_evidence._SIZE,
             ondevice_evidence._BIT_RATE,
+            True,
         )
     ]
+
+
+def test_xcuitest_video_confirms_it_actually_started(monkeypatch) -> None:
+    # A bare spawn only proves the process started, not that it wrote a frame yet — a fast failing
+    # case can tear down before it does, shipping an absent or unplayable mp4 for exactly the
+    # failure this module's evidence exists to explain.
+    calls = []
+
+    def fake_start_video(udid, path, *, confirm_started=False):
+        calls.append((udid, path, confirm_started))
+        return "sentinel"
+
+    monkeypatch.setattr(intervals, "start_video", fake_start_video)
+    result = ondevice_evidence.xcuitest_video("udid-1", Path("video.mp4"))
+    assert result == "sentinel"
+    assert calls == [("udid-1", Path("video.mp4"), True)]
 
 
 def test_slug_is_filesystem_safe_and_stable_per_nodeid() -> None:

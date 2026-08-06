@@ -73,10 +73,26 @@ _BIT_RATE = 2_000_000
 
 
 def android_screenrecord(serial: str, path: Path) -> intervals.Interval:
-    """`intervals.start_screenrecord` pre-bound to this module's size/bit-rate/time-limit bounds."""
+    """`intervals.start_screenrecord` pre-bound to this module's size/bit-rate/time-limit bounds.
+
+    `confirm_started=True`: a bare spawn only proves the `screenrecord` process started, not that it
+    has written a frame yet, and a fast failing case can otherwise tear down before it does — the
+    exact case this module's evidence exists to explain, shipping an absent or unplayable mp4 for it.
+    """
     return intervals.start_screenrecord(
-        serial, path, time_limit=_TIME_LIMIT_S, size=_SIZE, bit_rate=_BIT_RATE
+        serial,
+        path,
+        time_limit=_TIME_LIMIT_S,
+        size=_SIZE,
+        bit_rate=_BIT_RATE,
+        confirm_started=True,
     )
+
+
+def xcuitest_video(udid: str, path: Path) -> intervals.Interval:
+    """`intervals.start_video` with `confirm_started=True` — the XCUITest twin of the same bound
+    `android_screenrecord` pre-binds; see its docstring for why a bare spawn isn't enough."""
+    return intervals.start_video(udid, path, confirm_started=True)
 
 
 @pytest.hookimpl(wrapper=True)
