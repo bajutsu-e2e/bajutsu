@@ -369,6 +369,14 @@ def _build_server_state(
     # key on `check=` (a registered `oplog` field) instead of substring-matching free text that
     # rewords out from under it.
     startup_warnings: list[tuple[str, str]] = []
+
+    def _warn(check: str, msg: str) -> None:
+        # Print *and* collect in one call, so a later check can't do one without the other and
+        # leave `server.startup_warning` silently missing a condition -- stderr would still show
+        # the warning (a manual check passes) while the oplog-keyed alert never fires for it.
+        print(f"bajutsu serve: {msg}", file=sys.stderr)  # noqa: T201
+        startup_warnings.append((check, msg))
+
     # A half-configured deployment (one of the three BAJUTSU_OAUTH_GITHUB_* vars unset) falls back
     # to token auth silently: every GitHub sign-in 404s and `POST /api/login` re-enables itself, so
     # the deployment runs wide open on the shared token (a token session has no identity, so
@@ -395,8 +403,7 @@ def _build_server_state(
             "_CLIENT_SECRET and _REDIRECT_URI must all be set; OAuth is off, so every GitHub "
             f"sign-in will 404 and {fallback}"
         )
-        print(f"bajutsu serve: {msg}", file=sys.stderr)  # noqa: T201
-        startup_warnings.append(("oauth_half_configured", msg))
+        _warn("oauth_half_configured", msg)
     # Never lose an admin quietly to the rename itself: a deployment that adds the new plural name
     # but leaves the old singular one set (the likelier migration mistake — an operator remembers
     # one Team, not that the old name must go) has that Team silently drop out of both the role and
@@ -407,8 +414,7 @@ def _build_server_state(
             "BAJUTSU_OAUTH_ADMIN_TEAM is retired and no longer read — rename it to "
             "BAJUTSU_OAUTH_ADMIN_TEAMS (comma-separated), folding in every Team it named"
         )
-        print(f"bajutsu serve: {msg}", file=sys.stderr)  # noqa: T201
-        startup_warnings.append(("admin_team_retired_name", msg))
+        _warn("admin_team_retired_name", msg)
     # Never lose every admin quietly. An empty list with OAuth wired means no login can ever
     # resolve to admin — whether because the rename's hard cutover (BE-0313's own precedent for
     # retiring BAJUTSU_OAUTH_ADMINS) left only the retired singular name set, or because the new
@@ -419,16 +425,14 @@ def _build_server_state(
             "BAJUTSU_OAUTH_ADMIN_TEAMS is empty, so no login will have admin access and no admin "
             "can sign in to repair a broken `orgs:` block"
         )
-        print(f"bajutsu serve: {msg}", file=sys.stderr)  # noqa: T201
-        startup_warnings.append(("admin_teams_empty", msg))
+        _warn("admin_teams_empty", msg)
     malformed = [t for t in oauth_admin_teams if not re.fullmatch(r"[^\s/]+/[^\s/]+", t)]
     if oauth is not None and malformed:
         msg = (
             'BAJUTSU_OAUTH_ADMIN_TEAMS entries must each be "<github-org>/<team-slug>"; '
             f"these will never match: {malformed}"
         )
-        print(f"bajutsu serve: {msg}", file=sys.stderr)  # noqa: T201
-        startup_warnings.append(("admin_teams_malformed", msg))
+        _warn("admin_teams_malformed", msg)
 
     repo = repository_from_env()
 

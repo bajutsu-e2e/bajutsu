@@ -393,13 +393,14 @@ OAuth を構成すると、アクセスは手作業の login リストではな�
 れるようになることです。切り替える前に、admin と editor のそれぞれを Team メンバーシップとして宣言し直してくだ
 さい。`editorTeam` や `BAJUTSU_OAUTH_ADMIN_TEAMS` でまだカバーされていない login は、次のログインで viewer に
 落ちます。すでに旧来の単数形 `BAJUTSU_OAUTH_ADMIN_TEAM` を設定していたデプロイは、同じタイミングで
-`BAJUTSU_OAUTH_ADMIN_TEAMS` に改名してください。旧名はもう読まれません。廃止名がまだ設定されている
-とき、`BAJUTSU_OAUTH_ADMIN_TEAMS` の解決結果が空のリストになるとき、エントリが正しい
+`BAJUTSU_OAUTH_ADMIN_TEAMS` に改名してください。旧名はもう読まれません。`serve` は、次の 4 つの
+いずれかに当てはまるとき、起動時に stderr へ警告を出します。廃止名がまだ設定されているとき、
+`BAJUTSU_OAUTH_ADMIN_TEAMS` の解決結果が空のリストになるとき、エントリが正しい
 `"<github-org>/<team-slug>"` の組でないとき、そして GitHub OAuth が部分的にしか構成されていない
-とき（`BAJUTSU_OAUTH_GITHUB_CLIENT_ID` / `_CLIENT_SECRET` / `_REDIRECT_URI` のどれか1つでも
-未設定だと、GitHub のサインインはすべて 404 になり、代わりに共有トークンのログインが静かに
-有効へ戻ります。`BAJUTSU_SERVE_TOKEN` も未設定なら、共有トークンへも戻れず、すべてのエンドポイント
-が認証なしで応答します）、`serve` は起動時に stderr へ警告を出します。これらの警告はいずれも構造化
+ときです。4 つ目は、`BAJUTSU_OAUTH_GITHUB_CLIENT_ID` / `_CLIENT_SECRET` / `_REDIRECT_URI` のどれか
+1 つでも未設定の状態を指します。このとき GitHub のサインインはすべて 404 になり、代わりに共有トークンの
+ログインが静かに有効へ戻ります。`BAJUTSU_SERVE_TOKEN` も未設定なら、共有トークンへも戻れず、すべての
+エンドポイントが認証なしで応答します。これらの警告はいずれも構造化
 ログの `event=server.startup_warning`（どの警告かを示す `check` フィールド付き。[運用ログ](#運用ログ)
 を参照）としても再送されるので、起動出力を誰かが読むことに頼らずアラートを設定できます。拒否された
 サインインは `event=oauth.denied` として、org ゲートが通さなかった理由とともに記録されます。
@@ -676,7 +677,10 @@ BE-0015 で今後の作業です。
 ```
 
 `event` フィールドは安定したイベント名（`run.dispatched`、`quota.rejected`、`worker.job.started`、
-`worker.job.finished`、`artifact.upload.failed` など）を示すので、これを対象に grep やアラートを設定できます。
+`worker.job.finished`、`artifact.upload.failed`、`server.startup_warning`、`oauth.denied` など）を示すので、
+これを対象に grep やアラートを設定できます。`server.startup_warning` は、自由文の `msg` とは別に、どの起動時
+条件が発火したかを示す `check` フィールド（例：`admin_teams_empty`）も携えます。アラートは言い回しが変わり
+うるメッセージ本文ではなく、この `check` をキーにしてください。
 
 **マスクは構造的です。** 1 つのフィルタがルートロガーに置かれるので、書き出される前に**すべての**行が
 スキャンされます。サードパーティのライブラリが出した行も対象です。正しさは、各呼び出し箇所がマスクを

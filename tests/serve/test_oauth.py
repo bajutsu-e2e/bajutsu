@@ -354,6 +354,10 @@ def test_oauth_callback_denial_names_a_missing_orgs_block(
     record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
     assert "declares no orgs: block" in record.getMessage()
     assert "no orgs: entry matched this login" not in record.getMessage()
+    # admin_teams is configured (non-empty) but mallory isn't in it -- a real membership miss, not
+    # an unconfigured admin_teams, so the message must say "matched," not "configured."
+    assert "no admin Team matched" in record.getMessage()
+    assert "no admin Team is configured" not in record.getMessage()
 
 
 def test_oauth_callback_denial_names_a_github_orgs_outage_not_the_org_roster(
@@ -377,6 +381,12 @@ def test_oauth_callback_denial_names_a_github_orgs_outage_not_the_org_roster(
     record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
     assert "GitHub returned no orgs for this login" in record.getMessage()
     assert "no orgs: entry matched this login" not in record.getMessage()
+    # No admin_teams is configured at all here (the default) -- distinct from a real membership
+    # miss, and the state admin_teams_empty warns about at boot, so it must say "configured," not
+    # "matched," or an operator reads a Team-membership problem where the fix is setting
+    # BAJUTSU_OAUTH_ADMIN_TEAMS.
+    assert "no admin Team is configured" in record.getMessage()
+    assert "no admin Team matched" not in record.getMessage()
 
 
 def test_oauth_callback_admin_team_bypass_logs_a_warning(

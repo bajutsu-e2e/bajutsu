@@ -130,7 +130,12 @@ JSON 形式の `oplog` の stdout 書き込みと混在します。これはま�
 （`"oauth_half_configured"`、`"admin_team_retired_name"`、`"admin_teams_empty"`、
 `"admin_teams_malformed"`という）安定した識別子で、alert はこちらをキーにできます。これにより、
 意図的に OAuth を admin Team なしで運用しているデプロイが、他の3つを黙らせずにこの1つだけを
-抑制することもできるようになります。
+抑制することもできるようになります。`_build_server_state` の内側にあるローカルな `_warn(check, msg)`
+クロージャが、この対応を省略不能にします。4つの確認それぞれが `print(...)` と
+`startup_warnings.append((check, msg))` をそのまま繰り返すのではなく、これを1回呼ぶだけにします。
+これにより、後から追加される5つ目の確認が、警告を print だけして集約を忘れるということができなくなり
+ます。そのような失敗は「印字されたか」という手動確認は通過しつつ、`_emit_startup_warnings` からは
+静かに漏れ続けてしまうからです。
 `serve()` は、`_configure_oplog` の直後に新しい `_emit_startup_warnings(state)` を呼びます。これは
 `restore_persisted_provider_settings` がすでに使っている配置と同じであり、理由も同じです
 （「malformed-file の警告が live のログシンクに届くように」）。この関数が、集約した各メッセージを
@@ -172,7 +177,12 @@ Organization を挙げる `orgs:` エントリがなくても、あるいは `or
 共有の `_unmatched_org_cause` helper が両方のために計算するため、この項目のある改訂が一時的に許して
 しまったように、2つの記録がずれてしまうことはありません。拒否された login のほうこそ、「サインイン
 できない」という報告の出どころになりやすいのに、迂回による許可が受けるのと少なくとも同じ triage を
-受けられないというのはおかしいからです。4つの形のうち2つは `orgs` を `{}` に潰し、admin 以外の
+受けられないというのはおかしいからです。文末の admin に関する句にも同じ注意を払います。「no admin
+Team matched」は本物のメンバーシップの不一致のように読めますが、`oauth_admin_teams` が未構成の場合にも
+同じ文言が出てはいけません。これは起動時の `admin_teams_empty` チェックが警告する、まさにその状態で
+あり、`orgs:` を直しにサインインできる admin が誰も残っていない状態でもあるからです。そこでこの句は、
+すでにスコープにある `admin_teams` を条件にした1つの分岐で、「no admin Team is configured」と
+名指しします。4つの形のうち2つは `orgs` を `{}` に潰し、admin 以外の
 すべての login を無条件に拒否します。config の読み込みが失敗した場合と、`orgs:` ブロックをまったく
 宣言していない場合です。そのため、実際には読まれていない、あるいはわざと空のままにされている org
 名簿を非難するメッセージは、運用者を間違った修正に向かわせてしまいます。この

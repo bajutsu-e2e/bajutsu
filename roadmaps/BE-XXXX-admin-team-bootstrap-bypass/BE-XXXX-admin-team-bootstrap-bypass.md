@@ -126,7 +126,12 @@ one `"server.startup_warning"` event below, so a message alone would force an op
 substring-match free text that breaks silently the next time anyone rewords it. `check` is a stable
 discriminator (`"oauth_half_configured"`, `"admin_team_retired_name"`, `"admin_teams_empty"`,
 `"admin_teams_malformed"`) an alert can key on instead, and it also lets a deployment that deliberately
-runs OAuth with no admin Team suppress just that one check without silencing the other three.
+runs OAuth with no admin Team suppress just that one check without silencing the other three. A
+local `_warn(check, msg)` closure inside `_build_server_state` makes the pairing unskippable: each of
+the four checks calls it once instead of repeating `print(...)` and `startup_warnings.append((check,
+msg))` verbatim, so a fifth check added later can't print a warning and forget to collect it — a
+failure that would pass a manual "did it print?" check while `_emit_startup_warnings` silently never
+emits it.
 `serve()` calls a new `_emit_startup_warnings(state)` right after `_configure_oplog` — the same
 placement `restore_persisted_provider_settings` already uses, and for the same reason ("a malformed-file
 warning reaches the live log sink") — which re-emits each through `oplog.log_event`, passing `check` as
@@ -164,7 +169,12 @@ in" report against. The denial message names which of the same five shapes left 
 that the success record's bypass-admission message does (below) — a shared `_unmatched_org_cause`
 helper computes it for both, so the two records can't drift the way an earlier revision of this item
 briefly let them: a denied login is, if anything, the more likely source of an "I can't sign in"
-report, so it needs at least the same triage a bypass admission gets, not less. Two of the four
+report, so it needs at least the same triage a bypass admission gets, not less. The trailing admin
+clause gets the same care: "no admin Team matched" reads as a real membership miss, and must not fire
+identically for an unconfigured `oauth_admin_teams` — the exact state the boot-time
+`admin_teams_empty` check warns about and the one in which no admin can sign in to fix `orgs:` at
+all — so the message names that shape as "no admin Team is configured" instead, one conditional on
+the already-in-scope `admin_teams`. Two of the four
 shapes collapse `orgs` to `{}` and deny *every* non-admin login outright — a config that failed to
 load, or one that declares no `orgs:` block at all — so blaming an org roster that was never actually
 read, or was declared empty on purpose, sends an operator chasing the wrong fix. The missing-block

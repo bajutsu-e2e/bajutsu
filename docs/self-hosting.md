@@ -696,7 +696,10 @@ across processes. A line looks like:
 ```
 
 The `event` field names a stable event (`run.dispatched`, `quota.rejected`, `worker.job.started`,
-`worker.job.finished`, `artifact.upload.failed`, …) so you can grep and alert on it.
+`worker.job.finished`, `artifact.upload.failed`, `server.startup_warning`, `oauth.denied`, …) so you
+can grep and alert on it. `server.startup_warning` also carries a `check` field (e.g.
+`admin_teams_empty`) naming which startup condition fired, distinct from the free-text `msg` — key an
+alert on `check` rather than on message text that can reword.
 
 **Redaction is structural.** A single filter sits at the root logger, so *every* line — including
 ones from third-party libraries — is scrubbed before it is written; correctness does not depend on

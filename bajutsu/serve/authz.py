@@ -148,12 +148,17 @@ def oauth_callback(
     if not matched_org and not is_admin_team_member:
         # A rejection is the one failure this item exists to make recoverable, so it needs a record
         # too — under its own event rather than `oauth.login`, which stays "login count" (see the
-        # `bypass` reasoning below) rather than absorbing a "denied" outcome it never admitted.
+        # `bypass` reasoning below) rather than absorbing a "denied" outcome it never admitted. "No
+        # admin Team matched" would read the same for an unconfigured admin_teams as for a real
+        # membership miss, sending an operator to check GitHub Team membership when the actual fix is
+        # setting BAJUTSU_OAUTH_ADMIN_TEAMS -- name that shape distinctly, the same reasoning
+        # `_unmatched_org_cause` already applies to the org half of this message.
+        admin_note = "no admin Team is configured" if not admin_teams else "no admin Team matched"
         oplog.log_event(
             _logger,
             "oauth.denied",
             f"{login} rejected: {_unmatched_org_cause(parsed, orgs, identity, state.config)}, "
-            "and no admin Team matched",
+            f"and {admin_note}",
             level=logging.WARNING,
             actor=login,
         )
