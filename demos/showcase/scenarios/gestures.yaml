@@ -22,7 +22,7 @@
     - swipe: { on: { id: log.submit }, direction: up }
     - swipe: { on: { id: log.dialog.value }, direction: up }
     - wait: { for: { id: log.longpress }, timeout: 5 }
-      capture: [rawTree]
+      capture: [elements, rawTree]
     - assert:
         - value: { sel: { id: log.longpress.value }, equals: "idle" }
         - value: { sel: { id: log.doubletap.value }, equals: "0" }
