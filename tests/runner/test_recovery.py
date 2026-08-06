@@ -13,6 +13,7 @@ from bajutsu.runner.recovery import (
     CrashRecoveryBudget,
     _default_crash_recovery_budget,
     _default_crash_retries,
+    guarded_teardown,
     is_infrastructure_fault,
 )
 
@@ -112,3 +113,60 @@ def test_crash_recovery_budget_default_reads_the_environment(monkeypatch) -> Non
     assert _default_crash_recovery_budget() is None  # non-positive → unbounded, not "no recovery"
     monkeypatch.setenv("BAJUTSU_CRASH_RECOVERY_BUDGET", "nope")
     assert _default_crash_recovery_budget() is None  # invalid → unbounded
+
+
+def _raising(exc: BaseException):
+    def teardown() -> None:
+        raise exc
+
+    return teardown
+
+
+def test_guarded_teardown_warns_on_called_process_error(caplog) -> None:
+    import logging
+    import subprocess
+
+    with caplog.at_level(logging.WARNING):
+        guarded_teardown(
+            _raising(subprocess.CalledProcessError(1, ["xcrun"])),
+            mid_run=False,
+            what="tearing down the warm runner on UDID",
+        )
+    assert any("tearing down the warm runner on UDID failed" in r.message for r in caplog.records)
+
+
+def test_guarded_teardown_warns_on_os_error(caplog) -> None:
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        guarded_teardown(
+            _raising(ProcessLookupError("gone")),
+            mid_run=False,
+            what="tearing down the warm runner on UDID",
+        )
+    assert any("tearing down the warm runner on UDID failed" in r.message for r in caplog.records)
+
+
+def test_guarded_teardown_propagates_unexpected_when_not_mid_run() -> None:
+    import pytest
+
+    with pytest.raises(AttributeError, match="missing"):
+        guarded_teardown(
+            _raising(AttributeError("missing")),
+            mid_run=False,
+            what="tearing down the warm runner on UDID",
+        )
+
+
+def test_guarded_teardown_swallows_unexpected_when_mid_run(caplog) -> None:
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        guarded_teardown(
+            _raising(AttributeError("missing")),
+            mid_run=True,
+            what="tearing down the discarded on-device lease",
+        )
+    assert any(
+        "tearing down the discarded on-device lease failed" in r.message for r in caplog.records
+    )

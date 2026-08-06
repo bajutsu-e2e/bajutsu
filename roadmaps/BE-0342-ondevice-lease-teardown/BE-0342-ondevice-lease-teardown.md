@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0342](BE-0342-ondevice-lease-teardown.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0342") |
+| Implementing PR | [#1491](https://github.com/bajutsu-e2e/bajutsu/pull/1491) |
 | Topic | Platform support |
 | Related | [BE-0334](../BE-0334-conformance-suite-infra-fault-recovery/BE-0334-conformance-suite-infra-fault-recovery.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0305](../BE-0305-driver-resilience-fault-injection/BE-0305-driver-resilience-fault-injection.md), [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) |
 <!-- /BE-METADATA -->
@@ -215,10 +216,32 @@ teardown a suite supplies is its platform's own.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — let the lease tear down the environment that owns the runner, one per lease.
-- [ ] Unit 2 — extract the guarded teardown into `recovery.py`; warn on a failed mid-run teardown and
+- [x] Unit 1 — let the lease tear down the environment that owns the runner, one per lease.
+- [x] Unit 2 — extract the guarded teardown into `recovery.py`; warn on a failed mid-run teardown and
       let the final release propagate a wiring defect.
-- [ ] Unit 3 — off-device cases over the lease's launch/teardown seam.
+- [x] Unit 3 — off-device cases over the lease's launch/teardown seam.
+
+Log:
+
+- 2026-08-05 — Units 1–3 ([#1491](https://github.com/bajutsu-e2e/bajutsu/pull/1491)). Both on-device
+  suites now share one thunk factory, `xcuitest_lease_launch` in the new `tests/xcuitest_lease.py` —
+  kept out of the backend-agnostic `backend_crash_recovery` plugin — which builds a fresh
+  environment per lease and returns its teardown alongside the driver, so `LeaseHolder` discards
+  through the platform's own teardown rather than `driver.close()`. Unit 1's open decision is
+  resolved in favor of `launch_driver` absorbing the guard, so every caller inherits it. The
+  guarded-teardown policy moved to `bajutsu/runner/recovery.py`, shared by the pool's own sites (the
+  collector start-up rollback, the actuator switch, the failed lease with its bridge and collector
+  stops, `release()`'s own teardown with its bridge and collector stops, and `shutdown()`'s device
+  and collector loops), `launch_driver`, and the lease discard; a mid-run wiring defect now warns
+  rather than logging at debug. `shutdown()` finishes its whole sweep before propagating the first
+  defect it met, so one device's defect no longer leaves the later devices' runners and the
+  collector sockets up. `release()` gets the same guard for the normal end of a lease, and evicts
+  (falling back to a full teardown) a warm resident whose `end_lease` did not finish, so a
+  half-ended app is never resumed by the next lease. A *wiring* defect on that end-of-lease teardown
+  still cannot raise from `release()`: doing so would replace the scenario's own result and skip
+  returning the device to the pool. `release()` stashes the defect instead, and `shutdown()` raises
+  it once every lease returns its device — closing the one path (a backend with no warm resident)
+  where such a defect would otherwise warn forever and never fail the run. Status → Implemented.
 
 ## References
 

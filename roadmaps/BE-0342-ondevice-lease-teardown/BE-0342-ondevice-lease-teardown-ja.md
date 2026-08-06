@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0342](BE-0342-ondevice-lease-teardown-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0342") |
+| 実装 PR | [#1491](https://github.com/bajutsu-e2e/bajutsu/pull/1491) |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0334](../BE-0334-conformance-suite-infra-fault-recovery/BE-0334-conformance-suite-infra-fault-recovery-ja.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0305](../BE-0305-driver-resilience-fault-injection/BE-0305-driver-resilience-fault-injection-ja.md), [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) |
 <!-- /BE-METADATA -->
@@ -213,10 +214,33 @@ Android の実機スイートが将来追加されたときに、それが構成
 > 作業の進行に合わせて更新します。チェックリストは*詳細設計*の MECE な作業分解と対応します
 > （作業単位ごとに 1 項目）。ログには、何がいつ変わったかを古い順に記録し、PR を紐づけます。
 
-- [ ] ユニット 1 — runner を所有する環境を lease ごとに作り、lease から teardown できるようにする。
-- [ ] ユニット 2 — 守られた teardown を `recovery.py` へ切り出し、実行中の失敗は warning で報告し、
+- [x] ユニット 1 — runner を所有する環境を lease ごとに作り、lease から teardown できるようにする。
+- [x] ユニット 2 — 守られた teardown を `recovery.py` へ切り出し、実行中の失敗は warning で報告し、
       最後の解放は配線の欠陥を伝播させる。
-- [ ] ユニット 3 — lease の起動と teardown の seam に対する実機不要のテスト。
+- [x] ユニット 3 — lease の起動と teardown の seam に対する実機不要のテスト。
+
+ログ:
+
+- 2026-08-05 — ユニット 1 から 3（[#1491](https://github.com/bajutsu-e2e/bajutsu/pull/1491)）。
+  両方のオンデバイススイートが、新設した `tests/xcuitest_lease.py` の `xcuitest_lease_launch` という
+  ひとつの thunk ファクトリを共有します（バックエンドに依存しない `backend_crash_recovery` プラグインの
+  外に置きました）。この thunk が lease ごとに新しい environment を作り、driver と一緒にその teardown を
+  返すようになりました。これにより `LeaseHolder` は `driver.close()` ではなく、プラットフォーム自身の
+  teardown を通して lease を破棄します。ユニット 1 が残していた選択は、`launch_driver` 自身がガードを
+  引き受ける方向で決着し、すべての呼び出し側がそれを受け継ぎます。守られた teardown の方針は
+  `bajutsu/runner/recovery.py` へ移り、pool 自身の teardown 箇所（コレクタの起動時ロールバック、
+  アクチュエータ切り替え、bridge とコレクタの停止を伴う失敗した lease、同じく bridge とコレクタの停止を
+  伴う `release()` 自身の teardown、`shutdown()` のデバイスとコレクタの 2 つのループ）、`launch_driver`、
+  lease の破棄が共有します。実行中の配線の欠陥は、debug ではなく warning で報告されるようになりました。
+  `shutdown()` は掃除を最後までやり切ってから、最初に捕まえた欠陥を伝播させます。1 台の欠陥で、残りの
+  デバイスの runner とコレクタのソケットを取りこぼさないためです。`release()` も lease の通常の終わりで
+  同じガードを持ちます。`end_lease` が終わらなかった warm な resident は破棄し（フルの teardown まで
+  実施します）、半分だけ終わったアプリを次の lease が引き継がないようにします。その end-of-lease の
+  teardown で起きた配線の欠陥も、`release()` からそのまま投げることはできません。scenario 自身の結果を
+  上書きし、デバイスを pool へ戻す処理まで飛ばしてしまうからです。そこで欠陥をいったん保持しておき、
+  すべての lease が release された後に `shutdown()` がそれを伝播させます。warm な resident を持たない
+  backend では、この teardown だけが唯一実行されるものであり、この仕組みがなければそこで起きた欠陥は
+  warning のまま流れ続け、run は決して失敗しません。状態を実装済みへ。
 
 ## 参考
 

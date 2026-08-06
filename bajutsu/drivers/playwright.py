@@ -512,10 +512,23 @@ class PlaywrightDriver:
         self._bind(page)
 
     def close(self) -> None:
+        # The browser may already be dead (target closed) by the time the lease ends, the same
+        # "expected, not a defect" case `relaunch` above already suppresses per handle — but the
+        # `pw` process must still be stopped or it leaks, so each handle gets its own guard rather
+        # than one combined try (BE-0342: the pool's end-of-lease teardown now escalates anything
+        # this doesn't suppress into a run-failing wiring defect). Clearing the handles afterwards,
+        # like `relaunch` does, makes a second call (the caller's own failure path, per
+        # `launch_driver`'s contract) a genuine no-op instead of re-entering an already-stopped `pw`
+        # — whose failure is a driver-connection error, not a `playwright.sync_api.Error`, so the
+        # suppress above wouldn't cover it.
+        pw_errors = _playwright_error_types()
         if self._browser is not None:
-            self._browser.close()
+            with contextlib.suppress(*pw_errors):
+                self._browser.close()
         if self._pw is not None:
-            self._pw.stop()
+            with contextlib.suppress(*pw_errors):
+                self._pw.stop()
+        self._pw = self._browser = self._context = None
 
     # --- Driver Protocol ---
 

@@ -515,6 +515,26 @@ def test_live_environment_start_opens_a_session_and_returns_a_live_driver() -> N
     assert grid.deleted is True  # the session is closed on teardown
 
 
+def test_live_environment_teardown_suppresses_a_session_delete_failure() -> None:
+    """BE-0342: a grid that already expired the session, or a connection reset while the run winds
+    down, surfaces as `WebDriverError` — not `OSError` — so the pool's guarded-teardown pair
+    (CalledProcessError/OSError) doesn't cover it. Unsuppressed, every lease's end on a live grid
+    would stash it as a wiring defect and fail the run after the report was already written."""
+    grid = _FakeGrid([])
+
+    def flaky_transport(method: str, path: str, body: Mapping[str, Any] | None) -> tuple[int, Any]:
+        if method == "DELETE":
+            raise WebDriverError("connection reset")
+        return grid(method, path, body)
+
+    env = XcuitestLiveEnvironment(
+        "xcuitest", _ENDPOINT, transport_factory=lambda _endpoint: flaky_transport
+    )
+    driver = env.start(_live_eff(), Preconditions())
+    env.teardown(driver, _live_eff())  # must not raise despite delete_session() failing
+    env.teardown(driver, _live_eff())  # a second call is a no-op, not a retry of the same failure
+
+
 def test_live_environment_passes_the_bundle_id_in_the_session_capabilities() -> None:
     captured: dict[str, Any] = {}
 

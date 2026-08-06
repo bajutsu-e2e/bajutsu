@@ -10,8 +10,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
+import bajutsu.cli.commands.audit as audit_command
 from bajutsu.analysis.audit import (
     audit_scenario,
     longitudinal,
@@ -24,7 +26,7 @@ from bajutsu.analysis.audit import (
 from bajutsu.assertions import AssertionResult
 from bajutsu.cli import app
 from bajutsu.orchestrator import RunResult, StepOutcome
-from bajutsu.scenario import load_scenarios
+from bajutsu.scenario import load_expanded_scenarios, load_scenarios
 
 runner = CliRunner()
 
@@ -351,6 +353,51 @@ def test_repeat_cli_unavailable_backend_exits_two(tmp_path: Path) -> None:
         ],
     )
     assert result.exit_code == 2 and "no available actuator" in result.output
+
+
+def test_repeat_audit_still_stops_the_server_when_shutdown_raises(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """BE-0342: `shutdown()` can now raise a lease's stashed end-of-lease wiring defect. Unlike
+    `run`, `audit` has no *outer* `finally` holding `stop_server` — the inner `try/finally` nesting
+    around `shutdown()` is the only thing keeping such a defect from leaking the target's
+    `launchServer` process for every audit after it."""
+    scn, cfg = _audit_project(tmp_path)
+    scenarios = load_expanded_scenarios(scn)
+    stopped: list[bool] = []
+
+    class _FakeEnv:
+        def resolve_device(self, udid: str) -> str:
+            return udid
+
+    def fake_device_pool(
+        udids: list[str], backends: list[str], eff: object, run_dir: Path
+    ) -> tuple[object, object]:
+        def shutdown() -> None:
+            raise AttributeError("no close on this driver")
+
+        return object(), shutdown
+
+    def fake_start_launch_server_or_exit(eff: object, on_error: object) -> tuple[object, None]:
+        return (lambda: stopped.append(True)), None
+
+    monkeypatch.setattr(
+        audit_command,
+        "_select_actuator_or_exit",
+        lambda backend, eff, available: ("fake", ["fake"]),
+    )
+    monkeypatch.setattr(audit_command, "environment_for", lambda actuator, udid: _FakeEnv())
+    monkeypatch.setattr(audit_command, "device_pool", fake_device_pool)
+    monkeypatch.setattr(
+        audit_command, "_start_launch_server_or_exit", fake_start_launch_server_or_exit
+    )
+    monkeypatch.setattr(audit_command, "run_all", lambda *a, **k: [])
+    monkeypatch.setattr(audit_command._audit, "repeat_diff", lambda runs: object())
+
+    with pytest.raises(AttributeError, match="no close on this driver"):
+        audit_command._repeat_audit(scenarios, 2, "demo", "", "booted", str(cfg), False)
+
+    assert stopped == [True]  # stop_server still ran despite shutdown() raising
 
 
 # --- remaining usage-error branches + _read_manifests (BE-0117) ---

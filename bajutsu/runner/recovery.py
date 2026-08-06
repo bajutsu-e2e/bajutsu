@@ -1,4 +1,4 @@
-"""Shared backend-crash recovery bookkeeping (BE-0334).
+"""Shared backend-crash recovery bookkeeping (BE-0334, BE-0342).
 
 `bajutsu run` recovers from a Simulator infrastructure fault: a mid-run `base.BackendCrashError`
 — a resident-runner crash, a readiness gate that crashed the runner, a lease bring-up that died —
@@ -13,15 +13,66 @@ extracted here; the pipeline drives it today, and Unit 2 wires the conformance h
 the two cannot then drift into different notions of "an infrastructure fault" or "how many respawns
 are left" (BE-0334). The classification rests on the exception type the driver already raises, so it
 stays a deterministic branch on a Python class: no model sits on the `run`/CI verdict.
+
+The guarded teardown helper (BE-0342) is the same seam: the pool's own teardown sites — a device's
+environment and its collector socket, at every point the pool starts, switches, releases, or tears
+one down — `launch_driver`'s guard for a launch that failed after `env.start`, and the on-device
+suites' lease discard share one policy for an
+already-gone resource — a runner that had already exited, an unreachable `xcrun`, a socket the OS
+already tore down — so the two recovery paths cannot drift into different notions of "an expected
+teardown failure" either.
 """
 
 from __future__ import annotations
 
+import logging
 import os
+import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from bajutsu.drivers import base
+
+_logger = logging.getLogger(__name__)
+
+
+def guarded_teardown(teardown: Callable[[], None], *, mid_run: bool, what: str) -> None:
+    """Run `teardown`, warning on an expected process failure instead of re-raising.
+
+    A runner that had already exited, an unreachable `xcrun`, and a collector socket the OS already
+    tore down all surface as `CalledProcessError` or `OSError`; those are always logged at warning
+    and swallowed. The pair covers the subprocess-driven backends (simctl, adb) and the collector's
+    own socket close; `PlaywrightDriver.close()` suppresses its own already-gone-target failure
+    before it ever reaches this function, the same way `reset_context`/`relaunch` already do, so an
+    ordinary dead browser never lands in the branch below either — and
+    `XcuitestLiveEnvironment.teardown()` suppresses its own already-expired-session `WebDriverError`
+    the same way, since that class subclasses `RuntimeError`, not `OSError`. Anything
+    else is a wiring defect: at most call sites (`mid_run=True`) it is also swallowed into a warning
+    so it cannot mask the fault that prompted the teardown, or abandon cleanup the caller still owes
+    (the pool's `free.put(udid)`, on a site that runs ahead of its own `try`); only `mid_run=False`
+    re-raises it, for a caller that must still fail on a wiring defect — the pool's `shutdown()`
+    catches that re-raise so the rest of its sweep still runs, then raises it once the sweep is done
+    (BE-0342).
+
+    Args:
+        teardown: The zero-arg callable that tears the environment (or warm resident) down, or runs
+            other best-effort cleanup on a failure path (the pool's own repeated `adopt_replacement()`
+            call, which re-keys pool state rather than tearing anything down).
+        mid_run: False when the caller must still see a wiring defect (and is responsible for any
+            cleanup it owes first), True when re-raising would mask the fault that prompted this
+            teardown or abandon cleanup the caller cannot resume.
+        what: A short description of the teardown site, used as the warning's subject.
+    """
+    try:
+        teardown()
+    except (subprocess.CalledProcessError, OSError) as exc:
+        _logger.warning("%s failed: %s", what, exc)
+    except Exception:
+        if mid_run:
+            _logger.warning("%s failed", what, exc_info=True)
+            return
+        raise
+
 
 # The default backend-crash retry budget, overridable per lane without a code change. A resident
 # XCUITest runner crashes more on a loaded/contended CI host (the XCTest host's accessibility bridge

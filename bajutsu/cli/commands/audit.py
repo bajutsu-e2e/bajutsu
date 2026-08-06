@@ -193,8 +193,13 @@ def _repeat_audit(
         typer.echo(str(e))
         raise typer.Exit(2) from None
     finally:
-        shutdown()
-        stop_server()
+        # Nested, like `run`'s own outer/inner split (BE-0342): `shutdown()` can now raise a lease's
+        # stashed end-of-lease wiring defect, and `stop_server()` must still run — or a defect on one
+        # audited scenario leaks the target's `launchServer` process for every audit after it.
+        try:
+            shutdown()
+        finally:
+            stop_server()
 
     if as_json:
         typer.echo(json.dumps([dataclasses.asdict(r) for r in reports], indent=2))

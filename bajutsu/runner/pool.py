@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import queue
-import subprocess
+import threading
 from collections.abc import Callable
 from pathlib import Path
 
@@ -39,6 +39,7 @@ from bajutsu.platform_lifecycle import (
 )
 from bajutsu.report import git_revision, run_provenance
 from bajutsu.runner.launch import launch_driver
+from bajutsu.runner.recovery import guarded_teardown
 from bajutsu.runner.types import Lease, LeaseFn
 from bajutsu.scenario import Scenario, dump_scenario_file, redact_totp_secrets
 from bajutsu.webview import WebViewBridge
@@ -147,7 +148,6 @@ def device_pool(
     # built per lease instead.
     collectors: dict[str, NetworkCollector] = {}
     if network and not pool_env.observes_network_via_driver():
-        started: list[NetworkCollector] = []
         try:
             for udid in udids:
                 collector = NetworkCollector()
@@ -159,10 +159,18 @@ def device_pool(
                 else:
                     collector.start()
                 collectors[udid] = collector
-                started.append(collector)
         except Exception:
-            for collector in started:
-                collector.stop()
+            # A socket already stopped for one device must not stop the rollback of the rest, or
+            # replace the original bind failure the operator needs to see — the same reasoning as
+            # every other collector-stop site this module guards (BE-0342). Each holds a port from
+            # the reserved band, not an OS ephemeral one, so a socket left open here is held for the
+            # rest of this (possibly long-lived `serve`) process.
+            for started_udid, started_collector in collectors.items():
+                guarded_teardown(
+                    started_collector.stop,
+                    mid_run=True,
+                    what=f"stopping the collector on {started_udid} after a failed start",
+                )
             raise
 
     # One warm resident per device, kept across leases so its cold startup is paid once per device
@@ -188,6 +196,33 @@ def device_pool(
     # udid is leased exclusively for the whole lease.
     ever_spawned: set[str] = set()
 
+    # The first *wiring* defect (not an expected process failure — `guarded_teardown` already warns
+    # those away) a lease's own end-of-lease teardown hit, across every lease this pool ever ran.
+    # `release()` cannot raise it directly: that would replace the scenario's own result and skip
+    # `free.put(udid)`, the exact leak this item exists to close. So it stashes the defect here
+    # instead and `shutdown()` raises it once the run's last release and every warm/collector
+    # teardown are done — the same "swallow to finish the work, surface once it's safe to" shape
+    # `shutdown()`'s own sweep already uses. Without this, a teardown that is *structurally*
+    # impossible (a coding bug, not a runner that happened to be gone) would warn once per scenario
+    # forever and never fail a run — for a backend with no warm resident (web, adb), this is the
+    # *only* teardown that ever runs, so nothing else could catch it (BE-0342). Concurrent releases
+    # across leases (BE-0009: the pool serves `ThreadPoolExecutor` workers) write this under a lock;
+    # `shutdown()` reads it only after every worker has joined, so it needs none there.
+    lease_defect_lock = threading.Lock()
+    lease_defect: Exception | None = None
+
+    def _record_lease_defect(udid: str, exc: Exception) -> None:
+        nonlocal lease_defect
+        with lease_defect_lock:
+            if lease_defect is None:
+                lease_defect = exc
+            else:
+                _logger.error(
+                    "tearing down the environment on %s at the lease's end failed",
+                    udid,
+                    exc_info=exc,
+                )
+
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         udid = free.get()
         # Resolve the actuator for *this* scenario — the cheapest one its own steps can run on
@@ -201,20 +236,19 @@ def device_pool(
         cached = warm.get(udid)
         if cached is not None and cached[0] != actuator:
             _cached_actuator, cached_env, cached_driver = warm.pop(udid)
-            # Guarded like the other two teardown sites (the failed-resume eviction below and
-            # `shutdown()`): if the cached runner already crashed between leases, `_discard_runner()`'s
-            # `terminate()` can raise `ProcessLookupError` (an `OSError`). Left unguarded here — before
-            # the `try` below — it would propagate out of `lease()` with `udid` never returned to
-            # `free`, leaking the device for the rest of the run. An expected teardown failure is
-            # logged, never re-raised; a genuine bug (anything else) still surfaces.
-            try:
-                cached_env.teardown(cached_driver, eff)
-            except (subprocess.CalledProcessError, OSError) as teardown_exc:
-                _logger.warning(
-                    "tearing down the warm runner on %s for an actuator switch failed: %s",
-                    udid,
-                    teardown_exc,
-                )
+            # Guarded like every other teardown site this module shares through `guarded_teardown`
+            # (the failed-resume eviction below, `release()`'s own sites, and `shutdown()`'s loops):
+            # if the cached runner already crashed between leases, `_discard_runner()`'s `terminate()`
+            # can raise `ProcessLookupError` (an `OSError`). This runs before the `try` below, so
+            # anything `guarded_teardown` re-raises propagates out of `lease()` with `udid` never
+            # returned to `free`, leaking the device for the rest of the run — a wiring defect must
+            # not escape here either (`mid_run=True`), the same reasoning as the failed-resume
+            # eviction below (BE-0342).
+            guarded_teardown(
+                lambda: cached_env.teardown(cached_driver, eff),
+                mid_run=True,
+                what=f"tearing down the warm runner on {udid} for an actuator switch",
+            )
             cached = None
         # A fresh env built for a udid already brought up once this run is a respawn (a prior warm
         # resume failed and evicted the resident), so it gets the tighter respawn readiness ceiling. A
@@ -241,6 +275,14 @@ def device_pool(
         # platforms that need none. Released on failure too, so a failed launch never leaks a tunnel.
         def release_bridge() -> None:
             pass
+
+        # The environment/driver this attempt launched, remembered so the `except` below can tear it
+        # down even on a backend that keeps no warm resident (`warm[udid]` only ever holds one for
+        # XCUITest) — a failure raised after `launch_driver` returns but before `Lease` is built
+        # (`adopt_replacement`'s own `device_catalog()` shelling out, `hook_collector`, `relauncher`,
+        # `controller`, the `FileSink` construction) would otherwise leak it, with `free.put(udid)`
+        # handing the lane to the next lease on top of it (BE-0342).
+        launched: tuple[RunEnvironment, base.Driver] | None = None
 
         def adopt_replacement() -> None:
             """Follow the environment onto a device it had to replace, re-keying what this pool holds.
@@ -274,8 +316,13 @@ def device_pool(
             # Anything cached under the dead udid can never be resumed; drop it before the key moves.
             warm.pop(udid, None)
             ever_spawned.discard(udid)
-            catalog[replacement] = lease_env.device_catalog().get(replacement, {})
+            # Move `udid` before the catalog re-fetch, which shells out and can itself fail (BE-0342):
+            # a caller that guards this whole function against that failure must still see the *live*
+            # replacement in `udid` afterwards, even missing its catalog metadata, rather than the dead
+            # device this lease started on — the difference between a queue that hands the next lease
+            # a working device and one that hands it a device that no longer exists.
             udid = replacement
+            catalog[replacement] = lease_env.device_catalog().get(replacement, {})
 
         try:
             # Film the whole scenario only when its capture policy asks for video, and only where
@@ -334,7 +381,9 @@ def device_pool(
             )
             # Before anything else is keyed by it: `start` may have moved this lease onto a
             # replacement device, and every udid-keyed structure below must name the device that
-            # actually ran.
+            # actually ran. Remember what this attempt launched first, so the `except` below can tear
+            # it down even when `adopt_replacement()` itself is what raises.
+            launched = (lease_env, driver)
             adopt_replacement()
             # This device has now been brought up at least once this run, so a later cache-miss lease
             # on it (after a crash evicts the warm resident) is a respawn — see `is_respawn` above.
@@ -382,16 +431,61 @@ def device_pool(
             control: DeviceControl | None = lease_env.controller(eff)
 
             def release() -> None:
-                release_bridge()  # tear the device-side collector tunnel down first (BE-0283)
+                # Runs from `run_one`'s `finally`, so a teardown hiccup anywhere below (an
+                # already-gone tunnel, socket, app, or device) must not replace the scenario's own
+                # result or skip `free.put(udid)` — the same reasoning as the actuator switch above
+                # and the failed-lease site below (`shutdown()`'s two loops take `mid_run=False`
+                # instead — they own the deferred `raise defect` that finishes the cleanup first).
+                guarded_teardown(
+                    release_bridge,  # tear the device-side collector tunnel down first (BE-0283)
+                    mid_run=True,
+                    what=f"tearing down the collector bridge on {udid} at the lease's end",
+                )
                 if release_collector is not None:
-                    release_collector.stop()
+                    guarded_teardown(
+                        release_collector.stop,
+                        mid_run=True,
+                        what=f"stopping the collector on {udid} at the lease's end",
+                    )
                 # Keep a warm resident alive for the next lease (`end_lease` terminates only the app);
                 # otherwise the ordinary full teardown. This is the same predicate the pool cached the
                 # env on above, so a kept-warm env is exactly one still held in `warm` (BE-0291).
-                if lease_env.has_reusable_resident():
-                    lease_env.end_lease(driver, eff)
-                else:
-                    lease_env.teardown(driver, eff)
+                reusable = lease_env.has_reusable_resident()
+                ended = False
+
+                def _end_lease() -> None:
+                    nonlocal ended
+                    if reusable:
+                        lease_env.end_lease(driver, eff)
+                    else:
+                        lease_env.teardown(driver, eff)
+                    ended = True
+
+                try:
+                    # `mid_run=False` here, unlike every other site in this function: an expected
+                    # process failure is still just warned (that branch of `guarded_teardown` runs
+                    # regardless of `mid_run`), but a *wiring* defect re-raises instead of warning, so
+                    # it can be caught below and stashed in `lease_defect` rather than lost to a log
+                    # line no one is watching (BE-0342).
+                    guarded_teardown(
+                        _end_lease,
+                        mid_run=False,
+                        what=f"tearing down the environment on {udid} at the lease's end",
+                    )
+                except Exception as exc:
+                    _record_lease_defect(udid, exc)
+                if reusable and not ended:
+                    # `end_lease` only kills the app; a resident whose `end_lease` did not finish
+                    # must not be resumed, so drop it from `warm` (the next lease then cold-spawns
+                    # instead of inheriting an app whose teardown never completed) — and fall back to
+                    # the full teardown so the runner process it still owns doesn't leak, since a
+                    # dropped `warm` entry is invisible to `shutdown()`'s own sweep (BE-0342).
+                    warm.pop(udid, None)
+                    guarded_teardown(
+                        lambda: lease_env.teardown(driver, eff),
+                        mid_run=True,
+                        what=f"discarding the runner on {udid} after a failed end-of-lease teardown",
+                    )
                 free.put(udid)
 
             meta = catalog.get(udid, {})
@@ -409,9 +503,20 @@ def device_pool(
                 webview_bridge=webview_bridge,
             )
         except BaseException:
-            release_bridge()  # a failed launch must not leak the collector tunnel (BE-0283)
+            # A failed launch must not leak the collector tunnel (BE-0283) or the collector itself —
+            # and, same as the teardown below, a hiccup tearing either down must not replace the
+            # *original* launch error that has to propagate via the `raise` below (BE-0342).
+            guarded_teardown(
+                release_bridge,
+                mid_run=True,
+                what=f"tearing down the collector bridge on {udid} after a failed lease",
+            )
             if release_collector is not None:
-                release_collector.stop()
+                guarded_teardown(
+                    release_collector.stop,
+                    mid_run=True,
+                    what=f"stopping the collector on {udid} after a failed lease",
+                )
             # A warm resident whose resume failed must not be reused next lease: drop it and tear it
             # down so the retry respawns cold rather than reusing a half-broken runner (BE-0291). This
             # is best-effort cleanup on the failure path — the *original* launch error is what must
@@ -419,21 +524,33 @@ def device_pool(
             # runs before the replacement is adopted below, because a resident cached by an earlier
             # lease is keyed by the udid this lease started on.
             stale = warm.pop(udid, None)
-            if stale is not None:
-                try:
-                    stale[1].teardown(stale[2], eff)
-                except (subprocess.CalledProcessError, OSError) as teardown_exc:
-                    # A leaked runner is the same risk here as at the other two teardown sites, so it
-                    # logs at the same `warning` level; the original launch error still propagates via
-                    # the `raise` below, and a single warning line does not drown it.
-                    _logger.warning(
-                        "tearing down the stale warm runner on %s after a failed lease failed: %s",
-                        udid,
-                        teardown_exc,
-                    )
+            # A backend that keeps no warm resident (web / Android / adb / fake) never populates
+            # `warm[udid]`, so a failure raised after `launch_driver` returned falls back to what this
+            # attempt itself launched — the same environment `stale` would have named had this backend
+            # cached one (BE-0342).
+            doomed = (stale[1], stale[2]) if stale is not None else launched
+            if doomed is not None:
+                dead_env, dead_driver = doomed
+                # A leaked runner is the same risk here as at this module's other teardown sites
+                # (the actuator switch above, `release()`'s own sites, and `shutdown()`'s loops); the
+                # original launch error still propagates via the `raise` below, so a teardown hiccup
+                # (mid_run=True) must not mask it (BE-0342).
+                guarded_teardown(
+                    lambda: dead_env.teardown(dead_driver, eff),
+                    mid_run=True,
+                    what=f"tearing down the environment on {udid} after a failed lease",
+                )
             # A replacement made before the failure is still adopted, so the queue gets the live device
-            # back for the next lease instead of the one that vanished.
-            adopt_replacement()
+            # back for the next lease instead of the one that vanished. This call can itself shell out
+            # via `device_catalog()` and fail the same way the one after `launch_driver` did — guarded
+            # so a second failure here doesn't replace the *original* launch error, or skip
+            # `free.put`/the `raise` below and strand the device: a hang forever on the next lease's
+            # `free.get()` rather than a lost device (BE-0342).
+            guarded_teardown(
+                adopt_replacement,
+                mid_run=True,
+                what=f"adopting {udid}'s replacement after a failed lease",
+            )
             free.put(udid)
             raise
 
@@ -441,14 +558,53 @@ def device_pool(
         # The run set is over: terminate every warm resident the pool kept across leases (BE-0291 Unit
         # 3 — ownership moved from the lease to the pool). An expected teardown failure on one device
         # (the app already gone, xcrun unreachable) is logged and skipped so the rest — and the
-        # collector sockets below — still come down; a genuine teardown bug still surfaces loudly.
+        # collector sockets below — still come down. A wiring defect must still fail loudly, but not
+        # before the rest of the sweep and the collector sockets have come down: `mid_run=False`'s
+        # usual immediate propagation would otherwise leak every later device's runner and every
+        # collector socket. Only the *first* such defect is what `raise defect` below reports; a
+        # later one is not silently dropped either — it gets its own log line (BE-0342).
+        defect: Exception | None = None
         for udid, (_actuator, env, driver) in warm.items():
-            try:
+
+            def _tear_warm(env: RunEnvironment = env, driver: base.Driver = driver) -> None:
                 env.teardown(driver, eff)
-            except (subprocess.CalledProcessError, OSError) as exc:
-                _logger.warning("tearing down the warm runner on %s failed: %s", udid, exc)
+
+            try:
+                guarded_teardown(
+                    _tear_warm,
+                    mid_run=False,
+                    what=f"tearing down the warm runner on {udid}",
+                )
+            except Exception as exc:
+                if defect is None:
+                    defect = exc
+                else:
+                    _logger.error("tearing down the warm runner on %s failed", udid, exc_info=exc)
         warm.clear()
-        for collector in collectors.values():
-            collector.stop()
+        # A collector socket failing to stop is the same risk as a device's teardown failing: it must
+        # not stop the sweep, and it must not silently swallow a defect already held from above. Also
+        # routed through `guarded_teardown`, so an expected process failure here (the socket already
+        # gone) is warned like the device loop's, not treated as a defect of its own.
+        for udid, collector in collectors.items():
+            try:
+                guarded_teardown(
+                    collector.stop,
+                    mid_run=False,
+                    what=f"stopping the collector on {udid}",
+                )
+            except Exception as exc:
+                if defect is None:
+                    defect = exc
+                else:
+                    _logger.error("stopping the collector on %s failed", udid, exc_info=exc)
+        # A lease's own end-of-lease wiring defect happened before any of this sweep — `release()`
+        # stashed it instead of raising it, so it is this run's *first* defect even though it is
+        # checked last here; anything this sweep found is a later one, logged rather than dropped.
+        if lease_defect is not None:
+            if defect is not None:
+                _logger.error("tearing down a warm runner or collector failed", exc_info=defect)
+            defect = lease_defect
+        if defect is not None:
+            raise defect
 
     return lease, shutdown
