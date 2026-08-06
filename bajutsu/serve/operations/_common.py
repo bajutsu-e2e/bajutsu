@@ -48,18 +48,8 @@ def _resolve_org_or_forbid(
 
 
 def _session_effective(state: ServeState, config: Config, target: str) -> Effective:
-    """The effective config for a live capture/enrich session, with path fields rebased.
-
-    `resolve()` alone copies `appPath` (and the other path fields) verbatim from the raw YAML; a
-    relative value only resolves correctly once rebased against `state.cwd` — the config's own
-    directory, a Git checkout root, or an uploaded bundle's root (BE-0063/BE-0073/BE-0242). `run`/
-    `record` get this for free through the CLI's `_load_effective_with_source`; a live capture/enrich
-    session runs in-process and must rebase explicitly here, shared by both callers so the rebase
-    root and the `confine` decision below can't drift out of sync between them.
-
-    `confine=False`: every bind path (`bind_config`/`bind_git_config`/`bind_upload_config`) already
-    confined this same config's path fields once, at bind time.
-    """
+    """Effective config for a live capture/enrich session, rebased against `state.cwd` like the
+    CLI does for `run`/`record`; `confine=False` since bind already confined this config's paths."""
     return resolve(config, target).rebased(state.cwd, confine=False)
 
 
@@ -71,14 +61,9 @@ def _close_quietly(driver: driver_base.Driver) -> None:
 
 
 def _default_driver_factory(eff: Effective, backends_list: list[str], udid: str) -> DriverSession:
-    """Bring up a live driver for a capture/enrich session, paired with its teardown.
-
-    Cost-ordered like the run ladder (BE-0240, BE-0267): the cheapest bring-able actuator over the
-    whole backend list. With idb retired (BE-0290), `[ios]` resolves to XCUITest, which needs an
-    `xcodebuild` runner — so the iOS path brings a short-lived runner up (outside the runner-reuse
-    pool) and returns a teardown that stops it, rather than leaking the subprocess when the session
-    ends. Every other backend leaves nothing to stop beyond an optional `close()`.
-    """
+    """Bring up a live driver for a capture/enrich session, cost-ordered like the run ladder;
+    XCUITest needs a short-lived `xcodebuild` runner, so its teardown stops that runner explicitly
+    instead of leaking the subprocess, while every other backend just gets an optional `close()`."""
     from bajutsu import backends
 
     actuator = backends.select_actuator_cost_first(backends_list or ["fake"])

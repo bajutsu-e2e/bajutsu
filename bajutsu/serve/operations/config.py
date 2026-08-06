@@ -838,33 +838,18 @@ def set_provider(state: ServeState, body: dict[str, Any], actor: str | None) -> 
 def _persist_provider_settings(state: ServeState, org: str, provider: str) -> bool | None:
     """Write *provider* + *org*'s current in-memory slot map to that org's durable store (BE-0229).
 
-    The ``settings`` map write is race-safe: `ProviderSettingsManager.persist` re-snapshots and
-    writes inside its ``_persist_lock`` (BE-0248), so whichever thread wins the lock last re-reads the
-    org's settings at that point and writes the most up-to-date map — including every mutation from
-    threads that already released the in-memory lock — rather than a slow write overwriting a newer
-    one.
-
-    The ``provider`` (active) field is best-effort under concurrency, not race-free — it is the
-    selection *this* request applied, and two simultaneous saves for different providers leave the
-    persisted active provider as whichever finished last. BE-0184's scope is surviving a restart, not
-    making that race atomic; in the normal single-operator case the last save wins cleanly.
-
-    The selection has already taken effect in the in-memory map, so a failure to write must not fail
-    the request that already succeeded — it is logged loudly and the change stands for the session,
-    just not across a restart. The `except` is deliberately broad: this seam now backs both the local
-    file store (whose writes fail with ``OSError`` — a read-only serve dir, a full disk) and the
-    hosted `DbProviderSettingsStore` (whose ``session.commit`` fails with a SQLAlchemy error, not an
-    ``OSError``), so narrowing it would let a transient DB failure escape and break this very
-    contract. The `try` wraps exactly one store write with no re-raise, so nothing else is masked;
-    catching ``Exception`` (not ``SQLAlchemyError``) also keeps this default-path module from
-    importing SQLAlchemy (BE-0112). The language (BE-0188) is not persisted (it lives only in
-    memory), matching the pre-BE-0229 store shape.
+    The write is race-safe (`ProviderSettingsManager.persist` re-snapshots under its own lock, BE-0248)
+    but the active-`provider` field is only best-effort under concurrency — two simultaneous saves for
+    different providers leave whichever finished last, which is fine since BE-0184 only promises
+    surviving a restart, not atomicity. The selection already took effect in memory, so a write
+    failure is logged loudly rather than failing the request; `except Exception` (not a narrower type)
+    is deliberate since this seam backs both the local store (`OSError`) and the hosted
+    `DbProviderSettingsStore` (a SQLAlchemy error) without importing SQLAlchemy here (BE-0112). The
+    language (BE-0188) is never persisted, only kept in memory.
 
     Returns:
-        ``True`` when durably saved; ``False`` when a wired store's write failed (the choice is
-        active for the session but won't survive a restart); ``None`` when no store is wired for the
-        org (a server backend without a database — session-only), so neither ``True`` nor ``False``
-        applies. The caller surfaces this as the ``persisted`` field so the Settings panel can signal.
+        ``True`` when durably saved, ``False`` when a wired store's write failed (active for the
+        session but won't survive a restart), or ``None`` when no store is wired for the org.
     """
     store = state.for_org(org).provider_settings
     if store is None:
