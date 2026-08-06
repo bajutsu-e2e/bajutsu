@@ -244,8 +244,9 @@ def device_pool(
         # The environment/driver this attempt launched, remembered so the `except` below can tear it
         # down even on a backend that keeps no warm resident (`warm[udid]` only ever holds one for
         # XCUITest) — a failure raised after `launch_driver` returns but before `Lease` is built
-        # (`hook_collector`, `relauncher`, `controller`, the `FileSink` construction) would otherwise
-        # leak it, with `free.put(udid)` handing the lane to the next lease on top of it (BE-0342).
+        # (`adopt_replacement`'s own `device_catalog()` shelling out, `hook_collector`, `relauncher`,
+        # `controller`, the `FileSink` construction) would otherwise leak it, with `free.put(udid)`
+        # handing the lane to the next lease on top of it (BE-0342).
         launched: tuple[RunEnvironment, base.Driver] | None = None
 
         def adopt_replacement() -> None:
@@ -280,8 +281,13 @@ def device_pool(
             # Anything cached under the dead udid can never be resumed; drop it before the key moves.
             warm.pop(udid, None)
             ever_spawned.discard(udid)
-            catalog[replacement] = lease_env.device_catalog().get(replacement, {})
+            # Move `udid` before the catalog re-fetch, which shells out and can itself fail (BE-0342):
+            # a caller that guards this whole function against that failure must still see the *live*
+            # replacement in `udid` afterwards, even missing its catalog metadata, rather than the dead
+            # device this lease started on — the difference between a queue that hands the next lease
+            # a working device and one that hands it a device that no longer exists.
             udid = replacement
+            catalog[replacement] = lease_env.device_catalog().get(replacement, {})
 
         try:
             # Film the whole scenario only when its capture policy asks for video, and only where
@@ -340,9 +346,10 @@ def device_pool(
             )
             # Before anything else is keyed by it: `start` may have moved this lease onto a
             # replacement device, and every udid-keyed structure below must name the device that
-            # actually ran.
-            adopt_replacement()
+            # actually ran. Remember what this attempt launched first, so the `except` below can tear
+            # it down even when `adopt_replacement()` itself is what raises.
             launched = (lease_env, driver)
+            adopt_replacement()
             # This device has now been brought up at least once this run, so a later cache-miss lease
             # on it (after a crash evicts the warm resident) is a respawn — see `is_respawn` above.
             ever_spawned.add(udid)
@@ -491,8 +498,16 @@ def device_pool(
                     what=f"tearing down the environment on {udid} after a failed lease",
                 )
             # A replacement made before the failure is still adopted, so the queue gets the live device
-            # back for the next lease instead of the one that vanished.
-            adopt_replacement()
+            # back for the next lease instead of the one that vanished. This call can itself shell out
+            # via `device_catalog()` and fail the same way the one after `launch_driver` did — guarded
+            # so a second failure here doesn't replace the *original* launch error, or skip
+            # `free.put`/the `raise` below and strand the device: a hang forever on the next lease's
+            # `free.get()` rather than a lost device (BE-0342).
+            guarded_teardown(
+                adopt_replacement,
+                mid_run=True,
+                what=f"adopting {udid}'s replacement after a failed lease",
+            )
             free.put(udid)
             raise
 

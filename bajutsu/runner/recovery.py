@@ -52,7 +52,9 @@ def guarded_teardown(teardown: Callable[[], None], *, mid_run: bool, what: str) 
     (BE-0342).
 
     Args:
-        teardown: The zero-arg callable that tears the environment (or warm resident) down.
+        teardown: The zero-arg callable that tears the environment (or warm resident) down, or runs
+            other best-effort cleanup on a failure path (the pool's own repeated `adopt_replacement()`
+            call, which re-keys pool state rather than tearing anything down).
         mid_run: False when the caller must still see a wiring defect (and is responsible for any
             cleanup it owes first), True when re-raising would mask the fault that prompted this
             teardown or abandon cleanup the caller cannot resume.

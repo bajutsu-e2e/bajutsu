@@ -82,10 +82,11 @@ def launch_driver(
     env = environment if environment is not None else environment_for(actuator, udid, env_run)
     # `env.start` can leave a runner (or browser context) up before `_await_ready` finishes; if the
     # readiness probe then raises, the driver never reaches the caller. Tear that environment down
-    # here so every caller — the pool, the on-device suites' lease thunk — inherits the same guard
-    # the pool already had around a failed lease (BE-0342). This runs for a caller-supplied
-    # `environment` too, so a backend's `teardown` must tolerate a second call from the caller's own
-    # failure path. Mid-run swallow keeps a teardown hiccup from masking the original launch error.
+    # here so every caller inherits the same guard the pool already had around a failed lease
+    # (BE-0342): the pool, `crawl`'s lane builder, `record`, and the on-device suites' lease thunk.
+    # This runs for a caller-supplied `environment` too, so a backend's `teardown` must tolerate a
+    # second call from the caller's own failure path. Mid-run swallow keeps a teardown hiccup from
+    # masking the original launch error.
     driver: base.Driver | None = None
     try:
         driver = env.start(

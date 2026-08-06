@@ -16,7 +16,7 @@ from bajutsu import simctl
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence.network import NetworkExchange, ScreenTransition
+from bajutsu.evidence.network import NetworkCollector, NetworkExchange, ScreenTransition
 from bajutsu.platform_lifecycle import ProvisionProfile
 from bajutsu.runner import (
     ReadinessResult,
@@ -446,6 +446,7 @@ class _RecordingEnv:
         replacement: str | None = None,
         catalog: dict[str, dict[str, str]] | None = None,
         fail_bridge_teardown: bool = False,
+        fail_device_catalog: bool = False,
     ) -> None:
         self.actuator = actuator
         self.udid = udid
@@ -482,6 +483,9 @@ class _RecordingEnv:
         # `bridge_collector`'s returned teardown raising mimics `adb reverse --remove` on a device
         # that already dropped off the bus (BE-0342).
         self.fail_bridge_teardown = fail_bridge_teardown
+        # `device_catalog()` raising mimics `adopt_replacement`'s own subprocess call failing after
+        # `start` already produced a driver (BE-0342).
+        self.fail_device_catalog = fail_device_catalog
         self.start_count = 0
         self.end_lease_count = 0
         # BE-0283 bridge recording: the port bridged, whether it was already bridged when start ran
@@ -499,6 +503,8 @@ class _RecordingEnv:
         return FakeDriver([_el("home", "H"), _el("ok", "OK")])  # 2 elems -> ready on count
 
     def device_catalog(self) -> dict[str, dict[str, str]]:
+        if self.fail_device_catalog:
+            raise subprocess.CalledProcessError(1, ["xcrun", "simctl", "list", "devices"])
         return self.catalog
 
     def observes_network_via_driver(self) -> bool:
@@ -979,6 +985,116 @@ def test_device_pool_tears_down_a_non_reusable_env_when_the_lease_fails_after_la
         shutdown()
 
 
+def test_device_pool_tears_down_the_launched_env_when_adopt_replacement_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BE-0342: `adopt_replacement()` runs between `launch_driver` returning and `Lease` being built,
+    and its own `device_catalog()` call can shell out and fail — the same class of failure the
+    `launched` fallback exists to survive. `launched` must be recorded *before* that call runs, or a
+    failure inside it finds neither `stale` nor `launched` set and leaks the environment/driver
+    `launch_driver` already produced."""
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
+    ) -> _RecordingEnv:
+        # `created[0]` is the pool's own representative env; only the first per-lease env replaces
+        # its device and fails fetching the replacement's catalog.
+        env = _RecordingEnv(
+            actuator,
+            udid,
+            provision,
+            replacement="UDID-A-REPLACEMENT" if len(created) == 1 else None,
+            fail_device_catalog=len(created) == 1,
+        )
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["android"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        with pytest.raises(subprocess.CalledProcessError):
+            lease(_eff(), _scn("a"))
+        failed_env = created[1]  # created[0] is the pool's own representative env
+        assert failed_env.started and failed_env.torn  # torn down despite the mid-adoption failure
+        # The device was still returned, so a retry leases cleanly instead of hanging on `free.get()`.
+        retry = lease(_eff(), _scn("b"))
+        assert len(created) == 3 and created[2] is not failed_env and created[2].started
+        retry.release()
+    finally:
+        shutdown()
+
+
+def test_device_pool_tears_down_the_bridge_when_the_lease_fails_after_launch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BE-0342: the `except` block's `release_bridge()` guard is a teardown site this item adds that
+    no other test drives to failure — a bare `release_bridge()` call left in its place would still
+    leave the whole suite green. A device that dropped off the bus mid-lease makes `bridge_collector`'s
+    teardown thunk raise the same `CalledProcessError` a real `adb reverse --remove` would; that must
+    not replace the *original* post-launch failure or skip `free.put(udid)` behind it. (The
+    neighboring `release_collector.stop()` guard stays untested here: this backend's pre-started
+    collector never sets `release_collector`, so it is not reachable from this path.)"""
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
+    ) -> _RecordingEnv:
+        # `created[0]` is the pool's own representative env; only the first per-lease env fails its
+        # relauncher (so the except block runs) and its bridge teardown (so that guard fires too).
+        env = _RecordingEnv(
+            actuator,
+            udid,
+            provision,
+            fail_relauncher=len(created) == 1,
+            fail_bridge_teardown=len(created) == 1,
+        )
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["android"],
+        _eff(),
+        Path("runs"),
+        network=True,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        with pytest.raises(RuntimeError, match="post-launch failure"):
+            lease(_eff(), _scn("a"))
+        failed_env = created[1]  # created[0] is the pool's own representative env
+        assert (
+            failed_env.bridge_torn and failed_env.torn
+        )  # both guards ran despite the bridge failure
+        # The device was still returned, so a retry leases cleanly instead of hanging on `free.get()`.
+        retry = lease(_eff(), _scn("b"))
+        assert len(created) == 3 and created[2] is not failed_env and created[2].started
+        retry.release()
+    finally:
+        shutdown()
+
+
 def test_device_pool_shutdown_tears_down_every_warm_device_despite_a_failure(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -1114,6 +1230,48 @@ def test_device_pool_shutdown_logs_every_defect_past_the_first(
         shutdown()
     assert warm_a.torn and warm_b.torn  # both were still torn down
     assert "UDID-B" in caplog.text  # the second defect was logged, not lost
+
+
+def test_device_pool_shutdown_stops_the_collector_before_a_warm_residents_wiring_defect_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BE-0342: `shutdown()`'s two loops — warm residents, then collectors — defer a wiring defect
+    past the *whole* sweep, not just the rest of its own loop. Every device-loop test above builds
+    with `network=False` (`collectors` empty); every collector-loop test below never leases
+    (`warm` empty) — so neither pins the case that actually spans both loops: a warm resident's
+    defect must still let the collector loop run to completion before `raise defect` propagates it."""
+    stopped: list[str] = []
+    original_stop = NetworkCollector.stop
+
+    def recording_stop(self: NetworkCollector) -> None:
+        stopped.append("UDID-A")
+        original_stop(self)
+
+    monkeypatch.setattr(NetworkCollector, "stop", recording_stop)
+    monkeypatch.setattr(
+        "bajutsu.runner.pool.environment_for",
+        lambda actuator, udid, env_run=None, *, provision=None, respawn=False: _RecordingEnv(
+            actuator,
+            udid,
+            provision,
+            reusable=True,
+            teardown_error=AttributeError("no close on this driver"),
+        ),
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=True,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    leased = lease(_eff(), _scn("a"))
+    leased.release()  # kept warm (reusable=True), not torn down until shutdown()
+    with pytest.raises(AttributeError, match="no close on this driver"):
+        shutdown()
+    assert stopped == ["UDID-A"]  # the collector loop still ran before the defect propagated
 
 
 def _stop_failing_collector(fail: BaseException) -> type:
@@ -1765,6 +1923,7 @@ def _replacing_env_factory(
     reusable: bool = True,
     fail_start: bool = False,
     replacement_catalog: dict[str, dict[str, str]] | None = None,
+    fail_device_catalog: bool = False,
 ) -> Callable[..., _RecordingEnv]:
     """An `environment_for` whose *lease* environments report a device replacement during start."""
 
@@ -1782,9 +1941,10 @@ def _replacing_env_factory(
             udid,
             provision,
             reusable=reusable,
-            fail_start=fail_start and created,
+            fail_start=fail_start and bool(created),
             replacement=replacement if created else None,
             catalog=replacement_catalog if created else None,
+            fail_device_catalog=fail_device_catalog and bool(created),
         )
         created.append(env)
         return env
@@ -1854,6 +2014,51 @@ def test_device_pool_frees_the_replacement_when_the_lease_fails(
             lease(_eff(), _scn("s"))
         # The next lease is handed the replacement, proving the failure path freed that one.
         assert created[-1].udid == "UDID-A"
+        with pytest.raises(RuntimeError, match="launch failed"):
+            lease(_eff(), _scn("s2"))
+        assert created[-1].udid == "UDID-NEW"
+    finally:
+        shutdown()
+
+
+def test_device_pool_frees_the_live_replacement_even_when_adopting_it_also_fails(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """BE-0342: when `env.start` itself raises (as above), the success path's own `adopt_replacement()`
+    call is never reached, so the `except` block's call is the *first* one to see the replacement — and
+    its `device_catalog()` re-fetch can fail there too, the same way it can on the success path. Left
+    unguarded, that second failure would replace the *original* launch error and skip `free.put`/the
+    `raise` below, hanging the next lease on `free.get()` forever instead of merely losing the catalog
+    metadata for a device that is otherwise perfectly leasable."""
+    created: list[_RecordingEnv] = []
+    monkeypatch.setattr(
+        "bajutsu.runner.pool.environment_for",
+        _replacing_env_factory(
+            created, replacement="UDID-NEW", fail_start=True, fail_device_catalog=True
+        ),
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        with (
+            caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"),
+            pytest.raises(RuntimeError, match="launch failed"),  # the original error, not masked
+        ):
+            lease(_eff(), _scn("s"))
+        assert (
+            "adopting" in caplog.text and "replacement" in caplog.text
+        )  # swallowed, not left to hang
+        # The next lease is handed the *live* replacement, not the dead device — a leaked dead udid
+        # would either hang this on `free.get()` or spawn straight back onto the vanished device. This
+        # factory's every leased env also fails to start, so the second lease fails too; what matters
+        # is which udid `environment_for` was called with for it.
         with pytest.raises(RuntimeError, match="launch failed"):
             lease(_eff(), _scn("s2"))
         assert created[-1].udid == "UDID-NEW"
