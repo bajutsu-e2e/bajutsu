@@ -17,8 +17,8 @@
 
 `bajutsu run`でシナリオを実行するCIジョブは、いずれも`video`と`deviceLog`のエビデンスを取得します。
 ところが、オンデバイスの`conformance (adb)`・`fault-injection (adb)`と、そのiOS版である
-`conformance (xcuitest)`・`fault-injection (xcuitest)`は、いずれもpytestからバックエンドを直接
-操作しています。この取得を一切受け継いでいません。4つのジョブのどれで失敗が起きても、診断できる
+`conformance (xcuitest)`・`fault-injection (xcuitest)`は、pytestからバックエンドを直接操作している
+ため、このエビデンス取得を一切受け継いでいません。4つのジョブのどれで失敗が起きても、診断できる
 アーティファクトが残らないということです。本項目は、パイプラインがすでに提供しているこのインター
 バル型エビデンス（テスト1件につき1本の画面録画と1本のデバイスログストリーム）を4つのスイートすべて
 に追加します。録画とログは、それを生んだテストが失敗したときだけ残します。これにより、どのジョブで
@@ -57,7 +57,7 @@ region did not change ... (end of content)`で失敗しました。これはま�
 
 ## 詳細設計
 
-4つの単位に分け、それぞれ単独でランディングできるようにします。
+4つの単位に分け、それぞれ単独で着地できるようにします。
 
 ### 単位1 — パイプライン自身のプリミティブの上に、テスト単位・バックエンド非依存の取得フィクスチャを作る
 
@@ -139,7 +139,7 @@ region did not change ... (end of content)`で失敗しました。これはま�
   をまたいで一般化できているため、iOSを見送っても得られるものがないままレビューをもう1周増やすだけ
   になります。iOSのconformanceジョブのほうがむしろこの修正をより必要としていました。フィクスチャに
   加えて、そのワークフロー自体に「Upload run artifacts」ステップがまるごと欠けていたからです（単位4）。
-- **両スイートを`bajutsu run`経由にして、`FileSink`をそのまま受け継ぐ。** 採用しません。同じ形の
+- **4つのスイートを`bajutsu run`経由にして、`FileSink`をそのまま受け継ぐ。** 採用しません。同じ形の
   pytestハーネスについて、BE-0334がすでに記録している理由と同じです。これらはシナリオレベルではなく
   ドライバーレベルの契約テストであり、パイプラインの配管まで到達するようシナリオへ作り替えることは、
   ドライバーの検証のためではなく、エビデンス取得だけを目的に契約をねじ曲げることになります。
@@ -168,16 +168,17 @@ region did not change ... (end of content)`で失敗しました。これはま�
 
 ## 参考
 
-- [PR #1520](https://github.com/bajutsu-e2e/bajutsu/pull/1520) — このジョブの`conformance (adb)`の
-  実行で、診断用のアーティファクトが残らないまま失敗し、本項目のきっかけとなった変更です。
+- [PR #1520](https://github.com/bajutsu-e2e/bajutsu/pull/1520) — その`conformance (adb)`の実行が
+  診断用のアーティファクトを残さないまま失敗し、本項目のきっかけとなった変更です。
 - [`bajutsu/evidence/intervals.py`](../../bajutsu/evidence/intervals.py) — adb向けの
   `start_screenrecord`/`start_logcat`と、XCUITest向けの`start_video`/`start_device_log`という、本項目
   がそのまま再利用するプリミティブです。
 - [`demos/showcase/android/screenrecord.py`](../../demos/showcase/android/screenrecord.py) — これらの
   プリミティブを`bajutsu run`の外から呼ぶ既存の前例であり、成功時に録画を破棄する前例でもあります。
 - [`tests/backend_crash_recovery.py`](../../tests/backend_crash_recovery.py) — 本項目の単位2が同じ
-  やり方で再利用する、`pytest_runtest_makereport`フックを持つ、オンデバイススイート向けの姉妹プラグイン
-  です。単位2のタグを保持ではなく書き換えにしている理由も、この項目のitem再利用の再試行にあります。
+  やり方で再利用する`pytest_runtest_makereport`フックを持つ、オンデバイススイート向けの姉妹プラグイン
+  です。単位2のタグを保持ではなく書き換えにしているのも、このプラグインが再試行のあいだ同じ
+  `pytest.Item`を使い回すからです。
 - [`tests/test_driver_conformance_ondevice_android.py`](../../tests/test_driver_conformance_ondevice_android.py)、
   [`tests/test_fault_injection_ondevice_android.py`](../../tests/test_fault_injection_ondevice_android.py)、
   [`tests/test_driver_conformance_ondevice.py`](../../tests/test_driver_conformance_ondevice.py)、
@@ -191,4 +192,5 @@ region did not change ... (end of content)`で失敗しました。これはま�
   本項目が計装するオンデバイスadb conformanceスイートです。
 - [BE-0334](../BE-0334-conformance-suite-infra-fault-recovery/BE-0334-conformance-suite-infra-fault-recovery-ja.md)
   — iOSのconformanceスイートがすでに持っているインフラ障害からの復旧です。本項目の単位2は、同じpytest
-  ハーネスの形を共有しているだけでなく、同じ項目を互いに再試行しあう形で直接絡み合っています。
+  ハーネスの形を共有しているだけでなく、`backend_crash_recovery`が同じ`pytest.Item`を再試行のあいだ
+  使い回すという点で、直接絡み合っています。
