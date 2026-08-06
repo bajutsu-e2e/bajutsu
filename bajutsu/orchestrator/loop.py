@@ -411,7 +411,9 @@ def _resolve_video_start_offset(
     when the resolved offset is positive: a video starting *after* `scenario_start` is not a case
     this fix's design expects to occur in production (see the item's Motivation), so treating one
     as real would silently clamp every early step's `started_at` to `0.0` via `max(0.0, ...)`
-    rather than surface whatever produced it (a stale/reused interval, a clock mismatch).
+    rather than surface it. The guard is one-sided by construction: a *negative* offset is trusted
+    unconditionally, so a stale `true_start` — necessarily an older instant than `scenario_start`,
+    and so always negative — is not caught here.
 
     Mixing the two time sources is deliberate but load-bearing: `true_start` is always a raw
     `time.monotonic()` instant, so `clock` must share that epoch (`RealClock`). A clock with a

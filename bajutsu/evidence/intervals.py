@@ -362,6 +362,10 @@ def _await_screenrecord_started(
     """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        # Stamped *before* the probe: `adb shell pgrep` is a full round trip, so reading the clock
+        # after it returns charges that latency to the recording's start and biases every corrected
+        # `started_at` low — seeking early, the same direction as the drift this correction removes.
+        probed_at = time.monotonic()
         try:
             current = {pid for pid in run(adb.screenrecord_pids_cmd(serial)).split() if pid}
         except (subprocess.CalledProcessError, OSError) as exc:
@@ -373,7 +377,7 @@ def _await_screenrecord_started(
             time.sleep(poll)
             continue
         if current - baseline_pids:
-            return time.monotonic()
+            return probed_at
         time.sleep(poll)
     _logger.warning(
         "device-side screenrecord on %s did not appear within %ss; step/network timestamps stay "
