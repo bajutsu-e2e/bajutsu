@@ -108,11 +108,25 @@ def write_raw_tree(
     so a mismatch between a resolved coordinate and the real screen can be traced to the device's/
     runner's own reply versus bajutsu's processing of it. `mkdir` creates the step dir first, and is
     skipped when the caller already made it.
+
+    Also a no-op, loudly, when `redactor.has_label_rules`: `redact_elements` (behind `elements.json`)
+    blanks a labeled element's `value` structurally, using the parsed tree it has and this function
+    does not; `redact_text` over free text can only catch a key pattern or a literal secret value, so
+    it would write an unmasked superset of what `elements.json` just masked. Refusing the artifact is
+    the safe direction — a missing diagnostic file costs an investigation a round trip, an unmasked
+    secret on disk does not un-happen.
     """
     if not isinstance(driver, base.RawSourceProvider):
         return []
     raw = driver.last_raw_source()
     if raw is None:
+        return []
+    if redactor is not None and redactor.has_label_rules:
+        _logger.warning(
+            "rawTree capture skipped: redact.labels masks an element's value structurally, which "
+            "the raw dump's free-text redaction cannot honor — refusing rather than writing an "
+            "unmasked superset of what elements.json just masked"
+        )
         return []
     if mkdir:
         step_dir.mkdir(parents=True, exist_ok=True)

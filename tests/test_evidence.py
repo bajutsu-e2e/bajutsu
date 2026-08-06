@@ -139,6 +139,25 @@ def test_write_raw_tree_redacts_the_pre_narrow_body_too(tmp_path: Path) -> None:
     assert "s3kr3t" not in pre_narrow.read_text(encoding="utf-8")
 
 
+def test_write_raw_tree_refuses_when_a_label_rule_is_configured(tmp_path: Path) -> None:
+    # `redact.labels` blanks a labeled element's value structurally in elements.json
+    # (`redact_elements`, which has the parsed tree); `redact_text` over free text has no such
+    # structure to match against, so writing the raw dump anyway would leak exactly what
+    # elements.json just masked. Refuse the artifact instead of writing an unmasked superset.
+    driver = _RawSourceStub(base.RawSource(text='<node label="Password" text="hunter2" />'))
+    redactor = Redactor(Redact(labels=["Password"]))
+    assert write_raw_tree(driver, tmp_path / "step0", redactor) == []
+    assert not (tmp_path / "step0").exists()  # refused before ever creating the step dir
+
+
+def test_write_raw_tree_still_writes_without_a_label_rule(tmp_path: Path) -> None:
+    # Only `redact.labels` triggers the refusal above — a redactor active for other reasons
+    # (header/field patterns, literal secret values) still lets `rawTree` through.
+    driver = _RawSourceStub(base.RawSource(text="<node/>"))
+    redactor = Redactor(Redact(), values=["s3kr3t"])
+    assert write_raw_tree(driver, tmp_path / "step0", redactor) != []
+
+
 def test_capture_raw_tree_kind_produces_artifacts(tmp_path: Path) -> None:
     driver = _RawSourceStub(
         base.RawSource(

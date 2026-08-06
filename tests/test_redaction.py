@@ -157,6 +157,15 @@ def test_redactor_inactive_when_unconfigured() -> None:
     red = Redactor(Redact())
     assert red.active is False
     assert red.redact_text("token=abc") == "token=abc"  # no-op
+    assert red.has_label_rules is False
+
+
+def test_has_label_rules_true_only_for_redact_labels() -> None:
+    # A redactor active for other reasons (secret values, header/field keys) is not a label-rule
+    # redactor — only `redact.labels` triggers the free-text-can't-honor-this gap.
+    assert Redactor(Redact(labels=["Password"])).has_label_rules is True
+    assert Redactor(Redact(), values=["s3kr3t"]).has_label_rules is False
+    assert Redactor(Redact(fields=["token"])).has_label_rules is False
 
 
 def _el(identifier: str, label: str, value: str) -> base.Element:
