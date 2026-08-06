@@ -183,8 +183,10 @@ def _bounds(raw: str, malformed_count: list[int] | None = None) -> base.Frame:
     The origin-frame default is silent by design where it is expected — a genuinely bounds-less node
     is not a fault — but a *malformed* attribute (present, non-empty, yet unparseable) tallies into
     `malformed_count` when given, so the caller can warn once per parse rather than once per node: a
-    dump with many such nodes would otherwise flood the log on every read of a `_settle` poll (up to
-    ~80 reads per call), each occurrence individually indistinguishable from the fine, silent default.
+    single dump with many such nodes would otherwise flood the log with one line per node, each
+    occurrence individually indistinguishable from the fine, silent default. A node whose bounds stay
+    malformed across a `_settle` poll's repeated reads still warns once per read (up to ~80 reads per
+    call) — this collapses the per-node flood within one read, not the per-read flood across a poll.
     """
     m = _BOUNDS.search(raw or "")
     if not m:
@@ -421,9 +423,11 @@ class AdbDriver(CoordinateTreeDriver):
     # fraction of a second — short enough that a still-moving tree passes as settled and a tap fires on
     # a stale coordinate. Bounding by elapsed time instead keeps the window spanning a real animation
     # whatever the read costs: the loop polls until two consecutive reads share a frame projection, or
-    # `_SETTLE_DEADLINE_S` elapses. A stable screen still settles in a single read (the first `query()`
-    # matches the cached key); only a genuinely-animating screen polls, and `_SETTLE_POLL_S` is a small
-    # non-zero cadence so a fast read does not busy-spin (on the dump path the read dwarfs it).
+    # `_SETTLE_DEADLINE_S` elapses. A screen whose key was already proved stable — by `_settle`'s own
+    # poll, or by a catch-up dwell-close — still settles in a single read; every other screen polls,
+    # including a static one right after an actuation, which clears `_settled_key`. `_SETTLE_POLL_S`
+    # is a small non-zero cadence so a fast read does not busy-spin (on the dump path the read
+    # dwarfs it).
     # Set comfortably above the slow `uiautomator dump` read so that fallback path still gets several
     # attempts inside the window — the deadline is checked before each read, so a value near the read
     # latency would grant only one extra poll and shrink the settle window too far. A fast resident

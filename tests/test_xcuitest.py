@@ -113,6 +113,7 @@ def test_query_records_the_raw_elements_body() -> None:
     assert raw is not None
     assert raw.text == body.decode("utf-8")
     assert raw.pre_transform is None  # nothing narrows the runner's own reply
+    assert raw.suffix == ".json"  # undecoded GET /elements body, not adb's XML dump
 
 
 def test_tap_resolves_unique_then_sends_that_elements_snapshot_handle() -> None:

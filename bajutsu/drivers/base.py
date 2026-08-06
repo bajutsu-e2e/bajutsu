@@ -379,11 +379,15 @@ class RawSource:
     decor windows (`narrow_to_active_window`) before `text` is set — so a diagnosis can tell "the raw
     device dump already looked wrong" apart from "our own transform changed it". `None` when the
     backend applies no such transform (the dump-subprocess path) or the transform left `text`
-    unchanged.
+    unchanged. `suffix` names the format `text` is actually written in (adb: `.xml`; XCUITest's
+    `GET /elements` body is undecoded JSON, so it sets `.json`) — carried here rather than hardcoded
+    by the writer, so a future `RawSourceProvider` with a different dump format needs no edit outside
+    the backend that produces it.
     """
 
     text: str
     pre_transform: str | None = None
+    suffix: str = ".xml"
 
 
 @runtime_checkable

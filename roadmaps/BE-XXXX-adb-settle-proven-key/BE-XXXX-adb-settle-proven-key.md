@@ -96,14 +96,15 @@ local variable. `AdbDriver` now keeps the text behind its last read (`base.RawSo
 through the new `base.RawSourceProvider` protocol — the same narrow, `runtime_checkable`, opt-in
 pattern as `ViewportProvider` / `ReadLagProvider` / `SettledReadProvider`), including the resident
 channel's pre-`narrow_to_active_window` body when narrowing changed something. `write_raw_tree`
-(`bajutsu/evidence/core.py`) writes `hierarchy.raw.xml` and, when present, `hierarchy.pre-narrow.xml`
-under a step's directory; `capture()` gains a `rawTree` branch, and the scenario capture-token
-grammar (`bajutsu/scenario/models/_base.py`) accepts it. It is never in `Defaults.capture` — a
-scenario opts in with `capture: [rawTree, ...]`, since it adds a same-sized text artifact per
-captured step. This does not fix the cache bug above; it exists so that if a mismatch between a
-resolved coordinate and the real screen recurs, the raw device dump behind the mismatch is available
-directly, rather than requiring the multi-run screenshot-and-`elements.json` forensics this
-investigation needed.
+(`bajutsu/evidence/core.py`) writes `hierarchy.raw<suffix>` and, when present,
+`hierarchy.pre-transform<suffix>` under a step's directory — `<suffix>` is `base.RawSource.suffix`, the
+backend's own dump format (`.xml` for adb, `.json` for XCUITest's undecoded `GET /elements` body);
+`capture()` gains a `rawTree` branch, and the scenario capture-token grammar
+(`bajutsu/scenario/models/_base.py`) accepts it. It is never in `Defaults.capture` — a scenario opts
+in with `capture: [rawTree, ...]`, since it adds a same-sized text artifact per captured step. This
+does not fix the cache bug above; it exists so that if a mismatch between a resolved coordinate and
+the real screen recurs, the raw device dump behind the mismatch is available directly, rather than
+requiring the multi-run screenshot-and-`elements.json` forensics this investigation needed.
 
 ### 3. Two smaller, related observations
 
@@ -133,9 +134,9 @@ pre-fix code; `test_settle_fast_path_trusts_a_key_it_proved_itself`,
 machine. The full existing `_settle` / catch-up suite (including
 `test_reads_the_runner_already_takes_close_the_barrier_for_free`) passes unchanged, confirming the
 existing free-settle optimization survives. `tests/test_evidence.py` and
-`tests/test_adb_resident.py` cover `write_raw_tree`'s redaction and no-op behavior, the pre-narrow
-body's presence/absence, and the multi-window characterization. `make check` is the judge; nothing
-here touches a verdict path (prime directive 1).
+`tests/test_adb_resident.py` cover `write_raw_tree`'s redaction and no-op behavior, the
+pre-transform body's presence/absence, and the multi-window characterization. `make check` is the
+judge; nothing here touches a verdict path (prime directive 1).
 
 ## Alternatives considered
 
@@ -165,7 +166,7 @@ with the catch-up barrier's own, already-validated dwell proof.
 - [x] Unit 1 — `_settled_key`, the rewritten `_settle()` fast path, and the two `_advance_catchup`
       write sites (dwell proves rest, mark-postdate does not).
 - [x] Unit 2 — the `rawTree` capture kind: `base.RawSource` / `RawSourceProvider`, `AdbDriver`
-      retaining the raw dump and the resident channel's pre-narrow body, `write_raw_tree`, the
+      retaining the raw dump and the resident channel's pre-transform body, `write_raw_tree`, the
       `capture()` branch, and the scenario capture-token grammar.
 - [x] Unit 3 — `_bounds()` warns on a malformed (not merely absent) `bounds` attribute; a
       characterization test pins `narrow_to_active_window`'s current multi-window behavior.

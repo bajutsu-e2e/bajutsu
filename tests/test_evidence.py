@@ -102,19 +102,19 @@ def test_write_raw_tree_is_a_noop_before_the_first_read() -> None:
 def test_write_raw_tree_writes_the_raw_dump(tmp_path: Path) -> None:
     driver = _RawSourceStub(base.RawSource(text="<hierarchy>raw</hierarchy>"))
     paths = write_raw_tree(driver, tmp_path / "step0")
-    assert [p.name for p in paths] == ["hierarchy.raw.xml"]  # no pre-narrow file: none given
+    assert [p.name for p in paths] == ["hierarchy.raw.xml"]  # no pre-transform file: none given
     assert paths[0].read_text(encoding="utf-8") == "<hierarchy>raw</hierarchy>"
 
 
-def test_write_raw_tree_writes_the_pre_narrow_body_when_present(tmp_path: Path) -> None:
+def test_write_raw_tree_writes_the_pre_transform_body_when_present(tmp_path: Path) -> None:
     driver = _RawSourceStub(
         base.RawSource(
             text="<hierarchy>narrowed</hierarchy>", pre_transform="<hierarchy>wide</hierarchy>"
         )
     )
     paths = write_raw_tree(driver, tmp_path / "step0")
-    assert {p.name for p in paths} == {"hierarchy.raw.xml", "hierarchy.pre-narrow.xml"}
-    assert (tmp_path / "step0" / "hierarchy.pre-narrow.xml").read_text(
+    assert {p.name for p in paths} == {"hierarchy.raw.xml", "hierarchy.pre-transform.xml"}
+    assert (tmp_path / "step0" / "hierarchy.pre-transform.xml").read_text(
         encoding="utf-8"
     ) == "<hierarchy>wide</hierarchy>"
 
@@ -126,8 +126,8 @@ def test_write_raw_tree_redacts_a_configured_secret(tmp_path: Path) -> None:
     assert "s3kr3t" not in paths[0].read_text(encoding="utf-8")
 
 
-def test_write_raw_tree_redacts_the_pre_narrow_body_too(tmp_path: Path) -> None:
-    # The secret could just as easily live only in the pre-narrow body (e.g. a system dialog
+def test_write_raw_tree_redacts_the_pre_transform_body_too(tmp_path: Path) -> None:
+    # The secret could just as easily live only in the pre-transform body (e.g. a system dialog
     # narrow_to_active_window strips out) — both files go through the same redaction call, and both
     # must actually come out clean, not just the primary hierarchy.raw.xml.
     driver = _RawSourceStub(
@@ -135,8 +135,8 @@ def test_write_raw_tree_redacts_the_pre_narrow_body_too(tmp_path: Path) -> None:
     )
     redactor = Redactor(Redact(), values=["s3kr3t"])
     paths = write_raw_tree(driver, tmp_path / "step0", redactor)
-    pre_narrow = next(p for p in paths if p.name == "hierarchy.pre-narrow.xml")
-    assert "s3kr3t" not in pre_narrow.read_text(encoding="utf-8")
+    pre_transform = next(p for p in paths if p.name == "hierarchy.pre-transform.xml")
+    assert "s3kr3t" not in pre_transform.read_text(encoding="utf-8")
 
 
 def test_write_raw_tree_refuses_when_a_label_rule_is_configured(tmp_path: Path) -> None:
@@ -167,13 +167,14 @@ def test_capture_raw_tree_kind_produces_artifacts(tmp_path: Path) -> None:
     written = capture(driver, tmp_path / "step0", ["rawTree"])
     assert {(a.name, a.kind, a.provider) for a in written} == {
         ("hierarchy.raw.xml", "rawTree", "driver"),
-        ("hierarchy.pre-narrow.xml", "rawTree", "driver"),
+        ("hierarchy.pre-transform.xml", "rawTree", "driver"),
     }
 
 
 def test_capture_raw_tree_kind_on_an_unsupported_backend_produces_nothing(tmp_path: Path) -> None:
     driver = FakeDriver([_el("a", "A")])
     assert capture(driver, tmp_path / "step0", ["rawTree"]) == []
+    assert not (tmp_path / "step0").exists()  # write_raw_tree's own no-op never mkdirs either
 
 
 class _RawSourceQueryStub:

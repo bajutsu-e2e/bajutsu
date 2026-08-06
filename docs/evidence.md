@@ -42,10 +42,11 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 > rather than the interval system — its exchanges are written to `<sid>/network.json`
 > ([network observation](drivers.md), the `--network` flag).
 
-> `rawTree` writes `hierarchy.raw.xml` — what the driver actually parsed into `elements.json`: adb's
-> `_describe()` output, or XCUITest's undecoded `GET /elements` body. On adb's resident channel, when
-> narrowing changed something, it also writes `hierarchy.pre-narrow.xml` (the dump before SystemUI
-> decor windows were stripped) — XCUITest applies no such transform, so it never writes a second file.
+> `rawTree` writes `hierarchy.raw<suffix>` — what the driver actually parsed into `elements.json`: the
+> dump text `_read_source()` handed adb's parser (`.xml`), or XCUITest's undecoded `GET /elements` body
+> (`.json`). On adb's resident channel, when narrowing changed something, it also writes
+> `hierarchy.pre-transform.xml` (the dump before SystemUI decor windows were stripped) — XCUITest
+> applies no such transform, so it never writes a second file.
 > It exists to diagnose a mismatch between a resolved coordinate and the real screen: whether the
 > device's/runner's own reply already looked wrong, or bajutsu's own parsing changed it. Never in the
 > default capture list — a scenario opts in with `capture: [rawTree, ...]`.

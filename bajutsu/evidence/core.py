@@ -102,10 +102,11 @@ def write_raw_tree(
     A no-op for any backend that does not implement `base.RawSourceProvider` (every backend but `adb`
     and XCUITest today) or has not read yet — so a scenario that requests `rawTree` on a backend without
     one simply gets nothing, the same degrade `ViewportProvider`/`ReadLagProvider` callers already make.
-    Writes `hierarchy.raw.xml` (what the driver actually parsed — adb's `_describe()` output, XCUITest's
-    undecoded `GET /elements` body) and, only when the backend applied a structural transform that
-    changed it (adb's resident channel stripping SystemUI decor windows), `hierarchy.pre-narrow.xml` —
-    so a mismatch between a resolved coordinate and the real screen can be traced to the device's/
+    Writes `hierarchy.raw<suffix>` (what the driver actually parsed — the dump text `_read_source()`
+    handed adb's parser, XCUITest's undecoded `GET /elements` body; `<suffix>` is `base.RawSource.suffix`,
+    the backend's own dump format) and, only when the backend applied a structural transform that
+    changed it (adb's resident channel stripping SystemUI decor windows), `hierarchy.pre-transform<suffix>`
+    — so a mismatch between a resolved coordinate and the real screen can be traced to the device's/
     runner's own reply versus bajutsu's processing of it. `mkdir` creates the step dir first, and is
     skipped when the caller already made it.
 
@@ -132,8 +133,8 @@ def write_raw_tree(
         step_dir.mkdir(parents=True, exist_ok=True)
     out: list[Path] = []
     for name, text in (
-        ("hierarchy.raw.xml", raw.text),
-        ("hierarchy.pre-narrow.xml", raw.pre_transform),
+        (f"hierarchy.raw{raw.suffix}", raw.text),
+        (f"hierarchy.pre-transform{raw.suffix}", raw.pre_transform),
     ):
         if text is None:
             continue
@@ -206,7 +207,7 @@ def capture(
     # Create the step dir once here, only for kinds we actually write, so the per-kind
     # writers can skip their own mkdir (every kind targets the same step_dir, so repeating
     # it per writer is wasted syscalls); unmatched-only kinds leave the dir untouched as before.
-    if any(token.partition(".")[0] in ("elements", "screenshot", "rawTree") for token in kinds):
+    if any(token.partition(".")[0] in ("elements", "screenshot") for token in kinds):
         step_dir.mkdir(parents=True, exist_ok=True)
     out: list[Artifact] = []
     # `rawTree` last, whatever order the scenario listed the kinds in: `write_elements` may issue the
@@ -219,7 +220,7 @@ def capture(
         if kind == "rawTree":
             out.extend(
                 Artifact(path.name, "rawTree", "driver")
-                for path in write_raw_tree(driver, step_dir, redactor, mkdir=False)
+                for path in write_raw_tree(driver, step_dir, redactor)
             )
         elif kind == "elements":
             out.append(

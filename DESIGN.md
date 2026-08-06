@@ -516,7 +516,8 @@ runs/<runId>/
 | 能力 | 解決 |
 |---|---|
 | 操作 / 解決（tap 等） | **actuator のみ**（安定度順で最初に利用可能な backend）。利用可能な actuator が無ければ実行不能（hard error） |
-| `screenshot` / `elements` / `rawTree` | actuator が提供（§5 の `Element` 正規化に乗る。`rawTree` は `base.RawSourceProvider` を実装する actuator のみ、opt-in） |
+| `screenshot` / `elements` | actuator が提供（§5 の `Element` 正規化に乗る） |
+| `rawTree` | `base.RawSourceProvider` を実装する actuator のみが提供（`Element` 正規化を経る前の生ダンプ。opt-in） |
 | `video` / `deviceLog` / `appTrace` | バックエンド非依存（`simctl`）。リストと無関係に取得 |
 | `network` | **in-protocol の collector**（§3.2）から取得 → 無ければ skip（XCUITest はネイティブ監視を持たない） |
 

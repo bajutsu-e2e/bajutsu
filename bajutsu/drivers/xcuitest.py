@@ -644,7 +644,7 @@ class XcuitestDriver:
         """
         if self._raw_bytes is None:
             return None
-        return base.RawSource(text=self._raw_bytes.decode("utf-8"))
+        return base.RawSource(text=self._raw_bytes.decode("utf-8"), suffix=".json")
 
     def query(self) -> list[base.Element]:
         elements, _ = self._query_with_handles()
