@@ -404,8 +404,9 @@ OAuth を構成すると、アクセスは手作業の login リストではな�
 ログの `event=server.startup_warning`（どの警告かを示す `check` フィールド付き。[運用ログ](#運用ログ)
 を参照）としても再送されるので、起動出力を誰かが読むことに頼らずアラートを設定できます。org ゲートが
 拒否したサインインは `event=oauth.denied` として記録され、`orgs:` が一致しなかった理由を名指しします。
-`WARNING` になるのは admin Team がそもそも1つも構成されていない場合だけです。これは `orgs:` を直しに
-サインインできる admin が誰も残っていない状態です。構成済みの admin Team に単に一致しなかっただけの
+`WARNING` になるのは admin Team が1つも*使える*状態にない場合だけです。リストが空である、あるいは
+全エントリが不正な形式である場合を指し、どちらも `orgs:` を直しにサインインできる admin が誰も残って
+いない状態です。構成済みの admin Team に単に一致しなかっただけの
 通常の拒否、および GitHub account をまったく必要としない4つの手前の失敗（OAuth が構成されていない、
 CSRF の state 不一致、例外を発生させた exchange、identity を返さなかった exchange）は `INFO` になります。
 通常の拒否は GitHub account を持つ誰でも到達できるため、アラートは event 名そのものではなく `WARNING`

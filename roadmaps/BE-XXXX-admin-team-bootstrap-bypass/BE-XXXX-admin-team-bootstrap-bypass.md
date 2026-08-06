@@ -175,11 +175,12 @@ helper computes it for both, so the two records can't drift the way an earlier r
 briefly let them: a denied login is, if anything, the more likely source of an "I can't sign in"
 report, so it needs at least the same triage a bypass admission gets, not less. The trailing admin
 clause gets the same care: "no admin Team matched" reads as a real membership miss, and must not fire
-identically for an unconfigured `oauth_admin_teams` — the exact state the boot-time
-`admin_teams_empty` check warns about and the one in which no admin can sign in to fix `orgs:` at
-all — so the message names that shape as "no admin Team is configured" instead, one conditional on
-the already-in-scope `admin_teams`. Three of the five shapes collapse `orgs` to `{}` and deny *every*
-non-admin login outright — no config bound at all, a config that failed to load, or one that declares
+identically for an unusable `admin_teams` — empty, or every entry malformed, the exact state the
+boot-time `admin_teams_empty` / `admin_teams_malformed` checks warn about and the one in which no
+admin can sign in to fix `orgs:` at all — so the message names that shape as "no usable admin Team is
+configured" instead, keyed on the same `admin_teams_unusable` predicate as the level (below), so the
+message and the level can't drift apart. Three of the five shapes collapse `orgs` to `{}` and deny
+*every* non-admin login outright — no config bound at all, a config that failed to load, or one that declares
 no `orgs:` block — so blaming an org roster that was never actually
 read, or was declared empty on purpose, sends an operator chasing the wrong fix. The missing-block
 shape is not a corner case — it is the item's own headline scenario (*Motivation*: "A

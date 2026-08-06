@@ -150,11 +150,18 @@ def oauth_callback(
         # A rejection is the one failure this item exists to make recoverable, so it needs a record
         # too — under its own event rather than `oauth.login`, which stays "login count" (see the
         # `bypass` reasoning below) rather than absorbing a "denied" outcome it never admitted. "No
-        # admin Team matched" would read the same for an unconfigured admin_teams as for a real
-        # membership miss, sending an operator to check GitHub Team membership when the actual fix is
-        # setting BAJUTSU_OAUTH_ADMIN_TEAMS -- name that shape distinctly, the same reasoning
-        # `_unmatched_org_cause` already applies to the org half of this message.
-        admin_note = "no admin Team is configured" if not admin_teams else "no admin Team matched"
+        # admin Team matched" would read the same for an unusable admin_teams (empty, or every entry
+        # malformed) as for a real membership miss, sending an operator to check GitHub Team
+        # membership when the actual fix is the environment variable -- name that shape distinctly,
+        # keyed on the same `admin_teams_unusable` predicate as the level below, so the message and
+        # the level can't drift apart the way an earlier revision of this line let them (a bare
+        # `not admin_teams` here paired with `admin_teams_unusable` on the level would call a
+        # space-separated, entirely-malformed list "matched" at WARNING).
+        admin_note = (
+            "no usable admin Team is configured"
+            if admin_teams_unusable(admin_teams)
+            else "no admin Team matched"
+        )
         # `GET /api/oauth/login` is unauthenticated and GitHub authorizes any of its own users, not
         # just this deployment's members -- an ordinary denial (admin_teams configured, this login
         # just isn't in orgs: or it) is reachable by any curious visitor with a free GitHub account,

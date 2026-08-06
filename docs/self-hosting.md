@@ -417,12 +417,13 @@ of these warnings is also re-emitted through the structured log under `event=ser
 (with a stable `check` field naming which one — see [Operational logging](#operational-logging)), so a
 deployment can alert on them rather than relying on someone reading boot output. A sign-in the org
 gate turned away is recorded under `event=oauth.denied`, naming the reason `orgs:` did not match; it
-is `WARNING` only when no admin Team is configured at all — the shape in which no admin can sign in
-to fix `orgs:` either — and `INFO` for an ordinary denial (a configured admin Team simply didn't
-match this login) and for four earlier failures reachable with no GitHub account at all — OAuth not
-configured, a CSRF state mismatch, and an exchange that raised or returned no identity. Anyone with a
-GitHub account can otherwise reach an ordinary denial, so key an alert on `WARNING` rather than on the
-bare event name, or a curious visitor's sign-in attempt buries the shape worth paging on.
+is `WARNING` only when no admin Team is *usable* — the list is empty, or every entry is malformed, so
+no admin can sign in to fix `orgs:` either — and `INFO` for an ordinary denial (a configured admin
+Team simply didn't match this login) and for four earlier failures reachable with no GitHub account
+at all — OAuth not configured, a CSRF state mismatch, and an exchange that raised or returned no
+identity. Anyone with a GitHub account can otherwise reach an ordinary denial, so key an alert on
+`WARNING` rather than on the bare event name, or a curious visitor's sign-in attempt buries the shape
+worth paging on.
 
 A third thing: disabling `POST /api/login` stops **minting** new token-cookie sessions once OAuth is
 configured, but it doesn't invalidate one already issued — a browser that logged in with the shared

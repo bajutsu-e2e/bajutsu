@@ -387,7 +387,7 @@ def test_oauth_callback_denial_names_a_github_orgs_outage_not_the_org_roster(
     # miss, and the state admin_teams_empty warns about at boot, so it must say "configured," not
     # "matched," or an operator reads a Team-membership problem where the fix is setting
     # BAJUTSU_OAUTH_ADMIN_TEAMS.
-    assert "no admin Team is configured" in record.getMessage()
+    assert "no usable admin Team is configured" in record.getMessage()
     assert "no admin Team matched" not in record.getMessage()
     # No admin can sign in to fix anything on this deployment -- the shape worth paging on.
     assert record.levelno == logging.WARNING
@@ -414,6 +414,10 @@ def test_oauth_callback_denial_warns_when_admin_teams_is_entirely_malformed(
     assert sid is None
     record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
     assert record.levelno == logging.WARNING
+    # The message must match the level: "no admin Team matched" reads as a real membership miss,
+    # which would send an operator to check GitHub Team membership instead of the malformed entry.
+    assert "no usable admin Team is configured" in record.getMessage()
+    assert "no admin Team matched" not in record.getMessage()
 
 
 def test_oauth_callback_ordinary_admin_team_bypass_logs_at_info(
