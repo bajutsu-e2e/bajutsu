@@ -111,13 +111,7 @@ class FakeDriver:
         driver, since only `is_tappable` would ever report the occlusion.
         """
         target = base.resolve_unique(self.screen, sel)
-        if (
-            base.topmost_at_point(self.screen, base.frame_center(target["frame"]), target)
-            is not None
-        ):
-            raise base.ElementNotTappable(
-                f"element resolved but covered by another element: {sel!r}"
-            )
+        base.raise_if_covered(self.screen, target, sel)
         return target
 
     def tap(self, sel: base.Selector) -> None:

@@ -294,8 +294,9 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   > point — not covered by another on-screen element — using the idiomatic signal each platform
   > offers (iOS: native `isHittable`; web: a `document.elementFromPoint` hit-test; adb: a
   > document-order geometric proxy, `Driver.is_tappable` /
-  > [`topmost_at_point`](../bajutsu/drivers/base.py)). When the check fails, the driver takes one
-  > small, bounded, `down`-only scroll and retries once, rather than failing immediately — see
+  > [`topmost_at_point`](../bajutsu/drivers/base.py)). When the check fails, the orchestrator takes
+  > a small, bounded scroll — up to three `down`-only steps — and retries the action once, rather
+  > than failing immediately — see
   > [`selectors.md`](selectors.md#elementnottappable-a-resolved-but-unreachable-target). This is not
   > a substitute for the explicit `scroll` action above: an author who already knows a target starts
   > off-screen still writes `scroll`. It only insures against an obstruction the author did not

@@ -22,8 +22,9 @@ point is actually reachable on screen. An element can be uniquely matched, carry
 still sit under a sticky header, a toast, or a dimmed modal backdrop, so the tap lands on the
 obstruction instead of the target. Each backend now checks, in the way most idiomatic to its own
 platform, that the resolved target is really the thing at its own point before acting. When it is
-not, the driver takes one bounded, deterministic scroll step to try to clear the obstruction, then
-re-checks; if the target is still unreachable, the action fails with a new, dedicated error,
+not, the orchestrator takes a small, bounded, deterministic scroll — up to three steps — to try to
+clear the obstruction, then re-checks; if the target is still unreachable, the action fails with a
+new, dedicated error,
 `ElementNotTappable`, instead of the misleading `ElementNotFound`.
 
 ## Motivation
@@ -369,6 +370,17 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
   effort spent on it here. Combined with the setup cost (`FLAG_RETRIEVE_INTERACTIVE_WINDOWS` is not
   set by default), this proposal defers window-level occlusion detection to a future item rather than
   build a mechanism whose two most common target cases it cannot cleanly cover.
+- **Extending the check to `pinch` / `rotate` on iOS and web, to match Android.** Android's
+  `pinch` / `rotate` share `_resolve_frame_and_screen` with `tap`, so an occluded two-finger target
+  already raises `ElementNotTappable` there, correctly — but iOS's `XcuitestElementProvider.gesture`
+  has no `isHittable` guard (only `tap` does), and web's `pinch` / `rotate` resolve through the
+  unchecked `_center_with_element` rather than `_center_checked`. The same scenario, a `pinch` on a
+  partly covered target, passes on iOS and web and fails on Android. Left as-is for this first
+  slice: closing it means adding a new native check to each of the other two backends' own
+  two-finger call paths, which is more surface than the tap-family check this proposal is centrally
+  about. Recorded here as a known, accepted asymmetry rather than a silent gap, alongside the
+  Android window-level occlusion deferral above — both are backend-parity gaps this proposal
+  chooses not to close in its first slice.
 - **Skip recovery entirely; fail fast the moment occlusion is detected.** The minimal alternative,
   and the floor this proposal's other units are useful without: `ElementNotTappable` alone, with no
   scroll safety net, would already turn a silent wrong-tap or a misleading `ElementNotFound` into an

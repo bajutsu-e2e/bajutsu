@@ -158,10 +158,10 @@ still sit under a sticky header, a toast, or a dimmed modal backdrop — so a ta
 obstruction instead. `tap` / `double_tap` / `long_press` (and the focus-tap inside `type` /
 `clear` / `delete` / `select`) now check this before acting, the idiomatic way per backend (iOS's
 native `isHittable`; the web's `document.elementFromPoint`; adb's document-order geometric proxy,
-`Driver.is_tappable`). When the check fails, the driver takes one small, bounded, `down`-only
-scroll and retries once; if the target is still unreachable, the action raises
-`ElementNotTappable` instead of the misleading `ElementNotFound` a caller might otherwise
-mistake for "not in the tree at all".
+`Driver.is_tappable`). When the check fails, the orchestrator takes a small, bounded scroll — up
+to three `down`-only steps — and retries the action once; if the target is still unreachable, the
+action raises `ElementNotTappable` instead of the misleading `ElementNotFound` a caller might
+otherwise mistake for "not in the tree at all".
 
 `ElementNotTappable` is a sibling of `SelectorError`, not a subclass — the selector *did* resolve,
 so lumping it in with resolution failure would blur that "who matched" and "is it reachable" are

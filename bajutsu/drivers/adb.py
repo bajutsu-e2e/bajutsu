@@ -915,11 +915,7 @@ class AdbDriver(CoordinateTreeDriver):
         # `zIndex` and the ordinary undecorated case on either toolkit; can misjudge a View-based
         # layout that uses `elevation`, which reorders drawing without reordering the accessibility
         # tree (measured on-device during this feature's design spike, not merely theorized).
-        covering = base.topmost_at_point(tree, base.frame_center(el["frame"]), el)
-        if covering is not None:
-            raise base.ElementNotTappable(
-                f"element resolved but covered by another element: {sel!r}"
-            )
+        base.raise_if_covered(tree, el, sel)
         return el["frame"], screen_size_from_elements(tree), el
 
     def is_tappable(self, sel: base.Selector) -> bool:
@@ -1042,10 +1038,7 @@ class AdbDriver(CoordinateTreeDriver):
                 el, tree = self._resolve(sel, timeout=self._RESOLVE_TIMEOUT_S, initial_tree=tree)
             except base.ElementNotFound:
                 el, tree = self._scroll_into_view(sel, tree)
-            if base.topmost_at_point(tree, base.frame_center(el["frame"]), el) is not None:
-                raise base.ElementNotTappable(
-                    f"element resolved but covered by another element: {sel!r}"
-                )
+            base.raise_if_covered(tree, el, sel)
             identity = self._identities.get(id(el))
             if identity is None:
                 # A seeded read: this driver never parsed that tree, so it recorded no identity to

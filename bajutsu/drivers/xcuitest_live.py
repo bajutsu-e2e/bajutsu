@@ -383,10 +383,7 @@ class XcuitestLiveDriver:
         """
         elements, handles = self._query_with_handles()
         el = base.resolve_unique(elements, sel)
-        if base.topmost_at_point(elements, base.frame_center(el["frame"]), el) is not None:
-            raise base.ElementNotTappable(
-                f"element resolved but covered by another element: {sel!r}"
-            )
+        base.raise_if_covered(elements, el, sel)
         return handles[id(el)], el
 
     def tap(self, sel: base.Selector) -> None:

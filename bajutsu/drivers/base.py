@@ -808,6 +808,23 @@ def topmost_at_point(elements: list[Element], point: Point, target: Element) -> 
     return None
 
 
+def raise_if_covered(elements: list[Element], el: Element, sel: Selector) -> None:
+    """Raise `ElementNotTappable` if `topmost_at_point` finds something covering `el`'s own point.
+
+    Shared by every backend that falls back to the document-order proxy rather than a native
+    hit-test (adb's two call sites, `FakeDriver`, `XcuitestLiveDriver`) — one place for the check,
+    the message, and the covering element's own identifier/label/frame, so a failure names *what*
+    covered the target instead of leaving a caller to reproduce the screen by hand to find out.
+    """
+    covering = topmost_at_point(elements, frame_center(el["frame"]), el)
+    if covering is not None:
+        cover = covering["identifier"] or covering["label"]
+        raise ElementNotTappable(
+            f"element resolved but covered by another element "
+            f"({cover!r} at {covering['frame']}): {sel!r}"
+        )
+
+
 def gesture_anchor(frame: Frame) -> tuple[float, float, float]:
     """A two-finger gesture's center and finger half-distance for a resolved frame (BE-0251).
 

@@ -142,6 +142,19 @@ class ConformanceHarness(Protocol):
     Each backend realizes a requested screen its own way — `FakeDriver` takes the elements
     directly, a browser renders them, an app presents them — so the contract can drive the real
     driver instance (including any code that bypasses `drivers/base`), not the shared base alone.
+
+    `obstruction_screen(self) -> base.Driver` is a genuinely optional structural extra, deliberately
+    left off this `Protocol`'s declared surface rather than given a docstring-only body here: a
+    harness whose backend cannot yet realize genuine on-screen overlap simply has no such method,
+    and the contract tests that need it check for its presence with `hasattr` and skip, rather than
+    fail, when it is absent (the same tolerance `test_delete_text_reduces_the_field_length` already
+    grants a backend that cannot surface a field's value). Declaring it here instead — even as a
+    docstring-only body — would make it an inherited, concrete method on any harness written as
+    `class MyHarness(ConformanceHarness)`, so `hasattr` would read `True` and the skip would never
+    fire, even though calling it would just return `None`. When a harness does implement it, it
+    should return a driver showing `OBSTRUCTION_TARGET_ID` genuinely covered by
+    `OBSTRUCTION_COVER_ID` at the same point, plus an unobstructed `OBSTRUCTION_CLEAR_ID` on the
+    same screen.
     """
 
     backend: str
@@ -162,18 +175,6 @@ class ConformanceHarness(Protocol):
         tall row start below the fold. A backend that keeps off-screen nodes in its tree (web) or
         models a viewport (fake) reports them off-screen; a native lazy list drops them until scrolled
         to — the `scroll` action's re-query loop reveals the target on either.
-        """
-
-    def obstruction_screen(self) -> base.Driver:
-        """Return a driver showing `OBSTRUCTION_TARGET_ID` genuinely covered by
-        `OBSTRUCTION_COVER_ID` at the same point, plus an unobstructed `OBSTRUCTION_CLEAR_ID` on the
-        same screen.
-
-        Optional: omit this method entirely on a harness that cannot yet realize genuine on-screen
-        overlap (no per-backend UI support built for it). The contract tests that need it check for
-        its presence and skip, rather than fail, when it is absent — the same tolerance
-        `test_delete_text_reduces_the_field_length` already grants a backend that cannot surface a
-        field's value.
         """
 
 

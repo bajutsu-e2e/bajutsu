@@ -173,3 +173,20 @@ def test_topmost_at_point_scans_nothing_when_target_is_not_in_elements_by_identi
     elements = [card, button]
     target = _element("button", (5.0, 5.0, 10.0, 10.0))  # equal, not identical
     assert base.topmost_at_point(elements, base.frame_center(target["frame"]), target) is None
+
+
+def test_raise_if_covered_names_the_covering_element_in_the_message() -> None:
+    # The failure message must name *what* covered the target, not just that something did —
+    # the one fact a caller investigating a CI failure would otherwise have to reproduce the
+    # screen by hand to learn.
+    target = _element("target", (0.0, 0.0, 10.0, 10.0))
+    cover = _element("cover", (0.0, 0.0, 20.0, 20.0))
+    with pytest.raises(base.ElementNotTappable, match="covered by another element") as exc_info:
+        base.raise_if_covered([target, cover], target, {"id": "target"})
+    assert "'cover'" in str(exc_info.value)
+    assert "(0.0, 0.0, 20.0, 20.0)" in str(exc_info.value)
+
+
+def test_raise_if_covered_does_nothing_when_the_target_is_reachable() -> None:
+    target = _element("target", (0.0, 0.0, 10.0, 10.0))
+    base.raise_if_covered([target], target, {"id": "target"})  # must not raise

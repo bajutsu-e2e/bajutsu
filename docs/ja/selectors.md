@@ -114,7 +114,7 @@ def resolve_unique(elements, sel):
 
 ### `ElementNotTappable`: 解決はしたが到達できない対象
 
-`resolve_unique` が判定するのは一致件数だけです。その一致した要素が実際に画面上で到達可能かどうかは判定しません。要素はセレクタに一意に一致し、有効な frame を持ちながら、固定ヘッダーやトースト、あるいは薄暗いモーダルの背景の下に置かれていることがあります。その場合、タップは対象ではなく遮蔽物に当たってしまいます。`tap` / `double_tap` / `long_press`（そして `type` / `clear` / `delete` / `select` の内部にあるフォーカスタップ）は、操作前にこれを確認するようになりました。各プラットフォームがもっとも自然に提供する手段（iOS のネイティブな `isHittable`、web の `document.elementFromPoint` によるヒットテスト、adb のドキュメント順による幾何学的な近似、`Driver.is_tappable`）を使います。この確認に失敗すると、ドライバは小さく回数を区切った `down` 方向のみのスクロールを 1 回試して再試行します。それでも対象へ到達できなければ、`ElementNotFound` ではなく `ElementNotTappable` を送出します。呼び出し側が「ツリーに存在すらしない」と誤解しかねない `ElementNotFound` の代わりです。
+`resolve_unique` が判定するのは一致件数だけです。その一致した要素が実際に画面上で到達可能かどうかは判定しません。要素はセレクタに一意に一致し、有効な frame を持ちながら、固定ヘッダーやトースト、あるいは薄暗いモーダルの背景の下に置かれていることがあります。その場合、タップは対象ではなく遮蔽物に当たってしまいます。`tap` / `double_tap` / `long_press`（そして `type` / `clear` / `delete` / `select` の内部にあるフォーカスタップ）は、操作前にこれを確認するようになりました。各プラットフォームがもっとも自然に提供する手段（iOS のネイティブな `isHittable`、web の `document.elementFromPoint` によるヒットテスト、adb のドキュメント順による幾何学的な近似、`Driver.is_tappable`）を使います。この確認に失敗すると、オーケストレータが小さく回数を区切った `down` 方向のみのスクロールを最大 3 回まで試し、操作をもう一度だけ再試行します。それでも対象へ到達できなければ、`ElementNotFound` ではなく `ElementNotTappable` を送出します。呼び出し側が「ツリーに存在すらしない」と誤解しかねない `ElementNotFound` の代わりです。
 
 `ElementNotTappable` は `SelectorError` の派生ではなく、その兄弟です。セレクタ自体は解決しているため、解決失敗と同じ扱いにまとめると「何が一致したか」と「到達可能か」という別の問いをぼかしてしまいます。orchestrator のステップ実行 catch は、`SelectorError` を扱うのと同じ形でこれを扱います。クリーンなステップ失敗であり、クラッシュではありません。
 
