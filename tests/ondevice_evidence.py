@@ -13,11 +13,11 @@ machinery to hook into. `capture()` itself is backend-agnostic: the caller suppl
 bounds both Android suites share.
 
 Recorded per test, not per module: `screenrecord`'s ~180s device-side ceiling (see
-`screenrecord.py`) would truncate a single video spanning the whole conformance module, and a
-per-test clip also lets a failure's video be found by its own test name rather than scrubbing one
-long recording. Kept only on failure — the same policy `screenrecord.py`'s own Makefile target
-already applies to the codegen lane — so a green run uploads nothing and CI artifact storage tracks
-failures, not suite size.
+`intervals.SCREENRECORD_TIME_LIMIT_S`'s comment) would truncate a single video spanning the whole
+conformance module, and a per-test clip also lets a failure's video be found by its own test name
+rather than scrubbing one long recording. Kept only on failure — the same policy `screenrecord.py`'s
+own Makefile target already applies to the codegen lane — so a green run uploads nothing and CI
+artifact storage tracks failures, not suite size.
 
 The keep/discard decision cannot live inside `capture`'s own fixture teardown: pytest builds the
 "teardown" `TestReport` only *after* every finalizer for the item has run, `capture`'s own included,
@@ -63,17 +63,10 @@ _FAILED: pytest.StashKey[bool] = pytest.StashKey()
 # never be swept even on a passing test — the opposite of "kept only on failure".
 _PENDING: pytest.StashKey[list[Path]] = pytest.StashKey()
 
-# Mirrors screenrecord.py's bound. 180 is the platform's hard maximum, not a soft default: AOSP's
-# screenrecord rejects any --time-limit above kMaxTimeLimitSec (180) with an error instead of
-# clamping, so this cannot be raised. --size/--bit-rate keep the mp4 small enough for `/sdcard` and
-# the artifact upload; a single conformance/fault-injection case is far shorter than the cap.
-_TIME_LIMIT_S = 180
-_SIZE = "540x1200"
-_BIT_RATE = 2_000_000
-
 
 def android_screenrecord(serial: str, path: Path) -> intervals.Interval:
-    """`intervals.start_screenrecord` pre-bound to this module's size/bit-rate/time-limit bounds.
+    """`intervals.start_screenrecord` pre-bound to `intervals`' shared size/bit-rate/time-limit bounds
+    (the same ones `demos/showcase/android/screenrecord.py` pre-binds for the codegen lane).
 
     `confirm_started=True`: a bare spawn only proves the local `adb shell` client started, not that a
     device-side `screenrecord` process exists yet, and a fast failing case can otherwise tear down
@@ -85,9 +78,9 @@ def android_screenrecord(serial: str, path: Path) -> intervals.Interval:
     return intervals.start_screenrecord(
         serial,
         path,
-        time_limit=_TIME_LIMIT_S,
-        size=_SIZE,
-        bit_rate=_BIT_RATE,
+        time_limit=intervals.SCREENRECORD_TIME_LIMIT_S,
+        size=intervals.SCREENRECORD_SIZE,
+        bit_rate=intervals.SCREENRECORD_BIT_RATE,
         confirm_started=True,
     )
 
@@ -154,9 +147,20 @@ def capture(
     # overwrite an existing file, so a clip kept by a crashed attempt — or by an earlier local run of
     # the same test — would otherwise silently stand in for this attempt's own evidence. `adb pull`
     # and `start_logcat`'s own `wb` open would have overwritten either file regardless, but clearing
-    # first makes that true for both backends without relying on it.
-    shutil.rmtree(dest, ignore_errors=True)
-    dest.mkdir(parents=True, exist_ok=True)
+    # first makes that true for both backends without relying on it. Guarded like the two starters
+    # below: preparing the directory is capture plumbing too, so it must not decide a gating
+    # driver-contract verdict either.
+    try:
+        shutil.rmtree(dest, ignore_errors=True)
+        dest.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        _logger.warning(
+            "%s: could not prepare the evidence directory; the test runs without capture",
+            dest,
+            exc_info=True,
+        )
+        yield
+        return
     video: intervals.Interval | None = None
     log: intervals.Interval | None = None
     try:

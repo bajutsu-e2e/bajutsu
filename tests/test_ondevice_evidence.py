@@ -271,6 +271,36 @@ class _FakeRequest:
         self.node = _FakeNode(nodeid)
 
 
+def test_warns_and_still_yields_when_the_evidence_directory_cannot_be_prepared(
+    caplog, monkeypatch, tmp_path
+) -> None:
+    # A stale `runs/<lane>/<slug>` left behind as a *file*, not a directory — `rmtree(ignore_errors=
+    # True)` leaves it in place, and `mkdir(exist_ok=True)` then raises `FileExistsError` — must not
+    # error the case as a setup failure over evidence-capture plumbing: preparing the directory is
+    # capture plumbing too, guarded the same "warn, never raise" way as the two starters below it.
+    monkeypatch.chdir(tmp_path)
+    slug = ondevice_evidence._slug("fake::test")
+    dest = tmp_path / "runs" / "fake-lane" / slug
+    dest.parent.mkdir(parents=True)
+    dest.write_text("a stale file standing where the evidence directory belongs")
+
+    def _fail_if_called(serial: str, path: Path):
+        raise AssertionError("must not be called once directory preparation has failed")
+
+    caplog.set_level(logging.WARNING)
+    gen = ondevice_evidence.capture(
+        "fake-serial",
+        "fake-lane",
+        _FakeRequest("fake::test"),
+        start_video=_fail_if_called,
+        start_log=_fail_if_called,
+    )
+    next(gen)  # does not raise, and never reaches either starter
+    with pytest.raises(StopIteration):
+        next(gen)
+    assert any("could not prepare the evidence directory" in r.message for r in caplog.records)
+
+
 def test_warns_about_a_missing_or_empty_artifact(caplog, monkeypatch, tmp_path) -> None:
     # `_spawn` discards the child's stderr, so a `recordVideo`/`screenrecord` that refused to start
     # or died leaves no other trace, and `if-no-files-found: ignore` on the CI upload step would let
@@ -490,9 +520,9 @@ def test_the_real_starters_accept_captures_two_argument_call() -> None:
     inspect.signature(intervals.start_screenrecord).bind(
         "serial",
         Path("v.mp4"),
-        time_limit=ondevice_evidence._TIME_LIMIT_S,
-        size=ondevice_evidence._SIZE,
-        bit_rate=ondevice_evidence._BIT_RATE,
+        time_limit=intervals.SCREENRECORD_TIME_LIMIT_S,
+        size=intervals.SCREENRECORD_SIZE,
+        bit_rate=intervals.SCREENRECORD_BIT_RATE,
         confirm_started=True,
     )
 
@@ -513,9 +543,9 @@ def test_android_screenrecord_forwards_this_modules_pinned_bounds(monkeypatch) -
         (
             "serial-1",
             Path("video.mp4"),
-            ondevice_evidence._TIME_LIMIT_S,
-            ondevice_evidence._SIZE,
-            ondevice_evidence._BIT_RATE,
+            intervals.SCREENRECORD_TIME_LIMIT_S,
+            intervals.SCREENRECORD_SIZE,
+            intervals.SCREENRECORD_BIT_RATE,
             True,
         )
     ]
