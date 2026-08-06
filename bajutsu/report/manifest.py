@@ -50,7 +50,10 @@ def _run_backend(results: list[RunResult]) -> str:
 #   written, but old manifests may still carry it (an unknown top-level key is ignored on load).
 # v3 (BE-0049): optional top-level "provenance" block (scenario hash + tool/git version).
 # v4 (BE-0076): optional top-level "matrix" block (engine x scenario aggregate of per-engine verdicts).
-SCHEMA_VERSION = 4
+# v5: per-step "actuations" (and per-scenario "expect_actuations") — what the driver actually did to the
+#   screen, the coordinate/geometry half of the `actionLog` evidence kind. An older run simply has none,
+#   so the report shows no actuation row for it rather than failing to load.
+SCHEMA_VERSION = 5
 
 
 def _matrix(results: list[RunResult]) -> dict[str, object] | None:

@@ -88,7 +88,8 @@ class StepOutcome:
     action: str                  # "tap" / "wait" / ...
     ok: bool
     reason: str                  # 失敗理由
-    duration_s: float            # 計時（actionLog 相当）
+    duration_s: float            # 計時
+    actuations: list[Actuation]  # ドライバが実際に行ったこと（送った座標・ジェスチャ）
     assertion_results: list[AssertionResult]
     artifacts: list[Artifact]    # このステップで取れた証跡
 
