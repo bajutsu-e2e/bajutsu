@@ -138,8 +138,17 @@ def logcat_cmd(serial: str) -> list[str]:
     new-events-only semantics. Unfiltered: a logcat tag/priority filterspec is a different syntax
     from the iOS `os_log` predicate, so the predicate is not forwarded here (a tag filter can be a
     later knob).
+
+    `-b main,system,crash,events` widens past bare `logcat`'s default (`main,system,crash` on
+    modern Android) by adding `events`: `crash` alone carries an app's own uncaught-exception dump
+    (`AndroidRuntime`/`DEBUG` tombstone), but a same-shaped symptom — the process dying with no
+    exception of its own — can also be `ActivityManager` killing it for memory pressure, which logs
+    only as a structured `events` entry (`am_kill`/`am_low_memory`, decoded via
+    `/system/etc/event-log-tags`), never through `crash`. Without `events`, that second cause is
+    indistinguishable from a silent, uncaptured failure. The kernel's own OOM/LMK path (`dmesg`) is
+    a separate ring buffer logd never sees, so it stays out of reach of any `-b` combination here.
     """
-    return _adb(serial, "logcat", "-T", "1")
+    return _adb(serial, "logcat", "-b", "main,system,crash,events", "-T", "1")
 
 
 def pull_cmd(serial: str, device_path: str, local_path: str) -> list[str]:

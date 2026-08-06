@@ -158,7 +158,7 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 | Kind | Start command (iOS / Android) | Stop signal | Filename |
 |---|---|---|---|
 | `video` | `simctl io <udid> recordVideo --codec h264` / `adb shell screenrecord` | **SIGINT** (a hard kill would corrupt the mp4) | `scenario.mp4` |
-| `deviceLog` | `simctl spawn <udid> log stream --level debug --style compact [--predicate ...]` / `adb logcat -T 1` | SIGTERM | `device.log` |
+| `deviceLog` | `simctl spawn <udid> log stream --level debug --style compact [--predicate ...]` / `adb logcat -b main,system,crash,events -T 1` | SIGTERM | `device.log` |
 
 - `start_video` / `start_device_log` (iOS) and `start_screenrecord` / `start_logcat` (Android)
   return an `Interval`, and `Interval.stop()` sends the signal and finalizes the file. `deviceLog`
@@ -172,9 +172,14 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   recording at ~180s (the platform default/maximum, not a limit bajutsu tunes), so an Android video
   of a longer scenario ends at that mark.
 - deviceLog can be narrowed by `--predicate` (NSPredicate) to a subsystem, etc. (the CLI's
-  `--log-predicate`) on iOS; `adb logcat` is unfiltered (a logcat filterspec is a different syntax, a
-  later knob) and starts the follow from the tail so it reflects the scenario window, not the whole
-  ring buffer.
+  `--log-predicate`) on iOS; `adb logcat` is unfiltered by tag/priority (a logcat filterspec is a
+  different syntax, a later knob) and starts the follow from the tail so it reflects the scenario
+  window, not the whole ring buffer. It does widen past bare `logcat`'s default buffer set
+  (`main,system,crash`) to add `events`: an app's own uncaught exception lands in `crash`, but a
+  process killed by `ActivityManager` for memory pressure logs only a structured `am_kill` /
+  `am_low_memory` entry in `events` — without it, that cause is indistinguishable from a silent,
+  uncaptured failure. The kernel's own OOM/LMK path (`dmesg`) is a separate ring buffer logd never
+  sees, so no `-b` combination reaches it.
 - `INTERVAL_KINDS = {"video", "deviceLog", "appTrace"}`. The orchestrator uses this set to split
   "interval / instant."
 - **The scenario-wide `video` begins before the app launches on Android**, so the recording spans

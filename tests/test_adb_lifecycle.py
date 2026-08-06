@@ -72,7 +72,9 @@ def test_evidence_command_builders() -> None:
         "--time-limit", "900", "--size", "540x1200", "--bit-rate", "2000000",
         adb.VIDEO_DEVICE_PATH,
     ]  # fmt: skip
-    assert adb.logcat_cmd("S") == ["adb", "-s", "S", "logcat", "-T", "1"]
+    assert adb.logcat_cmd("S") == [
+        "adb", "-s", "S", "logcat", "-b", "main,system,crash,events", "-T", "1",
+    ]  # fmt: skip
     assert adb.pull_cmd("S", "/sdcard/x.mp4", "/tmp/x.mp4") == [
         "adb", "-s", "S", "pull", "/sdcard/x.mp4", "/tmp/x.mp4",
     ]  # fmt: skip
