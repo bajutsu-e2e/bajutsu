@@ -987,7 +987,12 @@ def test_write_network_stamps_the_given_provider(tmp_path: Path) -> None:
 
     ex = NetworkExchange(method="GET", path="/a", status=200)
     art = _write_network(
-        [(ex, 1.0)], 0.0, tmp_path, "00-s", Redactor(None), provider="fake (fallback)"
+        [(ex, 1.0)],
+        tmp_path,
+        "00-s",
+        Redactor(None),
+        wall_offset_s=0.0,
+        provider="fake (fallback)",
     )
     assert art is not None and art.provider == "fake (fallback)"
 
@@ -1001,7 +1006,9 @@ def test_write_network_started_at_is_an_absolute_wall_clock_instant(tmp_path: Pa
     from bajutsu.runner.pipeline import _write_network
 
     ex = NetworkExchange(method="GET", path="/a", status=200, durationMs=250.0)
-    art = _write_network([(ex, 1.0)], 1_700_000_000.0, tmp_path, "00-s", Redactor(None))
+    art = _write_network(
+        [(ex, 1.0)], tmp_path, "00-s", Redactor(None), wall_offset_s=1_700_000_000.0
+    )
     assert art is not None
     data = json.loads((tmp_path / "00-s" / "network.json").read_text(encoding="utf-8"))
     assert data[0]["startedAt"] == 1_700_000_000.75
@@ -1053,9 +1060,9 @@ def test_network_json_anchors_to_the_video_corrected_start(tmp_path: Path) -> No
     # rendered offset is 2.5 — the same number the pre-BE-0348 in-flight calculation produced.
     # Approximate to the millisecond: network.json rounds `startedAt` to 3 decimals (as it always
     # has), which now quantizes an epoch-magnitude value rather than a small offset.
-    assert video_seconds(data[0]["startedAt"], results[0].video_anchor_s) == pytest.approx(
-        2.5, abs=1e-3
-    )
+    assert video_seconds(
+        data[0]["startedAt"], video_anchor_s=results[0].video_anchor_s
+    ) == pytest.approx(2.5, abs=1e-3)
 
 
 class _ConstantCollector:

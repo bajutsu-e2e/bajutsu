@@ -853,7 +853,10 @@ def test_the_report_derives_the_same_video_relative_seconds_the_run_used_to_bake
     # is the same number the run loop used to compute in-flight (0.0 uncorrected, 2.5 corrected).
     for true_start, expected in ((None, 0.0), (-2.5, 2.5)):
         result = _run_with_video(true_start)
-        assert video_seconds(result.steps[0].started_at, result.video_anchor_s) == expected
+        assert (
+            video_seconds(result.steps[0].started_at, video_anchor_s=result.video_anchor_s)
+            == expected
+        )
 
 
 def test_the_wall_clock_is_read_once_so_every_step_shares_one_anchor() -> None:

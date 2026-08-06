@@ -65,10 +65,11 @@ _logger = logging.getLogger(__name__)
 
 def _write_network(
     timed: list[tuple[NetworkExchange, float]],
-    wall_offset_s: float,
     run_dir: Path,
     sid: str,
     redactor: Redactor,
+    *,
+    wall_offset_s: float,
     provider: str = "collector",
 ) -> Artifact | None:
     """Write a scenario's observed exchanges to <sid>/network.json (redacted).
@@ -78,6 +79,8 @@ def _write_network(
     `wall_offset_s` (`RunResult.wall_offset_s`) converts through the scenario's own anchor pair, and
     the receive time is ≈ completion, so the start is `wall(received) - duration`. A report subtracts
     `RunResult.video_anchor_s` at render time to place the exchange on the recording's timeline.
+    `wall_offset_s` is keyword-only: it and `RunResult.video_anchor_s` are both floats of similar
+    magnitude a caller could otherwise pass in the wrong slot with no type error.
     """
     if not timed:
         return None
@@ -394,10 +397,10 @@ class _ScenarioRunner:
             if lz.collector is not None and self.run_dir is not None:
                 art = _write_network(
                     lz.collector.snapshot_timed(),
-                    result.wall_offset_s,
                     self.run_dir,
                     sid,
                     self.redactor,
+                    wall_offset_s=result.wall_offset_s,
                     provider=lz.collector_provider,
                 )
                 if art is not None:

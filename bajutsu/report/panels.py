@@ -119,7 +119,7 @@ def _network_item(d: dict[str, Any], video_anchor_s: float) -> dict[str, Any]:
     return {
         "method": method,
         "target": target,
-        "at": f"{video_seconds(float(started), video_anchor_s):.1f}s"
+        "at": f"{video_seconds(float(started), video_anchor_s=video_anchor_s):.1f}s"
         if isinstance(started, (int, float)) and not isinstance(started, bool)
         else "",
         "status": str(status) if status is not None else "—",

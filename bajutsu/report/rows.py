@@ -360,10 +360,10 @@ def _merged_rows(
         if out is None:
             skipped.append(_step_skip_row(i, step_def, shown_from[i]))
         else:
-            at = video_seconds(out.started_at, r.video_anchor_s)
+            at = video_seconds(out.started_at, video_anchor_s=r.video_anchor_s)
             timed.append((at, 0, _step_run_row(i, step_def, out, run_dir, at, shown_from[i])))
     for d in exchanges:
-        t0 = video_seconds(_as_float(d.get("startedAt")), r.video_anchor_s)
+        t0 = video_seconds(_as_float(d.get("startedAt")), video_anchor_s=r.video_anchor_s)
         dur_s = _as_float(d.get("durationMs")) / 1000.0
         timed.append((t0, 1, _request_row(d, t0)))
         timed.append((t0 + dur_s, 2, _response_row(d, t0 + dur_s)))
