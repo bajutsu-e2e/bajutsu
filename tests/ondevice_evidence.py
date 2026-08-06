@@ -251,6 +251,9 @@ def capture(
             # the silence pass for a clean run.
             for artifact in (dest / "video.mp4", dest / "device.log"):
                 if not artifact.exists() or artifact.stat().st_size == 0:
-                    _logger.warning(
+                    warnings.warn(
+                        f"{artifact} is missing or empty: this test recorded no evidence",
+                        stacklevel=2,
+                    )
                         "%s is missing or empty: this test recorded no evidence", artifact
                     )
