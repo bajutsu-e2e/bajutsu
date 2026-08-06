@@ -28,6 +28,7 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -188,3 +189,71 @@ class CrashRecoveryBudget:
             will_retry=within_count and within_budget,
             budget_spent=within_count and not within_budget,
         )
+
+
+# A wall-clock ceiling (seconds) on how long crash recovery may spend respawning across a *whole*
+# run, not just one scenario. `crash_recovery_budget` resets for every new scenario, so a device that
+# keeps degrading pays that budget again and again — each respawn its own cold-startup ceiling — until
+# a job's own CI `timeout-minutes` cancels it with no diagnosable cause rather than a clean failure
+# (an incident `.github/workflows/ios-e2e.yml` already documents). This budget bounds the cumulative
+# spend instead: unset (the default) is unbounded, so a lane not opting in is unchanged.
+_RUN_CRASH_RECOVERY_BUDGET_ENV = "BAJUTSU_RUN_CRASH_RECOVERY_BUDGET"
+
+
+def _default_run_crash_recovery_budget() -> float | None:
+    """The run-level crash-recovery wall-clock budget (s) from the env, or None (unbounded) when unset/invalid.
+
+    Same unset-or-invalid-reads-as-unbounded parsing as `_default_crash_recovery_budget`.
+    """
+    raw = os.environ.get(_RUN_CRASH_RECOVERY_BUDGET_ENV)
+    if not raw:
+        return None
+    try:
+        value = float(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+class RunCrashRecoveryBudget:
+    """Wall-clock ceiling on crash recovery across a whole run, not just one scenario.
+
+    `CrashRecoveryBudget` resets a fresh deadline for every scenario, so a device that keeps
+    degrading pays each scenario's own budget again — the caller (`_ScenarioRunner`) shares one of
+    these across every scenario in a run instead, so the deadline is set once, at the *first* crash
+    anywhere in the run (never blocking that first respawn, the same rule `CrashRecoveryBudget`
+    applies per scenario), and every later crash checks against it. A device that keeps degrading
+    then fails the run loudly once the shared deadline passes, instead of silently re-spending each
+    scenario's own budget until an external timeout cancels the job.
+
+    `note_crash` is guarded by a lock because `run_all`'s `workers > 1` path shares one
+    `_ScenarioRunner` — and so one instance of this class — across a `ThreadPoolExecutor`
+    (`bajutsu/runner/pool.py`'s `lease_defect_lock` guards shared state across that same pool for the
+    same reason).
+
+    `budget` is public (not `_budget`) so a caller that needs the configured seconds for a failure
+    message (`bajutsu/runner/pipeline.py`'s `run_one`) reads it straight from the one object that
+    also enforces it, rather than keeping a second field of its own in sync by hand.
+    """
+
+    def __init__(self, budget: float | None, now: Callable[[], float]) -> None:
+        self.budget = budget
+        self._now = now
+        self._deadline: float | None = None
+        self._lock = threading.Lock()
+
+    def note_crash(self) -> bool:
+        """Record a crash and report whether the run-level budget is exhausted.
+
+        Reads the clock exactly once, so the very crash that arms the deadline (the first one, or the
+        first after a `None` budget starts enforcing) is judged against the same instant that set it
+        and can never itself be reported exhausted — the same never-block-the-first-respawn guarantee
+        `CrashRecoveryBudget.on_crash` gives its own single clock read, now shared across a whole run
+        instead of reset per scenario.
+        """
+        with self._lock:
+            t = self._now()
+            if self.budget is not None and self._deadline is None:
+                self._deadline = t + self.budget
+                return False
+            return self._deadline is not None and t >= self._deadline

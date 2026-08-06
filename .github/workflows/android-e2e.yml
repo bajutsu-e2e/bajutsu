@@ -126,8 +126,25 @@ jobs:
     timeout-minutes: 30
     # The adb backend is pure subprocess (no Python extra), so the base package suffices; skip the
     # dev group (mypy / pytest / ruff), which the Linux `check` gate owns.
+    #
+    # This job runs the largest scenario set in the lane (Compose full set + Views subset), so it is
+    # the one most exposed to a mid-run backend crash (BAJUTSU_CRASH_RETRIES/
+    # BAJUTSU_CRASH_RECOVERY_BUDGET, bajutsu/runner/pipeline.py) — unset elsewhere in this workflow,
+    # falling back to one retry and an unbounded per-scenario budget. 2 retries (three attempts) rides
+    # out a one-off crash the same way ios-e2e.yml's `run`/`actuation` jobs do; 180s bounds one
+    # scenario's respawn wall-clock. BAJUTSU_RUN_CRASH_RECOVERY_BUDGET
+    # (_default_run_crash_recovery_budget) is the run-scoped counterpart: it caps crash-recovery time
+    # across every scenario in this one `bajutsu run` invocation, not per scenario, so a device that
+    # keeps degrading fails loudly well before this job's own 30min `timeout-minutes` instead of being
+    # cancelled with no diagnosable cause (the iOS incident this knob was added for —
+    # ios-e2e.yml's comment above its own BAJUTSU_XCUITEST_RECOVERY_TIMEOUT). 480s leaves the ~18min
+    # nominal run (see the timeout-minutes comment below) comfortable headroom under the 30min cap
+    # even at the budget's full spend.
     env:
       UV_NO_DEV: "1"
+      BAJUTSU_CRASH_RETRIES: "2"
+      BAJUTSU_CRASH_RECOVERY_BUDGET: "180"
+      BAJUTSU_RUN_CRASH_RECOVERY_BUDGET: "480"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 

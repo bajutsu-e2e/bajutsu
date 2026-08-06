@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-xcuitest-adb-crash-retry-device-recovery.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Implementing PR | TBD — filled in once the PR is opened (this is a BE-creation PR; the id and PR are not opened by this session) |
 | Topic | Platform support |
 | Related | [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md), [BE-0334](../BE-0334-conformance-suite-infra-fault-recovery/BE-0334-conformance-suite-infra-fault-recovery.md), [BE-0342](../BE-0342-ondevice-lease-teardown/BE-0342-ondevice-lease-teardown.md), [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) |
 <!-- /BE-METADATA -->
@@ -87,15 +88,20 @@ retry never earns more than an in-place respawn.
 
 Two independent units.
 
-1. **Force `preconditions.erase = True` on a crash-triggered retry, unless the scenario declared
-   `reinstall: overwrite`.** In `bajutsu/runner/pipeline.py`, `_ScenarioRunner.run_one`'s retry loop
-   leases a fresh device on every attempt after the first. From the second attempt onward, build a
-   copy of the scenario whose `preconditions.erase` is `True`, and lease with that copy instead of
-   the original:
+1. **Force `preconditions.erase = True` on a crash-triggered retry, unless forcing it would be unsafe.**
+   In `bajutsu/runner/pipeline.py`, `_ScenarioRunner.run_one`'s retry loop leases a fresh device on
+   every attempt after the first. From the second attempt onward, build a copy of the scenario whose
+   `preconditions.erase` is `True`, and lease with that copy instead of the original — unless the
+   scenario declared `reinstall: overwrite`, or forcing `erase` would itself raise on this route:
 
    ```python
    retry_scenario = s
-   if attempt > 1 and s.preconditions.reinstall != "overwrite":
+   if (
+       attempt > 1
+       and s.preconditions.reinstall != "overwrite"
+       and s.preconditions.erase is not False
+       and _erase_is_safe_to_force(actuator, self.eff, self.udid_spec)
+   ):
        retry_scenario = s.model_copy(
            update={"preconditions": s.preconditions.model_copy(update={"erase": True})}
        )
@@ -116,7 +122,22 @@ Two independent units.
    declaration that it needs its app's data container preserved across a lease (`reinstall`'s default
    is `clean`, and both backends already gate their own wipe on `pre.erase or pre.reinstall ==
    "clean"`). Forcing `erase` unconditionally would silently wipe exactly the state such a scenario
-   was written to keep, so a retry for that scenario keeps today's bare in-place respawn instead.
+   was written to keep, so a retry for that scenario keeps today's bare in-place respawn instead. The
+   `erase is not False` guard covers the same case a level up: `Preconditions.erase` is `bool | None`
+   (`None` inherits the target's own `erase` default; an explicit `true`/`false` pins it for this
+   scenario), so a scenario that explicitly pins `erase: false` has made the identical kind of
+   deliberate override, and a forced retry must not overrule it either.
+
+   `_erase_is_safe_to_force` exists because two XCUITest routes reject any `erase` precondition
+   outright instead of honoring it: a real device (`xcuitest.deviceType: device`) and the live
+   WebDriver endpoint both raise (`simctl.DeviceError` / `base.UnsupportedAction`) rather than
+   silently no-op'ing, by the same "determinism first, fail loudly" design their permission and
+   install preconditions already follow. Neither exception is a `base.BackendCrashError`, so forcing
+   `erase` there would raise past this loop's own `except BackendCrashError` and abort the whole run
+   instead of retrying the one scenario — worse than the bare in-place respawn this item replaces. The
+   guard reuses the exact signal `capabilities_for_run` (BE-0238) already routes preflight on
+   (`xcuitest_targets_real_device(eff)`, `is_webdriver_endpoint(udid_spec)`), so the two checks can
+   never disagree about which route a scenario is on.
 
    Android's `pre.erase` is an app-level clean state, not a restart of the emulator process itself
    (`adb emu kill` plus relaunch); see *Alternatives considered*.
@@ -127,34 +148,42 @@ Two independent units.
    ```python
    class RunCrashRecoveryBudget:
        def __init__(self, budget: float | None, now: Callable[[], float]) -> None:
-           self._budget = budget
+           self.budget = budget
            self._now = now
            self._deadline: float | None = None
            self._lock = threading.Lock()
 
-       def note_crash(self) -> None:
+       def note_crash(self) -> bool:
+           """Record a crash and report whether the run-level budget is exhausted."""
            with self._lock:
-               if self._budget is not None and self._deadline is None:
-                   self._deadline = self._now() + self._budget
-
-       def exhausted(self) -> bool:
-           with self._lock:
-               return self._deadline is not None and self._now() >= self._deadline
+               t = self._now()
+               if self.budget is not None and self._deadline is None:
+                   self._deadline = t + self.budget
+                   return False
+               return self._deadline is not None and t >= self._deadline
    ```
 
-   The deadline is set at the first crash anywhere in the run and shared by every scenario after it,
-   never blocking a first respawn — the same never-block-the-first-respawn rule
-   `CrashRecoveryBudget` already applies per scenario. A `threading.Lock` guards it because
-   `run_all`'s `workers > 1` path shares one `_ScenarioRunner` across a thread pool, the same reason
-   `bajutsu/runner/pool.py`'s `lease_defect_lock` exists. Add a matching env-driven default next to
+   The deadline is set at the first crash anywhere in the run and shared by every scenario after it.
+   `note_crash` reads the clock exactly once, so the very crash that arms the deadline is judged
+   against the same instant that set it and can never itself be reported exhausted — the same
+   never-block-the-first-respawn rule `CrashRecoveryBudget.on_crash` already gives its own single
+   clock read (this is why the two operations are one method, not two: an earlier version of this
+   design split them into `note_crash()` + a separate `exhausted()`, each with its own clock call —
+   still correct on any clock available today, but a real gap between the two calls could in
+   principle make the very crash that arms the deadline read as already exhausted). `budget` is a
+   public field, not `_budget`, so the one object that enforces the budget is also the one place a
+   caller reads the configured seconds for a failure message — no second field to keep in sync by
+   hand. A `threading.Lock` guards `note_crash` because `run_all`'s `workers > 1` path shares one
+   `_ScenarioRunner` across a thread pool, the same reason `bajutsu/runner/pool.py`'s
+   `lease_defect_lock` exists. Add a matching env-driven default next to
    `_default_crash_recovery_budget`, reading a new `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET`.
 
    Wire it through `bajutsu/runner/pipeline.py`: `run_all` gains a
    `run_crash_recovery_budget: float | None = None` parameter, resolved the same
    `None`-reads-the-environment way as `crash_recovery_budget`, and passed into `_ScenarioRunner` as
    one `RunCrashRecoveryBudget` shared across every scenario in the run. In `run_one`'s
-   `except BackendCrashError` branch, call `note_crash()`, then check `exhausted()` alongside the
-   per-scenario budget's own `on_crash(attempt).will_retry` before leasing again; when the run-level
+   `except BackendCrashError` branch, `note_crash()`'s return value decides — alongside the
+   per-scenario budget's own `on_crash(attempt).will_retry` — whether to lease again; when the run-level
    budget is exhausted, stop retrying and report a failure that names it explicitly, distinct from a
    per-scenario budget or retry-count exhaustion.
 
@@ -214,9 +243,9 @@ Two independent units.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — force `preconditions.erase=True` on attempt 2 and later of a crash-triggered retry,
+- [x] Unit 1 — force `preconditions.erase=True` on attempt 2 and later of a crash-triggered retry,
       unless the scenario declared `reinstall: overwrite`, on both the XCUITest and adb backends.
-- [ ] Unit 2 — add `RunCrashRecoveryBudget`, wire `run_crash_recovery_budget` /
+- [x] Unit 2 — add `RunCrashRecoveryBudget`, wire `run_crash_recovery_budget` /
       `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` through `run_all`, add the workflow env knobs, and update
       `docs/architecture.md` / `docs/ja/architecture.md`.
 

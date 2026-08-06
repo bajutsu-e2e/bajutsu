@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-XXXX](BE-XXXX-xcuitest-adb-crash-retry-device-recovery-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| 実装 PR | TBD（PR を開いた時点で記入します。BE 作成 PR のため、ID と PR は本セッションでは作成しません） |
 | トピック | Platform support |
 | 関連 | [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md), [BE-0334](../BE-0334-conformance-suite-infra-fault-recovery/BE-0334-conformance-suite-infra-fault-recovery-ja.md), [BE-0342](../BE-0342-ondevice-lease-teardown/BE-0342-ondevice-lease-teardown-ja.md), [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) |
 <!-- /BE-METADATA -->
@@ -93,15 +94,22 @@ runner channel GET /screenshot: the runner recovered from a mid-run crash; re-is
 
 互いに独立した2つの単位から成ります。
 
-1. **クラッシュ起点の再試行では `preconditions.erase = True` を強制する。ただしシナリオが
-   `reinstall: overwrite` を宣言している場合は除く。**
+1. **クラッシュ起点の再試行では `preconditions.erase = True` を強制する。ただし強制すると危険な
+   場合は除く。**
    `bajutsu/runner/pipeline.py` の `_ScenarioRunner.run_one` の再試行ループは、1回目より後の
    試行のたびに新しいデバイスをリースします。2回目以降の試行では、`preconditions.erase` を
-   `True` にしたシナリオのコピーを作り、元のシナリオの代わりにそのコピーでリースします。
+   `True` にしたシナリオのコピーを作り、元のシナリオの代わりにそのコピーでリースします。ただし
+   シナリオが `reinstall: overwrite` を宣言している場合、およびこの経路で `erase` を強制すると
+   そもそも例外になる場合は除きます。
 
    ```python
    retry_scenario = s
-   if attempt > 1 and s.preconditions.reinstall != "overwrite":
+   if (
+       attempt > 1
+       and s.preconditions.reinstall != "overwrite"
+       and s.preconditions.erase is not False
+       and _erase_is_safe_to_force(actuator, self.eff, self.udid_spec)
+   ):
        retry_scenario = s.model_copy(
            update={"preconditions": s.preconditions.model_copy(update={"erase": True})}
        )
@@ -126,6 +134,22 @@ runner channel GET /screenshot: the runner recovered from a mid-run crash; re-is
    `pre.reinstall` が `clean` のいずれかのときに自分の消去を実行しています）。`erase` を
    無条件に強制すれば、そのシナリオが保持しようとしていた状態そのものを黙って消去してしまいます。
    そのためこのシナリオの再試行は、今日と同じその場での respawn のままにします。
+   `erase is not False` という条件は、同じ種類の判断を1段上で扱うものです。
+   `Preconditions.erase` は `bool | None` であり（`None` はターゲット自身の `erase` の既定値を
+   継承し、明示的な `true`/`false` はこのシナリオに固定します）、`erase: false` を明示的に固定した
+   シナリオも、`reinstall: overwrite` と同じ種類の意図的な上書きを行っているため、強制された
+   再試行がそれを覆してはいけません。
+
+   `_erase_is_safe_to_force` を設けたのは、2つの XCUITest 経路が `erase` の precondition を
+   そもそも受け付けず、黙って no-op にする代わりに例外を送出するからです。実機
+   （`xcuitest.deviceType: device`）と live WebDriver エンドポイントはどちらも、権限やインストール
+   の precondition がすでに従っている「決定性を優先し、黙らせずに失敗する」という設計に沿って
+   （`simctl.DeviceError` / `base.UnsupportedAction` を）送出します。どちらの例外も
+   `base.BackendCrashError` ではないため、これらの経路で `erase` を強制すると、このループ自身の
+   `except BackendCrashError` を素通りして run 全体が中断してしまいます。これは本項目が置き換える
+   その場での respawn よりも悪い結果です。このガードは、preflight がすでに使っている（BE-0238）
+   のと全く同じ判定材料（`xcuitest_targets_real_device(eff)`、`is_webdriver_endpoint(udid_spec)`）
+   を再利用するため、シナリオがどちらの経路にいるかについて2つの判定が食い違うことはありません。
 
    Android の `pre.erase` は、アプリレベルのクリーンな状態化であり、エミュレータのプロセス自体
    （`adb emu kill` と再起動）の再起動ではありません。詳しくは「検討した代替案」を参照してください。
@@ -136,35 +160,44 @@ runner channel GET /screenshot: the runner recovered from a mid-run crash; re-is
    ```python
    class RunCrashRecoveryBudget:
        def __init__(self, budget: float | None, now: Callable[[], float]) -> None:
-           self._budget = budget
+           self.budget = budget
            self._now = now
            self._deadline: float | None = None
            self._lock = threading.Lock()
 
-       def note_crash(self) -> None:
+       def note_crash(self) -> bool:
+           """クラッシュを記録し、run 単位の予算を使い切ったかどうかを返す。"""
            with self._lock:
-               if self._budget is not None and self._deadline is None:
-                   self._deadline = self._now() + self._budget
-
-       def exhausted(self) -> bool:
-           with self._lock:
-               return self._deadline is not None and self._now() >= self._deadline
+               t = self._now()
+               if self.budget is not None and self._deadline is None:
+                   self._deadline = t + self.budget
+                   return False
+               return self._deadline is not None and t >= self._deadline
    ```
 
    デッドラインは run 中で最初のクラッシュのときに設定され、それ以降のすべてのシナリオで共有
-   されます。最初の respawn を絶対にブロックしないという規則は、`CrashRecoveryBudget` がすでに
-   シナリオ単位で適用しているものと同じです。`threading.Lock` で保護しているのは、`run_all` の
-   `workers > 1` の経路が1つの `_ScenarioRunner` をスレッドプール全体で共有するためで、
-   `bajutsu/runner/pool.py` の `lease_defect_lock` が存在する理由と同じです。
-   `_default_crash_recovery_budget` と並べて、新しい `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` を読む
-   環境変数駆動のデフォルトも追加します。
+   されます。`note_crash` はクロックをちょうど1回だけ読みます。そのためデッドラインを設定する
+   まさにそのクラッシュは、デッドラインを設定したのと同じ瞬間で判定され、それ自身が「予算を
+   使い切った」と報告されることは決してありません。これは `CrashRecoveryBudget.on_crash` がすでに
+   自分自身の1回のクロック読み取りで与えている、最初の respawn を絶対にブロックしないという規則と
+   同じです（この2つの操作を別メソッドではなく1つのメソッドにしているのはこのためです。設計の
+   初期版では `note_crash()` と、それぞれ独自にクロックを読む別の `exhausted()` に分けていました。
+   今日利用できるどのクロックの上でも正しく動きますが、原理的には2回の呼び出しの間に実時間が
+   進む余地があり、デッドラインを設定したまさにそのクラッシュが、すでに使い切っていると読める
+   可能性が残っていました）。`budget` は `_budget` ではなく公開フィールドです。予算を強制する
+   その1つのオブジェクトが、失敗メッセージ用に設定済みの秒数を読む唯一の場所にもなるようにし、
+   手で同期を保つ2つ目のフィールドを持たないようにするためです。`note_crash` を
+   `threading.Lock` で保護しているのは、`run_all` の `workers > 1` の経路が1つの
+   `_ScenarioRunner` をスレッドプール全体で共有するためで、`bajutsu/runner/pool.py` の
+   `lease_defect_lock` が存在する理由と同じです。`_default_crash_recovery_budget` と並べて、
+   新しい `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` を読む環境変数駆動のデフォルトも追加します。
 
    `bajutsu/runner/pipeline.py` にも配線します。`run_all` に
    `run_crash_recovery_budget: float | None = None` を追加し、`crash_recovery_budget` と同じ
    「`None` なら環境変数を読む」方式で解決したうえで、`_ScenarioRunner` に、run 内の全シナリオ
    で共有する1つの `RunCrashRecoveryBudget` として渡します。`run_one` の
-   `except BackendCrashError` 節では `note_crash()` を呼び、次にリースする前に、シナリオ単位の
-   予算自身の `on_crash(attempt).will_retry` と並べて `exhausted()` も確認します。run 単位の
+   `except BackendCrashError` 節では、`note_crash()` の戻り値が、シナリオ単位の予算自身の
+   `on_crash(attempt).will_retry` と並んで、次にリースするかどうかを決めます。run 単位の
    予算を使い切っていれば、再試行を止め、シナリオ単位の予算やリトライ回数の枯渇とは区別できる
    形で、run 単位の予算を名指しした失敗を報告します。
 
@@ -231,10 +264,10 @@ runner channel GET /screenshot: the runner recovered from a mid-run crash; re-is
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] Unit 1 — クラッシュ起点の再試行の2回目以降の試行で、シナリオが `reinstall: overwrite` を
+- [x] Unit 1 — クラッシュ起点の再試行の2回目以降の試行で、シナリオが `reinstall: overwrite` を
       宣言している場合を除き、XCUITest・adb 両バックエンドについて `preconditions.erase=True`
       を強制する。
-- [ ] Unit 2 — `RunCrashRecoveryBudget` を追加し、`run_crash_recovery_budget` /
+- [x] Unit 2 — `RunCrashRecoveryBudget` を追加し、`run_crash_recovery_budget` /
       `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` を `run_all` に配線し、ワークフローの env knob を
       追加し、`docs/architecture.md` / `docs/ja/architecture.md` を更新する。
 

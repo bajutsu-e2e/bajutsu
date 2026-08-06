@@ -160,17 +160,23 @@ env:
   # install cost as the first-bring-up case above, so ~11-12min there). Only a *failing* spawn pays
   # recovery at all.
   #
-  # A caveat the arithmetic above does not cover: this recovery happens inside one lease's bring-up, so
-  # BAJUTSU_CRASH_RECOVERY_BUDGET (below) cannot cut it short, and a job whose scenarios are *also*
-  # burning that scenario-level budget can add both. A run on 2026-08-04 hit `timeout-minutes` that
-  # way — three mid-run crashes plus one reboot rung — so treat the caps below as covering one device
-  # recovery on top of the nominal run, not one on top of a host already crashing repeatedly. The
-  # arithmetic above was actually re-run only against the `run` and `actuation` jobs' `timeout-minutes`
-  # comments below — `golden`, `bundled-runner`, `codegen`, `conformance`, `fault-injection`, and
-  # `visual` still carry their original headroom claims, unrevisited. `bundled-runner` is the one this
-  # caveat's "one recovery" scoping does not cover on its own: it runs two separate `bajutsu run`
-  # invocations (SwiftUI, then UIKit), so a single job can pay two independent cold bring-ups' worth
-  # of recovery, not one.
+  # A caveat the arithmetic above does not cover on its own: this recovery happens inside one lease's
+  # bring-up, so BAJUTSU_CRASH_RECOVERY_BUDGET (below) cannot cut it short, and a job whose scenarios
+  # are *also* burning that scenario-level budget can add both. A run on 2026-08-04 hit
+  # `timeout-minutes` that way — three mid-run crashes plus one reboot rung — and a run on 2026-08-06
+  # hit it again on the `actuation` job: a Simulator whose rendering wedged mid-run kept crashing and
+  # respawning across several scenarios (each paying its own fresh BAJUTSU_CRASH_RECOVERY_BUDGET
+  # against the same still-wedged device — a bare respawn never restarts the Simulator, only the
+  # runner process on it) for the job's full 27 minutes before `timeout-minutes` cancelled it with no
+  # diagnosable cause. BAJUTSU_RUN_CRASH_RECOVERY_BUDGET (below `BAJUTSU_CRASH_RECOVERY_BUDGET`) now
+  # bounds that: it caps crash-recovery time across the *whole run*, not per scenario, so a run whose
+  # device keeps degrading fails loudly well before `timeout-minutes` instead of being cancelled
+  # silently. The arithmetic above was actually re-run only against the `run` and `actuation` jobs'
+  # `timeout-minutes` comments below — `golden`, `bundled-runner`, `codegen`, `conformance`,
+  # `fault-injection`, and `visual` still carry their original headroom claims, unrevisited.
+  # `bundled-runner` is the one this file's per-job budgets do not fully cover on their own: it runs
+  # two separate `bajutsu run` invocations (SwiftUI, then UIKit), each with its own
+  # BAJUTSU_RUN_CRASH_RECOVERY_BUDGET, so a single job can still pay two independent worst cases.
   BAJUTSU_XCUITEST_RECOVERY_TIMEOUT: "180"
   # Respawn the resident runner cold after a single warm reuse rather than the default 3
   # (`_MAX_WARM_REUSES`). Folding many scenarios into one `bajutsu run` (the `run` / `actuation` jobs)
@@ -208,6 +214,14 @@ env:
   # while still riding out a genuine one-off (the first respawn is never blocked) — a backstop on top of
   # the per-respawn ceiling, not a substitute for it.
   BAJUTSU_CRASH_RECOVERY_BUDGET: "300"
+  # The run-level counterpart to BAJUTSU_CRASH_RECOVERY_BUDGET (bajutsu/runner/pipeline.py,
+  # _default_run_crash_recovery_budget): a wall-clock cap on crash recovery across the *whole* run,
+  # not reset per scenario. 600s (10min) leaves comfortable headroom under the smallest
+  # `timeout-minutes` below (25min = 1500s) for the nominal scenario work and the artifact upload once
+  # recovery gives up — see the caveat above BAJUTSU_XCUITEST_RECOVERY_TIMEOUT for the incident this
+  # closes and the `bundled-runner` job it does not fully cover (two `bajutsu run` invocations, each
+  # billed this budget independently).
+  BAJUTSU_RUN_CRASH_RECOVERY_BUDGET: "600"
 
 jobs:
   # Decide whether an on-device run is warranted. The macOS jobs only fire when the PR

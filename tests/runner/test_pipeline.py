@@ -213,6 +213,161 @@ def test_run_all_honors_the_crash_retries_environment_override(
     assert not results[0].ok and leases == 3  # env budget 2 -> three attempts
 
 
+def test_run_all_forces_erase_on_a_crash_triggered_retry() -> None:
+    # A crash-triggered retry now forces the same `erase` precondition a scenario already gets by
+    # declaring `erase: true`, instead of a bare in-place respawn onto the very device that just
+    # crashed it — the first (crashing) attempt sees the scenario's own precondition unmodified, the
+    # second (retried) attempt sees `erase` forced on.
+    state = {"n": 0}
+    erase_seen: list[bool | None] = []
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        erase_seen.append(scenario.preconditions.erase)
+        if state["n"] == 1:
+            raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+        return Lease(
+            driver=_fake_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_eff(), scenarios, lease)
+    assert results[0].ok
+    assert erase_seen == [None, True]  # attempt 1 unmodified, attempt 2 forces erase
+
+
+def test_run_all_skips_forced_erase_when_scenario_declares_reinstall_overwrite() -> None:
+    # `reinstall: overwrite` is a scenario's explicit declaration that it needs its app's data
+    # container preserved across a lease. Forcing `erase` on a retry would silently wipe exactly the
+    # state such a scenario was written to keep, so the retry keeps today's bare in-place respawn.
+    state = {"n": 0}
+    erase_seen: list[bool | None] = []
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        erase_seen.append(scenario.preconditions.erase)
+        if state["n"] == 1:
+            raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+        return Lease(
+            driver=_fake_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "a",
+                "preconditions": {"reinstall": "overwrite"},
+                "steps": [{"tap": {"id": "ok"}}],
+            }
+        )
+    ]
+    results = run_all(_eff(), scenarios, lease)
+    assert results[0].ok
+    assert erase_seen == [None, None]  # never forced, on either attempt
+
+
+def test_run_all_skips_forced_erase_when_scenario_pins_erase_false() -> None:
+    # An explicit `erase: false` pins erase off for this scenario (as opposed to `None`, which
+    # inherits the target's own default) — the same kind of deliberate precondition override
+    # `reinstall: overwrite` is, so a crash-triggered retry must not silently overrule it either.
+    state = {"n": 0}
+    erase_seen: list[bool | None] = []
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        erase_seen.append(scenario.preconditions.erase)
+        if state["n"] == 1:
+            raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+        return Lease(
+            driver=_fake_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    scenarios = [
+        Scenario.model_validate(
+            {"name": "a", "preconditions": {"erase": False}, "steps": [{"tap": {"id": "ok"}}]}
+        )
+    ]
+    results = run_all(_eff(), scenarios, lease)
+    assert results[0].ok
+    assert erase_seen == [False, False]  # the explicit pin survives both attempts
+
+
+def test_run_all_skips_forced_erase_on_a_real_device() -> None:
+    # A real device (`xcuitest.deviceType: device`) raises loudly on any `erase` precondition
+    # (`XcuitestEnvironment.start`) instead of honoring it — simctl cannot reach a physical device.
+    # Forcing `erase` on a crash-triggered retry there would raise past this loop's own
+    # `except BackendCrashError` and abort the whole run, not just fail the one scenario.
+    state = {"n": 0}
+    erase_seen: list[bool | None] = []
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        erase_seen.append(scenario.preconditions.erase)
+        if state["n"] == 1:
+            raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+        return Lease(
+            driver=_fake_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    dev = _ios_eff(xcuitest=XcuitestConfig(test_runner="Runner.xctestrun", device_type="device"))
+    results = run_all(dev, scenarios, lease, actuator="xcuitest")
+    assert results[0].ok
+    assert erase_seen == [None, None]  # never forced on a real device
+
+
+def test_run_all_skips_forced_erase_on_the_live_webdriver_route() -> None:
+    # The live WebDriver endpoint (an http(s):// udid spec) also raises loudly on any `erase`
+    # precondition (`XcuitestLiveEnvironment.start`) — same reasoning as the real-device case above.
+    state = {"n": 0}
+    erase_seen: list[bool | None] = []
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        erase_seen.append(scenario.preconditions.erase)
+        if state["n"] == 1:
+            raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+        return Lease(
+            driver=_fake_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(
+        _ios_eff(),
+        scenarios,
+        lease,
+        actuator="xcuitest",
+        lease_udid_spec="https://example.test/wd/hub",
+    )
+    assert results[0].ok
+    assert erase_seen == [None, None]  # never forced on the live WebDriver route
+
+
 def test_run_all_recovers_when_the_lease_itself_crashes_at_bringup() -> None:
     # A backend crash during the LEASE — the launch/readiness gate, not a scenario step — must be
     # recovered by the same retry. The resident runner can answer /health at cold spawn and then crash
@@ -374,6 +529,112 @@ def test_run_all_honors_the_crash_recovery_budget_environment_override(
     results = run_all(_eff(), scenarios, lease, clock=clock, crash_retries=5)  # budget arg unset
     assert not results[0].ok and leases == 3  # env budget 300 -> stopped after ~one slow respawn
     assert "crash-recovery budget" in (results[0].failure or "")
+
+
+def test_run_all_stops_respawning_once_the_run_crash_recovery_budget_is_spent() -> None:
+    # The run-level budget is shared across every scenario, unlike `crash_recovery_budget`, which
+    # resets for each one. Scenario "a" crashes once and recovers (arming the shared deadline at its
+    # crash: t=100, budget=50 -> deadline=150). Scenario "b" then crashes once more, at t=160 — past
+    # the shared deadline — so even *its own first* attempt is cut off: this is what tells "the
+    # run-level budget is spent" apart from "this scenario's own attempts/budget ran out".
+    clock = _AdvancingClock()
+    calls = 0
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            clock.advance(100.0)
+            raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+        if calls == 2:
+            return Lease(
+                driver=_fake_driver(),
+                sink=NullSink(),
+                relaunch=None,
+                control=None,
+                collector=None,
+                release=lambda: None,
+            )
+        clock.advance(60.0)
+        raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+
+    scenarios = [
+        Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]}),
+        Scenario.model_validate({"name": "b", "steps": [{"tap": {"id": "ok"}}]}),
+    ]
+    results = run_all(
+        _eff(), scenarios, lease, clock=clock, crash_retries=5, run_crash_recovery_budget=50.0
+    )
+    assert results[0].ok  # scenario a recovered on its own respawn
+    assert not results[1].ok
+    assert (
+        calls == 3
+    )  # a: 2 leases; b: 1 lease, cut off by the run-level budget on its first attempt
+    assert "run-level crash-recovery budget" in (results[1].failure or "")
+
+
+def test_run_all_run_crash_recovery_budget_never_blocks_the_very_first_crash() -> None:
+    # The run-level deadline is armed at the run's first crash, so that very crash's own retry
+    # decision is never blocked by it, even under a near-zero budget — the same
+    # never-block-the-first-respawn rule `crash_recovery_budget` already follows per scenario, now
+    # shared across the whole run.
+    clock = _AdvancingClock()
+    state = {"n": 0}
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        if state["n"] == 1:
+            raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+        return Lease(
+            driver=_fake_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(
+        _eff(), scenarios, lease, clock=clock, crash_retries=2, run_crash_recovery_budget=0.001
+    )
+    assert results[0].ok and state["n"] == 2
+
+
+def test_run_crash_recovery_budget_default_reads_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from bajutsu.runner.pipeline import _default_run_crash_recovery_budget
+
+    monkeypatch.delenv("BAJUTSU_RUN_CRASH_RECOVERY_BUDGET", raising=False)
+    assert _default_run_crash_recovery_budget() is None  # unset -> unbounded
+    monkeypatch.setenv("BAJUTSU_RUN_CRASH_RECOVERY_BUDGET", "900")
+    assert _default_run_crash_recovery_budget() == 900.0
+    monkeypatch.setenv("BAJUTSU_RUN_CRASH_RECOVERY_BUDGET", "0")
+    assert _default_run_crash_recovery_budget() is None  # non-positive -> unbounded
+    monkeypatch.setenv("BAJUTSU_RUN_CRASH_RECOVERY_BUDGET", "not-a-number")
+    assert _default_run_crash_recovery_budget() is None  # invalid -> unbounded, never a crash
+
+
+def test_run_all_honors_the_run_crash_recovery_budget_environment_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # End to end: with the env set and no explicit arg, run_all reads the env's run-level budget and
+    # stops the respawn loop once the shared wall-clock is spent — the same None-reads-the-env wiring
+    # as crash_recovery_budget.
+    monkeypatch.setenv("BAJUTSU_RUN_CRASH_RECOVERY_BUDGET", "50")
+    clock = _AdvancingClock()
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        clock.advance(100.0)
+        raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(
+        _eff(), scenarios, lease, clock=clock, crash_retries=5
+    )  # run_crash_recovery_budget arg unset
+    assert not results[0].ok
+    assert "run-level crash-recovery budget" in (results[0].failure or "")
 
 
 def test_scenario_runner_runs_one_in_isolation() -> None:

@@ -11,8 +11,10 @@ from __future__ import annotations
 from bajutsu.drivers import base, xcuitest
 from bajutsu.runner.recovery import (
     CrashRecoveryBudget,
+    RunCrashRecoveryBudget,
     _default_crash_recovery_budget,
     _default_crash_retries,
+    _default_run_crash_recovery_budget,
     guarded_teardown,
     is_infrastructure_fault,
 )
@@ -113,6 +115,49 @@ def test_crash_recovery_budget_default_reads_the_environment(monkeypatch) -> Non
     assert _default_crash_recovery_budget() is None  # non-positive → unbounded, not "no recovery"
     monkeypatch.setenv("BAJUTSU_CRASH_RECOVERY_BUDGET", "nope")
     assert _default_crash_recovery_budget() is None  # invalid → unbounded
+
+
+def test_run_budget_never_exhausted_when_unbounded() -> None:
+    # None (the default) is unbounded: a crash never arms a deadline, so `note_crash()` keeps
+    # reporting False regardless of how many crashes are noted or how far the clock advances.
+    clock = _AdvancingClock()
+    budget = RunCrashRecoveryBudget(budget=None, now=clock.now)
+    assert budget.note_crash() is False
+    clock.advance(10_000.0)
+    assert budget.note_crash() is False
+
+
+def test_run_budget_exhausts_once_the_deadline_passes() -> None:
+    # The deadline is set at the *first* crash, not re-armed by a later one: a 100s budget noted at
+    # t=0 exhausts at t=100 regardless of how many further crashes are noted in between.
+    clock = _AdvancingClock()
+    budget = RunCrashRecoveryBudget(budget=100.0, now=clock.now)
+    assert budget.note_crash() is False
+    clock.advance(50.0)
+    assert budget.note_crash() is False  # a second crash before the deadline does not push it out
+    clock.advance(50.0)  # now=100 >= the deadline set at the first crash (0 + 100)
+    assert budget.note_crash() is True
+
+
+def test_run_budget_never_blocks_the_first_crash() -> None:
+    # Noting the very first crash must never itself report exhausted, even under a near-zero budget —
+    # the same never-block-the-first-respawn rule `CrashRecoveryBudget` applies per scenario. The
+    # deadline and the check both read from the same clock call, so this holds regardless of how slow
+    # the clock itself is to answer.
+    clock = _AdvancingClock()
+    budget = RunCrashRecoveryBudget(budget=0.001, now=clock.now)
+    assert budget.note_crash() is False
+
+
+def test_run_crash_recovery_budget_default_reads_the_environment(monkeypatch) -> None:
+    monkeypatch.delenv("BAJUTSU_RUN_CRASH_RECOVERY_BUDGET", raising=False)
+    assert _default_run_crash_recovery_budget() is None  # unset → unbounded
+    monkeypatch.setenv("BAJUTSU_RUN_CRASH_RECOVERY_BUDGET", "900")
+    assert _default_run_crash_recovery_budget() == 900.0
+    monkeypatch.setenv("BAJUTSU_RUN_CRASH_RECOVERY_BUDGET", "0")
+    assert _default_run_crash_recovery_budget() is None  # non-positive → unbounded
+    monkeypatch.setenv("BAJUTSU_RUN_CRASH_RECOVERY_BUDGET", "nope")
+    assert _default_run_crash_recovery_budget() is None  # invalid → unbounded
 
 
 def _raising(exc: BaseException):
