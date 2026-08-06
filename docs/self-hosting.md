@@ -415,8 +415,12 @@ sign-in and silently re-enables the shared-token login instead (or, with no `BAJ
 either, leaves every endpoint unauthenticated). Read the first lines of the log after upgrading. Each
 of these warnings is also re-emitted through the structured log under `event=server.startup_warning`
 (with a stable `check` field naming which one — see [Operational logging](#operational-logging)), so a
-deployment can alert on them rather than relying on someone reading boot output; a rejected sign-in is
-recorded under `event=oauth.denied`, with the reason the org gate did not admit the login.
+deployment can alert on them rather than relying on someone reading boot output. A sign-in the org
+gate turned away is recorded under `event=oauth.denied` at `WARNING`, naming both the reason `orgs:`
+did not match and whether an admin Team was configured at all. The same event also covers four
+earlier failures that need no GitHub account to reach — OAuth not configured, a CSRF state mismatch,
+and an exchange that raised or returned no identity — which record at `INFO` instead, so key an
+alert on `WARNING` and an anonymous probe against the callback cannot bury it.
 
 A third thing: disabling `POST /api/login` stops **minting** new token-cookie sessions once OAuth is
 configured, but it doesn't invalidate one already issued — a browser that logged in with the shared

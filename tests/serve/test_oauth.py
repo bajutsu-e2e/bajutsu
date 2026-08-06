@@ -427,6 +427,7 @@ def test_oauth_callback_org_member_does_not_log_a_bypass_warning(
         ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
     assert "admin-Team bypass" not in caplog.text
     record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.login")
+    assert record.levelno == logging.INFO  # WARNING is reserved for a bypass admission
     assert record.bypass is False
     assert record.actor == "alice"
 
