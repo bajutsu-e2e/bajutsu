@@ -308,8 +308,8 @@ class _AlertGuardGate:
         skips re-tapping it while it is still the poll's match, until the tree stops matching it
         (dismissed, or a different label appears), only then re-arming.
 
-        A not-yet-reachable button (`ElementNotTappable`) gets the same per-showing bound as the
-        two decline branches below it, `_TREE_DISMISS_MAX_DECLINES` deep: unlike a vanished button
+        A not-yet-reachable button (`ElementNotTappable`) gets a per-showing bound the two decline
+        branches below it do not need, `_TREE_DISMISS_MAX_DECLINES` deep: unlike a vanished button
         or a transient ambiguity, an obstruction can be permanent (a scrim that never lifts, an
         `elevation` false positive in `topmost_at_point`), and the button staying in the tree means
         nothing here re-arms `_tree_dismiss_pending` to stop the retries on its own — so a stuck
