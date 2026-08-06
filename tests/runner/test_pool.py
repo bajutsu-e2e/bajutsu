@@ -330,6 +330,50 @@ def test_device_pool_stops_started_collectors_when_one_fails(
     assert len(started) == 1 and started[0].stopped  # type: ignore[attr-defined]
 
 
+def test_device_pool_completes_the_start_rollback_despite_a_stop_failure(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """BE-0342: the start-rollback loop is a collector-stop site like the others this module guards —
+    an `OSError` stopping the *first* device's collector must not stop the rollback of the rest, or
+    replace the *original* bind failure the operator needs to see with a socket-close error instead."""
+    stopped: list[int] = []
+
+    class FlakyCollector:
+        count = 0
+
+        def __init__(self) -> None:
+            FlakyCollector.count += 1
+            self._idx = FlakyCollector.count
+
+        def start(self) -> None:
+            if self._idx == 3:  # the third device's collector fails to bind
+                raise OSError("port in use")
+
+        def stop(self) -> None:
+            stopped.append(self._idx)
+            if self._idx == 1:  # the first device's rollback stop fails too
+                raise OSError("socket already gone")
+
+    monkeypatch.setattr("bajutsu.runner.pool.NetworkCollector", FlakyCollector)
+    monkeypatch.setattr("bajutsu.backends.make_driver", lambda actuator, udid: FakeDriver([]))
+
+    with (
+        caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"),
+        pytest.raises(OSError, match="port in use"),  # the original bind failure, not masked
+    ):
+        device_pool(
+            ["UDID-A", "UDID-B", "UDID-C"],
+            ["fake"],
+            _eff(),
+            Path("runs"),
+            network=True,
+            available=lambda b: True,
+            env_run=lambda args, extra_env=None: "",
+        )
+    assert stopped == [1, 2]  # the second device's rollback still ran despite the first's failure
+    assert "UDID-A" in caplog.text  # the swallowed stop failure was logged, not silent
+
+
 @pytest.mark.parametrize("mirrors", [False, True])
 def test_device_pool_reserves_a_bridgeable_port_only_where_the_device_mirrors_it(
     monkeypatch: pytest.MonkeyPatch, mirrors: bool
@@ -1378,7 +1422,8 @@ def test_device_pool_release_swallows_a_teardown_failure_and_still_frees_the_dev
     `shutdown()`'s two loops, this one never propagates (it only warns), since there is no caller
     left to see it raise. Pinned over both the plain `teardown` arm and the `end_lease` arm a warm
     resident takes — the latter also falls back to a full teardown, since `end_lease` not finishing
-    means the app was never confirmed down (see the eviction test below)."""
+    means the app was never confirmed down (see
+    `test_device_pool_evicts_a_warm_resident_whose_end_lease_did_not_finish` above)."""
     created: list[_RecordingEnv] = []
 
     def fake_env_for(

@@ -147,7 +147,6 @@ def device_pool(
     # built per lease instead.
     collectors: dict[str, NetworkCollector] = {}
     if network and not pool_env.observes_network_via_driver():
-        started: list[NetworkCollector] = []
         try:
             for udid in udids:
                 collector = NetworkCollector()
@@ -159,10 +158,18 @@ def device_pool(
                 else:
                     collector.start()
                 collectors[udid] = collector
-                started.append(collector)
         except Exception:
-            for collector in started:
-                collector.stop()
+            # A socket already stopped for one device must not stop the rollback of the rest, or
+            # replace the original bind failure the operator needs to see — the same reasoning as
+            # every other collector-stop site this module guards (BE-0342). Each holds a port from
+            # the reserved band, not an OS ephemeral one, so a socket left open here is held for the
+            # rest of this (possibly long-lived `serve`) process.
+            for started_udid, started_collector in collectors.items():
+                guarded_teardown(
+                    started_collector.stop,
+                    mid_run=True,
+                    what=f"stopping the collector on {started_udid} after a failed start",
+                )
             raise
 
     # One warm resident per device, kept across leases so its cold startup is paid once per device
