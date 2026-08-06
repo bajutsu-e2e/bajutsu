@@ -91,3 +91,13 @@ def test_the_prose_companion_still_guards_forks_and_companion_branches() -> None
     assert "prose-fix/" in resolve
     mint = _step(job, "Mint a short-lived installation token for the automation App")
     assert mint["if"] == "steps.pr.outputs.eligible == 'true'"
+
+
+def test_the_prose_companion_still_guards_forks_and_companion_branches() -> None:
+    """BE-0347 moved both trust guards out of the job's `if:`, where nothing else pins them."""
+    job = _workflow()["jobs"]["prose-companion"]
+    resolve = _step(job, "Resolve the pull request's head and eligibility")["run"]
+    assert 'head_repo" != "$REPO' in resolve
+    assert "prose-fix/" in resolve
+    mint = _step(job, "Mint a short-lived installation token for the automation App")
+    assert mint["if"] == "steps.pr.outputs.eligible == 'true'"
