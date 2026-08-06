@@ -167,7 +167,7 @@ jobs:
           # killed and relaunched mid-run (a black frame straight to the Stable tab, losing its typed
           # query) on `-cores 1` once this key stopped matching. Bump this suffix in lockstep with
           # `-memory`/`-cores` below so a hardware change always earns a fresh, matching cache entry.
-          key: avd-api34-x86_64-pixel6-mem12288-cores3
+          key: ${{ env.AVD_CACHE_KEY }}
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
