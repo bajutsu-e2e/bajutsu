@@ -270,6 +270,16 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`）な作業単位は、次�
   早期解放テストを回帰テストへ差し替えました。値がまだ古いうちにマークが立つバックエンドでも、
   生きた値を束縛しなければなりません。
 
+- 2026-08-06 — 追補: `respondAct` の tearing 対策の settle（作業単位 4）を変更しました。比較の対象を、
+  ダンプ全体の XML から、解決済みの identity が一致する bounds だけに絞りました。`respondSource` 用の
+  `settledDump` は、任意のホスト側セレクタに応答するため、ダンプ全体の XML を比較する必要があります。
+  一方の `respondAct` は、どの要素へタッチを inject しようとしているかを、ホストが送った 4 つの
+  identity フィールド `want` からすでに知っています。画面上の無関係な node が動き続けていても、対象
+  自身の bounds が止まっていれば settle は解放されます。ステータスバーの時計やスピナー、点滅する
+  カーソルなどが、その無関係な node の例です。この変更により、対象の bounds が止まった後まで
+  `SETTLE_DUMPS` の予算を使い切ることはなくなりました。`respondSource` 側は変更していません。予算も
+  条件駆動の settle も変わらず、固定 sleep はありません。
+
 ## 参考
 
 - [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element-ja.md) — `scroll` アクションと、
