@@ -228,8 +228,9 @@ def run_job(state: ServeState, job: Job) -> None:
         if job.bus is not None:  # run_job returning means the job finished — end the live stream
             # Record the terminal status on the bus so a control-plane replica reading a
             # worker-run job sees the real exit/run id (its own Job stays "running") (BE-0015 W2).
-            # Exclude the log buffer — the lines already live in the bus's stream, so duplicating
-            # them into the done payload would needlessly bloat it (Redis memory).
+            # Exclude the log buffer — the lines already live in the bus's own stream (or, on the
+            # server backend, in the worker's uploaded console.log), so duplicating them into the
+            # done payload would needlessly bloat it.
             job.bus.close(job.id, json.dumps(job.view(include_lines=False)))
 
 

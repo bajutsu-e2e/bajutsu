@@ -2,10 +2,10 @@
 
 A run writes its tree under ``runs/<id>/`` (report.html, screenshots, manifest.json, …). Serving
 those back is the one point where local and server hosting diverge: the local store reads files
-**confined to ``runs_dir``** (`LocalArtifactStore`), while a server store would fetch from object
-storage or hand back a signed-URL redirect. Keeping the path-containment in one place means a
-crafted ``rel`` can never escape ``runs_dir``, and a server store gets the same guarantee by never
-touching the filesystem at all.
+**confined to ``runs_dir``** (`LocalArtifactStore`), while the server store (`ObjectStorageArtifactStore`)
+fetches from object storage or hands back a signed-URL redirect. Keeping the path-containment in one
+place means a crafted ``rel`` can never escape ``runs_dir``, and a server store gets the same
+guarantee by never touching the filesystem at all.
 """
 
 from __future__ import annotations
