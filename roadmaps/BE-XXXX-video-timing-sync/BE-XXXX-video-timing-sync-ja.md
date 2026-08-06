@@ -43,7 +43,7 @@
 
 **4. 通信ログの基準点も同じ修正で統一する。** `bajutsu/runner/pipeline.py`は、`run_scenario`を呼ぶ前に、それ自体が独立にずれていく`scenario_start = time.monotonic()`を記録し、各通信ログのレポート用タイムスタンプの計算に使っています。この記録は`run_scenario`が返った後に使われるので、`result.video_anchor_s`に置き換え、`_write_network`の引数名も合わせてリネームします。これにより、ステップと通信ログという2つのタイムラインの間にあった、もう1つの小さなずれも無くなります。
 
-**5. ドキュメントを拡張する。** `docs/evidence.md`（および`docs/ja/`の対訳）は、前倒しの録画をすでに`records_video_up_front`を通じてAndroidとWebに限定して記述しています。この提案では、その節に`true_start`とオフセット補正を追記します。`docs/reporting.md`（その日本語版も含む）には、レポートの`data-t`のシーク先が、生の`scenario_start`ではなく確認済みまたは最善推定の動画開始時刻を基準にしていることと、それを読み手が不具合と誤読しないための、目に見える結果のひとつ（ステップの`started_at`がシナリオの`duration_s`を超えること）を追記します。
+**5. ドキュメントを拡張する。** `docs/evidence.md`（および`docs/ja/`の対訳）は、前倒しの録画をすでに`records_video_up_front`を通じてAndroidとWebに限定して記述しています。この提案では、その節に`true_start`とオフセット補正を追記します。`docs/reporting.md`（その日本語版も含む）には、レポートの`data-t`のシーク先が、生の`scenario_start`ではなく、確認できた、あるいは分かっている範囲でもっとも確からしい動画の開始時刻を基準にしていることと、それを読み手が不具合と誤読しないための、目に見える結果のひとつ（ステップの`started_at`がシナリオの`duration_s`を超えること）を追記します。
 
 作業分解（*進捗*にも対応）：
 
