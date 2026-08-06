@@ -145,8 +145,9 @@ def logcat_cmd(serial: str) -> list[str]:
     exception of its own — can also be `ActivityManager` killing it for memory pressure, which logs
     only as a structured `events` entry (`am_kill`/`am_low_memory`, decoded via
     `/system/etc/event-log-tags`), never through `crash`. Without `events`, that second cause is
-    indistinguishable from a silent, uncaptured failure. The kernel's own OOM/LMK path (`dmesg`) is
-    a separate ring buffer logd never sees, so it stays out of reach of any `-b` combination here.
+    indistinguishable from a silent, uncaptured failure. The kernel's own OOM/LMK path lands in
+    the kernel ring buffer, which `logcat -b kernel` reaches only where logd bridges `/proc/kmsg`
+    (`ro.logd.kernel`, typically userdebug builds) — so it is left out here, not unreachable.
     """
     return _adb(serial, "logcat", "-b", "main,system,crash,events", "-T", "1")
 
