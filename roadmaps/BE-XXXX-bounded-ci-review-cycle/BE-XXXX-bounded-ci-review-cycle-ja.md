@@ -115,12 +115,15 @@
    `github.event_name == 'pull_request'`という条件も、同じ変更でオンデマンドのコメントイベントまで広げ
    ます(そうしなければ、オープン後に見つかった文章表現のみの指摘を適用するジョブがなくなり、BE-0343が
    以後のすべてのレビューで機能しなくなります)。ただし、この条件節を広げるだけでは足りません。コメント
-   イベントでは`github.event.pull_request`がnullになるため、ジョブの同一リポジトリ判定
-   (`head.repo.full_name == github.repository`。権限を持つAppトークンをフォーク由来のコードから遠ざけ
-   る仕組みです)も、`head.ref`(コンパニオンスクリプトに渡す`--source-branch`)も、`head.sha`(コンパニオ
-   ンのチェックアウト先の`ref`)も、すべて空として評価されてしまいます。コメントイベントでは、PR番号か
-   らPRのヘッドを改めて取得し(例えば`gh pr view --json headRefName,headRefOid,headRepository`)、その取
-   得結果に対して同一リポジトリ判定をやり直す必要があります。以後のすべての確認は、ワークフローがすでに
+   イベントのうち`issue_comment`では`github.event.pull_request`がnullになるため、ジョブの同一リポジト
+   リ判定(`head.repo.full_name == github.repository`。権限を持つAppトークンをフォーク由来のコードから
+   遠ざける仕組みです)も、`head.ref`(コンパニオンスクリプトに渡す`--source-branch`)も、`head.sha`(コン
+   パニオンのチェックアウト先の`ref`)も、この経路ではすべて空として評価されてしまいます。
+   `pull_request_review_comment`のペイロードは`pull_request`イベントと同じ形のトップレベルの
+   `pull_request`オブジェクトをすでに持っているため、こちらは追加の対応が不要です。`issue_comment`イベ
+   ントでは、PR番号からPRのヘッドを改めて取得し(例えば`gh pr view --json
+   headRefName,headRefOid,headRepository`)、その取得結果に対して同一リポジトリ判定をやり直す必要があり
+   ます。以後のすべての確認は、ワークフローがすでに
    備えている`@claude review`というコメント経由のオンデマンド経路(`OWNER`/`MEMBER`/`COLLABORATOR`にす
    でに限定されています)を通じて依頼され、通常はユニット3が発行します。ファイル冒頭のコメントブロック
    も、この新しい運用モデルを説明するように改め、このワークフローを削除せず残す理由も明示します。フォー
@@ -128,10 +131,14 @@
    を一度も通らないため、これを残さなければレビューを一切受けられなくなります。「Compute the review
    inputs (prior findings)」ステップも、同じくコメントイベントまで広げます。このステップは今のところ
    `github.event_name == 'pull_request'`でしか動かないため、オンデマンドの実行は既存の指摘一覧が空のま
-   ま始まってしまい、すでに片付いた指摘を再投稿してしまいます。ただし、このゲートを広げるだけではステッ
-   プ自体が失敗します。このステップの`PR`環境変数(`${{ github.event.pull_request.number }}`)もコメン
-   トイベントでは空になり、`PR`が空のままだとステップ自身の`gh api --paginate .../pulls//comments`呼び
-   出しが`set -euo pipefail`の下でエラーになるためです。ユニット3が求める契約プロンプトにも同じ依存が
+   ま始まってしまい、すでに片付いた指摘を再投稿してしまいます。ただし、このゲートを広げるだけでは
+   `issue_comment`に対してはまだ不十分です。このステップの`PR`環境変数
+   (`${{ github.event.pull_request.number }}`)もこのイベントでは空になり
+   (`pull_request_review_comment`はペイロードの`pull_request.number`が埋まっているため影響しません)、
+   ステップ自身の`gh api --paginate .../pulls//comments`呼び出しは失敗します。ただし、そのパイプライン
+   にはあらかじめ`|| true`が付いているため、`set -euo pipefail`のもとでもこの失敗は握りつぶされ、ステッ
+   プ自体はエラーになりません。代わりに、既存の指摘一覧が空のまま静かに出力されてしまいます。ユニット3
+   が求める契約プロンプトにも同じ依存が
    二重に潜んでいます。`format(...)`の`{0}`が`#{0}`と`` gh pr diff {0} ``の両方を同じnull値で埋めてし
    まうため、オンデマンドのレビューは何も差分がない状態で差分を読むよう指示されてしまいます。この3か所
    はいずれも、ワークフローの並行実行グループがすでに使っている形、つまり

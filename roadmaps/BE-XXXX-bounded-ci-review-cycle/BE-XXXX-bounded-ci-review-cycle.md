@@ -118,13 +118,15 @@ loop also gains a round cap on the live cycle itself, with escalation to a human
    `prose-companion` job's `github.event_name == 'pull_request'` condition to the on-demand comment
    events in the same change — otherwise a wording-only finding raised after the open event has no
    job left to apply it, and BE-0343 stops working for every later review. Widening only that clause
-   is not enough: `github.event.pull_request` is null on a comment event, so the job's same-repo
-   trust boundary (`head.repo.full_name == github.repository`, what keeps the privileged App token
-   away from fork-authored code), its `head.ref` (the companion script's `--source-branch`), and its
-   `head.sha` (the companion checkout's `ref`) all evaluate empty. On comment events the job must
-   instead re-derive the pull request's head from its number — for example
-   `gh pr view --json headRefName,headRefOid,headRepository` — and re-assert the same-repo check
-   against that data. Every later check is requested on demand, through the workflow's existing
+   is not enough: `github.event.pull_request` is null on an `issue_comment` event, so the job's
+   same-repo trust boundary (`head.repo.full_name == github.repository`, what keeps the privileged
+   App token away from fork-authored code), its `head.ref` (the companion script's
+   `--source-branch`), and its `head.sha` (the companion checkout's `ref`) all evaluate empty on
+   that path — `pull_request_review_comment`'s payload already carries a populated top-level
+   `pull_request` object, the same shape as a `pull_request` event, so it needs no extra handling.
+   On an `issue_comment` event the job must instead re-derive the pull request's head from its
+   number — for example `gh pr view --json headRefName,headRefOid,headRepository` — and re-assert
+   the same-repo check against that data. Every later check is requested on demand, through the workflow's existing
    `@claude review` comment path (already gated to `OWNER`/`MEMBER`/`COLLABORATOR`), typically
    issued by unit 3. Update the file's own top-of-file comment block to describe this model, and to
    state why the workflow stays rather than being removed: a fork pull request, and any commit made
@@ -132,10 +134,12 @@ loop also gains a round cap on the live cycle itself, with escalation to a human
    otherwise get no review at all. Extend the "Compute the review inputs (prior findings)" step to
    the comment events too: it is gated on `github.event_name == 'pull_request'` today, so an
    on-demand run would otherwise start with an empty prior-findings list and re-post settled
-   findings. Widening that gate alone still fails the step: its `PR` env
-   (`${{ github.event.pull_request.number }}`) is also empty on a comment event, and the step's own
-   `gh api --paginate .../pulls//comments` call errors under `set -euo pipefail` once `PR` is empty.
-   The contract prompt unit 3 asks for carries the same dependency twice — `format(...)`'s `{0}`
+   findings. Widening that gate alone still leaves it wrong on `issue_comment`: its `PR` env
+   (`${{ github.event.pull_request.number }}`) is empty there too (`pull_request_review_comment`
+   is unaffected, since its payload's `pull_request.number` is populated), and the step's
+   `gh api --paginate .../pulls//comments` call then fails — though the pre-existing `|| true` on
+   that pipeline swallows the failure under `set -euo pipefail`, so the step does not error; it
+   silently produces an empty prior-findings list instead. The contract prompt unit 3 asks for carries the same dependency twice — `format(...)`'s `{0}`
    fills both `#{0}` and `` gh pr diff {0} `` from the same null value, so an on-demand review would
    be told to diff nothing. All three want the shape the workflow's own concurrency group already
    uses, `github.event.pull_request.number || github.event.issue.number`, which also covers
