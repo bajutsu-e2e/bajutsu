@@ -303,6 +303,7 @@ _LANE_PATHS: dict[str, str] = {
         r"|tests/test_driver_conformance_ondevice_android\.py$"
         r"|tests/test_fault_injection_ondevice_android\.py$"
         r"|\.github/workflows/android-e2e\.yml$"
+        r"|\.github/actions/setup-android-toolchain/"
     ),
     "web": (
         r"|bajutsu/drivers/playwright\.py$"
