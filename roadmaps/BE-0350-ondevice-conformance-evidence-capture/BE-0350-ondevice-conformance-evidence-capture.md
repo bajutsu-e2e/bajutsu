@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ondevice-conformance-evidence-capture-ja.md)
+**English** · [日本語](BE-0350-ondevice-conformance-evidence-capture-ja.md)
 
-# BE-XXXX — Give the on-device conformance and fault-injection suites the video and deviceLog evidence every scenario-driven CI job already gets
+# BE-0350 — Give the on-device conformance and fault-injection suites the video and deviceLog evidence every scenario-driven CI job already gets
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ondevice-conformance-evidence-capture.md) |
+| Proposal | [BE-0350](BE-0350-ondevice-conformance-evidence-capture.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0350") |
 | Implementing PR | [#1523](https://github.com/bajutsu-e2e/bajutsu/pull/1523) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->

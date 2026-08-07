@@ -1,14 +1,14 @@
-[English](BE-XXXX-ondevice-conformance-evidence-capture.md) · **日本語**
+[English](BE-0350-ondevice-conformance-evidence-capture.md) · **日本語**
 
-# BE-XXXX — オンデバイスのconformance・fault-injectionスイートに、シナリオ駆動のCIジョブがすでに得ている動画とdeviceLogのエビデンスを持たせる
+# BE-0350 — オンデバイスのconformance・fault-injectionスイートに、シナリオ駆動のCIジョブがすでに得ている動画とdeviceLogのエビデンスを持たせる
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-ondevice-conformance-evidence-capture-ja.md) |
+| 提案 | [BE-0350](BE-0350-ondevice-conformance-evidence-capture-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0350") |
 | 実装 PR | [#1523](https://github.com/bajutsu-e2e/bajutsu/pull/1523) |
 | トピック | プラットフォーム対応 |
 <!-- /BE-METADATA -->
