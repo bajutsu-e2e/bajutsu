@@ -150,6 +150,31 @@ Exception hierarchy: `SelectorError` (base) ← `ElementNotFound` / `AmbiguousSe
 orchestrator and assertions catch these and translate them into "step failure" / "assertion
 failure" (they do not propagate the exception upward).
 
+### `ElementNotTappable`: a resolved but unreachable target
+
+`resolve_unique` only judges *how many* elements match; it says nothing about whether the one
+match is actually reachable on screen. An element can resolve uniquely, carry a valid frame, and
+still sit under a sticky header, a toast, or a dimmed modal backdrop — so a tap would land on the
+obstruction instead. `tap` / `double_tap` / `long_press` (and the focus-tap inside `type` /
+`clear` / `delete` / `select`) now check this before acting, the idiomatic way per backend (iOS's
+native `isHittable`; the web's `document.elementFromPoint`; adb's document-order geometric proxy,
+`Driver.is_tappable`). When the check fails, the orchestrator takes a small, bounded scroll — up
+to three `down` steps, then, only if `down` never clears it, up to six `up` steps (widened, since
+`up` must first retrace the ground `down` already covered before it can make any net progress of
+its own) — and retries the action once; if the target is still unreachable, the action raises
+`ElementNotTappable` instead of the misleading `ElementNotFound` a caller might otherwise mistake
+for "not in the tree at all".
+
+`ElementNotTappable` is a sibling of `SelectorError`, not a subclass — the selector *did* resolve,
+so lumping it in with resolution failure would blur that "who matched" and "is it reachable" are
+different questions. The orchestrator's step-execution catch handles it the same way it handles
+`SelectorError`: a clean step failure, never a crash.
+
+The bounded scroll is a safety net for an obstruction an author could not have anticipated (a
+transient overlay, a sticky header settling into place) — it is not a substitute for the explicit
+[`scroll` action](scenarios.md#scroll). An author who already knows a target starts off-screen
+still writes `scroll` themselves; this check only ever fires on a target that already resolved.
+
 ### Centralized regardless of backend
 
 adb (Android), playwright (web), and the fake driver have no semantic tap, so each **always

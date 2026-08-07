@@ -12,7 +12,10 @@ final class FakeElementProvider: ElementProviding {
     // the UI is in flux (the Router catches it as an empty screen, not a runner crash).
     var queryRaises: NSException?
 
+    var isHittableResult: TapResult = .ok
+
     var tapCalls: [(backingElement: AnyObject, taps: Int, duration: TimeInterval)] = []
+    var isHittableCalls: [AnyObject] = []
     var tapPointCalls: [(x: Double, y: Double)] = []
     var gestureCalls: [(backingElement: AnyObject, kind: String, scale: Double, radians: Double)] = []
     var swipeCalls: [(fromX: Double, fromY: Double, toX: Double, toY: Double)] = []
@@ -34,6 +37,11 @@ final class FakeElementProvider: ElementProviding {
         tapCalls.append((backingElement, taps, duration))
         if let exception = tapRaises { exception.raise() }
         return tapResult
+    }
+
+    func isHittable(backingElement: AnyObject) -> TapResult {
+        isHittableCalls.append(backingElement)
+        return isHittableResult
     }
 
     func tapPoint(x: Double, y: Double) -> TapResult {

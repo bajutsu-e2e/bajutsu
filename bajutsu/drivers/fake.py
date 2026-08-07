@@ -101,21 +101,46 @@ class FakeDriver:
             for el in self.screen
         ]
 
+    def _check_tappable(self, sel: base.Selector) -> base.Element:
+        """Resolve `sel` and raise `ElementNotTappable` if it is covered, per `is_tappable`.
+
+        Shared by `tap` / `double_tap` / `long_press` — a real backend's tap path enforces this
+        same check before acting, so a scripted occlusion (seeded in `screen`, or moved into place
+        by a `react` callback / driver subclass) must be enforced here too. Without this, the
+        orchestrator's `_tap_with_recovery` loop would have nothing to recover from against this
+        driver, since only `is_tappable` would ever report the occlusion.
+        """
+        target = base.resolve_unique(self.screen, sel)
+        base.raise_if_covered(self.screen, target, sel)
+        return target
+
     def tap(self, sel: base.Selector) -> None:
         # Like a real semantic tap, require a unique match (ambiguous/not-found -> SelectorError).
-        self._log_target("tap", base.resolve_unique(self.screen, sel))
+        self._log_target("tap", self._check_tappable(sel))
         self._record("tap", sel)
+
+    def is_tappable(self, sel: base.Selector) -> bool:
+        # Reuses the same document-order proxy adb uses (`topmost_at_point`), directly over
+        # `self.screen` — the same tree `tap` itself resolves against — so the orchestrator's
+        # scroll-recovery loop is exercisable on the fast gate without a real device or emulator.
+        try:
+            target = base.resolve_unique(self.screen, sel)
+        except base.ElementNotFound:
+            return False
+        return (
+            base.topmost_at_point(self.screen, base.frame_center(target["frame"]), target) is None
+        )
 
     def tap_point(self, p: base.Point) -> None:
         self._actuations.record(Actuation(gesture="tap", via="coordinate", unit=_UNIT, points=(p,)))
         self._record("tap_point", p)
 
     def double_tap(self, sel: base.Selector) -> None:
-        self._log_target("doubleTap", base.resolve_unique(self.screen, sel))
+        self._log_target("doubleTap", self._check_tappable(sel))
         self._record("double_tap", sel)
 
     def long_press(self, sel: base.Selector, duration: float) -> None:
-        self._log_target("longPress", base.resolve_unique(self.screen, sel), duration_s=duration)
+        self._log_target("longPress", self._check_tappable(sel), duration_s=duration)
         self._record("long_press", (sel, duration))
 
     def swipe(self, frm: base.Point, to: base.Point) -> None:

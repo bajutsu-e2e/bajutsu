@@ -396,7 +396,12 @@ def _run_step_body(
             return ok, "" if ok else _fail_reason(results), results, tree
         _do_action(driver, step, relaunch, control, bindings, selection)
         return True, "", [], None
-    except (base.SelectorError, base.UnsupportedAction, NotImplementedError) as e:
+    except (
+        base.SelectorError,
+        base.ElementNotTappable,
+        base.UnsupportedAction,
+        NotImplementedError,
+    ) as e:
         return False, str(e), [], None
 
 

@@ -427,7 +427,7 @@ def _execute_with_recovery(
     try:
         execute(driver, step, clock, selection=selection)
         return True
-    except base.SelectorError:
+    except (base.SelectorError, base.ElementNotTappable):
         if guard is None:
             return False
         (report or (lambda _m: None))(
@@ -437,7 +437,7 @@ def _execute_with_recovery(
         try:
             execute(driver, step, clock, selection=selection)
             return True
-        except base.SelectorError:
+        except (base.SelectorError, base.ElementNotTappable):
             return False
 
 

@@ -52,6 +52,22 @@ NULL_ROOT = "null root node returned by UiTestAutomationBridge.\n"
 # too — one more than the three leaf elements, unlike an accessibility-only set.
 FIXTURE_ELEMENT_COUNT = 4
 
+# A target button with a later sibling ("covering.header") whose frame overlaps the button's center
+# without being a subset of it (wider: 400 vs. 200) — document order (the later sibling) reads as
+# drawn on top, and the frame relationship rules out reading it as the button's own descendant.
+OCCLUDED_FIXTURE = """<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.FrameLayout" bounds="[0,0][1080,2400]">
+    <node index="0" text="Tap me" resource-id="target.button"
+      class="android.widget.Button" content-desc="" enabled="true" checked="false"
+      selected="false" bounds="[0,100][200,200]" />
+    <node index="1" text="" resource-id="covering.header"
+      class="android.widget.FrameLayout" content-desc="" enabled="true" checked="false"
+      selected="false" bounds="[0,90][400,170]" />
+  </node>
+</hierarchy>
+UI hierarchy dumped to: /dev/tty"""
+
 
 def _by_id(els: list[base.Element], ident: str) -> base.Element:
     return next(e for e in els if e["identifier"] == ident)
@@ -215,6 +231,103 @@ def test_tap_on_ambiguous_selector_fails_fast() -> None:
     driver = AdbDriver("U", run=lambda a: FIXTURE)
     with pytest.raises(base.AmbiguousSelector):
         driver.tap({"traits": ["button"]})
+
+
+def test_tap_raises_element_not_tappable_when_covered() -> None:
+    driver = AdbDriver("U", run=lambda a: OCCLUDED_FIXTURE)
+    with pytest.raises(base.ElementNotTappable, match="covered by another element"):
+        driver.tap({"id": "target.button"})
+
+
+def test_tap_does_not_shell_out_when_covered() -> None:
+    calls: list[list[str]] = []
+
+    def run(args: list[str]) -> str:
+        if "dump" in args:
+            return OCCLUDED_FIXTURE
+        calls.append(args)
+        return ""
+
+    driver = AdbDriver("U", run=run)
+    with pytest.raises(base.ElementNotTappable):
+        driver.tap({"id": "target.button"})
+    assert calls == []  # never shelled out to `adb ... input tap`
+
+
+def test_tap_raises_element_not_tappable_after_scrolling_into_a_covered_target() -> None:
+    # `_scroll_into_view` (BE-0210's not-found scroll fallback) returns its own post-scroll tree
+    # paired with the element it resolved there; `_resolve_frame_and_screen` must run the occlusion
+    # check against *that* tree, not the pre-scroll one it seeded the scroll with. Pairing `el` with
+    # the wrong tree would make `topmost_at_point`'s identity lookup silently scan nothing and miss
+    # a real cover — this is a regression test for exactly that mismatch, not a duplicate of
+    # `test_tap_raises_element_not_tappable_when_covered` (which never triggers a scroll at all).
+    scrolled = {"done": False}
+
+    def run(args: list[str]) -> str:
+        if "dump" in args:
+            return OCCLUDED_FIXTURE if scrolled["done"] else _OFFSCREEN
+        if "swipe" in args:
+            scrolled["done"] = True
+        return ""
+
+    driver = AdbDriver("U", run=run)
+    driver._RESOLVE_TIMEOUT_S = 0  # the initial (no-scroll) resolve fails fast
+    with pytest.raises(base.ElementNotTappable, match="covered by another element"):
+        driver.tap({"id": "target.button"})
+
+
+def test_is_tappable_false_when_covered() -> None:
+    driver = AdbDriver("U", run=lambda a: OCCLUDED_FIXTURE)
+    assert driver.is_tappable({"id": "target.button"}) is False
+
+
+def test_is_tappable_true_when_not_covered() -> None:
+    driver = AdbDriver("U", run=lambda a: FIXTURE)
+    assert driver.is_tappable({"id": "stable_refresh"}) is True
+
+
+def test_is_tappable_false_when_the_selector_does_not_resolve() -> None:
+    driver = AdbDriver("U", run=lambda a: FIXTURE)
+    assert driver.is_tappable({"id": "does-not-exist"}) is False
+
+
+def test_is_tappable_propagates_ambiguous_selector() -> None:
+    driver = AdbDriver("U", run=lambda a: FIXTURE)
+    with pytest.raises(base.AmbiguousSelector):
+        driver.is_tappable({"traits": ["button"]})
+
+
+def test_is_tappable_never_shells_out() -> None:
+    calls: list[list[str]] = []
+
+    def run(args: list[str]) -> str:
+        if "dump" in args:
+            return FIXTURE
+        calls.append(args)
+        return ""
+
+    driver = AdbDriver("U", run=run)
+    driver.is_tappable({"id": "stable_refresh"})
+    assert calls == []
+
+
+def test_is_tappable_after_a_transient_empty_read_checks_the_tree_it_resolved_against() -> None:
+    # `_resolve`'s own not-found retry (distinct from `_scroll_into_view`'s scroll-triggered one,
+    # exercised elsewhere) can resolve against a later read than the one `_settle` first handed it —
+    # `target` is absent from the first dump (accepted at once, since a driver's very first
+    # `_settle()` has no prior key to compare against) and only appears on the retry's re-query.
+    # `is_tappable` must pair the resolved element with that same later tree when checking
+    # occlusion, not the earlier, target-less one — pairing it with the wrong snapshot would make
+    # `topmost_at_point`'s target-identity lookup silently scan the wrong tree.
+    dumps = iter([_OFFSCREEN, OCCLUDED_FIXTURE])
+
+    def run(args: list[str]) -> str:
+        if "dump" in args:
+            return next(dumps, OCCLUDED_FIXTURE)
+        return ""
+
+    driver = AdbDriver("U", run=run)
+    assert driver.is_tappable({"id": "target.button"}) is False
 
 
 def test_capabilities_lean_end() -> None:
@@ -1951,6 +2064,18 @@ def test_device_act_uncertain_invalidates_settled_key() -> None:
     driver._settled_key = ()
     driver.tap({"id": "stable.submit"})
     assert driver._settled_key is None
+
+
+def test_device_tap_raises_element_not_tappable_when_covered() -> None:
+    # The resident device-actuation fast path enforces the same occlusion check as the coordinate
+    # fallback below — a resident channel being available (the common case) must not silently
+    # exempt an occluded target from it.
+    act, seen = _recording_act([True])
+    run, _ = _capturing_run([OCCLUDED_FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    with pytest.raises(base.ElementNotTappable, match="covered by another element"):
+        driver.tap({"id": "target.button"})
+    assert seen == []  # never even built a request for the device
 
 
 def test_the_actuation_record_names_the_channel_that_carried_the_gesture() -> None:

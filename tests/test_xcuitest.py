@@ -439,6 +439,76 @@ def test_missing_selector_fails_before_any_actuation_request() -> None:
     assert calls == ["/elements"]
 
 
+def test_tap_raises_element_not_tappable_when_runner_reports_not_hittable() -> None:
+    # Distinct from `stale`: the element resolved and the runner's own `isHittable` refused it
+    # (covered by another element). No retry inside the driver — that is the orchestrator's job.
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_el_wire("h-ok", "ok", "OK", traits=["button"]))
+        return _Reply(status="not-hittable")
+
+    with pytest.raises(base.ElementNotTappable, match="not hittable"):
+        _driver(transport).tap({"id": "ok"})
+
+
+def test_is_tappable_returns_true_when_the_runner_reports_ok() -> None:
+    sent: list[tuple[str, str, dict[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_el_wire("h-ok", "ok", "OK", traits=["button"]))
+        sent.append((method, path, body))
+        return _Reply(status="ok")
+
+    assert _driver(transport).is_tappable({"id": "ok"}) is True
+    assert sent == [("POST", "/isHittable", {"handle": "h-ok"})]
+
+
+def test_is_tappable_returns_false_when_the_runner_reports_not_hittable() -> None:
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_el_wire("h-ok", "ok", "OK", traits=["button"]))
+        return _Reply(status="not-hittable")
+
+    assert _driver(transport).is_tappable({"id": "ok"}) is False
+
+
+def test_is_tappable_returns_false_when_the_selector_does_not_resolve() -> None:
+    calls: list[str] = []
+
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        calls.append(path)
+        return _elements(_el_wire("h-ok", "ok", "OK"))
+
+    assert _driver(transport).is_tappable({"id": "absent"}) is False
+    assert calls == ["/elements"]  # never reached /isHittable for an unresolved selector
+
+
+def test_is_tappable_propagates_ambiguous_selector_rather_than_swallowing_it() -> None:
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(
+                _el_wire("h1", "dup", "A", traits=["button"]),
+                _el_wire("h2", "dup", "B", traits=["button"]),
+            )
+        return _Reply(status="ok")
+
+    with pytest.raises(base.AmbiguousSelector):
+        _driver(transport).is_tappable({"id": "dup"})
+
+
+def test_is_tappable_never_actuates() -> None:
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_el_wire("h-ok", "ok", "OK", traits=["button"]))
+        assert method == "POST" and path == "/isHittable"  # never /tap
+        return _Reply(status="ok")
+
+    driver = _driver(transport)
+    driver.is_tappable({"id": "ok"})
+    assert driver.drain_actuations().records == []
+
+
 def test_screenshot_writes_the_returned_png_bytes(tmp_path: Any) -> None:
     png = b"\x89PNG\r\n\x1a\nfake-bytes"
     out = tmp_path / "shot.png"

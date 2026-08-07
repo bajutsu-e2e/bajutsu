@@ -265,6 +265,18 @@ class _ScenarioRunner:
             # the retry leases afresh — a cold respawn, since the pool drops the dead warm runner.
             try:
                 lz = self.lease(self.eff, s)
+                if attempt > 1:
+                    _logger.info(
+                        "scenario %s: backend respawned and recovered on attempt %d/%d",
+                        s.name,
+                        attempt,
+                        budget.total_attempts,
+                    )
+                    if self.progress is not None:
+                        self.progress(
+                            f"✔ scenario {i + 1}/{self.total}: {s.name} — backend respawned "
+                            f"and recovered (attempt {attempt}/{budget.total_attempts})"
+                        )
                 return self._run_on_lease(lz, handler, i, s, sid)
             except BackendCrashError as crash:
                 last_crash = crash

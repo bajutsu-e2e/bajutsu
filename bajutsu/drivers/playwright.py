@@ -44,6 +44,19 @@ def _rotate_point(p: base.Point, center: base.Point, radians: float) -> base.Poi
     return (center[0] + dx * cos - dy * sin, center[1] + dx * sin + dy * cos)
 
 
+class _HitResult(NamedTuple):
+    """`_point_hits`'s verdict: whether the point hit `el`, and what covered it if not.
+
+    `cover` / `rect` name the covering element the same way `base.raise_if_covered` names a cover on
+    the other backends; both are `None` together on a hit, or when nothing rendered at the point at
+    all.
+    """
+
+    ok: bool
+    cover: str | None
+    rect: base.Frame | None
+
+
 # The subset of Playwright's Page the driver uses — kept as a Protocol so tests can inject a
 # fake page without importing playwright, and the real (untyped, lazily imported) page satisfies it.
 class _Mouse(Protocol):
@@ -204,14 +217,15 @@ def _wedge_guard[F: Callable[..., Any]](method: F) -> F:
     A renderer crash, a hung page, a navigation timeout — any Playwright error from a page operation —
     re-raises as `simctl.DeviceError`, which a pool worker isolates (handing its frontier entry back and
     relaunching the browser) instead of sinking the crawl. Selection failures (`base.SelectorError`)
-    are not wedges and pass through unchanged, as do real bugs (any non-Playwright exception).
+    and an obstructed-target failure (`base.ElementNotTappable`) are not wedges and pass through
+    unchanged, as do real bugs (any non-Playwright exception).
     """
 
     @functools.wraps(method)
     def wrapper(self: PlaywrightDriver, *args: Any, **kwargs: Any) -> Any:
         try:
             return method(self, *args, **kwargs)
-        except base.SelectorError:
+        except (base.SelectorError, base.ElementNotTappable):
             raise
         except Exception as exc:
             if isinstance(exc, _playwright_error_types()):
@@ -561,6 +575,108 @@ class PlaywrightDriver:
         el = base.resolve_unique(self.query(), sel)
         return base.frame_center(el["frame"]), el
 
+    def _point_hits(self, point: base.Point, el: base.Element) -> _HitResult:
+        """Whether `document.elementFromPoint` actually resolves to `el`, not an unrelated cover.
+
+        Generalizes the `elementFromPoint` pattern already used by `select_option` below: walk the
+        hit's ancestor chain looking for `el` — by its `data-testid` (the same attribute `QUERY_JS`,
+        `bajutsu/dom.py`, reads into `identifier`) when it has one, or, when it does not (an element
+        `QUERY_JS` matched by tag/role/`aria-label` instead), by matching bounding rects *and* the
+        same accessible name `el["label"]` carries (`bajutsu/dom.py`'s own `aria-label` /
+        `textContent` precedence, truncated to the same 200 chars). The name check guards against the
+        geometry-only ambiguity a rect match alone would have: a transparent click-blocking overlay
+        sized to exactly cover a button shares its rect but, unlike the button itself, essentially
+        never shares its name. When `el["label"]` is `None` (no accessible name at all), the rect
+        match alone is all that is available, the same residual ambiguity `topmost_at_point` accepts
+        for an identically-framed pair on the other backends. A hit chain that never reaches `el`
+        means an unrelated element genuinely covers the point — named in the returned
+        `_HitResult.cover` / `.rect` (by `data-testid`, else tag plus DOM `id`) the same way
+        `base.raise_if_covered` names a cover on the other backends, so a failure message does not
+        force reproducing the screen by hand to learn what blocked the tap.
+
+        A point outside the current viewport is a different question this check does not answer:
+        `elementFromPoint` returns `null` there regardless of occlusion (`query()`'s frames are
+        viewport-relative, BE-0326, so a below-the-fold `el` is resolvable with a point past
+        `window.innerHeight`), and treating that `null` as "covered" would make `tap` implicitly
+        scroll a below-the-fold target into view — exactly the behavior `docs/drivers.md` documents
+        as adb-only. So an off-viewport point is reported as hit here, leaving that case to the
+        explicit `scroll` action rather than this occlusion check.
+        """
+        x, y = point
+        tx, ty, tw, th = el["frame"]
+        identifier = json.dumps(el["identifier"])
+        label = json.dumps(el["label"])
+        result = self._page.evaluate(
+            "(() => {"
+            "const describe = (node) => {"
+            "  const r = node.getBoundingClientRect();"
+            "  const testid = node.getAttribute('data-testid');"
+            "  const cover = testid || (node.tagName.toLowerCase() + (node.id ? '#' + node.id : ''));"
+            "  return {ok: false, cover: cover, rect: [r.x, r.y, r.width, r.height]};"
+            "};"
+            f"if ({x} < 0 || {y} < 0 || {x} >= window.innerWidth || {y} >= window.innerHeight) "
+            "return {ok: true, cover: null, rect: null};"
+            f"const hit = document.elementFromPoint({x}, {y});"
+            "if (!hit) return {ok: false, cover: null, rect: null};"
+            f"const identifier = {identifier};"
+            "if (identifier !== null) {"
+            '  return hit.closest(`[data-testid="${CSS.escape(identifier)}"]`) !== null'
+            "    ? {ok: true, cover: null, rect: null} : describe(hit);"
+            "}"
+            f"const label = {label};"
+            "let node = hit;"
+            "while (node) {"
+            "  const r = node.getBoundingClientRect();"
+            f"  const sameRect = Math.abs(r.x - {tx}) < 1 && Math.abs(r.y - {ty}) < 1"
+            f"      && Math.abs(r.width - {tw}) < 1 && Math.abs(r.height - {th}) < 1;"
+            "  const t = (node.innerText || node.textContent || '').trim();"
+            "  const name = node.getAttribute('aria-label') || (t ? t.slice(0, 200) : null);"
+            "  const sameName = label === null || name === label;"
+            "  if (sameRect && sameName) {"
+            "    return {ok: true, cover: null, rect: null};"
+            "  }"
+            "  node = node.parentElement;"
+            "}"
+            "return describe(hit);"
+            "})()"
+        )
+        rect = result["rect"]
+        return _HitResult(
+            ok=result["ok"],
+            cover=result["cover"],
+            rect=(rect[0], rect[1], rect[2], rect[3]) if rect is not None else None,
+        )
+
+    @_wedge_guard
+    def is_tappable(self, sel: base.Selector) -> bool:
+        """Whether `sel` resolves to a unique element that a click at its center would actually hit.
+
+        A pure query: no actuation, so the scroll-recovery loop can call it repeatedly with no side
+        effects. Not found means "not tappable" (`False`), matching every other backend's convention
+        for a target not yet in the tree; an ambiguous selector still raises `AmbiguousSelector`
+        immediately, since occlusion is a different question from selector ambiguity.
+        """
+        try:
+            point, el = self._center_with_element(sel)
+        except base.ElementNotFound:
+            return False
+        return self._point_hits(point, el).ok
+
+    def _center_checked(self, sel: base.Selector) -> tuple[base.Point, base.Element]:
+        """`_center_with_element`, but raises `ElementNotTappable` when the point does not hit `sel`.
+
+        The one seam `tap` / `double_tap` / `long_press` route through, so the check applies once
+        rather than being duplicated at each call site.
+        """
+        point, el = self._center_with_element(sel)
+        hit = self._point_hits(point, el)
+        if not hit.ok:
+            named = f" ({hit.cover!r} at {hit.rect})" if hit.cover is not None else ""
+            raise base.ElementNotTappable(
+                f"element resolved but covered by another element{named}: {sel!r}"
+            )
+        return point, el
+
     def drain_actuations(self) -> Drained:
         """The concrete actuations performed since the last drain (`ActuationReporter`)."""
         return self._actuations.drain()
@@ -592,7 +708,7 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def tap(self, sel: base.Selector) -> None:
-        (x, y), el = self._center_with_element(sel)
+        (x, y), el = self._center_checked(sel)
         self._log_coordinate("tap", (x, y), el)
         self._page.mouse.click(x, y)
 
@@ -603,13 +719,13 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def double_tap(self, sel: base.Selector) -> None:
-        (x, y), el = self._center_with_element(sel)
+        (x, y), el = self._center_checked(sel)
         self._log_coordinate("doubleTap", (x, y), el)
         self._page.mouse.dblclick(x, y)
 
     @_wedge_guard
     def long_press(self, sel: base.Selector, duration: float) -> None:
-        (x, y), el = self._center_with_element(sel)
+        (x, y), el = self._center_checked(sel)
         self._log_coordinate("longPress", (x, y), el, duration_s=duration)
         self._page.mouse.move(x, y)
         self._page.mouse.down()
@@ -801,7 +917,13 @@ class PlaywrightDriver:
         # crash), so the two failure modes — not a <select>, option value absent — are surfaced as
         # sentinel strings and re-raised here as ElementNotFound (a SelectorError) so the run loop
         # can catch them with the same handler as any other selector failure.
-        (x, y), el = self._center_with_element(sel)
+        #
+        # Resolves through `_center_checked`, not `_center_with_element`: an overlay covering the
+        # <select> makes `elementFromPoint` return the overlay below, `closest('select')` come back
+        # null, and the old unchecked path raise the factually wrong "not a <select>" — the selector
+        # did resolve to a <select>, occlusion is why the point misses it. Checking first raises
+        # `ElementNotTappable` naming the actual cover, like every other web tap-family failure.
+        (x, y), el = self._center_checked(sel)
         # `option` never reaches the record: like a typed string, it can hold a resolved secret.
         self._log_coordinate("selectOption", (x, y), el)
         opt = json.dumps(option)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from bajutsu.config import load_config
+from bajutsu.drivers import base
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.serve.operations._common import (
     _default_driver_factory,
@@ -174,11 +175,17 @@ def mark_capture(
     raw = sel.as_selector()
 
     if kind == "tap":
-        session.driver.tap(raw)
+        try:
+            session.driver.tap(raw)
+        except base.ElementNotTappable as exc:
+            return {"error": str(exc)}, 409
         step = step_for_tap(sel)
     elif kind == "type":
         text = str(body.get("text", ""))
-        session.driver.tap(raw)
+        try:
+            session.driver.tap(raw)
+        except base.ElementNotTappable as exc:
+            return {"error": str(exc)}, 409
         session.driver.type_text(text)
         step = step_for_type(sel, text, session.redactor)
     else:

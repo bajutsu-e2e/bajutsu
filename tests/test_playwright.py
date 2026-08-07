@@ -516,6 +516,7 @@ def test_is_a_driver() -> None:
 
 def test_tap_clicks_frame_center() -> None:
     drv, page = _driver([_rec(identifier="counter.increment", frame=[10, 20, 40, 10])])
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
     drv.tap({"id": "counter.increment"})
     assert page.mouse.calls == [("click", 30.0, 25.0)]
 
@@ -547,8 +548,126 @@ def test_tap_point() -> None:
 
 def test_double_tap() -> None:
     drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
     drv.double_tap({"id": "x"})
     assert page.mouse.calls == [("dblclick", 5.0, 5.0)]
+
+
+def test_tap_raises_element_not_tappable_when_covered() -> None:
+    # elementFromPoint's hit chain never reaches the resolved target: an unrelated element covers
+    # its point, so `tap` fails with the dedicated error rather than clicking through it.
+    drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [{"ok": False, "cover": None, "rect": None}]
+    with pytest.raises(base.ElementNotTappable, match="covered by another element"):
+        drv.tap({"id": "x"})
+    assert page.mouse.calls == []  # never clicked
+
+
+def test_tap_raises_element_not_tappable_naming_the_cover() -> None:
+    # Mirrors `base.raise_if_covered`'s message shape on the other backends: the covering element's
+    # identifier (or tag/DOM id) and rect are named, not just "covered by another element" with no
+    # way to tell a sticky header from a toast from a modal backdrop.
+    drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [
+        {"ok": False, "cover": "modal-backdrop", "rect": [0.0, 0.0, 400.0, 800.0]}
+    ]
+    with pytest.raises(
+        base.ElementNotTappable,
+        match=r"covered by another element \('modal-backdrop' at \(0\.0, 0\.0, 400\.0, 800\.0\)\)",
+    ):
+        drv.tap({"id": "x"})
+
+
+def test_double_tap_raises_element_not_tappable_when_covered() -> None:
+    drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [{"ok": False, "cover": None, "rect": None}]
+    with pytest.raises(base.ElementNotTappable):
+        drv.double_tap({"id": "x"})
+    assert page.mouse.calls == []
+
+
+def test_long_press_raises_element_not_tappable_when_covered() -> None:
+    drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [{"ok": False, "cover": None, "rect": None}]
+    with pytest.raises(base.ElementNotTappable):
+        drv.long_press({"id": "x"}, 0.0)
+    assert page.mouse.calls == []
+
+
+def test_tap_clicks_when_the_point_hits_the_element() -> None:
+    drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
+    drv.tap({"id": "x"})
+    assert page.mouse.calls == [("click", 5.0, 5.0)]
+
+
+def test_is_tappable_true_when_the_point_hits_the_element() -> None:
+    drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
+    assert drv.is_tappable({"id": "x"}) is True
+
+
+def test_is_tappable_false_when_covered() -> None:
+    drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [{"ok": False, "cover": "div#overlay", "rect": [0.0, 0.0, 10.0, 10.0]}]
+    assert drv.is_tappable({"id": "x"}) is False
+
+
+def test_is_tappable_false_when_not_found() -> None:
+    drv, _ = _driver([])
+    assert drv.is_tappable({"id": "missing"}) is False
+
+
+def test_is_tappable_propagates_ambiguous_selector() -> None:
+    drv, _ = _driver(
+        [
+            _rec(identifier="x", frame=[0, 0, 10, 10]),
+            _rec(identifier="x", frame=[0, 20, 10, 10]),
+        ]
+    )
+    with pytest.raises(base.AmbiguousSelector):
+        drv.is_tappable({"id": "x"})
+
+
+def test_is_tappable_never_clicks() -> None:
+    drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
+    drv.is_tappable({"id": "x"})
+    assert page.mouse.calls == []
+
+
+def test_is_tappable_checks_element_from_point_at_the_frame_center() -> None:
+    drv, page = _driver([_rec(identifier="x", frame=[10, 20, 40, 10])])
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
+    drv.is_tappable({"id": "x"})
+    assert "elementFromPoint(30.0, 25.0)" in page.evaluated[-1]
+
+
+def test_is_tappable_guards_against_a_below_viewport_point_before_hit_testing() -> None:
+    # `elementFromPoint` returns null off-viewport regardless of occlusion (real-browser behavior
+    # pinned by test_driver_conformance_web.py's below-the-fold test); this only checks that the
+    # emitted JS carries the viewport guard ahead of the `elementFromPoint` call, since the fake
+    # page returns a canned value rather than evaluating real JavaScript.
+    drv, page = _driver([_rec(identifier="x", frame=[10, 20, 40, 10])])
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
+    drv.is_tappable({"id": "x"})
+    script = page.evaluated[-1]
+    assert "window.innerWidth" in script and "window.innerHeight" in script
+
+
+def test_is_tappable_fallback_requires_a_name_match_not_just_a_rect_match() -> None:
+    # The no-`data-testid` fallback (real-browser behavior pinned by
+    # test_driver_conformance_web.py's identically-sized-cover test) must not accept a same-rect
+    # ancestor on rect alone: this only checks that the emitted JS carries the element's own
+    # accessible name (`label`) into the fallback's match condition, since the fake page returns a
+    # canned value rather than evaluating real JavaScript.
+    drv, page = _driver([_rec(identifier=None, label="Submit", frame=[10, 20, 40, 10])])
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
+    drv.is_tappable({"label": "Submit"})
+    script = page.evaluated[-1]
+    assert '"Submit"' in script
+    assert "sameName" in script and "sameRect" in script
+    assert script.index("window.innerHeight") < script.index("elementFromPoint")
 
 
 def test_back_goes_back_in_history() -> None:
@@ -560,6 +679,7 @@ def test_back_goes_back_in_history() -> None:
 
 def test_long_press() -> None:
     drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
     drv.long_press({"id": "x"}, 0.0)
     assert [c[0] for c in page.mouse.calls] == ["move", "down", "up"]
 
@@ -660,9 +780,12 @@ def test_select_option_sets_value_at_resolved_point() -> None:
     drv, page = _driver(
         [_rec(identifier="nav.theme-picker", role="select", frame=[10, 20, 40, 10])]
     )
+    # First return serves `_center_checked`'s own occlusion check (`_point_hits`); second is the
+    # select JS's own result.
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}, "ok"]
     drv.select_option({"id": "nav.theme-picker"}, "midnight")
-    # The last evaluate() is the select JS (the first is query()); it reads the resolved center
-    # (30, 25) via elementFromPoint and assigns the requested option value.
+    # The last evaluate() is the select JS; it reads the resolved center (30, 25) via
+    # elementFromPoint and assigns the requested option value.
     select_js = page.evaluated[-1]
     assert "elementFromPoint(30.0, 25.0)" in select_js
     assert '"midnight"' in select_js
@@ -684,9 +807,10 @@ def test_select_option_ambiguous_raises() -> None:
 
 def test_select_option_raises_element_not_found_when_not_a_select() -> None:
     # When JS returns 'no-select' (the resolved element is not a <select>), the driver raises
-    # ElementNotFound rather than letting _wedge_guard turn it into a DeviceError crash.
+    # ElementNotFound rather than letting _wedge_guard turn it into a DeviceError crash. First
+    # return serves the occlusion check (`_center_checked`); the <select> itself is not covered.
     drv, page = _driver([_rec(identifier="nav.theme-picker", role="select", frame=[0, 0, 10, 10])])
-    page.evaluate_returns = ["no-select"]
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}, "no-select"]
     with pytest.raises(base.ElementNotFound, match="not a <select>"):
         drv.select_option({"id": "nav.theme-picker"}, "midnight")
 
@@ -695,9 +819,22 @@ def test_select_option_raises_element_not_found_when_no_matching_option() -> Non
     # When JS returns 'no-option' (no <option> has the requested value), the driver raises
     # ElementNotFound — the same taxonomy as a missing element, not a browser crash.
     drv, page = _driver([_rec(identifier="nav.theme-picker", role="select", frame=[0, 0, 10, 10])])
-    page.evaluate_returns = ["no-option"]
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}, "no-option"]
     with pytest.raises(base.ElementNotFound, match="no option with value"):
         drv.select_option({"id": "nav.theme-picker"}, "midnight")
+
+
+def test_select_option_raises_element_not_tappable_when_covered() -> None:
+    # An overlay covering the <select> makes `elementFromPoint` resolve to the overlay: the old
+    # unchecked path would then see `closest('select')` come back null and raise the factually
+    # wrong "not a <select>". Checking via `_center_checked` first raises `ElementNotTappable`
+    # naming the actual cover instead, before the select JS ever runs.
+    drv, page = _driver([_rec(identifier="nav.theme-picker", role="select", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [{"ok": False, "cover": "div#overlay", "rect": [0.0, 0.0, 10.0, 10.0]}]
+    with pytest.raises(base.ElementNotTappable, match="covered by another element"):
+        drv.select_option({"id": "nav.theme-picker"}, "midnight")
+    # The select JS itself never ran: only the occlusion check's own evaluate() was consumed.
+    assert len(page.evaluate_returns) == 0
 
 
 def _touch_points(params: Any) -> list[tuple[float, float]]:

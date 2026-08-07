@@ -2,50 +2,89 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from bajutsu.drivers import base
 from bajutsu.elements import screen_size_from_elements
 from bajutsu.orchestrator.actions._registry import _handler
+from bajutsu.orchestrator.actions.handlers._gesture_math import _scroll_gesture
+from bajutsu.orchestrator.actions.handlers.scroll import scroll_until_tappable
 from bajutsu.scenario import Step
 
-# The default directional swipe travels a fraction of the screen, not a fixed coordinate count, so
-# it scrolls a consistent proportion of any device regardless of its coordinate unit — iOS reports
-# frames in points, Android in raw pixels, web in CSS pixels. A fixed count scrolls far less of a
-# dense Android screen (2400px) than of an iOS one (~900pt), so a swipe sized for iOS barely moves an
-# Android list; a screen fraction keeps the scroll reach at parity across backends (BE-0208). 0.125
-# reproduces the previous 100-unit nudge on the historical 800-tall reference screen.
-_SWIPE_FRACTION = 0.125  # default travel as a fraction of the screen when `amount` isn't given
-_SWIPE_MARGIN = 4.0  # keep both gesture endpoints this far inside the screen edges
+# The recovery scroll's step bound: small, well under `scroll`'s own default of 15, for the first
+# direction tried below. A later direction gets a multiple of this bound, since it must first undo
+# the offset its predecessors left behind before it can make any net progress of its own. This is a
+# safety net for the common case (a transient overlay, a sticky header/footer settling out of the
+# way) — not a search. An author who already knows a target needs scrolling in a specific direction,
+# through a specific container, still writes the explicit `scroll` action; this net only insures
+# against the obstruction the author did not expect.
+_TAP_RECOVERY_MAX_SCROLLS = 3
+
+# Tried in this order: `down` first, since a bottom-anchored obstruction (a toast, a snackbar, a
+# sticky footer) is the more common case, then `up` as a fallback for a top-anchored one (a sticky
+# header) that `down` alone cannot clear — `down`'s content motion moves the target *toward* the top
+# of the screen, so it drives a target stuck under a header further underneath it, never out.
+_TAP_RECOVERY_DIRECTIONS = ("down", "up")
 
 
-def _scroll_gesture(
-    center: base.Point, direction: str, amount: float | None, screen: base.Point
-) -> tuple[base.Point, base.Point]:
-    """The (from, to) points for a directional swipe that travels `amount` of the screen.
+def _tap_with_recovery(
+    actuate: Callable[[], None], driver: base.Driver, sel: base.Selector
+) -> None:
+    """Call `actuate()`; on `ElementNotTappable`, try a bounded scroll in each direction, then retry once.
 
-    `amount` is a fraction of the screen (height for up/down, width for left/right); ``None`` uses
-    the default fraction. The gesture *begins on* `center` when there is room, and travels a segment of
-    that length in the direction (`up`/`left` toward the smaller coordinate), so a bigger `amount`
-    scrolls proportionally further. Beginning on the element — rather than centering the travel
-    across it — is what lets a swipe grab a small handle (e.g. a resize divider) it would otherwise
-    straddle and miss. Only when a travel would overrun a screen edge does the segment slide back on
-    (moving the start off `center` in that case), which keeps the travelled distance intact.
+    `scroll_until_tappable` (not `scroll_to_target`) is the reason this recovery does anything at
+    all: an occluded target's frame center is already inside the viewport — that is exactly why it
+    is occluded rather than off-screen — so a stop condition of mere on-screen presence would return
+    immediately without a single scroll step.
+
+    A single fixed direction cannot clear every obstruction: `down` (content moving toward the top
+    of the screen) clears a bottom-anchored cover but drives a target under a top-anchored one
+    further underneath it. `_TAP_RECOVERY_DIRECTIONS` tries `down`, then — only once `down` is
+    exhausted without success — `up`. `up` starts from the offset `down`'s own steps left behind, so
+    it needs to retrace that ground before it can make any net progress of its own; each direction's
+    bound is therefore `_TAP_RECOVERY_MAX_SCROLLS * (i + 1)` rather than a flat, independent bound.
+    The first direction to make `sel` tappable wins and the actuation is retried immediately. This is
+    still a bounded safety net, not a search in an author-chosen direction: an author who already
+    knows a target needs scrolling through a specific container still writes the explicit `scroll`
+    action.
+
+    Any failure along the recovery path — both directions' scroll bounds exhausted while still not
+    tappable, or the retried `actuate()` finding the target still not tappable — surfaces as a single
+    `ElementNotTappable`. The first attempt's own exception (which names what covered the target,
+    via `base.raise_if_covered`) is interpolated into that message rather than dropped, so the
+    fact a CI log needs to avoid reproducing the screen by hand survives; the last direction's scroll
+    failure that triggered the recovery is chained (`raise … from`) alongside it. It never falls back
+    to the misleading `ElementNotFound` a scroll timeout would otherwise raise.
     """
-    cx, cy = center
-    sw, sh = screen
-    vertical = direction in ("up", "down")
-    dim = sh if vertical else sw
-    dist = (amount if amount is not None else _SWIPE_FRACTION) * dim
-    span = min(dist, max(0.0, dim - 2 * _SWIPE_MARGIN))
-    anchor = cy if vertical else cx
-    start = min(max(anchor, _SWIPE_MARGIN), dim - _SWIPE_MARGIN)
-    end = start - span if direction in ("up", "left") else start + span
-    if end < _SWIPE_MARGIN:
-        start += _SWIPE_MARGIN - end
-        end = _SWIPE_MARGIN
-    elif end > dim - _SWIPE_MARGIN:
-        start -= end - (dim - _SWIPE_MARGIN)
-        end = dim - _SWIPE_MARGIN
-    return ((cx, start), (cx, end)) if vertical else ((start, cy), (end, cy))
+    try:
+        actuate()
+        return
+    except base.ElementNotTappable as obstruction_exc:
+        obstruction = obstruction_exc
+    exhausted: Exception | None = None
+    for i, direction in enumerate(_TAP_RECOVERY_DIRECTIONS):
+        # A later direction starts from the offset its predecessors left behind, so it has to undo
+        # those steps before it makes any net progress of its own — hence the widened bound.
+        try:
+            scroll_until_tappable(driver, sel, direction, None, _TAP_RECOVERY_MAX_SCROLLS * (i + 1))
+        except base.ElementNotFound as exc:
+            exhausted = exc
+            continue
+        try:
+            actuate()
+        except base.ElementNotTappable as exc:
+            # The retry raced: the cover re-settled between the stop check and the actuation.
+            # Keep the newer, more accurate obstruction and let the next direction try.
+            obstruction = exc
+            exhausted = base.ElementNotTappable(
+                f"scroll: {sel!r} became tappable but was covered again on the retry"
+            )
+            continue
+        return
+    assert exhausted is not None
+    raise base.ElementNotTappable(
+        f"still not tappable after a bounded scroll attempt: {obstruction}"
+    ) from exhausted
 
 
 def _require_multi_touch(driver: base.Driver, action: str) -> None:
@@ -60,7 +99,8 @@ def _require_multi_touch(driver: base.Driver, action: str) -> None:
 @_handler("tap")
 def _do_tap(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
     assert step.tap is not None
-    driver.tap(step.tap.as_selector())
+    sel = step.tap.as_selector()
+    _tap_with_recovery(lambda: driver.tap(sel), driver, sel)
 
 
 @_handler("tap_point")
@@ -75,20 +115,24 @@ def _do_tap_point(driver: base.Driver, step: Step, _r: object, _c: object, _b: o
 @_handler("double_tap")
 def _do_double_tap(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
     assert step.double_tap is not None
-    driver.double_tap(step.double_tap.as_selector())
+    sel = step.double_tap.as_selector()
+    _tap_with_recovery(lambda: driver.double_tap(sel), driver, sel)
 
 
 @_handler("long_press")
 def _do_long_press(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
     assert step.long_press is not None
-    driver.long_press(step.long_press.sel.as_selector(), step.long_press.duration)
+    sel = step.long_press.sel.as_selector()
+    duration = step.long_press.duration
+    _tap_with_recovery(lambda: driver.long_press(sel, duration), driver, sel)
 
 
 @_handler("type")
 def _do_type(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
     assert step.type is not None
     if step.type.into is not None:
-        driver.tap(step.type.into.as_selector())
+        sel = step.type.into.as_selector()
+        _tap_with_recovery(lambda: driver.tap(sel), driver, sel)
     driver.type_text(step.type.text)
 
 
@@ -105,7 +149,7 @@ def _do_clear(driver: base.Driver, step: Step, _r: object, _c: object, _b: objec
     # Read the field's current length, then focus it and backspace exactly that many characters, so
     # the clear is agnostic to whatever it held (BE-0265). Nothing to delete on an empty field.
     current = base.resolve_unique(driver.query(), sel)["value"] or ""
-    driver.tap(sel)
+    _tap_with_recovery(lambda: driver.tap(sel), driver, sel)
     if current:
         driver.delete_text(len(current))
 
@@ -113,7 +157,8 @@ def _do_clear(driver: base.Driver, step: Step, _r: object, _c: object, _b: objec
 @_handler("delete")
 def _do_delete(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
     assert step.delete is not None
-    driver.tap(step.delete.into.as_selector())
+    sel = step.delete.into.as_selector()
+    _tap_with_recovery(lambda: driver.tap(sel), driver, sel)
     driver.delete_text(step.delete.count)
 
 
@@ -121,7 +166,8 @@ def _do_delete(driver: base.Driver, step: Step, _r: object, _c: object, _b: obje
 def _do_select(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
     assert step.select is not None
     # `mode` is always "all" for now (BE-0265): focus the field, then platform select-all.
-    driver.tap(step.select.into.as_selector())
+    sel = step.select.into.as_selector()
+    _tap_with_recovery(lambda: driver.tap(sel), driver, sel)
     driver.select_all()
 
 

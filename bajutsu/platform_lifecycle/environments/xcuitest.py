@@ -445,6 +445,13 @@ def _spawn_cold_with_retry(
             spawned.discard()
             raise
         if failure is None:
+            if n > 1:
+                _logger.info(
+                    "xcuitest runner unresponsive, respawned and recovered on attempt %d/%d (%s)",
+                    n,
+                    attempts,
+                    "; ".join(diagnostics),
+                )
             return spawned
         diagnostics.append(f"attempt {n}/{attempts}: {failure.detail}{spawned.log_tail()}")
         spawned.discard()

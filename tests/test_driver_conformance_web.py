@@ -24,6 +24,9 @@ from typing import Any
 import pytest
 from driver_conformance import (
     FIELD_ID,
+    OBSTRUCTION_CLEAR_ID,
+    OBSTRUCTION_COVER_ID,
+    OBSTRUCTION_TARGET_ID,
     SCROLL_ROW_COUNT,
     SCROLL_ROW_PREFIX,
     SCROLL_TALL_ID,
@@ -116,6 +119,25 @@ class PlaywrightConformanceHarness:
         )
         return self._driver
 
+    def obstruction_screen(self) -> base.Driver:
+        # `cover` is later in the DOM than `target` and shares its top-left corner, so with no
+        # z-index set, normal stacking order paints it on top — a real `document.elementFromPoint`
+        # hit-test at `target`'s center resolves to `cover`, not `target` (BE-0326's own driver, not
+        # a fake). `cover` is taller than `target` (30px vs. 20px) so the center point (y=10) lands
+        # safely inside it rather than exactly on its bottom edge, which some engines read as just
+        # outside the box. `clear` sits far below, alone, so nothing covers it.
+        self._page.set_content(
+            "<!doctype html><html><body style='margin:0'>"
+            f'<div data-testid="{OBSTRUCTION_TARGET_ID}" '
+            'style="position:absolute;left:0;top:0;width:100px;height:20px"></div>'
+            f'<div data-testid="{OBSTRUCTION_COVER_ID}" '
+            'style="position:absolute;left:0;top:0;width:300px;height:30px"></div>'
+            f'<div data-testid="{OBSTRUCTION_CLEAR_ID}" '
+            'style="position:absolute;left:0;top:500px;width:100px;height:20px"></div>'
+            "</body></html>"
+        )
+        return self._driver
+
 
 @pytest.fixture(scope="module")
 def chromium() -> Iterator[Any]:
@@ -141,6 +163,72 @@ class TestPlaywrightDriverConformance(DriverConformanceContract):
             yield PlaywrightConformanceHarness(page)
         finally:
             page.close()
+
+
+@pytest.mark.web
+def test_is_tappable_true_for_a_below_the_fold_target_not_actually_covered(chromium: Any) -> None:
+    """A resolved target past the viewport bottom reads as tappable, not "covered".
+
+    `document.elementFromPoint` returns `null` for any point outside the viewport regardless of
+    occlusion (`query()`'s frames are viewport-relative, so a below-the-fold element is still
+    resolvable with a center past `window.innerHeight`). Reading that `null` as "covered" would
+    make `tap` implicitly scroll a below-the-fold target into view through the occlusion check —
+    behavior `docs/drivers.md` documents as adb-only. This target has nothing drawn over it at
+    all; it is merely past the bottom of a deliberately short viewport.
+    """
+    page = chromium.new_page()
+    try:
+        page.set_viewport_size({"width": 800, "height": 200})
+        driver = PlaywrightDriver("about:blank", page=page)
+        page.set_content(
+            '<div data-testid="below-fold" '
+            'style="position:absolute;left:0;top:900px;width:100px;height:20px"></div>'
+        )
+        assert driver.is_tappable({"id": "below-fold"}) is True
+    finally:
+        page.close()
+
+
+@pytest.mark.web
+def test_is_tappable_false_for_an_identically_sized_cover_with_no_data_testid(
+    chromium: Any,
+) -> None:
+    """The no-`data-testid` fallback must not read a same-rect cover as the target itself.
+
+    `_point_hits`'s fallback (for a target `QUERY_JS` matched by tag/role/`aria-label` rather than
+    `data-testid`) walks the hit's ancestor chain comparing bounding rects. A rect match alone is
+    ambiguous: a transparent click-blocking overlay sized to exactly cover a button shares its rect
+    but not its accessible name, so the fallback must also require the hit's name to match — else a
+    same-sized overlay silently reads as the button underneath it, and a tap clicks straight through.
+    """
+    page = chromium.new_page()
+    try:
+        driver = PlaywrightDriver("about:blank", page=page)
+        page.set_content(
+            '<button style="position:absolute;left:0;top:0;width:100px;height:40px">Submit</button>'
+            '<div style="position:absolute;left:0;top:0;width:100px;height:40px"></div>'
+        )
+        assert driver.is_tappable({"label": "Submit"}) is False
+        with pytest.raises(base.ElementNotTappable):
+            driver.tap({"label": "Submit"})
+    finally:
+        page.close()
+
+
+@pytest.mark.web
+def test_is_tappable_true_for_a_same_named_element_matched_without_a_data_testid(
+    chromium: Any,
+) -> None:
+    """The no-`data-testid` fallback still accepts the target itself: rect *and* name both match."""
+    page = chromium.new_page()
+    try:
+        driver = PlaywrightDriver("about:blank", page=page)
+        page.set_content(
+            '<button style="position:absolute;left:0;top:0;width:100px;height:40px">Submit</button>'
+        )
+        assert driver.is_tappable({"label": "Submit"}) is True
+    finally:
+        page.close()
 
 
 @pytest.mark.web

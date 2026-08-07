@@ -138,6 +138,93 @@ final class RouterTests: XCTestCase {
         XCTAssertEqual(provider.tapCalls.count, 0)
     }
 
+    func testIsHittableWithValidHandleCallsProviderAndReportsOk() throws {
+        let provider = FakeElementProvider()
+        let backing = NSObject()
+        provider.elementsToReturn = [
+            ElementSnapshot(
+                identifier: "ok", label: "OK", value: nil,
+                traits: ["button"], frame: (0, 0, 10, 10), backingElement: backing
+            ),
+        ]
+        provider.isHittableResult = .ok
+        let router = makeRouter(provider)
+
+        let elemResponse = router.handle(HTTPRequest(method: "GET", path: "/elements", body: nil))
+        let handle = (parseJSON(elemResponse)?["elements"] as? [[String: Any]])?.first?["handle"] as? String
+        XCTAssertNotNil(handle)
+
+        let body = try JSONSerialization.data(withJSONObject: ["handle": handle!])
+        let response = router.handle(HTTPRequest(method: "POST", path: "/isHittable", body: body))
+        XCTAssertEqual(parseJSON(response)?["status"] as? String, "ok")
+        XCTAssertEqual(provider.isHittableCalls.count, 1)
+        XCTAssertTrue(provider.isHittableCalls[0] === backing)
+    }
+
+    func testIsHittableReportsNotHittableWhenCovered() throws {
+        let provider = FakeElementProvider()
+        provider.elementsToReturn = [
+            ElementSnapshot(
+                identifier: "ok", label: nil, value: nil,
+                traits: ["button"], frame: (0, 0, 10, 10), backingElement: NSObject()
+            ),
+        ]
+        provider.isHittableResult = .notHittable
+        let router = makeRouter(provider)
+
+        let elemResponse = router.handle(HTTPRequest(method: "GET", path: "/elements", body: nil))
+        let handle = (parseJSON(elemResponse)?["elements"] as? [[String: Any]])?.first?["handle"] as? String
+        XCTAssertNotNil(handle)
+
+        let body = try JSONSerialization.data(withJSONObject: ["handle": handle!])
+        let response = router.handle(HTTPRequest(method: "POST", path: "/isHittable", body: body))
+        XCTAssertEqual(parseJSON(response)?["status"] as? String, "not-hittable")
+    }
+
+    func testIsHittableWithStaleHandleReturnsStale() throws {
+        let provider = FakeElementProvider()
+        provider.elementsToReturn = [
+            ElementSnapshot(
+                identifier: "a", label: nil, value: nil,
+                traits: [], frame: (0, 0, 1, 1), backingElement: NSObject()
+            ),
+        ]
+        let router = makeRouter(provider)
+
+        let first = router.handle(HTTPRequest(method: "GET", path: "/elements", body: nil))
+        let handle = (parseJSON(first)?["elements"] as? [[String: Any]])?.first?["handle"] as? String
+        XCTAssertNotNil(handle)
+
+        provider.elementsToReturn = [
+            ElementSnapshot(
+                identifier: "b", label: nil, value: nil,
+                traits: [], frame: (0, 0, 1, 1), backingElement: NSObject()
+            ),
+        ]
+        _ = router.handle(HTTPRequest(method: "GET", path: "/elements", body: nil))
+
+        let body = try JSONSerialization.data(withJSONObject: ["handle": handle!])
+        let response = router.handle(HTTPRequest(method: "POST", path: "/isHittable", body: body))
+        XCTAssertEqual(parseJSON(response)?["status"] as? String, "stale")
+        XCTAssertEqual(provider.isHittableCalls.count, 0)
+    }
+
+    func testIsHittableWithUnknownHandleReturnsNotFound() throws {
+        let provider = FakeElementProvider()
+        let router = makeRouter(provider)
+        let body = try JSONSerialization.data(withJSONObject: ["handle": "bogus-handle"])
+        let response = router.handle(HTTPRequest(method: "POST", path: "/isHittable", body: body))
+        XCTAssertEqual(parseJSON(response)?["status"] as? String, "not-found")
+    }
+
+    func testIsHittableMissingHandleReturns400() throws {
+        let provider = FakeElementProvider()
+        let router = makeRouter(provider)
+        let body = try JSONSerialization.data(withJSONObject: [String: Any]())
+        let response = router.handle(HTTPRequest(method: "POST", path: "/isHittable", body: body))
+        XCTAssertEqual(response.statusCode, 400)
+    }
+
     func testTapReportsStaleWhenTheInteractionRaisesAnException() throws {
         // The runner-survival guard: XCUITest raises an NSException when an element vanishes mid-tap
         // ("No matches found"). Uncaught it would abort the resident runner; the Router must catch it
