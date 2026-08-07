@@ -97,7 +97,7 @@ def test_start_video_confirm_started_sets_true_start_once_file_grows(tmp_path: P
 
 def test_video_start_timeout_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     # A loaded CI host can extend the recording-start confirmation ceiling without a code change
-    # (the ios-e2e workflow raises it), the treatment its four sibling xcuitest timeouts already
+    # (the ios-e2e workflow raises it), the treatment its three sibling xcuitest timeouts already
     # have; a blank or malformed value falls back to the compiled default (BE-0348).
     monkeypatch.delenv(intervals._VIDEO_START_TIMEOUT_ENV, raising=False)
     assert intervals._video_start_timeout() == intervals._VIDEO_START_TIMEOUT
@@ -105,6 +105,18 @@ def test_video_start_timeout_env_override(monkeypatch: pytest.MonkeyPatch) -> No
     assert intervals._video_start_timeout() == 20.0
     monkeypatch.setenv(intervals._VIDEO_START_TIMEOUT_ENV, "not-a-number")
     assert intervals._video_start_timeout() == intervals._VIDEO_START_TIMEOUT
+
+
+def test_video_start_timeout_rejects_non_finite_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `float()` parses "inf"/"-inf"/"nan" successfully, so the plain `except ValueError` fallback
+    # does not catch them. Left unguarded, "inf" would make `deadline = time.monotonic() + timeout`
+    # unreachable in `_await_video_file_growing`/`_await_screenrecord_started` — an unbounded wait,
+    # which prime directive 2 (determinism first) forbids outright — and "nan" would silently produce
+    # a 0-second timeout via `max(0.0, nan) == 0.0` (every comparison against nan is False) rather
+    # than falling back to the compiled default like any other malformed value.
+    for raw in ("inf", "-inf", "Infinity", "nan"):
+        monkeypatch.setenv(intervals._VIDEO_START_TIMEOUT_ENV, raw)
+        assert intervals._video_start_timeout() == intervals._VIDEO_START_TIMEOUT, raw
 
 
 def test_confirming_starters_resolve_the_timeout_per_call(

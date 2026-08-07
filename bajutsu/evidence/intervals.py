@@ -17,6 +17,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -109,14 +110,23 @@ _VIDEO_START_TIMEOUT_ENV = "BAJUTSU_VIDEO_START_TIMEOUT"
 
 
 def _video_start_timeout() -> float:
-    """The recording-start confirmation ceiling in seconds, from the env override or the default."""
+    """The recording-start confirmation ceiling in seconds, from the env override or the default.
+
+    Rejects a non-finite override (`inf`, `-inf`, `nan`) rather than passing it through `float()`'s
+    successful parse: `inf` would turn the bounded confirmation poll unbounded — the fixed-wait
+    determinism guarantee this whole timeout family exists to keep (prime directive 2) — and `nan`
+    would silently produce a 0-second timeout (`max(0.0, nan)` keeps `0.0`, since every comparison
+    against `nan` is `False`) rather than falling back to the compiled default like any other
+    malformed value.
+    """
     raw = os.environ.get(_VIDEO_START_TIMEOUT_ENV)
     if not raw:
         return _VIDEO_START_TIMEOUT
     try:
-        return max(0.0, float(raw))
+        value = float(raw)
     except ValueError:
         return _VIDEO_START_TIMEOUT
+    return max(0.0, value) if math.isfinite(value) else _VIDEO_START_TIMEOUT
 
 
 class Proc(Protocol):

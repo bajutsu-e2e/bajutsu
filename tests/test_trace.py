@@ -112,6 +112,16 @@ def test_trace_derives_offsets_from_absolute_timestamps(tmp_path: Path) -> None:
     assert str(int(anchor)) not in out
 
 
+def test_video_at_subtracts_the_anchor_and_clamps_at_zero() -> None:
+    # `trace.py`'s own copy of the report's `video_seconds` derivation (BE-0348) must agree with it:
+    # an ordinary later-than-anchor instant subtracts cleanly, and an anchor-preceding instant clamps
+    # to `0.0` rather than a negative offset.
+    anchor = 1_700_000_000.0
+    assert trace._video_at(anchor + 2.5, video_anchor_s=anchor) == 2.5
+    assert trace._video_at(anchor - 0.2, video_anchor_s=anchor) == 0.0  # clamp fires
+    assert trace._video_at(1.5, video_anchor_s=0.0) == 1.5  # legacy manifest, no anchor
+
+
 def test_trace_shows_what_each_step_actually_actuated(tmp_path: Path) -> None:
     # The timeline reads the manifest dict directly, so it needs no loader: the coordinate a tap sent and
     # the channel that carried it appear on the step's own line, which is where someone asking "where did
