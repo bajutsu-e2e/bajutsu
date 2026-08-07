@@ -10,6 +10,9 @@ from __future__ import annotations
 import pytest
 from driver_conformance import (
     FIELD_ID,
+    OBSTRUCTION_CLEAR_ID,
+    OBSTRUCTION_COVER_ID,
+    OBSTRUCTION_TARGET_ID,
     SCROLL_ROW_COUNT,
     SCROLL_ROW_PREFIX,
     SCROLL_TALL_ID,
@@ -84,6 +87,16 @@ class FakeConformanceHarness:
             identifier=SCROLL_TALL_ID, frame=(0.0, SCROLL_ROW_COUNT * _ROW_H, _ROW_W, _TALL_H)
         )
         return FakeDriver(screen=[*rows, tall], viewport=_SCROLL_VIEWPORT)
+
+    def obstruction_screen(self) -> base.Driver:
+        # `cover` is listed after `target` (document order) and is wider than it (300 vs. 100), so it
+        # is neither a subset nor a superset of `target`'s frame — read as a genuine covering
+        # element, not a descendant or an ancestor (`topmost_at_point`'s own contract).
+        field = element(identifier=FIELD_ID, value="", frame=_FIELD_FRAME)
+        target = element(identifier=OBSTRUCTION_TARGET_ID, frame=(0.0, 0.0, 100.0, 20.0))
+        cover = element(identifier=OBSTRUCTION_COVER_ID, frame=(0.0, 0.0, 300.0, 15.0))
+        clear = element(identifier=OBSTRUCTION_CLEAR_ID, frame=(0.0, 500.0, 100.0, 20.0))
+        return FakeDriver(screen=[target, cover, clear, field], react=_text_field_react(field))
 
 
 class TestFakeDriverConformance(DriverConformanceContract):

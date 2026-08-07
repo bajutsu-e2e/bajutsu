@@ -65,6 +65,7 @@ def enrich(
             )
         except (
             base.SelectorError,
+            base.ElementNotTappable,
             base.UnsupportedAction,
             _ReplayFailed,
             AssertionError,

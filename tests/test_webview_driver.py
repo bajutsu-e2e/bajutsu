@@ -78,6 +78,33 @@ def test_tap_not_found_fails() -> None:
         driver.tap({"id": "missing"})
 
 
+def test_is_tappable_true_when_the_selector_resolves() -> None:
+    # The bridge protocol has no point-based hit-test (unlike the native web backend's
+    # `document.elementFromPoint`), so a resolved element is always tappable here — the
+    # documented, deliberate first-slice limitation, not an oversight.
+    elements = [_el("place-order")]
+    bridge = FakeBridge(elements)
+    driver = WebContextDriver(bridge=bridge, webview_id="wv")
+    assert driver.is_tappable({"id": "place-order"}) is True
+
+
+def test_is_tappable_false_when_the_selector_does_not_resolve() -> None:
+    bridge = FakeBridge([])
+    driver = WebContextDriver(bridge=bridge, webview_id="wv")
+    assert driver.is_tappable({"id": "missing"}) is False
+
+
+def test_is_tappable_propagates_ambiguous_selector() -> None:
+    elements = [
+        _el("dup", frame=(10.0, 20.0, 100.0, 40.0)),
+        _el("dup", frame=(10.0, 80.0, 100.0, 40.0)),
+    ]
+    bridge = FakeBridge(elements)
+    driver = WebContextDriver(bridge=bridge, webview_id="wv")
+    with pytest.raises(base.AmbiguousSelector):
+        driver.is_tappable({"id": "dup"})
+
+
 def test_unsupported_actions_raise() -> None:
     bridge = FakeBridge([])
     driver = WebContextDriver(bridge=bridge, webview_id="wv")

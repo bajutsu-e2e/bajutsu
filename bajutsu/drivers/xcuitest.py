@@ -89,6 +89,7 @@ TransportFn = Callable[[str, str, Mapping[str, Any] | None], _Reply]
 _OK = "ok"
 _STALE = "stale"  # the resolved handle no longer maps to a live element (the screen changed)
 _NOT_FOUND = "not-found"  # the runner could not act on the handle (no matching live element)
+_NOT_HITTABLE = "not-hittable"  # the element is live but not reachable at its own point right now
 
 # Socket timeout for a single runner *read* request (GET). BE-0105 replaced the per-attribute
 # `/elements` walk (~10s+ per screen) with one `app.snapshot()`, so the 60s stopgap is reverted to a
@@ -612,6 +613,12 @@ class XcuitestDriver:
                 continue
             if reply.status == _NOT_FOUND:
                 raise base.ElementNotFound(f"no actuatable element for: {sel!r}")
+            if reply.status == _NOT_HITTABLE:
+                # Distinct from `_STALE`: the element is live and correctly resolved, but XCTest's own
+                # `isHittable` refuses it (covered by another element, or offscreen) — not a race to
+                # retry here, so it surfaces once as a tappability failure. Any bounded recovery
+                # (a scroll) happens above the driver, in the orchestrator.
+                raise base.ElementNotTappable(f"element resolved but not hittable: {sel!r}")
             # Any other status (e.g. an "error" from a 500 / malformed response) is a runner failure,
             # not a test outcome — fail loudly rather than masking it as element-not-found.
             raise XcuitestChannelError(
@@ -631,6 +638,33 @@ class XcuitestDriver:
     def tap(self, sel: base.Selector) -> None:
         handle, el = self._resolve_handle(sel)
         self._actuate("/tap", {"handle": handle}, sel, gesture="tap", element=el)
+
+    def is_tappable(self, sel: base.Selector) -> bool:
+        """Whether `sel` resolves to a unique element XCTest's own `isHittable` reports as reachable.
+
+        A pure query, unlike `tap`/`double_tap`/`long_press`: it never actuates and never retries a
+        `stale` reply, so a caller (the scroll-recovery loop) can call it repeatedly with no side
+        effects, resolving fresh from the current screen every time. Not found means "not tappable"
+        (`False`), matching every other backend's convention for a target not yet in the tree, rather
+        than propagating; an ambiguous selector still raises `AmbiguousSelector` immediately, since
+        occlusion is a different question from selector ambiguity. A `stale` handle (the screen
+        changed between resolving and asking) also reads as `False` rather than retried, since the
+        caller re-resolves fresh on its own next call. Any other status is a genuine runner/channel
+        problem, not a test outcome, and raises loudly (`XcuitestChannelError`) exactly as `_actuate`
+        does for the same class of reply, rather than being folded into a misleadingly clean `False`.
+        """
+        try:
+            handle, _el = self._resolve_handle(sel)
+        except base.ElementNotFound:
+            return False
+        reply = self._transport("POST", "/isHittable", {"handle": handle})
+        if reply.status == _OK:
+            return True
+        if reply.status in (_STALE, _NOT_FOUND, _NOT_HITTABLE):
+            return False
+        raise XcuitestChannelError(
+            f"runner error checking isHittable (status={reply.status}): {sel!r}"
+        )
 
     def double_tap(self, sel: base.Selector) -> None:
         handle, el = self._resolve_handle(sel)

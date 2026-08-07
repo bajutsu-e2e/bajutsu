@@ -375,15 +375,46 @@ class XcuitestLiveDriver:
             )
         )
 
+    def _resolve_handle_checked(self, sel: base.Selector) -> tuple[str, base.Element]:
+        """`_resolve_handle`, but raises `ElementNotTappable` when the target is covered.
+
+        Shares `is_tappable`'s own document-order proxy (`topmost_at_point`) directly over this
+        one query, rather than resolving twice by also calling `is_tappable`.
+        """
+        elements, handles = self._query_with_handles()
+        el = base.resolve_unique(elements, sel)
+        base.raise_if_covered(elements, el, sel)
+        return handles[id(el)], el
+
     def tap(self, sel: base.Selector) -> None:
-        handle, el = self._resolve_handle(sel)
+        handle, el = self._resolve_handle_checked(sel)
         self._log_element("tap", el)
         self._client.click(handle)
 
+    def is_tappable(self, sel: base.Selector) -> bool:
+        # The local runner route (`drivers/xcuitest.py`) reads XCTest's own `isHittable` directly;
+        # this live route only has a W3C WebDriver page-source query, with no such property
+        # surfaced through Appium's XCUITest driver here. Falls back to the same document-order
+        # proxy adb uses (`topmost_at_point`), with the same caveat: a heuristic, not the native
+        # signal the local route gets.
+        try:
+            elements, _ = self._query_with_handles()
+            target = base.resolve_unique(elements, sel)
+        except base.ElementNotFound:
+            return False
+        return base.topmost_at_point(elements, base.frame_center(target["frame"]), target) is None
+
     def back(self) -> None:
         # No hardware back on iOS: tap the OS navigation back button, the same element the other iOS
-        # backends tap (BE-0210), reusing `tap` so resolution stays Python-side.
-        self.tap({"id": base.OS_BACK_BUTTON})
+        # backends tap (BE-0210). Resolves via `_resolve_handle`, not `tap`'s `_resolve_handle_checked`
+        # occlusion check: on this route that check is only the `topmost_at_point` document-order
+        # proxy (this class has no native `isHittable`), and a full-screen sibling emitted after the
+        # nav bar in the page source can misjudge the back button as covered — with no recovery
+        # wrapper here (unlike an author's `tap` step, `_do_back` calls `driver.back()` directly), a
+        # false positive would fail the step outright rather than costing a few scroll steps.
+        handle, el = self._resolve_handle({"id": base.OS_BACK_BUTTON})
+        self._log_element("tap", el)
+        self._client.click(handle)
 
     def wait_for(self, sel: base.Selector) -> bool:
         """Single-shot: whether `sel` matches the current screen (BE-0118).
@@ -413,12 +444,12 @@ class XcuitestLiveDriver:
         self._client.execute("mobile: tap", [{"x": p[0], "y": p[1]}])
 
     def double_tap(self, sel: base.Selector) -> None:
-        handle, el = self._resolve_handle(sel)
+        handle, el = self._resolve_handle_checked(sel)
         self._log_element("doubleTap", el)
         self._client.execute("mobile: doubleTap", [{"elementId": handle}])
 
     def long_press(self, sel: base.Selector, duration: float) -> None:
-        handle, el = self._resolve_handle(sel)
+        handle, el = self._resolve_handle_checked(sel)
         self._log_element("longPress", el, duration_s=duration)
         self._client.execute("mobile: touchAndHold", [{"elementId": handle, "duration": duration}])
 

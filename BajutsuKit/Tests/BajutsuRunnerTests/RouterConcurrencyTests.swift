@@ -33,6 +33,7 @@ final class RouterConcurrencyTests: XCTestCase {
         }
 
         func tap(backingElement: AnyObject, taps: Int, duration: TimeInterval) -> TapResult { .ok }
+        func isHittable(backingElement: AnyObject) -> TapResult { .ok }
         func tapPoint(x: Double, y: Double) -> TapResult { .ok }
         func gesture(backingElement: AnyObject, kind: String, scale: Double, radians: Double) -> TapResult { .ok }
         func swipe(fromX: Double, fromY: Double, toX: Double, toY: Double) -> TapResult { .ok }
