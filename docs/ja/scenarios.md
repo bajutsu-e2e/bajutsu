@@ -821,7 +821,7 @@ steps:
 
 `capture:`（ステップ単体）と `capturePolicy[].capture`（ルール）で共通です。形は `<kind>[.<modifier>]` です。
 
-- **種別**: `screenshot` / `elements` / `actionLog` / `deviceLog` / `network` / `video` / `appTrace`
+- **種別**: `screenshot` / `elements` / `actionLog` / `deviceLog` / `network` / `video` / `appTrace` / `rawTree`
 - **修飾子**: `before` / `after` / `around` / `onError`
 
 検証は、種別と修飾子の集合に対して行われます（`scenario/models/_base.py` の `_validate_capture`）。種別ごとの取得タイミングと、どれが取得されるかは [evidence](evidence.md#証跡種別と取得タイミング) にあります。

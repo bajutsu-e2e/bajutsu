@@ -233,6 +233,87 @@ def test_error_trigger_is_the_safety_net() -> None:
     ]
 
 
+def test_inline_raw_tree_joins_the_pre_step_baseline() -> None:
+    # `rawTree` is deferred to no post-step call: it moves into the pre-step baseline instead, next
+    # to the `elements` token that read the same pre-action tree — `write_raw_tree` persists the
+    # driver's *last* read, and pairing it with a post-action read instead (the plain post-step
+    # capture call) would describe a different moment than `elements.json` does.
+    driver = FakeDriver([_el("a", "A")])
+    sink = RecordingSink()
+    run_scenario(
+        driver,
+        _scn({"name": "x", "steps": [{"tap": {"id": "a"}, "capture": ["rawTree"]}]}),
+        sink=sink,
+    )
+    assert sink.calls == [
+        ("x/step0", [*BASELINE_BEFORE, "rawTree"]),
+        ("x/step0", BASELINE_AFTER),
+    ]
+
+
+def test_inline_raw_tree_and_elements_together_both_go_post_step() -> None:
+    # Naming both kinds inline (`capture: [elements, rawTree]`) is the combination an author
+    # reaching for this feature is most likely to write. Pre-capturing only `rawTree` here would
+    # still mismatch: the post-step `elements` token would overwrite the pre-step baseline's
+    # elements.json with a post-action tree, leaving a pre-action rawTree dump beside it. Instead
+    # neither joins the pre-step baseline, and both fire together post-step, where `capture()`'s
+    # own stable sort pairs them on the same (post-action) read.
+    driver = FakeDriver([_el("a", "A")])
+    sink = RecordingSink()
+    run_scenario(
+        driver,
+        _scn({"name": "x", "steps": [{"tap": {"id": "a"}, "capture": ["elements", "rawTree"]}]}),
+        sink=sink,
+    )
+    assert sink.calls == [
+        ("x/step0", BASELINE_BEFORE),
+        ("x/step0", ["elements", "rawTree"]),
+        ("x/step0", BASELINE_AFTER),
+    ]
+
+
+def test_inline_raw_tree_is_dropped_inside_a_web_block() -> None:
+    # Inside a `web` block, the post-step capture call always targets the native driver (a
+    # `WebContextDriver` cannot screenshot) while `elements.json` there is written from the *web*
+    # driver's tree — so a `rawTree` request would ask the native driver for a dump describing an
+    # unrelated backend and read entirely. Dropped rather than serviced, both here (it is never
+    # pre-captured either, for the same driver mismatch) and post-step.
+    class _Bridge:
+        def query_dom(self, webview_id: str) -> list[base.Element]:
+            return [_el("confirm", "Confirm")]
+
+        def tap_element(self, webview_id: str, point: tuple[float, float]) -> None:
+            pass
+
+        def type_text(self, webview_id: str, text: str) -> None:
+            pass
+
+        def scroll_to(self, webview_id: str, element_id: str) -> None:
+            pass
+
+    driver = FakeDriver([_el("app.webview", "WebView")])
+    sink = RecordingSink()
+    run_scenario(
+        driver,
+        _scn(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "web": {
+                            "within": {"id": "app.webview"},
+                            "steps": [{"tap": {"id": "confirm"}, "capture": ["rawTree"]}],
+                        }
+                    }
+                ],
+            }
+        ),
+        sink=sink,
+        webview_bridge=_Bridge(),
+    )
+    assert all("rawTree" not in kinds for _, kinds in sink.calls)
+
+
 def test_inline_interval_token_is_recorded_scenario_wide_not_per_step() -> None:
     # deviceLog is an interval kind: it is recorded for the whole scenario, so it
     # does not appear as a per-step instant capture (only the two baselines do).

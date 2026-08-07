@@ -505,8 +505,9 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
   the AI-vision guard demoted to a fallback for what the native path can't name (a backend lacking the
   capability, a non-enumerable blocking surface, or a free-text `instruction` the native path can't
   resolve to one label); on by default, `false` disables it per scenario
-- Evidence: instant (`screenshot`/`elements`/`actionLog` — the last carrying each step's concrete
-  actuations: the coordinate sent, the gesture's geometry, the channel that carried it) + interval
+- Evidence: instant (`screenshot`/`elements`/`actionLog`/`rawTree` — `actionLog` carries each step's
+  concrete actuations: the coordinate sent, the gesture's geometry, the channel that carried it;
+  `rawTree` carries the raw dump behind `elements`, opt-in, adb and XCUITest) + interval
   (`video`/`deviceLog`/`appTrace`)
   + the network collector (`network.json`) + **visual regression** (`visual` vs. a baseline; the
   `approve` command promotes baselines) + `capturePolicy` firing + **redaction applied** to logs /

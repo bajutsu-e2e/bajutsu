@@ -22,11 +22,15 @@
     - swipe: { on: { id: log.submit }, direction: up }
     - swipe: { on: { id: log.dialog.value }, direction: up }
     - wait: { for: { id: log.longpress }, timeout: 5 }
+      capture: [rawTree]
     - assert:
         - value: { sel: { id: log.longpress.value }, equals: "idle" }
         - value: { sel: { id: log.doubletap.value }, equals: "0" }
+      capture: [rawTree]
     - longPress: { sel: { id: log.longpress }, duration: 0.7 }
+      capture: [rawTree]
     - doubleTap: { id: log.doubletap }
+      capture: [rawTree]
   expect:
     - value: { sel: { id: log.longpress.value }, equals: "pressed" }
     - value: { sel: { id: log.doubletap.value }, equals: "1" }

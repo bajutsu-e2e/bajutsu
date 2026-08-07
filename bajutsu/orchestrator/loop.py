@@ -991,6 +991,30 @@ class _StepRunner:
                     exc,
                 )
                 pre_kinds = ["screenshot.before"]
+        # An inline `rawTree` request joins the pre-step baseline rather than waiting for the
+        # post-step capture below: `write_raw_tree` persists the driver's *last* read, and that read
+        # is the one this baseline's `elements` token just wrote (`pre_elements` — either reused from
+        # `prev_after` or the fresh query above), never this step's own action. Capturing it post-step
+        # instead would pair the raw dump with the *post-action* read, exactly the mismatch this
+        # scenario was written to rule out (a `longPress`/`doubleTap` resolves its coordinate from the
+        # pre-action tree, and a post-step `elements` token would additionally overwrite this baseline
+        # with a post-action tree, per `_run_steps`'s own final-step comment on that same hazard).
+        # Not when the step also names `elements` inline: that post-step token would still overwrite
+        # this baseline's `elements.json` with a post-action tree, leaving the pre-action `rawTree`
+        # dump paired with it instead — the same mismatch, just from the other side. Both go post-step
+        # in that case, where `capture()`'s own stable sort pairs them on one (post-action) read.
+        # Only where this baseline targets the driver `rawTree` itself would read from: inside a `web`
+        # block `active_driver` differs from `self.cfg.driver`, and the native driver's raw dump would
+        # describe an unrelated read entirely — the post-step `instant` filter below drops such a
+        # request rather than pair it wrong.
+        step_kinds = {_kind_of(t) for t in (step.capture or [])}
+        raw_tree_pre_captured = (
+            active_driver is self.cfg.driver
+            and "rawTree" in step_kinds
+            and "elements" not in step_kinds
+        )
+        if raw_tree_pre_captured:
+            pre_kinds.append("rawTree")
         outcome.artifacts.extend(
             self.cfg.sink.capture(self.cfg.driver, step_id, pre_kinds, elements=pre_elements)
         )
@@ -1243,6 +1267,21 @@ class _StepRunner:
         # block captures against the native `driver`, so it must read the active (web) tree here
         # rather than let the native writer fall back to a mismatched tree (BE-0234 Unit 2).
         instant = [t for t in fired if _kind_of(t) not in intervals.INTERVAL_KINDS]
+        if raw_tree_pre_captured:
+            # Already written above, paired with the pre-action read `pre_elements` seeded — a
+            # second, post-action write here would silently replace it with a mismatched dump. This
+            # drops every `rawTree` token, including one that arrived only via a capturePolicy rule
+            # (e.g. `onError`) rather than the inline request that triggered the pre-step capture —
+            # an unlikely combination no scenario in this repo exercises today, so a scenario wanting
+            # both a pre-action and a post-action dump on the same step has no way to ask for it yet.
+            instant = [t for t in instant if _kind_of(t) != "rawTree"]
+        elif active_driver is not self.cfg.driver:
+            # A `web` block's capture call below always targets the native `self.cfg.driver` (a
+            # `WebContextDriver` cannot screenshot), but `write_raw_tree` would then ask that native
+            # driver for `last_raw_source()` — whatever adb/XCUITest read before this block began,
+            # an unrelated backend entirely, next to this step's *web* `elements.json`. Drop the
+            # request rather than pair the two: no artifact beats a mismatched one.
+            instant = [t for t in instant if _kind_of(t) != "rawTree"]
         els = screen.get() if active_driver is not self.cfg.driver else screen.cached
         outcome.artifacts.extend(
             self.cfg.sink.capture(self.cfg.driver, step_id, instant, elements=els)

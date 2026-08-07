@@ -258,11 +258,19 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   wrong one for a value. `GET
   /source?since=<mark>` pushes the same ordering into the reader itself: it blocks until an
   accessibility event postdates the requested mark, then a bounded settle closes tearing before it
-  answers, so the two-identical-dumps freshness barrier is retired at its source and pays no second
-  dump on a settled screen. The budget survives only for the one-shot `uiautomator dump` fallback,
-  which carries no mark. That marked-read contract — a read on a read-ordering backend postdates a
-  content-moving gesture — is checked against the real backend by the driver conformance suite
-  (BE-0114).
+  answers, so the catch-up barrier's own dwell — the two-identical-dumps freshness check it otherwise
+  needs — is retired at its source and pays no second dump closing *that* barrier. The budget survives
+  only for the one-shot `uiautomator dump` fallback, which carries no mark. That marked-read contract —
+  a read on a read-ordering backend postdates a content-moving gesture — is checked against the real
+  backend by the driver conformance suite (BE-0114).
+  A mark postdate proves the read is ordered after the gesture, not that the screen has stopped moving
+  since (a fling can keep publishing well past it) — so the settle poll layered on top
+  (`_settle()`, above) deliberately does not treat a mark-closed catch-up alone as proof of rest
+  (roadmap
+  [BE-XXXX](../roadmaps/BE-XXXX-adb-settle-proven-key/BE-XXXX-adb-settle-proven-key.md)). On the
+  resident channel this means a coordinate resolve still pays one confirmatory read (plus a short
+  poll sleep) after the catch-up barrier itself closes for free — the barrier's own dump is free, the
+  settle poll's is not.
 - **On-device actuation fidelity** (roadmap
   [BE-0210](../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)):
   the `back` step is the true system back (`input keyevent 4` / `KEYCODE_BACK`) — Android has no

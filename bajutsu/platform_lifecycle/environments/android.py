@@ -321,6 +321,11 @@ class AndroidEnvironment:
                 **(opts.env or {}),
             }
             e.launch(package, launch_env)
+            # `force_stop`/`launch` replace the screen through `adb.Env`, never through the driver's
+            # own actuators — the one door `AdbDriver._settled_key` needs closed that its actuators
+            # cannot close themselves (`base.SettledCacheInvalidator`).
+            if isinstance(driver, base.SettledCacheInvalidator):
+                driver.invalidate_settled_cache()
             readiness._await_ready(
                 driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces
             )
@@ -369,6 +374,9 @@ class AndroidEnvironment:
         def reset(driver: base.Driver) -> None:
             e.force_stop(package)
             e.launch(package, eff.launch_env)
+            # Same gap as `relauncher` above: this replaces the screen outside the driver's actuators.
+            if isinstance(driver, base.SettledCacheInvalidator):
+                driver.invalidate_settled_cache()
             readiness._await_ready(
                 driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces
             )
