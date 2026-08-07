@@ -5,7 +5,7 @@
 The showcase is Bajutsu's next-generation dogfood target: **the same app written twice**
 (UIKit and SwiftUI) and **each in two accessibility variants** (identifiers on / off) — four
 installable products from two codebases. It packs the interaction surface a real app has —
-five tabs, navigation-stack pushes, all four modal styles, text entry, async loading,
+five tabs, navigation-stack pushes, all five modal styles, text entry, async loading,
 networking (live + mockable), and a screen that deliberately raises OS-level alerts — into the
 smallest app that still exercises `record`, `crawl`, and `run` together.
 

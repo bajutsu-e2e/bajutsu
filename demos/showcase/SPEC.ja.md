@@ -139,9 +139,10 @@ scheme は変種ごと（§2）、host 文法は共通です。deeplink は**タ
 | 5 | — Filter シート | `log.openFilter` | sheet（detent） | `log` | §5.3 |
 | 6 | — Gallery カバー | `log.openGallery` | フルスクリーンカバー | `log` | §5.3 |
 | 7 | — Delete ダイアログ | `log.openDelete` | アクションシート | `log` | §5.3 |
-| 8 | Notices（一覧） | `notices` タブ | タブ・長いリスト（スクロール） | `notice` | §5.5 |
-| 9 | Notice Detail | Notices 行 | push | `notice` | §5.5 |
-| 10 | Permissions | `permissions` タブ / `…://permissions` | タブ・**OS アラート** + ペーストボード往復 | `perm`、`sys` | §5.4 |
+| 8 | — Alert | `log.openAlert` | ネイティブアラート | `log` | §5.3 |
+| 9 | Notices（一覧） | `notices` タブ | タブ・長いリスト（スクロール） | `notice` | §5.5 |
+| 10 | Notice Detail | Notices 行 | push | `notice` | §5.5 |
+| 11 | Permissions | `permissions` タブ / `…://permissions` | タブ・**OS アラート** + ペーストボード往復 | `perm`、`sys` | §5.4 |
 
 タブの並び（左から）：**Stable・Search・Log・Notices・Permissions**。
 
@@ -199,10 +200,11 @@ scheme は変種ごと（§2）、host 文法は共通です。deeplink は**タ
 - `log.longpress` — 長押し標的。`log.longpress.value` = `idle`/`pressed`
 - `log.doubletap` — ダブルタップ標的。`log.doubletap.value` がタップ回数をミラー（`0`、`1`、…）
 
-Log から到達するモーダル（4 つの提示様式）：
+Log から到達するモーダル（5 つの提示様式）：
 - `log.openFilter` → detent 付き **sheet**：`log.sheet.title`、`log.sheet.apply`、`log.sheet.close`
 - `log.openGallery` → **fullScreenCover**：`log.cover.title`、`log.cover.close`
 - `log.openDelete` → **アクションシート**（confirmationDialog / UIAlertController ではなく、素のボタンによる自前のオーバーレイ。廃止済みの idb バックエンドは iOS 26 ではアラートのアクションを駆動できませんでした、BE-0290）：選択肢 `log.dialog.archive`、`log.dialog.delete`（破壊的）、`log.dialog.cancel`。結果は `log.dialog.value`（`none`/`archive`/`delete`）にミラー
+- `log.openAlert` → **ネイティブアラート**（SwiftUI の `.alert` / UIKit の `UIAlertController` style `.alert`。上記のアクションシートと異なり、iOS 26 の XCUITest バックエンドで駆動できる本物の native alert）：アクションは「Cancel」と「OK」の 2 つ。`UIAlertAction` はどちらのプラットフォームでも accessibilityIdentifier を持たないため、それぞれ `label`/`traits` で引く。結果は `log.alert.value`（`none`/`cancel`/`ok`）にミラー
 - `log.toast` — 上記の一過性トースト
 
 ### 5.4 タブ：Permissions（`perm` / `sys` 名前空間、**OS 連携画面**）
@@ -339,7 +341,7 @@ stable, horse, search, log, notice, perm, sys, net
 
 | コマンド | 変種 | ストーリー |
 |---|---|---|
-| `run` | `-a11y` | `scenarios/` の全シナリオの決定的再実行。タブ、push ナビ、4 つのモーダル様式すべて、通信（実＋モック）、alert-guard 付き Permissions フロー。 |
+| `run` | `-a11y` | `scenarios/` の全シナリオの決定的再実行。タブ、push ナビ、5 つのモーダル様式すべて、通信（実＋モック）、alert-guard 付き Permissions フロー。 |
 | `doctor --target` | 両方 | `-a11y` → **Ready**、`-noax` → **Blocked**（`idCoverage` ≈ 0）。この対がアクセシビリティ負債を定量化する。 |
 | `record` | `-noax` | 識別子のないアプリに対し、自然言語ゴールから AI がシナリオを起こし、label/traits/座標へ落ちて、stability ladder の代償を可視化する。`-a11y` の双子は同じゴールのクリーンな id ベース出力を示す。 |
-| `crawl`（[BE-0038](../../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)） | `-a11y` | 本当に枝分かれの多いアプリ（5 タブ × push × 4 モーダル様式）を幅優先探索 → 画面マップ。§5 の識別子が安定なので、id ベースの状態フィンガープリントも安定。（先行き：BE-0038 が入った時点で有効。） |
+| `crawl`（[BE-0038](../../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)） | `-a11y` | 本当に枝分かれの多いアプリ（5 タブ × push × 5 モーダル様式）を幅優先探索 → 画面マップ。§5 の識別子が安定なので、id ベースの状態フィンガープリントも安定。（先行き：BE-0038 が入った時点で有効。） |

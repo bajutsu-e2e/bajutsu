@@ -13,7 +13,7 @@
 > ```
 
 The showcase is built to be a genuinely branchy crawl target: 5 tabs × navigation pushes ×
-4 modal styles. Because every identifier is data-derived and stable (SPEC §5), the id-based
+5 modal styles. Because every identifier is data-derived and stable (SPEC §5), the id-based
 **state fingerprint** (the sorted set of on-screen identifiers, hashed —
 [BE-0038](../../../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md))
 is stable across runs.
@@ -30,6 +30,7 @@ is stable across runs.
 | Log → Filter sheet | `log.openFilter` | `log.sheet.title` |
 | Log → Gallery cover | `log.openGallery` | `log.cover.title` |
 | Log → Delete dialog | `log.openDelete` | `log.dialog.delete` |
+| Log → Alert | `log.openAlert` | `log.alert.value` |
 | Notices (list) | `notices` tab | `notice.title`, `notice.row.*` |
 | Notice Detail | Notices row / `…://notice/<id>` | `notice.detail.title` |
 | Permissions | `permissions` tab / `…://permissions` | `perm.title` |

@@ -1,8 +1,9 @@
 import UIKit
 
 /// Tab: Log (SPEC §5.3) — a training-log composer that exercises every input control and all
-/// four modal presentation styles (sheet, full-screen cover, action sheet, transient toast).
-/// Laid out as a grouped form (Entry / Modals / Gestures / Entries) to mirror the SwiftUI twin.
+/// five modal presentation styles (sheet, full-screen cover, action sheet, native alert,
+/// transient toast). Laid out as a grouped form (Entry / Modals / Gestures / Entries) to mirror
+/// the SwiftUI twin.
 final class LogController: UIViewController {
     private let model: AppModel
 
@@ -14,6 +15,7 @@ final class LogController: UIViewController {
     private let segmentValueLabel = UILabel()
     private let statusLabel = UILabel()
     private let dialogResultLabel = UILabel()
+    private let alertResultLabel = UILabel()
     private let longPressTarget = UILabel()
     private let longPressValueLabel = UILabel()
     private let doubleTapTarget = UILabel()
@@ -95,12 +97,19 @@ final class LogController: UIViewController {
         let filter = makeModalButton("Open Filter", "log.openFilter") { [weak self] in self?.openFilter() }
         let gallery = makeModalButton("Open Gallery", "log.openGallery") { [weak self] in self?.openGallery() }
         let delete = makeModalButton("Open Delete", "log.openDelete") { [weak self] in self?.openDelete() }
+        let alert = makeModalButton("Open Alert", "log.openAlert") { [weak self] in self?.openAlert() }
 
         dialogResultLabel.font = .preferredFont(forTextStyle: .footnote)
         dialogResultLabel.textColor = .secondaryLabel
         dialogResultLabel.text = "Dialog: none"
         dialogResultLabel.accessibilityID("log.dialog.value")
         dialogResultLabel.accessibilityStateValue("none")
+
+        alertResultLabel.font = .preferredFont(forTextStyle: .footnote)
+        alertResultLabel.textColor = .secondaryLabel
+        alertResultLabel.text = "Alert: none"
+        alertResultLabel.accessibilityID("log.alert.value")
+        alertResultLabel.accessibilityStateValue("none")
 
         configureGestureTargets()
         entriesStack.axis = .vertical
@@ -110,7 +119,7 @@ final class LogController: UIViewController {
             makeSectionHeader("Entry"),
             makeSectionCard([noteView, stepperRow, intenseButton, intenseValueLabel, submit, statusLabel]),
             makeSectionHeader("Modals"),
-            makeSectionCard([filter, gallery, delete, dialogResultLabel]),
+            makeSectionCard([filter, gallery, delete, dialogResultLabel, alert, alertResultLabel]),
             makeSectionHeader("Gestures"),
             makeSectionCard([longPressTarget, longPressValueLabel, doubleTapTarget, doubleTapValueLabel]),
             makeSectionHeader("Controls"),
@@ -285,7 +294,7 @@ final class LogController: UIViewController {
         }
     }
 
-    // MARK: - Modals (the four styles)
+    // MARK: - Modals (the five styles)
 
     /// 1) Detented sheet.
     private func openFilter() {
@@ -359,5 +368,23 @@ final class LogController: UIViewController {
     private func dismissDialog() {
         dialogOverlay?.removeFromSuperview()
         dialogOverlay = nil
+    }
+
+    /// 4) Native alert: a real `UIAlertController` in style `.alert` — the SwiftUI twin's `.alert`
+    /// renders through this same style underneath. Two actions, "Cancel" and "OK", neither with a
+    /// custom `id` (`UIAlertAction` carries no accessibilityIdentifier on either platform), so a
+    /// scenario resolves either by `label` + `traits`, the same way it resolves a tab bar item.
+    /// Result mirrors to log.alert.value (`none`/`cancel`/`ok`), so a scenario can tell the two
+    /// actions apart by which value lands.
+    private func openAlert() {
+        let alert = UIAlertController(title: "Sample Alert", message: "This is a native alert.", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in self?.setAlertResult("cancel") })
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in self?.setAlertResult("ok") })
+        present(alert, animated: !model.animationsDisabled)
+    }
+
+    private func setAlertResult(_ value: String) {
+        alertResultLabel.text = "Alert: \(value)"
+        alertResultLabel.accessibilityStateValue(value)
     }
 }
