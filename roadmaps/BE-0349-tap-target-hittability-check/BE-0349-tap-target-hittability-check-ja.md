@@ -1,14 +1,14 @@
-[English](BE-XXXX-tap-target-hittability-check.md) · **日本語**
+[English](BE-0349-tap-target-hittability-check.md) · **日本語**
 
-# BE-XXXX — 操作前にタップ可能性を検証し、回数を区切ったスクロールを安全網として備える
+# BE-0349 — 操作前にタップ可能性を検証し、回数を区切ったスクロールを安全網として備える
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-tap-target-hittability-check-ja.md) |
+| 提案 | [BE-0349](BE-0349-tap-target-hittability-check-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0349") |
 | 実装 PR | [#1524](https://github.com/bajutsu-e2e/bajutsu/pull/1524) |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element-ja.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md) |
