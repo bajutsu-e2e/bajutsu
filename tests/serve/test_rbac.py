@@ -17,32 +17,60 @@ from bajutsu.serve.state import ServeState
 
 
 def test_role_for_derives_the_role_from_team_membership() -> None:
-    # BE-0313: admin follows the server-wide admin Team, editor the org's editor Team, else viewer.
+    # BE-0313: admin follows the server-wide admin Teams, editor the org's editor Team, else viewer.
     teams = ["acme-gh/scenario-maintainers", "acme-gh/ops"]
     assert (
         ops.role_for(
-            teams=teams, editor_team="acme-gh/scenario-maintainers", admin_team="acme-gh/ops"
+            teams=teams, editor_team="acme-gh/scenario-maintainers", admin_teams=("acme-gh/ops",)
         )
         == "admin"
     )
     assert (
         ops.role_for(
-            teams=teams, editor_team="acme-gh/scenario-maintainers", admin_team="acme-gh/absent"
+            teams=teams, editor_team="acme-gh/scenario-maintainers", admin_teams=("acme-gh/absent",)
         )
         == "editor"
     )
     # The base role: signed in, but a member of neither Team.
     assert (
-        ops.role_for(teams=teams, editor_team="acme-gh/absent", admin_team="acme-gh/none")
+        ops.role_for(teams=teams, editor_team="acme-gh/absent", admin_teams=("acme-gh/none",))
         == "viewer"
     )
     # An unset Team never matches, even against an empty-string team name in the list.
-    assert ops.role_for(teams=[""], editor_team=None, admin_team=None) == "viewer"
-    # Nested-Team names don't match the configured flat Team (exact match only).
+    assert ops.role_for(teams=[""], editor_team=None, admin_teams=()) == "viewer"
+    # Nested-Team names don't match the configured flat Team (exact match only) — for the admin
+    # list too, where a false match now clears the sign-in gate and not only the role.
     assert (
-        ops.role_for(teams=["acme-gh/parent/child"], editor_team="acme-gh/parent", admin_team=None)
+        ops.role_for(teams=["acme-gh/parent/child"], editor_team="acme-gh/parent", admin_teams=())
         == "viewer"
     )
+    assert (
+        ops.role_for(
+            teams=["acme-gh/parent/child"], editor_team=None, admin_teams=("acme-gh/parent",)
+        )
+        == "viewer"
+    )
+    # A login matching any of several configured admin Teams resolves to admin.
+    assert (
+        ops.role_for(
+            teams=["acme-gh/ops"], editor_team=None, admin_teams=("other-gh/root", "acme-gh/ops")
+        )
+        == "admin"
+    )
+
+
+def test_role_for_admin_match_is_case_insensitive() -> None:
+    # GitHub resolves an org login and a Team slug case-insensitively, and a real org login can be
+    # stored mixed-case -- an `admin_teams` entry and a login's reported Team must still match
+    # regardless of which side carries the different case.
+    assert ops.role_for(teams=["Acme-GH/ops"], editor_team=None, admin_teams=("acme-gh/ops",)) == (
+        "admin"
+    )
+    assert ops.role_for(teams=["acme-gh/ops"], editor_team=None, admin_teams=("Acme-GH/OPS",)) == (
+        "admin"
+    )
+    # Folding case never turns an empty team name into a spurious match.
+    assert ops.role_for(teams=[""], editor_team=None, admin_teams=("acme-gh/ops",)) == "viewer"
 
 
 def test_required_role_maps_endpoints() -> None:
