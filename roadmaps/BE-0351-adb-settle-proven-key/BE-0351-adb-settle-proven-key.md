@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-adb-settle-proven-key-ja.md)
+**English** · [日本語](BE-0351-adb-settle-proven-key-ja.md)
 
-# BE-XXXX — Gate the adb settle poll's fast path on a key it actually proved stable
+# BE-0351 — Gate the adb settle poll's fast path on a key it actually proved stable
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-adb-settle-proven-key.md) |
+| Proposal | [BE-0351](BE-0351-adb-settle-proven-key.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0351") |
 | Implementing PR | [#1527](https://github.com/bajutsu-e2e/bajutsu/pull/1527) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
