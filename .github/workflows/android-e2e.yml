@@ -31,6 +31,30 @@
 #     (Kotlin) test from a scenario and run it with Gradle's connectedAndroidTest, no bajutsu / adb
 #     driver / AI at test time. The Android twin of ios-e2e.yml's `codegen (xcuitest)`; a non-gating
 #     signal first (the signal-then-required precedent of BE-0282), promoted to the gate once stable.
+#   - warm gradle cache (adb): builds the Compose + resident UI Automator server APKs that `smoke`,
+#     `golden`, `conformance`, and `fault-injection` all build, with no AVD, purely so those four
+#     jobs' own unchanged `make ... build` invocations restore a warm Gradle dependency + build cache
+#     instead of resolving/compiling cold four times over. It does NOT build Views: `smoke` alone
+#     needs Views, and warming it here would make `golden`/`conformance`/`fault-injection` wait
+#     (`needs:` is a job-level gate) on a Views compile none of the three ever uses — `smoke`'s own
+#     Views build stays cold, unwarmed, exactly as it was before this job existed. `actions/cache`
+#     cannot share a still-unsaved cache between jobs running concurrently in the same run, so this
+#     runs first and the four dependent jobs declare `needs: warm-gradle-cache`; none of them passes
+#     `cache-read-only` explicitly — they rely on the composite action's own safe default ('true',
+#     read-only) — the multi-job cache-sharing pattern gradle/actions documents. It does not replace
+#     each job's own build step or bundle APKs into a shared artifact. `network`, `visual`, and
+#     `codegen` are deliberately NOT gated on it: they build Compose only (`codegen`'s own
+#     `e2e-codegen` additionally needs the Compose AndroidTest/instrumentation variant, which this job
+#     never builds), so — because `needs:` would block even their unrelated AVD-cache step until this
+#     job finishes — waiting for it would cost those three jobs more than any cache hit could save;
+#     the same "different subsets" reasoning above, applied per job rather than used to justify one
+#     shared artifact for the whole lane. A `warm-gradle-cache` miss or outright failure only costs
+#     time, never correctness — each of the four dependent jobs' `if:` uses `!cancelled()` plus an
+#     explicit `changes` check rather than a hard `needs` dependency on its success, so a flake or
+#     genuine failure in the warm-up never blocks the functional job it only exists to speed up, while
+#     a run superseded by this file's own `concurrency: cancel-in-progress` still stands down instead
+#     of being dispatched anyway (which bare `always()` would allow); each falls back to its own cold
+#     build, same as today.
 # It runs no LLM — a deterministic `run` over fixed scenarios — so it stays within the prime
 # directives, and it is kept off the fast `make check` gate exactly as the iOS and web e2e lanes are.
 # The lane now carries a REQUIRED status check like iOS's `E2E`: the `E2E (android)` job below
@@ -42,9 +66,12 @@
 # golden can drift with an upstream dependency, and the codegen (BE-0294) and fault-injection (BE-0305)
 # lanes land as per-PR signals first, so each stays a per-PR signal that never blocks a merge — the same
 # deterministic-and-host-independent boundary iOS's `E2E` already draws. Each job boots its
-# own AVD; unlike iOS's metered macOS runners (10x billing), Android runs on standard-priced Linux
-# under KVM, so the per-job boot is an acceptable cost for the attribution win. Per-job setup is
-# duplicated the same way ios-e2e.yml duplicates its own — no composite action.
+# own AVD and builds its own APKs; unlike iOS's metered macOS runners (10x billing), Android runs on
+# standard-priced Linux under KVM, so the per-job cost is acceptable for the attribution win a red
+# job's name gives for free. `warm-gradle-cache` (see below) only removes the redundant dependency
+# resolution and compilation underneath those unchanged per-job builds — it does not merge the jobs
+# or their AVDs. Per-job setup is otherwise duplicated the same way ios-e2e.yml duplicates its own —
+# no composite action beyond the shared toolchain prelude.
 #
 # The AVD is x86_64 API 34, not the arm64 image the local 2026-07-07 validation used: KVM
 # acceleration on the x86_64 GitHub Linux runner needs an x86_64 system image, and a foreign-arch
@@ -111,6 +138,40 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: python3 scripts/e2e_changes.py
 
+  # Warm the shared Gradle cache once, ahead of the four KVM jobs below that depend on it (see the
+  # header comment for why this exists, why `network`/`visual`/`codegen` are excluded, and why it
+  # stays a soft, best-effort dependency rather than a shared build). No AVD here — building the same
+  # APKs those four jobs build, without booting anything, is a few minutes.
+  warm-gradle-cache:
+    name: warm gradle cache (adb)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # Explicit 'false' to opt out of this action's own safe default ('true', read-only) and write
+      # the cache on every PR/merge-queue run, not only on `main` (gradle/actions/setup-gradle's own
+      # default).
+      - name: Set up the Android toolchain
+        uses: ./.github/actions/setup-android-toolchain
+        with:
+          cache-read-only: 'false'
+
+      # No `uv sync` here: the two `make` targets below are pure `./gradlew` invocations with no
+      # Python/uv dependency, so a package install would only add wall-clock time nothing consumes.
+
+      # Build the Compose + resident-server APKs the four dependent jobs share (not Views: only
+      # `smoke` needs it, and warming it here would make the other three wait on a compile they never
+      # use — see the header comment), so their own (read-only) `make` invocations hit a warm
+      # dependency + build cache instead of resolving/compiling cold.
+      - name: Build the Compose showcase APK
+        run: make -C demos/showcase/android compose-build
+
+      - name: Build the resident UI Automator server APKs
+        run: make -C BajutsuAndroidUIAutomatorServer build
+
   # The functional heart: run the core scenarios through `bajutsu run` over the adb backend, against
   # both Android UI toolkits (Compose full set + Views Stable-tab subset, BE-0221). This is the "does
   # bajutsu drive Android?" check — the Android twin of ios-e2e.yml's `smoke (xcuitest)` and web-e2e.yml's
@@ -118,8 +179,14 @@ jobs:
   # reads go over the resident channel by default (bajutsu/platform_lifecycle.py).
   smoke:
     name: smoke (adb)
-    needs: changes
-    if: needs.changes.outputs.relevant == 'true'
+    needs: &warm-cache-consumer-needs [changes, warm-gradle-cache]
+    # `!cancelled()`, not `always()`: it must still tolerate a warm-gradle-cache flake or failure
+    # without blocking this functional job, but `always()` would also re-dispatch it after the run
+    # itself was superseded by this file's own `concurrency: cancel-in-progress` — `!cancelled()`
+    # stands down there instead. `changes` itself must still have succeeded and reported a relevant
+    # change. Anchored here and aliased by golden/conformance/fault-injection below, so editing this
+    # one `if:` keeps all four in sync instead of relying on a hand-kept "keep these together" rule.
+    if: &warm-cache-consumer-if "!cancelled() && needs.changes.result == 'success' && needs.changes.outputs.relevant == 'true'"
     runs-on: ubuntu-latest
     # A cold AVD boot + APK builds + the Compose full set and Views subset is ~18min; 30 catches a
     # real hang (a wedged AVD boot or adb) with comfortable headroom.
@@ -253,8 +320,9 @@ jobs:
   # tree. The Android twin of the iOS golden ios-e2e.yml now runs per PR.
   golden:
     name: golden (adb)
-    needs: changes
-    if: needs.changes.outputs.relevant == 'true'
+    needs: *warm-cache-consumer-needs
+    # Same soft dependency as `smoke` above (aliased) — see its comment for why.
+    if: *warm-cache-consumer-if
     runs-on: ubuntu-latest
     # The golden reruns the Stable-tab scenario twice (resident + dump) against a booted AVD; ~15min
     # end to end, so 25 catches a real hang with headroom.
@@ -331,6 +399,7 @@ jobs:
   # tap, wait status), so — like the visual job — the resident server is not built (dump suffices).
   network:
     name: network (adb)
+    # Not gated on warm-gradle-cache — see the header comment for why.
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
@@ -402,8 +471,9 @@ jobs:
   # reads run over the resident channel (BE-0245), the adb-specific read path the contract now pins.
   conformance:
     name: conformance (adb)
-    needs: changes
-    if: needs.changes.outputs.relevant == 'true'
+    needs: *warm-cache-consumer-needs
+    # Same soft dependency as `smoke` above (aliased) — see its comment for why.
+    if: *warm-cache-consumer-if
     runs-on: ubuntu-latest
     # A cold AVD boot + the Compose + resident-server builds + the contract (a handful of reseeds) is
     # ~15min; 25 catches a real hang (a wedged AVD boot or adb) with headroom.
@@ -488,8 +558,9 @@ jobs:
   # path BE-0282's network lane took.
   fault-injection:
     name: fault-injection (adb)
-    needs: changes
-    if: needs.changes.outputs.relevant == 'true'
+    needs: *warm-cache-consumer-needs
+    # Same soft dependency as `smoke` above (aliased) — see its comment for why.
+    if: *warm-cache-consumer-if
     runs-on: ubuntu-latest
     # A cold AVD boot + the Compose + resident-server builds + two short cases (~1min on a local
     # emulator, the slower `uiautomator dump` path bounded by the cases' own budgets) is well under
@@ -565,6 +636,7 @@ jobs:
   # job compares against it. Like ios-e2e.yml's `visual`, this is a signal, not a gate.
   visual:
     name: visual (adb)
+    # Not gated on warm-gradle-cache — see the header comment for why.
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
@@ -639,6 +711,10 @@ jobs:
   # a11y app + instrumentation APKs, installs both, and runs the generated test against the emulator.
   codegen:
     name: uiautomator (codegen)
+    # Not gated on warm-gradle-cache (see the header comment): `e2e-codegen` needs the Compose
+    # AndroidTest/instrumentation variant, which warm-gradle-cache never builds, so `needs:` would
+    # only cost this job the wait (including its unrelated AVD-cache step) for a superset build it
+    # barely benefits from.
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
