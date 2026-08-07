@@ -495,9 +495,12 @@ def run_scenario(
     artifacts: list[Artifact] = []
     # The anchor pair: a monotonic instant every in-run duration is measured from, and the wall-clock
     # instant it corresponds to. Read back to back so the two describe the same moment as closely as
-    # the platform allows — every recorded timestamp is `scenario_wall_start + (t - scenario_start)`.
+    # the platform allows — `wall_offset_s` is their difference, and every recorded timestamp is
+    # `t + wall_offset_s` for a monotonic instant `t` from this run (the step loop below and
+    # `pipeline.py`'s network write both spell the conversion exactly that way).
     scenario_start = clock.now()
     scenario_wall_start = wall_clock()
+    wall_offset_s = scenario_wall_start - scenario_start
     video_interval = next((r for r in recordings if r.kind == "video"), None)
     video_start_offset = _resolve_video_start_offset(video_interval, scenario_start)
     # Mutable bindings: extract steps populate vars.* during the run; scenario-level
@@ -513,8 +516,7 @@ def run_scenario(
             alert_guard,
             wants_screen_changed,
             outcomes,
-            scenario_start,
-            scenario_wall_start,
+            wall_offset_s,
             sid,
             network,
             relaunch,
@@ -564,7 +566,7 @@ def run_scenario(
         backend=getattr(driver, "name", ""),
         duration_s=max(0.0, clock.now() - scenario_start),
         video_anchor_s=scenario_wall_start + video_start_offset,
-        wall_offset_s=scenario_wall_start - scenario_start,
+        wall_offset_s=wall_offset_s,
         expect_alerts=expect_alerts,
         expect_actuations=expect_actuations,
     )
@@ -788,8 +790,10 @@ class _LoopConfig:
     sink: EvidenceSink
     alert_guard: AlertGuardConfig | None
     wants_screen_changed: bool
-    scenario_start: float
-    scenario_wall_start: float
+    # Added to a monotonic `clock.now()` instant to get its wall-clock epoch — the same conversion
+    # `pipeline.py` applies to network receive times (`RunResult.wall_offset_s`). The loop carries
+    # only this delta, never the wall instant itself, so no timing decision can read a wall clock.
+    wall_offset_s: float
     sid: str
     network: NetworkSource
     relaunch: RelaunchFn | None
@@ -846,7 +850,7 @@ class _StepRunner:
         # The absolute instant this step began, converted through the scenario's anchor pair
         # (BE-0348). The video correction is deliberately not applied here — the report derives it
         # from `video_anchor_s` at render time, so it stays recomputable after the run.
-        outcome.started_at = self.cfg.scenario_wall_start + (start - self.cfg.scenario_start)
+        outcome.started_at = start + self.cfg.wall_offset_s
 
         if kind == "if_":
             return self._handle_if(step, active_driver, idx, kind, outcome, start)
@@ -1276,8 +1280,7 @@ def _run_steps(
     alert_guard: AlertGuardConfig | None,
     wants_screen_changed: bool,
     outcomes: list[StepOutcome],
-    scenario_start: float,
-    scenario_wall_start: float,
+    wall_offset_s: float,
     sid: str,
     network: NetworkSource,
     relaunch: RelaunchFn | None = None,
@@ -1305,8 +1308,7 @@ def _run_steps(
         sink=sink,
         alert_guard=alert_guard,
         wants_screen_changed=wants_screen_changed,
-        scenario_start=scenario_start,
-        scenario_wall_start=scenario_wall_start,
+        wall_offset_s=wall_offset_s,
         sid=sid,
         network=network,
         relaunch=relaunch,

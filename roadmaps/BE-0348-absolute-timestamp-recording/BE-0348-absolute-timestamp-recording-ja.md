@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0348") |
+| 実装 PR | [#1538](https://github.com/bajutsu-e2e/bajutsu/pull/1538) |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0346](../BE-0346-video-timing-sync/BE-0346-video-timing-sync-ja.md) |
 <!-- /BE-METADATA -->

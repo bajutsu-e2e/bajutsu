@@ -107,6 +107,12 @@ _VIDEO_FINALIZE_TIMEOUT = 120.0
 # anchor correction (BE-0348).
 _VIDEO_START_TIMEOUT = 5.0
 _VIDEO_START_TIMEOUT_ENV = "BAJUTSU_VIDEO_START_TIMEOUT"
+# The shared tail of both confirmation-timeout warnings (iOS file-growth, Android device-side
+# process), so the two backends always describe the same uncorrected-anchor condition identically.
+_ANCHOR_UNCORRECTED_MSG = (
+    "this scenario's video anchor stays uncorrected, so its report seek offsets fall back to "
+    "the scenario's own start"
+)
 
 
 def _video_start_timeout() -> float:
@@ -273,10 +279,10 @@ def _await_video_file_growing(
             return time.monotonic()
         time.sleep(poll)
     _logger.warning(
-        "recordVideo produced no new bytes in %s within %ss; this scenario's video anchor stays "
-        "uncorrected, so its report seek offsets fall back to the scenario's own start",
+        "recordVideo produced no new bytes in %s within %ss; %s",
         path,
         timeout,
+        _ANCHOR_UNCORRECTED_MSG,
     )
     return None
 
@@ -413,10 +419,10 @@ def _await_screenrecord_started(
             return probed_at
         time.sleep(poll)
     _logger.warning(
-        "device-side screenrecord on %s did not appear within %ss; this scenario's video anchor "
-        "stays uncorrected, so its report seek offsets fall back to the scenario's own start",
+        "device-side screenrecord on %s did not appear within %ss; %s",
         serial,
         timeout,
+        _ANCHOR_UNCORRECTED_MSG,
     )
     return None
 

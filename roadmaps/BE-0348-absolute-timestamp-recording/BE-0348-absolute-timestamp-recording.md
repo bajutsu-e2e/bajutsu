@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0348") |
+| Implementing PR | [#1538](https://github.com/bajutsu-e2e/bajutsu/pull/1538) |
 | Topic | Verification & coverage |
 | Related | [BE-0346](../BE-0346-video-timing-sync/BE-0346-video-timing-sync.md) |
 <!-- /BE-METADATA -->
