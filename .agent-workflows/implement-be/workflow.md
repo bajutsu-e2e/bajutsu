@@ -160,18 +160,21 @@ and the host's authoring aids. This stays inside directive #1: they advise the a
 judge — the gate (step 9) is still the only verdict, and no LLM touches the `run`/CI path.
 
 Run the review CI runs on the PR, but locally on your diff: follow
-[`ideation`](../ideation/workflow.md) step 5's procedure against the
-[`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md) contract — read it and
-hand it to the fresh subagent as text, the same way `ideation` already does, so no review command
-is invoked and the pass runs the same way in every host. Two differences from that procedure:
+[`ideation`](../ideation/workflow.md) step 5's two-role procedure — a fresh review/plan pass that
+classifies findings and never edits, then an implement pass that applies its instructions (BE-0347)
+— against the [`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md) contract.
+Read that contract and hand it to the **review/plan** pass as text, the same way `ideation` already
+does, so no review command is invoked and the pass runs the same way in every host. Two differences
+from that procedure:
 first, don't scope the staged diff to `roadmaps/`; this skill's changes land wherever the item
 needs them, so stage what you touched (`git add <paths>` — until they are staged, new files are
 invisible to `git diff` at all, the same reason `ideation` stages first) and diff exactly those
 paths from the branch point: `git diff $(git merge-base HEAD origin/main) -- <paths>`. Second,
-tell the subagent that
+tell that same review/plan pass that
 steps 8 and 10 are still pending, so it doesn't spend a round flagging the item's un-flipped
 `Status` and its missing `Implementing PR` row — the `Status` flip lands at step 8, and the row is
-filled at step 10, once the PR number exists.
+filled at step 10, once the PR number exists. The implement pass needs neither input: it applies
+the instructions it is given without re-judging them.
 
 Then review the diff through the host's simplification facility. Apply justified fixes before the
 gate. For a non-trivial change, use fresh, independent review contexts for the following lenses:
@@ -184,9 +187,9 @@ gate. For a non-trivial change, use fresh, independent review contexts for the f
 Weigh every suggestion against the prime directives and the surrounding code before taking it;
 drop anything that fights the codebase grain.
 
-**Don't open the PR (step 10) until this pass is clear.** Keep fixing and re-running the contract
-pass against the updated diff until it comes back empty, per `ideation` step 5's loop-until-empty
-rule and its 3-round cap. What's left standing may only be a finding you judged a false positive or
+**Don't open the PR (step 10) until this pass is clear.** Keep fixing and re-running a fresh
+review/plan pass against the updated diff until it comes back empty, per `ideation` step 5's
+loop-until-empty rule and its 3-round cap. What's left standing may only be a finding you judged a false positive or
 a deliberate, already-noted trade-off — never an unresolved real finding. Route anything that calls
 for a genuine design change to the user instead of the PR, the same escalation `ideation` step 5
 uses. And if the 3rd round still returns a real finding, the cap has been reached: stop there, leave
@@ -267,9 +270,10 @@ running and a **longer** interval while waiting on human review. Each iteration 
 2. **Start a fresh subagent when supported** and give it
    [`pr-followup`](../pr-followup/workflow.md)'s steps directly. Its task for
    the PR: assess CI and review comments, make targeted fixes, self-review the fix against the CI
-   review contract, run `make check`, push, reply to and resolve threads, and **return a short
-   structured summary** — what it changed, whether it pushed,
-   the resulting CI/review state, and whether it hit `pr-followup`'s design-change escalation. The
+   review contract, run `make check`, push, request the live review on demand, reply to and resolve
+   threads, and **return a short structured summary** — what it changed, whether it pushed, whether
+   its self-review came back clean and whether it therefore requested a live review, the resulting
+   CI/review state, and whether it hit one of `pr-followup`'s escalations. The
    fresh context is what keeps the implement transcript out of the expensive work (step 11).
 3. **Read the summary and evaluate the stop conditions** below. The loop layer owns the
    conflict / `CHANGES_REQUESTED` checks and the counters; `pr-followup` itself is unchanged.
@@ -291,7 +295,10 @@ running and a **longer** interval while waiting on human review. Each iteration 
    once per stale-review episode (skip re-posting while your nudge is still the latest comment), so
    an away reviewer isn't paged on every poll.
 3. **Two consecutive quiet polls** — no new review comments across two polls in a row (one empty
-   poll can race a reviewer mid-comment; the second confirms quiescence).
+   poll can race a reviewer mid-comment; the second confirms quiescence). Read the bot half of
+   "quiet" against what was actually requested, since the live reviewer no longer runs on every push
+   (BE-0347): a poll is quiet when it finds no new **human** review comment, and either no live
+   review was requested this iteration or the one requested came back with nothing new.
 
 When all three hold, **report that the PR is quiet-and-green, and stop — do not call
 `gh pr ready`.** Draft → Ready is a deliberate human sign-off: the human inspects the conversation,
@@ -305,9 +312,19 @@ mechanical tail (CI fixes, replies), not the merge decision or a rebase.
 - a **merge conflict** (the `mergeable` check above);
 - `CHANGES_REQUESTED` with **no inline threads ever left to act on** (stop condition 2's
   never-had-threads branch — the resolved-threads branch nudges instead, so this covers only the
-  case where `pr-followup` has nothing to fix).
+  case where `pr-followup` has nothing to fix);
+- **three churn rounds** against the live reviewer (BE-0347). Increment a third counter whenever an
+  iteration reports that its local self-review was clean, a live review was requested, and the next
+  poll still found a new **bot** review comment; reset it whenever a requested live review comes back
+  clean. A new *human* comment is not churn — that is review working, and stop condition 3 already
+  keeps the loop running for it. Three such bot-churn rounds means the local pass and the live
+  reviewer keep disagreeing, and a fourth is
+  unlikely to settle what three did not — the cap matches the local self-review loop's own 3-round
+  cap, and holds for the same reason: an LLM-based reviewer is not fully deterministic and can keep
+  surfacing a fresh marginal finding, possibly one its own previous fix introduced.
 
-**Two backstops** bound the loop. Count the two kinds of iteration **separately**, classifying each
+**Two backstops** bound the loop's total length, alongside the churn counter above (which escalates
+rather than merely stopping). Count the two kinds of iteration **separately**, classifying each
 as **CI-wait whenever any required check is not yet green** (so the common post-open state — CI
 running, no review yet — counts as CI-wait) and **review-wait otherwise**:
 

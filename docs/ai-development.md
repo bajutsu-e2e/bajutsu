@@ -311,6 +311,35 @@ hard-pinning would remove the human's judgment to upshift when a "light" task tu
 follows the same "procedures as commands, advisory not policy" precedent as the rest of the
 contributor workflow ([BE-0069](../roadmaps/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)).
 
+### The local self-review's two roles (BE-0347)
+
+The pre-push self-review that mirrors the CI review contract runs as two roles on two models, not as
+one agent on one. A **`fable`** review/plan pass judges the diff against
+[`.github/claude-review-prompt.md`](../.github/claude-review-prompt.md) and writes fix instructions;
+it never edits a file. A separate implement pass applies those instructions, on **`sonnet`** when the
+fix stays inside `roadmaps/` or `docs/` and **`opus`** when it touches product code — the same
+task-weight rule the tier table above applies everywhere else. The canonical procedure lives in
+[`ideation`](../.agent-workflows/ideation/workflow.md) step 5, which `pr-followup`,
+`propose-and-build`, and `implement-be` all run rather than restate.
+
+The split is the point; the two models make it concrete. An agent that fixes the finding it raised
+has every incentive to patch enough to silence its own comment, leaving something adjacent
+for the next cold look to raise — a likely reason the live reviewer kept finding something new after
+each push.
+
+This does not contradict the table's **PR review → medium (`sonnet`)** entry. That row names the task
+of reviewing someone else's pull request when asked, weighing a whole change on its merits. The
+review/plan role is narrower: it classifies findings against a fixed contract inside the local loop,
+and never reviews a pull request as a whole. The two rows answer different questions.
+
+**The CI trigger narrows to match.** Because the local pass now converges before a push, the
+[`claude-review`](../.github/workflows/claude-review.yml) workflow no longer re-reviews on every
+push. It runs automatically when a pull request opens or reopens, and every later pass is requested
+with an `@claude review` comment — typically by `pr-followup` itself, once its own self-review comes
+back clean. The workflow stays rather than being removed, because two paths never reach the local
+pass and would otherwise get no review at all: a fork pull request, whose `pull_request` run carries
+no secrets by design, and any commit pushed outside these skills.
+
 ## Authoring and shipping roadmap items: the three skills
 
 Turning an idea into shipped code runs through three skills that form a triangle — author,
@@ -513,12 +542,13 @@ open until it is decided.
 Once the `claude-review` Environment has a provider credential (a Claude Code subscription token, or an
 Amazon Bedrock role plus a `BEDROCK_MODEL_ID` variable), **Claude Code** reviews every pull request
 from a branch in this repository automatically, run from the
-[`claude-review`](../.github/workflows/claude-review.yml) workflow. It reviews when a PR opens and
-re-reviews on each push, against the
+[`claude-review`](../.github/workflows/claude-review.yml) workflow. It reviews when a PR opens or
+reopens, and after that whenever someone requests a pass (BE-0347 — see **On demand** below; it
+deliberately does **not** re-review on every push). It reviews against the
 [`.github/claude-review-prompt.md`](../.github/claude-review-prompt.md) contract, and posts inline
 line-level comments (with `suggestion` blocks where a fix is mechanical) — inline findings only, no
-top-level summary, since the job re-runs on every push and a fresh summary each time would leave stale,
-contradictory overviews on the PR. To stop it repeating the same findings on every push while still
+top-level summary, since a fresh summary from each of a PR's runs would leave stale,
+contradictory overviews on it. To stop it repeating the same findings across those runs while still
 missing nothing, each run reads the **full diff** (so no changed line goes unreviewed) and is also
 handed every finding **already posted** on the PR (via the API, no PR-head checkout), with instruction
 never to re-post one — it dedupes by suppressing repeats, not by narrowing what it looks at, so a
@@ -534,7 +564,7 @@ bilingual-doc sync, terminology consistency, roadmap-link hygiene) is left to hu
 since posting it would cost the author a fix-and-rerun cycle for no functional gain. It runs on
 Opus (not the action's default Sonnet) for sharper severity triage, and posts only `issue`,
 `suggestion`, and `question` findings — `nitpick` and `praise` are suppressed so an advisory review
-that re-runs on every push doesn't accrete low-value noise.
+doesn't accrete low-value noise across a PR's runs.
 
 It is **advisory, never a gate.** It is deliberately not a required status check, and its job result
 is decoupled from its findings (a review that found issues is a *successful* review, so the job goes
@@ -542,10 +572,20 @@ red only on an infrastructure failure). The deterministic `check` / `E2E` gates 
 merge arbiters — this is a reviewer, not a judge (prime directive 1). Treat its comments exactly as
 you would any reviewer's, under the reply rules above.
 
-- **On demand.** Beyond the auto-review, a maintainer or collaborator can write `@claude review` on
-  a PR (or reply to a review thread) to request a fresh pass or a follow-up on a specific comment.
-  This path is gated to trusted actors (OWNER / MEMBER / COLLABORATOR) — because comment events run
-  with repo secrets even on fork PRs — so `@claude review` from anyone else is ignored.
+- **On demand.** Every pass after the open/reopen review is requested: a maintainer or collaborator
+  writes `@claude review` on the PR (or in a review-thread reply), and `pr-followup` does the same
+  automatically once its own self-review of a pushed fix comes back clean. A requested pass is the
+  same review as an automatic one — it gets the same contract, the same severity floor, and the same
+  prior-findings dedup — so a thread reply also runs a full pass rather than answering that thread
+  alone. This path is gated to trusted actors (OWNER / MEMBER / COLLABORATOR), because comment events
+  run with repo secrets even on fork PRs, so `@claude review` from anyone else is ignored. GitHub
+  shows nothing on the PR when a request is dropped that way, so whoever asks should confirm the
+  review ran rather than read the silence as a clean review. Check the **job**, not the run: the gate
+  is a job-level `if:`, so a dropped request still creates a run that completes green with its
+  `claude review` job `skipped`. Find the run with `gh run list --workflow "Claude review" --event
+  issue_comment --user <account> --created ">TIMESTAMP"` (a timestamp captured before posting; a
+  comment-triggered run executes against the default branch, so filtering by the PR branch can never
+  match it), then read that job's conclusion with `gh run view <id> --json jobs`.
 - **Forks.** A plain `pull_request` event from a fork does not expose secrets (by GitHub's design),
   so auto-review covers same-repo `claude/<topic>` / `<user>/<topic>` branches; a fork PR is
   reviewed on demand by a maintainer instead.

@@ -59,15 +59,17 @@ gh pr checks <PR>
 
 If step 2 or 3 made a change this iteration, mirror the CI "Claude review" workflow locally before
 pushing whatever hasn't shipped yet, following [`ideation`](../ideation/workflow.md) step 5's
-procedure exactly, with three differences. First, give the subagent a local `git diff` against the
+two-role procedure exactly — a review/plan pass that classifies findings and never edits, then an
+implement pass that applies its instructions (BE-0347) — with three differences. First, give the
+review/plan pass a local `git diff` against the
 PR's remote branch instead of a fresh diff against `origin/main` — unlike `gh pr diff <PR>`, which
 only shows what GitHub's remote head already has, a local diff sees this iteration's not-yet-pushed
 fixes — and stage whatever step 2 or 3 touched first (`git add <paths>`), the same guard `ideation`
 applies to its own new files, so a file this iteration newly introduced doesn't stay untracked and
 skip the diff entirely. Second, don't scope that diff to `roadmaps/` — unlike `ideation`, whose
 fixes only ever land there, this skill's fixes can land anywhere the CI failure or review comment
-points to. Third, give the subagent `gh pr view <PR> --comments` for the discussion (there is a
-live PR here, unlike `ideation`'s pre-PR case), and route a genuine design-change finding to this
+points to. Third, give the review/plan pass `gh pr view <PR> --comments` for the discussion (there
+is a live PR here, unlike `ideation`'s pre-PR case), and route a review/plan escalation to this
 skill's own Escalation section instead of `ideation`'s, reporting it directly in this iteration's
 summary rather than leaving a review thread open, since there is no PR conversation to leave
 unresolved for a self-review-only finding. Run `make check` after every fix, the same as steps 2
@@ -79,12 +81,52 @@ extra local check rather than the round-trip savings it buys for step 3 (BE-0203
 when nothing changed this iteration (for example, a follow-up poll where CI is already
 green and no new comments arrived), since there is nothing new to self-review or push.
 
-### 5. Push and report
+### 5. Push, request a live review, and report
 
 - Push all fixes in one commit (or logical commits if changes are independent).
+- **Request the live review on demand.** The "Claude review" workflow no longer re-reviews on every
+  push (BE-0347): it runs automatically only when a pull request opens or reopens, and every later
+  pass is requested. So when this iteration pushed something and step 4's self-review came back
+  clean, ask for that pass yourself — capturing a timestamp first, because that is how the run is
+  found again below:
+  ```bash
+  REQUESTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  gh pr comment <PR> --body "@claude review"
+  ```
+  Skip the request when nothing was pushed this iteration, or when step 4 escalated instead of
+  clearing — the PR is not yet in a stable state to review. Then confirm the review actually ran,
+  checking the **job** rather than the run. The workflow's trusted-actor gate is a job-level `if:`,
+  so a comment event creates a workflow run even when the request is dropped: the run appears,
+  completed and green, with its `claude review` job merely `skipped`. Run existence proves nothing.
+  Pin the run to this request's own comment with `--user`, since any comment in the repository
+  creates a run in the same window; filter by creation time rather than `--branch`, since a
+  comment-triggered run executes against the default branch and its `head_branch` is never the PR
+  branch; and allow a few seconds for the run to be created, retrying rather than querying once —
+  a run is not normally listable the instant `gh pr comment` returns:
+  ```bash
+  for _ in $(seq 1 10); do
+    RUN_ID=$(gh run list --workflow "Claude review" --event issue_comment \
+      --user "$(gh api user --jq .login)" --created ">$REQUESTED_AT" \
+      --json databaseId --jq '.[0].databaseId')
+    [ -n "$RUN_ID" ] && break
+    sleep 3
+  done
+  gh run view "$RUN_ID" --json jobs \
+    --jq '.jobs[] | select(.name == "claude review") | .conclusion // .status'
+  ```
+  The review counts as started only when that job is `queued`, `in_progress`, or completed with a
+  conclusion other than `skipped`. A dropped request's run completes within seconds with the job
+  `skipped`, and the workflow leaves no trace on the pull request when it drops one — so the silence
+  is indistinguishable from a review that found nothing, and a follow-up poll would read it as a
+  quiet PR. Escalate on `skipped`, or when no run by this account appears.
 - Report what was fixed and what remains.
 
 ## Escalation
+
+Escalate, rather than pressing on, when step 5 finds its `@claude review` request was dropped — its
+run's `claude review` job `skipped`, or no run by this account at all: the live pass a later poll is
+waiting for will never arrive, and only a human can grant the trusted-actor association the workflow
+requires.
 
 If a review comment asks for a **fundamental design change** (new approach,
 architectural rethink, or trade-off the user should weigh), do NOT attempt the
