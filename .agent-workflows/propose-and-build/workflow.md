@@ -114,12 +114,14 @@ does not restate those rules, it runs them:
   (敬体; the Japanese layer beneath `document-writing`, natural Japanese, not a literal rendering).
   Keep the `BE-XXXX` placeholder — the real id is allocated on `main`
   by CI ([`roadmap-id`](../../.github/workflows/roadmap-id.yml)), never guessed.
-- Self-review the staged diff against the CI review contract (`ideation` step 5): a fresh
-  subagent, blind to the authoring conversation, applies
+- Self-review the staged diff against the CI review contract (`ideation` step 5) in its two roles
+  (BE-0347): a fresh review/plan pass, blind to the authoring conversation, applies
   [`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md) — the same
-  contract the "Claude review" GitHub Actions workflow uses. Fix every finding, except a false
-  positive or an already-explained trade-off (noted and left as-is) or one that calls for a
-  genuine design change (escalated to the user instead); capped at 3 rounds.
+  contract the "Claude review" GitHub Actions workflow uses — and classifies what it finds into fix
+  instructions and escalations without editing anything; a separate implement pass then applies
+  those instructions. A false positive or an already-explained trade-off is noted and left as-is,
+  and a finding calling for a genuine design change is escalated to the user instead; capped at 3
+  review/plan rounds.
 
 ### Phase B — implement against the placeholder (delegates to `implement-be` steps 3–9)
 
