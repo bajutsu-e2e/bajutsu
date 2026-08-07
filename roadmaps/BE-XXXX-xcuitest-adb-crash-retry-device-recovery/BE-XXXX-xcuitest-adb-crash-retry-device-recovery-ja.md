@@ -131,6 +131,22 @@ runner channel GET /screenshot: the runner recovered from a mid-run crash; re-is
    のは*解決後のシナリオ側フィールド*がその合図を運べなくなることだけであり、*解決前の CLI フラグ*
    は今も運べますし、実際に運んでいます。
 
+   リース自体が失敗することもあります。`erase=True` は `XcuitestEnvironment._prepare_simulator`
+   を `e.shutdown()` → `e.erase()` → `e.boot()` という経路に進めますが、そのいずれかが非ゼロ終了
+   すると（デバイスがこの手順そのものを拒否した場合など）`simctl.DeviceError` として現れます。
+   これは `BackendCrashError` のサブクラスではなく兄弟にあたる型なので、放置すればこのループ自身の
+   `except BackendCrashError` をすり抜け、`run_all` 全体を中断させてしまいます。それまでにパスした
+   すべてのシナリオの判定結果まで失うことになります。`run_one` は、強制 erase を伴うリースの周りに
+   限って `device_errors.DeviceError` を捕まえます（erase を強制しない素のリースでは捕まえず、その
+   `DeviceError` は今までどおり伝播させます）。捕まえた場合は、`s` をそのままリースする従来どおりの
+   素の respawn に切り替えます。この試行で起きた不具合は、この試行だけの問題にとどまり、run 全体の
+   問題にはなりません。`simctl` 自身のサブプロセス呼び出しには `timeout=` が付いていないため
+   （`simctl._real_run`）、完全に固まった CoreSimulator デーモンに対する `shutdown`/`erase`/`boot`
+   は、例外を送出せずハングし続けることがあります。これは今回の後続作業として残しました。この特性は
+   この強制再試行に固有のものではなく、`erase: true` という precondition すべてに元から備わっている
+   ものであり、これを止めるには、この再試行ループだけの局所的な修正ではなく、`simctl.py` の他の呼び
+   出しとも共有できる、意図して選んだタイムアウト値と失敗時の振る舞いが必要だからです。
+
    `Scenario` と `Preconditions`（`bajutsu/scenario/models/scenario.py`）はどちらも pydantic の
    モデルなので、`model_copy(update=...)` はフィールドを上書きするだけで、元のシナリオや
    `RunResult.scenario` の名前をミューテーションしません。両バックエンドとも `erase=True` に
@@ -187,9 +203,8 @@ runner channel GET /screenshot: the runner recovered from a mid-run crash; re-is
 
    ```python
    class RunCrashRecoveryBudget:
-       def __init__(self, budget: float | None, now: Callable[[], float]) -> None:
-           self.budget = budget
-           self._now = now
+       def __init__(self, budget: float | None) -> None:
+           self.budget = budget if budget is None or budget > 0 else None
            self._spent = 0.0
            self._lock = threading.Lock()
 
@@ -354,7 +369,10 @@ runner channel GET /screenshot: the runner recovered from a mid-run crash; re-is
       バックエンドについて `preconditions.erase=True` を強制する。`erase is False` だけでは
       スキップしない（「検討した代替案」を参照）。明示的な `bajutsu run --no-erase` は今も尊重
       される。`force_erase_on_retry` がこのフラグの解決前の値を `_filter_scenarios` の先まで
-      運ぶためである（「詳細設計」を参照）。
+      運ぶためである（「詳細設計」を参照）。強制 erase のリース自体が `device_errors.DeviceError`
+      を送出した場合は、run 全体を中断させるのではなく素の respawn に切り替える（「詳細設計」を
+      参照）。`simctl` のサブプロセス呼び出しに `timeout=` がない点は今回の後続作業として残した。
+      この再試行に固有の問題ではないためである。
 - [x] Unit 2 — `RunCrashRecoveryBudget`（デッドライン方式ではなく、累積した実際の復旧時間を
       課金する方式）を追加し、`run_crash_recovery_budget` / `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET`
       を `run_all` に配線し、ワークフローの env knob を追加し、`docs/architecture.md` /

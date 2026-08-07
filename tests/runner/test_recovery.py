@@ -126,6 +126,17 @@ def test_run_budget_never_exhausted_when_unbounded() -> None:
     assert budget.exhausted() is False
 
 
+def test_run_budget_normalizes_a_non_positive_budget_passed_directly_to_unbounded() -> None:
+    # `_default_run_crash_recovery_budget` maps `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET=0` to None
+    # (unbounded); a caller passing 0 (or a negative value) straight to the constructor must read the
+    # same way, or `exhausted()` would return True before any recovery time is billed — inverting the
+    # never-block-the-first-crash rule `exhausted()` documents.
+    for non_positive in (0.0, -5.0):
+        budget = RunCrashRecoveryBudget(budget=non_positive)
+        assert budget.budget is None
+        assert budget.exhausted() is False
+
+
 def test_run_budget_exhausts_once_accumulated_recovery_time_meets_it() -> None:
     # The budget bills *actual recovery time spent*, not wall-clock elapsed since some earlier crash:
     # a 100s budget exhausts once 100s has actually been billed via add_recovery_time, regardless of

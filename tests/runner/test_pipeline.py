@@ -271,6 +271,57 @@ def test_run_all_forces_erase_on_a_crash_triggered_retry_against_an_xcuitest_sim
     assert erase_seen == [None, True]  # attempt 1 unmodified, attempt 2 forces erase
 
 
+def test_run_all_degrades_to_a_bare_respawn_when_the_forced_erase_lease_itself_fails() -> None:
+    # A forced-erase retry's own lease can fail with a device-level fault (`simctl.DeviceError` /
+    # `adb.DeviceError`, e.g. the Simulator rejected `erase`/`shutdown`/`boot`) rather than a
+    # `BackendCrashError`. Uncaught, that would escape run_one's own `except BackendCrashError` and
+    # abort the whole run past `run_all` — losing every already-passed scenario's verdict, worse than
+    # the bare in-place respawn this forced retry replaces. It must instead degrade to that bare
+    # respawn, exactly like a scenario that never forced erase at all.
+    from bajutsu import simctl
+
+    state = {"n": 0}
+    erase_seen: list[bool | None] = []
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        erase_seen.append(scenario.preconditions.erase)
+        if state["n"] == 1:
+            raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+        if state["n"] == 2:
+            assert scenario.preconditions.erase is True  # the forced-erase attempt
+            raise simctl.DeviceError("simctl erase failed (test)")
+        assert scenario.preconditions.erase is None  # degraded to a bare respawn, erase not forced
+        return Lease(
+            driver=_fake_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_ios_eff(), scenarios, lease, actuator="xcuitest", crash_retries=2)
+    assert results[0].ok
+    assert erase_seen == [None, True, None]
+    assert state["n"] == 3
+
+
+def test_run_all_still_propagates_a_device_error_from_a_bare_lease() -> None:
+    # A `DeviceError` from a lease that never forced erase (attempt 1, or the degraded bare respawn
+    # above once *it* also fails) is unrelated to this item's forced-erase retry, so it keeps its
+    # pre-existing behavior: it is not swallowed, it propagates out of run_all.
+    from bajutsu import simctl
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        raise simctl.DeviceError("appPath not found (test)")
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    with pytest.raises(simctl.DeviceError):
+        run_all(_ios_eff(), scenarios, lease, actuator="xcuitest")
+
+
 def test_run_all_skips_forced_erase_when_scenario_declares_reinstall_overwrite() -> None:
     # `reinstall: overwrite` is a scenario's explicit declaration that it needs its app's data
     # container preserved across a lease. Forcing `erase` on a retry would silently wipe exactly the
