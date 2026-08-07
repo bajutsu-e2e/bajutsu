@@ -197,6 +197,15 @@ class Driver(Protocol):
 
     def query(self) -> list[Element]: ...
     def tap(self, sel: Selector) -> None: ...
+    # Whether `sel` resolves to exactly one element that is actually reachable at its own point —
+    # not covered by another on-screen element, or refused by the platform's own hit-test — realized
+    # the idiomatic way per backend (iOS: native `isHittable`; web: a `document.elementFromPoint`
+    # hit-test; adb: a document-order geometric check, `topmost_at_point` below). A pure query: it
+    # never actuates and never scrolls, so `tap` can call it once to guard the actuation and the
+    # scroll-recovery loop (`scroll_until_tappable`) can call it again, repeatedly, with no side
+    # effects. `resolve_unique`'s own selector-ambiguity contract is unchanged by this — an ambiguous
+    # `sel` still raises `AmbiguousSelector` immediately rather than being folded into `False`.
+    def is_tappable(self, sel: Selector) -> bool: ...
     def tap_point(self, p: Point) -> None: ...  # raw coordinate tap (system alerts, etc.)
     def double_tap(self, sel: Selector) -> None: ...
     def long_press(self, sel: Selector, duration: float) -> None: ...
@@ -424,6 +433,15 @@ class ElementNotFound(SelectorError):
 
 class AmbiguousSelector(SelectorError):
     """2+ candidates with no way to disambiguate; needs `within` or `index`."""
+
+
+class ElementNotTappable(Exception):
+    """The selector resolved uniquely, but the element could not be reached at its own point.
+
+    Obstructed by another on-screen element, or the platform's own hit-test refused it — even
+    after the bounded scroll safety net tried to clear the obstruction. Distinct from
+    `SelectorError`: resolution succeeded. Only reachability failed.
+    """
 
 
 class BackendCrashError(RuntimeError):
@@ -742,6 +760,69 @@ def frame_center(frame: Frame) -> Point:
     """
     x, y, w, h = frame
     return (x + w / 2, y + h / 2)
+
+
+def topmost_at_point(elements: list[Element], point: Point, target: Element) -> Element | None:
+    """The element (if any) that covers `point` and is not `target` itself or its descendant.
+
+    Used where a backend has no native "is this point actually reachable" primitive (unlike iOS's
+    `isHittable` or the web's `document.elementFromPoint`): document order — the order `elements`
+    already comes in — is a paint-order proxy, a later element having been drawn after (so on top
+    of) an earlier one in the ordinary case. A non-`None` result means an unrelated element
+    genuinely covers `target`'s point; `None` means nothing does, as far as this proxy can tell.
+
+    `target` must be one of the objects in `elements` (found by identity, `is`, not equality) — every
+    caller resolves it from the very same tree it now re-scans. The search looks only *after*
+    `target`'s own position, which is what makes a frame-containment check for the ancestor
+    direction unnecessary: a real ancestor is always emitted *before* its descendants in a pre-order
+    document walk, so it can never appear after `target` and never needs excluding by geometry. A
+    naive full-list scan would have to guess "ancestor vs. an unrelated, larger overlay" from frame
+    containment alone — indistinguishable, since `Element` carries no parent/child pointers — and
+    that guess would misjudge the single most common real case this function exists for: a
+    same-size-or-larger backdrop, sticky header, or toast drawn after (so on top of) a smaller
+    target, which geometrically *contains* the target's frame exactly the way a real container
+    would. Restricting the scan to same-or-later elements sidesteps that ambiguity entirely instead
+    of resolving it wrong.
+
+    A descendant (nested inside `target`'s own frame, e.g. an icon inside a button) is still excluded
+    by containment (`_contains(target frame, candidate frame)`) — tapping through it still taps
+    `target`, and unlike an ancestor, a descendant always comes after `target`, so it is the one
+    case this scan does need to filter out geometrically. This is a heuristic, not a real z-index:
+    it can misjudge a layout whose actual paint order diverges from document order (e.g. an Android
+    `View.elevation` reordering draw order without reordering the accessibility tree), and two
+    unrelated elements sharing `target`'s exact frame are indistinguishable from a same-size
+    wrapper/descendant pair — callers that rely on it should say so.
+    """
+    px, py = point
+    try:
+        after_target = next(i for i, el in enumerate(elements) if el is target) + 1
+    except StopIteration:
+        after_target = len(elements)  # not one of `elements` by identity — nothing to scan after it
+    for el in reversed(elements[after_target:]):
+        x, y, w, h = el["frame"]
+        if not (x <= px <= x + w and y <= py <= y + h):
+            continue
+        if _contains(target["frame"], el["frame"]):
+            continue
+        return el
+    return None
+
+
+def raise_if_covered(elements: list[Element], el: Element, sel: Selector) -> None:
+    """Raise `ElementNotTappable` if `topmost_at_point` finds something covering `el`'s own point.
+
+    Shared by every backend that falls back to the document-order proxy rather than a native
+    hit-test (adb's two call sites, `FakeDriver`, `XcuitestLiveDriver`) — one place for the check,
+    the message, and the covering element's own identifier/label/frame, so a failure names *what*
+    covered the target instead of leaving a caller to reproduce the screen by hand to find out.
+    """
+    covering = topmost_at_point(elements, frame_center(el["frame"]), el)
+    if covering is not None:
+        cover = covering["identifier"] or covering["label"] or "<unnamed>"
+        raise ElementNotTappable(
+            f"element resolved but covered by another element "
+            f"({cover!r} at {covering['frame']}): {sel!r}"
+        )
 
 
 def gesture_anchor(frame: Frame) -> tuple[float, float, float]:

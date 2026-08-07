@@ -361,6 +361,71 @@ def test_dismiss_from_tree_taps_a_showing_at_most_once() -> None:
     assert alerts == [AlertEvent(label="今はしない")]  # exactly one dismissal recorded, not several
 
 
+def test_dismiss_from_tree_declines_on_not_yet_tappable_then_dismisses() -> None:
+    # A sheet's own scrim can still cover its button while the presentation animation finishes, the
+    # platform's hit-test (`isHittable` / `topmost_at_point`) reading the button as unreachable until
+    # it settles. `ElementNotTappable` here is the same benign, self-resolved race `ElementNotFound`
+    # and `AmbiguousSelector` already forgive — not a reason to fail the wait. Cleared after 9
+    # declines (~450ms at `_POLL = 0.05`), animation scale for a real presentation (a UIKit sheet
+    # ~0.35-0.5s, an Android dialog enter ~0.25s+) — comfortably inside `_TREE_DISMISS_MAX_DECLINES`,
+    # unlike a bound that only cleared a couple of polls in (150ms), well short of any real animation.
+    from bajutsu.orchestrator.waits import _wait
+
+    target = _button("R")
+    target["identifier"] = "ready"
+    prompt_button = _button("今はしない")
+
+    class _NotYetTappableDismiss(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([prompt_button])
+            self.tap_calls = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_calls += 1
+            if self.tap_calls < 10:  # the scrim is still animating away
+                raise base.ElementNotTappable("covered by the sheet's own scrim")
+            super().tap(sel)
+            self.screen = [target]  # the animation finishes; the screen updates
+
+    driver = _NotYetTappableDismiss()
+    guard = AlertGuardConfig(vision=_never_vision, labels=["今はしない"], poll_interval=1.0)
+    alerts: list[AlertEvent] = []
+    ok, _reason, _tree = _wait(
+        driver, _for_wait("ready", 3.0), _LogicalClock(), alert_guard=guard, alerts=alerts
+    )
+    assert ok
+    assert driver.tap_calls == 10  # declined 9 times, then dismissed
+    assert alerts == [AlertEvent(label="今はしない")]
+
+
+def test_dismiss_from_tree_stops_retrying_a_permanently_covered_button() -> None:
+    # Unlike the transient scrim above, a genuinely stuck obstruction (a scrim that never lifts, an
+    # `elevation` false positive) must not re-issue a real actuation attempt every `_POLL` for the
+    # rest of the wait: `_TREE_DISMISS_MAX_DECLINES` caps how many times this label's tap is retried
+    # before the wait falls back to its own timeout, the same shape the vision guard's attempt
+    # ceiling already uses for a persistent false positive.
+    from bajutsu.orchestrator.waits import _TREE_DISMISS_MAX_DECLINES, _wait
+
+    prompt_button = _button("今はしない")
+
+    class _PermanentlyCoveredDismiss(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([prompt_button])
+            self.tap_calls = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_calls += 1
+            raise base.ElementNotTappable("covered by a scrim that never lifts")
+
+    driver = _PermanentlyCoveredDismiss()
+    guard = AlertGuardConfig(vision=_never_vision, labels=["今はしない"], poll_interval=1.0)
+    ok, _reason, _tree = _wait(
+        driver, _for_wait("ready", 3.0), _LogicalClock(), alert_guard=guard, alerts=[]
+    )
+    assert not ok  # "ready" never appears; the wait times out on its own deadline
+    assert driver.tap_calls == _TREE_DISMISS_MAX_DECLINES  # bounded, not ~20/s for 3 seconds
+
+
 def test_dismiss_from_tree_declines_on_an_in_app_label_collision() -> None:
     # A system-owned identifier-less button and an app-authored one share a configured label:
     # pick_alert_label resolves uniquely over the identifier-less subset, but the whole-tree tap

@@ -280,14 +280,31 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   never appears still fails deterministically.
 
   > [!NOTE]
-  > This implicit scroll-into-view is an **adb-only tap recovery**: XCUITest / Playwright still fail a
-  > `tap` fast when the target is not in the initial viewport, so relying on it makes a `tap` on a
-  > below-the-fold element pass on Android yet fail on iOS/web for the same scenario. The portable way
-  > to reach an off-screen element is the explicit **[`scroll` action](scenarios.md#scroll)** (BE-0326):
-  > one deterministic, non-inertial construct that reveals a target identically on iOS, Android, and
+  > This not-found scroll recovery is adb-only: XCUITest / Playwright still fail a `tap` fast when
+  > the target is not in the initial viewport, so relying on it makes a `tap` on a below-the-fold
+  > element pass on Android yet fail on iOS/web for the same scenario. The portable way to reach an
+  > off-screen element is the explicit **[`scroll` action](scenarios.md#scroll)** (BE-0326): one
+  > deterministic, non-inertial construct that reveals a target identically on iOS, Android, and
   > web — `scroll: { to: <selector> }` then act on it. It supersedes the hand-tuned `swipe` chain the
-  > showcase fixture once used. The adb auto-scroll remains a robustness net under `tap`, not the
-  > portable idiom.
+  > showcase fixture once used. The adb auto-scroll remains a robustness net under `tap` for the
+  > not-found case specifically, not the portable idiom.
+  >
+  > A **different, narrower** safety net now covers every backend that can hit-test a point (all
+  > except the app-embedded WebView bridge, `WebContextDriver`, whose protocol exposes none): before
+  > acting, `tap` / `double_tap` / `long_press` check that the resolved target is actually reachable
+  > at its own point — not covered by another on-screen element — using the idiomatic signal each
+  > platform offers (iOS: native `isHittable`; web: a `document.elementFromPoint` hit-test; adb: a
+  > document-order geometric proxy, `Driver.is_tappable` /
+  > [`topmost_at_point`](../bajutsu/drivers/base.py)). When the check fails, the orchestrator takes
+  > a small, bounded scroll — up to three `down` steps, then, only if `down` never clears it, up to
+  > six `up` steps (widened, since `up` must first retrace the ground `down` already covered before
+  > it can make any net progress of its own) — and retries the action once, rather than failing
+  > immediately — see
+  > [`selectors.md`](selectors.md#elementnottappable-a-resolved-but-unreachable-target). This is not
+  > a substitute for the explicit `scroll` action above: an author who already knows a target starts
+  > off-screen still writes `scroll`. It only insures against an obstruction the author did not
+  > expect (a transient overlay, a sticky header settling into place), the same way adb's own
+  > not-found fallback already insures against an unexpected off-screen target.
 - **Multi-touch** (BE-0232): `pinch` / `rotate` drive a two-slot protocol-B `sendevent` sweep
   (`pinch_contacts` / `rotate_contacts` compute the two contacts' geometry; `rotate` sweeps the
   straight chord between the endpoints, a linear approximation of the arc, like the web backend's

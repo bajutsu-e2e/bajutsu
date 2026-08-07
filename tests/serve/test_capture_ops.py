@@ -295,6 +295,32 @@ def test_mark_tap_ambiguous_returns_feedback(tmp_path: Path) -> None:
     assert len(state.capture.steps) == 0
 
 
+def test_mark_tap_not_tappable_returns_a_clean_error_not_a_crash(tmp_path: Path) -> None:
+    # A resolved-but-covered point (a toast, an animating sheet, appearing between the click and
+    # the real device/browser tap) now raises `ElementNotTappable` from the driver — this must
+    # surface as a clean, structured error response, not an uncaught exception the route's generic
+    # handler would otherwise turn into an opaque 500.
+    class _CoveredDriver(FakeDriver):
+        def tap(self, sel: base.Selector) -> None:
+            raise base.ElementNotTappable(
+                f"element resolved but covered by another element: {sel!r}"
+            )
+
+    state = _state_with_config(tmp_path)
+    driver = _CoveredDriver(_screen())
+    ops.start_capture(
+        state, {"target": "demo"}, driver_factory=lambda _e, _b, _u: (driver, lambda: None)
+    )
+
+    payload, status = ops.mark_capture(
+        state,
+        {"kind": "tap", "point": [0.5, 0.41]},  # inside auth.submit
+    )
+    assert status == 409
+    assert "covered by another element" in payload["error"]
+    assert len(state.capture.steps) == 0  # never recorded as a captured step
+
+
 def test_mark_capture_no_session(tmp_path: Path) -> None:
     state = _state_with_config(tmp_path)
     payload, status = ops.mark_capture(state, {"kind": "tap", "point": [0.5, 0.5]})

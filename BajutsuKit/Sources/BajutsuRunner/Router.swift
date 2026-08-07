@@ -34,6 +34,8 @@ final class Router {
             return handleScreen()
         case ("POST", "/tap"):
             return handleTap(request)
+        case ("POST", "/isHittable"):
+            return handleIsHittable(request)
         case ("POST", "/gesture"):
             return handleGesture(request)
         case ("POST", "/swipe"):
@@ -164,6 +166,31 @@ final class Router {
         }
     }
 
+    /// A pure query, unlike `handleTap`: reuses the same handle-resolution outcomes (`.stale` /
+    /// `.notFound`), but reports `.ok`/`.notHittable` for a still-live handle without acting on it —
+    /// so the driver's `scroll_until_tappable` stop condition can poll this repeatedly with no
+    /// side effects.
+    private func handleIsHittable(_ request: HTTPRequest) -> HTTPResponse {
+        guard let body = request.body,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            return .error(400, "missing or invalid JSON body")
+        }
+        guard let handle = json["handle"] as? String else {
+            return .error(400, "missing handle")
+        }
+        switch store.lookup(handle: handle) {
+        case .found(let snapshot):
+            let result = onMainCatching {
+                self.provider.isHittable(backingElement: snapshot.backingElement)
+            }
+            return tapResultResponse(result)
+        case .stale:
+            return .json(200, ["status": "stale"])
+        case .notFound:
+            return .json(200, ["status": "not-found"])
+        }
+    }
+
     private static let knownGestureKinds: Set<String> = ["pinch", "rotate"]
 
     private func handleGesture(_ request: HTTPRequest) -> HTTPResponse {
@@ -267,6 +294,7 @@ final class Router {
         case .ok: return .json(200, ["status": "ok"])
         case .stale: return .json(200, ["status": "stale"])
         case .notFound: return .json(200, ["status": "not-found"])
+        case .notHittable: return .json(200, ["status": "not-hittable"])
         }
     }
 

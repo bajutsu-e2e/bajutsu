@@ -1008,8 +1008,9 @@ def crawl(
                         continue
                 action.perform(d)
                 landed, dismissed = _observe(d)
-            except base.SelectorError:
-                coord.cancel_action()  # the selector no longer resolves — drop it, reset, move on
+            except (base.SelectorError, base.ElementNotTappable):
+                # the selector no longer resolves, or resolves but is covered — drop it, move on
+                coord.cancel_action()
                 current_fp = None
                 continue
             except device_errors.DeviceError:
@@ -1112,7 +1113,7 @@ def _replay(
     for action in path:
         try:
             action.perform(driver)
-        except base.SelectorError:
+        except (base.SelectorError, base.ElementNotTappable):
             return False
         if settle is not None:
             settle(driver)

@@ -155,14 +155,21 @@ class CoordinateTreeDriver(ABC):
         poll: float = 0.2,
         *,
         initial_tree: list[base.Element] | None = None,
-    ) -> base.Element:
+    ) -> tuple[base.Element, list[base.Element]]:
+        """Resolve `sel`, retrying a transient not-found until `timeout`.
+
+        Returns the resolved element together with the exact tree it came from — never
+        `initial_tree` once a retry has re-queried — so a caller that needs both (e.g. a
+        geometric check like `topmost_at_point` over the element's own siblings) never pairs the
+        element with a different snapshot than the one it was actually found in.
+        """
         # Real-device trees can be transiently empty during transitions; retry not-found while
         # keeping ambiguity fail-fast.
         deadline = time.monotonic() + timeout
         tree = initial_tree if initial_tree is not None else self.query()
         while True:
             try:
-                return base.resolve_unique(tree, sel)
+                return base.resolve_unique(tree, sel), tree
             except base.ElementNotFound:
                 if time.monotonic() >= deadline:
                     raise

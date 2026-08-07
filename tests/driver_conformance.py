@@ -78,6 +78,15 @@ SCROLL_MAX = 30
 #: the coordinate tap has a definite center to aim at.
 FIELD_ID = "conformance.field"
 
+#: The obstruction conformance screen: a target genuinely covered by another element at the same
+#: point, plus an unobstructed control on the same screen so `is_tappable` is exercised both ways
+#: in one place. `obstruction_screen` is optional on `ConformanceHarness` — a harness that cannot
+#: yet realize genuine on-screen overlap simply omits it, and the tests that need it skip rather
+#: than fail (the same tolerance `with_screen`'s docstring already grants chrome/container elements).
+OBSTRUCTION_TARGET_ID = "conformance.obstruction.target"
+OBSTRUCTION_COVER_ID = "conformance.obstruction.cover"
+OBSTRUCTION_CLEAR_ID = "conformance.obstruction.clear"
+
 
 def field_value(driver: base.Driver) -> str:
     """The current text of the conformance field (empty string when it reports none)."""
@@ -133,6 +142,19 @@ class ConformanceHarness(Protocol):
     Each backend realizes a requested screen its own way — `FakeDriver` takes the elements
     directly, a browser renders them, an app presents them — so the contract can drive the real
     driver instance (including any code that bypasses `drivers/base`), not the shared base alone.
+
+    `obstruction_screen(self) -> base.Driver` is a genuinely optional structural extra, deliberately
+    left off this `Protocol`'s declared surface rather than given a docstring-only body here: a
+    harness whose backend cannot yet realize genuine on-screen overlap simply has no such method,
+    and the contract tests that need it check for its presence with `hasattr` and skip, rather than
+    fail, when it is absent (the same tolerance `test_delete_text_reduces_the_field_length` already
+    grants a backend that cannot surface a field's value). Declaring it here instead — even as a
+    docstring-only body — would make it an inherited, concrete method on any harness written as
+    `class MyHarness(ConformanceHarness)`, so `hasattr` would read `True` and the skip would never
+    fire, even though calling it would just return `None`. When a harness does implement it, it
+    should return a driver showing `OBSTRUCTION_TARGET_ID` genuinely covered by
+    `OBSTRUCTION_COVER_ID` at the same point, plus an unobstructed `OBSTRUCTION_CLEAR_ID` on the
+    same screen.
     """
 
     backend: str
@@ -460,3 +482,26 @@ class DriverConformanceContract:
         scroll_to_target(driver, {"id": SCROLL_LAST_ROW}, "down", None, SCROLL_MAX)
         after = _rows_in_viewport(driver)
         assert after != before
+
+    def test_is_tappable_reflects_real_on_screen_occlusion(
+        self, harness: ConformanceHarness
+    ) -> None:
+        # is_tappable is false for a target genuinely covered by another element at its own point,
+        # and true for an unobstructed one on the same screen — realized the idiomatic way per
+        # backend (native isHittable, a real elementFromPoint hit-test, or the document-order proxy),
+        # not merely asserted against the shared base's own geometry helper.
+        if not hasattr(harness, "obstruction_screen"):
+            pytest.skip("harness does not yet realize a genuine on-screen occlusion")
+        driver = harness.obstruction_screen()
+        assert driver.is_tappable({"id": OBSTRUCTION_TARGET_ID}) is False
+        assert driver.is_tappable({"id": OBSTRUCTION_CLEAR_ID}) is True
+
+    def test_tap_raises_element_not_tappable_when_covered(
+        self, harness: ConformanceHarness
+    ) -> None:
+        if not hasattr(harness, "obstruction_screen"):
+            pytest.skip("harness does not yet realize a genuine on-screen occlusion")
+        driver = harness.obstruction_screen()
+        with pytest.raises(base.ElementNotTappable):
+            driver.tap({"id": OBSTRUCTION_TARGET_ID})
+        driver.tap({"id": OBSTRUCTION_CLEAR_ID})  # unobstructed — must not raise
