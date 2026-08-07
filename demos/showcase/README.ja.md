@@ -40,7 +40,9 @@ UIKit に対応し、それぞれ同じ a11y/noax の flavor ペアでビルド�
 1 つの Dart コードベースが同じ契約を**両プラットフォーム**で再現し、バックエンドを一切足しません。
 ウィジェットの `Semantics(identifier: …)` が OS のアクセシビリティツリーへ現れるので、同じ
 `scenarios/` セットが XCUITest / adb を通してそのまま駆動します（[`docs/drivers.md`](../../docs/ja/drivers.md)
-の「Flutter」を参照）。ターゲットは `showcase-flutter`（iOS）、`showcase-flutter-android`、
+の「Flutter」を参照）。ただし Log タブのネイティブアラート（SPEC §2.1、§5.3）は例外で、Flutter 側に
+まだどの画面にも実装がありません。そのシナリオ（`scenarios/alert.yaml`）は `alert` タグを持ち、
+`run-flutter` から除外しています。ターゲットは `showcase-flutter`（iOS）、`showcase-flutter-android`、
 `showcase-flutter-android-noax` です。`make -C demos/showcase run-flutter` / `run-flutter-android`
 で実行します（Flutter が PATH にあること）。
 

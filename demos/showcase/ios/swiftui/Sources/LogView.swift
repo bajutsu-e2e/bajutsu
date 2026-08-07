@@ -1,7 +1,7 @@
 import SwiftUI
 
 // Training-log composer: exercises every input control and all five modal styles
-// (sheet, fullScreenCover, confirmationDialog, native alert, auto-dismissing toast). In-app
+// (sheet, fullScreenCover, a custom action-sheet overlay, native alert, auto-dismissing toast). In-app
 // modals are visible to the backend; the toast exercises `wait until gone`.
 struct LogView: View {
     @EnvironmentObject var model: AppModel

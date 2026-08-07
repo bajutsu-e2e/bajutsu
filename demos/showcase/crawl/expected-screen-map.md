@@ -30,7 +30,7 @@ is stable across runs.
 | Log → Filter sheet | `log.openFilter` | `log.sheet.title` |
 | Log → Gallery cover | `log.openGallery` | `log.cover.title` |
 | Log → Delete dialog | `log.openDelete` | `log.dialog.delete` |
-| Log → Alert | `log.openAlert` | `log.alert.value` |
+| Log → Alert | `log.openAlert` | none — the alert's `Cancel` / `OK` carry no id (match by label) |
 | Notices (list) | `notices` tab | `notice.title`, `notice.row.*` |
 | Notice Detail | Notices row / `…://notice/<id>` | `notice.detail.title` |
 | Permissions | `permissions` tab / `…://permissions` | `perm.title` |

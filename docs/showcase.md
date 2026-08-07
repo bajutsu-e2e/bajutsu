@@ -8,9 +8,10 @@
 > toolkit (Flutter's iOS build ships accessibility-on only, for now). Together, the five codebases
 > register a dozen `targets.<name>` entries in
 > [`demos/showcase/showcase.config.yaml`](../demos/showcase/showcase.config.yaml). It packs the
-> interaction surface a real app has (five tabs with push navigation, all five modal styles, text
-> entry, gestures, async loading, live + mockable networking, an OS-alert screen) into the smallest
-> coherent app that still tells that whole story.
+> interaction surface a real app has (five tabs with push navigation, four modal styles shared by
+> every codebase plus a fifth, iOS-only native alert, text entry, gestures, async loading, live +
+> mockable networking, an OS-alert screen) into the smallest coherent app that still tells that
+> whole story.
 >
 > BE-0079 made it the **single** iOS fixture, retiring the older `demo` / `sample` / `sample2` apps;
 > BE-0007 and BE-0008 then grew that iOS fixture into today's cross-platform one, adding the Android

@@ -75,7 +75,7 @@ flavor 切り替え（`BuildConfig.ACCESSIBLE`）1 つです。iOS の `ACCESSIB
 
 Android では、どちらのツールキットも状態の値を `content-desc` に反映します（Compose の
 `stateDescription` は `uiautomator dump` に現れないため使いません）。共有の契約から外れる Android
-固有の例外が 2 つあります。
+固有の例外が 3 つあります。
 
 - **`SHOWCASE_UITEST`（アニメーション無効化、§3）**：iOS ではアプリ自身がアニメーションを無効に
   しますが、Android ではドライバーがデバイス全体で無効にします（`adb shell settings put global
@@ -83,6 +83,9 @@ Android では、どちらのツールキットも状態の値を `content-desc`
 - **通知プロンプト（§7）には API 33 以上が必要です**：`POST_NOTIFICATIONS` は Android 13（API 33）
   以降でのみ実行時パーミッションになります。それより古いエミュレータではプロンプトが出ないため、
   アラートガードの流れを試すには API 33 以上のエミュレータで動かしてください。
+- **Log タブのネイティブアラート（§5.3）に Android 版はまだありません**：`LogScreen.kt`（Compose）も
+  `LogTab.kt`（Views）も `log.openAlert` を描画しないため、そのシナリオは Android の各ターゲットが
+  無改変で走らせる共有の `modals.yaml` ではなく、独立した `scenarios/alert.yaml` に置いています。
 
 Compose の testTag はドット区切り id をそのまま再現するので、共有の [`scenarios/`](scenarios)
 一式が `showcase-compose` に無改変で通ります。Views の id はアンダースコアへの対応づけです
@@ -91,7 +94,8 @@ Compose の testTag はドット区切り id をそのまま再現するので�
 現れたほうにマッチする OR として決定論的コアが解決するからです。id 規約はドライバー側の
 `.` と `_` の書き換えではなく、シナリオに明示的に残します（BE-0221）。ネットワークは **OkHttp** を通し、
 `BajutsuAndroid` のインターセプタを使うので、`network` の証跡は Android でも効きます（BE-0283、§6）。
-`mocks` は追随の課題です。それ以外の以下の記述は、Android の 4 プロダクトすべてに当てはまります。
+`mocks` は追随の課題です。それ以外の以下の記述は、上記のネイティブアラートの例外を除き、Android の
+4 プロダクトすべてに当てはまります。
 
 ## 3. 起動環境フック
 
@@ -139,7 +143,7 @@ scheme は変種ごと（§2）、host 文法は共通です。deeplink は**タ
 | 5 | — Filter シート | `log.openFilter` | sheet（detent） | `log` | §5.3 |
 | 6 | — Gallery カバー | `log.openGallery` | フルスクリーンカバー | `log` | §5.3 |
 | 7 | — Delete ダイアログ | `log.openDelete` | アクションシート | `log` | §5.3 |
-| 8 | — Alert | `log.openAlert` | ネイティブアラート | `log` | §5.3 |
+| 8 | — Alert | `log.openAlert` | ネイティブアラート（iOS 限定） | `log` | §5.3 |
 | 9 | Notices（一覧） | `notices` タブ | タブ・長いリスト（スクロール） | `notice` | §5.5 |
 | 10 | Notice Detail | Notices 行 | push | `notice` | §5.5 |
 | 11 | Permissions | `permissions` タブ / `…://permissions` | タブ・**OS アラート** + ペーストボード往復 | `perm`、`sys` | §5.4 |
@@ -204,7 +208,7 @@ Log から到達するモーダル（5 つの提示様式）：
 - `log.openFilter` → detent 付き **sheet**：`log.sheet.title`、`log.sheet.apply`、`log.sheet.close`
 - `log.openGallery` → **fullScreenCover**：`log.cover.title`、`log.cover.close`
 - `log.openDelete` → **アクションシート**（confirmationDialog / UIAlertController ではなく、素のボタンによる自前のオーバーレイ。廃止済みの idb バックエンドは iOS 26 ではアラートのアクションを駆動できませんでした、BE-0290）：選択肢 `log.dialog.archive`、`log.dialog.delete`（破壊的）、`log.dialog.cancel`。結果は `log.dialog.value`（`none`/`archive`/`delete`）にミラー
-- `log.openAlert` → **ネイティブアラート**（SwiftUI の `.alert` / UIKit の `UIAlertController` style `.alert`。上記のアクションシートと異なり、iOS 26 の XCUITest バックエンドで駆動できる本物の native alert）：アクションは「Cancel」と「OK」の 2 つ。`UIAlertAction` はどちらのプラットフォームでも accessibilityIdentifier を持たないため、それぞれ `label`/`traits` で引く。結果は `log.alert.value`（`none`/`cancel`/`ok`）にミラー
+- `log.openAlert` → **ネイティブアラート**（SwiftUI の `.alert` / UIKit の `UIAlertController` style `.alert`。上記のアクションシートと異なり、iOS 26 の XCUITest バックエンドで駆動できる本物の native alert）：アクションは「Cancel」と「OK」の 2 つ。`UIAlertAction` はどちらのプラットフォームでも accessibilityIdentifier を持たないため、それぞれ `label`/`traits` で引く。結果は `log.alert.value`（`none`/`cancel`/`ok`）にミラー。**現時点では iOS 限定**：Compose / Views / Flutter の Log 画面にはネイティブアラートに相当するものがなく、そのためシナリオも `scenarios/alert.yaml` に独立させています
 - `log.toast` — 上記の一過性トースト
 
 ### 5.4 タブ：Permissions（`perm` / `sys` 名前空間、**OS 連携画面**）

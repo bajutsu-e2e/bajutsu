@@ -30,7 +30,7 @@ showcase は本当に枝分かれの多い crawl 対象として作られてい�
 | Log → Filter シート | `log.openFilter` | `log.sheet.title` |
 | Log → Gallery カバー | `log.openGallery` | `log.cover.title` |
 | Log → Delete ダイアログ | `log.openDelete` | `log.dialog.delete` |
-| Log → Alert | `log.openAlert` | `log.alert.value` |
+| Log → Alert | `log.openAlert` | なし — アラートの `Cancel`／`OK` は id を持たない（label で照合） |
 | Notices（一覧） | `notices` タブ | `notice.title`、`notice.row.*` |
 | Notice Detail | Notices 行 / `…://notice/<id>` | `notice.detail.title` |
 | Permissions | `permissions` タブ / `…://permissions` | `perm.title` |
