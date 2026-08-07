@@ -551,6 +551,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # (`_terminate_app_under_test`). None until the first spawn, and on a real device, where
         # simctl does not apply.
         self._bundle_id: str | None = None
+        # The XCTRunner apps of the .xctestrun this environment spawned, read out of its plist so a
+        # discard can terminate the runner app itself (`_terminate_runner_app`). Empty until the
+        # first spawn, and on a real device, where simctl does not apply.
+        self._runner_bundle_ids: tuple[str, ...] = ()
         # This device's `deviceTypeIdentifier` and runtime identifier, captured while it is healthy
         # so a replacement can be cloned from it after it vanishes (`_replace_vanished_device`).
         self._device_type_id: str | None = None
@@ -940,6 +944,12 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # inside the Simulator, so the runner reads these from the .xctestrun's per-target
         # TestingEnvironmentVariables instead. Patch a private copy and run that.
         self._patched_runner = _patch_xctestrun_env(runner_path, forwarded)
+        # Read the runner app's own bundle id off the same plist while it is resolved, so a discard
+        # can terminate the guest process `xcodebuild`'s process group cannot reach. Scoped to the
+        # Simulator like `_bundle_id`: a real device has no simctl to terminate through.
+        self._runner_bundle_ids = (
+            _runner_host_bundle_ids(runner_path) if device_type != "device" else ()
+        )
         runner_out = self._open_runner_output()
         try:
             proc = subprocess.Popen(
@@ -1217,9 +1227,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
         operator to "see <path>", so pruning that same file in this call would point at evidence that
         no longer exists.
 
-        Teardown reaches the whole process group and then the app under test, because what this
-        discards is handed straight to another spawn on the same device: a runner whose children
-        survived, or an app left mid-launch, is state the next attempt inherits. That includes a
+        Teardown reaches the whole process group, then the app under test, then the runner app,
+        because what this discards is handed straight to another spawn on the same device: a runner
+        whose children survived, an app left mid-launch, or an XCTRunner still holding the device's
+        automation session is state the next attempt inherits. That includes a
         leader that already exited on its own: `start_new_session` (`_spawn_runner`) makes it its own
         process group leader, so an XCTest-host child can outlive it and keep holding the device's
         automation session even though `xcodebuild` is gone — exactly the state a following spawn
@@ -1257,6 +1268,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 _terminate_process_group(self._runner_proc)
             self._runner_proc = None
         self._terminate_app_under_test()
+        self._terminate_runner_app()
         self._release_log(keep=keep_log or crashed)  # after the hint above has read the tail
         if self._patched_runner is not None:
             self._patched_runner.unlink(missing_ok=True)
@@ -1275,6 +1287,22 @@ class XcuitestEnvironment(_DeviceEnvironment):
             return
         with contextlib.suppress(subprocess.CalledProcessError, simctl.DeviceError, OSError):
             simctl.Env(self._udid, run=self._run).terminate(self._bundle_id)
+
+    def _terminate_runner_app(self) -> None:
+        """Best-effort `simctl terminate` of the XCTRunner app itself (Simulator only).
+
+        The process-group sweep above cannot reach this one: `launchd_sim` starts the runner app
+        inside the Simulator, so it is a guest process in no host process group, and it survives the
+        `xcodebuild` that asked for it — still holding the automation session `testmanagerd` handed
+        it. Every cold spawn that leaves one behind narrows what the next spawn can obtain, which is
+        one way a device reaches the state where the runner never comes up at all. The ids come from
+        the resolved `.xctestrun` (`_runner_host_bundle_ids`) rather than the bundled runner's known
+        id, so an explicit `xcuitest.testRunner` is cleaned up just as readily. Failures are ignored
+        for the same reason as the app under test: the common case is one that is not running.
+        """
+        for bundle_id in self._runner_bundle_ids:
+            with contextlib.suppress(subprocess.CalledProcessError, simctl.DeviceError, OSError):
+                simctl.Env(self._udid, run=self._run).terminate(bundle_id)
 
     def _release_log(self, *, keep: bool) -> None:
         """Drop the reference to the current capture, pruning a default (env-unset) one unless kept.
@@ -1490,6 +1518,31 @@ def bundled_runner_toolchain_note(
         return None
     host_xcode, host_sdk = host_toolchain()
     return bundled_runner_toolchain_warning(bundled_runner_build_info(), host_xcode, host_sdk)
+
+
+def _runner_host_bundle_ids(runner_path: Path) -> tuple[str, ...]:
+    """The bundle ids of the XCTRunner apps a `.xctestrun`'s test targets are hosted by.
+
+    Each target names its own runner app as `TestHostBundleIdentifier` (the built test bundle's id
+    with `.xctrunner` appended), so reading it here covers the bundled runner and an explicit
+    `xcuitest.testRunner` alike — neither path has to know the other's id. Duplicates are dropped,
+    since several targets in one file can share a runner app. Best-effort: a plist that cannot be
+    read yields nothing rather than failing the spawn that asked, the same posture as the terminate
+    this feeds (in practice `_patch_xctestrun_env` has already parsed the same file by then).
+    """
+    try:
+        with runner_path.open("rb") as f:
+            plist = plistlib.load(f)
+    except (OSError, ValueError):
+        return ()
+    ids: list[str] = []
+    for key, target in plist.items():
+        if key == "__xctestrun_metadata__" or not isinstance(target, dict):
+            continue
+        host_id = target.get("TestHostBundleIdentifier")
+        if isinstance(host_id, str) and host_id and host_id not in ids:
+            ids.append(host_id)
+    return tuple(ids)
 
 
 def _patch_xctestrun_env(runner_path: Path, forwarded: Mapping[str, str]) -> Path:
