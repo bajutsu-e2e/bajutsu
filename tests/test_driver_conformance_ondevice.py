@@ -25,9 +25,10 @@ workers would clobber each other's screen. The `ios-e2e.yml` job passes `-n0`.
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
+import ondevice_evidence
 import pytest
 from backend_crash_recovery import LeaseHolder, LeaseTeardown
 from driver_conformance import (
@@ -40,6 +41,7 @@ from xcuitest_lease import xcuitest_lease_launch
 from bajutsu import simctl
 from bajutsu.config import Effective, ios_bundle_id, load_config, resolve
 from bajutsu.drivers import base
+from bajutsu.evidence import intervals
 
 # A resident-runner crash mid-suite (a `base.BackendCrashError` — the `XcuitestRunnerCrashError` that
 # reddened PR #1405, whether raised by a test's actuation or by a query driving the bring-up/readiness
@@ -124,6 +126,24 @@ def _backend_launch(_eff: Effective) -> Callable[[], tuple[base.Driver, LeaseTea
     # teardown alongside the driver — `invalidate()` reaches the runner process, not a missing
     # `driver.close()` (BE-0342).
     return xcuitest_lease_launch(UDID, _eff, extra_env=_CONFORMANCE_ENV)
+
+
+@pytest.fixture(autouse=True)
+def _evidence(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Video + deviceLog for this case, kept only on failure (the CI job otherwise has neither).
+
+    Also correct across an infra-fault retry: `backend_crash_recovery` re-runs this whole item (and
+    every function-scoped fixture, this one included) on a crash, so a crashed attempt's recording is
+    cleared by the next attempt's (`capture()`'s own leading `rmtree`) before that attempt records its
+    own — exactly right, since only the terminal (published) attempt's evidence should survive.
+    """
+    yield from ondevice_evidence.capture(
+        UDID,
+        "conformance-xcuitest",
+        request,
+        start_video=ondevice_evidence.xcuitest_video,
+        start_log=intervals.start_device_log,
+    )
 
 
 class TestXcuitestDriverConformance(DriverConformanceContract):
