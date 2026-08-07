@@ -355,6 +355,18 @@ class _ScenarioRunner:
                         if retry_scenario is s:
                             raise
                         lz = self.lease(self.eff, s)
+                    if attempt > 1:
+                        _logger.info(
+                            "scenario %s: backend respawned and recovered on attempt %d/%d",
+                            s.name,
+                            attempt,
+                            budget.total_attempts,
+                        )
+                        if self.progress is not None:
+                            self.progress(
+                                f"✔ scenario {i + 1}/{self.total}: {s.name} — backend respawned "
+                                f"and recovered (attempt {attempt}/{budget.total_attempts})"
+                            )
                     if recovery_started is not None:
                         # Recovery ended when the lease came back; what follows is the scenario's own
                         # work, not recovery. A mid-step crash below re-arms the clock.
