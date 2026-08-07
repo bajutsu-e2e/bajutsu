@@ -372,7 +372,15 @@ runner channel GET /screenshot: the runner recovered from a mid-run crash; re-is
       運ぶためである（「詳細設計」を参照）。強制 erase のリース自体が `device_errors.DeviceError`
       を送出した場合は、run 全体を中断させるのではなく素の respawn に切り替える（「詳細設計」を
       参照）。`simctl` のサブプロセス呼び出しに `timeout=` がない点は今回の後続作業として残した。
-      この再試行に固有の問題ではないためである。
+      この再試行に固有の問題ではないためである。`--no-erase` を尊重するようにした変更には、実際に
+      稼働中の `actuation (xcuitest)` run で捕捉された CI 側の実害があった。`golden`／
+      `actuation`／`run`／`bundled-runner`（xcuitest）が共有するコンポジットアクション
+      `.github/actions/bajutsu-e2e/action.yml` は、すべての `bajutsu run` 呼び出しに `--no-erase`
+      をハードコードしていた。通常のシナリオのリースに対しては no-op である（どちらの showcase
+      ターゲットもターゲット単位の `erase` 既定値を設定していないため）が、この単位がこのフラグを
+      尊重するようになった結果、2026-08-06 のインシデントで名指しされたまさにそのジョブ群で、
+      強制 erase による復旧が黙って無効化されていた。CLI 側の保証を緩めるのではなく、コンポジット
+      アクション側の冗長なフラグを取り除いた。
 - [x] Unit 2 — `RunCrashRecoveryBudget`（デッドライン方式ではなく、累積した実際の復旧時間を
       課金する方式）を追加し、`run_crash_recovery_budget` / `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET`
       を `run_all` に配線し、ワークフローの env knob を追加し、`docs/architecture.md` /

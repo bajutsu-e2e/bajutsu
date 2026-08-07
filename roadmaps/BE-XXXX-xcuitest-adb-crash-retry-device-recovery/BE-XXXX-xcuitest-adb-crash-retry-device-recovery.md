@@ -340,7 +340,14 @@ Two independent units.
       flag's pre-resolution value past `_filter_scenarios` (see *Detailed design*). A forced-erase
       lease that itself raises `device_errors.DeviceError` degrades to a bare respawn instead of
       aborting the whole run (see *Detailed design*); the underlying lack of a `timeout=` on
-      `simctl`'s subprocess calls is left as a follow-up, not unique to this retry.
+      `simctl`'s subprocess calls is left as a follow-up, not unique to this retry. Honoring
+      `--no-erase` (above) had a real CI-side consequence caught by a live `actuation (xcuitest)`
+      run: `.github/actions/bajutsu-e2e/action.yml` — the composite action `golden`/`actuation`/
+      `run`/`bundled-runner` (xcuitest) all share — hardcoded `--no-erase` on every `bajutsu run`
+      invocation, which is a no-op for an ordinary scenario lease (neither showcase target sets a
+      target-level `erase` default) but, once this unit honors the flag, silently disabled forced-erase
+      recovery on precisely the jobs the 2026-08-06 incident named. Removed the redundant flag from
+      the composite action rather than relaxing the CLI-level guarantee.
 - [x] Unit 2 — add `RunCrashRecoveryBudget` (accumulated-recovery-time, not deadline-based), wire
       `run_crash_recovery_budget` / `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` through `run_all`, add the
       workflow env knobs, and update `docs/architecture.md` / `docs/run-loop.md` and their `docs/ja/`
