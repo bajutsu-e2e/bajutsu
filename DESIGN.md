@@ -471,7 +471,7 @@ redact:                       # 保存前にマスクする対象（§9 注意�
 
 - **種別**：`screenshot` / `elements` / `actionLog` / `deviceLog` / `network` / `video` / `appTrace` / `rawTree`（下表）
 - **修飾子**：`before` / `after` / `around`（操作前に開始し後で停止）/ `onError`
-- **既定の修飾子**：常時発火するベースラインは `before`（ステップが動作する前に取得。§10）。`capturePolicy` ルールやインラインの `capture:` が発火したときは、修飾子なしの瞬時系（`screenshot` / `elements`）は従来どおり `after` が既定です。`rawTree` だけは例外で、インラインで指定したときは修飾子を問わず常にステップ動作前のベースラインで取得します（`elements.json` と同じ読み取りに対応づけるためです）。区間系（`video` / `deviceLog` / `network` / `appTrace`）は `around`、`actionLog` は常時記録です
+- **既定の修飾子**：常時発火するベースラインは `before`（ステップが動作する前に取得。§10）。`capturePolicy` ルールやインラインの `capture:` が発火したときは、修飾子なしの瞬時系（`screenshot` / `elements`）は従来どおり `after` が既定です。`rawTree` だけは例外です。インラインの `capture:` で指定し、同じステップが `elements` を合わせて指定していなければ、修飾子を問わず常にステップ動作前のベースラインで取得します。`elements.json` と同じ読み取りに対応づけるためです。同じステップが `elements` もインライン指定した場合は、`rawTree` も既定どおり `after` として動作後に取得し、`elements` と同じ読み取りを共有します。区間系（`video` / `deviceLog` / `network` / `appTrace`）は `around`、`actionLog` は常時記録です
 - 区間を持つ種別は `around` でライフサイクル管理し、停止はステップの wait 完了に同期させます（→ 後述「区間境界」）
 
 ### 証跡種別と取得元

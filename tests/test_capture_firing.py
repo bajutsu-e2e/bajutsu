@@ -251,6 +251,27 @@ def test_inline_raw_tree_joins_the_pre_step_baseline() -> None:
     ]
 
 
+def test_inline_raw_tree_and_elements_together_both_go_post_step() -> None:
+    # Naming both kinds inline (`capture: [elements, rawTree]`) is the combination an author
+    # reaching for this feature is most likely to write. Pre-capturing only `rawTree` here would
+    # still mismatch: the post-step `elements` token would overwrite the pre-step baseline's
+    # elements.json with a post-action tree, leaving a pre-action rawTree dump beside it. Instead
+    # neither joins the pre-step baseline, and both fire together post-step, where `capture()`'s
+    # own stable sort pairs them on the same (post-action) read.
+    driver = FakeDriver([_el("a", "A")])
+    sink = RecordingSink()
+    run_scenario(
+        driver,
+        _scn({"name": "x", "steps": [{"tap": {"id": "a"}, "capture": ["elements", "rawTree"]}]}),
+        sink=sink,
+    )
+    assert sink.calls == [
+        ("x/step0", BASELINE_BEFORE),
+        ("x/step0", ["elements", "rawTree"]),
+        ("x/step0", BASELINE_AFTER),
+    ]
+
+
 def test_inline_raw_tree_is_dropped_inside_a_web_block() -> None:
     # Inside a `web` block, the post-step capture call always targets the native driver (a
     # `WebContextDriver` cannot screenshot) while `elements.json` there is written from the *web*

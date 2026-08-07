@@ -994,12 +994,19 @@ class _StepRunner:
         # scenario was written to rule out (a `longPress`/`doubleTap` resolves its coordinate from the
         # pre-action tree, and a post-step `elements` token would additionally overwrite this baseline
         # with a post-action tree, per `_run_steps`'s own final-step comment on that same hazard).
+        # Not when the step also names `elements` inline: that post-step token would still overwrite
+        # this baseline's `elements.json` with a post-action tree, leaving the pre-action `rawTree`
+        # dump paired with it instead — the same mismatch, just from the other side. Both go post-step
+        # in that case, where `capture()`'s own stable sort pairs them on one (post-action) read.
         # Only where this baseline targets the driver `rawTree` itself would read from: inside a `web`
         # block `active_driver` differs from `self.cfg.driver`, and the native driver's raw dump would
         # describe an unrelated read entirely — the post-step `instant` filter below drops such a
         # request rather than pair it wrong.
-        raw_tree_pre_captured = active_driver is self.cfg.driver and any(
-            _kind_of(t) == "rawTree" for t in (step.capture or [])
+        step_kinds = {_kind_of(t) for t in (step.capture or [])}
+        raw_tree_pre_captured = (
+            active_driver is self.cfg.driver
+            and "rawTree" in step_kinds
+            and "elements" not in step_kinds
         )
         if raw_tree_pre_captured:
             pre_kinds.append("rawTree")

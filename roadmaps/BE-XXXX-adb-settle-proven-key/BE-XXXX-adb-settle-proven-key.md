@@ -198,12 +198,20 @@ draft of this fix did, and it broke
 `test_reads_the_runner_already_takes_close_the_barrier_for_free` — a deliberate, already-shipped
 optimization where the runner's own intervening reads (a `wait`, an `assert`) satisfy the dwell
 requirement and the next actuator should pay nothing extra. The provenance-tracked key preserves that
-optimization for the case it was built for while closing the gap for the case it was not.
+optimization for the case it was built for — the `uiautomator dump` fallback, whose catch-up
+projection-dwell is a genuine two-observations-apart proof that sets `_settled_key` — while closing the
+gap for the case it was not. It does **not** preserve the optimization on the resident channel: since
+the mark-postdate close never sets `_settled_key` (the next alternative explains why), `_settle()` pays
+this rejected alternative's exact cost there — one confirmatory read plus a `_SETTLE_POLL_S` sleep after
+every actuation — even though the fast path itself still exists. That is the production path, and the
+one the diagnosed flake ran on, so this item accepts the cost rather than the risk.
 
 **Have the mark-postdate catch-up close also set `_settled_key`.** Rejected: a device-clock mark
 postdating a gesture proves order, not rest, and the diagnosed flake ran on exactly this channel
 (the resident server, `via: identity`). Trusting a single postdating read as "proven stable" would
-have reopened the same gap this item closes, one call earlier.
+have reopened the same gap this item closes, one call earlier — reopening it, moreover, on the
+resident channel specifically, in exchange for exactly the free-settle optimization the alternative
+above describes losing there.
 
 **Reconstruct settledness from timing (a minimum wall-clock gap between the two agreeing reads)
 instead of tracking a separate key.** Considered, but does not fix the diagnosed case with any more
