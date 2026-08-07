@@ -1,14 +1,14 @@
-[English](BE-XXXX-admin-team-bootstrap-bypass.md) · **日本語**
+[English](BE-0352-admin-team-bootstrap-bypass.md) · **日本語**
 
-# BE-XXXX — admin 用 GitHub Team の環境変数が Organization メンバーシップのサインインゲートを迂回する
+# BE-0352 — admin 用 GitHub Team の環境変数が Organization メンバーシップのサインインゲートを迂回する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-admin-team-bootstrap-bypass-ja.md) |
+| 提案 | [BE-0352](BE-0352-admin-team-bootstrap-bypass-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0352") |
 | 実装 PR | [#1485](https://github.com/bajutsu-e2e/bajutsu/pull/1485) |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md) |

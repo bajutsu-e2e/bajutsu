@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-admin-team-bootstrap-bypass-ja.md)
+**English** · [日本語](BE-0352-admin-team-bootstrap-bypass-ja.md)
 
-# BE-XXXX — Admin GitHub Team env var bypasses the org-membership sign-in gate
+# BE-0352 — Admin GitHub Team env var bypasses the org-membership sign-in gate
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-admin-team-bootstrap-bypass.md) |
+| Proposal | [BE-0352](BE-0352-admin-team-bootstrap-bypass.md) |
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0352") |
 | Implementing PR | [#1485](https://github.com/bajutsu-e2e/bajutsu/pull/1485) |
 | Topic | Hosting the web UI |
 | Related | [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md) |
