@@ -249,7 +249,10 @@ class RunCrashRecoveryBudget:
     """
 
     def __init__(self, budget: float | None) -> None:
-        self.budget = budget
+        # Non-positive reads as unbounded, the same way `_default_run_crash_recovery_budget` reads
+        # `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET=0` — so a caller pinning the budget directly can never
+        # invert the never-block-the-first-crash rule `exhausted()` documents below.
+        self.budget = budget if budget is None or budget > 0 else None
         self._spent = 0.0
         self._lock = threading.Lock()
 

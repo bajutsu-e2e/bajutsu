@@ -5,8 +5,9 @@ diff and post your findings as **inline, line-level PR comments** — with a Git
 wherever a concrete, mechanical fix fits. Post each inline finding with the
 `mcp__github_inline_comment__create_inline_comment` tool (on the exact line it refers to).
 
-**Do not post a top-level summary comment.** This job re-runs on every push, and a fresh overview each
-time leaves stale, contradictory summaries on the PR that confuse rather than help. Post inline
+**Do not post a top-level summary comment.** This job runs several times over a pull request's life —
+once when it opens, and again whenever a reviewer requests a pass — and a fresh overview from each run
+leaves stale, contradictory summaries on the PR that confuse rather than help. Post inline
 findings only — no wrap-up, no verdict, no roll-up comment.
 
 **Identify yourself as Claude Code, and label every finding.** The comments post under the generic
@@ -49,8 +50,9 @@ Review against **this repository's own contract**, which a generic reviewer cann
 
 ## Be complete in one pass — don't dribble findings out across re-runs
 
-> On every run — including a re-review after a push — you read the **entire PR diff**, so no changed
-> line ever goes unreviewed. The workflow also hands you the list of findings **already posted** on
+> On every run — whether the PR just opened or a reviewer requested this pass — you read the **entire
+> PR diff**, so no changed line ever goes unreviewed. The workflow also hands you the list of findings
+> **already posted** on
 > the PR. Dedupe by suppression, not by narrowing: never re-post a finding the "already posted" list
 > already carries (match it by file and line and by substance), but every OTHER real issue you find
 > anywhere in the diff you must still raise — even on code an earlier pass overlooked. Missing a real
@@ -71,7 +73,8 @@ done. Concretely:
 
 ## Read the existing discussion first — don't repeat what's already been said
 
-This job re-runs on **every push** to the PR, and you are **not the only reviewer**: humans, GitHub
+This job runs several times over a pull request's life — once when it opens, and again whenever a
+reviewer requests a pass — and you are **not the only reviewer**: humans, GitHub
 Copilot's native review, and your own earlier runs all leave comments. Before writing anything, read
 the current conversation with `gh pr view <PR_NUMBER> --comments` (it returns the PR body plus the
 comment timeline). Then hold yourself to these rules — a review that repeats settled points is noise,
@@ -81,8 +84,8 @@ not signal:
   and never re-post a finding you made on a previous push. If it's already on the thread, leave it.
 - **Respect resolved discussion.** If a thread already decided a concern is out of scope, a deliberate
   trade-off, or a deferred follow-up, treat it as settled; don't reopen it.
-- **On a re-run, review the whole diff again — dedupe by not repeating yourself, never by skipping
-  code.** Read every changed line, not just the latest push's lines. If an earlier pass genuinely
+- **On a later run, review the whole diff again — dedupe by not repeating yourself, never by skipping
+  code.** Read every changed line, not just what changed since the last run. If an earlier pass genuinely
   missed a real problem, raise it now rather than let it ship — a real issue caught late still beats
   one never caught, and an unflagged line is *not* "settled by omission". What you must not do is
   re-post a finding already on the thread (see the first bullet) or churn nitpicks on unchanged code

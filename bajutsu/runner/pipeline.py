@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from bajutsu.doctor import Score
     from bajutsu.drivers import base
 
-from bajutsu import capability_preflight
+from bajutsu import capability_preflight, device_errors
 from bajutsu.artifact_perms import make_run_dir, restrict_file
 from bajutsu.assertions import (
     AssertionResult,
@@ -340,7 +340,21 @@ class _ScenarioRunner:
                 # lease-time crash leaves no lease to release (the pool tears down its own failed lease), and
                 # the retry leases afresh — a cold respawn, since the pool drops the dead warm runner.
                 try:
-                    lz = self.lease(self.eff, retry_scenario)
+                    try:
+                        lz = self.lease(self.eff, retry_scenario)
+                    except device_errors.DeviceError:
+                        # A failed forced-erase prep (`simctl.DeviceError`/`adb.DeviceError`, e.g. the
+                        # device rejected `erase`/`shutdown`/`boot`) is not a `BackendCrashError`, so it
+                        # would otherwise escape this loop's own `except` below and abort the whole run
+                        # past `run_all` — losing every already-passed scenario's verdict, worse than
+                        # the bare in-place respawn this forced retry replaces. Degrade to that bare
+                        # respawn instead, exactly like today whenever erase isn't forced; that lease's
+                        # own faults (a `BackendCrashError`, or another `DeviceError`) are handled the
+                        # same way a bare respawn's already are — the latter still propagates and ends
+                        # the run, since nothing about *that* path changed.
+                        if retry_scenario is s:
+                            raise
+                        lz = self.lease(self.eff, s)
                     if recovery_started is not None:
                         # Recovery ended when the lease came back; what follows is the scenario's own
                         # work, not recovery. A mid-step crash below re-arms the clock.

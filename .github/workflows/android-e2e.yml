@@ -143,12 +143,18 @@ jobs:
     # that changes the a11y APKs' size or Android's own erase path enough to challenge that should
     # re-derive this the way ios-e2e.yml's comment above BAJUTSU_CRASH_RECOVERY_BUDGET does.
     # BAJUTSU_RUN_CRASH_RECOVERY_BUDGET (_default_run_crash_recovery_budget) is the run-scoped
-    # counterpart: it caps crash-recovery time across every scenario in this one `bajutsu run`
-    # invocation, not per scenario, so a device that keeps degrading fails loudly well before this
-    # job's own 30min `timeout-minutes` instead of being cancelled with no diagnosable cause (the iOS
-    # incident this knob was added for — ios-e2e.yml's comment above its own
-    # BAJUTSU_XCUITEST_RECOVERY_TIMEOUT). 480s leaves the ~18min nominal run (see the timeout-minutes
-    # comment below) comfortable headroom under the 30min cap even at the budget's full spend.
+    # counterpart: it caps crash-recovery time across every scenario in one `bajutsu run` process, not
+    # per scenario. On this lane that scope is narrower than it sounds: `make -C
+    # demos/showcase/android e2e` shells one `bajutsu run --scenario …` per file, 28 separate
+    # invocations (E2E_SCENARIOS + E2E_VIEWS_SCENARIOS), each getting its own fresh 480s budget — not
+    # the single job-wide budget ios-e2e.yml's `run`/`actuation` jobs get by folding many scenarios into
+    # one invocation. Most of those files hold one scenario, and a scenario can never observe its own
+    # in-progress spend (billed only once its own retry loop ends), so on this lane the budget is inert
+    # for the common case rather than a lane-wide backstop: it only bounds a file that itself sequences
+    # more than one scenario. Set to keep parity with the per-scenario knobs above and to bound the few
+    # multi-scenario files that do exist here, not on a claim that it caps the whole job — a
+    # systemically degrading emulator still runs every one of the 28 invocations to this job's 30min
+    # `timeout-minutes` regardless of this knob.
     env:
       UV_NO_DEV: "1"
       BAJUTSU_CRASH_RETRIES: "2"

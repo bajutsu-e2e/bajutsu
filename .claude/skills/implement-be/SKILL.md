@@ -11,6 +11,7 @@ Read `.agent-workflows/implement-be/workflow.md` completely, then follow it.
 Use Claude Code facilities for host-specific steps:
 
 - Use the Agent tool for independent review and follow-up subagents.
+- Run step 7's two roles on different models (BE-0347): `fable` for the review/plan pass, and for the implement pass `sonnet` when the fix stays within `roadmaps/` or `docs/`, `opus` when it touches product code.
 - Use the installed `pr-review-toolkit` for the specialized review pass.
 - Use `/loop` for the paced post-PR follow-up described by the workflow.
 - Treat `.claude/settings.json` and `.claude/hooks/session-start.sh` as Claude-only configuration.

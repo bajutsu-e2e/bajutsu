@@ -122,6 +122,21 @@ Two independent units.
    that the *post-resolution scenario field* cannot carry it; the *pre-resolution CLI flag* still can,
    and does.
 
+   The lease itself can still fail: `erase=True` sends `XcuitestEnvironment._prepare_simulator` down
+   `e.shutdown()` → `e.erase()` → `e.boot()`, and a nonzero exit from any of those (a device that
+   rejects the sequence outright) surfaces as `simctl.DeviceError` — a sibling of `BackendCrashError`,
+   not a subclass, so it would otherwise escape this loop's own `except BackendCrashError` and abort
+   `run_all` entirely, discarding every already-passed scenario's verdict. `run_one` catches
+   `device_errors.DeviceError` around the forced-erase lease specifically (not around a bare lease,
+   whose own `DeviceError` keeps its pre-existing behavior of propagating) and degrades to the ordinary
+   bare respawn — leasing `s` unmodified — instead: the fault this attempt hits stays this attempt's
+   problem, not the whole run's. `simctl`'s own subprocess calls carry no `timeout=`
+   (`simctl._real_run`), so a `shutdown`/`erase`/`boot` against a fully wedged CoreSimulator daemon can
+   still hang rather than raise — left as a follow-up, since it is a pre-existing property of every
+   `erase: true` precondition (not unique to this forced retry) and bounding it needs a
+   deliberately-chosen timeout value and failure mode shared with `simctl.py`'s other calls, not a
+   local fix to this one retry loop.
+
    `Scenario` and `Preconditions` (`bajutsu/scenario/models/scenario.py`) are both pydantic models, so
    `model_copy(update=...)` overrides the field without mutating the original scenario or its
    `RunResult.scenario` name. Both backends already run the full erase sequence for `erase=True`, so
@@ -173,9 +188,8 @@ Two independent units.
 
    ```python
    class RunCrashRecoveryBudget:
-       def __init__(self, budget: float | None, now: Callable[[], float]) -> None:
-           self.budget = budget
-           self._now = now
+       def __init__(self, budget: float | None) -> None:
+           self.budget = budget if budget is None or budget > 0 else None
            self._spent = 0.0
            self._lock = threading.Lock()
 
@@ -323,7 +337,10 @@ Two independent units.
       (`erase_precondition_supported` in `bajutsu/backends.py`), on both the XCUITest and adb
       backends. Deliberately not skipped on `erase is False` alone — see *Alternatives considered*.
       An explicit `bajutsu run --no-erase` is still honored, via `force_erase_on_retry` carrying that
-      flag's pre-resolution value past `_filter_scenarios` (see *Detailed design*).
+      flag's pre-resolution value past `_filter_scenarios` (see *Detailed design*). A forced-erase
+      lease that itself raises `device_errors.DeviceError` degrades to a bare respawn instead of
+      aborting the whole run (see *Detailed design*); the underlying lack of a `timeout=` on
+      `simctl`'s subprocess calls is left as a follow-up, not unique to this retry.
 - [x] Unit 2 — add `RunCrashRecoveryBudget` (accumulated-recovery-time, not deadline-based), wire
       `run_crash_recovery_budget` / `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` through `run_all`, add the
       workflow env knobs, and update `docs/architecture.md` / `docs/run-loop.md` and their `docs/ja/`
