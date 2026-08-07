@@ -217,7 +217,7 @@ env:
   # attempt rather than the full BAJUTSU_CRASH_RETRIES=2: the deadline is set at the *first* crash (not
   # erase-carrying) and checked only between attempts, so a second, erase-carrying attempt that also
   # crashes lands at ≈450s elapsed — already past this 300s deadline — and the third attempt is never
-  # tried. 300s keeps a never-recovering runner failing loudly in ≈450s wall-clock, well under the 25min
+  # tried. 300s keeps a never-recovering runner failing loudly in ≈450s wall-clock, well under the 60min
   # `timeout-minutes`, while still riding out a genuine one-off (the first respawn is never blocked) — a
   # backstop on top of the per-respawn ceiling, not a substitute for it.
   BAJUTSU_CRASH_RECOVERY_BUDGET: "300"
@@ -231,8 +231,8 @@ env:
   # scenario's recovery time is billed only once its own retry loop ends, and `exhausted()` is read
   # at crash time, so a scenario that starts recovering while the total still reads 899s is never
   # refused — it pays its full ≈450s worst case above, and only the *next* scenario is cut off.
-  # Worst case billed is therefore ≈1350s, which leaves ≈150s (not 600s) of headroom
-  # under the smallest `timeout-minutes` below (25min = 1500s) for the nine scenarios' nominal work
+  # Worst case billed is therefore ≈1350s, which leaves ≈2250s of headroom under the smallest
+  # `timeout-minutes` below (60min = 3600s, raised from 25min) for the nine scenarios' nominal work
   # (seconds each, not minutes, when nothing crashes) and the artifact upload once recovery gives up —
   # see the caveat above BAJUTSU_XCUITEST_RECOVERY_TIMEOUT for the incident this closes and the
   # `bundled-runner` job it does not fully cover (two `bajutsu run` invocations, each billed this budget
@@ -296,9 +296,9 @@ jobs:
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung xcodebuild would otherwise run to the 6h
-    # default. A cold build of both apps + the runner is ~6min, so 30 catches a real hang with
+    # default. A cold build of both apps + the runner is ~6min, so 60 catches a real hang with
     # comfortable headroom.
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -418,7 +418,7 @@ jobs:
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the 6h
     # default. No build here (the `build` job staged the products) — boot + install + one cold runner
-    # + six short scenarios is ~15min, so 25 catches a real hang with headroom. A mid-run backend crash
+    # + six short scenarios is ~15min, so 60 catches a real hang with headroom. A mid-run backend crash
     # adds at most about one more cold respawn: BAJUTSU_CRASH_RECOVERY_BUDGET (300s, above) bounds the
     # scenario-level recovery in wall-clock, so a never-recovering runner fails loudly inside that
     # window rather than paying BAJUTSU_CRASH_RETRIES × the 300s startup ceiling and hanging to this cap.
@@ -427,8 +427,9 @@ jobs:
     # timeout ending attempt 1 in ~40s, repaired by a reboot whose re-prep is cheap enough to leave
     # uncounted — costs ~40s + 180s + 300s ≈ 9min and fits; the worst case the arithmetic block allows
     # (a first bring-up that burns the full 300s, repaired by a replacement and its re-prep: ~15min)
-    # puts this job at ~28min and would not, so it is this cap itself that catches that one.
-    timeout-minutes: 25
+    # puts this job at ~28min, which 60 clears with room to spare — the cap now backs a genuine hang
+    # rather than bounding the recovery arithmetic itself.
+    timeout-minutes: 60
     # BE-0231 unit 4: a cold-boot CI Simulator sometimes renders the first Stable row later than a
     # scenario's 10s first-wait allows — even with unit 2's `readyWhen` gate (which waits up to
     # _await_ready's own 10s for that row). Raise the wait *floor* so the condition wait has the
@@ -547,16 +548,16 @@ jobs:
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the 6h
     # default. Install (no build) + the ten scenario runs the eight files below produce (each file holds
     # one scenario; data_driven.yaml's three `${row.*}` rows expand to three) is ~20min — the dominant
-    # term is five cold XCTest-host startups, one per two runs at this lane's warm-reuse cap — so 30
+    # term is five cold XCTest-host startups, one per two runs at this lane's warm-reuse cap — so 60
     # catches a real hang with headroom rather than reddening a healthy run. Of those startups only the
     # first carries the 300s cold ceiling (the rest take the 90s respawn one), and only a *failing*
     # spawn adds a device recovery plus a second ceiling. The observed signature — an app-launch
     # timeout ending attempt 1 in ~40s, repaired by a reboot whose re-prep is cheap enough to leave
     # uncounted — costs ~40s + 180s + 300s ≈ 9min and fits; the worst case the arithmetic block allows
     # (a first bring-up that burns the full 300s, repaired by a replacement and its re-prep: ~15min)
-    # would not, so it is the lane's own hang backstop that catches it
-    # (BAJUTSU_XCUITEST_RECOVERY_TIMEOUT, above).
-    timeout-minutes: 30
+    # puts this job at ~35min, which 60 also clears with room to spare — the cap now backs a genuine
+    # hang rather than bounding the recovery arithmetic itself.
+    timeout-minutes: 60
     # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
     # each scenario's own 10s first-wait — the same knob the `run` job above and the Android lane use.
     # A condition wait returns the instant the row appears, so this is a ceiling, not a sleep.
@@ -639,8 +640,8 @@ jobs:
       contains(fromJSON(needs.changes.outputs.affected), 'golden'))
     runs-on: macos-latest
     # Install the prebuilt products (no build) + a fresh Simulator boot (~80s) + the golden run is
-    # well under this; 25 catches a hung Simulator/runner on the metered macOS runner with headroom.
-    timeout-minutes: 25
+    # well under this; 60 catches a hung Simulator/runner on the metered macOS runner with headroom.
+    timeout-minutes: 60
     # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
     # the scenario's own 10s first-wait — the same knob the `run` job above and the Android lane use.
     # A condition wait returns the instant the row appears, so this is a ceiling, not a fixed sleep.
@@ -697,8 +698,8 @@ jobs:
       contains(fromJSON(needs.changes.outputs.affected), 'codegen'))
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/xcodebuild would otherwise run to
-    # the 6h default. Typical end-to-end is ~10min, so 25 catches a real hang with comfortable headroom.
-    timeout-minutes: 25
+    # the 6h default. Typical end-to-end is ~10min, so 60 catches a real hang with comfortable headroom.
+    timeout-minutes: 60
     # `make ui-test` runs `uv run bajutsu codegen`, whose auto-sync would otherwise pull the dev
     # group (mypy / pytest / ruff + the gate-only extras). Codegen needs only the base package, so
     # skip dev for every uv invocation in this job — the Linux `check` gate owns that tooling.
@@ -772,9 +773,9 @@ jobs:
       contains(fromJSON(needs.changes.outputs.affected), 'bundled-runner'))
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
-    # 6h default. Install both prebuilt apps (no build) + two smoke runs is ~10min, so 25 catches a
+    # 6h default. Install both prebuilt apps (no build) + two smoke runs is ~10min, so 60 catches a
     # real hang with headroom.
-    timeout-minutes: 25
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -835,8 +836,8 @@ jobs:
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
-    # 6h default. Two backends end-to-end is ~12min, so 25 catches a real hang with headroom.
-    timeout-minutes: 25
+    # 6h default. Two backends end-to-end is ~12min, so 60 catches a real hang with headroom.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -876,7 +877,7 @@ jobs:
           # count and the wall-clock respawn budget. Those two knobs (BAJUTSU_CRASH_RETRIES /
           # BAJUTSU_CRASH_RECOVERY_BUDGET) are inherited from the workflow-level env, not re-pinned here,
           # so this lane cannot silently drift from the `run` lane's budget. A crash every attempt still
-          # fails loudly (BE-0049); the 25-min job timeout above is the outer backstop.
+          # fails loudly (BE-0049); the 60-min job timeout above is the outer backstop.
           # Count every respawn into an uploaded artifact, so a degrading lane shows as a rising count.
           BAJUTSU_BACKEND_RECOVERY_REPORT: conformance-recovery.json
         run: uv run pytest tests/test_driver_conformance_ondevice.py -m ondevice -n0 -v
@@ -910,9 +911,9 @@ jobs:
     runs-on: macos-latest
     # Two frozen cases spend the channel's own budgets (a read's 15s socket window, three of them before
     # a crash is declared) and the killed case polls out the 60s recovery window, so the cases total
-    # ~2.5min on top of the cold lease; 25 caps the metered macOS job (10x billing) against a hang, like
+    # ~2.5min on top of the cold lease; 60 caps the metered macOS job (10x billing) against a hang, like
     # the conformance job above.
-    timeout-minutes: 25
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -990,8 +991,8 @@ jobs:
       contains(fromJSON(needs.changes.outputs.affected), 'visual'))
     runs-on: macos-latest
     # A cold Xcode build (~2.5min) + a fresh Simulator boot (~80s) + the VRT run is well under this;
-    # 25 catches a hung Simulator/runner on the metered macOS runner with comfortable headroom.
-    timeout-minutes: 25
+    # 60 catches a hung Simulator/runner on the metered macOS runner with comfortable headroom.
+    timeout-minutes: 60
     # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
     # the scenario's own 10s first-wait — the same knob the `run` job above and the Android lane use.
     # A condition wait returns the instant the row appears, so this is a ceiling, not a fixed sleep.
