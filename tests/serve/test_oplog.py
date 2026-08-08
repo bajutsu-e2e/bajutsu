@@ -182,6 +182,8 @@ def test_event_registry_lists_the_stable_names() -> None:
         "run.dispatched",
         "run.recorded",
         "oauth.login",
+        "oauth.denied",
+        "server.startup_warning",
         "quota.rejected",
         "worker.job.started",
         "worker.job.finished",

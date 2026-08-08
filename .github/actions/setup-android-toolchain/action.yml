@@ -6,6 +6,18 @@ description: >-
   `uv sync` (the extras differ per job — base, or the visual extra, or none), so this action covers
   only the identical prelude those steps share.
 
+inputs:
+  cache-read-only:
+    description: >-
+      Passed through to gradle/actions/setup-gradle's own `cache-read-only` input. Defaults to
+      'true' (read-only) so a caller that forgets to set this never becomes an accidental second
+      cache writer; only the `warm-gradle-cache` job in android-e2e.yml overrides it to 'false' to
+      write the shared cache, per gradle/actions' documented multi-job cache-sharing pattern.
+      setup-gradle otherwise writes the cache only from the default branch, so that override must be
+      explicit ('false', not left unset) to write on `pull_request`/`merge_group` runs too.
+    required: false
+    default: 'true'
+
 runs:
   using: composite
   steps:
@@ -26,6 +38,8 @@ runs:
     # its caches, so a miss just rebuilds cold and never changes the result).
     - name: Set up Gradle
       uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92  # v6.2.0
+      with:
+        cache-read-only: ${{ inputs.cache-read-only }}
 
     # KVM must be world-accessible for the emulator to be hardware-accelerated on the Linux runner.
     - name: Enable KVM

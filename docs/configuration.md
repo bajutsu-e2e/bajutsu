@@ -338,12 +338,20 @@ CLI and local `serve` ignore `orgs:` entirely.
 
 Once GitHub OAuth is configured, org membership also decides access
 ([BE-0313](../roadmaps/BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)). Signing in
-requires membership in a configured org — through `members` or `githubOrgs` — and grants the
-**viewer** role. A direct member of the org's `editorTeam` is promoted to **editor**; a member of the
-one server-wide admin Team (`BAJUTSU_OAUTH_ADMIN_TEAM`, see
-[Self-hosting](self-hosting.md#2-add-github-oauth-optional)) is **admin**. `editorTeam` is one flat Team, written as
-`"<github-org>/<team-slug>"`; a nested Team beneath it does not match. An OAuth deployment therefore
-must declare an `orgs:` block, or every login is turned away.
+requires membership in a configured org — through `members` or `githubOrgs` — which grants the
+**viewer** role; a member of a configured admin Team signs in regardless (below). A direct member of
+the org's `editorTeam` is promoted to **editor**; a member of one
+of the server-wide admin Teams (`BAJUTSU_OAUTH_ADMIN_TEAMS`, see
+[Self-hosting](self-hosting.md#2-add-github-oauth-optional)) is **admin**. `editorTeam` and each
+`BAJUTSU_OAUTH_ADMIN_TEAMS` entry are each one flat Team, written as
+`"<github-org>/<team-slug>"`; a nested Team beneath either does not match. An OAuth deployment
+therefore must declare an `orgs:` block, or every login other than an admin Team member is turned
+away — a member of a configured admin Team can still sign in unless GitHub's Teams API is itself
+erroring, so a broken or missing `orgs:` block never locks every admin out on its own. An admin
+admitted only by their Team is placed in the `default` org, since no `orgs:` entry claims them — so
+a deployment relying on that recovery should avoid declaring a real org named `default`, or the
+recovering admin's user row, audit entries, and object-storage prefix land inside that tenant instead
+of a neutral catch-all.
 
 ## Selecting from the CLI
 

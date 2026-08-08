@@ -4,7 +4,7 @@
 
 showcase は Bajutsu の次世代 dogfood 対象です。**同じアプリを 2 回書き**（UIKit と SwiftUI）、**各々を
 アクセシビリティの 2 変種**（識別子の有/無）で出すので、2 コードベースから 4 つのインストール可能な
-プロダクトができます。実アプリが持つ操作面（5 タブ、ナビゲーションスタックの push、4 つのモーダル様式、
+プロダクトができます。実アプリが持つ操作面（5 タブ、ナビゲーションスタックの push、5 つのモーダル様式、
 テキスト入力、非同期ロード、通信（実通信＋モック可能）、そして意図的に OS レベルのアラートを上げる
 画面）を、`record`、`crawl`、`run` を一度に行使できる最小のアプリに収めています。
 
@@ -40,7 +40,9 @@ UIKit に対応し、それぞれ同じ a11y/noax の flavor ペアでビルド�
 1 つの Dart コードベースが同じ契約を**両プラットフォーム**で再現し、バックエンドを一切足しません。
 ウィジェットの `Semantics(identifier: …)` が OS のアクセシビリティツリーへ現れるので、同じ
 `scenarios/` セットが XCUITest / adb を通してそのまま駆動します（[`docs/drivers.md`](../../docs/ja/drivers.md)
-の「Flutter」を参照）。ターゲットは `showcase-flutter`（iOS）、`showcase-flutter-android`、
+の「Flutter」を参照）。ただし Log タブのネイティブアラート（SPEC §2.1、§5.3）は例外で、Flutter 側に
+まだどの画面にも実装がありません。そのシナリオ（`scenarios/alert.yaml`）は `alert` タグを持ち、
+`run-flutter` から除外しています。ターゲットは `showcase-flutter`（iOS）、`showcase-flutter-android`、
 `showcase-flutter-android-noax` です。`make -C demos/showcase run-flutter` / `run-flutter-android`
 で実行します（Flutter が PATH にあること）。
 

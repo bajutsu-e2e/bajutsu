@@ -1,8 +1,8 @@
 import SwiftUI
 
-// Training-log composer: exercises every input control and all four modal styles
-// (sheet, fullScreenCover, confirmationDialog, auto-dismissing toast). In-app modals
-// are visible to the backend; the toast exercises `wait until gone`.
+// Training-log composer: exercises every input control and all five modal styles
+// (sheet, fullScreenCover, a custom action-sheet overlay, native alert, auto-dismissing toast). In-app
+// modals are visible to the backend; the toast exercises `wait until gone`.
 struct LogView: View {
     @EnvironmentObject var model: AppModel
 
@@ -26,6 +26,8 @@ struct LogView: View {
     @State private var showCover = false
     @State private var showDialog = false
     @State private var dialogResult = "none"
+    @State private var showAlert = false
+    @State private var alertResult = "none"
     @State private var showToast = false
 
     var body: some View {
@@ -77,6 +79,12 @@ struct LogView: View {
                         .foregroundStyle(.secondary)
                         .accessibilityID("log.dialog.value")
                         .accessibilityStateValue(dialogResult)
+                    Button("Open Alert") { showAlert = true }
+                        .accessibilityID("log.openAlert")
+                    Text("Alert: \(alertResult)")
+                        .foregroundStyle(.secondary)
+                        .accessibilityID("log.alert.value")
+                        .accessibilityStateValue(alertResult)
                 }
 
                 Section("Gestures") {
@@ -189,6 +197,18 @@ struct LogView: View {
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
                 }
             }
+        }
+        // Native alert (SwiftUI `.alert`, UIAlertController style `.alert` underneath — the
+        // fifth modal style, distinct from the action sheet above): two actions, "Cancel" and
+        // "OK", neither with a custom `id` (UIAlertAction carries no accessibilityIdentifier on
+        // either platform), so a scenario resolves either the same way it resolves a tab bar item
+        // — by `label` + `traits`. Result mirrors to log.alert.value (`none`/`cancel`/`ok`), so a
+        // scenario can tell the two actions apart by which value lands.
+        .alert("Sample Alert", isPresented: $showAlert) {
+            Button("Cancel", role: .cancel) { alertResult = "cancel" }
+            Button("OK") { alertResult = "ok" }
+        } message: {
+            Text("This is a native alert.")
         }
     }
 

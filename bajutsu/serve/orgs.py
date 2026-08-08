@@ -52,8 +52,10 @@ def identity_matches_org(orgs: dict[str, OrgConfig], login: str, github_orgs: li
     True when the login is an explicit `members` entry or a member of some org's `github_orgs`. The
     sign-in gate consults this before `org_for_identity`, whose plain `str` return can't tell a login
     that matched nothing from one that legitimately resolved to `default` — and a deployment may name
-    an org literally `default`. An empty `orgs` mapping (no `orgs:` block) matches nobody, so an
-    OAuth deployment must declare one to admit any login.
+    an org literally `default`. An empty `orgs` mapping — no `orgs:` block, or a config that failed
+    to load — matches nobody, so this gate alone admits no login; `oauth_callback` admits a
+    configured admin Team's members alongside it, so a deployment can still recover from a missing
+    or broken block.
     """
     if any(login in oc.members for oc in orgs.values()):
         return True

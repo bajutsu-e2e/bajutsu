@@ -469,9 +469,9 @@ redact:                       # 保存前にマスクする対象（§9 注意�
 
 `capture:` の各要素は `<種別>[.<修飾子>]` の形を取ります（インライン §9 B / ルール §9 A 共通）。
 
-- **種別**：`screenshot` / `elements` / `actionLog` / `deviceLog` / `network` / `video` / `appTrace`（下表）
+- **種別**：`screenshot` / `elements` / `actionLog` / `deviceLog` / `network` / `video` / `appTrace` / `rawTree`（下表）
 - **修飾子**：`before` / `after` / `around`（操作前に開始し後で停止）/ `onError`
-- **既定の修飾子**：常時発火するベースラインは `before`（ステップが動作する前に取得。§10）。`capturePolicy` ルールやインラインの `capture:` が発火したときは、修飾子なしの瞬時系（`screenshot` / `elements`）は従来どおり `after` が既定です。区間系（`video` / `deviceLog` / `network` / `appTrace`）は `around`、`actionLog` は常時記録です
+- **既定の修飾子**：常時発火するベースラインは `before`（ステップが動作する前に取得。§10）。`capturePolicy` ルールやインラインの `capture:` が発火したときは、修飾子なしの瞬時系（`screenshot` / `elements`）は従来どおり `after` が既定です。`rawTree` だけは例外です。インラインの `capture:` で指定し、同じステップが `elements` を合わせて指定していなければ、修飾子を問わず常にステップ動作前のベースラインで取得します。`elements.json` と同じ読み取りに対応づけるためです。同じステップが `elements` もインライン指定した場合は、`rawTree` も既定どおり `after` として動作後に取得し、`elements` と同じ読み取りを共有します。区間系（`video` / `deviceLog` / `network` / `appTrace`）は `around`、`actionLog` は常時記録です
 - 区間を持つ種別は `around` でライフサイクル管理し、停止はステップの wait 完了に同期させます（→ 後述「区間境界」）
 
 ### 証跡種別と取得元
@@ -485,6 +485,7 @@ redact:                       # 保存前にマスクする対象（§9 注意�
 | `deviceLog` | `simctl spawn <udid> log stream/collect`（subsystem/process で絞る） | 区間 | 中 |
 | `network` | in-protocol の network collector（§3.2） | 区間 | 中 |
 | `appTrace` | アプリの `os_signpost` / `OSLog`（subsystem 指定で log stream から収集） | 区間 | 中 |
+| `rawTree` | `elements` の元になった生ダンプ（`base.RawSourceProvider`。adb と XCUITest） | 瞬時 | 低（opt-in） |
 
 > アプリ内部処理まで証跡化したい場合は `appTrace`（os_signpost 区間）を推奨します。UI 操作と内部処理を時刻で相関できます。
 
@@ -516,6 +517,7 @@ runs/<runId>/
 |---|---|
 | 操作 / 解決（tap 等） | **actuator のみ**（安定度順で最初に利用可能な backend）。利用可能な actuator が無ければ実行不能（hard error） |
 | `screenshot` / `elements` | actuator が提供（§5 の `Element` 正規化に乗る） |
+| `rawTree` | `base.RawSourceProvider` を実装する actuator のみが提供（`Element` 正規化を経る前の生ダンプ。opt-in） |
 | `video` / `deviceLog` / `appTrace` | バックエンド非依存（`simctl`）。リストと無関係に取得 |
 | `network` | **in-protocol の collector**（§3.2）から取得 → 無ければ skip（XCUITest はネイティブ監視を持たない） |
 

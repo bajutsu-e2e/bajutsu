@@ -312,6 +312,10 @@ def test_android_lane_surface() -> None:
     assert is_relevant(["BajutsuAndroidUIAutomatorServer/src/Server.kt"], "android") is True
     assert is_relevant(["tests/test_driver_conformance_ondevice_android.py"], "android") is True
     assert is_relevant([".github/workflows/android-e2e.yml"], "android") is True
+    # The composite action every job in the workflow calls for its Gradle/JDK/cache setup — a change
+    # there (e.g. the `cache-read-only` default, the pinned `setup-gradle` SHA) can change every job's
+    # behavior as much as editing the workflow file itself.
+    assert is_relevant([".github/actions/setup-android-toolchain/action.yml"], "android") is True
     # The `uiautomator (codegen)` job (BE-0294) regenerates its test with `bajutsu codegen`, so the
     # codegen CLI command is android-relevant — the one CLI command besides `run` this lane drives.
     assert is_relevant(["bajutsu/cli/commands/codegen.py"], "android") is True
@@ -349,6 +353,7 @@ def test_web_lane_surface() -> None:
     assert is_relevant(["BajutsuAndroid/src/Clipboard.kt"], "web") is False
     assert is_relevant(["demos/showcase/ios/swiftui/App.swift"], "web") is False
     assert is_relevant([".github/workflows/android-e2e.yml"], "web") is False
+    assert is_relevant([".github/actions/setup-android-toolchain/action.yml"], "web") is False
     assert is_relevant(["bajutsu/drivers/xcuitest.py"], "web") is False
     assert is_relevant(["bajutsu/drivers/xcuitest_live.py"], "web") is False
     assert is_relevant(["bajutsu/drivers/adb.py"], "web") is False

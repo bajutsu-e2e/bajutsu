@@ -94,6 +94,59 @@ def write_screenshot(
     return path
 
 
+def write_raw_tree(
+    driver: base.Driver, step_dir: Path, redactor: Redactor | None = None, *, mkdir: bool = True
+) -> list[Path]:
+    """Write the raw dump text behind the driver's last read (`rawTree` capture kind), if it has any.
+
+    A no-op for any backend that does not implement `base.RawSourceProvider` (every backend but `adb`
+    and XCUITest today) or has not read yet — so a scenario that requests `rawTree` on a backend without
+    one simply gets nothing, the same degrade `ViewportProvider`/`ReadLagProvider` callers already make.
+    Writes `hierarchy.raw<suffix>` (what the driver actually parsed — the dump text `_read_source()`
+    handed adb's parser, XCUITest's undecoded `GET /elements` body; `<suffix>` is `base.RawSource.suffix`,
+    the backend's own dump format) and, only when the backend applied a structural transform that
+    changed it (adb's resident channel stripping SystemUI decor windows), `hierarchy.pre-transform<suffix>`
+    — so a mismatch between a resolved coordinate and the real screen can be traced to the device's/
+    runner's own reply versus bajutsu's processing of it. `mkdir` creates the step dir first, and is
+    skipped when the caller already made it.
+
+    Also a no-op, loudly, when `redactor.has_label_rules`: `redact_elements` (behind `elements.json`)
+    blanks a labeled element's `value` structurally, using the parsed tree it has and this function
+    does not; `redact_text` over free text can only catch a key pattern or a literal secret value, so
+    it would write an unmasked superset of what `elements.json` just masked. Refusing the artifact is
+    the safe direction — a missing diagnostic file costs an investigation a round trip, an unmasked
+    secret on disk does not un-happen.
+    """
+    if not isinstance(driver, base.RawSourceProvider):
+        return []
+    raw = driver.last_raw_source()
+    if raw is None:
+        return []
+    if redactor is not None and redactor.has_label_rules:
+        _logger.warning(
+            "rawTree capture skipped: redact.labels masks an element's value structurally, which "
+            "the raw dump's free-text redaction cannot honor — refusing rather than writing an "
+            "unmasked superset of what elements.json just masked"
+        )
+        return []
+    if mkdir:
+        step_dir.mkdir(parents=True, exist_ok=True)
+    out: list[Path] = []
+    for name, text in (
+        (f"hierarchy.raw{raw.suffix}", raw.text),
+        (f"hierarchy.pre-transform{raw.suffix}", raw.pre_transform),
+    ):
+        if text is None:
+            continue
+        body = redactor.redact_text(text) if redactor is not None else text
+        path = step_dir / name
+        path.write_text(body, encoding="utf-8")
+        # Same sensitivity as elements.json — the dump holds on-screen text (BE-0131).
+        restrict_file(path)
+        out.append(path)
+    return out
+
+
 def write_wait_diagnostic(
     step_dir: Path,
     *,
@@ -157,9 +210,19 @@ def capture(
     if any(token.partition(".")[0] in ("elements", "screenshot") for token in kinds):
         step_dir.mkdir(parents=True, exist_ok=True)
     out: list[Artifact] = []
-    for token in kinds:
+    # `rawTree` last, whatever order the scenario listed the kinds in: `write_elements` may issue the
+    # read itself (`elements is None`, line 69 above), and `write_raw_tree` persists the driver's
+    # *last* read — so a `[rawTree, elements]` order would pair a stale dump with a fresh
+    # elements.json, exactly the mismatch this pair of artifacts exists to rule out. `sorted` is
+    # stable, so no other kind's relative order moves.
+    for token in sorted(kinds, key=lambda t: t.partition(".")[0] == "rawTree"):
         kind, _, modifier = token.partition(".")
-        if kind == "elements":
+        if kind == "rawTree":
+            out.extend(
+                Artifact(path.name, "rawTree", "driver")
+                for path in write_raw_tree(driver, step_dir, redactor)
+            )
+        elif kind == "elements":
             out.append(
                 Artifact(
                     write_elements(driver, step_dir, redactor, elements=elements, mkdir=False).name,

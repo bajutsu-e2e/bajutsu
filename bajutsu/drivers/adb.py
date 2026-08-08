@@ -61,10 +61,16 @@ class HierarchyRead:
     with itself yet predates the last gesture — is no longer accepted (the read-lag defect). It is None
     on the `uiautomator dump` fallback, which carries no such stamp; there the wall-clock budget stands
     in, exactly as before this unit.
+
+    `raw` is the body exactly as the resident server answered it, before `narrow_to_active_window`
+    strips SystemUI decor windows — `text` is what that narrowing produced. None when the caller applies
+    no such transform, so a `rawTree` capture (`RawSourceProvider`) has both halves to diff a mismatch
+    against: the device's own dump, and bajutsu's own processing of it.
     """
 
     text: str
     mark: float | None = None
+    raw: str | None = None
 
 
 # Takes the mark a read must postdate (BE-0332 Unit 4): the resident server blocks until an
@@ -171,9 +177,21 @@ def _norm_class(class_name: str) -> str:
     return simple[:1].lower() + simple[1:] if simple else simple
 
 
-def _bounds(raw: str) -> base.Frame:
+def _bounds(raw: str, malformed_count: list[int] | None = None) -> base.Frame:
+    """The `(x, y, w, h)` frame from a node's `bounds` attribute, or the origin frame if absent/malformed.
+
+    The origin-frame default is silent by design where it is expected — a genuinely bounds-less node
+    is not a fault — but a *malformed* attribute (present, non-empty, yet unparseable) tallies into
+    `malformed_count` when given, so the caller can warn once per parse rather than once per node: a
+    single dump with many such nodes would otherwise flood the log with one line per node, each
+    occurrence individually indistinguishable from the fine, silent default. A node whose bounds stay
+    malformed across a `_settle` poll's repeated reads still warns once per read (up to ~80 reads per
+    call) — this collapses the per-node flood within one read, not the per-read flood across a poll.
+    """
     m = _BOUNDS.search(raw or "")
     if not m:
+        if raw and malformed_count is not None:
+            malformed_count[0] += 1
         return (0.0, 0.0, 0.0, 0.0)
     x1, y1, x2, y2 = (float(v) for v in m.groups())
     return (x1, y1, x2 - x1, y2 - y1)
@@ -257,7 +275,7 @@ def _traits(node: ET.Element) -> list[str]:
     return out
 
 
-def _to_element(node: ET.Element) -> base.Element:
+def _to_element(node: ET.Element, malformed_bounds: list[int] | None = None) -> base.Element:
     desc = node.get("content-desc") or ""
     text = node.get("text") or ""
     # `text` is the visible label; `content-desc` is where the showcase mirrors the assertion value
@@ -273,8 +291,17 @@ def _to_element(node: ET.Element) -> base.Element:
         "label": label or None,
         "value": desc or None,
         "traits": _traits(node),
-        "frame": _bounds(node.get("bounds") or ""),
+        "frame": _bounds(node.get("bounds") or "", malformed_bounds),
     }
+
+
+def _warn_malformed_bounds(count: int) -> None:
+    """Log once per parse for however many nodes carried a malformed `bounds` attribute (never zero)."""
+    logger.warning(
+        "%d node(s) had a bounds attribute that did not match the expected format; "
+        "their frames defaulted to (0,0,0,0)",
+        count,
+    )
 
 
 def _identity(node: ET.Element) -> NodeIdentity:
@@ -292,6 +319,20 @@ def _identity(node: ET.Element) -> NodeIdentity:
     )
 
 
+def _elements_from_nodes(nodes: list[ET.Element]) -> list[base.Element]:
+    """`_to_element` over every node, warning once for the parse if any `bounds` was malformed.
+
+    The one place both `parse_hierarchy` and `parse_hierarchy_with_identities` build their `Element`
+    list, so the malformed-bounds tally and its warning are counted and logged once, not duplicated at
+    each call site.
+    """
+    malformed_bounds = [0]
+    els = [_to_element(n, malformed_bounds) for n in nodes]
+    if malformed_bounds[0]:
+        _warn_malformed_bounds(malformed_bounds[0])
+    return els
+
+
 def parse_hierarchy_with_identities(text: str) -> tuple[list[base.Element], list[NodeIdentity]]:
     """`parse_hierarchy`, plus each element's device-addressable identity, index-aligned.
 
@@ -302,7 +343,7 @@ def parse_hierarchy_with_identities(text: str) -> tuple[list[base.Element], list
     if root is None:
         return [], []
     nodes = list(root.iter("node"))
-    return [_to_element(n) for n in nodes], [_identity(n) for n in nodes]
+    return _elements_from_nodes(nodes), [_identity(n) for n in nodes]
 
 
 def slice_hierarchy_root(text: str) -> ET.Element | None:
@@ -336,7 +377,7 @@ def parse_hierarchy(text: str) -> list[base.Element]:
     if root is None:
         return []
     # Every `<node>` is an element; the `<hierarchy>` root itself is not a UI node.
-    return [_to_element(n) for n in root.iter("node")]
+    return _elements_from_nodes(list(root.iter("node")))
 
 
 @dataclass
@@ -382,9 +423,11 @@ class AdbDriver(CoordinateTreeDriver):
     # fraction of a second — short enough that a still-moving tree passes as settled and a tap fires on
     # a stale coordinate. Bounding by elapsed time instead keeps the window spanning a real animation
     # whatever the read costs: the loop polls until two consecutive reads share a frame projection, or
-    # `_SETTLE_DEADLINE_S` elapses. A stable screen still settles in a single read (the first `query()`
-    # matches the cached key); only a genuinely-animating screen polls, and `_SETTLE_POLL_S` is a small
-    # non-zero cadence so a fast read does not busy-spin (on the dump path the read dwarfs it).
+    # `_SETTLE_DEADLINE_S` elapses. A screen whose key was already proved stable — by `_settle`'s own
+    # poll, or by a catch-up dwell-close — still settles in a single read; every other screen polls,
+    # including a static one right after an actuation, which clears `_settled_key`. `_SETTLE_POLL_S`
+    # is a small non-zero cadence so a fast read does not busy-spin (on the dump path the read
+    # dwarfs it).
     # Set comfortably above the slow `uiautomator dump` read so that fallback path still gets several
     # attempts inside the window — the deadline is checked before each read, so a value near the read
     # latency would grant only one extra poll and shrink the settle window too far. A fast resident
@@ -451,6 +494,10 @@ class AdbDriver(CoordinateTreeDriver):
         # what the device needs. Rebuilt on every read; a stale key simply misses and degrades.
         self._identities: dict[int, NodeIdentity] = {}
         self._last_tree: list[base.Element] = []
+        # The raw dump text behind `_last_tree` (`RawSourceProvider`, the `rawTree` capture kind) — set
+        # on every `_read_source()` call, alongside whatever narrowing the resident channel applied.
+        # None until the first read.
+        self._raw_source: base.RawSource | None = None
         # What this driver actually actuated, drained per step by the run loop. Android is the one
         # backend with two actuation channels, so the record's `via` is what tells a reader whether a
         # gesture went device-side (`identity`) or fell back to a host coordinate (`coordinate`).
@@ -491,6 +538,15 @@ class AdbDriver(CoordinateTreeDriver):
         # The outstanding read-lag barrier for a pan, if any (see `_advance_catchup`). Closed by the
         # first read that shows the pan and holds, so a run whose tree keeps up never waits.
         self._catchup: _Catchup | None = None
+        # The last key actually proved to be a rest state — by `_settle`'s own two-consecutive-reads
+        # poll, or by `_advance_catchup`'s projection-dwell closing a barrier (also a two-observations
+        # -apart proof, just made of the reads a `wait`/`assert` already took). Deliberately separate
+        # from `_last_stable_key`, which every `query()` call overwrites regardless of caller: trusting
+        # *that* cache on a bare match would let `_settle` skip its poll on the strength of a single
+        # unrelated read that never itself proved the tree was at rest — how a still-animating tree
+        # got treated as settled in the `gestures` flake this field exists to fix. None until proved,
+        # and reset to None whenever a poll runs out its budget without converging.
+        self._settled_key: StableKey | None = None
         # Whether the cached projection still describes the screen. False after anything actuates, so
         # a pan re-reads its catch-up baseline instead of inheriting a pre-actuation one
         # (`_pan_baseline`). Actuators clear it by routing through `_act`, and every read sets it,
@@ -498,6 +554,25 @@ class AdbDriver(CoordinateTreeDriver):
         # `_run` directly would otherwise silently reintroduce a stale baseline. Read-only commands
         # (`screenshot`, `wm size`) stay on `_run`, so they neither clear nor re-set it.
         self._tree_current = False
+
+    def invalidate_settled_cache(self) -> None:
+        """Clear every cache `_settle()`/`_pan_baseline` trust (`base.SettledCacheInvalidator`).
+
+        For a change to the screen this driver did not itself actuate. `_act()` and its
+        device-side/text-entry equivalents call this for the driver's own gestures.
+        But an app relaunch or a crawl reset replaces the screen through `adb.Env` directly — never
+        through this driver's actuators — so nothing upstream of this method would otherwise know to
+        distrust a key proved on the screen before it. If the relaunched screen's projection happens
+        to coincide with that stale key (the common case: a scenario starting and ending on the same
+        home screen), `_settle`'s fast path would trust a single read of a screen this driver never
+        proved at rest — the same class of bug `_settled_key` exists to close, reached through a door
+        outside the driver's own actuators. One method, one place every such caller reaches for,
+        rather than each hand-rolling the same three-field reset (which is exactly how the
+        `_device_act`/`type_text` gaps this same item fixed were introduced in the first place).
+        """
+        self._tree_current = False
+        self._read_ordered = False
+        self._settled_key = None
 
     def _act(self, args: list[str]) -> str:
         """Issue an adb command that changes the screen, marking the cached projection stale.
@@ -510,9 +585,12 @@ class AdbDriver(CoordinateTreeDriver):
 
         It also clears `_read_ordered`: a new actuation is one the next read must postdate afresh, so any
         order confirmed for the previous one is stale (BE-0332 Unit 3).
+
+        And it clears `_settled_key`: a key proven stable before this actuation describes a screen this
+        actuation may have just changed, so `_settle`'s fast path must not trust a later coincidental
+        match against it — the same staleness `_read_ordered` guards against, one cache higher.
         """
-        self._tree_current = False
-        self._read_ordered = False
+        self.invalidate_settled_cache()
         return self._run(args)
 
     def _describe(self) -> list[base.Element]:
@@ -524,6 +602,10 @@ class AdbDriver(CoordinateTreeDriver):
         # later read than the one the caller settled — and the map is rebuilt by every read.
         self._last_tree = els
         return els
+
+    def last_raw_source(self) -> base.RawSource | None:
+        """The raw dump behind `_last_tree` (`base.RawSourceProvider`), or None before the first read."""
+        return self._raw_source
 
     def _read_source(self) -> str:
         """The raw hierarchy dump text: the resident channel when available, else `uiautomator dump`.
@@ -566,6 +648,9 @@ class AdbDriver(CoordinateTreeDriver):
                         "X-Bajutsu-Read-Mark",
                         self._READ_LAG_S,
                     )
+                self._raw_source = base.RawSource(
+                    text=read.text, suffix=".xml", pre_transform=read.raw
+                )
                 return read.text
             except AdbResidentError as exc:
                 logger.warning(
@@ -582,6 +667,7 @@ class AdbDriver(CoordinateTreeDriver):
         logger.debug(
             "dump read in %.2fs (no mark: the barrier is on its wall clock)", time.monotonic() - t0
         )
+        self._raw_source = base.RawSource(text=text, suffix=".xml")  # no narrowing on this path
         return text
 
     def _record_tree(self, els: list[base.Element]) -> list[base.Element]:
@@ -715,6 +801,12 @@ class AdbDriver(CoordinateTreeDriver):
             catchup.key, catchup.since = key, now
         if key != catchup.pre_key and now - catchup.since >= self._CATCHUP_DWELL_S:
             self._catchup = None
+            # The dwell is itself a two-observations-apart proof of rest (BE-0245's own rationale for
+            # requiring it, not just a changed projection) — `_settle`'s fast path may trust a future
+            # match against this key without re-polling. The mark-closing branch above sets no such
+            # thing: postdating the actuation proves order, not rest, so a still-moving fling would
+            # hand `_settle` a premature "proven" key with no dwell to have caught it.
+            self._settled_key = key
             logger.debug("catchup closed by projection dwell in %.2fs", now - catchup.armed_at)
 
     def _catchup_evidence(self, catchup: _Catchup) -> str:
@@ -783,11 +875,22 @@ class AdbDriver(CoordinateTreeDriver):
         """Wait until the tree's identifier-frame projection stops changing, or give up.
 
         Compares (identifier, frame) only — ignoring volatile value/traits/label — so data changes on
-        a static screen do not trigger extra polls. The first call (no cached key) returns
-        immediately; only a cache miss starts the poll. The poll is bounded by a wall-clock deadline,
-        not a fixed read count, so it spans a real animation whatever the read costs — the resident
-        channel's fast read (BE-0245) would otherwise collapse the window and let a still-moving tree
-        pass as settled.
+        a static screen do not trigger extra polls. The fast path trusts a match against
+        `_settled_key`, never against `_last_stable_key` directly — that cache is overwritten by
+        every `query()` call regardless of caller (`wait`'s own poll, a bare `assert`, `_pan_baseline`,
+        the not-found retry in `_resolve`, ...), so a bare match against it would let a read that
+        merely happened to agree with some unrelated single prior read skip the poll, on no stronger
+        evidence than coincidence. `_settled_key` is set only where genuine rest was actually proved:
+        here, when this method's own poll sees two consecutive reads agree, and in
+        `_advance_catchup`, when its projection-dwell closes a barrier — a real two-observations-apart
+        proof by the same logic, just reached through the reads a `wait`/`assert` already took rather
+        than a poll of this method's own. It is deliberately *not* set when a catch-up barrier closes
+        on a device-mark postdate: that proves order (this read is not stale relative to the gesture),
+        not rest (the tree stopped moving) — a fling can keep publishing well past the first read that
+        postdates the gesture's mark, so trusting that alone would resurrect the very bug this fast
+        path exists to avoid. The poll itself is bounded by a wall-clock deadline, not a fixed read
+        count, so it spans a real animation whatever the read costs — the resident channel's fast read
+        (BE-0245) would otherwise collapse the window and let a still-moving tree pass as settled.
 
         A pending pan is waited out first (`_await_catchup`), then the stability poll runs as before.
         Both halves are needed: the first gets past a wholly pre-pan tree, and the second gets past
@@ -795,11 +898,10 @@ class AdbDriver(CoordinateTreeDriver):
         a time, so the read that first differs can still carry most of the old frames.
         """
         self._await_catchup()
-        prev_key = self._last_stable_key
         t0 = time.monotonic()
         tree = self.query()
         key = self._last_stable_key
-        if prev_key is None or key == prev_key:
+        if self._settled_key is not None and key == self._settled_key:
             return tree
         # From here, not from `t0`: the budget is sized for the *polling* reads, so folding the first
         # read into it would cost the ~2.4s dump path a whole attempt — the shrink the constant's own
@@ -812,11 +914,18 @@ class AdbDriver(CoordinateTreeDriver):
             reads += 1
             new_key = self._last_stable_key
             if new_key == key:
+                # Proved, not merely observed: this is the first time two consecutive reads have
+                # actually agreed, so — unlike `_last_stable_key` — trusting a future match against
+                # this key on the fast path above is sound.
+                self._settled_key = new_key
                 logger.debug("settled after %d reads in %.2fs", reads, time.monotonic() - t0)
                 return tree
             key = new_key
         # Louder than the poll's other exits: the actuator about to resolve from this tree is
-        # resolving from a screen that was still moving when the budget ran out.
+        # resolving from a screen that was still moving when the budget ran out. Also clears
+        # `_settled_key`: the tree never proved stable this round, so a later call must not treat a
+        # bare match against whatever it lands on next as already proved either.
+        self._settled_key = None
         logger.warning(
             "settle: the tree was still changing after %d reads in %.1fs; resolving from the "
             "latest one",
@@ -1109,8 +1218,7 @@ class AdbDriver(CoordinateTreeDriver):
                     "rather than injecting a coordinate on top of it",
                     exc,
                 )
-                self._tree_current = False
-                self._read_ordered = False
+                self.invalidate_settled_cache()
                 self._arm_catchup(pre_key, mark)
                 return True
             except AdbResidentError as exc:
@@ -1132,8 +1240,7 @@ class AdbDriver(CoordinateTreeDriver):
                 )
                 # The gesture happened on the device, so the cached tree is stale and the next read must
                 # postdate it — the same bookkeeping `_act` does for a coordinate injection.
-                self._tree_current = False
-                self._read_ordered = False
+                self.invalidate_settled_cache()
                 self._arm_catchup(pre_key, mark)
                 return True
             logger.debug("device %s on %r: the device called it stale; re-resolving", kind, sel)
@@ -1390,10 +1497,9 @@ class AdbDriver(CoordinateTreeDriver):
         # Feed the `input text` command to `adb shell` over stdin, not on the argv, so a secret / OTP
         # never lands in the adb process command line where `ps` could read it (BE-0155). Routed
         # through a class-level attribute so tests can patch it.
-        # `_run_text` bypasses `_act`, so mirror its two invalidations by hand: the cached tree is stale,
-        # and any order confirmed for a prior actuation no longer holds (BE-0332 Unit 3).
-        self._tree_current = False
-        self._read_ordered = False
+        # `_run_text` bypasses `_act`, so invalidate by hand: the input may have just changed the
+        # screen exactly as any other actuation would.
+        self.invalidate_settled_cache()
         self._run_text(adb.shell_cmd(self.serial), adb.text_script(text))
 
     @staticmethod

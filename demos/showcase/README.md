@@ -5,7 +5,7 @@
 The showcase is Bajutsu's next-generation dogfood target: **the same app written twice**
 (UIKit and SwiftUI) and **each in two accessibility variants** (identifiers on / off) — four
 installable products from two codebases. It packs the interaction surface a real app has —
-five tabs, navigation-stack pushes, all four modal styles, text entry, async loading,
+five tabs, navigation-stack pushes, all five modal styles, text entry, async loading,
 networking (live + mockable), and a screen that deliberately raises OS-level alerts — into the
 smallest app that still exercises `record`, `crawl`, and `run` together.
 
@@ -41,7 +41,9 @@ UIKit, each in the same a11y/noax flavor pair (four more products,
 one Dart codebase reproduces the same contract for **both** platforms and adds no backend — a
 widget's `Semantics(identifier: …)` surfaces into the OS accessibility tree, so the same
 `scenarios/` set drives it through XCUITest / adb unchanged (see
-[`docs/drivers.md`](../../docs/drivers.md) "Flutter"). Targets: `showcase-flutter` (iOS),
+[`docs/drivers.md`](../../docs/drivers.md) "Flutter") — except the Log tab's native alert (SPEC
+§2.1, §5.3), which no Flutter screen implements yet; its scenario (`scenarios/alert.yaml`) is
+tagged `alert` and excluded from `run-flutter` accordingly. Targets: `showcase-flutter` (iOS),
 `showcase-flutter-android`, `showcase-flutter-android-noax`. Run with
 `make -C demos/showcase run-flutter` / `run-flutter-android` (Flutter must be on PATH).
 

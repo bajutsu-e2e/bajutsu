@@ -833,3 +833,26 @@ def test_start_raises_clean_device_error_when_adb_is_missing() -> None:
     env = AndroidEnvironment("adb", "emulator-5554", adb_run=no_adb)
     with pytest.raises(adb.DeviceError, match="adb"):
         env.start(_eff(), Preconditions())
+
+
+def test_relauncher_invalidates_the_driver_settled_cache() -> None:
+    # relaunch() replaces the screen via force_stop + launch on adb.Env directly, never through the
+    # driver's own actuators — the one door AdbDriver._settled_key needs closed that `_act` cannot
+    # close on its own (base.SettledCacheInvalidator).
+    from bajutsu.scenario import Relaunch, Scenario
+
+    env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run([]))
+    driver = env.start(_eff(), Preconditions())
+    driver._settled_key = ()  # seed a stale "proven" key `_settle` must not trust after the relaunch
+    relaunch = env.relauncher(_eff(), Scenario(name="t", steps=[]), driver)
+    relaunch(Relaunch())
+    assert driver._settled_key is None
+
+
+def test_crawl_reset_invalidates_the_driver_settled_cache() -> None:
+    # Same gap as relauncher above, on the crawl entry point.
+    env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run([]))
+    driver = env.start(_eff(), Preconditions())
+    driver._settled_key = ()
+    env.crawl_reset(_eff())(driver)
+    assert driver._settled_key is None

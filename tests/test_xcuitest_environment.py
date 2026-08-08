@@ -40,6 +40,7 @@ from bajutsu.platform_lifecycle.environments.xcuitest import (
     _recovery_timeout,
     _respawn_timeout,
     _run_ended_probe,
+    _runner_host_bundle_ids,
     _runner_startup_timeout,
     _spawn_cold_with_retry,
     _Spawned,
@@ -290,10 +291,14 @@ def _patch_group_signals(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("os.killpg", _killpg)
 
 
-def _write_runner(tmp_path: Path) -> Path:
+def _write_runner(tmp_path: Path, *, host_bundle_id: str | None = None) -> Path:
+    """A minimal `.xctestrun`; `host_bundle_id` adds the XCTRunner app id a real one always carries."""
     runner = tmp_path / "Runner.xctestrun"
+    target: dict[str, Any] = {"TestingEnvironmentVariables": {}}
+    if host_bundle_id is not None:
+        target["TestHostBundleIdentifier"] = host_bundle_id
     with runner.open("wb") as f:
-        plistlib.dump({"Target": {"TestingEnvironmentVariables": {}}}, f)
+        plistlib.dump({"Target": target}, f)
     return runner
 
 
@@ -783,6 +788,118 @@ def test_a_discarded_cold_attempt_terminates_the_app_under_test(
     simctl_calls.clear()
     env._discard_runner(warn_on_crash=False, keep_log=True)
     assert ["xcrun", "simctl", "terminate", "UDID", "com.x"] in simctl_calls
+
+
+def test_a_discard_terminates_the_xctrunner_app_too(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The runner app runs inside the Simulator under launchd_sim, so it is in no host process group
+    # and the discard's `killpg` sweep cannot touch it — it outlives `xcodebuild` still holding the
+    # automation session, and the ~5 cold spawns an ios-e2e job makes can stack up that many of them.
+    # Its id comes off the .xctestrun, so an explicit testRunner is terminated like the bundled one.
+    _, simctl_calls, run = _fake_toolchain(monkeypatch)
+    runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.runner.uitests.xctrunner")
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(runner)), Preconditions())
+    simctl_calls.clear()
+    env._discard_runner(warn_on_crash=False, keep_log=True)
+    assert [
+        "xcrun",
+        "simctl",
+        "terminate",
+        "UDID",
+        "com.bajutsu.runner.uitests.xctrunner",
+    ] in simctl_calls
+    assert [
+        "xcrun",
+        "simctl",
+        "terminate",
+        "UDID",
+        "com.x",
+    ] in simctl_calls  # and the app, as before
+
+
+def test_end_lease_leaves_the_xctrunner_app_running(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The warm resident *is* that runner app (BE-0291): terminating it per lease would kill the
+    # reuse this environment exists to provide, turning every lease back into a cold spawn. Only a
+    # discard — which has already given the runner up — reaches it.
+    _, simctl_calls, run = _fake_toolchain(monkeypatch)
+    runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.runner.uitests.xctrunner")
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff(test_runner=str(runner))
+    driver = env.start(eff, Preconditions())
+    simctl_calls.clear()
+    env.end_lease(driver, eff)
+    terminated = [c[4] for c in simctl_calls if c[:3] == ["xcrun", "simctl", "terminate"]]
+    assert terminated == ["com.x"]  # the app under test only — the runner app stays up
+
+
+def test_a_discard_survives_an_xctestrun_without_a_host_bundle_id(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A .xctestrun that names no runner app (a stripped or hand-written one) must not cost the
+    # discard its other work: nothing is terminated for the runner, and the app under test still is.
+    _, simctl_calls, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    simctl_calls.clear()
+    env._discard_runner(warn_on_crash=False, keep_log=True)
+    terminated = [c[4] for c in simctl_calls if c[:3] == ["xcrun", "simctl", "terminate"]]
+    assert terminated == ["com.x"]
+
+
+def test_a_real_device_discard_never_terminates_through_simctl(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A real device is not managed through simctl at all (BE-0238), so the runner-app terminate is
+    # scoped to the Simulator exactly like the app-under-test one: a discard there stays silent.
+    simctl_calls: list[list[str]] = []
+
+    def _run(argv: list[str], env: object = None) -> str:
+        simctl_calls.append(argv)
+        return ""
+
+    class _FakeDriver:
+        def await_ready(self, timeout: float) -> None: ...
+        def health_ready(self) -> bool:
+            return True
+
+    monkeypatch.setattr(subprocess, "Popen", lambda *_a, **_k: _FakeProc())
+    monkeypatch.setattr(backends, "make_driver", lambda *_a, **_k: _FakeDriver())
+    _patch_group_signals(monkeypatch)
+    runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.runner.uitests.xctrunner")
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=_run)
+    env.start(_device_eff(test_runner=str(runner)), Preconditions())
+    env._discard_runner(warn_on_crash=False, keep_log=True)
+    assert simctl_calls == []
+
+
+def test_runner_host_bundle_ids_reads_every_target_once(tmp_path: Path) -> None:
+    # Several test targets in one file can share a runner app, and the metadata key is not a target:
+    # the ids are deduplicated and the metadata skipped, so a discard issues one terminate per app.
+    runner = tmp_path / "Multi.xctestrun"
+    with runner.open("wb") as f:
+        plistlib.dump(
+            {
+                "__xctestrun_metadata__": {"FormatVersion": 1},
+                "A": {"TestHostBundleIdentifier": "com.a.xctrunner"},
+                "B": {"TestHostBundleIdentifier": "com.b.xctrunner"},
+                "C": {"TestHostBundleIdentifier": "com.a.xctrunner"},
+                "D": {"TestingEnvironmentVariables": {}},  # a target naming no runner app
+            },
+            f,
+        )
+    assert _runner_host_bundle_ids(runner) == ("com.a.xctrunner", "com.b.xctrunner")
+
+
+def test_runner_host_bundle_ids_is_quiet_on_an_unreadable_plist(tmp_path: Path) -> None:
+    # This feeds a discard, which must never fail; a missing or malformed file yields no ids.
+    assert _runner_host_bundle_ids(tmp_path / "absent.xctestrun") == ()
+    junk = tmp_path / "junk.xctestrun"
+    junk.write_bytes(b"not a plist")
+    assert _runner_host_bundle_ids(junk) == ()
 
 
 def test_runner_output_is_captured_when_the_env_var_is_set(

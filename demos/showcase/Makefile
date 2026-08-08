@@ -266,11 +266,12 @@ flutter-android-noax-build:
 
 # The shared id-based scenarios against the Flutter app. iOS resolves to XCUITest; `--exclude`
 # drops what a Flutter target does not serve (see docs/drivers.md "Flutter" out-of-scope): `network`
-# (Dart HTTP bypasses the native interceptors, so capture / mocks see nothing) and the AI-path
-# `systemalert`. Prereqs: a booted Simulator, `make runner-build`; an attached emulator for Android.
+# (Dart HTTP bypasses the native interceptors, so capture / mocks see nothing), the AI-path
+# `systemalert`, and `alert` (scenarios/alert.yaml — no Flutter Log screen has a native-alert
+# affordance yet). Prereqs: a booted Simulator, `make runner-build`; an attached emulator for Android.
 run-flutter: flutter-build runner-build
 	cd $(ROOT) && uv run bajutsu run --target showcase-flutter --udid $(SIM) --backend xcuitest \
-		--exclude network,systemalert --config $(CONFIG)
+		--exclude network,systemalert,alert --config $(CONFIG)
 
 # The same on-device set the native Compose lane runs (demos/showcase/android/Makefile), minus
 # device.yaml — its device-control clipboard round-trips through the in-app BajutsuAndroid receiver

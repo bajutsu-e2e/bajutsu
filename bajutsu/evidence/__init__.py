@@ -18,6 +18,7 @@ from bajutsu.evidence.core import (
     NullSink,
     capture,
     write_elements,
+    write_raw_tree,
     write_screenshot,
     write_wait_diagnostic,
 )
@@ -29,6 +30,7 @@ __all__ = [
     "NullSink",
     "capture",
     "write_elements",
+    "write_raw_tree",
     "write_screenshot",
     "write_wait_diagnostic",
 ]

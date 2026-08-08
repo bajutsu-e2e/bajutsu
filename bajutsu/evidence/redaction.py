@@ -112,6 +112,18 @@ class Redactor:
     def active(self) -> bool:
         return bool(self._keys or self._labels or self._values)
 
+    @property
+    def has_label_rules(self) -> bool:
+        """Whether `redact.labels` configures any structural, by-label masking.
+
+        `redact_elements` can honor a label rule (it has the parsed tree, so it knows which
+        element's `value` to blank); `redact_text` cannot — free text carries no element/label
+        structure to match against, only key patterns and literal secret values. A caller writing
+        an artifact `redact_elements` would mask (but this redactor can only run `redact_text`
+        over) needs to know that gap exists, rather than silently writing an unmasked superset.
+        """
+        return bool(self._labels)
+
     def redact_text(self, text: str) -> str:
         """Mask secrets in free text (logs/traces).
 
