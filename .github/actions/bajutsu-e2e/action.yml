@@ -71,10 +71,19 @@ runs:
         # Expand the whitespace-separated SCENARIOS into one --scenario per file, so several run in
         # one process and reuse a single warm runner (scenario paths never contain spaces, so plain
         # word-splitting is safe). A single path yields a single --scenario, unchanged.
+        #
+        # No --erase/--no-erase override: neither target this action runs against
+        # (demos/showcase/showcase.config.yaml's showcase-swiftui/showcase-uikit) sets a target-level
+        # `erase` default, so an explicit --no-erase here would be a no-op for every scenario's own
+        # lease — except a crash-triggered retry (bajutsu/runner/pipeline.py's forced-erase retry,
+        # `force_erase_on_retry`), which *does* read the flag: an explicit --no-erase there means "the
+        # operator asked to keep the device as-is," and this composite action is not that operator, so
+        # passing it here would silently disable the device recovery this step exists to benefit from
+        # on the exact jobs (golden/actuation/run/bundled-runner) the 2026-08-06 incident named.
         scenario_args=()
         for s in $SCENARIOS; do scenario_args+=(--scenario "$s"); done
         uv run --no-sync bajutsu run "${scenario_args[@]}" --exclude "$EXCLUDE" --target "$TARGET" \
-          --udid "$UDID" --backend "$BACKEND" --config "$CONFIG" --no-erase --score
+          --udid "$UDID" --backend "$BACKEND" --config "$CONFIG" --score
 
     # Collect any macOS crash reports the run produced into the uploaded artifact, so a resident-
     # runner mid-run crash is diagnosable even when the pipeline's scenario-level retry recovers it

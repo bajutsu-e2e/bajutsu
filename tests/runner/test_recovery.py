@@ -11,8 +11,10 @@ from __future__ import annotations
 from bajutsu.drivers import base, xcuitest
 from bajutsu.runner.recovery import (
     CrashRecoveryBudget,
+    RunCrashRecoveryBudget,
     _default_crash_recovery_budget,
     _default_crash_retries,
+    _default_run_crash_recovery_budget,
     guarded_teardown,
     is_infrastructure_fault,
 )
@@ -113,6 +115,72 @@ def test_crash_recovery_budget_default_reads_the_environment(monkeypatch) -> Non
     assert _default_crash_recovery_budget() is None  # non-positive → unbounded, not "no recovery"
     monkeypatch.setenv("BAJUTSU_CRASH_RECOVERY_BUDGET", "nope")
     assert _default_crash_recovery_budget() is None  # invalid → unbounded
+
+
+def test_run_budget_never_exhausted_when_unbounded() -> None:
+    # None (the default) is unbounded: `exhausted()` stays False no matter how much recovery time is
+    # billed against it.
+    budget = RunCrashRecoveryBudget(budget=None)
+    assert budget.exhausted() is False
+    budget.add_recovery_time(10_000.0)
+    assert budget.exhausted() is False
+
+
+def test_run_budget_normalizes_a_non_positive_budget_passed_directly_to_unbounded() -> None:
+    # `_default_run_crash_recovery_budget` maps `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET=0` to None
+    # (unbounded); a caller passing 0 (or a negative value) straight to the constructor must read the
+    # same way, or `exhausted()` would return True before any recovery time is billed — inverting the
+    # never-block-the-first-crash rule `exhausted()` documents.
+    for non_positive in (0.0, -5.0):
+        budget = RunCrashRecoveryBudget(budget=non_positive)
+        assert budget.budget is None
+        assert budget.exhausted() is False
+
+
+def test_run_budget_exhausts_once_accumulated_recovery_time_meets_it() -> None:
+    # The budget bills *actual recovery time spent*, not wall-clock elapsed since some earlier crash:
+    # a 100s budget exhausts once 100s has actually been billed via add_recovery_time, regardless of
+    # how that total was split across separate calls (separate scenarios' recovery episodes).
+    budget = RunCrashRecoveryBudget(budget=100.0)
+    budget.add_recovery_time(40.0)
+    assert budget.exhausted() is False
+    budget.add_recovery_time(59.0)  # 99.0 total, still under
+    assert budget.exhausted() is False
+    budget.add_recovery_time(1.0)  # 100.0 total, meets the budget
+    assert budget.exhausted() is True
+
+
+def test_run_budget_ignores_healthy_time_between_unrelated_crashes() -> None:
+    # A long, perfectly healthy stretch between two unrelated one-off crashes must not itself erode
+    # the budget — the object has no clock of its own, only `add_recovery_time` moves the total, so a
+    # stretch with nothing billed changes nothing (guards the exact bug an earlier, deadline-based
+    # design had: a single armed-at-first-crash deadline treated wall-clock elapsed as if it were all
+    # recovery time).
+    budget = RunCrashRecoveryBudget(budget=100.0)
+    budget.add_recovery_time(50.0)  # scenario 1's crash cost 50s of real recovery time
+    assert budget.exhausted() is False  # still only 50s billed, nowhere near the 100s budget
+    budget.add_recovery_time(50.0)  # scenario 8's crash costs another 50s
+    assert budget.exhausted() is True  # 100s billed in total, now it is exhausted
+
+
+def test_run_budget_never_blocks_the_first_crash() -> None:
+    # The run's very first crash always sees an empty accumulator (0.0 billed so far), so `exhausted()`
+    # reads False right up to the point a caller has actually billed the whole budget — the same
+    # never-block-the-first-respawn property `CrashRecoveryBudget` gives per scenario, here true by
+    # construction (a positive budget can never be `<= 0.0`) rather than a special case.
+    budget = RunCrashRecoveryBudget(budget=0.001)
+    assert budget.exhausted() is False
+
+
+def test_run_crash_recovery_budget_default_reads_the_environment(monkeypatch) -> None:
+    monkeypatch.delenv("BAJUTSU_RUN_CRASH_RECOVERY_BUDGET", raising=False)
+    assert _default_run_crash_recovery_budget() is None  # unset → unbounded
+    monkeypatch.setenv("BAJUTSU_RUN_CRASH_RECOVERY_BUDGET", "900")
+    assert _default_run_crash_recovery_budget() == 900.0
+    monkeypatch.setenv("BAJUTSU_RUN_CRASH_RECOVERY_BUDGET", "0")
+    assert _default_run_crash_recovery_budget() is None  # non-positive → unbounded
+    monkeypatch.setenv("BAJUTSU_RUN_CRASH_RECOVERY_BUDGET", "nope")
+    assert _default_run_crash_recovery_budget() is None  # invalid → unbounded
 
 
 def _raising(exc: BaseException):

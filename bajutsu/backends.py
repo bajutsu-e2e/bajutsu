@@ -232,6 +232,32 @@ def capabilities_for_run(
     return caps
 
 
+def erase_precondition_supported(
+    actuator: str | None, eff: Effective, udid_spec: str = "booted"
+) -> bool:
+    """Whether forcing an `erase` precondition is safe on this run's resolved route.
+
+    Reuses the exact two routing predicates `capabilities_for_run` above narrows on (BE-0238): a
+    live WebDriver endpoint and a real iOS device (`xcuitest.deviceType: device`) both reject any
+    `erase` precondition outright (`XcuitestLiveEnvironment.start`, `XcuitestEnvironment.start` raise
+    rather than honoring it) instead of the silent no-op every other route treats it as. Kept next to
+    `capabilities_for_run` — the one place that already classifies a route's capabilities — rather
+    than in a second file, so a future XCUITest-adjacent route (a device farm, a new transport) is
+    reviewed here alongside its capability narrowing instead of risking a caller elsewhere assuming
+    `erase` is always safe.
+
+    `bajutsu/runner/pipeline.py`'s crash-triggered retry is the one caller today: forcing `erase`
+    where this returns `False` would raise past its `except BackendCrashError` and abort the whole
+    run instead of retrying the one scenario.
+    """
+    if actuator != "xcuitest":
+        return True
+    from bajutsu.config import xcuitest_targets_real_device
+    from bajutsu.platform_lifecycle.environments.xcuitest_live import is_webdriver_endpoint
+
+    return not (is_webdriver_endpoint(udid_spec) or xcuitest_targets_real_device(eff))
+
+
 def _cost_ordered(actuators: list[str]) -> list[str]:
     """Reorder *actuators* cheapest-first per each one's platform `COST_ORDER` (BE-0240).
 
