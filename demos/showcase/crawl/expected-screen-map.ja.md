@@ -12,7 +12,7 @@
 >     --seed showcaseswiftui://permissions
 > ```
 
-showcase は本当に枝分かれの多い crawl 対象として作られています: 5 タブ × ナビゲーション push × 4 モーダル
+showcase は本当に枝分かれの多い crawl 対象として作られています: 5 タブ × ナビゲーション push × 5 モーダル
 様式。すべての識別子がデータ由来で安定（SPEC §5）なので、id ベースの **状態フィンガープリント**（画面上の
 識別子の整列集合をハッシュ化したもの。
 [BE-0038](../../../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)）
@@ -30,6 +30,7 @@ showcase は本当に枝分かれの多い crawl 対象として作られてい�
 | Log → Filter シート | `log.openFilter` | `log.sheet.title` |
 | Log → Gallery カバー | `log.openGallery` | `log.cover.title` |
 | Log → Delete ダイアログ | `log.openDelete` | `log.dialog.delete` |
+| Log → Alert | `log.openAlert` | なし — アラートの `Cancel`／`OK` は id を持たない（label で照合） |
 | Notices（一覧） | `notices` タブ | `notice.title`、`notice.row.*` |
 | Notice Detail | Notices 行 / `…://notice/<id>` | `notice.detail.title` |
 | Permissions | `permissions` タブ / `…://permissions` | `perm.title` |

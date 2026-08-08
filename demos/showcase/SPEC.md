@@ -76,7 +76,7 @@ in the channel (the BE-0007 selector mapping):
 | `UIPasteboard` round-trip (§5.4) | `ClipboardManager` | same |
 
 Both Android toolkits mirror the state value to `content-desc` (not Compose's `stateDescription`,
-which a `uiautomator dump` does not expose). Two Android-only carve-outs from the shared contract:
+which a `uiautomator dump` does not expose). Three Android-only carve-outs from the shared contract:
 
 - **`SHOWCASE_UITEST` (disable animations, §3).** On iOS the app itself disables animations; on Android
   animations are disabled device-wide by the driver (`adb shell settings put global
@@ -84,6 +84,9 @@ which a `uiautomator dump` does not expose). Two Android-only carve-outs from th
 - **The notification prompt (§7) needs API 33+.** `POST_NOTIFICATIONS` is a runtime permission only on
   Android 13 (API 33) and later; on older emulators the prompt never appears. Run the fixture on an
   API 33+ emulator so the alert-guard flow has a prompt to guard.
+- **The Log tab's native alert (§5.3) has no Android twin yet.** Neither `LogScreen.kt` (Compose) nor
+  `LogTab.kt` (Views) renders a `log.openAlert` affordance, so its scenario lives apart in
+  `scenarios/alert.yaml` rather than the shared `modals.yaml`, which every Android target runs unchanged.
 
 Because Compose testTags reproduce the dotted ids verbatim, the shared [`scenarios/`](scenarios)
 set drives `showcase-compose` unchanged. The Views ids are underscore-mapped (an `android:id`
@@ -92,7 +95,8 @@ selector lists **both** id forms — `id: [stable.refresh, stable_refresh]` matc
 renders, an OR resolved by the deterministic core, keeping the id convention explicit in the scenario
 rather than a driver-side `.` ↔ `_` rewrite (BE-0221). Networking goes through **OkHttp** with
 `BajutsuAndroid`'s interceptor, so `network` evidence works on Android too (BE-0283, §6); `mocks`
-stay a follow-up. Everything else below holds for all four Android products.
+stay a follow-up. Everything else below holds for all four Android products, except the native alert
+carve-out above.
 
 ## 3. Launch environment hooks
 
@@ -141,9 +145,10 @@ screen. State is mirrored to `accessibilityValue` (in `-a11y`) so assertions rea
 | 5 | — Filter sheet | `log.openFilter` | sheet (detents) | `log` | §5.3 |
 | 6 | — Gallery cover | `log.openGallery` | full-screen cover | `log` | §5.3 |
 | 7 | — Delete dialog | `log.openDelete` | action sheet | `log` | §5.3 |
-| 8 | Notices (list) | `notices` tab | tab · long list (scroll) | `notice` | §5.5 |
-| 9 | Notice Detail | Notices row | push | `notice` | §5.5 |
-| 10 | Permissions | `permissions` tab / `…://permissions` | tab · **OS alerts** + pasteboard round-trip | `perm`, `sys` | §5.4 |
+| 8 | — Alert | `log.openAlert` | native alert (iOS-only) | `log` | §5.3 |
+| 9 | Notices (list) | `notices` tab | tab · long list (scroll) | `notice` | §5.5 |
+| 10 | Notice Detail | Notices row | push | `notice` | §5.5 |
+| 11 | Permissions | `permissions` tab / `…://permissions` | tab · **OS alerts** + pasteboard round-trip | `perm`, `sys` | §5.4 |
 
 Tabs, left to right: **Stable · Search · Log · Notices · Permissions**.
 
@@ -202,10 +207,11 @@ them into view first):
 - `log.longpress` — long-press target; `log.longpress.value` = `idle`/`pressed`
 - `log.doubletap` — double-tap target; `log.doubletap.value` mirrors the tap count (`0`, `1`, …)
 
-Modals reachable from Log (the four presentation styles):
+Modals reachable from Log (the five presentation styles):
 - `log.openFilter` → **sheet** with detents: `log.sheet.title`, `log.sheet.apply`, `log.sheet.close`
 - `log.openGallery` → **fullScreenCover**: `log.cover.title`, `log.cover.close`
 - `log.openDelete` → **action sheet** (a custom overlay of plain buttons, not a confirmationDialog / UIAlertController, whose actions the retired idb backend could not drive on iOS 26, BE-0290): choices `log.dialog.archive`, `log.dialog.delete` (destructive), `log.dialog.cancel`; result mirrored to `log.dialog.value` (`none`/`archive`/`delete`)
+- `log.openAlert` → **native alert** (SwiftUI `.alert` / UIKit `UIAlertController` style `.alert` — unlike the action sheet above, this genuinely native style is drivable on the XCUITest backend): two actions, "Cancel" and "OK", each addressed by `label`/`traits` since `UIAlertAction` carries no accessibilityIdentifier on either platform; result mirrored to `log.alert.value` (`none`/`cancel`/`ok`). **iOS-only for now** — the Compose / Views / Flutter Log screens carry no native-alert affordance, which is why its scenario lives apart in `scenarios/alert.yaml`
 - `log.toast` — the transient toast described above
 
 ### 5.4 Tab: Permissions — `perm`, `sys` namespaces (**the OS-integration screen**)
@@ -347,7 +353,7 @@ exposes no identifiers, which is what makes `doctor --target showcase-…-noax` 
 
 | Command | Variant | Story |
 |---|---|---|
-| `run` | `-a11y` | Deterministic replay of every scenario in `scenarios/` — tabs, push nav, all four modal styles, networking (live + mocked), and the alert-guarded Permissions flow. |
+| `run` | `-a11y` | Deterministic replay of every scenario in `scenarios/` — tabs, push nav, all five modal styles, networking (live + mocked), and the alert-guarded Permissions flow. |
 | `doctor --target` | both | `-a11y` → **Ready**; `-noax` → **Blocked** (`idCoverage` ≈ 0). The pair quantifies accessibility debt. |
 | `record` | `-noax` | AI authors a scenario for a natural-language goal against an app with no identifiers, falling to label/traits/coordinates — the stability-ladder cost made visible. The `-a11y` twin shows the clean id-based output for the same goal. |
-| `crawl` ([BE-0038](../../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)) | `-a11y` | Breadth-first exploration over a genuinely branchy app (5 tabs × pushes × 4 modal styles) → a screen map; the id-based state fingerprint is stable because §5 identifiers are. (Forward-looking: lands when BE-0038 ships.) |
+| `crawl` ([BE-0038](../../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)) | `-a11y` | Breadth-first exploration over a genuinely branchy app (5 tabs × pushes × 5 modal styles) → a screen map; the id-based state fingerprint is stable because §5 identifiers are. (Forward-looking: lands when BE-0038 ships.) |

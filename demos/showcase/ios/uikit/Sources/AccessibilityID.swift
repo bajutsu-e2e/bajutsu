@@ -32,15 +32,3 @@ extension UIBarItem {
         #endif
     }
 }
-
-extension UIAlertAction {
-    /// UIAlertAction does not conform to UIAccessibilityIdentification and has no public
-    /// identifier API, but its private `accessibilityIdentifier` is the only way to give an
-    /// action-sheet button a stable id — set it via KVC, gated to the a11y build (SPEC §5.3).
-    @discardableResult func accessibilityID(_ id: String) -> Self {
-        #if ACCESSIBLE
-        setValue(id, forKey: "accessibilityIdentifier")
-        #endif
-        return self
-    }
-}

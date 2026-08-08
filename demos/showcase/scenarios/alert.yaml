@@ -1,0 +1,52 @@
+# Native alert (UIAlertController style `.alert` / SwiftUI `.alert`): the Log tab's fifth modal
+# style, distinct from modals.yaml's action sheet. It carries two actions, "Cancel" and "OK", so a
+# scenario can prove both are independently reachable and produce distinct outcomes. `UIAlertAction`
+# carries no accessibilityIdentifier on either platform, so — like a tab bar item — each button is
+# addressed by `label` + `traits` rather than `id`.
+#
+# Kept in its own file rather than folded into the shared modals.yaml: unlike that file's other
+# three modal styles, no Android (Compose/Views) or Flutter Log screen has a matching native-alert
+# affordance yet, and modals.yaml is swept unfiltered into every one of those targets
+# (`scenarios: scenarios` in showcase.config.yaml, plus explicit per-file scenario allowlists on
+# the Android/Flutter Makefiles). Tagged `alert` so `make run-flutter` — which runs every file in
+# `scenarios/` bar its own `--exclude` list — can skip it the same way; Android's Makefiles simply
+# never list this file's basename in their own allowlists.
+- name: native alert can be tapped
+  tags: [alert]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Log", traits: [button] }
+      capture: [video, deviceLog]
+    - wait: { for: { id: log.openDelete }, timeout: 10 }
+    # Open Alert sits below Open Delete, past the fold (same as log.openDelete itself in the
+    # action-sheet scenario in modals.yaml) — aim the scroll at the lower of the two new elements.
+    - scroll: { to: { id: log.alert.value }, direction: down }
+    - wait: { for: { id: log.openAlert }, timeout: 5 }
+    - assert:
+        - value: { sel: { id: log.alert.value }, equals: "none" }
+    - tap: { id: log.openAlert }
+    - wait: { for: { label: "OK", traits: [button] }, timeout: 5 }
+    - assert:
+        - exists: { label: "Cancel", traits: [button] }
+    - tap: { label: "OK", traits: [button] }
+    - wait: { until: { gone: { label: "OK", traits: [button] } }, timeout: 5 }
+  expect:
+    - value: { sel: { id: log.alert.value }, equals: "ok" }
+
+- name: native alert cancel leaves a distinct result
+  tags: [alert]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Log", traits: [button] }
+      capture: [video, deviceLog]
+    - wait: { for: { id: log.openDelete }, timeout: 10 }
+    - scroll: { to: { id: log.alert.value }, direction: down }
+    - wait: { for: { id: log.openAlert }, timeout: 5 }
+    - tap: { id: log.openAlert }
+    - wait: { for: { label: "Cancel", traits: [button] }, timeout: 5 }
+    - tap: { label: "Cancel", traits: [button] }
+    - wait: { until: { gone: { label: "Cancel", traits: [button] } }, timeout: 5 }
+  expect:
+    - value: { sel: { id: log.alert.value }, equals: "cancel" }
