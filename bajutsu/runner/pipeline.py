@@ -78,27 +78,29 @@ def _resolve_now(clock: Clock | None) -> Callable[[], float]:
 
 def _write_network(
     timed: list[tuple[NetworkExchange, float]],
-    video_anchor_s: float,
     run_dir: Path,
     sid: str,
     redactor: Redactor,
+    *,
+    wall_offset_s: float,
     provider: str = "collector",
 ) -> Artifact | None:
     """Write a scenario's observed exchanges to <sid>/network.json (redacted).
 
-    Each exchange gets a `startedAt` offset (seconds from `video_anchor_s`, the same origin a
-    step's `started_at` is relative to — `RunResult.video_anchor_s`) so the report can place it on
-    the timeline: the receive time is ≈ completion, so the start is
-    `received - video_anchor_s - duration`.
+    Each exchange gets an absolute wall-clock `startedAt` (epoch seconds), on the same footing as a
+    step's `started_at` (BE-0348): the collector stamps a monotonic receive time, which
+    `wall_offset_s` (`RunResult.wall_offset_s`) converts through the scenario's own anchor pair, and
+    the receive time is ≈ completion, so the start is `wall(received) - duration`. A report subtracts
+    `RunResult.video_anchor_s` at render time to place the exchange on the recording's timeline.
+    `wall_offset_s` is keyword-only: it and `RunResult.video_anchor_s` are both floats of similar
+    magnitude a caller could otherwise pass in the wrong slot with no type error.
     """
     if not timed:
         return None
     data: list[dict[str, Any]] = []
     for ex, received in timed:
         d = ex.model_dump(by_alias=True, exclude_none=True)
-        d["startedAt"] = round(
-            max(0.0, received - video_anchor_s - (ex.duration_ms or 0.0) / 1000.0), 3
-        )
+        d["startedAt"] = round(received + wall_offset_s - (ex.duration_ms or 0.0) / 1000.0, 3)
         data.append(redactor.redact_exchange(d))
     text = json.dumps(data, ensure_ascii=False, indent=2)
     out = run_dir / sid / "network.json"
@@ -522,10 +524,10 @@ class _ScenarioRunner:
             if lz.collector is not None and self.run_dir is not None:
                 art = _write_network(
                     lz.collector.snapshot_timed(),
-                    result.video_anchor_s,
                     self.run_dir,
                     sid,
                     self.redactor,
+                    wall_offset_s=result.wall_offset_s,
                     provider=lz.collector_provider,
                 )
                 if art is not None:

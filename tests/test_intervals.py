@@ -95,6 +95,68 @@ def test_start_video_confirm_started_sets_true_start_once_file_grows(tmp_path: P
     assert isinstance(interval.true_start, float)
 
 
+def test_video_start_timeout_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A loaded CI host can extend the recording-start confirmation ceiling without a code change
+    # (the ios-e2e workflow raises it), the treatment its three sibling xcuitest timeouts already
+    # have; a blank or malformed value falls back to the compiled default (BE-0348).
+    monkeypatch.delenv(intervals._VIDEO_START_TIMEOUT_ENV, raising=False)
+    assert intervals._video_start_timeout() == intervals._VIDEO_START_TIMEOUT
+    monkeypatch.setenv(intervals._VIDEO_START_TIMEOUT_ENV, "20")
+    assert intervals._video_start_timeout() == 20.0
+    monkeypatch.setenv(intervals._VIDEO_START_TIMEOUT_ENV, "not-a-number")
+    assert intervals._video_start_timeout() == intervals._VIDEO_START_TIMEOUT
+
+
+def test_video_start_timeout_rejects_non_finite_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `float()` parses "inf"/"-inf"/"nan" successfully, so the plain `except ValueError` fallback
+    # does not catch them. Left unguarded, "inf" would make `deadline = time.monotonic() + timeout`
+    # unreachable in `_await_video_file_growing`/`_await_screenrecord_started` — an unbounded wait,
+    # which prime directive 2 (determinism first) forbids outright — and "nan" would silently produce
+    # a 0-second timeout via `max(0.0, nan) == 0.0` (every comparison against nan is False) rather
+    # than falling back to the compiled default like any other malformed value.
+    for raw in ("inf", "-inf", "Infinity", "nan"):
+        monkeypatch.setenv(intervals._VIDEO_START_TIMEOUT_ENV, raw)
+        assert intervals._video_start_timeout() == intervals._VIDEO_START_TIMEOUT, raw
+
+
+def test_confirming_starters_resolve_the_timeout_per_call(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The override is useless if a starter binds the ceiling as a parameter default: a default is
+    # evaluated at import time, long before a test (or a CI lane) sets the variable. Both production
+    # call sites must therefore resolve it per call — proven by setting the variable *after* import
+    # and watching the deadline each starter actually polls to (BE-0348).
+    monkeypatch.setattr(intervals.time, "sleep", lambda _s: None)
+    monkeypatch.setenv(intervals._VIDEO_START_TIMEOUT_ENV, "0.01")
+    seen: list[float] = []
+
+    def record(timeout: float) -> None:
+        seen.append(timeout)
+
+    monkeypatch.setattr(
+        intervals,
+        "_await_video_file_growing",
+        lambda path, baseline, timeout: record(timeout),
+    )
+    intervals.start_video(
+        "UDID", tmp_path / "v.mp4", spawn=lambda a, o: FakeProc(), confirm_started=True
+    )
+
+    monkeypatch.setattr(
+        intervals,
+        "_await_screenrecord_started",
+        lambda serial, run, baseline, timeout: record(timeout),
+    )
+    intervals.start_screenrecord(
+        "SER",
+        tmp_path / "a.mp4",
+        spawn=lambda a, o: FakeProc(),
+        run=lambda argv: "",
+        confirm_started=True,
+    )
+    assert seen == [0.01, 0.01]
+
+
 def test_await_video_file_growing_ignores_bytes_left_by_a_stale_retry(
     tmp_path: Path, monkeypatch
 ) -> None:

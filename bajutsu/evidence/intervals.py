@@ -17,6 +17,8 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import math
+import os
 import re
 import shutil
 import signal
@@ -100,7 +102,37 @@ _VIDEO_FINALIZE_TIMEOUT = 120.0
 # How long `confirm_started` polls for a video's first written byte / device-side process before
 # giving up. Generous versus reported simctl/adb startup jitter, small versus the finalize timeouts
 # above — the report's video-sync correction just goes uncorrected for this scenario on timeout.
+# Overridable per lane, like the CI-sensitive xcuitest timeouts it sits beside: a loaded macOS CI
+# runner is measurably slower than a local one, and a timeout there costs the whole scenario its
+# anchor correction (BE-0348).
 _VIDEO_START_TIMEOUT = 5.0
+_VIDEO_START_TIMEOUT_ENV = "BAJUTSU_VIDEO_START_TIMEOUT"
+# The shared tail of both confirmation-timeout warnings (iOS file-growth, Android device-side
+# process), so the two backends always describe the same uncorrected-anchor condition identically.
+_ANCHOR_UNCORRECTED_MSG = (
+    "this scenario's video anchor stays uncorrected, so its report seek offsets fall back to "
+    "the scenario's own start"
+)
+
+
+def _video_start_timeout() -> float:
+    """The recording-start confirmation ceiling in seconds, from the env override or the default.
+
+    Rejects a non-finite override (`inf`, `-inf`, `nan`) rather than passing it through `float()`'s
+    successful parse: `inf` would turn the bounded confirmation poll unbounded — the fixed-wait
+    determinism guarantee this whole timeout family exists to keep (prime directive 2) — and `nan`
+    would silently produce a 0-second timeout (`max(0.0, nan)` keeps `0.0`, since every comparison
+    against `nan` is `False`) rather than falling back to the compiled default like any other
+    malformed value.
+    """
+    raw = os.environ.get(_VIDEO_START_TIMEOUT_ENV)
+    if not raw:
+        return _VIDEO_START_TIMEOUT
+    try:
+        value = float(raw)
+    except ValueError:
+        return _VIDEO_START_TIMEOUT
+    return max(0.0, value) if math.isfinite(value) else _VIDEO_START_TIMEOUT
 
 
 class Proc(Protocol):
@@ -247,10 +279,10 @@ def _await_video_file_growing(
             return time.monotonic()
         time.sleep(poll)
     _logger.warning(
-        "recordVideo produced no new bytes in %s within %ss; step/network timestamps stay "
-        "uncorrected for this scenario's video",
+        "recordVideo produced no new bytes in %s within %ss; %s",
         path,
         timeout,
+        _ANCHOR_UNCORRECTED_MSG,
     )
     return None
 
@@ -268,7 +300,13 @@ def start_video(
     """
     baseline_size = _file_size(path, disclose=True) if confirm_started else 0
     proc = spawn(record_video_cmd(udid, str(path)), None)
-    true_start = _await_video_file_growing(path, baseline_size) if confirm_started else None
+    # Resolved per call, not bound as a parameter default: a default binds at import time and so
+    # could never see `BAJUTSU_VIDEO_START_TIMEOUT` (BE-0348).
+    true_start = (
+        _await_video_file_growing(path, baseline_size, _video_start_timeout())
+        if confirm_started
+        else None
+    )
     return Interval(
         kind="video",
         path=path,
@@ -363,8 +401,9 @@ def _await_screenrecord_started(
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         # Stamped *before* the probe: `adb shell pgrep` is a full round trip, so reading the clock
-        # after it returns charges that latency to the recording's start and biases every corrected
-        # `started_at` low — seeking early, the same direction as the drift this correction removes.
+        # after it returns charges that latency to the recording's start and biases the video anchor
+        # late — seeking early on every derived offset, the same direction as the drift this
+        # correction removes.
         probed_at = time.monotonic()
         try:
             current = {pid for pid in run(adb.screenrecord_pids_cmd(serial)).split() if pid}
@@ -380,10 +419,10 @@ def _await_screenrecord_started(
             return probed_at
         time.sleep(poll)
     _logger.warning(
-        "device-side screenrecord on %s did not appear within %ss; step/network timestamps stay "
-        "uncorrected for this scenario's video",
+        "device-side screenrecord on %s did not appear within %ss; %s",
         serial,
         timeout,
+        _ANCHOR_UNCORRECTED_MSG,
     )
     return None
 
@@ -440,8 +479,11 @@ def start_screenrecord(
         ),
         None,
     )
+    # Resolved per call for the same reason as `start_video`'s (BE-0348).
     true_start = (
-        _await_screenrecord_started(serial, run, baseline_pids) if confirm_started else None
+        _await_screenrecord_started(serial, run, baseline_pids, _video_start_timeout())
+        if confirm_started
+        else None
     )
 
     def transform(target: Path) -> Path:
