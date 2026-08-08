@@ -34,10 +34,11 @@ from __future__ import annotations
 
 import os
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import fault_injection
+import ondevice_evidence
 import pytest
 from backend_crash_recovery import LeaseHolder, LeaseTeardown
 from driver_conformance import OnDeviceConformanceHarness
@@ -46,6 +47,7 @@ from xcuitest_lease import xcuitest_lease_launch
 from bajutsu.config import Effective, load_config, resolve
 from bajutsu.drivers import base
 from bajutsu.drivers.xcuitest import XcuitestRunnerCrashError
+from bajutsu.evidence import intervals
 
 pytestmark = pytest.mark.ondevice
 
@@ -179,6 +181,18 @@ def driver(lease: LeaseHolder) -> base.Driver:
     # Read the driver off the holder per case, so a case following the killed-runner one gets the
     # freshly re-leased device rather than a dead handle.
     return lease.driver
+
+
+@pytest.fixture(autouse=True)
+def _evidence(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Video + deviceLog for this case, kept only on failure (the CI job otherwise has neither)."""
+    yield from ondevice_evidence.capture(
+        UDID,
+        "fault-injection-xcuitest",
+        request,
+        start_video=ondevice_evidence.xcuitest_video,
+        start_log=intervals.start_device_log,
+    )
 
 
 def _read_back_the_marker(driver: base.Driver) -> None:

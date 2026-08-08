@@ -155,6 +155,19 @@ def test_load_scenario_example() -> None:
     assert s.expect[0].exists.sel.label == "Normalization setting changed"
 
 
+def test_step_capture_accepts_raw_tree_kind() -> None:
+    # `rawTree` (base.RawSourceProvider) is a diagnostic opt-in capture kind, not in any default
+    # capture list — a scenario must be able to request it by name like any other kind.
+    text = """
+- name: capture the raw tree
+  steps:
+    - tap: { id: settings.open }
+      capture: [rawTree]
+"""
+    scenarios = load_scenarios(text)
+    assert scenarios[0].steps[0].capture == ["rawTree"]
+
+
 def test_capture_policy_on_key_is_not_yaml_bool() -> None:
     # `on` must stay a string key, not YAML 1.1 boolean True.
     yaml_text = """

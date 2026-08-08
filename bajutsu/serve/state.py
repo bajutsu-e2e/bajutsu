@@ -318,15 +318,20 @@ class SessionManager:
     `SessionStore` seam (in-memory by default; a server backend swaps in a database-backed store,
     BE-0015 7b / BE-0106). `oauth` is the GitHub OAuth client (None = OAuth not configured); sign-in and the
     viewer/editor role then follow GitHub org and Team membership (`authz.py`, BE-0313), and
-    `oauth_admin_team` is the one server-wide GitHub Team (`"<github-org>/<team-slug>"`) whose members
-    are admin. The OAuth fields are fixed at server construction and never change after, so they
-    travel with the token/session state they gate.
+    `oauth_admin_teams` are the server-wide GitHub Teams (each `"<github-org>/<team-slug>"`) whose
+    members are admin — a member of any of them also clears the sign-in gate itself, not only the
+    admin role, so an admin can still sign in and repoint a broken `orgs:` config even when no org
+    lists their GitHub organization. Annotated as a tuple rather than a list so `mypy` rejects a
+    caller handing over a collection it still holds a reference to — the same "don't alias a
+    caller-owned collection" concern `JobRegistry._register` handles by copying. The OAuth fields are
+    fixed at server construction and never change after, so they travel with the token/session state
+    they gate.
     """
 
     token: str | None = None
     sessions: SessionStore = field(default_factory=InMemorySessionStore)
     oauth: OAuthClient | None = None
-    oauth_admin_team: str | None = None
+    oauth_admin_teams: tuple[str, ...] = ()
 
     def check_token(self, candidate: str) -> bool:
         """Constant-time compare of a presented token against the configured one."""
@@ -532,6 +537,12 @@ class ServeState:
     # configuration + the "authenticated as whom" methods, carved into `SessionManager` (BE-0051 /
     # BE-0015 7b). `ServeState` holds one and the transport/authz layers read through `state.auth`.
     auth: SessionManager = field(default_factory=SessionManager)
+    # (check, msg) pairs `_build_server_state` already printed to stderr (nothing is configured that
+    # early), re-emitted through `oplog` once `serve()` calls `_configure_oplog` -- *check* is a
+    # stable discriminator (e.g. "admin_teams_empty") carried as its own field, so an operator's alert
+    # keys on `check=` rather than substring-matching *msg*, which can reword out from under it. Empty
+    # on local serve.
+    startup_warnings: tuple[tuple[str, str], ...] = ()
     # Per-org store factory (BE-0015 multi-tenancy). None on local serve (one tenant); a server
     # backend sets a closure that builds object stores prefixed for the given org. `for_org` falls
     # back to the default stores when unset, so local behavior is unchanged.

@@ -97,6 +97,25 @@ def test_query_parses_elements_and_does_not_leak_the_handle() -> None:
     assert all("handle" not in el for el in els)  # the handle is not a selector/Element field
 
 
+def test_last_raw_source_is_none_before_the_first_query() -> None:
+    assert _driver(lambda m, p, b: _Reply(status="ok")).last_raw_source() is None
+
+
+def test_query_records_the_raw_elements_body() -> None:
+    body = json.dumps({"status": "ok", "elements": [_el_wire("h-ok", "ok", "OK")]}).encode()
+
+    def transport(method: str, path: str, b: dict[str, Any] | None) -> _Reply:
+        return _decode(path, 200, body)
+
+    driver = _driver(transport)
+    driver.query()
+    raw = driver.last_raw_source()
+    assert raw is not None
+    assert raw.text == body.decode("utf-8")
+    assert raw.pre_transform is None  # nothing narrows the runner's own reply
+    assert raw.suffix == ".json"  # undecoded GET /elements body, not adb's XML dump
+
+
 def test_tap_resolves_unique_then_sends_that_elements_snapshot_handle() -> None:
     sent: list[tuple[str, str, dict[str, Any] | None]] = []
 
@@ -585,6 +604,11 @@ def test_decode_elements_response_keeps_status_and_handles() -> None:
     reply = _decode("/elements", 200, body)
     assert reply.status == "ok"
     assert reply.elements is not None and reply.elements[0]["handle"] == "h-ok"
+
+
+def test_decode_keeps_the_undecoded_body_alongside_the_parsed_fields() -> None:
+    body = json.dumps({"status": "ok", "elements": []}).encode()
+    assert _decode("/elements", 200, body).raw == body
 
 
 def test_decode_screenshot_returns_raw_png_bytes() -> None:

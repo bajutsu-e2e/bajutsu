@@ -324,5 +324,6 @@ def serve_engine(request: pytest.FixtureRequest) -> _EngineFactory:
 
 
 # Enable the pytester fixture (BE-0334 recovery-plugin tests) and load the on-device conformance
-# crash-recovery plugin. The plugin is inert for any test not marked `backend_crash_recovery`.
-pytest_plugins = ["pytester", "backend_crash_recovery"]
+# crash-recovery plugin (inert for any test not marked `backend_crash_recovery`) and the on-device
+# evidence-capture plugin (inert for any test whose module never calls `ondevice_evidence.capture`).
+pytest_plugins = ["pytester", "backend_crash_recovery", "ondevice_evidence"]

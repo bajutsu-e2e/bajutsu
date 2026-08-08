@@ -1066,7 +1066,7 @@ and `extract` modifiers are not allowed on `forEach` steps.
 Shared by `capture:` (per-step) and `capturePolicy[].capture` (rules). The form is
 `<kind>[.<modifier>]`.
 
-- **Kinds**: `screenshot` / `elements` / `actionLog` / `deviceLog` / `network` / `video` / `appTrace`
+- **Kinds**: `screenshot` / `elements` / `actionLog` / `deviceLog` / `network` / `video` / `appTrace` / `rawTree`
 - **Modifiers**: `before` / `after` / `around` / `onError`
 
 Validation is over the set of kinds and modifiers (`scenario/models/_base.py` `_validate_capture`). The

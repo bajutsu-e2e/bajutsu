@@ -10,7 +10,9 @@ import pytest
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence import FileSink, capture, write_elements, write_screenshot
+from bajutsu.evidence import FileSink, capture, write_elements, write_raw_tree, write_screenshot
+from bajutsu.evidence.redaction import Redactor
+from bajutsu.scenario import Redact
 
 
 class _StubInterval:
@@ -73,6 +75,142 @@ def test_capture_elements_and_screenshot(tmp_path: Path) -> None:
     assert (tmp_path / "step0" / "elements.json").exists()
     # FakeDriver records the screenshot call with the path it was given.
     assert ("screenshot", str(tmp_path / "step0" / "after.png")) in driver.actions
+
+
+class _RawSourceStub:
+    """The narrowest possible `base.RawSourceProvider` — no other `Driver` method needed for
+    `isinstance` to recognize it, since the protocol is `@runtime_checkable` and structural."""
+
+    def __init__(self, raw: base.RawSource | None) -> None:
+        self._raw = raw
+
+    def last_raw_source(self) -> base.RawSource | None:
+        return self._raw
+
+
+def test_write_raw_tree_is_a_noop_for_a_backend_without_the_protocol(tmp_path: Path) -> None:
+    driver = FakeDriver([_el("a", "A")])  # FakeDriver implements no RawSourceProvider
+    assert write_raw_tree(driver, tmp_path / "step0") == []
+    assert not (tmp_path / "step0").exists()  # never even created the dir
+
+
+def test_write_raw_tree_is_a_noop_before_the_first_read() -> None:
+    driver = _RawSourceStub(None)
+    assert write_raw_tree(driver, Path("/nonexistent")) == []
+
+
+def test_write_raw_tree_writes_the_raw_dump(tmp_path: Path) -> None:
+    driver = _RawSourceStub(base.RawSource(text="<hierarchy>raw</hierarchy>", suffix=".xml"))
+    paths = write_raw_tree(driver, tmp_path / "step0")
+    assert [p.name for p in paths] == ["hierarchy.raw.xml"]  # no pre-transform file: none given
+    assert paths[0].read_text(encoding="utf-8") == "<hierarchy>raw</hierarchy>"
+
+
+def test_write_raw_tree_writes_the_pre_transform_body_when_present(tmp_path: Path) -> None:
+    driver = _RawSourceStub(
+        base.RawSource(
+            text="<hierarchy>narrowed</hierarchy>",
+            suffix=".xml",
+            pre_transform="<hierarchy>wide</hierarchy>",
+        )
+    )
+    paths = write_raw_tree(driver, tmp_path / "step0")
+    assert {p.name for p in paths} == {"hierarchy.raw.xml", "hierarchy.pre-transform.xml"}
+    assert (tmp_path / "step0" / "hierarchy.pre-transform.xml").read_text(
+        encoding="utf-8"
+    ) == "<hierarchy>wide</hierarchy>"
+
+
+def test_write_raw_tree_redacts_a_configured_secret(tmp_path: Path) -> None:
+    driver = _RawSourceStub(base.RawSource(text='<node text="s3kr3t" />', suffix=".xml"))
+    redactor = Redactor(Redact(), values=["s3kr3t"])
+    paths = write_raw_tree(driver, tmp_path / "step0", redactor)
+    assert "s3kr3t" not in paths[0].read_text(encoding="utf-8")
+
+
+def test_write_raw_tree_redacts_the_pre_transform_body_too(tmp_path: Path) -> None:
+    # The secret could just as easily live only in the pre-transform body (e.g. a system dialog
+    # narrow_to_active_window strips out) — both files go through the same redaction call, and both
+    # must actually come out clean, not just the primary hierarchy.raw.xml.
+    driver = _RawSourceStub(
+        base.RawSource(
+            text='<node text="clean" />', suffix=".xml", pre_transform='<node text="s3kr3t" />'
+        )
+    )
+    redactor = Redactor(Redact(), values=["s3kr3t"])
+    paths = write_raw_tree(driver, tmp_path / "step0", redactor)
+    pre_transform = next(p for p in paths if p.name == "hierarchy.pre-transform.xml")
+    assert "s3kr3t" not in pre_transform.read_text(encoding="utf-8")
+
+
+def test_write_raw_tree_refuses_when_a_label_rule_is_configured(tmp_path: Path) -> None:
+    # `redact.labels` blanks a labeled element's value structurally in elements.json
+    # (`redact_elements`, which has the parsed tree); `redact_text` over free text has no such
+    # structure to match against, so writing the raw dump anyway would leak exactly what
+    # elements.json just masked. Refuse the artifact instead of writing an unmasked superset.
+    driver = _RawSourceStub(
+        base.RawSource(text='<node label="Password" text="hunter2" />', suffix=".xml")
+    )
+    redactor = Redactor(Redact(labels=["Password"]))
+    assert write_raw_tree(driver, tmp_path / "step0", redactor) == []
+    assert not (tmp_path / "step0").exists()  # refused before ever creating the step dir
+
+
+def test_write_raw_tree_still_writes_without_a_label_rule(tmp_path: Path) -> None:
+    # Only `redact.labels` triggers the refusal above — a redactor active for other reasons
+    # (header/field patterns, literal secret values) still lets `rawTree` through.
+    driver = _RawSourceStub(base.RawSource(text="<node/>", suffix=".xml"))
+    redactor = Redactor(Redact(), values=["s3kr3t"])
+    assert write_raw_tree(driver, tmp_path / "step0", redactor) != []
+
+
+def test_capture_raw_tree_kind_produces_artifacts(tmp_path: Path) -> None:
+    driver = _RawSourceStub(
+        base.RawSource(
+            text="<hierarchy>narrowed</hierarchy>",
+            suffix=".xml",
+            pre_transform="<hierarchy>wide</hierarchy>",
+        )
+    )
+    written = capture(driver, tmp_path / "step0", ["rawTree"])
+    assert {(a.name, a.kind, a.provider) for a in written} == {
+        ("hierarchy.raw.xml", "rawTree", "driver"),
+        ("hierarchy.pre-transform.xml", "rawTree", "driver"),
+    }
+
+
+def test_capture_raw_tree_kind_on_an_unsupported_backend_produces_nothing(tmp_path: Path) -> None:
+    driver = FakeDriver([_el("a", "A")])
+    assert capture(driver, tmp_path / "step0", ["rawTree"]) == []
+    assert not (tmp_path / "step0").exists()  # write_raw_tree's own no-op never mkdirs either
+
+
+class _RawSourceQueryStub:
+    """A driver whose raw source updates on `query()`, mirroring how AdbDriver/XcuitestDriver's
+    `last_raw_source()` always reflects whichever read happened most recently."""
+
+    def __init__(self) -> None:
+        self.reads = 0
+
+    def query(self) -> list[base.Element]:
+        self.reads += 1
+        return [_el(f"e{self.reads}", "L")]
+
+    def last_raw_source(self) -> base.RawSource:
+        return base.RawSource(text=f"read-{self.reads}", suffix=".xml")
+
+
+def test_capture_pairs_raw_tree_with_the_read_elements_json_took_regardless_of_kinds_order(
+    tmp_path: Path,
+) -> None:
+    # `write_elements` issues its own `query()` when no pre-fetched `elements` is passed (the
+    # `elements=None` path `orchestrator/loop.py` takes for a step with no fresh tree). If a scenario
+    # lists `capture: [rawTree, elements]` (rawTree first), `rawTree` must not run before that query
+    # and capture a now-stale read — the two files must always describe the same one.
+    driver = _RawSourceQueryStub()
+    capture(driver, tmp_path / "step0", ["rawTree", "elements"])
+    assert (tmp_path / "step0" / "hierarchy.raw.xml").read_text(encoding="utf-8") == "read-1"
+    assert driver.reads == 1  # elements.json's own query() is the only read, and rawTree saw it
 
 
 def test_file_sink_wait_diagnostic_writes_provenance_stamped_artifact(tmp_path: Path) -> None:

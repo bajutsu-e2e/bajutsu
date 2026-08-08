@@ -365,16 +365,25 @@ OAuth を構成すると、アクセスは手作業の login リストではな�
 - **サインインと viewer ロール**は org メンバーシップに従います。構成済みの org のメンバー（明示の
   `members`、または `githubOrgs` に挙げた GitHub org の一員。[`orgs:`](configuration.md#orgorgsマルチテナントのサーバ-backend)
   を参照）だけがサインインでき、成功すると **viewer**（閲覧のみ）が付きます。どの org にも一致しない login は
-  拒否されるので、OAuth を使う構成では `orgs:` ブロックの宣言が必須です。
+  拒否されるので、OAuth を使う構成では `orgs:` ブロックの宣言が必須です。ただし、構成済みの admin Team の
+  メンバーだけは例外で、このゲートを直接通過します（下の **admin** を参照）。
 - **editor** は org の `editorTeam` に従います。その 1 つのフラットな GitHub Team の直接メンバーが、run、record、
   scenario の編集をできます。
-- **admin** はサーバ全体で 1 つの GitHub Team、`BAJUTSU_OAUTH_ADMIN_TEAM`（`"<github-org>/<team-slug>"` の形）に
-  従います。そのメンバーはサーバ設定（config、API キー、provider）も変更できます。admin はデプロイ全体で 1 段の
-  ロールなので、どの org を越えても信頼できるメンバーの Team を指定します。ただし admin も、まず上記のサインイン
-  のゲートを通過する必要があります。`BAJUTSU_OAUTH_ADMIN_TEAM` は、login がいずれかの `orgs:` エントリに一致した
-  後にしか確認されません。そのため admin Team が属する GitHub organization 自体を、どこかの org の `githubOrgs`
-  に含める（または、そのメンバーを `members` に列挙する）必要があります。含めなければ、意図した admin もサイン
-  インの時点で拒否され、admin Team は確認すらされません。
+- **admin** はサーバ全体で 1 つ以上の GitHub Team、`BAJUTSU_OAUTH_ADMIN_TEAMS`（カンマ区切りのリスト。各要素は
+  `"<github-org>/<team-slug>"` の形で、`<team-slug>` は GitHub 自身が小文字化した slug であり、Team の
+  表示名ではありません。`editorTeam` と同様、各エントリは 1 つのフラットな Team を指し、その下にネストした
+  Team は一致しません）に従います。そのメンバーはサーバ設定（config、API キー、provider）も変更
+  できます。admin はデプロイ全体で 1 段のロールなので、どの org を越えても信頼できるメンバーの Team だけを
+  指定します。上の viewer と editor の場合とは異なり、構成済みの admin Team のいずれかのメンバーは、サインインのゲートを
+  直接通過します。admin Team が属する GitHub organization を、どこかの org の `githubOrgs` に含める必要も、
+  そのメンバーを `members` に列挙する必要もありません。そのため、`orgs:` ブロックが壊れている、あるいは
+  存在しない状態でも、admin はサインインして、サーバの向き先を修正済みの config へ張り替えられます。
+  ただし、この経路も GitHub の Teams API の障害までは越えられません。`/user/teams` は fail closed
+  なので、障害のあいだは admin Team のメンバーシップだけを頼りにした login も、ほかの login と同じく
+  拒否されます。この性質により、`BAJUTSU_OAUTH_ADMIN_TEAMS`
+  は、ロールの対応づけだけでなくサインインの資格情報そのものになります。各エントリの GitHub organization
+  側は、実際に自分が管理する organization でなければなりません。その organization を管理する人は誰でも、
+  一致する slug の Team を作って admin としてサインインできてしまうからです。
 
 メンバーシップはログインのたびに読み直されるので、GitHub org や Team を抜けると、対象ユーザの次のサインインで
 反映されます。サーバ側のリストを編集する必要はありません。ログインは常にこれらのメンバーシップを読むために
@@ -385,7 +394,27 @@ OAuth を構成すると、アクセスは手作業の login リストではな�
 がその org の全メンバーより狭い範囲を許可していたなら、切り替え前に `orgs:` を絞ってください。org のゲートだけに
 なると、その分アクセスが広がります。2 つ目は、`BAJUTSU_OAUTH_ALLOWED_USERS`／`_ADMINS`／`_VIEWERS` が単純に無視さ
 れるようになることです。切り替える前に、admin と editor のそれぞれを Team メンバーシップとして宣言し直してくだ
-さい。`editorTeam` や `BAJUTSU_OAUTH_ADMIN_TEAM` でまだカバーされていない login は、次のログインで viewer に落ちます。
+さい。`editorTeam` や `BAJUTSU_OAUTH_ADMIN_TEAMS` でまだカバーされていない login は、次のログインで viewer に
+落ちます。すでに旧来の単数形 `BAJUTSU_OAUTH_ADMIN_TEAM` を設定していたデプロイは、同じタイミングで
+`BAJUTSU_OAUTH_ADMIN_TEAMS` に改名してください。旧名はもう読まれません。`serve` は、次の 4 つの
+いずれかに当てはまるとき、起動時に stderr へ警告を出します。廃止名がまだ設定されているとき、
+`BAJUTSU_OAUTH_ADMIN_TEAMS` の解決結果が空のリストになるとき、エントリが正しい
+`"<github-org>/<team-slug>"` の組でないとき、そして GitHub OAuth が部分的にしか構成されていない
+ときです。4 つ目は、`BAJUTSU_OAUTH_GITHUB_CLIENT_ID` / `_CLIENT_SECRET` / `_REDIRECT_URI` のどれか
+1 つでも未設定の状態を指します。このとき GitHub のサインインはすべて 404 になり、代わりに共有トークンの
+ログインが静かに有効へ戻ります。`BAJUTSU_SERVE_TOKEN` も未設定なら、共有トークンへも戻れず、すべての
+エンドポイントが認証なしで応答します。これらの警告はいずれも構造化
+ログの `event=server.startup_warning`（どの警告かを示す `check` フィールド付き。[運用ログ](#運用ログ)
+を参照）としても再送されるので、起動出力を誰かが読むことに頼らずアラートを設定できます。org ゲートが
+拒否したサインインは `event=oauth.denied` として記録され、`orgs:` が一致しなかった理由を名指しします。
+`WARNING` になるのは admin Team が1つも*使える*状態にない場合だけです。リストが空である、あるいは
+全エントリが不正な形式である場合を指し、どちらも `orgs:` を直しにサインインできる admin が誰も残って
+いない状態です。構成済みの admin Team に単に一致しなかっただけの
+通常の拒否、および GitHub account をまったく必要としない4つの手前の失敗（OAuth が構成されていない、
+CSRF の state 不一致、例外を発生させた exchange、identity を返さなかった exchange）は `INFO` になります。
+通常の拒否は GitHub account を持つ誰でも到達できるため、アラートは event 名そのものではなく `WARNING`
+をキーにしてください。そうしなければ、興味本位のサインイン試行がページングすべき状態を埋もれさせます。
+アップグレード後はログの最初の数行を確認してください。
 
 3 つ目は、セッションそのものです。`POST /api/login` を無効にするのは、OAuth を構成した後に**新たな**トークン
 Cookie セッションが発行されなくなるだけで、それ以前にすでに発行されたセッションは無効になりません。OAuth を
@@ -658,7 +687,18 @@ BE-0015 で今後の作業です。
 ```
 
 `event` フィールドは安定したイベント名（`run.dispatched`、`quota.rejected`、`worker.job.started`、
-`worker.job.finished`、`artifact.upload.failed` など）を示すので、これを対象に grep やアラートを設定できます。
+`worker.job.finished`、`artifact.upload.failed`、`server.startup_warning`、`oauth.login`、
+`oauth.denied` など）を示すので、
+これを対象に grep やアラートを設定できます。`server.startup_warning` は、自由文の `msg` とは別に、どの起動時
+条件が発火したかを示す `check` フィールド（例：`admin_teams_empty`）も携えます。アラートは言い回しが変わり
+うるメッセージ本文ではなく、この `check` をキーにしてください。`oauth.login` はすべての成功したサインイン
+を記録し、`bypass` フィールドを携えます。これは `orgs:` ではなく構成済みの admin Team がこの login を
+許可した場合にだけ true になります。迂回による許可が残す記録はこのフィールドしかありません。迂回の
+ほとんどは `INFO` です。運用専用の organization に置いた admin Team は、設計上すべてのサインインで
+迂回するためです。`oauth.login` が `WARNING` になるのは、org モデル自体が使えない状態（config が
+bind されていない、読み込みに失敗した、または `orgs:` ブロックを宣言していない）で迂回による許可が
+起きたときだけです。そのためアラートは `WARNING` をキーにし、誰がいつサインインしたかを調べるときは
+`bypass` を grep してください。
 
 **マスクは構造的です。** 1 つのフィルタがルートロガーに置かれるので、書き出される前に**すべての**行が
 スキャンされます。サードパーティのライブラリが出した行も対象です。正しさは、各呼び出し箇所がマスクを

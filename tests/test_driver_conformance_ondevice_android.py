@@ -35,8 +35,10 @@ workers would clobber each other's screen. The `android-e2e.yml` job passes `-n0
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from pathlib import Path
 
+import ondevice_evidence
 import pytest
 from driver_conformance import (
     ConformanceHarness,
@@ -47,6 +49,7 @@ from driver_conformance import (
 from bajutsu import adb
 from bajutsu.config import Effective, load_config, require_android, resolve
 from bajutsu.drivers import base
+from bajutsu.evidence import intervals
 from bajutsu.runner.launch import launch_driver
 
 pytestmark = pytest.mark.ondevice
@@ -128,6 +131,18 @@ def _adb_driver(_eff: Effective) -> base.Driver:
 def _component(_eff: Effective) -> str:
     """The launcher component (`<package>/<activity>`) the reseed re-launches, resolved once."""
     return adb.Env(SERIAL).resolve_activity(require_android(_eff).package)
+
+
+@pytest.fixture(autouse=True)
+def _evidence(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Video + deviceLog for this case, kept only on failure (the CI job otherwise has neither)."""
+    yield from ondevice_evidence.capture(
+        SERIAL,
+        "conformance-adb",
+        request,
+        start_video=ondevice_evidence.android_screenrecord,
+        start_log=intervals.start_logcat,
+    )
 
 
 class TestAdbDriverConformance(DriverConformanceContract):

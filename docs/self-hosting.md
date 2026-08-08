@@ -378,16 +378,25 @@ hand-maintained login list:
   configured org — an explicit `members` entry or a member of a `githubOrgs`-listed GitHub org (see
   [`orgs:`](configuration.md#orgs-orgs-the-multi-tenant-server-backend)) — and a successful sign-in
   grants **viewer** (read-only). A login that matches no org is turned away, so an OAuth deployment
-  must declare an `orgs:` block.
+  must declare an `orgs:` block — with one exception, a member of a configured admin Team, who
+  clears this gate regardless (see **Admin** below).
 - **Editor** follows the org's `editorTeam`: a direct member of that one flat GitHub Team may run,
   record, and edit scenarios.
-- **Admin** follows one server-wide GitHub Team, `BAJUTSU_OAUTH_ADMIN_TEAM` (written
-  `"<github-org>/<team-slug>"`), whose members also change server settings (config / API key /
-  provider). Admin is a single deployment-wide tier, so name a Team whose members you trust across
-  every org. An admin still has to clear the sign-in gate above first: `BAJUTSU_OAUTH_ADMIN_TEAM` is
-  checked only after a login already matches some `orgs:` entry, so the Team's GitHub organization
-  must itself appear in some org's `githubOrgs` (or its members listed under `members`) — otherwise
-  the intended admin is turned away at sign-in before the admin Team is ever consulted.
+- **Admin** follows one or more server-wide GitHub Teams, `BAJUTSU_OAUTH_ADMIN_TEAMS` (a
+  comma-separated list, each written `"<github-org>/<team-slug>"`, where `<team-slug>` is GitHub's
+  own lowercased slug and not the Team's display name; like `editorTeam`, each entry names one flat
+  Team — a Team nested beneath it does not match), whose members also change server settings
+  (config / API key / provider). Admin is a single deployment-wide tier, so name only Teams whose
+  members you trust across every org. Unlike the viewer/editor roles above, a member of any
+  configured admin Team clears the sign-in gate directly — the Team's GitHub organization does
+  *not* need to appear in any org's `githubOrgs` or `members` — so an admin can sign in and repoint
+  the server at a corrected config even when the `orgs:` block is broken or missing entirely. One
+  failure still closes that door: `/user/teams` fails closed, so while GitHub's Teams API is
+  erroring, a login whose only claim is admin-Team membership is turned away like any other.
+  Because of that, `BAJUTSU_OAUTH_ADMIN_TEAMS` is now a sign-in credential and not only a
+  role mapping: every entry's GitHub-organization half must name an organization you actually
+  control, since anyone who controls it can create a Team with the matching slug and sign in as
+  admin.
 
 Membership is re-read on every login, so leaving a GitHub org or Team takes effect at the affected
 user's next sign-in — no server-side list to edit. Login always requests the `read:org` scope to read
@@ -399,7 +408,25 @@ these memberships, so the consent screen mentions organization access.
 `orgs:` before switching, or the org gate alone will widen who can sign in. And
 `BAJUTSU_OAUTH_ALLOWED_USERS` / `_ADMINS` / `_VIEWERS` are simply ignored now, so re-declare every
 admin and editor as a Team membership before cutting over — anyone not yet covered by `editorTeam` or
-`BAJUTSU_OAUTH_ADMIN_TEAM` drops to viewer on their next login.
+`BAJUTSU_OAUTH_ADMIN_TEAMS` drops to viewer on their next login. A deployment that already set the
+older, singular `BAJUTSU_OAUTH_ADMIN_TEAM` renames it to `BAJUTSU_OAUTH_ADMIN_TEAMS` at the same
+time — the old name is no longer read. `serve` warns on stderr at startup when the retired name is
+still set, when `BAJUTSU_OAUTH_ADMIN_TEAMS` resolves to an empty list, when an entry is not a
+well-formed `"<github-org>/<team-slug>"` pair, and when GitHub OAuth is only partly configured — one
+of `BAJUTSU_OAUTH_GITHUB_CLIENT_ID` / `_CLIENT_SECRET` / `_REDIRECT_URI` left unset 404s every GitHub
+sign-in and silently re-enables the shared-token login instead (or, with no `BAJUTSU_SERVE_TOKEN` set
+either, leaves every endpoint unauthenticated). Read the first lines of the log after upgrading. Each
+of these warnings is also re-emitted through the structured log under `event=server.startup_warning`
+(with a stable `check` field naming which one — see [Operational logging](#operational-logging)), so a
+deployment can alert on them rather than relying on someone reading boot output. A sign-in the org
+gate turned away is recorded under `event=oauth.denied`, naming the reason `orgs:` did not match; it
+is `WARNING` only when no admin Team is *usable* — the list is empty, or every entry is malformed, so
+no admin can sign in to fix `orgs:` either — and `INFO` for an ordinary denial (a configured admin
+Team simply didn't match this login) and for four earlier failures reachable with no GitHub account
+at all — OAuth not configured, a CSRF state mismatch, an exchange that raised, and one that returned no
+identity. Anyone with a GitHub account can otherwise reach an ordinary denial, so key an alert on
+`WARNING` rather than on the bare event name, or a curious visitor's sign-in attempt buries the shape
+worth paging on.
 
 A third thing: disabling `POST /api/login` stops **minting** new token-cookie sessions once OAuth is
 configured, but it doesn't invalidate one already issued — a browser that logged in with the shared
@@ -679,7 +706,16 @@ across processes. A line looks like:
 ```
 
 The `event` field names a stable event (`run.dispatched`, `quota.rejected`, `worker.job.started`,
-`worker.job.finished`, `artifact.upload.failed`, …) so you can grep and alert on it.
+`worker.job.finished`, `artifact.upload.failed`, `server.startup_warning`, `oauth.login`,
+`oauth.denied`, …) so you can grep and alert on it. `server.startup_warning` also carries a `check`
+field (e.g. `admin_teams_empty`) naming which startup condition fired, distinct from the free-text
+`msg` — key an alert on `check` rather than on message text that can reword. `oauth.login` records
+every successful sign-in and carries a `bypass` field, true only when a configured admin Team — not
+`orgs:` — is what admitted the login; that field is the only record a bypass admission leaves. Most
+bypass admissions are `INFO`, since an admin Team in an operations-only organization bypasses on
+every sign-in by design; `oauth.login` is `WARNING` only when the bypass admitted a login while the
+org model itself was unusable (no config bound, a config that failed to load, or one declaring no
+`orgs:` block) — so alert on `WARNING`, and grep `bypass` when auditing who signed in and when.
 
 **Redaction is structural.** A single filter sits at the root logger, so *every* line — including
 ones from third-party libraries — is scrubbed before it is written; correctness does not depend on

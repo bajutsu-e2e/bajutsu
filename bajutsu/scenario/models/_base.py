@@ -21,6 +21,9 @@ _CAPTURE_KINDS = {
     "network",
     "video",
     "appTrace",
+    # The raw dump behind `elements` (`base.RawSourceProvider`) — a diagnostic opt-in, never in
+    # `Defaults.capture`, so it costs nothing unless a scenario asks for it by name.
+    "rawTree",
 }
 _CAPTURE_MODS = {"before", "after", "around", "onError"}
 

@@ -10,6 +10,7 @@ test_server_app.py), so the actual serving path — middleware, routing — is c
 
 from __future__ import annotations
 
+import logging
 import socket
 import threading
 import time
@@ -246,7 +247,7 @@ def test_build_state_local_has_no_oauth(tmp_path: Path) -> None:
     # OAuth is server-only; local never has it (token auth only), so behavior is unchanged.
     state = _state(tmp_path)
     assert state.auth.oauth is None
-    assert state.auth.oauth_admin_team is None
+    assert state.auth.oauth_admin_teams == ()
 
 
 def test_build_state_server_wires_oauth_when_configured(
@@ -276,13 +277,192 @@ def test_build_state_server_wires_oauth_when_configured(
     assert isinstance(state.auth.oauth, GitHubOAuthClient)
 
 
-def test_build_state_server_parses_the_admin_team(
+def test_build_state_server_parses_the_admin_teams(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # BE-0313: the admin role is one server-wide GitHub Team, named by BAJUTSU_OAUTH_ADMIN_TEAM.
+    # The admin role follows one or more server-wide GitHub Teams, named by the comma-separated
+    # BAJUTSU_OAUTH_ADMIN_TEAMS.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/ops, other-gh/root")
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert state.auth.oauth_admin_teams == ("acme-gh/ops", "other-gh/root")
+
+
+def _setenv_oauth(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", "cid")
+    monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_SECRET", "secret")
+    monkeypatch.setenv(
+        "BAJUTSU_OAUTH_GITHUB_REDIRECT_URI", "https://app.example/api/oauth/callback"
+    )
+
+
+def _delenv_oauth(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The mirror image of _setenv_oauth: a "no warning" test's premise is that OAuth isn't wired
+    # (or that a name isn't set), which the ambient shell can silently falsify for a maintainer who
+    # exports these for their own deployment -- pin the premise instead of inheriting it.
+    for var in (
+        "BAJUTSU_OAUTH_GITHUB_CLIENT_ID",
+        "BAJUTSU_OAUTH_GITHUB_CLIENT_SECRET",
+        "BAJUTSU_OAUTH_GITHUB_REDIRECT_URI",
+        "BAJUTSU_OAUTH_ADMIN_TEAM",
+        "BAJUTSU_OAUTH_ADMIN_TEAMS",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+
+def test_build_state_server_warns_on_a_half_configured_oauth(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A single missing/mistyped GitHub OAuth var collapses `oauth` to None -- indistinguishable
+    # from a deliberate token-auth-only backend to the three checks below, which all gate on
+    # `oauth is not None`. Not a lockout (the shared-token login re-enables on this same `None`),
+    # but a silent, unintended fallback the operator needs to know about, so it needs its own check,
+    # gated the opposite way.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _delenv_oauth(monkeypatch)
+    monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", "cid")
+    monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_SECRET", "secret")
+    # BAJUTSU_OAUTH_GITHUB_REDIRECT_URI deliberately left unset.
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert state.auth.oauth is None
+    err = capsys.readouterr().err
+    assert "GitHub OAuth is only partly configured" in err
+    # No BAJUTSU_SERVE_TOKEN either (token=None above), so there is no shared-token fallback to fall
+    # back to -- both transports skip the auth+RBAC gate outright on `token is None`, serving every
+    # endpoint unauthenticated. The message must name THIS failure mode, not the reassuring one.
+    assert "no token is configured either" in err
+    assert "unauthenticated" in err
+    # Name the actual unset variable, not just the whole triple -- a typo'd variable NAME (e.g.
+    # _REDIRECT_URL for _REDIRECT_URI) would otherwise leave all three look present in a quick .env
+    # read, sending the operator to the OAuth app registration instead of their own .env.
+    assert "BAJUTSU_OAUTH_GITHUB_REDIRECT_URI" in err
+    assert "is unset" in err
+    assert len(state.startup_warnings) == 1
+    check, msg = state.startup_warnings[0]
+    assert check == "oauth_half_configured"
+    assert "GitHub OAuth is only partly configured" in msg
+
+
+def test_build_state_server_warns_on_a_half_configured_oauth_naming_every_unset_var(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Two of the three vars unset -- the grammar branch ("are unset," not "is unset") and the
+    # join must name both, not just whichever one a single-var test happens to cover.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _delenv_oauth(monkeypatch)
+    monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", "cid")
+    # _CLIENT_SECRET and _REDIRECT_URI both deliberately left unset.
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert state.auth.oauth is None
+    err = capsys.readouterr().err
+    assert "BAJUTSU_OAUTH_GITHUB_CLIENT_SECRET, BAJUTSU_OAUTH_GITHUB_REDIRECT_URI are unset" in err
+
+
+def test_build_state_server_warns_on_a_half_configured_oauth_with_a_token_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The other half of the same check: WITH a shared token configured, `POST /api/login` really
+    # does re-enable itself on this same `oauth is None` -- the message must name that fallback
+    # instead, not the "unauthenticated" one above.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _delenv_oauth(monkeypatch)
+    monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", "cid")
+    monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_SECRET", "secret")
+    # BAJUTSU_OAUTH_GITHUB_REDIRECT_URI deliberately left unset.
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token="shared-secret",
+        backend="server",
+    )
+    assert state.auth.oauth is None
+    err = capsys.readouterr().err
+    assert "the shared-token login is enabled instead" in err
+    assert "unauthenticated" not in err
+
+
+def test_build_state_server_does_not_warn_when_oauth_is_fully_unset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A deliberate token-auth-only deployment (no GitHub OAuth vars at all) must not be told its
+    # OAuth is "partly configured" -- none of it is configured, on purpose.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _delenv_oauth(monkeypatch)
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert state.auth.oauth is None
+    assert "GitHub OAuth is only partly configured" not in capsys.readouterr().err
+    assert state.startup_warnings == ()
+
+
+def test_build_state_server_warns_on_the_retired_singular_admin_team_var(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # A deployment still on the old BAJUTSU_OAUTH_ADMIN_TEAM (no BAJUTSU_OAUTH_ADMIN_TEAMS) would
+    # otherwise lose every admin silently on this hard cutover — it must warn loudly instead.
+    # OAuth must actually be wired (all three GitHub vars set), since the warning fires only then.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _setenv_oauth(monkeypatch)
+    monkeypatch.delenv("BAJUTSU_OAUTH_ADMIN_TEAMS", raising=False)
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAM", "acme-gh/ops")
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
@@ -295,7 +475,294 @@ def test_build_state_server_parses_the_admin_team(
         token=None,
         backend="server",
     )
-    assert state.auth.oauth_admin_team == "acme-gh/ops"
+    assert state.auth.oauth_admin_teams == ()
+    err = capsys.readouterr().err
+    assert "BAJUTSU_OAUTH_ADMIN_TEAMS is empty" in err
+    assert "BAJUTSU_OAUTH_ADMIN_TEAM is retired" in err
+    # Collected for serve() to re-emit through oplog once logging is live, not just printed --
+    # both fired here, so both must be on the state, not just whichever one this test happened to
+    # grep stderr for.
+    assert len(state.startup_warnings) == 2
+    checks = {c for c, _m in state.startup_warnings}
+    assert checks == {"admin_teams_empty", "admin_team_retired_name"}
+    assert any("BAJUTSU_OAUTH_ADMIN_TEAMS is empty" in m for _c, m in state.startup_warnings)
+    assert any("BAJUTSU_OAUTH_ADMIN_TEAM is retired" in m for _c, m in state.startup_warnings)
+    # The actual re-emission through oplog once logging is live -- `serve()` itself isn't
+    # exercised by this suite, so this is the one thing that actually drives
+    # `_emit_startup_warnings` and would catch a rename/drop of "server.startup_warning" from
+    # `oplog.EVENTS` (which `log_event` would otherwise only surface as a boot-time ValueError on
+    # the first deployment that actually has a warning to re-emit).
+    with caplog.at_level(logging.WARNING):
+        srv._emit_startup_warnings(state)
+    records = [r for r in caplog.records if getattr(r, "event", None) == "server.startup_warning"]
+    assert len(records) == 2
+    assert all(r.levelno == logging.WARNING for r in records)
+    # Each record carries its own stable `check`, distinct from the free-text message -- the field
+    # an operator's alert should key on, per the record above.
+    assert {r.check for r in records} == checks
+
+
+def test_emit_startup_warnings_reemits_each_entry_under_its_own_event_and_check(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A standalone test of the seam itself, independent of any particular startup check's spelling
+    # or of the retired-singular-var test whose coverage this used to ride on -- so a rename/drop of
+    # "server.startup_warning" from oplog.EVENTS has a direct test to fail here even if every startup
+    # check above changes shape or is deleted outright (e.g. the day BAJUTSU_OAUTH_ADMIN_TEAM itself
+    # is dropped from the codebase).
+    state = srv.ServeState(
+        runs_dir=tmp_path / "runs",
+        startup_warnings=(
+            ("admin_teams_empty", "BAJUTSU_OAUTH_ADMIN_TEAMS is empty"),
+            ("oauth_half_configured", "GitHub OAuth is only partly configured"),
+        ),
+    )
+    with caplog.at_level(logging.WARNING):
+        srv._emit_startup_warnings(state)
+    records = [r for r in caplog.records if getattr(r, "event", None) == "server.startup_warning"]
+    assert len(records) == 2
+    assert all(r.levelno == logging.WARNING for r in records)
+    assert {r.check for r in records} == {"admin_teams_empty", "oauth_half_configured"}
+    assert {r.getMessage() for r in records} == {
+        "BAJUTSU_OAUTH_ADMIN_TEAMS is empty",
+        "GitHub OAuth is only partly configured",
+    }
+
+
+def test_emit_startup_warnings_is_a_no_op_with_nothing_to_warn_about(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Local serve, or a server deployment with nothing misconfigured -- the empty-tuple default
+    # nothing above exercises directly.
+    state = srv.ServeState(runs_dir=tmp_path / "runs")
+    with caplog.at_level(logging.WARNING):
+        srv._emit_startup_warnings(state)
+    assert not any(getattr(r, "event", None) == "server.startup_warning" for r in caplog.records)
+
+
+def test_build_state_server_warns_when_admin_teams_was_never_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The likelier miss than the retired name: a deployment that never set either variable (a
+    # fresh OAuth setup, or an upgrade that dropped the old name without adding the new one) --
+    # falls through both the old guard's own condition and the malformed-entry check, since an
+    # empty list has no entries to be malformed.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _setenv_oauth(monkeypatch)
+    monkeypatch.delenv("BAJUTSU_OAUTH_ADMIN_TEAM", raising=False)
+    monkeypatch.delenv("BAJUTSU_OAUTH_ADMIN_TEAMS", raising=False)
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert state.auth.oauth_admin_teams == ()
+    err = capsys.readouterr().err
+    assert "BAJUTSU_OAUTH_ADMIN_TEAMS is empty" in err
+    assert "retired" not in err
+
+
+def test_build_state_server_without_oauth_does_not_warn_about_admin_teams(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Token-auth-only server backend: BAJUTSU_OAUTH_ADMIN_TEAMS has no meaning without OAuth wired,
+    # so the empty-list warning must stay quiet rather than tell every such deployment it has no
+    # admin -- the guard's first operand, which no other test in this file exercises.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _delenv_oauth(monkeypatch)
+    _scn, cfg, runs = project(tmp_path)
+    srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert "BAJUTSU_OAUTH_ADMIN_TEAMS" not in capsys.readouterr().err
+
+
+def test_build_state_server_without_oauth_does_not_warn_on_malformed_admin_teams(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Same gating for the malformed-entry check: without OAuth wired, BAJUTSU_OAUTH_ADMIN_TEAMS
+    # decides nothing, so a stale malformed value left in the environment must not warn either.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _delenv_oauth(monkeypatch)
+    monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/ops other-gh/root")
+    _scn, cfg, runs = project(tmp_path)
+    srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert "BAJUTSU_OAUTH_ADMIN_TEAMS" not in capsys.readouterr().err
+
+
+def test_build_state_server_without_oauth_does_not_warn_on_the_retired_admin_team_var(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The third OAuth-gated check, and the only one with no no-warn test of its own: a token-auth-
+    # only backend still carrying the retired singular name must stay quiet too, since the value
+    # decides nothing there. Without this, dropping `oauth is not None` from that check is green.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _delenv_oauth(monkeypatch)
+    monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAM", "acme-gh/ops")
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert "retired" not in capsys.readouterr().err
+    assert state.startup_warnings == ()
+
+
+def test_build_state_server_warns_on_the_retired_var_even_when_admin_teams_is_also_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The likelier partial-rename mistake: an operator upgrading adds BAJUTSU_OAUTH_ADMIN_TEAMS with
+    # the Team they remember but leaves the old singular var (naming a *different* Team) set. The
+    # old Team's members silently stop being admin -- with the new list non-empty, the empty-list
+    # check below never fires, so this needs its own unconditional check on the retired var alone.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _setenv_oauth(monkeypatch)
+    monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAM", "acme-gh/legacy")
+    monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/ops")
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert state.auth.oauth_admin_teams == ("acme-gh/ops",)  # the new name wins, the old is ignored
+    err = capsys.readouterr().err
+    assert "BAJUTSU_OAUTH_ADMIN_TEAM is retired" in err
+    assert "BAJUTSU_OAUTH_ADMIN_TEAMS is empty" not in err
+
+
+def test_build_state_server_warns_on_a_malformed_admin_teams_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A space- or semicolon-separated value parses to one entry that still contains "/" — a bare
+    # "/" count would pass it — yet it can never match a real "<github-org>/<team-slug>": that
+    # silently loses every admin the same way the retired singular name does, so it must warn too.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _setenv_oauth(monkeypatch)
+    monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/ops other-gh/root")
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert state.auth.oauth_admin_teams == ("acme-gh/ops other-gh/root",)
+    err = capsys.readouterr().err
+    assert "will never match" in err
+    # Pin the `check` discriminator, not just the message: it is the field docs/self-hosting.md and
+    # .env.example both tell an operator to alert on, and nothing else in the suite names it.
+    assert any(c == "admin_teams_malformed" for c, _m in state.startup_warnings)
+    # This single entry is the WHOLE list -- entirely malformed, the same total lockout
+    # `admin_teams_empty` warns about (oauth_callback's `admin_teams_unusable` treats them
+    # identically) -- so the message must name that consequence too, not just the syntax note.
+    assert "no login will have admin access" in err
+
+
+def test_build_state_server_warns_on_an_empty_side_or_inner_space(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Each of these has exactly one "/" (so a bare count would pass it) but can never match a
+    # real "<github-org>/<team-slug>": an empty org half, an empty slug half, and a slug half with
+    # a stray leading space that `.strip()` on the whole entry doesn't remove.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _setenv_oauth(monkeypatch)
+    monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/,/ops,acme-gh/ ops")
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert state.auth.oauth_admin_teams == ("acme-gh/", "/ops", "acme-gh/ ops")
+    err = capsys.readouterr().err
+    assert "will never match" in err
+    for entry in ("acme-gh/", "/ops", "acme-gh/ ops"):
+        assert repr(entry) in err  # all three shapes named, not just whichever one the regex caught
+
+
+def test_build_state_server_does_not_warn_on_an_uppercase_slug(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # GitHub always lowercases a Team's slug, so an operator who copies the Team name as shown in
+    # the UI (title case) writes an entry whose case differs from the stored slug -- but
+    # `in_admin_team` case-folds both sides before comparing, so this entry matches a real Team
+    # `acme-gh/ops` perfectly. Warning here would tell the operator to "fix" a working config, and
+    # teach them to ignore this warning for the one list where a genuinely broken entry hides.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _setenv_oauth(monkeypatch)
+    monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/Ops")
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert state.auth.oauth_admin_teams == ("acme-gh/Ops",)
+    assert "will never match" not in capsys.readouterr().err
 
 
 def test_build_state_server_parses_the_per_user_quota(

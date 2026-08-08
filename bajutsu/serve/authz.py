@@ -8,12 +8,22 @@ transport layer is unchanged. Every function takes the `ServeState`; none touche
 
 from __future__ import annotations
 
+import logging
+import re
 import secrets
-from typing import Any
+from collections.abc import Sequence
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
+from bajutsu.serve import oplog
 from bajutsu.serve.helpers import load_serve_config_file
-from bajutsu.serve.orgs import identity_matches_org, org_for_identity, org_for_target
+from bajutsu.serve.orgs import OrgConfig, identity_matches_org, org_for_identity, org_for_target
 from bajutsu.serve.state import ServeState
+
+if TYPE_CHECKING:  # keeps the default serve/CLI path free of `serve.server` (server/__init__.py)
+    from bajutsu.serve.server.oauth import Identity
+
+_logger = logging.getLogger(__name__)
 
 
 def login(state: ServeState, token: str) -> tuple[Any, int, str | None]:
@@ -40,35 +50,135 @@ def oauth_login(state: ServeState) -> tuple[Any, int, str | None]:
     return {"redirect": state.auth.oauth.authorize_url(csrf)}, 200, csrf
 
 
+def _unmatched_org_cause(
+    parsed: tuple[Any, dict[str, OrgConfig]] | None,
+    orgs: dict[str, OrgConfig],
+    identity: Identity,
+    config: Path | None,
+) -> str:
+    """Which of the five shapes left *orgs* unmatched for *identity* in `oauth_callback`, named so an
+    operator is sent to the config itself (the first two) rather than the org roster (the last three):
+    no config is bound yet, the config failed to load, the config declares no `orgs:` block, GitHub
+    reported no orgs for this login, or a real, unmatching roster. Read by both the bypass-success
+    record and the denial record — one shared copy so a sixth shape can only be added in one place,
+    the same reasoning `in_admin_team` is factored out for below.
+
+    *config* (`state.config`, threaded through separately from *parsed*) is what tells the first two
+    shapes apart: `load_serve_config_file` returns `None` immediately when *config* itself is `None`
+    — the ordinary, no-error bootstrap state `serve()` treats as normal ("open a config.yml in the
+    UI") — not only when a bound path fails to load. Collapsing both into "the serve config failed to
+    load" would send an operator hunting a filesystem error or a YAML typo in a file that was never
+    supposed to exist yet."""
+    if parsed is None:
+        return "no serve config is bound" if config is None else "the serve config failed to load"
+    if not orgs:
+        return "the serve config declares no orgs: block"
+    if not identity.orgs:
+        return "GitHub returned no orgs for this login"
+    return "no orgs: entry matched this login"
+
+
 def oauth_callback(
     state: ServeState, code: str, state_param: str, state_cookie: str
 ) -> tuple[Any, int, str | None]:
     """Complete GitHub OAuth (BE-0015 7b-2, BE-0313): verify the CSRF state (the query value must
     match the cookie), exchange the code for a GitHub identity (login + org + Team memberships), gate
-    sign-in on GitHub org membership, persist the user under their resolved org with a Team-derived
-    role, and on success mint a session bound to that login. Returns
-    ``(payload, status, session_id | None)``."""
+    sign-in on GitHub org membership or membership in a configured admin Team, persist the user under
+    their resolved org with a Team-derived role, and on success mint a session bound to that login.
+    Returns ``(payload, status, session_id | None)``."""
     if state.auth.oauth is None:
+        # A half-configured deployment (one of the three BAJUTSU_OAUTH_GITHUB_* vars unset) 404s
+        # here for every GitHub sign-in -- but that is not a lockout: `login`'s shared-token path is
+        # disabled only when `oauth is not None`, so this same `None` re-enables it, and the
+        # deployment silently reverts to the shared-token login it was meant to replace (a token
+        # session carries no identity, so `forbidden_for_role` short-circuits and has full access).
+        # `oauth is None` is a static property of the deployment, not a per-request signal, and this
+        # endpoint takes unauthenticated traffic unconditionally -- a loop against it would write one
+        # WARNING per request forever, on a deployment that may not even use OAuth. INFO still leaves
+        # a record; the loud, once-per-boot signal for this deployment shape is
+        # `_build_server_state`'s "oauth is only partly configured" `server.startup_warning`, not a
+        # per-request WARNING an anonymous caller sets the volume of.
+        oplog.log_event(_logger, "oauth.denied", "oauth not configured", level=logging.INFO)
         return {"error": "oauth not configured"}, 404, None
     if not (state_param and state_cookie and secrets.compare_digest(state_param, state_cookie)):
+        # Repeated mismatches are the signature of a login-CSRF attempt, not just an expired
+        # cookie -- but that is a rate claim, and nothing available at this point distinguishes an
+        # attack from an expired cookie on any single request. `state_param`/`state_cookie` are both
+        # caller-supplied (a query value and the caller's own Cookie: header), so gating the level on
+        # "both present" filters only the laziest possible probe: an attacker who sends any two
+        # non-matching values lands on WARNING just as cheaply as the bare no-state case. Recording
+        # at INFO unconditionally is the honest level for a per-request record; a genuine rate signal
+        # belongs in a counter an operator can threshold (the GET /metrics surface, BE-0169), not in
+        # a log level an anonymous caller picks for themselves.
+        oplog.log_event(_logger, "oauth.denied", "oauth state mismatch", level=logging.INFO)
         return {"error": "invalid oauth state"}, 403, None
     try:
         identity = state.auth.oauth.fetch_identity(code)
     except Exception:
         # The exchange talks to GitHub (network / token parsing); a failure is an upstream error,
-        # not a 500 — surface it as a clean 502 rather than a traceback.
+        # not a 500 — surface it as a clean 502 rather than a traceback. Reaching this line needs no
+        # real GitHub auth: an attacker sets *both* `state_param` (a query value) and `state_cookie`
+        # (their own Cookie: header) to the same value, clears the CSRF check above for free, and
+        # supplies any garbage `code` — GitHub's token endpoint then errors and this branch fires.
+        # INFO for the same reason as the branches above: a per-request WARNING an anonymous caller
+        # can trigger this cheaply isn't a signal an operator can alert on.
+        oplog.log_event(_logger, "oauth.denied", "oauth exchange failed", level=logging.INFO)
         return {"error": "oauth exchange failed"}, 502, None
     if identity is None or not identity.login:
+        # Reachable the same caller-controlled way as the exception case above.
+        oplog.log_event(
+            _logger, "oauth.denied", "oauth exchange returned no identity", level=logging.INFO
+        )
         return {"error": "oauth exchange failed"}, 403, None
     login = identity.login
     # Read the config-declared org model once, for both the sign-in gate and the org/role
     # resolution below (BE-0313). Sign-in is gated on GitHub org membership: a login matching no
-    # `members`/`githubOrgs` entry is turned away — the org roster is now the allowlist. This runs
-    # at the top level, before the database block, so an OAuth-configured but database-less
-    # deployment still gates sign-in rather than admitting every GitHub user.
+    # `members`/`githubOrgs` entry is turned away — unless it also matches a configured admin Team,
+    # in which case the admin-Team check below admits it regardless. This runs at the top level,
+    # before the database block, so an OAuth-configured but database-less deployment still gates
+    # sign-in rather than admitting every GitHub user.
     parsed = load_serve_config_file(state.config)
     orgs = parsed[1] if parsed is not None else {}
-    if not identity_matches_org(orgs, login, identity.orgs):
+    admin_teams = state.auth.oauth_admin_teams
+    # A member of a configured admin Team clears the sign-in gate directly, even when no `orgs:`
+    # entry lists their GitHub organization (or `orgs:` is absent entirely) — an admin must be able to
+    # sign in and repoint a broken or incomplete `orgs:` config, not be locked out by the same config
+    # mistake they exist to fix.
+    is_admin_team_member = in_admin_team(identity.teams, admin_teams)
+    matched_org = identity_matches_org(orgs, login, identity.orgs)
+    if not matched_org and not is_admin_team_member:
+        # A rejection is the one failure this item exists to make recoverable, so it needs a record
+        # too — under its own event rather than `oauth.login`, which stays "login count" (see the
+        # `bypass` reasoning below) rather than absorbing a "denied" outcome it never admitted. "No
+        # admin Team matched" would read the same for an unusable admin_teams (empty, or every entry
+        # malformed) as for a real membership miss, sending an operator to check GitHub Team
+        # membership when the actual fix is the environment variable -- name that shape distinctly,
+        # keyed on the same `admin_teams_unusable` predicate as the level below, so the message and
+        # the level can't drift apart the way an earlier revision of this line let them (a bare
+        # `not admin_teams` here paired with `admin_teams_unusable` on the level would call a
+        # space-separated, entirely-malformed list "matched" at WARNING).
+        admin_note = (
+            "no usable admin Team is configured"
+            if admin_teams_unusable(admin_teams)
+            else "no admin Team matched"
+        )
+        # `GET /api/oauth/login` is unauthenticated and GitHub authorizes any of its own users, not
+        # just this deployment's members -- an ordinary denial (admin_teams configured, this login
+        # just isn't in orgs: or it) is reachable by any curious visitor with a free GitHub account,
+        # not only the deployment's operators. Reserve WARNING for the shape an operator actually
+        # needs paging on: `admin_teams_unusable` -- empty, or every entry malformed, so nobody can
+        # sign in to fix orgs: either. A non-empty but entirely malformed list (a space-separated
+        # value collapsing to one entry that can never match, say) is functionally the same lockout
+        # as an empty one; checking `not admin_teams` alone would call it an ordinary INFO denial.
+        # Every other denial still gets a record, just at INFO.
+        oplog.log_event(
+            _logger,
+            "oauth.denied",
+            f"{login} rejected: {_unmatched_org_cause(parsed, orgs, identity, state.config)}, "
+            f"and {admin_note}",
+            level=logging.WARNING if admin_teams_unusable(admin_teams) else logging.INFO,
+            actor=login,
+        )
         return {"error": "user not allowed"}, 403, None
     if state.repository is not None:
         # Persist the identity into the system of record, so audit entries and RBAC can reference
@@ -76,6 +186,34 @@ def oauth_callback(
         # the user's GitHub org membership. email is unknown from this scope, so we store GitHub's
         # canonical no-reply form (valid + unique per login).
         org = org_for_identity(orgs, login, identity.orgs)
+        if not matched_org and parsed is None and state.config is not None:
+            # The bypass, not `orgs:`, admitted this login, and a config path IS bound but failed to
+            # load (`load_serve_config_file`'s fail-closed shape for a transient filesystem error or a
+            # config typo — this item's own motivating scenario). Keep whatever org is already on
+            # record rather than relocating them to `default` over one hiccup; a config that loads
+            # clean next time re-resolves through `org_for_identity` above like any other login.
+            #
+            # `state.config is None` is excluded deliberately: `load_serve_config_file` returns that
+            # same `None` immediately when no config path is bound at all -- the ordinary, no-error
+            # bootstrap state `serve()` treats as normal, not a hiccup -- and it is a *standing*
+            # state, not a transient one: `parsed` stays `None` on every login until an admin binds a
+            # config, so guarding on it here would pin an org forever, the same permanent-wrong-state
+            # failure the next guard below declines to risk for the `not identity.orgs` case.
+            #
+            # Deliberately NOT guarded on `not identity.orgs` too, even though that is also the shape
+            # a failed `/user/orgs` fetch takes (`_fetch_orgs` fails closed to `[]`): it is equally
+            # the shape of a login that genuinely belongs to no GitHub org at all -- a `members:`
+            # -listed bot/ops account, say -- and `_fetch_orgs` gives no way to tell the two apart.
+            # Guarding on it would pin such a login to its org forever once revoked from `members:`,
+            # since no future login could ever report a non-empty `identity.orgs` to escape the
+            # guard -- a permanent wrong state, worse than the transient one this trades away (a
+            # `githubOrgs`-only member relocated to `default` for one login on a real API hiccup,
+            # self-healing on their next clean login). Distinguishing "the fetch failed" from
+            # "GitHub said zero orgs" needs `_fetch_orgs` to report failure as `None` rather than
+            # `[]`, which changes `_paginate`'s shared contract, `_fetch_teams`'s, `Identity.orgs`'s
+            # type, and every fake in the test suite -- out of scope for this item; tracked as a
+            # follow-up rather than done here.
+            org = state.repository.user_org(login) or org
         oc = orgs.get(org)
         editor_team = oc.editor_team if oc is not None else None
         state.repository.ensure_org(org, slug=org, name=org)
@@ -89,9 +227,41 @@ def oauth_callback(
             role=role_for(
                 teams=identity.teams,
                 editor_team=editor_team,
-                admin_team=state.auth.oauth_admin_team,
+                admin_teams=admin_teams,
             ),
         )
+    # Record every successful sign-in through oplog (not a bare logging call) so it carries the
+    # registered `event` name, redaction, and correlation fields every other
+    # operationally-significant record in serve already does. `bypass` says which gate admitted
+    # this one — the one sign-in path `orgs:` did not authorize is still the interesting case, but
+    # emitting the event only for that case would make `event=oauth.login` mean "bypass" instead of
+    # "login", the opposite of what an operator's alert on the event name would expect.
+    #
+    # `not matched_org` alone is not the WARNING signal: this item's own guidance puts a correctly
+    # configured admin Team in an operations-only GitHub organization no `orgs:` entry lists, so
+    # `matched_org` is `False` on *every* admin sign-in there, permanently -- the normal operating
+    # condition of a working deployment, not something worth paging on. What IS worth paging on is
+    # the org model itself being unusable: `parsed is None` (no config bound, or one that failed to
+    # load) or `not orgs` (a config that loaded but declares no `orgs:` block at all) -- either way
+    # the bypass just admitted a login into a deployment nobody but an admin Team member can
+    # currently sign in to repair. A GitHub-side outage (`not identity.orgs`) or a real, unmatching
+    # roster stay INFO: the config itself is fine there, so there is nothing an admin needs paged in
+    # to fix. Key the level on which of `_unmatched_org_cause`'s shapes this is, not on
+    # `matched_org`, so `bypass` keeps varying on what an operator greps while `WARNING` keeps
+    # meaning "something is wrong."
+    oplog.log_event(
+        _logger,
+        "oauth.login",
+        (
+            f"admin-Team bypass admitted {login}: "
+            f"{_unmatched_org_cause(parsed, orgs, identity, state.config)}"
+            if not matched_org
+            else f"{login} signed in"
+        ),
+        level=logging.WARNING if not matched_org and (parsed is None or not orgs) else logging.INFO,
+        bypass=not matched_org,
+        actor=login,
+    )
     return {"ok": True, "user": login}, 200, state.auth.issue_session(identity=login)
 
 
@@ -172,12 +342,49 @@ _EDITOR_PATHS = frozenset(
 )
 
 
-def role_for(*, teams: list[str], editor_team: str | None, admin_team: str | None) -> str:
-    """The role for a login from its GitHub Team memberships (BE-0313): admin if a member of the
-    server-wide *admin_team*, editor if a member of the resolved org's *editor_team*, else viewer
+# The one pattern that decides whether an `admin_teams` entry could ever match a real GitHub Team
+# ("<github-org>/<team-slug>", no empty half or internal whitespace) -- shared between
+# `_build_server_state`'s `admin_teams_malformed` startup check and `admin_teams_unusable` below, so
+# the two copies can't drift the way `in_admin_team` and `_unmatched_org_cause` were already factored
+# out to prevent. Does not reject an uppercase character in either half; see `in_admin_team`'s own
+# case-folding for why.
+ADMIN_TEAM_ENTRY_RE = re.compile(r"[^\s/]+/[^\s/]+")
+
+
+def admin_teams_unusable(admin_teams: tuple[str, ...]) -> bool:
+    """True when no entry in *admin_teams* could ever match a real Team -- the list is empty, or
+    every entry fails `ADMIN_TEAM_ENTRY_RE`. A non-empty but entirely malformed list (e.g. a
+    space-separated value that parses to one `"a/b c/d"` entry) is functionally identical to an
+    empty one: `in_admin_team` can never match anyone, so a caller that only checks `not
+    admin_teams` treats a total lockout as an ordinary, healthy configuration."""
+    return not admin_teams or all(not ADMIN_TEAM_ENTRY_RE.fullmatch(t) for t in admin_teams)
+
+
+def in_admin_team(teams: Sequence[str], admin_teams: tuple[str, ...]) -> bool:
+    """Whether any of *teams* is a server-wide admin Team — the one membership test behind both the
+    admin role below and `oauth_callback`'s admin-Team sign-in bypass, so the gate that admits a
+    bypassing login and the role it resolves to can never drift apart. Case-folded on both sides:
+    GitHub resolves an org login and a Team slug case-insensitively, so an `admin_teams` entry whose
+    organization half carries whatever case GitHub stores it in (a real GitHub org login can be
+    mixed-case) must still match a login's exact-case membership, and vice versa. Folding never
+    turns an empty team name into a match — `admin_teams` never contains `""` (the comma-split that
+    builds it filters on `t.strip()`) — and doesn't affect the nested-Team guarantee, which rests on
+    exact string equality: `"acme-gh/parent/child"` is a different string from `"acme-gh/parent"`,
+    folded or not."""
+    folded = {t.casefold() for t in admin_teams}
+    return any(team.casefold() in folded for team in teams)
+
+
+def role_for(*, teams: Sequence[str], editor_team: str | None, admin_teams: tuple[str, ...]) -> str:
+    """The role for a login from its GitHub Team memberships (BE-0313): admin if a member of any of
+    the server-wide *admin_teams*, editor if a member of the resolved org's *editor_team*, else viewer
     (the base role every signed-in user gets). *teams* are `"<github-org>/<team-slug>"` direct
-    memberships; an unset team never matches. Recomputed on every login (BE-0015 7c-2)."""
-    if admin_team is not None and admin_team in teams:
+    memberships; an unset *editor_team* or empty *admin_teams* never matches. The admin check
+    (`in_admin_team`) is case-insensitive; this *editor_team* check is deliberately left exact for
+    now — it carries the same latent case trap, since `identity.teams` reports GitHub's own
+    organization-login case either way, but widening it is a role change outside this item's
+    sign-in-recovery scope. Recomputed on every login (BE-0015 7c-2)."""
+    if in_admin_team(teams, admin_teams):
         return "admin"
     if editor_team is not None and editor_team in teams:
         return "editor"

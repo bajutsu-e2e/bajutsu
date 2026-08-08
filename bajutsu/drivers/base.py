@@ -15,6 +15,7 @@ import functools
 import re
 import time
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, TypedDict, cast, runtime_checkable
 
 if TYPE_CHECKING:
@@ -376,6 +377,68 @@ class SettledReadProvider(Protocol):
 
     # A tree fit to resolve an actuation target from: settled, and past any pending read-lag barrier.
     def settled_query(self) -> list[Element]: ...
+
+
+@dataclass(frozen=True)
+class RawSource:
+    """The pre-processing dump text a backend's last `_describe()` actually parsed.
+
+    `text` is what was handed to the parser (adb: UI Automator's XML). `pre_transform` is the same
+    read *before* a backend's own structural transform of it — adb's resident channel strips SystemUI
+    decor windows (`narrow_to_active_window`) before `text` is set — so a diagnosis can tell "the raw
+    device dump already looked wrong" apart from "our own transform changed it". `None` when the
+    backend applies no such transform (the dump-subprocess path) or the transform left `text`
+    unchanged. `suffix` names the format `text` is actually written in (adb: `.xml`; XCUITest's
+    `GET /elements` body is undecoded JSON, so it sets `.json`) — carried here rather than hardcoded
+    by the writer, so a future `RawSourceProvider` with a different dump format needs no edit outside
+    the backend that produces it. Required, not defaulted: a default of `.xml` would let a future
+    backend construct `RawSource(text=body)` and silently mislabel a non-XML dump, the exact bug this
+    field exists to prevent — every producer must state its own format, or mypy catches the omission
+    at the call site.
+    """
+
+    text: str
+    suffix: str
+    pre_transform: str | None = None
+
+
+@runtime_checkable
+class RawSourceProvider(Protocol):
+    """A backend that retains the raw dump behind its last parsed tree, for the `rawTree` capture kind.
+
+    Every coordinate-tree backend's frame computation is normally a black box once parsed into
+    `Element`s: diagnosing whether a mismatch between the screen and a resolved coordinate comes from
+    the device's own dump or from bajutsu's parsing of it needs the dump itself, which `_describe()`
+    otherwise discards as a local variable the moment it is parsed. A backend that keeps it exposes
+    this seam so `bajutsu/evidence/core.py`'s `write_raw_tree` can persist it alongside `elements.json`
+    — opt-in (a scenario's `capture: [rawTree, ...]`), never in the default capture list, since it adds
+    a same-sized text artifact per captured step. `AdbDriver` and `XcuitestDriver` implement it (the raw
+    UI Automator dump, the raw `GET /elements` body). Not implementing this means "no raw dump to
+    persist", which keeps every other backend (`FakeDriver`, Playwright) exactly as before — the same
+    narrow opt-in as the protocols above.
+    """
+
+    def last_raw_source(self) -> RawSource | None: ...
+
+
+@runtime_checkable
+class SettledCacheInvalidator(Protocol):
+    """A backend whose settle-proof cache must be dropped by something outside its own actuators.
+
+    `AdbDriver._settle()` caches a key proven stable so a later call can skip re-polling — but that
+    proof describes a specific screen, and only the driver's own actuators (`_act`, `_device_act`,
+    `type_text`) know to invalidate it when they change one. An app relaunch or a crawl reset
+    replaces the screen through the platform's own launch/kill commands, never through this driver,
+    so nothing would otherwise tell the cache its proof no longer applies — and if the new screen's
+    projection happens to coincide with the stale one (unremarkable: many scenarios start and end on
+    the same home screen), `_settle` would trust a single read of a screen it never actually proved
+    at rest. A lifecycle path that replaces the screen outside the driver calls
+    `invalidate_settled_cache()` to close that door too. Not implementing this means "no such cache
+    to invalidate", which keeps every other backend (`FakeDriver`, Playwright, XCUITest) exactly as
+    before — the same narrow opt-in as the protocols above.
+    """
+
+    def invalidate_settled_cache(self) -> None: ...
 
 
 @runtime_checkable
