@@ -482,9 +482,11 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
 - Tap-target tappability check with a bounded scroll safety net (BE-0349): before `tap` /
   `double_tap` / `long_press` (and the focus-tap inside `type`/`clear`/`delete`/`select`) act, each
   backend asks, in its own idiomatic way, whether the resolved element is reachable at its own point
-  — iOS's native `isHittable`, web's `document.elementFromPoint` ancestor-chain hit test, and adb's
-  document-order `topmost_at_point` geometric proxy (correct for Compose's `zIndex`, with known
-  blind spots on View `elevation` and a stale-bounds case under a lightweight Compose offset
+  — the local XCUITest route's native `isHittable`, web's `document.elementFromPoint`
+  ancestor-chain hit test, and a document-order `topmost_at_point` geometric proxy on both adb and
+  the live XCUITest route, which has no `isHittable` to read over Appium (the proxy is correct for
+  Compose's `zIndex`, with known blind spots on View `elevation` and a stale-bounds case under a
+  lightweight Compose offset
   modifier). When the check fails, the orchestrator tries a small, bounded scroll (`down` first,
   then a wider `up` fallback for a top-anchored obstruction) and re-checks before retrying the
   actuation once; if the target is still unreachable, the step fails with a dedicated
