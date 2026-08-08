@@ -479,6 +479,18 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
   where only adb recovered an off-screen `tap`. Codegen maps it onto Playwright's
   `scrollIntoViewIfNeeded()` and UI Automator's `UiScrollable.scrollIntoView` natively, and emits a
   labeled `TODO` for XCUITest, which has no single robust scroll-to-element primitive
+- Tap-target tappability check with a bounded scroll safety net (BE-0349): before `tap` /
+  `double_tap` / `long_press` (and the focus-tap inside `type`/`clear`/`delete`/`select`) act, each
+  backend asks, in its own idiomatic way, whether the resolved element is reachable at its own point
+  — the local XCUITest route's native `isHittable`, web's `document.elementFromPoint`
+  ancestor-chain hit test, and a document-order `topmost_at_point` geometric proxy on both adb and
+  the live XCUITest route, which has no `isHittable` to read over Appium (the proxy is correct for
+  Compose's `zIndex`, with known blind spots on View `elevation` and a stale-bounds case under a
+  lightweight Compose offset
+  modifier). When the check fails, the orchestrator tries a small, bounded scroll (`down` first,
+  then a wider `up` fallback for a top-anchored obstruction) and re-checks before retrying the
+  actuation once; if the target is still unreachable, the step fails with a dedicated
+  `ElementNotTappable` error instead of the misleading `ElementNotFound`
 - DSL text-editing steps (BE-0265): `clear` / `delete` / `select` / `copy` close the gap left by
   `type` on every backend (adb, Playwright, XCUITest, fake); the web context raises
   `UnsupportedAction` for `select`/`copy` (codegen routes those to XCUITest instead), and the web
