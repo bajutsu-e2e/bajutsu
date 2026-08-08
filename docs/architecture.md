@@ -480,8 +480,8 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
   `scrollIntoViewIfNeeded()` and UI Automator's `UiScrollable.scrollIntoView` natively, and emits a
   labeled `TODO` for XCUITest, which has no single robust scroll-to-element primitive
 - Tap-target tappability check with a bounded scroll safety net (BE-0349): before `tap` /
-  `double_tap` / `long_press` (and the focus-tap inside `type`/`clear`/`select`) act, each backend
-  asks, in its own idiomatic way, whether the resolved element is really reachable at its own point
+  `double_tap` / `long_press` (and the focus-tap inside `type`/`clear`/`delete`/`select`) act, each
+  backend asks, in its own idiomatic way, whether the resolved element is reachable at its own point
   — iOS's native `isHittable`, web's `document.elementFromPoint` ancestor-chain hit test, and adb's
   document-order `topmost_at_point` geometric proxy (correct for Compose's `zIndex`, with known
   blind spots on View `elevation` and a stale-bounds case under a lightweight Compose offset
