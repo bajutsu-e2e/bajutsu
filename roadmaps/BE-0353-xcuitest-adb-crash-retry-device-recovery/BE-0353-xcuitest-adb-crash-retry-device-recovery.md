@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-xcuitest-adb-crash-retry-device-recovery-ja.md)
+**English** · [日本語](BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md)
 
-# BE-XXXX — Force device recovery on a backend-crash retry and cap total crash-recovery time per run
+# BE-0353 — Force device recovery on a backend-crash retry and cap total crash-recovery time per run
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-xcuitest-adb-crash-retry-device-recovery.md) |
+| Proposal | [BE-0353](BE-0353-xcuitest-adb-crash-retry-device-recovery.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0353") |
 | Implementing PR | [#1526](https://github.com/bajutsu-e2e/bajutsu/pull/1526) |
 | Topic | Platform support |
 | Related | [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md), [BE-0334](../BE-0334-conformance-suite-infra-fault-recovery/BE-0334-conformance-suite-infra-fault-recovery.md), [BE-0342](../BE-0342-ondevice-lease-teardown/BE-0342-ondevice-lease-teardown.md), [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) |
