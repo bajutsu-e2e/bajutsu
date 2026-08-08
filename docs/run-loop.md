@@ -190,15 +190,35 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > the count alone caps retries, not time: a runner that never comes back would otherwise pay a full
 > cold-startup ceiling on every one of its `crash_retries` attempts, silently turning into a job hang
 > rather than a loud failure. A scenario that crashes on every attempt exhausts one budget or the
-> other and fails loudly, so flakiness is never absorbed into a silent pass. On the XCUITest backend
-> specifically, a cold respawn's own bring-up can now also pay a device recovery — a reboot or
-> replacement of a Simulator that stopped honouring automation — that `crash_recovery_budget` cannot
+> other and fails loudly, so flakiness is never absorbed into a silent pass. A second, run-scoped
+> budget (`run_crash_recovery_budget`, also unset by default — overridable via
+> `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET`) bounds the *accumulated* recovery time across every scenario in
+> the run, not just this one, because `crash_recovery_budget` alone resets for each new scenario: a
+> device that keeps degrading would otherwise pay it again and again until an external CI timeout
+> cancels the job with no diagnosable cause, rather than the run itself failing loudly. On the XCUITest
+> backend specifically, a cold respawn's own bring-up can now also pay a device recovery — a reboot or
+> replacement of a Simulator that stopped honouring automation — that neither budget can
 > preempt. `CrashRecoveryBudget.on_crash` is consulted only between crashes, not during a bring-up
 > already under way, so that recovery's own bound (`BAJUTSU_XCUITEST_RECOVERY_TIMEOUT`, plus its
-> unbounded device re-prep) is what limits it instead. Because the retry replays the whole scenario
-> against a respawned (not erased) app, it is safe only for a scenario idempotent
-> up to its crash point; one with a persistent side effect before the crash (e.g. a server-side write)
-> can fail, or pass against the wrong state, on replay. The decision logic lives in
+> unbounded device re-prep) is what limits it instead.
+>
+> The retry also forces the same `erase` precondition a scenario already gets by declaring
+> `erase: true` — a Simulator restart on XCUITest, an app-level clean state on adb — instead of a bare
+> in-place respawn onto the very device that just crashed it, unless the scenario declares
+> `reinstall: overwrite` to keep its app's data across the lease, or the route itself rejects any
+> `erase` precondition outright (a real device, `xcuitest.deviceType: device`, or the live WebDriver
+> endpoint). A plain `erase: false` does *not* skip the forced retry: the CLI (`_filter_scenarios` in
+> `bajutsu/cli/commands/run.py`) resolves every scenario's `erase` to a concrete bool, most commonly
+> `false`, before the pipeline ever sees it, so a guard on that value alone would disable the forced
+> retry on the very production path it exists for — only `reinstall: overwrite` genuinely protects a
+> scenario's data, since `reinstall`'s own default (`clean`) wipes it regardless of `erase` anyway. An
+> explicit `bajutsu run --no-erase`, by contrast, *is* honored: the CLI carries that flag's
+> pre-resolution value (`erase is not False`) into the run as `force_erase_on_retry`, so an operator's
+> deliberate opt-out still skips the forced retry even though a scenario's own `erase: false` cannot.
+> Because the replayed app's data is wiped by default, the retry is safe
+> only for a scenario idempotent up to its crash point; one with a persistent side effect before the
+> crash (e.g. a server-side write), or one that depends on state a prior step in the same scenario
+> already set up, can fail, or pass against the wrong state, on replay. The decision logic lives in
 > `bajutsu/runner/recovery.py`, shared with the on-device driver conformance suite so a Simulator
 > infrastructure fault there recovers the same way instead of reddening the required check on an
 > unrelated PR (BE-0334).

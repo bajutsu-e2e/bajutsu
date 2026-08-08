@@ -160,17 +160,23 @@ env:
   # install cost as the first-bring-up case above, so ~11-12min there). Only a *failing* spawn pays
   # recovery at all.
   #
-  # A caveat the arithmetic above does not cover: this recovery happens inside one lease's bring-up, so
-  # BAJUTSU_CRASH_RECOVERY_BUDGET (below) cannot cut it short, and a job whose scenarios are *also*
-  # burning that scenario-level budget can add both. A run on 2026-08-04 hit `timeout-minutes` that
-  # way — three mid-run crashes plus one reboot rung — so treat the caps below as covering one device
-  # recovery on top of the nominal run, not one on top of a host already crashing repeatedly. The
-  # arithmetic above was actually re-run only against the `run` and `actuation` jobs' `timeout-minutes`
-  # comments below — `golden`, `bundled-runner`, `codegen`, `conformance`, `fault-injection`, and
-  # `visual` still carry their original headroom claims, unrevisited. `bundled-runner` is the one this
-  # caveat's "one recovery" scoping does not cover on its own: it runs two separate `bajutsu run`
-  # invocations (SwiftUI, then UIKit), so a single job can pay two independent cold bring-ups' worth
-  # of recovery, not one.
+  # A caveat the arithmetic above does not cover on its own: this recovery happens inside one lease's
+  # bring-up, so BAJUTSU_CRASH_RECOVERY_BUDGET (below) cannot cut it short, and a job whose scenarios
+  # are *also* burning that scenario-level budget can add both. A run on 2026-08-04 hit
+  # `timeout-minutes` that way — three mid-run crashes plus one reboot rung — and a run on 2026-08-06
+  # hit it again on the `actuation` job: a Simulator whose rendering wedged mid-run kept crashing and
+  # respawning across several scenarios (each paying its own fresh BAJUTSU_CRASH_RECOVERY_BUDGET
+  # against the same still-wedged device — a bare respawn never restarts the Simulator, only the
+  # runner process on it) for the job's full 27 minutes before `timeout-minutes` cancelled it with no
+  # diagnosable cause. BAJUTSU_RUN_CRASH_RECOVERY_BUDGET (below `BAJUTSU_CRASH_RECOVERY_BUDGET`) now
+  # bounds that: it caps crash-recovery time across the *whole run*, not per scenario, so a run whose
+  # device keeps degrading fails loudly well before `timeout-minutes` instead of being cancelled
+  # silently. The arithmetic above was actually re-run only against the `run` and `actuation` jobs'
+  # `timeout-minutes` comments below — `golden`, `bundled-runner`, `codegen`, `conformance`,
+  # `fault-injection`, and `visual` still carry their original headroom claims, unrevisited.
+  # `bundled-runner` is the one this file's per-job budgets do not fully cover on their own: it runs
+  # two separate `bajutsu run` invocations (SwiftUI, then UIKit), each with its own
+  # BAJUTSU_RUN_CRASH_RECOVERY_BUDGET, so a single job can still pay two independent worst cases.
   BAJUTSU_XCUITEST_RECOVERY_TIMEOUT: "180"
   # Respawn the resident runner cold after a single warm reuse rather than the default 3
   # (`_MAX_WARM_REUSES`). Folding many scenarios into one `bajutsu run` (the `run` / `actuation` jobs)
@@ -199,15 +205,47 @@ env:
   # Cap the *wall-clock* the scenario-level crash recovery may spend respawning, on top of the count
   # above (bajutsu/runner/pipeline.py, _default_crash_recovery_budget). The count alone is unbounded in
   # time: a runner that crashes and never comes back keeps respawning, and each respawn runs simctl prep
-  # and re-runs the scenario. BAJUTSU_XCUITEST_RESPAWN_TIMEOUT (90s, above) already caps each respawn's
-  # *readiness* wait on this lane — the part that used to dominate (a full 300s STARTUP_TIMEOUT per
-  # respawn, the silent hang that ran the mid-run `pinch/rotate` crash to `timeout-minutes`). So this
-  # budget's remaining job is the rest the readiness ceiling does not cover: the simctl prep and
-  # scenario re-run, plus the cumulative cost across BAJUTSU_CRASH_RETRIES respawns. 300s keeps a
-  # never-recovering runner failing loudly well under the 60min `timeout-minutes` instead of hanging,
-  # while still riding out a genuine one-off (the first respawn is never blocked) — a backstop on top of
-  # the per-respawn ceiling, not a substitute for it.
+  # and re-runs the scenario. BAJUTSU_XCUITEST_RESPAWN_TIMEOUT (90s, above) caps a *bare* in-place
+  # respawn's readiness wait, but a crash-triggered retry (attempt > 1) now forces the same `erase`
+  # precondition a scenario already gets from `erase: true` (bajutsu/runner/pipeline.py's forced-erase
+  # retry) unless the scenario opts out or the route rejects `erase` outright — and `erase` is exactly
+  # what makes `is_respawn` false (bajutsu/platform_lifecycle/environments/xcuitest.py:661), so that
+  # attempt pays the *full* 300s STARTUP_TIMEOUT ceiling plus the unbounded erase/boot/install prep
+  # (~80-150s going by the `golden` job's own ~80s Simulator-boot estimate below), not the tight 90s one.
+  # Worst case per erase-carrying attempt is therefore ≈450s (150s prep + the full 300s ceiling), not
+  # the ≈90s a bare respawn costs. This budget is what still bounds a scenario to roughly one such
+  # attempt rather than the full BAJUTSU_CRASH_RETRIES=2: the deadline is set at the *first* crash (not
+  # erase-carrying) and checked only between attempts, so a second, erase-carrying attempt that also
+  # crashes lands at ≈450s elapsed — already past this 300s deadline — and the third attempt is never
+  # tried. 300s keeps a never-recovering runner failing loudly in ≈450s wall-clock, well under the 60min
+  # `timeout-minutes`, while still riding out a genuine one-off (the first respawn is never blocked) — a
+  # backstop on top of the per-respawn ceiling, not a substitute for it.
   BAJUTSU_CRASH_RECOVERY_BUDGET: "300"
+  # The run-level counterpart to BAJUTSU_CRASH_RECOVERY_BUDGET (bajutsu/runner/pipeline.py,
+  # _default_run_crash_recovery_budget): a wall-clock cap on crash recovery across the *whole* run,
+  # not reset per scenario — but sized against a *single* scenario's own worst case above (≈450s), not
+  # the ≈90s a bare-respawn-only design would cost. 900s (15min) clears that single-scenario worst case
+  # with real margin, so this cap functions as a genuine multi-scenario backstop (a systemically
+  # degrading device across several scenarios) rather than a tighter version of the per-scenario budget
+  # that could trip on one scenario's own legitimate retry. The 900s is not a hard stop, though: a
+  # scenario's recovery time is billed only once its own retry loop ends, and `exhausted()` is read
+  # at crash time, so a scenario that starts recovering while the total still reads 899s is never
+  # refused — it pays its full ≈450s worst case above, and only the *next* scenario is cut off.
+  # Worst case billed is therefore ≈1350s, which leaves ≈2250s of headroom under the smallest
+  # `timeout-minutes` below (60min = 3600s, raised from 25min) for the nine scenarios' nominal work
+  # (seconds each, not minutes, when nothing crashes) and the artifact upload once recovery gives up —
+  # see the caveat above BAJUTSU_XCUITEST_RECOVERY_TIMEOUT for the incident this closes and the
+  # `bundled-runner` job it does not fully cover (two `bajutsu run` invocations, each billed this budget
+  # independently). This budget also bounds *retry* time only, not the run: `exhausted()` is read
+  # inside `except BackendCrashError`, i.e. after a scenario has already leased and crashed once, so a
+  # scenario is never refused its *first* attempt once the run-level budget is spent — every remaining
+  # scenario still pays one cold-spawn attempt against a still-wedged device before failing loudly on
+  # this budget. That is a deliberate trade-off, not an oversight: latching "the run budget is spent" to
+  # skip leasing entirely for every later scenario would also abandon a device that happens to have
+  # recovered on its own after the erase-carrying retry that spent the budget. With this budget spent,
+  # the job's worst case is therefore ≈900s (the budget) plus one cold-spawn ceiling per remaining
+  # scenario, not a single clean cutoff at 900s.
+  BAJUTSU_RUN_CRASH_RECOVERY_BUDGET: "900"
 
 jobs:
   # Decide whether an on-device run is warranted. The macOS jobs only fire when the PR

@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from bajutsu.doctor import Score
     from bajutsu.drivers import base
 
-from bajutsu import capability_preflight
+from bajutsu import capability_preflight, device_errors
 from bajutsu.artifact_perms import make_run_dir, restrict_file
 from bajutsu.assertions import (
     AssertionResult,
@@ -26,7 +26,7 @@ from bajutsu.assertions import (
     VisualContext,
     VisualEvidence,
 )
-from bajutsu.backends import capabilities_for_run
+from bajutsu.backends import capabilities_for_run, erase_precondition_supported
 from bajutsu.config import Effective
 from bajutsu.drivers.base import BackendCrashError
 from bajutsu.evidence import Artifact
@@ -46,8 +46,10 @@ from bajutsu.report import git_revision, run_provenance, scenario_render_inputs,
 from bajutsu.runner.mailbox import build_mailbox_reader
 from bajutsu.runner.recovery import (
     CrashRecoveryBudget,
+    RunCrashRecoveryBudget,
     _default_crash_recovery_budget,
     _default_crash_retries,
+    _default_run_crash_recovery_budget,
 )
 from bajutsu.runner.types import AlertGuardFor, Lease, LeaseFn
 from bajutsu.scenario import Scenario, dump_scenario_file, redact_totp_secrets
@@ -58,9 +60,20 @@ from bajutsu.scenario import Scenario, dump_scenario_file, redact_totp_secrets
 __all__ = [
     "_default_crash_recovery_budget",
     "_default_crash_retries",
+    "_default_run_crash_recovery_budget",
 ]
 
 _logger = logging.getLogger(__name__)
+
+
+def _resolve_now(clock: Clock | None) -> Callable[[], float]:
+    """The monotonic-seconds callable a run's clock resolves to, real time when `clock` is None.
+
+    The one place this resolution lives, so every `_ScenarioRunner._now` call across the run reads
+    the same clock — `RunCrashRecoveryBudget` needs no clock of its own; each `run_one` call times its
+    own retry loop locally (via `_now`) and only ever reports a finished elapsed span to it.
+    """
+    return clock.now if clock is not None else time.monotonic
 
 
 def _write_network(
@@ -154,6 +167,30 @@ class _ScenarioRunner:
     # count-based `crash_retries` is then the only cap, unchanged. Set, it stops recovery once the
     # budget is spent so a never-recovering runner can't burn crash_retries x the cold-startup ceiling.
     crash_recovery_budget: float | None = None
+    # One `RunCrashRecoveryBudget` shared across every scenario in the run (constructed once in
+    # `run_all`, ahead of every `run_one`), so a device that keeps degrading fails the run once its
+    # cumulative recovery time is spent, rather than each new scenario silently re-spending its own
+    # `crash_recovery_budget` against the same device. Its own `.budget` field (not a second field
+    # here) is what the failure message below reads, so there is one source of truth for the
+    # configured seconds rather than two fields a direct construction could desync. The default is an
+    # unbounded budget on the real clock — the "no run-level cap" case every existing caller (and the
+    # `_ScenarioRunner` test that builds one directly) keeps unchanged; `run_all` overrides it with
+    # one built on the run's own clock whenever a caller opts in (see
+    # `_default_run_crash_recovery_budget`).
+    run_crash_budget: RunCrashRecoveryBudget = field(
+        default_factory=lambda: RunCrashRecoveryBudget(None)
+    )
+    # Whether a crash-triggered retry (attempt > 1) may force `preconditions.erase=True`. True (the
+    # default) matches every existing caller. `bajutsu run`'s `--no-erase` (an operator override of
+    # every scenario's `preconditions.erase`, applied by `_filter_scenarios` in
+    # `bajutsu/cli/commands/run.py` before a scenario ever reaches here) is the one signal this
+    # forced retry must still honor: by the time a scenario reaches `run_one`, `_filter_scenarios` has
+    # already resolved `preconditions.erase` to a concrete bool for every scenario (most commonly
+    # `False`, the built-in default nobody asked for), so a guard reading that field can no longer
+    # distinguish "the operator explicitly asked to keep the device as-is" from "nobody said
+    # anything" — this flag carries the pre-resolution CLI signal (`erase is not False`) instead, so
+    # `--no-erase` still means what it says even on a crash-triggered retry.
+    force_erase_on_retry: bool = True
     # Latches once `_maybe_emit_score` has fired, so a backend-crash retry of scenario 0 (which
     # re-enters `_run_on_lease` on a respawned app — BE-0049) does not re-score and emit a second
     # grade: the score is a once-per-run tell, not a per-attempt one. A mutable field on a frozen
@@ -198,7 +235,7 @@ class _ScenarioRunner:
         Used to meter the crash-recovery wall-clock budget; the injected clock is the seam that lets a
         test drive that budget deterministically (no real respawn delay).
         """
-        return self.clock.now() if self.clock is not None else time.monotonic()
+        return _resolve_now(self.clock)()
 
     def run_one(self, i: int, s: Scenario) -> RunResult:
         """Run one scenario on a freshly leased device and return its result.
@@ -254,58 +291,136 @@ class _ScenarioRunner:
         # ceiling per respawn. An unset budget keeps the count as the only cap.
         budget = CrashRecoveryBudget(self.crash_retries, self.crash_recovery_budget, self._now)
         budget_spent = False
-        for attempt in range(1, budget.total_attempts + 1):
-            # Lease *inside* the try so a crash during bring-up — the launch/readiness gate, not only a
-            # scenario step — is caught by the same recovery. `self.lease` runs launch_driver, whose
-            # `_await_ready` surfaces a BackendCrashError when the resident runner answers /health at
-            # cold spawn and then crashes on the first readiness query, before any step runs; without
-            # this, that crash escaped the loop and failed the whole run. `_run_on_lease` releases the
-            # lease in its own `finally` (on a mid-step crash too, so the dead lease is never leaked); a
-            # lease-time crash leaves no lease to release (the pool tears down its own failed lease), and
-            # the retry leases afresh — a cold respawn, since the pool drops the dead warm runner.
-            try:
-                lz = self.lease(self.eff, s)
-                if attempt > 1:
-                    _logger.info(
-                        "scenario %s: backend respawned and recovered on attempt %d/%d",
+        run_budget_spent = False
+        # Local to this call, never shared: `run_crash_budget` bills only the seconds *this*
+        # scenario's own loop actually spends recovering (started at its first crash, in the
+        # `finally` below), not wall-clock elapsed since some earlier scenario's crash — see
+        # `RunCrashRecoveryBudget`'s own docstring for why a shared start-of-episode timestamp would
+        # be unsafe under `workers > 1`.
+        recovery_started: float | None = None
+        try:
+            for attempt in range(1, budget.total_attempts + 1):
+                # A retry (attempt > 1) forces the same device recovery a scenario already gets by
+                # declaring `erase: true`, instead of a bare in-place respawn: a fresh runner process
+                # answering /health normally says nothing about a device whose rendering has wedged, so a
+                # respawn onto the very device that just crashed it reproduces the same crash. Skipped
+                # when the scenario declares `reinstall: overwrite` — its explicit declaration that it
+                # needs its app's data container preserved across a lease — since forcing `erase` would
+                # silently override exactly the precondition the scenario was written against. NOT
+                # skipped on `preconditions.erase is False`: by the time a scenario reaches here, the CLI
+                # (`_filter_scenarios` in `bajutsu/cli/commands/run.py`) has already resolved every
+                # scenario's `erase` to a concrete bool — most commonly `False`, the built-in default a
+                # scenario never asked for — so a guard on that value would silently disable this whole
+                # unit on the one path it was written for (see *Alternatives considered*: only
+                # `reinstall: overwrite` actually protects app data; a bare `erase: false` does not, since
+                # `reinstall`'s own default `"clean"` wipes the app's data regardless of `erase`). Skipped
+                # on `not self.force_erase_on_retry` instead: that flag carries the operator's explicit
+                # `bajutsu run --no-erase`, read before `_filter_scenarios` collapses it into the same
+                # per-scenario bool — the one signal an explicit opt-out can still reach this guard
+                # through. Also skipped wherever forcing `erase` would itself raise (a real device or the
+                # live WebDriver route, `erase_precondition_supported` in `bajutsu/backends.py`): that
+                # would abort the whole run past this loop's own `except BackendCrashError`, not merely
+                # fail this one scenario.
+                retry_scenario = s
+                if (
+                    attempt > 1
+                    and self.force_erase_on_retry
+                    and s.preconditions.reinstall != "overwrite"
+                    and erase_precondition_supported(actuator, self.eff, self.udid_spec)
+                ):
+                    retry_scenario = s.model_copy(
+                        update={"preconditions": s.preconditions.model_copy(update={"erase": True})}
+                    )
+                # Lease *inside* the try so a crash during bring-up — the launch/readiness gate, not only a
+                # scenario step — is caught by the same recovery. `self.lease` runs launch_driver, whose
+                # `_await_ready` surfaces a BackendCrashError when the resident runner answers /health at
+                # cold spawn and then crashes on the first readiness query, before any step runs; without
+                # this, that crash escaped the loop and failed the whole run. `_run_on_lease` releases the
+                # lease in its own `finally` (on a mid-step crash too, so the dead lease is never leaked); a
+                # lease-time crash leaves no lease to release (the pool tears down its own failed lease), and
+                # the retry leases afresh — a cold respawn, since the pool drops the dead warm runner.
+                try:
+                    try:
+                        lz = self.lease(self.eff, retry_scenario)
+                    except device_errors.DeviceError:
+                        # A failed forced-erase prep (`simctl.DeviceError`/`adb.DeviceError`, e.g. the
+                        # device rejected `erase`/`shutdown`/`boot`) is not a `BackendCrashError`, so it
+                        # would otherwise escape this loop's own `except` below and abort the whole run
+                        # past `run_all` — losing every already-passed scenario's verdict, worse than
+                        # the bare in-place respawn this forced retry replaces. Degrade to that bare
+                        # respawn instead, exactly like today whenever erase isn't forced; that lease's
+                        # own faults (a `BackendCrashError`, or another `DeviceError`) are handled the
+                        # same way a bare respawn's already are — the latter still propagates and ends
+                        # the run, since nothing about *that* path changed.
+                        if retry_scenario is s:
+                            raise
+                        lz = self.lease(self.eff, s)
+                    if attempt > 1:
+                        _logger.info(
+                            "scenario %s: backend respawned and recovered on attempt %d/%d",
+                            s.name,
+                            attempt,
+                            budget.total_attempts,
+                        )
+                        if self.progress is not None:
+                            self.progress(
+                                f"✔ scenario {i + 1}/{self.total}: {s.name} — backend respawned "
+                                f"and recovered (attempt {attempt}/{budget.total_attempts})"
+                            )
+                    if recovery_started is not None:
+                        # Recovery ended when the lease came back; what follows is the scenario's own
+                        # work, not recovery. A mid-step crash below re-arms the clock.
+                        self.run_crash_budget.add_recovery_time(self._now() - recovery_started)
+                        recovery_started = None
+                    return self._run_on_lease(lz, handler, i, s, sid)
+                except BackendCrashError as crash:
+                    last_crash = crash
+                    if recovery_started is None:
+                        recovery_started = self._now()
+                    run_exhausted = self.run_crash_budget.exhausted()
+                    decision = budget.on_crash(attempt)
+                    # The count would allow another respawn but the scenario's own wall-clock budget,
+                    # or the run-level one shared with every scenario, is spent: distinct end states
+                    # from "attempts exhausted", surfaced in the failure below. `run_budget_spent` is
+                    # true only when the run-level budget is *why* recovery stopped — if the count or
+                    # the scenario's own budget already said no more retries, that stays the reported
+                    # cause rather than a run-level exhaustion that happened to coincide with it.
+                    budget_spent = decision.budget_spent
+                    run_budget_spent = run_exhausted and decision.will_retry
+                    will_retry = decision.will_retry and not run_exhausted
+                    _logger.warning(
+                        "scenario %s: backend crashed mid-run (attempt %d/%d)%s: %s",
                         s.name,
                         attempt,
                         budget.total_attempts,
+                        ", respawning and retrying" if will_retry else "",
+                        crash,
                     )
-                    if self.progress is not None:
+                    if self.progress is not None and will_retry:
                         self.progress(
-                            f"✔ scenario {i + 1}/{self.total}: {s.name} — backend respawned "
-                            f"and recovered (attempt {attempt}/{budget.total_attempts})"
+                            f"⟳ scenario {i + 1}/{self.total}: {s.name} — backend crashed mid-run, "
+                            f"respawning and retrying (attempt {attempt}/{budget.total_attempts})"
                         )
-                return self._run_on_lease(lz, handler, i, s, sid)
-            except BackendCrashError as crash:
-                last_crash = crash
-                decision = budget.on_crash(attempt)
-                # The count would allow another respawn but the wall-clock budget is spent: a distinct
-                # end state from "attempts exhausted", surfaced in the failure below.
-                budget_spent = decision.budget_spent
-                _logger.warning(
-                    "scenario %s: backend crashed mid-run (attempt %d/%d)%s: %s",
-                    s.name,
-                    attempt,
-                    budget.total_attempts,
-                    ", respawning and retrying" if decision.will_retry else "",
-                    crash,
-                )
-                if self.progress is not None and decision.will_retry:
-                    self.progress(
-                        f"⟳ scenario {i + 1}/{self.total}: {s.name} — backend crashed mid-run, "
-                        f"respawning and retrying (attempt {attempt}/{budget.total_attempts})"
-                    )
-                if not decision.will_retry:
-                    # Either cap reached — stop before leasing again. Breaking (vs. letting the range
-                    # run out) is what lets the budget cut recovery short with retries still on the clock.
-                    break
+                    if not will_retry:
+                        # Either cap reached — stop before leasing again. Breaking (vs. letting the range
+                        # run out) is what lets a budget cut recovery short with retries still on the clock.
+                        break
+        finally:
+            # Bill this scenario's own recovery time once its loop is done (pass or fail) — a no-op
+            # lock acquisition avoided entirely for the common case where the backend never crashed.
+            if recovery_started is not None:
+                self.run_crash_budget.add_recovery_time(self._now() - recovery_started)
         # Recovery is over and the scenario never passed: the crash is not a one-off, so surface it as
-        # an honest failure — distinguishing "ran out of attempts" from "ran out of wall-clock budget".
+        # an honest failure — distinguishing "ran out of attempts" from either budget running out.
         if self.progress is not None:
             self.progress(f"✘ scenario {i + 1}/{self.total}: {s.name} (backend crashed mid-run)")
-        if budget_spent:
+        if run_budget_spent:
+            failure = (
+                "backend crashed mid-run and the run-level crash-recovery budget of "
+                f"{self.run_crash_budget.budget:g}s is exhausted ({attempt} attempt(s) into this "
+                f"scenario; the budget is shared across every scenario in this run): {last_crash}"
+            )
+        elif budget_spent:
             failure = (
                 f"backend crashed mid-run and did not recover within the "
                 f"{self.crash_recovery_budget:g}s crash-recovery budget "
@@ -446,6 +561,8 @@ def run_all(
     on_score: Callable[[Score], None] | None = None,
     crash_retries: int | None = None,
     crash_recovery_budget: float | None = None,
+    run_crash_recovery_budget: float | None = None,
+    force_erase_on_retry: bool = True,
 ) -> list[RunResult]:
     """Run every scenario, each on a freshly leased device, and return one result per scenario.
 
@@ -505,6 +622,25 @@ def run_all(
             It stops recovery once spent so a never-recovering runner can't burn crash_retries x the
             cold-startup ceiling and blow a job's timeout; the first respawn is never blocked, so a
             genuine one-off is still ridden out.
+        run_crash_recovery_budget: A wall-clock ceiling (seconds) on the total time crash recovery may
+            spend across this one `run_all` call, not just one scenario. Note the scoping: the
+            cross-browser matrix (`run_matrix_and_report`) runs `run_all` once per engine, so each
+            engine pass gets its own full budget rather than sharing one. None reads
+            `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` — unset is unbounded, unchanged from before this
+            parameter existed. `crash_recovery_budget` resets for every new scenario, so a device that
+            keeps degrading pays it again and again; this bounds the cumulative spend instead, so the
+            run fails loudly once it is exhausted rather than each scenario silently re-spending its
+            own budget until an external timeout cancels the job. The first respawn anywhere in the
+            run is never blocked, the same never-block-the-first-respawn rule
+            `crash_recovery_budget` already follows per scenario.
+        force_erase_on_retry: Whether a crash-triggered retry (attempt > 1) may force
+            `preconditions.erase=True`, the same recovery a scenario already gets by declaring
+            `erase: true` (see `_ScenarioRunner.run_one`). True (the default) preserves every
+            existing caller's behavior. `bajutsu run --no-erase` passes False here, carrying the
+            operator's explicit opt-out past `_filter_scenarios`'s per-scenario resolution — the CLI
+            resolves every scenario's `preconditions.erase` to a concrete bool before `run_all` ever
+            sees it, so that field alone cannot distinguish "the operator asked to keep the device"
+            from "nobody said anything" by the time a retry decides whether to force it.
 
     Returns:
         One result per scenario, in the same order as `scenarios`.
@@ -525,6 +661,15 @@ def run_all(
     # XCUITest). Skipped when no actuator is passed (tests that drive a lease directly), so the
     # gesture handler's own check still backstops it.
     caps = capabilities_for_run(actuator, eff, lease_udid_spec) if actuator is not None else None
+
+    # None means "read the lane's `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` (else unbounded)"; an explicit
+    # value (a test, or a caller that pins it) wins. Resolved once, ahead of the `_ScenarioRunner` that
+    # shares one `RunCrashRecoveryBudget` built on it across every scenario in the run.
+    resolved_run_crash_recovery_budget = (
+        run_crash_recovery_budget
+        if run_crash_recovery_budget is not None
+        else _default_run_crash_recovery_budget()
+    )
 
     runner = _ScenarioRunner(
         eff=eff,
@@ -556,6 +701,8 @@ def run_all(
             if crash_recovery_budget is not None
             else _default_crash_recovery_budget()
         ),
+        run_crash_budget=RunCrashRecoveryBudget(resolved_run_crash_recovery_budget),
+        force_erase_on_retry=force_erase_on_retry,
     )
     if workers > 1:
         # >1 hands each worker its own device + per-device resources; the runner is frozen and
@@ -589,16 +736,18 @@ def run_and_report(
     golden_context: GoldenContext | None = None,
     lease_udid_spec: str = "booted",
     on_score: Callable[[Score], None] | None = None,
+    force_erase_on_retry: bool = True,
 ) -> tuple[list[RunResult], Path]:
     """Run the scenarios, then write the run's artifacts under `runs_dir/run_id`.
 
     Wraps `run_all` and persists the report: `manifest.json`, JUnit XML, and the executed
     `scenario.yaml` (so a run is re-runnable / reviewable).
 
-    Beyond `run_all`'s arguments, `runs_dir` + `run_id` locate this run's artifact directory
-    (`runs_dir/run_id`), `source_name` / `description` are recorded in the report, and
-    `config_source` — the Git source the config came from (BE-0063), or None for a local config — is
-    stamped into the manifest's provenance so a branch-based run states the exact commit it executed.
+    Beyond `run_all`'s arguments (`force_erase_on_retry` passes straight through — see its docstring
+    there), `runs_dir` + `run_id` locate this run's artifact directory (`runs_dir/run_id`),
+    `source_name` / `description` are recorded in the report, and `config_source` — the Git source
+    the config came from (BE-0063), or None for a local config — is stamped into the manifest's
+    provenance so a branch-based run states the exact commit it executed.
 
     Returns:
         The per-scenario results and the path to the written `manifest.json`.
@@ -626,6 +775,7 @@ def run_and_report(
         golden_context=golden_context,
         lease_udid_spec=lease_udid_spec,
         on_score=on_score,
+        force_erase_on_retry=force_erase_on_retry,
     )
     manifest = _assemble_report(
         scenarios,
