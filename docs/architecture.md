@@ -424,7 +424,7 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
   abort the run instead of retrying the one scenario. If the forced-erase lease itself fails with a
   device-level fault (`simctl.DeviceError`/`adb.DeviceError`, a sibling type to
   `BackendCrashError`, not a subclass of it), the retry degrades to that same bare in-place respawn
-  instead of letting the fault escape this loop and abort the whole run past `run_all`. A second,
+  instead of letting the fault escape the retry loop and abort the whole run. A second,
   run-scoped wall-clock budget (`run_crash_recovery_budget`, also unset by
   default) bounds crash-recovery time across the whole run rather than resetting per scenario, so a
   device that keeps degrading fails the run loudly instead of each scenario silently re-spending its
