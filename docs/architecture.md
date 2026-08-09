@@ -421,7 +421,10 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
   pipeline ever sees it, so a guard on that value would disable the forced retry on the very path it
   was written for), and on the two XCUITest routes that reject any `erase` precondition outright (a
   real device, `xcuitest.deviceType: device`; the live WebDriver endpoint) — forcing it there would
-  abort the run instead of retrying the one scenario. A second,
+  abort the run instead of retrying the one scenario. If the forced-erase lease itself fails with a
+  device-level fault (`simctl.DeviceError`/`adb.DeviceError`, a sibling type to
+  `BackendCrashError`, not a subclass of it), the retry degrades to that same bare in-place respawn
+  instead of letting the fault escape this loop and abort the whole run past `run_all`. A second,
   run-scoped wall-clock budget (`run_crash_recovery_budget`, also unset by
   default) bounds crash-recovery time across the whole run rather than resetting per scenario, so a
   device that keeps degrading fails the run loudly instead of each scenario silently re-spending its

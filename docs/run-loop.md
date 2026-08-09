@@ -215,7 +215,10 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > explicit `bajutsu run --no-erase`, by contrast, *is* honored: the CLI carries that flag's
 > pre-resolution value (`erase is not False`) into the run as `force_erase_on_retry`, so an operator's
 > deliberate opt-out still skips the forced retry even though a scenario's own `erase: false` cannot.
-> Because the replayed app's data is wiped by default, the retry is safe
+> A forced-erase lease that itself fails with a device-level fault (`simctl.DeviceError`/
+> `adb.DeviceError`, a sibling type to `BackendCrashError` rather than a subclass of it) degrades to
+> the bare in-place respawn instead of letting that fault escape this loop and abort the whole run
+> past `run_all`. Because the replayed app's data is wiped by default, the retry is safe
 > only for a scenario idempotent up to its crash point; one with a persistent side effect before the
 > crash (e.g. a server-side write), or one that depends on state a prior step in the same scenario
 > already set up, can fail, or pass against the wrong state, on replay. The decision logic lives in
