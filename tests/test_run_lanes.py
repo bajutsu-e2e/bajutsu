@@ -63,6 +63,18 @@ def test_xcuitest_single_device_is_serial() -> None:
     assert workers == 1
 
 
+def test_an_unpinned_device_run_is_always_a_serial_pool_of_one() -> None:
+    # Load-bearing for BE-0354's replacement rung, which `device_replacement_supported` scopes to
+    # `udid_spec == "booted"`: the request it defers is bound to *one device's* environment and is
+    # served by the next lease, so it is only sound while that next lease cannot be a different
+    # device or a concurrent worker. A `booted` run carries no comma list, so the pool is one device
+    # and workers is capped to 1 however many were asked for — the property that makes the deferral
+    # safe, pinned here because it lives in a different module from the rung that leans on it.
+    udids, workers = _resolve_lanes("xcuitest", udid="booted", workers=8, resolve_udid=_resolve)
+    assert udids == ["resolved:booted"]
+    assert workers == 1
+
+
 def _eff(**target: str) -> Effective:
     # A minimal iOS-shaped target; pass baselines/schemas/goldens/setup to fill those config fields.
     fields = "".join(f"    {k}: {v}\n" for k, v in target.items())

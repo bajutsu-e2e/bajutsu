@@ -268,7 +268,14 @@ def device_replacement_supported(
     and keeps the strongest retry it has today. A run **pinned** to a concrete device (`--udid`) is
     excluded even on that route: a replacement would silently move the run off the device the operator
     named, and mint the per-run `bajutsu-recovered-*` residue BE-0344 documents for exactly the pinned
-    case. And a target with no `appPath` is excluded because a replacement is a blank device with
+    case. That exclusion carries a second, load-bearing consequence, because this rung is the first
+    whose remedy is bound to *one device* and deferred across a lease boundary: `booted` is also the
+    only device spec that cannot name a comma list, so `_resolve_lanes` resolves it to a pool of one
+    with `workers` capped to 1 (pinned by `tests/test_run_lanes.py`). The next lease is therefore
+    necessarily the same device and the same worker — which is what makes deferring the request to it
+    sound. Widening this predicate to a multi-device pool would need the request routed through the
+    pool instead, so the retry re-leases the device that asked. And a target with no `appPath` is
+    excluded because a replacement is a blank device with
     nothing to install onto it — `XcuitestEnvironment` refuses to create one there, so asking would
     spend the attempt on a `DeviceError` that degrades to a bare respawn, *below* the erase rung it
     displaced.

@@ -237,7 +237,9 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > escalates, skipping the erase whose remedy that signal has already ruled out. A replacement attempt
 > drops the forced erase, since a device about to be created has nothing to erase. The rung is scoped
 > to an unpinned run (`--udid` names a device the operator meant, and a replacement would silently
-> move the run off it) with an `appPath` (a blank device has nothing to install), and it honors both
+> move the run off it — and an unpinned run is a pool of one device served by one worker, so the
+> escalated retry necessarily leases back the device that asked for the swap) with an `appPath` (a
+> blank device has nothing to install), and it honors both
 > opt-outs the erase rung honors — `reinstall: overwrite` and `bajutsu run --no-erase` — because a
 > replacement resets strictly more than an erase does. Every other route ignores the request and
 > keeps the strongest retry it has.

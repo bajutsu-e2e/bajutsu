@@ -435,6 +435,14 @@ class _ScenarioRunner:
                         # made on the crashed lease because the environment behind it is the one the
                         # pool keeps for this device — the next lease's bring-up is what serves it. A
                         # lease-time crash leaves no lease to ask, so it keeps the erase rung.
+                        # Unlike every rung below it, this remedy is bound to one *device* and lands
+                        # on a later lease, which is sound only because `can_replace` implies an
+                        # unpinned run: that is a pool of one device served by one worker, so the next
+                        # lease is necessarily this same device (see `device_replacement_supported`).
+                        # `replaced` is set on the request rather than on an observed swap, so a
+                        # request the pool dropped (an evicted warm environment) spends the
+                        # allowance — deliberately conservative, since the allowance exists to bound
+                        # how many devices a scenario can mint, and the attempt still gets the erase.
                         stalled = lz.video_start_stalled()
                         if forced_erase or stalled:
                             lz.request_device_replacement()
