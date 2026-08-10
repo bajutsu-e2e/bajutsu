@@ -89,7 +89,17 @@ underlying view, and `None` in every other case: a backend with no such hook (Pl
 that has not opted in, or, on Android, a Compose screen if Unit 0's spike finds no way to carry the
 value through Compose's own accessibility-node generation. `resolve_unique`
 (`bajutsu/drivers/base.py:647`) and every existing selector match are unaffected — `nativeZ` joins the
-record the same way `frame` already does, read but never filtered on.
+record the same way `frame` already does, read but never filtered on. What the number *means* is
+per-platform, and Unit 0 settles it before Units 2 and 3 encode it: iOS's responder reports a
+front-to-back *ordinal* from the layer walk, while Android reports `View.getZ()` in device pixels,
+and `getZ()` orders siblings within one parent rather than the whole tree — a child at `getZ() == 0`
+under a parent at `getZ() == 8` still composites in front of that parent's sibling at `getZ() == 4`.
+Two elements' `nativeZ` values are therefore not comparable across backends, and on Android not
+comparable across parents. Unit 0 chooses between a normalized cross-backend front-to-back ordinal
+and per-backend units named explicitly, and Unit 6 records the choice in
+[`docs/evidence.md`](../../docs/evidence.md), so a reader cannot draw from `nativeZ` the same
+falsely authoritative conclusion this proposal's Motivation faults the derived `z_index` alternative
+for.
 
 ### iOS: a new synchronous channel into BajutsuKit's in-app hook
 
