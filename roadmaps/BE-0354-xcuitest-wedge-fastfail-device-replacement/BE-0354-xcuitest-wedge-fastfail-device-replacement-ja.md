@@ -1,14 +1,14 @@
-[English](BE-XXXX-xcuitest-wedge-fastfail-device-replacement.md) · **日本語**
+[English](BE-0354-xcuitest-wedge-fastfail-device-replacement.md) · **日本語**
 
-# BE-XXXX — 応答しなくなった XCUITest セッションを速やかに見抜き、再発したクラッシュ再試行ではデバイスを置き換える
+# BE-0354 — 応答しなくなった XCUITest セッションを速やかに見抜き、再発したクラッシュ再試行ではデバイスを置き換える
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-xcuitest-wedge-fastfail-device-replacement-ja.md) |
+| 提案 | [BE-0354](BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0354") |
 | トピック | Platform support |
 | 関連 | [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn-ja.md), [BE-0319](../BE-0319-xcuitest-cold-spawn-resilience/BE-0319-xcuitest-cold-spawn-resilience-ja.md), [BE-0305](../BE-0305-driver-resilience-fault-injection/BE-0305-driver-resilience-fault-injection-ja.md) |
 <!-- /BE-METADATA -->

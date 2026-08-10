@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-xcuitest-wedge-fastfail-device-replacement-ja.md)
+**English** · [日本語](BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md)
 
-# BE-XXXX — Detect a wedged XCUITest session fast and escalate a repeated crash retry to a replacement device
+# BE-0354 — Detect a wedged XCUITest session fast and escalate a repeated crash retry to a replacement device
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-xcuitest-wedge-fastfail-device-replacement.md) |
+| Proposal | [BE-0354](BE-0354-xcuitest-wedge-fastfail-device-replacement.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0354") |
 | Topic | Platform support |
 | Related | [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn.md), [BE-0319](../BE-0319-xcuitest-cold-spawn-resilience/BE-0319-xcuitest-cold-spawn-resilience.md), [BE-0305](../BE-0305-driver-resilience-fault-injection/BE-0305-driver-resilience-fault-injection.md) |
 <!-- /BE-METADATA -->
