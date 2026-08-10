@@ -21,7 +21,9 @@ when you want a fresh contract pass right now rather than posting `@claude revie
 
 - **The diff.** Either:
   - a **working diff** — uncommitted or unpushed local changes. Stage anything untracked first
-    (`git add <paths>` — an untracked file is invisible to a bare `git diff`), then diff against the
+    (`git add -N <paths>` — an untracked file is invisible to a bare `git diff`, and `-N` records
+    the path without staging its content, so this judge-only pass never changes what a later commit
+    would pick up), then diff against the
     branch point: `git diff $(git merge-base HEAD origin/main) -- <paths>`. Scope `<paths>` to
     whatever's actually in play — the whole tree by default, narrower when the caller's own remit is
     narrower.
