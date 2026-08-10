@@ -1,6 +1,6 @@
 [English](BE-XXXX-xcuitest-duplicate-node-hittable-tiebreak.md) · **日本語**
 
-# BE-XXXX — XCUITest の重複アクセシビリティノードは、タップできる側がちょうど 1 つに定まるときにかぎり、もう一方を取り除く
+# BE-XXXX — XCUITest の重複アクセシビリティノードでタップ可能な側が 1 つだけならもう一方を取り除く
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
