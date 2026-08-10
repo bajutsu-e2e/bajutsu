@@ -157,8 +157,9 @@ Two cases the filter must leave untouched, so it never regresses an existing out
   choice invents a distinction the probe did not actually find. Keep the group exactly as it is today,
   so the eventual tap still fails through the same paths that already exist and already report a
   precise cause: `.notHittable` for a resolvable-but-covered or off-screen node (surfaced today as
-  `ElementNotTappable`), or a native resolution failure for a node XCUITest cannot act on at all
-  (surfaced today as `stale`, which BE-0289's retry can still legitimately absorb if the underlying
+  precise cause: `.notHittable` for a resolvable node whose frame center is on screen but covered
+  (surfaced today as `ElementNotTappable`), or a native resolution failure for a node XCUITest cannot
+  act on at all
   condition clears). Neither this item nor `SnapshotStore` changes what either outcome means.
 - **More than one member reports `.ok`.** This means two genuinely distinct, independently tappable
   controls happen to share identity — not the `UIAlertController` double-registration this item
