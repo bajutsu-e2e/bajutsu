@@ -12,9 +12,24 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from bajutsu.drivers.base import Driver, Element, Frame, Selector, _contains, wait_until
+from bajutsu.drivers.base import (
+    Driver,
+    Element,
+    Frame,
+    Selector,
+    _contains,
+    native_z_from_json,
+    wait_until,
+)
 
-_ELEMENT_FIELDS = frozenset(Element.__required_keys__ | Element.__optional_keys__)
+# The fields a golden file must carry. Derived from `Element` rather than listed by hand, minus the
+# diagnostic ones a golden neither pins nor compares: `nativeZ` (BE-0355) is a measured, app-reported
+# property of the moment, not part of the recorded contract, so requiring it would reject every
+# golden recorded before it existed while adding nothing a comparison reads.
+_DIAGNOSTIC_FIELDS = frozenset({"nativeZ"})
+_ELEMENT_FIELDS = (
+    frozenset(Element.__required_keys__ | Element.__optional_keys__) - _DIAGNOSTIC_FIELDS
+)
 
 
 @dataclass(frozen=True)
@@ -45,6 +60,9 @@ class GoldenResult:
 
 def compare_element(expected: Element, actual: Element) -> list[FieldMismatch]:
     """Compare two Elements field by field per BE-0006 rules.
+
+    `nativeZ` is deliberately excluded: it is a diagnostic reading of the moment (BE-0355), so
+    pinning it would fail a golden on a layout change no assertion cares about.
 
     Returns:
         A list of mismatches (empty when the elements match).
@@ -135,6 +153,7 @@ def _validate_element(data: dict[str, Any], control_id: str) -> Element:
         traits=data["traits"],
         value=data["value"],
         frame=(frame[0], frame[1], frame[2], frame[3]),
+        nativeZ=native_z_from_json(data.get("nativeZ")),
     )
 
 

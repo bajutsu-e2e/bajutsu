@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0355](BE-0355-native-z-position.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0355") |
+| Implementing PR | (pending) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0349](../BE-0349-tap-target-hittability-check/BE-0349-tap-target-hittability-check.md), [BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md), [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md) |
 <!-- /BE-METADATA -->
@@ -295,13 +296,35 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 
 - [ ] Unit 0 — spike: iOS layer-walk feasibility and responder shape; Android Compose extra-data
       support; per-element round-trip cost on both platforms
-- [ ] Unit 1 — the `nativeZ` field on `Element`
+- [x] Unit 1 — the `nativeZ` field on `Element`
 - [ ] Unit 2 — iOS reporting (BajutsuKit responder, `xcuitest.py` read)
 - [ ] Unit 3 — Android reporting (extra-data helper, resident server round trip, `adb.py` read)
-- [ ] Unit 4 — `FakeDriver` support
-- [ ] Unit 5 — driver conformance suite case
+- [x] Unit 4 — `FakeDriver` support
+- [x] Unit 5 — driver conformance suite case
 - [ ] Unit 6 — docs (`evidence.md`, `architecture.md`, and their `ja` mirrors)
 - [ ] Unit 7 — tests
+
+### Log
+
+- The first slice landed the Python-side foundation and left every device-dependent unit to a later
+  change. `Element` gained `nativeZ` as a required field, so `mypy --strict` named all twelve of its
+  construction sites instead of letting one slip through. Ten of the twelve — the driver parsers,
+  `record_capture`, and the demo scripts — hardcode `None`: the honest absence a backend with no
+  app-side hook owes its reader. The remaining two are the evidence readers below, which carry
+  through whatever the artifact recorded. `FakeDriver` reports back
+  whatever `nativeZ` a test seeds, and keeps it through the frame translation its scrollable mode
+  applies. That seam is how the deterministic gate exercises a `nativeZ`-aware reader with no device.
+  Two readers of persisted evidence now share one coercion, `base.native_z_from_json`: the
+  golden-file loader and `serve`'s pick resolver. A value that round-trips through an artifact keeps
+  the meaning it had coming off the driver. The golden loader also stops requiring the
+  field, because every golden recorded before this change lacks it, and because a golden pins
+  identity and state rather than a reading of the moment. The driver conformance suite pins the
+  contract as it stands across every backend: the field is always present, and always `None` until
+  an app measures one. `docs/evidence.md` and its Japanese mirror record what the field means and,
+  explicitly, that no occlusion check reads it. Unit 6 stays open for Unit 0's choice of what
+  `nativeZ` means across backends, and Unit 7 for the per-backend reporting paths Units 2 and 3 will
+  add. The regression net this slice does carry lives in `tests/test_native_z.py`, which pins both
+  the honest absence and the untouched behavior of `is_tappable` and `topmost_at_point`.
 
 ## References
 

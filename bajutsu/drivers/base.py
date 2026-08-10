@@ -144,6 +144,31 @@ class Element(TypedDict):
     traits: list[str]
     value: str | None
     frame: Frame
+    # The element's real front-to-back position, measured by the app itself through the opt-in
+    # app-side hook (BE-0355) — never derived from this list's own document order, which is only the
+    # paint-order proxy `topmost_at_point` below already warns about. Diagnostic only: no selector
+    # matches on it and no occlusion check reads it, so `is_tappable` / `topmost_at_point` /
+    # XCUITest's `isHittable` are unaffected. `None` is an honest absence — a backend with no such
+    # hook, or an app that has not opted in — rather than a wrong guess. No backend reports a real
+    # value yet; the iOS and Android reporting paths are BE-0355's still-open Units 2 and 3.
+    nativeZ: float | None
+
+
+def native_z_from_json(value: object) -> float | None:
+    """Read a persisted `nativeZ` back off JSON, degrading anything unrepresentable to `None`.
+
+    The one rule every reader of a written `elements.json` or golden file shares, so a value that
+    round-trips through evidence means the same thing as one straight off a driver. `nativeZ` is
+    diagnostic only (BE-0355) and no assertion reads it, so a malformed value degrades to the same
+    honest absence an uninstrumented app reports instead of failing a load that would otherwise
+    succeed. `bool` is excluded deliberately: it is an `int` subclass, and `True` is not a position.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        return float(value)
+    except OverflowError:  # JSON holds an arbitrary-precision int; a float cannot
+        return None
 
 
 class Trait:

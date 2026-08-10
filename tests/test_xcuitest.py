@@ -85,6 +85,7 @@ def test_query_parses_elements_and_does_not_leak_the_handle() -> None:
             "value": None,
             "traits": [],
             "frame": (0.0, 0.0, 10.0, 10.0),
+            "nativeZ": None,
         },
         {
             "identifier": "ok",
@@ -92,6 +93,7 @@ def test_query_parses_elements_and_does_not_leak_the_handle() -> None:
             "value": None,
             "traits": ["button"],
             "frame": (0.0, 0.0, 10.0, 10.0),
+            "nativeZ": None,
         },
     ]
     assert all("handle" not in el for el in els)  # the handle is not a selector/Element field

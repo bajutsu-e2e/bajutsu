@@ -42,6 +42,20 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 > rather than the interval system — its exchanges are written to `<sid>/network.json`
 > ([network observation](drivers.md), the `--network` flag).
 
+> Every entry in `elements.json` carries the element's `identifier`, `label`, `traits`, `value`, and
+> `frame`. One further field is diagnostic: `nativeZ`, the element's real front-to-back position as
+> the app under test measured it
+> ([BE-0355](../roadmaps/BE-0355-native-z-position/BE-0355-native-z-position.md)). Reading it changes
+> nothing a run decides — no selector matches on `nativeZ`, and the occlusion checks
+> (`is_tappable`, `topmost_at_point`, and XCUITest's own `isHittable`) behave exactly as they did
+> before the field existed. It reads `null` wherever no app-measured position exists, which today
+> means everywhere: reporting a real value needs an app that has linked the opt-in Bajutsu hook, and
+> the hook's iOS and Android halves are still open work on that roadmap item. A `null` is deliberate
+> rather than a gap to be filled in by inference. Deriving a position from the element list's own
+> order — the paint-order proxy `topmost_at_point` falls back to — would read as authoritative while
+> being wrong on exactly the layouts an investigator opens the evidence for, such as an Android view
+> whose `elevation` lifts it above a sibling declared after it.
+
 > `rawTree` writes `hierarchy.raw<suffix>` — what the driver actually parsed into `elements.json`: the
 > dump text `_read_source()` handed adb's parser (`.xml`), or XCUITest's undecoded `GET /elements` body
 > (`.json`). On adb's resident channel, when narrowing changed something, it also writes

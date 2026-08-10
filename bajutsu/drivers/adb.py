@@ -292,6 +292,9 @@ def _to_element(node: ET.Element, malformed_bounds: list[int] | None = None) -> 
         "value": desc or None,
         "traits": _traits(node),
         "frame": _bounds(node.get("bounds") or "", malformed_bounds),
+        # `dumpWindowHierarchy`'s XML has no z attribute; the per-node extra-data round trip that
+        # would supply one is BE-0355's still-open Unit 3, so this stays an honest absence.
+        "nativeZ": None,
     }
 
 
