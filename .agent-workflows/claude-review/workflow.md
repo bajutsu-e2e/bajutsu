@@ -57,7 +57,10 @@ earlier pass overlooked — dedupe by suppressing repeats, never by narrowing wh
 
 Apply every lens in the contract to the entire diff named in the Inputs section above — the prime directives,
 design/architecture, security, the silent-failures/type-design/test-coverage lenses, the semantic
-bug classes, test quality, and (only for `docs/`- or `roadmaps/`-scoped prose) the two prose lenses.
+bug classes, test quality, and the two prose lenses. The prose lenses' own scope is the contract's,
+not a path filter: the Japanese lens covers any Japanese the diff adds or edits, including Japanese
+in a code comment, and the English lens covers `docs/*.md` and roadmap `BE-NNNN-<slug>.md` prose.
+Only the `(non-blocking, prose)` *marker* in step 5 is restricted to `docs/` and `roadmaps/` files.
 Read every changed file in full before finishing; a shallow first pass that leaves the rest for
 "next time" is the dribble the contract explicitly forbids, and there may be no next time.
 
