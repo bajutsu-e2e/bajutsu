@@ -151,6 +151,8 @@ class Element(TypedDict):
     # XCUITest's `isHittable` are unaffected. `None` is an honest absence — a backend with no such
     # hook, or an app that has not opted in — rather than a wrong guess. No backend reports a real
     # value yet; the iOS and Android reporting paths are BE-0355's still-open Units 2 and 3.
+    # `_collapse_identical_duplicates`'s content key deliberately omits it: two candidates that
+    # agree on every other reported field still collapse, however far apart they measure.
     nativeZ: float | None
 
 
