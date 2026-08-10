@@ -143,7 +143,9 @@ unit 3's rung choice. Nothing here touches the verdict: every unit reroutes or s
    added — and already scans the runner's captured output for the run-ended markers
    (`_RUN_ENDED_MARKERS`, the `Test Suite 'All tests' failed` / `passed` lines) on the cold-spawn
    path (`_run_ended_probe`). Compose the two on the mid-run path: the probe reports the runner dead
-   when the process has exited *or* the capture shows the test run already ended. A run that printed
+   when the process has exited *or* the capture has *ever* shown the test run ended. The run-ended
+   half latches, because `_run_ended_probe` reports a marker only from the read window that first
+   contains it while the mid-run predicate is re-asked once per recovery episode. A run that printed
    its suite-ended line serves nothing afterwards — the state the earlier four-log investigation
    found `xcodebuild` outliving — so the recovery's health wait fails in the probe's next read
    instead of at its 60-second ceiling. The markers are `xcodebuild`'s own unlocalized output, and
