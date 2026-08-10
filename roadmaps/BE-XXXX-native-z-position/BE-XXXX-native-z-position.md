@@ -111,11 +111,13 @@ the Python side starts on the Simulator's shared loopback. That channel is one-d
 event-driven — the app pushes when a transition happens — which fits a screen-change signal but not
 this proposal's need: the driver must ask, synchronously, "what is this element's real position
 right now", timed to the same query it is already issuing. `BajutsuNet`'s collector receives; it does
-not answer. Closing that gap needs a genuinely new capability in BajutsuKit: a small in-app
-Hypertext Transfer Protocol (`HTTP`) responder, opt-in behind the same `BAJUTSU_COLLECTOR`-style
-launch environment gate `BajutsuNet`
-already uses, that the driver calls right alongside its own `/elements` query and that computes the
-answer fresh on each request rather than replaying a stale push.
+answer fresh on each request rather than replaying a stale push. Being a *listener*, it needs
+protection the outbound collector's shape does not imply: bind loopback only, and require the same
+per-run shared secret `BajutsuNet` already carries (`BAJUTSU_COLLECTOR_TOKEN`,
+`BajutsuKit/Sources/BajutsuKit/BajutsuNet.swift:16`) on every request, since iOS loopback is not
+isolated between apps and this responder returns the app's whole view hierarchy. That constraint is
+an input to Unit 0's port-shape decision below, not an afterthought: a fixed well-known port is
+probeable by any co-resident app on a real device, a negotiated one is not.
 
 What that responder computes is not `CALayer.zPosition` alone. Apple's own documentation for
 [`zPosition`](https://developer.apple.com/documentation/quartzcore/calayer/1410884-zposition) states
