@@ -1,6 +1,6 @@
 **English** · [日本語](BE-XXXX-xcuitest-duplicate-node-hittable-tiebreak-ja.md)
 
-# BE-XXXX — Drop XCUITest's non-hittable duplicate accessibility node when exactly one twin is tappable
+# BE-XXXX — Drop XCUITest's non-hittable duplicate accessibility node when exactly one is tappable
 
 <!-- BE-METADATA -->
 | Field | Value |
@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Platform support |
-| Related | [BE-0312](../BE-0312-xcuitest-content-addressed-snapshot-handle/BE-0312-xcuitest-content-addressed-snapshot-handle.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md), [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) |
+| Related | [BE-0312](../BE-0312-xcuitest-content-addressed-snapshot-handle/BE-0312-xcuitest-content-addressed-snapshot-handle.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md), [BE-0349](../BE-0349-tap-target-hittability-check/BE-0349-tap-target-hittability-check.md), [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -86,7 +86,7 @@ of information the Python driver and `SnapshotStore` both lack: a live native ha
 duplicate, and the existing capability to ask XCUITest whether that specific node is actually
 hit-testable right now.
 
-**Drop the non-hittable twin from a duplicate group, but only when doing so leaves exactly one
+**Drop each non-hittable duplicate from a group, but only when doing so leaves exactly one
 candidate.**
 [`Router.swift`](../../BajutsuKit/Sources/BajutsuRunner/Router.swift)'s `handleElements` and
 `handleSystemAlertQuery` each call `queryElements()` / `querySystemAlertButtons()` from inside a
@@ -104,33 +104,43 @@ already treats a raising resolution as `.stale` rather than letting it propagate
 ([`Router.swift`](../../BajutsuKit/Sources/BajutsuRunner/Router.swift)'s `onMainCatching`). A member
 whose probe raises counts as not `.ok` for that member only: the phantom twin this item exists to drop
 is exactly a node whose native resolution can raise, so catching per member, not per query, keeps one
-raising probe from falling through to `handleElements`'s own `caughtOnMain([])` fallback and reporting
-an empty screen instead of the rest of the tree. When exactly one member reports `.ok`, drop every
+raising probe from falling through to `handleElements`'s (or, for the SpringBoard alert path,
+`handleSystemAlertQuery`'s) own `caughtOnMain([])` fallback and reporting an empty screen instead of the
+rest of the tree. When exactly one member reports `.ok`, drop every
 other member of the group from the list before it reaches `elementsResponse`: the survivor is now the
 group's only candidate, so no tiebreak — occurrence-index or otherwise — is needed to place *it*.
 Elements outside any duplicate group, and duplicate groups where dropping does not apply (the two cases
-below), keep their original relative order, so this changes nothing for the overwhelming majority of a
-query's elements — the filter is scoped to the rare groups that would otherwise collide on
-`_collapse_identical_duplicates`'s five-field key. Neither `SnapshotStore` nor `elementsResponse` needs
-a change for the case this item targets: a solitary survivor resolves Python-side without
-`_collapse_identical_duplicates` ever having two candidates to collapse.
+below), keep their original relative order — the filter removes members from the original list in
+place rather than reassembling it from a keyed grouping, whose iteration order Swift does not
+guarantee — so this changes nothing for the overwhelming majority of a query's elements: the filter is
+scoped to the rare groups that would otherwise collide on `_collapse_identical_duplicates`'s five-field
+key. Neither `SnapshotStore` nor `elementsResponse` needs a change for the case this item targets: a
+solitary survivor resolves Python-side without `_collapse_identical_duplicates` ever having two
+candidates to collapse. Selectors that reach elements through `find_all` directly rather than through
+`resolve_unique` — `forEach`, `exists`, `count` against a selector broader than the duplicate's own
+identity, and a `scroll` step's `within`-container resolution — see the same shrink in candidates
+`resolve_unique`'s callers do; none of them is re-derived separately here, since each already reads
+whatever `/elements` returns.
 
-One narrower case this item does not close: `SnapshotStore`'s own occurrence-index tiebreak keys on a
+One case this item does not close: `SnapshotStore`'s own occurrence-index tiebreak keys on a
 different, coarser identity than the five-field group above — `identifier`, `label`, and `traits`
-only, deliberately excluding `value` and `frame` (BE-0312's own reasoning for a screen that is settling).
-An unrelated third element that happens to share only those three fields with the group's survivor — a
-same-labeled, same-trait, no-identifier control elsewhere on screen, at a different frame — still
-collides with the survivor on that coarser hash, and `SnapshotStore.refreshSnapshot`'s tiebreak still
-runs for that pair exactly as it does today; dropping this item's target twin only ever removes it as a
-*candidate* in that collision, changing which occurrence index the surviving elements take. Because
-whether a group's twin is dropped depends on a live probe result that can itself change between two
-queries of an unchanged screen — the isHittable outcome during a settling transition is not guaranteed
-stable — the occurrence index such an unrelated third element receives could, in the narrow case where
-this coarser collision exists, shift between two consecutive queries purely because the drop decision
-flipped, which is the same class of manufactured handle instability BE-0312 exists to prevent. This is
-narrower than BE-0312's own deferred gap (it requires both a five-field duplicate pair *and* a
-three-field collision with a third, unrelated element), and this item does not attempt to close it;
-Progress records it as a known, deferred limitation rather than a silent gap.
+only, deliberately excluding `value` and `frame` (BE-0312's own reasoning for a screen that is
+settling). A five-field duplicate match trivially implies a match on that coarser, three-field key, so
+a duplicate pair's own two members already collide with *each other* on `SnapshotStore`'s hash — no
+third element is needed for the collision to exist. That matters across a drop decision that flips
+between queries: if a query where the group is left untouched (either of the two cases below) hands
+the bare, unsuffixed handle to the twin this item will go on to drop at a later query, and a caller
+holds onto that handle, the query that drops the twin leaves the survivor alone in the group, which
+then lands on that same bare handle — the same coarser hash, now with only one occupant.
+`SnapshotStore.lookup` returns `.found` for that handle against the survivor, not `.stale`: a handle
+minted for one physical node silently resolves to a different one, without ever passing through the
+`.stale` state BE-0289's retry depends on to notice. Because whether a twin is dropped depends on a
+live probe result that can itself change between two queries of an unchanged screen — the isHittable
+outcome during a settling transition is not guaranteed stable — this can happen without either physical
+node ever actually moving or changing identity. The same coarser-hash collision, and the same
+occurrence-index churn, extends to any unrelated third element that happens to share only the three
+coarser fields with the survivor. This item does not attempt to close either case; Progress records
+both as a known, deferred limitation rather than a silent gap.
 
 Two cases the filter must leave untouched, so it never regresses an existing outcome:
 
@@ -164,18 +174,25 @@ same `caughtOnMain` closure `handleElements` and `handleSystemAlertQuery` alread
 
 **Tests.** The grouping and drop-or-leave decision is Router logic, not a native behavior, so it is
 coverable off-device — unlike BE-0312's Unit 3, not in `SnapshotStoreTests.swift` (`SnapshotStore`
-itself is untouched), but in `RouterTests.swift` driving `GET /elements` end to end against
-`FakeElementProvider`. That fake's `isHittableResult` is a single `TapResult` shared by every call
-today; giving it a per-backing-element result (a small dictionary keyed by the fake's own element
-identity) lets one test present two fake elements with identical content and opposite `isHittable`
-results and assert the reply keeps only the hittable one, a second test present two fake elements that
-both report `.ok` and assert the reply still contains both, unchanged, and a third present two that
-both report something other than `.ok` and assert the reply still contains both, unchanged. These three
-pin the branch logic deterministically, with no Simulator, and can also drive the exception-catching
-requirement above directly: a fake that raises for one element and returns `.ok` for the other still
-drops only the raising one. On-device coverage (per BE-0287's precedent for this same file pair) is
-reserved for what only a real device can confirm: that a genuine `UIAlertController` double-registration
-reproduces with exactly one twin `isHittable`, that a `tap` by `id` lands on it, and that a `count`
+itself is untouched), but in `RouterTests.swift` driving `GET /elements` and `POST /systemAlert/query`
+end to end against `FakeElementProvider`. That fake's `isHittableResult` is a single `TapResult` shared
+by every call today; giving it a per-backing-element result (a small dictionary keyed by
+`ObjectIdentifier` of the fake's own backing reference, not by content — the two fake elements in the
+test below are content-identical by construction, so a content-keyed dictionary could not hold two
+different results for them) lets one test present two fake elements with identical content and
+opposite `isHittable` results and assert the reply keeps only the hittable one, a second test present
+two fake elements that both report `.ok` and assert the reply still contains both, unchanged, and a
+third present two that both report something other than `.ok` and assert the reply still contains both,
+unchanged. These three pin the branch logic deterministically, with no Simulator. A fourth test drives
+the exception-catching requirement above directly, and needs a second, new per-backing-element
+raise-injection property alongside the `TapResult` dictionary — `isHittable` has no such property
+today, only `tap`/`queryElements` do, via `tapRaises`/`queryRaises`, and `TapResult` itself has no
+raise case to express "raises" as a return value: with that property, a fake configured to raise for
+one element and return `.ok` for the other still drops only the raising one. On-device coverage —
+`Router.swift`/`ElementProviding.swift` have no existing on-device/off-device split to follow, so this
+one is new rather than a precedent's continuation — is reserved for what only a real device can
+confirm: that a genuine `UIAlertController` double-registration reproduces with exactly one twin
+`isHittable`, that a `tap` by `id` lands on it, and that a `count`
 assertion on that identity reports one element afterward rather than two — the regression this item
 exists to prevent is a tap on the wrong twin, and the count assertion pins that the survivor is truly
 the sole candidate, not merely reordered.
@@ -214,7 +231,11 @@ hittable" without a second round trip per duplicate group, on every query, from 
 channel that does not hold the native reference at all. Dropping one candidate Python-side, once the
 runner has told it which is hittable, would still leave the *other* twin's handle live and reachable by
 `index` on the runner side — the drop has to happen where the element genuinely disappears from the
-reply, which is the runner, not a client that only sees what the runner already sent it.
+reply, which is the runner, not a client that only sees what the runner already sent it. This reasoning
+is specific to a backend with a persistent native runner process to ask; `resolve_unique` and
+`_collapse_identical_duplicates` are shared by every backend, and a backend with no such process (adb,
+Playwright, the WebView bridge, the Appium-driven live route) has no runner layer to move this fix into
+at all, so the same rejection does not transfer to a duplicate reported by one of them.
 
 **Retry more, or add a scroll/dismiss-and-reopen recovery above the driver.** BE-0289's retry already
 re-resolves and re-actuates on a `stale` reply, and *Motivation* shows why it cannot recover this
@@ -242,44 +263,61 @@ content keeps the added cost proportional to how often the artifact this item ta
       for that member, not a fallthrough to the closure's own `[]` fallback). When exactly one member
       reports `.ok`, drop every other member before the list reaches `elementsResponse`; leave a group
       with no `.ok` member, or more than one, exactly as it is today.
-- [ ] Off-device tests in `RouterTests.swift`: give `FakeElementProvider` a per-backing-element
-      `isHittable` result; pin the three branches (drop the non-`.ok` twin when exactly one is `.ok`,
-      keep both when zero are, keep both when two or more are) and the per-member exception-catching
-      requirement (one raising fake element, one `.ok`, only the raising one is dropped).
+- [ ] Off-device tests in `RouterTests.swift`, covering both `GET /elements` and
+      `POST /systemAlert/query`: give `FakeElementProvider` a per-backing-element (keyed by
+      `ObjectIdentifier`, not by content) `isHittable` result and a separate per-backing-element
+      raise-injection property; pin the three branches (drop the non-`.ok` twin when exactly one is
+      `.ok`, keep both when zero are, keep both when two or more are) and the per-member
+      exception-catching requirement (one raising fake element, one `.ok`, only the raising one is
+      dropped).
 - [ ] On-device test: a `UIAlertController` with a genuinely covered duplicate button, tapped by `id`,
-      lands correctly and a `count` assertion on that identity reports one element afterward; a
-      both-covered pair still surfaces `ElementNotTappable` with `count` still reporting two; a
-      both-hittable pair still resolves by today's query order with `count` still reporting two.
+      lands on the surviving hittable twin (not the covered one); a `count` assertion on that identity
+      reports one element afterward; a both-covered pair still surfaces `ElementNotTappable` with
+      `count` still reporting two; a both-hittable pair still resolves by today's query order with
+      `count` still reporting two.
 - [ ] Documentation: note in the `handleElements` / `handleSystemAlertQuery` comments (and
       `SnapshotStore`'s class comment, if it still implies every content-identical group reaches the
       store) that a group with exactly one hittable member is resolved to that member before the store
       ever sees it, and record the deferred limitation *Detailed design* names — a five-field duplicate
-      pair that also collides with a third, unrelated element on `SnapshotStore`'s coarser three-field
-      identity can still see that third element's occurrence index shift between queries (BE-0113).
+      pair's own two members, or a pair plus a third unrelated element, that also collide on
+      `SnapshotStore`'s coarser three-field identity can see a handle silently resolve to a different
+      physical node, or an occurrence index shift, between queries. Update the conditional language in
+      `_collapse_identical_duplicates`'s docstring (`bajutsu/drivers/base.py`), which this item's own
+      Introduction quotes as the residual cost being removed, and `DESIGN.md` / `docs/architecture.md`
+      if either describes this behavior (BE-0113).
 
 ## References
 
 - [BE-0312 — Derive XCUITest actuation handles from element identity so an unchanged screen keeps its handles valid](../BE-0312-xcuitest-content-addressed-snapshot-handle/BE-0312-xcuitest-content-addressed-snapshot-handle.md):
   introduced the occurrence-index tiebreak this item's target case no longer needs to place the
   survivor against its dropped twin, since only one candidate of that five-field identity remains; the
-  tiebreak still runs unchanged for the two cases this item leaves untouched, and for any unrelated
-  element that collides with the survivor on the tiebreak's own coarser three-field identity (the known
-  limitation *Detailed design* names). Its own "Detailed design" section names the
-  query-order-instability gap this item closes for that target case.
+  tiebreak still runs unchanged for the two cases this item leaves untouched, and can still reassign a
+  handle across queries when a dropped twin's survivor, or a dropped twin plus an unrelated element,
+  collides with something else on the tiebreak's own coarser three-field identity (the known limitation
+  *Detailed design* names). Its own "Detailed design" section names the query-order-instability gap
+  this item closes for that target case.
 - [BE-0289 — Make the XCUITest channel re-resolve a stale actuation handle before failing](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md):
   the retry *Motivation* shows cannot recover this failure, because the duplicate order it re-derives
-  is stable within a run.
+  is stable within a run; the same retry cannot notice the known limitation above either, since a
+  silently reassigned handle never produces the `stale` reply the retry watches for.
+- [BE-0349 — Verify tappability before acting, with a bounded scroll safety net](../BE-0349-tap-target-hittability-check/BE-0349-tap-target-hittability-check.md):
+  introduced `ElementProviding.isHittable`/`TapResult.notHittable` and the `/isHittable` endpoint this
+  item reuses twice, for the related but distinct problem of a uniquely-resolved element that is
+  covered rather than one of several content-identical candidates; its own "Alternatives considered"
+  rejected a uniform per-element schema field for a related reason this item's Python-side alternative
+  does not credit.
 - [BE-0049 — Determinism and flakiness audit](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md):
   the determinism stance this item stays consistent with — remove the cause of a flake rather than
   absorb an outcome.
 - [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py): `_collapse_identical_duplicates` and
   `resolve_unique` — the Python-side collapse whose own docstring names the residual cost this item
-  removes.
+  removes for its target case, and whose docstring Progress commits to updating so it no longer reads
+  as unconditional.
 - [`BajutsuKit/Sources/BajutsuRunner/SnapshotStore.swift`](../../BajutsuKit/Sources/BajutsuRunner/SnapshotStore.swift):
   `refreshSnapshot` — unchanged by this item; its occurrence-index tiebreak no longer needs to place a
   dropped twin's survivor against that twin, keeps running unchanged for the two cases this item leaves
-  untouched, and keeps running unchanged for any unrelated element that collides with a survivor on the
-  tiebreak's own coarser three-field identity (the known limitation *Detailed design* names).
+  untouched, and can still resolve a handle to a different physical node than the one it was minted for
+  across a query where the drop decision flips (the known limitation *Detailed design* names).
 - [`BajutsuKit/Sources/BajutsuRunner/Router.swift`](../../BajutsuKit/Sources/BajutsuRunner/Router.swift):
   `handleElements` and `handleSystemAlertQuery` — the handlers this item changes;
   `elementsResponse` stays unchanged.
