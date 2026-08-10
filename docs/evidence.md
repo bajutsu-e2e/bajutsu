@@ -14,13 +14,14 @@ Related: [the capture tokens in scenarios](scenarios.md#capture-token-grammar) �
 
 | Way | Use | Example |
 |---|---|---|
-| **A. Rules (`capturePolicy`)** ★ central | automatic capture **every time** a particular action happens | screenshot + elements on every tap of `settings.*` |
+| **A. Rules (`capturePolicy`)** ★ central | automatic capture **every time** a particular action happens | network exchanges on every tap of `settings.*` |
 | **B. Per-step (`capture:`)** | this one step only | video + deviceLog around a specific wait |
 | **C. Default policy** | a baseline guarantee | config's `capture: [screenshot.after, elements, actionLog]` |
 
-> C (config default) `capture` resolves to `Effective.capture` ([configuration](configuration.md)),
-> but currently the run loop uses only the scenario's `capturePolicy` and the per-step `capture` as
-> firing sources. The wiring to auto-apply the config default capture to every step is not in place.
+> C (config default) `capture` resolves to `Effective.capture` ([configuration](configuration.md))
+> and is applied on top of every step, alongside the scenario's `capturePolicy` and the per-step
+> `capture` — unlike those two, it fires unconditionally rather than on a trigger, so it acts as a
+> baseline guarantee rather than a rule.
 
 ## Evidence kinds and acquisition timing
 
@@ -119,9 +120,10 @@ Repeatedly-firing rules, written per scenario (implementation: `scenario/models/
 
 ```yaml
 capturePolicy:
-  # On every tap of settings.*, capture the post-tap screenshot and elements
+  # On every tap of settings.*, also capture the network exchanges — screenshot and elements are
+  # already guaranteed on every step by config's default policy (C, above)
   - on: { action: tap, idMatches: "settings.*" }
-    capture: [screenshot.after, elements]
+    capture: [network]
 
   # On every screen transition
   - on: { event: screenChanged }

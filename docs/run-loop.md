@@ -92,7 +92,8 @@ Decides whether each `capturePolicy` rule fires for this step ([evidence](eviden
 - `_rule_fires`: whether it matches one of `on.action` (+ optional `idMatches`) / `on.event ==
   screenChanged` / `on.result == error`. The action name is mapped to the DSL name
   (`long_press`→`longPress`, `assert_`→`assert`).
-- `_collect_captures`: gathers the inline `step.capture` + the fired rules' captures and dedupes.
+- `_collect_captures`: gathers the inline `step.capture` + the fired rules' captures + the config's
+  `defaults.capture` baseline (applied unconditionally, unlike the other two) and dedupes.
 - Instant kinds (screenshot/elements) are acquired by the sink's `capture()`; interval kinds
   (video/deviceLog) are collected by stopping the ones started earlier via `start_intervals()`.
 
