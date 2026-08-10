@@ -118,9 +118,12 @@ identity rather than by identifier so two identifier-less sibling elements each 
 options. `FakeDriver.set_picker_value` resolves `sel` uniquely (zero matches raises
 `ElementNotFound`, more than one raises `AmbiguousSelector`, the same discipline every other
 action uses), then checks `value` against the resolved element's seeded options: a match records
-the actuation, a miss raises `ElementNotFound` naming the value that was not found. This keeps the
-handler-dispatch, preflight, and absent-value paths testable without a Simulator, including the
-multi-component case.
+the actuation, a miss raises `ElementNotFound` naming the value that was not found. A resolved
+wheel carrying *no* seed entry is a fixture mistake rather than an absent value, so it raises a
+distinct, loud error instead of falling through to `ElementNotFound` — otherwise a stale key (the
+copies `query()` returns in scrollable mode, or a `react` callback that rebuilds `screen`) would
+let the absent-value test pass for the wrong reason. This keeps the handler-dispatch, preflight,
+and absent-value paths testable without a Simulator, including the multi-component case.
 
 **Capability and preflight.** `Capability` (`bajutsu/drivers/base.py`) gains `PICKER_WHEEL`, and
 `capability_preflight.py`'s `_REQUIREMENTS` gains one entry for it, following the
