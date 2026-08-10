@@ -166,9 +166,12 @@ def native_z_from_json(value: object) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     try:
-        return float(value)
+        z = float(value)
     except OverflowError:  # JSON holds an arbitrary-precision int; a float cannot
         return None
+    # `json.loads` accepts the non-standard `NaN` / `Infinity` literals; neither is a position, and
+    # a NaN compares false against every value including itself, so degrade both the same way.
+    return z if math.isfinite(z) else None
 
 
 class Trait:
