@@ -88,7 +88,16 @@ class Element(TypedDict):
 は Android で Unit 0 のスパイクが Compose のアクセシビリティノード生成経由でこの値を運ぶ方法を
 見つけられなかった場合は、`None` のままです。`resolve_unique`(`bajutsu/drivers/base.py:647`)や
 既存のセレクタ照合はすべて影響を受けません。`nativeZ` はすでに `frame` が入っているのと同じ形で
-レコードに加わり、読まれるだけで絞り込みには使われません。
+レコードに加わり、読まれるだけで絞り込みには使われません。この数値が何を意味するかはプラットフォーム
+ごとに異なり、Unit 0 が Unit 2・3 で符号化する前に決めます。iOS のレスポンダはレイヤーの走査から
+得た前後の**序数**を報告する一方、Android は `View.getZ()` をデバイスピクセルで報告します。
+`getZ()` は木全体ではなく同じ親を持つ兄弟同士の順序だけを決めるため、`getZ() == 8` の親の下にある
+`getZ() == 0` の子は、その親の兄弟である `getZ() == 4` の要素より依然として手前に描かれます。した
+がって 2 つの要素の `nativeZ` はバックエンドをまたいで比較できず、Android では親をまたいでも比較でき
+ません。Unit 0 は、バックエンドをまたいで正規化した前後の序数にするか、それぞれのバックエンド固有の
+単位を明示するかを選び、Unit 6 がその選択を[`docs/evidence.md`](../../docs/evidence.md)に記録しま
+す。これにより読み手が `nativeZ` から、本提案の動機が導出した `z_index` 代替案を批判したのと同じ、
+見かけ上権威ある誤った結論を引き出さないようにします。
 
 ### iOS: BajutsuKit の in-app フックへ新たに同期的な経路を通す
 
@@ -104,7 +113,13 @@ BajutsuKit はすでに、実行時に何かを計算してホスト側に報告
 `BAJUTSU_COLLECTOR` と同様の launch 環境変数で opt-in する、小さな in-app Hypertext Transfer
 Protocol(`HTTP`)レスポンダです。
 ドライバは自身の `/elements` クエリと並べてこれを呼び、レスポンダは古い push を再利用せず、要求
-ごとに答えを新しく計算します。
+ごとに答えを新しく計算します。listener であるこのレスポンダには、送り出すだけの collector の形で
+は要らなかった保護が必要です。ループバックだけに bind し、`BajutsuNet` がすでに持つ同じ per-run 共有
+シークレット(`BAJUTSU_COLLECTOR_TOKEN`、`BajutsuKit/Sources/BajutsuKit/BajutsuNet.swift:16`)を毎回
+の要求で必須にします。iOS のループバックはアプリ間で分離されておらず、このレスポンダはアプリの
+ビュー階層全体を返すからです。この制約は後述する Unit 0 のポート形式の判断への入力であり、後付け
+ではありません。固定の既知のポートは実機上の他のアプリから探知可能ですが、調整済みのポートはそう
+ではありません。
 
 このレスポンダが計算するのは、単純な `CALayer.zPosition` ではありません。Apple の
 [`zPosition` 公式ドキュメント](https://developer.apple.com/documentation/quartzcore/calayer/1410884-zposition)
@@ -134,27 +149,38 @@ opt-in な機構がすでにあるため、この側には新しい
 リクエストハンドラ(`BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt`
 の `respondSource`、
 [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md))
-で、すでに `AccessibilityService` としてデバイスと通信しています。この `respondSource` が今日
-すでに組み立てている Extensible Markup Language(`XML`)ダンプを直列化して返す前に、ノードごとに
-[`AccessibilityNodeInfo.refreshWithExtraData(String key, Bundle args)`](https://developer.android.com/reference/android/view/accessibility/AccessibilityNodeInfo)
-を呼び、結果を `getExtras()` から読みます。これはプラットフォーム自身の
+で、すでに `AccessibilityService` としてデバイスと通信しています。この `respondSource` がノード
+ごとに[`AccessibilityNodeInfo.refreshWithExtraData(String key, Bundle args)`](https://developer.android.com/reference/android/view/accessibility/AccessibilityNodeInfo)
+を呼び、結果を `getExtras()` から読み、今日すでに組み立てている Extensible Markup Language
+(`XML`)ダンプと組み合わせます。この組み合わせは無償ではありません。`respondSource` の本体は
+`settledDump` から `UiDevice.dumpWindowHierarchy` へと続く経路で作られており、これは 1 回のプラット
+フォーム呼び出しの中で走査と直列化を同時に行うため、`refreshWithExtraData` を呼べる個々の
+`AccessibilityNodeInfo` を外部に出しません。そのため追加データには `UiAutomation.getRootInActiveWindow()`
+を使うもう 1 回の走査が必要になります。これはアクティブウィンドウしか対象にしませんが、
+`dumpWindowHierarchy` は SystemUI のステータスバーを含む全ウィンドウに及びます。この 2 つの走査を
+どう突き合わせるか、そしてもう一方の走査のコストは Unit 0 が確定します。これはプラットフォーム自身の
 `EXTRA_DATA_TEXT_CHARACTER_LOCATION_KEY` がオンデマンドのテキスト境界のために使っているのと同じ
 機構なので、本提案の Android 側 SDK は、`View` のサブクラスまたは `ViewCompat` 拡張からアプリが
 呼ぶ小さなヘルパーで済みます。`view.getZ()`(elevation とZ軸方向の移動を合わせた値です。iOS の
 `zPosition` とは違い、Android 自身の実際の描画順を並べ替える値であることを、BE-0349 自身のスパイク
 が `View.elevation` についてすでに実証しています)を、Bajutsu 専用の追加データキーの下に報告します。
 `dumpWindowHierarchy` の `XML` 形式には、プラットフォーム自身が定義していない値を入れる属性の枠が
-ないため、`respondSource` は `nativeZ` を新しい `XML` 属性として直接追加できません。代わりに、収集
-した各ノードの値を、ノードの識別情報で紐づけた小さな側方構造として、変更のない `XML` 本体と並べて
-返します。この識別情報は `resource-id` / `content-desc` / `text` / `class` の 4 項目の組です。`adb.py`
-自身の `_identity()`(`bajutsu/drivers/adb.py:307`)が、常駐チャネルの stale handle 再解決のために
-すでに使っているものと同じです。`bajutsu/adb_resident.py` の階層取得(`fetch_source`、
-`bajutsu/adb_resident.py:90`–`123`)は今日と同じ、単一の `GET /source` 往復のままで、この側方構造
-も一緒に運びます。`adb.py` の `_to_element`(`bajutsu/drivers/adb.py:280`)がこれを識別情報
-で解析済みノードへ突き合わせ、`nativeZ` へ運びます。この提案で新たに加わる往復は `respondSource`
-の内部、つまりノードごとの `refreshWithExtraData` 呼び出しだけです。これはそのノード自身の
-`getAvailableExtraDataKeys()` がすでに Bajutsu のキーを含んでいる場合に限って発行されるため、協力
-しないアプリはこの 1 回の安価な存在確認以上のコストを払いません。
+ないため、`respondSource` は `nativeZ` を新しい `XML` 属性として直接追加できません。代わりに、`XML`
+本体の `<node>` の並びとインデックスを揃えた小さな側方構造として各ノードの値を返します。文書順の
+位置で紐づけるのであり、ノードの識別情報では紐づけません。識別情報だけではこれを紐づけられません。
+`adb.py` 自身の `_identity()`(`bajutsu/drivers/adb.py:307`)が作る、`resource-id` / `content-desc` /
+`text` / `class` の 4 項目の組は、意図的に一意ではないからです。常駐チャネルがこれを `index`
+(`count` のうちの何番目か、`bajutsu/drivers/adb.py:104`–`106`)と組み合わせて使うのは、まさに同じ
+内容の行を並べたリストは単一の識別情報に集約されてしまうからです。識別情報だけで紐づける実装は、その
+ような行すべてに同じ `nativeZ` を黙って割り当ててしまいます。`bajutsu/adb_resident.py` の階層取得
+(`fetch_source`、`bajutsu/adb_resident.py:90`)は今日と同じ、単一の `GET /source` 往復のままで、
+この側方構造も一緒に運びます。そして `_elements_from_nodes`(`bajutsu/drivers/adb.py:322`)は、
+`parse_hierarchy_with_identities`(`bajutsu/drivers/adb.py:336`)がすでに要素 *i* を対応づけている
+のと同じ `<node>` の並びを辿っており、位置 *i* の値を要素 *i* の `nativeZ` へ運びます。この提案で
+新たに加わる往復は `respondSource` の内部、つまりノードごとの `refreshWithExtraData` 呼び出しと、
+上記の突き合わせのためのもう 1 回の走査です。これはそのノード自身の `getAvailableExtraDataKeys()`
+がすでに Bajutsu のキーを含んでいる場合に限って発行されるため、協力しないアプリはこの 1 回の安価な
+存在確認以上のコストを払いません。
 
 Jetpack Compose のアクセシビリティノード生成(`AndroidComposeViewAccessibilityDelegateCompat`)が、
 `Modifier` で宣言した追加データキーを、`View` ベースのオーバーライドが通常制御する
@@ -167,10 +193,17 @@ Android 側設計、具体的には Compose が上記の `View` オーバーラ�
 
 ### コストは両 OS とも opt-in のまま
 
-いずれの OS でも、協力しないバックエンドやアプリに追加コストは発生しません。iOS 側では、レスポン
-ダを組み込んでいないアプリに対してドライバの接続は単に拒否される、または応答が返らないだけで、
-`nativeZ` は `None` のままです。これは `RawSourceProvider` を実装していないバックエンドが今すでに
-受けている degrade と同じです。Android のノードごとの `refreshWithExtraData` 往復は、そのノード
+いずれの OS でも、協力しないアプリだけの run に発生する追加コストは、境界のある 1 回の探索呼び出し
+を超えません。iOS 側では、レスポンダを組み込んでいないアプリに対してドライバの接続は拒否されます。
+あるいは、ソケットが開いたまま一度も応答しない場合は、Unit 0 が定める短い connect/read タイムアウト
+で終わります。いずれの場合も `nativeZ` は `None` のままです。これは `RawSourceProvider` を実装して
+いないバックエンドが今
+すでに受けている degrade と同じです。iOS には Android の(すでに手元にあるノード属性という)ゲート
+に相当するものがなく、接続を試みる以外にアプリが計装されていないと知る手段がないため、ドライバは
+最初の失敗をセッション単位でキャッシュして以降の探索を止めます。これにより協力しないアプリはこの
+タイムアウトを一度だけ払い、`/elements` クエリごとに払うことはありません。これが、後述する
+「保たれる大原則」で述べる「境界があり同期的」という意味を保つものです。Android のノードごとの
+`refreshWithExtraData` 往復は、そのノード
 自身の `getAvailableExtraDataKeys()` がすでに Bajutsu のキーを列挙している場合に限って発行される
 ため、計装されていないアプリのツリー走査は 1 回の安価な存在確認だけで済みます。協力するアプリに
 ついては、Unit 0 のスパイクで showcase 相当の大きさのツリーに対する要素ごとの往復コストも測定
@@ -181,15 +214,21 @@ Android 側設計、具体的には Compose が上記の `View` オーバーラ�
 
 ### 作業分解(相互排他的かつ全体を尽くす、Mutually Exclusive, Collectively Exhaustive、`MECE`)
 
-0. **スパイク。** iOS では、UIKit と SwiftUI の両画面について確定した前後インデックスを報告する
-   ために必要なレイヤーとビューの走査方法を実機で確認し、新しい同期的な in-app レスポンダの形
-   (固定のローカルポートか、既存の `BAJUTSU_COLLECTOR` と同様の launch 環境変数で調整するポート
-   か)を設計する。Android では、`Modifier.zIndex` と `graphicsLayer` を使った小さな Compose の
-   画面で、Jetpack Compose のアクセシビリティノード生成が `Modifier.semantics` 経由で宣言した独自
-   の追加データキーを転送するかを確認する。両 OS で、showcase 相当の大きさのツリーに対する要素
-   ごとの往復コストを測定する。すべての結果を、Unit 2・3 が着手する前に上記の詳細設計へ記録
-   する(動く / 回避策が必要 / 対応不可のいずれか)。これは BE-0349 自身のログの記録の仕方と
-   同じである。Unit 2・3 をブロックする。
+0. **スパイク。** `nativeZ` がバックエンドをまたいで何を意味するか(正規化した前後の序数か、明示
+   したバックエンド固有の単位か)を、上記の詳細設計「`nativeZ` フィールド」に従って決める。iOS では、
+   UIKit と SwiftUI の両画面について確定した前後インデックスを報告するために必要なレイヤーとビュー
+   の走査方法を実機で確認する。レスポンダの connect/read タイムアウトと、協力しないアプリの 1 回の
+   失敗探索が頼るセッション単位のネガティブキャッシュ設計を確定し、セキュリティ(固定のローカル
+   ポートは実機上の他のアプリから探知可能)を既存の `BAJUTSU_COLLECTOR` と同様の launch 環境変数と
+   比較しながらレスポンダの形を設計する。Android では、`Modifier.zIndex` と `graphicsLayer` を使った
+   小さな Compose の画面で、Jetpack Compose のアクセシビリティノード生成が `Modifier.semantics`
+   経由で宣言した独自の追加データキーを転送するかを確認し、`refreshWithExtraData` の呼び出しに必要な
+   `UiAutomation.getRootInActiveWindow()` のノード集合が `dumpWindowHierarchy` の広い、複数ウィンド
+   ウにわたるノード集合とどう突き合わさるかを確認する。上記の詳細設計にある文書順で紐づけた側方構造
+   が、実際に付随する `XML` 本体と噛み合うことを前提のままにしないためである。両 OS で、showcase
+   相当の大きさのツリーに対する要素ごとの往復コストを測定する。すべての結果を、Unit 2・3 が着手する
+   前に上記の詳細設計へ記録する(動く / 回避策が必要 / 対応不可のいずれか)。これは BE-0349 自身の
+   ログの記録の仕方と同じである。Unit 2・3 をブロックする。
 1. **`nativeZ` フィールド。** `Element`(`bajutsu/drivers/base.py`)に追加する。`Element` は
    `total=False` を持たないため、adb、XCUITest、実機 XCUITest クライアント、
    web の Document Object Model(`DOM`)パーサー、
@@ -213,7 +252,7 @@ Android 側設計、具体的には Compose が上記の `View` オーバーラ�
 6. **ドキュメント。** [`docs/evidence.md`](../../docs/evidence.md) と
    [`docs/architecture.md`](../../docs/architecture.md)(その `docs/ja/` 側も含む)に、`nativeZ`
    が診断専用であり、`is_tappable` / `topmost_at_point` / `isHittable` のいずれも変えないことを
-   明記する。
+   明記し、`nativeZ` がバックエンドをまたいで何を意味するかについての Unit 0 の決定を記録する。
 7. **テスト。** 新しい報告経路について各バックエンドのユニットテストを書き、本提案によって
    `is_tappable` と `topmost_at_point` の挙動が変わっていないことを固定するリグレッションテスト
    も加える。

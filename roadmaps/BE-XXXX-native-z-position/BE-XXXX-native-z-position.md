@@ -111,6 +111,10 @@ the Python side starts on the Simulator's shared loopback. That channel is one-d
 event-driven — the app pushes when a transition happens — which fits a screen-change signal but not
 this proposal's need: the driver must ask, synchronously, "what is this element's real position
 right now", timed to the same query it is already issuing. `BajutsuNet`'s collector receives; it does
+not answer. Closing that gap needs a genuinely new capability in BajutsuKit: a small in-app
+Hypertext Transfer Protocol (`HTTP`) responder, opt-in behind the same `BAJUTSU_COLLECTOR`-style
+launch environment gate `BajutsuNet`
+already uses, that the driver calls right alongside its own `/elements` query and that computes the
 answer fresh on each request rather than replaying a stale push. Being a *listener*, it needs
 protection the outbound collector's shape does not imply: bind loopback only, and require the same
 per-run shared secret `BajutsuNet` already carries (`BAJUTSU_COLLECTOR_TOKEN`,
@@ -153,8 +157,7 @@ comes from `settledDump` → `UiDevice.dumpWindowHierarchy`, which traverses and
 platform call and exposes no per-node `AccessibilityNodeInfo` to refresh, so the extra data needs a
 second walk over `UiAutomation.getRootInActiveWindow()` — which covers only the active window, while
 `dumpWindowHierarchy` spans every window including the SystemUI status bar. Unit 0 settles how the
-two walks are reconciled and what the second one costs. This is the same mechanism the
-platform's own
+two walks are reconciled and what the second one costs. This is the same mechanism the platform's own
 `EXTRA_DATA_TEXT_CHARACTER_LOCATION_KEY` uses for on-demand text bounds, so this proposal's Android
 SDK is a small helper apps call from a `View` subclass or a `ViewCompat` extension, reporting
 `view.getZ()` — elevation plus any translation on the z axis, the value that actually reorders
@@ -162,7 +165,6 @@ Android's own real composited draw order, unlike iOS's `zPosition` above (BE-034
 confirmed this empirically for `View.elevation`) — under a Bajutsu-owned extra-data key.
 `dumpWindowHierarchy`'s `XML` format has no attribute slot for a value it does not itself define, so
 `respondSource` cannot add `nativeZ` as a new `XML` attribute directly; it instead returns the
-collected
 per-node values as a small side structure index-aligned with the `<node>` sequence of the `XML`
 body — keyed by document-order position, not by node identity. Identity alone cannot key this: the
 four-field `resource-id`/`content-desc`/`text`/`class` tuple `adb.py`'s own `_identity()`
@@ -173,11 +175,10 @@ the same `nativeZ`. `bajutsu/adb_resident.py`'s hierarchy fetch (`fetch_source`,
 `bajutsu/adb_resident.py:90`) stays the same single `GET /source` round trip it is today, now also
 carrying that side structure back; and `_elements_from_nodes` (`bajutsu/drivers/adb.py:322`), which
 walks the same `<node>` sequence `parse_hierarchy_with_identities` (`bajutsu/drivers/adb.py:336`)
-already aligns element *i* against, carries position *i*'s value into element *i*'s `nativeZ`.
-The one added round trip is inside `respondSource` itself —
-the per-node `refreshWithExtraData` calls — issued only when a node's own
-`getAvailableExtraDataKeys()` already lists the Bajutsu key, so a non-cooperating app pays nothing
-beyond that one cheap check.
+already aligns element *i* against, carries position *i*'s value into element *i*'s `nativeZ`. The
+one added round trip is inside `respondSource` itself — the per-node `refreshWithExtraData` calls,
+plus the reconciling second walk above — issued only when a node's own `getAvailableExtraDataKeys()`
+already lists the Bajutsu key, so a non-cooperating app pays nothing beyond that one cheap check.
 
 Whether Jetpack Compose's own accessibility-node generation
 (`AndroidComposeViewAccessibilityDelegateCompat`) forwards a `Modifier`-declared extra-data key
@@ -210,15 +211,22 @@ and 3 land.
 
 Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 
-0. **Spike.** On iOS: confirm the layer/view walk needed to report a definitive front-to-back index
-   for both UIKit and SwiftUI screens, on-device, and design the new synchronous in-app responder's
-   shape (a fixed local port versus one negotiated through the existing `BAJUTSU_COLLECTOR`-style
-   launch environment). On Android: confirm whether Jetpack Compose's accessibility-node generation
+0. **Spike.** Decide what `nativeZ` *means* across backends (a normalized cross-backend front-to-back
+   ordinal versus per-backend units named explicitly), per *Detailed design*'s "The `nativeZ` field"
+   above. On iOS: confirm the layer/view walk needed to report a definitive front-to-back index
+   for both UIKit and SwiftUI screens, on-device; fix the responder's connect/read timeout and the
+   session-scoped negative-cache design a non-cooperating app's single failed probe relies on; and
+   design the responder's shape, weighing security (a fixed local port is probeable by any
+   co-resident app on a real device) against the existing `BAJUTSU_COLLECTOR`-style launch
+   environment. On Android: confirm whether Jetpack Compose's accessibility-node generation
    forwards a custom extra-data key declared through `Modifier.semantics`, on a small Compose screen
-   using `Modifier.zIndex` and `graphicsLayer`. On both: measure the per-element round-trip cost
-   against a showcase-sized tree. Record every finding in *Detailed design* above (works / needs a
-   workaround / not supported) before Units 2 and 3 start, the same practice BE-0349's own Log
-   entry followed. Blocks Units 2 and 3.
+   using `Modifier.zIndex` and `graphicsLayer`; and confirm how `UiAutomation.getRootInActiveWindow()`'s
+   node set (needed to call `refreshWithExtraData`) reconciles with `dumpWindowHierarchy`'s wider,
+   multi-window one, so the index-aligned side structure in *Detailed design* above actually lines up
+   with the `XML` body it accompanies rather than assuming it does. On both: measure the per-element
+   round-trip cost against a showcase-sized tree. Record every finding in *Detailed design* above
+   (works / needs a workaround / not supported) before Units 2 and 3 start, the same practice
+   BE-0349's own Log entry followed. Blocks Units 2 and 3.
 1. **The `nativeZ` field.** Add it to `Element` (`bajutsu/drivers/base.py`). `Element` carries no
    `total=False`, so every existing dict-literal construction site across every backend — adb,
    XCUITest, the live XCUITest client, the web Document Object Model (DOM) parser, and
@@ -240,7 +248,8 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
    fixture or backend explicitly reports it, and stays `None` otherwise.
 6. **Docs.** [`docs/evidence.md`](../../docs/evidence.md) and [`docs/architecture.md`](../../docs/architecture.md)
    (and their `docs/ja/` mirrors), stating plainly that `nativeZ` is diagnostic only and does not
-   change `is_tappable`, `topmost_at_point`, or `isHittable`.
+   change `is_tappable`, `topmost_at_point`, or `isHittable`, and recording Unit 0's choice of what
+   `nativeZ` means across backends.
 7. **Tests.** Unit tests per backend for the new reporting path, plus a regression pinning that
    `is_tappable` and `topmost_at_point` are unchanged by this proposal.
 
