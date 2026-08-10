@@ -125,11 +125,12 @@ copies `query()` returns in scrollable mode, or a `react` callback that rebuilds
 let the absent-value test pass for the wrong reason. This keeps the handler-dispatch, preflight,
 and absent-value paths testable without a Simulator, including the multi-component case.
 
-**Capability and preflight.** `Capability` (`bajutsu/drivers/base.py`) gains `PICKER_WHEEL`, and
-`capability_preflight.py`'s `_REQUIREMENTS` gains one entry for it, following the
-`HANDLE_SYSTEM_ALERT` entry's shape. A scenario that uses `setPickerValue` on a backend that
-does not advertise `PICKER_WHEEL` fails at preflight, before any device work starts, naming the
-step's location in the scenario.
+**Capability and preflight.** `Capability` (`bajutsu/drivers/base.py`) gains `PICKER_WHEEL`, the
+resident-runner `XcuitestDriver.CAPABILITIES` and `FakeDriver.CAPABILITIES` frozensets advertise it
+(no other backend does), and `capability_preflight.py`'s `_REQUIREMENTS` gains one entry for it,
+following the `HANDLE_SYSTEM_ALERT` entry's shape. A scenario that uses `setPickerValue` on a
+backend that does not advertise `PICKER_WHEEL` fails at preflight, before any device work starts,
+naming the step's location in the scenario.
 
 **Swift runner.** `Router.swift` (`BajutsuKit/Sources/BajutsuRunner/`) gains a
 `("POST", "/setPickerValue")` route and a `handleSetPickerValue` function that resolves the request's
