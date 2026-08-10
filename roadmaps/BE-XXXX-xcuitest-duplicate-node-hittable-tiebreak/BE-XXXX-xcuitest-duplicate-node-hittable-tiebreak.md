@@ -123,7 +123,12 @@ candidates to collapse. Selectors that reach elements through `find_all` directl
 `resolve_unique` — `forEach`, `exists`, `count` against a selector broader than the duplicate's own
 identity, and a `scroll` step's `within`-container resolution — see the same shrink in candidates
 `resolve_unique`'s callers do; none of them is re-derived separately here, since each already reads
-whatever `/elements` returns.
+whatever `/elements` returns. That shrink is conditional on a live probe, though: `count` and `exists`
+against a duplicate identity report two members while the pair is still covered (no member reports
+`.ok`, so the group is left untouched) and one once it settles (exactly one member reports `.ok`) —
+the two values this item's own on-device tests pin for the same screen. An assertion polled across
+that transition can change without the tree's identity changing, and unlike a tap it has no `stale`
+reply for BE-0289's retry to absorb; *Progress* records this alongside the deferred limitation below.
 
 One case this item does not close: `SnapshotStore`'s own occurrence-index tiebreak keys on a
 different, coarser identity than the five-field group above — `identifier`, `label`, and `traits`
