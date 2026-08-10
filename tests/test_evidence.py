@@ -132,10 +132,10 @@ def test_write_raw_tree_redacts_a_configured_secret(tmp_path: Path) -> None:
 
 
 def test_write_raw_tree_redacts_the_parsed_input_body_too(tmp_path: Path) -> None:
-    # The secret could just as easily live only in the parsed-input body (e.g. a system dialog
-    # narrow_to_active_window stripped out of the raw reply, but that stripped fragment still shows
-    # up in what the parser actually consumed) — both files go through the same redaction call, and
-    # both must actually come out clean, not just the primary hierarchy.raw.xml.
+    # `parsed_input` goes through the same write loop as hierarchy.raw.xml, so pin that the loop
+    # redacts every body it writes and not just the first. The stub is deliberately artificial:
+    # narrowing only drops windows, so on a real adb read `parsed_input` is a subset of `text` and
+    # unique content can only ever show up in the untouched reply.
     driver = _RawSourceStub(
         base.RawSource(
             text='<node text="clean" />', suffix=".xml", parsed_input='<node text="s3kr3t" />'
