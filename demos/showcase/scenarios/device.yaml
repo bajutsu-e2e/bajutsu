@@ -20,7 +20,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
-      capture: [video, deviceLog]
+      capture: [deviceLog]
     - setLocation: { lat: 35.681, lon: 139.767 }
     - setClipboard: { text: "COUPON123" }
   expect:

@@ -8,7 +8,6 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Notices", traits: [button] }
-      capture: [video]
     - wait: { for: { label: "Notice 1" }, timeout: 10 }
   expect:
     - exists: { label: "Notice 1" }     # top rows are on-screen
@@ -20,7 +19,6 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Notices", traits: [button] }
-      capture: [video]
     - wait: { for: { label: "Notice 2" }, timeout: 10 }
     - tap: { label: "Notice 2" }
     - wait: { for: { label: "Details for stable notice number 2." }, timeout: 5 }
@@ -39,7 +37,6 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Notices", traits: [button] }
-      capture: [video]
     - wait: { for: { label: "Notice 1" }, timeout: 10 }
     - assert:
         - exists: { label: "Notice 20", negate: true }   # off-screen before scrolling

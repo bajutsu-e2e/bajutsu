@@ -7,7 +7,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Notices", traits: [button] }
-      capture: [video, deviceLog]
+      capture: [deviceLog]
     - wait: { for: { id: notice.row.1 }, timeout: 10 }
   expect:
     - exists: { id: notice.row.1 }     # top rows are on-screen
@@ -19,7 +19,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Notices", traits: [button] }
-      capture: [video, deviceLog]
+      capture: [deviceLog]
     - wait: { for: { id: notice.row.2 }, timeout: 10 }
     - tap: { id: notice.row.2 }
     - wait: { for: { id: notice.detail.title }, timeout: 5 }
@@ -44,7 +44,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Notices", traits: [button] }
-      capture: [video, deviceLog]
+      capture: [deviceLog]
     - wait: { for: { id: notice.row.1 }, timeout: 10 }
     - assert:
         - exists: { id: notice.row.20, negate: true }   # off-screen before scrolling

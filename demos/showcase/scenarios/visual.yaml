@@ -31,7 +31,6 @@ scenarios:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
       - wait: { for: { id: stable.row.1 }, timeout: 10 }
-        capture: [video]
     expect:
       - visual: { baseline: stable.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
@@ -40,7 +39,6 @@ scenarios:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
       - tap: { label: "Search", traits: [button] }
-        capture: [video]
       - wait: { for: { id: search.field }, timeout: 10 }
     expect:
       - visual: { baseline: search.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
@@ -50,7 +48,6 @@ scenarios:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
       - tap: { label: "Log", traits: [button] }
-        capture: [video]
       - wait: { for: { id: log.submit }, timeout: 10 }
     expect:
       - visual: { baseline: log.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
@@ -60,7 +57,6 @@ scenarios:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
       - tap: { label: "Notices", traits: [button] }
-        capture: [video]
       - wait: { for: { id: notice.row.1 }, timeout: 10 }
     expect:
       - visual: { baseline: notices.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
@@ -70,7 +66,6 @@ scenarios:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
       - tap: { label: "Permissions", traits: [button] }
-        capture: [video]
       - wait: { for: { id: perm.requestNotif }, timeout: 10 }
     expect:
       - visual: { baseline: permissions.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
@@ -80,7 +75,6 @@ scenarios:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
       - wait: { for: { id: stable.row.1 }, timeout: 10 }
-        capture: [video]
       - tap: { id: stable.row.1 }
       - wait: { for: { id: horse.title }, timeout: 5 }
     expect:
@@ -91,7 +85,6 @@ scenarios:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
       - tap: { label: "Notices", traits: [button] }
-        capture: [video]
       - wait: { for: { id: notice.row.1 }, timeout: 10 }
       - tap: { id: notice.row.1 }
       - wait: { for: { id: notice.detail.title }, timeout: 5 }
@@ -103,7 +96,6 @@ scenarios:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
       - tap: { label: "Log", traits: [button] }
-        capture: [video]
       - wait: { for: { id: log.openFilter }, timeout: 10 }
       - tap: { id: log.openFilter }
       - wait: { for: { id: log.sheet.title }, timeout: 5 }
@@ -115,7 +107,6 @@ scenarios:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
       - tap: { label: "Log", traits: [button] }
-        capture: [video]
       - wait: { for: { id: log.openGallery }, timeout: 10 }
       - tap: { id: log.openGallery }
       - wait: { for: { id: log.cover.title }, timeout: 5 }
@@ -127,7 +118,6 @@ scenarios:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
       - tap: { label: "Log", traits: [button] }
-        capture: [video]
       # Scroll the lower Modals controls clear of the floating tab bar before tapping (see modals.yaml).
       - wait: { for: { id: log.submit }, timeout: 10 }
       - swipe: { on: { id: log.note }, direction: up }
@@ -146,7 +136,6 @@ scenarios:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
       - wait: { for: { id: stable.row.1 }, timeout: 10 }
-        capture: [video]
     expect:
       - visual: { baseline: stable_row_element.png, threshold: 4.0, element: { id: stable.row.1 } }
 
@@ -157,7 +146,6 @@ scenarios:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
       - wait: { for: { id: stable.row.1 }, timeout: 10 }
-        capture: [video]
     expect:
       - visual:
           baseline: stable_row_masked.png
