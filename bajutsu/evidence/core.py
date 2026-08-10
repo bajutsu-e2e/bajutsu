@@ -329,6 +329,7 @@ class FileSink:
         prestarted_intervals: list[intervals.Interval] | None = None,
         readiness: ReadinessResult | None = None,
         provenance: Mapping[str, object] | None = None,
+        on_video_start_stall: Callable[[], None] | None = None,
     ) -> None:
         self.run_dir = run_dir
         self.udid = udid
@@ -346,6 +347,11 @@ class FileSink:
         # timeout diagnostic so the failure is decidable from artifacts alone (BE-0231 Unit 1).
         self.readiness = readiness
         self.provenance = provenance
+        # Called when a recording that was asked to confirm its start never did (BE-0354). The device
+        # pool wires it to a per-lease flag the crash retry reads to pick its recovery rung; None (a
+        # sink built outside a lease) simply drops the signal. Purely advisory — the evidence gap
+        # itself is already warned about where the confirmation timed out.
+        self.on_video_start_stall = on_video_start_stall
 
     def capture(
         self,
@@ -413,6 +419,13 @@ class FileSink:
                 interval = self._start_simctl_interval(kind, target, scenario_dir)
                 if interval is not None:
                     started.append(interval)
+        # A recording that was asked to confirm its start and never did says the device's capture
+        # pipeline is not producing — the earliest symptom of the wedge whose recovery rung the crash
+        # retry picks from it (BE-0354). Reported once per scenario, after every kind has started.
+        if self.on_video_start_stall is not None and any(
+            iv.start_confirmed is False for iv in started
+        ):
+            self.on_video_start_stall()
         return started
 
     def _start_simctl_interval(

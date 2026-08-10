@@ -447,6 +447,35 @@ def test_filesink_confirms_ios_on_demand_video_start(
     assert started[0].true_start is not None
 
 
+def test_filesink_reports_a_video_that_never_confirmed_it_started(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # BE-0354: the wedge's earliest symptom, surfaced so the crash retry can pick the recovery rung
+    # from it. A recording that starts normally must not report it, or every scenario would look
+    # degraded.
+    from bajutsu.evidence import intervals
+
+    class _FakeProc:
+        def __init__(self, argv: list[str], stdout_path: Path | None) -> None:
+            if writes["v"]:
+                Path(argv[-1]).write_bytes(b"clip")
+
+        def stop(self, sig: int, timeout: float) -> None:
+            return None
+
+    writes = {"v": True}
+    monkeypatch.setattr(intervals, "_SubprocessProc", _FakeProc)
+    stalls: list[bool] = []
+    sink = FileSink(tmp_path, udid="UDID", on_video_start_stall=lambda: stalls.append(True))
+    sink.start_scenario_intervals("00-s", ["video"])
+    assert stalls == []
+
+    writes["v"] = False  # recordVideo never writes a byte: the capture pipeline is not producing
+    monkeypatch.setattr(intervals, "_await_video_file_growing", lambda *_a, **_k: None)
+    sink.start_scenario_intervals("01-s", ["video"])
+    assert stalls == [True]
+
+
 def test_filesink_adopts_a_prestarted_video_instead_of_starting_one(tmp_path: Path) -> None:
     # A device backend starts its video before launch; the sink must adopt that running interval for
     # the "video" kind (relocating it to the artifact path on stop) rather than ask the driver /

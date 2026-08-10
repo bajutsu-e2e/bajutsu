@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0354](BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0354") |
+| 実装 PR | TBD |
 | トピック | Platform support |
 | 関連 | [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn-ja.md), [BE-0319](../BE-0319-xcuitest-cold-spawn-resilience/BE-0319-xcuitest-cold-spawn-resilience-ja.md), [BE-0305](../BE-0305-driver-resilience-fault-injection/BE-0305-driver-resilience-fault-injection-ja.md) |
 <!-- /BE-METADATA -->
@@ -272,18 +273,18 @@ health に答える形で立ち上がってしまう実行途中の固まり方�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] ユニット 1 — タイムアウト（ハング）した呼び出しを接続レベルの失敗と別のタグで区別し、
+- [x] ユニット 1 — タイムアウト（ハング）した呼び出しを接続レベルの失敗と別のタグで区別し、
       同じ読み出しの 2 回目の復旧後タイムアウトを固まったセッションとして分類して、固有の
       診断文とともにパイプラインへ引き渡す。
-- [ ] ユニット 2 — 実行終了マーカーのキャプチャプローブを実行途中の生存プローブへ合成し
+- [x] ユニット 2 — 実行終了マーカーのキャプチャプローブを実行途中の生存プローブへ合成し
       （ラッチし、スポーンごとに 1 つのインスタンスをコールドゲートと共有する）、終了済みの
       テスト実行が復旧の health 待ちを速やかに失敗させるようにする。
-- [ ] ユニット 3 — `run_one` のクラッシュ再試行に置き換えのエスカレーションを追加する。消滅
+- [x] ユニット 3 — `run_one` のクラッシュ再試行に置き換えのエスカレーションを追加する。消滅
       デバイスの段の作成、命名、プールの貼り替えを再利用し、置き換えの試行では強制消去を抑止し、
       置き換えたデバイスを隔離する。erase を拒否する経路は素の respawn を、ピン留めした
       シミュレータは消去の再試行を保つ。`docs/architecture.md` と `docs/run-loop.md`
       （および `docs/ja/` ミラー）のクラッシュ復旧の記述を同じ変更で更新する。
-- [ ] ユニット 4 — 録画開始確認のタイムアウトをリースの上に浮かび上がらせ、その試行自身の
+- [x] ユニット 4 — 録画開始確認のタイムアウトをリースの上に浮かび上がらせ、その試行自身の
       クラッシュ再試行で置き換えの段を選ばせる。
 
 ## 参考

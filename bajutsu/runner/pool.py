@@ -284,11 +284,21 @@ def device_pool(
         # handing the lane to the next lease on top of it (BE-0342).
         launched: tuple[RunEnvironment, base.Driver] | None = None
 
+        # This lease's own video-start confirmation outcome (BE-0354), reported by the sink below and
+        # read back by the crash retry on the `Lease`. Local to the lease like every other per-lease
+        # resource here, so a `workers > 1` run never reads one scenario's stall on another's retry.
+        video_start_stalled = False
+
+        def note_video_start_stall() -> None:
+            nonlocal video_start_stalled
+            video_start_stalled = True
+
         def adopt_replacement() -> None:
             """Follow the environment onto a device it had to replace, re-keying what this pool holds.
 
             The XCUITest Simulator lifecycle creates a replacement when CoreSimulator stops listing
-            the leased device. Everything the pool keys by udid — the per-device collector, the
+            the leased device, and when a crash retry escalates past the forced erase onto a device
+            that stayed degraded (BE-0354). Everything the pool keys by udid — the per-device collector, the
             warm-resident cache, the evidence sink's simctl captures, the result's device
             attribution, and which udid returns to the free queue — would otherwise keep naming a
             device that no longer exists. The old udid is deliberately never freed again: the
@@ -301,10 +311,11 @@ def device_pool(
             replacement = lease_env.replaced_device()
             if replacement is None or replacement == udid:
                 return
+            # Cause-neutral: the environment has already logged which rung replaced the device, and
+            # naming one of them here would point an operator at the wrong failure class whenever the
+            # other ran.
             _logger.warning(
-                "device %s vanished mid-lease; this run continues on its replacement %s",
-                udid,
-                replacement,
+                "device %s was replaced mid-lease; this run continues on %s", udid, replacement
             )
             # The collector is a host-side receiver the device reaches over the loopback, so it needs
             # no restart — only the key a later lease on this device looks it up by. Writing to
@@ -417,6 +428,7 @@ def device_pool(
                 provenance=run_provenance(
                     dump_scenario_file([redact_totp_secrets(scenario)]), git_revision=git_rev
                 ),
+                on_video_start_stall=note_video_start_stall,
             )
             # A driver-observed platform hooks its collector to the live page now (and fulfils this
             # scenario's mocks); a fresh context per lease scopes its traffic, mirroring the device's
@@ -501,6 +513,12 @@ def device_pool(
                 device_runtime=meta.get("runtime", ""),
                 collector_provider=collector_provider,
                 webview_bridge=webview_bridge,
+                # Both are read by the crash retry after this lease has already been released: the
+                # request lands on the environment the pool keeps warm for this device, so the *next*
+                # lease's `start` serves it, and `adopt_replacement` above then re-keys everything
+                # this pool holds onto the device it created (BE-0354).
+                request_device_replacement=lease_env.request_device_replacement,
+                video_start_stalled=lambda: video_start_stalled,
             )
         except BaseException:
             # A failed launch must not leak the collector tunnel (BE-0283) or the collector itself —
