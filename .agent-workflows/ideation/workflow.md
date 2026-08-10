@@ -117,7 +117,10 @@ neither does the other's job. A model that fixes what it just flagged has every 
 just enough to silence its own comment, leaving something adjacent for the next cold look — its own
 next round, or the live bot after the push — to raise again. This is the canonical procedure;
 [`pr-followup`](../pr-followup/workflow.md), [`propose-and-build`](../propose-and-build/workflow.md),
-and [`implement-be`](../implement-be/workflow.md) all run it rather than restating it.
+and [`implement-be`](../implement-be/workflow.md) all run it rather than restating it. The
+[`claude-review`](../claude-review/workflow.md) skill packages the same judge-only review/plan pass
+as a standalone, directly-invocable skill; keep the two in sync if either one's cap, taxonomy, or
+dedup rule changes.
 
 **The review/plan pass.** Spawn a fresh subagent that has **not** seen this ideation conversation —
 the CI reviewer also runs cold, with no memory of the authoring discussion, so a subagent that
