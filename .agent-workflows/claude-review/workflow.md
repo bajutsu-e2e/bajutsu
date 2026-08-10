@@ -87,8 +87,10 @@ floor comes back as one of:
   (`issue` / `suggestion` / `question`) and the `(non-blocking)` decoration — `(non-blocking, prose)`
   instead, on the two prose lenses' findings, and only in a `docs/` or `roadmaps/` file — and attach
   a GitHub `suggestion` block wherever the fix is mechanical enough to express as replacement lines.
-  Post via `gh api repos/{owner}/{repo}/pulls/<PR>/comments` (`path`, `line`, `side`, `commit_id`,
-  `body`) — fetch `commit_id` from the PR's current head first
+  Post via `gh api repos/{owner}/{repo}/pulls/<PR>/comments` with `-f path=…`, `-F line=…`,
+  `-f side=RIGHT`, `-f commit_id=…`, `-f body=…` — `line` goes through `-F`, which serializes it as
+  a JSON number; `-f` would send `"42"` and the endpoint rejects the call with a 422. Fetch
+  `commit_id` from the PR's current head first
   (`gh api repos/{owner}/{repo}/pulls/<PR> --jq .head.sha`), since a stale or unrelated SHA gets
   rejected or anchors the comment to the wrong diff context. When nothing clears the floor, post
   nothing — silence is a complete review.
