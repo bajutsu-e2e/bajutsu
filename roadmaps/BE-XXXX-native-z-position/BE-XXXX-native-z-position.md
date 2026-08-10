@@ -146,13 +146,18 @@ confirmed this empirically for `View.elevation`) — under a Bajutsu-owned extra
 `dumpWindowHierarchy`'s `XML` format has no attribute slot for a value it does not itself define, so
 `respondSource` cannot add `nativeZ` as a new `XML` attribute directly; it instead returns the
 collected
-per-node values as a small side structure keyed by each node's identity (the same four-field
-`resource-id`/`content-desc`/`text`/`class` tuple `adb.py`'s own `_identity()`, `bajutsu/drivers/adb.py:307`,
-already uses for the resident channel's stale-handle re-resolution), alongside the unchanged `XML` body.
-`bajutsu/adb_resident.py`'s hierarchy fetch (`fetch_source`, `bajutsu/adb_resident.py:90`–`123`) stays
-the same single `GET /source` round trip it is today, now also carrying that side structure back; and
-`adb.py`'s `_to_element` (`bajutsu/drivers/adb.py:280`) matches it onto the parsed nodes by identity
-and carries the result into `nativeZ`. The one added round trip is inside `respondSource` itself —
+per-node values as a small side structure index-aligned with the `<node>` sequence of the `XML`
+body — keyed by document-order position, not by node identity. Identity alone cannot key this: the
+four-field `resource-id`/`content-desc`/`text`/`class` tuple `adb.py`'s own `_identity()`
+(`bajutsu/drivers/adb.py:307`) produces is deliberately *not* unique — the resident channel pairs it
+with `index` of `count` (`bajutsu/drivers/adb.py:104`–`106`) precisely because a list of identical
+rows collapses to a single identity — so an identity-keyed map would silently hand every such row
+the same `nativeZ`. `bajutsu/adb_resident.py`'s hierarchy fetch (`fetch_source`,
+`bajutsu/adb_resident.py:90`) stays the same single `GET /source` round trip it is today, now also
+carrying that side structure back; and `_elements_from_nodes` (`bajutsu/drivers/adb.py:322`), which
+walks the same `<node>` sequence `parse_hierarchy_with_identities` (`bajutsu/drivers/adb.py:336`)
+already aligns element *i* against, carries position *i*'s value into element *i*'s `nativeZ`.
+The one added round trip is inside `respondSource` itself —
 the per-node `refreshWithExtraData` calls — issued only when a node's own
 `getAvailableExtraDataKeys()` already lists the Bajutsu key, so a non-cooperating app pays nothing
 beyond that one cheap check.
