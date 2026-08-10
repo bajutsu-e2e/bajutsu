@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-xcuitest-picker-wheel-adjust-ja.md)
+**English** · [日本語](BE-0356-xcuitest-picker-wheel-adjust-ja.md)
 
-# BE-XXXX — Add a deterministic pickerWheel value-setting step for XCUITest
+# BE-0356 — Add a deterministic pickerWheel value-setting step for XCUITest
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-xcuitest-picker-wheel-adjust.md) |
+| Proposal | [BE-0356](BE-0356-xcuitest-picker-wheel-adjust.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0356") |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
