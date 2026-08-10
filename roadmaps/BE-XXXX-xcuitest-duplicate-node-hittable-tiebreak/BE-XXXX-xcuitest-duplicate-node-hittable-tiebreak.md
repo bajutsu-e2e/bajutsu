@@ -96,7 +96,10 @@ itself needs, since it is a native XCUITest call. The filter belongs inside that
 the result reaches `elementsResponse` — the handler shared by `/elements` and the SpringBoard
 `/systemAlert/query` (BE-0316), which stays unchanged. Group the just-returned elements by the same
 identity `_collapse_identical_duplicates` already uses: `identifier`, `label`, `traits`, `value`, and
-`frame` all equal. A group of size one needs no probing and costs nothing extra. For a group of two or
+`frame` all equal — comparing `traits` as a set, matching the Python key's
+`tuple(sorted(set(el["traits"])))`, so a pair reported with the same traits in a different order still
+groups (a plain `[String] ==`, or `SnapshotStore`'s array hash, would not). A group of size one needs
+no probing and costs nothing extra. For a group of two or
 more, call `isHittable(backingElement:)` — the same native check the `/isHittable` endpoint already
 uses to distinguish "covered right now" from a genuine actuation failure — on each member, still on
 the main thread, and catch a raise from that call individually, the same way the `/isHittable` endpoint
