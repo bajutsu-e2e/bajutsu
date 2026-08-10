@@ -648,8 +648,14 @@ class AdbDriver(CoordinateTreeDriver):
                         "X-Bajutsu-Read-Mark",
                         self._READ_LAG_S,
                     )
+                # `read.raw` is the device's own reply before narrowing, when narrowing changed it —
+                # that is now the primary artifact (`text`); `read.text`, what the parser actually
+                # consumed, becomes secondary (`parsed_input`) only in that case. When narrowing was a
+                # no-op, `read.raw` is None and `read.text` already IS the untouched reply.
                 self._raw_source = base.RawSource(
-                    text=read.text, suffix=".xml", pre_transform=read.raw
+                    text=read.raw if read.raw is not None else read.text,
+                    suffix=".xml",
+                    parsed_input=read.text if read.raw is not None else None,
                 )
                 return read.text
             except AdbResidentError as exc:
@@ -667,7 +673,9 @@ class AdbDriver(CoordinateTreeDriver):
         logger.debug(
             "dump read in %.2fs (no mark: the barrier is on its wall clock)", time.monotonic() - t0
         )
-        self._raw_source = base.RawSource(text=text, suffix=".xml")  # no narrowing on this path
+        self._raw_source = base.RawSource(
+            text=text, suffix=".xml"
+        )  # already untouched: no narrowing
         return text
 
     def _record_tree(self, els: list[base.Element]) -> list[base.Element]:

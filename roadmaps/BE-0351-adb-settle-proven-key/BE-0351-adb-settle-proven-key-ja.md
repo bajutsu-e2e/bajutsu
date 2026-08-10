@@ -128,7 +128,7 @@ channel 上で再び開けてしまいます。今回診断したフレークが
 同じ、狭い opt-in の`@runtime_checkable`プロトコルである`base.RawSourceProvider`を通じて公開
 します）。narrowing が何かを変えた場合は、resident channel の`narrow_to_active_window`適用前の
 ボディも保持します。`write_raw_tree`（`bajutsu/evidence/core.py`）は、ステップのディレクトリ配下に
-`hierarchy.raw<suffix>`と、存在する場合は`hierarchy.pre-transform<suffix>`を書き出します
+`hierarchy.raw<suffix>`と、存在する場合は`hierarchy.parsed-input<suffix>`を書き出します
 （`<suffix>`は`base.RawSource.suffix`が持つバックエンド自身のダンプ形式で、adb は`.xml`、
 XCUITest の未デコードの`GET /elements`ボディは`.json`）。`capture()`は
 `rawTree`分岐を得て、シナリオの capture トークン文法（`bajutsu/scenario/models/_base.py`）も

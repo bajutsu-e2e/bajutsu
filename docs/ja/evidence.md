@@ -33,11 +33,11 @@
 | `deviceLog` | `simctl spawn log stream` | 区間 | ✅ 取得（要 udid） |
 | `network` | アプリ内 collector（BajutsuKit → `network.json`） | 区間 | ✅ 取得（`--network` フラグ） |
 | `appTrace` | `simctl spawn log stream`（アプリの os_log subsystem） | 区間 | ✅ 取得（要 udid + subsystem） |
-| `rawTree` | `elements` の元になった生ダンプ（`base.RawSourceProvider`。現状 adb と XCUITest） | 瞬時 | ✅ 取得（opt-in。他のバックエンドでは何もしません） |
+| `rawTree` | `elements` の元になった、bajutsu の加工を経ていない生の応答（`base.RawSourceProvider`。現状 adb と XCUITest） | 瞬時 | ✅ 取得（opt-in。他のバックエンドでは何もしません） |
 
 > `appTrace` はアプリの `os_signpost` / `os_log` が出す `<name> started` / `<name> finished` マーカーを、時刻つきの区間にペアリングします（`intervals.parse_app_trace`）。`network` は区間システムではなく request collector が生成し、その exchange を `<sid>/network.json` に書き出します（[network observation](drivers.md)、`--network` フラグ）。
 
-> `rawTree` は、ドライバが実際に `elements.json` へパースした生データを `hierarchy.raw<suffix>` として書き出します。adb なら `_read_source()` がパーサーに渡したダンプテキスト（`.xml`）、XCUITest なら `GET /elements` の未デコードのボディ（`.json`）です。adb の resident channel で narrowing が何かを変えた場合に限り、SystemUI の装飾ウィンドウを取り除く前のダンプも `hierarchy.pre-transform.xml` として併せて書き出します。XCUITest はこの種の変換を一切行わないため、2 つ目のファイルを書き出すことはありません。狙いは、解決した座標と実際の画面がずれたときに、デバイス側・runner 側の応答がすでにおかしかったのか、bajutsu 側のパースで変わったのかを切り分けることです。既定の capture リストには含まれず、シナリオが `capture: [rawTree, ...]` で明示的に指定したときだけ取得します。
+> `rawTree` は、デバイス・runner 自身が返した応答をそのまま `hierarchy.raw<suffix>` として書き出します。adb なら `uiautomator dump` または resident channel の XML（`.xml`）、XCUITest なら `GET /elements` の未デコードのボディ（`.json`）で、いずれも bajutsu 側の加工を経ていません。adb の resident channel で narrowing が何かを変えた場合に限り、パーサーが実際に消費したデータ（SystemUI の装飾ウィンドウを取り除いた後のダンプ）も `hierarchy.parsed-input<suffix>` として併せて書き出します。XCUITest はこの種の変換を一切行わないため、2 つ目のファイルを書き出すことはありません。狙いは、解決した座標と実際の画面がずれたときに、デバイス側・runner 側の応答がすでにおかしかったのか、bajutsu 側のパースで変わったのかを切り分けることです。既定の capture リストには含まれず、シナリオが `capture: [rawTree, ...]` で明示的に指定したときだけ取得します。
 >
 > `redact.labels` を設定した場合に限り、この redact の規則が `rawTree` の出力を拒否します。実行全体を通じて何も書き出さず、その理由をログに出力します。`redact.labels` は、ラベルが設定された要素の値を構造的にマスクします。`elements.json` はパース済みのツリーから書き出すため、どの値を隠すべきかを書き出し側が把握しているからです。これに対して生ダンプは構造を持たないフリーテキストなので、同じマスクを構造的には適用できず、`elements.json` がすでにマスクした内容を無防備な形で書き出してしまいます。それ以外の redact の規則（`headers`、`fields`、解決済みの secret 値）は、生ダンプにもフリーテキストとしてそのまま適用され、`rawTree` の取得を妨げません。ただし `redact.headers` と `redact.fields` には一つ注意点があります。これらのキーパターンによるマスクは、マッチした値が次の改行で終わる複数行のログを想定して書かれていますが、UI Automator のダンプは 1 行として出力されます。設定したキーがダンプ自身のテキスト（画面上のラベルや、`Token: ...` のように読める `content-desc` など）にたまたまマッチすると、マッチした値だけでなく、そこから先のファイル全体がマスクされてしまいます。ダンプ自体は書き出されますが、末尾が欠けた状態になります。`${secrets.X}` で束縛した解決済みの secret 値は、キーパターンではなく既知のリテラルとの一致でマスクするため、この問題の影響を受けません。
 

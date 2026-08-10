@@ -524,7 +524,7 @@ class XcuitestDriver:
         # The raw `GET /elements` body behind the last query (`base.RawSourceProvider`, the `rawTree`
         # capture kind), kept undecoded: `last_raw_source()` is read only on the rare step that actually
         # requests `rawTree` capture, so decoding here on every query — the common, capture-off case —
-        # would be pure waste. None until the first read. No `pre_transform`: unlike adb's resident
+        # would be pure waste. None until the first read. No `parsed_input`: unlike adb's resident
         # channel, nothing here narrows the runner's own reply before it becomes `elements`.
         self._raw_bytes: bytes | None = None
 

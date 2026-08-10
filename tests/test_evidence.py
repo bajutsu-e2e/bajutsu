@@ -102,23 +102,26 @@ def test_write_raw_tree_is_a_noop_before_the_first_read() -> None:
 def test_write_raw_tree_writes_the_raw_dump(tmp_path: Path) -> None:
     driver = _RawSourceStub(base.RawSource(text="<hierarchy>raw</hierarchy>", suffix=".xml"))
     paths = write_raw_tree(driver, tmp_path / "step0")
-    assert [p.name for p in paths] == ["hierarchy.raw.xml"]  # no pre-transform file: none given
+    assert [p.name for p in paths] == ["hierarchy.raw.xml"]  # no parsed-input file: none given
     assert paths[0].read_text(encoding="utf-8") == "<hierarchy>raw</hierarchy>"
 
 
-def test_write_raw_tree_writes_the_pre_transform_body_when_present(tmp_path: Path) -> None:
+def test_write_raw_tree_writes_the_parsed_input_body_when_present(tmp_path: Path) -> None:
     driver = _RawSourceStub(
         base.RawSource(
-            text="<hierarchy>narrowed</hierarchy>",
+            text="<hierarchy>wide</hierarchy>",
             suffix=".xml",
-            pre_transform="<hierarchy>wide</hierarchy>",
+            parsed_input="<hierarchy>narrowed</hierarchy>",
         )
     )
     paths = write_raw_tree(driver, tmp_path / "step0")
-    assert {p.name for p in paths} == {"hierarchy.raw.xml", "hierarchy.pre-transform.xml"}
-    assert (tmp_path / "step0" / "hierarchy.pre-transform.xml").read_text(
+    assert {p.name for p in paths} == {"hierarchy.raw.xml", "hierarchy.parsed-input.xml"}
+    assert (tmp_path / "step0" / "hierarchy.raw.xml").read_text(
         encoding="utf-8"
     ) == "<hierarchy>wide</hierarchy>"
+    assert (tmp_path / "step0" / "hierarchy.parsed-input.xml").read_text(
+        encoding="utf-8"
+    ) == "<hierarchy>narrowed</hierarchy>"
 
 
 def test_write_raw_tree_redacts_a_configured_secret(tmp_path: Path) -> None:
@@ -128,19 +131,20 @@ def test_write_raw_tree_redacts_a_configured_secret(tmp_path: Path) -> None:
     assert "s3kr3t" not in paths[0].read_text(encoding="utf-8")
 
 
-def test_write_raw_tree_redacts_the_pre_transform_body_too(tmp_path: Path) -> None:
-    # The secret could just as easily live only in the pre-transform body (e.g. a system dialog
-    # narrow_to_active_window strips out) — both files go through the same redaction call, and both
-    # must actually come out clean, not just the primary hierarchy.raw.xml.
+def test_write_raw_tree_redacts_the_parsed_input_body_too(tmp_path: Path) -> None:
+    # The secret could just as easily live only in the parsed-input body (e.g. a system dialog
+    # narrow_to_active_window stripped out of the raw reply, but that stripped fragment still shows
+    # up in what the parser actually consumed) — both files go through the same redaction call, and
+    # both must actually come out clean, not just the primary hierarchy.raw.xml.
     driver = _RawSourceStub(
         base.RawSource(
-            text='<node text="clean" />', suffix=".xml", pre_transform='<node text="s3kr3t" />'
+            text='<node text="clean" />', suffix=".xml", parsed_input='<node text="s3kr3t" />'
         )
     )
     redactor = Redactor(Redact(), values=["s3kr3t"])
     paths = write_raw_tree(driver, tmp_path / "step0", redactor)
-    pre_transform = next(p for p in paths if p.name == "hierarchy.pre-transform.xml")
-    assert "s3kr3t" not in pre_transform.read_text(encoding="utf-8")
+    parsed_input = next(p for p in paths if p.name == "hierarchy.parsed-input.xml")
+    assert "s3kr3t" not in parsed_input.read_text(encoding="utf-8")
 
 
 def test_write_raw_tree_refuses_when_a_label_rule_is_configured(tmp_path: Path) -> None:
@@ -167,15 +171,15 @@ def test_write_raw_tree_still_writes_without_a_label_rule(tmp_path: Path) -> Non
 def test_capture_raw_tree_kind_produces_artifacts(tmp_path: Path) -> None:
     driver = _RawSourceStub(
         base.RawSource(
-            text="<hierarchy>narrowed</hierarchy>",
+            text="<hierarchy>wide</hierarchy>",
             suffix=".xml",
-            pre_transform="<hierarchy>wide</hierarchy>",
+            parsed_input="<hierarchy>narrowed</hierarchy>",
         )
     )
     written = capture(driver, tmp_path / "step0", ["rawTree"])
     assert {(a.name, a.kind, a.provider) for a in written} == {
         ("hierarchy.raw.xml", "rawTree", "driver"),
-        ("hierarchy.pre-transform.xml", "rawTree", "driver"),
+        ("hierarchy.parsed-input.xml", "rawTree", "driver"),
     }
 
 
