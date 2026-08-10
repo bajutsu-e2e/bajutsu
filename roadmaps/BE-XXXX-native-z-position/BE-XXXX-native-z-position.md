@@ -135,8 +135,13 @@ override; a client — here, the resident server's own on-device request handler
 `respondSource`, [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md)),
 which already talks to the device as an `AccessibilityService` — calls
 [`AccessibilityNodeInfo.refreshWithExtraData(String key, Bundle args)`](https://developer.android.com/reference/android/view/accessibility/AccessibilityNodeInfo)
-per node and reads the result back from `getExtras()`, before `respondSource` serializes and returns
-the Extensible Markup Language (`XML`) dump it already builds today. This is the same mechanism the
+per node and reads the result back from `getExtras()`, alongside the Extensible Markup Language
+(`XML`) dump `respondSource` already builds today. That pairing is not free: `respondSource`'s body
+comes from `settledDump` → `UiDevice.dumpWindowHierarchy`, which traverses and serializes in one
+platform call and exposes no per-node `AccessibilityNodeInfo` to refresh, so the extra data needs a
+second walk over `UiAutomation.getRootInActiveWindow()` — which covers only the active window, while
+`dumpWindowHierarchy` spans every window including the SystemUI status bar. Unit 0 settles how the
+two walks are reconciled and what the second one costs. This is the same mechanism the
 platform's own
 `EXTRA_DATA_TEXT_CHARACTER_LOCATION_KEY` uses for on-demand text bounds, so this proposal's Android
 SDK is a small helper apps call from a `View` subclass or a `ViewCompat` extension, reporting
