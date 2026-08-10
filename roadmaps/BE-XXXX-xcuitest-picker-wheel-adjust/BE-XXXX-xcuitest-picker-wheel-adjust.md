@@ -143,7 +143,11 @@ records that as a soft `XCTIssue` rather than a raised failure. `RunnerUITest`'s
 tolerate a soft issue like this without tearing down the resident runner — which means the call
 site cannot rely on an exception to notice the value never landed. The provider must instead read
 the wheel's resulting value back after the call and compare it against the requested string,
-returning a new `TapResult` case (a sibling of the existing `.notFound` / `.notHittable`,
+sampling to a small fixed cap rather than reading once, so a wheel still settling its deceleration
+is not reported as a value the wheel does not have — the same bounded-sample discipline
+`actuateUntilStateChanges` (`BajutsuKit/Sources/BajutsuRunner/GestureRetry.swift`) already applies
+to a landing observable in `el.value`. It returns a new `TapResult` case (a sibling of the
+existing `.notFound` / `.notHittable`,
 `ElementProviding.swift`) when they do not match — a case of its own, not a reuse of `.notFound`,
 because `.notFound`'s existing message ("no actuatable element for …", named after the selector)
 would misreport a resolved, live element whose value simply did not match. `Router` maps that case
