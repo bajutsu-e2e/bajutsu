@@ -1,6 +1,6 @@
 **English** · [日本語](BE-XXXX-xcuitest-duplicate-node-hittable-tiebreak-ja.md)
 
-# BE-XXXX — Break XCUITest's duplicate accessibility-node handle ties by hittability, not query order
+# BE-XXXX — Drop XCUITest's non-hittable duplicate accessibility node when exactly one twin is tappable
 
 <!-- BE-METADATA -->
 | Field | Value |
