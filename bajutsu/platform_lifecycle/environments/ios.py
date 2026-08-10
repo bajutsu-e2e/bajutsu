@@ -92,6 +92,12 @@ class _DeviceEnvironment:
         # fake spawns no resident to amortize; XcuitestEnvironment overrides (BE-0291).
         return False
 
+    def request_device_replacement(self) -> None:
+        # Only the XCUITest Simulator lifecycle can mint a device (it overrides this); fake brings no
+        # device up, and the live WebDriver route drives a reserved device it does not own, so both
+        # ignore the request and keep the bare respawn the crash retry already gives them (BE-0354).
+        return None
+
     def replaced_device(self) -> str | None:
         # Only the XCUITest Simulator lifecycle replaces a vanished device (it overrides this); fake
         # brings no device up, so the leased udid is always the one it ran on.

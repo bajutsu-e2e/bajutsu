@@ -25,6 +25,16 @@ RelaunchFactory = Callable[[Effective, Scenario, base.Driver], RelaunchFn]
 AlertGuardFor = Callable[[Scenario], AlertGuardConfig | None]
 
 
+def _no_replacement() -> None:
+    """The neutral replacement request: a lease whose platform cannot mint a device (BE-0354)."""
+    return None
+
+
+def _never_stalled() -> bool:
+    """The neutral video-start signal: a lease that recorded no video, so none could stall (BE-0354)."""
+    return False
+
+
 @dataclass
 class Lease:
     """A leased device for one scenario run.
@@ -56,6 +66,15 @@ class Lease:
     # WebView bridge for hybrid apps (BE-0037). None when the app has no WebView or the platform
     # doesn't support the bridge (e.g. web/Playwright — it already has DOM access).
     webview_bridge: DomSource | None = None
+    # Ask this lease's environment to bring the *next* lease up on a replacement device (BE-0354). The
+    # crash retry calls it when an erase has already been tried and did not clear the degradation, so
+    # the next attempt lands on a device that cannot have inherited it. A no-op on every platform that
+    # cannot mint a device, which is why the pipeline can call it without branching on the backend.
+    request_device_replacement: Callable[[], None] = _no_replacement
+    # Whether this lease's video capture never confirmed it started writing (BE-0354). The earliest
+    # symptom of the wedged capture pipeline, and advisory only: it selects the crash retry's recovery
+    # rung and never fails an attempt on its own. Always False where no video was recorded.
+    video_start_stalled: Callable[[], bool] = _never_stalled
 
 
 # Leases a free device for one scenario (blocking until one frees up): launches the app

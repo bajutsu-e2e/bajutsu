@@ -168,6 +168,11 @@ class Interval:
     # when no confirmation was attempted or it never succeeded — callers must treat that as "no
     # better information than before", not as zero.
     true_start: float | None = None
+    # Whether a requested start confirmation succeeded, or None when none was requested (BE-0354).
+    # `true_start` alone cannot answer that — it is None both for a capture nobody confirmed and for
+    # one whose confirmation timed out — and only the second says the device's capture pipeline is
+    # not producing. The recovery-rung choice reads it; nothing on the verdict path does.
+    start_confirmed: bool | None = None
     _proc: Proc = field(repr=False, default_factory=_NullProc)
     _stop_signal: int = signal.SIGTERM
     _stop_timeout: float = _STOP_TIMEOUT
@@ -186,9 +191,9 @@ def adopt(interval: Interval, target: Path) -> Interval:
     scenario start and, on stop, moves the finalized file to the scenario's artifact path — the real
     finalize (the wrapped interval's stop signal and timeout) still runs, this only redirects the
     result. The web lane finalizes in place instead; this is the device twin of that adopt-on-stop
-    shape. Carries `interval`'s `true_start` forward unchanged: the wrapped interval already
-    confirmed when it actually began, and that instant does not move just because its file is later
-    relocated.
+    shape. Carries `interval`'s `true_start` and `start_confirmed` forward unchanged: the wrapped
+    interval already settled when — and whether — it actually began, and neither answer moves just
+    because its file is later relocated.
     """
 
     def relocate(_: Path) -> Path:
@@ -202,6 +207,7 @@ def adopt(interval: Interval, target: Path) -> Interval:
         path=target,
         provider=interval.provider,
         true_start=interval.true_start,
+        start_confirmed=interval.start_confirmed,
         _transform=relocate,
     )
 
@@ -273,6 +279,7 @@ def start_video(
         kind="video",
         path=path,
         true_start=true_start,
+        start_confirmed=(true_start is not None) if confirm_started else None,
         _proc=proc,
         _stop_signal=signal.SIGINT,
         _stop_timeout=_VIDEO_FINALIZE_TIMEOUT,
@@ -461,6 +468,7 @@ def start_screenrecord(
         path=path,
         provider=ADB_PROVIDER,
         true_start=true_start,
+        start_confirmed=(true_start is not None) if confirm_started else None,
         _proc=proc,
         _stop_signal=signal.SIGINT,
         _stop_timeout=_VIDEO_FINALIZE_TIMEOUT,

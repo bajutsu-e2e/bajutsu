@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0354](BE-0354-xcuitest-wedge-fastfail-device-replacement.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0354") |
+| Implementing PR | [#1557](https://github.com/bajutsu-e2e/bajutsu/pull/1557) |
 | Topic | Platform support |
 | Related | [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn.md), [BE-0319](../BE-0319-xcuitest-cold-spawn-resilience/BE-0319-xcuitest-cold-spawn-resilience.md), [BE-0305](../BE-0305-driver-resilience-fault-injection/BE-0305-driver-resilience-fault-injection.md) |
 <!-- /BE-METADATA -->
@@ -266,18 +267,18 @@ unit 3's rung choice. Nothing here touches the verdict: every unit reroutes or s
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — tag a timed-out (hung) call distinctly from a connection-level failure, classify the
+- [x] Unit 1 — tag a timed-out (hung) call distinctly from a connection-level failure, classify the
       second post-recovery timeout of the same read as a wedged session, and fail over to the
       pipeline with a distinct diagnostic.
-- [ ] Unit 2 — compose the run-ended capture probe into the mid-run liveness probe (latched, one
+- [x] Unit 2 — compose the run-ended capture probe into the mid-run liveness probe (latched, one
       probe instance per spawn shared with the cold gate), so an ended test run fails the
       recovery's health wait fast.
-- [ ] Unit 3 — add the replacement escalation to `run_one`'s crash retry, reusing the
+- [x] Unit 3 — add the replacement escalation to `run_one`'s crash retry, reusing the
       vanished-device rung's creation, naming, and pool re-keying; suppress the forced erase on the
       replacement attempt; quarantine the replaced device; keep the bare respawn on routes that
       reject erase and the erase retry on a pinned Simulator; update the crash-recovery passages in
       `docs/architecture.md` / `docs/run-loop.md` and their `docs/ja/` mirrors.
-- [ ] Unit 4 — surface the video-start confirmation timeout on the lease and let it select the
+- [x] Unit 4 — surface the video-start confirmation timeout on the lease and let it select the
       replacement rung for the attempt's own crash retry.
 
 ## References

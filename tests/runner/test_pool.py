@@ -524,6 +524,8 @@ class _RecordingEnv:
         # full teardown at `shutdown()` fails) (BE-0342).
         self.raise_on_end_lease = raise_on_end_lease
         self.end_lease_error = end_lease_error
+        # How many times the crash retry asked this env to swap its device (BE-0354).
+        self.replacement_requests = 0
         # `bridge_collector`'s returned teardown raising mimics `adb reverse --remove` on a device
         # that already dropped off the bus (BE-0342).
         self.fail_bridge_teardown = fail_bridge_teardown
@@ -585,6 +587,10 @@ class _RecordingEnv:
 
     def has_reusable_resident(self) -> bool:
         return self.reusable
+
+    def request_device_replacement(self) -> None:
+        # Counted, not acted on: the pool only has to hand the crash retry a way to reach it.
+        self.replacement_requests += 1
 
     def replaced_device(self) -> str | None:
         # The udid this env moved to when `start` had to replace a vanished device. Settable
@@ -2120,6 +2126,38 @@ def test_device_pool_follows_a_lease_onto_a_replacement_device(
         second = lease(_eff(), _scn("s2"))
         assert second.udid == "UDID-NEW"
         second.release()
+    finally:
+        shutdown()
+
+
+def test_device_pool_hands_the_lease_its_environments_replacement_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # BE-0354: the crash retry asks through the `Lease`, after that lease has already been released,
+    # and what it must reach is the environment the pool keeps for the device — the one whose *next*
+    # `start` serves the swap. Anything else (a fresh environment, the pool's representative) would
+    # take the request and drop it.
+    created: list[_RecordingEnv] = []
+    monkeypatch.setattr(
+        "bajutsu.runner.pool.environment_for",
+        _replacing_env_factory(created, replacement=None, reusable=True),
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        lz = lease(_eff(), _scn("s"))
+        lz.release()
+        lz.request_device_replacement()
+        assert created[-1].replacement_requests == 1
+        # Nothing recorded a video, so the stall signal is a first-class False rather than unknown.
+        assert lz.video_start_stalled() is False
     finally:
         shutdown()
 

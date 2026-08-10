@@ -225,3 +225,23 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > `bajutsu/runner/recovery.py`, shared with the on-device driver conformance suite so a Simulator
 > infrastructure fault there recovers the same way instead of reddening the required check on an
 > unrelated PR (BE-0334).
+>
+> Above the forced erase sits one more rung, on the Simulator XCUITest route only (BE-0354): a
+> **replacement device**. An erase resets the device's data, which recovers app-data corruption but
+> not a Simulator whose capture services have wedged — CI showed the erased device coming back wedged
+> and the retry reproducing the first attempt exactly. So a retry that already ran with a forced erase
+> and crashed again asks its lease's environment for a device that has never run anything, created
+> through the same path a vanished device's replacement uses; the degraded device is shut down and
+> never handed out again. The attempt's own video evidence can select that rung directly: when the
+> recording never confirms it started writing — the wedge's earliest symptom — the *first* crash
+> escalates, skipping the erase whose remedy that signal has already ruled out. A replacement attempt
+> drops the forced erase, since a device about to be created has nothing to erase. The rung is scoped
+> to an unpinned run (`--udid` names a device the operator meant, and a replacement would silently
+> move the run off it — and an unpinned run is a pool of one device served by one worker, so the
+> escalated retry necessarily leases back the device that asked for the swap) with an `appPath` (a
+> blank device has nothing to install), and it honors both
+> opt-outs the erase rung honors — `reinstall: overwrite` and `bajutsu run --no-erase` — because a
+> replacement resets strictly more than an erase does. Every other route ignores the request and
+> keeps the strongest retry it has.
+> Both signals are advisory to the *rung*, never to the verdict: a scenario that keeps crashing still
+> exhausts its budget and fails loudly.

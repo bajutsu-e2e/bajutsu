@@ -922,6 +922,71 @@ def test_a_runner_that_never_stabilizes_fails_past_the_recovery_budget() -> None
     assert calls[0] == 3  # the initial call plus max_recoveries re-issues, all crashing
 
 
+# A *wedged automation session* (BE-0354): the runner's HTTP server answers /health while the same
+# read keeps reaching it and never being answered. No re-issue can clear that, so the channel raises
+# at once and lets the pipeline's device-level retry take over. A connection-level crash — refused, or
+# reset mid-response — is the genuinely crashing runner the loop above was built for and keeps riding.
+
+
+def _hang(method: str) -> XcuitestRunnerCrashError:
+    return XcuitestRunnerCrashError(
+        f"runner channel {method} /x failed: timed out", method=method, delivered=True, hung=True
+    )
+
+
+def test_a_read_that_keeps_hanging_after_recovery_is_diagnosed_as_a_wedged_session() -> None:
+    # The measured signature: /health answers every time, and the re-issued read times out again. The
+    # third hang is where a single long-running operation holding the runner's lock is ruled out — its
+    # own call would have failed its own retry ladder first — so the session is wedged.
+    inner, calls = _counting([_hang("GET")] * 4)
+    with pytest.raises(XcuitestRunnerCrashError, match="wedged automation session") as exc:
+        _with_crash_recovery(inner, health=lambda _t: True)("GET", "/screenshot", None)
+    assert calls[0] == 3  # the original call plus two re-issues, then the hand-over
+    assert exc.value.hung is True
+
+
+def test_a_hang_that_clears_on_re_issue_is_still_ridden_out() -> None:
+    # One hang is not a wedge: the runner answered the very next call, which is exactly the transient
+    # the recovery loop exists for.
+    inner, calls = _counting([_hang("GET"), _Reply(status="ok")])
+    reply = _with_crash_recovery(inner, health=lambda _t: True)("GET", "/screenshot", None)
+    assert reply.status == "ok"
+    assert calls[0] == 2
+
+
+def test_hangs_broken_by_a_connection_crash_never_accrue_to_a_wedge() -> None:
+    # The count is over *consecutive* hangs: a runner that hangs, then goes away, then hangs again is
+    # flapping, not wedged, so it keeps riding out recoveries to the ordinary budget.
+    inner, calls = _counting(
+        [_hang("GET"), _crash("GET", delivered=False), _hang("GET"), _Reply(status="ok")]
+    )
+    reply = _with_crash_recovery(inner, health=lambda _t: True)("GET", "/screenshot", None)
+    assert reply.status == "ok"
+    assert calls[0] == 4
+
+
+def test_a_connection_level_crash_never_reads_as_a_wedged_session() -> None:
+    # `delivered` alone cannot select the wedge: BE-0207 tags a mid-response reset delivered too, and
+    # only a call that hung says the runner accepted the work and never finished it.
+    inner, _calls = _counting([_crash("GET", delivered=True)] * 4)
+    with pytest.raises(XcuitestRunnerCrashError, match="past the 3-recovery budget"):
+        _with_crash_recovery(inner, health=lambda _t: True)("GET", "/screenshot", None)
+
+
+def test_the_retry_seam_tags_a_hung_call_apart_from_a_refused_one() -> None:
+    # The tag has to survive the BE-0207 seam, since that is where a transport failure becomes the
+    # crash error the recovery layer classifies.
+    inner, _calls = _counting([_TransportFailure("timed out", delivered=True, hung=True)] * 3)
+    with pytest.raises(XcuitestRunnerCrashError) as hung:
+        _with_retry(inner, sleep=lambda _s: None)("GET", "/screenshot", None)
+    assert hung.value.hung is True
+
+    inner, _calls = _counting([_TransportFailure("refused", delivered=False)] * 3)
+    with pytest.raises(XcuitestRunnerCrashError) as refused:
+        _with_retry(inner, sleep=lambda _s: None)("GET", "/screenshot", None)
+    assert refused.value.hung is False
+
+
 def test_a_normal_reply_passes_through_without_probing_health() -> None:
     def _boom(_t: float) -> bool:  # health must not be consulted on the happy path
         raise AssertionError("health probed on a non-crash call")
