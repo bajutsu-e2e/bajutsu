@@ -26,12 +26,14 @@ docstring は、残る代償を「どちらの複製をタップするかは run
 複製では参照消失（stale handle）で失敗する」と述べています。本項目は、この代償を源で取り除きます。
 重複ペアのうち一方だけが
 [`ElementProviding.isHittable`](../../BajutsuKit/Sources/BajutsuRunner/ElementProviding.swift)
-（バックエンドが「今現在覆われている」ことと本当の操作失敗を見分けるためにすでに使っている、同じ
-ネイティブな XCUITest の判定）でタップできると報告されたとき、runner はその一方が
+（バックエンドが、要素のフレーム中心が画面内にあるとき、今まさに覆われていることと本当の操作失敗を
+見分けるためにすでに使っている、同じネイティブな XCUITest の判定。画面外かどうかはこの判定ではなく
+`scroll` の側の問題として、あえて外してあります）でタップできると報告されたとき、runner はその一方が
 [`SnapshotStore`](../../BajutsuKit/Sources/BajutsuRunner/SnapshotStore.swift)（BE-0312）の参照の割り当てへ
 届く前に、もう一方を取り除きます。残る候補は 1 つだけになるので、そのあとの解決や参照の割り当てで迷う
 余地がありません。`SnapshotStore` 自体は変更しません。手直しは、その入力を用意する問い合わせの段に
-閉じます。
+閉じます。対象も `/elements` の問い合わせだけで、BE-0316 が追加した SpringBoard のシステムアラート
+問い合わせには及びません（理由は *詳細設計* を参照）。
 
 ## 動機
 
@@ -87,25 +89,39 @@ Simulator を起動するジョブで、macOS を動かす費用がかかりま�
 問い合わせる既存の手段を、この段だけが持っているからです。
 
 **重複グループのうち、タップできない要素を取り除く。ただし、それで残る候補が 1 つだけになるときに限る。**
-[`Router.swift`](../../BajutsuKit/Sources/BajutsuRunner/Router.swift) の `handleElements` と
-`handleSystemAlertQuery` は、いずれも `queryElements()` / `querySystemAlertButtons()` を
-`caughtOnMain` のクロージャの中から呼んでいます。この同じメインスレッドの文脈が必要なのは、
+[`Router.swift`](../../BajutsuKit/Sources/BajutsuRunner/Router.swift) の `handleElements` は
+`queryElements()` を `caughtOnMain` のクロージャの中から呼んでいます。この同じメインスレッドの
+文脈が必要なのは、
 [`ElementProviding.isHittable(backingElement:)`](../../BajutsuKit/Sources/BajutsuRunner/ElementProviding.swift)
 自身がネイティブな XCUITest 呼び出しだからです。絞り込みは、その同じクロージャの中で、結果を
-`elementsResponse`（`/elements` と SpringBoard の `/systemAlert/query` が共有する、BE-0316 が追加した
-ハンドラ）へ渡す前に行います。`elementsResponse` 自体は変更しません。返ってきた要素を、
+`elementsResponse` へ渡す前に行います。本項目が対象とするのは `handleElements` / `/elements` だけで、
+`handleSystemAlertQuery` や BE-0316 が追加した SpringBoard の `/systemAlert/query` は対象としません。
+`isHittable` はアプリ内の position-path をたどって
+（[`XcuitestElementProvider.swift`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift) の
+`liveElement(for:)`）バッキング参照を解決し、それ以外の種類の参照ではすぐに `.notFound` を返します。
+`querySystemAlertButtons()` が作る、序数だけで指す `SystemAlertButtonBacking` もその一方です
+（アプリ外のアラートにはスナップショット上の position path を記録する手立てがないという、BE-0316 の
+設計です）。そのため SpringBoard 側の複製を確かめても、結果はつねに下の「どの要素も `.ok` を返さない」
+場合になり、何も絞り込めないまま呼び出しを 1 回無駄にするだけです。*動機* が説明している二重登録は、
+そもそもアプリ内の `UIAlertController` のスナップショットの走査に備わる性質であり、システムアラートの
+経路にあるものではないので、そちら側に本項目が塞ぎ残す場合はありません。返ってきた要素を、
 `_collapse_identical_duplicates` がすでに使っている同じ同一性（識別子・ラベル・traits・value・frame が
 すべて一致）でグループ化します。1 件しかないグループは判定の必要がなく、余分なコストもかかりません。
-2 件以上のグループでは、`/isHittable` エンドポイントがすでに「今現在覆われている」ことと本当の
-操作失敗を見分けるために使っている既存の `isHittable(backingElement:)` を、メインスレッドのままで
-各要素へ呼びます。この呼び出しが要素ごとに投げる例外は、要素ごとに捕まえます。`/isHittable` の
-エンドポイント自身がすでに、解決に失敗したという例外を素通りさせず `stale` として扱っているのと
-同じ扱いです（[`Router.swift`](../../BajutsuKit/Sources/BajutsuRunner/Router.swift) の
-`onMainCatching`）。本項目が取り除こうとしている見せかけの複製は、まさにネイティブな解決が例外を
-投げるノードです。例外を要素ごとに捕まえるのは、1 件の例外が `handleElements`（SpringBoard の
-アラート経路では `handleSystemAlertQuery`）自身の `caughtOnMain([])` のフォールバックまで素通りし、
-ツリー全体の代わりに空の画面を返してしまうのを防ぐためです。ちょうど 1 件だけが `.ok` を返したときは、
-そのグループの他の要素をリストから取り除き、
+2 件以上のグループでは、`/isHittable` エンドポイントがすでに使っている既存の `isHittable(backingElement:)`
+を、メインスレッドのままで各要素へ呼びます。この呼び出しが要素ごとに投げる例外は、要素ごとに捕まえます。
+`/isHittable` のエンドポイント自身がすでに、解決に失敗したという例外を素通りさせず `stale` として
+扱っているのと同じ扱いです（[`Router.swift`](../../BajutsuKit/Sources/BajutsuRunner/Router.swift) の
+`onMainCatching`）。2 つの要素を見分ける決め手は `el.isHittable` です。これは、解決できて画面内にある
+要素へ合成したイベントが今まさに届くかどうかを、XCUITest 自身が判定する真偽値です。
+`isHittable(backingElement:)` は、それが `true` のとき `.ok` を返し、`false` のとき `.notHittable` を
+返します。（`tap` 自身の判定にそろえて、あえて）要素のフレーム中心が画面外にあるときは、確かめもせず
+`.ok` を返します。画面外かどうかは `scroll` の側の問題であり、タップできるかどうかの問題ではないから
+です。例外は、2 つの要素を見分けるための手立てではありません。どちらも同じ position-path の参照解決を
+通るので、どちらかが解決に失敗するとは見込んでいません。それでも要素ごとに例外を捕まえておくのは、
+あくまで防御であり、どちらかの要素が何らかの理由で投げた例外が `handleElements` 自身の
+`caughtOnMain([])` のフォールバックまで素通りし、ツリー全体の代わりに空の画面を返してしまうのを
+防ぐためです。例外を投げた要素は、単に `.ok` ではなかったものとして扱います。ちょうど 1 件だけが
+`.ok` を返したときは、そのグループの他の要素をリストから取り除き、
 `elementsResponse` へ届く前に消します。残った 1 件はそのグループの唯一の候補になるので、その 1 件を
 複製の相手と比べて並べるタイブレークはもう要りません。どの重複グループにも属さない要素と、以下の
 2 つの場合に当たるグループは元の相対順を保ちます。これは、キーでグループ化した辞書から並べ直すの
@@ -118,6 +134,15 @@ Simulator を起動するジョブで、macOS を動かす費用がかかりま�
 ——`forEach`、`exists`、重複そのものの同一性より広い選択子に対する `count`、`scroll` ステップの
 `within` によるコンテナ解決——も、`resolve_unique` の呼び出し元と同じだけ候補が減ります。これらは
 `/elements` が返したものをそのまま読むだけなので、本項目ではそれぞれを別個に導き直しません。
+
+絞り込みがそもそもグループを狭められるかどうかは、2 つの要素が同一性の 5 つの項目の 1 つである
+frame をもともと共有していることにも懸かっています。どちらも `isHittable` の同じ画面内／画面外の
+分岐を通るので、画面外にある重複ペア——たとえば scroll view の折り返しの下にあるもの——は両方が
+`.ok` を返し、絞り込まれずに下の「複数の要素が `.ok` を返す場合」に当たります。これは後退ではなく、
+その場合はもともと問い合わせの順序が今日とまったく同じように決めているからです。ただし、絞り込みが
+実際に効くのは、画面内にあって片方だけが実際にタップできるペアに限られることを意味します。これは
+*動機* が説明する `UIAlertController` の形そのものですが、シナリオが出会いうる同一性の一致するペアの
+すべてで保証されるわけではありません。
 
 本項目が塞がない場合は 1 つあります。`SnapshotStore` 自身の出現番号のタイブレークは、上の 5 つの
 項目とは違う、より粗い同一性を鍵にしています。識別子・ラベル・traits の 3 つだけで、value と frame
@@ -144,10 +169,11 @@ Simulator を起動するジョブで、macOS を動かす費用がかかりま�
   絞り込むと、グループを空にしてしまうか、タップできない要素をどれか 1 つ勝手に選ぶしかなく、
   どちらも判定が実際には見つけていない区別をでっち上げることになります。グループを今日と変わらない
   ままにしておけば、タップは結局失敗しますが、原因を正確に報告できる既存の経路を通ります。解決は
-  できるが今まさに覆われているか画面外にあるノードなら `.notHittable`（現状の `ElementNotTappable`）
-  です。XCUITest が一切操作できないノードなら本物のネイティブな解決失敗であり、現状は `stale` として
-  現れます（根本の状態が解消すれば BE-0289 の再解決がなお正当に吸収できます）。本項目も
-  `SnapshotStore` も、どちらの結果の意味も変えません。
+  できて画面内にあるが、今まさに覆われているノードなら `.notHittable`（現状の `ElementNotTappable`）
+  です。このケースは要素が画面外にあることからは起こりません。`isHittable` は画面外を `.notHittable`
+  ではなく `.ok` として報告するからです（*詳細設計* を参照）。XCUITest が一切操作できないノードなら
+  本物のネイティブな解決失敗であり、現状は `stale` として現れます（根本の状態が解消すれば BE-0289 の
+  再解決がなお正当に吸収できます）。本項目も `SnapshotStore` も、どちらの結果の意味も変えません。
 - **複数の要素が `.ok` を返す場合。** `UIAlertController` の二重登録（どちらか一方しか実際には操作
   できない場合）ではなく、同一性が一致する、独立にタップできる、正真正銘別々の 2 つの操作対象が存在
   することを意味します。この判定だけを根拠にどちらか一方を取り除くと、「たまたま重複した見せかけの
@@ -163,14 +189,23 @@ Simulator を起動するジョブで、macOS を動かす費用がかかりま�
 `_collapse_identical_duplicates` の docstring 自身が、これをよくある場合とはせず、既知でまれな
 XCUITest の挙動として位置づけています。重複グループのない通常の問い合わせは、追加のコストを一切
 払いません。呼び出し自体は `/isHittable` が今日すでにメインスレッドで行っているものと同じであり、
-`handleElements` と `handleSystemAlertQuery` が `queryElements()` / `querySystemAlertButtons()` の
-ために開いている同じ `caughtOnMain` のクロージャの中から呼ぶので、新しいスレッドの切り替えは
-増えません。
+`handleElements` が `queryElements()` のために開いている同じ `caughtOnMain` のクロージャの中から
+呼ぶので、新しいスレッドの切り替えは増えません。
+
+**確かめていない前提を、先に確かめる。** 実際の `UIAlertController` の二重登録が、実際にちょうど
+1 件だけ `.ok` を返す形に解決するとは限りません。*詳細設計* は `el.isHittable` の区別からそう
+起こるはずだと述べていますが、この文書のどこにも実機で確かめた記述はありません。下の Router／
+テスト整備の作業へ取りかかる前に、まずこれを直接確かめます。実機の Simulator で `UIAlertController`
+を表示し、`queryElements()` から両方の要素の `backingElement` を取り出し、それぞれに対して
+`isHittable(backingElement:)` を呼びます。ちょうど 1 件が `.ok` を返せば、この先の設計に取り組む
+価値があります。両方が返す、あるいはどちらも返さない場合は、*詳細設計* の前提が誤っており、
+ここで示す絞り込みではこの場合を一切狭められないことになります。それは絞り込みの実装上の欠陥では
+なく、設計そのものを変える必要があるという結論です。
 
 **テスト。** グループ化と、取り除くか残すかの判定そのものは runner のロジックであり、ネイティブな
 挙動ではないので、実機なしで覆えます。ただし BE-0312 の Unit 3 と違って `SnapshotStoreTests.swift`
-の中ではなく（`SnapshotStore` 自体には触れていません）、`GET /elements` と `POST /systemAlert/query`
-の両方を `FakeElementProvider` に対して一通り動かす `RouterTests.swift` の中で覆います。この fake の
+の中ではなく（`SnapshotStore` 自体には触れていません）、`GET /elements` を `FakeElementProvider` に
+対して一通り動かす `RouterTests.swift` の中で覆います。この fake の
 `isHittableResult` は、今はすべての呼び出しが共有する単一の `TapResult` です。これを、fake の
 `backingElement` の `ObjectIdentifier` で（要素の内容ではなく）キーとする小さな辞書に変えれば、次の
 3 つを決定的に固定できます（内容でキーにすると、下のテストで使う 2 つの fake 要素は同一性が一致する
@@ -183,11 +218,12 @@ XCUITest の挙動として位置づけています。重複グループのな�
 「例外を投げる」を戻り値として表すケースがありません。その仕組みがあれば、片方の fake の要素が例外を
 投げ、もう片方が `.ok` を返すときに、投げた要素だけが取り除かれることを確かめられます。オンデバイスの
 テストは、実機でしか確かめられないことに絞ります（`Router.swift` / `ElementProviding.swift` には、
-まだ実機／実機なしを分けた前例がないので、これが最初の例になります）。実際に片方だけが覆われた
-`UIAlertController` の二重登録が、ちょうど片方だけタップできる状態で再現すること、`id` への `tap` が
-そのタップできる要素に着弾すること、そしてその識別子に対する `count` の判定が、あとで 2 件ではなく 1 件になること
-です。本項目が防ごうとしている回帰は誤った複製へのタップですが、`count` の判定は、生き残った要素が
-単に並べ替えられただけではなく本当に唯一の候補になっていることまで確かめます。
+まだ実機／実機なしを分けた前例がないので、これが最初の例になります）。上の Spike がすでに前提の
+成立を確かめていることを踏まえ、実際に片方だけが覆われた `UIAlertController` の二重登録が同じように
+再現すること、`id` への `tap` がそのタップできる要素に着弾すること、そしてその識別子に対する
+`count` の判定が、あとで 2 件ではなく 1 件になることを確かめます。本項目が防ごうとしている回帰は
+誤った複製へのタップですが、`count` の判定は、生き残った要素が単に並べ替えられただけではなく本当に
+唯一の候補になっていることまで確かめます。
 
 ## 検討した代替案
 
@@ -236,8 +272,8 @@ XCUITest の挙動として位置づけています。重複グループのな�
 レイアウトを壊れているものとして扱うことになりますが、ダイアログは最初から問題ではありません。
 
 **重複グループだけでなく、すべての要素で `isHittable` を計算する。** すべての要素について、タップ
-できるかどうかをあらかじめ判定しておけば、重複の場合を特別扱いしなくて済みます。ただし、代償として、`/elements` と
-`/systemAlert/query` のすべての返信で、要素 1 件につき 1 回のネイティブな呼び出しが必要になります。
+できるかどうかをあらかじめ判定しておけば、重複の場合を特別扱いしなくて済みます。ただし、代償として、
+`/elements` のすべての返信で、要素 1 件につき 1 回のネイティブな呼び出しが必要になります。
 その大半は重複の衝突に一度も関わりません。内容で衝突している要素だけに絞ることで、追加のコストは、
 本項目が対象とする挙動が実際に起きる頻度と釣り合うものにとどまります。
 
@@ -247,15 +283,19 @@ XCUITest の挙動として位置づけています。重複グループのな�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `Router.swift` の `handleElements` と `handleSystemAlertQuery` の `caughtOnMain` クロージャの
-      中で、`queryElements()` / `querySystemAlertButtons()` の結果を共有する同一性（識別子・ラベル・
-      traits・value・frame）でグループ化する。2 件以上のグループの各要素へ `isHittable(backingElement:)`
-      を呼び、要素ごとに例外を捕まえる（例外は、その要素については `.ok` ではないとして扱い、クロージャ
-      自身の `[]` フォールバックへは通さない）。ちょうど 1 件だけが `.ok` を返したグループは、他の要素
-      を `elementsResponse` へ届く前にリストから取り除く。`.ok` を返す要素がない、または複数あるグル
-      ープは今日と変わらないままにする。
-- [ ] `RouterTests.swift` の実機なしテスト（`GET /elements` と `POST /systemAlert/query` の両方を
-      覆う）：`FakeElementProvider` に、`backingElement` の `ObjectIdentifier` でキーにした（内容では
+- [ ] Spike（この先すべての前提）：実機の Simulator で `UIAlertController` の二重登録を表示し、
+      `queryElements()` から両方の要素の `backingElement` を取り出して、それぞれに直接
+      `isHittable(backingElement:)` を呼ぶ。下の作業に取りかかる前に、ちょうど 1 件が `.ok` を
+      返すことを確かめる。前提が成立しなければ、そのまま進めるのではなく設計を見直す。
+- [ ] `Router.swift` の `handleElements` の `caughtOnMain` クロージャの中で、`queryElements()` の
+      結果を共有する同一性（識別子・ラベル・traits・value・frame）でグループ化する。2 件以上の
+      グループの各要素へ `isHittable(backingElement:)` を呼び、要素ごとに例外を捕まえる（例外は、
+      その要素については `.ok` ではないとして扱い、クロージャ自身の `[]` フォールバックへは通さない）。
+      ちょうど 1 件だけが `.ok` を返したグループは、他の要素を `elementsResponse` へ届く前にリスト
+      から取り除く。`.ok` を返す要素がない、または複数あるグループは今日と変わらないままにする。
+      `handleSystemAlertQuery` / `/systemAlert/query` は明確に対象外とする（*詳細設計* を参照）。
+- [ ] `RouterTests.swift` の実機なしテスト（`GET /elements` を覆う）：`FakeElementProvider` に、
+      `backingElement` の `ObjectIdentifier` でキーにした（内容では
       ない）要素ごとの `isHittable` の結果と、別枠の要素ごとの例外注入の仕組みを持たせる。ちょうど
       1 件が `.ok` のときは他を取り除き、0 件のときは両方残し、2 件以上のときも両方残す、という
       3 つの分岐を固定する。要素ごとの例外の扱いも固定する。1 件が例外を投げ、もう 1 件が `.ok` を
@@ -265,9 +305,10 @@ XCUITest の挙動として位置づけています。重複グループのな�
       `count` の判定が 1 件になること。両方を覆った場合は `ElementNotTappable` のまま失敗し `count`
       はなお 2 件のままであること。同一性が一致する別々の 2 つの操作対象がある場合は、両方が
       `/elements` に現れ続け、今日と同じ問い合わせ順のタイブレークで解決すること。
-- [ ] 文書：`handleElements` / `handleSystemAlertQuery` のコメント（および、すべての重複グループが
+- [ ] 文書：`handleElements` のコメント（および、すべての重複グループが
       store まで届くという含みがなお残るなら `SnapshotStore` のクラスの説明）に、タップできる要素が
-      ちょうど 1 件のグループは store へ届く前に、その 1 件へ解決されることを記す。また、*詳細設計*
+      ちょうど 1 件のグループは store へ届く前に、その 1 件へ解決されることを記す。
+      `handleSystemAlertQuery` にはあえて手を付けないことも併記する。また、*詳細設計*
       が名指す先送りの限界も記す。5 つの項目が一致する重複ペアの 2 つの要素自身、または、そこへ
       無関係な 3 つ目の要素が加わった組は、`SnapshotStore` の粗い 3 項目の同一性で衝突することがある。
       その場合、参照が別の物理ノードへ黙って解決されるか、出現番号が問い合わせのあいだで振れる。本項目
@@ -306,9 +347,13 @@ XCUITest の挙動として位置づけています。重複グループのな�
   今日と変わらず動き続けるが、取り除いた複製の生き残りが、その割り当てが入れ替わった問い合わせを
   またいで、参照を別の物理ノードへ黙って割り直すこともある（*詳細設計* が名指す限界）
 - [`BajutsuKit/Sources/BajutsuRunner/Router.swift`](../../BajutsuKit/Sources/BajutsuRunner/Router.swift)：
-  `handleElements` と `handleSystemAlertQuery`。本項目が変更するハンドラで、`elementsResponse` 自体は
+  `handleElements`。本項目が変更するハンドラで、`elementsResponse` と `handleSystemAlertQuery` は
   変更しない
 - [`BajutsuKit/Sources/BajutsuRunner/ElementProviding.swift`](../../BajutsuKit/Sources/BajutsuRunner/ElementProviding.swift)：
   `isHittable(backingElement:)`。本項目が再利用する既存のネイティブなシグナル
+- [`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift)：
+  `isHittable`、`liveElement(for:)`、`centerIsOnScreen`。`ElementProviding.isHittable` の裏にある
+  具体的な実装であり、`PositionPathBacking` だけを通す仕組みのために本項目が `SystemAlertButtonBacking`
+  へ届かないことと、画面外にある要素が `.notHittable` ではなく `.ok` を返す理由の両方がここにある
 - [`bajutsu/drivers/xcuitest.py`](../../bajutsu/drivers/xcuitest.py)：`_actuate`。そのコメントが、
   `stale` の返事を生む 2 つの経路を名指しており、本項目の *動機* はその 2 つ目の原因を誤った複製だと示す
