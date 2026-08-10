@@ -902,7 +902,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
             DeviceError: as `_replacement_target` does, before anything about the device changes.
         """
         old = self._udid
-        device_type = self._replacement_target(eff, why="stayed degraded and the run replaced it")
+        # Trigger-neutral wording: the escalation also fires on a stalled video start, from the
+        # *first* crash, where no erase was ever forced — and this clause reaches the operator on the
+        # path where no replacement could be made, so it must not claim one was.
+        device_type = self._replacement_target(eff, why="needs replacing after a crash")
         simctl.Env(old, run=self._run).shutdown()
         note = self._create_replacement(eff, device_type)
         # The spawn that follows is a genuine first bring-up — a device just created and booted, with
@@ -911,7 +914,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # reasoning `_spawn_cold`'s own erase path already applies.
         self._respawn = self._cold_spawned_before = False
         _logger.warning(
-            "Simulator %s stayed degraded after a forced erase; shut it down and %s", old, note
+            # Which signal selected this rung is the pipeline's to log; saying "after a forced erase"
+            # here would misreport the stall-triggered path, which escalates from the first crash.
+            "Simulator %s could not be recovered in place; shut it down and %s",
+            old,
+            note,
         )
 
     def _replace_vanished_device(self, eff: Effective) -> str:

@@ -297,8 +297,8 @@ def device_pool(
             """Follow the environment onto a device it had to replace, re-keying what this pool holds.
 
             The XCUITest Simulator lifecycle creates a replacement when CoreSimulator stops listing
-            the leased device, and when a crash retry escalates past the forced erase onto a device
-            that stayed degraded (BE-0354). Everything the pool keys by udid — the per-device collector, the
+            the leased device, and when a crash retry escalates to one because the device could not be
+            recovered in place (BE-0354). Everything the pool keys by udid — the per-device collector, the
             warm-resident cache, the evidence sink's simctl captures, the result's device
             attribution, and which udid returns to the free queue — would otherwise keep naming a
             device that no longer exists. The old udid is deliberately never freed again: the

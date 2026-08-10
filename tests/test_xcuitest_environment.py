@@ -2117,8 +2117,9 @@ def test_a_replacement_that_cannot_be_created_leaves_the_device_running(
     env.start(eff, Preconditions())
     env.request_device_replacement()
     del calls[:]
-    # The wording names *this* rung, so an operator knows which one ran.
-    with pytest.raises(simctl.DeviceError, match="would not recover from a forced erase"):
+    # The wording names *this* rung, so an operator knows which one ran, and stays neutral about
+    # which signal selected it — the stall-triggered path escalates with no erase ever forced.
+    with pytest.raises(simctl.DeviceError, match="needs replacing after a crash"):
         env.start(eff, Preconditions())
     assert "shutdown" not in _verb_seq(calls) and "create" not in _verb_seq(calls)
 
