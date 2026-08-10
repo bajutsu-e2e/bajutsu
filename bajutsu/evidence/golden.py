@@ -166,13 +166,20 @@ def load_golden(path: Path) -> dict[str, Element]:
 def save_golden(elements: list[Element], ids: list[str], path: Path) -> None:
     """Save selected elements from a query() result as a golden file.
 
+    Diagnostic fields are dropped on the way out, so `_DIAGNOSTIC_FIELDS` alone decides what a
+    golden carries and a re-recording never churns a field no comparison reads.
+
     Args:
         elements: The full query() snapshot.
         ids: Identifiers of the controls to pin.
         path: Destination JSON file.
     """
     by_id = {el["identifier"]: el for el in elements}
-    golden: dict[str, Element] = {cid: by_id[cid] for cid in ids if cid in by_id}
+    golden: dict[str, dict[str, Any]] = {
+        cid: {k: v for k, v in by_id[cid].items() if k not in _DIAGNOSTIC_FIELDS}
+        for cid in ids
+        if cid in by_id
+    }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(golden, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 

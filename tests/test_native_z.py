@@ -19,7 +19,7 @@ from bajutsu.dom import parse_dom
 from bajutsu.drivers import base
 from bajutsu.drivers.adb import parse_hierarchy
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence.golden import compare_element, load_golden
+from bajutsu.evidence.golden import compare_element, load_golden, save_golden
 
 _HIERARCHY = (
     '<?xml version="1.0" encoding="UTF-8"?>'
@@ -158,6 +158,16 @@ def test_golden_loads_a_file_recorded_before_native_z_existed(tmp_path: Path) ->
         ),
         encoding="utf-8",
     )
+    assert load_golden(path)["ctrl.ok"]["nativeZ"] is None
+
+
+def test_golden_recording_omits_native_z(tmp_path: Path) -> None:
+    # The loader ignores the field, so the recorder must not write it either: a value that no
+    # comparison reads would otherwise churn every re-recording once Units 2 and 3 measure one.
+    path = tmp_path / "controls.json"
+    save_golden([_element("ctrl.ok", (0.0, 0.0, 100.0, 44.0), native_z=7.0)], ["ctrl.ok"], path)
+
+    assert "nativeZ" not in json.loads(path.read_text(encoding="utf-8"))["ctrl.ok"]
     assert load_golden(path)["ctrl.ok"]["nativeZ"] is None
 
 
