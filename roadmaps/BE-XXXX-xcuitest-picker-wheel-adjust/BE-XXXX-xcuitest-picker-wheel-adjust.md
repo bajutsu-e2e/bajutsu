@@ -185,7 +185,7 @@ the Japanese mirror. `docs/drivers.md`'s capability table gains a `pickerWheel` 
 `docs/ja/drivers.md` gets the mirror. `docs/selectors.md` and `docs/ja/selectors.md` get the
 `datePicker` note described above.
 
-**Tests.** Three unit tests, following the parse/dispatch/fake-recording shape
+**Tests.** Four tests, following the parse/dispatch/fake-recording shape
 `tests/test_select_option.py` already uses, extended with the seeded `picker_wheel_options` above:
 
 - dispatching `setPickerValue` with a `value` the fake wheel's seeded options hold reaches
@@ -193,7 +193,10 @@ the Japanese mirror. `docs/drivers.md`'s capability table gains a `pickerWheel` 
 - dispatching it with a `value` the fake wheel's seeded options do not hold fails with
   `ElementNotFound`;
 - running a scenario that uses `setPickerValue` against a backend without `Capability.PICKER_WHEEL`
-  (`adb` or `playwright`) fails at preflight, before any actuation is attempted.
+  (`adb` or `playwright`) fails at preflight, before any actuation is attempted;
+- a `PICKER_WHEEL` case in `tests/driver_conformance.py`, following
+  `test_select_option_capability_matches_behavior`: a backend that advertises the token must not
+  raise `UnsupportedAction`, and one that does not must raise it rather than silently no-op'ing.
 
 ## Alternatives considered
 
