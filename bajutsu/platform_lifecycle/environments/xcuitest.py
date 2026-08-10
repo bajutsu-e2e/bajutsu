@@ -902,7 +902,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             DeviceError: as `_replacement_target` does, before anything about the device changes.
         """
         old = self._udid
-        device_type = self._replacement_target(eff, why="would not recover from a forced erase")
+        device_type = self._replacement_target(eff, why="stayed degraded and the run replaced it")
         simctl.Env(old, run=self._run).shutdown()
         note = self._create_replacement(eff, device_type)
         # The spawn that follows is a genuine first bring-up — a device just created and booted, with
