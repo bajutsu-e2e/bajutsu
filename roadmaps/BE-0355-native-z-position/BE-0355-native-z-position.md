@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-native-z-position-ja.md)
+**English** · [日本語](BE-0355-native-z-position-ja.md)
 
-# BE-XXXX — Surface each element's real Z position via an opt-in app-side SDK
+# BE-0355 — Surface each element's real Z position via an opt-in app-side SDK
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-native-z-position.md) |
+| Proposal | [BE-0355](BE-0355-native-z-position.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0355") |
 | Topic | Driver & backend architecture |
 | Related | [BE-0349](../BE-0349-tap-target-hittability-check/BE-0349-tap-target-hittability-check.md), [BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md), [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md) |
 <!-- /BE-METADATA -->

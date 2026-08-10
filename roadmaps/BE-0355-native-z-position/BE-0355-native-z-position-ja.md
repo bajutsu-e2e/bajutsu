@@ -1,14 +1,14 @@
-[English](BE-XXXX-native-z-position.md) · **日本語**
+[English](BE-0355-native-z-position.md) · **日本語**
 
-# BE-XXXX — 要素の実際の Z 位置を、opt-in の app 側 SDK 経由で明示する
+# BE-0355 — 要素の実際の Z 位置を、opt-in の app 側 SDK 経由で明示する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-native-z-position-ja.md) |
+| 提案 | [BE-0355](BE-0355-native-z-position-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0355") |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0349](../BE-0349-tap-target-hittability-check/BE-0349-tap-target-hittability-check-ja.md)、[BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)、[BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md)、[BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) |
 <!-- /BE-METADATA -->
