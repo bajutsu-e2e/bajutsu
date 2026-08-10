@@ -191,10 +191,14 @@ finalized once that spike returns.
 
 ### Cost stays opt-in on both platforms
 
-Neither platform's path costs anything extra for a backend or app that does not cooperate. iOS's
-driver gets a connection refused (or no response) from a responder no app installed, and
-`nativeZ` stays `None`, the same degrade `RawSourceProvider` gives a backend that never implements
-it. Android's per-node `refreshWithExtraData` round trip is gated on that node's own
+Neither platform's path costs a cooperating-app-free run more than one bounded probe. iOS's
+driver gets a connection refused — or, if a socket opens and never answers, a short connect/read
+timeout Unit 0 fixes — and `nativeZ` stays `None`, the same degrade `RawSourceProvider` gives a
+backend that never implements it. Because iOS cannot tell an uninstrumented app apart without
+attempting the connection, the driver caches that first failure for the session and stops probing,
+so a non-cooperating app pays the timeout once rather than on every `/elements` query; this is what
+keeps the read "bounded and synchronous" in the sense *Prime directives preserved* below claims.
+Android's per-node `refreshWithExtraData` round trip is gated on that node's own
 `getAvailableExtraDataKeys()` already advertising the Bajutsu key, so an uninstrumented app's tree
 walk pays one cheap existence check per node and nothing more. For a cooperating app on either
 platform, Unit 0's spike also measures the actual per-element round-trip cost against a
