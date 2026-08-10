@@ -10,7 +10,7 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | Platform support |
-| 関連 | [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn-ja.md), [BE-0319](../BE-0319-xcuitest-cold-spawn-resilience/BE-0319-xcuitest-cold-spawn-resilience-ja.md) |
+| 関連 | [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn-ja.md), [BE-0319](../BE-0319-xcuitest-cold-spawn-resilience/BE-0319-xcuitest-cold-spawn-resilience-ja.md), [BE-0305](../BE-0305-driver-resilience-fault-injection/BE-0305-driver-resilience-fault-injection-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -28,13 +28,15 @@ Bajutsu の iOS バックエンドは、iOS シミュレータの中でループ
 2026 年 8 月に継続的インテグレーション（CI）フリート全体で観測された障害クラスは、この 3 層を
 同時にすり抜けます。シミュレータの画面キャプチャ系サービスが固まる一方で runner 自体は健全に
 見え、スクリーンショットの読み出しはすべてハングし、再試行が強制する消去はまったく同じ症状を
-連れて戻ってきます。各復旧層は、成功しえない対処に自分の予算を使い切ってから次へ渡すため、
-ジョブは 10 分以上を費やした末に、シナリオの判定を 1 つも残さずに失敗します。
+連れて戻ってきます。実際に働く 2 つの層（チャネル内の復旧と消去を強制する再試行）は、成功
+しえない対処に自分の予算を使い切ります。デバイスのデータより多くを変えるただ 1 つの対処
+（置き換え）には実行途中の経路から到達できないため、ジョブは 10 分以上を費やした末に、シナリオの
+判定を 1 つも残さずに失敗します。
 
 本項目は、この行き止まりを数秒で見抜き、再試行が実際に応答できるデバイスの上に着地するように
 します。まず runner チャネルは、「health エンドポイントは答えるのに同じ冪等な呼び出しが
-再発行のたびにタイムアウトする」状態を一過性のクラッシュと区別し、復旧ループで吸収せず
-ただちにパイプラインへ引き渡すようにします。次に、チャネルの参照する生存プローブが
+再発行のたびにタイムアウトする」状態を一過性のクラッシュと区別し、固まっていると証明でき
+次第、復旧ループで吸収せずパイプラインへ引き渡すようにします。次に、チャネルの参照する生存プローブが
 runner の出力キャプチャを読むようにし、すでに終了した XCTest の実行を、来るはずのない復旧を
 待ってポーリングし続けないようにします。さらに、クラッシュを起点とするシナリオ再試行に、
 [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md)
@@ -57,7 +59,7 @@ runner の出力キャプチャを読むようにし、すでに終了した XCT
 です。最初に、シナリオの録画が開始確認に失敗しました。
 
 ```
-recordVideo produced no new bytes in runs/20260809-233753/00-stable-catalog-smoke/scenario.mp4 within 20.0s
+recordVideo produced no new bytes in runs/20260809-233753/00-stable-catalog-smoke/scenario.mp4 within 20.0s; ...
 ```
 
 その 15 秒後、runner チャネルは 3 分間続く連鎖に入りました。スクリーンショットの読み出しが
@@ -92,26 +94,29 @@ runner が、同じ冪等な呼び出しの次の再発行で再びタイムア�
 
 ```
 scenario stable catalog smoke: backend crashed mid-run (attempt 2/3): runner channel GET /screenshot failed: the runner crashed mid-run and did not recover within 60s
-##[error]backend crashed mid-run and did not recover within the 300s crash-recovery budget (spent respawning across 2 attempt(s))
+##[error]backend crashed mid-run and did not recover within the 300s crash-recovery budget (spent respawning across 2 attempt(s)): ...
 ```
 
 消去の段は
 [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md)
-が意図して選んだ最初の一手であり、その「検討した代替案」は、より強い対処を「アプリレベルの
-経路では不十分だと判明した場合」まで先送りしていました。上のログが、少なくとも 1 つの劣化
-クラスについて、その判明にあたります。消去はデバイスのデータをリセットしますが、この固まり方は
-デバイスのキャプチャ系サービスに宿っており、消去されたデバイスは固まったまま戻ってきました。
-デバイスのデータより多くを変える出荷済みの対処は
+が意図して選んだ最初の一手であり、クラッシュ再試行のもっとも強い対処として出荷されました。
+上のログが示すのは、その対処の届かない劣化クラスです。消去はデバイスのデータをリセットしますが、
+この固まり方はデバイスのキャプチャ系サービスに宿っており、消去されたデバイスは固まったまま
+戻ってきました。デバイスのデータより多くを変える出荷済みの対処は
 [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md) の
 置き換えの段（新しく作ったシミュレータ）だけですが、その段に到達できるのはコールド起動が失敗した
-とき、またはデバイスが `simctl` の一覧から丸ごと消えたときに限られます。respawn が health に
-答える形で立ち上がってしまう実行途中の固まり方は、どちらの条件も満たしません。
+とき、しかもそのうちデバイスが `simctl` の一覧から丸ごと消えていたときに限られます。respawn が
+health に答える形で立ち上がってしまう実行途中の固まり方は、どちらの条件も満たしません。
 
 もう 1 つ、この浪費を削るはずだった出荷済みの防御が働きませんでした。
 [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn-ja.md)
 は、来るはずのない復旧を待ち続けないように、runner プロセスが消えたらチャネルの復旧を即座に
-失敗させました。しかしそのプローブが読むのは `xcodebuild` のプロセスハンドルだけです。この
-系統のフレークの以前の調査（失敗した CI ログ 4 件、4 件とも同型）では、クラッシュ後に XCTest が
+失敗させました。しかしそのプローブが読むのは `xcodebuild` のプロセスハンドルだけです。
+[BE-0305](../BE-0305-driver-resilience-fault-injection/BE-0305-driver-resilience-fault-injection-ja.md)
+の障害注入の計測は、この盲点をすでに `main` 上に記録しています。kill されたテストホストは
+「プロセス終了」の速い経路に乗らない（プローブが読む `xcodebuild` の親プロセスがホストより長生き
+する）という観測で、「より厳密な生存チェック」を別項目として先送りしました。本項目がその別項目
+です。この系統のフレークの以前の調査（失敗した CI ログ 4 件、4 件とも同型）では、クラッシュ後に XCTest が
 シミュレータ内のテストホストを再起動し、テストを 0 件だけ再実行する様子が見つかっています。
 実行は終わっていてポートが再び bind されることはないのに `xcodebuild` は生き続けるため、
 プローブは「生きている」と答え続け、復旧のたびに 60 秒の待ち時間を満額支払います。キャプチャ
@@ -130,15 +135,24 @@ scenario stable catalog smoke: backend crashed mid-run (attempt 2/3): runner cha
 1. **固まった automation セッションを runner チャネルで分類する。**
    `bajutsu/drivers/xcuitest.py` の `_with_crash_recovery` は現在、health の復旧を確認したら
    冪等な呼び出しを再発行し、連続クラッシュ `_MAX_CRASH_RECOVERIES` 回まで繰り返します。この
-   ループ自体は本来の対象のために残し、1 つの場合だけを切り出します。復旧確認の**後に**続く
-   失敗が「配送済みなのに応答がない」呼び出し（リクエストは runner に届いたうえでタイムアウトした。
-   [BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry-ja.md)
-   がすでに記録している `delivered=True` のタグ）だったなら、セッションは固まっています。runner
-   は同じ読み出しを二度受け取って二度ハングしたのだから、3 周目にできるのはタイムアウトのはしごを
-   もう一往復して同じ結論を出すことだけです。ループせずに、「固まった automation セッション」を
-   示す固有の診断文とともにクラッシュエラーを即座に送出します。復旧確認の後の失敗でも**未配送**の
-   もの（connection refused、connection reset）は今日の挙動を保ちます。その形こそ、ループが
-   乗り切るべき本物の断続的な落ち方だからです。固まったセッションを救える対処はパイプラインの
+   ループ自体は本来の対象のために残し、1 つの場合だけを切り出します。health が答え続けるのに、
+   同じ読み出しが**再発行のたびにタイムアウトし続ける**場合です。ここでのタイムアウトは
+   「runner に届いたうえでハングした呼び出し」を意味します。この形はチャネルが独自のタグで区別
+   しなければなりません。既存の `delivered` タグ
+   （[BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry-ja.md)）
+   は応答途中の connection reset にも同じ印を付けるため、固まりを特定できるのはハングの形だけ
+   だからです。もう 1 つ、健全な状態がしばらくのあいだ同じ表面を見せます。
+   [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn-ja.md)
+   は runner の XCUITest 操作を直列化し、`/health` は意図的にその直列化を素通りする
+   （「runner は忙しいだけで、死んでいない」）ので、長い操作がロックを握るあいだ、並行する
+   読み出しはタイムアウトします。2 つの状態は、同じ読み出しの **2 回目**の復旧後タイムアウトで
+   分かれます。ロックを握る操作は自分自身の呼び出しのリトライのはしごに先に失敗するため、単一の
+   操作はこの窓をまたげません。そこまでハングし続けた読み出しは固まっています。runner は同じ
+   読み出しを三度受け取って一度も答えなかったのですから、チャネルはその時点で「固まった
+   automation セッション」を示す固有の診断文とともにクラッシュエラーを送出し、残りの復旧サイクル
+   と最後の health 待ちを乗り切ろうとはしません。復旧確認の後の接続レベルの失敗
+   （connection refused、応答途中の reset）は今日の挙動を保ちます。その形こそ、ループが乗り切る
+   べき本物のクラッシュの繰り返しだからです。固まったセッションを救える対処はパイプラインの
    デバイスレベルの再試行だけなので、チャネルの仕事は吸収ではなく速やかな引き渡しです。
 
 2. **生存プローブに出力キャプチャを読ませる。** 環境はすでに、チャネルからの「runner プロセスは
@@ -146,8 +160,15 @@ scenario stable catalog smoke: backend crashed mid-run (attempt 2/3): runner cha
    が足した継ぎ目 `_runner_alive`）に答えており、コールド起動の経路では runner の出力キャプチャを
    実行終了マーカー（`_RUN_ENDED_MARKERS`、`Test Suite 'All tests' failed` / `passed` の行）で
    走査してもいます（`_run_ended_probe`）。この 2 つを実行途中の経路でも合成します。プロセスが
-   終了しているか、**または**キャプチャがテスト実行の終了を示しているなら、プローブは runner を
-   死んだものとして報告します。スイート終了の行を印字した実行がその後に何かを提供することは
+   終了しているか、**または**キャプチャが一度でもテスト実行の終了を示したなら、プローブは runner を
+   死んだものとして報告します。実行終了の側は**ラッチ**します。2 つの側は発火の仕方が違うから
+   です。`_run_ended_probe` はエッジトリガで、内部のオフセットを進めながら、マーカーを最初に含んだ
+   読み取り窓からしか理由を返しません。一方、実行途中の生存プローブはレベルトリガで、復旧の
+   たびに問い直されます。ラッチしない合成では「死んだ」と一度だけ答え、以後のすべての復旧で
+   「生きている」に戻ってしまいます。ラッチしたプローブはスポーンごとに 1 つで、コールドゲートと
+   実行途中の生存プローブが共有します。コールド起動側のインスタンスがすでに同じキャプチャを消費
+   しており、独立した 2 つ目のインスタンスはマーカーを取り合うからです。スイート終了の行を印字
+   した実行がその後に何かを提供することは
    ありません（先の 4 件の調査で `xcodebuild` がこの状態を生き延びていました）。これで復旧の
    health 待ちは、60 秒の上限ではなくプローブの次の読み取りで失敗します。マーカーは
    `xcodebuild` 自身のロケール非依存の出力で、コールドゲートは
@@ -165,12 +186,28 @@ scenario stable catalog smoke: backend crashed mid-run (attempt 2/3): runner cha
    消滅デバイスの段と同じ「作成、起動、準備」の経路で満たします。デバイスタイプとランタイムの
    複製、`bajutsu-recovered-*` の命名、リースを新デバイスへ追随させるプールの貼り替えも、その
    ままです。劣化したデバイスはシャットダウンし、二度とプールへ返しません。消滅したデバイスが
-   今日隔離されるのと同じ形の隔離です。置き換えの要求は、他のすべてのプラットフォームと、置き換え
-   のできない 2 つの XCUITest 経路（実機、live の WebDriver エンドポイント）では no-op になり、
-   それらは消去レベルの再試行を保ちます（`erase_precondition_supported` が消去の段をすでに同じ形で
-   限定しています）。したがってツールと runner はアプリにもプラットフォームにも依存しないままです。
-   既存の上限も変わりません。置き換えは、置き換え前の respawn と同じ `crash_retries` の試行回数、
-   同じシナリオごとと run ごとの復旧予算を消費します。
+   今日隔離されるのと同じ形の隔離です。置き換えのリースは、その試行に限り強制消去を抑止します。
+   作りたてのデバイスに消すものはなく、そこで `erase=True` を律儀に実行すると、状態が何も変わら
+   ないのにシャットダウンと起動をもう 1 周支払うことになるからです。置き換えの要求は、置き換えが
+   誤りか不可能な経路では no-op になり、そうした経路はそれぞれ今日持っているもっとも強い再試行を
+   保ちます。実機と live の WebDriver エンドポイントは素の respawn を保ちます。どちらも `erase`
+   precondition 自体を拒否する経路で、だからこそ `erase_precondition_supported` がすでに消去の段
+   から除外しています。具体的なシミュレータにピン留めした run（`--udid`、または config でピン留め
+   したデバイス）は消去レベルの再試行を保ちます。置き換えは、オペレーターが名指ししたデバイスから
+   run を黙って降ろし、しかも
+   [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md) がまさに
+   ピン留めの場合について記録した、run ごとに増える `bajutsu-recovered-*` の残留物を生むからです。
+   他のすべてのプラットフォームはこの要求を無視するので、ツールと runner はアプリにも
+   プラットフォームにも依存しないままです。既存の上限も変わりません。置き換えは、置き換え前の
+   respawn と同じ `crash_retries` の試行回数、同じシナリオごとと run ごとの復旧予算を消費します。
+   この上限は到達条件も定めます。デフォルトの `crash_retries = 1` では 3 回目の試行が存在しない
+   ため、「2 度目のクラッシュ」のトリガーが働くのは回数を引き上げたレーン（iOS レーンは
+   `BAJUTSU_CRASH_RETRIES: 2` を設定）だけで、デフォルトの run はユニット 4 の停滞シグナル経由
+   でのみこの段に到達します。デフォルト自体は意図して据え置きます。シナリオ全体の再実行をもう
+   1 回支払う選択は、従量課金のオンデバイスレーンが自分で引き受けたコストであり、新しい
+   デフォルトにする理由はないからです。この段は `docs/architecture.md` と `docs/run-loop.md` が
+   記述する挙動（クラッシュ再試行のもっとも強い対処）を変えるので、両ページとその `docs/ja/`
+   ミラーを、BE-0113 の規範に従って同じ変更の中で更新します。
 
 4. **録画開始の停滞に置き換えの段を選ばせる。** 証跡レイヤーは、この固まり方の最初の症状を
    すでに検出しています。`start_video` は録画ファイルが `_VIDEO_START_TIMEOUT` の上限以内に成長
@@ -214,11 +251,12 @@ scenario stable catalog smoke: backend crashed mid-run (attempt 2/3): runner cha
   一致せず、upstream の runner-images にもこの再起動を勧める報告はありません。採用しません。
   唯一擁護できる置き場所は `simctl shutdown` がハングしたときのエスカレーションで、それは本項目
   より狭い後続課題です。
-- **予算と上限をさらに引き上げる。** レーンはすでにジョブのタイムアウトを 60 分へ引き上げており、
-  録画開始の上限を 20 秒へ引き上げる変更も
+- **予算と上限をさらに引き上げる。** レーンはすでにジョブのタイムアウトを 60 分へ引き上げて
+  おり、完全なログが残った 1 件は録画開始の上限をすでに 20 秒へ引き上げた状態で走っていました。
+  この引き上げはプルリクエスト [#1538](https://github.com/bajutsu-e2e/bajutsu/pull/1538) の
+  レーン設定で、
   [BE-0348](../BE-0348-absolute-timestamp-recording/BE-0348-absolute-timestamp-recording-ja.md)
-  で実装中です。その引き上げを含んで走った、完全なログが残った 1 件は、時間がどこへ消えるかを
-  示しています。行き止まりを証明する復旧層の中です。予算を増やしても買えるのは沈黙の延長だけで、
+  が提案する override を通じたものです。その 1 件は、時間がどこへ消えるかを示しています。行き止まりを証明する復旧層の中です。予算を増やしても買えるのは沈黙の延長だけで、
   [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md) も
   コールド起動の再試行で同じ結論を計測しています（「より大きな予算が買ったのは、より長い沈黙
   だった」）。
@@ -234,20 +272,25 @@ scenario stable catalog smoke: backend crashed mid-run (attempt 2/3): runner cha
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] ユニット 1 — 復旧確認の後の「配送済みなのに応答がない」再発行を固まったセッションとして
-      分類し、固有の診断文とともに即座にパイプラインへ引き渡す。
-- [ ] ユニット 2 — 実行終了マーカーのキャプチャプローブを実行途中の生存プローブへ合成し、終了
-      済みのテスト実行が復旧の health 待ちを速やかに失敗させるようにする。
+- [ ] ユニット 1 — タイムアウト（ハング）した呼び出しを接続レベルの失敗と別のタグで区別し、
+      同じ読み出しの 2 回目の復旧後タイムアウトを固まったセッションとして分類して、固有の
+      診断文とともにパイプラインへ引き渡す。
+- [ ] ユニット 2 — 実行終了マーカーのキャプチャプローブを実行途中の生存プローブへ合成し
+      （ラッチし、スポーンごとに 1 つのインスタンスをコールドゲートと共有する）、終了済みの
+      テスト実行が復旧の health 待ちを速やかに失敗させるようにする。
 - [ ] ユニット 3 — `run_one` のクラッシュ再試行に置き換えのエスカレーションを追加する。消滅
-      デバイスの段の作成、命名、プールの貼り替えを再利用し、置き換えたデバイスを隔離し、置き換え
-      できない経路では no-op にする。
+      デバイスの段の作成、命名、プールの貼り替えを再利用し、置き換えの試行では強制消去を抑止し、
+      置き換えたデバイスを隔離する。erase を拒否する経路は素の respawn を、ピン留めした
+      シミュレータは消去の再試行を保つ。`docs/architecture.md` と `docs/run-loop.md`
+      （および `docs/ja/` ミラー）のクラッシュ復旧の記述を同じ変更で更新する。
 - [ ] ユニット 4 — 録画開始確認のタイムアウトをリースの上に浮かび上がらせ、その試行自身の
       クラッシュ再試行で置き換えの段を選ばせる。
 
 ## 参考
 
 - [BE-0344 — XCUITest のコールド起動の再試行のあいだにシミュレータを修復する](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md) — ユニット 3 が再利用する置き換えの機構とプールの貼り替え。
-- [BE-0353 — バックエンドクラッシュの再試行でデバイス復旧を強制し、run 全体のクラッシュ復旧時間に上限を設ける](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md) — 本項目がその上へエスカレーションする消去の段と、本項目が引き取る先送り。
+- [BE-0353 — バックエンドクラッシュの再試行でデバイス復旧を強制し、run 全体のクラッシュ復旧時間に上限を設ける](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md) — 本項目がその上へエスカレーションする消去の段。
+- [BE-0305 — ドライバ耐障害経路への実機障害注入カバレッジ](../BE-0305-driver-resilience-fault-injection/BE-0305-driver-resilience-fault-injection-ja.md) — ユニット 2 の盲点を記録し、より厳密な生存チェックを先送りした計測。その障害注入レーンは、ユニット 1 と 2 をオンデバイスで検証できる既存のハーネスでもあります。
 - [BE-0323 — readiness ゲート中の runner クラッシュから XCUITest のコールド起動を回復する](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn-ja.md) — ユニット 2 が拡張する生存プローブの継ぎ目。
 - [BE-0319 — XCUITest のコールド runner 起動を診断可能で自己修復的にする](../BE-0319-xcuitest-cold-spawn-resilience/BE-0319-xcuitest-cold-spawn-resilience-ja.md) — ユニット 2 が読む、デフォルトで有効な runner 出力のキャプチャ。
 - [BE-0287 — 多点タッチ操作下での XCUITest runner チャネルの耐障害性](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md) — ユニット 1 が固まった場合を切り出す、チャネル内の復旧ループ。
