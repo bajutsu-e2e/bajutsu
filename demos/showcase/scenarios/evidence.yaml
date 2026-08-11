@@ -6,7 +6,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
-      capture: [video, deviceLog, appTrace]
+      capture: [deviceLog, appTrace]
     - wait: { for: { id: log.note }, timeout: 10 }
     - type: { text: "morning ride", into: { id: log.note } }
     - tap: { id: log.intense }

@@ -9,7 +9,6 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { label: "Horse 1" }, timeout: 10 }
-      capture: [video]
     - setLocation: { lat: 35.681, lon: 139.767 }
     - setClipboard: { text: "COUPON123" }
   expect:

@@ -258,6 +258,45 @@ def erase_precondition_supported(
     return not (is_webdriver_endpoint(udid_spec) or xcuitest_targets_real_device(eff))
 
 
+def device_replacement_supported(
+    actuator: str | None, eff: Effective, udid_spec: str = "booted"
+) -> bool:
+    """Whether a crash retry may escalate to a replacement device on this run's resolved route (BE-0354).
+
+    The rung above `erase_precondition_supported`'s, and narrower for three reasons. Only the
+    Simulator XCUITest lifecycle can mint a device at all, so every other route ignores the request
+    and keeps the strongest retry it has today. A run **pinned** to a concrete device (`--udid`) is
+    excluded even on that route: a replacement would silently move the run off the device the operator
+    named, and mint the per-run `bajutsu-recovered-*` residue BE-0344 documents for exactly the pinned
+    case. That exclusion carries a second, load-bearing consequence, because this rung is the first
+    whose remedy is bound to *one device* and deferred across a lease boundary: `booted` is also the
+    only device spec that cannot name a comma list, so `_resolve_lanes` resolves it to a pool of one
+    with `workers` capped to 1 (pinned by `tests/test_run_lanes.py`). The next lease is therefore
+    necessarily the same device and the same worker — which is what makes deferring the request to it
+    sound. Widening this predicate to a multi-device pool would need the request routed through the
+    pool instead, so the retry re-leases the device that asked. And a target with no `appPath` is
+    excluded because a replacement is a blank device with
+    nothing to install onto it — `XcuitestEnvironment` refuses to create one there, so asking would
+    spend the attempt on a `DeviceError` that degrades to a bare respawn, *below* the erase rung it
+    displaced.
+
+    Every exclusion is config-static, which is what lets a caller decide whether to ask without
+    predicting what the environment would do with the request. Kept beside
+    `erase_precondition_supported` for the reason its own docstring gives: a future XCUITest-adjacent
+    route is then reviewed here, next to the capability narrowing, rather than in a caller that
+    assumed a device can always be replaced.
+    """
+    if not (
+        actuator == "xcuitest"
+        and udid_spec == "booted"
+        and erase_precondition_supported(actuator, eff, udid_spec)
+    ):
+        return False
+    from bajutsu.config import require_ios
+
+    return require_ios(eff).app_path is not None
+
+
 def _cost_ordered(actuators: list[str]) -> list[str]:
     """Reorder *actuators* cheapest-first per each one's platform `COST_ORDER` (BE-0240).
 

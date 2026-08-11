@@ -110,6 +110,9 @@ class WebEnvironment:
     def has_reusable_resident(self) -> bool:
         return False  # a browser context per lease, no cross-lease resident to amortize (BE-0291)
 
+    def request_device_replacement(self) -> None:
+        return None  # no device behind a browser lane, so there is nothing to replace (BE-0354)
+
     def replaced_device(self) -> str | None:
         return None  # no device behind a browser lane, so none can vanish and be replaced
 

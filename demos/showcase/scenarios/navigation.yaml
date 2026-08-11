@@ -11,7 +11,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { id: [stable.row.3, stable_row_3] }, timeout: 10 }
-      capture: [video, deviceLog]
+      capture: [deviceLog]
     - tap: { id: [stable.row.3, stable_row_3] }
     - wait: { for: { id: [horse.title, horse_title] }, timeout: 5 }
     - assert:

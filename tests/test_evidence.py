@@ -102,23 +102,26 @@ def test_write_raw_tree_is_a_noop_before_the_first_read() -> None:
 def test_write_raw_tree_writes_the_raw_dump(tmp_path: Path) -> None:
     driver = _RawSourceStub(base.RawSource(text="<hierarchy>raw</hierarchy>", suffix=".xml"))
     paths = write_raw_tree(driver, tmp_path / "step0")
-    assert [p.name for p in paths] == ["hierarchy.raw.xml"]  # no pre-transform file: none given
+    assert [p.name for p in paths] == ["hierarchy.raw.xml"]  # no parsed-input file: none given
     assert paths[0].read_text(encoding="utf-8") == "<hierarchy>raw</hierarchy>"
 
 
-def test_write_raw_tree_writes_the_pre_transform_body_when_present(tmp_path: Path) -> None:
+def test_write_raw_tree_writes_the_parsed_input_body_when_present(tmp_path: Path) -> None:
     driver = _RawSourceStub(
         base.RawSource(
-            text="<hierarchy>narrowed</hierarchy>",
+            text="<hierarchy>wide</hierarchy>",
             suffix=".xml",
-            pre_transform="<hierarchy>wide</hierarchy>",
+            parsed_input="<hierarchy>narrowed</hierarchy>",
         )
     )
     paths = write_raw_tree(driver, tmp_path / "step0")
-    assert {p.name for p in paths} == {"hierarchy.raw.xml", "hierarchy.pre-transform.xml"}
-    assert (tmp_path / "step0" / "hierarchy.pre-transform.xml").read_text(
+    assert {p.name for p in paths} == {"hierarchy.raw.xml", "hierarchy.parsed-input.xml"}
+    assert (tmp_path / "step0" / "hierarchy.raw.xml").read_text(
         encoding="utf-8"
     ) == "<hierarchy>wide</hierarchy>"
+    assert (tmp_path / "step0" / "hierarchy.parsed-input.xml").read_text(
+        encoding="utf-8"
+    ) == "<hierarchy>narrowed</hierarchy>"
 
 
 def test_write_raw_tree_redacts_a_configured_secret(tmp_path: Path) -> None:
@@ -128,19 +131,20 @@ def test_write_raw_tree_redacts_a_configured_secret(tmp_path: Path) -> None:
     assert "s3kr3t" not in paths[0].read_text(encoding="utf-8")
 
 
-def test_write_raw_tree_redacts_the_pre_transform_body_too(tmp_path: Path) -> None:
-    # The secret could just as easily live only in the pre-transform body (e.g. a system dialog
-    # narrow_to_active_window strips out) — both files go through the same redaction call, and both
-    # must actually come out clean, not just the primary hierarchy.raw.xml.
+def test_write_raw_tree_redacts_the_parsed_input_body_too(tmp_path: Path) -> None:
+    # `parsed_input` goes through the same write loop as hierarchy.raw.xml, so pin that the loop
+    # redacts every body it writes and not just the first. The stub is deliberately artificial:
+    # narrowing only drops windows, so on a real adb read `parsed_input` is a subset of `text` and
+    # unique content can only ever show up in the untouched reply.
     driver = _RawSourceStub(
         base.RawSource(
-            text='<node text="clean" />', suffix=".xml", pre_transform='<node text="s3kr3t" />'
+            text='<node text="clean" />', suffix=".xml", parsed_input='<node text="s3kr3t" />'
         )
     )
     redactor = Redactor(Redact(), values=["s3kr3t"])
     paths = write_raw_tree(driver, tmp_path / "step0", redactor)
-    pre_transform = next(p for p in paths if p.name == "hierarchy.pre-transform.xml")
-    assert "s3kr3t" not in pre_transform.read_text(encoding="utf-8")
+    parsed_input = next(p for p in paths if p.name == "hierarchy.parsed-input.xml")
+    assert "s3kr3t" not in parsed_input.read_text(encoding="utf-8")
 
 
 def test_write_raw_tree_refuses_when_a_label_rule_is_configured(tmp_path: Path) -> None:
@@ -167,15 +171,15 @@ def test_write_raw_tree_still_writes_without_a_label_rule(tmp_path: Path) -> Non
 def test_capture_raw_tree_kind_produces_artifacts(tmp_path: Path) -> None:
     driver = _RawSourceStub(
         base.RawSource(
-            text="<hierarchy>narrowed</hierarchy>",
+            text="<hierarchy>wide</hierarchy>",
             suffix=".xml",
-            pre_transform="<hierarchy>wide</hierarchy>",
+            parsed_input="<hierarchy>narrowed</hierarchy>",
         )
     )
     written = capture(driver, tmp_path / "step0", ["rawTree"])
     assert {(a.name, a.kind, a.provider) for a in written} == {
         ("hierarchy.raw.xml", "rawTree", "driver"),
-        ("hierarchy.pre-transform.xml", "rawTree", "driver"),
+        ("hierarchy.parsed-input.xml", "rawTree", "driver"),
     }
 
 
@@ -445,6 +449,35 @@ def test_filesink_confirms_ios_on_demand_video_start(
     started = sink.start_scenario_intervals("00-s", ["video"])
     assert len(started) == 1 and started[0].kind == "video"
     assert started[0].true_start is not None
+
+
+def test_filesink_reports_a_video_that_never_confirmed_it_started(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # BE-0354: the wedge's earliest symptom, surfaced so the crash retry can pick the recovery rung
+    # from it. A recording that starts normally must not report it, or every scenario would look
+    # degraded.
+    from bajutsu.evidence import intervals
+
+    class _FakeProc:
+        def __init__(self, argv: list[str], stdout_path: Path | None) -> None:
+            if writes["v"]:
+                Path(argv[-1]).write_bytes(b"clip")
+
+        def stop(self, sig: int, timeout: float) -> None:
+            return None
+
+    writes = {"v": True}
+    monkeypatch.setattr(intervals, "_SubprocessProc", _FakeProc)
+    stalls: list[bool] = []
+    sink = FileSink(tmp_path, udid="UDID", on_video_start_stall=lambda: stalls.append(True))
+    sink.start_scenario_intervals("00-s", ["video"])
+    assert stalls == []
+
+    writes["v"] = False  # recordVideo never writes a byte: the capture pipeline is not producing
+    monkeypatch.setattr(intervals, "_await_video_file_growing", lambda *_a, **_k: None)
+    sink.start_scenario_intervals("01-s", ["video"])
+    assert stalls == [True]
 
 
 def test_filesink_adopts_a_prestarted_video_instead_of_starting_one(tmp_path: Path) -> None:

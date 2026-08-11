@@ -8,7 +8,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
-      capture: [video, deviceLog]
+      capture: [deviceLog]
   expect:
     - count: { sel: { idMatches: ["stable.row.*", "stable_row_*"] }, equals: 5 }
     - exists: { id: [stable.row.1, stable_row_1] }

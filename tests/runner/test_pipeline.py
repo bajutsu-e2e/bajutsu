@@ -308,6 +308,173 @@ def test_run_all_degrades_to_a_bare_respawn_when_the_forced_erase_lease_itself_f
     assert state["n"] == 3
 
 
+# --- escalating a crash retry to a replacement device (BE-0354) --- #
+#
+# The rung above the forced erase. An erase resets the device's data and was measured not to clear a
+# Simulator whose capture services had wedged — the erased device came back wedged — so a retry that
+# already spent that remedy, or one whose video never confirmed it started, asks the lease's
+# environment for a device that has never run anything and drops the erase it would otherwise force.
+
+
+def _replaceable_eff() -> Effective:
+    """An unpinned Simulator XCUITest target with an `appPath` — the one route that can be replaced."""
+    return _ios_eff(app_path="/nonexistent/App.app")
+
+
+def _escalating_lease(
+    *, crashes: int, stalled: bool = False
+) -> tuple[Callable[[Effective, Scenario], Lease], list[bool | None], list[int]]:
+    """A lease factory whose first `crashes` attempts crash mid-scenario, recording what each asked for.
+
+    Returns the factory, the `preconditions.erase` each attempt was leased with, and the attempt
+    numbers that asked their environment for a replacement device.
+    """
+    state = {"n": 0}
+    erase_seen: list[bool | None] = []
+    replacements: list[int] = []
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        n = state["n"]
+        erase_seen.append(scenario.preconditions.erase)
+        return Lease(
+            driver=_crashing_driver() if n <= crashes else _fake_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+            video_start_stalled=lambda: stalled,
+            request_device_replacement=lambda n=n: replacements.append(n),  # type: ignore[misc]
+        )
+
+    return lease, erase_seen, replacements
+
+
+def test_a_forced_erase_retry_that_crashes_again_escalates_to_a_replacement_device() -> None:
+    # The measured occurrence: the forced-erase retry reproduced the first attempt to the letter. The
+    # attempt after it asks for a device that has never run anything. The erase it also carries is
+    # dropped by the environment that serves the swap, not here — deciding it here would mean
+    # predicting that environment, and an attempt whose request never landed would get neither remedy.
+    lease, erase_seen, replacements = _escalating_lease(crashes=2)
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_replaceable_eff(), scenarios, lease, actuator="xcuitest", crash_retries=2)
+    assert results[0].ok
+    assert erase_seen == [None, True, True]
+    assert replacements == [2]  # only the forced-erase attempt's crash escalated
+
+
+def test_a_scenario_asks_for_at_most_one_replacement_device() -> None:
+    # A device that keeps crashing must not mint a `bajutsu-recovered-*` device per attempt: the
+    # residue is per run, and a host that degrades a freshly created device is not one more device
+    # away from working.
+    lease, _erase_seen, replacements = _escalating_lease(crashes=3, stalled=True)
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_replaceable_eff(), scenarios, lease, actuator="xcuitest", crash_retries=3)
+    assert results[0].ok
+    assert replacements == [1]
+
+
+def test_a_stalled_video_start_escalates_from_the_first_crash() -> None:
+    # The video-start confirmation timing out identifies the capture-pipeline degradation an erase was
+    # observed not to clear, so it selects the replacement rung directly rather than waiting for the
+    # erase to be tried and fail first.
+    lease, _erase_seen, replacements = _escalating_lease(crashes=1, stalled=True)
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_replaceable_eff(), scenarios, lease, actuator="xcuitest")
+    assert results[0].ok
+    assert replacements == [1]
+
+
+def test_a_scenario_keeping_its_app_data_is_never_moved_to_a_blank_device() -> None:
+    # `reinstall: overwrite` is the scenario's declaration that it needs its app's data container
+    # across a lease, which is why the retry skips the forced erase. A replacement resets strictly
+    # more — a blank device carries no app data at all — so the stall signal must not reach past that
+    # opt-out and re-run the scenario against state it said it depends on.
+    lease, erase_seen, replacements = _escalating_lease(crashes=1, stalled=True)
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "a",
+                "preconditions": {"reinstall": "overwrite"},
+                "steps": [{"tap": {"id": "ok"}}],
+            }
+        )
+    ]
+    results = run_all(_replaceable_eff(), scenarios, lease, actuator="xcuitest")
+    assert results[0].ok
+    assert replacements == []
+    assert erase_seen == [None, None]  # a bare respawn, exactly as before this rung existed
+
+
+def test_no_erase_also_opts_out_of_the_replacement_rung() -> None:
+    # `bajutsu run --no-erase` is the operator asking for the device to be left as it is. Swapping it
+    # out entirely is the opposite of that, so the stall signal must not reach past the flag either.
+    lease, erase_seen, replacements = _escalating_lease(crashes=1, stalled=True)
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(
+        _replaceable_eff(), scenarios, lease, actuator="xcuitest", force_erase_on_retry=False
+    )
+    assert results[0].ok
+    assert replacements == []
+    assert erase_seen == [None, None]
+
+
+def test_a_target_with_no_app_path_keeps_the_erase_rung() -> None:
+    # A replacement is a blank device, so a target with no `appPath` has nothing to install onto one.
+    # Asking there would spend the attempt on a `DeviceError` that degrades to a bare respawn —
+    # *below* the erase rung it displaced — so the route is excluded before anything is asked.
+    lease, erase_seen, replacements = _escalating_lease(crashes=1, stalled=True)
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_ios_eff(app_path=None), scenarios, lease, actuator="xcuitest")
+    assert results[0].ok
+    assert replacements == []
+    assert erase_seen == [None, True]
+
+
+def test_a_lease_time_crash_keeps_the_erase_rung() -> None:
+    # A crash during bring-up leaves no lease to reach the environment through, so there is nothing to
+    # ask — the retry keeps the forced erase rather than silently dropping it for a request nobody got.
+    state = {"n": 0}
+    erase_seen: list[bool | None] = []
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        erase_seen.append(scenario.preconditions.erase)
+        if state["n"] < 3:
+            raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+        return _lease(eff, scenario)
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_ios_eff(), scenarios, lease, actuator="xcuitest", crash_retries=2)
+    assert results[0].ok
+    assert erase_seen == [None, True, True]
+
+
+def test_a_pinned_run_keeps_the_erase_rung_rather_than_replacing_the_named_device() -> None:
+    # A replacement would silently move the run off the device the operator named with `--udid`, and
+    # mint the per-run `bajutsu-recovered-*` residue BE-0344 documents for exactly the pinned case.
+    lease, erase_seen, replacements = _escalating_lease(crashes=1, stalled=True)
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(
+        _replaceable_eff(), scenarios, lease, actuator="xcuitest", lease_udid_spec="1234-ABCD"
+    )
+    assert results[0].ok
+    assert replacements == []
+    assert erase_seen == [None, True]  # the strongest rung this route keeps
+
+
+def test_a_non_ios_run_never_requests_a_replacement() -> None:
+    # Only the Simulator XCUITest lifecycle can mint a device; every other route ignores the request,
+    # so the pipeline must not suppress the erase it would otherwise force.
+    lease, erase_seen, replacements = _escalating_lease(crashes=1, stalled=True)
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_eff(), scenarios, lease)
+    assert results[0].ok
+    assert replacements == []
+    assert erase_seen == [None, True]
+
+
 def test_run_all_still_propagates_a_device_error_from_a_bare_lease() -> None:
     # A `DeviceError` from a lease that never forced erase (attempt 1, or the degraded bare respawn
     # above once *it* also fails) is unrelated to this item's forced-erase retry, so it keeps its

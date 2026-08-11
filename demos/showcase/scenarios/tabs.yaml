@@ -22,7 +22,6 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { id: search, traits: [button] }
-      capture: [video]
     - wait: { for: { id: search.field }, timeout: 10 }
     - tap: { id: log, traits: [button] }
     - wait: { for: { id: log.note }, timeout: 10 }
@@ -37,7 +36,6 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { id: notice, traits: [button] }
-      capture: [video]
     - wait: { for: { id: notice.row.1 }, timeout: 10 }
     - tap: { id: stable, traits: [button] }
     - wait: { for: { id: stable.row.1 }, timeout: 10 }

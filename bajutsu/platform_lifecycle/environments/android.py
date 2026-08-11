@@ -352,6 +352,13 @@ class AndroidEnvironment:
         # is out of scope for BE-0291 (which targets the XCUITest runner's cold startup).
         return False
 
+    def request_device_replacement(self) -> None:
+        # Nothing to serve the request with: an emulator or handset is brought up out of band, and
+        # the wedge shape BE-0354 escalates for is the XCUITest runner channel's, which this backend
+        # has no counterpart to. Restarting the emulator process stays the separate follow-up BE-0353
+        # named. The crash retry keeps its forced-erase rung here, unchanged.
+        return None
+
     def replaced_device(self) -> str | None:
         # An adb device (emulator or handset) is brought up out of band, so this lifecycle never
         # creates one to replace it.

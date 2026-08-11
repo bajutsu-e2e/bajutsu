@@ -18,6 +18,11 @@ defaults:
   backend: [ios]
   device: "iPhone 17 Pro"
   reservedNamespaces: []   # no shared cross-screen ids; the back is the OS BackButton (DESIGN §7.3)
+  # `video` on top of the schema baseline (`screenshot.after` / `elements` / `actionLog`): nearly
+  # every scenario in this suite records its own scenario-wide video, so hoisting it here drops
+  # that boilerplate from every scenario file. A scenario that needs something beyond this
+  # baseline (deviceLog, network, appTrace, rawTree) still names it inline.
+  capture: [screenshot.after, elements, actionLog, video]
 
 targets:
   # ---- SwiftUI, accessibility ON (the `run` / `doctor`-Ready target) -------------

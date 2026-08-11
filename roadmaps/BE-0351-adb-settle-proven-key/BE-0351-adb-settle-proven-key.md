@@ -117,7 +117,7 @@ through the new `base.RawSourceProvider` protocol — the same narrow, `runtime_
 pattern as `ViewportProvider` / `ReadLagProvider` / `SettledReadProvider`), including the resident
 channel's pre-`narrow_to_active_window` body when narrowing changed something. `write_raw_tree`
 (`bajutsu/evidence/core.py`) writes `hierarchy.raw<suffix>` and, when present,
-`hierarchy.pre-transform<suffix>` under a step's directory — `<suffix>` is `base.RawSource.suffix`, the
+`hierarchy.parsed-input<suffix>` under a step's directory — `<suffix>` is `base.RawSource.suffix`, the
 backend's own dump format (`.xml` for adb, `.json` for XCUITest's undecoded `GET /elements` body);
 `capture()` gains a `rawTree` branch, and the scenario capture-token grammar
 (`bajutsu/scenario/models/_base.py`) accepts it. It is never in `Defaults.capture` — a scenario opts
@@ -182,7 +182,7 @@ existing free-settle optimization survives. `tests/test_adb_lifecycle.py`'s
 `test_crawl_reset_invalidates_the_driver_settled_cache` pin the two lifecycle call sites that reach
 `invalidate_settled_cache()` from outside the driver's own actuators. `tests/test_evidence.py` and
 `tests/test_adb_resident.py` cover `write_raw_tree`'s redaction and no-op behavior, the
-pre-transform body's presence/absence, the multi-window characterization, the label-rule refusal,
+parsed-input body's presence/absence, the multi-window characterization, the label-rule refusal,
 and the same-read pairing `capture()`'s stable sort guarantees regardless of token order.
 `tests/test_capture_firing.py`'s `test_inline_raw_tree_joins_the_pre_step_baseline` and
 `test_inline_raw_tree_is_dropped_inside_a_web_block` pin the run loop's two remaining pairing
@@ -231,7 +231,7 @@ with the catch-up barrier's own, already-validated dwell proof.
       lifecycle call sites outside the driver's own actuators (`AndroidEnvironment.relauncher()`,
       `crawl_reset()`).
 - [x] Unit 2 — the `rawTree` capture kind: `base.RawSource` / `RawSourceProvider`, `AdbDriver`
-      retaining the raw dump and the resident channel's pre-transform body, `write_raw_tree`, the
+      retaining the raw dump and the resident channel's parsed-input body, `write_raw_tree`, the
       `capture()` branch, and the scenario capture-token grammar. Plus four correctness properties
       keeping the artifact paired with the right `elements.json` or withheld rather than mismatched:
       `capture()`'s same-read stable sort, the run loop capturing an inline request pre-action rather

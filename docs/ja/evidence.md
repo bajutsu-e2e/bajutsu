@@ -14,11 +14,11 @@
 
 | 方法 | 用途 | 例 |
 |---|---|---|
-| **A. ルール（`capturePolicy`）** ★中心 | 「特定動作の **たびに**」自動取得 | `settings.*` を tap するたびにスクリーンショット + 要素 |
+| **A. ルール（`capturePolicy`）** ★中心 | 「特定動作の **たびに**」自動取得 | `settings.*` を tap するたびにネットワーク通信 |
 | **B. ステップ単体（`capture:`）** | この 1 ステップだけ | 特定の wait 後に video + deviceLog |
 | **C. 既定ポリシー** | 全体の最低保証 | config の `capture: [screenshot.after, elements, actionLog]` |
 
-> C（config 既定）の `capture` は `Effective.capture` に解決されます（[configuration](configuration.md)）。ただし現状、run ループはシナリオの `capturePolicy` とステップの `capture` だけを発火源にしています。config の既定 capture を全ステップに自動適用する配線は入っていません。
+> C（config 既定）の `capture` は `Effective.capture` に解決されます（[configuration](configuration.md)）。この値は、シナリオの `capturePolicy` やステップごとの `capture` と並んで、すべてのステップに適用されます。他の2つとは異なり、条件によって発火するのではなく常に適用されるため、ルールではなく最低保証として働きます。
 
 ## 証跡種別と取得タイミング
 
@@ -33,13 +33,13 @@
 | `deviceLog` | `simctl spawn log stream` | 区間 | ✅ 取得（要 udid） |
 | `network` | アプリ内 collector（BajutsuKit → `network.json`） | 区間 | ✅ 取得（`--network` フラグ） |
 | `appTrace` | `simctl spawn log stream`（アプリの os_log subsystem） | 区間 | ✅ 取得（要 udid + subsystem） |
-| `rawTree` | `elements` の元になった生ダンプ（`base.RawSourceProvider`。現状 adb と XCUITest） | 瞬時 | ✅ 取得（opt-in。他のバックエンドでは何もしません） |
+| `rawTree` | `elements` の元になった、bajutsu の加工を経ていない生の応答（`base.RawSourceProvider`。現状 adb と XCUITest） | 瞬時 | ✅ 取得（opt-in。他のバックエンドでは何もしません） |
 
 > `appTrace` はアプリの `os_signpost` / `os_log` が出す `<name> started` / `<name> finished` マーカーを、時刻つきの区間にペアリングします（`intervals.parse_app_trace`）。`network` は区間システムではなく request collector が生成し、その exchange を `<sid>/network.json` に書き出します（[network observation](drivers.md)、`--network` フラグ）。
 
 > `elements.json` の各要素は、`identifier`、`label`、`traits`、`value`、`frame` に加えて、診断用のフィールドを1つ持ちます。テスト対象のアプリ自身が測った、その要素の実際の前後位置を表す `nativeZ` です（[BE-0355](../../roadmaps/BE-0355-native-z-position/BE-0355-native-z-position-ja.md)）。このフィールドを読んでも、実行の判定は何も変わりません。`nativeZ` でマッチするセレクタはなく、重なりの判定（`is_tappable`、`topmost_at_point`、XCUITest 自身の `isHittable`）もフィールドが存在しなかったときとまったく同じように振る舞います。アプリが測った位置がないときの値は `null` で、現状はすべての要素が `null` になります。実際の値を報告するには、opt-in の Bajutsu のフックを組み込んだアプリが必要で、そのフックの iOS 側と Android 側はどちらも、このロードマップ項目でまだ着手していない部分だからです。この `null` は、推測で埋めるべき欠落ではなく、意図した表現です。要素の並び順から位置を導き出す方法（`topmost_at_point` が代替として使っている描画順の近似）を採れば、権威ある値のように見えて、調査者が証跡を開くまさにその場面で間違った値を返します。たとえば Android の `elevation` によって、後に宣言された兄弟要素より手前に持ち上げられたビューが、そうした場面にあたります。
 
-> `rawTree` は、ドライバが実際に `elements.json` へパースした生データを `hierarchy.raw<suffix>` として書き出します。adb なら `_read_source()` がパーサーに渡したダンプテキスト（`.xml`）、XCUITest なら `GET /elements` の未デコードのボディ（`.json`）です。adb の resident channel で narrowing が何かを変えた場合に限り、SystemUI の装飾ウィンドウを取り除く前のダンプも `hierarchy.pre-transform.xml` として併せて書き出します。XCUITest はこの種の変換を一切行わないため、2 つ目のファイルを書き出すことはありません。狙いは、解決した座標と実際の画面がずれたときに、デバイス側・runner 側の応答がすでにおかしかったのか、bajutsu 側のパースで変わったのかを切り分けることです。既定の capture リストには含まれず、シナリオが `capture: [rawTree, ...]` で明示的に指定したときだけ取得します。
+> `rawTree` は、デバイス・runner 自身が返した応答をそのまま `hierarchy.raw<suffix>` として書き出します。adb なら `uiautomator dump` または resident channel の XML（`.xml`）、XCUITest なら `GET /elements` の未デコードのボディ（`.json`）で、いずれも bajutsu 側の加工を経ていません。adb の resident channel で narrowing が何かを変えた場合に限り、パーサーが実際に消費したデータ（SystemUI の装飾ウィンドウを取り除いた後のダンプ）も `hierarchy.parsed-input<suffix>` として併せて書き出します。XCUITest はこの種の変換を一切行わないため、2 つ目のファイルを書き出すことはありません。狙いは、解決した座標と実際の画面がずれたときに、デバイス側・runner 側の応答がすでにおかしかったのか、bajutsu 側のパースで変わったのかを切り分けることです。既定の capture リストには含まれず、シナリオが `capture: [rawTree, ...]` で明示的に指定したときだけ取得します。
 >
 > `redact.labels` を設定した場合に限り、この redact の規則が `rawTree` の出力を拒否します。実行全体を通じて何も書き出さず、その理由をログに出力します。`redact.labels` は、ラベルが設定された要素の値を構造的にマスクします。`elements.json` はパース済みのツリーから書き出すため、どの値を隠すべきかを書き出し側が把握しているからです。これに対して生ダンプは構造を持たないフリーテキストなので、同じマスクを構造的には適用できず、`elements.json` がすでにマスクした内容を無防備な形で書き出してしまいます。それ以外の redact の規則（`headers`、`fields`、解決済みの secret 値）は、生ダンプにもフリーテキストとしてそのまま適用され、`rawTree` の取得を妨げません。ただし `redact.headers` と `redact.fields` には一つ注意点があります。これらのキーパターンによるマスクは、マッチした値が次の改行で終わる複数行のログを想定して書かれていますが、UI Automator のダンプは 1 行として出力されます。設定したキーがダンプ自身のテキスト（画面上のラベルや、`Token: ...` のように読める `content-desc` など）にたまたまマッチすると、マッチした値だけでなく、そこから先のファイル全体がマスクされてしまいます。ダンプ自体は書き出されますが、末尾が欠けた状態になります。`${secrets.X}` で束縛した解決済みの secret 値は、キーパターンではなく既知のリテラルとの一致でマスクするため、この問題の影響を受けません。
 
@@ -75,9 +75,10 @@
 
 ```yaml
 capturePolicy:
-  # settings.* を tap するたびに、押下後のスクショと要素を取得
+  # settings.* を tap するたびに、ネットワーク通信も追加で取得する。スクショと要素は config の
+  # 既定ポリシー（上の C）が全ステップに既に保証している
   - on: { action: tap, idMatches: "settings.*" }
-    capture: [screenshot.after, elements]
+    capture: [network]
 
   # 画面遷移のたびに
   - on: { event: screenChanged }

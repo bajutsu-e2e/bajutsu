@@ -430,7 +430,17 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
   device that keeps degrading fails the run loudly instead of each scenario silently re-spending its
   own budget until an external CI timeout cancels the job. The on-device driver conformance suite
   shares the per-scenario decision (`runner/recovery.py`) so a Simulator infrastructure fault there
-  recovers the same way, rather than reddening the required check on an unrelated PR (BE-0334)
+  recovers the same way, rather than reddening the required check on an unrelated PR (BE-0334). On
+  the Simulator XCUITest route the retry has one rung above the erase (BE-0354): a **replacement
+  device**, minted through the same path a vanished device's replacement uses and leaving the
+  degraded one shut down and out of the pool. An erase resets the device's data, not a wedged capture
+  pipeline, so a forced-erase retry that crashes again escalates to it — and an attempt whose video
+  recording never confirmed it started writing escalates from its *first* crash, since that symptom
+  identifies the degradation class the erase does not clear. The replacement attempt drops the forced
+  erase (a device about to be created has nothing to erase), and the rung is scoped to an unpinned
+  run with an `appPath` to install, so `--udid` keeps the erase-level retry on the device the
+  operator named. Because a replacement resets strictly more than an erase does, it also honors the
+  two opt-outs the erase rung honors: `reinstall: overwrite` and `bajutsu run --no-erase`
 - DSL: the `within` selector (geometric scoping), the `relaunch` step (validated on-device),
   reusable `setup` preludes, `locale` applied at launch, and parallel runs (`--workers`) over a
   device pool

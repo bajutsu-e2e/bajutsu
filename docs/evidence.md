@@ -14,13 +14,14 @@ Related: [the capture tokens in scenarios](scenarios.md#capture-token-grammar) �
 
 | Way | Use | Example |
 |---|---|---|
-| **A. Rules (`capturePolicy`)** ★ central | automatic capture **every time** a particular action happens | screenshot + elements on every tap of `settings.*` |
+| **A. Rules (`capturePolicy`)** ★ central | automatic capture **every time** a particular action happens | network exchanges on every tap of `settings.*` |
 | **B. Per-step (`capture:`)** | this one step only | video + deviceLog around a specific wait |
 | **C. Default policy** | a baseline guarantee | config's `capture: [screenshot.after, elements, actionLog]` |
 
-> C (config default) `capture` resolves to `Effective.capture` ([configuration](configuration.md)),
-> but currently the run loop uses only the scenario's `capturePolicy` and the per-step `capture` as
-> firing sources. The wiring to auto-apply the config default capture to every step is not in place.
+> C (config default) `capture` resolves to `Effective.capture` ([configuration](configuration.md))
+> and is applied on top of every step, alongside the scenario's `capturePolicy` and the per-step
+> `capture` — unlike those two, it fires unconditionally rather than on a trigger, so it acts as a
+> baseline guarantee rather than a rule.
 
 ## Evidence kinds and acquisition timing
 
@@ -35,7 +36,7 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 | `deviceLog` | `simctl spawn log stream` | interval | ✅ captured (needs udid) |
 | `network` | the in-app collector (BajutsuKit → `network.json`) | interval | ✅ captured (the `--network` run flag) |
 | `appTrace` | `simctl spawn log stream` over the app's os_log subsystem | interval | ✅ captured (needs udid + subsystem) |
-| `rawTree` | the raw dump text behind `elements` (`base.RawSourceProvider`; adb and XCUITest today) | instant | ✅ captured (opt-in, no-op elsewhere) |
+| `rawTree` | the device's own reply behind `elements`, untouched (`base.RawSourceProvider`; adb and XCUITest today) | instant | ✅ captured (opt-in, no-op elsewhere) |
 
 > `appTrace` pairs the app's `os_signpost` / `os_log` `<name> started` / `<name> finished` markers
 > into timed intervals (`intervals.parse_app_trace`). `network` is produced by the request collector
@@ -56,11 +57,11 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 > being wrong on exactly the layouts an investigator opens the evidence for, such as an Android view
 > whose `elevation` lifts it above a sibling declared after it.
 
-> `rawTree` writes `hierarchy.raw<suffix>` — what the driver actually parsed into `elements.json`: the
-> dump text `_read_source()` handed adb's parser (`.xml`), or XCUITest's undecoded `GET /elements` body
-> (`.json`). On adb's resident channel, when narrowing changed something, it also writes
-> `hierarchy.pre-transform.xml` (the dump before SystemUI decor windows were stripped) — XCUITest
-> applies no such transform, so it never writes a second file.
+> `rawTree` writes `hierarchy.raw<suffix>` — the device's/runner's own reply, untouched by any of
+> bajutsu's processing: adb's `uiautomator dump`/resident XML (`.xml`), or XCUITest's undecoded
+> `GET /elements` body (`.json`). On adb's resident channel, when narrowing changed something, it also
+> writes `hierarchy.parsed-input.xml` (what `parse_hierarchy` actually consumed, after SystemUI decor
+> windows were stripped) — XCUITest applies no such transform, so it never writes a second file.
 > It exists to diagnose a mismatch between a resolved coordinate and the real screen: whether the
 > device's/runner's own reply already looked wrong, or bajutsu's own parsing changed it. Never in the
 > default capture list — a scenario opts in with `capture: [rawTree, ...]`.
@@ -133,9 +134,10 @@ Repeatedly-firing rules, written per scenario (implementation: `scenario/models/
 
 ```yaml
 capturePolicy:
-  # On every tap of settings.*, capture the post-tap screenshot and elements
+  # On every tap of settings.*, also capture the network exchanges — screenshot and elements are
+  # already guaranteed on every step by config's default policy (C, above)
   - on: { action: tap, idMatches: "settings.*" }
-    capture: [screenshot.after, elements]
+    capture: [network]
 
   # On every screen transition
   - on: { event: screenChanged }

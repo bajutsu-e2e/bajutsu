@@ -139,27 +139,36 @@ def _all_steps(steps: list[Step]) -> Iterator[Step]:
             yield from _all_steps(step.for_each.steps)
 
 
-def requested_intervals(scenario: Scenario) -> list[str]:
+def requested_intervals(scenario: Scenario, config_capture: list[str] | None = None) -> list[str]:
     """The scenario-wide interval kinds (video / deviceLog / appTrace) the scenario actually
-    asks for — via a `capturePolicy` rule or any step's inline `capture`, nested steps included.
-    Empty by default, so a scenario that requests no heavy capture records none (BE-0028)."""
+    asks for — via a `capturePolicy` rule, any step's inline `capture` (nested steps included), or
+    the config's `defaults.capture` baseline (`config_capture`, BE-0028's third source). Empty by
+    default, so a scenario that requests no heavy capture records none."""
     requested = {_kind_of(token) for rule in scenario.capture_policy for token in rule.capture}
     requested.update(
         _kind_of(token) for step in _all_steps(scenario.steps) for token in (step.capture or [])
     )
+    requested.update(_kind_of(token) for token in (config_capture or []))
     return [kind for kind in _SCENARIO_INTERVALS if kind in requested]
 
 
 def _collect_captures(
-    scenario: Scenario, step: Step, kind: str, ok: bool, screen_changed: bool
+    scenario: Scenario,
+    step: Step,
+    kind: str,
+    ok: bool,
+    screen_changed: bool,
+    config_capture: list[str] | None = None,
 ) -> list[str]:
-    """Post-step capture kinds for this step: inline `capture` plus any matching capturePolicy
-    rules. The always-on baseline (`screenshot.before` + `elements`) is captured separately, before
-    the step acts (BE-0341) — this returns only what the scenario itself asked for, minus any
-    `screenshot.before` token: that pre-step baseline already wrote the file, so re-taking it here
-    would silently mislabel a post-action pixel as `before.png`. Interval kinds (`video` /
-    `deviceLog` / `appTrace`) are left in; the caller splits those out separately."""
-    fired: list[str] = [*(step.capture or [])]
+    """Post-step capture kinds for this step: inline `capture`, any matching capturePolicy rules,
+    and the config's `defaults.capture` baseline (`config_capture`) — a guarantee applied to every
+    step regardless of trigger, unlike the other two sources. The always-on instant baseline
+    (`screenshot.before` + `elements`) is captured separately, before the step acts (BE-0341) — this
+    returns only what the scenario/config asked for, minus any `screenshot.before` token: that
+    pre-step baseline already wrote the file, so re-taking it here would silently mislabel a
+    post-action pixel as `before.png`. Interval kinds (`video` / `deviceLog` / `appTrace`) are left
+    in; the caller splits those out separately."""
+    fired: list[str] = [*(step.capture or []), *(config_capture or [])]
     primary = _primary_selector(step)
     primary_id = primary.first_id() if primary is not None else None
     for rule in scenario.capture_policy:

@@ -404,10 +404,10 @@ def test_describe_records_the_raw_dump_text_on_the_subprocess_path() -> None:
     raw = driver.last_raw_source()
     assert raw is not None
     assert raw.text == FIXTURE
-    assert raw.pre_transform is None  # no narrowing on the dump-subprocess path
+    assert raw.parsed_input is None  # no narrowing on the dump-subprocess path
 
 
-def test_describe_records_the_pre_narrow_body_on_the_resident_path() -> None:
+def test_describe_records_the_untouched_reply_on_the_resident_path() -> None:
     def fetch(_since: float | None) -> HierarchyRead:
         return HierarchyRead(FIXTURE, mark=1.0, raw="<hierarchy>pre-narrow body</hierarchy>")
 
@@ -415,8 +415,10 @@ def test_describe_records_the_pre_narrow_body_on_the_resident_path() -> None:
     driver.query()
     raw = driver.last_raw_source()
     assert raw is not None
-    assert raw.text == FIXTURE
-    assert raw.pre_transform == "<hierarchy>pre-narrow body</hierarchy>"
+    # `text` is now the device's own reply before narrowing (the primary artifact); `parsed_input`
+    # is what narrowing produced, i.e. what `parse_hierarchy` actually consumed.
+    assert raw.text == "<hierarchy>pre-narrow body</hierarchy>"
+    assert raw.parsed_input == FIXTURE
 
 
 def test_query_retries_through_transient_empty() -> None:

@@ -9,7 +9,6 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
-      capture: [video]
     - wait: { for: { label: "Note" }, timeout: 10 }
     - swipe: { on: { label: "Note" }, direction: up }
     - swipe: { on: { label: "Open Filter", traits: [button] }, direction: up }
