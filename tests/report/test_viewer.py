@@ -72,6 +72,44 @@ def test_html_step_rows_carry_video_offset() -> None:
     assert "timeupdate" in out and "playing" in out
 
 
+def test_html_derives_the_video_offset_from_absolute_timestamps() -> None:
+    # A step records the absolute instant it began; the seek offset is derived here, at render time,
+    # by subtracting the scenario's video anchor (BE-0348) — so an improved anchor makes an already
+    # recorded run seek correctly without re-running it. The anchor precedes the first step by 2.5s
+    # (a prestarted recording), which is what pushes that step off 0.0.
+    anchor = 1_700_000_000.0
+    r = RunResult(
+        scenario="s1",
+        ok=True,
+        steps=[
+            StepOutcome(index=0, action="tap", ok=True, duration_s=0.2, started_at=anchor + 2.5),
+            StepOutcome(index=1, action="wait", ok=True, duration_s=1.1, started_at=anchor + 4.0),
+        ],
+        expect_results=[],
+        artifacts=[Artifact("00-s1/scenario.mp4", "video", "simctl")],
+        video_anchor_s=anchor,
+    )
+    out = html_report("run1", [r])
+    assert "class='srow ok' data-t='2.500'" in out
+    assert "data-t='4.000'" in out
+    # The raw epoch must never reach the page — that would seek the player past the end of any clip.
+    assert str(int(anchor)) not in out
+
+
+def test_html_step_offsets_survive_a_run_recorded_before_the_anchor_was_persisted() -> None:
+    # A pre-BE-0348 manifest carries already-relative `started_at` values and no `video_anchor_s`,
+    # so the anchor reconstructs at 0.0 and the derivation returns them unchanged (BE-0068's spirit:
+    # an older run still renders rather than failing).
+    r = RunResult(
+        scenario="s1",
+        ok=True,
+        steps=[StepOutcome(index=0, action="tap", ok=True, started_at=1.5)],
+        expect_results=[],
+        artifacts=[Artifact("00-s1/scenario.mp4", "video", "simctl")],
+    )
+    assert "data-t='1.500'" in html_report("run1", [r])
+
+
 def test_html_shows_step_screenshot_and_tree(tmp_path: Path) -> None:
     r = RunResult(
         scenario="s1",

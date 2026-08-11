@@ -20,6 +20,7 @@ from bajutsu.report.format import (
     _read_lines,
     _status_class,
     _truncate,
+    video_seconds,
 )
 from bajutsu.report.rows import (
     _expects_data,
@@ -85,7 +86,12 @@ def _environment_panel(r: RunResult) -> dict[str, Any]:
     return {"kind": "env", "key": "env", "label": "Environment", "sim": sim, "skips": skips}
 
 
-def _network_item(d: dict[str, Any]) -> dict[str, Any]:
+def _network_item(d: dict[str, Any], video_anchor_s: float) -> dict[str, Any]:
+    """One exchange's panel entry.
+
+    `video_anchor_s` turns the exchange's absolute `startedAt` into the recording-relative `at`
+    label the Result timeline also shows (BE-0348).
+    """
     method = str(d.get("method") or "")
     status = d.get("status")
     target = str(d.get("path") or d.get("url") or "")
@@ -113,7 +119,7 @@ def _network_item(d: dict[str, Any]) -> dict[str, Any]:
     return {
         "method": method,
         "target": target,
-        "at": f"{float(started):.1f}s"
+        "at": f"{video_seconds(float(started), video_anchor_s=video_anchor_s):.1f}s"
         if isinstance(started, (int, float)) and not isinstance(started, bool)
         else "",
         "status": str(status) if status is not None else "—",
@@ -126,7 +132,7 @@ def _network_item(d: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _network_panel(art: Artifact, data: Any) -> dict[str, Any]:
+def _network_panel(art: Artifact, data: Any, video_anchor_s: float) -> dict[str, Any]:
     # `data` is the already-parsed network.json (or None) — read once in `_scenario_data` and
     # shared with the result timeline, so a body-carrying network.json isn't parsed twice.
     if not isinstance(data, list) or not data:
@@ -137,7 +143,7 @@ def _network_panel(art: Artifact, data: Any) -> dict[str, Any]:
             "empty": True,
             "link": art.name,
         }
-    items = [_network_item(d) for d in data if isinstance(d, dict)]
+    items = [_network_item(d, video_anchor_s) for d in data if isinstance(d, dict)]
     return {
         "kind": "network",
         "key": "net",
@@ -221,7 +227,7 @@ def _scenario_data(
         _environment_panel(r),
     ]
     if net is not None:
-        panels.append(_network_panel(net, net_data))
+        panels.append(_network_panel(net, net_data, r.video_anchor_s))
     dev = _artifact(r, "deviceLog")
     if dev is not None:
         panels.append(_log_panel(run_dir, dev))

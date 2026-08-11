@@ -16,6 +16,7 @@ from bajutsu.report.format import (
     _read_json,
     _status_class,
     _truncate,
+    video_seconds,
 )
 from bajutsu.report.richtext import (
     _assert_parts,
@@ -147,18 +148,20 @@ def _step_run_row(
     step_def: dict[str, Any] | None,
     out: Any,
     run_dir: Path | None,
+    at: float,
     from_: str | None = None,
 ) -> dict[str, Any]:
+    """One executed step's row. `at` is its already-derived seconds into the recording (BE-0348)."""
     return {
         "rowcls": f"srow {'ok' if out.ok else 'ng'}",
-        "data_t": f"{out.started_at:.3f}",
-        "title": f"jump to {out.started_at:.1f}s in the recording",
+        "data_t": f"{at:.3f}",
+        "title": f"jump to {at:.1f}s in the recording",
         "num": str(i),
         "numcls": None,
         "result": {"cls": "ok" if out.ok else "ng", "text": "PASS" if out.ok else "FAIL"},
         "action": _action_data(step_def, out.action),
         "detail": _step_detail(step_def, from_),
-        "at": f"{out.started_at:.1f}s",
+        "at": f"{at:.1f}s",
         "view": _view_data(out, run_dir),
         "reason": out.reason if (not out.ok and out.reason) else None,
         "expand": None,
@@ -337,6 +340,9 @@ def _merged_rows(
 ) -> list[dict[str, Any]]:
     """Step rows plus the observed exchanges (split request/response) interleaved by time offset.
 
+    Steps and exchanges both record absolute wall-clock instants, so the recording-relative seconds
+    the timeline sorts and displays on are derived here, once, against `r.video_anchor_s` (BE-0348).
+
     Not-run steps trail at the end in plan order.
     """
     by_index = {s.index: s for s in r.steps}
@@ -354,11 +360,10 @@ def _merged_rows(
         if out is None:
             skipped.append(_step_skip_row(i, step_def, shown_from[i]))
         else:
-            timed.append(
-                (out.started_at, 0, _step_run_row(i, step_def, out, run_dir, shown_from[i]))
-            )
+            at = video_seconds(out.started_at, video_anchor_s=r.video_anchor_s)
+            timed.append((at, 0, _step_run_row(i, step_def, out, run_dir, at, shown_from[i])))
     for d in exchanges:
-        t0 = _as_float(d.get("startedAt"))
+        t0 = video_seconds(_as_float(d.get("startedAt")), video_anchor_s=r.video_anchor_s)
         dur_s = _as_float(d.get("durationMs")) / 1000.0
         timed.append((t0, 1, _request_row(d, t0)))
         timed.append((t0 + dur_s, 2, _response_row(d, t0 + dur_s)))

@@ -33,8 +33,10 @@ call site shares one format. `stepId` is `step.name` or `step<i>`.
 ## manifest.json
 
 `RunResult` and its parts are all dataclasses, so `manifest_dict` drops the step / expect results
-verbatim — minus `video_anchor_s`, a same-process-only `time.monotonic()` instant with no meaning
-once persisted (see [evidence](evidence.md#interval-evidence-video--devicelog--apptrace)).
+verbatim — minus `wall_offset_s`, an in-run-only conversion constant with no meaning once persisted
+(see below). Every other timestamp is an absolute wall-clock instant (epoch seconds), so it still
+means the same thing after the run that produced it exits
+(see [evidence](evidence.md#interval-evidence-video--devicelog--apptrace)).
 
 ```json
 {
@@ -67,11 +69,26 @@ once persisted (see [evidence](evidence.md#interval-evidence-video--devicelog--a
 - `backend`: the actuator that drove the run (`xcuitest`, or `fake` in tests). One actuator is fixed
   per run, so the top-level value is normally a single name; each scenario also carries its own
   `backend` ([drivers](drivers.md#backend-selection-and-the-actuator)).
-- `steps[].duration_s`: each step's timing.
-- `steps[].started_at`: the step's report-relative timestamp, anchored to the scenario video's
-  confirmed or best-known real start rather than the raw moment the scenario's step loop began
-  ([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)); [report.html](#reporthtml)
-  uses it to seek the recording and as the **steps** table's `at` column.
+- `steps[].duration_s`: each step's timing. A run measures every elapsed time on the monotonic
+  clock. A wall clock can jump backward mid-run — a Network Time Protocol (NTP) correction, a manual
+  clock change — and would corrupt a duration or a timeout, so a run reads the wall clock once per
+  scenario and uses it for the recorded timestamps alone.
+- `steps[].started_at`: the absolute wall-clock instant (epoch seconds) the step began, with no
+  video correction folded in. A viewer subtracts `video_anchor_s` (below) at render time to get the
+  seconds to seek the recording to. [report.html](#reporthtml) shows that number as the **steps**
+  table's `at` column. Storing the raw instant, rather than the already-corrected offset, is what
+  lets a viewer recompute the offset from a saved run — say, after a fix to how a run resolves its
+  anchor — instead of forcing a re-run of the scenario
+  ([BE-0348](../roadmaps/BE-0348-absolute-timestamp-recording/BE-0348-absolute-timestamp-recording.md)).
+- `video_anchor_s` (per scenario): the absolute wall-clock instant the scenario's video started,
+  taken from the recording's confirmed real start where the confirmation succeeded
+  ([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)). Every viewer subtracts it.
+  A run recorded before `schemaVersion` 6 carries no anchor. Its `started_at` values are already
+  video-relative, so a viewer reads the missing anchor as `0.0` and renders them unchanged.
+- `wall_offset_s` (in-run only, not persisted): what the run adds to one of its own monotonic
+  instants to reach a wall-clock epoch, so it can carry a network exchange's monotonic receive time
+  onto the same anchor `video_anchor_s` uses. It never survives into the manifest — no monotonic
+  instant does either, so a later reader would have nothing left to convert with it.
 - `steps[].artifacts`: the provenance of evidence captured for that step
   ([evidence](evidence.md#artifact-provenance-provider)).
 - `steps[].actuations`: what the driver actually did to the screen during that step — the coordinate a
@@ -81,7 +98,8 @@ once persisted (see [evidence](evidence.md#interval-evidence-video--devicelog--a
   `schemaVersion` 5 carries none. `expect_actuations` holds the same for the scenario-level `expect`
   re-check, where the system-alert guard can actuate with no step to attribute it to.
 - `network.json`'s `startedAt` (one file per scenario, not shown in the manifest above): each
-  observed exchange's report-relative timestamp, on the same anchor as `steps[].started_at` — see
+  observed exchange's absolute start, on the same footing as `steps[].started_at` and derived
+  through the same scenario anchor, so a viewer subtracts `video_anchor_s` from both — see
   [report.html](#reporthtml) for how the two are interleaved into one timeline.
 - `failure`: a summary on failure (e.g. `"step 3 (tap): no match: {...}"`). null on success.
 - `provenance` (top, optional): a run-identity stamp ([BE-0049](../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md))
@@ -91,7 +109,7 @@ once persisted (see [evidence](evidence.md#interval-evidence-video--devicelog--a
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
   It groups accumulated runs by identity, so a verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. Pure metadata — it never enters
-  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `5` today.)
+  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `6` today.)
 - `idb` (top, optional, legacy): older manifests may carry an `idb_companion` / client version
   block (BE-0005). It was retired with the idb backend (BE-0290) and is no longer written; an old
   manifest that still has it loads fine, since an unknown top-level key is ignored.
@@ -222,14 +240,15 @@ it `POST`s `/api/approve` and so works only when the report is opened through `b
 hidden for a report opened from disk). The CLI twin is [`bajutsu approve`](cli.md#approve).
 
 Failing rows have a red background. Clicking a step seeks the recording to that step **without
-auto-playing** (a paused video stays paused; a playing one keeps playing) — the seek target is each
-step's `started_at`, anchored to the video's confirmed or best-known real start rather than the raw
-moment the scenario's step loop began, so the seek lands on what the row actually shows
-([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)). One visible consequence: for a
-video-capturing Android or web scenario, a step's `started_at` (and the **steps** table's `at`
-column) can exceed the scenario's own `duration_s`, because the two measure different things on
-purpose — the video's timeline starts before the run's own step loop does, while `duration_s`
-measures the loop itself. That is expected, not a sign either number is wrong. Clicking a step's
+auto-playing** (a paused video stays paused; a playing one keeps playing) — the seek target is the
+step's `started_at` minus `video_anchor_s` (the **steps** table's `at` column), anchored to the
+video's confirmed or best-known real start rather than the raw moment the scenario's step loop
+began, so the seek lands on what the row actually shows
+([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)). One visible consequence: for
+a video-capturing Android or web scenario, that derived seconds-into-the-recording value can exceed
+the scenario's own `duration_s`, because the two measure different things on purpose — the video's
+timeline starts before the run's own step loop does, while `duration_s` measures the loop itself.
+That is expected, not a sign either number is wrong. Clicking a step's
 screenshot opens a full-size lightbox; **← / →** (or the on-screen arrows) then walk through every
 screenshot in the run, across scenario boundaries, with a caption showing the scenario, step, and
 position. The run's actuator backend is shown as a `driver: <backend>` chip in the header and a small

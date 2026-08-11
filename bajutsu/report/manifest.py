@@ -53,7 +53,11 @@ def _run_backend(results: list[RunResult]) -> str:
 # v5: per-step "actuations" (and per-scenario "expect_actuations") — what the driver actually did to the
 #   screen, the coordinate/geometry half of the `actionLog` evidence kind. An older run simply has none,
 #   so the report shows no actuation row for it rather than failing to load.
-SCHEMA_VERSION = 5
+# v6 (BE-0348): "started_at" (and network.json's "startedAt") are absolute wall-clock epoch seconds
+#   rather than video-relative offsets, and the anchor to subtract from them — "video_anchor_s", now
+#   itself absolute — is persisted instead of dropped. A v5-or-older run carries no anchor, so a
+#   reader derives 0.0 for it and its already-relative timestamps render unchanged.
+SCHEMA_VERSION = 6
 
 
 def _matrix(results: list[RunResult]) -> dict[str, object] | None:
@@ -127,10 +131,11 @@ def manifest_dict(
     """Build the manifest — the run's canonical, versioned render model (BE-0068).
 
     RunResult and its parts are dataclasses, so `_scenario_dict` captures step/expect outcomes
-    verbatim — minus `video_anchor_s`, a process-local instant with no meaning once persisted.
-    `backend` is the actuator that drove the run (each scenario also carries its own `backend`);
-    `sourceName` is the label the report's YAML toggle shows, persisted here so a re-render can
-    recover it.
+    verbatim — minus `wall_offset_s`, a same-process-only conversion constant with no meaning once
+    persisted (BE-0348 kept `video_anchor_s`, an absolute instant, but not this one — see
+    `_scenario_dict`). `backend` is the actuator that drove the run (each scenario also carries its
+    own `backend`); `sourceName` is the label the report's YAML toggle shows, persisted here so a
+    re-render can recover it.
 
     `provenance` is the run-identity stamp from `run_provenance` (BE-0049), never part of the verdict.
     """
@@ -153,16 +158,17 @@ def manifest_dict(
 
 
 def _scenario_dict(r: RunResult) -> dict[str, object]:
-    """`asdict(r)`, minus `video_anchor_s`.
+    """`asdict(r)`, minus `wall_offset_s`.
 
-    `video_anchor_s` is a raw `time.monotonic()` instant — a same-process handoff from
-    `run_scenario` to the pipeline's network-timestamp calculation, meaningful only during the run
-    that produced it. Every value derived from it (`started_at`, network `startedAt`) is already a
-    relative offset and carries the real information; the absolute instant itself would be noise
-    (or actively misleading) once persisted here.
+    `wall_offset_s` is `scenario_wall_start - scenario_start` — a delta that converts *this run's*
+    `time.monotonic()` instants to wall-clock ones. It exists only for `pipeline.py` to carry a
+    network exchange's monotonic receive time onto the same absolute footing as `video_anchor_s`
+    while the run is still in-process; no monotonic instant survives into the manifest for a later
+    reader to convert with it, so persisting it would be noise at best. `video_anchor_s`, by
+    contrast, is itself already an absolute instant (BE-0348) and stays.
     """
     d = asdict(r)
-    d.pop("video_anchor_s", None)
+    d.pop("wall_offset_s", None)
     return d
 
 

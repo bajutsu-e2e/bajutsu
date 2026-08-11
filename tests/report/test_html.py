@@ -128,6 +128,20 @@ def test_fmt_duration_compact() -> None:
     assert _fmt_duration(83) == "1m 23s"  # rolls over to minutes past 60s
 
 
+def test_video_seconds_subtracts_the_anchor_and_clamps_at_zero() -> None:
+    # The one place a video-relative number is produced (BE-0348): an ordinary later-than-anchor
+    # instant subtracts cleanly, and an anchor-preceding instant — an exchange that began
+    # fractionally before the scenario's own anchor, per the function's own docstring — clamps to
+    # `0.0` rather than seeking to a negative offset (which no player could honor). A pre-BE-0348
+    # manifest supplies a `0.0` anchor and gets its already-relative value back unchanged.
+    from bajutsu.report.format import video_seconds
+
+    anchor = 1_700_000_000.0
+    assert video_seconds(anchor + 2.5, video_anchor_s=anchor) == 2.5
+    assert video_seconds(anchor - 0.2, video_anchor_s=anchor) == 0.0  # clamp fires
+    assert video_seconds(1.5, video_anchor_s=0.0) == 1.5  # legacy manifest, no anchor
+
+
 def test_html_shows_execution_time() -> None:
     # Each scenario shows its own duration in its row, and the header shows the run total
     # (the sum across scenarios).
