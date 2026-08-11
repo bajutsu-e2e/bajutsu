@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from functools import partial
@@ -46,6 +47,7 @@ from bajutsu.orchestrator.types import (
     RunResult,
     SelectionState,
     StepOutcome,
+    WallClock,
     _no_network,
     drain_actuations,
     scenario_slug,
@@ -408,24 +410,23 @@ def _run_step_body(
 def _resolve_video_start_offset(
     video_interval: intervals.Interval | None, scenario_start: float
 ) -> float:
-    """The correction every step's and network exchange's report timestamp is offset by.
+    """The correction the report's video anchor (`RunResult.video_anchor_s`) is offset by.
 
     `video_interval.true_start` (confirmed or driver-stamped) may precede or follow
     `scenario_start` — a prestarted device recording begins before it, an on-demand iOS
     recording's confirmation wait completes just before it — so this offset, resolved once here,
-    corrects every timestamp to the video's real origin instead of the moment `scenario_start`
+    places the anchor at the video's real origin instead of the moment `scenario_start`
     happened to be stamped. `0.0` (no correction) both when no confirmed `true_start` exists and
     when the resolved offset is positive: a video starting *after* `scenario_start` is not a case
-    this fix's design expects to occur in production (see the item's Motivation), so treating one
-    as real would silently clamp every early step's `started_at` to `0.0` via `max(0.0, ...)`
-    rather than surface it. The guard is one-sided by construction: a *negative* offset is trusted
-    unconditionally, so a stale `true_start` — necessarily an older instant than `scenario_start`,
-    and so always negative — is not caught here.
+    this design expects to occur in production (see BE-0346's Motivation), so it is surfaced with a
+    warning rather than trusted. The guard is one-sided by construction: a *negative* offset is
+    trusted unconditionally, so a stale `true_start` — necessarily an older instant than
+    `scenario_start`, and so always negative — is not caught here.
 
     Mixing the two time sources is deliberate but load-bearing: `true_start` is always a raw
     `time.monotonic()` instant, so `clock` must share that epoch (`RealClock`). A clock with a
-    different origin makes this offset — and every `startedAt` derived from `video_anchor_s` in
-    `pipeline.py` — meaningless rather than merely shifted.
+    different origin makes this offset — and so every video-relative second a report derives from
+    the anchor — meaningless rather than merely shifted.
     """
     if video_interval is None or video_interval.true_start is None:
         return 0.0
@@ -462,6 +463,7 @@ def run_scenario(
     transitions: TransitionSource = _no_transitions,
     interrupts: list[Interrupt] | None = None,
     locale: str | None = None,
+    wall_clock: WallClock = time.time,
     capture: list[str] | None = None,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
@@ -477,6 +479,10 @@ def run_scenario(
     `transitions` (BE-0310) is the read-only screen-transition signal a `wait until: settled` step
     consults in place of tree-diff polling; the default reports none, so a caller that doesn't pass
     one (most callers, and every non-iOS backend) sees the unchanged tree-diff behavior.
+
+    `wall_clock` (BE-0348) is read exactly once, beside `clock.now()`, to form the anchor pair every
+    recorded timestamp is derived from. Every timing *decision* still reads `clock` alone, so a
+    backward wall-clock jump can never shorten a wait or a duration.
 
     `capture` (the resolved `Effective.capture`, config's `defaults.capture`) is a baseline
     guarantee applied on top of every step, alongside `capturePolicy` rules and inline
@@ -498,7 +504,14 @@ def run_scenario(
     expect_actuations: list[Actuation] = []
     failure: str | None = None
     artifacts: list[Artifact] = []
-    scenario_start = clock.now()  # step offsets are measured from here, corrected below
+    # The anchor pair: a monotonic instant every in-run duration is measured from, and the wall-clock
+    # instant it corresponds to. Read back to back so the two describe the same moment as closely as
+    # the platform allows — `wall_offset_s` is their difference, and every recorded timestamp is
+    # `t + wall_offset_s` for a monotonic instant `t` from this run (the step loop below and
+    # `pipeline.py`'s network write both spell the conversion exactly that way).
+    scenario_start = clock.now()
+    scenario_wall_start = wall_clock()
+    wall_offset_s = scenario_wall_start - scenario_start
     video_interval = next((r for r in recordings if r.kind == "video"), None)
     video_start_offset = _resolve_video_start_offset(video_interval, scenario_start)
     # Mutable bindings: extract steps populate vars.* during the run; scenario-level
@@ -514,8 +527,7 @@ def run_scenario(
             alert_guard,
             wants_screen_changed,
             outcomes,
-            scenario_start,
-            video_start_offset,
+            wall_offset_s,
             sid,
             network,
             relaunch,
@@ -565,7 +577,8 @@ def run_scenario(
         artifacts=artifacts,
         backend=getattr(driver, "name", ""),
         duration_s=max(0.0, clock.now() - scenario_start),
-        video_anchor_s=scenario_start + video_start_offset,
+        video_anchor_s=scenario_wall_start + video_start_offset,
+        wall_offset_s=wall_offset_s,
         expect_alerts=expect_alerts,
         expect_actuations=expect_actuations,
     )
@@ -789,8 +802,10 @@ class _LoopConfig:
     sink: EvidenceSink
     alert_guard: AlertGuardConfig | None
     wants_screen_changed: bool
-    scenario_start: float
-    video_start_offset: float
+    # Added to a monotonic `clock.now()` instant to get its wall-clock epoch — the same conversion
+    # `pipeline.py` applies to network receive times (`RunResult.wall_offset_s`). The loop carries
+    # only this delta, never the wall instant itself, so no timing decision can read a wall clock.
+    wall_offset_s: float
     sid: str
     network: NetworkSource
     relaunch: RelaunchFn | None
@@ -845,9 +860,10 @@ class _StepRunner:
         if self.cfg.progress is not None:
             self.cfg.progress(f"{self.cfg.sid} · step {idx + 1}: {_step_label(step, kind)}")
         start = self.cfg.clock.now()
-        outcome.started_at = max(
-            0.0, (start - self.cfg.scenario_start) - self.cfg.video_start_offset
-        )
+        # The absolute instant this step began, converted through the scenario's anchor pair
+        # (BE-0348). The video correction is deliberately not applied here — the report derives it
+        # from `video_anchor_s` at render time, so it stays recomputable after the run.
+        outcome.started_at = start + self.cfg.wall_offset_s
 
         if kind == "if_":
             return self._handle_if(step, active_driver, idx, kind, outcome, start)
@@ -1318,8 +1334,7 @@ def _run_steps(
     alert_guard: AlertGuardConfig | None,
     wants_screen_changed: bool,
     outcomes: list[StepOutcome],
-    scenario_start: float,
-    video_start_offset: float,
+    wall_offset_s: float,
     sid: str,
     network: NetworkSource,
     relaunch: RelaunchFn | None = None,
@@ -1348,8 +1363,7 @@ def _run_steps(
         sink=sink,
         alert_guard=alert_guard,
         wants_screen_changed=wants_screen_changed,
-        scenario_start=scenario_start,
-        video_start_offset=video_start_offset,
+        wall_offset_s=wall_offset_s,
         sid=sid,
         network=network,
         relaunch=relaunch,

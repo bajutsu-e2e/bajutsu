@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0348](BE-0348-absolute-timestamp-recording.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0348") |
+| Implementing PR | [#1538](https://github.com/bajutsu-e2e/bajutsu/pull/1538) |
 | Topic | Verification & coverage |
 | Related | [BE-0346](../BE-0346-video-timing-sync/BE-0346-video-timing-sync.md) |
 <!-- /BE-METADATA -->
@@ -165,14 +166,14 @@ Work breakdown (mirrored in *Progress*):
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — the wall-clock anchor (`scenario_wall_start`), injected via a `WallClock` callable.
-- [ ] Unit 2 — `StepOutcome.started_at` becomes an absolute epoch timestamp.
-- [ ] Unit 3 — `RunResult.video_anchor_s` becomes the absolute anchor; stop excluding it from
+- [x] Unit 1 — the wall-clock anchor (`scenario_wall_start`), injected via a `WallClock` callable.
+- [x] Unit 2 — `StepOutcome.started_at` becomes an absolute epoch timestamp.
+- [x] Unit 3 — `RunResult.video_anchor_s` becomes the absolute anchor; stop excluding it from
       `manifest_dict`.
-- [ ] Unit 4 — network exchange timestamps store absolute instants.
-- [ ] Unit 5 — `bajutsu/report/rows.py` computes the video-relative `data-t` at render time.
-- [ ] Unit 6 — `BAJUTSU_VIDEO_START_TIMEOUT` env override; raise it in `.github/workflows/ios-e2e.yml`.
-- [ ] Unit 7 — manifest `schemaVersion` bump; bilingual `docs/reporting.md` / `docs/evidence.md`
+- [x] Unit 4 — network exchange timestamps store absolute instants.
+- [x] Unit 5 — `bajutsu/report/rows.py` computes the video-relative `data-t` at render time.
+- [x] Unit 6 — `BAJUTSU_VIDEO_START_TIMEOUT` env override; raise it in `.github/workflows/ios-e2e.yml`.
+- [x] Unit 7 — manifest `schemaVersion` bump; bilingual `docs/reporting.md` / `docs/evidence.md`
       updates.
 
 ## References

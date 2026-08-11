@@ -30,7 +30,7 @@ runs/<runId>/
 
 ## manifest.json
 
-`RunResult` 以下はすべて dataclass なので、`manifest_dict` でステップ / expect の結果がそのまま落ちます。ただし`video_anchor_s`は例外です。これは同一プロセス内でのみ意味を持つ`time.monotonic()`の値であり、永続化後は意味を持たないため除外されます（[evidence](evidence.md#区間証跡video--devicelog--apptrace)参照）。
+`RunResult` 以下はすべて dataclass なので、`manifest_dict` でステップ / expect の結果がそのまま落ちます。ただし`wall_offset_s`は例外です（詳細は後述）。これは run 内だけで使う変換定数であり、永続化後は意味を持たないため除外されます。それ以外のタイムスタンプはすべて絶対的な実時刻（エポック秒）なので、記録した run のプロセスが終了したあとも同じ意味を保ちます（[evidence](evidence.md#区間証跡video--devicelog--apptrace)参照）。
 
 ```json
 {
@@ -63,13 +63,15 @@ runs/<runId>/
 - `backend`: その run を操作したアクチュエータです（`xcuitest`、テストでは `fake`）。アクチュエータは
   run ごとに 1 つ固定なので、トップレベルは通常 1 つの名前です。各シナリオも自分の `backend` を持ちます
   （[drivers](drivers.md#バックエンド選択と-actuator)）。
-- `steps[].duration_s`: 各ステップの計時です。
-- `steps[].started_at`: そのステップのレポート上の相対タイムスタンプです。シナリオのステップループが始まった生の瞬間ではなく、確認できた、あるいは分かっている範囲でもっとも確からしいシナリオ動画の実際の開始時刻を基準にしています（[evidence](evidence.md#区間証跡video--devicelog--apptrace)）。[report.html](#reporthtml)は、この値を録画のシーク先として、また**steps**テーブルの`at`列として使います。
+- `steps[].duration_s`: 各ステップの計時です。run が求める経過時間は、すべて単調増加時計で測ります。実時刻の時計は run の途中で過去へ戻ることがあり（Network Time Protocol（NTP）による補正、手動での時刻変更）、経過時間やタイムアウトを壊すからです。実時刻の時計はシナリオごとに一度だけ読み、記録するタイムスタンプにだけ使います。
+- `steps[].started_at`: そのステップが始まった絶対的な実時刻（エポック秒）です。記録する値に動画の補正は入りません。録画のどこへシークするかは、描画のときに下の`video_anchor_s`を引いて求めます。[report.html](#reporthtml)はその値を**steps**テーブルの`at`列に表示します。補正済みのオフセットではなく生の時刻を保存するので、保存済みの run からシーク位置を計算し直せます。たとえば基準時刻の求め方を修正したときも、シナリオの実行し直しは要りません（[BE-0348](../../roadmaps/BE-0348-absolute-timestamp-recording/BE-0348-absolute-timestamp-recording-ja.md)）。
+- `video_anchor_s`（シナリオごと）: そのシナリオの動画が始まった絶対的な実時刻です。開始を確認できた場合は、録画の実際の開始時刻を取ります（[evidence](evidence.md#区間証跡video--devicelog--apptrace)）。描画する側は、どの表示でもこの値を引きます。`schemaVersion` 6 より前に記録された run は、この値を持ちません。その`started_at`はすでに動画基準の相対値なので、描画する側は欠けた基準時刻を`0.0`と読み、記録どおりに表示します。
+- `wall_offset_s`（run 内だけの値で、永続化されません）: その run が、自分自身の単調増加時計の値を実時刻のエポックへ変換するために足す差分です。通信ログの受信時刻（単調増加時計）を、`video_anchor_s`と同じ基準時刻へ載せるためだけに使います。manifest には残りません。単調増加時計の値もmanifestには残らないので、あとから読む側にはこの差分を使って変換する対象自体がないからです。
 - `steps[].artifacts`: そのステップで取れた証跡の来歴です（[evidence](evidence.md#アーティファクトの来歴provider)）。
 - `steps[].actuations`: そのステップのあいだにドライバが画面に対して実際に行ったことです。タップが送った座標、スワイプが動いた端点、各ジェスチャを運んだ経路が入ります。これが `actionLog` の証跡種別で、ファイルではなく manifest に内在します（[evidence](evidence.md#各ステップが画面に対して実際に行ったことactionlog)）。`schemaVersion` 5 より前に記録された run は持ちません。`expect_actuations` はシナリオ末尾の `expect` の再チェックについて同じものを持ちます。そこではシステムアラートガードが、載せる先のステップなしに操作しうるからです。
-- `network.json`の`startedAt`（シナリオごとに1ファイルで、上のmanifestには出てきません）: 観測した各通信の、レポート上の相対タイムスタンプです。基準は`steps[].started_at`と同じです。両者がどのように1本のタイムラインへ織り込まれるかは[report.html](#reporthtml)を参照してください。
+- `network.json`の`startedAt`（シナリオごとに1ファイルで、上のmanifestには出てきません）: 観測した各通信が始まった絶対的な実時刻です。`steps[].started_at`と同じ土俵に立ち、同じシナリオの基準時刻を通して導かれるので、描画する側は両方から`video_anchor_s`を引きます。両者がどのように1本のタイムラインへ織り込まれるかは[report.html](#reporthtml)を参照してください。
 - `failure`: 失敗時の要約です（例 `"step 3 (tap): 一致なし: {...}"`）。成功なら null です。
-- `provenance`（トップ、任意）: run の同一性スタンプです（[BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。`scenarioHash`（実行した `scenario.yaml` の `sha256:` フィンガープリント）、`toolVersion`（`bajutsu.__version__`）、`gitRevision`（コミット。git チェックアウト内の run のときだけ付く）、そして config が Git ソース由来のとき（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）は `configSource`（`{ host, owner, repo, ref, sha }`。ブランチ指定の run が実際に実行した正確なコミット）を持ちます。蓄積した run を同一性でグルーピングできるので、フィンガープリントが変わっていないのに判定が反転すれば、それは編集ではなく**真の flakiness** だと分かります。純粋なメタデータで、`ok` には一切入りません。（このブロックが出るようになった時点で `schemaVersion` は `3` 以上です。現在は `5` です。）
+- `provenance`（トップ、任意）: run の同一性スタンプです（[BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。`scenarioHash`（実行した `scenario.yaml` の `sha256:` フィンガープリント）、`toolVersion`（`bajutsu.__version__`）、`gitRevision`（コミット。git チェックアウト内の run のときだけ付く）、そして config が Git ソース由来のとき（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）は `configSource`（`{ host, owner, repo, ref, sha }`。ブランチ指定の run が実際に実行した正確なコミット）を持ちます。蓄積した run を同一性でグルーピングできるので、フィンガープリントが変わっていないのに判定が反転すれば、それは編集ではなく**真の flakiness** だと分かります。純粋なメタデータで、`ok` には一切入りません。（このブロックが出るようになった時点で `schemaVersion` は `3` 以上です。現在は `6` です。）
 - `idb`（トップ、任意、レガシー）: 古い manifest には `idb_companion` / client のバージョンブロックが残っていることがあります（BE-0005）。idb バックエンドとともに BE-0290 で廃止され、今は書き出されません。未知のトップレベルキーは読み込み時に無視されるため、これを含む古い manifest も問題なく読めます。
 - `matrix`（トップ、任意）: クロスブラウザのエンジン × シナリオのグリッドで、`bajutsu run --browsers` の run のときだけ出ます（[BE-0076](../../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)）。`scenarios` はフラットな結果リストのままで、各エントリに `engine` が付きます。`matrix` は `{ engines, scenarios, cells: { "<scenario>": { "<engine>": { ok, sid, failure } } } }` で、エンジンごとの判定を集約しただけのものです（report はこれをグリッドとして描画します）。`ok` はエンジン × シナリオのすべてに対する all-must-pass です。単一エンジン／iOS の run では省かれます。（このブロックが出るようになった時点で `schemaVersion` は `4` 以上です。）
 
@@ -164,7 +166,7 @@ baseline に重ねてクロスフェード）/ **Blend**（`mix-blend-mode: diff
 [`bajutsu approve`](cli.md#approve)。
 
 失敗行は赤背景です。ステップをクリックすると録画をその時刻にシークしますが、**自動再生はしません**
-（停止中なら停止のまま、再生中なら再生を続けます）。シーク先は各ステップの`started_at`であり、シナリオのステップループが始まった生の瞬間ではなく、確認できた、あるいは分かっている範囲でもっとも確からしい動画の実際の開始時刻を基準にしています（[evidence](evidence.md#区間証跡video--devicelog--apptrace)）。クリックした行が実際に示す瞬間にシークが着地するのは、この基準のためです。この結果、目に見える変化が1つあります。動画を録画するAndroidまたはWebのシナリオでは、ステップの`started_at`（**steps**テーブルの`at`列も含む）が、シナリオ自身の`duration_s`を超えることがあります。この2つは、そもそも別のものを測っているためです。動画のタイムラインは実行本体のステップループより前から始まりますが、`duration_s`はそのステップループ自体の長さを測ります。これは想定された挙動であり、どちらかの数値が誤っているわけではありません。ステップのスクリーンショットをクリックすると原寸ライトボックスが
+（停止中なら停止のまま、再生中なら再生を続けます）。シーク先は各ステップの`started_at`から`video_anchor_s`を引いた値（**steps**テーブルの`at`列）であり、シナリオのステップループが始まった生の瞬間ではなく、確認できた、あるいは分かっている範囲でもっとも確からしい動画の実際の開始時刻を基準にしています（[evidence](evidence.md#区間証跡video--devicelog--apptrace)）。クリックした行が実際に示す瞬間にシークが着地するのは、この基準のためです。この結果、目に見える変化が1つあります。動画を録画するAndroidまたはWebのシナリオでは、この描画時に求めた動画基準の秒数（**steps**テーブルの`at`列）が、シナリオ自身の`duration_s`を超えることがあります。この2つは、そもそも別のものを測っているためです。動画のタイムラインは実行本体のステップループより前から始まりますが、`duration_s`はそのステップループ自体の長さを測ります。これは想定された挙動であり、どちらかの数値が誤っているわけではありません。ステップのスクリーンショットをクリックすると原寸ライトボックスが
 開き、**← / →**（または画面上の矢印）で run 内の全スクリーンショットを**シナリオをまたいで**順送りできます
 （キャプションにシナリオ、ステップ、位置を表示）。run のアクチュエータはヘッダの `driver: <backend>`
 チップと各シナリオ行の小バッジで表示します。Device Log / App Trace は別タブのままです。

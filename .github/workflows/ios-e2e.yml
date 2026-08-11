@@ -178,6 +178,14 @@ env:
   # two separate `bajutsu run` invocations (SwiftUI, then UIKit), each with its own
   # BAJUTSU_RUN_CRASH_RECOVERY_BUDGET, so a single job can still pay two independent worst cases.
   BAJUTSU_XCUITEST_RECOVERY_TIMEOUT: "180"
+  # How long `simctl io recordVideo` gets to write its first byte before the scenario gives up on
+  # confirming when the recording actually began (bajutsu/evidence/intervals.py,
+  # `_video_start_timeout`). The 5s compiled default is generous locally but not on a loaded macOS
+  # runner, where a run on 2026-08-06 timed out and left one scenario's step/network timestamps
+  # anchored to the moment its step loop began rather than to the video — the drift BE-0346 exists to
+  # remove. Unlike the ceilings above, overshooting costs nothing on the healthy path: the poll
+  # returns the instant the first byte lands, so this only raises the ceiling for the slow case.
+  BAJUTSU_VIDEO_START_TIMEOUT: "20"
   # Respawn the resident runner cold after a single warm reuse rather than the default 3
   # (`_MAX_WARM_REUSES`). Folding many scenarios into one `bajutsu run` (the `run` / `actuation` jobs)
   # lengthens each warm-runner session, and each warm reuse re-attaches the XCTest automation session

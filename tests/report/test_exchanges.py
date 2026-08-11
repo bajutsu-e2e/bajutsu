@@ -115,6 +115,39 @@ def test_html_exchanges_interleaved_into_steps(tmp_path: Path) -> None:
     )
 
 
+def test_html_exchange_times_are_derived_from_absolute_timestamps(tmp_path: Path) -> None:
+    # network.json records each exchange's absolute start, the same footing a step's `started_at` is
+    # on, so both sides of the timeline are placed against one anchor at render time (BE-0348). Both
+    # surfaces that show an exchange's time must apply it: the interleaved Result row and the
+    # Network tab's own `at` label — the latter is a separate code path from the timeline's.
+    anchor = 1_700_000_000.0
+    sid = "00-s1"
+    (tmp_path / sid).mkdir(parents=True)
+    (tmp_path / sid / "network.json").write_text(
+        f'[{{"method":"GET","url":"https://api.example.com/items","path":"/items","status":200,'
+        f'"durationMs":50,"startedAt":{anchor + 0.5}}}]',
+        encoding="utf-8",
+    )
+    definition = {"name": "s1", "steps": [{"tap": {"id": "a"}}, {"tap": {"id": "b"}}]}
+    r = RunResult(
+        scenario="s1",
+        ok=True,
+        steps=[
+            StepOutcome(index=0, action="tap", ok=True, started_at=anchor + 0.2),
+            StepOutcome(index=1, action="tap", ok=True, started_at=anchor + 1.0),
+        ],
+        expect_results=[],
+        artifacts=[Artifact(f"{sid}/network.json", "network", "collector")],
+        video_anchor_s=anchor,
+    )
+    out = html_report("run1", [r], tmp_path, definitions=[definition])
+    assert 'class="nxat muted"' in out and ">0.5s</span>" in out  # the Network tab's own label
+    # Steps and exchanges share the one anchor, so they still interleave in real chronological
+    # order — the property that would break if only one of the two subtracted it.
+    assert out.index(">#a<") < out.index('act-net">GET') < out.index(">#b<")
+    assert str(int(anchor)) not in out
+
+
 def test_html_exchanges_filtered_by_domain(tmp_path: Path) -> None:
     sid = "00-s1"
     (tmp_path / sid).mkdir(parents=True)
