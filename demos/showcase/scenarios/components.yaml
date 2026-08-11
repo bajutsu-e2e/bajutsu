@@ -15,7 +15,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
-      capture: [video, deviceLog]
+      capture: [deviceLog]
     - wait: { for: { id: log.openFilter }, timeout: 10 }
     - tap: { id: log.openFilter }
     - wait: { for: { id: log.sheet.title }, timeout: 5 }
@@ -29,7 +29,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
-      capture: [video, deviceLog]
+      capture: [deviceLog]
     - wait: { for: { id: log.openGallery }, timeout: 10 }
     - tap: { id: log.openGallery }
     - wait: { for: { id: log.cover.title }, timeout: 5 }
@@ -43,7 +43,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Search", traits: [button] }
-      capture: [video, deviceLog]
+      capture: [deviceLog]
     - wait: { for: { id: search.field }, timeout: 5 }
     - assert:
         - value: { sel: { id: search.count }, equals: "5" }

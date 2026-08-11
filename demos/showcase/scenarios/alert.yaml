@@ -17,7 +17,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
-      capture: [video, deviceLog]
+      capture: [deviceLog]
     - wait: { for: { id: log.openDelete }, timeout: 10 }
     # Open Alert sits below Open Delete, past the fold (same as log.openDelete itself in the
     # action-sheet scenario in modals.yaml) — aim the scroll at the lower of the two new elements.
@@ -40,7 +40,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
-      capture: [video, deviceLog]
+      capture: [deviceLog]
     - wait: { for: { id: log.openDelete }, timeout: 10 }
     - scroll: { to: { id: log.alert.value }, direction: down }
     - wait: { for: { id: log.openAlert }, timeout: 5 }

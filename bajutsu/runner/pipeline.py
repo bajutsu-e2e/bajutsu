@@ -579,6 +579,9 @@ class _ScenarioRunner:
                 # Simulator's system language to, so a `handleSystemAlert` naming a prompt and a
                 # choice resolves to the label SpringBoard is actually rendering (BE-0320).
                 locale=s.preconditions.resolved_locale(self.eff.locale),
+                # The config's baseline capture guarantee (`defaults.capture`), applied on top of
+                # every step alongside capturePolicy rules and inline `capture:` tokens.
+                capture=self.eff.capture,
             )
             result.sid = sid  # the evidence-dir slug, so the matrix links to the real dir (BE-0076)
             result.device = lz.udid  # attribute the scenario to the device that ran it

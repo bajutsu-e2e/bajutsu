@@ -10,7 +10,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Permissions", traits: [button] }
-      capture: [video, deviceLog]
+      capture: [deviceLog]
     - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
     - scroll: { to: { id: [sys.paste.value, sys_paste_value] }, direction: down }
     - tap: { id: [sys.copy, sys_copy] }

@@ -475,6 +475,92 @@ def test_screen_changed_shares_query_with_evidence(tmp_path: Path) -> None:
     assert (tmp_path / "run1" / "x" / "step0" / "elements.json").exists()
 
 
+# --- config-level `capture` (Effective.capture, BE's `defaults.capture`) -------------------
+
+
+def test_config_capture_is_a_baseline_guarantee_on_every_step() -> None:
+    # No capturePolicy / inline capture at all: the config-level `capture` still fires post-step,
+    # unconditionally, on top of the two automatic baselines.
+    driver = FakeDriver([_el("a", "A")])
+    sink = RecordingSink()
+    run_scenario(
+        driver,
+        _scn({"name": "x", "steps": [{"tap": {"id": "a"}}]}),
+        sink=sink,
+        capture=["actionLog"],
+    )
+    assert sink.calls == [
+        ("x/step0", BASELINE_BEFORE),
+        ("x/step0", ["actionLog"]),
+        ("x/step0", BASELINE_AFTER),
+    ]
+
+
+def test_config_capture_dedupes_against_inline_and_policy() -> None:
+    driver = FakeDriver([_el("home.submit", "Submit")])
+    sink = RecordingSink()
+    run_scenario(
+        driver,
+        _scn(
+            {
+                "name": "x",
+                "capturePolicy": [
+                    {"on": {"action": "tap", "idMatches": "*.submit"}, "capture": ["actionLog"]}
+                ],
+                "steps": [{"tap": {"id": "home.submit"}, "capture": ["actionLog"]}],
+            }
+        ),
+        sink=sink,
+        capture=["actionLog", "elements"],
+    )
+    # actionLog appears once (inline, policy, and config all name it); elements joins from config.
+    assert sink.calls == [
+        ("x/step0", BASELINE_BEFORE),
+        ("x/step0", ["actionLog", "elements"]),
+        ("x/step0", BASELINE_AFTER),
+    ]
+
+
+def test_config_capture_drops_screenshot_before_as_redundant() -> None:
+    driver = FakeDriver([_el("a", "A")])
+    sink = RecordingSink()
+    run_scenario(
+        driver,
+        _scn({"name": "x", "steps": [{"tap": {"id": "a"}}]}),
+        sink=sink,
+        capture=["screenshot.before"],
+    )
+    # Redundant with the pre-step baseline, so it contributes nothing extra post-step.
+    assert sink.calls == [("x/step0", BASELINE_BEFORE), ("x/step0", BASELINE_AFTER)]
+
+
+def test_config_capture_requests_an_interval_kind() -> None:
+    driver = FakeDriver([_el("a", "A")])
+    sink = RecordingSink()
+    run_scenario(
+        driver,
+        _scn({"name": "x", "steps": [{"tap": {"id": "a"}}]}),
+        sink=sink,
+        capture=["video"],
+    )
+    assert sink.calls == [("x/step0", BASELINE_BEFORE), ("x/step0", BASELINE_AFTER)]
+    assert sink.scenario_intervals == [("x", ["video"])]
+
+
+def test_requested_intervals_from_config_capture() -> None:
+    scn = _scn({"name": "x", "steps": [{"tap": {"id": "a"}}]})
+    assert requested_intervals(scn, ["deviceLog"]) == ["deviceLog"]
+
+
+def test_no_config_capture_leaves_behavior_unchanged() -> None:
+    # A caller that passes no `capture` (the default) sees the unchanged capturePolicy/inline-only
+    # behavior — this is what every other test above already exercises implicitly.
+    driver = FakeDriver([_el("a", "A")])
+    sink = RecordingSink()
+    run_scenario(driver, _scn({"name": "x", "steps": [{"tap": {"id": "a"}}]}), sink=sink)
+    assert sink.calls == [("x/step0", BASELINE_BEFORE), ("x/step0", BASELINE_AFTER)]
+
+
 def test_file_sink_writes_baseline_elements(tmp_path: Path) -> None:
     driver = FakeDriver([_el("a", "A")])
     run_scenario(

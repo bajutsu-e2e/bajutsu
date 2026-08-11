@@ -14,7 +14,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Search", traits: [button] }
-      capture: [video, deviceLog]
+      capture: [deviceLog]
     - wait: { for: { id: [search.field, search_field] }, timeout: 10 }
     - type: { into: { id: [search.field, search_field] }, text: "${row.q}" }
     - wait: { for: { id: ["search.row.${row.n}", "search_row_${row.n}"] }, timeout: 5 }

@@ -74,7 +74,8 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
 `capturePolicy` の各ルールがこのステップで発火するかを判定します（[evidence](evidence.md#a-capturepolicyルール方式)）。
 
 - `_rule_fires`: `on.action`（+ 任意の `idMatches`）/ `on.event == screenChanged` / `on.result == error` のいずれかに一致するかを確認します。アクション名は DSL（ドメイン固有言語）名へ変換します（`long_press`→`longPress`、`assert_`→`assert`）。
-- `_collect_captures`: インライン `step.capture` + 発火したルールの capture を集めて重複排除します。
+- `_collect_captures`: インライン `step.capture`、発火したルールの capture、config の
+  `defaults.capture`（他の2つと異なり常に適用される最低保証）を集めて重複排除します。
 - 瞬時種別（screenshot/elements）は sink の `capture()` で取得し、区間種別（video/deviceLog）は事前に `start_intervals()` で開始済みのものを停止して回収します。
 
 `primary_id` は「ステップの主対象セレクタの `id`」です（tap なら tap 先、type なら `into`、swipe なら `on`）。`idMatches` トリガーはこの `id` に対して `fnmatch` します。

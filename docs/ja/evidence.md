@@ -14,11 +14,11 @@
 
 | 方法 | 用途 | 例 |
 |---|---|---|
-| **A. ルール（`capturePolicy`）** ★中心 | 「特定動作の **たびに**」自動取得 | `settings.*` を tap するたびにスクリーンショット + 要素 |
+| **A. ルール（`capturePolicy`）** ★中心 | 「特定動作の **たびに**」自動取得 | `settings.*` を tap するたびにネットワーク通信 |
 | **B. ステップ単体（`capture:`）** | この 1 ステップだけ | 特定の wait 後に video + deviceLog |
 | **C. 既定ポリシー** | 全体の最低保証 | config の `capture: [screenshot.after, elements, actionLog]` |
 
-> C（config 既定）の `capture` は `Effective.capture` に解決されます（[configuration](configuration.md)）。ただし現状、run ループはシナリオの `capturePolicy` とステップの `capture` だけを発火源にしています。config の既定 capture を全ステップに自動適用する配線は入っていません。
+> C（config 既定）の `capture` は `Effective.capture` に解決されます（[configuration](configuration.md)）。この値は、シナリオの `capturePolicy` やステップごとの `capture` と並んで、すべてのステップに適用されます。他の2つとは異なり、条件によって発火するのではなく常に適用されるため、ルールではなく最低保証として働きます。
 
 ## 証跡種別と取得タイミング
 
@@ -73,9 +73,10 @@
 
 ```yaml
 capturePolicy:
-  # settings.* を tap するたびに、押下後のスクショと要素を取得
+  # settings.* を tap するたびに、ネットワーク通信も追加で取得する。スクショと要素は config の
+  # 既定ポリシー（上の C）が全ステップに既に保証している
   - on: { action: tap, idMatches: "settings.*" }
-    capture: [screenshot.after, elements]
+    capture: [network]
 
   # 画面遷移のたびに
   - on: { event: screenChanged }

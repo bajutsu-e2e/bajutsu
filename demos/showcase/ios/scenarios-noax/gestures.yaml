@@ -8,7 +8,6 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
-      capture: [video]
     - wait: { for: { label: "Submit", traits: [button] }, timeout: 10 }
     - swipe: { on: { label: "Submit", traits: [button] }, direction: up }
     - swipe: { on: { label: "Dialog: none" }, direction: up }

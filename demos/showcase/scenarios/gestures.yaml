@@ -17,7 +17,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
-      capture: [video, deviceLog]
+      capture: [deviceLog]
     - wait: { for: { id: log.submit }, timeout: 10 }
     - swipe: { on: { id: log.submit }, direction: up }
     - swipe: { on: { id: log.dialog.value }, direction: up }
