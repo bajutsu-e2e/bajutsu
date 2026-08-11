@@ -84,15 +84,17 @@ call `claude-review.yml` already uses for its own dedup, and filters to the ones
 `(non-blocking, prose)` that carry a GitHub `suggestion` block. Finding none, it is a no-op. Finding
 at least one, it:
 
-1. Checks out the source pull request's current head, under the same automation App token
+1. Reads the source pull request's current head, under the same automation App token
    `roadmap-id.yml` and `refresh.yml` already use to push and open a pull request that triggers its
-   own `check` CI (a plain `GITHUB_TOKEN` push does not). This job carries the same trust boundary
-   `claude-review.yml`'s own review step already draws: it runs only for a `pull_request` event from
-   a same-repo `claude/<topic>`/`<user>/<topic>` branch, never a fork, since checking out and pushing
-   to an arbitrary branch under a privileged App token is a materially different risk from
-   `roadmap-id.yml`'s and `refresh.yml`'s own use of that token, which only ever touches the already-
-   trusted `main`. A fork pull request's wording findings stay unautomated, the same on-demand-only
-   gap the existing review already accepts for forks.
+   own `check` CI (a plain `GITHUB_TOKEN` push does not). The job reads the head as data at a
+   resolved commit and never checks it out — the Log below records why it holds no working tree.
+   This job
+   carries the same trust boundary `claude-review.yml`'s own review step already draws: it runs only
+   for a `pull_request` event from a same-repo `claude/<topic>`/`<user>/<topic>` branch, never a
+   fork, since pushing to an arbitrary branch under a privileged App token is a materially different
+   risk from `roadmap-id.yml`'s and `refresh.yml`'s own use of that token, which only ever touches
+   the already-trusted `main`. A fork pull request's wording findings stay unautomated, the same
+   on-demand-only gap the existing review already accepts for forks.
 2. Rebuilds the companion branch **fresh from the source pull request's current head** every run,
    rather than incrementally amending a prior version of it, and reapplies every currently open
    `(non-blocking, prose)` finding's `suggestion` block as a mechanical patch at its file and line —
@@ -198,10 +200,23 @@ entry.
   so it is unit-tested (`tests/test_prose_companion_pr.py`): which findings qualify, what each one
   expects its lines to read, and whether that still matches the head. The job is a second job in
   [`claude-review.yml`](../../.github/workflows/claude-review.yml) with `needs: review`, and it runs
-  the script from a **default-branch** checkout while editing a separate checkout of the pull
-  request's head — so a same-repo branch cannot rewrite what executes under the automation App token.
-  The script is stdlib-only and runs on the runner's `python3`, which keeps a pull-request-authored
-  `pyproject.toml` out of the privileged job entirely.
+  the script from a **default-branch** checkout — so a same-repo branch cannot rewrite what executes
+  under the automation App token. The script is stdlib-only and runs on the runner's `python3`, which
+  keeps a pull-request-authored `pyproject.toml` out of the privileged job entirely.
+- Dropped the second checkout, of the pull request's head, that the job originally edited in place.
+  CodeQL's `actions/untrusted-checkout-toctou` query flagged it. The job is reachable from
+  `issue_comment`, so it runs with repository secrets, and checking out contributor-authored code
+  beside the automation App token is the pattern that query exists to catch. The gate admitting the
+  run judges the *comment*; it pins nothing about the code the run then materializes. The head now
+  arrives as data. The script reads each file a finding names from GitHub's contents endpoint at the
+  resolved head commit, then builds the companion commit through GitHub's Git Data endpoints — blob,
+  tree, commit, and a forced update of the branch reference. Two consequences are worth recording.
+  Pinning every read to the resolved commit rather than the branch stops a push landing mid-run from
+  shifting the text a finding matches against, which the working-tree version left open. Against
+  that, those endpoints offer no compare-and-swap to stand in for `git push --force-with-lease`, so
+  the clobber guard now reads the companion branch's tip one round trip before overwriting it, where
+  the lease left no window at all. The guard itself is unchanged: a human-committed tip still stops
+  the run.
 
 ## References
 

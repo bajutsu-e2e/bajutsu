@@ -285,12 +285,14 @@ jobs:
     #
     # The two trust guards this job has always applied — a same-repo head, and not a `prose-fix/`
     # companion branch — move into the "Resolve the pull request's head" step below, because an
-    # `issue_comment` payload carries neither. They are unchanged in substance: this job checks out a
-    # PR-authored branch AND holds a privileged App token, a materially different risk from
+    # `issue_comment` payload carries neither. They are unchanged in substance: this job writes to a
+    # PR-authored branch under a privileged App token, a materially different risk from
     # roadmap-id.yml's and refresh.yml's use of that token against the already-trusted `main`, so it
-    # stays confined to branches only an OWNER/MEMBER/COLLABORATOR can push. A fork PR's wording
-    # findings stay unautomated, the same gap the review already accepts. And a companion PR is itself
-    # reviewed (it is opened by an allow-listed bot), so without the `prose-fix/` exclusion a prose
+    # stays confined to branches only an OWNER/MEMBER/COLLABORATOR can push. (It no longer *checks
+    # out* that branch — see the apply step below — but the write is reason enough to keep the gate.)
+    # A fork PR's wording findings stay unautomated, the same gap the review already accepts. And a
+    # companion PR is itself reviewed (it is opened by an allow-listed bot), so without the
+    # `prose-fix/` exclusion a prose
     # finding on one would open a companion of the companion, and so on; excluding the branch prefix
     # stops that at one level, and a wording finding on a companion is fixed there by hand, which is
     # cheap — it carries no CI matrix worth avoiding.
@@ -378,10 +380,10 @@ jobs:
           app-id: ${{ secrets.AUTOMATION_BOT_APP_ID }}
           private-key: ${{ secrets.AUTOMATION_BOT_PRIVATE_KEY }}
 
-      # The script that runs under the App token comes from the DEFAULT branch, never the PR head —
-      # so a same-repo branch cannot rewrite what this privileged job executes. It is stdlib-only and
-      # runs on the runner's own `python3`, which is also why no `uv sync` (and therefore no
-      # PR-authored `pyproject.toml` build hook) is involved.
+      # The only checkout this job makes, and it is the DEFAULT branch — the script that runs under
+      # the App token, never the PR head, so a same-repo branch cannot rewrite what this privileged
+      # job executes. It is stdlib-only and runs on the runner's own `python3`, which is also why no
+      # `uv sync` (and therefore no PR-authored `pyproject.toml` build hook) is involved.
       - name: Check out the default branch (trusted) for the companion script
         if: steps.pr.outputs.eligible == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -389,20 +391,14 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
-      # The PR head, as data the script edits — checked out under the App token because the companion
-      # branch is pushed from here. Rebuilt from the CURRENT head every run, so a rebase on the
-      # source branch has nothing to re-sync: nothing carries over between runs.
-      - name: Check out the pull request's head to build the companion branch on
-        if: steps.pr.outputs.eligible == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          ref: ${{ steps.pr.outputs.head_sha }}
-          path: companion
-          # Full history, matching refresh.yml — the clobber guard inspects the companion branch and
-          # the run pushes to it, neither of which should depend on a shallow clone's edges.
-          fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token }}
-
+      # The PR head is never checked out. It reaches the script only as data — the files a finding
+      # names, read back at HEAD_SHA through the contents API — and the companion commit is assembled
+      # through the Git Data API (blob, tree, commit, ref). So this privileged job holds no
+      # pull-request-authored working tree at all, which is what CodeQL's
+      # `actions/untrusted-checkout-toctou` flagged when the head *was* checked out here beside the
+      # App token. Reads pin the resolved SHA, not the branch, so a push landing mid-run cannot shift
+      # the text a finding is matched against; the commit's parent is that same SHA, which is how the
+      # companion branch stays rebuilt from the CURRENT head with nothing carried over between runs.
       - name: Apply the wording findings and open or update the companion PR
         if: steps.pr.outputs.eligible == 'true'
         env:
@@ -410,10 +406,10 @@ jobs:
           APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
           PR: ${{ steps.pr.outputs.number }}
           HEAD_REF: ${{ steps.pr.outputs.head_ref }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
         run: |
           set -euo pipefail
-          git -C companion config user.name "${APP_SLUG}[bot]"
-          git -C companion config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
           python3 scripts/prose_companion_pr.py \
-            --pr "$PR" --source-branch "$HEAD_REF" --repo-dir companion \
+            --pr "$PR" --source-branch "$HEAD_REF" --head-sha "$HEAD_SHA" \
+            --bot-name "${APP_SLUG}[bot]" \
             --bot-email "${APP_SLUG}[bot]@users.noreply.github.com"

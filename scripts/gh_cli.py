@@ -11,9 +11,16 @@ from __future__ import annotations
 import subprocess
 
 
-def run(args: list[str], *, capture: bool = False) -> str:
-    """Run ``gh <args>``, raising on a non-zero exit; return stdout when ``capture`` is set."""
-    result = subprocess.run(["gh", *args], text=True, capture_output=capture, check=True)
+def run(args: list[str], *, capture: bool = False, stdin: str | None = None) -> str:
+    """Run ``gh <args>``, raising on a non-zero exit; return stdout when ``capture`` is set.
+
+    Args:
+        stdin: Text piped to the process — how a caller hands ``gh api --input -`` a JSON body it
+            cannot express as flat ``-f`` fields (a nested array, say).
+    """
+    result = subprocess.run(
+        ["gh", *args], text=True, capture_output=capture, check=True, input=stdin
+    )
     return result.stdout if capture else ""
 
 

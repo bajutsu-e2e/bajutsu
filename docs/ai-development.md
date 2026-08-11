@@ -629,10 +629,16 @@ The properties worth knowing:
 - **The branch is rebuilt fresh every run**, from your current head, and every currently posted prose
   finding is reapplied — not just the new ones. So a rebase on your branch needs no action on the
   companion: nothing carries over between runs.
-- **It never clobbers you.** The force-push is guarded exactly as the refreshers below guard their
-  rolling branches: it force-updates only over the bot's own prior commit, so your own push onto the
-  companion branch makes the next run skip rather than overwrite it.
-- **Same-repo branches only.** The job checks out a pull-request branch while holding the automation
+- **It never clobbers you.** The forced update is guarded exactly as the refreshers below guard
+  their rolling branches: it moves the companion branch only when the bot's own prior commit sits at
+  the tip. Your own push onto that branch therefore makes the next run skip rather than overwrite it.
+- **It checks nothing out.** Your branch reaches the job as data alone: the files a finding names,
+  read back at the head commit the run resolved. The job then builds the companion commit through
+  GitHub's Git Data endpoints rather than in a working tree. CodeQL's
+  `actions/untrusted-checkout-toctou` query flags a job that checks out a contributor's branch while
+  holding a privileged token; this job checks out one branch, the default one, carrying the script
+  it runs.
+- **Same-repo branches only.** The job writes to a pull-request branch while holding the automation
   App token, so it is confined to branches only an owner, member, or collaborator can push. A fork
   pull request's wording findings stay unautomated, the same gap the review itself accepts for forks.
 - **It closes itself out.** Once your pull request merges, its branch is deleted, and GitHub
