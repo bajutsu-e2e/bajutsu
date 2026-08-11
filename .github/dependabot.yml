@@ -24,3 +24,33 @@ updates:
     groups:
       python:
         patterns: ["*"]
+
+  # The npm lockfiles are tooling-only (the textlint runtime behind the document-writing skills,
+  # and the web demo's codegen helper) — without these entries their transitive advisories
+  # accumulate unwatched, since neither directory is reachable from pyproject.toml.
+  - package-ecosystem: npm
+    directory: /.agent-workflows/document-writing/textlint
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      textlint:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /demos/web/codegen
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      codegen:
+        patterns: ["*"]
+    # `@playwright/test` is pinned to the Python `web` extra's Playwright version (uv.lock) so the
+    # codegen job reuses the Chromium build cached under the `uv.lock` key. Dependabot sees only the
+    # npm side, and moving it alone breaks that pair silently — `codegen-e2e` installs its own
+    # browser, so nothing turns red while every run re-downloads Chromium. Bump it by hand together
+    # with uv.lock. This withholds the automatic PR, not the alert, and leaves transitives in scope.
+    ignore:
+      - dependency-name: "@playwright/test"
