@@ -47,3 +47,10 @@ updates:
     groups:
       codegen:
         patterns: ["*"]
+    # `@playwright/test` is pinned to the Python `web` extra's Playwright version (uv.lock) so the
+    # codegen job reuses the Chromium build cached under the `uv.lock` key. Dependabot sees only the
+    # npm side, and moving it alone breaks that pair silently — `codegen-e2e` installs its own
+    # browser, so nothing turns red while every run re-downloads Chromium. Bump it by hand together
+    # with uv.lock. This withholds the automatic PR, not the alert, and leaves transitives in scope.
+    ignore:
+      - dependency-name: "@playwright/test"
