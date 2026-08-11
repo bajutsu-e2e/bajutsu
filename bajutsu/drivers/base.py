@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import fnmatch
 import functools
+import math
 import re
 import time
 from collections.abc import Iterator

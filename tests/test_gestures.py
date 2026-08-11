@@ -23,6 +23,7 @@ def _el(identifier: str) -> base.Element:
         "traits": [],
         "value": None,
         "frame": (0.0, 0.0, 100.0, 40.0),
+        "nativeZ": None,
     }
 
 
@@ -79,6 +80,7 @@ def _button(label: str) -> base.Element:
         "traits": ["button"],
         "value": None,
         "frame": (0.0, 0.0, 100.0, 40.0),
+        "nativeZ": None,
     }
 
 
@@ -122,9 +124,9 @@ def _swipe_points(spec: str) -> tuple[base.Point, base.Point]:
     """Run a swipe step against a 400x800 fake screen (a `list` at y 300..500) and return its
     resolved (from, to) points."""
     win: base.Element = {"identifier": None, "label": None, "traits": ["application"], "value": None,
-                         "frame": (0.0, 0.0, 400.0, 800.0)}  # fmt: skip
+                         "frame": (0.0, 0.0, 400.0, 800.0), "nativeZ": None}  # fmt: skip
     lst: base.Element = {"identifier": None, "label": "list", "traits": ["table"], "value": None,
-                         "frame": (0.0, 300.0, 400.0, 200.0)}  # fmt: skip
+                         "frame": (0.0, 300.0, 400.0, 200.0), "nativeZ": None}  # fmt: skip
     driver = FakeDriver(screen=[win, lst])
     result = run_scenario(driver, load_scenarios(f"- name: s\n  steps:\n    - {spec}\n")[0])
     assert result.ok, result.failure
@@ -148,9 +150,9 @@ def test_swipe_amount_scales_scroll_distance() -> None:
 def _swipe_travel_on(screen_h: float, spec: str) -> float:
     """The vertical travel of a directional swipe on a screen of the given height (width 400)."""
     win: base.Element = {"identifier": None, "label": None, "traits": ["application"], "value": None,
-                         "frame": (0.0, 0.0, 400.0, screen_h)}  # fmt: skip
+                         "frame": (0.0, 0.0, 400.0, screen_h), "nativeZ": None}  # fmt: skip
     lst: base.Element = {"identifier": None, "label": "list", "traits": ["table"], "value": None,
-                         "frame": (0.0, screen_h / 3, 400.0, screen_h / 4)}  # fmt: skip
+                         "frame": (0.0, screen_h / 3, 400.0, screen_h / 4), "nativeZ": None}  # fmt: skip
     driver = FakeDriver(screen=[win, lst])
     result = run_scenario(driver, load_scenarios(f"- name: s\n  steps:\n    - {spec}\n")[0])
     assert result.ok, result.failure
@@ -212,9 +214,9 @@ class _LaggingReadDriver(FakeDriver):
 
 def _anchor_frames(list_top: float) -> list[base.Element]:
     win: base.Element = {"identifier": None, "label": None, "traits": ["application"], "value": None,
-                         "frame": (0.0, 0.0, 400.0, 800.0)}  # fmt: skip
+                         "frame": (0.0, 0.0, 400.0, 800.0), "nativeZ": None}  # fmt: skip
     lst: base.Element = {"identifier": "list", "label": None, "traits": ["table"], "value": None,
-                         "frame": (0.0, list_top, 400.0, 200.0)}  # fmt: skip
+                         "frame": (0.0, list_top, 400.0, 200.0), "nativeZ": None}  # fmt: skip
     return [win, lst]
 
 
@@ -260,9 +262,9 @@ def test_drag_is_a_real_pointer_drag_not_a_scroll() -> None:
     # `drag` shares swipe's directional endpoint math but drives `driver.swipe` (a real drag), so the
     # fake driver records "swipe", not "scroll" — the seam that lets web move a grabbed handle.
     win: base.Element = {"identifier": None, "label": None, "traits": ["application"], "value": None,
-                         "frame": (0.0, 0.0, 400.0, 800.0)}  # fmt: skip
+                         "frame": (0.0, 0.0, 400.0, 800.0), "nativeZ": None}  # fmt: skip
     handle: base.Element = {"identifier": "divider", "label": None, "traits": [], "value": None,
-                            "frame": (100.0, 300.0, 10.0, 200.0)}  # fmt: skip
+                            "frame": (100.0, 300.0, 10.0, 200.0), "nativeZ": None}  # fmt: skip
     driver = FakeDriver(screen=[win, handle])
     result = run_scenario(
         driver,
@@ -305,7 +307,7 @@ class _SingleTouchFake(FakeDriver):
 
 def test_pinch_fails_without_multitouch_capability() -> None:
     win: base.Element = {"identifier": "a", "label": None, "traits": [], "value": None,
-                         "frame": (0.0, 0.0, 100.0, 40.0)}  # fmt: skip
+                         "frame": (0.0, 0.0, 100.0, 40.0), "nativeZ": None}  # fmt: skip
     driver = _SingleTouchFake(screen=[win])
     scenario = load_scenarios("- name: g\n  steps:\n    - pinch: { sel: { id: a }, scale: 2.0 }\n")[
         0
