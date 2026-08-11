@@ -284,6 +284,33 @@ class _ScenarioRunner:
                 sid=sid,
                 failure=f"unsupported on backend '{actuator}': {'; '.join(reasons)}",
             )
+        # Once the run-level crash-recovery budget is spent, every later scenario must fail this
+        # fast — checked here, before the first lease of this scenario is even attempted, not only
+        # inside the crash-retry loop's own `except` below. Without this, a device that has already
+        # demonstrated it cannot recover still gets one full cold-spawn attempt per remaining
+        # scenario (each paying up to a full readiness ceiling plus its own device-recovery ladder)
+        # before the job's own CI `timeout-minutes` cancels it — the same undiagnosable-cancellation
+        # outcome this budget exists to turn into a loud, fast failure, just moved one scenario
+        # later. `exhausted()` is a cheap threadsafe read, so this costs nothing on the common,
+        # unbounded-budget path.
+        if self.run_crash_budget.exhausted():
+            if self.progress is not None:
+                self.progress(
+                    f"✘ scenario {i + 1}/{self.total}: {s.name} "
+                    "(run-level crash-recovery budget already exhausted)"
+                )
+            return RunResult(
+                scenario=s.name,
+                ok=False,
+                steps=[],
+                backend=actuator or "",
+                sid=sid,
+                failure=(
+                    "backend crash recovery skipped: the run-level crash-recovery budget of "
+                    f"{self.run_crash_budget.budget:g}s is already exhausted from earlier "
+                    "scenarios in this run, so this scenario was never leased"
+                ),
+            )
         # Backend-crash recovery: a mid-scenario runner/host crash (base.BackendCrashError) is
         # backend infrastructure, not a verdict — discard the dead lease, lease a fresh device (a
         # cold respawn), and re-run the whole scenario from the start, bounded by `crash_retries`.
