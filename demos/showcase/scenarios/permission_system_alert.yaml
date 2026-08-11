@@ -21,7 +21,6 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Permissions", traits: [button] }
-      capture: [video]
     - wait: { for: { id: perm.requestNotif }, timeout: 10 }
     - assert:
         - value: { sel: { id: perm.notif.value }, equals: "notDetermined" }

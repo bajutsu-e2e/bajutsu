@@ -7,7 +7,6 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { label: "Horse 3" }, timeout: 10 }
-      capture: [video]
     - tap: { label: "Horse 3" }
     - wait: { for: { label: "ID: 3" }, timeout: 5 }
     - assert:

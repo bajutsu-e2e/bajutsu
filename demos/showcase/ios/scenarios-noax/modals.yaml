@@ -9,7 +9,6 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
-      capture: [video]
     - wait: { for: { label: "Open Filter", traits: [button] }, timeout: 10 }
     - tap: { label: "Open Filter", traits: [button] }
     - wait: { for: { label: "Filter" }, timeout: 5 }
@@ -26,7 +25,6 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
-      capture: [video]
     - wait: { for: { label: "Open Gallery", traits: [button] }, timeout: 10 }
     - tap: { label: "Open Gallery", traits: [button] }
     - wait: { for: { label: "Gallery" }, timeout: 5 }
@@ -40,7 +38,6 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
-      capture: [video]
     - wait: { for: { label: "Submit", traits: [button] }, timeout: 10 }
     # The Modals section's lower controls start behind the floating tab bar, so scroll them clear
     # before tapping — two swipes anchored on controls that stay visible.
@@ -64,7 +61,6 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
-      capture: [video]
     - wait: { for: { label: "Submit", traits: [button] }, timeout: 10 }
     # Open Alert sits one row below Open Delete — the third swipe clears it (see the action-sheet
     # scenario above for the first two).
@@ -88,7 +84,6 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
-      capture: [video]
     - wait: { for: { label: "Submit", traits: [button] }, timeout: 10 }
     - swipe: { on: { label: "Submit", traits: [button] }, direction: up }
     - swipe: { on: { label: "Open Filter", traits: [button] }, direction: up }
@@ -109,7 +104,6 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
-      capture: [video]
     - wait: { for: { labelMatches: "Intense", traits: [button] }, timeout: 10 }
     - assert:
         - exists: { label: "Easy" }

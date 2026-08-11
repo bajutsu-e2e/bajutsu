@@ -15,7 +15,7 @@
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_API_URL: "http://10.0.2.2:8770" }
   steps:
     - wait: { for: { id: [stable.refresh, stable_refresh] }, timeout: 10 }
-      capture: [video, network, deviceLog]
+      capture: [network, deviceLog]
     - tap: { id: [stable.refresh, stable_refresh] }
     # The status mirror settles to `done` on any response; wait on it, then confirm the exchange the
     # interceptor reported (fire-and-forget, so `until: request` polls the collector until it arrives).

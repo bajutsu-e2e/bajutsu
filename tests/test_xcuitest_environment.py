@@ -1212,6 +1212,60 @@ def test_run_ended_probe_is_quiet_when_the_capture_does_not_exist(tmp_path: Path
     assert _run_ended_probe(None)() is None
 
 
+def test_run_ended_probe_keeps_reporting_the_marker_it_already_found(tmp_path: Path) -> None:
+    # BE-0354: the probe advances a private offset, so an unlatched one would answer "ended" from the
+    # window that first held the marker and "still running" from every window after it. The mid-run
+    # liveness predicate re-asks once per recovery episode, which is exactly where that would flip a
+    # dead runner back to alive and hand it the full health wait again.
+    log = tmp_path / "runner.log"
+    log.write_bytes(b"Test Suite 'All tests' failed at 2026-08-09 23:38:12.001.\n")
+    probe = _run_ended_probe(log)
+    first = probe()
+    assert first is not None
+    with log.open("ab") as fh:
+        fh.write(b"more output the runner keeps producing\n")
+    assert probe() == first
+
+
+def test_runner_alive_reports_gone_once_the_test_run_ended(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The blind spot BE-0305 measured: XCTest restarts the in-Simulator host after a crash and re-runs
+    # zero tests, so the suite reports its result while `xcodebuild` lives on. Reading the process
+    # handle alone keeps answering "alive", and every recovery episode then waits out its full window
+    # on a port that will never bind again.
+    _, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    assert env._runner_alive()  # the process runs and the capture shows a live run
+    assert env._runner_log is not None
+    with env._runner_log.open("ab") as fh:
+        fh.write(b"Test Suite 'All tests' failed at 2026-08-09 23:38:12.001.\n")
+    assert not env._runner_alive()
+    # Latched, so the answer holds for the *next* recovery episode too rather than flipping back.
+    assert not env._runner_alive()
+
+
+def test_a_fresh_spawn_starts_the_run_ended_probe_over(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # One probe per spawn, keyed to that spawn's own capture: a respawn after a run that ended must
+    # not inherit the previous runner's marker and declare the new one dead before it has served a call.
+    wedged = {"v": True}  # the warm resident fails its health probe, so the next lease spawns cold
+    _, _, run = _fake_toolchain(monkeypatch, wedged=wedged)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
+    env.start(eff, Preconditions())
+    first_log = env._runner_log
+    assert first_log is not None
+    with first_log.open("ab") as fh:
+        fh.write(b"Test Suite 'All tests' failed at 2026-08-09 23:38:12.001.\n")
+    assert not env._runner_alive()
+    env.start(eff, Preconditions())
+    assert env._runner_log != first_log  # a genuinely new spawn, with its own capture
+    assert env._runner_alive()
+
+
 def test_await_cold_runner_fails_fast_when_the_test_run_ended_though_the_process_lives() -> None:
     # The gap the process-liveness check alone cannot see: `xcodebuild` finished its test run (the
     # app-launch timeout on the ios-e2e lane) but lingers, so `poll()` stays None and the wait would
@@ -1935,6 +1989,158 @@ def test_an_ipad_target_is_never_replaced_with_an_iphone(tmp_path: Path) -> None
             None,
         )
     assert not any(c[2:3] == ["create"] for c in calls)  # no iPhone replacement was minted
+
+
+# --- the crash retry's replacement rung (BE-0354) --- #
+#
+# Above BE-0353's forced erase: an erase resets the device's data, and the wedge observed in CI lives
+# in the device's capture services, so the erased device came back wedged. The run pipeline asks for a
+# replacement, and the next bring-up serves it with the same creation path the vanished-device rung
+# uses — leaving the degraded device shut down and, because the pool follows `replaced_device`,
+# quarantined.
+
+
+def _replacement_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> tuple[list[list[str]], XcuitestEnvironment, Effective]:
+    """A Simulator environment whose simctl can mint a replacement, plus the config to `start` it."""
+    app = tmp_path / "App.app"
+    app.mkdir()
+    _fake_toolchain(monkeypatch)  # Popen, the driver factory, and the discard's group signals
+    calls, run = _ladder_run(["UDID"])
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)), app_path=str(app))
+    return calls, env, eff
+
+
+def test_a_requested_replacement_swaps_the_device_before_the_next_bring_up(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The rung itself: the escalated lease runs on a device that has never run anything, and
+    # `replaced_device()` is how the pool learns to re-key everything it holds by udid.
+    calls, env, eff = _replacement_env(monkeypatch, tmp_path)
+    env.start(eff, Preconditions())
+    env.request_device_replacement()
+    del calls[:]
+    env.start(eff, Preconditions())
+    assert env._udid == "UDID-NEW" and env.replaced_device() == "UDID-NEW"
+    seq = _verb_seq(calls)
+    # The degraded device is shut down before the replacement is minted — the quarantine — and the
+    # new device's first boot is paid here rather than inside the next readiness ceiling.
+    assert seq.index("shutdown") < seq.index("create") < seq.index("bootstatus")
+    assert calls[seq.index("shutdown")][3] == "UDID"
+
+
+def test_a_replacement_bring_up_never_resumes_the_warm_runner(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A resident on the degraded device cannot serve a scenario on the replacement, and the swap is a
+    # cold start by construction — so the escalation must bypass the warm-reuse probe entirely, even
+    # though the runner it holds would still answer /health.
+    popen_argvs, _, run = _fake_toolchain(monkeypatch)
+    app = tmp_path / "App.app"
+    app.mkdir()
+    _, ladder_run = _ladder_run(["UDID"])
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)), app_path=str(app))
+    env.start(eff, Preconditions())
+    env.request_device_replacement()
+    env._run = ladder_run  # type: ignore[assignment]  # the ladder's simctl can mint a device
+    env.start(eff, Preconditions())
+    assert len(popen_argvs) == 2  # a second `xcodebuild`, not a warm resume
+    assert env._udid == "UDID-NEW"
+
+
+def test_a_replacement_request_is_served_once_and_then_forgotten(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The request names one escalation, not a mode: a later lease that nothing escalated must not
+    # keep minting `bajutsu-recovered-*` devices for every scenario that follows.
+    calls, env, eff = _replacement_env(monkeypatch, tmp_path)
+    env.start(eff, Preconditions())
+    env.request_device_replacement()
+    env.start(eff, Preconditions())
+    del calls[:]
+    env.start(eff, Preconditions())
+    assert env._udid == "UDID-NEW"  # still on the first replacement
+    assert "create" not in _verb_seq(calls)
+
+
+def test_a_degraded_device_that_refuses_to_shut_down_is_still_replaced(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A CoreSimulator wedged enough to refuse `simctl shutdown` is exactly why the run is leaving this
+    # device, so failing the escalation on that would replace one loud failure with a less useful one.
+    app = tmp_path / "App.app"
+    app.mkdir()
+    _fake_toolchain(monkeypatch)
+    calls, run = _ladder_run(["UDID"], stays_booted_after_shutdown=True)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)), app_path=str(app))
+    env.start(eff, Preconditions())
+    env.request_device_replacement()
+    del calls[:]
+    env.start(eff, Preconditions())
+    assert env._udid == "UDID-NEW"
+    assert "create" in _verb_seq(calls)
+
+
+def test_a_replacement_bring_up_drops_the_erase_it_was_asked_to_carry(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The crash retry keeps forcing the erase, because deciding otherwise would mean predicting this
+    # branch — an attempt whose request never reached this instance would then get neither remedy. So
+    # the drop happens here, where the swap actually happened: a device just created has nothing to
+    # erase, and honoring the precondition would pay a second shutdown-and-boot cycle for no change.
+    calls, env, eff = _replacement_env(monkeypatch, tmp_path)
+    env.start(eff, Preconditions())
+    env.request_device_replacement()
+    del calls[:]
+    env.start(eff, Preconditions(erase=True))
+    assert env._udid == "UDID-NEW"
+    seq = _verb_seq(calls)
+    # The one shutdown is the degraded device's quarantine, before the create; nothing erases the
+    # replacement afterwards.
+    assert "erase" not in seq[seq.index("create") :]
+
+
+def test_a_replacement_that_cannot_be_created_leaves_the_device_running(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A blank device with no app to install has nothing to launch, so the rung refuses — and it must
+    # refuse *before* shutting the degraded device down, or the caller's fallback would be left
+    # retrying onto a device this escalation turned off on its way to failing.
+    _fake_toolchain(monkeypatch)
+    calls, run = _ladder_run(["UDID"])
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))  # no appPath
+    env.start(eff, Preconditions())
+    env.request_device_replacement()
+    del calls[:]
+    # The wording names *this* rung, so an operator knows which one ran, and stays neutral about
+    # which signal selected it — the stall-triggered path escalates with no erase ever forced.
+    with pytest.raises(simctl.DeviceError, match="needs replacing after a crash"):
+        env.start(eff, Preconditions())
+    assert "shutdown" not in _verb_seq(calls) and "create" not in _verb_seq(calls)
+
+
+def test_a_real_device_start_clears_a_replacement_request_without_serving_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A real device is powered on out of band and has no simctl to mint through, so the request must
+    # not survive into a later `start` that could act on it.
+    _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=lambda argv, e=None: "")
+    cfg = (
+        "targets:\n  s:\n    bundleId: com.x\n"
+        "    xcuitest:\n      deviceType: device\n"
+        f"      testRunner: {_write_runner(tmp_path)}\n"
+    )
+    device_eff = resolve(load_config(cfg), "s")
+    env.request_device_replacement()
+    env.start(device_eff, Preconditions())
+    assert env._replacement_requested is False
+    assert env.replaced_device() is None
 
 
 def test_a_recovery_that_overran_its_bound_fails_the_run(monkeypatch: pytest.MonkeyPatch) -> None:

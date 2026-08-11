@@ -464,6 +464,7 @@ def run_scenario(
     interrupts: list[Interrupt] | None = None,
     locale: str | None = None,
     wall_clock: WallClock = time.time,
+    capture: list[str] | None = None,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
@@ -482,12 +483,17 @@ def run_scenario(
     `wall_clock` (BE-0348) is read exactly once, beside `clock.now()`, to form the anchor pair every
     recorded timestamp is derived from. Every timing *decision* still reads `clock` alone, so a
     backward wall-clock jump can never shorten a wait or a duration.
+
+    `capture` (the resolved `Effective.capture`, config's `defaults.capture`) is a baseline
+    guarantee applied on top of every step, alongside `capturePolicy` rules and inline
+    `capture:` tokens — the default is empty, so a caller that doesn't pass one (a test
+    constructing a scenario directly) sees the unchanged capturePolicy/inline-only behavior.
     """
     clock = clock or RealClock()
     sink = sink or NullSink()
     ctx = ctx or EvalContext()
     sid = scenario_id or scenario_slug(scenario.name)
-    recordings = sink.start_scenario_intervals(sid, requested_intervals(scenario))
+    recordings = sink.start_scenario_intervals(sid, requested_intervals(scenario, capture))
     wants_screen_changed = any(r.on.event == "screenChanged" for r in scenario.capture_policy)
     outcomes: list[StepOutcome] = []
     expect_results: list[AssertionResult] = []
@@ -534,6 +540,7 @@ def run_scenario(
             transitions,
             interrupts,
             locale,
+            capture,
         )
         if failure is None and scenario.expect:
             expect = _interp_asserts(scenario.expect, live_bindings)
@@ -810,6 +817,7 @@ class _LoopConfig:
     transitions: TransitionSource
     interrupts: list[Interrupt] | None
     locale: str | None
+    capture: list[str] | None
 
 
 class _StepRunner:
@@ -1275,7 +1283,9 @@ class _StepRunner:
         # `_collect_captures` already excludes `screenshot.before` (BE-0341): the pre-step baseline
         # above wrote that file from the true pre-action state, so re-taking it here would silently
         # mislabel a post-action pixel as `before.png`.
-        fired = _collect_captures(self.cfg.scenario, step, kind, outcome.ok, screen_changed)
+        fired = _collect_captures(
+            self.cfg.scenario, step, kind, outcome.ok, screen_changed, self.cfg.capture
+        )
         # Interval kinds are recorded scenario-wide (run_scenario), so only the
         # instant kinds are captured per step here. Pass the tree only if we already read it;
         # otherwise `elements=None` lets the sink's `elements` writer read on its own (a NullSink
@@ -1337,6 +1347,7 @@ def _run_steps(
     transitions: TransitionSource = _no_transitions,
     interrupts: list[Interrupt] | None = None,
     locale: str | None = None,
+    capture: list[str] | None = None,
 ) -> str | None:
     """Run the step loop, appending outcomes; return the failure string or None.
 
@@ -1364,6 +1375,7 @@ def _run_steps(
         transitions=transitions,
         interrupts=interrupts,
         locale=locale,
+        capture=capture,
     )
     result = _StepRunner(state, cfg).exec_steps(scenario.steps, driver)
     _logger.debug("%s: %d runner-issued screen reads (BE-0234)", sid, state.total_reads)

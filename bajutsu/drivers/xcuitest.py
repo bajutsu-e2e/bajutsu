@@ -57,13 +57,18 @@ class XcuitestRunnerCrashError(XcuitestChannelError, base.BackendCrashError):
     transient blip and a decoded test outcome: it names an honest "the runner crashed" failure, so a
     lost two-finger gesture never masquerades as an assertion mismatch (`actual='idle'`). `delivered`
     records whether the failed call had reached the runner, so the crash-recovery layer can tell a
-    safe-to-re-issue read from a write that must not be re-applied.
+    safe-to-re-issue read from a write that must not be re-applied. `hung` narrows `delivered` further
+    (BE-0354): the request reached the runner and no response ever came, the one shape that identifies
+    a wedged automation session rather than a runner that died.
     """
 
-    def __init__(self, message: str, *, method: str = "", delivered: bool = False) -> None:
+    def __init__(
+        self, message: str, *, method: str = "", delivered: bool = False, hung: bool = False
+    ) -> None:
         super().__init__(message)
         self.method = method
         self.delivered = delivered
+        self.hung = hung
 
 
 @dataclass(frozen=True)
@@ -167,6 +172,17 @@ def _as_float(value: Any) -> float | None:
 # for its health wait, so the worst case stays bounded.
 _MAX_CRASH_RECOVERIES = 3
 
+# How many *consecutive* hung calls (the request reached the runner, no response ever came) the
+# recovery loop rides out before calling the automation session wedged (BE-0354). Three: the original
+# call plus two post-recovery re-issues. One healthy state shares the hang's surface — BE-0323
+# serialized the runner's XCUITest operations while `/health` deliberately bypasses that
+# serialization, so a long operation can hold the lock while a concurrent read times out — but a
+# single lock-holder cannot span two post-recovery windows, because its own call fails its own retry
+# ladder first. A read still hanging then is not flapping, it is wedged, and only the pipeline's
+# device-level retry can help it, so the channel hands over instead of spending its remaining
+# recovery cycles and their health waits proving the same dead end.
+_MAX_HUNG_CALLS = 3
+
 
 def _to_element(item: Mapping[str, Any]) -> base.Element:
     """Normalize one `GET /elements` item into an `Element`.
@@ -211,11 +227,16 @@ class _TransportFailure(Exception):
     Internal to the retry seam (BE-0207): `_with_retry` reads `delivered` to decide whether re-issuing
     the call could double-apply a side-effecting write. It never escapes the module — an exhausted or
     retry-ineligible failure is turned into the caller-facing `XcuitestChannelError`.
+
+    `hung` splits the delivered case by *how* it failed (BE-0354): a response timeout means the runner
+    accepted the request and never answered, while a reset or a refused connection means it stopped
+    serving. Only the former identifies a wedged automation session, so the two cannot share one tag.
     """
 
-    def __init__(self, message: str, *, delivered: bool) -> None:
+    def __init__(self, message: str, *, delivered: bool, hung: bool = False) -> None:
         super().__init__(message)
         self.delivered = delivered
+        self.hung = hung
 
 
 def _is_retry_eligible(method: str, *, delivered: bool) -> bool:
@@ -259,6 +280,7 @@ def _with_retry(inner: TransportFn, *, sleep: Callable[[float], None] = time.sle
                         f"runner channel {method} {path} failed: {exc}",
                         method=method,
                         delivered=exc.delivered,
+                        hung=exc.hung,
                     ) from exc
                 logger.warning(
                     "runner channel %s %s failed (attempt %d/%d), retrying: %s",
@@ -311,6 +333,7 @@ def _with_crash_recovery(
     runner_alive: Callable[[], bool] | None = None,
     recovery_timeout: float = _RECOVERY_TIMEOUT_SECONDS,
     max_recoveries: int = _MAX_CRASH_RECOVERIES,
+    max_hung_calls: int = _MAX_HUNG_CALLS,
 ) -> TransportFn:
     """Wrap *inner* so a mid-run runner crash surfaces deterministically, not as a lost gesture (BE-0287).
 
@@ -330,11 +353,19 @@ def _with_crash_recovery(
     `/health` itself passes straight through: it is the probe recovery leans on, so wrapping it would
     recurse (and block a startup `await_ready` for the whole recovery window on a runner not yet up).
 
-    `runner_alive` splits recovery on the runner *process*: when the environment supplies its
-    `xcodebuild`-liveness check and it reports the process **exited**, the runner will never answer
-    `/health` again (nothing respawns it on this port mid-recovery), so recovery fails fast instead of
+    A *wedged automation session* is split out of that flap-riding (BE-0354): when the same call keeps
+    **hanging** — reaching the runner and never being answered — across `max_hung_calls` consecutive
+    crashes while `/health` keeps replying, the runner's HTTP server is fine and the machinery behind
+    it is not. No amount of re-issuing can fix that, so the crash is raised at once with its own
+    diagnostic and the pipeline's device-level retry takes over. A connection-level failure (refused,
+    or reset mid-response) is the genuinely crashing runner this loop was built for and keeps riding.
+
+    `runner_alive` splits recovery on whether the runner can still come back: when the environment
+    supplies its liveness check and it reports the runner **gone** — the `xcodebuild` process exited,
+    or its XCTest run already ended and left the parent lingering (BE-0354) — nothing will answer
+    `/health` on this port again (nothing respawns it mid-recovery), so recovery fails fast instead of
     polling the dead port for the whole window — the pipeline's crash recovery then leases a fresh
-    device and re-runs the scenario. Absent (a test fake) or reporting the process alive, it changes
+    device and re-runs the scenario. Absent (a test fake) or reporting the runner alive, it changes
     nothing: an alive-but-unreachable runner stays BE-0287's recoverable case and waits out *health*.
     """
     logger = logging.getLogger("bajutsu.xcuitest.channel")
@@ -343,10 +374,14 @@ def _with_crash_recovery(
         if path == "/health":
             return inner(method, path, body)
         recoveries = 0
+        hangs = 0
         while True:
             try:
                 return inner(method, path, body)
             except XcuitestRunnerCrashError as crash:
+                # Consecutive, so a single hang between two connection-level crashes never accrues
+                # toward the wedge verdict — only a call that keeps being accepted and never answered.
+                hangs = hangs + 1 if crash.hung else 0
                 logger.warning(
                     "runner channel %s %s: the runner became unreachable past the retry budget — a mid-run crash: %s",
                     method,
@@ -360,6 +395,19 @@ def _with_crash_recovery(
                         method=method,
                         delivered=crash.delivered,
                     ) from crash
+                if hangs >= max_hung_calls:
+                    # The runner accepted this call `hangs` times and answered none while `/health`
+                    # kept replying: its automation session is wedged, not flapping. Only a
+                    # device-level remedy can clear that, so hand over now instead of spending the
+                    # remaining recovery cycles — each a timeout ladder plus a health wait — on it.
+                    raise XcuitestRunnerCrashError(
+                        f"runner channel {method} {path} failed: the call reached the runner and hung "
+                        f"{hangs} times while /health kept answering — a wedged automation session, "
+                        "which no re-issue can clear (mid-run crash)",
+                        method=method,
+                        delivered=crash.delivered,
+                        hung=True,
+                    ) from crash
                 recoveries += 1
                 if recoveries > max_recoveries:
                     # The runner keeps crashing on each re-issue: it is not a single flake but a runner
@@ -372,14 +420,17 @@ def _with_crash_recovery(
                         delivered=crash.delivered,
                     ) from crash
                 if runner_alive is not None and not runner_alive():
-                    # The runner *process* has exited: it cannot answer `/health` again on this port,
-                    # so polling the recovery window would only wait out an inevitable failure. Fail
-                    # fast with a distinct diagnostic; the pipeline's crash recovery then leases a fresh
-                    # device and re-runs the scenario. A process merely unreachable (alive) skips this
-                    # and waits out `health` below, so BE-0287's recoverable case is unchanged.
+                    # The runner is gone for good — its process exited, or its XCTest run ended and
+                    # only the `xcodebuild` parent lingers (BE-0354). Either way nothing will answer
+                    # `/health` on this port again, so polling the recovery window would only wait out
+                    # an inevitable failure. Fail fast with a distinct diagnostic; the pipeline's crash
+                    # recovery then leases a fresh device and re-runs the scenario. A runner merely
+                    # unreachable (alive) skips this and waits out `health` below, so BE-0287's
+                    # recoverable case is unchanged.
                     raise XcuitestRunnerCrashError(
-                        f"runner channel {method} {path} failed: the runner process exited mid-run "
-                        "(it will not recover on this port)",
+                        f"runner channel {method} {path} failed: the runner is gone mid-run — its "
+                        "process exited or its test run already ended (it will not recover on this "
+                        "port)",
                         method=method,
                         delivered=crash.delivered,
                     ) from crash
@@ -434,7 +485,11 @@ def _raw_http_transport(host: str, port: int) -> TransportFn:
             resp = conn.getresponse()
             return _decode(path, resp.status, resp.read())
         except OSError as exc:  # pragma: no cover - see above
-            raise _TransportFailure(str(exc), delivered=delivered) from exc
+            # A socket timeout on an open connection is the hang BE-0354 keys on; a refused connect
+            # or a reset mid-response is the runner going away, which recovery still rides out.
+            raise _TransportFailure(
+                str(exc), delivered=delivered, hung=delivered and isinstance(exc, TimeoutError)
+            ) from exc
         finally:
             conn.close()
 
@@ -524,7 +579,7 @@ class XcuitestDriver:
         # The raw `GET /elements` body behind the last query (`base.RawSourceProvider`, the `rawTree`
         # capture kind), kept undecoded: `last_raw_source()` is read only on the rare step that actually
         # requests `rawTree` capture, so decoding here on every query — the common, capture-off case —
-        # would be pure waste. None until the first read. No `pre_transform`: unlike adb's resident
+        # would be pure waste. None until the first read. No `parsed_input`: unlike adb's resident
         # channel, nothing here narrows the runner's own reply before it becomes `elements`.
         self._raw_bytes: bytes | None = None
 

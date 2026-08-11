@@ -8,7 +8,6 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Search", traits: [button] }
-      capture: [video]
     - wait: { for: { label: "Search horses" }, timeout: 10 }
     - type: { text: "Horse 3", into: { label: "Search horses" } }
     - wait: { for: { label: "Horse 3" }, timeout: 5 }
@@ -22,7 +21,6 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Search", traits: [button] }
-      capture: [video]
     - wait: { for: { label: "Search horses" }, timeout: 10 }
     - type: { text: "zzz", into: { label: "Search horses" } }
     - wait: { for: { label: "No matches" }, timeout: 5 }

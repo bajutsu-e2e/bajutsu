@@ -255,15 +255,25 @@ def _run_ended_probe(log_path: Path | None) -> Callable[[], str | None]:
     (`_LAUNCH_TIMEOUT_MARKER`): it is the signature of a degraded Simulator, and saying so is what
     lets a reader tell "this device needs rebooting" from "this build is broken" — the recovery ladder
     itself keys on the failure *kind*, not on this text.
+
+    The verdict **latches** (BE-0354), because two consumers pulse differently. The cold gate reads
+    each window once and stops at the first marker, so an edge-triggered answer suffices for it; the
+    mid-run liveness predicate (`XcuitestEnvironment._runner_alive`) is level-triggered, re-asked once
+    per recovery episode, and an unlatched probe would answer "ended" once and then "still running"
+    for every later episode. Both share one probe instance per spawn — the marker lives in a single
+    stream of bytes, so a second, independent instance would race this one for it.
     """
     if log_path is None:
         return _never_ended
     offset = 0
     carry = b""
     launch_timed_out = False
+    latched: str | None = None
 
     def probe() -> str | None:
-        nonlocal offset, carry, launch_timed_out
+        nonlocal offset, carry, launch_timed_out, latched
+        if latched is not None:
+            return latched
         try:
             with log_path.open("rb") as fh:
                 fh.seek(offset)
@@ -280,10 +290,11 @@ def _run_ended_probe(log_path: Path | None) -> Callable[[], str | None]:
         for marker in _RUN_ENDED_MARKERS:
             if marker in window:
                 cause = " after the app launch timed out" if launch_timed_out else ""
-                return (
+                latched = (
                     f"the xctest run ended ({marker.decode()}){cause} "
                     "before the runner bound its port"
                 )
+                return latched
         carry = window[-_RUN_ENDED_OVERLAP:]
         return None
 
@@ -534,6 +545,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # True when `_runner_log` is a default (env-unset) capture teardown should prune; False when
         # it is an explicit `BAJUTSU_XCUITEST_RUNNER_LOG` directory the operator asked to keep.
         self._runner_log_ephemeral = False
+        # The current spawn's run-ended probe over that capture, shared by the cold-spawn gate and the
+        # mid-run liveness predicate (BE-0354); the neutral probe until a spawn wires a real one.
+        self._run_ended: Callable[[], str | None] = _never_ended
         # BE-0291: True once a Simulator `start` has left a runner the pool should keep warm across
         # leases. A real-device start (BE-0238) never sets it — warm reuse targets only the Simulator
         # runner's cold startup — so the pool tears such an environment down per lease, unchanged.
@@ -562,6 +576,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # The udid this environment started on, once a vanished device forced a replacement — the flag
         # `replaced_device()` reports the swap by, so the pool can re-key what it holds per device.
         self._replaced_from: str | None = None
+        # Set by `request_device_replacement` when the run pipeline escalates a crash retry above the
+        # forced erase (BE-0354); consumed by the next `start`, which swaps the device before it preps.
+        self._replacement_requested = False
 
     def start(
         self,
@@ -575,6 +592,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
         ios = require_ios(eff)
         xcfg = ios.xcuitest
         device_type = effective_device_type(xcfg)
+        # Read once and cleared here rather than where it is honored, so no `start` can leave a stale
+        # escalation behind for a later lease — including the real-device route below, which returns
+        # before the rung and has no simctl to mint a device through anyway.
+        replace_device = self._replacement_requested
+        self._replacement_requested = False
 
         if device_type == "device":
             # A real device is not managed through simctl: it is already powered on, its build is
@@ -598,6 +620,24 @@ class XcuitestEnvironment(_DeviceEnvironment):
                     "(xcuitest.deviceType: device)"
                 )
             return self._spawn_cold(eff, pre, device_type, extra_env, permissions)
+
+        # A pending escalation (BE-0354) is served before anything else touches the device: the run
+        # pipeline asked for a replacement because an erase was already tried on this one and did not
+        # clear the degradation, so preparing or reusing the degraded device first would only spend
+        # the remedy the escalation exists to skip. The swap leaves the environment on a device that
+        # has never run anything, which is a cold spawn by construction — no warm runner to reuse.
+        if replace_device:
+            self._discard_runner()
+            self._replace_degraded_device(eff)
+            # The erase is dropped *here*, where the swap actually happened, rather than by the
+            # caller that asked for it: a device this method just created has nothing to erase, and
+            # honoring the precondition would pay a second shutdown-and-boot cycle on it for no state
+            # change. Deciding it caller-side would mean predicting this branch — and a request that
+            # never reached this instance (a lease whose environment the pool had already evicted)
+            # would then leave the retry with neither remedy.
+            return self._spawn_cold(
+                eff, pre.model_copy(update={"erase": False}), device_type, extra_env, permissions
+            )
 
         # Simulator: reuse a healthy warm runner across leases (BE-0291). `erase` shuts the Simulator
         # down (killing the runner), so a scenario that erases forces a cold respawn; a wedged runner
@@ -830,6 +870,57 @@ class XcuitestEnvironment(_DeviceEnvironment):
         except subprocess.CalledProcessError as exc:
             raise simctl.device_error(exc) from exc
 
+    def request_device_replacement(self) -> None:
+        """Escalate the next `start` to a replacement device (BE-0354).
+
+        The run pipeline calls this when a crash retry that already forced an erase crashed again, or
+        when the attempt's video-start confirmation stalled — both say the degradation lives in the
+        device's services rather than its data, which an erase resets and a replacement does not
+        inherit. Recorded rather than acted on: the swap belongs to the next bring-up, where
+        `replaced_device` then reports it and the pool re-keys everything it holds by udid.
+        """
+        self._replacement_requested = True
+
+    def _replace_degraded_device(self, eff: Effective) -> None:
+        """Move this environment onto a fresh Simulator, quarantining the degraded one (BE-0354).
+
+        The rung above the crash retry's forced erase. An erase resets the device's data, so it
+        recovers the app-data corruption class; the failure this serves is the other one — a Simulator
+        whose capture services have wedged under a runner whose HTTP server still answers, which the
+        erase was measured not to clear. A device that has never run anything cannot inherit that
+        state, and the machinery to mint one already exists for the vanished-device rung.
+
+        The degraded device is shut down and, because the pool follows `replaced_device` onto the
+        replacement, never freed back to the queue — the same quarantine a vanished device gets today.
+        The shutdown is best effort (`Env.shutdown` suppresses its own failure): a CoreSimulator wedged
+        enough to refuse it is exactly why the run is leaving this device, so failing here would only
+        replace one loud failure with a less useful one. It runs only once a replacement is known to be
+        creatable, so a host that cannot mint one leaves the degraded device up for the caller's
+        fallback rather than turned off on the way to a loud failure.
+
+        Raises:
+            DeviceError: as `_replacement_target` does, before anything about the device changes.
+        """
+        old = self._udid
+        # Trigger-neutral wording: the escalation also fires on a stalled video start, from the
+        # *first* crash, where no erase was ever forced — and this clause reaches the operator on the
+        # path where no replacement could be made, so it must not claim one was.
+        device_type = self._replacement_target(eff, why="needs replacing after a crash")
+        simctl.Env(old, run=self._run).shutdown()
+        note = self._create_replacement(eff, device_type)
+        # The spawn that follows is a genuine first bring-up — a device just created and booted, with
+        # no app installed and no XCTest host this boot — so it earns the full cold readiness ceiling,
+        # not the tighter respawn one this environment's history would otherwise select. Exactly the
+        # reasoning `_spawn_cold`'s own erase path already applies.
+        self._respawn = self._cold_spawned_before = False
+        _logger.warning(
+            # Which signal selected this rung is the pipeline's to log; saying "after a forced erase"
+            # here would misreport the stall-triggered path, which escalates from the first crash.
+            "Simulator %s could not be recovered in place; shut it down and %s",
+            old,
+            note,
+        )
+
     def _replace_vanished_device(self, eff: Effective) -> str:
         """Create a Simulator to take the place of one simctl no longer lists. `_finish_repair` preps it.
 
@@ -839,17 +930,22 @@ class XcuitestEnvironment(_DeviceEnvironment):
         runs here so a fresh device's first boot is paid before `_finish_repair`'s prep rather than
         inside the next attempt's readiness ceiling.
 
-        The replacement **outlives the run**: nothing here or in the pool's teardown deletes it. That is
-        deliberate on two counts. It is a healthy device a later run can simply lease, where deleting it
-        would make the next run pay another creation on a host that has already shown it loses devices;
-        and it is the evidence that this happened at all, which a run that deleted its own replacement
-        would leave only in a log line. The cost is one new `bajutsu-recovered-*` device per *run* that
-        leases a udid simctl no longer lists — not one per loss, since nothing here or later adopts an
-        existing replacement: the `booted` alias self-heals (a replacement is left booted, so it resolves
-        next time), but a config or `--udid` pinned to a permanently-vanished device mints a fresh,
-        identically-named replacement on every run instead of converging on the one already created.
-        Cleared by `xcrun simctl delete unavailable`, by deleting the `bajutsu-recovered-*` devices —
-        which the name below makes greppable — or by re-pointing the pinned config at the replacement.
+        Raises:
+            DeviceError: as `_replacement_target` does — no device type to clone, or no `appPath`.
+        """
+        old = self._udid
+        note = self._create_replacement(eff, self._replacement_target(eff, why="is gone"))
+        _logger.warning("Simulator %s vanished from CoreSimulator; %s", old, note)
+        return f"{old} vanished; {note}"
+
+    def _replacement_target(self, eff: Effective, *, why: str) -> str:
+        """The device type a replacement would be cloned from, or a loud failure. Changes nothing.
+
+        Held apart from `_create_replacement` so both rungs can find out whether a replacement is
+        possible *before* they touch the device they are leaving: the crash-retry rung shuts the
+        degraded device down, and turning it off on the way to a failure would leave the caller's
+        fallback worse off than no escalation at all. `why` names the caller's case, since an operator
+        reading either message needs to know which rung ran.
 
         Raises:
             DeviceError: if no replacement can be created — chiefly a host that lost its iOS runtimes
@@ -862,23 +958,52 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # ceiling proving it.
         if require_ios(eff).app_path is None:
             raise simctl.DeviceError(
-                f"Simulator {old} is gone and this target configures no appPath, so a replacement "
+                f"Simulator {old} {why} and this target configures no appPath, so a replacement "
                 "device would have no app to launch; set appPath so the recovery can install it, "
                 "or bring a fresh Simulator up with the app installed and re-run"
             )
         device_type = self._replacement_device_type(eff)
         if device_type is None:
             raise simctl.DeviceError(
-                f"Simulator {old} is gone and no device type matching {eff.device} is available to "
+                f"Simulator {old} {why} and no device type matching {eff.device} is available to "
                 "replace it; the host's Simulator runtimes may be gone, or the configured device "
                 "name doesn't exactly match a simctl device type"
             )
+        return device_type
+
+    def _create_replacement(self, eff: Effective, device_type: str) -> str:
+        """Create, boot, and adopt a fresh Simulator of `device_type`; the diagnostic note.
+
+        Shared by both rungs that replace a device — the vanished-device rung of a failed cold spawn
+        (BE-0344) and the crash retry's escalation above the forced erase (BE-0354) — so the naming,
+        the runtime cloning, and the `replaced_device` bookkeeping the pool re-keys on cannot drift
+        between them. `bootstatus` runs here so a fresh device's first boot is paid before the
+        caller's prep rather than inside a readiness ceiling.
+
+        The replacement **outlives the run**: nothing here or in the pool's teardown deletes it. That is
+        deliberate on two counts. It is a healthy device a later run can simply lease, where deleting it
+        would make the next run pay another creation on a host that has already shown it loses devices;
+        and it is the evidence that this happened at all, which a run that deleted its own replacement
+        would leave only in a log line. The cost is one new `bajutsu-recovered-*` device per *run* that
+        replaces a device — not one per loss, since nothing here or later adopts an
+        existing replacement: the `booted` alias self-heals (a replacement is left booted, so it resolves
+        next time), but a config or `--udid` pinned to a permanently-vanished device mints a fresh,
+        identically-named replacement on every run instead of converging on the one already created.
+        That residue is also why the crash-retry rung is scoped to an unpinned run (see
+        `bajutsu/backends.py`'s `device_replacement_supported`).
+        Cleared by `xcrun simctl delete unavailable`, by deleting the `bajutsu-recovered-*` devices —
+        which the name below makes greppable — or by re-pointing the pinned config at the replacement.
+
+        Raises:
+            DeviceError: if the fresh device's first boot never completes.
+        """
+        old = self._udid
         # The model comes first because two consumers read a device's name as its human model: the
         # report's device row, and `serve`'s capability inventory, which takes the `iphone` / `ipad`
         # class token out of it by substring. The `bajutsu-recovered-<udid>` suffix is what lets an
         # operator reading `simctl list` afterwards tell which recovery minted which device.
         name = f"{simctl.device_type_label(device_type)} (bajutsu-recovered-{old})"
-        # Pinning the vanished device's own runtime keeps the replacement on the same iOS version a
+        # Pinning the replaced device's own runtime keeps the replacement on the same iOS version a
         # scenario was written against; `create_device` retries unpinned if that runtime is itself
         # gone, so this only trades away version fidelity in the case it has to.
         requested_runtime = self._device_runtime_id
@@ -896,14 +1021,8 @@ class XcuitestEnvironment(_DeviceEnvironment):
             self._run(simctl.bootstatus_cmd(replacement), None)
         except subprocess.CalledProcessError as exc:
             raise simctl.device_error(exc) from exc
-        _logger.warning(
-            "Simulator %s vanished from CoreSimulator; created replacement %s (requested runtime %s)",
-            old,
-            replacement,
-            requested_runtime or "any",
-        )
         return (
-            f"{old} vanished; created replacement {replacement} "
+            f"created replacement {replacement} "
             f"({device_type}, requested runtime {requested_runtime or 'any'})"
         )
 
@@ -951,6 +1070,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
             _runner_host_bundle_ids(runner_path) if device_type != "device" else ()
         )
         runner_out = self._open_runner_output()
+        # One probe per spawn over this attempt's capture (the port keys the file), so a retry starts
+        # from an empty offset on its own log. Built before the driver below, which reads it through
+        # `_runner_alive`, and shared with the cold gate — a second instance would race this one for
+        # the marker (BE-0354).
+        self._run_ended = _run_ended_probe(self._runner_log)
         try:
             proc = subprocess.Popen(
                 [  # noqa: S607 — xcodebuild resolved on PATH; requires Xcode
@@ -1009,9 +1133,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             poll=proc.poll,
             log_tail=self._runner_log_hint,
             discard=lambda: self._discard_runner(warn_on_crash=False, keep_log=True),
-            # Bound to *this* attempt's capture (the port keys the file), so a retry's probe starts
-            # from an empty offset on its own log rather than re-reading the failed attempt's marker.
-            run_ended=_run_ended_probe(self._runner_log),
+            run_ended=self._run_ended,
         )
 
     def _resume_warm(
@@ -1150,14 +1272,28 @@ class XcuitestEnvironment(_DeviceEnvironment):
         return launch_env, launch_args
 
     def _runner_alive(self) -> bool:
-        """Whether the runner's `xcodebuild` subprocess is still running.
+        """Whether the runner can still answer on its port: its process runs *and* its test run has not ended.
 
-        The crash-recovery layer reads this to split a recoverable blip from a dead runner: a process
-        that has exited will never answer `/health` again on its port, so recovery fails fast instead
-        of polling it for the whole window (a runner merely unreachable but alive stays BE-0287's
-        recoverable case). `poll()` is `None` while the process runs, an exit code once it has ended.
+        The crash-recovery layer reads this to split a recoverable blip from a dead runner: a runner
+        that cannot come back will never answer `/health` again on its port, so recovery fails fast
+        instead of polling it for the whole window (a runner merely unreachable but alive stays
+        BE-0287's recoverable case). `poll()` is `None` while the process runs, an exit code once it
+        has ended.
+
+        The process handle alone is not enough (BE-0354). `xcodebuild` outlives its own test run by a
+        long way: after a mid-run crash, XCTest restarts the in-Simulator host and re-runs zero tests,
+        so the suite reports its result and the parent lives on — the blind spot BE-0305's
+        fault-injection measurements recorded, where every recovery episode waits out its full window
+        on a runner whose port will never bind again. The capture already names that state, and the
+        cold-spawn gate has string-matched the same markers since BE-0319, so the probe reading it
+        answers here too. It is the *same* probe instance the gate uses, latched: this predicate is
+        re-asked once per recovery episode, while the probe advances a private offset and reports a
+        marker only from the window that first contains it. A future Xcode that rewords the markers
+        degrades this to the process-only check it replaces, never to a false "gone".
         """
-        return self._runner_proc is not None and self._runner_proc.poll() is None
+        if self._runner_proc is None or self._runner_proc.poll() is not None:
+            return False
+        return self._run_ended() is None
 
     def _healthy_resident_driver(self) -> base.Driver | None:
         """The driver for the warm runner if it is up and answering `/health`, else None (BE-0291 Unit 4).
@@ -1267,6 +1403,8 @@ class XcuitestEnvironment(_DeviceEnvironment):
             else:
                 _terminate_process_group(self._runner_proc)
             self._runner_proc = None
+        # The capture this probe reads may be pruned below, and the next spawn wires its own.
+        self._run_ended = _never_ended
         self._terminate_app_under_test()
         self._terminate_runner_app()
         self._release_log(keep=keep_log or crashed)  # after the hint above has read the tail

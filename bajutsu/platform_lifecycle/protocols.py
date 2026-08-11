@@ -300,6 +300,19 @@ class RunEnvironment(Protocol):
         are the same release.
         """
 
+    def request_device_replacement(self) -> None:
+        """Ask this environment to run its next `start` on a replacement device (BE-0354).
+
+        The rung above the crash retry's forced erase: an erase resets the device's data, but a
+        Simulator whose capture services have wedged comes back wedged, so the run pipeline escalates
+        to a device that has never run anything. Recorded rather than acted on, because the swap must
+        land on the *next* bring-up, where `replaced_device` then reports it and the pool re-keys what
+        it holds per device.
+
+        Default: a no-op. Every platform but the Simulator XCUITest backend ignores the request, so
+        each keeps the strongest retry it has today and the pipeline needs no per-platform branch.
+        """
+
     def replaced_device(self) -> str | None:
         """The device this environment moved to when `start` replaced a vanished one, else None.
 

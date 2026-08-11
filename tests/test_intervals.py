@@ -157,6 +157,39 @@ def test_confirming_starters_resolve_the_timeout_per_call(
     assert seen == [0.01, 0.01]
 
 
+def test_start_video_separates_an_unconfirmed_start_from_an_unattempted_one(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # BE-0354: `true_start` is None both for a capture nobody confirmed and for one whose confirmation
+    # timed out, and only the second says the device's capture pipeline is not producing — the signal
+    # the crash retry picks its recovery rung from. `start_confirmed` is what tells them apart.
+    unattempted = intervals.start_video(
+        "UDID", tmp_path / "a.mp4", spawn=lambda argv, out: FakeProc()
+    )
+    assert unattempted.start_confirmed is None
+
+    # The confirmation's own polling is covered below; here it is stubbed to its give-up answer so the
+    # case costs no wall time.
+    monkeypatch.setattr(intervals, "_await_video_file_growing", lambda *_a, **_k: None)
+    stalled = intervals.start_video(
+        "UDID", tmp_path / "b.mp4", spawn=lambda argv, out: FakeProc(), confirm_started=True
+    )
+    assert stalled.start_confirmed is False
+
+    monkeypatch.setattr(intervals, "_await_video_file_growing", lambda *_a, **_k: 12.0)
+    confirmed = intervals.start_video(
+        "UDID", tmp_path / "c.mp4", spawn=lambda argv, out: FakeProc(), confirm_started=True
+    )
+    assert confirmed.start_confirmed is True
+
+
+def test_adopt_carries_the_start_confirmation_onto_the_relocated_capture(tmp_path: Path) -> None:
+    # Android hands its pre-launch recording over for the sink to adopt; whether that recording ever
+    # confirmed it began does not change because its file is later moved.
+    running = intervals.Interval(kind="video", path=tmp_path / "tmp.mp4", start_confirmed=False)
+    assert intervals.adopt(running, tmp_path / "final.mp4").start_confirmed is False
+
+
 def test_await_video_file_growing_ignores_bytes_left_by_a_stale_retry(
     tmp_path: Path, monkeypatch
 ) -> None:

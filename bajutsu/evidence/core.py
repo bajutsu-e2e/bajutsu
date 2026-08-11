@@ -97,18 +97,19 @@ def write_screenshot(
 def write_raw_tree(
     driver: base.Driver, step_dir: Path, redactor: Redactor | None = None, *, mkdir: bool = True
 ) -> list[Path]:
-    """Write the raw dump text behind the driver's last read (`rawTree` capture kind), if it has any.
+    """Write the device's own reply behind the driver's last read (`rawTree` capture kind), if it has any.
 
     A no-op for any backend that does not implement `base.RawSourceProvider` (every backend but `adb`
     and XCUITest today) or has not read yet — so a scenario that requests `rawTree` on a backend without
     one simply gets nothing, the same degrade `ViewportProvider`/`ReadLagProvider` callers already make.
-    Writes `hierarchy.raw<suffix>` (what the driver actually parsed — the dump text `_read_source()`
-    handed adb's parser, XCUITest's undecoded `GET /elements` body; `<suffix>` is `base.RawSource.suffix`,
-    the backend's own dump format) and, only when the backend applied a structural transform that
-    changed it (adb's resident channel stripping SystemUI decor windows), `hierarchy.pre-transform<suffix>`
-    — so a mismatch between a resolved coordinate and the real screen can be traced to the device's/
-    runner's own reply versus bajutsu's processing of it. `mkdir` creates the step dir first, and is
-    skipped when the caller already made it.
+    Writes `hierarchy.raw<suffix>` (the device's/runner's own reply, untouched by any of bajutsu's
+    processing — adb's `uiautomator dump`/resident XML before narrowing, XCUITest's undecoded
+    `GET /elements` body; `<suffix>` is `base.RawSource.suffix`, the backend's own dump format) and, only
+    when the backend applied a structural transform that changed it (adb's resident channel stripping
+    SystemUI decor windows), `hierarchy.parsed-input<suffix>` — what the parser actually consumed after
+    that transform — so a mismatch between a resolved coordinate and the real screen can be traced to the
+    device's/runner's own reply versus bajutsu's processing of it. `mkdir` creates the step dir first, and
+    is skipped when the caller already made it.
 
     Also a no-op, loudly, when `redactor.has_label_rules`: `redact_elements` (behind `elements.json`)
     blanks a labeled element's `value` structurally, using the parsed tree it has and this function
@@ -134,7 +135,7 @@ def write_raw_tree(
     out: list[Path] = []
     for name, text in (
         (f"hierarchy.raw{raw.suffix}", raw.text),
-        (f"hierarchy.pre-transform{raw.suffix}", raw.pre_transform),
+        (f"hierarchy.parsed-input{raw.suffix}", raw.parsed_input),
     ):
         if text is None:
             continue
@@ -329,6 +330,7 @@ class FileSink:
         prestarted_intervals: list[intervals.Interval] | None = None,
         readiness: ReadinessResult | None = None,
         provenance: Mapping[str, object] | None = None,
+        on_video_start_stall: Callable[[], None] | None = None,
     ) -> None:
         self.run_dir = run_dir
         self.udid = udid
@@ -346,6 +348,11 @@ class FileSink:
         # timeout diagnostic so the failure is decidable from artifacts alone (BE-0231 Unit 1).
         self.readiness = readiness
         self.provenance = provenance
+        # Called when a recording that was asked to confirm its start never did (BE-0354). The device
+        # pool wires it to a per-lease flag the crash retry reads to pick its recovery rung; None (a
+        # sink built outside a lease) simply drops the signal. Purely advisory — the evidence gap
+        # itself is already warned about where the confirmation timed out.
+        self.on_video_start_stall = on_video_start_stall
 
     def capture(
         self,
@@ -413,6 +420,13 @@ class FileSink:
                 interval = self._start_simctl_interval(kind, target, scenario_dir)
                 if interval is not None:
                     started.append(interval)
+        # A recording that was asked to confirm its start and never did says the device's capture
+        # pipeline is not producing — the earliest symptom of the wedge whose recovery rung the crash
+        # retry picks from it (BE-0354). Reported once per scenario, after every kind has started.
+        if self.on_video_start_stall is not None and any(
+            iv.start_confirmed is False for iv in started
+        ):
+            self.on_video_start_stall()
         return started
 
     def _start_simctl_interval(

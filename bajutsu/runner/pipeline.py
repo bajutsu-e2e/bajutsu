@@ -26,7 +26,11 @@ from bajutsu.assertions import (
     VisualContext,
     VisualEvidence,
 )
-from bajutsu.backends import capabilities_for_run, erase_precondition_supported
+from bajutsu.backends import (
+    capabilities_for_run,
+    device_replacement_supported,
+    erase_precondition_supported,
+)
 from bajutsu.config import Effective
 from bajutsu.drivers.base import BackendCrashError
 from bajutsu.evidence import Artifact
@@ -300,8 +304,34 @@ class _ScenarioRunner:
         # `RunCrashRecoveryBudget`'s own docstring for why a shared start-of-episode timestamp would
         # be unsafe under `workers > 1`.
         recovery_started: float | None = None
+        # Whether this scenario may still escalate a crash retry above the forced erase to a
+        # replacement device (BE-0354). An erase resets the device's data, so it recovers the app-data
+        # corruption class; it was measured not to clear a Simulator whose capture services have
+        # wedged, and the erased device came back wedged. Two signals select the rung: an erase that
+        # was already tried and crashed again, and a video-start confirmation that stalled — the
+        # earliest symptom of exactly that degradation. Only the Simulator XCUITest route on an
+        # unpinned run with an `appPath` can serve it, so everywhere else this stays False and the
+        # erase rung is unchanged. At most one replacement per scenario, so a device that keeps
+        # crashing cannot mint a `bajutsu-recovered-*` device per attempt.
+        #
+        # The two opt-outs the erase rung honors are folded in here rather than left to the
+        # escalation condition below, because a replacement resets strictly *more* than an erase
+        # does — a blank device carries no app data at all. Reading them only where `forced_erase` is
+        # computed would leave the stall signal free to swap the device out from under a scenario
+        # that declared `reinstall: overwrite` to keep its data, or from under an operator who asked
+        # for `--no-erase`, which is the opposite of what either opt-out means. A `forced_erase`
+        # attempt already implies both, so folding them in loses nothing on that path.
+        can_replace = (
+            self.force_erase_on_retry
+            and s.preconditions.reinstall != "overwrite"
+            and device_replacement_supported(actuator, self.eff, self.udid_spec)
+        )
+        replaced = False
         try:
             for attempt in range(1, budget.total_attempts + 1):
+                # Reset per attempt: the crash handler reads it to reach the lease's own signals, and
+                # a lease-time crash must not be judged on the previous attempt's lease.
+                lz: Lease | None = None
                 # A retry (attempt > 1) forces the same device recovery a scenario already gets by
                 # declaring `erase: true`, instead of a bare in-place respawn: a fresh runner process
                 # answering /health normally says nothing about a device whose rendering has wedged, so a
@@ -323,6 +353,10 @@ class _ScenarioRunner:
                 # live WebDriver route, `erase_precondition_supported` in `bajutsu/backends.py`): that
                 # would abort the whole run past this loop's own `except BackendCrashError`, not merely
                 # fail this one scenario.
+                # An escalated attempt still carries the forced erase from here: the environment that
+                # serves the replacement drops it (a device it is about to create has nothing to
+                # erase), and deciding that here instead would mean predicting what the environment
+                # will do — leaving an attempt whose request never landed with neither remedy.
                 retry_scenario = s
                 if (
                     attempt > 1
@@ -333,6 +367,7 @@ class _ScenarioRunner:
                     retry_scenario = s.model_copy(
                         update={"preconditions": s.preconditions.model_copy(update={"erase": True})}
                     )
+                forced_erase = retry_scenario is not s
                 # Lease *inside* the try so a crash during bring-up — the launch/readiness gate, not only a
                 # scenario step — is caught by the same recovery. `self.lease` runs launch_driver, whose
                 # `_await_ready` surfaces a BackendCrashError when the resident runner answers /health at
@@ -353,8 +388,11 @@ class _ScenarioRunner:
                         # respawn instead, exactly like today whenever erase isn't forced; that lease's
                         # own faults (a `BackendCrashError`, or another `DeviceError`) are handled the
                         # same way a bare respawn's already are — the latter still propagates and ends
-                        # the run, since nothing about *that* path changed.
-                        if retry_scenario is s:
+                        # the run, since nothing about *that* path changed. An escalated attempt
+                        # degrades through the same branch and for the same reason: creating a device
+                        # can fail on a host with no runtimes left, and losing every passed scenario's
+                        # verdict over that is worse than retrying onto the device this run has.
+                        if not forced_erase:
                             raise
                         lz = self.lease(self.eff, s)
                     if attempt > 1:
@@ -390,6 +428,34 @@ class _ScenarioRunner:
                     budget_spent = decision.budget_spent
                     run_budget_spent = run_exhausted and decision.will_retry
                     will_retry = decision.will_retry and not run_exhausted
+                    if will_retry and can_replace and not replaced and lz is not None:
+                        # The two signals that say the device itself is degraded past what an erase
+                        # clears. A crash whose attempt already ran on an erased device has spent that
+                        # remedy; a stalled video start says the capture pipeline was not producing
+                        # before the scenario even began, which is the degradation class the erase was
+                        # observed not to clear, so it escalates from the first crash. The request is
+                        # made on the crashed lease because the environment behind it is the one the
+                        # pool keeps for this device — the next lease's bring-up is what serves it. A
+                        # lease-time crash leaves no lease to ask, so it keeps the erase rung.
+                        # Unlike every rung below it, this remedy is bound to one *device* and lands
+                        # on a later lease, which is sound only because `can_replace` implies an
+                        # unpinned run: that is a pool of one device served by one worker, so the next
+                        # lease is necessarily this same device (see `device_replacement_supported`).
+                        # `replaced` is set on the request rather than on an observed swap, so a
+                        # request the pool dropped (an evicted warm environment) spends the
+                        # allowance — deliberately conservative, since the allowance exists to bound
+                        # how many devices a scenario can mint, and the attempt still gets the erase.
+                        stalled = lz.video_start_stalled()
+                        if forced_erase or stalled:
+                            lz.request_device_replacement()
+                            replaced = True
+                            _logger.warning(
+                                "scenario %s: %s; escalating the retry to a replacement device",
+                                s.name,
+                                "the video recording never confirmed it started"
+                                if stalled
+                                else "a forced-erase retry crashed again",
+                            )
                     _logger.warning(
                         "scenario %s: backend crashed mid-run (attempt %d/%d)%s: %s",
                         s.name,
@@ -515,6 +581,9 @@ class _ScenarioRunner:
                 # Simulator's system language to, so a `handleSystemAlert` naming a prompt and a
                 # choice resolves to the label SpringBoard is actually rendering (BE-0320).
                 locale=s.preconditions.resolved_locale(self.eff.locale),
+                # The config's baseline capture guarantee (`defaults.capture`), applied on top of
+                # every step alongside capturePolicy rules and inline `capture:` tokens.
+                capture=self.eff.capture,
             )
             result.sid = sid  # the evidence-dir slug, so the matrix links to the real dir (BE-0076)
             result.device = lz.udid  # attribute the scenario to the device that ran it

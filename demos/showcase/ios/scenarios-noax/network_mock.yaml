@@ -11,7 +11,6 @@
       respond: { status: 201, body: "{\"ok\":true}" }
   steps:
     - tap: { label: "Log", traits: [button] }
-      capture: [video]
     - wait: { for: { label: "Submit", traits: [button] }, timeout: 10 }
     - tap: { label: "Submit", traits: [button] }
     - wait: { until: { request: { method: POST, path: /post, status: 201 } }, timeout: 6 }

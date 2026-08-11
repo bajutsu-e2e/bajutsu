@@ -8,7 +8,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { id: stable.refresh }, timeout: 10 }
-      capture: [video, network]
+      capture: [network]
     - tap: { id: stable.refresh }
     - wait: { until: { request: { method: GET, pathMatches: "/horses$" } }, timeout: 10 }
   expect:
