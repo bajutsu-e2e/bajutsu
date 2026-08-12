@@ -62,7 +62,7 @@ two handlers differ.
 Whether such an inversion has actually fired here is not settled, and this item does not pretend
 otherwise. A Thread Performance Checker report naming the accept loop was observed in a failing job's
 captured output during an earlier investigation, but the run was not recorded and cannot now be
-produced: searching the twelve most recent failing `ios-e2e` runs found no such warning, and every
+produced: searching the 12 most recent failing `ios-e2e` runs found no such warning, and every
 failure between 2026-08-09 and 2026-08-12 reported a mid-run crash-recovery timeout instead. Deriving
 the inversion from the code alone does not close the gap either — the only threads that wait on the
 semaphore or the lock are other connection handlers, which inherit their QoS from the same accept
