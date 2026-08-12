@@ -632,12 +632,12 @@ The properties worth knowing:
 - **It never clobbers you.** The forced update is guarded exactly as the refreshers below guard
   their rolling branches: it moves the companion branch only when the bot's own prior commit sits at
   the tip. Your own push onto that branch therefore makes the next run skip rather than overwrite it.
-- **It checks nothing out.** Your branch reaches the job as data alone: the files a finding names,
-  read back at the head commit the run resolved. The job then builds the companion commit through
-  GitHub's Git Data endpoints rather than in a working tree. CodeQL's
+- **It never checks out your branch.** Your branch reaches the job as data alone: the files a finding
+  names, read back at the head commit the run resolved. The job then builds the companion commit
+  through GitHub's Git Data endpoints rather than in a working tree. CodeQL's
   `actions/untrusted-checkout-toctou` query flags a job that checks out a contributor's branch while
-  holding a privileged token; this job checks out one branch, the default one, carrying the script
-  it runs.
+  holding a privileged token; the only branch this job checks out is the default one, carrying the
+  script it runs.
 - **Same-repo branches only.** The job writes to a pull-request branch while holding the automation
   App token, so it is confined to branches only an owner, member, or collaborator can push. A fork
   pull request's wording findings stay unautomated, the same gap the review itself accepts for forks.
