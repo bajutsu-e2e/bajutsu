@@ -26,8 +26,8 @@ added. Those budgets made a degrading run fail loudly instead of hanging to `tim
 the question they cannot answer is the one that decides the fix: *what* killed the runner. This
 proposal adds a layered diagnostics collection — inside `bajutsu`, from the Simulator and
 CoreSimulator, and from the macOS host — so the next failing run carries the evidence its own
-root-cause analysis needs. Everything lands under `runs/`, which every on-device job already
-uploads, and nothing touches the deterministic verdict path.
+root-cause analysis needs. Everything lands under `runs/`, which the consuming on-device jobs
+already upload, and nothing touches the deterministic verdict path.
 
 ## Motivation
 
@@ -72,8 +72,10 @@ existing `Upload run artifacts` steps carry the results with no new upload wirin
 the new environment variable `BAJUTSU_XCUITEST_RESULT_BUNDLES` names a directory, writing one
 bundle per spawn keyed by the runner port — the same keying the runner log already uses, so a
 respawn never overwrites its predecessor's bundle. The bundle records what testmanagerd itself saw:
-the precise failure, its timestamps, and any attachments. Retention mirrors the runner log's:
-pruned on a healthy teardown, kept when the spawn failed or crashed. One honest limit: `xcodebuild`
+the precise failure, its timestamps, and any attachments. Retention: the variable naming the
+directory *is* the operator asking for the bundles, so — as with an explicit
+`BAJUTSU_XCUITEST_RUNNER_LOG` directory — every bundle is kept. BE-0319 prunes only its *default*,
+env-unset capture, and this feature has no such default. One honest limit: `xcodebuild`
 finalizes the bundle when the test run ends, which is exactly what happens on the code-65 failures
 above, but a runner `bajutsu` kills mid-hang may leave a truncated bundle — the collection is
 best-effort there.
@@ -93,9 +95,11 @@ both variables leave behavior exactly as today — the hooks are CI's to opt int
 ### Layer 2: Simulator and CoreSimulator state, from CI
 
 A new composite action, `.github/actions/collect-ios-diagnostics`, owns the OS-side collection so
-the eight macOS jobs do not each grow their own shell steps. It replaces the `Collect crash
-diagnostics` step inside `bajutsu-e2e/action.yml` and is also wired into the jobs that do not run
-through that action (`conformance`, `fault-injection`, `visual`). It runs in two tiers:
+the seven Simulator-driving macOS jobs do not each grow their own shell steps. It replaces the
+`Collect crash diagnostics` step inside `bajutsu-e2e/action.yml` and is also wired into the jobs
+that do not run through that action (`conformance`, `fault-injection`, `visual`); `codegen`, the
+one remaining macOS job that boots a Simulator, stays out, because it uploads only its `.xcresult`
+and has no `runs/` artifact for the collection to ride. The action runs in two tiers:
 
 - **Always** (cheap, every run): copy `~/Library/Logs/CoreSimulator/CoreSimulator.log` and the
   booted device's `~/Library/Logs/CoreSimulator/<UDID>/` directory; widen the crash-report sweep
@@ -128,8 +132,9 @@ untouched.
 Mutually exclusive, collectively exhaustive (`MECE`) units of work follow.
 
 1. **Result bundles.** `-resultBundlePath` in `_spawn_runner` behind
-   `BAJUTSU_XCUITEST_RESULT_BUNDLES`, with the runner log's per-port keying and
-   healthy-teardown pruning; `ios-e2e.yml` points it under `runs/runner-logs/`.
+   `BAJUTSU_XCUITEST_RESULT_BUNDLES`, with the runner log's per-port keying and every bundle
+   kept (the variable is the operator asking for them); `ios-e2e.yml` points it under
+   `runs/runner-logs/`.
 2. **Stall-time probe.** The bounded capture module behind `BAJUTSU_STALL_DIAGNOSTICS`, its two
    trigger points (channel crash declaration, video no-bytes warning), the per-run capture cap,
    and the `ios-e2e.yml` opt-in.
