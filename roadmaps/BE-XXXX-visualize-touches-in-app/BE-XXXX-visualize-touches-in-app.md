@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-visualize-touches-in-app.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Verification & coverage |
 <!-- /BE-METADATA -->
@@ -98,6 +98,17 @@ equivalent are not, and the *Alternatives considered* section below records why.
 is a layer rather than a view, it also takes no part in touch delivery, so the visualization cannot
 swallow or redirect the very gesture it draws.
 
+Android's own touch visualization shows what the choice of a layer buys. The showcase's Android
+lanes turn on the operating system's `show_touches` and `pointer_location` settings
+(`demos/showcase/android/Makefile:211-212`), and `pointer_location` draws each contact together with
+its movement trail, which is the behavior this item matches on iOS. Those same lanes turn the
+overlay off for every comparison lane, the tree-comparing golden lane as well as the pixel-comparing
+visual lane, because an overlay drawn by a separate system window can disturb both a screenshot's
+pixels and the tree. A `CALayer` inside the application's own window cannot disturb the tree at all,
+so the iOS visualization can stay on while a tree golden is asserted, which is exactly what the
+invariance check in the *Work breakdown* relies on; a pixel comparison remains the one place the
+visualization has to stay off.
+
 ### Activation
 
 Activation is a launch environment variable, `BAJUTSU_TOUCH_MARKERS`, that the visualization requires
@@ -120,26 +131,36 @@ the runner launches the app (`BajutsuKit/Runner/Sources/RunnerUITest.swift:54-57
 
 ### What is drawn
 
-The hook iterates `event.allTouches` on each event and keeps one layer per `UITouch`, held in a
-weak-to-strong `NSMapTable` that needs no lock because `sendEvent(_:)` runs only on the main thread. A
-touch in the `.began` phase gets a translucent circle at `touch.location(in:)`; a touch in the
-`.moved` phase moves the circle and extends a trailing path, so a swipe leaves its route rather than
-a single point; a touch in the `.stationary` phase leaves the circle where it is, which is what makes
-a long press readable without a timer; and a touch in the `.ended` or `.cancelled` phase fades its
-circle out and removes it. Position updates run inside a `CATransaction` with actions disabled, so a
-layer follows the finger instead of animating behind it. Because the hook reads `event.allTouches`
-rather than a single touch, a pinch and a rotation each draw both contacts and both trails with no
-additional code.
+The hook iterates `event.allTouches` on each event and keeps a circle layer and a trail layer per
+`UITouch`, held in a dictionary keyed by each touch's object identity, which needs no lock because
+`sendEvent(_:)` runs only on the main thread. A touch in the `.began` phase gets a translucent circle at
+`touch.location(in:)`; a touch in the `.moved` phase moves the circle and extends the trail, so a
+swipe leaves its route rather than a single point; a touch in the `.stationary` phase leaves the
+circle where it is, which is what makes a long press readable; and a touch in the `.ended` or
+`.cancelled` phase leaves both layers on screen. Position updates run inside a `CATransaction` with
+actions disabled, so a layer follows the finger instead of animating behind it. Because the hook
+reads `event.allTouches` rather than a single touch, a pinch and a rotation each draw both contacts
+and both trails with no additional code.
 
-The marker reaches both artifacts a run already captures. The video comes from
+The next gesture clears a gesture's marks, and nothing else does. When a `.began` arrives while no
+other touch is active, the hook removes the previous gesture's layers before drawing the new one; a
+`.began` that arrives while a touch is still down joins the gesture in progress and clears nothing,
+which is what keeps a pinch's second finger from erasing the first. Two consequences follow. The
+visualization owns no timer, no fade animation, and no duration constant, so it has no timing
+behavior that could differ between a fast workstation and a loaded continuous-integration runner.
+And the marks of the gesture a step performed are still on screen when the step ends, which is what
+puts them in that step's screenshot.
+
+The marker therefore reaches both artifacts a run already captures. The video comes from
 `xcrun simctl io <udid> recordVideo` (`bajutsu/simctl.py:191`) and captures the whole Simulator
 screen, so any layer the app draws appears in it. The per-step screenshot comes from
 `app.screenshot()` (`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift:218`) and is cropped to
 the application element, so a layer inside the application's frame appears there too. A screenshot is
-taken after a step settles, and every gesture's touch has ended by then — a long press included,
-since `press(forDuration:)` returns only after the touch lifts — so a step's screenshot shows at
-most a fading marker. We document the screenshot behavior as intended rather than suppressing it,
-since a marker on a screenshot is the same evidence as a marker on a frame.
+taken after a step settles, and the marks of that step's own gesture are still there, so `after.png`
+shows where the step touched — a long press included, whose touch has lifted by then because
+`press(forDuration:)` returns only after it does. We document the screenshot behavior as intended
+rather than suppressing it, since a marker on a screenshot is the same evidence as a marker on a
+frame.
 
 ### Work breakdown
 
@@ -147,10 +168,10 @@ The units below are mutually exclusive and collectively exhaustive.
 
 | Unit | Work |
 |---|---|
-| 1 | The marker model: radius, fade duration, trail accumulation, and per-touch lifecycle, in a Foundation-only type with no UIKit import, so the Swift lane's `swift test` on a plain macOS runner covers it without a Simulator |
-| 2 | The hook and the rendering: the `-[UIWindow sendEvent:]` exchange, the per-touch layer store, and the `CALayer` drawing |
+| 1 | The marker model: radius, trail accumulation, per-touch lifecycle, and the rule that a `.began` arriving with no touch active clears the previous gesture, in a Foundation-only type with no UIKit import, so the Swift lane's `swift test` on a plain macOS runner covers it without a Simulator |
+| 2 | The hook and the rendering: the `-[UIWindow sendEvent:]` exchange, the per-touch layer store, and the `CALayer` circles and trails |
 | 3 | Activation: `BajutsuTouch.startIfEnabled(environment:)`, its call site above the collector guard in `BajutsuNet`, the `bajutsu run --touch-markers` flag, and the flag's Python tests |
-| 4 | The accessibility-invariance gate: a golden scenario that runs with the visualization enabled and must reproduce the existing golden tree byte for byte |
+| 4 | The accessibility-invariance check: a scenario in `demos/showcase/scenarios/golden/golden_xcuitest.yaml` that runs with the visualization enabled and asserts the same `controls.json` baseline its visualization-off twin asserts, so a marker that ever entered the tree fails it. It taps, since a scenario that touches nothing draws no marker and would prove nothing — which is also why it does not go in `golden.yaml`, whose one scenario only waits. The `golden` job in `.github/workflows/ios-e2e.yml` gains the file beside `golden.yaml`, both running on one warm runner, so the check is gated rather than left to a manual run |
 | 5 | Documentation in both languages, covering the flag, the default, and the screenshot behavior |
 
 ## Alternatives considered
@@ -192,11 +213,11 @@ attaches to a bug report — would still show nothing.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — the Foundation-only marker model and its unit tests
-- [ ] Unit 2 — the `-[UIWindow sendEvent:]` exchange and the `CALayer` rendering
-- [ ] Unit 3 — activation: the call site above the collector guard, the `--touch-markers` flag, and its tests
-- [ ] Unit 4 — the accessibility-invariance golden scenario
-- [ ] Unit 5 — bilingual documentation
+- [x] Unit 1 — the Foundation-only marker model and its unit tests
+- [x] Unit 2 — the `-[UIWindow sendEvent:]` exchange and the `CALayer` rendering
+- [x] Unit 3 — activation: the call site above the collector guard, the `--touch-markers` flag, and its tests
+- [x] Unit 4 — the accessibility-invariance golden scenario
+- [x] Unit 5 — bilingual documentation
 
 ## References
 

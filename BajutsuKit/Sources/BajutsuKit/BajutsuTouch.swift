@@ -1,0 +1,181 @@
+import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
+
+/// In-app touch visualization for bajutsu.
+///
+/// A run records the Simulator screen, and the recording shows every consequence of a gesture
+/// without ever showing the gesture. This draws a marker at each touch the app under test actually
+/// receives, so a touch appears in the recorded video and in the step's screenshot. The marker is
+/// drawn from the `UIEvent` the app dequeues rather than from the coordinate the driver sent, which
+/// is what makes it evidence that the touch was *delivered* — a driver-side record cannot tell a
+/// mis-aimed tap from one that never reached the app.
+///
+/// **Mechanism (and why this one).** The published technique installs a `UIWindow` subclass that
+/// overrides `sendEvent(_:)` and replaces the app's window with it. Swapping an app's window is a
+/// change to the app's own source, which prime directive 3 keeps out of the tool, so this exchanges
+/// the implementation of `-[UIWindow sendEvent:]` on the class instead — the same
+/// `method_exchangeImplementations` idiom `BajutsuScreen` uses on `viewDidAppear`, covering every
+/// window in the process and touching no app code. An app that subclasses `UIWindow` and overrides
+/// `sendEvent(_:)` itself is still covered, because that override calls `super`.
+///
+/// **Why a `CALayer` and not a `UIView`.** bajutsu resolves every selector against the
+/// accessibility hierarchy `app.snapshot()` returns, and prime directive 2 requires an ambiguous
+/// selector to fail rather than act on the first match. XCUITest surfaces a plain non-accessible
+/// container view as an `.other` element, so a marker view would change element counts and could
+/// turn a scenario's unique selector into an ambiguous one. `CALayer` is not a `UIResponder`,
+/// conforms to no accessibility protocol, and takes no part in touch delivery, so it cannot appear
+/// in the tree and cannot swallow the gesture it draws.
+///
+/// **Test/debug only**, like `BajutsuNet`: the hook is installed only when `BAJUTSU_TOUCH_MARKERS`
+/// is `1`, which `bajutsu run --touch-markers` sets on the app's launch environment.
+public enum BajutsuTouch {
+    /// The launch environment variable that turns the visualization on. Off on any other value,
+    /// and on its absence, so an app that never sees it behaves exactly as it does today.
+    static let activationKey = "BAJUTSU_TOUCH_MARKERS"
+
+    private static var installed = false
+
+    /// Install the touch hook if `BAJUTSU_TOUCH_MARKERS` is `1`. Called from
+    /// `BajutsuNet.startIfEnabled()` *before* its collector/mocks guard: touch visualization needs
+    /// neither a collector nor a mock rule, and a plain recorded run with no network features at
+    /// all is the case it is for.
+    public static func startIfEnabled(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
+        #if canImport(UIKit)
+        guard !installed else { return }  // idempotent — a relaunch in-process calls this once
+        guard environment[activationKey] == "1" else { return }
+        installed = true
+        UIWindow.bajutsu_installTouchHook()
+        #endif
+    }
+
+    #if canImport(UIKit)
+    /// The marks that should be on screen. The model owns the rule that a new gesture clears the
+    /// previous one's marks; this type owns only the drawing.
+    private static var model = BajutsuTouchModel<ObjectIdentifier>()
+    /// The layers drawn for each live touch, keyed the same way as the model.
+    private static var layers: [ObjectIdentifier: MarkLayers] = [:]
+
+    private struct MarkLayers {
+        let contact: CAShapeLayer
+        let trail: CAShapeLayer
+
+        func removeFromSuperlayer() {
+            contact.removeFromSuperlayer()
+            trail.removeFromSuperlayer()
+        }
+    }
+
+    static func handle(_ event: UIEvent, in window: UIWindow) {
+        // `sendEvent(_:)` is delivered on the main thread, which is what lets the model and the
+        // layer table below go unsynchronized. Bail rather than race if that ever stops holding.
+        guard Thread.isMainThread, let touches = event.allTouches else { return }
+        for touch in touches {
+            // A touch belongs to one window for its whole life, so this both keeps a two-window
+            // app from drawing each touch twice and keeps every phase of a touch on one window.
+            guard touch.window === window, let phase = phase(of: touch) else { continue }
+            let location = touch.location(in: window)
+            let identity = ObjectIdentifier(touch)
+            let cleared = model.apply(
+                id: identity,
+                phase: phase,
+                at: BajutsuTouchPoint(x: Double(location.x), y: Double(location.y))
+            )
+            for staleIdentity in cleared {
+                layers.removeValue(forKey: staleIdentity)?.removeFromSuperlayer()
+            }
+            draw(identity, in: window)
+        }
+    }
+
+    private static func phase(of touch: UITouch) -> BajutsuTouchPhase? {
+        switch touch.phase {
+        case .began: return .began
+        case .moved: return .moved
+        case .stationary: return .stationary
+        case .ended: return .ended
+        case .cancelled: return .cancelled
+        // The hover and indirect-pointer region phases are not contacts, so they draw nothing.
+        default: return nil
+        }
+    }
+
+    private static func draw(_ identity: ObjectIdentifier, in window: UIWindow) {
+        guard let mark = model.mark(for: identity) else { return }
+        let marks = layers[identity] ?? makeLayers(in: window)
+        layers[identity] = marks
+
+        // Without this the layers animate toward each new position, so a marker would lag the
+        // finger by Core Animation's default duration instead of tracking it.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        marks.contact.position = CGPoint(x: mark.point.x, y: mark.point.y)
+        marks.contact.opacity = mark.isActive ? 1.0 : 0.6
+        marks.trail.path = trailPath(mark.trail)
+        CATransaction.commit()
+    }
+
+    private static func trailPath(_ points: [BajutsuTouchPoint]) -> CGPath? {
+        guard let first = points.first, points.count > 1 else { return nil }
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: first.x, y: first.y))
+        for point in points.dropFirst() {
+            path.addLine(to: CGPoint(x: point.x, y: point.y))
+        }
+        return path
+    }
+
+    private static func makeLayers(in window: UIWindow) -> MarkLayers {
+        let radius = CGFloat(BajutsuTouchMarker.radius)
+        let tint = UIColor.systemBlue
+
+        let contact = CAShapeLayer()
+        contact.path = CGPath(
+            ellipseIn: CGRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2),
+            transform: nil
+        )
+        contact.fillColor = tint.withAlphaComponent(0.4).cgColor
+        contact.strokeColor = tint.cgColor
+        contact.lineWidth = 2
+
+        let trail = CAShapeLayer()
+        trail.fillColor = nil
+        trail.strokeColor = tint.withAlphaComponent(0.7).cgColor
+        trail.lineWidth = 3
+        trail.lineCap = .round
+        trail.lineJoin = .round
+
+        for layer in [trail, contact] {
+            // Above whatever the app draws, without reordering the app's own layers.
+            layer.zPosition = .greatestFiniteMagnitude
+            window.layer.addSublayer(layer)
+        }
+        return MarkLayers(contact: contact, trail: trail)
+    }
+    #endif
+}
+
+#if canImport(UIKit)
+extension UIWindow {
+    /// Swizzle `sendEvent(_:)` so every touch the app receives is drawn, mirroring the
+    /// `method_exchangeImplementations` idiom `BajutsuScreen` uses on `viewDidAppear`. Called once
+    /// (guarded by `BajutsuTouch.installed`); a second call would swap the implementations back.
+    static func bajutsu_installTouchHook() {
+        guard
+            let original = class_getInstanceMethod(self, #selector(UIWindow.sendEvent(_:))),
+            let replacement = class_getInstanceMethod(self, #selector(UIWindow.bajutsu_sendEvent(_:)))
+        else { return }
+        method_exchangeImplementations(original, replacement)
+    }
+
+    @objc fileprivate func bajutsu_sendEvent(_ event: UIEvent) {
+        // After the swizzle this calls the original `sendEvent`, so the app sees the event first
+        // and the marker is drawn from what was actually delivered.
+        self.bajutsu_sendEvent(event)
+        BajutsuTouch.handle(event, in: self)
+    }
+}
+#endif

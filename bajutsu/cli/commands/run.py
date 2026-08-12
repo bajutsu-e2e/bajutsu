@@ -460,6 +460,19 @@ def _apply_mocks(scenarios: list[Scenario], network: bool) -> None:
             s.preconditions.launch_env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
 
 
+def _apply_touch_markers(scenarios: list[Scenario], enabled: bool) -> None:
+    """Ask BajutsuKit to draw a marker at each touch the app receives, via the launch env.
+
+    Off unless asked for: the marker is drawn inside the app under test, so it belongs to a run
+    someone is investigating rather than to every run. A scenario that already sets the variable
+    keeps its own value, like the mocks above.
+    """
+    if not enabled:
+        return
+    for s in scenarios:
+        s.preconditions.launch_env.setdefault("BAJUTSU_TOUCH_MARKERS", "1")
+
+
 def _resolve_evidence_dirs(
     baselines: str, schemas: str, goldens: str, eff: Effective, scenario_file: Path
 ) -> tuple[Path, Path, GoldenContext | None]:
@@ -885,6 +898,13 @@ def run(
         "to stderr, computed from this run's own first launch — so CI reads the tell without a "
         "separate `doctor` that cold-spawns a second runner. Diagnostic only; never affects pass/fail",
     ),
+    touch_markers: bool = typer.Option(
+        False,
+        "--touch-markers/--no-touch-markers",
+        help="draw a marker at each touch the app receives, so the recorded video and each step's "
+        "screenshot show where the gesture landed. Needs an app that links BajutsuKit; the marker "
+        "is a layer, never an accessibility element. Evidence only; never affects pass/fail",
+    ),
     # --- Baseline / schema / golden directory overrides ---
     baselines: str = typer.Option(
         "",
@@ -1031,6 +1051,7 @@ def run(
         # `request` waits.
         network = _resolve_network(network, eff.run_defaults.network)
         _apply_mocks(scenarios, network)
+        _apply_touch_markers(scenarios, touch_markers)
         baselines_dir, schemas_dir, gc = _resolve_evidence_dirs(
             baselines, schemas, goldens, eff, files[0]
         )
