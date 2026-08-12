@@ -15,10 +15,10 @@
 #     deterministic permissions surface) folded into one `bajutsu run`. They differed only in which
 #     scenarios they ran, so each re-paid the lane's dominant fixed cost — the cold XCTest-host
 #     startup plus its own build and boot — over again; one job warm-reuses the resident runner
-#     across the ten scenario documents that run — every scenario the six files hold, since BE-0315
+#     across the twelve scenario documents that run — every scenario the seven files hold, since BE-0315
 #     made the notification grant native so nothing is `ai`-tagged to exclude (BE-0291/BE-0287/BE-0315)
-#     — paying that cold startup five times (the lane caps warm reuse
-#     at 1, see the `env` block below) — one more than the four separate jobs' cold startups summed
+#     — paying that cold startup six times (the lane caps warm reuse
+#     at 1, see the `env` block below) — two more than the four separate jobs' cold startups summed
 #     to, but each of those jobs also paid its own build and boot, which the `build` job below now
 #     pays once for the whole lane.
 #     `run` reddens the gate if any scenario
@@ -192,10 +192,10 @@ env:
   # to a freshly launched app — a session that can destabilize into a mid-run crash after enough
   # cycles on a contended CI host (see `_MAX_WARM_REUSES` in
   # bajutsu/platform_lifecycle/environments/xcuitest.py). Respawning sooner caps that accumulation:
-  # the nine-scenario `run` job pays five cold startups instead of one — one more than the four
+  # the twelve-scenario `run` job pays six cold startups instead of one — two more than the four
   # pre-consolidation jobs summed to — but the build-once `build` job already removed their per-job
-  # Swift builds, so the lane's net cost still drops even though this cap gives back that one extra
-  # cold startup. The run pipeline's scenario-level crash recovery (BackendCrashError retry) is the
+  # Swift builds, so the lane's net cost still drops even though this cap gives back those extra
+  # cold startups. The run pipeline's scenario-level crash recovery (BackendCrashError retry) is the
   # primary defense; this cap is a complementary reduction, kept because a smaller warm-runner
   # session is simply steadier.
   BAJUTSU_XCUITEST_MAX_WARM_REUSES: "1"
@@ -203,7 +203,7 @@ env:
   # lane (`_default_crash_retries`, bajutsu/runner/pipeline.py). The resident XCTest host still crashes
   # more here than on a real Mac even with the runner's re-entrancy serialization (Router.actuationLock)
   # removing the concurrent-snapshot abort; 2 (three attempts) rides out the residual one-off crash so a
-  # single unlucky scenario does not redden the nine-scenario `run` job. A crash on *every* attempt still
+  # single unlucky scenario does not redden the twelve-scenario `run` job. A crash on *every* attempt still
   # fails loudly once the budget is spent (BE-0049) — this only absorbs a genuine one-off, never a
   # reproducible failure. The pytest-driven `conformance` job consumes these two knobs too (BE-0334):
   # it does not run through the pipeline, but its crash-recovery plugin reads the same
@@ -386,11 +386,11 @@ jobs:
   # over-XCUITest scenario that used to be its own job (smoke / gestures / permission /
   # runner-actuation). They differed only in which scenarios they ran, so each re-paid the lane's
   # dominant fixed cost — the cold `xcodebuild test-without-building` XCTest-host startup (~2-3 min on
-  # macos-latest) — over again, at 10x macOS billing. Folded into one `bajutsu run`, the ten scenario
-  # documents that run — every scenario the six files hold, since BE-0315 made the notification grant
+  # macos-latest) — over again, at 10x macOS billing. Folded into one `bajutsu run`, the twelve scenario
+  # documents that run — every scenario the seven files hold, since BE-0315 made the notification grant
   # native so nothing is `ai`-tagged to exclude — pay that cold
-  # startup five times (BE-0291's warm reuse carries the runner between them, capped at 1 on this lane
-  # — see the env block above), one more than the four the separate jobs summed to — but those jobs
+  # startup six times (BE-0291's warm reuse carries the runner between them, capped at 1 on this lane
+  # — see the env block above), two more than the four the separate jobs summed to — but those jobs
   # each also paid their own Swift build and boot, which the shared `build` job below now pays once
   # for the whole lane.
   # `run` runs each scenario to its own verdict and exits non-zero if any
@@ -404,6 +404,10 @@ jobs:
   #   - gestures_multitouch.yaml (BE-0019): pinch/rotate through the runner's /gesture endpoint.
   #   - search.yaml (BE-0281): /type into the Search field, then assert the filtered count.
   #   - notices.yaml (BE-0281): /swipe an off-screen row into view, then /back from a pushed detail.
+  #   - alert.yaml: tap each button of a presented `UIAlertController`. The only lane that reaches the
+  #     duplicate-node resolution wiring at all — `Package.swift` declares no target over
+  #     `Runner/Sources`, so `swift test` compiles neither `recordedAttributes(of:includingValue:)`
+  #     call site. Don't trim it without replacing that coverage (see the `scenarios:` note below).
   #   - permission.yaml (BE-0276): both scenarios run. `location` is pre-granted by `simctl privacy
   #     grant` (no prompt); the notification scenario grants reactively through `systemAlertHandling`, which
   #     since BE-0315 clears the SpringBoard prompt by a native accessibility query — no screenshot, no
@@ -472,15 +476,16 @@ jobs:
       - name: Install the app
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
-      # Every gating XCUITest scenario in one `bajutsu run`: five cold runner startups (MAX_WARM_REUSES=1), warm-reused
+      # Every gating XCUITest scenario in one `bajutsu run`: six cold runner startups (MAX_WARM_REUSES=1), warm-reused
       # across the twelve scenario documents that run (every scenario the seven files below hold; nothing is
       # `ai`-tagged since BE-0315, so no `--exclude`). State-neutral scenarios first, the three
       # permission scenarios last (see the job header).
       # alert.yaml is here for the duplicate-node resolution wiring: `swift test` compiles no target over
-      # `Runner/Sources`, so the two `recordedAttributes(of:includingValue:)` call sites have no
-      # off-device gate at all and only a run over a presented `UIAlertController` exercises them. On a
+      # `Runner/Sources`, so neither `recordedAttributes(of:includingValue:)` call site has an off-device
+      # gate. `liveElement(for:)`'s is already exercised by every actuation this lane runs; the one only a
+      # presented `UIAlertController` reaches is `uniquelyIdentifiedElement`'s, on a duplicate group. On a
       # Simulator older than iOS 26 the duplicate registration never appears, so a green lane proves the
-      # sole-match path rather than the group rule — it gates the wiring either way.
+      # sole-match path rather than the group rule — it gates the flat-query wiring either way.
       - name: Run the gating XCUITest scenarios (smoke, gestures, runner channel, permissions)
         uses: ./.github/actions/bajutsu-e2e
         with:
