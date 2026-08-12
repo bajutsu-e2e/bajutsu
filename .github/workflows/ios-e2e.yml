@@ -404,10 +404,11 @@ jobs:
   #   - gestures_multitouch.yaml (BE-0019): pinch/rotate through the runner's /gesture endpoint.
   #   - search.yaml (BE-0281): /type into the Search field, then assert the filtered count.
   #   - notices.yaml (BE-0281): /swipe an off-screen row into view, then /back from a pushed detail.
-  #   - alert.yaml: tap each button of a presented `UIAlertController`. The only lane that reaches the
-  #     duplicate-node resolution wiring at all — `Package.swift` declares no target over
-  #     `Runner/Sources`, so `swift test` compiles neither `recordedAttributes(of:includingValue:)`
-  #     call site. Don't trim it without replacing that coverage (see the `scenarios:` note below).
+  #   - alert.yaml: tap each button of a presented `UIAlertController` — the only scenario here that
+  #     reaches `uniquelyIdentifiedElement`'s duplicate-group branch. `Package.swift` declares no
+  #     target over `Runner/Sources`, so `swift test` compiles neither
+  #     `recordedAttributes(of:includingValue:)` call site. Don't trim it without replacing that
+  #     coverage (see the `scenarios:` note below).
   #   - permission.yaml (BE-0276): both scenarios run. `location` is pre-granted by `simctl privacy
   #     grant` (no prompt); the notification scenario grants reactively through `systemAlertHandling`, which
   #     since BE-0315 clears the SpringBoard prompt by a native accessibility query — no screenshot, no

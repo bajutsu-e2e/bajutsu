@@ -235,8 +235,9 @@ final class XcuitestElementProvider: ElementProviding {
     /// agree on value and frame — XCUITest registers an alert's button twice at one place, and that
     /// pair is one control rather than an ambiguity. Matches that disagree on either, and anonymous
     /// elements, have no identity to recover by, so a position-path miss on them is a genuine stale.
-    /// Value and frame are deliberately excluded from the recorded-against-live identity check
-    /// (BE-0287); they decide only between candidates read from one live query.
+    /// Frame is deliberately excluded from the recorded-against-live identity check (BE-0287), and
+    /// value with it, for its own reason — a slider or text field legitimately changes value between
+    /// the snapshot and the tap; both decide only between candidates read from one live query.
     private func liveElement(for backing: PositionPathBacking) -> XCUIElement? {
         let el = element(at: backing.path)
         if el.exists, attributesMatch(

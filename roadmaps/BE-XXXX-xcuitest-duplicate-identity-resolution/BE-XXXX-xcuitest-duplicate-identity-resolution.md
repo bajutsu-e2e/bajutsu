@@ -108,9 +108,10 @@ returning nothing. A group whose members disagree on either stays unresolved, ex
 because two controls reporting different content are a genuine ambiguity that a selector must fail
 on rather than guess at.
 
-Value and frame are the discriminators precisely because
+Frame is available as a discriminator here precisely because
 [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md)
-excluded them from `attributesMatch`, and the two uses do not conflict. `attributesMatch` compares
+excluded it from `attributesMatch`; value is available for its own reason, never having been part of
+that match. The two uses do not conflict. `attributesMatch` compares
 what was **recorded** against what is **live now**, across a gap in which a settling screen
 legitimately moves an element — BE-0287 measured a 49-point shift of an unchanged field being read
 as stale — and a slider or text field legitimately changes value. The comparison this item adds is
@@ -161,7 +162,7 @@ is likewise untouched, since both members keep their own handles and each now re
 **Where the rule lives.** `uniqueMatchingIndex` is a pure function in the device-agnostic
 `BajutsuRunner` library, called from one place in the XCUITest-specific provider. Adding a second
 pure function beside it — one that reports the index to use for a candidate list, given the
-group-agrees-on-frame rule — keeps the decision off-device-testable and leaves the existing function
+group-agrees-on-value-and-frame rule — keeps the decision off-device-testable and leaves the existing function
 and its three tests untouched. The provider now calls the new function in place of
 `uniqueMatchingIndex`, whose zero- and sole-match behaviour it subsumes; the stricter function stays
 beside it for any caller that wants uniqueness alone.
