@@ -1,14 +1,14 @@
-[English](BE-XXXX-runner-http-queue-qos.md) · **日本語**
+[English](BE-0362-runner-http-queue-qos.md) · **日本語**
 
-# BE-XXXX — runner の HTTP サーバのキューに quality of service を明示する
+# BE-0362 — runner の HTTP サーバのキューに quality of service を明示する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-runner-http-queue-qos-ja.md) |
+| 提案 | [BE-0362](BE-0362-runner-http-queue-qos-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0362") |
 | トピック | Platform support |
 | 関連 | [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn-ja.md), [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner-ja.md) |
 <!-- /BE-METADATA -->
