@@ -1,0 +1,323 @@
+[English](BE-XXXX-runner-openapi-contract.md) · **日本語**
+
+# BE-XXXX — XCUITestランナーのHTTPサーバーを自作からOpenAPI契約による生成方式へ置き換える
+
+<!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
+| 提案 | [BE-XXXX](BE-XXXX-runner-openapi-contract-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **提案** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トピック | プラットフォーム対応 |
+| 関連 | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)、[BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md)、[BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve-ja.md)、[BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner-ja.md)、[BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn-ja.md)、[BE-0362](../BE-0362-runner-http-queue-qos/BE-0362-runner-http-queue-qos-ja.md) |
+<!-- /BE-METADATA -->
+
+## はじめに
+
+BajutsuKitのXCUITestランナー（`BajutsuKit/Sources/BajutsuRunner`）は、小さなHTTPサーバーを
+1つ持っています。Pythonドライバーからのすべての問い合わせと操作を、このサーバーが受け止めます。
+このサーバーは、生のBSDソケットからランナー自身が自作したものです。1バイトずつのリクエスト
+パーサー、手書きのJSONエンコード、15個のパスを振り分ける`switch`文によるルーティング、
+コネクションのライフサイクル管理。これらをいずれも自前で保守しています。本項目は、この自作層
+を、リポジトリにコミットされたOpenAPI契約から生成する方式へ置き換えます。`openapi.yaml`という文書を、ランナーのHTTP仕様の単一の
+情報源とします。Swift OpenAPI Generatorがそこから、Swiftの型とサーバープロトコルを生成します。
+その下でどのHTTPフレームワークが通信を受け持つかは、概念実証（PoC）によって決めます。OpenAPI
+契約と生成された型を採用すること自体は、確定した方針です。それを担うフレームワークは確定して
+いません。候補は2つです。1つは、サーバーサイドSwiftで実績があり、公式のOpenAPIアダプターを
+持つHummingbirdです。もう1つは、Appleプラットフォーム向けに作られ、外部依存を持たない代わりに
+公式アダプターを持たないFlyingFoxです。この2つを、本項目のPoCで測定して決めます。
+
+本項目が対象とするランナーは、`127.0.0.1`だけを待ち受けます。通信する相手も、同じホスト上の
+Pythonドライバー（`bajutsu/drivers/xcuitest.py`）だけです。別の端末へネットワーク越しに公開
+されることはありません。本項目が土台とした、iOSアプリ自身に組み込むHTTPサーバーの移行企画書は、
+まさにそうした公開を想定しています。ローカルエリアネットワーク（LAN）越しの公開、Bonjourによる
+サービス発見、Bearerトークン認証に、企画書は多くの分量を割いています。ランナーが今日そうした
+公開範囲を持たないという理由から、本項目ではそれらの節を採用の対象外とします。
+
+## 動機
+
+本来ならHTTPサーバーのフレームワークが担うはずの低レベルな責務が、今日はすべて手作業で保守されて
+います。`HTTPServer.swift`は、リクエストを1バイトずつ読み取ってヘッダーバッファに積みます。その
+上限は8,192バイトに固定で決め打ちされています。応答本文の長さは`Content-Length`ヘッダーを手書きで
+組み立てて示し、ステータス行の文言も4つの決め打ちのステータスコードぶんだけ自前で書いています。
+`Router.swift`はリクエストのメソッドとパスによる`switch`文でルーティングします。返すJSONは
+`[String: Any]`の辞書を`JSONSerialization`に渡して1つずつ手作業で組み立てています。これらは
+いずれもBajutsu独自の価値を持つ処理ではありません。プロダクト固有の意味を持たないまま、対応する
+HTTPの面が育つにつれて保守を要求し続ける類の処理です。
+
+この保守負担が机上の懸念ではないことは、リポジトリ自身の履歴が示しています。
+[BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md)は、
+リッスンのバックログを1から16へ引き上げ、同時ハンドラー数を8に抑えるセマフォを追加しました。
+ドライバーとヘルスチェックの接続が重なったとき、元のバックログが尽きて拒否される事態が起きた
+ためです。
+[BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn-ja.md)は、
+メインスレッドでの直列化ロック（`actuationLock`）を追加しました。2つのXCUITest操作が同時に
+メインスレッドへ届くと、テストホストがクラッシュするためです。XCUITestは再入できない仕組み
+だからです。
+[BE-0362](../BE-0362-runner-http-queue-qos/BE-0362-runner-http-queue-qos-ja.md)は、まだ解決して
+いない提案です。どちらのディスパッチキューにも優先度（Quality of Service、QoS）が明示されて
+いない、という問題を扱っています。正しい優先度は、アクセプトループを起動したスレッドの、
+たまたまの巡り合わせでしか決まっていません。このうち1つ目と3つ目、すなわち接続のバック
+プレッシャーとスケジューリング優先度は、HTTPフレームワークであれば構造として解決している関心事です。2つ目は違います。
+XCUITest操作の直列化は、このランナーに固有の不変条件であり、どのトランスポートに載せても残ります
+（後述の単位3が引き継ぎます）。BE-0323が示しているのはむしろ、自作トランスポートの並行性の
+振る舞いが暗黙のままだという問題です。ホストをクラッシュさせた相互作用が生まれたのは、接続層が
+何を保証するかをどこにも明文化していなかったからです。フレームワークであれば、同じ不変条件を、
+定義され文書化された並行性のモデルの上に載せられます。
+
+同じ手作業による保守は、もう1つ別の形でも現れています。SwiftのサーバーとPythonのドライバーの
+あいだの契約を、コンパイラが検証していないという問題です。`Router.swift`は応答本文の文字列を、
+`"ok"`、`"stale"`、`"not-found"`、`"not-hittable"`という4つのリテラルとして書き出します。
+`bajutsu/drivers/xcuitest.py`側には、独立に宣言された定数（`_OK`、`_STALE`、`_NOT_FOUND`、
+`_NOT_HITTABLE`）があります。ドライバーは、この定数と応答の文字列を突き合わせます。どちらか
+一方のリテラルを変更しても、コンパイルは通ります。両者が一致しなくなったことに、誰も気づけません。両者を結びつける
+仕組みが何もないためです。契約の単一の情報源を持たないインタフェースが招く、まさにその種の
+仕様乖離のリスクです。
+
+このチャネルを導入した[BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)は、
+あえてフレームワークを採用しないという判断を下していました。大きな外部依存を採用するのではなく、
+`BajutsuKit`内にランナー側の最小限のサーバーを構築する。そうしてチャネルを、プロジェクト自身の
+管理下に置くという判断です。当時、この判断は正しいものでした。XCUITestを第2のアクチュエーター
+として立ち上げるために新設された、わずかなエンドポイントを支えるだけの規模だったからです。今
+これを見直す価値があるのは、その後この面が15個のエンドポイントへと3倍に育ったからです。ハンドル
+による要素の指定
+（[BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve-ja.md)）、
+マルチタッチジェスチャー、SpringBoardのシステムアラートの経路制御、スクリーンショットにまで
+広がりました。さらに3つの項目が、それぞれ低レベルな通信の関心事を個別に手当ててきました。
+「チャネルをプロジェクト自身の管理下に置く」ことは、ソケットを自作することを意味するとは
+限りません。本項目の設計は、アプリ固有の`APIHandler`層を`BajutsuKit`の内部にとどめます。この層は
+引き続きプロジェクト自身が管理します。その下のソケット・パース・フレーミングの層だけを、
+プロジェクトの外で保守されているライブラリへ委ねます。これは、
+[BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)自身が、ドライバー向けの契約
+（自前で持つ）と、その下の操作エンジン（XCUITestそのもの、自作しない）を切り分けたのと同じ
+切り分け方です。
+
+## 詳細設計
+
+`RunnerServer`の公開インタフェースは、全体をそのまま変更しません。このインタフェースを使うのは
+`BajutsuKit/Runner/Sources/RunnerUITest.swift`で、`startFromEnvironment()` / `stop()`と、launch設定を
+引き渡す静的プロパティを呼び出しています。Python側の環境
+（`bajutsu/platform_lifecycle/environments/xcuitest.py`）は、`BAJUTSU_RUNNER_PORT`などの環境変数
+だけでランナーと結びついています。以下の変更はすべて、`BajutsuKit/Sources/BajutsuRunner`の内部に
+とどまります。作業は5つの単位に分かれます。単位1と単位2は、この順序で進める必要があります。単位2のPoC
+が測定する候補は、単位1が定める契約の上に構築されるからです。単位3から単位5は、単位2でトランス
+ポートが決まったあとのエンドポイント移行作業です。
+
+### 単位1 — トランスポートに依存しない形でOpenAPI契約を書く
+
+`openapi.yaml`を書きます。ランナーが今日持つ15個のパスとメソッドを、ランナーのHTTP仕様の単一の
+情報源とします。15個の内訳は次のとおりです。
+
+- 読み取り：`GET /health`、`GET /elements`、`GET /screen`、`GET /screenshot`
+- 操作：`POST /tap`、`POST /isHittable`、`POST /gesture`、`POST /swipe`、`POST /scroll`
+- テキスト編集：`POST /type`、`POST /deleteText`、`POST /selectAll`、`POST /copy`
+- システムアラート：`POST /systemAlert/query`、`POST /systemAlert/tap`
+
+このスキーマは、Pythonドライバーがすでに突き合わせている正確な値を、そのまま保たなければ
+なりません。保つべき値は2つあります。動機で挙げた4つのステータス文字列。そして、`/elements`と
+`/systemAlert/query`が共有する要素の形（`identifier`、`label`、`value`、`traits`、`frame`、
+`handle`）です。契約を作り直すのではなく、今日の挙動から生成します。これが、単位4のエンドポイント
+移行を書き直しではなく、挙動を保ったままの移植にとどめる鍵です。
+
+Swift OpenAPI Generatorのビルドプラグインを、`BajutsuRunner`に隣接するターゲットへ追加します。
+`Types.swift`とサーバープロトコルは、コミットされた生成物としてではなく、`openapi.yaml`から
+ビルドのたびに再生成します。Swift OpenAPI GeneratorとSwift OpenAPI Runtimeは、どちらも
+`swift-tools-version:6.1`を要求します。これは`BajutsuKit/Package.swift`が今日指定している`5.9`
+を上回ります。単位2がどちらのトランスポートを選んでも、`BajutsuKit`をビルドするSwiftツール
+チェインの下限は、この時点で6.1へ引き上がります。この下限を決めているのは、Hummingbirdでも
+FlyingFoxでもありません。OpenAPIのツール自体です。ただし、これだけではパッケージ自身が宣言する
+ツールバージョンまでは押し上がりません。`5.9`のマニフェストも、`6.1`を宣言するパッケージに
+依存できるからです。したがってこの単位は、`BajutsuKit`自身のマニフェストも`6.1`へ移すのか
+どうかを決め、ここに記録しなければなりません。移す場合は、`BajutsuRunner`がSwift 6の言語モード
+（厳格な並行性チェック）を採用するのか、当面はSwift 5モードにとどめるのかも決めます。どちらの
+トランスポート候補がたまたま要求するかに任せるのではなく、この項目自身が意図して決める事柄です。
+
+### 単位2 — トランスポートのPoCを実施し、測定でHummingbirdとFlyingFoxのどちらかを決める
+
+単位1の契約を担う候補は2つあります。PoCを実施する前に、どちらかを勝者と決めてかかることはしません。
+
+- **候補H — Hummingbird 2.xと、公式の`swift-openapi-hummingbird`アダプター。** 統合はもっとも
+  単純です。上流で保守された`ServerTransport`の実装をそのまま使え、このプロジェクト側でコードを
+  書く必要がありません。その代わり、もっとも重量級でもあります。Hummingbird自身の`Package.swift`
+  は、15個の外部依存を宣言しています。SwiftNIO、NIOSSL、NIOHTTP2、NIOTransportServices、
+  AsyncHTTPClientをはじめとする顔ぶれです。その大半は、このランナーが必要としない関心事に
+  紐づいています。Transport Layer Security（TLS）、HTTP/2、分散トレーシング、外向きのHTTP
+  クライアントです。企画書自身のリスクの節が
+  SwiftNIOベースのスタックについて懸念していた依存グラフの重さを、仮説ではなく数として確かめられ
+  ます。
+- **候補F — FlyingFoxと、Bajutsuが自作する`ServerTransport`の実装。** FlyingFoxは、今日の
+  `HTTPServer.swift`により近い設計です。生のBSDソケットを使う点は同じです。ただし
+  `DispatchQueue`上のブロッキングな`recv()`ループの代わりに、Swift ConcurrencyのAsync/awaitで
+  包んでいます。外部依存はまったく宣言していません。公式のOpenAPIトランスポートアダプターを持た
+  ないため、この候補自身の費用は、そのアダプターを自作することです。`OpenAPIRuntime.ServerTransport`
+  が要求するメソッドは、`register(_:method:path:)`のただ1つです。したがってこのアダプターは、
+  範囲が限られた接着コードで済みます。FlyingFoxの`HTTPRoute`の登録をこの1つの呼び出しへ結びつけ、
+  FlyingFoxのリクエスト・レスポンス型とランタイム側の`HTTPRequest`/`HTTPResponse`/`HTTPBody`を
+  変換するだけです。この候補は、上流で保守されるアダプターの代わりに、規模のわかっている自作の
+  アダプターを選びます。引き換えに、依存パッケージは15個ではなく1個で済みます。
+
+同じ最小構成のサーバーを、両方の候補で構築します。生成された`GET /health`操作だけを、実際の
+ランナープロセス内で提供するサーバーです。企画書自身の性能検証の節が挙げていた軸を測定します。
+IPA（iOS App Store Package）・バイナリサイズの差分、クリーンビルドと増分ビルドの時間の差分、
+アイドル時と稼働時のメモリです。企画書が持たない軸を1つ加えます。本項目自身の狙いは、現代化その
+ものではなく安定性にあるからです。加える軸は、
+[BE-0362](../BE-0362-runner-http-queue-qos/BE-0362-runner-http-queue-qos-ja.md)がすでに追いかけて
+いる、CIホストが混み合ったときのヘルスチェック応答の遅延です。測定はすべて、机上のベンチマーク
+ではなく、実機のSimulator上で動くエンドツーエンド（E2E）ジョブで行います。この遅延が問題として
+現れてきたのは、混み合ったGitHubホスト型macOS CIランナーでのことです。開発者の手元の空いた
+マシンではありません。企画書自身のGo基準も、その状況を前提に書かれています。
+
+企画書のGo/No-Go基準は、「OpenAPIから生成したHummingbirdサーバーを採用する」という1つの賭けには
+当てはめません。2つの候補それぞれに、独立して当てはめます。No-Goに該当した候補は、単位1の契約に
+関する作業を無駄にすることなく脱落します。両方の候補がNo-Goに該当した場合、本項目はOpenAPI契約を
+手にした単位1の状態で立ち止まります。トランスポートの選択を解決済みとしてどこかのフレームワークへ
+自動的に倒すのではなく、あらためて開いたままにします。
+
+### 単位3 — 勝者となった候補に対して`APIHandler`を実装する
+
+生成されたサーバープロトコルを、勝者となった候補のトランスポートに対して実装します。各操作の
+`Input`/`Output`型と、`Router.swift`がすでに持つ`ElementProviding`ベースの処理とのあいだで変換
+します。`Router.swift`と`HTTPServer.swift`のコメントは、2つの不変条件を、たまたまではなく意図して
+支えていると記しています。この2つを保ちます。1つは`actuationLock`による直列化です。2つ目のXCUITest操作が、
+1つ目がまだメインの実行ループを回している最中に、メインスレッドへ積まれてしまうのを防ぎます。
+これがなければ、テストホストがクラッシュします。XCUITestが再入できない仕組みだからです
+（[BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn-ja.md)）。
+もう1つは、同時ハンドラー数の上限です。長いジェスチャーの最中に、ドライバーとヘルスチェックの
+接続が積み重なるのを防ぎます
+（[BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md)）。
+単位2で選ばれた候補は、それぞれ独自の並行性の仕組みを提供します。`NSLock`と`DispatchSemaphore`の
+代わりに、アクター、ロック、上限付きのタスクグループなどです。不変条件そのものは変わらず引き継ぎ
+ます。XCUITest操作は同時に1つだけ、リクエストの同時処理は最大8件までという条件です。本項目が
+見直すのは、それぞれの上限を成立させる仕組みだけです。その上限を選んだ理由自体は見直しません。
+
+### 単位4 — 比較のための検証を挟みながら、15個のエンドポイントを移行する
+
+15個のエンドポイントを、`Router.swift`のswitch文から生成されたサーバープロトコルへ移植します。
+一度にではなく、4つのまとまりに分けます。両方のスタックは、最初から最後まで同じポートを共有
+します。旧来の`HTTPServer`を土台にした暫定の`ServerTransport`実装が、移行した各操作の生成された
+ハンドラーを、既存のディスパッチへ登録します。エンドポイントの挙動はサーバー側だけで移行し、
+Pythonドライバーは変わりません。`BajutsuRunnerTests`が持つ`IntegrationTests`と`RouterTests`を
+拡張します。移植した各エンドポイントの生成されたハンドラーを、これらのテストがすでに自作の経路に
+対して使っているのと同じリクエストで検証します。動機で挙げた正確なステータス文字列の語彙を含め、
+応答の形が一致することを確かめてから、そのエンドポイントの生成されたハンドラーが、ディスパッチ内
+の自作の分岐を置き換えます。最初に移植するのは`/health`です。単位2ですでに構築
+済みだからです。次にまとめて移植するのは、ハンドルで要素を指定する`/elements`、`/tap`、
+`/isHittable`、`/gesture`です。これらは
+[BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve-ja.md)が
+依存する`SnapshotStore`のハンドルの契約を共有しているためです。`/systemAlert/query`と
+`/systemAlert/tap`は独自のまとまりとします。アプリのツリーを保持する`store`ではなく、別の
+`alertStore`を読むためです
+（[BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md)）。残る
+単一目的のエンドポイントは最後に移植します。`/screen`、`/swipe`、
+`/scroll`（[BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element-ja.md)）、`/type`、
+`/deleteText`、`/selectAll`、`/copy`、`/screenshot`です。
+
+### 単位5 — 切り替えて旧トランスポートを取り除く
+
+`bajutsu/drivers/xcuitest.py`が呼び出すすべてのエンドポイントが、生成されたハンドラーで提供される
+ようになったら、まずリスナーを暫定の旧トランスポート実装から、勝者となった候補のトランスポート
+へ切り替えます。それから`HTTPServer.swift`の生のソケットによるアクセプトループと1バイトずつの
+パーサー、`Router.swift`の手書きのswitch文とJSONの組み立てコードを削除します。この時点では、
+すべてのハンドラーがすでに生成されたものになっています。したがってこの切り替えが入れ替えるのは、
+その下のソケット層だけです。通信の契約は最初から最後まで変わらず、Python側のドライバーはどの段階
+でも変更を必要としません。
+
+## 検討した代替案
+
+- **自作のサーバーを維持し、問題が表面化するたびに個別に手当てし続ける。** 次に控えているのは、
+  [BE-0362](../BE-0362-runner-http-queue-qos/BE-0362-runner-http-queue-qos-ja.md)のQoS修正です。
+  これが現状維持であり、無償ではありません。動機で辿った3つの項目は、すでにこの選択の代償です。
+  4つ目が起きない保証はありません。この選択が繰り返し課される税であって、一度きりの費用ではない
+  こと。SwiftとPythonの契約を結ぶ仕組みが、何も残らないこと。この2つを理由に、採用しません。
+- **自作のサーバーに先回りして投資し、品質を能動的に高める。** 現状維持のもっとも強い形であり、真剣に
+  検討する価値があります。この案を支える根拠は実際によいものだからです。ランナーの要件は小さく、
+  安定しています。`Connection: close`のHTTP/1.1、ループバック上の既知のクライアント1つ、上限の
+  ある本文サイズ。TLS、HTTP/2、キープアライブ、ストリーミングはいずれも不要です。フレームワークが抱える
+  ものの大半は、ここでは使われない重りになります。現在の実装はおよそ230行で、パースと並行性のテストを
+  自前で持っています。スイートは`HTTPParsingTests`、`HTTPServerConcurrencyTests`、
+  `RouterConcurrencyTests`の3つです。意図的な品質強化のひと押し、すなわち明示的なQoS、ソケットのタイムアウト、
+  `[String: Any]`に代わる`Codable`の応答型は、新しい依存もツールバージョンの引き上げもPoCも必要と
+  しません。それでも、2つの理由で採用しません。第一に、いま挙げた強化の一覧は、このプロジェクトが
+  すでに遭遇した障害の一覧そのものです。保守されているライブラリがもたらしてくれるのは、それらの修正
+  ではありません。このプロジェクトが「まだ」遭遇していない失敗のほうです。読み込みの遅いクライアント、
+  部分書き込み、`EINTR`、ファイル記述子のライフサイクルといったエッジケースは、多数の利用者に鍛えられた
+  サーバーではすでにデバッグ済みですが、クライアントが1つしかない自作サーバーでは、CIの不安定な
+  失敗を1つずつ踏むことでしか見つかりません。BE-0287、BE-0323、BE-0362でこの一覧が尽きたと賭ける
+  ことは、[BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)が3回の障害の前に
+  行ったのと同じ賭けです。第二に、トランスポートを強化しても、契約には何も効きません。Swiftと
+  Pythonのリテラルは、コンパイラではなく慣習で結ばれたままです。この隙間を閉じるには、結局OpenAPI
+  契約と生成された型が必要になります。そしてそれらを採用した時点で、その下に自作トランスポートを
+  残す構成は、後述の「`ServerTransport`を生のBSDソケットの上に直接自作する」案そのものになります。
+  その案を採用せずFlyingFoxの測定を選ぶ理由は、その案の箇条で述べます。
+- **企画書の推奨どおり、比較のPoCを行わずにHummingbirdの採用を決め打ちする。** 本項目に限っては
+  採用しません。Hummingbird自身の依存グラフ、ローカルのJSON APIとはほとんど関係のない15個の外部
+  パッケージは、企画書自身のリスクの節が採用前の測定を求めている、まさにその種の費用だからです。
+  実在する代替であるFlyingFoxと比較して測定することで、この測定は仮説に対する合否判定ではなく、
+  意味のある比較になります。
+- **比較を省き、FlyingFoxの採用を決め打ちする。** 依存パッケージがゼロであることと、今日の実装
+  との設計上の近さを理由にする案です。対称的な理由で採用しません。FlyingFoxは公式のOpenAPI
+  トランスポートアダプターを持ちません。この経路自身の費用、自作して保守する`ServerTransport`の
+  実装は、Hummingbirdの依存の費用と同じ水準の測定を受けるべきです。逆方向の思い込みで済ませる
+  べきではありません。
+- **`ServerTransport`を生のBSDソケットの上に直接自作する。** 今日のトランスポート層を保ったまま、
+  OpenAPI契約だけを上に載せる案です。企画書自身が挙げていた、Telegraphを使う代替案に相当します。
+  FlyingFoxを候補として評価する道を選び、この案は採用しません。`HTTPServer.swift`自身の履歴、
+  動機で辿ったバックログ・セマフォ・QoSの修正は、ソケットとパースの層を自前で保守し続けることの
+  実証済みの費用です。FlyingFoxはすでにその保守を別の場所で引き受けています。自作のトランスポート
+  が目指すのと同じ、軽量でAppleプラットフォームを第一に考えた性格も備えています。
+- **単位4の比較の仕組みを飛ばし、15個のエンドポイントを一度に移行する。** 採用しません。動機と
+  単位3で辿った項目の連なり、BE-0287、BE-0289、BE-0323は、このチャネルが本番環境で何度も、それぞれ
+  違う狭い形で壊れてきた履歴です。そのHTTPトランスポート全体を一度に置き換えると、この面の
+  すべてが同時に開き直されます。生成された経路が自作の経路と食い違ったとき、1つのエンドポイント
+  だけを元へ戻せる段階を残しません。
+- **企画書がLAN越しの公開・Bonjourによるサービス発見・Bearerトークン認証について述べている一般的な
+  節を、そのまま拡張する。** 本項目の対象外とします。はじめにで述べたとおり、常駐ランナーのチャネル
+  は今日ローカルホスト限定だからです。LAN越しの公開を必要とする実機や遠隔ドライバーの用途が将来
+  採用される場合は、その時点で別の項目として提案するべきです。
+
+## 進捗
+
+> 開発の進行に合わせて常に最新の状態に保ってください。チェックリストは *詳細設計* の MECE な
+> 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
+> ともに記録します。
+
+- [ ] 単位1 — 既存15個のエンドポイントぶんの`openapi.yaml`を書く。Swift OpenAPI Generatorの
+      ビルドプラグインを`BajutsuKit`に組み込む。swift-tools-versionと言語モードの決定をここに
+      記録する。
+- [ ] 単位2 — HummingbirdとFlyingFoxの両方で`/health`のみのPoCを構築する。企画書の性能指標と
+      ヘルスチェック応答の遅延を、実際のE2Eジョブで測定する。各候補のGo/No-Go判定をここに記録する。
+- [ ] 単位3 — 勝者となった候補に対して`APIHandler`を実装し、`actuationLock`と同時実行数の上限という
+      不変条件を保つ。
+- [ ] 単位4 — 上記4つのまとまりに沿って、比較の仕組みを挟みながら15個のエンドポイントを1つずつ
+      移行する。
+- [ ] 単位5 — 切り替えが完了したら`HTTPServer.swift`と`Router.swift`の自作トランスポートのコードを
+      削除する。
+
+## 参考
+
+- [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md) — このチャネルを導入し、
+  本項目が3倍に育った面の上で見直す「プロジェクト自身の管理下に置く」という判断を下した項目。
+- [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md)
+  — 動機で繰り返し起きている通信面の保守として挙げた、バックログとセマフォの修正。
+- [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve-ja.md)
+  — 単位1のスキーマと単位4の移行のまとまり分けが保たなければならない、ハンドルによる要素指定の契約。
+- [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner-ja.md) — 本項目が変更する
+  ランナーをwheelの同梱物として配布しており、新しいトランスポートも同じ配布経路に乗る。
+- [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md) —
+  `alertStore`と`/systemAlert`系のエンドポイントを導入し、単位4でそれらを独自のまとまりとして移行する
+  根拠になっている項目。
+- [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn-ja.md)
+  — 単位3が保たなければならない`actuationLock`という不変条件を導入した項目。
+- [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element-ja.md) — 単位4で残る単一目的の
+  エンドポイントの1つとして移行する`/scroll`を導入した項目。
+- [BE-0362](../BE-0362-runner-http-queue-qos/BE-0362-runner-http-queue-qos-ja.md) — 本項目が置き換える
+  同じトランスポート層をまだ手当てしている、未解決の提案。そのヘルスチェック応答の遅延という懸念は、
+  単位2が測定するPoCの軸の1つになる。
+- [swift-openapi-generator](https://github.com/apple/swift-openapi-generator)と
+  [swift-openapi-runtime](https://github.com/apple/swift-openapi-runtime) — 単位1がビルドに組み込む
+  Swiftの型とサーバープロトコルを生成し、`swift-tools-version:6.1`という下限を決めているツール。
+- [Hummingbird](https://github.com/hummingbird-project/hummingbird)と
+  [swift-openapi-hummingbird](https://github.com/hummingbird-project/swift-openapi-hummingbird) —
+  単位2の候補H。
+- [FlyingFox](https://github.com/swhitty/FlyingFox) — 単位2の候補F。

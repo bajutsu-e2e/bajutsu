@@ -1,0 +1,316 @@
+**English** · [日本語](BE-XXXX-runner-openapi-contract-ja.md)
+
+# BE-XXXX — Generate the XCUITest runner's HTTP server from an OpenAPI contract instead of hand-rolling it
+
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-XXXX](BE-XXXX-runner-openapi-contract.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Topic | Platform support |
+| Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md), [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn.md), [BE-0362](../BE-0362-runner-http-queue-qos/BE-0362-runner-http-queue-qos.md) |
+<!-- /BE-METADATA -->
+
+## Introduction
+
+BajutsuKit's XCUITest runner (`BajutsuKit/Sources/BajutsuRunner`) answers every query and actuation
+the Python driver sends it through a small HTTP server the runner hand-rolls from raw BSD sockets:
+its own byte-by-byte request parser, its own JSON encoding, its own routing switch over fifteen
+paths, and its own connection-lifecycle management. This item replaces that hand-rolled layer with
+one generated from a checked-in OpenAPI contract: an `openapi.yaml` document becomes the single
+source of truth for the runner's HTTP surface, Swift OpenAPI Generator produces the Swift types and
+server protocol from it, and a proof of concept (PoC) decides which HTTP framework fills the
+transport role beneath that protocol. Adopting the OpenAPI contract and its generated types is fixed;
+which framework carries it — Hummingbird, brought over from server-side Swift with an official
+OpenAPI adapter, or FlyingFox, a zero-dependency socket library built for Apple platforms with no such
+adapter today — is a measured decision this item's PoC makes rather than assumes.
+
+The runner this item touches binds only to `127.0.0.1` and talks only to the same-host Python driver
+(`bajutsu/drivers/xcuitest.py`); it is never exposed to another device over a local-area network
+(LAN). A circulated migration proposal for an iOS app's own embedded HTTP server — the source this
+item adapts — spends several sections on LAN exposure, Bonjour service discovery, and bearer-token
+authentication for exactly that reason: those sections describe a different exposure surface than
+this runner has, so this item scopes them out rather than adopting them.
+
+## Motivation
+
+Every low-level HTTP responsibility a real server framework would supply is instead maintained by
+hand today. `HTTPServer.swift` reads a request one byte at a time into a header buffer capped at a
+hardcoded 8,192 bytes, frames the response body with a manually written `Content-Length` header, and
+writes its own status text for four hardcoded status codes. `Router.swift` dispatches on a `switch`
+over the request's method and path, and builds every JSON reply by hand as a `[String: Any]`
+dictionary passed to `JSONSerialization`. None of this is Bajutsu's own value — it is exactly the
+protocol-following, error-handling work that carries no product-specific meaning but still needs
+continuous upkeep as the surface it serves grows.
+
+This repository's own history is the evidence that the upkeep is real, not hypothetical.
+[BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md)
+raised the listen backlog from 1 to 16 and added an eight-handler semaphore after a burst of driver
+and health-poll connections exhausted the original backlog outright.
+[BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn.md)
+added a main-thread serialization lock (`actuationLock`) because two concurrent XCUITest operations
+reaching the main thread at once re-enter XCUITest, which is not re-entrant, and abort the test host.
+[BE-0362](../BE-0362-runner-http-queue-qos/BE-0362-runner-http-queue-qos.md) is a still-open proposal
+to declare an explicit quality of service (QoS) on the server's dispatch queues, because neither queue
+declares one today and the correct priority is only a coincidence of which thread happens to start the
+accept loop. The first and third of these are concerns — connection backpressure, scheduling priority
+— that an HTTP framework settles by construction. The second is not: serializing XCUITest operations
+is an invariant specific to this runner, and it survives any transport (Unit 3 below carries it over).
+What BE-0323 shows instead is that the hand-rolled transport's concurrency semantics are implicit —
+the interaction that crashed the host existed because nothing documented what the connection layer
+guarantees — where a framework at least hosts the same invariant on a defined, documented concurrency
+model.
+
+The same hand-maintenance shows up as a second, distinct cost: no compiler checks the contract between
+the Swift server and the Python driver. `Router.swift` writes reply bodies as literal string values —
+`"ok"`, `"stale"`, `"not-found"`, `"not-hittable"` — and `bajutsu/drivers/xcuitest.py` matches those
+same four literals against its own constants (`_OK`, `_STALE`, `_NOT_FOUND`, `_NOT_HITTABLE`) declared
+independently on the Python side. A change to either side's literal compiles cleanly even when it
+silently stops matching the other, because nothing shared enforces agreement — the exact API-drift
+risk a source-of-truth-less contract invites.
+
+[BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), which introduced this channel,
+chose deliberately not to pay for a framework: it built "the minimal runner-side server... in
+`BajutsuKit` rather than adopting a large external dependency, keeping the channel under the
+project's control." That choice was right for the surface it served then — a handful of endpoints
+newly introduced to unblock XCUITest as a second actuator. It is worth revisiting now because the
+surface has tripled to fifteen endpoints, spanning handle-based element addressing
+([BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md)),
+multi-touch gestures, SpringBoard system-alert routing, and screenshots, and three further items have
+each patched a low-level transport concern the original design left implicit. "Keeping the channel
+under the project's control" also does not require hand-rolling sockets: this item's design keeps the
+app-specific `APIHandler` layer entirely inside `BajutsuKit`, under this project's own control, while
+delegating the socket, parsing, and framing layer beneath it to a library maintained outside this
+project — the same separation [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)
+itself drew between the driver-facing contract (kept in-house) and the actuation engine underneath it
+(XCUITest, not hand-rolled).
+
+## Detailed design
+
+The design keeps `RunnerServer`'s entire public interface unchanged:
+`BajutsuKit/Runner/Sources/RunnerUITest.swift` consumes it through `startFromEnvironment()` / `stop()`
+and the forwarded-launch statics, and the Python environment
+(`bajutsu/platform_lifecycle/environments/xcuitest.py`) couples to the runner only through
+environment variables such as `BAJUTSU_RUNNER_PORT`. Every change below is internal to
+`BajutsuKit/Sources/BajutsuRunner`. The work splits into five units. Units 1 and 2 must
+land in order — the PoC in Unit 2 measures candidates built against the contract Unit 1 defines — but
+Units 3 through 5 are the endpoint-migration work that follows once Unit 2 picks a transport.
+
+### Unit 1 — Author the OpenAPI contract, independent of transport
+
+Write `openapi.yaml` describing the runner's fifteen existing paths and methods as the single source
+of truth for the runner's HTTP surface. The fifteen break down as follows:
+
+- reads: `GET /health`, `GET /elements`, `GET /screen`, and `GET /screenshot`
+- actuation: `POST /tap`, `POST /isHittable`, `POST /gesture`, `POST /swipe`, and `POST /scroll`
+- text editing: `POST /type`, `POST /deleteText`, `POST /selectAll`, and `POST /copy`
+- system alerts: `POST /systemAlert/query` and `POST /systemAlert/tap`
+
+The schema must preserve the exact wire values the Python driver
+already matches — the four status strings from Motivation, and the element shape (`identifier`,
+`label`, `value`, `traits`, `frame`, `handle`) that `/elements` and `/systemAlert/query` already
+share — so that generating the contract from today's behavior, rather than from a redesign, is what
+keeps Unit 4's endpoint-by-endpoint migration a behavior-preserving port rather than a rewrite.
+
+Add Swift OpenAPI Generator's build plugin to a `BajutsuRunner`-adjacent target so `Types.swift` and
+a server protocol regenerate from `openapi.yaml` at every build, rather than being checked in and
+left to drift from the contract that produced them. Both Swift OpenAPI Generator and Swift OpenAPI
+Runtime declare `swift-tools-version:6.1`, above `BajutsuKit/Package.swift`'s current `5.9`. That
+raises the Swift toolchain floor for building `BajutsuKit` to 6.1 regardless of which transport Unit 2
+picks — the floor comes from the OpenAPI tooling itself, not from Hummingbird or FlyingFox — but it
+does not by itself force the package's own declared tools version up, because a `5.9` manifest may
+depend on packages declaring `6.1`. This unit must therefore decide, and record here, whether
+`BajutsuKit`'s own manifest also moves to `6.1`, and if it does, whether `BajutsuRunner` adopts the
+Swift 6 language mode's strict concurrency checking or stays on the Swift 5 mode for now — decisions
+this item makes deliberately rather than letting them fall out of whichever transport candidate
+happens to require one.
+
+### Unit 2 — Run the transport PoC and decide Hummingbird vs. FlyingFox by measurement
+
+Two candidates carry the contract from Unit 1, and neither is assumed to win before the PoC runs:
+
+- **Candidate H — Hummingbird 2.x with the official `swift-openapi-hummingbird` adapter.** The
+  simplest integration: an upstream-maintained `ServerTransport` conformance needs no code from this
+  project. It is also the heaviest. Hummingbird's own `Package.swift` declares fifteen external
+  dependencies — SwiftNIO, NIOSSL, NIOHTTP2, NIOTransportServices, AsyncHTTPClient, and ten more —
+  most bound to concerns this runner has none of: Transport Layer Security (TLS), HTTP/2, distributed
+  tracing, an outbound HTTP client. This is the dependency graph the source proposal's own risk
+  section warns a SwiftNIO-based stack could bring, now countable rather than hypothetical.
+- **Candidate F — FlyingFox with a Bajutsu-authored `ServerTransport` conformance.** FlyingFox is
+  architecturally the closer relative of today's `HTTPServer.swift`: raw BSD sockets, but wrapped in
+  Swift Concurrency's `async`/`await` instead of a blocking `recv()` loop on a `DispatchQueue`, and it
+  declares zero external dependencies. It carries no official OpenAPI transport adapter, so this
+  candidate's own cost is authoring one. `OpenAPIRuntime.ServerTransport` requires exactly one method
+  — `register(_:method:path:)` — so the adapter is a bounded piece of glue: it maps a FlyingFox
+  `HTTPRoute` registration onto that one call and translates between FlyingFox's request/response
+  types and the runtime's `HTTPRequest`/`HTTPResponse`/`HTTPBody`. This candidate trades an
+  upstream-maintained adapter for a self-maintained one of known, small size, in exchange for a
+  dependency graph of one package instead of fifteen.
+
+Build the same minimal server under both candidates — serving only the generated `GET /health`
+operation, inside the real runner process — and measure the axes the source proposal's own
+performance-verification section names: IPA (iOS App Store Package)/binary size delta, clean and
+incremental build time delta, and idle and active memory. Add one axis the source proposal does not
+carry, because this item's own goal is reliability rather than modernization for its own sake: the
+health-poll latency under CI-host contention that
+[BE-0362](../BE-0362-runner-http-queue-qos/BE-0362-runner-http-queue-qos.md) is already chasing. Run
+every measurement on real Simulator-hosted end-to-end (E2E) jobs, not a synthetic benchmark, since a
+contended GitHub-hosted macOS CI runner — not an idle developer machine — is the condition the source
+proposal's own Go criteria are written against.
+
+Apply the source proposal's Go/No-Go criteria to each candidate independently, rather than to "adopt
+an OpenAPI-generated Hummingbird server" as a single bet. A candidate that fails No-Go drops out
+without invalidating Unit 1's contract work; if both candidates fail, this item stops at Unit 1 with
+the OpenAPI contract in hand and the transport question reopened, rather than resolved by default to
+whichever framework a circulated proposal happened to name first.
+
+### Unit 3 — Implement `APIHandler` against the winning candidate
+
+Implement the generated server protocol against the winning candidate's transport, translating each
+operation's generated `Input`/`Output` types to and from the existing `ElementProviding`-backed logic
+`Router.swift` already contains. Preserve the two invariants `Router.swift`'s and `HTTPServer.swift`'s own comments document as
+load-bearing rather than incidental: the `actuationLock` serialization that keeps a second XCUITest
+operation from enqueuing onto the main thread while the first is still pumping the run loop (without
+it, XCUITest's non-reentrancy aborts the host, per
+[BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn.md)),
+and the bounded concurrent-handler count that keeps a burst of driver and health-poll connections from
+piling up during a long gesture (per
+[BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md)).
+Whichever candidate Unit 2 picks exposes its own concurrency primitive for this — an actor, a lock, or
+a bounded task group, rather than `NSLock` and `DispatchSemaphore` — but the invariant itself, one
+XCUITest operation in flight at a time and at most eight requests handled concurrently, carries over
+unchanged. This item does not revisit the reasoning behind either bound, only the mechanism that
+enforces it.
+
+### Unit 4 — Migrate the fifteen endpoints behind a comparison harness
+
+Port the endpoints from `Router.swift`'s switch to the generated server protocol in four groups,
+rather than in one step. Both stacks share one port throughout: a transitional `ServerTransport`
+conformance backed by the legacy `HTTPServer` registers each migrated operation's generated handler
+into the existing dispatch, so an endpoint's behavior migrates server-side and the Python driver
+never changes. Extend `BajutsuRunnerTests`'s existing `IntegrationTests` and `RouterTests` to run
+each ported endpoint's generated handler against the same requests those suites already exercise for
+the legacy path, confirming an identical response shape — including the exact status-string
+vocabulary from Motivation — before that endpoint's generated handler replaces the legacy case in the
+dispatch. `/health` comes first, since Unit 2 already builds it. The handle-addressed
+endpoints — `/elements`, `/tap`, `/isHittable`, `/gesture` — come next, as one group, since they share
+the `SnapshotStore` handle contract
+[BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md)
+depends on. `/systemAlert/query` and `/systemAlert/tap` form their own group, since they read a
+separate `alertStore` rather than the app-tree `store`
+([BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md)). The remaining
+single-purpose endpoints — `/screen`, `/swipe`, `/scroll`
+([BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element.md)), `/type`, `/deleteText`,
+`/selectAll`, `/copy`, `/screenshot` — come last.
+
+### Unit 5 — Cut over and remove the legacy transport
+
+Once every endpoint `bajutsu/drivers/xcuitest.py` calls is served by a generated handler, swap the
+listener from the transitional legacy-backed transport to the winning candidate's, then delete
+`HTTPServer.swift`'s raw-socket accept loop and byte-by-byte parser, and `Router.swift`'s hand-written
+switch and JSON construction. Every handler is already the generated one by this point, so the
+cutover swaps only the socket layer beneath them; the wire contract is unchanged throughout, and the
+Python driver needs no change at any stage.
+
+## Alternatives considered
+
+- **Keep the hand-rolled server and continue patching individual concerns as they surface** (the
+  queued [BE-0362](../BE-0362-runner-http-queue-qos/BE-0362-runner-http-queue-qos.md) fix would be the
+  next one). This is the status quo, and it is not free: Motivation traces three items already paid
+  for this choice, and nothing bounds a fourth. Rejected because the pattern is a continuing tax
+  rather than a one-time cost, and it leaves the Swift/Python contract with no shared schema.
+- **Invest in the hand-rolled server proactively — harden it up front rather than patching it
+  reactively.** The strongest form of the status quo, and it deserves a real hearing, because the
+  case for it is genuinely good. The runner's requirements are tiny and stable: HTTP/1.1 with
+  `Connection: close`, one known client on loopback, bounded bodies, no TLS, no HTTP/2, no
+  keep-alive, no streaming — so most of what a framework carries is dead weight here. The current
+  implementation is roughly 230 lines with its own parsing and concurrency test suites
+  (`HTTPParsingTests`, `HTTPServerConcurrencyTests`, `RouterConcurrencyTests`), and a deliberate
+  hardening pass — explicit QoS, socket timeouts, `Codable` reply types in place of `[String: Any]`
+  — costs no new dependency, no tools-version bump, and no PoC. Rejected on two grounds. First, the
+  hardening list above is exactly the list of failures this project has already met; what a
+  maintained library buys is not those fixes but the ones this project has *not* met yet — the
+  slow-read, partial-write, `EINTR`, and descriptor-lifecycle edge cases that a server exercised by
+  many users has already been debugged against, and that a single-client in-house server discovers
+  one CI flake at a time. Betting that BE-0287, BE-0323, and BE-0362 exhausted the list is the same
+  bet [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) originally made, three
+  failures ago. Second, hardening the transport does nothing for the contract: the Swift and Python
+  literals stay coupled by convention, not by a compiler. Closing that gap requires the OpenAPI
+  contract and generated types regardless — and once those are adopted, the hand-rolled transport
+  beneath them is the custom-`ServerTransport`-on-raw-sockets path evaluated, and rejected in favor
+  of measuring FlyingFox, in its own bullet below.
+- **Commit to Hummingbird outright, as the circulated source proposal recommends, without a
+  comparative PoC.** Rejected for this item: Hummingbird's own dependency graph — fifteen
+  external packages, most unrelated to a localhost JSON API — is exactly the class of cost the source
+  proposal's own risk section says needs measuring before committing. Measuring it against a real
+  alternative makes that measurement meaningful instead of a pass/fail check against an assumption.
+- **Adopt FlyingFox outright, skipping the comparison,** on the strength of its zero-dependency
+  footprint and its architectural kinship with today's implementation. Rejected symmetrically:
+  FlyingFox carries no official OpenAPI transport adapter, so this path's own cost — a self-maintained
+  `ServerTransport` conformance — deserves the same measurement discipline as Hummingbird's dependency
+  cost, not an assumption in the opposite direction.
+- **Write a custom `ServerTransport` directly on raw BSD sockets,** keeping today's transport layer and
+  adding only the OpenAPI contract on top (the source proposal's own Telegraph-based fallback).
+  Rejected in favor of evaluating FlyingFox instead: `HTTPServer.swift`'s own history — the backlog,
+  semaphore, and QoS patches Motivation traces — is the demonstrated cost of maintaining a
+  socket-and-parsing layer in-house, and FlyingFox already carries that maintenance elsewhere while
+  presenting the same lightweight, Apple-platform-first profile a from-scratch transport would aim
+  for.
+- **Migrate all fifteen endpoints in one step, skipping Unit 4's comparison harness.** Rejected: the
+  string of items in Motivation and Unit 3 — BE-0287, BE-0289, BE-0323 — is the history of a channel
+  that has broken in production in narrow, specific ways more than once; replacing its entire HTTP
+  transport in a single step reopens that whole surface at once, with no staged point to roll one
+  endpoint back if its generated path disagrees with the legacy one.
+- **Extend Bonjour discovery, LAN exposure, and bearer-token authentication per the source proposal's
+  general sections on those topics.** Out of scope for this item, since the resident runner's channel
+  is localhost-only today, as the Introduction states; a future item should propose these separately
+  if a real-device or remote-driver use case that needs LAN exposure is ever adopted.
+
+## Progress
+
+> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
+> *Detailed design* (one box per unit of work); the log records what changed and when
+> (oldest first), linking the PRs.
+
+- [ ] Unit 1 — author `openapi.yaml` for the fifteen existing endpoints, wire Swift OpenAPI
+      Generator's build plugin into `BajutsuKit`, and record the swift-tools-version and
+      language-mode decision.
+- [ ] Unit 2 — build the `/health`-only PoC under both Hummingbird and FlyingFox, measure the source
+      proposal's performance metrics plus health-poll latency on real E2E jobs, and record the
+      Go/No-Go outcome for each candidate.
+- [ ] Unit 3 — implement `APIHandler` against the winning candidate, preserving the `actuationLock`
+      and bounded-concurrency invariants.
+- [ ] Unit 4 — migrate the fifteen endpoints in the four groups above, one group at a time, behind the
+      comparison harness.
+- [ ] Unit 5 — remove `HTTPServer.swift`'s and `Router.swift`'s hand-rolled transport code once
+      cutover is complete.
+
+## References
+
+- [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) — introduced this channel and the
+  "keep it under the project's control" rationale this item revisits under a surface three times
+  larger.
+- [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md)
+  — the backlog and semaphore patch this item's Motivation cites as recurring transport upkeep.
+- [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md) —
+  the handle-based addressing contract Unit 1's schema and Unit 4's migration grouping must preserve.
+- [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md) — bundles the runner
+  this item changes as a prebuilt wheel artifact, so the new transport ships through the same pipeline.
+- [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md) — introduced the
+  `alertStore` / `/systemAlert` endpoints Unit 4 migrates as their own group.
+- [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn.md) —
+  introduced the `actuationLock` invariant Unit 3 must preserve.
+- [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element.md) — introduced the `/scroll`
+  endpoint Unit 4 migrates among the remaining single-purpose endpoints.
+- [BE-0362](../BE-0362-runner-http-queue-qos/BE-0362-runner-http-queue-qos.md) — a still-open proposal
+  patching the same transport layer this item replaces; its health-poll-latency concern is one of
+  Unit 2's measured PoC axes.
+- [swift-openapi-generator](https://github.com/apple/swift-openapi-generator) and
+  [swift-openapi-runtime](https://github.com/apple/swift-openapi-runtime) — produce the Swift types
+  and server protocol Unit 1 wires into the build, and set the `swift-tools-version:6.1` floor.
+- [Hummingbird](https://github.com/hummingbird-project/hummingbird) and
+  [swift-openapi-hummingbird](https://github.com/hummingbird-project/swift-openapi-hummingbird) —
+  Candidate H in Unit 2.
+- [FlyingFox](https://github.com/swhitty/FlyingFox) — Candidate F in Unit 2.
