@@ -186,19 +186,19 @@ capability トークンもそこへ依存できません。本項目はその反
 ## 参考
 
 - [BE-0049 — 決定性／フレーキネス監査](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)：
-  本項目が手を付けない fingerprint と分類を定めた項目。本項目はその隣にキーの要素を 1 つ足すだけである。
+  本項目が手を付けない fingerprint と分類を定めた項目です。本項目はその隣にキーの要素を 1 つ足すだけです。
 - [BE-0220 — DB の Run 履歴からフラッキーテストをサジェストし、Run 横断で修正を提案する](../BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix-ja.md)：
-  ファイル側の監査と `classify_stability` を共有するホスト側の面。したがって同じグループ化の要素を
-  得る必要がある。
+  ファイル側の監査と `classify_stability` を共有するホスト側の面です。したがって同じグループ化の要素を
+  得る必要があります。
 - [BE-0166 — 能力に基づくジョブキューの振り分け](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md)：
-  導入済みの OS バージョンが何かに影響する、唯一出荷済みの場所。デバイスカタログから作る `iosNN`
-  トークンによるワーカーの*振り分け*で、判定からはあえて隔離されている。同じラベルに対する正規表現が、
-  今日もっとも解析に近いもの。
+  導入済みの OS バージョンが何かに影響する、唯一出荷済みの場所です。デバイスカタログから作る `iosNN`
+  トークンによるワーカーの*振り分け*で、判定からはあえて隔離されています。同じラベルに対する正規表現が、
+  今日もっとも解析に近いものです。
 - [`bajutsu/analysis/audit.py`](../../bajutsu/analysis/audit.py)：`longitudinal` と
-  `classify_stability`。本項目が広げるグループ化と、触れない規則。
-- [`bajutsu/serve/flakiness.py`](../../bajutsu/serve/flakiness.py)：`rank_flakiness`。そのグループ化の
-  ホスト側の対であり、ファイル側がシナリオごとであるのに対して実行ごとである。
-- [`bajutsu/simctl.py`](../../bajutsu/simctl.py)：`runtime_label` と `device_catalog`。本項目が解析する
-  ラベルが作られる場所。Android 側の対応物は [`bajutsu/adb.py`](../../bajutsu/adb.py) にある。
+  `classify_stability` があります。本項目が広げるグループ化と、本項目が触れない規則です。
+- [`bajutsu/serve/flakiness.py`](../../bajutsu/serve/flakiness.py)：`rank_flakiness` があります。そのグループ化の
+  ホスト側の対であり、ファイル側がシナリオごとであるのに対して実行ごとです。
+- [`bajutsu/simctl.py`](../../bajutsu/simctl.py)：`runtime_label` と `device_catalog` があります。本項目が解析する
+  ラベルが作られる場所です。Android 側の対応物は [`bajutsu/adb.py`](../../bajutsu/adb.py) にあります。
 - [`bajutsu/runner/pool.py`](../../bajutsu/runner/pool.py)：ラベルが `Lease` へ書き込まれる場所であり、
-  したがってドライバの属性を設定する場所。
+  したがってドライバの属性を設定する場所です。
