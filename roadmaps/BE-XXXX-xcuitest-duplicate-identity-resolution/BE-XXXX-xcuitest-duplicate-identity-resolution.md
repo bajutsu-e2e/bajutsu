@@ -17,7 +17,7 @@
 ## Introduction
 
 This item lets a **content-identical duplicate node pair** — two entries the iOS accessibility tree
-reports with the same identifier, label, traits, and frame, a known artifact of a standard
+reports with the same identifier, label, traits, value, and frame, a known artifact of a standard
 `UIAlertController` button — resolve to one live element, instead of failing every actuation on it
 with `element vanished (stale handle)`. The runner that drives the app on the iOS backend
 (XCUITest, Apple's own UI testing framework) turns a recorded element reference back into something

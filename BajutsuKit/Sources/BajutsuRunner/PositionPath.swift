@@ -124,6 +124,12 @@ public func attributesMatch(
 /// Zero matches and multiple matches both return nil: neither case identifies one element safely.
 /// Callers can then use a stronger discriminator, such as the recorded position path, or report the
 /// element as stale rather than choosing an arbitrary match.
+///
+/// No production path calls this today — `uniquelyIdentifiedElement` resolves through
+/// `resolvableMatchingIndex` below, which subsumes the zero- and one-match answers and additionally
+/// collapses a duplicate registration. Prefer that one unless strict uniqueness is the actual
+/// question: resolving a fresh site through this function reintroduces the `stale` that a
+/// `UIAlertController` button's double registration causes.
 public func uniqueMatchingIndex(
     recorded: RecordedAttributes,
     candidates: [RecordedAttributes]

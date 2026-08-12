@@ -473,9 +473,14 @@ jobs:
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
       # Every gating XCUITest scenario in one `bajutsu run`: five cold runner startups (MAX_WARM_REUSES=1), warm-reused
-      # across the ten scenario documents that run (every scenario the six files below hold; nothing is
+      # across the twelve scenario documents that run (every scenario the seven files below hold; nothing is
       # `ai`-tagged since BE-0315, so no `--exclude`). State-neutral scenarios first, the three
       # permission scenarios last (see the job header).
+      # alert.yaml is here for the duplicate-node resolution wiring: `swift test` compiles no target over
+      # `Runner/Sources`, so the two `recordedAttributes(of:includingValue:)` call sites have no
+      # off-device gate at all and only a run over a presented `UIAlertController` exercises them. On a
+      # Simulator older than iOS 26 the duplicate registration never appears, so a green lane proves the
+      # sole-match path rather than the group rule — it gates the wiring either way.
       - name: Run the gating XCUITest scenarios (smoke, gestures, runner channel, permissions)
         uses: ./.github/actions/bajutsu-e2e
         with:
@@ -484,6 +489,7 @@ jobs:
             demos/showcase/scenarios/gestures_multitouch.yaml
             demos/showcase/scenarios/search.yaml
             demos/showcase/scenarios/notices.yaml
+            demos/showcase/scenarios/alert.yaml
             demos/showcase/scenarios/permission.yaml
             demos/showcase/scenarios/permission_system_alert.yaml
           target: showcase-swiftui
