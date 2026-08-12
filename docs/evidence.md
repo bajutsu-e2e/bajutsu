@@ -81,6 +81,7 @@ tree cannot: *where did this tap land, and how far did this swipe travel*.
 | `points` | the coordinates the driver sent, in order — one for a tap, two for a drag's start and end. A two-finger gesture records the single anchor its two contacts were derived from, not the contacts |
 | `frame` · `target` | the resolved element's bounds and its accessibility identifier |
 | `accepted` | whether the platform accepted this attempt, on the two channels that answer (XCUITest's handle actuation, Android's device-side endpoint). A refused attempt is shown struck through, so a stale-retried tap does not read as several taps; `None` means the channel gave no separate answer |
+| `substitution` | why the element actuated is not the one the driver's default rule would have named — `soleHittableDescendant` when a refused tap was redirected to the one reachable named descendant inside its frame. Absent on the ordinary path, and on every run recorded before `schemaVersion` 7, which reads the same way: no substitution happened |
 | `duration_s` · `scale` · `radians` | the gesture's non-positional parameters, where it has any |
 
 Three rules bound what a record may say, and every backend honors them:
