@@ -477,24 +477,30 @@ def _apply_touch_markers(scenarios: list[Scenario], enabled: bool) -> None:
     someone is investigating rather than to every run. A scenario that already sets the variable
     keeps its own value, like the mocks above.
 
-    Raises:
-        typer.Exit: a scenario carries a `visual` assertion (exit code 2). The markers stay on
-            screen until the next gesture by design, so the screenshot a `visual` comparison reads
-            would carry a circle and a trail its baseline does not — turning a green scenario red
-            for a reason that has nothing to do with the app. Refusing the combination is the only
-            honest answer: a mask cannot rescue it, since the marker's position follows the gesture
-            rather than sitting in a fixed region.
+    A scenario whose verdict compares a screenshot is skipped rather than marked, and the skip is
+    announced on stderr. The markers persist until the next gesture by design, so the image a
+    `visual` assertion reads would carry a circle and a trail its baseline does not, failing the
+    scenario for a reason that has nothing to do with the app; masking cannot rescue it either, since
+    the marker follows the gesture instead of occupying a fixed region. Skipping is safe at exactly
+    this granularity because the app is terminated and relaunched with **each scenario's own** launch
+    env — on the warm-runner path as much as the cold one (`_reuse_live_runner`, BE-0291) — so a
+    skipped scenario runs in a process where the hook was never installed. Narrowing further, to the
+    steps within one scenario, is not possible today: the launch env is the only channel into the app
+    and it is fixed for the life of the process.
     """
     if not enabled:
         return
-    if visual := _visual_asserting_scenarios(scenarios):
+    skipped = _visual_asserting_scenarios(scenarios)
+    if skipped:
         typer.echo(
-            "--touch-markers cannot run a scenario whose verdict compares a screenshot: the "
-            "markers are drawn into the very image a `visual` assertion reads, so its baseline "
-            f"could never match. Drop the flag or the assertion. Scenarios: {', '.join(visual)}"
+            "note: --touch-markers is off for the scenario(s) whose verdict compares a screenshot, "
+            "since the markers would be drawn into the image a `visual` assertion reads: "
+            f"{', '.join(skipped)}",
+            err=True,
         )
-        raise typer.Exit(2)
     for s in scenarios:
+        if s.name in skipped:
+            continue
         s.preconditions.launch_env.setdefault("BAJUTSU_TOUCH_MARKERS", "1")
 
 
@@ -929,7 +935,7 @@ def run(
         help="draw a marker at each touch the app receives, so the recorded video and each step's "
         "screenshot show where the gesture landed. Needs an app that links BajutsuKit; the marker "
         "is a layer, never an accessibility element, so no selector can see it. Evidence only — no "
-        "assertion reads the markers — but rejected (exit 2) for a scenario carrying a `visual` "
+        "assertion reads the markers — and automatically off for a scenario carrying a `visual` "
         "assertion, whose screenshot comparison they would break",
     ),
     # --- Baseline / schema / golden directory overrides ---

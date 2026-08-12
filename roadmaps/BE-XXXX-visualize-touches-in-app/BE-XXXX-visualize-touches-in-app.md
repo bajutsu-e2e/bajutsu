@@ -130,13 +130,21 @@ from `_launch_params()` (`bajutsu/platform_lifecycle/environments/xcuitest.py:12
 (`BajutsuKit/Sources/BajutsuRunner/RunnerServer.swift:56`), and onto `app.launchEnvironment` before
 the runner launches the app (`BajutsuKit/Runner/Sources/RunnerUITest.swift:54-57`).
 
-One combination the flag refuses rather than degrades: a scenario whose verdict compares a
+One combination turns itself off rather than degrading: a scenario whose verdict compares a
 screenshot. A `visual` assertion reads the very image the markers are drawn into, and the marks
 persist by design, so the baseline could never match — the flag would turn a green scenario red for
 a reason that has nothing to do with the app. `_apply_touch_markers` therefore scans each scenario's
-`expect` and each step's `assert` and exits 2 naming the offenders, in keeping with the repository's
-fail-loudly norm. Masking is not an alternative, since the marker follows the gesture rather than
-occupying a fixed region.
+`expect` and each step's `assert`, skips the scenarios it finds, and names them on stderr. Masking is
+not an alternative, since the marker follows the gesture rather than occupying a fixed region.
+
+The skip is per scenario rather than per run, and that granularity is exactly what the platform
+already gives: the app is terminated and relaunched with **each scenario's own** launch env, on the
+warm-runner path (`_reuse_live_runner`, BE-0291) as much as the cold one, so a skipped scenario runs
+in a process where the hook was never installed while every other scenario in the same run still
+draws. Narrowing further — drawing for a scenario's gestures but not for its `visual` step — would
+need a channel into the running app, and the launch environment, fixed for the life of the process,
+is the only one BajutsuKit has: its collector channel is outbound and fire-and-forget. An in-app
+control channel is a separate item, not a detail of this one.
 
 ### What is drawn
 

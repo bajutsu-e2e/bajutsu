@@ -10,7 +10,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-import typer
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
@@ -1641,29 +1640,35 @@ def test_touch_markers_does_not_override_a_scenario_that_set_it() -> None:
     assert scenario.preconditions.launch_env["BAJUTSU_TOUCH_MARKERS"] == "0"
 
 
-def test_touch_markers_refuses_a_scenario_that_compares_a_screenshot() -> None:
-    """The markers land in the very image a `visual` assertion reads, so the run must not start."""
+def test_touch_markers_skips_a_scenario_that_compares_a_screenshot() -> None:
+    """The markers land in the very image a `visual` assertion reads, so that scenario opts out."""
     scenario = _touch_marker_scenario("visual one")
     scenario.expect = [Assertion(visual=VisualMatch(baseline="home.png"))]
-    with pytest.raises(typer.Exit) as exc:
-        _apply_touch_markers([scenario], True)
-    assert exc.value.exit_code == 2
+    _apply_touch_markers([scenario], True)
     assert "BAJUTSU_TOUCH_MARKERS" not in scenario.preconditions.launch_env
 
 
-def test_touch_markers_refuses_a_step_level_visual_assertion() -> None:
+def test_touch_markers_skips_a_step_level_visual_assertion() -> None:
     scenario = _touch_marker_scenario()
     scenario.steps = [Step(assert_=[Assertion(visual=VisualMatch(baseline="home.png"))])]
-    with pytest.raises(typer.Exit):
-        _apply_touch_markers([scenario], True)
-
-
-def test_a_visual_scenario_is_untouched_when_the_flag_is_off() -> None:
-    """The refusal belongs to the flag, not to `visual`: a normal run of the same scenario works."""
-    scenario = _touch_marker_scenario()
-    scenario.expect = [Assertion(visual=VisualMatch(baseline="home.png"))]
-    _apply_touch_markers([scenario], False)
+    _apply_touch_markers([scenario], True)
     assert "BAJUTSU_TOUCH_MARKERS" not in scenario.preconditions.launch_env
+
+
+def test_touch_markers_still_reach_the_other_scenarios_in_the_same_run() -> None:
+    """The skip is per scenario, not per run: one `visual` scenario must not disarm the rest.
+
+    Safe at this granularity because the app is relaunched with each scenario's own launch env, so
+    the skipped scenario runs in a process where the hook was never installed.
+    """
+    visual = _touch_marker_scenario("visual one")
+    visual.expect = [Assertion(visual=VisualMatch(baseline="home.png"))]
+    plain = _touch_marker_scenario("plain one")
+
+    _apply_touch_markers([visual, plain], True)
+
+    assert "BAJUTSU_TOUCH_MARKERS" not in visual.preconditions.launch_env
+    assert plain.preconditions.launch_env["BAJUTSU_TOUCH_MARKERS"] == "1"
 
 
 def test_run_declares_the_touch_markers_flag() -> None:
