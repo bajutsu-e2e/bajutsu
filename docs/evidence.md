@@ -262,7 +262,9 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 
 A recording shows every consequence of a gesture and never the gesture itself, so `bajutsu run
 --touch-markers` asks the app under test to draw a marker at each touch it receives: a translucent
-circle at the contact, and a trail behind a contact that moves. The marks are drawn inside the app's
+circle at the contact, and a trail behind a contact that moves. Both are green while the touch is
+down and red once it has lifted, so a single still frame says whether the contact it shows is the
+gesture happening at that moment or the one it left behind. The marks are drawn inside the app's
 own process, so they reach the recorded video and each step's `after.png` alike. Because they are
 drawn from the `UIEvent` the app dequeues rather than from the coordinate the driver sent, a marker
 is evidence that the touch was *delivered*, which a driver-side coordinate record cannot show.

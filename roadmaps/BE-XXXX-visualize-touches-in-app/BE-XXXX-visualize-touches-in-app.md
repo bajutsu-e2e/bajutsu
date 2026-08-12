@@ -137,7 +137,9 @@ The hook iterates `event.allTouches` on each event and keeps a circle layer and 
 `touch.location(in:)`; a touch in the `.moved` phase moves the circle and extends the trail, so a
 swipe leaves its route rather than a single point; a touch in the `.stationary` phase leaves the
 circle where it is, which is what makes a long press readable; and a touch in the `.ended` or
-`.cancelled` phase leaves both layers on screen. Position updates run inside a `CATransaction` with
+`.cancelled` phase leaves both layers on screen. The circle's fill and the trail are green while the
+touch is down and red once it has lifted, which is what lets a single frame distinguish the gesture
+happening at that moment from the marks an earlier one left. Position updates run inside a `CATransaction` with
 actions disabled, so a layer follows the finger instead of animating behind it. Because the hook
 reads `event.allTouches` rather than a single touch, a pinch and a rotation each draw both contacts
 and both trails with no additional code.
