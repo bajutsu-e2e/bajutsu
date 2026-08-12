@@ -1,14 +1,14 @@
-[English](BE-XXXX-simctl-subprocess-timeout.md) · **日本語**
+[English](BE-0363-simctl-subprocess-timeout.md) · **日本語**
 
-# BE-XXXX — simctl の呼び出しすべてに期限を設けて応答しない CoreSimulator を名前のついた失敗にする
+# BE-0363 — simctl の呼び出しすべてに期限を設けて応答しない CoreSimulator を名前のついた失敗にする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-simctl-subprocess-timeout-ja.md) |
+| 提案 | [BE-0363](BE-0363-simctl-subprocess-timeout-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0363") |
 | トピック | Platform support |
 | 関連 | [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md) |
 <!-- /BE-METADATA -->

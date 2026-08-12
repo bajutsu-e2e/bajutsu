@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-simctl-subprocess-timeout-ja.md)
+**English** · [日本語](BE-0363-simctl-subprocess-timeout-ja.md)
 
-# BE-XXXX — Bound every simctl call with a timeout so a wedged CoreSimulator fails with a named cause
+# BE-0363 — Bound every simctl call with a timeout so a wedged CoreSimulator fails with a named cause
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-simctl-subprocess-timeout.md) |
+| Proposal | [BE-0363](BE-0363-simctl-subprocess-timeout.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0363") |
 | Topic | Platform support |
 | Related | [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md) |
 <!-- /BE-METADATA -->
