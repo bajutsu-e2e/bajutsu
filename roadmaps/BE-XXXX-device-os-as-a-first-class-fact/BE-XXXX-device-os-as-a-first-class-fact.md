@@ -109,14 +109,37 @@ run, the file one per scenario — but must gain the *same* OS component and the
 rule, so they keep labelling a scenario identically, which is why they share `classify_stability`
 in the first place.
 
-**The parsed OS reaches the driver.** The pool knows the label when it stamps the `Lease`; the
-driver is constructed before that, so the fact is handed to the driver rather than passed to its
-constructor — one optional attribute on `Driver`, defaulting to `None`, set once when the lease is
-established. Nothing in this item branches on it. What it buys immediately is that a driver-level
-failure can name the OS it happened on, and what it buys structurally is a single place a future
-per-OS decision reads, instead of each such decision inventing its own route from the pool. This
-unit is deliberately the smallest of the three and is the one to drop if review judges it
-premature; the two above stand on their own.
+**The OS has to reach the output, not only the key.** Splitting the groups is half the fix: today
+`ScenarioHistory` carries `scenario_hash`, `name`, and counts, `render_longitudinal` prints the name
+and the classification, and `FlakyScenario` is the same shape on the hosted side — so two histories
+split by OS would render as two rows with one name, one hash, and nothing between them, and `--json`
+would be as ambiguous. Both sort keys tie for such a pair, leaving their order to input order. So the
+OS joins each record and each rendering, and joins both sort keys ahead of the name, which also makes
+the order deterministic for the pair. That is what turns "this scenario is flaky" into the finding
+*Motivation* actually wants: this scenario does not work on that OS.
+
+**Rows recorded before the field exists.** Every run `serve` has already stored carries no runtime,
+so it would group under `unknown` while runs recorded afterwards group per OS, and a scenario's
+history would split at the deploy boundary. A genuine flake spanning that boundary is then masked
+twice over: an old passing run and a new failing run land in different groups and each is
+`unproven` for having fewer than two runs. That is this item's own misclassification with the sign
+reversed, so the unit must not leave it silent. Preferred: backfill the field from each run's stored
+manifest, which is where the per-scenario `device_runtime` already sits. Where a deployment no longer
+holds the manifest, the row stays `unknown` and the split is disclosed in the report rather than
+passed off as evidence.
+**The parsed OS reaches the one driver that needs it.** Not as a member of `Driver`: that Protocol
+is `@runtime_checkable` with no shared base class, so a data member there is a declaration every
+backend and every inline test double must repeat, and `isinstance` checks against it would start
+failing on the ones that did not. It travels instead as a `make_driver` keyword the XCUITest branch
+reads and every other actuator ignores, which is the shape `runner_port`, `runner_alive`, and `act`
+already take. The XCUITest environment derives it from the runtime identifier it already captures
+for device cloning, at both driver-construction sites.
+
+That placement is also the more correct one. A device replacement can move a lease onto a different
+Simulator mid-run, and both construction sites build a fresh driver afterwards, so the OS follows the
+swap; a fact stamped once onto the `Lease` would go stale. Nothing in this item branches on the
+value — the first branch is a separate item — but a driver-level failure can already name the OS it
+happened on, and a future per-OS decision has one route to read instead of inventing its own.
 
 **What this item does not build.** No mechanism for *declaring* per-OS behaviour — no version
 comparison, no "on iOS below N do X" table in the drivers, no OS predicate in the scenario schema
@@ -127,7 +150,12 @@ treats an iOS release reshaping the element tree as something a golden assertion
 [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)
 both cite OS-version variation as the reason to avoid coordinates and hardcoded labels. This item
 does not overturn that position; it supplies the fact that position needs in order to be checked,
-and leaves each behavioural difference to be fixed on its merits.
+and leaves each behavioural difference to be fixed on its merits. One difference has since been
+measured against that bar and did not clear it — the `back` action, whose identifier iOS 18's
+navigation bar does not carry — so a separate item gives iOS its back control as one implementation
+per major version behind an interface, selected in a single factory. That is one method on one
+driver, argued from a measurement, and it is the shape this item's fact exists to make possible; it
+is not the declaration mechanism ruled out above.
 
 **Capability preflight stays out of scope, and cannot host this.** The preflight that decides
 whether a scenario is supported runs in `pipeline.py` *before* a device is leased, and
@@ -168,10 +196,14 @@ operator later, with the first case that justifies it, costs one function.
 **Build the per-OS behaviour mechanism now, with the back button and the stepper as its first
 users.** Both are real, measured iOS 18 differences: `back` taps the identifier `BackButton`, which
 that OS's navigation bar does not carry, and a SwiftUI stepper reports itself non-hittable there.
-Both, though, have a version-agnostic fix available — a fallback chain to the navigation bar's
-leading button, and classifying `.stepper` in the runner's `typeName`, which today falls through to
-`other`. Branching on the OS where a fallback would do buys a matrix that grows with every release
-and that nobody re-tests on the older half. Those two fixes belong in their own items.
+Branching on the OS where a version-agnostic fix would do buys a matrix that grows with every
+release and that nobody re-tests on the older half, so each case has to earn its branch. Measurement
+since settled both, in opposite directions. The stepper needs no branch: its container is refused on
+one OS and accepted on the other, but the fix is in the actuation path, not the version. Its
+apparent version-agnostic fix is not the one to reach for either — classifying `.stepper` in the
+runner's `typeName`, which today falls through to `other`, would change the trait token and leave
+the frame and `isHittable` exactly as they are, so the tap stays refused. The back button did earn
+a branch, for the reason given in *Detailed design*. Both fixes belong in their own items.
 
 ## Progress
 
@@ -182,13 +214,19 @@ and that nobody re-tests on the older half. Those two fixes belong in their own 
 - [ ] The parsed type and its parser, beside `device_id.py`: platform, major, minor, raw label;
       `None` for an absent or unrecognized label; no comparison operators. Unit-tested from a table
       of labels.
+- [ ] Carry the parsed OS on `ScenarioHistory` and `FlakyScenario`, print it in the rendered and
+      `--json` output, and put it in both sort keys ahead of the name.
 - [ ] Group by the parsed OS in `longitudinal` (`bajutsu/analysis/audit.py`), with an "unknown" key
       for a run whose label is missing or unparseable, and the same component in `rank_flakiness`
       (`bajutsu/serve/flakiness.py`), reading the label from the field this unit adds to the record —
       `_run_summary` keeps none today — filling that field in `records_from_manifests` too, and
       grouping a run whose scenarios span OS versions under the "unknown" key. Both surfaces must gain the same component and the same unknown-key rule.
-- [ ] Hand the parsed OS to the driver: one optional attribute on `Driver`, `None` by default, set
-      when the lease is established. Nothing branches on it in this item.
+- [ ] Backfill the field on rows recorded before it existed, from each run's stored manifest; where
+      a deployment no longer holds the manifest, leave the row `unknown` and disclose the split in
+      the report rather than letting a boundary-spanning flake read as two `unproven` histories.
+- [ ] Hand the parsed OS to the XCUITest driver as a `make_driver` keyword, derived in the
+      environment from the runtime identifier it already captures, at both construction sites. No
+      `Driver` protocol member and no test double changes. Nothing branches on it in this item.
 - [ ] Documentation: record in `docs/` (and its `docs/ja/` mirror) that a flakiness history is now
       per OS version, and that the parsed OS is available to a driver but is not a licence to
       branch — a behavioural OS difference is fixed version-agnostically unless an item argues
