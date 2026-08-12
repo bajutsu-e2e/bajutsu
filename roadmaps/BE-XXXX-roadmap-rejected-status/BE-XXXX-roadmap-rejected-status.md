@@ -23,8 +23,8 @@ already made moot. This item splits that bucket in two. `Proposal (deferred)` be
 `Deferred`, matching the flat naming the other three values already use; a new `Rejected` value marks
 a proposal the maintainers have decided against for good, whether because another BE item already
 covers what it proposed or because review found no path that respects the project's prime directives
-or scope. The change touches the metadata vocabulary, the dashboard generator, five roadmap scripts,
-and their gate tests. It renames no item's directory, since `Status` has been directory-independent
+or scope. The change touches the metadata vocabulary, six roadmap scripts (the dashboard generator
+among them), and their gate tests. It renames no item's directory, since `Status` has been directory-independent
 since [BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders.md),
 and it adds no LLM to any path.
 
@@ -49,15 +49,16 @@ cannot tell which of the six are worth a second look without opening every file.
 
 This conflation is one level below a problem BE-0078 already solved once. Before BE-0078, a live
 proposal and one already accepted for active work shared a single `proposals/` folder,
-indistinguishable without opening each file; BE-0078 split that bucket by giving `In progress` its own
-value. The same argument now applies to a `Deferred` bucket that quietly mixes "still worth
+indistinguishable without opening each file; BE-0078 split that bucket by giving in-progress items
+their own folder and index bucket, renaming `Accepted, in progress` to the bare `In progress` along
+the way. The same argument now applies to a `Deferred` bucket that quietly mixes "still worth
 revisiting" with "already answered by another BE".
 
 The distinction is not limited to a previously deferred item that a later BE goes on to invalidate. A
 live `Proposal`, or even an `In progress` item, can turn out not to be worth pursuing for reasons that
 have nothing to do with a successor BE: review can find that the only literal implementation puts a
-non-deterministic judgment on the `run`/CI gate, the tension BE-0040 comes close to before its own
-text carves out an authoring-side design that stays inside the boundary, or the maintainers can simply
+non-deterministic judgment on the `run`/CI gate (the tension BE-0040 comes close to before its own
+text carves out an authoring-side design that stays inside the boundary), or the maintainers can simply
 decide, after weighing it, that the idea does not belong. Each of these wants the same signal a
 browsing reader needs: this proposal will not be pursued, and no named condition is expected to change
 that. `Rejected` covers every one of them, not only the superseded case that surfaced the gap.
@@ -83,9 +84,10 @@ should all read alike, and a value that is no longer a live proposal should not 
 
 `Deferred` keeps an item as a live question. Its own text names a concrete condition that would
 revive it: a capability that does not exist yet (BE-0157, BE-0158: "no reliable, deterministic
-actuator"), or a concrete future need the item spells out (BE-0027: "a backend whose behavior is too
-stateful or protocol-heavy to express as declarative stubs"). The item is not being worked on, but the
-question it raises stays open.
+actuator"), or a concrete future need the item spells out
+([BE-0070](../BE-0070-live-run-artifacts-across-split/BE-0070-live-run-artifacts-across-split.md):
+"If a future design introduces a genuinely live artifact during distributed execution, this proposal
+can be revisited"). The item is not being worked on, but the question it raises stays open.
 
 `Rejected` marks a proposal the maintainers have decided against, with no named condition expected to
 reopen it. Two triggers land an item here: another BE item already covers what it proposed, in which
@@ -125,6 +127,22 @@ what happened.
   `Rejected` included, as not open, and closes its tracking issue exactly as it already does for
   `Deferred`. Its docstring and inline comments name `Proposal (deferred)` as the shelved case; that
   wording is updated to name both `Deferred` and `Rejected` so the comment keeps matching the code.
+- Five more surfaces name the literal `Proposal (deferred)` string and would go stale under the
+  rename: [`.agent-workflows/implement-be/workflow.md`](../../.agent-workflows/implement-be/workflow.md)
+  keys an agent's un-defer confirmation on it, in the item's `Status` branch and again in the
+  tracking-issue fallback note;
+  [`.github/roadmap-refresh-prompt.md`](../../.github/roadmap-refresh-prompt.md)'s refresh guard —
+  "(`Proposal (deferred)` is a deliberate human decision — never un-defer it here)" — renames to
+  `Deferred`, and whether `Rejected` gets the same never-reopen guard there is left to the
+  implementing PR;
+  [`.agent-workflows/roadmap-filter/workflow.md`](../../.agent-workflows/roadmap-filter/workflow.md)
+  lists it as a valid `STATUS` filter value;
+  [`docs/roadmap-workflow.md`](../../docs/roadmap-workflow.md) and its
+  [`docs/ja/roadmap-workflow.md`](../../docs/ja/roadmap-workflow.md) mirror name it in the
+  `implement-be` walkthrough; and
+  [`scripts/sync_roadmap_topic_labels.py`](../../scripts/sync_roadmap_topic_labels.py) names it in a
+  comment explaining which statuses stay eligible for a topic-label change. All five rename to
+  `Deferred`.
 - [`docs/ai-development.md`](../../docs/ai-development.md) and its
   [`docs/ja/ai-development.md`](../../docs/ja/ai-development.md) mirror — the Status→bucket table
   gains the `Rejected` row, and the `Deferred` row loses its `Proposal (…)` wrapper; the surrounding
@@ -132,7 +150,7 @@ what happened.
 - [`CLAUDE.md`](../../CLAUDE.md) — the status list `Status` (`Implemented` / `In progress` /
   `Proposal` / `Proposal (deferred)`) becomes five values, `Deferred` and `Rejected` both bare.
 - [`roadmaps/README.md`](../README.md) and [`README-ja.md`](../README-ja.md) — the one-line status
-  list in the "Adding a roadmap item" note gains `Rejected`.
+  list in the introductory note at the top of the page gains `Rejected`.
 - Gate tests — `tests/test_roadmap_format.py`, `tests/test_roadmap_index.py`,
   `tests/test_roadmap_query.py`, `tests/test_roadmap_dashboard.py`, `tests/test_new_roadmap_item.py`,
   and `tests/test_sync_roadmap_tracking_issues.py` each fix their status fixtures and assertions to
@@ -165,7 +183,7 @@ the bullet already records once.
 
 ### Prime-directive compliance
 
-The whole surface is a metadata vocabulary, five scripts, and their gate tests. No LLM enters any
+The whole surface is a metadata vocabulary, six scripts, and their gate tests. No LLM enters any
 path; `run` and CI stay deterministic; nothing app-specific moves into the tool or its drivers.
 
 ## Alternatives considered
@@ -187,8 +205,10 @@ extends that choice rather than reopening it.
 **Derive `Rejected` automatically from a filled `Superseded by` field, instead of a hand-set `Status`
 value.** Rejected: `Superseded by` cannot be the whole signal, since a `Proposal` or `In progress` item
 can be rejected for a reason that names no successor BE at all — out of scope, or an unworkable design
-against a prime directive. Keeping `Status` hand-set, like every other bucket, matches the existing
-practice: nothing except `Implemented` is derived from another roadmap field.
+against a prime directive. Keeping `Status` hand-set matches the existing practice: the only automated
+`Status` changes are the forward flips the roadmap-refresh job performs from merged-PR evidence
+(`Proposal` → `In progress` → `Implemented`, BE-0222), and that job already treats deferral as a
+deliberate human decision it never overrides — `Rejected` extends the same rule.
 
 **Leave the existing `Proposal (deferred)` items unmigrated, adding `Rejected` only for future
 items.** Rejected: it would leave BE-0154, the concrete case that motivated this item, sitting exactly
