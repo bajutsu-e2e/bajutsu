@@ -1,14 +1,14 @@
-[English](BE-XXXX-in-app-control-channel.md) · **日本語**
+[English](BE-0364-in-app-control-channel.md) · **日本語**
 
-# BE-XXXX — 制御チャネルを追加し、1 回の撮影のあいだだけタッチ可視化を隠せるようにする
+# BE-0364 — 制御チャネルを追加し、1 回の撮影のあいだだけタッチ可視化を隠せるようにする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-in-app-control-channel-ja.md) |
+| 提案 | [BE-0364](BE-0364-in-app-control-channel-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0364") |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 <!-- /BE-METADATA -->
 

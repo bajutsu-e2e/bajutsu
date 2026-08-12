@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-in-app-control-channel-ja.md)
+**English** · [日本語](BE-0364-in-app-control-channel-ja.md)
 
-# BE-XXXX — Add a control channel so bajutsu can hide the touch visualization for a single capture
+# BE-0364 — Add a control channel so bajutsu can hide the touch visualization for a single capture
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-in-app-control-channel.md) |
+| Proposal | [BE-0364](BE-0364-in-app-control-channel.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0364") |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
