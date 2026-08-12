@@ -32,13 +32,21 @@ final class HTTPServer {
     private let handler: RequestHandler
     private var listenFD: Int32 = -1
     private let lock = NSLock()
-    private let queue = DispatchQueue(label: "bajutsu.runner.http")
+    // .userInitiated is declared, not inherited (BE-0362). Every request exists because the
+    // driver is blocked on the reply — the /health polls that decide whether the runner is
+    // alive among them — which is what the class denotes. Propagation from the XCUITest test
+    // method's main thread already lands both queues here today, so declaring it changes no
+    // priority; it stops the priority of the liveness-deciding path from moving silently when
+    // someone later moves where start() is submitted from. Both queues are internal rather
+    // than private so the tests can read the declaration back: a declaration nothing checks
+    // is the same silent drift this guards against.
+    let queue = DispatchQueue(label: "bajutsu.runner.http", qos: .userInitiated)
     // Each accepted connection is handled here so the accept loop can return to
     // accept() at once. A long main-thread-bound gesture (BE-0287) must not wedge
     // the whole server: /health touches no shared state, so it has to stay
     // answerable while the gesture holds the main thread — that is what lets the
     // driver tell "runner busy" from "runner dead".
-    private let connections = DispatchQueue(label: "bajutsu.runner.http.conn", attributes: .concurrent)
+    let connections = DispatchQueue(label: "bajutsu.runner.http.conn", qos: .userInitiated, attributes: .concurrent)
     // Driver calls are sequential and health polls are sporadic, so the realistic
     // peak is well under 8 simultaneous handlers; cap at 8 to bound concurrent
     // handler execution if polls pile up during a long gesture.

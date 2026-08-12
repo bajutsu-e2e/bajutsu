@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0362](BE-0362-runner-http-queue-qos-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0362") |
 | トピック | Platform support |
 | 関連 | [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn-ja.md), [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner-ja.md) |
@@ -143,8 +143,20 @@ Thread Performance Checker の報告は、以前の調査で失敗したジョ�
 
 - [ ] 単位1 — fault-injection と visual のジョブの runner 捕捉出力から Thread Performance Checker の
       報告を探す。否定的な結果も本項目に記録する。
-- [ ] 単位2 — runner の HTTP サーバの2つのキューへ `qos: .userInitiated` を渡す。あわせて、この水準が
+- [x] 単位2 — runner の HTTP サーバの2つのキューへ `qos: .userInitiated` を渡す。あわせて、この水準が
       伝播の与えるものを固定するために宣言されていると記すコメントを添える。
+
+ログ：
+
+- 単位1は未了のままですが、そこへ至る経路が1つ閉じました。2026年8月12日の `main` の実行
+  （31578885972）の fault-injection と visual のジョブは、どちらも成功しました。両方のジョブログ全体を
+  探しても一致はありませんでした。`Thread Performance Checker` も
+  `priority inversion` も現れません。*thread* と *checker* という語自体も現れません。ただし、答えて
+  いるのは本項目の問いより弱い問いです。runner の捕捉出力は `runs/runner-logs/` へ入ります。コンソール
+  へ届くのは、実行がうまくいかなかったときの末尾20行だけです
+  （[`_RUNNER_LOG_TAIL_LINES`](../../bajutsu/platform_lifecycle/environments/xcuitest.py)）。成功した
+  ジョブでは、捕捉出力はアップロードされた成果物の中だけに存在します。この計測には成果物そのものが要る
+  ため、ダウンロードできる人に向けて未了のまま残します。
 
 ## 参考
 

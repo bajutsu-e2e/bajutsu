@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0362](BE-0362-runner-http-queue-qos.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0362") |
 | Topic | Platform support |
 | Related | [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn.md), [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md) |
@@ -148,8 +148,21 @@ Two units. Unit 1 is a measurement that unit 2 does not depend on, and either ma
 
 - [ ] Unit 1 — grep the fault-injection and visual jobs' runner captures for a Thread Performance
       Checker report, and record the finding here, including a negative one.
-- [ ] Unit 2 — pass `qos: .userInitiated` to both of the runner HTTP server's queue constructors, with
+- [x] Unit 2 — pass `qos: .userInitiated` to both of the runner HTTP server's queue constructors, with
       a comment recording that the level pins what propagation supplies implicitly.
+
+Log:
+
+- Unit 1 is still open; one route to it has now closed. The `fault-injection` and `visual` jobs of
+  the 2026-08-12 `main` run (31578885972) both passed. A search of their complete job logs matched
+  nothing. Neither
+  `Thread Performance Checker` nor `priority inversion` appears. The bare words *thread* and
+  *checker* never appear either. That answers a weaker question than the item's. The runner's
+  captured output goes to `runs/runner-logs/`. The console sees a 20-line tail of it when a run goes
+  wrong, set by
+  [`_RUNNER_LOG_TAIL_LINES`](../../bajutsu/platform_lifecycle/environments/xcuitest.py). On a passing
+  job the capture lives inside the uploaded artifact and nowhere else. The measurement needs that
+  artifact, so it stays open for whoever can download one.
 
 ## References
 
