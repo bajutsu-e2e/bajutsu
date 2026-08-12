@@ -113,7 +113,7 @@ golden のレーンでも画素を比較する visual のレーンでも、こ�
 それ以外のいかなる条件でもフックは導入されず、変数を渡されないアプリの挙動は現在とまったく変わりません。
 `BajutsuTouch.startIfEnabled(environment:)` は、デモアプリが起動時にすでに呼んでいる
 `BajutsuNet.startIfEnabled()` から呼び出します。ただし呼ぶ位置は、`BajutsuScreen.startIfEnabled()` と
-並ぶ後方ではなく、`BajutsuKit/Sources/BajutsuKit/BajutsuNet.swift:35` にある
+並ぶ後方ではなく、`BajutsuKit/Sources/BajutsuKit/BajutsuNet.swift:38` にある
 `guard collectorURL != nil || !BajutsuMocks.shared.rules.isEmpty else { return }` よりも**手前**です。
 この guard が存在するのは、ネットワークの観測とスタブがいずれもコレクタかモック規則を必要とするから
 であり、タッチの可視化はどちらも必要としません。ネットワーク機能を一切使わない素の録画実行こそが、
@@ -168,7 +168,7 @@ Python 側では、`bajutsu run` に `--touch-markers` フラグを追加し、�
 | 1 | マーカーのモデル：半径、軌跡の蓄積、タッチごとの生存管理、そしてアクティブなタッチがない状態で届いた `.began` が前のジェスチャを消すという規則を、UIKit を import しない Foundation だけの型に置き、Simulator のない Swift レーンの `swift test` で検証できるようにする |
 | 2 | フックと描画：`-[UIWindow sendEvent:]` の入れ替え、タッチごとのレイヤー保持、`CALayer` による円と軌跡の描画 |
 | 3 | 有効化：`BajutsuTouch.startIfEnabled(environment:)`、`BajutsuNet` のコレクタ guard より手前の呼び出し位置、`bajutsu run --touch-markers` フラグ、フラグの Python テスト |
-| 4 | アクセシビリティ不変の確認：`demos/showcase/scenarios/golden/golden_xcuitest.yaml` に、可視化を有効にして走り、可視化なしの対になるシナリオと同じ `controls.json` を検証するシナリオを置く。マーカーがツリーに入ってしまえば、ここで失敗する。このシナリオがタップを行うのは、何にも触れないシナリオではマーカーが描かれず何も証明できないため。待つだけの `golden.yaml` に置かないのも同じ理由による。`.github/workflows/ios-e2e.yml` の `golden` ジョブには、このファイルを `golden.yaml` と並べて追加し、1 つの温まったランナーで両方を走らせる。これにより、手作業の実行ではなくゲートとして機能する |
+| 4 | アクセシビリティ不変の確認：`demos/showcase/scenarios/golden/golden_xcuitest.yaml` に、可視化を有効にして走り、可視化なしの対になるシナリオと同じ `controls.json` を検証するシナリオを置く。可視化が固定済みのコントロールを乱せば、ここで失敗する。ただし比較が走査するのはゴールデン自身のキーだけなので（`bajutsu/evidence/golden.py`）、ここで捕らえられるのは変化したコントロールであって、追加されたノードではない。ノードが増えないという半分は、`CALayer` がアクセシビリティ上の表現をそもそも持たないことに拠っており、その前提は `tests/test_touch_markers.py` が守る。描画のコードがビューに手を出せば、このテストが落ちる。このシナリオがタップを行うのは、何にも触れないシナリオではマーカーが描かれず何も証明できないため。待つだけの `golden.yaml` に置かないのも同じ理由による。`.github/workflows/ios-e2e.yml` の `golden` ジョブには、このファイルを `golden.yaml` と並べて追加し、1 つの温まったランナーで両方を走らせる。これにより、手作業の実行ではなくゲートとして機能する |
 | 5 | 日英両言語のドキュメント：フラグ、既定値、スクリーンショットの挙動 |
 
 ## 検討した代替案

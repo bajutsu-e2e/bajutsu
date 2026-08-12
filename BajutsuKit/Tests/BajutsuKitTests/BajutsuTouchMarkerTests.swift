@@ -99,6 +99,34 @@ final class BajutsuTouchMarkerTests: XCTestCase {
         XCTAssertTrue(model.visibleMarks.isEmpty)
     }
 
+    func testATouchMissingFromTheEventIsEnded() {
+        var model = BajutsuTouchModel<Int>()
+        model.apply(id: 1, phase: .began, at: point(0, 0))
+        // The touch's `.ended` never arrives — a window torn down mid-gesture stops delivering
+        // events. Without recovery `hasActiveTouch` would latch true and never clear again.
+        model.endTouchesMissing(from: [])
+
+        XCTAssertFalse(model.hasActiveTouch)
+        XCTAssertEqual(model.visibleMarks.count, 1, "the mark stays visible; only its touch ended")
+    }
+
+    func testATouchStillInTheEventStaysActive() {
+        var model = BajutsuTouchModel<Int>()
+        model.apply(id: 1, phase: .began, at: point(0, 0))
+        model.apply(id: 2, phase: .began, at: point(9, 9))
+        model.endTouchesMissing(from: [1, 2])
+
+        XCTAssertTrue(model.hasActiveTouch)
+    }
+
+    func testAGestureClearsAgainAfterALostTouchEnd() {
+        var model = BajutsuTouchModel<Int>()
+        model.apply(id: 1, phase: .began, at: point(0, 0))
+        model.endTouchesMissing(from: [])
+
+        XCTAssertEqual(model.apply(id: 2, phase: .began, at: point(5, 5)), [1])
+    }
+
     func testClearAllReportsEverythingItRemoved() {
         var model = BajutsuTouchModel<Int>()
         model.apply(id: 1, phase: .began, at: point(0, 0))

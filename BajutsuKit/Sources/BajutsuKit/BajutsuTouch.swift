@@ -72,7 +72,18 @@ public enum BajutsuTouch {
     static func handle(_ event: UIEvent, in window: UIWindow) {
         // `sendEvent(_:)` is delivered on the main thread, which is what lets the model and the
         // layer table below go unsynchronized. Bail rather than race if that ever stops holding.
-        guard Thread.isMainThread, let touches = event.allTouches else { return }
+        guard Thread.isMainThread, event.type == .touches, let touches = event.allTouches else {
+            // A hover event can omit the contacts that are down, and sweeping against it would end
+            // a touch that is still held, so only a touch event is allowed to drive the sweep.
+            return
+        }
+        // Recover from a touch whose end never reached us — a window torn down mid-gesture stops
+        // receiving `sendEvent` entirely. Without this the model would hold that touch active
+        // forever and never clear a gesture again. The set is the event's whole touch complement,
+        // NOT this window's slice of it: the model is shared by every window, so sweeping against
+        // one window's touches would end a live touch belonging to another (an in-process keyboard
+        // window alone makes two windows ordinary), reintroducing the same latch across windows.
+        model.endTouchesMissing(from: Set(touches.map(ObjectIdentifier.init)))
         for touch in touches {
             // A touch belongs to one window for its whole life, so this both keeps a two-window
             // app from drawing each touch twice and keeps every phase of a touch on one window.
@@ -113,7 +124,11 @@ public enum BajutsuTouch {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         marks.contact.position = CGPoint(x: mark.point.x, y: mark.point.y)
-        marks.contact.opacity = mark.isActive ? 1.0 : 0.6
+        // Full strength while the touch is down, eased back once it lifts: the contrast tells a
+        // viewer which mark is the gesture happening now and which is the one it left behind. The
+        // lifted value stays high because a step's screenshot only ever catches that state — fading
+        // it far would leave every screenshot showing the faintest version of the mark.
+        marks.contact.opacity = mark.isActive ? 1.0 : 0.7
         marks.trail.path = trailPath(mark.trail)
         CATransaction.commit()
     }
@@ -130,21 +145,24 @@ public enum BajutsuTouch {
 
     private static func makeLayers(in window: UIWindow) -> MarkLayers {
         let radius = CGFloat(BajutsuTouchMarker.radius)
-        let tint = UIColor.systemBlue
+        // Red rather than a system-UI blue: the marker has to read as instrumentation against an
+        // arbitrary app's own palette, and a tint the app is likely to use for its own controls is
+        // exactly the one a viewer cannot pick out.
+        let tint = UIColor.systemRed
 
         let contact = CAShapeLayer()
         contact.path = CGPath(
             ellipseIn: CGRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2),
             transform: nil
         )
-        contact.fillColor = tint.withAlphaComponent(0.4).cgColor
+        contact.fillColor = tint.withAlphaComponent(0.55).cgColor
         contact.strokeColor = tint.cgColor
-        contact.lineWidth = 2
+        contact.lineWidth = 1.5
 
         let trail = CAShapeLayer()
         trail.fillColor = nil
-        trail.strokeColor = tint.withAlphaComponent(0.7).cgColor
-        trail.lineWidth = 3
+        trail.strokeColor = tint.withAlphaComponent(0.8).cgColor
+        trail.lineWidth = 2
         trail.lineCap = .round
         trail.lineJoin = .round
 
