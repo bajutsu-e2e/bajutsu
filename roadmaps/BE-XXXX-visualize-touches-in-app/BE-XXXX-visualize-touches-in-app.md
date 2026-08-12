@@ -130,6 +130,14 @@ from `_launch_params()` (`bajutsu/platform_lifecycle/environments/xcuitest.py:12
 (`BajutsuKit/Sources/BajutsuRunner/RunnerServer.swift:56`), and onto `app.launchEnvironment` before
 the runner launches the app (`BajutsuKit/Runner/Sources/RunnerUITest.swift:54-57`).
 
+One combination the flag refuses rather than degrades: a scenario whose verdict compares a
+screenshot. A `visual` assertion reads the very image the markers are drawn into, and the marks
+persist by design, so the baseline could never match — the flag would turn a green scenario red for
+a reason that has nothing to do with the app. `_apply_touch_markers` therefore scans each scenario's
+`expect` and each step's `assert` and exits 2 naming the offenders, in keeping with the repository's
+fail-loudly norm. Masking is not an alternative, since the marker follows the gesture rather than
+occupying a fixed region.
+
 ### What is drawn
 
 The hook iterates `event.allTouches` on each event and keeps a circle layer and a trail layer per

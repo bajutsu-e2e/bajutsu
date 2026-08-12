@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
@@ -17,6 +18,9 @@ from bajutsu.cli._shared import _resolve_browser, _resolve_language
 from bajutsu.cli.commands.run import _apply_touch_markers
 from bajutsu.config import Effective, IosConfig, WebConfig, load_config, resolve
 from bajutsu.scenario import Scenario
+from bajutsu.scenario.models.assertions import Assertion, VisualMatch
+from bajutsu.scenario.models.steps import Step
+from bajutsu.serve import _cli_flags as cli_flags
 
 runner = CliRunner()
 
@@ -1637,7 +1641,36 @@ def test_touch_markers_does_not_override_a_scenario_that_set_it() -> None:
     assert scenario.preconditions.launch_env["BAJUTSU_TOUCH_MARKERS"] == "0"
 
 
-def test_run_help_documents_the_touch_markers_flag() -> None:
-    result = runner.invoke(app, ["run", "--help"])
-    assert result.exit_code == 0
-    assert "--touch-markers" in result.stdout
+def test_touch_markers_refuses_a_scenario_that_compares_a_screenshot() -> None:
+    """The markers land in the very image a `visual` assertion reads, so the run must not start."""
+    scenario = _touch_marker_scenario("visual one")
+    scenario.expect = [Assertion(visual=VisualMatch(baseline="home.png"))]
+    with pytest.raises(typer.Exit) as exc:
+        _apply_touch_markers([scenario], True)
+    assert exc.value.exit_code == 2
+    assert "BAJUTSU_TOUCH_MARKERS" not in scenario.preconditions.launch_env
+
+
+def test_touch_markers_refuses_a_step_level_visual_assertion() -> None:
+    scenario = _touch_marker_scenario()
+    scenario.steps = [Step(assert_=[Assertion(visual=VisualMatch(baseline="home.png"))])]
+    with pytest.raises(typer.Exit):
+        _apply_touch_markers([scenario], True)
+
+
+def test_a_visual_scenario_is_untouched_when_the_flag_is_off() -> None:
+    """The refusal belongs to the flag, not to `visual`: a normal run of the same scenario works."""
+    scenario = _touch_marker_scenario()
+    scenario.expect = [Assertion(visual=VisualMatch(baseline="home.png"))]
+    _apply_touch_markers([scenario], False)
+    assert "BAJUTSU_TOUCH_MARKERS" not in scenario.preconditions.launch_env
+
+
+def test_run_declares_the_touch_markers_flag() -> None:
+    """Pin the flag's own name, against the CLI's option metadata rather than its rendered help.
+
+    Rich wraps `--help` to the terminal it finds, so a long flag name is split across lines on a
+    narrow one — an assertion on the rendered text passes locally and fails in CI for a reason that
+    has nothing to do with the flag.
+    """
+    assert "touch_markers" in set(cli_flags.option_names("run"))

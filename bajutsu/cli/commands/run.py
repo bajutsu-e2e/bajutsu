@@ -460,15 +460,40 @@ def _apply_mocks(scenarios: list[Scenario], network: bool) -> None:
             s.preconditions.launch_env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
 
 
+def _visual_asserting_scenarios(scenarios: list[Scenario]) -> list[str]:
+    """Names of the scenarios whose verdict reads a screenshot, from `expect` or from any step."""
+    named = []
+    for s in scenarios:
+        assertions = [*s.expect, *(a for step in s.steps for a in step.assert_ or [])]
+        if any(a.visual is not None for a in assertions):
+            named.append(s.name)
+    return named
+
+
 def _apply_touch_markers(scenarios: list[Scenario], enabled: bool) -> None:
     """Ask BajutsuKit to draw a marker at each touch the app receives, via the launch env.
 
     Off unless asked for: the marker is drawn inside the app under test, so it belongs to a run
     someone is investigating rather than to every run. A scenario that already sets the variable
     keeps its own value, like the mocks above.
+
+    Raises:
+        typer.Exit: a scenario carries a `visual` assertion (exit code 2). The markers stay on
+            screen until the next gesture by design, so the screenshot a `visual` comparison reads
+            would carry a circle and a trail its baseline does not — turning a green scenario red
+            for a reason that has nothing to do with the app. Refusing the combination is the only
+            honest answer: a mask cannot rescue it, since the marker's position follows the gesture
+            rather than sitting in a fixed region.
     """
     if not enabled:
         return
+    if visual := _visual_asserting_scenarios(scenarios):
+        typer.echo(
+            "--touch-markers cannot run a scenario whose verdict compares a screenshot: the "
+            "markers are drawn into the very image a `visual` assertion reads, so its baseline "
+            f"could never match. Drop the flag or the assertion. Scenarios: {', '.join(visual)}"
+        )
+        raise typer.Exit(2)
     for s in scenarios:
         s.preconditions.launch_env.setdefault("BAJUTSU_TOUCH_MARKERS", "1")
 
@@ -903,7 +928,9 @@ def run(
         "--touch-markers/--no-touch-markers",
         help="draw a marker at each touch the app receives, so the recorded video and each step's "
         "screenshot show where the gesture landed. Needs an app that links BajutsuKit; the marker "
-        "is a layer, never an accessibility element. Evidence only; never affects pass/fail",
+        "is a layer, never an accessibility element, so no selector can see it. Evidence only — no "
+        "assertion reads the markers — but rejected (exit 2) for a scenario carrying a `visual` "
+        "assertion, whose screenshot comparison they would break",
     ),
     # --- Baseline / schema / golden directory overrides ---
     baselines: str = typer.Option(

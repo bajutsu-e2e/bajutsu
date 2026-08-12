@@ -26,23 +26,35 @@ import BajutsuKit
 @main
 struct MyApp: App {
     init() {
-        BajutsuNet.startIfEnabled()   // no-op unless BAJUTSU_COLLECTOR is set
+        BajutsuNet.startIfEnabled()   // no-op unless a BAJUTSU_* launch env asks for a feature
     }
     // ...
 }
 ```
 
-`startIfEnabled()` activates capture only when `BAJUTSU_COLLECTOR` is present (bajutsu
-sets it on `run`), so it is inert in normal use. It registers globally (covering
+`startIfEnabled()` is the single entry point for every BajutsuKit feature, and each one has
+its own launch-env key, so the function is inert unless one of them is set:
+
+| Key | What it activates |
+|---|---|
+| `BAJUTSU_COLLECTOR` | network capture, and the screen-transition hook alongside it |
+| `BAJUTSU_MOCKS` | request stubbing |
+| `BAJUTSU_TOUCH_MARKERS` | the in-app touch visualization — swizzles `-[UIWindow sendEvent:]` and draws a layer over the app's own window |
+
+bajutsu sets these on `run`, so the function is inert in normal use. Network capture
+activates only when `BAJUTSU_COLLECTOR` is present. It registers globally (covering
 `URLSession.shared`) and swizzles `URLSessionConfiguration.protocolClasses` so app-built
 sessions are covered too. The collector host (`127.0.0.1` / `localhost`) is never
 intercepted, so the report POST can't loop.
 
 ## Safety
 
-It captures headers and bodies — **test/debug builds only**. Gate it out of release (or
-rely on the `BAJUTSU_COLLECTOR` guard), and configure bajutsu `redact` to mask secrets in
-the written evidence (`network.json`).
+It captures headers and bodies — **test/debug builds only**. Gate it out of release with a
+compilation condition rather than leaning on the launch-env keys alone: a release binary that
+still calls `startIfEnabled()` can have any of the features in the table above turned on by an
+environment variable, and `BAJUTSU_TOUCH_MARKERS` in particular installs a process-wide event
+hook and draws over the app's own window. Configure bajutsu `redact` to mask secrets in the
+written evidence (`network.json`).
 
 ## Coverage
 

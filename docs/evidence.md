@@ -287,7 +287,12 @@ Three properties matter before turning the flag on.
   Android lanes leave the operating system's `show_touches` and `pointer_location` settings off for
   theirs (`demos/showcase/android/Makefile`).
 
-The markers are evidence only: no assertion reads them, and the flag is off by default.
+The markers are evidence only — no assertion reads them — and the flag is off by default. The one
+combination `run` refuses outright is a scenario whose verdict compares a screenshot: a `visual`
+assertion reads the very image the markers are drawn into, so `--touch-markers` exits 2 and names
+the scenario rather than letting a baseline fail for a reason that has nothing to do with the app. A
+mask cannot rescue that case, because the marker follows the gesture instead of sitting in a fixed
+region.
 
 ## Sinks (where evidence goes)
 

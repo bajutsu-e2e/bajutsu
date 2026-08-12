@@ -52,7 +52,11 @@ def test_the_activation_key_is_off_unless_set_to_one() -> None:
     """The hook installs on `1` alone, so an app never given the key behaves as it does today."""
     source = TOUCH_SWIFT.read_text(encoding="utf-8")
     assert ACTIVATION_KEY in source, "the Swift side must read the same key the CLI writes"
-    assert 'environment[activationKey] == "1"' in source
+    # Tolerant of formatting on purpose: pinning the exact spelling would turn a `Self.` qualifier
+    # or a re-wrapped `guard` into a red suite for a refactor that changed no behaviour.
+    assert re.search(r'environment\[\s*(?:Self\.)?activationKey\s*\]\s*==\s*"1"', source), (
+        "the hook must install on the literal value '1' and nothing else"
+    )
 
 
 def test_the_golden_pair_stays_paired() -> None:
