@@ -230,10 +230,13 @@ final class XcuitestElementProvider: ElementProviding {
     ///
     /// A narrow flat query is the recovery step, reached only when the position path fails — the
     /// element moved, or its snapshot child indices cannot be replayed through a live hierarchy with
-    /// different system-owned wrapper nodes, as happens for the iOS Save Password sheet. The query
-    /// must yield exactly one identity match; duplicate or anonymous elements have no identity to
-    /// recover by, so a position-path miss on them is a genuine stale. Frame is deliberately excluded
-    /// from both identity checks (BE-0287).
+    /// different system-owned wrapper nodes, as happens for the iOS Save Password sheet and for a
+    /// presented `UIAlertController`. The query must yield one identity match, or several that share
+    /// one frame — XCUITest registers an alert's button twice at one place, and that pair is one
+    /// control rather than an ambiguity. Several matches at *different* frames, and anonymous
+    /// elements, have no identity to recover by, so a position-path miss on them is a genuine stale.
+    /// Frame is deliberately excluded from the recorded-against-live identity check (BE-0287); it
+    /// decides only between candidates read from one live query at one instant.
     private func liveElement(for backing: PositionPathBacking) -> XCUIElement? {
         let el = element(at: backing.path)
         if el.exists, attributesMatch(recorded: backing.recorded, current: recordedAttributes(of: el)) {
@@ -254,7 +257,7 @@ final class XcuitestElementProvider: ElementProviding {
         }
         let candidates = query.allElementsBoundByIndex.filter { $0.exists }
         let attributes = candidates.map(recordedAttributes)
-        guard let index = uniqueMatchingIndex(recorded: recorded, candidates: attributes) else {
+        guard let index = resolvableMatchingIndex(recorded: recorded, candidates: attributes) else {
             return nil
         }
         return candidates[index]

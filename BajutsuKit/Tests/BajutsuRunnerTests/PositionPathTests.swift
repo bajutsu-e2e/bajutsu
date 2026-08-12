@@ -159,4 +159,66 @@ final class PositionPathTests: XCTestCase {
             )
         )
     }
+
+    func testResolvableMatchingIndexReturnsSoleIdentityMatch() {
+        XCTAssertEqual(
+            resolvableMatchingIndex(
+                recorded: attrs(label: "Not Now"),
+                candidates: [attrs(label: "Save"), attrs(label: "Not Now")]
+            ),
+            1
+        )
+    }
+
+    func testResolvableMatchingIndexReturnsNilWithoutAMatch() {
+        XCTAssertNil(
+            resolvableMatchingIndex(
+                recorded: attrs(label: "Not Now"),
+                candidates: [attrs(label: "Save"), attrs(label: "Cancel")]
+            )
+        )
+    }
+
+    func testResolvableMatchingIndexTakesTheFirstOfADuplicateRegistration() {
+        // The UIAlertController pair: same identity, same frame, so one control registered twice.
+        // The recorded frame plays no part — the element may have settled elsewhere since the
+        // snapshot (BE-0287), which is one of the ways the position path misses in the first place.
+        XCTAssertEqual(
+            resolvableMatchingIndex(
+                recorded: attrs(label: "OK", frame: (205, 414, 140, 48)),
+                candidates: [
+                    attrs(label: "Cancel", frame: (57, 463, 140, 48)),
+                    attrs(label: "OK", frame: (205, 463, 140, 48)),
+                    attrs(label: "OK", frame: (205, 463, 140, 48)),
+                ]
+            ),
+            1
+        )
+    }
+
+    func testResolvableMatchingIndexRejectsMatchesAtDifferentFrames() {
+        // Two controls sharing an identity but standing at two places: still a genuine ambiguity.
+        XCTAssertNil(
+            resolvableMatchingIndex(
+                recorded: attrs(label: "OK", frame: (205, 463, 140, 48)),
+                candidates: [
+                    attrs(label: "OK", frame: (205, 463, 140, 48)),
+                    attrs(label: "OK", frame: (205, 611, 140, 48)),
+                ]
+            )
+        )
+    }
+
+    func testResolvableMatchingIndexRejectsMatchesDifferingOnlyInSize() {
+        // Every frame field decides, not the origin alone.
+        XCTAssertNil(
+            resolvableMatchingIndex(
+                recorded: attrs(label: "OK", frame: (205, 463, 140, 48)),
+                candidates: [
+                    attrs(label: "OK", frame: (205, 463, 140, 48)),
+                    attrs(label: "OK", frame: (205, 463, 140, 96)),
+                ]
+            )
+        )
+    }
 }

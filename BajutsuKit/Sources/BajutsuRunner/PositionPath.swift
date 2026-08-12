@@ -130,3 +130,40 @@ public func uniqueMatchingIndex(
     }
     return match
 }
+
+/// Return the index to act on, treating several matches that also share one frame as one control.
+///
+/// `uniqueMatchingIndex` above refuses several matches because identity alone cannot tell two
+/// different controls apart. A duplicate *registration* is not two controls: XCUITest reports a
+/// standard `UIAlertController` button twice, at one frame, and refusing that pair leaves a button
+/// plainly on screen unreachable — the position path cannot replay through an alert's live wrapper
+/// nodes either, so the flat query is its only route. Several matches at one frame therefore resolve
+/// to the first of them; several matches at different frames still return nil, since two controls at
+/// two places on screen are the ambiguity a selector must fail on rather than guess at.
+///
+/// Frame decides here even though `attributesMatch` ignores it, and the two are consistent: that
+/// function compares what was *recorded* against what is *live now*, across a gap in which a settling
+/// screen legitimately moves an element (BE-0287), while these candidates come from one live query at
+/// one instant, where nothing can have moved one relative to another. Equality is exact for the same
+/// reason — a tolerance would only blur a comparison whose two sides were measured together.
+public func resolvableMatchingIndex(
+    recorded: RecordedAttributes,
+    candidates: [RecordedAttributes]
+) -> Int? {
+    let matched = candidates.enumerated().filter {
+        attributesMatch(recorded: recorded, current: $0.element)
+    }
+    guard let first = matched.first else { return nil }
+    guard matched.allSatisfy({ framesEqual($0.element.frame, first.element.frame) }) else {
+        return nil
+    }
+    return first.offset
+}
+
+/// Exact equality of two recorded frames, spelled out because a labelled tuple carries no `==`.
+private func framesEqual(
+    _ a: (x: Double, y: Double, width: Double, height: Double),
+    _ b: (x: Double, y: Double, width: Double, height: Double)
+) -> Bool {
+    a.x == b.x && a.y == b.y && a.width == b.width && a.height == b.height
+}
