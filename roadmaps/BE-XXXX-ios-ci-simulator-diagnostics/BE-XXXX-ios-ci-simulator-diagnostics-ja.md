@@ -107,22 +107,21 @@ testmanagerd 自身の観測が記録されます。すなわち正確な失敗�
 経由しないジョブ（`conformance` / `fault-injection` / `visual`）にも配線されます。実行は
 2 段階です。
 
-- **常時**（軽量で、毎回実行する）。`~/Library/Logs/CoreSimulator/CoreSimulator.log` と、
-  起動済みデバイスの `~/Library/Logs/CoreSimulator/<UDID>/` ディレクトリをコピーする。
+- **常時**（軽量で、毎回実行します）。`~/Library/Logs/CoreSimulator/CoreSimulator.log` と、
+  起動済みデバイスの `~/Library/Logs/CoreSimulator/<UDID>/` ディレクトリをコピーします。
   クラッシュレポートの走査対象を `*.ips` / `*.crash` から `*.diag` / `*.spin` / `*.hang` /
-  `JetsamEvent*` へ広げ、システム側の `/Library/Logs/DiagnosticReports` も加える。さらに
+  `JetsamEvent*` へ広げ、システム側の `/Library/Logs/DiagnosticReports` も加えます。さらに
   環境スナップショットとして `sw_vers` / `sysctl hw.model hw.ncpu hw.memsize
   kern.hv_vmm_present` / `system_profiler SPDisplaysDataType` / `xcodebuild -version` /
-  `xcrun simctl list -j` を記録する。これは仮説 (4) が必要とする、実行横断の集計キーである。
+  `xcrun simctl list -j` を記録します。これは仮説 (4) が必要とする、実行横断の集計キーです。
 - **失敗時のみ**（重量級）。タイムアウト付きの `xcrun simctl diagnose`（CoreSimulator と
   デバイス状態に対する Apple 純正のコレクタ）を実行し、unified log は
-  `log show --last <window> --predicate` で対象を絞って抽出する。抽出対象は描画とスクリーン
-  ショットを担う
-  プロセス群、すなわち `backboardd` / `SpringBoard` / `testmanagerd` /
-  `CoreSimulatorService` と `com.apple.CoreSimulator` サブシステムである。Simulator の
-  ゲストプロセスはホストの unified log に書き込むため、この抽出は仮想化境界の両側を覆う。
-  `bajutsu-e2e/action.yml` の内部ではこの段を実行ステップ自身の結果でゲートし、pytest の
-  レーンでは呼び出し側が `if: failure()` でゲートする。
+  `log show --last <window> --predicate` で対象を絞って抽出します。抽出対象は描画と
+  スクリーンショットを担うプロセス群、すなわち `backboardd` / `SpringBoard` /
+  `testmanagerd` / `CoreSimulatorService` と `com.apple.CoreSimulator` サブシステムです。
+  Simulator のゲストプロセスはホストの unified log に書き込むため、この抽出は仮想化境界の
+  両側を覆います。`bajutsu-e2e/action.yml` の内部ではこの段を実行ステップ自身の結果で
+  ゲートし、pytest のレーンでは呼び出し側が `if: failure()` でゲートします。
 
 ### 第3層は時系列のホストテレメトリ
 
@@ -143,49 +142,49 @@ testmanagerd 自身の観測が記録されます。すなわち正確な失敗�
 作業単位は次のとおりです。
 
 1. **Result bundle。** `BAJUTSU_XCUITEST_RESULT_BUNDLES` の背後で `_spawn_runner` に
-   `-resultBundlePath` を追加する。ランナーログと同じポート単位の鍵付けと健全終了時の削除
-   方針を持ち、`ios-e2e.yml` はこれを `runs/runner-logs/` 配下へ向ける。
+   `-resultBundlePath` を追加します。ランナーログと同じポート単位の鍵付けと健全終了時の
+   削除方針を持ち、`ios-e2e.yml` はこれを `runs/runner-logs/` 配下へ向けます。
 2. **ストール時プローブ。** `BAJUTSU_STALL_DIAGNOSTICS` の背後の上限付き捕捉モジュール、
    その2つのトリガー地点（チャネルのクラッシュ宣言と録画のバイト無し警告）、実行ごとの
-   捕捉回数上限、そして `ios-e2e.yml` でのオプトイン。
+   捕捉回数上限、そして `ios-e2e.yml` でのオプトインを実装します。
 3. **composite action `collect-ios-diagnostics`。** 常時段と失敗時段と `start` フェーズを
    実装し、`bajutsu-e2e/action.yml` の「Collect crash diagnostics」ステップを置き換え、
-   `conformance` / `fault-injection` / `visual` へ配線する。
-4. **ドキュメント。** `docs/ci.md` とその `docs/ja/` ミラーに診断の節を設ける。段の構成、
-   各収集物が `runs/` のどこに置かれるか、4つの仮説に対して収集物をどう読むかを記す。
-5. **テスト。** `bajutsu` 側の2つのフックのユニットテスト。環境変数が設定されたときに限り
-   起動 argv が `-resultBundlePath` を得ること、未設定ならプローブが no-op であること、
-   設定時は上限付きかつベストエフォートであることを固定する。新しい composite action は
+   `conformance` / `fault-injection` / `visual` へ配線します。
+4. **ドキュメント。** `docs/ci.md` とその `docs/ja/` ミラーに診断の節を設けます。段の構成、
+   各収集物が `runs/` のどこに置かれるか、4つの仮説に対して収集物をどう読むかを記します。
+5. **テスト。** `bajutsu` 側の2つのフックのユニットテストです。環境変数が設定されたときに
+   限り起動 argv が `-resultBundlePath` を得ること、未設定ならプローブが no-op であること、
+   設定時は上限付きかつベストエフォートであることを固定します。新しい composite action は
    `make lint-actions` / `actionlint` が検査し、正のパスリストへの追加が必要なら
-   `tests/test_e2e_changes.py` を拡張する。
+   `tests/test_e2e_changes.py` を拡張します。
 
 ### 最重要原則の維持
 
-- **AI は判定しない。** どの層も証拠を集めるだけである。本提案が触れるどの経路にもモデル
-  呼び出しは入らず、収集物が判定に流れ込むこともない。
+- **AI は判定しない。** どの層も証拠を集めるだけです。本提案が触れるどの経路にもモデル
+  呼び出しは入らず、収集物が判定に流れ込むこともありません。
 - **決定論を最優先する。** プローブはタイムアウト付きの有界なサブプロセス呼び出しであり、
-  sleep ではない。テレメトリのサンプラは実行ループの外から観測する。合否の決め方は従来と
-  一切変わらない。
-- **アプリ非依存。** 本提案は対象アプリを読まない。フックはデバイスとランナープロセスに、
-  CI の action はホストに鍵付けされ、ターゲットごとの分岐はどこにもない。
+  sleep ではありません。テレメトリのサンプラは実行ループの外から観測します。合否の決め方は
+  従来と一切変わりません。
+- **アプリ非依存。** 本提案は対象アプリを読みません。フックはデバイスとランナープロセスに、
+  CI の action はホストに鍵付けされ、ターゲットごとの分岐はどこにもありません。
 
 ## 検討した代替案
 
-- **OS 側の状態収集の代わりに `BAJUTSU_LOG_LEVEL` を上げる。** 主たる手段としては退ける。
+- **OS 側の状態収集の代わりに `BAJUTSU_LOG_LEVEL` を上げる。** 主たる手段としては退けます。
   失敗している層は Simulator のスクリーンショットサービスであり、`bajutsu` のプロセスの
-  外にあるため、`bajutsu` 側をどれだけ饒舌にしても記録されない。ログ増量が同乗するのは
-  構わないが、第2層と第3層の代替にはならない。
-- **失敗時に `log collect` の完全アーカイブ、または `sysdiagnose` を取る。** 先送りする。
+  外にあるため、`bajutsu` 側をどれだけ饒舌にしても記録されません。ログ増量が同乗するのは
+  構いませんが、第2層と第3層の代替にはなりません。
+- **失敗時に `log collect` の完全アーカイブ、または `sysdiagnose` を取る。** 先送りします。
   対象期間全体の `.logarchive` はジョブあたり数百 MB に達し、`sysdiagnose` は数分かけて
-  ギガバイト級を生成する。一方、対象を絞った `log show` の抽出は、失敗署名がすでに名指し
-  しているプロセス群を覆う。抽出で不足するとわかったときに限り再検討する。
-- **ジョブ全体で unified log をストリームし続ける。** 退ける。ステップ単位の `device.log`
+  ギガバイト級を生成します。一方、対象を絞った `log show` の抽出は、失敗署名がすでに名指し
+  しているプロセス群を覆います。抽出で不足するとわかったときに限り再検討します。
+- **ジョブ全体で unified log をストリームし続ける。** 退けます。ステップ単位の `device.log`
   という区間証拠が、シナリオ実行中のゲストログのストリームをすでに行っており、失敗時の
-  遡及的な `log show` は、長寿命の追加プロセスなしで同じホスト側エントリを得られる。
+  遡及的な `log show` は、長寿命の追加プロセスなしで同じホスト側エントリを得られます。
 - **スクリーンショット失敗を診断する代わりに、ランナーが失敗を生き延びるようにする。**
-  意図的にスコープ外とする。`/screenshot` を `simctl io screenshot` 経由へ迂回することや、
+  意図的にスコープ外とします。`/screenshot` を `simctl io screenshot` 経由へ迂回することや、
   Swift 側で失敗を非致命化することは「修正」であり、診断が原因を確定する前にどれかを選ぶ
-  のは当て推量になる。証拠が揃った後の後続提案が修正を担う。
+  のは当て推量になります。証拠が揃った後の後続提案が修正を担います。
 
 ## 進捗
 

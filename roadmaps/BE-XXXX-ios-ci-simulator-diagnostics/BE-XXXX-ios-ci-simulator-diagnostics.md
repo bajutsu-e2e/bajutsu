@@ -191,8 +191,8 @@ Mutually exclusive, collectively exhaustive (`MECE`) units of work follow.
   the crash-recovery budgets and wedge detection that made these failures loud but not yet
   diagnosable
 - [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md) — the
-  between-attempt device repair whose reboot and replacement rungs the collected evidence should
-  explain the need for
+  between-attempt device repair; the collected evidence should show whether its reboot and
+  replacement rungs are needed
 - [BE-0346](../BE-0346-video-timing-sync/BE-0346-video-timing-sync.md) — the video-anchor
   correction whose `recordVideo` no-bytes warning is one of this proposal's two stall triggers
 - [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md) —
