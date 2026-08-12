@@ -170,9 +170,11 @@ public func resolvableMatchingIndex(
     }
     guard let first = matched.first else { return nil }
     guard
-        matched.allSatisfy({
-            $0.element.value == first.element.value
-                && framesEqual($0.element.frame, first.element.frame)
+        matched.allSatisfy({ candidate in
+            matched.allSatisfy {
+                candidate.element.value == $0.element.value
+                    && framesEqual(candidate.element.frame, $0.element.frame)
+            }
         })
     else { return nil }
     return first.offset
@@ -185,7 +187,9 @@ public func resolvableMatchingIndex(
 /// its own XCUITest attribute fetch, so a still-settling screen (BE-0287 measured a 49pt shift) can report
 /// one control's two registrations a fraction of a point apart. A point of slack keeps the group rule
 /// from collapsing back into the stale failure it exists to remove, while two controls standing at two
-/// places on screen stay a decisive point apart.
+/// places on screen stay a decisive point apart. The caller compares every match against every other
+/// rather than against one anchor, so the spread across a group of three or more is held to a point
+/// too, and the verdict does not depend on the order `allElementsBoundByIndex` happened to return.
 private func framesEqual(
     _ a: (x: Double, y: Double, width: Double, height: Double),
     _ b: (x: Double, y: Double, width: Double, height: Double)

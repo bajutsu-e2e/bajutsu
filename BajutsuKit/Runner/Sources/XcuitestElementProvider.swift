@@ -275,16 +275,18 @@ final class XcuitestElementProvider: ElementProviding {
     /// one-`snapshot()` design (BE-0105) exists to keep down. `includingValue` carries no default on
     /// purpose, so each caller states its choice and the compiler asks a new one: a candidate list
     /// built without it reports `value` as `nil` throughout, which reads to `resolvableMatchingIndex`
-    /// as every candidate agreeing, collapsing the ambiguity the field was added to preserve.
-    /// `nonEmpty` normalizes so a control reporting no value as `nil` and as `""` does not read as two
-    /// different controls.
+    /// as every candidate agreeing, collapsing the ambiguity the field was added to preserve. Unlike
+    /// `identifier` and `label`, `value` is read straight off the optional rather than through
+    /// `nonEmpty`: the host's key keeps an absent value and an empty one apart (`Router` drops the key
+    /// entirely for `nil`, so Python sees `None` against `""`), and `flattenSnapshot` records it
+    /// unnormalized as well. Normalizing here alone would collapse a pair those two keep apart.
     private func recordedAttributes(
         of el: XCUIElement, includingValue: Bool
     ) -> RecordedAttributes {
         RecordedAttributes(
             identifier: nonEmpty(el.identifier),
             label: nonEmpty(el.label),
-            value: includingValue ? nonEmpty(el.value as? String ?? "") : nil,
+            value: includingValue ? el.value as? String : nil,
             traits: traitTokens(
                 elementType: el.elementType, isEnabled: el.isEnabled, isSelected: el.isSelected
             ),

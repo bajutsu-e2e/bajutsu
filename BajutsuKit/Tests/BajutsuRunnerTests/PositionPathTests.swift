@@ -254,6 +254,23 @@ final class PositionPathTests: XCTestCase {
         )
     }
 
+    func testResolvableMatchingIndexHoldsTheSpreadAcrossThreeMatches() {
+        // Every match is compared against every other, not against whichever one the query bound
+        // first. Anchored on index 0 this collapses — 206 and 207 both sit within a point of it —
+        // and two controls 2pt apart would be tapped as one, with the verdict depending on the order
+        // `allElementsBoundByIndex` returned.
+        XCTAssertNil(
+            resolvableMatchingIndex(
+                recorded: attrs(label: "OK", frame: (205, 463, 140, 48)),
+                candidates: [
+                    attrs(label: "OK", frame: (206, 463, 140, 48)),
+                    attrs(label: "OK", frame: (205, 463, 140, 48)),
+                    attrs(label: "OK", frame: (207, 463, 140, 48)),
+                ]
+            )
+        )
+    }
+
     func testAttributesMatchIgnoresValue() {
         // `value` joined RecordedAttributes for the group rule alone. The recorded-against-live
         // match must keep ignoring it: a slider or text field legitimately changes value between
