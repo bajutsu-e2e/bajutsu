@@ -428,11 +428,13 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
   run-scoped wall-clock budget (`run_crash_recovery_budget`, also unset by
   default) bounds crash-recovery time across the whole run rather than resetting per scenario, so a
   device that keeps degrading fails the run loudly instead of each scenario silently re-spending its
-  own budget until an external CI timeout cancels the job. Once that run-level budget is spent, every
-  later scenario fails immediately, before its own first lease is even attempted — a latch checked at
-  the top of each scenario, not only inside the crash-retry loop — so a device that has already
-  proven it cannot recover does not still cost every remaining scenario one full cold-spawn attempt
-  apiece on the way to the same cancellation. The on-device driver conformance suite
+  own budget until an external CI timeout cancels the job. Spending the run-level budget on a
+  recovery that ultimately succeeds latches nothing — that only shows the device still works — but
+  once a scenario's own crash-retry loop has actually failed because that budget was the binding
+  constraint, every later scenario fails immediately, before its own first lease is even attempted —
+  a latch checked at the top of each scenario, not only inside the crash-retry loop — so a device
+  that has already proven it cannot recover does not still cost every remaining scenario one full
+  cold-spawn attempt apiece on the way to the same cancellation. The on-device driver conformance suite
   shares the per-scenario decision (`runner/recovery.py`) so a Simulator infrastructure fault there
   recovers the same way, rather than reddening the required check on an unrelated PR (BE-0334). On
   the Simulator XCUITest route the retry has one rung above the erase (BE-0354): a **replacement

@@ -823,10 +823,10 @@ def test_run_all_honors_the_crash_recovery_budget_environment_override(
 def test_run_all_stops_respawning_once_the_run_crash_recovery_budget_is_spent() -> None:
     # The run-level budget accumulates *actual recovery time spent*, not wall-clock elapsed since some
     # earlier crash: scenario "a" crashes once, and its successful respawn costs 60s of real recovery
-    # time (billed in full once its loop concludes). Scenario "b" is then never even leased once: the
-    # budget is already exhausted (60s billed >= the 50s budget) by the time its own `run_one` starts,
-    # so the pre-lease latch fails it immediately — the whole point of the latch is that a scenario
-    # never gets to spend its own first attempt discovering what was already known.
+    # time (billed in full once its loop concludes). That alone does not latch anything — a
+    # slow-but-successful recovery says the device works, not that it is broken — so scenario "b"
+    # still gets its own first attempt. Only once "b" *also* crashes, with the budget already spent, is
+    # its own retry denied and the run-level budget marked as genuinely given up on.
     clock = _AdvancingClock()
     calls = 0
 
@@ -835,15 +835,17 @@ def test_run_all_stops_respawning_once_the_run_crash_recovery_budget_is_spent() 
         calls += 1
         if calls == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
-        clock.advance(60.0)  # scenario a's one respawn took 60s
-        return Lease(
-            driver=_fake_driver(),
-            sink=NullSink(),
-            relaunch=None,
-            control=None,
-            collector=None,
-            release=lambda: None,
-        )
+        if calls == 2:
+            clock.advance(60.0)  # scenario a's one respawn took 60s
+            return Lease(
+                driver=_fake_driver(),
+                sink=NullSink(),
+                relaunch=None,
+                control=None,
+                collector=None,
+                release=lambda: None,
+            )
+        raise base.BackendCrashError("runner crashed during the readiness gate (test)")
 
     scenarios = [
         Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]}),
@@ -854,17 +856,17 @@ def test_run_all_stops_respawning_once_the_run_crash_recovery_budget_is_spent() 
     )
     assert results[0].ok  # scenario a recovered; its 60s of recovery time is now billed in full
     assert not results[1].ok
-    assert calls == 2  # a: 2 leases; b: never leased at all — caught by the pre-lease latch
+    assert calls == 3  # a: 2 leases; b: leased once, denied its retry by the already-spent budget
     assert "run-level crash-recovery budget" in (results[1].failure or "")
-    assert "never leased" in (results[1].failure or "")
 
 
 def test_run_all_run_crash_recovery_budget_latch_skips_every_remaining_scenario() -> None:
-    # Once the run-level budget trips, it must stay tripped for the *rest* of the run, not just the
-    # scenario that happened to exhaust it — a device that has already demonstrated it cannot recover
-    # should not still get one full cold-spawn attempt per remaining scenario before the job's own
-    # `timeout-minutes` cancels it. Three scenarios: "a" exhausts the budget recovering from one crash,
-    # "b" and "c" must both be skipped without ever leasing.
+    # Once a scenario has actually *failed* because the run-level budget was the binding constraint,
+    # that must stay latched for the rest of the run — a device that has demonstrated it cannot
+    # recover should not still get one full cold-spawn attempt per remaining scenario before the job's
+    # own `timeout-minutes` cancels it. Three scenarios: "a" recovers successfully but spends the whole
+    # budget doing it (not yet a latch by itself); "b" then crashes and is denied its own retry,
+    # marking the budget given up on; "c" must be skipped entirely, never leased at all.
     clock = _AdvancingClock()
     calls = 0
 
@@ -873,15 +875,17 @@ def test_run_all_run_crash_recovery_budget_latch_skips_every_remaining_scenario(
         calls += 1
         if calls == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
-        clock.advance(60.0)
-        return Lease(
-            driver=_fake_driver(),
-            sink=NullSink(),
-            relaunch=None,
-            control=None,
-            collector=None,
-            release=lambda: None,
-        )
+        if calls == 2:
+            clock.advance(60.0)
+            return Lease(
+                driver=_fake_driver(),
+                sink=NullSink(),
+                relaunch=None,
+                control=None,
+                collector=None,
+                release=lambda: None,
+            )
+        raise base.BackendCrashError("runner crashed during the readiness gate (test)")
 
     scenarios = [
         Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]}),
@@ -893,11 +897,49 @@ def test_run_all_run_crash_recovery_budget_latch_skips_every_remaining_scenario(
     )
     assert results[0].ok
     assert not results[1].ok and not results[2].ok
-    assert (
-        calls == 2
-    )  # only scenario a ever leased (once crashing, once recovering); b and c never do
+    assert calls == 3  # a: 2 leases (recovers); b: 1 lease (denied its retry); c: never leased
     assert "run-level crash-recovery budget" in (results[1].failure or "")
     assert "run-level crash-recovery budget" in (results[2].failure or "")
+    assert "never leased" in (results[2].failure or "")
+
+
+def test_run_all_run_crash_recovery_budget_does_not_fail_a_scenario_after_a_slow_but_successful_recovery() -> (
+    None
+):
+    # The exact false-positive a bare `exhausted()` latch would cause: scenario "a" crashes once, and
+    # its respawn succeeds after spending the *whole* budget (a device replacement that took a while
+    # and then worked) — the device has just proven it recovers, not that it is broken. Scenario "b",
+    # which never crashes at all, must still run and pass normally: `given_up()` only latches once a
+    # scenario's own loop has actually *failed* because of the run-level budget, which never happens
+    # here.
+    clock = _AdvancingClock()
+    calls = 0
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        nonlocal calls
+        calls += 1
+        if scenario.name == "a" and calls == 1:
+            raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+        if scenario.name == "a":
+            clock.advance(610.0)  # a slow device replacement that ultimately succeeds
+        return Lease(
+            driver=_fake_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    scenarios = [
+        Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]}),
+        Scenario.model_validate({"name": "b", "steps": [{"tap": {"id": "ok"}}]}),
+    ]
+    results = run_all(
+        _eff(), scenarios, lease, clock=clock, crash_retries=5, run_crash_recovery_budget=600.0
+    )
+    assert results[0].ok  # a recovered, spending the whole 600s budget doing it
+    assert results[1].ok  # b never crashed and must not be denied a lease it never asked to retry
 
 
 def test_run_all_run_crash_recovery_budget_ignores_healthy_scenarios_between_crashes() -> None:
