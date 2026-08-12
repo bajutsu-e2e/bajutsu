@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-device-os-as-a-first-class-fact-ja.md)
+**English** · [日本語](BE-0358-device-os-as-a-first-class-fact-ja.md)
 
-# BE-XXXX — Carry the device OS version as a parsed fact, so a cross-version run is not scored as flaky
+# BE-0358 — Carry the device OS version as a parsed fact, so a cross-version run is not scored as flaky
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-device-os-as-a-first-class-fact.md) |
+| Proposal | [BE-0358](BE-0358-device-os-as-a-first-class-fact.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0358") |
 | Topic | Platform support |
 | Related | [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md), [BE-0220](../BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md) |
 <!-- /BE-METADATA -->
