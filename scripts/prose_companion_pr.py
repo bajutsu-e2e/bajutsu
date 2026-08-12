@@ -35,27 +35,36 @@ only the new ones. The rolling branch is clobber-guarded exactly as BE-0222's re
 theirs — ``is_bot_authored`` and ``RemoteTip`` are imported from there rather than restated, so the
 two cannot drift.
 
-Like ``refresh_pr.py``, the git/``gh`` orchestration calls the network and never runs inside
+**Nothing is ever checked out.** The pull request's head reaches this only as data read back from
+the API, and the companion commit is assembled through the Git Data API (blob, tree, commit, ref)
+rather than in a working tree. That is what keeps the privileged job free of a pull-request-authored
+tree: CodeQL's ``actions/untrusted-checkout-toctou`` rightly flagged checking one out beside the
+App token, and no local checkout means no such tree to reason about.
+
+Like ``refresh_pr.py``, the ``gh`` orchestration calls the network and never runs inside
 ``make check``; the tests cover the pure parts (hunk parsing, suggestion extraction, the finding
 filter, the apply/skip decision, the body text).
 
 Usage::
 
     python scripts/prose_companion_pr.py --pr 123 --source-branch claude/be-0001-x \\
-        --repo-dir companion --bot-email "app-slug[bot]@users.noreply.github.com"
+        --head-sha 0123abc --bot-name "app-slug[bot]" \\
+        --bot-email "app-slug[bot]@users.noreply.github.com"
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
 import fnmatch
 import json
 import re
-import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gh_cli
@@ -85,6 +94,11 @@ PATH_ALLOWLIST = ("docs/*.md", "roadmaps/*.md")
 # The one refusal reason that is not a problem: it is what every run sees once a companion PR
 # has merged and its fix is on the source branch.
 APPLIED_ALREADY = "already applied on the source branch"
+
+# The mode every file this writes carries. PATH_ALLOWLIST confines writes to markdown under `docs/`
+# and `roadmaps/`, where an executable bit would itself be the anomaly — so stating the mode beats
+# reading it back from the head tree for files that can only ever be plain documents.
+_BLOB_MODE = "100644"
 
 _SUGGESTION_RE = re.compile(r"^```suggestion[^\n]*\n(.*?)^```", re.DOTALL | re.MULTILINE)
 _HUNK_START_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)")
@@ -317,46 +331,154 @@ def pr_number_from_url(output: str) -> int:
     return int(match.group(1))
 
 
-def _git(repo_dir: str, args: list[str], *, capture: bool = False) -> str:
-    result = subprocess.run(
-        ["git", "-C", repo_dir, *args], text=True, capture_output=capture, check=True
-    )
-    return result.stdout if capture else ""
+def _api(path: str, *, method: str | None = None, body: Any = None) -> Any:
+    """One ``gh api`` call against ``path``, returning its parsed JSON.
+
+    A ``body`` goes in over stdin rather than as ``-f`` fields, since the tree payload below is a
+    nested array no flat field can express.
+    """
+    args = ["api", path]
+    if method is not None:
+        args += ["--method", method]
+    if body is not None:
+        args += ["--input", "-"]
+    out = gh_cli.run(args, capture=True, stdin=None if body is None else json.dumps(body))
+    return json.loads(out)
 
 
-def _apply_findings(repo_dir: str, findings: list[Finding]) -> tuple[list[Finding], list[Refused]]:
-    """Rewrite each touched file in the working tree; report what applied and what did not."""
+def _api_or_none(path: str) -> Any | None:
+    """``GET path``, or ``None`` when GitHub answers 404 — an absent file or branch.
+
+    Only 404 becomes ``None``. Any other failure is re-raised, so a transient 5xx or a revoked token
+    can never be misread as "the branch does not exist" and silently skip the clobber guard.
+    """
+    result = gh_cli.run_allow_failure(["api", path])
+    if result.returncode == 0:
+        return json.loads(result.stdout)
+    if "(HTTP 404)" in result.stderr:
+        return None
+    raise RuntimeError(f"`gh api {path}` failed: {result.stderr.strip()}")
+
+
+def _head_reader(head_sha: str) -> Callable[[str], str | None]:
+    """A reader for the pull request's files *at that commit*, returning ``None`` when absent.
+
+    Pinning every read to the resolved SHA — not the branch — is what makes a mid-run push to the
+    source branch unable to shift the text a finding is matched against.
+    """
+
+    def read(path: str) -> str | None:
+        payload = _api_or_none(f"repos/{REPO}/contents/{quote(path)}?ref={quote(head_sha)}")
+        if payload is None:
+            return None
+        if not isinstance(payload, dict) or payload.get("encoding") != "base64":
+            # Over 1 MB the contents API returns an empty body and defers to the blobs API. No
+            # allowlisted document comes near that, so this is a broken assumption rather than a
+            # case to handle — fail loudly instead of applying a finding to text never read.
+            raise RuntimeError(f"cannot read {path} at {head_sha} through the contents API")
+        return base64.b64decode(payload["content"]).decode("utf-8")
+
+    return read
+
+
+def _apply_findings(
+    findings: list[Finding], read_file: Callable[[str], str | None]
+) -> tuple[list[Finding], list[Refused], dict[str, str]]:
+    """Splice every finding that still fits; report the rest and the files whose text changed.
+
+    Returns:
+        The applied findings, the refusals, and the new text of each file that actually differs —
+        a splice reproducing the file byte for byte contributes nothing to commit, which is the
+        no-op the working-tree version used to spot with ``git status --porcelain``.
+    """
     applied: list[Finding] = []
     refused: list[Refused] = []
+    changed: dict[str, str] = {}
     by_path: dict[str, list[Finding]] = {}
     for finding in findings:
         by_path.setdefault(finding.path, []).append(finding)
 
     for path, group in by_path.items():
-        target = Path(repo_dir) / path
-        if not target.is_file():
+        original = read_file(path)
+        if original is None:
             refused.extend(
                 Refused(f.comment_id, path, "the file is not in the pull request's head")
                 for f in group
             )
             continue
-        original = target.read_text(encoding="utf-8")
         rewritten, path_applied, path_refused = apply_to_lines(original.split("\n"), group)
         applied.extend(path_applied)
         refused.extend(path_refused)
-        if path_applied:
-            target.write_text("\n".join(rewritten), encoding="utf-8")
-    return applied, refused
+        text = "\n".join(rewritten)
+        if path_applied and text != original:
+            changed[path] = text
+    return applied, refused, changed
 
 
-def _remote_tip(repo_dir: str, branch: str) -> RemoteTip | None:
+def _remote_tip(branch: str) -> RemoteTip | None:
     """The companion branch's remote tip, or ``None`` if the branch doesn't exist yet."""
-    if not _git(repo_dir, ["ls-remote", "--heads", "origin", branch], capture=True).strip():
+    ref = _api_or_none(f"repos/{REPO}/git/ref/heads/{quote(branch)}")
+    if ref is None:
         return None
-    _git(repo_dir, ["fetch", "origin", branch])
-    sha = _git(repo_dir, ["rev-parse", "FETCH_HEAD"], capture=True).strip()
-    committer = _git(repo_dir, ["log", "-1", "--format=%ce", "FETCH_HEAD"], capture=True).strip()
-    return RemoteTip(sha=sha, committer_email=committer)
+    sha = str(ref["object"]["sha"])
+    commit = _api(f"repos/{REPO}/git/commits/{quote(sha)}")
+    return RemoteTip(sha=sha, committer_email=str(commit["committer"]["email"]))
+
+
+def _commit_files(
+    *, head_sha: str, files: dict[str, str], message: str, name: str, email: str
+) -> str:
+    """Build one commit on top of ``head_sha`` carrying ``files``, and return its SHA.
+
+    Nothing references the new objects until the branch update below points at them, so a run that
+    bails after this leaves only unreferenced objects for GitHub to collect.
+    """
+    base_tree = str(_api(f"repos/{REPO}/git/commits/{quote(head_sha)}")["tree"]["sha"])
+    entries: list[dict[str, str]] = []
+    for path, text in sorted(files.items()):
+        blob = _api(
+            f"repos/{REPO}/git/blobs",
+            method="POST",
+            body={
+                "content": base64.b64encode(text.encode("utf-8")).decode("ascii"),
+                "encoding": "base64",
+            },
+        )
+        entries.append({"path": path, "mode": _BLOB_MODE, "type": "blob", "sha": str(blob["sha"])})
+    tree = _api(
+        f"repos/{REPO}/git/trees", method="POST", body={"base_tree": base_tree, "tree": entries}
+    )
+    # Author and committer are stated rather than left to the token's identity, because the next
+    # run's clobber guard recognizes this commit by its committer email.
+    signature = {"name": name, "email": email}
+    commit = _api(
+        f"repos/{REPO}/git/commits",
+        method="POST",
+        body={
+            "message": message,
+            "tree": str(tree["sha"]),
+            "parents": [head_sha],
+            "author": signature,
+            "committer": signature,
+        },
+    )
+    return str(commit["sha"])
+
+
+def _point_branch_at(branch: str, commit_sha: str, *, exists: bool) -> None:
+    """Create the companion branch, or force it onto ``commit_sha`` — it is rebuilt, not advanced."""
+    if exists:
+        _api(
+            f"repos/{REPO}/git/refs/heads/{quote(branch)}",
+            method="PATCH",
+            body={"sha": commit_sha, "force": True},
+        )
+    else:
+        _api(
+            f"repos/{REPO}/git/refs",
+            method="POST",
+            body={"ref": f"refs/heads/{branch}", "sha": commit_sha},
+        )
 
 
 def _open_pr_numbers(branch: str) -> list[int]:
@@ -505,38 +627,37 @@ def run(args: argparse.Namespace) -> int:
         print(f"No applicable `{PROSE_MARKER}` findings on #{args.pr} (no-op).")
         return 0
 
-    applied, apply_refused = _apply_findings(args.repo_dir, findings)
+    applied, apply_refused, changed = _apply_findings(findings, _head_reader(args.head_sha))
     refused += apply_refused
     _warn_refused(refused)
 
     if not applied:
         print(f"Every finding on #{args.pr} was already applied or could not be applied (no-op).")
         return 0
-    if not _git(args.repo_dir, ["status", "--porcelain"], capture=True).strip():
+    if not changed:
         print("The applied text already matches the source branch; nothing to push (no-op).")
         return 0
 
     branch = f"prose-fix/pr-{args.pr}"
-    tip = _remote_tip(args.repo_dir, branch)
+    commit_sha = _commit_files(
+        head_sha=args.head_sha,
+        files=changed,
+        message=f"docs(prose): apply review wording fixes for #{args.pr}",
+        name=args.bot_name,
+        email=args.bot_email,
+    )
+
+    # The tip is read here, last, rather than before the commit is built: the REST refs API offers
+    # no compare-and-swap to stand in for `git push --force-with-lease`, so the nearest equivalent
+    # is to leave only one round trip between reading the tip and overwriting it.
+    tip = _remote_tip(branch)
     if not is_bot_authored(tip.committer_email if tip else None, args.bot_email):
         print(
             f"::warning::`{branch}` has a human-committed tip; skipping to avoid clobbering it. "
             f"Merge or delete the branch to let the companion PR resume."
         )
         return 0
-
-    _git(args.repo_dir, ["checkout", "-B", branch])
-    _git(args.repo_dir, ["add", "--", *sorted({f.path for f in applied})])
-    _git(args.repo_dir, ["commit", "-m", f"docs(prose): apply review wording fixes for #{args.pr}"])
-    if tip is None:
-        _git(args.repo_dir, ["push", "origin", f"{branch}:{branch}"])
-    else:
-        # Lease against the tip just inspected, so a push landing in the read->push window fails
-        # loudly rather than being overwritten.
-        _git(
-            args.repo_dir,
-            ["push", f"--force-with-lease={branch}:{tip.sha}", "origin", f"{branch}:{branch}"],
-        )
+    _point_branch_at(branch, commit_sha, exists=tip is not None)
 
     companion_pr = _open_or_reuse_pr(
         branch=branch,
@@ -555,8 +676,11 @@ def main(argv: list[str]) -> int:
         "--source-branch", required=True, help="the source PR's head branch — the companion's base"
     )
     parser.add_argument(
-        "--repo-dir", required=True, help="a checkout of the source PR's head to build on"
+        "--head-sha",
+        required=True,
+        help="the source PR's head commit — read from, never checked out",
     )
+    parser.add_argument("--bot-name", required=True, help="the automation bot's commit name")
     parser.add_argument("--bot-email", required=True, help="the automation bot's commit email")
     return run(parser.parse_args(argv))
 
