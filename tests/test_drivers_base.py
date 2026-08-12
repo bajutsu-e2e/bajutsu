@@ -175,6 +175,67 @@ def test_topmost_at_point_scans_nothing_when_target_is_not_in_elements_by_identi
     assert base.topmost_at_point(elements, base.frame_center(target["frame"]), target) is None
 
 
+def _anon(frame: base.Frame) -> base.Element:
+    """An element with no identifier — the wrappers and images a real tree is full of."""
+    return {"identifier": None, "label": None, "traits": [], "value": None, "frame": frame}
+
+
+def test_redirect_candidates_keeps_only_the_named_descendants() -> None:
+    # Built from a real iOS 18.6 tree around a SwiftUI Stepper: the container's accessibility element
+    # is inflated to the whole form row, and eight elements sit inside it after it in document order.
+    # Only the two the platform named are offers a caller could have written itself.
+    row = (16.0, 268.0, 358.0, 44.0)
+    target = _element("log.count", row)
+    elements = [
+        _anon(row),  # the enclosing cell, before the target: an ancestor, never a candidate
+        _element("log.count.label", (32.0, 279.8, 62.7, 20.3)),  # named, but also before it
+        target,
+        _anon((264.0, 274.0, 94.0, 32.0)),
+        _anon((264.0, 274.0, 46.5, 32.0)),
+        _element("log.count-Decrement", (264.0, 274.0, 46.5, 32.0)),
+        _anon((310.5, 274.0, 1.0, 32.0)),
+        _anon((310.5, 274.0, 1.0, 32.0)),
+        _anon((311.5, 274.0, 46.5, 32.0)),
+        _element("log.count-Increment", (311.5, 274.0, 46.5, 32.0)),
+        _anon((32.0, 311.7, 342.0, 0.3)),
+    ]
+
+    got = base.redirect_candidates(elements, target)
+
+    assert [el["identifier"] for el in got] == ["log.count-Decrement", "log.count-Increment"]
+
+
+def test_redirect_candidates_ignores_a_named_element_before_the_target() -> None:
+    # An ancestor encloses the target's frame exactly the way a child does, and `Element` carries no
+    # parent pointer — document order is the only thing that tells them apart.
+    ancestor = _element("card", (0.0, 0.0, 50.0, 50.0))
+    target = _element("button", (5.0, 5.0, 10.0, 10.0))
+    assert base.redirect_candidates([ancestor, target], target) == []
+
+
+def test_redirect_candidates_ignores_a_later_element_outside_the_frame() -> None:
+    target = _element("target", (0.0, 0.0, 10.0, 10.0))
+    elsewhere = _element("elsewhere", (100.0, 100.0, 10.0, 10.0))
+    assert base.redirect_candidates([target, elsewhere], target) == []
+
+
+def test_redirect_candidates_accepts_a_later_element_sharing_the_frame() -> None:
+    # One control registered twice at one place is as legitimate an offer as a smaller child, and it
+    # still has to carry an identifier to get here.
+    target = _element("stepper", (0.0, 0.0, 20.0, 20.0))
+    twin = _element("stepper-Increment", (0.0, 0.0, 20.0, 20.0))
+    assert base.redirect_candidates([target, twin], target) == [twin]
+
+
+def test_redirect_candidates_is_empty_when_the_target_is_not_in_the_list_by_identity() -> None:
+    # An equal-but-not-identical copy finds nothing, rather than falling back to a full-list scan
+    # that would offer an unrelated element the target never contained.
+    child = _element("child", (5.0, 5.0, 5.0, 5.0))
+    elements = [_element("button", (0.0, 0.0, 20.0, 20.0)), child]
+    copy = _element("button", (0.0, 0.0, 20.0, 20.0))
+    assert base.redirect_candidates(elements, copy) == []
+
+
 def test_raise_if_covered_names_the_covering_element_in_the_message() -> None:
     # The failure message must name *what* covered the target, not just that something did —
     # the one fact a caller investigating a CI failure would otherwise have to reproduce the

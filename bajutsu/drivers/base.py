@@ -873,6 +873,49 @@ def topmost_at_point(elements: list[Element], point: Point, target: Element) -> 
     return None
 
 
+# Above this many named descendants, a refused actuation fails rather than probing them: a container
+# this crowded is a layout region, not a control with one actuatable child, and every probe a backend
+# spends asking "is this one reachable" is a round trip.
+MAX_REDIRECT_CANDIDATES = 4
+
+
+def redirect_candidates(elements: list[Element], target: Element) -> list[Element]:
+    """The named descendants a refused actuation on `target` could be redirected to, in document order.
+
+    The mirror image of `topmost_at_point`: that function scans the same after-`target` slice and
+    throws away exactly what this one keeps. A platform can report a container inflated over the
+    control it wraps — a SwiftUI `Stepper` whose accessibility element spans its whole form row, say —
+    and refuse a tap on the container while the control inside it is perfectly reachable. These are
+    the elements a caller may then offer the platform instead.
+
+    Three conditions, each ruling out a way the offer could be wrong:
+
+    - **After `target` in document order.** `Element` carries no parent pointer, so geometry alone
+      cannot tell a descendant from an ancestor or from an unrelated overlay that happens to enclose
+      the same frame. A pre-order walk always emits an ancestor before its descendants, so the slice
+      does the work no frame check can — the same reasoning `topmost_at_point` spells out.
+    - **Inside `target`'s frame** (`_contains`, edge-inclusive). An equal frame counts: a control
+      registered twice at one place is a redirect target as legitimate as a smaller child, and it
+      still has to satisfy the last condition.
+    - **Carrying an identifier.** The offer is then always an element the caller could have named
+      directly, which is what keeps a redirect from becoming a guess the scenario's author cannot
+      predict — and what lets a refusal print the candidates it declined to choose between.
+
+    `target` must be one of the objects in `elements`, found by identity (`is`) rather than equality,
+    the way every caller already resolves it from the very tree it now re-scans. A `target` absent
+    from the list has no descendants to offer, so the result is empty rather than an error.
+    """
+    try:
+        after_target = next(i for i, el in enumerate(elements) if el is target) + 1
+    except StopIteration:
+        return []
+    return [
+        el
+        for el in elements[after_target:]
+        if el["identifier"] and _contains(target["frame"], el["frame"])
+    ]
+
+
 def raise_if_covered(elements: list[Element], el: Element, sel: Selector) -> None:
     """Raise `ElementNotTappable` if `topmost_at_point` finds something covering `el`'s own point.
 
