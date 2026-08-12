@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-xcuitest-boot-completion-wait-ja.md)
+**English** · [日本語](BE-0359-xcuitest-boot-completion-wait-ja.md)
 
-# BE-XXXX — Wait for the Simulator to finish booting before installing and launching the app
+# BE-0359 — Wait for the Simulator to finish booting before installing and launching the app
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-xcuitest-boot-completion-wait.md) |
+| Proposal | [BE-0359](BE-0359-xcuitest-boot-completion-wait.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0359") |
 | Topic | Platform support |
 | Related | [BE-0088](../BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md) |
 <!-- /BE-METADATA -->
