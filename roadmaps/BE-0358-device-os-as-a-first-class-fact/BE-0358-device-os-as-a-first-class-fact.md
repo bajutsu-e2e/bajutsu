@@ -93,9 +93,9 @@ merging it into one would reintroduce exactly the blending this item removes, an
 lose a run the audit can still classify. The manifest already carries `device_runtime` on each
 scenario entry, so this unit needs no new recorded field. `rank_flakiness` on the hosted side keys on
 `scenario_hash` alone and gains the same component. That side needs a newly recorded field to do
-it: `RunRecord` carries no runtime, and `_run_summary` — which builds the `summary` mapping it
-mirrors from the manifest — keeps only the run id, verdict, report, scenario names, and pass
-count, dropping `device_runtime` at that seam. Whether the field is an addition to `_run_summary` or a column of
+it: `RunRecord` carries no runtime, and `_run_summary` — which builds the `summary` mapping from
+the manifest — keeps only the run id, verdict, report, scenario names, and pass count, dropping
+`device_runtime` at that seam. Whether the field is an addition to `_run_summary` or a column of
 its own is the unit's to settle against the real schema. `rank_flakiness` also takes records reduced
 from manifests: `records_from_manifests` feeds it for the file-backed `bajutsu flakiness` command and
 for a database-free serve. That reduction must fill the same field from each manifest's per-scenario
