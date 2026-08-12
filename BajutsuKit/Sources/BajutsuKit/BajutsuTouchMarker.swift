@@ -44,8 +44,9 @@ public struct BajutsuTouchMark: Equatable {
 
 /// Tuning shared by the model and the renderer.
 public enum BajutsuTouchMarker {
-    /// Radius of the contact circle, in points, giving the 40-point diameter the technique uses.
-    public static let radius: Double = 20
+    /// Radius of the contact circle, in points. Small enough to leave the control it lands on
+    /// readable underneath, which is the point of drawing on the app's own frames.
+    public static let radius: Double = 12
     /// A `.moved` this close to the previous trail point records nothing. UIKit delivers moves far
     /// more finely than a drawn route needs, so the filter bounds a trail's density without
     /// shortening the route it shows.
@@ -120,6 +121,22 @@ public struct BajutsuTouchModel<ID: Hashable> {
             mark.isActive = false
             marks[id] = mark
             return []
+        }
+    }
+
+    /// End any tracked touch the current event no longer carries.
+    ///
+    /// The clearing rule keys on `hasActiveTouch`, so a touch whose `.ended` never arrives would
+    /// latch it true and stop every later gesture from clearing: marks would accumulate for the
+    /// rest of the process, and a step's screenshot would show every historic touch instead of its
+    /// own. A window torn down mid-gesture never sees another `sendEvent`, so the lost end is a
+    /// real case rather than a hypothetical one. UIKit carries every touch of the current sequence
+    /// in one event, so a mark still marked active while its touch is absent from the event has
+    /// certainly ended, and the model recovers by ending it here.
+    public mutating func endTouchesMissing(from present: Set<ID>) {
+        let stale = marks.filter { $0.value.isActive && !present.contains($0.key) }.map(\.key)
+        for id in stale {
+            marks[id]?.isActive = false
         }
     }
 

@@ -274,8 +274,11 @@ Three properties matter before turning the flag on.
   environment, and an app that does not link BajutsuKit ignores the variable.
 - **The marker is a `CALayer`, so it never enters the accessibility tree.** A layer is not a
   `UIResponder` and conforms to no accessibility protocol, so no selector can resolve to it and it
-  can swallow no gesture. `demos/showcase/scenarios/golden/golden_xcuitest.yaml` holds that claim to
-  account by asserting the same tree golden twice, once with the markers on and once with them off.
+  can swallow no gesture. Two checks keep the claim honest:
+  `demos/showcase/scenarios/golden/golden_xcuitest.yaml` asserts the same tree golden twice, once
+  with the markers on and once with them off, so a visualization that perturbed the pinned controls
+  fails on device; and `tests/test_touch_markers.py` fails if the drawing code ever reaches for a
+  `UIView`, which is the only way a marker could gain an accessibility representation at all.
 - **A gesture's marks stay until the next gesture starts.** No timer removes them, which is what
   keeps them in the step's screenshot, and equally why a run with the flag on produces screenshots
   that differ from a run without it. Leave the flag off for any pixel comparison, the way the

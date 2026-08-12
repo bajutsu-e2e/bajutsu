@@ -1072,8 +1072,8 @@ def test_real_ios_workflow_declares_the_scenario_keyed_jobs() -> None:
     assert "demos/showcase/scenarios/smoke.yaml" in job_map["run"]
     assert job_map["bundled-runner"] == {"demos/showcase/scenarios/smoke.yaml"}
     # The golden job runs both tree goldens on one warm runner: golden.yaml's Stable rows, and
-    # golden_xcuitest.yaml's Log-tab controls — whose second scenario is the accessibility-invariance
-    # check for `run --touch-markers`, asserting the same baseline with the in-app markers on.
+    # golden_xcuitest.yaml's Log-tab controls — whose second scenario asserts the same baseline with
+    # `run --touch-markers`'s in-app markers on, so the visualization cannot perturb them unnoticed.
     assert job_map["golden"] == {
         "demos/showcase/scenarios/golden/golden.yaml",
         "demos/showcase/scenarios/golden/golden_xcuitest.yaml",

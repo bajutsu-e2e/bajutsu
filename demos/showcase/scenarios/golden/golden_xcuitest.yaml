@@ -24,9 +24,12 @@
 
 # The same tree, recorded with the in-app touch visualization on: the invariance check for
 # `bajutsu run --touch-markers`. The marker is a CALayer, which is not a UIResponder and conforms to
-# no accessibility protocol, so it cannot enter the hierarchy `app.snapshot()` walks — and this
-# scenario is what holds that claim to account, by asserting the *same* controls.json the scenario
-# above asserts with the visualization off. A marker that ever leaked into the tree would fail here.
+# no accessibility protocol, so it cannot enter the hierarchy `app.snapshot()` walks. This scenario
+# asserts the *same* controls.json the scenario above asserts with the visualization off, so a
+# visualization that perturbed the pinned controls fails here. The compare walks the baseline's own
+# keys (bajutsu/evidence/golden.py), so what it catches is a control that changed, not a node that
+# was added; tests/test_touch_markers.py guards the other half by failing if the drawing code ever
+# reaches for a UIView instead of a CALayer.
 # It pairs with the scenario above deliberately: the tap is what makes a marker exist at all, so
 # adding the launch env to a scenario that touches nothing (golden.yaml waits, and never taps)
 # would prove nothing.

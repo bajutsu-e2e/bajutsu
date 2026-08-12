@@ -116,7 +116,7 @@ to be set to `1`; the hook installs on no other condition, and an application th
 variable behaves exactly as it does today. `BajutsuTouch.startIfEnabled(environment:)` is called from
 `BajutsuNet.startIfEnabled()`, which the demo applications already call at launch — but it is called
 **before** that function's `guard collectorURL != nil || !BajutsuMocks.shared.rules.isEmpty else
-{ return }` at `BajutsuKit/Sources/BajutsuKit/BajutsuNet.swift:35`, not after it alongside
+{ return }` at `BajutsuKit/Sources/BajutsuKit/BajutsuNet.swift:38`, not after it alongside
 `BajutsuScreen.startIfEnabled()`. The guard exists because network observation and stubbing both need
 a collector or a mock rule, and touch visualization needs neither: a plain recorded run with no
 network features at all is the case the feature is for.
@@ -171,7 +171,7 @@ The units below are mutually exclusive and collectively exhaustive.
 | 1 | The marker model: radius, trail accumulation, per-touch lifecycle, and the rule that a `.began` arriving with no touch active clears the previous gesture, in a Foundation-only type with no UIKit import, so the Swift lane's `swift test` on a plain macOS runner covers it without a Simulator |
 | 2 | The hook and the rendering: the `-[UIWindow sendEvent:]` exchange, the per-touch layer store, and the `CALayer` circles and trails |
 | 3 | Activation: `BajutsuTouch.startIfEnabled(environment:)`, its call site above the collector guard in `BajutsuNet`, the `bajutsu run --touch-markers` flag, and the flag's Python tests |
-| 4 | The accessibility-invariance check: a scenario in `demos/showcase/scenarios/golden/golden_xcuitest.yaml` that runs with the visualization enabled and asserts the same `controls.json` baseline its visualization-off twin asserts, so a marker that ever entered the tree fails it. It taps, since a scenario that touches nothing draws no marker and would prove nothing — which is also why it does not go in `golden.yaml`, whose one scenario only waits. The `golden` job in `.github/workflows/ios-e2e.yml` gains the file beside `golden.yaml`, both running on one warm runner, so the check is gated rather than left to a manual run |
+| 4 | The accessibility-invariance check: a scenario in `demos/showcase/scenarios/golden/golden_xcuitest.yaml` that runs with the visualization enabled and asserts the same `controls.json` baseline its visualization-off twin asserts, so a visualization that perturbed the pinned controls fails it. The compare walks the baseline's own keys (`bajutsu/evidence/golden.py`), which catches a control that moved or changed rather than a node that was added; the no-added-node half rests on `CALayer` having no accessibility representation at all, and `tests/test_touch_markers.py` keeps that premise true by failing if the drawing code ever reaches for a view. It taps, since a scenario that touches nothing draws no marker and would prove nothing — which is also why it does not go in `golden.yaml`, whose one scenario only waits. The `golden` job in `.github/workflows/ios-e2e.yml` gains the file beside `golden.yaml`, both running on one warm runner, so the check is gated rather than left to a manual run |
 | 5 | Documentation in both languages, covering the flag, the default, and the screenshot behavior |
 
 ## Alternatives considered
@@ -193,7 +193,7 @@ covered too.** Passing `DYLD_INSERT_LIBRARIES` through the existing launch envir
 any Simulator application without adopting the package, and Xcode itself injects
 `libXCTestBundleInject.dylib` the same way. We deferred the approach rather than rejecting it: it
 needs a separately built, ad-hoc-signed Simulator library product and a build target to produce it,
-and the only application this repository's continuous integration exercises already adopts
+and every application this repository's continuous integration exercises already adopts
 `BajutsuKit`, so the extra machinery would ship untested. The visualization code this item adds is
 self-contained and carries no dependency on the rest of `BajutsuKit`, which keeps the option open.
 
