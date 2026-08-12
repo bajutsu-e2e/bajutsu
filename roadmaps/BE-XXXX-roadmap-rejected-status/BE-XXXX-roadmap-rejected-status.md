@@ -37,7 +37,8 @@ Six roadmap items carry `Proposal (deferred)` today:
 [BE-0154](../BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha.md),
 [BE-0157](../BE-0157-shake-device-primitive/BE-0157-shake-device-primitive.md), and
 [BE-0158](../BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive.md). Five of them
-are genuinely parked: each names a concrete blocker or a future need that would revive it, from a
+are parked — one of them, BE-0027, only on balance (see *Migrating today's roadmap*): each names a
+concrete blocker or a future need that would revive it, from a
 missing headless actuator for the shake and timezone primitives (BE-0157, BE-0158) to a design that
 would let an AI-authored assertion lower to a deterministic check before `run` ever sees it (BE-0040).
 The sixth, BE-0154 (running `roadmap-promote` from a base SHA), already carries a filled
@@ -120,14 +121,15 @@ what happened.
   implementing PR, not this proposal). `BUCKET_LABEL`: add `"Rejected": "Rejected"`. Update the module
   docstring's bucket list.
 - [`scripts/new_roadmap_item.py`](../../scripts/new_roadmap_item.py) — `STATUS_JA`: rename the
-  `"Proposal (deferred)"` key to `"Deferred"`; add `"Rejected": "却下"`, so
-  `make new-roadmap-item STATUS=…` keeps accepting every value `check_roadmap_format.py` recognizes.
+  `"Proposal (deferred)": "提案（保留）"` entry to `"Deferred": "保留"`; add
+  `"Rejected": "却下"`, so `make new-roadmap-item STATUS=…` keeps accepting every value
+  `check_roadmap_format.py` recognizes.
 - [`scripts/sync_roadmap_tracking_issues.py`](../../scripts/sync_roadmap_tracking_issues.py) — no
   logic change: `OPEN_STATUSES = frozenset({"Proposal", "In progress"})` already treats anything else,
   `Rejected` included, as not open, and closes its tracking issue exactly as it already does for
   `Deferred`. Its docstring and inline comments name `Proposal (deferred)` as the shelved case; that
   wording is updated to name both `Deferred` and `Rejected` so the comment keeps matching the code.
-- Five more surfaces name the literal `Proposal (deferred)` string and would go stale under the
+- Six more surfaces name the literal `Proposal (deferred)` string and would go stale under the
   rename: [`.agent-workflows/implement-be/workflow.md`](../../.agent-workflows/implement-be/workflow.md)
   keys an agent's un-defer confirmation on it, in the item's `Status` branch and again in the
   tracking-issue fallback note;
@@ -139,10 +141,13 @@ what happened.
   lists it as a valid `STATUS` filter value;
   [`docs/roadmap-workflow.md`](../../docs/roadmap-workflow.md) and its
   [`docs/ja/roadmap-workflow.md`](../../docs/ja/roadmap-workflow.md) mirror name it in the
-  `implement-be` walkthrough; and
+  `implement-be` walkthrough;
   [`scripts/sync_roadmap_topic_labels.py`](../../scripts/sync_roadmap_topic_labels.py) names it in a
-  comment explaining which statuses stay eligible for a topic-label change. All five rename to
-  `Deferred`.
+  comment explaining which statuses stay eligible for a topic-label change; and the
+  [`Makefile`](../../Makefile)'s `roadmap-status` usage comment lists it among the valid `STATUS`
+  values — after the rename that documented invocation would exit non-zero, since
+  `roadmap_query.py` derives its valid statuses from `STATUS_TO_BUCKET`. All six rename to
+  `Deferred` (the comment also gains `Rejected`).
 - [`docs/ai-development.md`](../../docs/ai-development.md) and its
   [`docs/ja/ai-development.md`](../../docs/ja/ai-development.md) mirror — the Status→bucket table
   gains the `Rejected` row, and the `Deferred` row loses its `Proposal (…)` wrapper; the surrounding
@@ -151,10 +156,11 @@ what happened.
   `Proposal` / `Proposal (deferred)`) becomes five values, `Deferred` and `Rejected` both bare.
 - [`roadmaps/README.md`](../README.md) and [`README-ja.md`](../README-ja.md) — the one-line status
   list in the introductory note at the top of the page gains `Rejected`.
-- Gate tests — `tests/test_roadmap_format.py`, `tests/test_roadmap_index.py`,
-  `tests/test_roadmap_query.py`, `tests/test_roadmap_dashboard.py`, `tests/test_new_roadmap_item.py`,
-  and `tests/test_sync_roadmap_tracking_issues.py` each fix their status fixtures and assertions to
-  the renamed `Deferred` and the new `Rejected` value.
+- Gate tests — `tests/test_roadmap_index.py`, `tests/test_roadmap_query.py`,
+  `tests/test_new_roadmap_item.py`, and `tests/test_sync_roadmap_tracking_issues.py` fix the status
+  fixtures and assertions that pin the literal; `tests/test_roadmap_format.py` (a wrapper over the
+  committed tree) and `tests/test_roadmap_dashboard.py` (which iterates `BUCKETS`) need no literal
+  fix, only optional coverage for the new value.
 
 ### Migrating today's roadmap
 
@@ -230,8 +236,8 @@ same PR is what closes the actual gap.
   invariant this item extends to five, and set the precedent for flattening a wrapped status name to a
   bare one.
 - [BE-0159 — Flatten roadmap status folders](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders.md)
-  — made `Status` directory-independent, and is BE-0154's named successor, the concrete case
-  motivating this item.
+  — made `Status` directory-independent, and is the successor BE-0154's `Superseded by` field names
+  — the supersession that motivated this item.
 - [BE-0154 — Run roadmap-promote from the base SHA](../BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha.md)
   — the deferred item this item's migration reclassifies to `Rejected`.
 - [BE-0100 — Roadmap progress-tracking template](../BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template.md)

@@ -38,8 +38,8 @@ LLM を持ち込みません。
 [BE-0154](../BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha-ja.md)、
 [BE-0157](../BE-0157-shake-device-primitive/BE-0157-shake-device-primitive-ja.md)、
 [BE-0158](../BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive-ja.md) です。
-このうち5件は、本当に棚上げされているだけです。それぞれが、復活の条件となる具体的なブロッカーや
-将来のニーズを名指ししています。シェイクとタイムゾーンのプリミティブに欠けているヘッドレスな
+このうち5件は棚上げされています（うち BE-0027 は際どいケースです。「今日のロードマップの移行」を
+参照）。それぞれが、復活の条件となる具体的なブロッカーや将来のニーズを名指ししています。シェイクとタイムゾーンのプリミティブに欠けているヘッドレスな
 アクチュエータ（BE-0157、BE-0158）から、AI が書いたアサーションを `run` が見る前に決定的な
 チェックへ落とし込む設計（BE-0040）までです。残る1件、BE-0154（ベース SHA から
 `roadmap-promote` を実行する提案）は、すでに `Superseded by` フィールドに後継として BE-0159 を
@@ -124,16 +124,16 @@ LLM を持ち込みません。
   本提案ではなく実装 PR の仕事です）。`BUCKET_LABEL` に `"Rejected": "Rejected"` を追加し、
   モジュールの docstring にあるバケット一覧も更新します。
 - [`scripts/new_roadmap_item.py`](../../scripts/new_roadmap_item.py)：`STATUS_JA` の
-  `"Proposal (deferred)"` キーを `"Deferred"` に改称し、`"Rejected": "却下"` を追加します。
-  これにより `make new-roadmap-item STATUS=…` は、`check_roadmap_format.py` が認識する
-  すべての値を引き続き受け付けます。
+  `"Proposal (deferred)": "提案（保留）"` を `"Deferred": "保留"` に改称し、`"Rejected": "却下"`
+  を追加します。これにより `make new-roadmap-item STATUS=…` は、`check_roadmap_format.py` が
+  認識するすべての値を引き続き受け付けます。
 - [`scripts/sync_roadmap_tracking_issues.py`](../../scripts/sync_roadmap_tracking_issues.py)：
   ロジックの変更はありません。`OPEN_STATUSES = frozenset({"Proposal", "In progress"})` は、
   `Rejected` を含めそれ以外のすべてをすでに「オープンではない」として扱い、`Deferred` に対して
   すでに行っているのと同じようにトラッキング Issue を閉じます。docstring と行内コメントは
   棚上げのケースを `Proposal (deferred)` とだけ呼んでいるため、`Deferred` と `Rejected` の
   両方を指すよう文言を直し、コードとコメントを一致させます。
-- ほかに5つの箇所が `Proposal (deferred)` という文字列そのものを名指ししており、改称のもとで
+- ほかに6つの箇所が `Proposal (deferred)` という文字列そのものを名指ししており、改称のもとで
   古びてしまいます。
   [`.agent-workflows/implement-be/workflow.md`](../../.agent-workflows/implement-be/workflow.md)
   は、項目の `Status` による分岐の注記と、トラッキング Issue が見つからない場合の注記の2箇所で、
@@ -148,8 +148,12 @@ LLM を持ち込みません。
   [`docs/ja/roadmap-workflow.md`](../../docs/ja/roadmap-workflow.md) 対訳は、`implement-be` の
   手順説明でこれを名指ししています。
   [`scripts/sync_roadmap_topic_labels.py`](../../scripts/sync_roadmap_topic_labels.py) は、
-  トピックラベルの変更対象に残る状態を説明するコメントでこれを名指ししています。この5箇所は
-  いずれも `Deferred` に改称します。
+  トピックラベルの変更対象に残る状態を説明するコメントでこれを名指ししています。さらに
+  [`Makefile`](../../Makefile) の `roadmap-status` ターゲットの使用例コメントも、有効な
+  `STATUS` 値の一覧としてこの文字列を挙げています。`scripts/roadmap_query.py` は有効な状態を
+  `STATUS_TO_BUCKET` から導出しているため、改称後はこのコメントどおりに実行すると終了コードが
+  非ゼロになってしまいます。この6箇所はいずれも `Deferred` に改称します（このコメントには
+  `Rejected` も追加します）。
 - [`docs/ai-development.md`](../../docs/ai-development.md) とその
   [`docs/ja/ai-development.md`](../../docs/ja/ai-development.md) 対訳：状態→区分の表に
   `Rejected` の行を追加し、`Deferred` の行から `Proposal (…)` の枠組みを外します。
@@ -159,11 +163,12 @@ LLM を持ち込みません。
   単独の値にします。
 - [`roadmaps/README.md`](../README.md) と [`README-ja.md`](../README-ja.md)：
   ページ冒頭の導入部の注記にある1行の状態一覧に `Rejected` を加えます。
-- ゲートテスト：`tests/test_roadmap_format.py`、`tests/test_roadmap_index.py`、
-  `tests/test_roadmap_query.py`、`tests/test_roadmap_dashboard.py`、
-  `tests/test_new_roadmap_item.py`、`tests/test_sync_roadmap_tracking_issues.py` は、
-  それぞれ状態のフィクスチャとアサーションを、改称後の `Deferred` と新設の `Rejected` に
-  合わせます。
+- ゲートテスト：`tests/test_roadmap_index.py`、`tests/test_roadmap_query.py`、
+  `tests/test_new_roadmap_item.py`、`tests/test_sync_roadmap_tracking_issues.py` は、状態の
+  文字列を直接埋め込んだフィクスチャとアサーションを、改称後の `Deferred` と新設の `Rejected`
+  に合わせます。一方 `tests/test_roadmap_format.py`（コミット済みのツリーに対するラッパー）と
+  `tests/test_roadmap_dashboard.py`（`BUCKETS` を汎用的に走査するテスト）は状態の文字列を
+  直接埋め込んでいないため修正の必要はなく、新しい値へのカバレッジを任意で追加できるのみです。
 
 ### 今日のロードマップの移行
 
@@ -186,7 +191,7 @@ LLM を持ち込みません。
 
 [`roadmaps/README-ja.md`](../README-ja.md) の「取り込まない」節は別の仕組みであり、そのままと
 します。これは、番号付きのBE項目になる前に不採用と決まったアイデアを記録するものであり、未成熟な
-アイデアをまず「未整理のアイデア」に置き、対象範囲が固まってから初めて番号付き項目へ昇格する
+アイデアをまず「未整理アイデア」に置き、対象範囲が固まってから初めて番号付き項目へ昇格する
 というロードマップ自身の昇格ルールに従います。`Rejected` は `roadmaps/BE-NNNN-<slug>/` として
 すでに存在する項目にのみ当てはまります。本項目は、「取り込まない」の箇条書きを却下するためだけに
 番号付き項目へ昇格させることを提案しません。それは、その箇条書きがすでに一度記録している
@@ -241,7 +246,7 @@ LLM は入り込みません。`run` と CI は決定的なままであり、ア
 ## 参考
 
 - [BE-0078 — 状態ごとのロードマップフォルダ](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders-ja.md)は、4区分の `状態` の語彙と、「区分は `状態` から導く」という不変条件を導入した項目です。本項目はこれを5区分に拡張し、枠組み付きの状態名を平らな名前に改称する先例もここから引き継ぎます。
-- [BE-0159 — ロードマップ状態フォルダの平坦化](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders-ja.md)は、`状態` をディレクトリから独立させた項目であり、BE-0154 が `Superseded by` に記す後継でもあります。本項目のきっかけとなった具体的なケースです。
+- [BE-0159 — ロードマップ状態フォルダの平坦化](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders-ja.md)は、`状態` をディレクトリから独立させた項目であり、BE-0154 が `Superseded by` に記す後継でもあります。この無効化の関係が、本項目のきっかけとなった具体的なケースです。
 - [BE-0154 — ベース SHA から roadmap-promote を実行する](../BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha-ja.md)は、本項目の移行によって `Rejected` に再分類される保留項目です。
 - [BE-0100 — ロードマップ進捗追跡テンプレート](../BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template-ja.md)は、本項目が「無効化」の引き金として再利用する、相互リンクの `Related` / `Superseded by` フィールドを定義した項目です。
 - [BE-0162 — ロードマップ状態フィルタスキル](../BE-0162-roadmap-status-filter-skill/BE-0162-roadmap-status-filter-skill-ja.md)は、「検討した代替案」で触れた、`状態` を鍵とする `roadmap-filter` スキルです。
