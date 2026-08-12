@@ -1,14 +1,14 @@
-[English](BE-XXXX-ios-ci-simulator-diagnostics.md) · **日本語**
+[English](BE-0361-ios-ci-simulator-diagnostics.md) · **日本語**
 
-# BE-XXXX — iOS の CI 失敗の原因究明に必要な多層の診断ログを収集する
+# BE-0361 — iOS の CI 失敗の原因究明に必要な多層の診断ログを収集する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-ios-ci-simulator-diagnostics-ja.md) |
+| 提案 | [BE-0361](BE-0361-ios-ci-simulator-diagnostics-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0361") |
 | トピック | CI / build infrastructure |
 | 関連 | [BE-0319](../BE-0319-xcuitest-cold-spawn-resilience/BE-0319-xcuitest-cold-spawn-resilience-ja.md)、[BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md)、[BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md)、[BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md)、[BE-0346](../BE-0346-video-timing-sync/BE-0346-video-timing-sync-ja.md)、[BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation-ja.md) |
 <!-- /BE-METADATA -->
