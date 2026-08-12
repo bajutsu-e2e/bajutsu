@@ -1228,6 +1228,38 @@ def test_run_ended_probe_keeps_reporting_the_marker_it_already_found(tmp_path: P
     assert probe() == first
 
 
+def test_run_ended_probe_reads_the_watchdog_restarts_selected_tests_suite(tmp_path: Path) -> None:
+    # The capture a real wedged runner leaves behind, and the one the `All tests` spellings alone
+    # could not read. XCTest's watchdog judges the unresponsive in-Simulator host a test timeout,
+    # relaunches it, re-runs zero tests, and ends — reporting under `Selected tests`, so a probe
+    # matching only `All tests` answers "still running" about a port that is already dead. Taken
+    # verbatim (bar the elision) from the fault-injection lane's own runner capture.
+    log = tmp_path / "runner.log"
+    log.write_bytes(
+        b"Restarting after unexpected exit, crash, or test timeout; summary will include totals "
+        b"from previous launches.\n"
+        b"Test Suite 'Selected tests' started at 2026-08-11 17:42:16.444.\n"
+        b"Test Suite 'RunnerUITest' passed at 2026-08-11 17:42:16.446.\n"
+        b"Test Suite 'Selected tests' passed at 2026-08-11 17:42:16.447.\n"
+        b"** BUILD INTERRUPTED **\n"
+    )
+    reason = _run_ended_probe(log)()
+    assert reason is not None and "Test Suite 'Selected tests' passed" in reason
+
+
+def test_run_ended_probe_reports_nothing_for_a_healthy_runs_started_lines(tmp_path: Path) -> None:
+    # The guard on the marker above: a healthy spawn's own opening lines must not read as an ended
+    # run. Only the terminal `passed` / `failed` spellings end it — `started` never does, and a
+    # never-restarted run reports under `All tests` anyway (`_spawn_runner` passes no `-only-testing`).
+    log = tmp_path / "runner.log"
+    log.write_bytes(
+        b"Test Suite 'All tests' started at 2026-08-11 17:40:08.199.\n"
+        b"Test Suite 'BajutsuRunnerUITests.xctest' started at 2026-08-11 17:40:08.200.\n"
+        b"Test Suite 'RunnerUITest' started at 2026-08-11 17:40:08.201.\n"
+    )
+    assert _run_ended_probe(log)() is None
+
+
 def test_runner_alive_reports_gone_once_the_test_run_ended(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
