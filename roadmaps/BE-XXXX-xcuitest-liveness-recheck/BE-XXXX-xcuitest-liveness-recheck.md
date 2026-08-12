@@ -82,9 +82,10 @@ The work breaks into three units. Unit 2 depends on unit 1; unit 3 depends on un
 
    Throttle the liveness question rather than asking it at the poll interval. The `/health` probe
    runs every 100 milliseconds, while the liveness check reads the runner's capture file from a
-   private offset. Reading it 600 times across one window would be wasteful without catching the
-   death any sooner than reading it once a second, which bounds the wasted wait to about a second
-   beyond the moment the runner's death becomes observable.
+   private offset. Reading it 600 times across one window would cost 600 file reads to catch the
+   death at most 900 milliseconds sooner than reading it once a second — a difference that does not
+   matter against a 60-second window. Once a second bounds the wasted wait to about a second beyond
+   the moment the runner's death becomes observable.
 
 3. **Report which end the wait reached.** The crash-recovery layer already carries two diagnostics:
    one for a runner found gone before the wait, and one for a wait that reached its deadline. Route
