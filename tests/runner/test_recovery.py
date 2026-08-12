@@ -172,6 +172,20 @@ def test_run_budget_never_blocks_the_first_crash() -> None:
     assert budget.exhausted() is False
 
 
+def test_run_budget_given_up_only_after_mark_given_up_not_on_exhaustion_alone() -> None:
+    # `exhausted()` trips on cumulative time alone — including time billed by a recovery that
+    # ultimately succeeded — but `given_up()` must stay False until a caller explicitly reports (via
+    # `mark_given_up`) that a scenario's own crash-retry loop actually failed because this budget was
+    # the binding constraint. A device that recovered slowly, but did recover, must not latch out every
+    # later scenario.
+    budget = RunCrashRecoveryBudget(budget=100.0)
+    budget.add_recovery_time(100.0)  # exhausts the budget via a recovery that succeeded
+    assert budget.exhausted() is True
+    assert budget.given_up() is False  # nothing has failed yet — no false-positive latch
+    budget.mark_given_up()
+    assert budget.given_up() is True
+
+
 def test_run_crash_recovery_budget_default_reads_the_environment(monkeypatch) -> None:
     monkeypatch.delenv("BAJUTSU_RUN_CRASH_RECOVERY_BUDGET", raising=False)
     assert _default_run_crash_recovery_budget() is None  # unset → unbounded

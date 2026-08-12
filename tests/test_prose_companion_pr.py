@@ -1,15 +1,16 @@
 """Tests for the pure parts of the prose companion-PR opener (BE-0343).
 
-The git/``gh`` glue (fetching the remote tip, force-pushing the companion branch, opening the PR,
-replying to and resolving threads) isn't covered here — it calls the network and never runs inside
-``make check``, the same carve-out ``test_refresh_pr.py`` documents. These pin the parts that decide
-*whether a finding may be applied at all* — the author gate, the path allowlist — and *whether it
-still fits the file*, plus the file rewrite itself and the text the job posts.
+The ``gh`` glue (reading the remote tip, building the commit through the Git Data API, opening the
+PR, replying to and resolving threads) isn't covered here — it calls the network and never runs
+inside ``make check``, the same carve-out ``test_refresh_pr.py`` documents. These pin the parts that
+decide *whether a finding may be applied at all* — the author gate, the path allowlist — and
+*whether it still fits the file*, plus the rewrite itself and the text the job posts. The rewrite is
+testable without a network or a checkout because it takes its file reader as an argument.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -271,44 +272,54 @@ def test_apply_to_lines_applies_a_deletion() -> None:
     assert len(applied) == 1
 
 
-def test_apply_findings_rewrites_the_file_and_keeps_its_trailing_newline(tmp_path: Path) -> None:
-    (tmp_path / "docs").mkdir()
-    target = tmp_path / "docs" / "guide.md"
-    target.write_text("a\nold\nb\n", encoding="utf-8")
-    applied, refused = _apply_findings(str(tmp_path), [_finding()])
+def _reader(files: dict[str, str]) -> Callable[[str], str | None]:
+    """A stand-in for the head reader: the pull request's files as data, no network and no checkout."""
+    return files.get
+
+
+def test_apply_findings_rewrites_the_file_and_keeps_its_trailing_newline() -> None:
+    applied, refused, changed = _apply_findings(
+        [_finding()], _reader({"docs/guide.md": "a\nold\nb\n"})
+    )
     assert [f.comment_id for f in applied] == [1]
     assert refused == []
-    assert target.read_text(encoding="utf-8") == "a\nnew\nb\n"
+    assert changed == {"docs/guide.md": "a\nnew\nb\n"}
 
 
-def test_apply_findings_leaves_the_file_untouched_when_every_finding_is_refused(
-    tmp_path: Path,
-) -> None:
-    # A phantom rewrite here would make the caller's `git status` check commit a no-op change.
-    (tmp_path / "docs").mkdir()
-    target = tmp_path / "docs" / "guide.md"
-    target.write_text("a\nedited since\nb\n", encoding="utf-8")
-    applied, refused = _apply_findings(str(tmp_path), [_finding()])
+def test_apply_findings_reports_no_change_when_every_finding_is_refused() -> None:
+    # A phantom rewrite here would have the caller commit a no-op change.
+    applied, refused, changed = _apply_findings(
+        [_finding()], _reader({"docs/guide.md": "a\nedited since\nb\n"})
+    )
     assert applied == []
     assert len(refused) == 1
-    assert target.read_text(encoding="utf-8") == "a\nedited since\nb\n"
+    assert changed == {}
 
 
-def test_apply_findings_refuses_a_path_missing_from_the_head(tmp_path: Path) -> None:
-    applied, refused = _apply_findings(str(tmp_path), [_finding()])
+def test_apply_findings_refuses_a_path_missing_from_the_head() -> None:
+    applied, refused, changed = _apply_findings([_finding()], _reader({}))
     assert applied == []
     assert "not in the pull request's head" in refused[0].reason
+    assert changed == {}
 
 
-def test_apply_findings_groups_findings_across_several_files(tmp_path: Path) -> None:
-    (tmp_path / "docs").mkdir()
-    (tmp_path / "docs" / "guide.md").write_text("a\nold\nb", encoding="utf-8")
-    (tmp_path / "docs" / "other.md").write_text("x\nold\ny", encoding="utf-8")
+def test_apply_findings_groups_findings_across_several_files() -> None:
     findings = [_finding(), _finding(comment_id=2, path="docs/other.md")]
-    applied, refused = _apply_findings(str(tmp_path), findings)
+    applied, refused, changed = _apply_findings(
+        findings, _reader({"docs/guide.md": "a\nold\nb", "docs/other.md": "x\nold\ny"})
+    )
     assert sorted(f.comment_id for f in applied) == [1, 2]
     assert refused == []
-    assert (tmp_path / "docs" / "other.md").read_text(encoding="utf-8") == "x\nnew\ny"
+    assert changed == {"docs/guide.md": "a\nnew\nb", "docs/other.md": "x\nnew\ny"}
+
+
+def test_apply_findings_omits_a_file_a_splice_left_byte_for_byte_identical() -> None:
+    """The replacement equalling the text it replaces is applied but changes nothing to commit —
+    the no-op the working-tree version used to catch with `git status --porcelain`."""
+    finding = _finding(expected=("same",), replacement=("same",))
+    applied, _, changed = _apply_findings([finding], _reader({"docs/guide.md": "a\nsame\nb"}))
+    assert [f.comment_id for f in applied] == [1]
+    assert changed == {}
 
 
 def test_pr_body_names_the_source_pr_and_the_applied_findings() -> None:

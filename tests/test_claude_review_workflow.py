@@ -91,3 +91,22 @@ def test_the_prose_companion_still_guards_forks_and_companion_branches() -> None
     assert "prose-fix/" in resolve
     mint = _step(job, "Mint a short-lived installation token for the automation App")
     assert mint["if"] == "steps.pr.outputs.eligible == 'true'"
+
+
+def test_the_prose_companion_never_checks_out_the_pull_requests_head() -> None:
+    """The privileged job must hold no PR-authored working tree.
+
+    It writes to a PR branch under the automation App token, so checking that branch out beside the
+    token is what CodeQL's `actions/untrusted-checkout-toctou` flagged. The head now reaches the job
+    only as data read back through the API, and the one checkout left is the default branch — the
+    trusted script. A checkout of anything else creeping back in is the regression this pins.
+    """
+    job = _workflow()["jobs"]["prose-companion"]
+    checkouts = [s for s in job["steps"] if "actions/checkout" in str(s.get("uses", ""))]
+    assert [s["with"]["ref"] for s in checkouts] == [
+        "${{ github.event.repository.default_branch }}"
+    ]
+    # ...and no shell step may check one out by hand either.
+    shell = "\n".join(str(step.get("run", "")) for step in job["steps"])
+    assert "git clone" not in shell
+    assert "gh pr checkout" not in shell

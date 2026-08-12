@@ -284,6 +284,42 @@ class _ScenarioRunner:
                 sid=sid,
                 failure=f"unsupported on backend '{actuator}': {'; '.join(reasons)}",
             )
+        # Once an earlier scenario has actually failed *because* the run-level crash-recovery budget
+        # was the binding constraint, every later scenario must fail this fast — checked here, before
+        # the first lease of this scenario is even attempted, not only inside the crash-retry loop's
+        # own `except` below. Without this, a device that has already demonstrated it cannot recover
+        # still gets one full cold-spawn attempt per remaining scenario (each paying up to a full
+        # readiness ceiling plus its own device-recovery ladder) before the job's own CI
+        # `timeout-minutes` cancels it — the same undiagnosable-cancellation outcome this budget
+        # exists to turn into a loud, fast failure, just moved one scenario later.
+        #
+        # Deliberately `given_up()`, not the weaker `exhausted()`: the accumulated total bills
+        # recovery time whether the scenario that spent it ultimately passed or failed, so a single
+        # slow-but-successful recovery (a device replacement that takes a while and then works) can
+        # cross the budget on its own — that says the device took a while, not that it is broken.
+        # Latching on bare `exhausted()` would fail every remaining scenario on a device that had
+        # just proven it *can* recover. `given_up()` only turns true once a scenario's own loop has
+        # actually ended in failure for this reason (set below, at that exact failure), which is the
+        # real evidence the device itself is not recovering — a cheap threadsafe read either way, so
+        # this costs nothing on the common, unbounded-budget path.
+        if self.run_crash_budget.given_up():
+            if self.progress is not None:
+                self.progress(
+                    f"✘ scenario {i + 1}/{self.total}: {s.name} "
+                    "(run-level crash-recovery budget already exhausted)"
+                )
+            return RunResult(
+                scenario=s.name,
+                ok=False,
+                steps=[],
+                backend=actuator or "",
+                sid=sid,
+                failure=(
+                    "backend crash recovery skipped: an earlier scenario already exhausted the "
+                    f"run-level crash-recovery budget of {self.run_crash_budget.budget:g}s, so "
+                    "this scenario was never leased"
+                ),
+            )
         # Backend-crash recovery: a mid-scenario runner/host crash (base.BackendCrashError) is
         # backend infrastructure, not a verdict — discard the dead lease, lease a fresh device (a
         # cold respawn), and re-run the whole scenario from the start, bounded by `crash_retries`.
@@ -483,6 +519,11 @@ class _ScenarioRunner:
         if self.progress is not None:
             self.progress(f"✘ scenario {i + 1}/{self.total}: {s.name} (backend crashed mid-run)")
         if run_budget_spent:
+            # This scenario failed *because* the run-level budget was the binding constraint — the
+            # real evidence (unlike bare `exhausted()`) that the device is not recovering, so every
+            # later scenario's own pre-lease check above now fails fast instead of each paying its
+            # own first attempt against the same device.
+            self.run_crash_budget.mark_given_up()
             failure = (
                 "backend crashed mid-run and the run-level crash-recovery budget of "
                 f"{self.run_crash_budget.budget:g}s is exhausted ({attempt} attempt(s) into this "
