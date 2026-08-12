@@ -54,8 +54,8 @@ One of those jobs ran on a commit that already carried the widened verdict, and 
 window five times in a single scenario while its own captured output named the state the verdict
 looks for: the runner had exited on its own with code 65 after executing zero tests. The widened
 verdict does fire when a runner is already demonstrably gone by the time the crash is declared, so
-the two shapes — a runner gone before the wait and one that dies during it — are two defects rather
-than one: the mechanism is right and only the sampling is too early.
+a runner gone before the wait and one that dies during it are two defects rather than one: the
+mechanism is right and only the sampling is too early.
 
 Each miss costs a full 60 seconds and, worse, reports a diagnosis that misdirects whoever reads it.
 "The runner crashed mid-run and did not recover within 60s" describes a runner that was given a fair
