@@ -638,6 +638,7 @@ class XcuitestDriver:
         *,
         gesture: str,
         element: base.Element,
+        substitution: str | None = None,
     ) -> None:
         # A `stale` reply means the handle no longer maps to a live element, from one of two
         # pre-actuation points: the runner's `store.lookup` returns `stale` before touching anything
@@ -664,6 +665,7 @@ class XcuitestDriver:
                     duration_s=_as_float(body.get("duration")),
                     scale=_as_float(body.get("scale")),
                     radians=_as_float(body.get("radians")),
+                    substitution=substitution,
                 )
             )
             reply = self._transport("POST", path, request)
@@ -714,7 +716,79 @@ class XcuitestDriver:
 
     def tap(self, sel: base.Selector) -> None:
         handle, el = self._resolve_handle(sel)
-        self._actuate("/tap", {"handle": handle}, sel, gesture="tap", element=el)
+        try:
+            self._actuate("/tap", {"handle": handle}, sel, gesture="tap", element=el)
+        except base.ElementNotTappable as refused:
+            self._tap_sole_reachable_descendant(sel, refused)
+
+    def _tap_sole_reachable_descendant(
+        self, sel: base.Selector, refused: base.ElementNotTappable
+    ) -> None:
+        """Tap the one reachable named descendant of a refused target, or re-raise naming the rest.
+
+        iOS can report a container inflated over the control it wraps — a SwiftUI `Stepper` whose
+        accessibility element spans its whole form row — and refuse a tap on the container while the
+        control inside it is perfectly reachable. Where exactly one named descendant is reachable,
+        there is no choice to make and the tap goes there. Where none or several are, there is a
+        choice, so this re-raises rather than making it: an author cannot predict which of two
+        equally reachable children a driver would pick, and picking one anyway is the guess prime
+        directive 2 forbids. The message then names the candidates, so the author can select one
+        directly instead of reading "not hittable" about an element plainly on screen.
+
+        Scoped to `tap` on purpose. A long-press or a two-finger gesture redirected to a child is a
+        different intent, not the same intent reaching its target.
+
+        Raises:
+            ElementNotTappable: Chained from *refused*, so the original refusal stays the cause.
+        """
+        elements, handles = self._query_with_handles()
+        # Re-resolved from a fresh tree rather than reusing the refused element: the refusal may have
+        # been the first sign of a screen still settling, and a candidate list read off a stale
+        # snapshot could offer an element that has since moved out of the container.
+        target = base.resolve_unique(elements, sel)
+        candidates = base.redirect_candidates(elements, target)
+        if not candidates or len(candidates) > base.MAX_REDIRECT_CANDIDATES:
+            raise refused
+        # `redirect_candidates` only ever returns named elements, so the identifier is never None
+        # here; binding it in the comprehension is what lets the selector below stay typed.
+        reachable = [
+            (el, name)
+            for el in candidates
+            if (name := el["identifier"]) is not None and self._is_hittable(handles[id(el)])
+        ]
+        if len(reachable) != 1:
+            named = ", ".join(repr(el["identifier"]) for el in candidates)
+            raise base.ElementNotTappable(
+                f"element resolved but not hittable: {sel!r} — "
+                f"{len(reachable)} of its {len(candidates)} named descendants are reachable "
+                f"({named}), so none of them is the one this tap meant"
+            ) from refused
+        child, child_id = reachable[0]
+        # Actuated by the child's own id, not the container's: `_actuate` re-resolves from `sel` on a
+        # stale retry, and passing the container's selector would silently undo the redirect there.
+        self._actuate(
+            "/tap",
+            {"handle": handles[id(child)]},
+            {"id": child_id},
+            gesture="tap",
+            element=child,
+            substitution="soleHittableDescendant",
+        )
+
+    def _is_hittable(self, handle: str) -> bool:
+        """Whether the runner reports this handle reachable right now — the probe behind the redirect.
+
+        Unlike `is_tappable`, this takes a handle already resolved from the caller's own snapshot, so
+        the two never disagree about which element was asked about. A `stale` or `not-found` reply
+        reads as unreachable: the candidate came from the very query this handle did, so either answer
+        means the screen moved under the probe and the offer is no longer one to make.
+        """
+        reply = self._transport("POST", "/isHittable", {"handle": handle})
+        if reply.status == _OK:
+            return True
+        if reply.status in (_STALE, _NOT_FOUND, _NOT_HITTABLE):
+            return False
+        raise XcuitestChannelError(f"runner error checking isHittable (status={reply.status})")
 
     def is_tappable(self, sel: base.Selector) -> bool:
         """Whether `sel` resolves to a unique element XCTest's own `isHittable` reports as reachable.
