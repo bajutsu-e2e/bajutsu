@@ -718,7 +718,10 @@ def _collapse_identical_duplicates(candidates: list[Element]) -> list[Element]:
     runner-side twin, collapsing the same artifact when a recorded handle is re-resolved at actuation
     time rather than in an `/elements` reply. The two key on the same fields on purpose: a field added
     to or dropped from this key has to move on that side too, or one of the paths starts guessing where
-    the other fails loudly.
+    the other fails loudly. The same fields, not the same comparison: `frame` goes into the key here as
+    an exact tuple because these frames come out of one atomic snapshot, whereas that side allows a
+    point of slack because it reads each candidate's frame in its own live call. Sync a field across
+    the two, never that tolerance.
     """
     seen: dict[tuple[object, ...], Element] = {}
     for el in candidates:

@@ -155,7 +155,10 @@ public func uniqueMatchingIndex(
 /// because each candidate's frame here is its own live fetch. Sync a field, never that tolerance.
 /// this path is reached by `liveElement(for:)` re-resolving a *recorded* handle at actuation time, a
 /// candidate set no `/elements` reply gated, so a field the host treats as distinguishing has to
-/// distinguish here too or the runner guesses where the host fails loudly.
+/// distinguish here too or the runner guesses where the host fails loudly. In step on the *fields*,
+/// though, never on the comparison: the host keys on the exact frame tuple because its frames come
+/// out of one atomic `app.snapshot()`, while `framesEqual` below allows a point of slack because each
+/// candidate's frame here is its own live fetch. Sync a field, never that tolerance.
 ///
 /// Value and frame decide here even though `attributesMatch` ignores both, and the two are consistent:
 /// that function compares what was *recorded* against what is *live now*, across a gap in which a
@@ -181,8 +184,8 @@ public func resolvableMatchingIndex(
 /// Whether two recorded frames describe one place on screen, within a point.
 ///
 /// Not exact equality, because the two sides are not read at one instant: `uniquelyIdentifiedElement`
-/// builds its candidates with `candidates.map(recordedAttributes)`, and each candidate's `frame` is its
-/// own XCUITest attribute fetch, so a still-settling screen (BE-0287 measured a 49pt shift) can report
+/// maps `recordedAttributes(of:includingValue:)` over its candidates, and each candidate's `frame` is
+/// its own XCUITest attribute fetch, so a still-settling screen (BE-0287 measured a 49pt shift) can report
 /// one control's two registrations a fraction of a point apart. A point of slack keeps the group rule
 /// from collapsing back into the stale failure it exists to remove, while two controls standing at two
 /// places on screen stay a decisive point apart.

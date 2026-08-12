@@ -239,7 +239,9 @@ final class XcuitestElementProvider: ElementProviding {
     /// (BE-0287); they decide only between candidates read from one live query.
     private func liveElement(for backing: PositionPathBacking) -> XCUIElement? {
         let el = element(at: backing.path)
-        if el.exists, attributesMatch(recorded: backing.recorded, current: recordedAttributes(of: el)) {
+        if el.exists, attributesMatch(
+            recorded: backing.recorded, current: recordedAttributes(of: el, includingValue: false)
+        ) {
             return el
         }
         return uniquelyIdentifiedElement(matching: backing.recorded)
@@ -267,13 +269,17 @@ final class XcuitestElementProvider: ElementProviding {
     ///
     /// `value` is read for the flat-query group check alone (`resolvableMatchingIndex`), which needs the
     /// same fields the host's `_collapse_identical_duplicates` keys on; the recorded-against-live
-    /// identity match ignores it. It is therefore opt-in rather than always read: `liveElement(for:)`
+    /// identity match ignores it. It is therefore read only where it is asked for: `liveElement(for:)`
     /// calls this on the position-path element on every actuation that resolves normally, and one more
     /// XCUITest round-trip on that path would buy nothing — the per-interaction cost this class's
-    /// one-`snapshot()` design (BE-0105) exists to keep down. `nonEmpty` normalizes so a control
-    /// reporting no value as `nil` and as `""` does not read as two different controls.
+    /// one-`snapshot()` design (BE-0105) exists to keep down. `includingValue` carries no default on
+    /// purpose, so each caller states its choice and the compiler asks a new one: a candidate list
+    /// built without it reports `value` as `nil` throughout, which reads to `resolvableMatchingIndex`
+    /// as every candidate agreeing, collapsing the ambiguity the field was added to preserve.
+    /// `nonEmpty` normalizes so a control reporting no value as `nil` and as `""` does not read as two
+    /// different controls.
     private func recordedAttributes(
-        of el: XCUIElement, includingValue: Bool = false
+        of el: XCUIElement, includingValue: Bool
     ) -> RecordedAttributes {
         RecordedAttributes(
             identifier: nonEmpty(el.identifier),
