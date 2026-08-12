@@ -150,6 +150,9 @@ public func uniqueMatchingIndex(
 /// This is the runner-side twin of the host's `_collapse_identical_duplicates`
 /// (`bajutsu/drivers/base.py`), which collapses the same artifact in an `/elements` reply, and the two
 /// deliberately key on the same fields — identifier, label, traits, value, frame. Keep them in step:
+/// on the *fields*, not on the comparison — the host keys on the exact frame tuple because its
+/// frames come out of one atomic `app.snapshot()`, while `framesEqual` below allows a point of slack
+/// because each candidate's frame here is its own live fetch. Sync a field, never that tolerance.
 /// this path is reached by `liveElement(for:)` re-resolving a *recorded* handle at actuation time, a
 /// candidate set no `/elements` reply gated, so a field the host treats as distinguishing has to
 /// distinguish here too or the runner guesses where the host fails loudly.
