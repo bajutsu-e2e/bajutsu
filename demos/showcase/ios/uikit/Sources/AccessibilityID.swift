@@ -24,6 +24,20 @@ extension UIView {
     }
 }
 
+extension UIAlertAction {
+    /// `UIAlertAction` is not a `UIView` and its header never declares
+    /// `UIAccessibilityIdentification`, but it does implement `setAccessibilityIdentifier:`,
+    /// and the identifier reaches the alert button XCUITest sees. Set it through KVC, guarded
+    /// so an SDK that ever drops the setter degrades to the label + traits addressing rather
+    /// than raising `NSUnknownKeyException`.
+    func accessibilityID(_ id: String) {
+        #if ACCESSIBLE
+        guard responds(to: Selector(("setAccessibilityIdentifier:"))) else { return }
+        setValue(id, forKey: "accessibilityIdentifier")
+        #endif
+    }
+}
+
 extension UIBarItem {
     /// UIBarItem (tab/bar button items) exposes accessibilityValue but is not a UIView.
     func accessibilityStateValue(_ value: String?) {

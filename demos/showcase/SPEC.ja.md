@@ -208,7 +208,7 @@ Log から到達するモーダル（5 つの提示様式）：
 - `log.openFilter` → detent 付き **sheet**：`log.sheet.title`、`log.sheet.apply`、`log.sheet.close`
 - `log.openGallery` → **fullScreenCover**：`log.cover.title`、`log.cover.close`
 - `log.openDelete` → **アクションシート**（confirmationDialog / UIAlertController ではなく、素のボタンによる自前のオーバーレイ。廃止済みの idb バックエンドは iOS 26 ではアラートのアクションを駆動できませんでした、BE-0290）：選択肢 `log.dialog.archive`、`log.dialog.delete`（破壊的）、`log.dialog.cancel`。結果は `log.dialog.value`（`none`/`archive`/`delete`）にミラー
-- `log.openAlert` → **ネイティブアラート**（SwiftUI の `.alert` / UIKit の `UIAlertController` style `.alert`。上記のアクションシートと異なり、iOS 26 の XCUITest バックエンドで駆動できる本物の native alert）：アクションは「Cancel」と「OK」の 2 つ。`UIAlertAction` はどちらのプラットフォームでも accessibilityIdentifier を持たないため、それぞれ `label`/`traits` で引く。結果は `log.alert.value`（`none`/`cancel`/`ok`）にミラー。**現時点では iOS 限定**：Compose / Views / Flutter の Log 画面にはネイティブアラートに相当するものがなく、そのためシナリオも `scenarios/alert.yaml` に独立させています
+- `log.openAlert` → **ネイティブアラート**（SwiftUI の `.alert` / UIKit の `UIAlertController` style `.alert`）：アクションは `log.alert.cancel`（「Cancel」）と `log.alert.ok`（「OK」）の 2 つ。上記のアクションシートと異なり、iOS 26 の XCUITest バックエンドで駆動できる本物のネイティブアラートです。結果は `log.alert.value`（`none`/`cancel`/`ok`）にミラー。アラートのアクションはビューではないため、識別子の付与だけは専用のヘルパを通します（§8）。識別子をまったく持たない `-noax` の対では、いずれのボタンも `label` と `traits` で引くほかありません。**現時点では iOS 限定**：Compose / Views / Flutter の Log 画面にはネイティブアラートに相当するものがなく、そのためシナリオも `scenarios/alert.yaml` に独立させています
 - `log.toast` — 上記の一過性トースト
 
 ### 5.4 タブ：Permissions（`perm` / `sys` 名前空間、**OS 連携画面**）
@@ -317,6 +317,25 @@ extension UIAccessibilityIdentification {
         accessibilityIdentifier = id
         #endif
         return self
+    }
+}
+```
+
+§5.3 のネイティブアラートが持つ 2 つのアクション、すなわち `UIAlertAction` だけは、専用のオーバーロードを
+取ります。`UIAlertAction` は `UIView` ではなく、ヘッダも `UIAccessibilityIdentification` への準拠を
+宣言していません。それでもクラス自体は `setAccessibilityIdentifier:` を実装しており、そこで付けた識別子は
+XCUITest が見るアラートのボタンにまで届きます。そのセッタに到達する手段が key-value coding です。呼び出しは
+`responds(to:)` で守ります。将来の SDK がセッタを落としても、`NSUnknownKeyException` を投げずに `label` と
+`traits` による指定へ退けます。
+
+```swift
+extension UIAlertAction {
+    /// a11y ビルドではアラートのボタンが持つ識別子を設定し、それ以外では no-op。
+    func accessibilityID(_ id: String) {
+        #if ACCESSIBLE
+        guard responds(to: Selector(("setAccessibilityIdentifier:"))) else { return }
+        setValue(id, forKey: "accessibilityIdentifier")
+        #endif
     }
 }
 ```
