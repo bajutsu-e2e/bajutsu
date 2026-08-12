@@ -1247,20 +1247,36 @@ def test_run_ended_probe_reads_the_watchdog_restarts_selected_tests_suite(tmp_pa
     assert reason is not None and "Test Suite 'Selected tests' passed" in reason
 
 
-def test_run_ended_probe_reports_nothing_for_a_healthy_runs_started_lines(tmp_path: Path) -> None:
-    # The guard on the marker above, and the reason only *terminal* spellings may join that family:
-    # what ends a run is `passed` / `failed`, never the suite name. A `.xctestrun` carrying
+def test_run_ended_probe_waits_for_a_terminal_line_before_calling_a_restart_ended(
+    tmp_path: Path,
+) -> None:
+    # The guard on the markers above, and the reason only *terminal* spellings may join that family:
+    # what ends a run is `passed` / `failed`, never the suite name and never the restart itself.
+    #
+    # Two ways a live runner reports under `Selected tests`. A `.xctestrun` carrying
     # `OnlyTestIdentifiers` — which a per-target `xcuitest.build` or a prebuilt `testRunner` can hand
-    # over, outside this module's control — reports a perfectly healthy run under `Selected tests`
-    # too, so a probe keying on the name rather than the outcome would judge that runner dead while
-    # it was still coming up.
+    # over, outside this module's control — names a perfectly healthy run that way from its first
+    # line. And a restarted run re-runs the *remaining* tests rather than zero of them whenever the
+    # relaunch succeeds, binding its port during that window. Latching on either would have the cold
+    # gate discard a runner that was about to serve, and `_runner_alive` call a live runner gone
+    # mid-call — so the probe stays quiet until a terminal line actually lands.
     log = tmp_path / "runner.log"
     log.write_bytes(
         b"Test Suite 'Selected tests' started at 2026-08-11 17:40:08.199.\n"
         b"Test Suite 'BajutsuRunnerUITests.xctest' started at 2026-08-11 17:40:08.200.\n"
         b"Test Suite 'RunnerUITest' started at 2026-08-11 17:40:08.201.\n"
+        b"Restarting after unexpected exit, crash, or test timeout; summary will include totals "
+        b"from previous launches.\n"
+        b"Test Suite 'Selected tests' started at 2026-08-11 17:40:12.201.\n"
     )
-    assert _run_ended_probe(log)() is None
+    probe = _run_ended_probe(log)
+    assert probe() is None
+    # The `failed` half of the restarted family — the watchdog capture above reports `passed` only
+    # because it re-ran zero tests, so this is the spelling a restart that re-runs and fails lands on.
+    with log.open("ab") as fh:
+        fh.write(b"Test Suite 'Selected tests' failed at 2026-08-11 17:40:31.884.\n")
+    reason = probe()
+    assert reason is not None and "Test Suite 'Selected tests' failed" in reason
 
 
 def test_runner_alive_reports_gone_once_the_test_run_ended(
