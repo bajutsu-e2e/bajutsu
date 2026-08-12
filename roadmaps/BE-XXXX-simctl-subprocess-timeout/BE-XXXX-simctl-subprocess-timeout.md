@@ -89,10 +89,9 @@ The work breaks into three units. Unit 2 depends on unit 1; unit 3 depends on un
    `subprocess.TimeoutExpired` is not a `subprocess.CalledProcessError`, and the distinction matters
    here more than it looks: the module suppresses `CalledProcessError` at four call sites where a
    failure is the ordinary case (shutting down a device that is already off, uninstalling an app that
-   was never installed), and callers across the Simulator lifecycle catch it in eight more places to
-   convert a `simctl` failure into the module's own device-fault type. A raw `TimeoutExpired` would
-   escape every one of those, so a hang would stop being a job-level cancellation only to become an
-   unhandled exception in a different place. Convert a timeout into the same device-fault type inside
+   was never installed), and the Simulator lifecycle converts it into the module's own device-fault
+   type at five more. A raw `TimeoutExpired` would escape every one of those, so a hang would stop
+   being a job-level cancellation only to become an unhandled exception in a different place. Convert a timeout into the same device-fault type inside
    the helper, carrying the command and the deadline it exceeded, so the handlers that convert a
    failure keep working and the message names what happened.
 
@@ -102,6 +101,15 @@ The work breaks into three units. Unit 2 depends on unit 1; unit 3 depends on un
    the wedge this item exists to surface. Let a timeout propagate from them rather than widening the
    suppression to cover it, since a hung `shutdown` is precisely the signal the recovery ladder above
    needs and the thing today's silence hides.
+
+   Letting it propagate out of the `simctl` module is not enough for `terminate`, and this item
+   settles that here rather than at implementation time, because it changes teardown behaviour. The
+   two callers that terminate an app on the runner-discard path — the app under test and the XCTRunner
+   app — already suppress the module's device-fault type alongside `CalledProcessError`, precisely so
+   an app that is not running does not fail a teardown. Converting a timed-out `terminate` into that
+   same type would therefore leave the discard path exactly as silent as it is today. Narrow those two
+   suppressions to the failure they were written for, so a timeout surfaces while "not running" stays
+   absorbed.
 
    The module's own best-effort probes want the opposite. About ten readers catch a failure and return
    a documented fallback instead — an empty list, or a third value meaning "could not tell". They
@@ -158,8 +166,9 @@ untouched. Neither needs a Simulator, so both run in the deterministic gate rath
 - [ ] Unit 1 — pass a `timeout` in the shared `simctl` runner helper, with a short default and a long
       bound for the commands that legitimately block on the device, chosen from the command itself.
 - [ ] Unit 2 — translate a timeout into the module's device-fault type inside the helper; let a
-      timeout propagate from the four deliberately suppressed calls, and fold it into the existing
-      fallback of each best-effort probe.
+      timeout propagate from the four deliberately suppressed calls, narrow the two discard-path
+      `terminate` suppressions so it is not re-absorbed there, and fold it into the existing fallback
+      of each best-effort probe.
 - [ ] Unit 3 — resolve the bound inside the real helper so the substituted test callable keeps its
       two-argument shape, and cover both the timeout and the healthy path in the deterministic gate.
 
