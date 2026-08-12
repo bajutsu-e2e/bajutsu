@@ -23,7 +23,7 @@ already made moot. This item splits that bucket in two. `Proposal (deferred)` be
 `Deferred`, matching the flat naming the other three values already use; a new `Rejected` value marks
 a proposal the maintainers have decided against for good, whether because another BE item already
 covers what it proposed or because review found no path that respects the project's prime directives
-or scope. The change touches the metadata vocabulary, six roadmap scripts (the dashboard generator
+or scope. The change touches the metadata vocabulary, seven roadmap scripts (the dashboard generator
 among them), and their gate tests. It renames no item's directory, since `Status` has been directory-independent
 since [BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders.md),
 and it adds no LLM to any path.
@@ -120,7 +120,11 @@ what happened.
   such as `#8B3A3A` reads as "closed" the way the existing green / amber / indigo / grey set reads as
   "shipped / in flight / proposed / parked" (the final swatch and its contrast check belong to the
   implementing PR, not this proposal). `BUCKET_LABEL`: add `"Rejected": "Rejected"`. Update the module
-  docstring's bucket list.
+  docstring's bucket list. `_topic_progress` divides a topic's implemented count by *every* item in
+  the topic, so a `Rejected` item would sit in that denominator forever and permanently depress the
+  topic's progress bar. Exclude `Rejected` from the denominator: a rejected item is by this item's own
+  definition never coming back, so it is not work a topic still owes. `Deferred` stays in it, since a
+  deferred item remains a live question the topic has yet to answer.
 - [`scripts/new_roadmap_item.py`](../../scripts/new_roadmap_item.py) — `STATUS_JA`: rename the
   `"Proposal (deferred)": "提案（保留）"` entry to `"Deferred": "保留"`; add
   `"Rejected": "却下"`, so `make new-roadmap-item STATUS=…` keeps accepting every value
@@ -128,8 +132,9 @@ what happened.
 - [`scripts/sync_roadmap_tracking_issues.py`](../../scripts/sync_roadmap_tracking_issues.py) — no
   logic change: `OPEN_STATUSES = frozenset({"Proposal", "In progress"})` already treats anything else,
   `Rejected` included, as not open, and closes its tracking issue exactly as it already does for
-  `Deferred`. Its docstring and inline comments name `Proposal (deferred)` as the shelved case; that
-  wording is updated to name both `Deferred` and `Rejected` so the comment keeps matching the code.
+  `Deferred`. Its docstring and inline comments name `Proposal (deferred)` as the shelved case, and
+  the comment above `OPEN_STATUSES` calls the non-open statuses "the other two"; both are updated to
+  name `Deferred` and `Rejected` as the three non-open values, so the comments keep matching the code.
 - Six more surfaces name the literal `Proposal (deferred)` string and would go stale under the
   rename: [`.agent-workflows/implement-be/workflow.md`](../../.agent-workflows/implement-be/workflow.md)
   keys an agent's un-defer confirmation on it, in the item's `Status` branch and again in the
@@ -138,8 +143,8 @@ what happened.
   overturned the rejection, rather than building it as an ordinary proposal;
   [`.github/roadmap-refresh-prompt.md`](../../.github/roadmap-refresh-prompt.md)'s refresh guard —
   "(`Proposal (deferred)` is a deliberate human decision — never un-defer it here)" — renames to
-  `Deferred`, and whether `Rejected` gets the same never-reopen guard there is left to the
-  implementing PR;
+  `Deferred` and gains `Rejected`, so the job never reopens either value; *Alternatives considered*
+  below rests on exactly that guard;
   [`.agent-workflows/roadmap-filter/workflow.md`](../../.agent-workflows/roadmap-filter/workflow.md)
   lists it as a valid `STATUS` filter value;
   [`docs/roadmap-workflow.md`](../../docs/roadmap-workflow.md) and its
@@ -151,6 +156,9 @@ what happened.
   values — after the rename that documented invocation would exit non-zero, since
   `roadmap_query.py` derives its valid statuses from `STATUS_TO_BUCKET`. All six rename to
   `Deferred`; the Makefile comment and `roadmap-filter`'s valid-`STATUS` list also gain `Rejected`.
+  Two bucket counts go stale alongside the literal: `roadmap_query.py`'s module docstring and
+  `roadmap-filter`'s opening paragraph both describe the dashboard as listing items across "four
+  status buckets", which becomes five.
 - [`docs/ai-development.md`](../../docs/ai-development.md) and its
   [`docs/ja/ai-development.md`](../../docs/ja/ai-development.md) mirror — the Status→bucket table
   gains the `Rejected` row, and the `Deferred` row loses its `Proposal (…)` wrapper; the surrounding
@@ -192,7 +200,7 @@ the bullet already records once.
 
 ### Prime-directive compliance
 
-The whole surface is a metadata vocabulary, six scripts, their gate tests, and the documentation
+The whole surface is a metadata vocabulary, seven scripts, their gate tests, and the documentation
 that names the old value. No LLM enters any
 path; `run` and CI stay deterministic; nothing app-specific moves into the tool or its drivers.
 
@@ -231,7 +239,20 @@ same PR is what closes the actual gap.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Not started.
+- [ ] Rename `Proposal (deferred)` to `Deferred` and add `Rejected` in `check_roadmap_format.py`
+      (`STATUS_PAIR`) and `new_roadmap_item.py` (`STATUS_JA`).
+- [ ] Add the `Rejected` bucket to `build_roadmap_index.py` (`STATUS_TO_BUCKET`, `BUCKETS`) and
+      `build_roadmap_dashboard.py` (`BUCKET_COLOR`, `BUCKET_LABEL`, module docstring), and exclude
+      `Rejected` from `_topic_progress`'s denominator.
+- [ ] Update the docstrings and comments naming the old value, and the bucket counts that go stale
+      with it, in `sync_roadmap_tracking_issues.py`, `sync_roadmap_topic_labels.py`, and
+      `roadmap_query.py`.
+- [ ] Rename the literal across `implement-be`, `.github/roadmap-refresh-prompt.md`,
+      `roadmap-filter`, `docs/roadmap-workflow.md` (+ ja), the `Makefile` comment, `CLAUDE.md`,
+      `docs/ai-development.md` (+ ja), and `roadmaps/README.md` (+ ja), adding `Rejected` to every
+      valid-value list.
+- [ ] Update the gate tests that pin the literal, and cover the new value.
+- [ ] Migrate today's six deferred items: BE-0154 to `Rejected`, the other five to `Deferred`.
 
 ## References
 

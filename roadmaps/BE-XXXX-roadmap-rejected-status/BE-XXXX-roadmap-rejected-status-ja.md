@@ -24,7 +24,7 @@
 値を設けます。これは、他のBE項目がすでに提案内容をカバーしている場合、あるいはレビューの結果
 プロジェクトのプライムディレクティブや対象範囲を満たす道筋が見つからなかった場合に、メンテナーが
 見送ると決めた提案を示します。変更が及ぶのは、メタデータの語彙、ダッシュボード生成スクリプトを
-含む6本のロードマップ関連スクリプト、それらのゲートテストです。
+含む7本のロードマップ関連スクリプト、それらのゲートテストです。
 [BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders-ja.md)
 以降、`状態` はディレクトリと独立しているため項目のディレクトリを改名する必要はなく、どの経路にも
 LLM を持ち込みません。
@@ -123,7 +123,11 @@ LLM を持ち込みません。
   します。`#8B3A3A` のようなくすんだ赤なら、既存の緑、琥珀、藍、灰の並びが「出荷済み／進行中／
   提案中／棚上げ」を表すのと同じ調子で「終了」を表せます（実際の配色とコントラストの検証は、
   本提案ではなく実装 PR の仕事です）。`BUCKET_LABEL` に `"Rejected": "Rejected"` を追加し、
-  モジュールの docstring にあるバケット一覧も更新します。
+  モジュールの docstring にあるバケット一覧も更新します。`_topic_progress` は、トピックの実装済み
+  件数をそのトピックの全項目で割っています。したがって `Rejected` の項目は分母に残り続け、
+  トピックの進捗バーを永久に押し下げてしまいます。`Rejected` は分母から除きます。却下された項目は、
+  本項目自身の定義により二度と戻ってこないため、そのトピックに残された作業ではないからです。
+  `Deferred` は分母に残します。保留の項目は、そのトピックがまだ答えを出していない生きた問いだからです。
 - [`scripts/new_roadmap_item.py`](../../scripts/new_roadmap_item.py)：`STATUS_JA` の
   `"Proposal (deferred)": "提案（保留）"` を `"Deferred": "保留"` に改称し、`"Rejected": "却下"`
   を追加します。これにより `make new-roadmap-item STATUS=…` は、`check_roadmap_format.py` が
@@ -132,8 +136,9 @@ LLM を持ち込みません。
   ロジックの変更はありません。`OPEN_STATUSES = frozenset({"Proposal", "In progress"})` は、
   `Rejected` を含めそれ以外のすべてをすでに「オープンではない」として扱い、`Deferred` に対して
   すでに行っているのと同じようにトラッキング Issue を閉じます。docstring と行内コメントは
-  棚上げのケースを `Proposal (deferred)` とだけ呼んでいるため、`Deferred` と `Rejected` の
-  両方を指すよう文言を直し、コードとコメントを一致させます。
+  棚上げのケースを `Proposal (deferred)` とだけ呼んでおり、`OPEN_STATUSES` の上のコメントは
+  オープンでない状態を「残りの2つ」と述べています。どちらも、オープンでない3つの値として
+  `Deferred` と `Rejected` を名指しするよう直し、コードとコメントを一致させます。
 - ほかに6つの箇所が `Proposal (deferred)` という文字列そのものを名指ししており、改称のもとで
   古びてしまいます。
   [`.agent-workflows/implement-be/workflow.md`](../../.agent-workflows/implement-be/workflow.md)
@@ -143,8 +148,8 @@ LLM を持ち込みません。
   覆さないかぎり、エージェントは却下済みの項目を通常の提案として実装してしまうためです。
   [`.github/roadmap-refresh-prompt.md`](../../.github/roadmap-refresh-prompt.md) の
   更新ガード「（`Proposal (deferred)` は人間による意図的な決定であり、ここでは決して保留解除
-  しない）」は `Deferred` に改称します。`Rejected` にも同じ「決して再開しない」というガードを
-  課すかどうかは、実装 PR の判断に委ねます。
+  しない）」は `Deferred` に改称したうえで `Rejected` も加え、このジョブがどちらの値も再開
+  しないようにします。後述の「検討した代替案」は、まさにこのガードを前提に論じています。
   [`.agent-workflows/roadmap-filter/workflow.md`](../../.agent-workflows/roadmap-filter/workflow.md)
   は、これを有効な `STATUS` フィルタ値の一覧に挙げています。
   [`docs/roadmap-workflow.md`](../../docs/roadmap-workflow.md) とその
@@ -156,7 +161,10 @@ LLM を持ち込みません。
   `STATUS` 値の一覧としてこの文字列を挙げています。`scripts/roadmap_query.py` は有効な状態を
   `STATUS_TO_BUCKET` から導出しているため、改称後はこのコメントどおりに実行すると終了コードが
   非ゼロになってしまいます。この6箇所はいずれも `Deferred` に改称します。Makefile のコメントと
-  `roadmap-filter` の有効な `STATUS` 一覧には `Rejected` も追加します。
+  `roadmap-filter` の有効な `STATUS` 一覧には `Rejected` も追加します。文字列と並んで、バケット
+  数を述べた記述も2箇所古びます。`roadmap_query.py` のモジュール docstring と `roadmap-filter`
+  の冒頭は、どちらもダッシュボードが「4つの状態バケット」にわたって項目を並べると述べており、
+  これが5つになります。
 - [`docs/ai-development.md`](../../docs/ai-development.md) とその
   [`docs/ja/ai-development.md`](../../docs/ja/ai-development.md) 対訳：状態→区分の表に
   `Rejected` の行を追加し、`Deferred` の行から `Proposal (…)` の枠組みを外します。
@@ -202,7 +210,7 @@ LLM を持ち込みません。
 
 ### プライムディレクティブとの整合
 
-対象となるのは、メタデータの語彙、6本のスクリプト、それらのゲートテスト、そして旧値を名指しする
+対象となるのは、メタデータの語彙、7本のスクリプト、それらのゲートテスト、そして旧値を名指しする
 ドキュメントだけです。どの経路にも
 LLM は入り込みません。`run` と CI は決定的なままであり、アプリ固有のものはツールやドライバに
 入り込みません。
@@ -245,7 +253,19 @@ LLM は入り込みません。`run` と CI は決定的なままであり、ア
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 未着手です。
+- [ ] `check_roadmap_format.py`（`STATUS_PAIR`）と `new_roadmap_item.py`（`STATUS_JA`）で
+      `Proposal (deferred)` を `Deferred` に改称し、`Rejected` を追加する。
+- [ ] `build_roadmap_index.py`（`STATUS_TO_BUCKET`、`BUCKETS`）と `build_roadmap_dashboard.py`
+      （`BUCKET_COLOR`、`BUCKET_LABEL`、モジュール docstring）に `Rejected` バケットを追加し、
+      `_topic_progress` の分母から `Rejected` を除く。
+- [ ] `sync_roadmap_tracking_issues.py`、`sync_roadmap_topic_labels.py`、`roadmap_query.py` の
+      docstring とコメントについて、旧値の名指しと、あわせて古びるバケット数の記述を更新する。
+- [ ] `implement-be`、`.github/roadmap-refresh-prompt.md`、`roadmap-filter`、
+      `docs/roadmap-workflow.md`（+ ja）、`Makefile` のコメント、`CLAUDE.md`、
+      `docs/ai-development.md`（+ ja）、`roadmaps/README.md`（+ ja）にわたって文字列を改称し、
+      有効な値の一覧すべてに `Rejected` を加える。
+- [ ] 文字列を固定しているゲートテストを更新し、新しい値をカバーする。
+- [ ] 現在の保留6件を移行する。BE-0154 を `Rejected` に、残る5件を `Deferred` にする。
 
 ## 参考
 
