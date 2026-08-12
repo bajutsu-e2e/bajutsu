@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0359") |
-| 実装 PR | [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) |
+| 実装 PR | [#1599](https://github.com/bajutsu-e2e/bajutsu/pull/1599) |
 | トピック | Platform support |
 | 関連 | [BE-0088](../BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot-ja.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md) |
 <!-- /BE-METADATA -->
