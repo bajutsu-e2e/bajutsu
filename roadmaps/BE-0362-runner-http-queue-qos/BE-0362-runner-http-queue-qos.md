@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0362") |
+| Implementing PR | [#1594](https://github.com/bajutsu-e2e/bajutsu/pull/1594) |
 | Topic | Platform support |
 | Related | [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn.md), [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md) |
 <!-- /BE-METADATA -->
@@ -163,6 +164,12 @@ Log:
   [`_RUNNER_LOG_TAIL_LINES`](../../bajutsu/platform_lifecycle/environments/xcuitest.py). On a passing
   job the capture lives inside the uploaded artifact and nowhere else. The measurement needs that
   artifact, so it stays open for whoever can download one.
+- 2026-08-12 — Unit 2 ([#1594](https://github.com/bajutsu-e2e/bajutsu/pull/1594)). Both queues now
+  declare `.userInitiated`. Two tests pin the declaration. One reads each queue's QoS back. A
+  handler keeps `.userInitiated` as long as either queue declares it. Losing one declaration alone
+  escapes a behavioural check. The other test starts the server from a `.utility` context. It then
+  asserts that a handler still runs at `.userInitiated`. Nothing else in the runner changes. The
+  priority the code runs at is the one propagation already supplied.
 
 ## References
 

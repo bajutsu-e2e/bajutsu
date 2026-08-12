@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0362") |
+| 実装 PR | [#1594](https://github.com/bajutsu-e2e/bajutsu/pull/1594) |
 | トピック | Platform support |
 | 関連 | [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn-ja.md), [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner-ja.md) |
 <!-- /BE-METADATA -->
@@ -157,6 +158,12 @@ Thread Performance Checker の報告は、以前の調査で失敗したジョ�
   （[`_RUNNER_LOG_TAIL_LINES`](../../bajutsu/platform_lifecycle/environments/xcuitest.py)）。成功した
   ジョブでは、捕捉出力はアップロードされた成果物の中だけに存在します。この計測には成果物そのものが要る
   ため、ダウンロードできる人に向けて未了のまま残します。
+- 2026年8月12日 — 単位2（[#1594](https://github.com/bajutsu-e2e/bajutsu/pull/1594)）。両方のキューが
+  `.userInitiated` を宣言するようになりました。テストを2本置いて宣言を固定します。1本は各キューの QoS
+  を読み戻します。どちらか一方のキューが宣言していれば接続処理は `.userInitiated` のまま走るため、
+  片方の宣言が失われても挙動を見るテストには映らないからです。もう1本はサーバを `.utility` の文脈から
+  起動し、接続処理がそれでも `.userInitiated` で走ることを確かめます。runner のほかの部分は変わらず、
+  いまコードが走る優先度も、伝播がすでに与えていたものと同じです。
 
 ## 参考
 
