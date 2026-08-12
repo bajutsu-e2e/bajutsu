@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0359](BE-0359-xcuitest-boot-completion-wait-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0359") |
+| 実装 PR | [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) |
 | トピック | Platform support |
 | 関連 | [BE-0088](../BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot-ja.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md) |
 <!-- /BE-METADATA -->
@@ -157,12 +158,22 @@ GitHub のランナーで固定が発火するかは、今日のログからは�
 > 作業の進行に合わせて最新の状態に保ってください。チェックリストは*詳細設計*の MECE な作業分解を
 > 反映し（作業単位ごとに1つ）、ログには何がいつ変わったかを古い順に記録し、PR へリンクします。
 
-- [ ] 単位1 — 共有の `bootstatus` 組み立てを実行し失敗を変換する非公開の補助関数をシミュレータの環境に
-      追加し、既存の2つの呼び出し箇所をそこへ通す。
-- [ ] 単位2 — 共通のデバイス準備の `boot` のあと、デバイス種別の記録とロケール固定より前に待つ。
-- [ ] 単位3 — ロケール固定の再起動のあとに待ち、`shutdown` のあとで起動状態を読み返して、落ちなかった
+- [x] 単位1 — 共有の `bootstatus` 組み立てを実行し失敗を変換する非公開の補助関数をシミュレータの環境に
+      追加し、既存の2つの呼び出し箇所をそこへ通す。XCUITest のライフサイクルのモジュールに
+      `XcuitestEnvironment._await_boot` として追加しました。どちらの呼び出し箇所からも、変換のための
+      `try` / `except subprocess.CalledProcessError` を取り除きました。その `try` の内側で
+      `subprocess.CalledProcessError` を送出しうるのは `bootstatus` の実行だけだったからです
+      （`Env.shutdown()`、`Env.boot()`、`device_booted` はいずれも自分で失敗を吸収します）。
+- [x] 単位2 — 共通のデバイス準備の `boot` のあと、デバイス種別の記録とロケール固定より前に待つ。
+- [x] 単位3 — ロケール固定の再起動のあとに待ち、`shutdown` のあとで起動状態を読み返して、落ちなかった
       デバイスを確認済みの固定として記録しないようにする。あわせて、固定が書き込むと決めたときに情報
-      ログを1行出す。
+      ログを1行出す。起動状態の判定は、plist の読み返しの代わりではなくその後ろに置きました。これにより
+      判定は確認を取り下げる方向にだけ働きます。別のロケールを読み返したデバイスは、今までどおり run を
+      はっきり失敗させます。判定を読み返しの代わりに置いていたら、shutdown の拒否がその失敗を覆い隠し
+      かねませんでした。固まった CoreSimulator では、起動の一覧の読み取りも同時に失敗するからです。
+      起動とその待機は、判定によらず必ず
+      実行します。一覧を読めなかったデバイスは実際には停止していることがあり、呼び出し側はその直後に
+      インストールを始めるからです。
 
 ## 参考
 

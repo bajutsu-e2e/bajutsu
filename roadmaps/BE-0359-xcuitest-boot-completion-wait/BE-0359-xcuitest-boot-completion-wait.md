@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0359](BE-0359-xcuitest-boot-completion-wait.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0359") |
+| Implementing PR | [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) |
 | Topic | Platform support |
 | Related | [BE-0088](../BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md) |
 <!-- /BE-METADATA -->
@@ -165,13 +166,23 @@ adds one expected call to those sequences.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — add a private helper on the Simulator environment that runs the shared `bootstatus`
+- [x] Unit 1 — add a private helper on the Simulator environment that runs the shared `bootstatus`
       builder and converts a failure, and route the two existing call sites through it.
-- [ ] Unit 2 — wait after the shared device preparation's own `boot`, before the device type is
+      `XcuitestEnvironment._await_boot` in
+      `bajutsu/platform_lifecycle/environments/xcuitest.py`; both call sites shed their own
+      `try` / `except subprocess.CalledProcessError` with the conversion, since the `bootstatus` run
+      was the only step inside either that could raise it (`Env.shutdown()`, `Env.boot()`, and
+      `device_booted` all absorb their own failure).
+- [x] Unit 2 — wait after the shared device preparation's own `boot`, before the device type is
       recorded and the locale pin runs.
-- [ ] Unit 3 — wait after the locale pin's reboot, read the booted state back after `shutdown` so a
+- [x] Unit 3 — wait after the locale pin's reboot, read the booted state back after `shutdown` so a
       refused shutdown is not recorded as a confirmed pin, and log one informational line when the
-      pin decides to write.
+      pin decides to write. The read-back's verdict is applied *after* the plist read-back rather
+      than instead of it, so it only ever downgrades a confirmation: a device reading back another
+      locale still fails the run loudly, which a refused shutdown would otherwise mask on a host
+      whose booted listing is unreadable — a wedged CoreSimulator makes both calls fail together.
+      The boot and its wait run either way, because a listing that could not be read may well be a
+      device that did shut down, and the caller is about to install onto it.
 
 ## References
 
