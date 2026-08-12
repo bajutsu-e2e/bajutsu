@@ -25,9 +25,13 @@ Bajutsu's Simulator preparation asks without waiting. It calls `boot`, then inst
 launches the test runner against a device that may still be starting up. This item inserts the wait,
 in the two places that boot a device and then use it: the shared device preparation, and the
 system-locale pin that reboots a device to make the new locale take effect. On this project's own
-hardware the gap between the two subcommands measured **39.4 seconds** on a first boot, and the
-project's continuous integration (CI) configuration already estimates roughly 80 seconds on a CI
-runner. Bajutsu spends that entire window assuming a device that is not yet ready.
+hardware the gap between the two subcommands measured **39.4 seconds** on a first boot.
+
+Continuous integration (CI) does not pay that gap on its first bring-up, and the item does not claim
+it does. Every iOS end-to-end job runs its own `bootstatus` step before the run step, which is
+[BE-0088](../BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot.md)'s design working as
+intended. The window Bajutsu genuinely leaves unwaited is a developer's Mac on every run, and on CI
+the erase-carrying retry, which boots again long after that step has returned.
 
 ## Motivation
 
@@ -83,12 +87,19 @@ turns an open question into a fact the next failing job answers on its own.
 The work breaks into three units. Unit 1 is independent; units 2 and 3 both depend on it only in the
 sense that they use the helper it names, and can land together with it.
 
-1. **Name the wait once.** The two existing call sites invoke the wait by building the `bootstatus`
-   argument list inline and running it. Give the Simulator environment a small private helper that
-   performs the wait for the device it holds, and route the existing two call sites through it, so the
-   new call sites added below do not each restate the command. The helper raises what the surrounding
-   preparation already raises on a `simctl` failure, keeping one failure mode for the whole
-   preparation rather than a second one that callers must learn.
+1. **Name the wait once.** The argv builder is already shared and already named — `bootstatus_cmd`,
+   which the web UI's own boot wait builds from too — so this unit adds no second builder beside it;
+   the `-b` flag stays in exactly one place. What the two lifecycle call sites duplicate is the pair
+   of steps around that builder: running it, and converting a `simctl` failure into the module's
+   device-fault type. Give the Simulator environment a small private helper that performs both for
+   the device it holds, and route the existing two call sites through it, so the new call sites added
+   below do not each restate the pair.
+
+   Put the helper on the environment class rather than in the `simctl` module, and accept what that
+   costs: `Env.boot()` suppresses its own failure, so any future `Env.boot()` caller outside this
+   class stays outside the wait this item names. That is the same boundary the two existing call
+   sites already live within, and narrowing it would mean changing `Env.boot()`'s contract, which
+   this item does not open.
 
 2. **Wait after the preparation's own boot.** In the shared device preparation, follow the `boot` call
    with the wait from unit 1, before the device type is recorded and before the locale pin runs. The
@@ -100,7 +111,19 @@ sense that they use the helper it names, and can land together with it.
 3. **Wait after the locale pin's reboot, and say when the pin fires.** The pin shuts the device down
    and boots it again to make a global-domain write take effect, then reads the value back to confirm
    it. Insert the wait between that boot and the read-back, so the confirmation reads a device that
-   finished starting and the caller returns into a ready device rather than a starting one. Separately,
+   finished starting and the caller returns into a ready device rather than a starting one.
+
+   The wait alone does not establish that the reboot happened, so pair it with the same read-back the
+   recovery ladder's reboot rung already performs. `Env.shutdown()` and `Env.boot()` both suppress
+   their own failure, and `bootstatus -b` returns at once on a device that never left `Booted` — so on
+   a CoreSimulator wedged enough to refuse `shutdown`, the pin would otherwise return a "ready" device
+   and record a confirmed pin while SpringBoard still renders the old language, defeating the
+   determinism
+   [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)
+   exists for. The plist read-back cannot separate the two cases, because it reads the value the write
+   already changed rather than what SpringBoard loaded. Read the device's booted state back after
+   `shutdown`, three-valued as the ladder's rung reads it, and treat a device that did not go down as
+   a pin that was not confirmed rather than one that was. Separately,
    log one informational line when the pin decides to write, naming the locale it is pinning. The pin
    is silent today except when the read-back fails, which is why nobody can tell from a CI log whether
    the pin fired at all — and the answer decides how much of unit 2's exposure applies to CI rather
@@ -142,12 +165,13 @@ adds one expected call to those sequences.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — add a private boot-completion wait helper and route the two existing `bootstatus` call
-      sites through it.
+- [ ] Unit 1 — add a private helper on the Simulator environment that runs the shared `bootstatus`
+      builder and converts a failure, and route the two existing call sites through it.
 - [ ] Unit 2 — wait after the shared device preparation's own `boot`, before the device type is
       recorded and the locale pin runs.
-- [ ] Unit 3 — wait after the locale pin's reboot, before the read-back, and log one informational
-      line when the pin decides to write.
+- [ ] Unit 3 — wait after the locale pin's reboot, read the booted state back after `shutdown` so a
+      refused shutdown is not recorded as a confirmed pin, and log one informational line when the
+      pin decides to write.
 
 ## References
 
