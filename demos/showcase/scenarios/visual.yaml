@@ -19,17 +19,17 @@
 # passed via `--baselines` (default: a `baselines/` folder beside this scenario, gitignored —
 # regenerate locally). See demos/showcase/Makefile `vrt` / `vrt-approve`.
 #
+# Every scenario here is tagged `visual`, so the bulk lanes that sweep this directory
+# (`make run-swiftui` / `run-uikit` / `run-flutter`) exclude it: those lanes pass no `--baselines`,
+# and a baseline nobody recorded can only report itself missing. `make vrt` names this file
+# explicitly and supplies the directory, so the tag never keeps it out of its own lane.
+#
 # The last two scenarios show BE-0171: `element` scopes the comparison to one element's frame (no
 # chrome to mask, so no `exclude` needed), and a `{ selector: … }` entry in `exclude` masks an
 # element by selector instead of a fixed pixel rectangle — stable across layout / resolution changes.
 description: >-
   Visual regression demo — pixel-compare each showcase screen against a stored baseline. The
   first run reports missing baselines; approve them, then re-run to pass.
-
-  Every scenario is tagged `visual`, so the bulk lanes that sweep this directory
-  (`make run-swiftui` / `run-uikit` / `run-flutter`) exclude the file: those lanes pass no
-  `--baselines`, and a baseline nobody recorded can only report itself missing. `make vrt` names
-  this file explicitly and supplies the directory, so the tag never keeps it out of its own lane.
 scenarios:
   - name: Stable catalog matches its visual baseline
     tags: [visual]

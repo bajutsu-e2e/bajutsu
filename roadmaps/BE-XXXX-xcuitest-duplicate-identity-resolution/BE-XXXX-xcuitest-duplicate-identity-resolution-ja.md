@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-XXXX](BE-XXXX-xcuitest-duplicate-identity-resolution-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| 実装 PR | [#1567](https://github.com/bajutsu-e2e/bajutsu/pull/1567) |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0357](../BE-0357-xcuitest-duplicate-node-hittable-tiebreak/BE-0357-xcuitest-duplicate-node-hittable-tiebreak-ja.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md), [BE-0312](../BE-0312-xcuitest-content-addressed-snapshot-handle/BE-0312-xcuitest-content-addressed-snapshot-handle-ja.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve-ja.md) |
 <!-- /BE-METADATA -->
@@ -25,8 +26,8 @@ UI テストフレームワークである XCUITest を通じて、記録して�
 [`XcuitestElementProvider.swift`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift) の
 `uniquelyIdentifiedElement` は候補が**ちょうど 1 件**であることを要求し、2 件なら何も返しません。
 つまり重複ペアは、それを救うはずの退避自身を破り、ペアのどちらの要素にも手が届かなくなります。本項目
-では、候補**どうし**が frame まで一致するグループを、実体どおりの 1 つのコントロールとして扱い、あきらめる
-かわりにその 1 件へ解決します。
+では、候補**どうし**が値と frame まで一致するグループを、実体どおりの 1 つのコントロールとして扱い、
+あきらめるかわりにその 1 件へ解決します。
 
 ## 動機
 
@@ -91,24 +92,44 @@ BE-0357 は自身の仕様に従えばこのグループに触れないので、
 修正は flat-query の退避に置きます。記録した同一性に対するライブの候補をすべて手元に持ち、候補どうしを
 比べられる唯一の場所だからです。
 
-**frame が一致する候補グループを 1 つのコントロールとして扱います。**
+**値と frame が一致する候補グループを 1 つのコントロールとして扱います。**
 [`XcuitestElementProvider.swift`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift) の
 `uniquelyIdentifiedElement` は、いまと同じように候補を集めます。新しい関数は一致が 0 件のときと
-1 件のときの `uniqueMatchingIndex` の答えをそのまま保つので、現在解決できている画面はすべて変わらず
-解決できます。新しい規則が働くのは一致が **2 件以上**のときだけです。一致した候補がすべて同じ frame を
-持つなら、そのグループは
-1 つのコントロールの冗長な登録なので、退避は何も返さずに終えるかわりにその 1 件へ解決します。frame が
-異なるグループはいまと同じく未解決のままにします。画面上の 2 か所にある 2 つのコントロールは、当てずっぽう
-ではなく失敗で応じるべき本物の曖昧さだからです。
+1 件のときの `uniqueMatchingIndex` の答えをそのまま保ちます。そのため現在解決できている画面は、すべて
+変わらず解決できます。新しい規則が働くのは一致が **2 件以上**のときだけです。一致した候補がすべて
+同じ値と同じ frame を持つなら、そのグループは 1 つのコントロールの冗長な登録です。退避は何も返さずに
+終わるのではなく、その 1 件へ解決します。値または frame のどちらかが異なるグループは、いまと同じく
+未解決のままにします。報告している内容が異なる 2 つのコントロールは、当てずっぽうではなく失敗で応じる
+べき本物の曖昧さだからです。
 
-frame を判定材料に使えるのは、
+値と frame を判定材料に使えるのは、
 [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md)
-が `attributesMatch` から frame を外したからこそで、2 つの用途は矛盾しません。`attributesMatch` は
+がそれらを `attributesMatch` から外したからこそで、2 つの用途は矛盾しません。`attributesMatch` は
 **記録した**値と**いまライブの**値を比べます。そのあいだには、落ち着きつつある画面が要素を正当に動かす
-余地があります。BE-0287 は、変わっていないフィールドの 49 ポイントの移動が stale と読まれた例を測って
-います。本項目が加える比較は、**同じライブの問い合わせから同じ瞬間に読んだ**候補どうしの比較です。両者の
-あいだにはその余地がありません。1 つの瞬間に 1 つの frame として報告された 2 件は 1 か所にあり、片方だけ
-を動かしたアニメーションは存在しえないからです。
+余地があります(BE-0287 は、変わっていないフィールドの 49 ポイントの移動が stale と読まれた例を測って
+います)。また、スライダーやテキストフィールドが値を正当に変える余地もあります。本項目が加える比較は、
+**1 回のライブの問い合わせから読んだ**候補どうしを、**互いにだけ**比べるものです。記録した側はこの
+比較に入らないため、この種の余地は生じません。
+
+とはいえ、その候補は 1 つの瞬間に採取されているわけではありません。この事実が、frame の一致をどれだけ
+厳密に求めるべきかを決めます。`uniquelyIdentifiedElement` は `candidates.map(...)` で候補の属性を組み立てる
+ため、各候補の frame はそれぞれ独立した XCUITest の属性取得です。したがって、BE-0287 が測ったのと同じ
+アニメーションの最中で画面がまだ落ち着いていなければ、1 つのコントロールの 2 つの登録が 1 ポイント未満
+だけずれて報告されることがあります。そこで frame は厳密な一致ではなく**1 ポイント以内の一致**とします。
+この許容幅は、本当に画面上の 2 か所にあるコントロールを隔てる距離よりはるかに小さいため、あいまいさを
+きちんと失敗として報告する分岐を犠牲にしません。
+
+**ホストと同じフィールドを判定材料にします。**
+[`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) の `_collapse_identical_duplicates` は、
+`/elements` の応答の中でこの重複をすでに解消しています。判定材料は識別子・ラベル・traits・値・frame
+です。本項目の規則は、その runner 側の対になるものです。*記録した*参照を操作時に再解決する際、
+`/elements` のどの応答も絞り込んでいない候補集合に対して働くため、同じフィールドを判定材料にします。
+互いの docstring から相手を参照するのは、このためです。判定材料をこれより減らせば、ホスト側が大声で
+失敗するはずの場面を runner が当てずっぽうで通してしまいます。値を持つコントロールが 2 回登録され、
+それぞれの値が食い違っているとします。ホスト側ではそれはあいまいさであり、runner 側でもあいまいさの
+ままでなければなりません。そこで `RecordedAttributes` は `value` を新たに持ちます。この値は、
+フラット化された `ElementSnapshot` がすでに報告しているものです。使うのはグループの規則だけで、
+`attributesMatch` には引き続き含めません。
 
 **どの要素へ解決するかは、思い込みではなく計測で答えるべき問い**です。本項目が正そうとしている誤りが
 まさにそれでした。規則の候補は 2 つあります。一致した先頭の要素を返す規則は、もっとも安く、ネイティブの
@@ -139,10 +160,11 @@ XCUITest 固有の provider の 1 か所から呼ばれています。その隣�
 引き継ぐので、厳密な一意性だけを求める呼び出し元のために、これまでの関数はその隣に残ります。
 
 **テスト。** 規則は純粋なリストの処理なので、`PositionPathTests.swift` が Simulator なしで覆います。
-frame まで同一の候補 2 件は 1 件へ解決すること、同一性は一致するが frame が異なる候補 2 件は未解決の
-ままであること、候補 1 件と候補 0 件はこれまでどおりに振る舞うことを固定します。オンデバイスの検証は
-showcase の既存の `alert.yaml` です。いまこの失敗を再現しており、修正後は iOS 26 の Simulator で通り、
-iOS 18 でも通り続けなければなりません。
+値と frame まで同一の候補 2 件は 1 件へ解決すること、同一性は一致するが frame が異なる候補 2 件、
+および値だけが異なる候補 2 件は未解決のままであること、frame が 1 ポイント未満だけ異なる候補 2 件は
+それでも 1 件へ解決すること、候補 1 件と候補 0 件はこれまでどおりに振る舞うことを固定します。
+オンデバイスの検証は showcase の既存の `alert.yaml` です。いまこの失敗を再現しており、修正後は iOS 26
+の Simulator で通り、iOS 18 でも通り続けなければなりません。
 
 ## 検討した代替案
 
@@ -167,8 +189,8 @@ iOS 18 でも通り続けなければなりません。
 
 **`uniqueMatchingIndex` 自体を緩めて、複数一致のときは先頭を返す。** 隣に関数を足すのではなく既存の関数を
 変えると、その docstring が約束している厳密な一意性の用途も含めて、すべての呼び出し元の契約が黙って
-「曖昧なら当てずっぽうで選ぶ」に広がります。グループの規則は frame の一致を要求しますが、その関数は
-frame をあえて一切比べません。frame を見る規則を frame を見ない同一性の検査に混ぜると、1 つの関数が
+「曖昧なら当てずっぽうで選ぶ」に広がります。グループの規則は値と frame の両方の一致を要求しますが、
+その関数はどちらも一切比べません。両方を見る規則を両方とも見ない同一性の検査に混ぜると、1 つの関数が
 2 つの異なる問いに答えることになります。
 
 ## 進捗
@@ -187,8 +209,13 @@ frame をあえて一切比べません。frame を見る規則を frame を見�
       選び方を実装する。`XcuitestElementProvider.swift` の `uniquelyIdentifiedElement` では
       `uniqueMatchingIndex` の呼び出しをこの関数へ置き換える。0 件と 1 件のふるまいは引き継ぐ。
       `uniqueMatchingIndex`・`attributesMatch`・`/elements` の応答・`SnapshotStore` には手を付けない。
-- [x] `PositionPathTests.swift` の実機なしテスト：frame まで同一の候補 2 件は 1 件へ解決すること、
-      同一性は一致するが frame が異なる候補 2 件は未解決のままであること、候補 1 件と候補 0 件は
+- [x] `_collapse_identical_duplicates` が判定材料にしているフィールドをグループの規則にも使う。
+      `RecordedAttributes` に `value` を追加し、グループの判定で frame と合わせて要求し、2 つの定義が
+      それぞれの docstring から互いを参照するようにして、片方への後の変更がもう片方から見えるようにする。
+      `value` は `attributesMatch` には含めない。
+- [x] `PositionPathTests.swift` の実機なしテスト：値と frame まで同一の候補 2 件は 1 件へ解決すること、
+      同一性は一致するが frame が異なる候補 2 件、および値だけが異なる候補 2 件は未解決のままであること、
+      frame が 1 ポイント未満だけ異なる候補 2 件はそれでも 1 件へ解決すること、候補 1 件と候補 0 件は
       これまでどおりに振る舞うことを固定する。
 - [x] オンデバイスの検証：`demos/showcase/scenarios/alert.yaml` が iOS 26 の Simulator で
       `showcase-swiftui` と `showcase-uikit` の両方に対して通り、iOS 18 でも通り続けることを確かめる。
@@ -207,6 +234,16 @@ frame をあえて一切比べません。frame を見る規則を frame を見�
   区別できないので、`resolvableMatchingIndex` はネイティブの hittability の呼び出しを必要とせず、
   グループの規則は実機なしのゲートに載る純粋な関数のままです。同じシナリオは iOS 18.6 でも通り続けます。
   iOS 18.6 ではペアが現れず、唯一の一致を採る経路が変わらないためです。
+- [#1567](https://github.com/bajutsu-e2e/bajutsu/pull/1567) でのレビューが、最初の実装が前提としていた
+  2 つの命題を訂正しました。1 つ目は、frame の一致を厳密な一致としていたことです。候補を「1 つの瞬間」
+  に読んでいるという理由づけでした。しかし実際には、各候補の frame はそれぞれ独立した属性取得です。
+  画面がまだ落ち着いていなければ、1 つのコントロールの 2 つの登録が 1 ポイント未満だけずれて報告され
+  ます。これは、本項目が取り除こうとした失敗へペアを引き戻してしまいます。そこで frame の一致は 1
+  ポイント以内の一致に改めました。2 つ目は、規則が frame だけを判定材料にしていたことです。ホスト側の
+  `_collapse_identical_duplicates` は `value` も判定材料にしています。そのため、値が食い違う状態で
+  2 回登録された値を持つコントロールは、本項目側では解決してしまう一方でした。ホスト側ではそれが
+  `AmbiguousSelector` を送出していました。そこで `RecordedAttributes` に `value` を追加し、グループの
+  規則はこれも要求するようにしました。
 
 ## 参考
 
@@ -216,6 +253,8 @@ frame をあえて一切比べません。frame を見る規則を frame を見�
 - [BE-0287 — 多点タッチ操作下での XCUITest runner チャネルの耐障害性](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md)：
   `attributesMatch` から frame を外した項目（Unit 5）。記録した値とライブの値の比較であり、本項目が
   加える候補どうしの比較とは矛盾しない。
+- [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py)：`_collapse_identical_duplicates`。
+  本項目の規則のホスト側の対で、`/elements` の応答に対して同じフィールドを判定材料にする。
 - [BE-0312 — 画面が変わっていなければ参照が有効なままになるよう、XCUITest の操作参照を要素の同一性から導く](../BE-0312-xcuitest-content-addressed-snapshot-handle/BE-0312-xcuitest-content-addressed-snapshot-handle-ja.md)：
   本項目が手を付けない参照の仕組み。重複ペアの両方の要素はそれぞれの参照を保ち、本項目のあとはどちらも
   解決できる。

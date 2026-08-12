@@ -231,12 +231,12 @@ final class XcuitestElementProvider: ElementProviding {
     /// A narrow flat query is the recovery step, reached only when the position path fails — the
     /// element moved, or its snapshot child indices cannot be replayed through a live hierarchy with
     /// different system-owned wrapper nodes, as happens for the iOS Save Password sheet and for a
-    /// presented `UIAlertController`. The query must yield one identity match, or several that share
-    /// one frame — XCUITest registers an alert's button twice at one place, and that pair is one
-    /// control rather than an ambiguity. Several matches at *different* frames, and anonymous
+    /// presented `UIAlertController`. The query must yield one identity match, or several that also
+    /// agree on value and frame — XCUITest registers an alert's button twice at one place, and that
+    /// pair is one control rather than an ambiguity. Matches that disagree on either, and anonymous
     /// elements, have no identity to recover by, so a position-path miss on them is a genuine stale.
-    /// Frame is deliberately excluded from the recorded-against-live identity check (BE-0287); it
-    /// decides only between candidates read from one live query at one instant.
+    /// Value and frame are deliberately excluded from the recorded-against-live identity check
+    /// (BE-0287); they decide only between candidates read from one live query.
     private func liveElement(for backing: PositionPathBacking) -> XCUIElement? {
         let el = element(at: backing.path)
         if el.exists, attributesMatch(recorded: backing.recorded, current: recordedAttributes(of: el)) {
@@ -264,10 +264,16 @@ final class XcuitestElementProvider: ElementProviding {
     }
 
     /// Read the identity fields shared by flat-query and position-path resolution.
+    ///
+    /// `value` is read for the flat-query group check alone (`resolvableMatchingIndex`), which needs the
+    /// same fields the host's `_collapse_identical_duplicates` keys on; the recorded-against-live
+    /// identity match ignores it. `nonEmpty` normalizes here so a control reporting no value as `nil`
+    /// and as `""` does not read as two different controls.
     private func recordedAttributes(of el: XCUIElement) -> RecordedAttributes {
         RecordedAttributes(
             identifier: nonEmpty(el.identifier),
             label: nonEmpty(el.label),
+            value: nonEmpty(el.value as? String ?? ""),
             traits: traitTokens(
                 elementType: el.elementType, isEnabled: el.isEnabled, isSelected: el.isSelected
             ),
