@@ -246,6 +246,15 @@ class RunCrashRecoveryBudget:
     `budget` is public (not `_budget`) so a caller that needs the configured seconds for a failure
     message (`bajutsu/runner/pipeline.py`'s `run_one`) reads it straight from the one object that
     also enforces it, rather than keeping a second field of its own in sync by hand.
+
+    `exhausted()` alone is a weaker signal than it looks: the accumulated total bills recovery time
+    regardless of outcome (`add_recovery_time` runs whether the scenario that just recovered went on
+    to pass or ultimately failed), so it can cross the budget from a single recovery that *succeeded*
+    — a device that took a long time to come back but is now healthy. `given_up()`/`mark_given_up()`
+    track the stronger signal a caller needs before refusing every later scenario a first attempt: a
+    scenario's own crash-retry loop has actually ended in failure *because* this budget, specifically,
+    was the binding constraint. Only that — not mere exhaustion — is real evidence the device itself
+    is not going to recover.
     """
 
     def __init__(self, budget: float | None) -> None:
@@ -254,6 +263,7 @@ class RunCrashRecoveryBudget:
         # invert the never-block-the-first-crash rule `exhausted()` documents below.
         self.budget = budget if budget is None or budget > 0 else None
         self._spent = 0.0
+        self._given_up = False
         self._lock = threading.Lock()
 
     def exhausted(self) -> bool:
@@ -262,10 +272,30 @@ class RunCrashRecoveryBudget:
         A budget of exactly 0 seconds accumulated never exhausts a positive budget (`_default_run_crash_recovery_budget`
         never returns a non-positive value, so this only ever compares a real elapsed total against a
         real ceiling) — the run's very first crash always sees `_spent == 0.0`, so it is never blocked
-        by this check alone.
+        by this check alone. Says nothing about whether the device can still recover — see the class
+        docstring — so a caller deciding whether to skip a *future* scenario's first attempt should
+        read `given_up()` instead.
         """
         with self._lock:
             return self.budget is not None and self._spent >= self.budget
+
+    def given_up(self) -> bool:
+        """Whether some earlier scenario's crash-retry loop actually failed because this budget was spent.
+
+        The signal that later scenarios should stop paying their own first attempt against the same
+        device, unlike bare `exhausted()`, which a successful-but-slow recovery can also trip.
+        """
+        with self._lock:
+            return self._given_up
+
+    def mark_given_up(self) -> None:
+        """Record that a scenario's crash-retry loop ended in failure because this budget was spent.
+
+        Called once, from the one place `run_one` already determines that (its `run_budget_spent`
+        failure branch), never on a recovery that succeeded.
+        """
+        with self._lock:
+            self._given_up = True
 
     def add_recovery_time(self, seconds: float) -> None:
         """Bill `seconds` of actual recovery time against the shared run-level total.

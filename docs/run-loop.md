@@ -196,7 +196,13 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET`) bounds the *accumulated* recovery time across every scenario in
 > the run, not just this one, because `crash_recovery_budget` alone resets for each new scenario: a
 > device that keeps degrading would otherwise pay it again and again until an external CI timeout
-> cancels the job with no diagnosable cause, rather than the run itself failing loudly. On the XCUITest
+> cancels the job with no diagnosable cause, rather than the run itself failing loudly. Spending that
+> run-level budget on a recovery that ultimately succeeds latches nothing — that only shows the device
+> still works — but once a scenario's own crash-retry loop has actually failed because that budget was
+> the binding constraint, `run_one` latches on it at the very top of every later scenario — before
+> that scenario's own first lease is even attempted, not only inside the crash-retry loop's own
+> `except` clause — so a device that has already proven it cannot recover does not still cost every
+> remaining scenario one full cold-spawn attempt apiece on the way to the same cancellation. On the XCUITest
 > backend specifically, a cold respawn's own bring-up can now also pay a device recovery — a reboot or
 > replacement of a Simulator that stopped honouring automation — that neither budget can
 > preempt. `CrashRecoveryBudget.on_crash` is consulted only between crashes, not during a bring-up
