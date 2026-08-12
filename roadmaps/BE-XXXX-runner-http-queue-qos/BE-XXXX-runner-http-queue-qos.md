@@ -87,6 +87,17 @@ Two units. Unit 1 is a measurement that unit 2 does not depend on, and either ma
    expects. A report that does fire names the waiting and holding threads, and that is what would turn
    the inversion from a shape the code permits into a mechanism worth describing.
 
+   Do not close such a report as already handled by unit 2, because unit 2 addresses only one of the
+   two shapes it could take. Declaring one level on both queues removes a *divergence* — two handlers
+   submitted from contexts at different QoS, which inheritance permits and a declared value forbids —
+   but it leaves every handler equal to every other, so it cannot remove a differential between a
+   handler and a waiter outside the handler pool. The accept loop's own listen-descriptor lock is that
+   second shape: `stop()` takes it from the test method's thread, above whatever the accept loop
+   inherits, and `.userInitiated` on the accept-loop queue still sits below a `.userInteractive`
+   caller. Nothing in the code makes that hold long enough to matter today, which is why this item
+   does not act on it; a report that named it would call for raising the holder to the waiter's class
+   or removing the wait, neither of which unit 2 does.
+
 2. **Declare `.userInitiated` on both queues.** Pass `qos: .userInitiated` when constructing the
    serial accept-loop queue and the concurrent connection queue in the runner's HTTP server. Every
    request the server handles exists because the driver is blocked on its reply, which is what
