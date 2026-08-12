@@ -43,7 +43,8 @@ missing headless actuator for the shake and timezone primitives (BE-0157, BE-015
 would let an AI-authored assertion lower to a deterministic check before `run` ever sees it (BE-0040).
 The sixth, BE-0154 (running `roadmap-promote` from a base SHA), already carries a filled
 `Superseded by` field naming BE-0159 as its successor: BE-0159 flattened the per-status folders
-BE-0154's entire premise depended on, so no base SHA is left to promote from. Nothing about BE-0154 is
+BE-0154's entire premise depended on, deleting the promote workflow outright — nothing is left to
+promote, so the workflow BE-0154 would have hardened no longer exists. Nothing about BE-0154 is
 waiting on a blocker; its proposal is dead. Yet its `Status` reads the same `Proposal (deferred)` as
 the five items that remain open questions, so a reader scanning the Deferred bucket on the dashboard
 cannot tell which of the six are worth a second look without opening every file.
@@ -132,7 +133,9 @@ what happened.
 - Six more surfaces name the literal `Proposal (deferred)` string and would go stale under the
   rename: [`.agent-workflows/implement-be/workflow.md`](../../.agent-workflows/implement-be/workflow.md)
   keys an agent's un-defer confirmation on it, in the item's `Status` branch and again in the
-  tracking-issue fallback note;
+  tracking-issue fallback note — that `Status` branch also gains a matching stop-and-confirm arm for
+  `Rejected`, so an agent asked to implement a rejected item stops and confirms a human has explicitly
+  overturned the rejection, rather than building it as an ordinary proposal;
   [`.github/roadmap-refresh-prompt.md`](../../.github/roadmap-refresh-prompt.md)'s refresh guard —
   "(`Proposal (deferred)` is a deliberate human decision — never un-defer it here)" — renames to
   `Deferred`, and whether `Rejected` gets the same never-reopen guard there is left to the
@@ -147,7 +150,7 @@ what happened.
   [`Makefile`](../../Makefile)'s `roadmap-status` usage comment lists it among the valid `STATUS`
   values — after the rename that documented invocation would exit non-zero, since
   `roadmap_query.py` derives its valid statuses from `STATUS_TO_BUCKET`. All six rename to
-  `Deferred` (the comment also gains `Rejected`).
+  `Deferred`; the Makefile comment and `roadmap-filter`'s valid-`STATUS` list also gain `Rejected`.
 - [`docs/ai-development.md`](../../docs/ai-development.md) and its
   [`docs/ja/ai-development.md`](../../docs/ja/ai-development.md) mirror — the Status→bucket table
   gains the `Rejected` row, and the `Deferred` row loses its `Proposal (…)` wrapper; the surrounding
@@ -189,7 +192,8 @@ the bullet already records once.
 
 ### Prime-directive compliance
 
-The whole surface is a metadata vocabulary, six scripts, and their gate tests. No LLM enters any
+The whole surface is a metadata vocabulary, six scripts, their gate tests, and the documentation
+that names the old value. No LLM enters any
 path; `run` and CI stay deterministic; nothing app-specific moves into the tool or its drivers.
 
 ## Alternatives considered
