@@ -66,7 +66,7 @@ diagnostics」ステップがあり、`~/Library/Logs/DiagnosticReports` を走�
 発火するシグナルに取り付く必要があり、まだ存在しないクラッシュ宣言を待つわけにはいかない、
 という点だけです。
 
-本提案には、BE-0361 を導いた2026-08-06のランナーログのような、特定の Android CI インシデント
+本提案には、BE-0361 を導いた2026-08-12のランナーログのような、特定の Android CI インシデント
 が根拠としてあるわけではありません。iOS レーンはすでに一度、「`timeout-minutes` で打ち切られる
 だけで、診断できる原因が残らない」という筋書きを経験しました。本提案の狙いは、Android 側で
 同じ筋書きが繰り返される前に、このギャップを閉じることです。インシデントを待たずに動くのは
@@ -114,15 +114,15 @@ BE-0361 自身の上限をそのまま踏襲する形です。`BAJUTSU_ADB_STALL
 
 ### 第2層は CI から集めるエミュレータと Linux ホストの状態
 
-新しい composite action `.github/actions/collect-android-diagnostics` が、この BE-0361 の
+新しい composite action `.github/actions/collect-android-diagnostics` が、BE-0361 の
 `collect-ios-diagnostics` に対応する Android 版として、このバックエンドが実際に持つツールで
-同じ役割を担います。AVD を起動して `bajutsu run` を駆動するすべてのジョブ、すなわち `smoke` /
-`golden` / `network` / `conformance` / `fault-injection` / `visual`（`docs/architecture.md`の
+同じ役割を担います。AVD を起動して adb ドライバ経由で駆動するすべてのジョブ、すなわち `smoke` /
+`golden` / `network` / `conformance` / `fault-injection` / `visual`（`docs/ci.md` の
 Android レーンがすでに挙げている6ジョブと同じ）に配線します。`codegen`（`uiautomator (codegen)`）
 も、BE-0361 が iOS 側の `codegen` ジョブを除外する理由と同じ理由で除外します。Gradle の
 `connectedAndroidTest` を直接駆動し、自分自身の `androidTest-results` /
-`codegen-diagnostics` レポートだけをアップロードし、この収集が乗る `runs/` を何も書かないから
-です。この action は2段階で実行します。
+`codegen-diagnostics` レポートだけをアップロードし、この収集が乗るはずの `runs/` 配下には
+何も書かないからです。この action は2段階で実行します。
 
 - **常時**（軽量で、毎回実行します）。`adb logcat -d -b main,system,crash,events,radio` による
   全バッファのダンプです。シナリオに `capture: [deviceLog]` が付いている間だけストリームする
@@ -137,7 +137,7 @@ Android レーンがすでに挙げている6ジョブと同じ）に配線し�
   これらのジョブがすでに使っている AVD のプロファイル（`target: google_apis` であり
   `google_apis_playstore` ではありません）は `adb root` に対応しているため、root 権限での
   `/data/tombstones`（ネイティブクラッシュレポート）と `/data/anr/`（Application Not
-  Responding、ANR、トレース）の pull も行います。この2種類のクラッシュレポートは、iOS 側では
+  Responding（ANR）のトレース）の pull も行います。この2種類のクラッシュレポートは、iOS 側では
   `~/Library/Logs/DiagnosticReports` の走査だけで無料で手に入りますが、Android ではデバイス側
   に置かれるため明示的な pull が必要です。この段は実行ステップ自身の結果でゲートします
   （`if: failure()`）。BE-0361 が自身の失敗時段をゲートするのと同じ形です。
@@ -215,8 +215,8 @@ macOS ホストに関する仮説（2）とまったく同じだけ現実的で�
   本提案の第1層は、まだ存在しないシグナルを待つのではなく、adb ドライバが今日すでに送出
   している障害シグナル（`AdbResidentError`）にフックします。
 - **`adb bugreport` を失敗時だけでなく毎回実行する。** 退けます。bugreport は数十秒かかり
-  数メガバイト規模のアーカイブを作ります。macOS の `sysdiagnose`（BE-0361 がまさにこの理由
-  だけで却下しています）よりはるかに軽量ですが、それでも6ジョブすべての緑の実行のたびに
+  数メガバイト規模のアーカイブを作ります。macOS の `sysdiagnose`（BE-0361 がまさにこの理由で
+  先送りしています）よりはるかに軽量ですが、それでも6ジョブすべての緑の実行のたびに
   払うには現実のコストです。常時段と失敗時段を分けることで、軽量な段は無条件に残しつつ、
   重量級のコレクタは本当に必要な実行だけに使います。
 - **ジョブ全体で `adb logcat` のリングバッファをストリームし続ける。** シナリオ単位の

@@ -19,7 +19,7 @@
 `fault-injection`, `visual` — against an Android Virtual Device (AVD) booted under KVM on a Linux
 GitHub Actions runner, driven over the adb backend
 (`bajutsu/platform_lifecycle/environments/android.py`,
-`bajutsu/drivers/adb.py`). Every one of those jobs collects exactly two things when it ends: the
+`bajutsu/drivers/adb.py`). Every one of those jobs collects exactly one thing when it ends: the
 scenario's own `runs/` output (report, screenshots, the opt-in `video` / `deviceLog` interval
 evidence) and nothing else. When a job fails for an infrastructure reason — the resident UI
 Automator server (`bajutsu/adb_resident.py`, [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md))
@@ -58,7 +58,7 @@ a separate question (see *Alternatives considered*); what it means for *this* pr
 Layer 1's hook has to attach to a signal that already fires reliably today, not to a crash
 declaration that does not yet exist for this backend.
 
-No specific Android CI incident anchors this proposal the way the 2026-08-06 runner log anchors
+No specific Android CI incident anchors this proposal the way the 2026-08-12 runner log anchors
 BE-0361 — the request behind this item is to close the gap before an unowned Android failure repeats
 the same "cancelled by `timeout-minutes`, no diagnosable cause" story the iOS lane already lived once.
 Acting ahead of an incident is deliberate here: the codebase evidence above already shows the same
@@ -105,8 +105,8 @@ of each other.
 
 A new composite action, `.github/actions/collect-android-diagnostics`, mirrors BE-0361's
 `collect-ios-diagnostics` for the tools this backend actually has. It is wired into every job that
-boots an AVD and runs `bajutsu run` against it — `smoke`, `golden`, `network`, `conformance`,
-`fault-injection`, `visual` — the same six jobs `docs/architecture.md`'s Android lane already lists.
+boots an AVD and drives it through the adb driver — `smoke`, `golden`, `network`, `conformance`,
+`fault-injection`, `visual` — the same six jobs `docs/ci.md`'s Android lane already lists.
 `codegen` (`uiautomator (codegen)`) stays out for the same reason BE-0361 excludes iOS's own
 `codegen` job: it drives Gradle's `connectedAndroidTest` directly, uploads only its own
 `androidTest-results` / `codegen-diagnostics` report, and writes nothing under `runs/` for this
@@ -196,7 +196,7 @@ Mutually exclusive, collectively exhaustive (`MECE`) units of work follow.
   raises today (`AdbResidentError`) instead of waiting on one that does not yet exist.
 - **Run `adb bugreport` on every job, not only on failure.** Rejected: a bugreport runs tens of
   seconds and produces a multi-megabyte archive — far lighter than macOS's `sysdiagnose`, which
-  BE-0361 rejects outright for exactly this reason, but still real cost multiplied across six jobs on
+  BE-0361 defers for exactly this reason, but still real cost multiplied across six jobs on
   every green run. The always/on-failure split keeps the cheap tier unconditional and reserves the
   heavier collector for the runs that actually need it.
 - **Stream the full `adb logcat` ring buffer for the whole job instead of a point-in-time dump.** The
