@@ -256,7 +256,7 @@ final class XcuitestElementProvider: ElementProviding {
             query = query.matching(NSPredicate(format: "label == %@", label))
         }
         let candidates = query.allElementsBoundByIndex.filter { $0.exists }
-        let attributes = candidates.map(recordedAttributes)
+        let attributes = candidates.map { recordedAttributes(of: $0, includingValue: true) }
         guard let index = resolvableMatchingIndex(recorded: recorded, candidates: attributes) else {
             return nil
         }
@@ -267,13 +267,18 @@ final class XcuitestElementProvider: ElementProviding {
     ///
     /// `value` is read for the flat-query group check alone (`resolvableMatchingIndex`), which needs the
     /// same fields the host's `_collapse_identical_duplicates` keys on; the recorded-against-live
-    /// identity match ignores it. `nonEmpty` normalizes here so a control reporting no value as `nil`
-    /// and as `""` does not read as two different controls.
-    private func recordedAttributes(of el: XCUIElement) -> RecordedAttributes {
+    /// identity match ignores it. It is therefore opt-in rather than always read: `liveElement(for:)`
+    /// calls this on the position-path element on every actuation that resolves normally, and one more
+    /// XCUITest round-trip on that path would buy nothing — the per-interaction cost this class's
+    /// one-`snapshot()` design (BE-0105) exists to keep down. `nonEmpty` normalizes so a control
+    /// reporting no value as `nil` and as `""` does not read as two different controls.
+    private func recordedAttributes(
+        of el: XCUIElement, includingValue: Bool = false
+    ) -> RecordedAttributes {
         RecordedAttributes(
             identifier: nonEmpty(el.identifier),
             label: nonEmpty(el.label),
-            value: nonEmpty(el.value as? String ?? ""),
+            value: includingValue ? nonEmpty(el.value as? String ?? "") : nil,
             traits: traitTokens(
                 elementType: el.elementType, isEnabled: el.isEnabled, isSelected: el.isSelected
             ),

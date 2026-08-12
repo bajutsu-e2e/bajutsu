@@ -240,6 +240,29 @@ final class PositionPathTests: XCTestCase {
         )
     }
 
+    func testResolvableMatchingIndexRejectsMatchesJustOverAPointApart() {
+        // The slack is a point and nothing wider: pin its far side so a later widening of
+        // `framesEqual` cannot pass unnoticed and collapse two genuinely distinct controls.
+        XCTAssertNil(
+            resolvableMatchingIndex(
+                recorded: attrs(label: "OK", frame: (205, 463, 140, 48)),
+                candidates: [
+                    attrs(label: "OK", frame: (205, 463, 140, 48)),
+                    attrs(label: "OK", frame: (206.5, 463, 140, 48)),
+                ]
+            )
+        )
+    }
+
+    func testAttributesMatchIgnoresValue() {
+        // `value` joined RecordedAttributes for the group rule alone. The recorded-against-live
+        // match must keep ignoring it: a slider or text field legitimately changes value between
+        // the snapshot and the tap, so matching on it would resurrect BE-0287's false stale.
+        XCTAssertTrue(
+            attributesMatch(recorded: attrs(value: "1"), current: attrs(value: "2"))
+        )
+    }
+
     func testResolvableMatchingIndexRejectsMatchesDifferingOnlyInValue() {
         // The host's `_collapse_identical_duplicates` keys on `value` too, so a value-bearing control
         // whose two registrations disagree is a genuine ambiguity on both sides — never a guess here.
