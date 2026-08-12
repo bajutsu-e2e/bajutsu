@@ -25,8 +25,14 @@
 description: >-
   Visual regression demo — pixel-compare each showcase screen against a stored baseline. The
   first run reports missing baselines; approve them, then re-run to pass.
+
+  Every scenario is tagged `visual`, so the bulk lanes that sweep this directory
+  (`make run-swiftui` / `run-uikit` / `run-flutter`) exclude the file: those lanes pass no
+  `--baselines`, and a baseline nobody recorded can only report itself missing. `make vrt` names
+  this file explicitly and supplies the directory, so the tag never keeps it out of its own lane.
 scenarios:
   - name: Stable catalog matches its visual baseline
+    tags: [visual]
     preconditions:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
@@ -35,6 +41,7 @@ scenarios:
       - visual: { baseline: stable.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
   - name: Search matches its visual baseline
+    tags: [visual]
     preconditions:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
@@ -44,6 +51,7 @@ scenarios:
       - visual: { baseline: search.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
   - name: Log matches its visual baseline
+    tags: [visual]
     preconditions:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
@@ -53,6 +61,7 @@ scenarios:
       - visual: { baseline: log.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
   - name: Notices matches its visual baseline
+    tags: [visual]
     preconditions:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
@@ -62,6 +71,7 @@ scenarios:
       - visual: { baseline: notices.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
   - name: Permissions matches its visual baseline
+    tags: [visual]
     preconditions:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
@@ -71,6 +81,7 @@ scenarios:
       - visual: { baseline: permissions.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
   - name: Horse Detail matches its visual baseline
+    tags: [visual]
     preconditions:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
@@ -81,6 +92,7 @@ scenarios:
       - visual: { baseline: horse_detail.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
   - name: Notice Detail matches its visual baseline
+    tags: [visual]
     preconditions:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
@@ -92,6 +104,7 @@ scenarios:
       - visual: { baseline: notice_detail.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
   - name: Filter sheet matches its visual baseline
+    tags: [visual]
     preconditions:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
@@ -103,6 +116,7 @@ scenarios:
       - visual: { baseline: filter_sheet.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
   - name: Gallery cover matches its visual baseline
+    tags: [visual]
     preconditions:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
@@ -114,6 +128,7 @@ scenarios:
       - visual: { baseline: gallery_cover.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
   - name: Delete dialog matches its visual baseline
+    tags: [visual]
     preconditions:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
@@ -132,6 +147,7 @@ scenarios:
   # BE-0171: compare only the first catalog row's frame. The screenshot is cropped to that element,
   # so unrelated changes elsewhere on the screen (and the chrome strips) never affect this check.
   - name: First catalog row matches its element-scoped baseline
+    tags: [visual]
     preconditions:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
@@ -142,6 +158,7 @@ scenarios:
   # BE-0171: mask the first row *by selector* rather than a pixel rectangle, so the mask follows the
   # element across layout / resolution changes; the status bar and tab bar stay masked by rectangle.
   - name: Catalog matches its baseline with the first row masked by selector
+    tags: [visual]
     preconditions:
       launchEnv: { SHOWCASE_UITEST: "1" }
     steps:
