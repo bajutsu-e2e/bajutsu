@@ -16,7 +16,7 @@
 ## Introduction
 
 Every operation Bajutsu performs on an iOS Simulator goes through `simctl`, the command-line tool
-Apple ships for controlling Simulator devices. Booting a device, erasing it and installing an app all
+Apple ships for controlling Simulator devices. Booting a device, erasing it, and installing an app all
 run as subprocesses that Bajutsu waits for. It waits without a deadline. One helper of about three
 lines runs every one-shot `simctl` command in the Simulator lifecycle, and it passes no `timeout` to
 `subprocess.run`.
