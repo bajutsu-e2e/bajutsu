@@ -28,9 +28,13 @@ stops answering, the emulator's own rendering wedges, or the job simply runs out
 job itself did not finish. This proposal adds the Android backend's own layered diagnostics
 collection, built on the same three-layer shape [BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics.md)
 proposes for the XCUITest lane: a `bajutsu`-internal hook that fires at the moment a stall is first
-observed, a CI composite action that reads the emulator and Linux host's own state, and a background
-sampler that records host load for the whole job. Every artifact lands under `runs/`, which each
-job's existing `Upload run artifacts` step already carries, so no new upload wiring is needed.
+observed, a CI-side sweep of the emulator's own state, and a background sampler that records host
+load for the whole job. One structural difference from the iOS lane runs through the whole design and
+is worth stating up front: the emulator exists only inside each job's
+`reactivecircus/android-emulator-runner` step, so the device-side sweep lives in a script that step
+invokes rather than in a composite action beside it — the detail *Detailed design* returns to. Every
+artifact lands under `runs/`, which each job's existing `Upload run artifacts` step already carries,
+so no new upload wiring is needed.
 
 ## Motivation
 
@@ -86,13 +90,27 @@ recording file's size (`adb shell stat -c %s <path>`, or an `ls -l` fallback whe
 unavailable) past its pre-spawn baseline, under the same `confirm_started` opt-in `start_video`
 already uses, logging the same shape of warning when growth never confirms within the timeout.
 
-**A stall-time probe.** The moment `AdbResidentError` propagates out of the resident channel
-(`bajutsu/drivers/adb.py`, where the driver degrades to the `uiautomator dump` subprocess) or the new
-screenrecord watcher above logs its no-growth warning, the state that explains a wedged renderer
-versus a wedged host still exists and is about to be overwritten by the next frame. When the
-environment variable `BAJUTSU_STALL_DIAGNOSTICS` — the same name BE-0361 proposes, deliberately not
-prefixed by backend — names a directory, both trigger points run a bounded, best-effort capture into
-it: `adb shell dumpsys SurfaceFlinger --latency`, a `logcat -d -t 200` tail of the most recent lines
+**A stall-time probe.** Two trigger points, both narrow on purpose. The first is the resident
+channel's *hierarchy-read* fallback (`bajutsu/drivers/adb.py`, the `except AdbResidentError` around
+the hierarchy read, where the driver latches `_fetch_hierarchy = None` and degrades to the
+`uiautomator dump` subprocess for the rest of the lease) — the site the *Motivation* above describes,
+and the one that means the read channel is gone rather than momentarily noisy. The second is the new
+screenrecord watcher's no-growth warning. At either moment the state that explains a wedged renderer
+versus a wedged host still exists and is about to be overwritten by the next frame.
+
+The probe deliberately hooks *that propagation site*, not the `AdbResidentError` class: two of its
+subclasses fire during perfectly healthy runs and mean the opposite of a stall. `AdbActUnsupported`
+is a permanent, expected capability absence — an older resident server that answers `/act` with a
+404, which the driver latches once and stops probing — and `AdbActUncertain` is a lost-response race
+the driver deliberately treats as having landed, precisely so it does not actuate twice. Both are
+caught on the act path, where even the base class degrades one gesture while keeping the channel in
+use. Hooking the class would fire the capture on runs where nothing stalled and spend the per-run cap
+below, so a genuine stall later in the same run would find no budget left — the one case the probe
+exists for. The act path is therefore excluded outright.
+
+When the environment variable `BAJUTSU_STALL_DIAGNOSTICS` — the same name BE-0361 proposes,
+deliberately not prefixed by backend — names a directory, both trigger points run a bounded,
+best-effort capture into it: `adb shell dumpsys SurfaceFlinger --latency`, a `logcat -d -t 200` tail of the most recent lines
 (cheap, because Android's logcat, unlike the iOS unified log, has no host-permission barrier to
 read), and a host `ps aux` plus `top -bn1` snapshot. Each command carries a short subprocess timeout,
 a failure is swallowed, and captures are capped per run, mirroring BE-0361's own bounds. Reusing
@@ -101,16 +119,30 @@ setting turns the hook on for whichever backend a job runs, and the two proposal
 name — neither's code depends on the other, so either can land first, or both can land independently
 of each other.
 
-### Layer 2: emulator and Linux-host state, from CI
+### Layer 2: emulator state, collected from inside the emulator's own step
 
-A new composite action, `.github/actions/collect-android-diagnostics`, mirrors BE-0361's
-`collect-ios-diagnostics` for the tools this backend actually has. It is wired into every job that
-boots an AVD and drives it through the adb driver — `smoke`, `golden`, `network`, `conformance`,
+**The constraint that shapes this layer, and the sharpest way the Android lane diverges from
+BE-0361's iOS one.** On iOS the Simulator lives on the host for the whole job, so a composite action
+running as its own step reaches it — which is exactly what BE-0361's `collect-ios-diagnostics`
+assumes. Android has no such window. Every device-touching step in `android-e2e.yml` runs *inside* a
+`reactivecircus/android-emulator-runner` step, which boots the emulator, runs its `script:`, and
+kills it when that step ends. An ordinary step placed after it — and a step-level `if: failure()`
+gate — would run with **no device attached**, so `adb logcat -d`, `adb bugreport`, and the rooted
+tombstone and ANR pulls would each collect nothing at all. The in-tree precedent is already there:
+the `poll_cpuinfo` sampler lives embedded in `smoke`'s `script:` string for this very reason, and
+preserves the real exit code in `rc` so it never masks a scenario failure.
+
+Device-side collection therefore lives in a script, not a composite action:
+`scripts/collect_android_diagnostics.sh`, invoked from the tail of each job's own `script:`, where
+the emulator is still alive. The failure tier keys off the run command's own `rc` — the same shape
+the `poll_cpuinfo` poller already uses to survive a failing run — rather than a step-level
+`if: failure()` that would fire after the device is gone. It is wired into every job that boots an
+AVD and drives it through the adb driver — `smoke`, `golden`, `network`, `conformance`,
 `fault-injection`, `visual` — the same six jobs `docs/ci.md`'s Android lane already lists.
 `codegen` (`uiautomator (codegen)`) stays out for the same reason BE-0361 excludes iOS's own
 `codegen` job: it drives Gradle's `connectedAndroidTest` directly, uploads only its own
 `androidTest-results` / `codegen-diagnostics` report, and writes nothing under `runs/` for this
-collection to ride. The action runs two tiers:
+collection to ride. The script runs two tiers:
 
 - **Always** (cheap, every run): a full-buffer `adb logcat -d -b main,system,crash,events,radio`
   dump — unlike the per-scenario `deviceLog` interval, which streams only while a scenario with
@@ -126,20 +158,25 @@ collection to ride. The action runs two tiers:
   `adb root`, a rooted pull of `/data/tombstones` (native crash reports) and `/data/anr/` (Application Not Responding
   (ANR) traces) — the two crash-report classes the iOS sweep gets for free from
   `~/Library/Logs/DiagnosticReports`, but which live device-side on Android and need an explicit
-  pull. Gated on the run step's own outcome (`if: failure()`), the same way BE-0361 gates its own
-  failure tier.
+  pull. Gated on the captured `rc` described above, so it fires while the device is still attached.
 
 ### Layer 3: host telemetry over time
 
-The same composite action gains a `start` phase each job calls right after the AVD is confirmed
-booted: a background sampler appending `top -bn1` and `free -m` to
-`runs/diagnostics/host-telemetry.log` every ~20 seconds, stopped by a `collect` phase at the end of
-the job. Every job already tunes the emulator's own resource ceiling
-(`-memory 8192 -cores 2`) against a shared Linux runner, so a stall correlating with host
-memory or CPU pressure is exactly as plausible here as BE-0361's macOS-host hypothesis (2) — this
-layer is what puts that correlation on record instead of leaving it a guess after the fact. Like
-BE-0361's sampler, this one is an observer off the verdict path: its interval is a sampling cadence,
-not a wait, so prime directive 2's ban on fixed sleeps in the run loop stays untouched.
+Unlike Layer 2, this layer reads **only the Linux runner**, never the device, so the constraint above
+does not bind it: `top -bn1` and `free -m` work from an ordinary workflow step whether or not an
+emulator is attached. Layer 3 is therefore the one part of the collection that *can* be a composite
+action, `.github/actions/collect-android-diagnostics`, with a `start` phase each job calls before its
+emulator step and a `collect` phase after it — a background sampler appending to
+`runs/diagnostics/host-telemetry.log` every ~20 seconds. Bracketing the emulator step from outside is
+also what lets the telemetry cover a job whose emulator step died outright, which a sampler launched
+inside that step could not.
+
+Every job already tunes the emulator's own resource ceiling (`-memory 8192 -cores 2`) against a
+shared Linux runner, so a stall correlating with host memory or processor pressure is exactly as
+plausible here as BE-0361's macOS-host hypothesis (2) — this layer is what puts that correlation on
+record instead of leaving it a guess after the fact. Like BE-0361's sampler, this one is an observer
+off the verdict path: its interval is a sampling cadence, not a wait, so prime directive 2's ban on
+fixed sleeps in the run loop stays untouched.
 
 ### Work breakdown (`MECE`)
 
@@ -149,17 +186,22 @@ Mutually exclusive, collectively exhaustive (`MECE`) units of work follow.
    `bajutsu/evidence/intervals.py`'s `start_screenrecord`, gated behind the same `confirm_started`
    opt-in `start_video` already uses, warning on no growth the same way the iOS provider does.
 2. **Stall-time probe.** The bounded capture module behind `BAJUTSU_STALL_DIAGNOSTICS`, its two
-   adb-side trigger points (`AdbResidentError` propagation, the new screenrecord no-growth warning),
-   the per-run capture cap, and the `android-e2e.yml` opt-in.
-3. **The `collect-android-diagnostics` composite action.** The always tier, the failure tier, and the
-   `start`/`collect` telemetry phases; wired into `smoke`, `golden`, `network`, `conformance`,
-   `fault-injection`, `visual`.
-4. **Docs.** Extend the diagnostics section [BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics.md)
+   adb-side trigger points (the hierarchy-read fallback that latches `_fetch_hierarchy = None`, and
+   the new screenrecord no-growth warning — the act path deliberately excluded), the per-run capture
+   cap, and the `android-e2e.yml` opt-in.
+3. **`scripts/collect_android_diagnostics.sh`.** The always tier and the `rc`-keyed failure tier,
+   invoked from the tail of each emulator step's own `script:` in `smoke`, `golden`, `network`,
+   `conformance`, `fault-injection`, `visual` — inside the step, where the device is still attached.
+4. **The `collect-android-diagnostics` composite action.** The `start` / `collect` host-telemetry
+   phases only, bracketing each job's emulator step from outside it.
+5. **Docs.** Extend the diagnostics section [BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics.md)
    adds to `docs/ci.md` (and its `docs/ja/` mirror) with the Android tiers, so one section covers
-   both backends rather than two disconnected write-ups.
-5. **Tests.** Unit tests for the two `bajutsu` hooks — the screenrecord watcher warns exactly when
+   both backends rather than two disconnected write-ups — including why the device-side half lives
+   in a script rather than the action.
+6. **Tests.** Unit tests for the two `bajutsu` hooks — the screenrecord watcher warns exactly when
    growth never confirms; the stall probe is a no-op when the environment variable is unset, bounded
-   and best-effort when set; `make lint-actions` / `actionlint` cover the new composite action.
+   and best-effort when set, and never fires on the act path. `make lint-sh` / `shellcheck` covers the
+   new script and `make lint-actions` / `actionlint` the new composite action.
 
 ### Prime directives preserved
 
@@ -172,6 +214,18 @@ Mutually exclusive, collectively exhaustive (`MECE`) units of work follow.
 
 ## Alternatives considered
 
+- **Fold Layer 3 into `android-e2e.yml`'s existing `poll_cpuinfo` sampler, or leave that input
+  alone.** The lane already carries a background sampler for this exact question: a `workflow_dispatch`
+  input that, when set, appends `adb shell dumpsys cpuinfo` to `runs/cpuinfo.log` every two seconds
+  during `smoke`, so a flake-hunting dispatch can be checked against host processor pressure. Layer 3
+  **coexists with it and does not remove it**, because the two measure different things from different
+  sides: `poll_cpuinfo` reads the *guest's* view over adb, Layer 3 reads the *host's* own load. The
+  reason `poll_cpuinfo` stays off for every `pull_request` and `merge_group` run does not carry over
+  either — that input is off because "polling every 2s is itself continuous adb traffic and host load
+  on the very lane whose CPU contention it measures," an observer effect a host-side `top`/`free`
+  every ~20 seconds does not have: it issues no adb traffic at all and samples a hundredth as often.
+  Layer 3 is therefore always on where `poll_cpuinfo` is opt-in. An implementer should read the two as
+  complementary, not as one superseding the other.
 - **Share one composite action between the iOS and Android lanes.** Rejected: `collect-ios-diagnostics`
   reads `simctl`/CoreSimulator/the macOS unified log, and `collect-android-diagnostics` reads
   `adb`/logcat/the Linux host — the underlying tools share no surface, so a single action would be an
@@ -213,10 +267,11 @@ Mutually exclusive, collectively exhaustive (`MECE`) units of work follow.
 > (oldest first), linking the PRs.
 
 - [ ] Unit 1 — screenrecord growth watcher for the Android `video` provider
-- [ ] Unit 2 — stall-time probe hook (`AdbResidentError` propagation, the new no-growth warning)
-- [ ] Unit 3 — the `collect-android-diagnostics` composite action and its wiring
-- [ ] Unit 4 — docs (`docs/ci.md` and its `ja` mirror)
-- [ ] Unit 5 — tests
+- [ ] Unit 2 — stall-time probe hook (hierarchy-read fallback, the new no-growth warning)
+- [ ] Unit 3 — `scripts/collect_android_diagnostics.sh` and its per-job `script:` wiring
+- [ ] Unit 4 — the `collect-android-diagnostics` composite action (host telemetry only)
+- [ ] Unit 5 — docs (`docs/ci.md` and its `ja` mirror)
+- [ ] Unit 6 — tests
 
 ## References
 
@@ -235,13 +290,17 @@ Mutually exclusive, collectively exhaustive (`MECE`) units of work follow.
   the video/deviceLog evidence this item's collection supplements for the same on-device suites
 - [`bajutsu/evidence/intervals.py`](../../bajutsu/evidence/intervals.py) — `start_video` (the
   growth-watcher pattern Unit 1 ports) and `start_screenrecord` (the seam Unit 1 extends)
-- [`bajutsu/drivers/adb.py`](../../bajutsu/drivers/adb.py) — `AdbResidentError`, Unit 2's first
-  trigger
+- [`bajutsu/drivers/adb.py`](../../bajutsu/drivers/adb.py) — the hierarchy-read fallback that is
+  Unit 2's first trigger, and the act-path `AdbActUnsupported` / `AdbActUncertain` subclasses it
+  deliberately excludes
 - [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) — `BackendCrashError`, the detection
   gap this item's Motivation names but leaves for a future item (see *Alternatives considered*)
 - [`.github/actions/bajutsu-e2e/action.yml`](../../.github/actions/bajutsu-e2e/action.yml) — the
-  XCUITest lane's `Collect crash diagnostics` step, the precedent this item's composite action
-  follows for the Android lane
+  XCUITest lane's `Collect crash diagnostics` step, the precedent this item follows in intent, but
+  not in mechanism (see Layer 2)
 - [`.github/workflows/android-e2e.yml`](../../.github/workflows/android-e2e.yml) — the lane whose
-  jobs opt into every layer
-- [`docs/ci.md`](../../docs/ci.md) — the CI documentation Unit 4 extends
+  jobs opt into every layer, whose `reactivecircus/android-emulator-runner` steps bound where the
+  device is reachable, and whose `poll_cpuinfo` sampler is both Unit 3's shape precedent and Layer
+  3's neighbour
+- [`docs/ci.md`](../../docs/ci.md) — the CI documentation Unit 5 extends, and the page whose Android
+  lane already lists the six jobs this item wires

@@ -27,11 +27,14 @@ Virtual Device（AVD）に対して、adb バックエンド（`bajutsu/platform
 示す証拠が残りません。シナリオまたはジョブそのものが完了しなかったという事実だけが残ります。
 本提案は、Android バックエンド自身の多層診断ログ収集を追加します。設計は
 [BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics-ja.md) が
-XCUITest レーン向けに提案する3層構成をそのまま踏襲します。ストールを最初に検知した時点で
-発火する `bajutsu` 内部のフック、エミュレータと Linux ホスト自身の状態を読む CI の composite
-action、ジョブ全体を通してホスト負荷を記録するバックグラウンドサンプラーの3層です。収集物は
-すべて `runs/` 配下に置かれ、各ジョブの既存の「Upload run artifacts」ステップがすでに運ぶため、
-新しいアップロード配線は不要です。
+XCUITest レーン向けに提案する3層構成を踏襲します。ストールを最初に検知した時点で発火する
+`bajutsu` 内部のフック、エミュレータ自身の状態を CI 側から一括で採取する仕組み、ジョブ全体を
+通してホスト負荷を記録するバックグラウンドサンプラーの3層です。ただし iOS レーンとの構造上の
+違いが1つあり、これが設計全体を貫くため先に述べておきます。エミュレータは各ジョブの
+`reactivecircus/android-emulator-runner` ステップの内側にしか存在しません。そのため、デバイス側の
+採取は、そのステップと並ぶ composite action ではなく、ステップが呼び出すスクリプトに置きます
+（「詳細設計」で改めて扱います）。収集物はすべて `runs/` 配下に置かれ、各ジョブの既存の
+「Upload run artifacts」ステップがすでに運ぶため、新しいアップロード配線は不要です。
 
 ## 動機
 
@@ -95,12 +98,27 @@ diagnostics」ステップがあり、`~/Library/Logs/DiagnosticReports` を走�
 ポーリングを追加します。`start_video` がすでに使っている `confirm_started` のオプトインと
 同じ形にし、タイムアウト内に増加が確認できなければ同じ形の警告を記録します。
 
-**ストール時プローブ。** `AdbResidentError` が常駐チャネルから伝播した瞬間
-（`bajutsu/drivers/adb.py` で、ドライバが `uiautomator dump` サブプロセスへ縮退する箇所）、
-または上記の新しい録画監視がバイト無し警告を記録した瞬間には、描画が固まっているのかホストが
-固まっているのかを切り分ける状態がまだ存在します。この状態は、次のフレームで上書きされる
-寸前です。環境変数
-`BAJUTSU_STALL_DIAGNOSTICS`（BE-0361 が提案するのと同じ名前で、意図的にバックエンド名を
+**ストール時プローブ。** トリガーは2つあり、どちらも意図的に絞り込んであります。1つ目は常駐
+チャネルの**階層読み取り**のフォールバック地点です（`bajutsu/drivers/adb.py` の階層読み取りを
+囲む `except AdbResidentError` で、ドライバが `_fetch_hierarchy = None` をラッチし、以降その
+リースのあいだ `uiautomator dump` サブプロセスへ縮退する箇所）。上の「動機」が述べているのは
+まさにこの地点であり、読み取りチャネルが一時的に不安定なのではなく失われたことを意味します。
+2つ目は、上記の新しい録画監視が出すバイト無し警告です。どちらの瞬間にも、描画が固まっているのか
+ホストが固まっているのかを切り分ける状態がまだ存在します。この状態は、次のフレームで上書き
+される寸前です。
+
+このプローブが引っ掛けるのは**その伝播地点**であって、`AdbResidentError` というクラスでは
+ありません。同クラスのサブクラスのうち2つは、健全な実行でも発火し、ストールとは正反対の意味を
+持つからです。`AdbActUnsupported` は恒久的で想定内の機能欠如を表します（`/act` に 404 を返す
+古い常駐サーバーで、ドライバは一度ラッチして以降は問い合わせません）。`AdbActUncertain` は
+応答を取りこぼした競合状態を表し、二重に操作しないよう、ドライバはあえて操作が成立したものとして
+扱います。どちらも操作経路で捕捉され、その経路では基底クラス自体もジェスチャ1回を縮退させる
+だけでチャネルは使い続けます。クラスを引っ掛けてしまうと、何もストールしていない実行で捕捉が
+走り、後述の実行ごとの上限を消費します。その結果、同じ実行の後半で本物のストールが起きたときに
+予算が残っていない、という事態を招きます。プローブが存在する唯一の目的はその場面です。したがって
+操作経路は対象外とします。
+
+環境変数 `BAJUTSU_STALL_DIAGNOSTICS`（BE-0361 が提案するのと同じ名前で、意図的にバックエンド名を
 冠していません）がディレクトリを指すとき、この2つのトリガー地点は、そこへ向けて上限付き
 かつベストエフォートで捕捉します。捕捉するのは `adb shell dumpsys SurfaceFlinger --latency`、
 直近の `logcat -d -t 200` の末尾（Android の logcat は iOS の unified log と違ってホスト側の
@@ -112,17 +130,31 @@ BE-0361 自身の上限をそのまま踏襲する形です。`BAJUTSU_ADB_STALL
 するのはこの名前だけで、互いのコードには依存しないため、どちらを先に実装しても、あるいは
 どちらか一方だけを実装しても構いません。
 
-### 第2層は CI から集めるエミュレータと Linux ホストの状態
+### 第2層はエミュレータ自身のステップの内側から集めるデバイスの状態
 
-新しい composite action `.github/actions/collect-android-diagnostics` が、BE-0361 の
-`collect-ios-diagnostics` に対応する Android 版として、このバックエンドが実際に持つツールで
-同じ役割を担います。AVD を起動して adb ドライバ経由で駆動するすべてのジョブ、すなわち `smoke` /
-`golden` / `network` / `conformance` / `fault-injection` / `visual`（`docs/ci.md` の
-Android レーンがすでに挙げている6ジョブと同じ）に配線します。`codegen`（`uiautomator (codegen)`）
-も、BE-0361 が iOS 側の `codegen` ジョブを除外する理由と同じ理由で除外します。Gradle の
-`connectedAndroidTest` を直接駆動し、自分自身の `androidTest-results` /
-`codegen-diagnostics` レポートだけをアップロードし、この収集が乗るはずの `runs/` 配下には
-何も書かないからです。この action は2段階で実行します。
+**この層の形を決める制約であり、Android レーンが BE-0361 の iOS レーンから最も鋭く分かれる点
+です。** iOS では Simulator がジョブのあいだホスト上に存在し続けるため、独立したステップとして
+動く composite action からでも到達できます。BE-0361 の `collect-ios-diagnostics` はまさにそれを
+前提にしています。Android にはその余地がありません。`android-e2e.yml` でデバイスに触れる
+ステップはすべて `reactivecircus/android-emulator-runner` ステップの**内側**で動きます。この
+action はエミュレータを起動し、`script:` を実行し、そのステップが終わるとエミュレータを落とし
+ます。その後ろに置いた通常のステップ（およびステップ単位の `if: failure()` ゲート）は、
+**デバイスが接続されていない状態**で動きます。そのため `adb logcat -d`、`adb bugreport`、root
+権限での tombstone / ANR の pull は、いずれも何ひとつ採取できません。同じ理由による先例がすでに
+ます。`poll_cpuinfo` のサンプラーは `smoke` の `script:` 文字列の中に埋め込まれており、しかも
+本来の終了コードを `rc` に保存して、シナリオの失敗を覆い隠さないようにしています。
+
+そこでデバイス側の採取は、composite action ではなくスクリプトに置きます。
+`scripts/collect_android_diagnostics.sh` を、エミュレータがまだ生きている各ジョブ自身の
+`script:` の末尾から呼び出します。失敗時段は、デバイスが消えた後に発火するステップ単位の
+`if: failure()` ではなく、実行コマンド自身の `rc` で分岐します。`poll_cpuinfo` のポーラーが
+失敗する実行を生き延びるために使っているのと同じ形です。配線先は、AVD を起動して adb ドライバ
+経由で駆動するすべてのジョブ、すなわち `smoke` / `golden` / `network` / `conformance` /
+`fault-injection` / `visual`（`docs/ci.md` の Android レーンがすでに挙げている6ジョブと同じ）
+です。`codegen`（`uiautomator (codegen)`）も、BE-0361 が iOS 側の `codegen` ジョブを除外する
+理由と同じ理由で除外します。Gradle の `connectedAndroidTest` を直接駆動し、自分自身の
+`androidTest-results` / `codegen-diagnostics` レポートだけをアップロードし、この収集が乗るはずの
+`runs/` 配下には何も書かないからです。このスクリプトは2段階で実行します。
 
 - **常時**（軽量で、毎回実行します）。`adb logcat -d -b main,system,crash,events,radio` による
   全バッファのダンプです。シナリオに `capture: [deviceLog]` が付いている間だけストリームする
@@ -139,14 +171,20 @@ Android レーンがすでに挙げている6ジョブと同じ）に配線し�
   `/data/tombstones`（ネイティブクラッシュレポート）と `/data/anr/`（Application Not
   Responding（ANR）のトレース）の pull も行います。この2種類のクラッシュレポートは、iOS 側では
   `~/Library/Logs/DiagnosticReports` の走査だけで無料で手に入りますが、Android ではデバイス側
-  に置かれるため明示的な pull が必要です。この段は実行ステップ自身の結果でゲートします
-  （`if: failure()`）。BE-0361 が自身の失敗時段をゲートするのと同じ形です。
+  に置かれるため明示的な pull が必要です。この段は上で述べた `rc` でゲートするので、デバイスが
+  まだ接続されているうちに発火します。
 
 ### 第3層は時系列のホストテレメトリ
 
-同じ composite action に `start` フェーズを設け、AVD の起動確認直後に各ジョブから呼びます。
-`start` は約20秒ごとに `top -bn1` と `free -m` の出力を `runs/diagnostics/host-telemetry.log`
-へ追記するバックグラウンドサンプラーを起動し、ジョブの終わりに `collect` フェーズが停止します。
+第2層と違い、この層が読むのは **Linux ランナーだけ**でデバイスには触れません。そのため上の制約は
+この層を縛りません。`top -bn1` と `free -m` は、エミュレータの接続の有無によらず、通常の
+ワークフローステップから動きます。したがって第3層は、この収集のうち唯一 composite action に
+できる部分です。`.github/actions/collect-android-diagnostics` に `start` フェーズと `collect`
+フェーズを設け、各ジョブがエミュレータステップの前後で呼びます。`start` は約20秒ごとに
+`runs/diagnostics/host-telemetry.log` へ追記するバックグラウンドサンプラーを起動します。
+エミュレータステップを外側から挟むことには、もう1つ利点があります。エミュレータステップ自体が
+落ちたジョブもテレメトリで覆えます。そのステップの内側で起動したサンプラーには、これができません。
+
 どのジョブも、共有される Linux ランナー上でエミュレータ自身の資源上限（`-memory 8192 -cores 2`）
 をすでに調整しており、ストールがホストのメモリやCPU圧迫と相関している可能性は、BE-0361 の
 macOS ホストに関する仮説（2）とまったく同じだけ現実的です。この層があることで、その相関を
@@ -164,18 +202,24 @@ macOS ホストに関する仮説（2）とまったく同じだけ現実的で�
    すでに使っている `confirm_started` のオプトインの背後に置き、iOS 側のプロバイダと同じ形で
    バイト無しを警告します。
 2. **ストール時プローブ。** `BAJUTSU_STALL_DIAGNOSTICS` の背後の上限付き捕捉モジュール、その
-   2つの adb 側トリガー地点（`AdbResidentError` の伝播、新しい録画のバイト無し警告）、実行ごと
-   の捕捉回数上限、そして `android-e2e.yml` でのオプトインを実装します。
-3. **composite action `collect-android-diagnostics`。** 常時段と失敗時段、そして `start` /
-   `collect` のテレメトリフェーズを実装し、`smoke` / `golden` / `network` / `conformance` /
-   `fault-injection` / `visual` へ配線します。
-4. **ドキュメント。**
+   2つの adb 側トリガー地点（`_fetch_hierarchy = None` をラッチする階層読み取りのフォールバック
+   と、新しい録画のバイト無し警告。操作経路は意図的に対象外）、実行ごとの捕捉回数上限、そして
+   `android-e2e.yml` でのオプトインを実装します。
+3. **`scripts/collect_android_diagnostics.sh`。** 常時段と、`rc` で分岐する失敗時段を実装し、
+   `smoke` / `golden` / `network` / `conformance` / `fault-injection` / `visual` の各
+   エミュレータステップ自身の `script:` の末尾から呼び出します。デバイスがまだ接続されている
+   ステップの内側です。
+4. **composite action `collect-android-diagnostics`。** ホストテレメトリの `start` / `collect`
+   フェーズだけを実装し、各ジョブのエミュレータステップを外側から挟みます。
+5. **ドキュメント。**
    [BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics-ja.md) が
    `docs/ci.md` に設ける診断の節を拡張し（その `docs/ja/` ミラーも含みます）、Android 側の段構成
    を同じ節に加えます。2つのバックエンドを別々に書くのではなく、1つの節でまとめて扱います。
-5. **テスト。** `bajutsu` 側の2つのフックのユニットテストです。録画監視がバイト増加を確認
+   デバイス側の採取が action ではなくスクリプトに置かれる理由も、あわせて記します。
+6. **テスト。** `bajutsu` 側の2つのフックのユニットテストです。録画監視がバイト増加を確認
    できないときに限り警告すること、ストールプローブが環境変数の未設定時は no-op であること、
-   設定時は上限付きかつベストエフォートであることを固定します。新しい composite action は
+   設定時は上限付きかつベストエフォートであり、操作経路では決して発火しないことを固定します。
+   新しいスクリプトは `make lint-sh` / `shellcheck` が、新しい composite action は
    `make lint-actions` / `actionlint` が検査します。
 
 ### 最重要原則の維持
@@ -190,6 +234,19 @@ macOS ホストに関する仮説（2）とまったく同じだけ現実的で�
 
 ## 検討した代替案
 
+- **第3層を `android-e2e.yml` の既存の `poll_cpuinfo` サンプラーに統合する、あるいはその入力に
+  手を触れない。** このレーンには、まさに同じ問いのためのバックグラウンドサンプラーがすでに
+  あります。`workflow_dispatch` の入力を設定すると、`smoke` の実行中は2秒ごとに
+  `adb shell dumpsys cpuinfo` が `runs/cpuinfo.log` へ追記され、フレークを追う目的の手動実行を
+  ホストの負荷と突き合わせられます。第3層は**これと共存し、削除しません**。両者は別の側から別の
+  ものを測っているからです。`poll_cpuinfo` は adb 越しに**ゲスト**の見え方を読み、第3層は
+  **ホスト**自身の負荷を読みます。`poll_cpuinfo` が `pull_request` と `merge_group` のすべての
+  実行で無効になっている理由も、そのままは当てはまりません。あの入力が無効なのは「2秒ごとの
+  ポーリング自体が、まさに CPU 競合を測ろうとしているレーンに対して継続的な adb トラフィックと
+  ホスト負荷を加える」からですが、約20秒ごとのホスト側 `top` / `free` にこの観測者効果はありません。
+  adb トラフィックをまったく発生させず、頻度も100分の1です。そのため第3層は、`poll_cpuinfo` が
+  オプトインであるのに対して常時有効です。実装者は、一方が他方を置き換えるものではなく、補い合う
+  ものとして読んでください。
 - **iOS レーンと Android レーンで composite action を1つに共有する。** 退けます。
   `collect-ios-diagnostics` は `simctl` / CoreSimulator / macOS の unified log を読み、
   `collect-android-diagnostics` は adb / logcat / Linux ホストを読みます。両者の背後にある
@@ -233,10 +290,11 @@ macOS ホストに関する仮説（2）とまったく同じだけ現実的で�
 > ともに記録します。
 
 - [ ] Unit 1 — Android の `video` プロバイダの録画バイト増加監視
-- [ ] Unit 2 — ストール時プローブのフック（`AdbResidentError` の伝播、新しいバイト無し警告）
-- [ ] Unit 3 — composite action `collect-android-diagnostics` とその配線
-- [ ] Unit 4 — ドキュメント（`docs/ci.md` とその `ja` ミラー）
-- [ ] Unit 5 — テスト
+- [ ] Unit 2 — ストール時プローブのフック（階層読み取りのフォールバック、新しいバイト無し警告）
+- [ ] Unit 3 — `scripts/collect_android_diagnostics.sh` と各ジョブの `script:` への配線
+- [ ] Unit 4 — composite action `collect-android-diagnostics`（ホストテレメトリのみ）
+- [ ] Unit 5 — ドキュメント（`docs/ci.md` とその `ja` ミラー）
+- [ ] Unit 6 — テスト
 
 ## 参考
 
@@ -247,20 +305,24 @@ macOS ホストに関する仮説（2）とまったく同じだけ現実的で�
   adb 側のクラッシュ起因リトライ。その設計自体がすでに前提としているバックエンドクラッシュ
   シグナルが、本提案の「動機」が示すとおり adb にはまだ存在しません
 - [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md) —
-  常駐チャネル。その `AdbResidentError` が本提案の第1のストールトリガーです
+  常駐チャネル。その階層読み取りのフォールバック地点が本提案の第1のストールトリガーです
 - [BE-0270](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance-ja.md) —
   本提案の収集が挙動を変えずに失敗を計測しやすくする、adb ドライバの conformance 契約
 - [BE-0350](../BE-0350-ondevice-conformance-evidence-capture/BE-0350-ondevice-conformance-evidence-capture-ja.md) —
   同じオンデバイススイート向けに、本提案の収集が補う video / deviceLog 証拠
 - [`bajutsu/evidence/intervals.py`](../../bajutsu/evidence/intervals.py) — `start_video`
   （Unit 1 が移植するバイト増加監視のパターン）と `start_screenrecord`（Unit 1 が拡張する継ぎ目）
-- [`bajutsu/drivers/adb.py`](../../bajutsu/drivers/adb.py) — Unit 2 の第1トリガーである
-  `AdbResidentError`
+- [`bajutsu/drivers/adb.py`](../../bajutsu/drivers/adb.py) — Unit 2 の第1トリガーである階層
+  読み取りのフォールバックと、意図的に対象外とする操作経路の `AdbActUnsupported` /
+  `AdbActUncertain`
 - [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) — `BackendCrashError`。本提案の
   「動機」が指摘し、今後の提案に委ねる検知面のギャップです（「検討した代替案」を参照）
 - [`.github/actions/bajutsu-e2e/action.yml`](../../.github/actions/bajutsu-e2e/action.yml) —
-  XCUITest レーンの「Collect crash diagnostics」ステップ。本提案の composite action が
-  Android レーン向けに踏襲する先例です
+  XCUITest レーンの「Collect crash diagnostics」ステップ。本提案が意図の面では踏襲し、機構の面
+  では踏襲しない先例です（第2層を参照）
 - [`.github/workflows/android-e2e.yml`](../../.github/workflows/android-e2e.yml) — 全層に
-  オプトインするジョブ群を持つレーン
-- [`docs/ci.md`](../../docs/ci.md) — Unit 4 が拡張する CI ドキュメント
+  オプトインするジョブ群を持ち、`reactivecircus/android-emulator-runner` ステップがデバイスに
+  到達できる範囲を区切り、`poll_cpuinfo` サンプラーが Unit 3 の形の先例かつ第3層の隣人である
+  レーン
+- [`docs/ci.md`](../../docs/ci.md) — Unit 5 が拡張する CI ドキュメントであり、本提案が配線する
+  6ジョブをその Android レーンがすでに挙げているページ
