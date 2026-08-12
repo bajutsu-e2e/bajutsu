@@ -27,8 +27,9 @@ carries operational commands only, never a judgement, so the deterministic verdi
 One shipped feature and one in-flight design are bounded by the missing direction, and both give up
 the same way.
 
-The in-app touch visualization proposed by the `visualize-touches-in-app` item, not yet on `main`,
-draws a marker at each touch the app receives, and the marks persist until the next gesture so a step's screenshot carries them. That
+The `visualize-touches-in-app` item, not yet on `main`, proposes an in-app touch visualization: it
+draws a marker at each touch the app receives, and the marks persist until the next gesture, so a
+step's screenshot carries them. That
 collides with a `visual` assertion, which compares a screenshot against a checked-in baseline: the
 markers land in the very image the comparison reads. The right behaviour would be to hide the marks
 for that one capture and restore them after. Because the launch environment is the only way in, that
