@@ -1248,12 +1248,15 @@ def test_run_ended_probe_reads_the_watchdog_restarts_selected_tests_suite(tmp_pa
 
 
 def test_run_ended_probe_reports_nothing_for_a_healthy_runs_started_lines(tmp_path: Path) -> None:
-    # The guard on the marker above: a healthy spawn's own opening lines must not read as an ended
-    # run. Only the terminal `passed` / `failed` spellings end it — `started` never does, and a
-    # never-restarted run reports under `All tests` anyway (`_spawn_runner` passes no `-only-testing`).
+    # The guard on the marker above, and the reason only *terminal* spellings may join that family:
+    # what ends a run is `passed` / `failed`, never the suite name. A `.xctestrun` carrying
+    # `OnlyTestIdentifiers` — which a per-target `xcuitest.build` or a prebuilt `testRunner` can hand
+    # over, outside this module's control — reports a perfectly healthy run under `Selected tests`
+    # too, so a probe keying on the name rather than the outcome would judge that runner dead while
+    # it was still coming up.
     log = tmp_path / "runner.log"
     log.write_bytes(
-        b"Test Suite 'All tests' started at 2026-08-11 17:40:08.199.\n"
+        b"Test Suite 'Selected tests' started at 2026-08-11 17:40:08.199.\n"
         b"Test Suite 'BajutsuRunnerUITests.xctest' started at 2026-08-11 17:40:08.200.\n"
         b"Test Suite 'RunnerUITest' started at 2026-08-11 17:40:08.201.\n"
     )

@@ -82,9 +82,13 @@ _COLD_POLL_SECONDS = 0.1
 # ends — under `Selected tests`, never `All tests`. The port is dead from that moment, but with only
 # the `All tests` spellings matched the probe answered "still running" forever, so `_runner_alive`
 # kept reporting the runner alive and crash recovery polled a dead port for its whole window (the
-# fault-injection lane's own captures show exactly this). A healthy spawn cannot reach these two:
-# `_spawn_runner` runs `xcodebuild test-without-building` with no `-only-testing`, so a run that was
-# never restarted always reports under `All tests`.
+# fault-injection lane's own captures show exactly this). Widening the family is safe because all
+# four spellings are *terminal*: a root suite that reported passed or failed has ended whatever it is
+# named, so the port is dead either way. Do not lean instead on `_spawn_runner` passing no
+# `-only-testing`: the `.xctestrun` a per-target `xcuitest.build` (or a prebuilt `testRunner`) hands
+# over can carry `OnlyTestIdentifiers` and report under `Selected tests` on a perfectly healthy run —
+# which is exactly why only the terminal spellings may join this family. A `started` line, or the
+# "Restarting after unexpected exit" line itself, would abort a runner still on its way up.
 _RUN_ENDED_MARKERS = (
     b"Test Suite 'All tests' failed",
     b"Test Suite 'All tests' passed",
