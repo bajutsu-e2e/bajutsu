@@ -20,9 +20,12 @@ final class HTTPServerQoSTests: XCTestCase {
     func testBothQueuesDeclareUserInitiated() {
         let server = HTTPServer { _ in .json(200, ["status": "ok"]) }
 
-        XCTAssertEqual(server.queue.qos.qosClass, .userInitiated, "the accept loop's queue should declare .userInitiated")
         XCTAssertEqual(
-            server.connections.qos.qosClass, .userInitiated,
+            server.declaredQoS.accept.qosClass, .userInitiated,
+            "the accept loop's queue should declare .userInitiated"
+        )
+        XCTAssertEqual(
+            server.declaredQoS.connections.qosClass, .userInitiated,
             "the connection queue should declare .userInitiated"
         )
     }
@@ -46,7 +49,12 @@ final class HTTPServerQoSTests: XCTestCase {
             do { port = try server.start() } catch { startFailure = error }
             started.signal()
         }
-        XCTAssertEqual(started.wait(timeout: .now() + 5), .success, "the server should have started")
+        // Terminal, not an assertion: past a timeout `port` is still being written by the
+        // starting block, so reading it here would race and fire the request at port 0.
+        guard started.wait(timeout: .now() + 5) == .success else {
+            XCTFail("the server should have started")
+            return
+        }
         if let startFailure { throw startFailure }
 
         _ = HTTPTestClient.get(port: port, path: "/health")
