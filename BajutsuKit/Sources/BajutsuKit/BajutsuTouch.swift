@@ -62,9 +62,8 @@ public enum BajutsuTouch {
     /// A touch that is still down. Green reads as "happening now" and, more practically, is a hue
     /// an app's own chrome rarely spends on a control, so the mark stays picked out against it.
     private static let activeTint = UIColor.systemGreen
-    /// A touch that has lifted, and the contact ring throughout. Deliberately not a system-UI blue:
-    /// a tint the app under test is likely to use for its own controls is exactly the one a viewer
-    /// cannot pick out of a frame.
+    /// A touch that has lifted. Deliberately not a system-UI blue: a tint the app under test is
+    /// likely to use for its own controls is exactly the one a viewer cannot pick out of a frame.
     private static let restingTint = UIColor.systemRed
 
     private struct MarkLayers {
@@ -134,12 +133,11 @@ public enum BajutsuTouch {
         marks.contact.position = CGPoint(x: mark.point.x, y: mark.point.y)
         // Green while the touch is down, red once it has lifted. Colour, not opacity alone, carries
         // the distinction: a still frame of the recording then says on its own whether the contact
-        // it shows is the gesture happening at that moment or the one it left behind. The ring
-        // stays red throughout, so the mark reads as one object changing state rather than two.
-        marks.contact.fillColor = (mark.isActive ? Self.activeTint : Self.restingTint)
-            .withAlphaComponent(0.6).cgColor
-        marks.trail.strokeColor = (mark.isActive ? Self.activeTint : Self.restingTint)
-            .withAlphaComponent(0.85).cgColor
+        // it shows is the gesture happening at that moment or the one it left behind.
+        let tint = mark.isActive ? Self.activeTint : Self.restingTint
+        marks.contact.fillColor = tint.withAlphaComponent(0.6).cgColor
+        marks.contact.strokeColor = tint.cgColor
+        marks.trail.strokeColor = tint.withAlphaComponent(0.85).cgColor
         // The lifted value stays high because a step's screenshot only ever catches that state —
         // fading it far would leave every screenshot showing the faintest version of the mark.
         marks.contact.opacity = mark.isActive ? 1.0 : 0.7
