@@ -16,8 +16,8 @@
 ## Introduction
 
 Bajutsu drives an iOS Simulator through a resident test runner: an XCUITest process that
-`xcodebuild test-without-building` starts on the device, which then serves the driver's requests
-over a loopback HTTP port. When that runner crashes in the middle of a scenario, the driver does not
+`xcodebuild test-without-building` starts on the device and that serves the driver's requests over a
+loopback HTTP port. When that runner crashes in the middle of a scenario, the driver does not
 fail the run outright. It waits up to 60 seconds for the runner to answer on its port again, and
 re-issues the call if the runner comes back.
 
@@ -53,9 +53,9 @@ Continuous integration measurements show the fast-fail missing its target in pra
 One of those jobs ran on a commit that already carried the widened verdict, and spent the full
 window five times in a single scenario while its own captured output named the state the verdict
 looks for: the runner had exited on its own with code 65 after executing zero tests. The widened
-verdict does fire when a runner is already demonstrably gone when the crash is declared, which is
-why the two shapes call for separate accounts rather than one: the mechanism is right and the
-sampling is too early.
+verdict does fire when a runner is already demonstrably gone by the time the crash is declared, so
+the two shapes — a runner gone before the wait and one that dies during it — are two defects rather
+than one: the mechanism is right and only the sampling is too early.
 
 Each miss costs a full 60 seconds and, worse, reports a diagnosis that misdirects whoever reads it.
 "The runner crashed mid-run and did not recover within 60s" describes a runner that was given a fair
