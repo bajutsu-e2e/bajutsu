@@ -8,6 +8,10 @@ let package = Package(
         .library(name: "BajutsuKit", targets: ["BajutsuKit"]),
         .library(name: "BajutsuRunner", targets: ["BajutsuRunner"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-openapi-generator", exact: "1.13.0"),
+        .package(url: "https://github.com/apple/swift-openapi-runtime", exact: "1.12.0"),
+    ],
     targets: [
         .target(name: "BajutsuKit"),
         // An Objective-C shim that catches a raised NSException so the resident runner can survive a
@@ -15,6 +19,13 @@ let package = Package(
         .target(name: "ObjCExceptionCatcher"),
         .target(name: "BajutsuRunner", dependencies: ["ObjCExceptionCatcher"]),
         .testTarget(name: "BajutsuKitTests", dependencies: ["BajutsuKit"]),
-        .testTarget(name: "BajutsuRunnerTests", dependencies: ["BajutsuRunner"]),
+        .testTarget(
+            name: "BajutsuRunnerTests",
+            dependencies: [
+                "BajutsuRunner",
+                .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime"),
+            ],
+            plugins: [.plugin(name: "OpenAPIGenerator", package: "swift-openapi-generator")]
+        ),
     ]
 )

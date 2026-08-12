@@ -53,3 +53,12 @@ paths = ['''bajutsu/serve/launchagent\.py''']
 description = "generic-api-key (entropy heuristic, a default rule) false-positives on Android AVD device names, a JS metrics key literal, and a TOTP test fixture secret — none are API keys"
 targetRules = ["generic-api-key"]
 paths = ['''\.github/workflows/android-e2e\.yml''', '''bajutsu/templates/serve\.metrics\.mjs''', '''tests/test_totp(_step)?\.py''']
+
+# Swift build output, which `gitleaks dir .` walks because — unlike the git-history scan the hooks
+# run — a directory scan does not consult .gitignore. Both trees below hold vendored SwiftPM
+# dependency checkouts (OpenAPIKit's spec fixtures alone carry 57 findings), so they are third-party
+# test data that is generated, git-ignored, and never committed. Scoped to these two generated paths
+# rather than to any rule, so a real secret anywhere in the working tree is still caught.
+[[allowlists]]
+description = "SwiftPM/Xcode build output (BajutsuKit/.build, BajutsuKit/Runner/build) holds vendored dependency checkouts and their test fixtures; generated and git-ignored, never committed"
+paths = ['''(^|/)\.build/''', '''BajutsuKit/Runner/build/''']

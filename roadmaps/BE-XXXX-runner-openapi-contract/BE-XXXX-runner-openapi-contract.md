@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-runner-openapi-contract.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Implementing PR | _(filled in once the PR is open)_ |
 | Topic | Platform support |
 | Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md), [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn.md), [BE-0362](../BE-0362-runner-http-queue-qos/BE-0362-runner-http-queue-qos.md) |
 <!-- /BE-METADATA -->
@@ -26,6 +27,11 @@ transport role beneath that protocol. Adopting the OpenAPI contract and its gene
 which framework carries it — Hummingbird, brought over from server-side Swift with an official
 OpenAPI adapter, or FlyingFox, a zero-dependency socket library built for Apple platforms with no such
 adapter today — is a measured decision this item's PoC makes rather than assumes.
+
+That framing survived the PoC only in part, and the record below says so: the measurement picked
+FlyingFox and ruled Hummingbird out, but it also showed the supposedly settled OpenAPI layer carrying
+a larger cost than the transport that won, which reopens the "fixed" half of the sentence above. See
+*Measured result* under Unit 2.
 
 The runner this item touches binds only to `127.0.0.1` and talks only to the same-host Python driver
 (`bajutsu/drivers/xcuitest.py`); it is never exposed to another device over a local-area network
@@ -127,6 +133,45 @@ Swift 6 language mode's strict concurrency checking or stays on the Swift 5 mode
 this item makes deliberately rather than letting them fall out of whichever transport candidate
 happens to require one.
 
+**Decided, and measured (Unit 1 landed).** `BajutsuKit/Package.swift` **stays at
+`swift-tools-version:5.9`**, and `BajutsuRunner` stays in the Swift 5 language mode. A `5.9` manifest
+does resolve, run the plugin, and build against the `6.1`-tools OpenAPI packages — verified by
+building it, not inferred — so neither the manifest bump nor the language-mode migration is forced,
+and the runner project's own `SWIFT_VERSION: "5.9"` stays consistent with the package.
+
+**The plugin is attached to the `BajutsuRunnerTests` test target, not to the shipped `BajutsuRunner`
+library.** The sketch above asks only for "a `BajutsuRunner`-adjacent target" without naming one; a
+separate *library* target would buy a `public` boundary no second consumer needs, and the measurement
+below is what makes the test target the right home for now. Nothing in production references the generated types yet — Unit 3 is what
+first will — so attaching the plugin to the shipped library would add the entire OpenAPI runtime to
+the runner bundle to serve code only the tests use, and would *charge* the roughly ten
+megabytes whose worth Unit 2 concludes is still an open product question. On the test target the
+conformance tests below are unchanged (they still reach the legacy `Router` through
+`@testable import BajutsuRunner`), the drift protection is identical, and the shipped runner is
+byte-for-byte what it was before this change: 856,040 bytes, measured. Unit 3 moves the plugin to the
+library at the point the generated handlers actually serve traffic, which is also the point the
+product call will have been made.
+
+That placement also retires an integration cost this unit first paid and then removed. With the
+plugin on the shipped library, `xcodebuild` failed the runner build outright with
+`Validate plug-in "OpenAPIGenerator" in package "swift-openapi-generator"` — Xcode gates an
+unapproved package plugin behind a trust prompt it cannot show non-interactively — which forced
+`-skipPackagePluginValidation` onto `runner-build` and `runner-build-device`. The runner's
+`xcodebuild` path does not build the package's test target, so with the plugin there the runner
+builds cleanly and that flag is gone again: this change suppresses no supply-chain prompt. What did
+survive is the pinning it prompted. Both OpenAPI packages are pinned with `exact:` rather than
+`from:`, and `Package.resolved` is committed alongside, so the plugin that executes at build time is
+a fixed version rather than whatever 1.x resolves newest — `exact:` in the manifest is what pins the
+`xcodebuild` path, since the runner's `.xcodeproj` is regenerated and Git-ignored and so carries no
+resolution of its own.
+
+One further trap this unit hit is worth recording for Unit 3, which will re-enter it: **`swift build`
+alone would not have caught the plugin-validation failure.** The Swift gate
+([`swift.yml`](../../.github/workflows/swift.yml)) runs `swift build`/`swift test`, which honour a
+plugin with no trust gate at all; only the `xcodebuild` path the required iOS end-to-end gate depends
+on fails. A change that moves the plugin back onto the shipped library will pass the Swift gate and
+still break the runner build.
+
 ### Unit 2 — Run the transport PoC and decide Hummingbird vs. FlyingFox by measurement
 
 Two candidates carry the contract from Unit 1, and neither is assumed to win before the PoC runs:
@@ -165,6 +210,51 @@ an OpenAPI-generated Hummingbird server" as a single bet. A candidate that fails
 without invalidating Unit 1's contract work; if both candidates fail, this item stops at Unit 1 with
 the OpenAPI contract in hand and the transport question reopened, rather than resolved by default to
 whichever framework a circulated proposal happened to name first.
+
+#### Measured result: Candidate F wins, and the OpenAPI layer costs more than the winning transport
+
+Both PoCs were built inside the real runner and their transports confirmed linked with `nm`
+(Hummingbird 10,415 symbols; FlyingFox 8,056), so no figure below is an unlinked dead-code artifact.
+The product measured is `BajutsuRunnerUITests.xctest` from the same
+`xcodebuild build-for-testing -destination 'generic/platform=iOS Simulator'` command
+`runner-build` uses — that is, the artifact
+[BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md) bundles into the
+wheel, in the Debug configuration that bundling actually ships.
+
+| Variant | Clean build | `.xctest` bundle | Platform floor |
+|---|---:|---:|---|
+| Baseline (`main`, hand-rolled server) | 12.15s | **840 KB** | iOS 15 / macOS 11 |
+| Unit 1 only (generated types, no transport) | 46.86s | 10,612 KB | iOS 15 / macOS 11 |
+| Unit 1 only, Release configuration | 63.67s | 4,892 KB | iOS 15 / macOS 11 |
+| Candidate H — Hummingbird 2.26 + official adapter | 85.44s | **62,272 KB** | **iOS 17 / macOS 14** |
+| Candidate F — FlyingFox 0.27.1 + a 70-line transport | 40.61s | **15,648 KB** | iOS 15 / macOS 11 |
+
+**Candidate H is No-Go, on a criterion the proposal above did not list.** `OpenAPIHummingbird`
+declares a minimum of **iOS 17** (and macOS 14), against the runner's iOS 15, so adopting it raises
+the floor of the runner Bajutsu ships. For a tool whose purpose is driving whatever Simulator a user
+targets, dropping iOS 15 and 16 is a capability loss rather than a housekeeping detail, and no
+`LocalHTTPServer`-style isolation contains it — a platform floor propagates to every consumer. Its
+60.8 MB bundle, 74 times the baseline, independently fails the size criterion.
+
+**Candidate F is the viable transport**: a quarter of H's size, no platform-floor change, and a
+`ServerTransport` conformance that came to about 70 lines, confirming the proposal's estimate that the
+missing adapter is bounded glue. Two costs the comparison above should not hide: FlyingFox is
+pre-1.0 (0.27.1), so its API carries no stability guarantee, and it still multiplies the runner
+bundle 18-fold.
+
+**The finding that outranks the comparison, though, is that Unit 1 alone costs 10,612 KB against an
+840 KB baseline — a 12.6-fold increase from the OpenAPI runtime and generated types, before any
+transport is chosen.** The proposal above treated the OpenAPI layer as the settled decision and the
+transport as the thing worth measuring; the measurement inverts that. Of Candidate F's 15,648 KB,
+roughly two thirds arrives with the contract rather than with FlyingFox. Because
+[BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md) ships this artifact
+inside the Python wheel, that increase is paid by every install, not only by an on-device run.
+Building the bundled runner in Release roughly halves it (4,892 KB) and is worth pursuing on its own
+merits, but it does not change the order of the increase. Whether a contract that removes the
+Swift/Python drift risk is worth roughly ten megabytes of wheel is a judgement about the product
+rather than a fact the PoC settles, so Units 3 to 5 stay unstarted pending that call — and, per
+Unit 1's placement decision above, the contract landed on the test target so that call is still
+genuinely open rather than settled by what has already shipped.
 
 ### Unit 3 — Implement `APIHandler` against the winning candidate
 
@@ -274,12 +364,16 @@ Python driver needs no change at any stage.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — author `openapi.yaml` for the fifteen existing endpoints, wire Swift OpenAPI
+- [x] Unit 1 — author `openapi.yaml` for the fifteen existing endpoints, wire Swift OpenAPI
       Generator's build plugin into `BajutsuKit`, and record the swift-tools-version and
-      language-mode decision.
-- [ ] Unit 2 — build the `/health`-only PoC under both Hummingbird and FlyingFox, measure the source
-      proposal's performance metrics plus health-poll latency on real E2E jobs, and record the
-      Go/No-Go outcome for each candidate.
+      language-mode decision (both stay put). The plugin is attached to the test target, so the
+      shipped runner is unchanged at 856,040 bytes and no plugin-trust suppression is needed;
+      `exact:` pins plus a committed `Package.resolved` fix the build-time plugin version.
+- [x] Unit 2 — build the `/health`-only PoC under both Hummingbird and FlyingFox and record the
+      Go/No-Go outcome for each candidate: **H is No-Go** on its iOS 17 floor and 60.8 MB bundle,
+      **F is viable** at 15.6 MB with no floor change. Size and platform floors are measured; the
+      on-device memory and CI-contention health-poll latency axes still need a real E2E job, and
+      the build times are single unrepeated runs carrying visible variance.
 - [ ] Unit 3 — implement `APIHandler` against the winning candidate, preserving the `actuationLock`
       and bounded-concurrency invariants.
 - [ ] Unit 4 — migrate the fifteen endpoints in the four groups above, one group at a time, behind the
