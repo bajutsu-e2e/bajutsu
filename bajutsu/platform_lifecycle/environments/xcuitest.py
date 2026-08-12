@@ -258,10 +258,12 @@ def _run_ended_probe(log_path: Path | None) -> Callable[[], str | None]:
 
     The verdict **latches** (BE-0354), because two consumers pulse differently. The cold gate reads
     each window once and stops at the first marker, so an edge-triggered answer suffices for it; the
-    mid-run liveness predicate (`XcuitestEnvironment._runner_alive`) is level-triggered, re-asked once
-    per recovery episode, and an unlatched probe would answer "ended" once and then "still running"
-    for every later episode. Both share one probe instance per spawn — the marker lives in a single
-    stream of bytes, so a second, independent instance would race this one for it.
+    mid-run liveness predicate (`XcuitestEnvironment._runner_alive`) is level-triggered, re-asked
+    throughout each recovery episode — once when the crash is declared and then once a second while
+    the recovery wait runs (BE-0360) — and an unlatched probe would answer "ended" on whichever ask
+    first saw the marker and "still running" for every ask after it. Both share one probe instance per
+    spawn — the marker lives in a single stream of bytes, so a second, independent instance would race
+    this one for it.
     """
     if log_path is None:
         return _never_ended

@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0360](BE-0360-xcuitest-liveness-recheck.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0360") |
 | Topic | Platform support |
 | Related | [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md) |
@@ -125,10 +125,10 @@ where a regression would surface.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — add an optional liveness callback to the readiness wait's signature.
-- [ ] Unit 2 — ask the callback once per second inside the polling loop and break on a negative
+- [x] Unit 1 — add an optional liveness callback to the readiness wait's signature.
+- [x] Unit 2 — ask the callback once per second inside the polling loop and break on a negative
       verdict, distinguishing that outcome from a deadline that passed.
-- [ ] Unit 3 — route the new outcome to the "runner is gone" diagnostic, keeping the pre-wait check
+- [x] Unit 3 — route the new outcome to the "runner is gone" diagnostic, keeping the pre-wait check
       as an early exit.
 
 ## References

@@ -32,6 +32,7 @@ import logging
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -148,6 +149,13 @@ _STALE_BACKOFF_BASE_SECONDS = 0.5
 # can leave the runner gone far longer than that as it relaunches, so this budget is generous enough to
 # ride that out yet still bounded — a runner that is truly gone fails the run rather than hanging it.
 _RECOVERY_TIMEOUT_SECONDS = 60
+
+# How often the recovery wait re-asks the runner's liveness while it polls `/health` (BE-0360). The
+# `/health` probe runs every 100ms, but the liveness check reads the runner's capture from a private
+# offset, so asking it at the probe interval would cost 600 file reads across one window to learn of
+# the death at most 900ms sooner — a difference that does not matter against a 60s window. Once a
+# second bounds the wasted wait to about a second past the moment the death becomes observable.
+_LIVENESS_POLL_SECONDS = 1.0
 
 # How often `handle_system_alert` re-queries SpringBoard while waiting for the permission prompt to
 # appear (BE-0316). A fixed inter-poll interval bounded by the step's own `timeout` — a condition
@@ -298,38 +306,86 @@ def _with_retry(inner: TransportFn, *, sleep: Callable[[float], None] = time.sle
     return transport
 
 
+class _HealthWait(Enum):
+    """How a bounded `/health` wait ended (BE-0360).
+
+    Two ways to fail deserve different diagnostics, and a caller told only "the wait failed" would
+    have to re-ask the liveness callback to learn which, so the wait reports which end it reached.
+    """
+
+    READY = "ready"  # the runner answered `ready` within the budget
+    TIMED_OUT = "timed-out"  # the deadline passed with no `ready`
+    GONE = "gone"  # the liveness callback reported the runner unable to come back
+
+
 def _await_health(
     transport: TransportFn,
     *,
     timeout: float,
     poll: float = 0.1,
+    runner_alive: Callable[[], bool] | None = None,
+    liveness_poll: float = _LIVENESS_POLL_SECONDS,
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
-) -> bool:
-    """Poll `GET /health` until the runner answers `ready`, returning whether it did within *timeout*.
+) -> _HealthWait:
+    """Poll `GET /health` until the runner answers `ready`, reporting how the wait ended within *timeout*.
 
-    A bounded condition wait (no fixed sleep that ignores the condition): `True` the moment the runner
-    is ready, `False` if the deadline passes first. A channel failure while the runner is down is
+    A bounded condition wait (no fixed sleep that ignores the condition): `READY` the moment the runner
+    is ready, `TIMED_OUT` if the deadline passes first. A channel failure while the runner is down is
     swallowed and re-polled, so "not accepting connections yet" reads as not-ready, not as an error.
     Shared by `await_ready` (startup) and the crash-recovery layer (mid-run), which differ only in the
     transport and timeout they poll with.
+
+    `runner_alive`, when the caller supplies it, is re-asked while the wait runs and ends it with
+    `GONE` as soon as it reports the runner unable to come back (BE-0360). The verdict is a fact that
+    *changes* during the window — a crashing runner's `xcodebuild` exit and its suite's result line
+    both follow the crash — so sampling it only before the wait would wait out the very failure the
+    fast-fail exists for. It is asked *after* the `/health` probe, so a runner that answers `ready` on
+    the same poll where its capture first shows the marker still counts as recovered: a runner that is
+    serving is serving, whatever its log says. Absent (the startup caller, whose spawn retry owns its
+    own liveness check), the wait is exactly what it was.
     """
-    deadline = clock() + timeout
+    start = clock()
+    deadline = start + timeout
+    # The crash-recovery caller asks the same question immediately before this wait, so the first
+    # in-loop ask is scheduled one interval out rather than duplicating it on the very first poll.
+    next_liveness = start + liveness_poll
     while True:
         try:
             if transport("GET", "/health", None).status == "ready":
-                return True
+                return _HealthWait.READY
         except (XcuitestChannelError, _TransportFailure):
             pass  # runner not accepting connections yet; keep probing until the deadline
-        if clock() >= deadline:
-            return False
+        now = clock()
+        if runner_alive is not None and now >= next_liveness:
+            next_liveness = now + liveness_poll
+            if not runner_alive():
+                return _HealthWait.GONE
+        if now >= deadline:
+            return _HealthWait.TIMED_OUT
         sleep(poll)
+
+
+def _runner_gone_mid_run(
+    method: str, path: str, crash: XcuitestRunnerCrashError
+) -> XcuitestRunnerCrashError:
+    """The crash diagnostic for a runner that will never answer on its port again.
+
+    One wording for two moments the same fact can be observed: the runner was already gone when the
+    crash was declared, or its death became observable while the recovery wait ran (BE-0360).
+    """
+    return XcuitestRunnerCrashError(
+        f"runner channel {method} {path} failed: the runner is gone mid-run — its process exited or "
+        "its test run already ended (it will not recover on this port)",
+        method=method,
+        delivered=crash.delivered,
+    )
 
 
 def _with_crash_recovery(
     inner: TransportFn,
     *,
-    health: Callable[[float], bool],
+    health: Callable[[float], _HealthWait],
     runner_alive: Callable[[], bool] | None = None,
     recovery_timeout: float = _RECOVERY_TIMEOUT_SECONDS,
     max_recoveries: int = _MAX_CRASH_RECOVERIES,
@@ -367,6 +423,12 @@ def _with_crash_recovery(
     polling the dead port for the whole window — the pipeline's crash recovery then leases a fresh
     device and re-runs the scenario. Absent (a test fake) or reporting the runner alive, it changes
     nothing: an alive-but-unreachable runner stays BE-0287's recoverable case and waits out *health*.
+
+    That question is asked twice over: here, before the wait, and again by *health* while the wait runs
+    (BE-0360). Sampling it only here would catch just the runner already gone when the crash was
+    declared, while the ordinary mid-run crash — whose `xcodebuild` exit and suite result line both
+    follow it — became observable a moment later and was waited out in full. A wait that ends on that
+    verdict is reported with the same "gone" diagnostic as the early exit, not as a window waited out.
     """
     logger = logging.getLogger("bajutsu.xcuitest.channel")
 
@@ -426,15 +488,18 @@ def _with_crash_recovery(
                     # an inevitable failure. Fail fast with a distinct diagnostic; the pipeline's crash
                     # recovery then leases a fresh device and re-runs the scenario. A runner merely
                     # unreachable (alive) skips this and waits out `health` below, so BE-0287's
-                    # recoverable case is unchanged.
-                    raise XcuitestRunnerCrashError(
-                        f"runner channel {method} {path} failed: the runner is gone mid-run — its "
-                        "process exited or its test run already ended (it will not recover on this "
-                        "port)",
-                        method=method,
-                        delivered=crash.delivered,
-                    ) from crash
-                if not health(recovery_timeout):
+                    # recoverable case is unchanged. Kept as an early exit even though *health* now
+                    # re-asks the same question (BE-0360): it costs one call, and it spares a runner
+                    # already gone here a poll interval it does not need.
+                    raise _runner_gone_mid_run(method, path, crash) from crash
+                waited = health(recovery_timeout)
+                if waited is _HealthWait.GONE:
+                    # The same death, observed a moment later: the `xcodebuild` exit and the suite's
+                    # result line both *follow* the crash, so the ordinary mid-run crash becomes
+                    # observable during the wait rather than before it (BE-0360). Report it the way a
+                    # runner found gone before the wait is reported, not as a window waited out.
+                    raise _runner_gone_mid_run(method, path, crash) from crash
+                if waited is not _HealthWait.READY:
                     raise XcuitestRunnerCrashError(
                         f"runner channel {method} {path} failed: the runner crashed mid-run and did not "
                         f"recover within {recovery_timeout}s",
@@ -509,14 +574,16 @@ def _http_transport(
     probe through it would silently cost over a second per call instead of one quick attempt — the raw
     transport is returned alongside the wrapped one so both callers can reuse this same instance.
 
-    `runner_alive`, when the environment supplies its `xcodebuild`-process liveness check, lets
-    crash-recovery fail fast on a runner whose process has exited rather than polling the dead port
-    for the whole recovery window; absent, recovery is exactly BE-0287's.
+    `runner_alive`, when the environment supplies its liveness check, lets crash-recovery fail fast on
+    a runner that cannot come back — its process exited, or its XCTest run already ended (BE-0354) —
+    rather than polling the dead port for the whole recovery window. It reaches both places that ask
+    the question: the check before the wait, and the wait itself, which re-asks it as the window runs
+    (BE-0360). Absent, recovery is exactly BE-0287's.
     """
     raw = _raw_http_transport(host, port)
     wrapped = _with_crash_recovery(
         _with_retry(raw),
-        health=lambda timeout: _await_health(raw, timeout=timeout),
+        health=lambda timeout: _await_health(raw, timeout=timeout, runner_alive=runner_alive),
         runner_alive=runner_alive,
     )
     return wrapped, raw
@@ -567,8 +634,8 @@ class XcuitestDriver:
             self._transport = transport
             self._probe_transport = transport
         else:
-            # `runner_alive` lets crash-recovery fail fast on a runner whose process has exited; the
-            # environment supplies its `xcodebuild`-process check, None keeps BE-0287's recovery.
+            # `runner_alive` lets crash-recovery fail fast on a runner that cannot come back; the
+            # environment supplies its liveness check, None keeps BE-0287's recovery.
             self._transport, self._probe_transport = _http_transport(host, port, runner_alive)
         # Injectable so the stale re-resolution backoff (BE-0289) adds no wall time under test.
         self._sleep = sleep
@@ -928,7 +995,7 @@ class XcuitestDriver:
         fails loudly (`XcuitestChannelError`) on timeout rather than hanging, so "the runner never
         came up" is a clear run failure.
         """
-        if not _await_health(self._transport, timeout=timeout, poll=poll):
+        if _await_health(self._transport, timeout=timeout, poll=poll) is not _HealthWait.READY:
             raise XcuitestChannelError(
                 f"xcuitest runner did not come up within {timeout}s (health never ready)"
             )
@@ -945,4 +1012,4 @@ class XcuitestDriver:
         driver's one definition of the health-wire contract — the endpoint, the `ready` sentinel, and
         which transport errors read as not-ready — rather than restating it.
         """
-        return _await_health(self._probe_transport, timeout=0.0)
+        return _await_health(self._probe_transport, timeout=0.0) is _HealthWait.READY
