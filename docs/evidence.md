@@ -258,6 +258,32 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   backward mid-run and would corrupt a wait's timeout or a step's duration. See
   [reporting](reporting.md#manifestjson) for what each recorded field means to a report reader.
 
+### Touch markers in the recording (`--touch-markers`)
+
+A recording shows every consequence of a gesture and never the gesture itself, so `bajutsu run
+--touch-markers` asks the app under test to draw a marker at each touch it receives: a translucent
+circle at the contact, and a trail behind a contact that moves. The marks are drawn inside the app's
+own process, so they reach the recorded video and each step's `after.png` alike. Because they are
+drawn from the `UIEvent` the app dequeues rather than from the coordinate the driver sent, a marker
+is evidence that the touch was *delivered*, which a driver-side coordinate record cannot show.
+
+Three properties matter before turning the flag on.
+
+- **It needs an app that links BajutsuKit.** The drawing lives in `BajutsuKit` (`BajutsuTouch`),
+  which the demo apps already link. The flag sets `BAJUTSU_TOUCH_MARKERS=1` on the app's launch
+  environment, and an app that does not link BajutsuKit ignores the variable.
+- **The marker is a `CALayer`, so it never enters the accessibility tree.** A layer is not a
+  `UIResponder` and conforms to no accessibility protocol, so no selector can resolve to it and it
+  can swallow no gesture. `demos/showcase/scenarios/golden/golden_xcuitest.yaml` holds that claim to
+  account by asserting the same tree golden twice, once with the markers on and once with them off.
+- **A gesture's marks stay until the next gesture starts.** No timer removes them, which is what
+  keeps them in the step's screenshot, and equally why a run with the flag on produces screenshots
+  that differ from a run without it. Leave the flag off for any pixel comparison, the way the
+  Android lanes leave the operating system's `show_touches` and `pointer_location` settings off for
+  theirs (`demos/showcase/android/Makefile`).
+
+The markers are evidence only: no assertion reads them, and the flag is off by default.
+
 ## Sinks (where evidence goes)
 
 ```python

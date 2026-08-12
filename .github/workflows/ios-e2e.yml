@@ -691,11 +691,17 @@ jobs:
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
       # Runs golden.yaml over XCUITest; the scenario compares against its goldens/ baseline, a
-      # field-level tolerant compare (bajutsu/golden.py) that is ABI-stable.
+      # field-level tolerant compare (bajutsu/golden.py) that is ABI-stable. golden_xcuitest.yaml
+      # rides the same warm runner (the action passes each file as its own `--scenario`): it pins
+      # the Log tab's Entry controls, and its second scenario is the accessibility-invariance check
+      # for `run --touch-markers` — the same controls.json asserted with the in-app touch markers
+      # on, which fails the moment a marker reaches the tree.
       - name: Run golden scenarios (BE-0006)
         uses: ./.github/actions/bajutsu-e2e
         with:
-          scenarios: demos/showcase/scenarios/golden/golden.yaml
+          scenarios: >-
+            demos/showcase/scenarios/golden/golden.yaml
+            demos/showcase/scenarios/golden/golden_xcuitest.yaml
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml

@@ -54,6 +54,7 @@ def test_run_flag_surface_is_fully_classified() -> None:
         "zip_run",
         "config_offline",
         "require_pinned_config",
+        "touch_markers",
     }
     buckets = [base_handled, not_serve_exposed, deprecated_aliases, pass_through]
     # disjoint

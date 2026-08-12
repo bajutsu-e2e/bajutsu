@@ -14,7 +14,9 @@ from typer.testing import CliRunner
 
 from bajutsu.cli import app
 from bajutsu.cli._shared import _resolve_browser, _resolve_language
+from bajutsu.cli.commands.run import _apply_touch_markers
 from bajutsu.config import Effective, IosConfig, WebConfig, load_config, resolve
+from bajutsu.scenario import Scenario
 
 runner = CliRunner()
 
@@ -1608,3 +1610,34 @@ def test_worker_help_exits_cleanly() -> None:
     r = runner.invoke(app, ["worker", "--help"])
     assert r.exit_code == 0
     assert "lease" in r.output.lower() or "poll" in r.output.lower()
+
+
+def _touch_marker_scenario(name: str = "demo") -> Scenario:
+    """A scenario carrying nothing but the launch env the touch-marker flag writes into."""
+    return Scenario(name=name, steps=[])
+
+
+def test_touch_markers_flag_sets_the_launch_env() -> None:
+    scenarios = [_touch_marker_scenario("a"), _touch_marker_scenario("b")]
+    _apply_touch_markers(scenarios, True)
+    assert [s.preconditions.launch_env["BAJUTSU_TOUCH_MARKERS"] for s in scenarios] == ["1", "1"]
+
+
+def test_touch_markers_default_leaves_the_launch_env_alone() -> None:
+    """Off unless asked for: the marker is drawn inside the app under test."""
+    scenario = _touch_marker_scenario()
+    _apply_touch_markers([scenario], False)
+    assert "BAJUTSU_TOUCH_MARKERS" not in scenario.preconditions.launch_env
+
+
+def test_touch_markers_does_not_override_a_scenario_that_set_it() -> None:
+    scenario = _touch_marker_scenario()
+    scenario.preconditions.launch_env["BAJUTSU_TOUCH_MARKERS"] = "0"
+    _apply_touch_markers([scenario], True)
+    assert scenario.preconditions.launch_env["BAJUTSU_TOUCH_MARKERS"] == "0"
+
+
+def test_run_help_documents_the_touch_markers_flag() -> None:
+    result = runner.invoke(app, ["run", "--help"])
+    assert result.exit_code == 0
+    assert "--touch-markers" in result.stdout
