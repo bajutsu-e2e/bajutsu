@@ -72,19 +72,19 @@ a condition and fails with a message if it does not arrive. Either the command t
 next step, or the step fails and says so. The screenshot is taken only after the app has reported
 that the markers are hidden.
 
-### Scope: one command
+### Why the channel carries one command
 
-The channel could carry more than one kind of command. It carries one, and that restriction is what
-makes the rest of the design simple.
+The channel could carry more than one kind of command. It carries one, which keeps the rest of the
+design simple.
 
 **The channel carries no pass/fail judgement.** The only state a command can change is whether an
 evidence-only overlay is drawn. Nothing on the channel can affect whether a step passes, and no
 assertion reads from it, so the app under test never contributes to its own verdict. This is prime
 directive 1 in its stricter form: the `run` gate stays machine-checkable and independent of the app.
-A second command would not necessarily break that property, but it would have to be argued
-separately. Mid-scenario stub replacement is the obvious candidate and is left out on purpose:
+A second command would not necessarily break that property, but it would need its own argument.
+Mid-scenario stub replacement is the most likely request, and this item leaves it out deliberately:
 changing a mocked response changes what a `request` assertion sees, which is a reasonable thing to
-want and a different case to make, in its own item.
+want and belongs in its own item.
 
 **The channel is off unless asked for, and a launch env alone does not enable it.** `BajutsuKit`'s
 README currently offers two options: gate the package out of release builds, or rely on the
@@ -94,7 +94,7 @@ otherwise ship a binary in which an environment variable enables remote control 
 behaviour. The poll is therefore compiled out unless a build setting selects it, so the launch env is
 never the only guard, and the README has to be rewritten to say that.
 
-**The channel does not reach into application state.** It controls bajutsu's own in-app
+**The channel does not change application state.** It controls bajutsu's own in-app
 instrumentation, not the application. A command that seeded app data or drove app navigation would
 move per-app knowledge into the tool and break prime directive 3, whatever the transport allowed.
 
@@ -107,8 +107,8 @@ already runs an image comparison. The poll also runs a timer inside the app unde
 off unless the channel is enabled, and the implementation has to show that an idle poll does not
 change the app's own timing, which is what a test measures.
 
-One coupling should be stated. The touch visualization needs no collector today, and a recorded run
-with no network features is its normal case. Delivering commands through the collector means a
+The design also introduces one dependency worth naming. The touch visualization needs no collector
+today, and a recorded run with no network features is its normal case. Delivering commands through the collector means a
 scenario that wants the mid-capture toggle also starts a collector it would not otherwise need. A
 second, purpose-built endpoint would avoid that, at the cost of a second server to secure;
 *Alternatives considered* says why this item does not take that option.
@@ -141,9 +141,9 @@ refactor, because the app-side command dispatch does not depend on which server 
 
 **Report the marker geometry and exclude those regions from the visual comparison.** The app could
 POST each marker's rectangle on the connection it already has, and the comparison could exclude those
-regions, with no inbound channel at all. We rejected this for the reason *Motivation* gives: it drops
-the area where the gesture landed from the comparison, without saying so. It also lets an
-evidence-only feature decide what a machine-checkable assertion is allowed to see.
+regions, with no inbound channel at all. We rejected this for the reason *Motivation* gives: it removes
+the area where the gesture landed from the comparison, and it does so without reporting it. It also
+lets an evidence-only feature decide what a machine-checkable assertion is allowed to see.
 
 **Leave the granularity at one scenario.** This is the current behaviour, and it is useful: the app is
 terminated and relaunched with each scenario's own launch environment, on the warm-runner path as well
