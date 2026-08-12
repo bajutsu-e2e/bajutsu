@@ -331,8 +331,11 @@ extension UIAccessibilityIdentification {
 `UIAlertAction` — the native alert's two actions in §5.3 — takes an overload of its own. It is not
 a `UIView`, and its header never declares `UIAccessibilityIdentification`, yet the class does
 implement `setAccessibilityIdentifier:` and the identifier reaches the alert button XCUITest sees;
-key-value coding is what gets to that setter, guarded so an SDK that ever drops it degrades to
-`label` + `traits` rather than raising `NSUnknownKeyException`:
+key-value coding is what gets to that setter, guarded so an SDK that ever drops it leaves the button
+unidentified rather than raising `NSUnknownKeyException`. Nothing absorbs that loss silently: the
+a11y build's `scenarios/alert.yaml` addresses both buttons by `id`, so a dropped setter reddens the
+gating lane. Only the `-noax` twin, which never carried an identifier, addresses them by `label` +
+`traits`:
 
 ```swift
 extension UIAlertAction {

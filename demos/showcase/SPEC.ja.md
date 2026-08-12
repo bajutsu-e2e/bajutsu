@@ -325,8 +325,10 @@ extension UIAccessibilityIdentification {
 取ります。`UIAlertAction` は `UIView` ではなく、ヘッダも `UIAccessibilityIdentification` への準拠を
 宣言していません。それでもクラス自体は `setAccessibilityIdentifier:` を実装しており、そこで付けた識別子は
 XCUITest が見るアラートのボタンにまで届きます。そのセッタに到達する手段が key-value coding です。呼び出しは
-`responds(to:)` で守ります。将来の SDK がセッタを落としても、`NSUnknownKeyException` を投げずに `label` と
-`traits` による指定へ退けます。
+`responds(to:)` で守ります。将来の SDK がセッタを落としても、`NSUnknownKeyException` を投げずに、ボタンが
+識別子を持たないまま残ります。この欠落を黙って吸収する経路はありません。a11y ビルドの
+`scenarios/alert.yaml` は 2 つのボタンをどちらも `id` で指定するので、セッタが落ちればゲート担当のレーンが
+赤くなります。`label` と `traits` で指定するのは、もともと識別子を持たない `-noax` 版だけです。
 
 ```swift
 extension UIAlertAction {
