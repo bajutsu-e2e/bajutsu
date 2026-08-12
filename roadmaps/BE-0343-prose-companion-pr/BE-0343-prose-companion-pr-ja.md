@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0343") |
-| 実装 PR | [#1498](https://github.com/bajutsu-e2e/bajutsu/pull/1498) |
+| 実装 PR | [#1498](https://github.com/bajutsu-e2e/bajutsu/pull/1498), [#1565](https://github.com/bajutsu-e2e/bajutsu/pull/1565) |
 | トピック | コントリビューターワークフロー |
 | 関連 | [BE-0203](../BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review-ja.md)、[BE-0222](../BE-0222-daily-doc-freshness-pr/BE-0222-daily-doc-freshness-pr-ja.md) |
 <!-- /BE-METADATA -->
