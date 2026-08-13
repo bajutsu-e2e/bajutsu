@@ -28,10 +28,13 @@ which framework carries it — Hummingbird, brought over from server-side Swift 
 OpenAPI adapter, or FlyingFox, a zero-dependency socket library built for Apple platforms with no such
 adapter today — is a measured decision this item's PoC makes rather than assumes.
 
-That framing survived the PoC only in part, and the record below says so: the measurement picked
-FlyingFox and ruled Hummingbird out, but it also showed the supposedly settled OpenAPI layer carrying
-a larger cost than the transport that won, which reopens the "fixed" half of the sentence above. See
-*Measured result* under Unit 2.
+That framing survived the PoC only in part, and the record below says so. On size alone the
+measurement favoured FlyingFox and would have ruled Hummingbird out, but the criterion Hummingbird
+failed was a platform floor rather than a physical limit, and the maintainer chose to raise the floor
+to iOS 18 and adopt Hummingbird for its upstream-maintained adapter. The measurement also showed the
+supposedly settled OpenAPI layer carrying a larger cost than either transport's own share, which
+reopens the "fixed" half of the sentence above. See *Measured result* under Unit 2 for both the
+figures and the decision taken against them.
 
 The runner this item touches binds only to `127.0.0.1` and talks only to the same-host Python driver
 (`bajutsu/drivers/xcuitest.py`); it is never exposed to another device over a local-area network
@@ -133,36 +136,39 @@ Swift 6 language mode's strict concurrency checking or stays on the Swift 5 mode
 this item makes deliberately rather than letting them fall out of whichever transport candidate
 happens to require one.
 
-**Decided, and measured (Unit 1 landed).** `BajutsuKit/Package.swift` **stays at
-`swift-tools-version:5.9`**, and `BajutsuRunner` stays in the Swift 5 language mode. A `5.9` manifest
-does resolve, run the plugin, and build against the `6.1`-tools OpenAPI packages — verified by
-building it, not inferred — so neither the manifest bump nor the language-mode migration is forced,
-and the runner project's own `SWIFT_VERSION: "5.9"` stays consistent with the package.
+**Decided, and measured.** `BajutsuKit/Package.swift` moves to `swift-tools-version:6.0` and the
+package declares `platforms: [.iOS(.v18), .macOS(.v14)]`, while every target pins
+`swiftLanguageMode(.v5)`. The three move together and none of them is free-standing: Unit 2 adopts
+Hummingbird, whose OpenAPI adapter requires iOS 17 or newer; iOS 18 is not expressible below tools
+6.0, since `.v18` is unavailable there; and tools 6.0 defaults every target to the Swift 6
+language mode, whose strict concurrency checking the runner's existing main-thread hop does not pass
+(`sending 'result' risks causing data races` on `Router.onMain`). Pinning the Swift 5 mode keeps that
+concurrency migration a deliberate future item rather than a silent consequence of a platform bump.
+The runner project's `deploymentTarget` rises to iOS 18 to match.
 
-**The plugin is attached to the `BajutsuRunnerTests` test target, not to the shipped `BajutsuRunner`
-library.** The sketch above asks only for "a `BajutsuRunner`-adjacent target" without naming one; a
-separate *library* target would buy a `public` boundary no second consumer needs, and the measurement
-below is what makes the test target the right home for now. Nothing in production references the generated types yet — Unit 3 is what
-first will — so attaching the plugin to the shipped library would add the entire OpenAPI runtime to
-the runner bundle to serve code only the tests use, and would *charge* the roughly ten
-megabytes whose worth Unit 2 concludes is still an open product question. On the test target the
-conformance tests below are unchanged (they still reach the legacy `Router` through
-`@testable import BajutsuRunner`), the drift protection is identical, and the shipped runner is
-byte-for-byte what it was before this change: 856,040 bytes, measured. Unit 3 moves the plugin to the
-library at the point the generated handlers actually serve traffic, which is also the point the
-product call will have been made.
+An earlier revision of this item recorded the opposite of the first half — tools 5.9, no floor
+change — and that was correct for the transport it assumed. A `5.9` manifest does resolve, run the
+plugin, and build against the `6.1`-tools OpenAPI packages, verified by building rather than
+inferred, so the OpenAPI tooling alone forces neither the manifest bump nor the language-mode
+decision. What forces both is the Hummingbird adoption, which is why this paragraph moved with that
+choice rather than standing independently of it.
 
-That placement also retires an integration cost this unit first paid and then removed. With the
-plugin on the shipped library, `xcodebuild` failed the runner build outright with
+**The plugin is attached to the shipped `BajutsuRunner` library**, which the sketch above satisfies
+as "a `BajutsuRunner`-adjacent target": the generated code is `internal` to the module that uses it,
+and a separate library target would buy only a `public` boundary no second consumer needs. Unit 3's
+`APIHandler` lives in that same module and implements the generated `APIProtocol`, so this is the
+placement the production code needs. (It landed briefly on the test target instead, while Units 3 to
+5 were still pending a decision, so that a contract with no production consumer would not yet charge
+the runner bundle for a runtime only the tests used.)
+
+That placement carries one integration cost. `xcodebuild` fails the runner build outright with
 `Validate plug-in "OpenAPIGenerator" in package "swift-openapi-generator"` — Xcode gates an
-unapproved package plugin behind a trust prompt it cannot show non-interactively — which forced
-`-skipPackagePluginValidation` onto `runner-build` and `runner-build-device`. The runner's
-`xcodebuild` path does not build the package's test target, so with the plugin there the runner
-builds cleanly and that flag is gone again: this change suppresses no supply-chain prompt. What did
-survive is the pinning it prompted. Both OpenAPI packages are pinned with `exact:` rather than
-`from:`, and `Package.resolved` is committed alongside, so the plugin that executes at build time is
-a fixed version rather than whatever 1.x resolves newest — `exact:` in the manifest is what pins the
-`xcodebuild` path, since the runner's `.xcodeproj` is regenerated and Git-ignored and so carries no
+unapproved package plugin behind a trust prompt it cannot show non-interactively — so `runner-build`
+and `runner-build-device` in [`demos/showcase/Makefile`](../../demos/showcase/Makefile) both pass
+`-skipPackagePluginValidation`. Suppressing a supply-chain prompt is defensible only because the
+plugin's version is fixed: both OpenAPI packages are pinned with `exact:` rather than `from:`, and
+`Package.resolved` is committed alongside. The `exact:` pin is what governs the `xcodebuild` path in
+particular, since the runner's `.xcodeproj` is regenerated and Git-ignored and so carries no
 resolution of its own.
 
 One further trap this unit hit is worth recording for Unit 3, which will re-enter it: **`swift build`
@@ -236,7 +242,23 @@ targets, dropping iOS 15 and 16 is a capability loss rather than a housekeeping 
 `LocalHTTPServer`-style isolation contains it — a platform floor propagates to every consumer. Its
 60.8 MB bundle, 74 times the baseline, independently fails the size criterion.
 
-**Candidate F is the viable transport**: a quarter of H's size, no platform-floor change, and a
+**Decided: Candidate H, with the platform floor raised to iOS 18.** The maintainer accepted an
+iOS 18 floor, which clears the criterion H failed. Re-measuring both candidates at that floor
+changed nothing else — H stayed at 62,272 KB and F at 15,648 KB, because H's bulk is SwiftNIO's
+static linkage rather than anything the deployment target governs — so the choice trades roughly
+46 MB of runner bundle, and iOS 15 to 17 Simulator support, for an upstream-maintained adapter in
+place of a self-maintained one. That is the maintainer's call to make and it is recorded here as
+made, alongside the measurement that argued the other way.
+
+Raising the floor pulled in two changes worth recording, neither of them obvious from the version
+number. `.v18` is not expressible below `swift-tools-version:6.0`, so the manifest's tools version
+rises with the floor; and tools 6.0 defaults every target to the Swift 6 language mode, whose strict
+concurrency checking the runner's existing main-thread hop does not pass
+(`sending 'result' risks causing data races`). Every target therefore pins
+`swiftLanguageMode(.v5)`, which keeps the concurrency migration a deliberate future item rather than
+a side effect of a platform bump.
+
+**Candidate F remains the smaller transport**: a quarter of H's size, no platform-floor change, and a
 `ServerTransport` conformance that came to about 70 lines, confirming the proposal's estimate that the
 missing adapter is bounded glue. Two costs the comparison above should not hide: FlyingFox is
 pre-1.0 (0.27.1), so its API carries no stability guarantee, and it still multiplies the runner
@@ -252,9 +274,10 @@ inside the Python wheel, that increase is paid by every install, not only by an 
 Building the bundled runner in Release roughly halves it (4,892 KB) and is worth pursuing on its own
 merits, but it does not change the order of the increase. Whether a contract that removes the
 Swift/Python drift risk is worth roughly ten megabytes of wheel is a judgement about the product
-rather than a fact the PoC settles, so Units 3 to 5 stay unstarted pending that call — and, per
-Unit 1's placement decision above, the contract landed on the test target so that call is still
-genuinely open rather than settled by what has already shipped.
+rather than a fact the PoC settles. The maintainer took that call together with the transport one:
+adopting Hummingbird accepts both the OpenAPI layer's own cost and the transport's on top of it, so
+Units 3 onward proceed rather than waiting. The figures stay recorded here because the decision was
+made against them, not in ignorance of them.
 
 ### Unit 3 — Implement `APIHandler` against the winning candidate
 
@@ -366,16 +389,24 @@ Python driver needs no change at any stage.
 
 - [x] Unit 1 — author `openapi.yaml` for the fifteen existing endpoints, wire Swift OpenAPI
       Generator's build plugin into `BajutsuKit`, and record the swift-tools-version and
-      language-mode decision (both stay put). The plugin is attached to the test target, so the
-      shipped runner is unchanged at 856,040 bytes and no plugin-trust suppression is needed;
-      `exact:` pins plus a committed `Package.resolved` fix the build-time plugin version.
+      language-mode decision: tools 6.0 and `platforms: [.iOS(.v18), .macOS(.v14)]`, with every
+      target pinning `swiftLanguageMode(.v5)` so Hummingbird's iOS 17 floor does not drag a Swift 6
+      strict-concurrency migration along with it. The plugin sits on the shipped library, which
+      costs `-skipPackagePluginValidation` on both runner builds; `exact:` pins plus a committed
+      `Package.resolved` are what make accepting that prompt-suppression defensible.
 - [x] Unit 2 — build the `/health`-only PoC under both Hummingbird and FlyingFox and record the
-      Go/No-Go outcome for each candidate: **H is No-Go** on its iOS 17 floor and 60.8 MB bundle,
-      **F is viable** at 15.6 MB with no floor change. Size and platform floors are measured; the
+      Go/No-Go outcome for each candidate: **F is the smaller transport** at 15.6 MB with no floor
+      change, while **H costs 60.8 MB and an iOS 17 floor** — which the maintainer cleared by
+      raising the floor to iOS 18 and adopting H for its upstream-maintained adapter. Size and platform floors are measured; the
       on-device memory and CI-contention health-poll latency axes still need a real E2E job, and
       the build times are single unrepeated runs carrying visible variance.
-- [ ] Unit 3 — implement `APIHandler` against the winning candidate, preserving the `actuationLock`
-      and bounded-concurrency invariants.
+- [x] Unit 3 — implement `APIHandler` against the winning candidate, preserving the `actuationLock`
+      and bounded-concurrency invariants. Both survive as one serial `operations` queue: it
+      serializes XCUITest work as the lock did, and absorbs the blocking main-thread hop off
+      Hummingbird's event loops, so `/health` — the one operation that never touches it — stays
+      answerable during a long gesture. Parity tests compare every endpoint's generated reply
+      against the legacy `Router`'s for the same input, and mutation-testing confirms they fail on
+      a drifted status string or a dropped optional field.
 - [ ] Unit 4 — migrate the fifteen endpoints in the four groups above, one group at a time, behind the
       comparison harness.
 - [ ] Unit 5 — remove `HTTPServer.swift`'s and `Router.swift`'s hand-rolled transport code once

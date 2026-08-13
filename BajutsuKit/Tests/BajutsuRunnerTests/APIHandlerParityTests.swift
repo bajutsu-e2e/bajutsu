@@ -1,0 +1,261 @@
+import Foundation
+import XCTest
+@testable import BajutsuRunner
+
+/// Unit 4 flips the driver from the hand-rolled `Router` to the generated path endpoint by
+/// endpoint. These tests are the evidence that flip is safe: each drives **both** implementations
+/// from the same provider state and the same request, then compares the JSON they produce. A
+/// difference in any field, status string, or optional-versus-absent key fails here rather than on
+/// a device.
+///
+/// The comparison is on decoded JSON rather than raw bytes because `JSONSerialization` (the legacy
+/// path) and `JSONEncoder` (the generated path) do not agree on key order, which is not part of the
+/// contract. Everything that *is* part of the contract — which keys exist, and what they hold — is
+/// compared exactly.
+final class APIHandlerParityTests: XCTestCase {
+    // MARK: - Harness
+
+    /// The legacy reply for *method* and *path*, as a JSON object.
+    private func legacy(
+        _ method: String, _ path: String, body: [String: Any]? = nil, provider: FakeElementProvider
+    ) throws -> [String: Any] {
+        let data = try body.map { try JSONSerialization.data(withJSONObject: $0) }
+        let response = Router(provider: provider).handle(
+            HTTPRequest(method: method, path: path, body: data)
+        )
+        return try XCTUnwrap(
+            JSONSerialization.jsonObject(with: response.body) as? [String: Any],
+            "legacy \(method) \(path) did not return a JSON object"
+        )
+    }
+
+    /// The generated reply for the same operation, encoded back to JSON so the two are comparable.
+    private func generated<T: Encodable>(_ value: T) throws -> [String: Any] {
+        let encoder = JSONEncoder()
+        return try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoder.encode(value)) as? [String: Any]
+        )
+    }
+
+    /// `NSDictionary` equality is deep and order-independent, which is exactly the comparison the
+    /// wire contract calls for.
+    private func assertSame(
+        _ lhs: [String: Any], _ rhs: [String: Any], _ what: String,
+        file: StaticString = #filePath, line: UInt = #line
+    ) {
+        XCTAssertEqual(
+            lhs as NSDictionary, rhs as NSDictionary,
+            "\(what): generated reply differs from the legacy one", file: file, line: line
+        )
+    }
+
+    private func elementProvider(_ snapshots: [ElementSnapshot]) -> FakeElementProvider {
+        let provider = FakeElementProvider()
+        provider.elementsToReturn = snapshots
+        return provider
+    }
+
+    private static let sample = ElementSnapshot(
+        identifier: "home.title", label: "Home", value: "v",
+        traits: ["staticText"], frame: (10, 20, 100, 44), backingElement: NSObject()
+    )
+    private static let bare = ElementSnapshot(
+        identifier: nil, label: nil, value: nil,
+        traits: [], frame: (0, 0, 1, 1), backingElement: NSObject()
+    )
+
+    // MARK: - Reads
+
+    func testHealthParity() async throws {
+        let provider = FakeElementProvider()
+        let new = try await APIHandler(provider: provider).health(.init())
+        guard case .ok(let ok) = new, case .json(let payload) = ok.body else {
+            return XCTFail("unexpected health output")
+        }
+        assertSame(try legacy("GET", "/health", provider: provider), try generated(payload), "/health")
+    }
+
+    func testScreenParity() async throws {
+        let provider = FakeElementProvider()
+        provider.screenSizeValue = (width: 393, height: 852)
+        let new = try await APIHandler(provider: provider).screen(.init())
+        guard case .ok(let ok) = new, case .json(let payload) = ok.body else {
+            return XCTFail("unexpected screen output")
+        }
+        // Also pins that neither side invents a `status` key here.
+        assertSame(try legacy("GET", "/screen", provider: provider), try generated(payload), "/screen")
+    }
+
+    func testElementsParity() async throws {
+        for (name, snapshots) in [
+            ("populated", [Self.sample]),
+            ("optional fields absent", [Self.bare]),
+            ("empty", []),
+        ] as [(String, [ElementSnapshot])] {
+            let new = try await APIHandler(provider: elementProvider(snapshots)).queryElements(.init())
+            guard case .ok(let ok) = new, case .json(let payload) = ok.body else {
+                return XCTFail("unexpected elements output")
+            }
+            assertSame(
+                try legacy("GET", "/elements", provider: elementProvider(snapshots)),
+                try generated(payload), "/elements (\(name))"
+            )
+        }
+    }
+
+    func testSystemAlertQueryParity() async throws {
+        let provider = FakeElementProvider()
+        provider.systemAlertButtons = [Self.sample]
+        let other = FakeElementProvider()
+        other.systemAlertButtons = [Self.sample]
+        let new = try await APIHandler(provider: provider).querySystemAlert(.init(body: .json(.init())))
+        guard case .ok(let ok) = new, case .json(let payload) = ok.body else {
+            return XCTFail("unexpected systemAlert/query output")
+        }
+        assertSame(
+            try legacy("POST", "/systemAlert/query", body: [:], provider: other),
+            try generated(payload), "/systemAlert/query"
+        )
+    }
+
+    // MARK: - Actuation
+
+    /// The four statuses are the contract's whole vocabulary, and the driver matches them as
+    /// literals, so each has to survive the port unchanged.
+    func testTapParityAcrossEveryStatus() async throws {
+        for result in [TapResult.ok, .stale, .notFound, .notHittable] {
+            let forNew = elementProvider([Self.sample]); forNew.tapResult = result
+            let forLegacy = elementProvider([Self.sample]); forLegacy.tapResult = result
+
+            let handler = APIHandler(provider: forNew)
+            _ = try await handler.queryElements(.init())  // mint a handle
+            let handle = try await firstHandle(handler)
+            let new = try await handler.tap(.init(body: .json(.init(handle: handle))))
+            guard case .ok(let ok) = new, case .json(let payload) = ok.body else {
+                return XCTFail("unexpected tap output")
+            }
+
+            let router = Router(provider: forLegacy)
+            let legacyHandle = try legacyFirstHandle(router)
+            let response = router.handle(
+                HTTPRequest(
+                    method: "POST", path: "/tap",
+                    body: try JSONSerialization.data(withJSONObject: ["handle": legacyHandle])
+                )
+            )
+            let legacyJSON = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: response.body) as? [String: Any]
+            )
+            assertSame(legacyJSON, try generated(payload), "/tap (\(result))")
+        }
+    }
+
+    func testCoordinateTapParity() async throws {
+        let provider = FakeElementProvider()
+        let new = try await APIHandler(provider: provider).tap(.init(body: .json(.init(point: [12.5, 34]))))
+        guard case .ok(let ok) = new, case .json(let payload) = ok.body else {
+            return XCTFail("unexpected tap output")
+        }
+        assertSame(
+            try legacy("POST", "/tap", body: ["point": [12.5, 34]], provider: FakeElementProvider()),
+            try generated(payload), "/tap (coordinate)"
+        )
+        XCTAssertEqual(provider.tapPointCalls.count, 1, "the coordinate path must still reach the provider")
+    }
+
+    func testDragAndTextParity() async throws {
+        let cases: [(String, String, [String: Any], () async throws -> [String: Any])] = [
+            ("/swipe", "/swipe", ["from": [1, 2], "to": [3, 4]], {
+                let out = try await APIHandler(provider: FakeElementProvider())
+                    .swipe(.init(body: .json(.init(from: [1, 2], to: [3, 4]))))
+                guard case .ok(let ok) = out, case .json(let p) = ok.body else { throw ParityError.shape }
+                return try self.generated(p)
+            }),
+            ("/scroll", "/scroll", ["from": [1, 2], "to": [3, 4]], {
+                let out = try await APIHandler(provider: FakeElementProvider())
+                    .scroll(.init(body: .json(.init(from: [1, 2], to: [3, 4]))))
+                guard case .ok(let ok) = out, case .json(let p) = ok.body else { throw ParityError.shape }
+                return try self.generated(p)
+            }),
+            ("/type", "/type", ["text": "hello"], {
+                let out = try await APIHandler(provider: FakeElementProvider())
+                    .typeText(.init(body: .json(.init(text: "hello"))))
+                guard case .ok(let ok) = out, case .json(let p) = ok.body else { throw ParityError.shape }
+                return try self.generated(p)
+            }),
+            ("/deleteText", "/deleteText", ["count": 3], {
+                let out = try await APIHandler(provider: FakeElementProvider())
+                    .deleteText(.init(body: .json(.init(count: 3))))
+                guard case .ok(let ok) = out, case .json(let p) = ok.body else { throw ParityError.shape }
+                return try self.generated(p)
+            }),
+            ("/selectAll", "/selectAll", [:], {
+                let out = try await APIHandler(provider: FakeElementProvider())
+                    .selectAll(.init(body: .json(.init())))
+                guard case .ok(let ok) = out, case .json(let p) = ok.body else { throw ParityError.shape }
+                return try self.generated(p)
+            }),
+            ("/copy", "/copy", [:], {
+                let out = try await APIHandler(provider: FakeElementProvider())
+                    .copySelection(.init(body: .json(.init())))
+                guard case .ok(let ok) = out, case .json(let p) = ok.body else { throw ParityError.shape }
+                return try self.generated(p)
+            }),
+        ]
+        for (name, path, body, run) in cases {
+            assertSame(
+                try legacy("POST", path, body: body, provider: FakeElementProvider()),
+                try await run(), name
+            )
+        }
+    }
+
+    // MARK: - Error paths
+
+    func testBadRequestParity() async throws {
+        // A non-positive count is the one 400 both implementations derive from a well-formed body,
+        // so it is the 400 that can be compared field-for-field.
+        let new = try await APIHandler(provider: FakeElementProvider())
+            .deleteText(.init(body: .json(.init(count: 0))))
+        guard case .badRequest(let bad) = new, case .json(let payload) = bad.body else {
+            return XCTFail("expected a 400 for a non-positive count")
+        }
+        assertSame(
+            try legacy("POST", "/deleteText", body: ["count": 0], provider: FakeElementProvider()),
+            try generated(payload), "/deleteText (count 0)"
+        )
+    }
+
+    func testScreenshotFailureParity() async throws {
+        let provider = FakeElementProvider()
+        provider.screenshotData = nil
+        let new = try await APIHandler(provider: provider).screenshot(.init())
+        guard case .internalServerError(let error) = new, case .json(let payload) = error.body else {
+            return XCTFail("expected a 500 when the capture fails")
+        }
+        let other = FakeElementProvider()
+        other.screenshotData = nil
+        assertSame(
+            try legacy("GET", "/screenshot", provider: other), try generated(payload),
+            "/screenshot (failure)"
+        )
+    }
+
+    // MARK: - Helpers
+
+    private enum ParityError: Error { case shape }
+
+    private func firstHandle(_ handler: APIHandler) async throws -> String {
+        let out = try await handler.queryElements(.init())
+        guard case .ok(let ok) = out, case .json(let payload) = ok.body,
+              let handle = payload.elements.first?.handle else { throw ParityError.shape }
+        return handle
+    }
+
+    private func legacyFirstHandle(_ router: Router) throws -> String {
+        let response = router.handle(HTTPRequest(method: "GET", path: "/elements", body: nil))
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: response.body) as? [String: Any])
+        let elements = try XCTUnwrap(json["elements"] as? [[String: Any]])
+        return try XCTUnwrap(elements.first?["handle"] as? String)
+    }
+}

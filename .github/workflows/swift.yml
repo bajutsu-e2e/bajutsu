@@ -31,9 +31,46 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Select Xcode
+        id: toolchain
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
         with:
           xcode-version: latest-stable
+
+      # The Xcode version is part of every cache key below: Swift module formats are not compatible
+      # across toolchains, so a runner-image Xcode bump must miss rather than restore a stale build.
+      - name: Record toolchain version
+        id: swiftver
+        run: echo "v=$(swift --version | head -1 | tr -dc '[:alnum:].')" >> "$GITHUB_OUTPUT"
+
+      # Without this the job compiles the whole dependency graph — Hummingbird, SwiftNIO, and the
+      # OpenAPI generator plugin — from source on every run, which is most of its wall clock. Two
+      # separate caches, because they invalidate on different things:
+      #
+      #   * the shared SwiftPM cache holds the resolved dependency *checkouts*, which change only
+      #     when the resolved versions do, so it is keyed on Package.resolved alone and survives
+      #     every source edit;
+      #   * `.build` holds compiled artifacts and the generator plugin's output, so it additionally
+      #     keys on the manifest and on openapi.yaml — the plugin's input, whose regeneration a
+      #     source-only key would not describe.
+      #
+      # restore-keys let a partial match warm the compiled modules; a miss only rebuilds cold, so
+      # the cache can make the job faster but never change its result.
+      - name: Cache SwiftPM dependency checkouts
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/Library/Caches/org.swift.swiftpm
+          key: swiftpm-deps-${{ runner.os }}-${{ runner.arch }}-${{ steps.swiftver.outputs.v }}-${{ hashFiles('BajutsuKit/Package.resolved') }}
+          restore-keys: |
+            swiftpm-deps-${{ runner.os }}-${{ runner.arch }}-${{ steps.swiftver.outputs.v }}-
+
+      - name: Cache SwiftPM build products
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: BajutsuKit/.build
+          key: swiftpm-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.swiftver.outputs.v }}-${{ hashFiles('BajutsuKit/Package.resolved', 'BajutsuKit/Package.swift', 'BajutsuKit/Sources/BajutsuRunner/openapi.yaml', 'BajutsuKit/Sources/BajutsuRunner/openapi-generator-config.yaml') }}-${{ hashFiles('BajutsuKit/Sources/**/*.swift', 'BajutsuKit/Tests/**/*.swift') }}
+          restore-keys: |
+            swiftpm-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.swiftver.outputs.v }}-${{ hashFiles('BajutsuKit/Package.resolved', 'BajutsuKit/Package.swift', 'BajutsuKit/Sources/BajutsuRunner/openapi.yaml', 'BajutsuKit/Sources/BajutsuRunner/openapi-generator-config.yaml') }}-
+            swiftpm-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.swiftver.outputs.v }}-
 
       - name: Build
         run: swift build --package-path BajutsuKit
