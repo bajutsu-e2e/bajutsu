@@ -1,14 +1,14 @@
-[English](BE-XXXX-xcuitest-duplicate-identity-resolution.md) · **日本語**
+[English](BE-0368-xcuitest-duplicate-identity-resolution.md) · **日本語**
 
-# BE-XXXX — 内容が同一の重複ノードを解決失敗にせず、1 つのライブ要素へ解決する
+# BE-0368 — 内容が同一の重複ノードを解決失敗にせず、1 つのライブ要素へ解決する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-xcuitest-duplicate-identity-resolution-ja.md) |
+| 提案 | [BE-0368](BE-0368-xcuitest-duplicate-identity-resolution-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0368") |
 | 実装 PR | [#1567](https://github.com/bajutsu-e2e/bajutsu/pull/1567) |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0357](../BE-0357-xcuitest-duplicate-node-hittable-tiebreak/BE-0357-xcuitest-duplicate-node-hittable-tiebreak-ja.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md), [BE-0312](../BE-0312-xcuitest-content-addressed-snapshot-handle/BE-0312-xcuitest-content-addressed-snapshot-handle-ja.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve-ja.md) |

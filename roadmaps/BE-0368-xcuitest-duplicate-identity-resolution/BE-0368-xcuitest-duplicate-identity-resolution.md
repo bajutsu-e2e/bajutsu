@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-xcuitest-duplicate-identity-resolution-ja.md)
+**English** · [日本語](BE-0368-xcuitest-duplicate-identity-resolution-ja.md)
 
-# BE-XXXX — Resolve a content-identical duplicate node pair to one live element instead of failing the lookup
+# BE-0368 — Resolve a content-identical duplicate node pair to one live element instead of failing the lookup
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-xcuitest-duplicate-identity-resolution.md) |
+| Proposal | [BE-0368](BE-0368-xcuitest-duplicate-identity-resolution.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0368") |
 | Implementing PR | [#1567](https://github.com/bajutsu-e2e/bajutsu/pull/1567) |
 | Topic | Platform support |
 | Related | [BE-0357](../BE-0357-xcuitest-duplicate-node-hittable-tiebreak/BE-0357-xcuitest-duplicate-node-hittable-tiebreak.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md), [BE-0312](../BE-0312-xcuitest-content-addressed-snapshot-handle/BE-0312-xcuitest-content-addressed-snapshot-handle.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md) |
