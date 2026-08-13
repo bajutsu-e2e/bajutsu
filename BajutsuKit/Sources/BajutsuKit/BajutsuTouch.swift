@@ -167,12 +167,12 @@ public enum BajutsuTouch {
         // the instant before the first one lands.
         contact.fillColor = restingTint.withAlphaComponent(0.6).cgColor
         contact.strokeColor = restingTint.cgColor
-        contact.lineWidth = 1.5
+        contact.lineWidth = 1
 
         let trail = CAShapeLayer()
         trail.fillColor = nil
         trail.strokeColor = restingTint.withAlphaComponent(0.85).cgColor
-        trail.lineWidth = 2
+        trail.lineWidth = 1
         trail.lineCap = .round
         trail.lineJoin = .round
 

@@ -44,9 +44,10 @@ public struct BajutsuTouchMark: Equatable {
 
 /// Tuning shared by the model and the renderer.
 public enum BajutsuTouchMarker {
-    /// Radius of the contact circle, in points. Small enough to leave the control it lands on
-    /// readable underneath, which is the point of drawing on the app's own frames.
-    public static let radius: Double = 12
+    /// Radius of the contact circle, in points. Deliberately small: the marker has to say where the
+    /// touch landed without covering the control it landed on, and the frames it appears in are the
+    /// app's own screenshots, which a reader is looking at for the app rather than for the marker.
+    public static let radius: Double = 4
     /// A `.moved` this close to the previous trail point records nothing. UIKit delivers moves far
     /// more finely than a drawn route needs, so the filter bounds a trail's density without
     /// shortening the route it shows.
