@@ -67,7 +67,7 @@ Nothing has actually exercised even that literal path.
 [`demos/showcase/ios/swiftui/Sources/PermissionsView.swift`](../../demos/showcase/ios/swiftui/Sources/PermissionsView.swift)'s
 own comment states plainly that reading a pasteboard seeded by another process trips this prompt,
 and the showcase's System section avoids it on purpose: its `Copy` and `Paste` buttons
-write and read within the same app, so the round-trip "reads back silently" rather than surface the
+write and read within the same app, so the round-trip "reads back silently" rather than surfacing the
 alert this item targets. An author who wants to prove a genuine cross-process paste — the case
 BE-0052's own `setClipboard` exists for — has no demonstrated scenario to build from today, native or
 otherwise.
