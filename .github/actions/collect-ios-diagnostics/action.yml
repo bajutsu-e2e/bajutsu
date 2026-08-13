@@ -134,6 +134,27 @@ runs:
           } >"$DEST/render-probe.txt" 2>&1
         fi
 
+        # A process baseline, once per job, beside the render probe and for the same reason: the stall
+        # captures snapshot `ps` only at a stall, so they answer "what was resident when it broke" and
+        # cannot answer "was that different from normal". Reading the first collection showed the cost
+        # of that gap — the app under test was 1.2 GB at a stall, and separating "always 1.2 GB" from
+        # "grew to 1.2 GB" needed a launch-env argument instead of a measurement. Guarded on its own
+        # absence like the probe above, so a second `start` cannot overwrite the pre-run reading.
+        if [ ! -f "$DEST/ps-baseline.txt" ]; then
+          {
+            echo "sampled at $(date -u +%FT%TZ), before any scenario ran"
+            # Bounded: a `ps` on this host took 12.8s in one measured capture, and the whole point of
+            # the baseline is that it costs a green job nothing.
+            /bin/ps aux >"$DEST/.ps-baseline.raw" 2>&1 &
+            reap $! 20
+            [ $? -eq 124 ] && echo "ps: STILL RUNNING after 20s — killed (the host is not answering)" \
+              || cat "$DEST/.ps-baseline.raw"
+            rm -f "$DEST/.ps-baseline.raw"
+            /usr/bin/vm_stat
+          } >"$DEST/ps-baseline.txt" 2>&1
+          chmod 600 "$DEST/ps-baseline.txt" 2>/dev/null || true
+        fi
+
         # The sampler is an observer outside any run loop: its interval is a sampling cadence, not a
         # wait a verdict depends on, so the ban on fixed sleeps in the run loop is untouched. Started
         # idempotently, because the jobs that call this action twice (bundled-runner runs two smoke
@@ -150,7 +171,12 @@ runs:
         while true; do
           {
             echo "=== \$(date -u +%FT%TZ) ==="
-            /usr/bin/top -l 1 -n 10 -o cpu
+            # Sorted by memory, not CPU: with -l 1 there is a single sample, so top has no interval to
+            # difference and every process reports 0.0% CPU. The first collection proved what that
+            # costs — sorting by cpu was sorting on a constant, and the ten rows it kept never once
+            # included the 1.2 GB app or SpringBoard while the host sat at 0.0% idle. Resident size is
+            # a point-in-time value, so it ranks correctly in a single sample.
+            /usr/bin/top -l 1 -n 15 -o mem
             /usr/bin/vm_stat
             /usr/bin/memory_pressure
           } >>"$telemetry" 2>&1

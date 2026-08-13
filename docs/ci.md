@@ -141,7 +141,16 @@ Three layers collect it, split by what each one can see.
   `top`, `vm_stat`, and `memory_pressure` to `runs/diagnostics/host-telemetry.log` every 20 seconds,
   and a one-shot render probe records how long a screenshot takes and whether a five-second
   `recordVideo` produces any bytes at all. The sampler is an observer outside every run loop, so its
-  interval is a sampling cadence and not a wait a verdict depends on.
+  interval is a sampling cadence and not a wait a verdict depends on. It ranks `top`'s rows by
+  resident size rather than CPU, because `top -l 1` differences nothing and so reports every process
+  at 0.0% — sorting by CPU there sorts on a constant, and the first collection's rows never once
+  included the app under test.
+- **Before anything ran**, also from `start`: one bounded `ps aux` plus `vm_stat` land in
+  `runs/diagnostics/ps-baseline.txt`. The stall captures snapshot `ps` at a stall, which answers what
+  was resident when it broke and cannot answer whether that differed from normal — the first
+  collection had to settle that question from a launch-env argument instead of a measurement. Both
+  this and the render probe are written once per job, so the second `start` a job may make never
+  overwrites the pre-run reading with a mid-job one.
 
 We split the unified-log extract in two on purpose, and the reason is worth stating because the
 opposite is the natural assumption. The Simulator's guest processes that serve screenshots —

@@ -124,6 +124,41 @@ def test_the_start_phase_succeeds_against_a_healthy_device(tmp_path: Path) -> No
     assert (tmp_path / "runs/diagnostics/host-telemetry.pid").exists()
 
 
+def test_the_start_phase_records_a_process_baseline(tmp_path: Path) -> None:
+    # The gap the first real collection exposed: `ps` was snapshotted only at a stall, so the evidence
+    # said what was resident when it broke and could not say whether that differed from normal.
+    done = _run("start", tmp_path, hangs=False)
+    assert done.returncode == 0, done.stderr
+    baseline = (tmp_path / "runs/diagnostics/ps-baseline.txt").read_text()
+    assert "before any scenario ran" in baseline
+    # The reading itself, not just the header: this test's own process is in any real `ps` output.
+    assert "PID" in baseline
+    assert "Pages free" in baseline, baseline
+    # Owner-only like every other artifact of this class (BE-0131).
+    assert (tmp_path / "runs/diagnostics/ps-baseline.txt").stat().st_mode & 0o777 == 0o600
+
+
+def test_the_process_baseline_is_not_retaken_by_a_second_start(tmp_path: Path) -> None:
+    # Same reason the render probe is guarded: its whole value is being a *pre-run* reading, so the
+    # second `start` that `bundled-runner` makes must not overwrite it with a mid-job one.
+    _run("start", tmp_path, hangs=False)
+    first = (tmp_path / "runs/diagnostics/ps-baseline.txt").read_text()
+    done = _run("start", tmp_path, hangs=False)
+    assert done.returncode == 0, done.stderr
+    assert (tmp_path / "runs/diagnostics/ps-baseline.txt").read_text() == first
+
+
+def test_the_sampler_ranks_processes_by_memory_not_cpu(tmp_path: Path) -> None:
+    # `top -l 1` differences nothing, so every process reports 0.0% CPU and `-o cpu` sorts on a
+    # constant. Measured: across a whole failing job's telemetry, the rows it kept included the 1.2 GB
+    # app zero times. Asserted against the emitted script because the sampler runs detached, so its own
+    # output is not this step's to observe.
+    _run("start", tmp_path, hangs=False)
+    sampler = (tmp_path / "bajutsu-host-telemetry.sh").read_text()
+    assert "-o mem" in sampler, sampler
+    assert "-o cpu" not in sampler, sampler
+
+
 def test_the_render_probe_is_not_retaken_by_a_second_start(tmp_path: Path) -> None:
     # `bundled-runner` calls this action twice. The probe's whole value is that it reads the pipeline
     # *before* any scenario ran, so a second start must not overwrite it with a mid-job reading.
