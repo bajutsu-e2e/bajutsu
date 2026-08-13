@@ -540,6 +540,56 @@ def test_collector_add_ignores_invalid_data() -> None:
     assert c.snapshot() == []
 
 
+def test_collector_add_drops_a_payload_with_no_exchange_field(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A foreign payload must not become a blank exchange.
+
+    Every field defaults and unknown keys are ignored, so `model_validate` accepts any JSON object
+    — a transition report misdirected here once wrote 99 all-empty records to `network.json`.
+    """
+    c = NetworkCollector()
+    with caplog.at_level("WARNING", logger="bajutsu.evidence.network"):
+        c.add({"kind": "screenChanged", "timestamp": 12345.6})
+    assert c.snapshot() == []
+    # The keys identify the sender, which is what an all-empty record could not.
+    assert "'kind'" in caplog.text and "'timestamp'" in caplog.text
+
+
+def test_collector_add_never_logs_a_payload_value(caplog: pytest.LogCaptureFixture) -> None:
+    """Only key names are logged: a report carries bodies and headers, which stay out of the log."""
+    c = NetworkCollector()
+    with caplog.at_level("WARNING", logger="bajutsu.evidence.network"):
+        c.add({"sessionSecret": "hunter2-do-not-log", "other": {"nested": "also-secret"}})
+    assert c.snapshot() == []
+    assert "hunter2-do-not-log" not in caplog.text
+    assert "also-secret" not in caplog.text
+    assert "'sessionSecret'" in caplog.text  # the key itself still identifies the sender
+
+
+def test_collector_add_keeps_forward_compatibility_for_unknown_extras() -> None:
+    """One recognized field is enough: an SDK that adds a field must still be stored, not dropped."""
+    c = NetworkCollector()
+    c.add({"method": "GET", "path": "/a", "brandNewSdkField": "whatever"})
+    assert [ex.method for ex in c.snapshot()] == ["GET"]
+
+
+def test_collector_add_transition_drops_a_payload_with_no_kind(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A blank transition would tell the readiness gate a screen transition finished.
+
+    The gate consults only a transition's receive time, never its `kind`
+    (`platform_lifecycle/readiness.py`), so an exchange misdirected to `/transitions` must be
+    dropped rather than validated into a record that satisfies readiness.
+    """
+    c = NetworkCollector()
+    with caplog.at_level("WARNING", logger="bajutsu.evidence.network"):
+        c.add_transition({"method": "GET", "url": "https://example.test/a", "status": 200})
+    assert c.transitions_snapshot_timed() == []
+    assert "'method'" in caplog.text
+
+
 def test_collector_snapshot_timed_records_receive_order() -> None:
     times = iter([1.0, 2.5])
     c = NetworkCollector(now=lambda: next(times))
