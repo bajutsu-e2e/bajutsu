@@ -95,6 +95,7 @@ def _to_element(rec: dict[str, Any]) -> base.Element:
         "value": _str_or_none(rec.get("value")),
         "traits": traits,
         "frame": (float(f[0]), float(f[1]), float(f[2]), float(f[3])),
+        "nativeZ": None,
     }
 
 

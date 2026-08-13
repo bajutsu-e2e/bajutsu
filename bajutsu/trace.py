@@ -214,6 +214,10 @@ def _actuation_summary(step: dict[str, Any]) -> str:
     Read straight from the manifest dict (no loader involved): the coordinate the driver sent, plus
     the channel that carried it. A record whose point the platform chose states no coordinate here
     rather than a reconstructed one. An older run recorded none, so this is simply empty for it.
+
+    `substitution` earns a segment where `target` and `frame` do not: those are geometry detail this
+    summary drops on purpose, while a substitution changes what the record *means* — the gesture
+    reached an element the selector never named — and this timeline is where a failure gets triaged.
     """
     out: list[str] = []
     for a in step.get("actuations") or []:
@@ -225,8 +229,11 @@ def _actuation_summary(step: dict[str, Any]) -> str:
         # would turn it into `(0, 0)`, inventing a coordinate — the one thing the record must never do.
         where = " → ".join(p if p is not None else "(?)" for p in points)
         refused = "" if a.get("accepted") is not False else " ✗refused"
+        # Guarded like the loader's `_typed`: a damaged token degrades to no segment rather than
+        # printing whatever the manifest held.
+        sub = f" ↷{token}" if isinstance(token := a.get("substitution"), str) and token else ""
         out.append(
-            f"{a.get('gesture', '')}{f' {where}' if where else ''} [{a.get('via', '')}]{refused}"
+            f"{a.get('gesture', '')}{f' {where}' if where else ''} [{a.get('via', '')}]{sub}{refused}"
         )
     if dropped := step.get("dropped_actuations"):
         out.append(f"(+{dropped} missing)")

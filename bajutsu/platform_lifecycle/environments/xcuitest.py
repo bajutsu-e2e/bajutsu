@@ -267,10 +267,12 @@ def _run_ended_probe(log_path: Path | None) -> Callable[[], str | None]:
 
     The verdict **latches** (BE-0354), because two consumers pulse differently. The cold gate reads
     each window once and stops at the first marker, so an edge-triggered answer suffices for it; the
-    mid-run liveness predicate (`XcuitestEnvironment._runner_alive`) is level-triggered, re-asked once
-    per recovery episode, and an unlatched probe would answer "ended" once and then "still running"
-    for every later episode. Both share one probe instance per spawn — the marker lives in a single
-    stream of bytes, so a second, independent instance would race this one for it.
+    mid-run liveness predicate (`XcuitestEnvironment._runner_alive`) is level-triggered, re-asked
+    throughout each recovery episode — once when the crash is declared and then once a second while
+    the recovery wait runs (BE-0360) — and an unlatched probe would answer "ended" on whichever ask
+    first saw the marker and "still running" for every ask after it. Both share one probe instance per
+    spawn — the marker lives in a single stream of bytes, so a second, independent instance would race
+    this one for it.
     """
     if log_path is None:
         return _never_ended
@@ -1316,9 +1318,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
         on a runner whose port will never bind again. The capture already names that state, and the
         cold-spawn gate has string-matched the same markers since BE-0319, so the probe reading it
         answers here too. It is the *same* probe instance the gate uses, latched: this predicate is
-        re-asked once per recovery episode, while the probe advances a private offset and reports a
-        marker only from the window that first contains it. A future Xcode that rewords the markers
-        degrades this to the process-only check it replaces, never to a false "gone".
+        re-asked throughout each recovery episode — once when the crash is declared and then once a
+        second while the recovery wait runs (BE-0360) — while the probe advances a private offset and
+        reports a marker only from the window that first contains it. A future Xcode that rewords the
+        markers degrades this to the process-only check it replaces, never to a false "gone".
         """
         if self._runner_proc is None or self._runner_proc.poll() is not None:
             return False

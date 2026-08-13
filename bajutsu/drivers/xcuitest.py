@@ -32,6 +32,7 @@ import logging
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -149,6 +150,13 @@ _STALE_BACKOFF_BASE_SECONDS = 0.5
 # ride that out yet still bounded — a runner that is truly gone fails the run rather than hanging it.
 _RECOVERY_TIMEOUT_SECONDS = 60
 
+# How often the recovery wait re-asks the runner's liveness while it polls `/health` (BE-0360). The
+# `/health` probe runs every 100ms, but the liveness check reads the runner's capture from a private
+# offset, so asking it at the probe interval would cost 600 file reads across one window to learn of
+# the death at most 900ms sooner — a difference that does not matter against a 60s window. Once a
+# second bounds the wasted wait to about a second past the moment the death becomes observable.
+_LIVENESS_POLL_SECONDS = 1.0
+
 # How often `handle_system_alert` re-queries SpringBoard while waiting for the permission prompt to
 # appear (BE-0316). A fixed inter-poll interval bounded by the step's own `timeout` — a condition
 # wait, not a fixed up-front sleep: the loop returns the instant the alert's buttons are present.
@@ -196,6 +204,9 @@ def _to_element(item: Mapping[str, Any]) -> base.Element:
         "value": item.get("value"),
         "traits": list(item.get("traits") or []),
         "frame": (float(frame[0]), float(frame[1]), float(frame[2]), float(frame[3])),
+        # The runner's reply carries no z signal; the in-app responder that would measure one is
+        # BE-0355's still-open Unit 2, so this stays an honest absence rather than a derived guess.
+        "nativeZ": None,
     }
 
 
@@ -298,31 +309,63 @@ def _with_retry(inner: TransportFn, *, sleep: Callable[[float], None] = time.sle
     return transport
 
 
+class _HealthWait(Enum):
+    """How a bounded `/health` wait ended (BE-0360).
+
+    Two ways to fail deserve different diagnostics, and a caller told only "the wait failed" would
+    have to re-ask the liveness callback to learn which, so the wait reports which end it reached.
+    """
+
+    READY = "ready"  # the runner answered `ready` within the budget
+    TIMED_OUT = "timed-out"  # the deadline passed with no `ready`
+    GONE = "gone"  # the liveness callback reported the runner unable to come back
+
+
 def _await_health(
     transport: TransportFn,
     *,
     timeout: float,
     poll: float = 0.1,
+    runner_alive: Callable[[], bool] | None = None,
+    liveness_poll: float = _LIVENESS_POLL_SECONDS,
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
-) -> bool:
-    """Poll `GET /health` until the runner answers `ready`, returning whether it did within *timeout*.
+) -> _HealthWait:
+    """Poll `GET /health` until the runner answers `ready`, reporting how the wait ended within *timeout*.
 
-    A bounded condition wait (no fixed sleep that ignores the condition): `True` the moment the runner
-    is ready, `False` if the deadline passes first. A channel failure while the runner is down is
+    A bounded condition wait (no fixed sleep that ignores the condition): `READY` the moment the runner
+    is ready, `TIMED_OUT` if the deadline passes first. A channel failure while the runner is down is
     swallowed and re-polled, so "not accepting connections yet" reads as not-ready, not as an error.
     Shared by `await_ready` (startup) and the crash-recovery layer (mid-run), which differ only in the
     transport and timeout they poll with.
+
+    `runner_alive`, when the caller supplies it, is re-asked while the wait runs and ends it with
+    `GONE` as soon as it reports the runner unable to come back (BE-0360). The verdict is a fact that
+    *changes* during the window — a crashing runner's `xcodebuild` exit and its suite's result line
+    both follow the crash — so sampling it only before the wait would wait out the very failure the
+    fast-fail exists for. It is asked *after* the `/health` probe, so a runner that answers `ready` on
+    the same poll where its capture first shows the marker still counts as recovered: a runner that is
+    serving is serving, whatever its log says. Absent (the startup caller, whose spawn retry owns its
+    own liveness check), the wait is exactly what it was.
     """
-    deadline = clock() + timeout
+    start = clock()
+    deadline = start + timeout
+    # The crash-recovery caller asks the same question immediately before this wait, so the first
+    # in-loop ask is scheduled one interval out rather than duplicating it on the very first poll.
+    next_liveness = start + liveness_poll
     while True:
         try:
             if transport("GET", "/health", None).status == "ready":
-                return True
+                return _HealthWait.READY
         except (XcuitestChannelError, _TransportFailure):
             pass  # runner not accepting connections yet; keep probing until the deadline
-        if clock() >= deadline:
-            return False
+        now = clock()
+        if runner_alive is not None and now >= next_liveness:
+            next_liveness = now + liveness_poll
+            if not runner_alive():
+                return _HealthWait.GONE
+        if now >= deadline:
+            return _HealthWait.TIMED_OUT
         sleep(poll)
 
 
@@ -346,10 +389,26 @@ def _observe_stall(hook: Callable[[], None], logger: logging.Logger) -> None:
         )
 
 
+def _runner_gone_mid_run(
+    method: str, path: str, crash: XcuitestRunnerCrashError
+) -> XcuitestRunnerCrashError:
+    """The crash diagnostic for a runner that will never answer on its port again.
+
+    One wording for two moments the same fact can be observed: the runner was already gone when the
+    crash was declared, or its death became observable while the recovery wait ran (BE-0360).
+    """
+    return XcuitestRunnerCrashError(
+        f"runner channel {method} {path} failed: the runner is gone mid-run — its process exited or "
+        "its test run already ended (it will not recover on this port)",
+        method=method,
+        delivered=crash.delivered,
+    )
+
+
 def _with_crash_recovery(
     inner: TransportFn,
     *,
-    health: Callable[[float], bool],
+    health: Callable[[float], _HealthWait],
     runner_alive: Callable[[], bool] | None = None,
     on_stall: Callable[[], None] | None = None,
     recovery_timeout: float = _RECOVERY_TIMEOUT_SECONDS,
@@ -389,10 +448,16 @@ def _with_crash_recovery(
     device and re-runs the scenario. Absent (a test fake) or reporting the runner alive, it changes
     nothing: an alive-but-unreachable runner stays BE-0287's recoverable case and waits out *health*.
 
+    That question is asked twice over: here, before the wait, and again by *health* while the wait runs
+    (BE-0360). Sampling it only here would catch just the runner already gone when the crash was
+    declared, while the ordinary mid-run crash — whose `xcodebuild` exit and suite result line both
+    follow it — became observable a moment later and was waited out in full. A wait that ends on that
+    verdict is reported with the same "gone" diagnostic as the early exit, not as a window waited out.
+
     `on_stall`, when the environment supplies it, is called once per declared crash — before recovery
-    decides anything — so a bounded capture of the Simulator and host state can run while that state
-    still exists (BE-0361). It is an observer: its own failure is swallowed, and neither it nor
-    anything it returns reaches the crash verdict below.
+    decides anything, so ahead of both liveness samples above — and a bounded capture of the Simulator
+    and host state therefore runs while that state still exists (BE-0361). It is an observer: its own
+    failure is swallowed, and neither it nor anything it returns reaches the crash verdict below.
     """
     logger = logging.getLogger("bajutsu.xcuitest.channel")
 
@@ -454,15 +519,18 @@ def _with_crash_recovery(
                     # an inevitable failure. Fail fast with a distinct diagnostic; the pipeline's crash
                     # recovery then leases a fresh device and re-runs the scenario. A runner merely
                     # unreachable (alive) skips this and waits out `health` below, so BE-0287's
-                    # recoverable case is unchanged.
-                    raise XcuitestRunnerCrashError(
-                        f"runner channel {method} {path} failed: the runner is gone mid-run — its "
-                        "process exited or its test run already ended (it will not recover on this "
-                        "port)",
-                        method=method,
-                        delivered=crash.delivered,
-                    ) from crash
-                if not health(recovery_timeout):
+                    # recoverable case is unchanged. Kept as an early exit even though *health* now
+                    # re-asks the same question (BE-0360): it costs one call, and it spares a runner
+                    # already gone here a poll interval it does not need.
+                    raise _runner_gone_mid_run(method, path, crash) from crash
+                waited = health(recovery_timeout)
+                if waited is _HealthWait.GONE:
+                    # The same death, observed a moment later: the `xcodebuild` exit and the suite's
+                    # result line both *follow* the crash, so the ordinary mid-run crash becomes
+                    # observable during the wait rather than before it (BE-0360). Report it the way a
+                    # runner found gone before the wait is reported, not as a window waited out.
+                    raise _runner_gone_mid_run(method, path, crash) from crash
+                if waited is not _HealthWait.READY:
                     raise XcuitestRunnerCrashError(
                         f"runner channel {method} {path} failed: the runner crashed mid-run and did not "
                         f"recover within {recovery_timeout}s",
@@ -541,16 +609,18 @@ def _http_transport(
     probe through it would silently cost over a second per call instead of one quick attempt — the raw
     transport is returned alongside the wrapped one so both callers can reuse this same instance.
 
-    `runner_alive`, when the environment supplies its `xcodebuild`-process liveness check, lets
-    crash-recovery fail fast on a runner whose process has exited rather than polling the dead port
-    for the whole recovery window; absent, recovery is exactly BE-0287's. `on_stall` is the
-    environment's bounded diagnostics capture (BE-0361), an observer of the same crash declaration.
-    Both are keyword-only, so two adjacent optional callbacks cannot be swapped at a call site.
+    `runner_alive`, when the environment supplies its liveness check, lets crash-recovery fail fast on
+    a runner that cannot come back — its process exited, or its XCTest run already ended (BE-0354) —
+    rather than polling the dead port for the whole recovery window. It reaches both places that ask
+    the question: the check before the wait, and the wait itself, which re-asks it as the window runs
+    (BE-0360). Absent, recovery is exactly BE-0287's. `on_stall` is the environment's bounded
+    diagnostics capture (BE-0361), an observer of the same crash declaration. Both are keyword-only,
+    so two adjacent optional callbacks cannot be swapped at a call site.
     """
     raw = _raw_http_transport(host, port)
     wrapped = _with_crash_recovery(
         _with_retry(raw),
-        health=lambda timeout: _await_health(raw, timeout=timeout),
+        health=lambda timeout: _await_health(raw, timeout=timeout, runner_alive=runner_alive),
         runner_alive=runner_alive,
         on_stall=on_stall,
     )
@@ -603,10 +673,10 @@ class XcuitestDriver:
             self._transport = transport
             self._probe_transport = transport
         else:
-            # `runner_alive` lets crash-recovery fail fast on a runner whose process has exited; the
-            # environment supplies its `xcodebuild`-process check, None keeps BE-0287's recovery.
-            # `on_stall` is the environment's diagnostics capture (BE-0361), an observer of the same
-            # crash declaration.
+            # `runner_alive` lets crash-recovery fail fast on a runner that cannot come back; the
+            # environment supplies its liveness check, None keeps BE-0287's recovery. `on_stall` is
+            # the environment's diagnostics capture (BE-0361), an observer of the same crash
+            # declaration.
             self._transport, self._probe_transport = _http_transport(
                 host, port, runner_alive=runner_alive, on_stall=on_stall
             )
@@ -678,6 +748,7 @@ class XcuitestDriver:
         *,
         gesture: str,
         element: base.Element,
+        substitution: str | None = None,
     ) -> None:
         # A `stale` reply means the handle no longer maps to a live element, from one of two
         # pre-actuation points: the runner's `store.lookup` returns `stale` before touching anything
@@ -704,6 +775,7 @@ class XcuitestDriver:
                     duration_s=_as_float(body.get("duration")),
                     scale=_as_float(body.get("scale")),
                     radians=_as_float(body.get("radians")),
+                    substitution=substitution,
                 )
             )
             reply = self._transport("POST", path, request)
@@ -754,7 +826,79 @@ class XcuitestDriver:
 
     def tap(self, sel: base.Selector) -> None:
         handle, el = self._resolve_handle(sel)
-        self._actuate("/tap", {"handle": handle}, sel, gesture="tap", element=el)
+        try:
+            self._actuate("/tap", {"handle": handle}, sel, gesture="tap", element=el)
+        except base.ElementNotTappable as refused:
+            self._tap_sole_reachable_descendant(sel, refused)
+
+    def _tap_sole_reachable_descendant(
+        self, sel: base.Selector, refused: base.ElementNotTappable
+    ) -> None:
+        """Tap the one reachable named descendant of a refused target, or re-raise naming the rest.
+
+        iOS can report a container inflated over the control it wraps — a SwiftUI `Stepper` whose
+        accessibility element spans its whole form row — and refuse a tap on the container while the
+        control inside it is perfectly reachable. Where exactly one named descendant is reachable,
+        there is no choice to make and the tap goes there. Where none or several are, there is a
+        choice, so this re-raises rather than making it: an author cannot predict which of two
+        equally reachable children a driver would pick, and picking one anyway is the guess prime
+        directive 2 forbids. The message then names the candidates, so the author can select one
+        directly instead of reading "not hittable" about an element plainly on screen.
+
+        Scoped to `tap` on purpose. A long-press or a two-finger gesture redirected to a child is a
+        different intent, not the same intent reaching its target.
+
+        Raises:
+            ElementNotTappable: Chained from *refused*, so the original refusal stays the cause.
+        """
+        elements, handles = self._query_with_handles()
+        # Re-resolved from a fresh tree rather than reusing the refused element: the refusal may have
+        # been the first sign of a screen still settling, and a candidate list read off a stale
+        # snapshot could offer an element that has since moved out of the container.
+        target = base.resolve_unique(elements, sel)
+        candidates = base.redirect_candidates(elements, target)
+        if not candidates or len(candidates) > base.MAX_REDIRECT_CANDIDATES:
+            raise refused
+        # `redirect_candidates` only ever returns named elements, so the identifier is never None
+        # here; binding it in the comprehension is what lets the selector below stay typed.
+        reachable = [
+            (el, name)
+            for el in candidates
+            if (name := el["identifier"]) is not None and self._is_hittable(handles[id(el)])
+        ]
+        if len(reachable) != 1:
+            named = ", ".join(repr(el["identifier"]) for el in candidates)
+            raise base.ElementNotTappable(
+                f"element resolved but not hittable: {sel!r} — "
+                f"{len(reachable)} of its {len(candidates)} named descendants are reachable "
+                f"({named}), so none of them is the one this tap meant"
+            ) from refused
+        child, child_id = reachable[0]
+        # Actuated by the child's own id, not the container's: `_actuate` re-resolves from `sel` on a
+        # stale retry, and passing the container's selector would silently undo the redirect there.
+        self._actuate(
+            "/tap",
+            {"handle": handles[id(child)]},
+            {"id": child_id},
+            gesture="tap",
+            element=child,
+            substitution="soleHittableDescendant",
+        )
+
+    def _is_hittable(self, handle: str) -> bool:
+        """Whether the runner reports this handle reachable right now — the probe behind the redirect.
+
+        Unlike `is_tappable`, this takes a handle already resolved from the caller's own snapshot, so
+        the two never disagree about which element was asked about. A `stale` or `not-found` reply
+        reads as unreachable: the candidate came from the very query this handle did, so either answer
+        means the screen moved under the probe and the offer is no longer one to make.
+        """
+        reply = self._transport("POST", "/isHittable", {"handle": handle})
+        if reply.status == _OK:
+            return True
+        if reply.status in (_STALE, _NOT_FOUND, _NOT_HITTABLE):
+            return False
+        raise XcuitestChannelError(f"runner error checking isHittable (status={reply.status})")
 
     def is_tappable(self, sel: base.Selector) -> bool:
         """Whether `sel` resolves to a unique element XCTest's own `isHittable` reports as reachable.
@@ -968,7 +1112,7 @@ class XcuitestDriver:
         fails loudly (`XcuitestChannelError`) on timeout rather than hanging, so "the runner never
         came up" is a clear run failure.
         """
-        if not _await_health(self._transport, timeout=timeout, poll=poll):
+        if _await_health(self._transport, timeout=timeout, poll=poll) is not _HealthWait.READY:
             raise XcuitestChannelError(
                 f"xcuitest runner did not come up within {timeout}s (health never ready)"
             )
@@ -985,4 +1129,4 @@ class XcuitestDriver:
         driver's one definition of the health-wire contract — the endpoint, the `ready` sentinel, and
         which transport errors read as not-ready — rather than restating it.
         """
-        return _await_health(self._probe_transport, timeout=0.0)
+        return _await_health(self._probe_transport, timeout=0.0) is _HealthWait.READY

@@ -256,8 +256,10 @@ navigation, scroll, and crawl scenarios.
 Uses the standard in-app collector integration (iOS: BajutsuKit; Android: BajutsuAndroid):
 
 - **iOS** — the app links **BajutsuKit** and calls `BajutsuNet.startIfEnabled()` at launch (a no-op
-  unless `BAJUTSU_COLLECTOR` is injected). All requests then flow through the interceptor, so
-  `network` evidence and `mocks` work without app changes ([DESIGN §3.2](../../DESIGN.md)).
+  unless one of BajutsuKit's launch-env keys is injected — `BAJUTSU_COLLECTOR` for network capture,
+  `BAJUTSU_MOCKS` for stubbing, `BAJUTSU_TOUCH_MARKERS` for the touch visualization). All requests
+  then flow through the interceptor, so `network` evidence and `mocks` work without app changes
+  ([DESIGN §3.2](../../DESIGN.md)).
 - **Android** — the app links **BajutsuAndroid**, calls `BajutsuNet.configure(launchEnv)` at launch,
   and adds `BajutsuNet.interceptor()` to its OkHttp client (BE-0283). `network` evidence then works
   the same way; `mocks` stay a follow-up, and capture is OkHttp-only (the `URLSession`-only bound's

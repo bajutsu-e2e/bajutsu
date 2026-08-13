@@ -252,7 +252,8 @@ Log から到達するモーダル（5 つの提示様式）：
 アプリ内コレクタ連携を用います（iOS は BajutsuKit、Android は BajutsuAndroid）。
 
 - **iOS** — アプリは **BajutsuKit** をリンクし、起動時に `BajutsuNet.startIfEnabled()` を呼ぶ
-  （`BAJUTSU_COLLECTOR` が注入されない限り no-op）。以後すべてのリクエストはインターセプタを通るので、
+  （BajutsuKit の起動環境キーがどれも注入されない限り no-op。ネットワーク捕捉は `BAJUTSU_COLLECTOR`、
+  スタブは `BAJUTSU_MOCKS`、タッチの可視化は `BAJUTSU_TOUCH_MARKERS`）。以後すべてのリクエストはインターセプタを通るので、
   `network` 証跡と `mocks` がアプリ無改変で効く（[DESIGN §3.2](../../DESIGN.md)）。
 - **Android** — アプリは **BajutsuAndroid** をリンクし、起動時に `BajutsuNet.configure(launchEnv)` を
   呼び、OkHttp クライアントに `BajutsuNet.interceptor()` を足す（BE-0283）。`network` 証跡は同じように

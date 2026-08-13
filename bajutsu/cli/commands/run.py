@@ -460,6 +460,50 @@ def _apply_mocks(scenarios: list[Scenario], network: bool) -> None:
             s.preconditions.launch_env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
 
 
+def _visual_asserting_scenarios(scenarios: list[Scenario]) -> list[str]:
+    """Names of the scenarios whose verdict reads a screenshot, from `expect` or from any step."""
+    named = []
+    for s in scenarios:
+        assertions = [*s.expect, *(a for step in s.steps for a in step.assert_ or [])]
+        if any(a.visual is not None for a in assertions):
+            named.append(s.name)
+    return named
+
+
+def _apply_touch_markers(scenarios: list[Scenario], enabled: bool) -> None:
+    """Ask BajutsuKit to draw a marker at each touch the app receives, via the launch env.
+
+    Off unless asked for: the marker is drawn inside the app under test, so it belongs to a run
+    someone is investigating rather than to every run. A scenario that already sets the variable
+    keeps its own value, like the mocks above.
+
+    A scenario whose verdict compares a screenshot is skipped rather than marked, and the skip is
+    announced on stderr. The markers persist until the next gesture by design, so the image a
+    `visual` assertion reads would carry a circle and a trail its baseline does not, failing the
+    scenario for a reason that has nothing to do with the app; masking cannot rescue it either, since
+    the marker follows the gesture instead of occupying a fixed region. Skipping is safe at exactly
+    this granularity because the app is terminated and relaunched with **each scenario's own** launch
+    env — on the warm-runner path as much as the cold one (`_reuse_live_runner`, BE-0291) — so a
+    skipped scenario runs in a process where the hook was never installed. Narrowing further, to the
+    steps within one scenario, is not possible today: the launch env is the only channel into the app
+    and it is fixed for the life of the process.
+    """
+    if not enabled:
+        return
+    skipped = _visual_asserting_scenarios(scenarios)
+    if skipped:
+        typer.echo(
+            "note: --touch-markers is off for the scenario(s) whose verdict compares a screenshot, "
+            "since the markers would be drawn into the image a `visual` assertion reads: "
+            f"{', '.join(skipped)}",
+            err=True,
+        )
+    for s in scenarios:
+        if s.name in skipped:
+            continue
+        s.preconditions.launch_env.setdefault("BAJUTSU_TOUCH_MARKERS", "1")
+
+
 def _resolve_evidence_dirs(
     baselines: str, schemas: str, goldens: str, eff: Effective, scenario_file: Path
 ) -> tuple[Path, Path, GoldenContext | None]:
@@ -885,6 +929,15 @@ def run(
         "to stderr, computed from this run's own first launch — so CI reads the tell without a "
         "separate `doctor` that cold-spawns a second runner. Diagnostic only; never affects pass/fail",
     ),
+    touch_markers: bool = typer.Option(
+        False,
+        "--touch-markers/--no-touch-markers",
+        help="draw a marker at each touch the app receives, so the recorded video and each step's "
+        "screenshot show where the gesture landed. Needs an app that links BajutsuKit; the marker "
+        "is a layer, never an accessibility element, so no selector can see it. Evidence only — no "
+        "assertion reads the markers — and automatically off for a scenario carrying a `visual` "
+        "assertion, whose screenshot comparison they would break",
+    ),
     # --- Baseline / schema / golden directory overrides ---
     baselines: str = typer.Option(
         "",
@@ -1031,6 +1084,7 @@ def run(
         # `request` waits.
         network = _resolve_network(network, eff.run_defaults.network)
         _apply_mocks(scenarios, network)
+        _apply_touch_markers(scenarios, touch_markers)
         baselines_dir, schemas_dir, gc = _resolve_evidence_dirs(
             baselines, schemas, goldens, eff, files[0]
         )

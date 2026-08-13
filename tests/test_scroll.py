@@ -45,6 +45,7 @@ def _row(i: int, *, prefix: str = "row", x: float = 0.0, w: float = 280.0) -> ba
         "traits": [],
         "value": None,
         "frame": (x, _TOP_INSET + i * _ROW_H, w, _ROW_H),
+        "nativeZ": None,
     }
 
 
@@ -55,6 +56,7 @@ def _el(identifier: str | None, frame: base.Frame, *, label: str | None = None) 
         "traits": [],
         "value": None,
         "frame": frame,
+        "nativeZ": None,
     }
 
 

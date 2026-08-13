@@ -138,6 +138,7 @@ def _actuation(d: dict[str, Any]) -> Actuation | None:
         duration_s=_scalar(known.get("duration_s")),
         scale=_scalar(known.get("scale")),
         radians=_scalar(known.get("radians")),
+        substitution=_typed(known.get("substitution"), str),
     )
 
 

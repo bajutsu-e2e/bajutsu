@@ -14,6 +14,27 @@ from bajutsu.report import html_report
 from bajutsu.scenario import Scenario
 
 
+def test_html_report_shows_why_a_substituted_element_was_actuated() -> None:
+    # The token is the whole point of recording a substitution: without it in the rendered row, a
+    # reader has to diff the actuated target against the step's selector to notice one happened.
+    from bajutsu.drivers.actuation import Actuation
+
+    result = _passing()
+    result.steps[0].actuations.append(
+        Actuation(
+            gesture="tap",
+            via="handle",
+            unit="point",
+            target="log.count-Increment",
+            substitution="soleHittableDescendant",
+        )
+    )
+
+    html = html_report("r1", [result])
+
+    assert "soleHittableDescendant" in html
+
+
 def test_html_report() -> None:
     out = html_report("run9", [_passing(), _failing()])
     assert "<!doctype html>" in out
