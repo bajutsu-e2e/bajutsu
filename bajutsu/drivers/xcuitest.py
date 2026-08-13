@@ -210,6 +210,22 @@ def _to_element(item: Mapping[str, Any]) -> base.Element:
     }
 
 
+def _reason(raw: bytes | None) -> str:
+    """The runner's `message` from an error body, as a `: …` suffix — empty when there is none to add.
+
+    A runner error reply carries `{"status": "error", "message": …}`. Anything else (no body, a body
+    that is not JSON, a JSON object without a message) yields the empty string, so a caller can append
+    this unconditionally and never produce a dangling separator or mask its own message.
+    """
+    if not raw:
+        return ""
+    try:
+        message = json.loads(raw).get("message")
+    except (json.JSONDecodeError, AttributeError):
+        return ""
+    return f": {message}" if isinstance(message, str) and message else ""
+
+
 def _decode(path: str, status_code: int, body: bytes) -> _Reply:
     """Decode a raw runner response into a `_Reply`.
 
@@ -219,7 +235,12 @@ def _decode(path: str, status_code: int, body: bytes) -> _Reply:
     transport error. Pure (no socket) so the wire format is unit-tested directly.
     """
     if path == "/screenshot":
-        return _Reply(status=_OK if status_code == 200 else "error", png=body)
+        if status_code == 200:
+            return _Reply(status=_OK, png=body)
+        # A non-200 body is the runner's JSON diagnostic, not PNG bytes. Keep it as `raw` so the caller
+        # can report *why* the capture failed — the runner distinguishes a capture that failed from one
+        # that outran its own deadline, and that distinction is worthless if it stops here.
+        return _Reply(status="error", raw=body)
     try:
         data = json.loads(body) if body else {}
     except json.JSONDecodeError as exc:
@@ -1056,8 +1077,12 @@ class XcuitestDriver:
     def screenshot(self, path: str) -> None:
         reply = self._transport("GET", "/screenshot", None)
         if reply.status != _OK or reply.png is None:
-            # Fail loudly rather than writing an empty / non-PNG artifact on a runner error.
-            raise XcuitestChannelError(f"screenshot failed (status={reply.status})")
+            # Fail loudly rather than writing an empty / non-PNG artifact on a runner error, and carry
+            # the runner's own reason so a capture that outran its deadline is distinguishable from one
+            # that failed outright — the two call for different follow-up.
+            raise XcuitestChannelError(
+                f"screenshot failed (status={reply.status}){_reason(reply.raw)}"
+            )
         Path(path).write_bytes(reply.png)
 
     def capabilities(self) -> set[str]:

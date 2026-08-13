@@ -18,10 +18,27 @@ final class Router {
     // lock means a second operation never even enqueues onto main while the first is in flight, so the
     // run-loop spin has nothing re-entrant to drain. `/health` never takes it (it touches no XCUITest
     // state), so it stays answerable during a long operation — the concurrent server's whole purpose.
-    private let actuationLock = NSLock()
+    // A counting semaphore rather than an `NSLock` because `/screenshot`'s deadline path releases it
+    // from the main queue after acquiring it on a connection thread (see `captureScreenshotWithinDeadline`),
+    // and `NSLock` requires the locking thread to be the one that unlocks.
+    private let actuationLock = DispatchSemaphore(value: 1)
 
-    init(provider: ElementProviding) {
+    // How long `/screenshot` waits for the capture before answering without it. Kept strictly below the
+    // Python client's 15s read window (`_SOCKET_TIMEOUT_SECONDS`, bajutsu/drivers/xcuitest.py) so the
+    // runner's own answer arrives first, with margin for the reply to reach the client. XCUITest gives
+    // its own screenshot request roughly 90s — six times the client's window — so without a deadline
+    // here every slow capture reaches the client as silence it can only classify as a dead runner.
+    // The coupling to the client's constant is held by comment on both sides; no check spans the two
+    // languages, so a change to either one has to be carried across by hand.
+    static let defaultScreenshotDeadline: TimeInterval = 12
+
+    private let screenshotDeadline: TimeInterval
+
+    /// `screenshotDeadline` is injectable only so a test can assert the deadline path without waiting
+    /// out the real one; the runner always takes the default.
+    init(provider: ElementProviding, screenshotDeadline: TimeInterval = Router.defaultScreenshotDeadline) {
         self.provider = provider
+        self.screenshotDeadline = screenshotDeadline
     }
 
     func handle(_ request: HTTPRequest) -> HTTPResponse {
@@ -283,10 +300,69 @@ final class Router {
     }
 
     private func handleScreenshot() -> HTTPResponse {
-        guard let png = caughtOnMain(Data?.none, self.provider.screenshot) else {
+        switch captureScreenshotWithinDeadline() {
+        case .captured(let png):
+            return .png(png)
+        case .failed:
             return .error(500, "screenshot failed")
+        case .overran:
+            // Loud and attributable, which is the whole point: the client would otherwise see only a
+            // socket timeout and classify a live runner as a crashed one.
+            return .error(500, "screenshot exceeded its \(screenshotDeadline)s deadline")
         }
-        return .png(png)
+    }
+
+    /// The outcome of a screenshot bounded by `screenshotDeadline`.
+    ///
+    /// `overran` is not a failed capture — the capture is still running on the main thread, and this
+    /// case says only that the handler stopped waiting for it.
+    private enum DeadlinedCapture {
+        case captured(Data)
+        case failed  // the capture returned within the deadline, but produced no image
+        case overran
+    }
+
+    /// A box for the captured bytes, handed between the main queue that fills it and the connection
+    /// thread that reads it. The `done` semaphore orders the two, so the read never races the write.
+    private final class CaptureBox {
+        var data: Data?
+    }
+
+    /// Capture a screenshot, giving up the *wait* — never the lock — once `screenshotDeadline` expires.
+    ///
+    /// Only a screenshot may be abandoned this way, and the reason is a correctness one rather than
+    /// caution: a screenshot is a pure read, so reporting failure cannot be contradicted by a side
+    /// effect that lands afterwards. An actuation could — a handler that reported failure at 12s while
+    /// the tap it synthesized landed at 40s would tell the client the screen was untouched when it had
+    /// changed — so every actuation keeps `onMain`'s unbounded wait.
+    ///
+    /// The serialization invariant is unchanged: at most one XCUITest operation is ever enqueued on the
+    /// main queue. `actuationLock` is acquired here but released by the dispatched block once the
+    /// capture actually returns, so abandoning the wait never lets a second operation enqueue onto main
+    /// while this one is still pumping the run loop — the re-entrancy that aborts the XCTest host. The
+    /// main thread therefore stays busy after an `overran` reply, and the next request waits for it;
+    /// what this buys is an attributable answer on the request that caused the stall, and a reply the
+    /// client is still listening for.
+    private func captureScreenshotWithinDeadline() -> DeadlinedCapture {
+        // Already on main (a direct call): there is no second thread to wait from, so no deadline is
+        // possible and nothing to serialize against — the same in-place case `onMain` handles.
+        if Thread.isMainThread { return outcome(caught(Data?.none, provider.screenshot)) }
+        actuationLock.wait()
+        let box = CaptureBox()
+        let done = DispatchSemaphore(value: 0)
+        DispatchQueue.main.async { [self] in
+            box.data = caught(Data?.none, provider.screenshot)
+            // Ownership of the lock passes to this block, and it is released only now — after the
+            // capture returned — so the invariant above holds even when the waiter has already replied.
+            actuationLock.signal()
+            done.signal()
+        }
+        guard done.wait(timeout: .now() + screenshotDeadline) == .success else { return .overran }
+        return outcome(box.data)
+    }
+
+    private func outcome(_ data: Data?) -> DeadlinedCapture {
+        data.map(DeadlinedCapture.captured) ?? .failed
     }
 
     private func tapResultResponse(_ result: TapResult) -> HTTPResponse {
@@ -307,8 +383,8 @@ final class Router {
         // dispatching to main, so a second XCUITest operation never enqueues onto the main queue while
         // the first is mid-flight and pumping the run loop — the re-entrancy that aborts the XCTest
         // host (see `actuationLock`). The lock is released only after the main-thread work returns.
-        actuationLock.lock()
-        defer { actuationLock.unlock() }
+        actuationLock.wait()
+        defer { actuationLock.signal() }
         var result: T!
         DispatchQueue.main.sync { result = work() }
         return result
@@ -324,18 +400,22 @@ final class Router {
     /// fallback the caller turns into a normal reply. The caught reason (the XCUITest diagnostic the
     /// shim preserves) goes to the runner's stderr, which `BAJUTSU_XCUITEST_RUNNER_LOG` captures.
     private func caughtOnMain<T>(_ fallback: T, _ work: @escaping () -> T) -> T {
-        onMain {
-            var result = fallback
-            do {
-                try ObjCExceptionCatcher.catchException { result = work() }
-            } catch {
-                FileHandle.standardError.write(
-                    Data("bajutsu runner: handler raised, reporting fallback: \(error.localizedDescription)\n".utf8)
-                )
-                return fallback
-            }
-            return result
+        onMain { self.caught(fallback, work) }
+    }
+
+    /// The exception guard itself, without the dispatch — `caughtOnMain` runs it through `onMain`, and
+    /// `captureScreenshotWithinDeadline` runs it inside its own main-queue block.
+    private func caught<T>(_ fallback: T, _ work: () -> T) -> T {
+        var result = fallback
+        do {
+            try ObjCExceptionCatcher.catchException { result = work() }
+        } catch {
+            FileHandle.standardError.write(
+                Data("bajutsu runner: handler raised, reporting fallback: \(error.localizedDescription)\n".utf8)
+            )
+            return fallback
         }
+        return result
     }
 
     /// A caught actuation, reported as `.stale` on a raised interaction failure.

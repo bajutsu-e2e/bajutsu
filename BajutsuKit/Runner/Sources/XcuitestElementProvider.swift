@@ -216,7 +216,14 @@ final class XcuitestElementProvider: ElementProviding {
     }
 
     func screenshot() -> Data? {
-        app.screenshot().pngRepresentation
+        // Screen-scoped, not `app.screenshot()`. The element-scoped form resolves the application
+        // element before it requests any image ("Find the Application" in the activity log), and that
+        // resolution is where the CI screenshot hangs were measured to park — it also fails outright
+        // with "cannot request screenshot data because it does not exist" when the app element cannot
+        // be resolved. `XCUIScreen.main` reaches the display without resolving anything. The image is
+        // unchanged: the app window fills the screen on the devices the iOS lanes pin, so the element
+        // crop was already an identity operation (both forms measure 1206x2622 on an iPhone 17).
+        XCUIScreen.main.screenshot().pngRepresentation
     }
 
     // MARK: - Helpers

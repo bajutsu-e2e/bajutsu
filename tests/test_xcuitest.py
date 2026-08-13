@@ -31,6 +31,7 @@ from bajutsu.drivers.xcuitest import (
     _HealthWait,
     _is_retry_eligible,
     _raw_http_transport,
+    _reason,
     _Reply,
     _timeout_for,
     _TransportFailure,
@@ -743,6 +744,34 @@ def test_decode_keeps_the_undecoded_body_alongside_the_parsed_fields() -> None:
 def test_decode_screenshot_returns_raw_png_bytes() -> None:
     reply = _decode("/screenshot", 200, b"\x89PNGraw")
     assert reply.png == b"\x89PNGraw"
+
+
+def test_decode_screenshot_error_keeps_the_runners_diagnostic_not_png() -> None:
+    # A non-200 /screenshot body is JSON, not image bytes: it must not be handed on as `png` (which
+    # would be written to disk as a corrupt artifact), and its reason must survive for the caller.
+    body = json.dumps(
+        {"status": "error", "message": "screenshot exceeded its 12.0s deadline"}
+    ).encode()
+    reply = _decode("/screenshot", 500, body)
+    assert reply.status == "error"
+    assert reply.png is None
+    assert reply.raw == body
+
+
+def test_reason_renders_a_runner_message_as_a_suffix() -> None:
+    assert _reason(json.dumps({"message": "boom"}).encode()) == ": boom"
+
+
+def test_reason_is_empty_when_there_is_nothing_to_add() -> None:
+    # Appended unconditionally by the caller, so every degenerate body must yield "" rather than a
+    # dangling separator or the string "None".
+    assert _reason(None) == ""
+    assert _reason(b"") == ""
+    assert _reason(b"not json") == ""
+    assert _reason(b"[1, 2]") == ""
+    assert _reason(json.dumps({"status": "error"}).encode()) == ""
+    assert _reason(json.dumps({"message": ""}).encode()) == ""
+    assert _reason(json.dumps({"message": 7}).encode()) == ""
 
 
 def test_decode_non_200_carries_the_servers_status() -> None:
