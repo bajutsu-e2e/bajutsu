@@ -352,6 +352,7 @@ def test_web_crawl_seams_drive_the_web_driver() -> None:
         "traits": [],
         "value": None,
         "frame": (0.0, 0.0, 1.0, 1.0),
+        "nativeZ": None,
     }
     assert alive(driver, [element]) is True  # no page error, 2xx nav, a rendered element → alive
     driver.errored = True

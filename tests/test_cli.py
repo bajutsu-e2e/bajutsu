@@ -810,6 +810,7 @@ def test_doctor_xcuitest_uses_a_short_lived_runner_for_screen_query(
         "traits": ["button"],
         "value": None,
         "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
     }
 
     class _FakeDriver:

@@ -55,7 +55,14 @@ def test_wait_until_rejects_a_negative_poll() -> None:
 
 
 def _element(identifier: str, frame: base.Frame = (0.0, 0.0, 10.0, 10.0)) -> base.Element:
-    return {"identifier": identifier, "label": None, "traits": [], "value": None, "frame": frame}
+    return {
+        "identifier": identifier,
+        "label": None,
+        "traits": [],
+        "value": None,
+        "frame": frame,
+        "nativeZ": None,
+    }
 
 
 class ScreenDriver:
@@ -203,6 +210,7 @@ def test_raise_if_covered_names_an_unnamed_cover_rather_than_none() -> None:
         "traits": [],
         "value": None,
         "frame": (0.0, 0.0, 20.0, 20.0),
+        "nativeZ": None,
     }
     with pytest.raises(base.ElementNotTappable) as exc_info:
         base.raise_if_covered([target, cover], target, {"id": "target"})

@@ -26,6 +26,7 @@ def _window(w: float = 402.0, h: float = 874.0) -> base.Element:
         "traits": ["application"],
         "value": None,
         "frame": (0.0, 0.0, w, h),
+        "nativeZ": None,
     }
 
 
@@ -151,6 +152,7 @@ def test_on_blocked_retries_step_after_recovery() -> None:
         "traits": ["button"],
         "value": None,
         "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
     }
     driver = FakeDriver([])  # empty screen -> the tap fails to resolve
 
@@ -181,6 +183,7 @@ def test_end_of_step_alert_guard_retry_preserves_correct_before_after_evidence(
         "traits": ["button"],
         "value": None,
         "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
     }
     nxt = {
         "identifier": "next",
@@ -188,6 +191,7 @@ def test_end_of_step_alert_guard_retry_preserves_correct_before_after_evidence(
         "traits": ["button"],
         "value": None,
         "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
     }
     driver = FakeDriver([])  # empty screen -> the first tap fails to resolve
 
@@ -229,6 +233,7 @@ def test_end_of_step_alert_guard_retry_on_the_last_step_still_gets_a_final_captu
         "traits": ["button"],
         "value": None,
         "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
     }
     driver = FakeDriver([])  # empty screen -> the tap fails to resolve
 
@@ -274,6 +279,7 @@ def _el(identifier: str) -> base.Element:
         "traits": ["staticText"],
         "value": None,
         "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
     }
 
 
