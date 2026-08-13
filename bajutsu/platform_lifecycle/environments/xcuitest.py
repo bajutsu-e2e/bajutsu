@@ -1449,7 +1449,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         except simctl.DeviceTimeout:
             raise
         except (subprocess.CalledProcessError, simctl.DeviceError, OSError):
-            pass
+            pass  # not running, or the device is already gone — a discard must not fail on either
 
     def _terminate_runner_app(self) -> None:
         """Best-effort `simctl terminate` of the XCTRunner app itself (Simulator only).
