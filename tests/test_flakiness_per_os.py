@@ -124,7 +124,7 @@ def test_render_longitudinal_names_the_os_and_discloses_the_unknown_split() -> N
     )
     assert "on iOS 18.6" in out
     assert "on unknown OS" in out
-    assert "1 of these have no single recorded device OS" in out
+    assert "1 history with no single recorded device OS" in out
 
 
 def test_longitudinal_orders_two_os_histories_deterministically() -> None:
@@ -199,7 +199,7 @@ def test_render_flakiness_names_the_os_and_discloses_the_unknown_split() -> None
     )
     assert "on iOS 18.6" in out
     assert "on unknown OS" in out
-    assert "1 of these have no single recorded device OS" in out
+    assert "1 history with no single recorded device OS" in out
 
 
 def test_records_from_manifests_fills_the_os_the_db_column_carries() -> None:

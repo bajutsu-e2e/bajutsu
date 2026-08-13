@@ -538,9 +538,10 @@ def unknown_os_note(unknown: int) -> str:
     two `unproven` histories rather than as one finding. "No *single* OS" rather than "no OS": a run
     whose scenarios spanned two versions lands here too, and did record one per scenario.
     """
+    subject = "history" if unknown == 1 else "histories"
     return (
-        f"{unknown} of these have no single recorded device OS and group under "
-        f"{device_os.describe(None)}, separately from the per-OS histories"
+        f"{unknown} {subject} with no single recorded device OS, grouped under "
+        f"{device_os.describe(None)} separately from the per-OS ones"
     )
 
 

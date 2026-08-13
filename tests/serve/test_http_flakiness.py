@@ -128,7 +128,7 @@ def test_flakiness_html_backfills_the_device_os_of_rows_recorded_before_the_colu
     # BE-0358: a run recorded before `device_runtime` existed carries None, so it would group under
     # the unknown OS while later runs group per OS — splitting one scenario's history at the deploy
     # boundary. The panel repairs those rows from each run's stored manifest, where the per-scenario
-    # label already sits, and writes the value back so the repair happens once.
+    # label already sits — in memory, for this request only; the value is never written back.
     scn_dir, cfg, runs = project(tmp_path)
     repo = _repo(serve_engine)
     for run_id, ok in (("20260101-000000", True), ("20260102-000000", False)):

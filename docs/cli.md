@@ -334,9 +334,10 @@ bajutsu flakiness [--org <org>] [--json] [--window N]          # read the serve 
   flakiness. This surface groups per *run* where `audit --history` groups per scenario, so a run
   whose scenarios spanned two OS versions can speak for neither and joins the same `unknown OS`
   group an unrecognized label gets. Reading the database, the OS comes from the column each run row
-  carries. A run recorded before that column existed is repaired from its stored manifest the first
-  time the `serve` panel ranks it; where the manifest is gone the row stays `unknown OS`, and the
-  report discloses that count.
+  carries. A run recorded before that column existed is repaired from its stored manifest each time
+  the `serve` panel ranks it — in memory, never written back, since a write on a read path could
+  re-insert a run an operator had purged. Where the manifest is gone the row stays `unknown OS`, and
+  the report discloses that count.
 - Each entry carries the newest passing and newest failing run ids, so `--json` consumers (and the
   serve panel) can link straight to the representative evidence on both sides.
 - **`--window N`** keeps only each scenario's newest `N` runs before scoring (0, the default, uses the
