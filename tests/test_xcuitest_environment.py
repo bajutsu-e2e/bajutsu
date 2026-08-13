@@ -1215,8 +1215,9 @@ def test_run_ended_probe_is_quiet_when_the_capture_does_not_exist(tmp_path: Path
 def test_run_ended_probe_keeps_reporting_the_marker_it_already_found(tmp_path: Path) -> None:
     # BE-0354: the probe advances a private offset, so an unlatched one would answer "ended" from the
     # window that first held the marker and "still running" from every window after it. The mid-run
-    # liveness predicate re-asks once per recovery episode, which is exactly where that would flip a
-    # dead runner back to alive and hand it the full health wait again.
+    # liveness predicate re-asks throughout each recovery episode — once at the crash and then once a
+    # second while the recovery wait runs (BE-0360) — which is exactly where that would flip a dead
+    # runner back to alive and hand it the full health wait again.
     log = tmp_path / "runner.log"
     log.write_bytes(b"Test Suite 'All tests' failed at 2026-08-09 23:38:12.001.\n")
     probe = _run_ended_probe(log)

@@ -28,6 +28,7 @@ from bajutsu.drivers.xcuitest import (
     XcuitestRunnerCrashError,
     _await_health,
     _decode,
+    _HealthWait,
     _is_retry_eligible,
     _raw_http_transport,
     _Reply,
@@ -869,7 +870,9 @@ def test_exhausted_transient_retries_raise_a_crash_error_carrying_delivery_info(
 def test_a_read_crash_waits_for_the_runner_then_re_issues() -> None:
     # A read is idempotent, so once the runner is back it is safe to re-issue and continue the run.
     inner, calls = _counting([_crash("GET", delivered=True), _Reply(status="ok")])
-    reply = _with_crash_recovery(inner, health=lambda _t: True)("GET", "/elements", None)
+    reply = _with_crash_recovery(inner, health=lambda _t: _HealthWait.READY)(
+        "GET", "/elements", None
+    )
     assert reply.status == "ok"
     assert calls[0] == 2  # crashed, then re-issued after the runner recovered
 
@@ -877,7 +880,7 @@ def test_a_read_crash_waits_for_the_runner_then_re_issues() -> None:
 def test_an_undelivered_write_crash_re_issues_after_recovery() -> None:
     # A write that never reached the runner never applied, so re-issuing it after recovery is safe.
     inner, calls = _counting([_crash("POST", delivered=False), _Reply(status="ok")])
-    reply = _with_crash_recovery(inner, health=lambda _t: True)(
+    reply = _with_crash_recovery(inner, health=lambda _t: _HealthWait.READY)(
         "POST", "/gesture", {"kind": "pinch"}
     )
     assert reply.status == "ok"
@@ -889,14 +892,18 @@ def test_a_delivered_write_crash_is_never_re_issued_and_fails_distinctly() -> No
     # recovered (health True), it must fail with a distinct crash diagnostic rather than re-issue.
     inner, calls = _counting([_crash("POST", delivered=True), _Reply(status="ok")])
     with pytest.raises(XcuitestRunnerCrashError, match="POST /gesture"):
-        _with_crash_recovery(inner, health=lambda _t: True)("POST", "/gesture", {"kind": "pinch"})
+        _with_crash_recovery(inner, health=lambda _t: _HealthWait.READY)(
+            "POST", "/gesture", {"kind": "pinch"}
+        )
     assert calls[0] == 1  # never re-issued
 
 
 def test_a_read_crash_that_never_recovers_fails_loudly() -> None:
     inner, calls = _counting([_crash("GET", delivered=False)])
     with pytest.raises(XcuitestRunnerCrashError, match="did not recover"):
-        _with_crash_recovery(inner, health=lambda _t: False)("GET", "/elements", None)
+        _with_crash_recovery(inner, health=lambda _t: _HealthWait.TIMED_OUT)(
+            "GET", "/elements", None
+        )
     assert calls[0] == 1  # health never came back, so the read was not re-issued
 
 
@@ -907,7 +914,9 @@ def test_a_reissue_that_crashes_again_is_recovered_within_budget() -> None:
     inner, calls = _counting(
         [_crash("GET", delivered=True), _crash("GET", delivered=True), _Reply(status="ok")]
     )
-    reply = _with_crash_recovery(inner, health=lambda _t: True)("GET", "/screenshot", None)
+    reply = _with_crash_recovery(inner, health=lambda _t: _HealthWait.READY)(
+        "GET", "/screenshot", None
+    )
     assert reply.status == "ok"
     assert calls[0] == 3  # crashed, recovered+re-issued, crashed again, recovered, then succeeded
 
@@ -918,7 +927,7 @@ def test_a_runner_that_never_stabilizes_fails_past_the_recovery_budget() -> None
     # rather than looping forever.
     inner, calls = _counting([_crash("GET", delivered=False)] * 3)
     with pytest.raises(XcuitestRunnerCrashError, match="past the 2-recovery budget"):
-        _with_crash_recovery(inner, health=lambda _t: True, max_recoveries=2)(
+        _with_crash_recovery(inner, health=lambda _t: _HealthWait.READY, max_recoveries=2)(
             "GET", "/elements", None
         )
     assert calls[0] == 3  # the initial call plus max_recoveries re-issues, all crashing
@@ -942,7 +951,7 @@ def test_a_read_that_keeps_hanging_after_recovery_is_diagnosed_as_a_wedged_sessi
     # own call would have failed its own retry ladder first — so the session is wedged.
     inner, calls = _counting([_hang("GET")] * 4)
     with pytest.raises(XcuitestRunnerCrashError, match="wedged automation session") as exc:
-        _with_crash_recovery(inner, health=lambda _t: True)("GET", "/screenshot", None)
+        _with_crash_recovery(inner, health=lambda _t: _HealthWait.READY)("GET", "/screenshot", None)
     assert calls[0] == 3  # the original call plus two re-issues, then the hand-over
     assert exc.value.hung is True
 
@@ -951,7 +960,9 @@ def test_a_hang_that_clears_on_re_issue_is_still_ridden_out() -> None:
     # One hang is not a wedge: the runner answered the very next call, which is exactly the transient
     # the recovery loop exists for.
     inner, calls = _counting([_hang("GET"), _Reply(status="ok")])
-    reply = _with_crash_recovery(inner, health=lambda _t: True)("GET", "/screenshot", None)
+    reply = _with_crash_recovery(inner, health=lambda _t: _HealthWait.READY)(
+        "GET", "/screenshot", None
+    )
     assert reply.status == "ok"
     assert calls[0] == 2
 
@@ -962,7 +973,9 @@ def test_hangs_broken_by_a_connection_crash_never_accrue_to_a_wedge() -> None:
     inner, calls = _counting(
         [_hang("GET"), _crash("GET", delivered=False), _hang("GET"), _Reply(status="ok")]
     )
-    reply = _with_crash_recovery(inner, health=lambda _t: True)("GET", "/screenshot", None)
+    reply = _with_crash_recovery(inner, health=lambda _t: _HealthWait.READY)(
+        "GET", "/screenshot", None
+    )
     assert reply.status == "ok"
     assert calls[0] == 4
 
@@ -972,7 +985,7 @@ def test_a_connection_level_crash_never_reads_as_a_wedged_session() -> None:
     # only a call that hung says the runner accepted the work and never finished it.
     inner, _calls = _counting([_crash("GET", delivered=True)] * 4)
     with pytest.raises(XcuitestRunnerCrashError, match="past the 3-recovery budget"):
-        _with_crash_recovery(inner, health=lambda _t: True)("GET", "/screenshot", None)
+        _with_crash_recovery(inner, health=lambda _t: _HealthWait.READY)("GET", "/screenshot", None)
 
 
 def test_the_retry_seam_tags_a_hung_call_apart_from_a_refused_one() -> None:
@@ -990,7 +1003,7 @@ def test_the_retry_seam_tags_a_hung_call_apart_from_a_refused_one() -> None:
 
 
 def test_a_normal_reply_passes_through_without_probing_health() -> None:
-    def _boom(_t: float) -> bool:  # health must not be consulted on the happy path
+    def _boom(_t: float) -> _HealthWait:  # health must not be consulted on the happy path
         raise AssertionError("health probed on a non-crash call")
 
     inner, calls = _counting([_Reply(status="ok")])
@@ -1008,7 +1021,7 @@ def test_a_crash_with_a_dead_runner_process_fails_fast_without_polling_health() 
     # The runner's `xcodebuild` process has exited (runner_alive False): nothing respawns it on this
     # port mid-recovery, so recovery must fail fast with a distinct diagnostic — never consulting
     # `health`, which would only wait out an inevitable failure (the readiness-time crash this fixes).
-    def _health_must_not_run(_t: float) -> bool:
+    def _health_must_not_run(_t: float) -> _HealthWait:
         raise AssertionError("health polled despite the runner process having exited")
 
     inner, calls = _counting([_crash("GET", delivered=False)])
@@ -1023,9 +1036,9 @@ def test_a_crash_with_a_live_runner_process_still_waits_out_health() -> None:
     # The process is alive but momentarily unreachable (runner_alive True): this is BE-0287's
     # recoverable case, unchanged — recovery waits out `health` and re-issues the idempotent read.
     inner, calls = _counting([_crash("GET", delivered=True), _Reply(status="ok")])
-    reply = _with_crash_recovery(inner, health=lambda _t: True, runner_alive=lambda: True)(
-        "GET", "/elements", None
-    )
+    reply = _with_crash_recovery(
+        inner, health=lambda _t: _HealthWait.READY, runner_alive=lambda: True
+    )("GET", "/elements", None)
     assert reply.status == "ok"
     assert calls[0] == 2  # waited out health, then re-issued — the alive-process path is unchanged
 
@@ -1036,7 +1049,9 @@ def test_absent_runner_alive_keeps_the_be0287_recovery_unchanged() -> None:
     # diagnostic exactly as before — the default is byte-for-byte the prior behavior.
     inner, calls = _counting([_crash("GET", delivered=False)])
     with pytest.raises(XcuitestRunnerCrashError, match="did not recover"):
-        _with_crash_recovery(inner, health=lambda _t: False)("GET", "/elements", None)
+        _with_crash_recovery(inner, health=lambda _t: _HealthWait.TIMED_OUT)(
+            "GET", "/elements", None
+        )
     assert calls[0] == 1
 
 
@@ -1045,7 +1060,7 @@ def test_a_recovery_logs_the_crash_as_visibly_as_a_retried_blip(caplog: Any) -> 
     # crashed — both the crash and the recovery are logged.
     inner, _calls = _counting([_crash("GET", delivered=True), _Reply(status="ok")])
     with caplog.at_level("WARNING"):
-        _with_crash_recovery(inner, health=lambda _t: True)("GET", "/elements", None)
+        _with_crash_recovery(inner, health=lambda _t: _HealthWait.READY)("GET", "/elements", None)
     joined = " ".join(r.message for r in caplog.records).lower()
     assert "crash" in joined
     assert "recovered" in joined
@@ -1054,7 +1069,7 @@ def test_a_recovery_logs_the_crash_as_visibly_as_a_retried_blip(caplog: Any) -> 
 def test_health_is_the_recovery_probe_so_it_never_recurses_into_recovery() -> None:
     # `/health` is how the layer detects recovery, so a crashed health probe must pass straight through
     # rather than trigger a nested recovery (which would block for the whole recovery timeout).
-    def _boom(_t: float) -> bool:
+    def _boom(_t: float) -> _HealthWait:
         raise AssertionError("health probe triggered a nested recovery")
 
     inner, calls = _counting([_crash("GET", delivered=False)])
@@ -1069,27 +1084,134 @@ def test_recovery_timeout_is_bounded() -> None:
     assert 30 <= _RECOVERY_TIMEOUT_SECONDS <= 300
 
 
-def test_await_health_returns_true_once_the_runner_is_ready() -> None:
-    assert _await_health(lambda m, p, b: _Reply(status="ready"), timeout=1.0, sleep=lambda _s: None)
+def test_await_health_reports_ready_once_the_runner_is_ready() -> None:
+    outcome = _await_health(
+        lambda m, p, b: _Reply(status="ready"), timeout=1.0, sleep=lambda _s: None
+    )
+    assert outcome is _HealthWait.READY
 
 
-def test_await_health_returns_false_when_the_runner_never_becomes_ready() -> None:
+def test_await_health_reports_timed_out_when_the_runner_never_becomes_ready() -> None:
     ticks = iter([0.0, 0.0, 0.5, 1.0, 1.0])  # deadline = 0.0 + 0.3; the third read is past it
-    ok = _await_health(
+    outcome = _await_health(
         lambda m, p, b: _Reply(status="starting"),
         timeout=0.3,
         poll=0.0,
         sleep=lambda _s: None,
         clock=lambda: next(ticks),
     )
-    assert ok is False
+    assert outcome is _HealthWait.TIMED_OUT
 
 
 def test_await_health_treats_a_transport_failure_as_not_ready_then_recovers() -> None:
     inner, _calls = _counting(
         [_TransportFailure("refused", delivered=False), _Reply(status="ready")]
     )
-    assert _await_health(inner, timeout=1.0, poll=0.0, sleep=lambda _s: None)
+    assert _await_health(inner, timeout=1.0, poll=0.0, sleep=lambda _s: None) is _HealthWait.READY
+
+
+# The wait re-asks the runner's liveness while it runs (BE-0360). A crashing runner's death becomes
+# observable *during* the window — its `xcodebuild` exit and its suite's result line both follow the
+# crash — so a verdict sampled only before the wait waits out the very failure the fast-fail exists
+# for.
+
+
+def test_await_health_ends_early_once_the_runner_is_found_gone_mid_wait() -> None:
+    # The liveness verdict flips partway through the window: the wait must end there rather than at
+    # the deadline, and say which end it reached so the caller can diagnose it as a dead runner.
+    ticks = iter([0.0, 1.0, 2.0])  # deadline = 0.0 + 60.0; both reads are far short of it
+    alive = iter([True, False])
+    outcome = _await_health(
+        lambda m, p, b: _Reply(status="starting"),
+        timeout=60.0,
+        poll=0.0,
+        runner_alive=lambda: next(alive),
+        liveness_poll=1.0,
+        sleep=lambda _s: None,
+        clock=lambda: next(ticks),
+    )
+    assert outcome is _HealthWait.GONE
+
+
+def test_await_health_asks_the_liveness_verdict_once_a_second_not_once_a_poll() -> None:
+    # The `/health` probe runs every 100ms while the liveness check reads the runner's capture from a
+    # private offset, so asking it at the probe interval would cost hundreds of file reads per window
+    # to learn of the death barely sooner. Ten polls across one second must ask it once.
+    ticks = iter([n / 10 for n in range(12)])  # 0.0, 0.1, … — the poll grain, one read per pass
+    asked = [0]
+
+    def _alive() -> bool:
+        asked[0] += 1
+        return True
+
+    outcome = _await_health(
+        lambda m, p, b: _Reply(status="starting"),
+        timeout=1.0,
+        poll=0.0,
+        runner_alive=_alive,
+        liveness_poll=1.0,
+        sleep=lambda _s: None,
+        clock=lambda: next(ticks),
+    )
+    assert outcome is _HealthWait.TIMED_OUT
+    assert asked[0] == 1
+
+
+def test_await_health_prefers_a_ready_runner_over_a_negative_liveness_verdict() -> None:
+    # The verdict is asked *after* the probe, so a runner that answers `ready` on the very poll where
+    # its capture first shows the run-ended marker still counts as recovered: a runner that is serving
+    # is serving, whatever its log says.
+    def _alive() -> bool:
+        raise AssertionError("liveness asked despite the runner answering ready")
+
+    outcome = _await_health(
+        lambda m, p, b: _Reply(status="ready"),
+        timeout=60.0,
+        poll=0.0,
+        runner_alive=_alive,
+        liveness_poll=0.0,  # due on the first pass, so only the probe-first ordering keeps it unasked
+        sleep=lambda _s: None,
+    )
+    assert outcome is _HealthWait.READY
+
+
+def test_await_health_without_a_liveness_check_never_reports_gone() -> None:
+    # The startup caller passes none — its spawn retry owns its own liveness check — so the wait is
+    # exactly what it was: it ends on `ready` or on the deadline, and nothing else.
+    ticks = iter([0.0, 0.0, 0.5, 1.0, 1.0])
+    outcome = _await_health(
+        lambda m, p, b: _Reply(status="starting"),
+        timeout=0.3,
+        poll=0.0,
+        sleep=lambda _s: None,
+        clock=lambda: next(ticks),
+    )
+    assert outcome is _HealthWait.TIMED_OUT
+
+
+def test_a_runner_found_gone_during_the_wait_gets_the_gone_diagnostic() -> None:
+    # Unit 3: the same fact observed a moment later than the pre-wait check reads it, so it earns the
+    # same diagnosis — a runner that will not come back, not a window that was waited out. The
+    # misdirection this replaces is the point: "did not recover within 60s" describes a runner that
+    # was given a fair chance.
+    inner, calls = _counting([_crash("GET", delivered=False)])
+    with pytest.raises(XcuitestRunnerCrashError, match="is gone mid-run") as exc:
+        _with_crash_recovery(inner, health=lambda _t: _HealthWait.GONE, runner_alive=lambda: True)(
+            "GET", "/elements", None
+        )
+    assert "did not recover" not in str(exc.value)
+    assert calls[0] == 1  # never re-issued: nothing will answer on this port again
+
+
+def test_a_wait_that_reaches_its_deadline_keeps_the_did_not_recover_diagnostic() -> None:
+    # The other end of the wait is unchanged: a runner still plausibly alive that never came back is
+    # the case the 60-second window exists for, and its diagnosis stays BE-0287's.
+    inner, _calls = _counting([_crash("GET", delivered=False)])
+    with pytest.raises(XcuitestRunnerCrashError, match="did not recover") as exc:
+        _with_crash_recovery(
+            inner, health=lambda _t: _HealthWait.TIMED_OUT, runner_alive=lambda: True
+        )("GET", "/elements", None)
+    assert "is gone mid-run" not in str(exc.value)
 
 
 # --- handle_system_alert (BE-0316) ---------------------------------------------------------------
