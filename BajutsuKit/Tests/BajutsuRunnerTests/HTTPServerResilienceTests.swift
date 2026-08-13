@@ -23,7 +23,8 @@ final class HTTPServerResilienceTests: XCTestCase {
         }
         for code in [EMFILE, ENFILE, ENOMEM, ENOBUFS] {
             guard let delay = HTTPServer.acceptRetryDelay(code) else {
-                return XCTFail("errno \(code) is transient exhaustion, so the loop must keep going")
+                XCTFail("errno \(code) is transient exhaustion, so the loop must keep going")
+                continue
             }
             XCTAssertGreaterThan(
                 delay, 0, "errno \(code) needs a pause, or the retry spins against the exhaustion"
@@ -128,8 +129,10 @@ final class HTTPServerResilienceTests: XCTestCase {
 
         let fd = try Self.connect(port: port)
         defer { close(fd) }
-        // No blank line anywhere, and longer than the 8 KiB header cap.
-        Self.write(fd, "GET /tap HTTP/1.1\r\nX-Pad: " + String(repeating: "A", count: 9000))
+        // No blank line anywhere, and exactly the 8 KiB header cap: the server consumes every byte
+        // it was sent, so its close() sends a FIN rather than an RST that would discard the 400.
+        let head = "GET /tap HTTP/1.1\r\nX-Pad: "
+        Self.write(fd, head + String(repeating: "A", count: 8192 - head.utf8.count))
 
         XCTAssertTrue(
             Self.readAll(fd).hasPrefix("HTTP/1.1 400 "),

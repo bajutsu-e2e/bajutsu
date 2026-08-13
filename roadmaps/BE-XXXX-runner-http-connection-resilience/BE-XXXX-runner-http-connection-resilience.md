@@ -20,9 +20,10 @@ called the *runner*. The Python side — the driver, which implements Bajutsu's 
 interface — opens a loopback connection per operation, and gives each one a bounded socket timeout:
 15 seconds for a read, 30 seconds for an actuation.
 
-This item repairs four defects in how the runner's server handles a connection. Three of them end
-the server outright, and the fourth lets a request the client never finished sending reach a
-handler. We fix all four, and add the regression tests that hold them fixed.
+This item repairs four defects in how the runner's server handles a connection. Three of them stop
+the server serving — one by killing its process, two by wedging it while it stays alive — and the
+fourth lets a request the client never finished sending reach a handler. We fix all four, and add
+the regression tests that hold them fixed.
 
 The defects share one symptom, which is what makes them worth treating together: the runner stops
 answering `GET /health`, and the driver — which has no other liveness signal — reports a timeout it
@@ -112,8 +113,9 @@ server ([`BajutsuKit/Sources/BajutsuRunner/HTTPServer.swift`](../../BajutsuKit/S
    within microseconds. A read that stalls for ten seconds is therefore a peer that died or never
    sent a request, never a merely slow peer. A reply, by contrast, is written to a peer that is
    waiting for it, so only a peer that stopped reading without closing stalls a send. Thirty seconds
-   sits well above the driver's own per-request timeouts, and so never truncates a reply the driver
-   would still have accepted. A timed-out read surfaces as `EAGAIN`, which the parser already
+   matches the wider of the driver's own two limits — 15 seconds for a read, 30 for an actuation —
+   rather than exceeding it, which suffices because the only reply large enough to approach the bound
+   is a screenshot's PNG, and that one travels the 15-second read path. A timed-out read surfaces as `EAGAIN`, which the parser already
    treats the same way as a closed peer.
 
 4. **Reject a request the client never finished sending.** One invariant, covering the header and
