@@ -99,8 +99,8 @@ server ([`BajutsuKit/Sources/BajutsuRunner/HTTPServer.swift`](../../BajutsuKit/S
    listening socket, ends the loop as before.
 
 3. **Bound both blocking calls with socket timeouts.** Set `SO_RCVTIMEO` and `SO_SNDTIMEO` on each
-   accepted descriptor, at ten and 30 seconds. A request's bytes follow its connect over loopback
-   within microseconds. A read that stalls for ten seconds is therefore a peer that died or never
+   accepted descriptor, at 10 and 30 seconds. A request's bytes follow its connect over loopback
+   within microseconds. A read that stalls for 10 seconds is therefore a peer that died or never
    sent a request, never a merely slow peer. A reply, by contrast, is written to a peer that is
    waiting for it, so only a peer that stopped reading without closing stalls a send. Thirty seconds
    sits well above the driver's own per-request timeouts, and so never truncates a reply the driver
