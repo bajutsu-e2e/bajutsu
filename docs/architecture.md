@@ -522,12 +522,12 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
   modifier). When the check fails, the orchestrator tries a small, bounded scroll (`down` first,
   then a wider `up` fallback for a top-anchored obstruction) and re-checks before retrying the
   actuation once; if the target is still unreachable, the step fails with a dedicated
-  `ElementNotTappable` error instead of the misleading `ElementNotFound`. On the XCUITest backend, a
-  refused `tap` the scroll cannot help — the target is already on screen, as when iOS inflates a
-  container's accessibility element over the control it wraps — instead probes the target's named
-  descendants and, where exactly one is reachable, taps that one and records
-  `substitution: soleHittableDescendant`; where none or several are, it fails naming the candidates
-  rather than choosing between them (BE-0373)
+  `ElementNotTappable` error instead of the misleading `ElementNotFound`. On the XCUITest backend the
+  driver acts before that scroll: when a `tap` is refused — the shape a scroll cannot fix, since the
+  target is already on screen, as when iOS inflates a container's accessibility element over the
+  control it wraps — it examines the target's named descendants, and where exactly one is reachable
+  it taps that one and records `substitution: soleHittableDescendant`; where none or several are, it
+  fails naming the candidates rather than choosing between them (BE-0373)
 - DSL text-editing steps (BE-0265): `clear` / `delete` / `select` / `copy` close the gap left by
   `type` on every backend (adb, Playwright, XCUITest, fake); the web context raises
   `UnsupportedAction` for `select`/`copy` (codegen routes those to XCUITest instead), and the web
