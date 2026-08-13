@@ -1289,9 +1289,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
         on a runner whose port will never bind again. The capture already names that state, and the
         cold-spawn gate has string-matched the same markers since BE-0319, so the probe reading it
         answers here too. It is the *same* probe instance the gate uses, latched: this predicate is
-        re-asked once per recovery episode, while the probe advances a private offset and reports a
-        marker only from the window that first contains it. A future Xcode that rewords the markers
-        degrades this to the process-only check it replaces, never to a false "gone".
+        re-asked throughout each recovery episode — once when the crash is declared and then once a
+        second while the recovery wait runs (BE-0360) — while the probe advances a private offset and
+        reports a marker only from the window that first contains it. A future Xcode that rewords the
+        markers degrades this to the process-only check it replaces, never to a false "gone".
         """
         if self._runner_proc is None or self._runner_proc.poll() is not None:
             return False
