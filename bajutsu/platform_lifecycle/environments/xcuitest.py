@@ -641,7 +641,23 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # the remedy the escalation exists to skip. The swap leaves the environment on a device that
         # has never run anything, which is a cold spawn by construction — no warm runner to reuse.
         if replace_device:
-            self._discard_runner()
+            # The discard's `terminate` is bounded now (BE-0363), and on *this* device the wedge it
+            # would report is the reason the escalation exists — so raising here would consume the
+            # one remedy left, with no second chance: `_replacement_requested` was already cleared
+            # above, so the retry lease would take the ordinary path below and fail the same way.
+            # The swap itself keeps every other timeout loud, and `_replace_degraded_device` makes
+            # the same call for its own shutdown two lines down. Logged rather than suppressed, like
+            # every other caller that absorbs this timeout: `terminate` and `shutdown` are different
+            # commands, so the one below is not guaranteed to wedge too, and swallowing this one
+            # silently would lose the very diagnosis BE-0363 exists to produce.
+            try:
+                self._discard_runner()
+            except simctl.DeviceTimeout as exc:
+                _logger.warning(
+                    "discarding the runner on Simulator %s: %s; replacing it anyway",
+                    self._udid,
+                    exc,
+                )
             self._replace_degraded_device(eff)
             # The erase is dropped *here*, where the swap actually happened, rather than by the
             # caller that asked for it: a device this method just created has nothing to erase, and

@@ -2240,6 +2240,38 @@ def test_a_degraded_device_whose_shutdown_hangs_is_still_replaced(
     assert "create" in _verb_seq(calls)
 
 
+def test_a_degraded_device_whose_discard_hangs_is_still_replaced(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The escalation discards the runner before it swaps the device, and on this device a hung
+    # `terminate` is the wedge the escalation exists to abandon. Raising there would also be
+    # unrecoverable: the request is consumed at the top of `start`, so the retry lease would take the
+    # ordinary path and hang on the same call.
+    app = tmp_path / "App.app"
+    app.mkdir()
+    _fake_toolchain(monkeypatch)
+    calls, run = _ladder_run(["UDID"])
+
+    def hanging_terminate(argv: list[str], env: object = None) -> str:
+        if argv[2:4] == ["terminate", "UDID"]:
+            calls.append(argv)
+            raise simctl.DeviceTimeout("device operation timed out after 60s: " + " ".join(argv))
+        return str(run(argv, env))
+
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=hanging_terminate)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)), app_path=str(app))
+    env.start(eff, Preconditions())
+    env.request_device_replacement()
+    del calls[:]
+    with caplog.at_level("WARNING"):
+        env.start(eff, Preconditions())
+    assert env._udid == "UDID-NEW"
+    assert "create" in _verb_seq(calls)
+    # Absorbed, never silent: this is the one caller whose own `shutdown` may still return, so a
+    # suppressed timeout here would be the only place the wedge left no trace at all.
+    assert "discarding the runner on Simulator UDID" in caplog.text
+
+
 def test_a_replacement_bring_up_drops_the_erase_it_was_asked_to_carry(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
