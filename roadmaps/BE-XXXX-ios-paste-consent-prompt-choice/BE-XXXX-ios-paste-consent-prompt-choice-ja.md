@@ -41,7 +41,8 @@ Permissions タブは今のところ、まさにこのケースを避けて通�
 
 このプロンプトには、事前に答える手段がありません。BE-0276 の権限プリセットは、アプリのプロセスが起動する前に、
 `simctl privacy` を通じて Transparency, Consent, and Control (TCC) の状態を書き込みます。しかしペースト許諾
-プロンプトは、通知許可や ATT と同じく TCC のサービスではありません。
+プロンプトは、通知許可(そもそも TCC のサービスではありません)や ATT(`kTCCServiceUserTracking` として TCC に
+属しますが、`simctl` のトグルがありません)と同じく、`simctl privacy` の手が届きません。
 [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md)
 は、まさにこの2つを `simctl privacy` が届かないプロンプトとして挙げており、ペースト許諾プロンプトも同じ分類
 に属します。したがって唯一知られている決定論的な仕組みは、BE-0315 と BE-0316 がすでにこの2つのために用意した
@@ -98,6 +99,10 @@ Permissions タブは今のところ、まさにこのケースを避けて通�
 
    ```yaml
    - name: grant the paste-consent prompt with handleSystemAlert
+     tags: [systemalert]              # ローカルの一括実行から外すためのタグ
+     systemAlertHandling: false       # ガードを切ることで、タップ失敗が run の失敗になる(BE-0316 の考え方)
+     preconditions:
+       launchEnv: { SHOWCASE_UITEST: "1" }
      steps:
        - setClipboard: { text: "bajutsu-cross-clip" }                    # アプリの外から書き込む(BE-0052)
        - tap: { label: "Permissions", traits: [button] }
@@ -130,7 +135,8 @@ Permissions タブは今のところ、まさにこのケースを避けて通�
    実装するセッションのための未解決の設計上の問いとして残します。BE-0052 自身が、`setTimezone` と `shake`
    について信頼できる仕組みが見つからなかったときに、それぞれ別の項目へ切り出したのと同じ考え方です。うまく
    いくように見えるだけのステップは出荷しません。実機の Simulator がすでに起動しているあいだに、同じセッション
-   は「他のアプリからのペースト」という設定(後述の「検討した代替案」を参照)をアプリの外から事前に設定できる
+   は「他のアプリからのペースト」という設定(後述の「検討した代替案」を参照)を、たとえば対象アプリの
+   identifier に対する `defaults write` で、アプリの外から事前に設定できる
    かどうかも、コストをかけずに確かめるべきです。もし事前に設定できるとわかった場合は、この項目が防止策を
    退けた判断を検証しないまま放置せず、その旨を報告してください。
 4. **ドキュメント。** [`docs/scenarios.md`](../../docs/scenarios.md#naming-the-intent-instead-of-the-text)

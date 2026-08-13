@@ -44,8 +44,9 @@ it back inside the app under test runs straight into this prompt.
 
 No pre-launch toggle answers it ahead of time. BE-0276's permission presets write Transparency,
 Consent, and Control (TCC) state through `simctl privacy` before the app process starts, but the
-paste-consent prompt is not a TCC service any more than notification authorization or ATT
-are — [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)
+paste-consent prompt falls outside `simctl privacy`'s reach, just as notification authorization (not
+a TCC service at all) and ATT (TCC-backed as `kTCCServiceUserTracking`, yet with no `simctl` toggle)
+both do — [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)
 names exactly those two as the prompts `simctl privacy` cannot reach, and the paste-consent prompt
 belongs to the same class. The only known deterministic mechanism is therefore the one BE-0315 and
 BE-0316 already built for the other two: a native tap on the SpringBoard alert, resolved through the
@@ -104,6 +105,10 @@ cross-app paste does.
 
    ```yaml
    - name: grant the paste-consent prompt with handleSystemAlert
+     tags: [systemalert]              # the tag that keeps it out of the local bulk runs
+     systemAlertHandling: false       # with the guard off, a failed tap fails the run (BE-0316's rationale)
+     preconditions:
+       launchEnv: { SHOWCASE_UITEST: "1" }
      steps:
        - setClipboard: { text: "bajutsu-cross-clip" }                    # write from outside the app (BE-0052)
        - tap: { label: "Permissions", traits: [button] }
