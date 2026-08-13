@@ -154,16 +154,16 @@ Two units. Unit 1 is a measurement that unit 2 does not depend on, and either ma
 
 Log:
 
-- Unit 1 is still open; one route to it has now closed. The `fault-injection` and `visual` jobs of
-  the 2026-08-12 `main` run (31578885972) both passed. A search of their complete job logs matched
-  nothing. Neither
-  `Thread Performance Checker` nor `priority inversion` appears. The bare words *thread* and
-  *checker* never appear either. That answers a weaker question than the item's. The runner's
-  captured output goes to `runs/runner-logs/`. The console sees a 20-line tail of it when a run goes
-  wrong, set by
-  [`_RUNNER_LOG_TAIL_LINES`](../../bajutsu/platform_lifecycle/environments/xcuitest.py). On a passing
-  job the capture lives inside the uploaded artifact and nowhere else. The measurement needs that
-  artifact, so it stays open for whoever can download one.
+- Unit 1 is still open, but one route to it has closed. The `fault-injection` and `visual` jobs of
+  the 2026-08-12 `main` run (31578885972) both passed, and a search of their complete job logs
+  matched nothing: neither `Thread Performance Checker` nor `priority inversion` appears, and the
+  bare words *thread* and *checker* never appear either. That answers a weaker question than the
+  item's, because the runner's captured output goes to `runs/runner-logs/`, and the console sees only
+  a 20-line tail of it — set by
+  [`_RUNNER_LOG_TAIL_LINES`](../../bajutsu/platform_lifecycle/environments/xcuitest.py) — and only
+  when a run goes wrong. On a passing job the capture lives inside the uploaded artifact and nowhere
+  else, so the measurement needs that artifact, and this unit stays open for whoever can download
+  one.
 - 2026-08-12 — Unit 2 ([#1594](https://github.com/bajutsu-e2e/bajutsu/pull/1594)). Both queues now
   declare `.userInitiated`. Two tests pin the declaration. One reads each queue's QoS back. A
   handler keeps `.userInitiated` as long as either queue declares it. Losing one declaration alone
