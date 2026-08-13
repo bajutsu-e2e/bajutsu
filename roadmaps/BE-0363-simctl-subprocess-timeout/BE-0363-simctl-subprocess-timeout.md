@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0363](BE-0363-simctl-subprocess-timeout.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0363") |
 | Topic | Platform support |
 | Related | [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md) |
@@ -163,13 +163,17 @@ untouched. Neither needs a Simulator, so both run in the deterministic gate rath
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — pass a `timeout` in the shared `simctl` runner helper, with a short default and a long
+- [x] Unit 1 — pass a `timeout` in the shared `simctl` runner helper, with a short default and a long
       bound for the commands that legitimately block on the device, chosen from the command itself.
-- [ ] Unit 2 — translate a timeout into the module's device-fault type inside the helper; let a
+      Shipped with `install` in the long class beside `bootstatus` / `boot` / `erase`, which the
+      design above names but does not enumerate exhaustively: `simctl install` transfers the whole
+      app bundle, so its duration is set by the app under test rather than by simctl, and a short
+      bound would leave an app-agnostic tool carrying an app-size-dependent ceiling.
+- [x] Unit 2 — translate a timeout into the module's device-fault type inside the helper; let a
       timeout propagate from the four deliberately suppressed calls, narrow the two discard-path
       `terminate` suppressions so it is not re-absorbed there, and fold it into the existing fallback
       of each best-effort probe.
-- [ ] Unit 3 — resolve the bound inside the real helper so the substituted test callable keeps its
+- [x] Unit 3 — resolve the bound inside the real helper so the substituted test callable keeps its
       two-argument shape, and cover both the timeout and the healthy path in the deterministic gate.
 
 ## References

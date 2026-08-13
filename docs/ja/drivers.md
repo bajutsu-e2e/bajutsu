@@ -220,6 +220,8 @@ def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  
 | `openurl(url)` | `simctl openurl <udid> <url>` | deeplink |
 | `screenshot(path)` | `simctl io <udid> screenshot <path>` | — |
 
+> **すべての呼び出しに期限があります**（[BE-0363](../../roadmaps/BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout-ja.md)）: 共有のランナーは、一回きりの `simctl` サブプロセスすべてに期限を渡します。値はコマンド自身から選ばれます。所要時間を simctl ではなくデバイスやアプリが決めるコマンド（`bootstatus`、`boot`、`erase`、`install`）には長い側を、それ以外には短い側を当てます。CoreSimulator が固まったときに観測される症状、すなわち返ってこない呼び出しは、これによって `simctl.DeviceTimeout` を送出します。例外は超過した期限とコマンドを名前で示すので、CI がジョブ全体を原因不明のまま打ち切るまでハングする状態には戻りません。`DeviceTimeout` は `DeviceError` の派生なので、デバイス障害を変換している既存のハンドラは変更なしで動きます。どこで受け止めるかは呼び出し側で異なります。ベストエフォートのプローブ（`device_booted`、`device_available`、`device_catalog` など）は、文書化されたフォールバックへ畳み込んだうえでログに残すので、復旧ラダーは観測結果で判断し続けられます。それ以外の呼び出しは送出します。冪等な `shutdown` / `boot` / `uninstall` / `terminate` も同様で、これらが握りつぶすのは失敗した呼び出しであって、ハングした呼び出しではありません。
+
 > **launch env の注入**: アプリへ渡す env 変数は、親プロセスに `SIMCTL_CHILD_<NAME>` として設定すると子（アプリ）に `<NAME>` で渡ります。`child_env()` がこの変換を行います。showcase アプリの `SHOWCASE_UITEST` 等の launch hook はこの仕組みを使います（[showcase](showcase.md#起動環境フック)）。
 
 `video` / `deviceLog` の区間録りも `simctl io recordVideo` / `simctl spawn log stream` を使いますが、これらは証跡サブシステム側（`evidence/intervals.py`）に置かれています（[evidence](evidence.md#区間証跡video--devicelog--apptrace)）。
