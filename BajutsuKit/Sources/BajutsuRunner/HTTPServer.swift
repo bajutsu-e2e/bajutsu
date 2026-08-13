@@ -29,7 +29,21 @@ struct HTTPResponse {
 typealias RequestHandler = (HTTPRequest) -> HTTPResponse
 
 final class HTTPServer {
+    // A request's bytes follow its connect over loopback within microseconds, so a read that stalls
+    // this long is a peer that died or never sent one — never a merely slow one. Unbounded, such a
+    // read holds one of the eight connection slots below for the life of the process, and enough of
+    // them starve `/health`, which the driver then reads as a dead runner (BE-0287's whole point is
+    // that `/health` stays answerable).
+    static let defaultReceiveTimeout: TimeInterval = 10
+    // A reply is written to a peer that is waiting for it, so only a peer that stopped reading — yet
+    // left the connection open — stalls a send. Set well above the driver's own per-request windows
+    // so it never truncates a reply the driver would still have accepted; the largest body the runner
+    // sends is a screenshot's PNG.
+    static let defaultSendTimeout: TimeInterval = 30
+
     private let handler: RequestHandler
+    private let receiveTimeout: TimeInterval
+    private let sendTimeout: TimeInterval
     private var listenFD: Int32 = -1
     private let lock = NSLock()
     private let queue = DispatchQueue(label: "bajutsu.runner.http")
@@ -45,7 +59,13 @@ final class HTTPServer {
     private let connectionSemaphore = DispatchSemaphore(value: 8)
     private(set) var port: UInt16 = 0
 
-    init(handler: @escaping RequestHandler) {
+    init(
+        receiveTimeout: TimeInterval = HTTPServer.defaultReceiveTimeout,
+        sendTimeout: TimeInterval = HTTPServer.defaultSendTimeout,
+        handler: @escaping RequestHandler
+    ) {
+        self.receiveTimeout = receiveTimeout
+        self.sendTimeout = sendTimeout
         self.handler = handler
     }
 
@@ -111,12 +131,20 @@ final class HTTPServer {
             guard fd >= 0 else { break }
             var clientAddr = sockaddr_in()
             var addrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
+            var failure: Int32 = 0
             let clientFD = withUnsafeMutablePointer(to: &clientAddr) { ptr in
-                ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
-                    accept(fd, sockPtr, &addrLen)
+                ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr -> Int32 in
+                    let result = accept(fd, sockPtr, &addrLen)
+                    failure = errno  // read before anything else can overwrite it
+                    return result
                 }
             }
-            guard clientFD >= 0 else { break }
+            guard clientFD >= 0 else {
+                guard let backoff = Self.acceptRetryDelay(failure) else { break }
+                if backoff > 0 { Thread.sleep(forTimeInterval: backoff) }
+                continue
+            }
+            configureConnection(clientFD)
             connections.async { [weak self] in
                 guard let self else { close(clientFD); return }
                 connectionSemaphore.wait()
@@ -125,6 +153,67 @@ final class HTTPServer {
                 close(clientFD)
             }
         }
+    }
+
+    /// How long to wait before retrying `accept()` after it failed with *code*, or `nil` when the
+    /// failure is terminal and the loop must end.
+    ///
+    /// Ending the loop on *every* failure — the original behaviour — wedges the server rather than
+    /// stopping it. The listening socket stays open, so the kernel keeps completing handshakes into
+    /// the backlog: every connection the driver opens still succeeds, and none is ever accepted or
+    /// answered. `/health` included, which leaves a live runner indistinguishable from a dead one and
+    /// costs the driver a full timeout ladder per call. Only a failure of the listening socket itself
+    /// justifies that, so a per-connection failure retries instead.
+    ///
+    /// Internal rather than private so a test can enumerate the classification directly: these are
+    /// failures no test can reliably provoke against a real listening socket.
+    static func acceptRetryDelay(_ code: Int32) -> TimeInterval? {
+        switch code {
+        // None of these say anything about the listening socket: a signal interrupted the call, or
+        // the peer went away between completing its handshake and our accepting it. The latter is the
+        // one to expect here — a driver-side health poll that hits its own timeout and disconnects
+        // while still queued in the backlog produces exactly it.
+        case EINTR, ECONNABORTED, EAGAIN, EPROTO:
+            return 0
+        // Descriptor or memory exhaustion: transient, but retrying at once would spin against a
+        // condition that only time relieves, so pause briefly first.
+        case EMFILE, ENFILE, ENOMEM, ENOBUFS:
+            return 0.05
+        // `EBADF` once `stop()` has closed the listening socket, plus anything unrecognised: the
+        // socket will not serve again, so end the loop as before.
+        default:
+            return nil
+        }
+    }
+
+    /// Apply the socket options every accepted connection needs, before any handler touches it.
+    ///
+    /// `SO_NOSIGPIPE` is the load-bearing one. Darwin raises `SIGPIPE` on a write to a socket whose
+    /// peer has closed, and the signal's default disposition terminates the process — so a driver-side
+    /// timeout that closes the connection while the handler is still blocked on the main thread would
+    /// kill the whole XCTest host the moment that handler finally replied, taking the runner down with
+    /// it. That race is routine here rather than exotic: the driver's read and actuation windows are
+    /// tighter than a contended host's slowest operation, and `Router` deliberately queues handlers
+    /// behind one main-thread lock. The option turns such a write into a plain `EPIPE`, which
+    /// `sendAll` already treats as "stop writing". The timeouts then bound the two blocking calls a
+    /// handler makes, so a peer that vanishes without closing cannot hold a connection slot for ever.
+    ///
+    /// Internal rather than private so a test can read the options back off a socket it owns, which
+    /// is the only way to assert the timeouts landed at all.
+    func configureConnection(_ fd: Int32) {
+        var enabled: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &enabled, socklen_t(MemoryLayout<Int32>.size))
+        setTimeout(fd, SO_RCVTIMEO, receiveTimeout)
+        setTimeout(fd, SO_SNDTIMEO, sendTimeout)
+    }
+
+    private func setTimeout(_ fd: Int32, _ option: Int32, _ seconds: TimeInterval) {
+        let whole = seconds.rounded(.down)
+        var window = timeval(
+            tv_sec: Int(whole),
+            tv_usec: Int32((seconds - whole) * 1_000_000)
+        )
+        setsockopt(fd, SOL_SOCKET, option, &window, socklen_t(MemoryLayout<timeval>.size))
     }
 
     private func handleConnection(_ fd: Int32) {
@@ -144,16 +233,24 @@ final class HTTPServer {
     private func readRequest(_ fd: Int32) -> HTTPRequest? {
         var headerBuf = Data()
         var singleByte = [UInt8](repeating: 0, count: 1)
+        var terminated = false
 
         while headerBuf.count < maxHeaderSize {
+            // `recv` now returns -1 with `EAGAIN` once the receive timeout elapses, which lands here
+            // with the same verdict as a peer that closed: the request never fully arrived.
             let n = recv(fd, &singleByte, 1, 0)
             if n <= 0 { return nil }
             headerBuf.append(singleByte[0])
             if headerBuf.count >= 4,
                headerBuf.suffix(4) == Data([0x0D, 0x0A, 0x0D, 0x0A]) {
+                terminated = true
                 break
             }
         }
+        // Reaching the cap without the blank-line terminator means the header was truncated or
+        // oversized. Parsing it anyway would act on a request line the client never finished sending,
+        // so report it as unparseable and let the caller answer 400.
+        guard terminated else { return nil }
 
         guard let headerString = String(data: headerBuf, encoding: .utf8) else { return nil }
         let lines = headerString.components(separatedBy: "\r\n")
