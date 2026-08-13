@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Platform support |
-| Related | [BE-0363](../BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md), [BE-0260](../BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation.md) |
+| Related | [BE-0363](../BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md), [BE-0260](../BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -58,16 +58,22 @@ wasted wall-clock: the degraded lease re-enters the same `simctl` surface on the
 spends its own deadlines before failing the same way — a second full deadline bought to learn what
 the first already established.
 
-The second cost is a verdict of unknown worth. A degraded lease carries `erase: false`, and that is
-exactly the condition under which the XCUITest environment reuses a warm resident runner instead of
-preparing the device cold. Nothing on that reuse path touches `simctl`: the environment checks that
-the runner process is alive and that it answers a bounded `/health` query over the runner's own
-channel, both of which a runner inside a Simulator can keep doing while the host service that owns
-that Simulator has stopped answering. The scenario then runs to completion and reports `ok` or a
-failure. A run whose whole purpose is a deterministic verdict would be publishing one produced on a
-host that had just failed to answer `shutdown`, and neither the verdict nor the report would say so.
-Prime directive 2 — determinism first — rules that out: an ambiguous result fails rather than
-resolves itself in whichever direction the machine happened to go.
+The second cost is what that second failure then does. A degraded lease drops the forced erase, which
+is one of the conditions under which the XCUITest environment reuses a warm resident runner instead
+of preparing the device cold. That reuse path is not free of `simctl`, though: only the health check
+avoids it — `_healthy_resident_driver()` is a `poll()` plus a bounded `/health` query over the
+runner's own channel — while `_resume_warm` goes on to run `_prepare_simulator(cold=False)`'s
+uninstall, install, and permission writes, then `terminate`, `launch`, and `openurl`, every one of
+them a `simctl` call that
+[BE-0363](../BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout.md) bounds. So the
+degraded lease resolves one of two ways, and this item is better than both. If the host is wedged for
+those calls too, the second timeout is a `device_errors.DeviceError` that nothing between `run_one`
+and `run_all` catches, so the run aborts and every earned verdict is lost — the exact cost the
+degradation exists to avoid, paid one deadline later. If the host answers them, the scenario runs to
+completion and reports `ok` or a failure produced on a host that had just failed to answer
+`shutdown`, and neither the verdict nor the report would say so. Prime directive 2 — determinism
+first — rules that second outcome out: an ambiguous result fails rather than resolves itself in
+whichever direction the machine happened to go.
 
 Failing that one scenario is not enough on its own, because a wedged CoreSimulator is a property of
 the host, not of the scenario that happened to meet it. Every later scenario in the run would reach
@@ -134,10 +140,21 @@ Three units. Unit 2 depends on unit 1, and unit 3 depends on unit 2.
 
    Keep the accounting the loop already does. The scenario's own recovery time is billed in the
    `finally` around the retry loop, and the progress callback reports the failure to the operator; a
-   return that leaves the loop early must go through both, not around them. The failure text should
+   return that leaves the loop early must go through both, not around them. That callback's text is
+   fixed prose today — `(backend crashed mid-run)` — so the timeout branch needs wording of its own
+   there as well as in the failure. The failure text should
    name the command and the deadline it exceeded, which the exception raised in
    `bajutsu/simctl.py`'s runner helper already carries, so an operator reading the report learns the
    host was wedged rather than that a scenario failed for unexplained reasons.
+
+   The split governs the escalated lease too, and that is intended.
+   [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md)
+   lets a repeated crash retry escalate above the forced erase to a replacement device the pool
+   creates or clones, and such an attempt reaches this same handler with the forced erase still on
+   it. A `simctl create` or `clone` that never returns is the same wedge as a `shutdown` that never
+   returns, so it earns the same treatment: the scenario fails and the run latches, where a
+   `DeviceError` from that call keeps degrading exactly as today. Verification covers the escalated
+   lease as its own case rather than assuming the forced-erase case generalises.
 
 3. **Latch the run once a preparation has timed out.** `bajutsu/runner/recovery.py`'s
    `RunCrashRecoveryBudget` already carries the latch and `bajutsu/runner/pipeline.py` already reads
@@ -153,20 +170,26 @@ Three units. Unit 2 depends on unit 1, and unit 3 depends on unit 2.
    never returned is not a measurement of slowness but a direct observation that the service stopped
    answering, so it needs none.
 
-   The message a latched scenario reports names the budget today, and a run latched
-   by a timeout never had a budget as its cause — `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` may well be
-   unset, in which case the budget is unbounded and reporting it would be false. Give
-   `mark_given_up()` a cause the latch stores and `given_up()`'s consumers report, so the pre-lease
-   failure says the run was abandoned because a device operation timed out or because the run-level
-   budget was spent, whichever actually happened. Keeping one latch rather than adding a second is
-   deliberate — see *Alternatives considered*.
+   The message a latched scenario reports names the budget today, and a run latched by a timeout
+   never had a budget as its cause. `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` may well be unset, in which
+   case `run_crash_budget.budget` is `None` and the pre-lease failure — which formats it with `:g` —
+   raises a `TypeError` out of `run_one`, aborting `run_all` and discarding every verdict the run had
+   earned, so giving the latch a cause is a correctness requirement rather than a matter of wording.
+   Give `mark_given_up()` a cause the latch stores and `given_up()`'s consumers report, so the
+   pre-lease failure says the run was abandoned because a device operation timed out or because the
+   run-level budget was spent, whichever actually happened. Keeping one latch rather than adding a
+   second is deliberate — see *Alternatives considered*.
 
 Verification needs no Simulator and belongs in the deterministic gate. The pipeline's existing tests
 already drive `run_one` with a substituted lease callable, so a lease that raises
 `simctl.DeviceTimeout` on the forced-erase attempt asserts three things at once: the scenario fails,
 the degraded second lease was never attempted, and the run-level latch is set. A lease that raises an
-ordinary `simctl.DeviceError` asserts the degradation still happens, and a second scenario run after
-a latched timeout asserts it fails before its first lease with the timeout named as the cause.
+ordinary `simctl.DeviceError` asserts the degradation still happens. An escalated attempt whose
+replacement-device lease times out asserts the same three, so the
+[BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md)
+rung's behaviour is pinned rather than inferred. Finally, a second scenario run after a latched
+timeout with `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` unset asserts it fails before its first lease with
+the timeout named as the cause — the case that formats a `None` budget today.
 
 ## Alternatives considered
 
@@ -234,10 +257,12 @@ a latched timeout asserts it fails before its first lease with the timeout named
       as a second base beside `simctl.DeviceError`, leaving every existing handler and
       `bajutsu/adb.py` unchanged.
 - [ ] Unit 2 — split `run_one`'s forced-erase-prep handler so a `device_errors.DeviceTimeout` fails
-      the scenario with a named failure instead of degrading to a bare respawn, while every other
-      device fault still degrades.
+      the scenario with a named failure and its own progress wording instead of degrading to a bare
+      respawn, while every other device fault still degrades. The split covers the escalated
+      replacement-device lease (BE-0354), which reaches the same handler.
 - [ ] Unit 3 — latch the run from that branch through `mark_given_up()`, and give the latch a cause
-      so a latched scenario reports the timeout rather than a budget it may never have had.
+      so a latched scenario reports the timeout rather than formatting an unset budget, which raises
+      a `TypeError` out of `run_all` today.
 
 ## References
 
@@ -246,6 +271,8 @@ a latched timeout asserts it fails before its first lease with the timeout named
 - [BE-0353 — Force device recovery on a backend-crash retry and cap total crash-recovery time per run](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md)
   — adds the forced-erase retry, its degradation branch, and the run-level budget whose latch this
   item reuses.
+- [BE-0354 — Detect a wedged XCUITest session fast and escalate a repeated crash retry to a replacement device](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md)
+  — the escalation rung whose replacement-device lease reaches the same handler this item splits.
 - [BE-0344 — Repair the Simulator between XCUITest cold-spawn retry attempts](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md)
   — the recovery ladder a service-level restart would belong to.
 - [BE-0260 — Consolidate the duplicated CLI command bring-up and add a neutral DeviceError](../BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation.md)

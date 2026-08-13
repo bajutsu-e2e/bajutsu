@@ -10,7 +10,7 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | Platform support |
-| 関連 | [BE-0363](../BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout-ja.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md), [BE-0260](../BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation-ja.md) |
+| 関連 | [BE-0363](../BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout-ja.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md), [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md), [BE-0260](../BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -56,15 +56,20 @@ Bajutsu の実行パイプラインは、シナリオの途中で起きたバッ
 リースは同じホストの同じ `simctl` の面へ入り直すため、自分の期限を使い切ってから同じように失敗します。
 最初の期限がすでに確かめたことを、もう1つの期限を丸ごと払って学び直すことになります。
 
-2つ目の費用は、値打ちのわからない判定です。降格されたリースは `erase: false` を運びますが、それは
-XCUITest の環境がデバイスをコールドに準備せず、暖まったまま常駐している runner を再利用する条件そのもの
-です。その再利用の経路は `simctl` にいっさい触れません。環境が確かめるのは2点です。runner のプロセス
-が生きていること、そして runner 自身のチャネル越しの期限つきの `/health` の問い合わせに応えること。
-シミュレータの中の runner は、そのシミュレータを所有するホストのサービスが応答をやめていても、どちらも
-続けられます。こうしてシナリオは最後まで走り、`ok` か失敗を報告します。決定論的な判定こそを目的とする
-実行が、`shutdown` に応えられなかった直後のホストで作られた判定を公表することになり、判定にもレポートに
-もその事実は現れません。第2の大原則である決定論優先はこれを許しません。曖昧な結果は、機械がたまたま
-倒れた方向へ落ち着くのではなく、失敗するからです。
+2つ目の費用は、その2度目の失敗が何をするかです。降格されたリースは強制した erase を落とします。それは、
+XCUITest の環境がデバイスをコールドに準備せず、暖まったまま常駐している runner を再利用する条件の1つ
+です。ただし、その再利用の経路は `simctl` と無縁ではありません。`simctl` を避けるのは健全性の確認だけ
+です。`_healthy_resident_driver()` は `poll()` と、runner 自身のチャネル越しの期限つきの `/health` の
+問い合わせにすぎません。その先の `_resume_warm` は、`_prepare_simulator(cold=False)` のアンインストール、
+インストール、権限の書き込みを実行します。続いて `terminate`、`launch`、`openurl` も実行します。いずれも
+[BE-0363](../BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout-ja.md) が縛る `simctl`
+の呼び出しです。したがって降格されたリースの行き着く先は2つであり、本項目はそのどちらよりも優れています。
+これらの呼び出しでもホストが応答しないなら、2度目のタイムアウトは `run_one` と `run_all` のあいだで誰も
+捕まえない `device_errors.DeviceError` です。実行は打ち切られ、得られた判定はすべて失われます。降格が
+避けようとしている当の費用を、期限1つ分あとで払うことになります。ホストが応えるなら、シナリオは最後
+まで走ります。そして、`shutdown` に応えられなかった直後のホストで作られた `ok` か失敗を報告します。
+判定はその事実を示さず、レポートにも残りません。第2の大原則である決定論優先は、この2つ目の行き先を許しません。
+曖昧な結果は、機械がたまたま倒れた方向へ落ち着くのではなく、失敗するからです。
 
 そのシナリオ1つを失敗させるだけでは足りません。応答しなくなった CoreSimulator はホストの性質であって、
 たまたま出会ったシナリオの性質ではないからです。以降のシナリオはそれぞれ自分の最初のクラッシュに達し、
@@ -128,9 +133,20 @@ XCUITest の環境がデバイスをコールドに準備せず、暖まった�
 
    ループがすでに行っている記帳はそのまま残します。シナリオ自身の復旧時間は再試行のループを囲む
    `finally` で計上され、進捗のコールバックが失敗を作業者へ報告します。ループを早く抜ける return は、
-   その両方を迂回せず必ず通します。失敗の文面には、コマンドと超えた期限を含めます。どちらも
+   その両方を迂回せず必ず通します。ただし、そのコールバックの文面は今日は固定の文
+   （`(backend crashed mid-run)`）です。したがってタイムアウトの分岐は、失敗の文面だけでなくそこでも
+   自前の文面を必要とします。失敗の文面には、コマンドと超えた期限を含めます。どちらも
    `bajutsu/simctl.py` の実行補助関数が投げる例外がすでに運んでいるため、レポートを読んだ作業者は、
    シナリオが理由の説明されない失敗をしたのではなく、ホストが応答しなくなったのだと知ることができます。
+
+   この分岐は、エスカレーションされたリースも対象にします。それは意図したふるまいです。
+   [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md)
+   は、繰り返しクラッシュした再試行を、強制した erase の上へ、プールが作成または複製する交換用の
+   デバイスへとエスカレーションさせます。そうした試行も、強制した erase を載せたまま同じ処理に届きます。
+   戻ってこない `simctl create` や `clone` は、戻ってこない `shutdown` と同じ応答しない状態なので、
+   同じ扱いを受けます。シナリオは失敗し、実行に印が立ちます。その呼び出しからの `DeviceError` は今日
+   どおり降格します。検証では、erase を強制した場合から一般化できると仮定せず、エスカレーションされた
+   リースを独立した場合として覆います。
 
 3. **準備がタイムアウトしたら実行に印を立てる。** `bajutsu/runner/recovery.py` の
    `RunCrashRecoveryBudget` にはすでに印があり、`bajutsu/runner/pipeline.py` はリースの前にそれを読んで
@@ -144,10 +160,12 @@ XCUITest の環境がデバイスをコールドに準備せず、暖まった�
    一方、戻ってこなかった `simctl` の呼び出しは遅さの計測ではなく、サービスが応答をやめたという直接の
    観測なので、条件は要りません。
 
-   印も、印の立った実行でシナリオが報告する文面も、今日は予算を名指ししています。しかしタイムアウトで
-   印が立った実行に予算という原因はありません。`BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` は未設定でありうるうえ、
-   その場合の予算は無制限なので、予算を報告するのは事実に反します。そこで `mark_given_up()` に原因を
-   渡し、印がそれを保持して `given_up()` を読む側が報告するようにします。リース前の失敗は、デバイスの
+   印の立った実行でシナリオが報告する文面は、今日は予算を名指ししています。しかしタイムアウトで印が
+   立った実行に予算という原因はありません。`BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` は未設定でありえます。
+   その場合 `run_crash_budget.budget` は `None` であり、リース前の失敗はそれを `:g` で整形するため
+   `TypeError` を `run_one` の外へ投げます。`run_all` は打ち切られ、実行が得ていた判定はすべて失われ
+   ます。したがって、印に原因を持たせることは文面の問題ではなく正しさの要件です。そこで
+   `mark_given_up()` に原因を渡し、印がそれを保持して `given_up()` を読む側が報告するようにします。リース前の失敗は、デバイスの
    操作がタイムアウトしたのか実行全体の予算を使い切ったのか、実際に起きたほうを述べます。印を増やさず
    1つに保つのは意図的です（*検討した代替案*を参照）。
 
@@ -155,8 +173,12 @@ XCUITest の環境がデバイスをコールドに準備せず、暖まった�
 リースの呼び出し可能オブジェクトで `run_one` を動かしています。したがって、erase を強制した試行で
 `simctl.DeviceTimeout` を投げるリースは、3つを一度に検証します。シナリオが失敗すること、降格の2度目の
 リースが行われないこと、実行全体の印が立つことです。通常の `simctl.DeviceError` を投げるリースは、降格
-が今日どおり起きることを検証します。印の立ったあとに走る2つ目のシナリオは、タイムアウトを原因として
-名指ししたまま最初のリースの前に失敗することを検証します。
+が今日どおり起きることを検証します。交換用のデバイスのリースがタイムアウトするエスカレーションされた
+試行も同じ3つを検証し、
+[BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md)
+の段のふるまいを推測ではなく固定します。最後の1つは、`BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` が未設定の
+まま印が立ったあとに走る2つ目のシナリオです。タイムアウトを原因として名指ししたまま、最初のリースの前
+に失敗することを検証します。今日は `None` の予算を整形してしまう場合です。
 
 ## 検討した代替案
 
@@ -219,9 +241,11 @@ XCUITest の環境がデバイスをコールドに準備せず、暖まった�
 - [ ] 単位1 — `device_errors.DeviceTimeout` を加える。`simctl.DeviceTimeout` に、`simctl.DeviceError`
       と並ぶ第2の基底としてその中立な型を与える。既存の処理と `bajutsu/adb.py` は変えない。
 - [ ] 単位2 — `run_one` で erase を強制した準備を捕まえる処理を分ける。`device_errors.DeviceTimeout`
-      は降格せず名前のついた失敗でシナリオを終わらせ、それ以外のデバイス障害は今日どおり降格させる。
-- [ ] 単位3 — その分岐から `mark_given_up()` で実行に印を立てる。印に原因を持たせ、印の立った実行の
-      シナリオがタイムアウトを報告するようにする。
+      は降格せず、名前のついた失敗と専用の進捗の文面でシナリオを終わらせ、それ以外のデバイス障害は
+      今日どおり降格させる。同じ処理に届く BE-0354 の交換用デバイスのリースも対象に含める。
+- [ ] 単位3 — その分岐から `mark_given_up()` で実行に印を立てる。印に原因を持たせ、未設定の予算を
+      整形して `TypeError` を投げる代わりに、印の立った実行のシナリオがタイムアウトを報告するように
+      する。
 
 ## 参考
 
@@ -229,6 +253,8 @@ XCUITest の環境がデバイスをコールドに準備せず、暖まった�
   — 本項目がパイプラインに行動させる障害である `simctl.DeviceTimeout` を導入した項目。
 - [BE-0353 — バックエンドクラッシュの再試行でデバイス復旧を強制し、run 全体のクラッシュ復旧時間に上限を設ける](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md)
   — erase を強制する再試行と、その降格の分岐と、本項目が印を再利用する実行全体の予算を加えた項目。
+- [BE-0354 — 応答しなくなった XCUITest セッションを速やかに見抜き、再発したクラッシュ再試行ではデバイスを置き換える](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md)
+  — 交換用のデバイスのリースが、本項目の分ける処理に届くエスカレーションの段。
 - [BE-0344 — XCUITest のコールド起動の再試行のあいだにシミュレータを修復する](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md)
   — サービス水準の再起動が属することになる修復のはしご。
 - [BE-0260 — 重複した CLI コマンドの起動処理を統合し、中立な DeviceError を追加する](../BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation-ja.md)
