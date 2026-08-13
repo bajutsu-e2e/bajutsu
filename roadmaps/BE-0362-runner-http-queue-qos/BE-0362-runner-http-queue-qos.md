@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0362](BE-0362-runner-http-queue-qos.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0362") |
+| Implementing PR | [#1594](https://github.com/bajutsu-e2e/bajutsu/pull/1594) |
 | Topic | Platform support |
 | Related | [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn.md), [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md) |
 <!-- /BE-METADATA -->
@@ -148,8 +149,27 @@ Two units. Unit 1 is a measurement that unit 2 does not depend on, and either ma
 
 - [ ] Unit 1 — grep the fault-injection and visual jobs' runner captures for a Thread Performance
       Checker report, and record the finding here, including a negative one.
-- [ ] Unit 2 — pass `qos: .userInitiated` to both of the runner HTTP server's queue constructors, with
+- [x] Unit 2 — pass `qos: .userInitiated` to both of the runner HTTP server's queue constructors, with
       a comment recording that the level pins what propagation supplies implicitly.
+
+Log:
+
+- Unit 1 is still open, but one route to it has closed. The `fault-injection` and `visual` jobs of
+  the 2026-08-12 `main` run (31578885972) both passed, and a search of their complete job logs
+  matched nothing: neither `Thread Performance Checker` nor `priority inversion` appears, and the
+  bare words *thread* and *checker* never appear either. That answers a weaker question than the
+  item's, because the runner's captured output goes to `runs/runner-logs/`, and the console sees only
+  a 20-line tail of it — set by
+  [`_RUNNER_LOG_TAIL_LINES`](../../bajutsu/platform_lifecycle/environments/xcuitest.py) — and only
+  when a run goes wrong. On a passing job the capture lives inside the uploaded artifact and nowhere
+  else, so the measurement needs that artifact, and this unit stays open for whoever can download
+  one.
+- 2026-08-12 — Unit 2 ([#1594](https://github.com/bajutsu-e2e/bajutsu/pull/1594)). Both queues now
+  declare `.userInitiated`. Two tests pin the declaration. One reads each queue's QoS back. A
+  handler keeps `.userInitiated` as long as either queue declares it. Losing one declaration alone
+  escapes a behavioural check. The other test starts the server from a `.utility` context. It then
+  asserts that a handler still runs at `.userInitiated`. Nothing else in the runner changes. The
+  priority the code runs at is the one propagation already supplied.
 
 ## References
 
