@@ -102,7 +102,9 @@ class Stats:
     by_run: list[RunPoint]  # chronological (oldest first) — pass-rate over time and volume
     by_day: list[DayPoint]  # chronological (oldest first)
     by_backend: dict[str, int]  # run count per actuator — the volume denominator
-    scenarios: list[ScenarioStat]  # per (fingerprint, scenario): flaky first, then most-observed
+    # Per (fingerprint, scenario, OS) — so one scenario can hold several rows, one per OS version
+    # it ran on (BE-0358). Flaky first, then most-observed.
+    scenarios: list[ScenarioStat]
     failing_scenarios: list[Hotspot]  # scenarios that fail most, by frequency
     failing_steps: list[Hotspot]  # step actions that fail most, by frequency
     failing_assertions: list[Hotspot]  # assertion kinds that fail most, by frequency
@@ -146,8 +148,8 @@ def aggregate_runs(manifests: Iterable[Mapping[str, object]]) -> Stats:
 
     Returns:
         The whole-suite `Stats`: run totals, the per-run and per-day time series, run volume by
-        backend, the per-`(scenarioHash, name)` aggregates (flakiness reused from the BE-0049 audit),
-        and the failure hotspots by scenario / step action / assertion kind.
+        backend, the per-`(scenarioHash, name, OS)` aggregates (flakiness reused from the BE-0049
+        audit), and the failure hotspots by scenario / step action / assertion kind.
     """
     runs = [m for m in manifests if isinstance(m, Mapping) and isinstance(m.get("scenarios"), list)]
 

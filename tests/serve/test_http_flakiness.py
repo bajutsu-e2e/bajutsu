@@ -152,7 +152,9 @@ def test_flakiness_html_backfills_the_device_os_of_rows_recorded_before_the_colu
     assert status == 200
     # Both runs now group under the OS their manifests recorded, so the flip reads as flakiness on
     # that OS rather than as two split, unprovable histories.
-    assert "iOS 18.6" in html and "flaky" in html
+    # The rendered tag, not the bare word: `.flaky` is a CSS class in the template's inlined style
+    # block, so `"flaky" in html` holds even on the empty-state page.
+    assert "iOS 18.6" in html and '<span class="tag flaky">flaky</span>' in html
     assert "no recorded device OS" not in html
     # Repaired for this request only: `record_run` is a full-row upsert, so writing back from a read
     # path would re-insert a run an operator hard-purged between the listing and the repair.
