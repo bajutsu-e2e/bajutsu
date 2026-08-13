@@ -522,7 +522,12 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
   modifier). When the check fails, the orchestrator tries a small, bounded scroll (`down` first,
   then a wider `up` fallback for a top-anchored obstruction) and re-checks before retrying the
   actuation once; if the target is still unreachable, the step fails with a dedicated
-  `ElementNotTappable` error instead of the misleading `ElementNotFound`
+  `ElementNotTappable` error instead of the misleading `ElementNotFound`. On the XCUITest backend, a
+  refused `tap` the scroll cannot help — the target is already on screen, as when iOS inflates a
+  container's accessibility element over the control it wraps — instead probes the target's named
+  descendants and, where exactly one is reachable, taps that one and records
+  `substitution: soleHittableDescendant`; where none or several are, it fails naming the candidates
+  rather than choosing between them (BE-0373)
 - DSL text-editing steps (BE-0265): `clear` / `delete` / `select` / `copy` close the gap left by
   `type` on every backend (adb, Playwright, XCUITest, fake); the web context raises
   `UnsupportedAction` for `select`/`copy` (codegen routes those to XCUITest instead), and the web
@@ -555,7 +560,11 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
   (`video`/`deviceLog`/`appTrace`)
   + the network collector (`network.json`) + **visual regression** (`visual` vs. a baseline; the
   `approve` command promotes baselines) + `capturePolicy` firing + **redaction applied** to logs /
-  element trees / network exchanges before they are written
+  element trees / network exchanges before they are written; `bajutsu run --touch-markers`
+  (BE-0371, iOS only, needs an app linking `BajutsuKit`) draws a marker at each touch the app's
+  `UIEvent` queue actually delivers — evidence that a gesture was received, not only sent — into the
+  recorded video and each step's screenshot; off by default, on in the repo's own iOS CI lanes, and
+  skipped for a scenario whose verdict compares a screenshot
 - Network observation + **deterministic mocks** (scenario `mocks` → in-protocol stubs, validated
   on-device): `request` assertions, `wait: { until: request }`, and offline stubbed responses
 - The **screen-transition signal** (BE-0310, iOS): an opt-in `BajutsuScreen` in `BajutsuKit`
