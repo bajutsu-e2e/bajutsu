@@ -1,14 +1,14 @@
-[English](BE-XXXX-xcuitest-refused-tap-descendant-redirect.md) · **日本語**
+[English](BE-0373-xcuitest-refused-tap-descendant-redirect.md) · **日本語**
 
-# BE-XXXX — container がタップを拒んだとき、到達できる名前付きの子孫が 1 つだけならそこへ差し出す
+# BE-0373 — container がタップを拒んだとき、到達できる名前付きの子孫が 1 つだけならそこへ差し出す
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-xcuitest-refused-tap-descendant-redirect-ja.md) |
+| 提案 | [BE-0373](BE-0373-xcuitest-refused-tap-descendant-redirect-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0373") |
 | 実装 PR | [#1571](https://github.com/bajutsu-e2e/bajutsu/pull/1571) |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0349](../BE-0349-tap-target-hittability-check/BE-0349-tap-target-hittability-check-ja.md), [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee-ja.md), [BE-0285](../BE-0285-scenario-feature-real-backend-coverage/BE-0285-scenario-feature-real-backend-coverage-ja.md) |

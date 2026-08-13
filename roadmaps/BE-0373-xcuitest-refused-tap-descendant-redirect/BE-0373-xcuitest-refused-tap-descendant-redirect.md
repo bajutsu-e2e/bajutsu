@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-xcuitest-refused-tap-descendant-redirect-ja.md)
+**English** · [日本語](BE-0373-xcuitest-refused-tap-descendant-redirect-ja.md)
 
-# BE-XXXX — Offer the one reachable named descendant when a container refuses a tap
+# BE-0373 — Offer the one reachable named descendant when a container refuses a tap
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-xcuitest-refused-tap-descendant-redirect.md) |
+| Proposal | [BE-0373](BE-0373-xcuitest-refused-tap-descendant-redirect.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0373") |
 | Implementing PR | [#1571](https://github.com/bajutsu-e2e/bajutsu/pull/1571) |
 | Topic | Platform support |
 | Related | [BE-0349](../BE-0349-tap-target-hittability-check/BE-0349-tap-target-hittability-check.md), [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee.md), [BE-0285](../BE-0285-scenario-feature-real-backend-coverage/BE-0285-scenario-feature-real-backend-coverage.md) |
