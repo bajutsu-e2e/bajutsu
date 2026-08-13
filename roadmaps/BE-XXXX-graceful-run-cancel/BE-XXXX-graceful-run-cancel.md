@@ -71,8 +71,14 @@ short grace period, rather than a `SIGTERM` that ends the process wherever it st
   the runner itself, noticing the event at its next boundary, tears it down through its own ordinary
   end-of-scenario teardown. Once the leader has exited — cleanly, or via the grace-period escalation
   below — the cancel path still sweeps the group with `killpg`, so a driver child that outlived that
-  teardown is reaped rather than left orphaned on the serve host. `_terminate`'s group-wide `killpg`
-  stays exactly as it is today for `record`/`crawl` jobs, which this item leaves unaffected.
+  teardown is reaped rather than left orphaned on the serve host. Routing a cancel to the right one
+  of those two paths needs a discriminator `Job` does not carry today: it has no job-kind field
+  ([`state.py:54`](../../bajutsu/serve/state.py)), and `job.proc` holds *either* the on-demand build
+  subprocess or the spawned run ([`state.py:71`](../../bajutsu/serve/state.py),
+  [`jobs.py:192`](../../bajutsu/serve/jobs.py)) — so this item adds one, and the leader-only path
+  applies only while `job.proc` is the run itself. `_terminate`'s group-wide `killpg` stays exactly as
+  it is today for `record`/`crawl` jobs and for a `run` job's build phase, which this item leaves
+  unaffected.
 - **Check the event at safe boundaries.** The event is read at the top of each scenario in
   `run_all`'s dispatch loop ([`pipeline.py:822`](../../bajutsu/runner/pipeline.py)), between steps
   within a scenario, and inside the poll loops that already back every condition wait. A scenario
@@ -101,10 +107,19 @@ short grace period, rather than a `SIGTERM` that ends the process wherever it st
 - **The shutdown stays bounded — with or without `serve` watching.** The `SIGTERM` handler lives in
   `bajutsu run`'s entry point, not behind any `serve`-only gate, so it answers every `SIGTERM` the
   process receives — a `docker stop`, a systemd unit stop, a CI job cancellation — not only the one
-  `cancel_job` sends. `serve`'s side of the bound is external: `cancel_job` keeps a short grace
-  window after the signal and escalates to today's unconditional, group-wide `killpg` if the process
-  has not exited by that deadline, the same guarantee `record`'s human handoff already gives
-  ([BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md)). A `run` invoked
+  `cancel_job` sends. `serve`'s side of the bound is external: after sending the signal, a grace
+  window runs to completion — and, past its deadline, escalates to today's unconditional, group-wide
+  `killpg` — off the request thread, the same guarantee `record`'s human handoff already gives
+  ([BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md)). It has to: `POST
+  /api/jobs/{job_id}/cancel` calls `cancel_job` synchronously
+  ([`routes.py:492`](../../bajutsu/serve/routes.py),
+  [`reads.py:636`](../../bajutsu/serve/operations/reads.py)), and that window must exceed the longest
+  driver call (the previous bullet) — tens of seconds for an `xcuitest` HTTP timeout or an
+  `xcodebuild test` — so blocking the response for it would leave the Cancel button unacknowledged
+  long enough that an operator clicks it again. `cancel_job` therefore still returns as soon as the
+  signal is sent, exactly as it does today; the grace window and its escalation run on a separate
+  timer, alongside the job thread that already owns `proc.wait()`
+  ([`jobs.py:445`](../../bajutsu/serve/jobs.py)). A `run` invoked
   outside `serve` has no such external escalator watching it, so the handler enforces the same bound
   on itself: a second, internal timer started when the event is set that — if the graceful shutdown
   has not finished by its own deadline — restores `SIGTERM`'s default disposition and re-raises it,
@@ -173,14 +188,20 @@ handling and the `RunResult` shape are the same for every target.
 
 - [ ] Install a `SIGTERM` handler in `bajutsu run`'s entry point that sets a `threading.Event`
   instead of letting the process die immediately.
+- [ ] Add the discriminator `Job` is missing today (a job-kind field, or an equivalent signal),
+  so a `run` job's cancel path can tell whether `job.proc` is the on-demand build subprocess or the
+  spawned run itself.
 - [ ] Change a `run` job's cancel path to signal the run process alone first (not its process
-  group), then sweep the group with `killpg` once the leader has exited — cleanly or via the
-  grace-period escalation — so a surviving driver child is reaped rather than orphaned.
+  group) only while that discriminator says `job.proc` is the run itself, then sweep the group with
+  `killpg` once the leader has exited — cleanly or via the grace-period escalation — so a surviving
+  driver child is reaped rather than orphaned. Leave the build phase on today's group-wide kill.
 - [ ] Check that event at the top of each scenario in `run_all`'s dispatch loop, between steps
   within a scenario, and inside the existing condition-wait poll loops.
 - [ ] Synthesize `RunResult(ok=False, failure="cancelled")` for a scenario interrupted this way or
   one that never started.
-- [ ] Add a bounded grace period to `serve/jobs.py`'s `cancel_job`, escalating to today's
+- [ ] Add a bounded grace period to `serve/jobs.py`'s `cancel_job`, running off the request thread
+  (on its own timer, alongside the job thread's `proc.wait()`) so the `POST
+  /api/jobs/{job_id}/cancel` response is not held open for it, and escalating to today's
   unconditional kill only past the deadline.
 - [ ] Give the `SIGTERM` handler its own internally-enforced shutdown deadline, independent of
   `serve`, so a `run` invoked outside `serve` (`docker stop`, systemd, a CI job cancellation) stays
