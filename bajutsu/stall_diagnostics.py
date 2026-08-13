@@ -49,17 +49,22 @@ _DIAGNOSTICS_ENV = "BAJUTSU_STALL_DIAGNOSTICS"
 # (is the host load rising?), while a third mostly repeats it.
 _MAX_CAPTURES_PER_REASON = 2
 
-# Wall clock one capture may spend, across every probe it runs. The capture happens on a path that is
-# already failing and already waiting out a recovery window, so it must stay small next to that
-# window rather than compete with the job's own `timeout-minutes` — the very failure mode BE-0353 and
-# BE-0354 exist to keep a degrading lane out of.
-_CAPTURE_BUDGET = 30.0
+# Wall clock one capture may spend, across every probe it runs. Kept small because a capture is charged
+# to two clocks it does not own. BE-0353's `CrashRecoveryBudget` is a deadline set at the *first* crash
+# and re-checked at each later one, so every second spent here is a second the recovery no longer has:
+# a run on 2026-08-13 missed that 300s deadline by 75s with two captures of up to 30s inside the window,
+# which is a diagnostic turning a recoverable degradation into a failed run. The video trigger is worse
+# placed still — it fires from the scenario's own evidence setup, on green runs included. 10s leaves
+# room for the screenshot (whose duration is the datum) plus the two cheap snapshots, and the deadline
+# truncates the `sample` walk with a note rather than paying for it.
+_CAPTURE_BUDGET = 10.0
 
 # Per-probe ceilings, each additionally clamped to whatever is left of the budget above. The
 # screenshot gets the largest: its *duration* is the datum (a `simctl` screenshot that also stalls
-# says the render service is wedged, not the runner), so cutting it short at a second would answer
-# nothing.
-_SCREENSHOT_TIMEOUT = 15.0
+# says the render service is wedged, not the runner). 5s is enough to establish that — the runner's own
+# read timeout is 15s, so a `simctl` path still unanswered at 5s has already told us the render service
+# is not answering, and waiting the remaining 10s only spends someone else's budget to learn it twice.
+_SCREENSHOT_TIMEOUT = 5.0
 _SNAPSHOT_TIMEOUT = 10.0
 _SAMPLE_TIMEOUT = 15.0
 

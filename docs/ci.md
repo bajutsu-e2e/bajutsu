@@ -121,7 +121,8 @@ Three layers collect it, split by what each one can see.
   `sample` output for the rendering processes, and a `ps` / `vm_stat` snapshot into
   `runs/diagnostics/stalls/stall-NN-<reason>-<pid>/`. Two limits bound the capture — a wall-clock
   budget per capture, and a budget of two captures per trigger — so a crash-looping job cannot spend
-  its `timeout-minutes` collecting evidence. The budget is per *trigger* because the video warning
+  its `timeout-minutes` collecting evidence, nor the wall-clock budget the crash recovery needs to
+  decide whether a degrading device can come back. The budget is per *trigger* because the video warning
   fires on every scenario of these runners, green runs included, so the video warnings would spend a
   shared budget before the runner crash it exists to explain ever arrived. Both variables are unset outside this lane, and unset leaves
   the behavior unchanged.

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from bajutsu import artifact_perms, stall_diagnostics
 
@@ -425,3 +426,20 @@ def test_a_sample_written_before_an_error_is_still_locked_down(
     assert reports
     for report in reports:
         assert report.stat().st_mode & 0o777 == artifact_perms.ARTIFACT_FILE_MODE, report.name
+
+
+def test_the_capture_budget_stays_small_against_the_lane_recovery_budget() -> None:
+    # A capture is charged to a clock it does not own. BE-0353's `CrashRecoveryBudget` is a wall-clock
+    # deadline set at the *first* crash and re-checked at each later one, so every second spent
+    # capturing is a second the recovery no longer has. A `visual` run on 2026-08-13 missed that
+    # deadline by 75s with two captures of up to 30s inside the window — a diagnostic able to turn a
+    # recoverable degradation into a failed run, which is precisely what an observer may not do.
+    #
+    # Pinned as a *relationship*, read from the lane that actually sets the recovery budget, so raising
+    # the capture budget or lowering the lane's fails here rather than in a red iOS job.
+    workflow = yaml.safe_load(
+        (Path(__file__).resolve().parents[1] / ".github/workflows/ios-e2e.yml").read_text()
+    )
+    recovery_budget = float(workflow["env"]["BAJUTSU_CRASH_RECOVERY_BUDGET"])
+    worst_case = stall_diagnostics._CAPTURE_BUDGET * stall_diagnostics._MAX_CAPTURES_PER_REASON
+    assert worst_case <= recovery_budget / 10

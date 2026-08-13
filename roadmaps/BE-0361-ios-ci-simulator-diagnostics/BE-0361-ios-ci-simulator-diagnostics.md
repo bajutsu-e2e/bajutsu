@@ -115,7 +115,7 @@ and has no `runs/` artifact for the collection to ride. The action runs in two t
   tier is gated on the run step's own outcome; in the pytest lanes the caller gates it on the run
   step's outcome too, since `failure()` is rejected in a `with:` value.
 
-Implementation measured four things this design had wrong, each of which would have shipped a
+Implementation measured five things this design had wrong, each of which would have shipped a
 collector that quietly gathers nothing — the very failure the proposal exists to end:
 
 - **The guest does not log to the host.** The claim above that "Simulator guest processes write to
@@ -141,6 +141,16 @@ collector that quietly gathers nothing — the very failure the proposal exists 
   capture exists to explain, and the only trigger that reaches it with the device's id — finds nothing
   left. The budget is per trigger, and a declined capture is logged at warning rather than debug,
   since the lane installs no log handler and a debug line is no record at all.
+
+- **A capture is charged to a clock it does not own.** BE-0353's `CrashRecoveryBudget` is a wall-clock
+  deadline set at the *first* crash and re-checked at each later one, so every second a capture spends
+  is a second the recovery no longer has. The first CI run of this change showed it: a `visual` job
+  missed its 300s recovery deadline by 75s with two captures of up to 30s inside that window, which is
+  a diagnostic turning a recoverable degradation into a failed run — exactly what an observer may not
+  do. The per-capture budget is 10s against that lane's 300s, the screenshot ceiling is 5s (the
+  runner's own read timeout is 15s, so a `simctl` path unanswered at 5s has already answered the
+  question), and a test pins the relationship against the lane's configured budget rather than the
+  bare number.
 
 Two smaller shapes follow from the same measurements. `xcodebuild` refuses to start when its
 `-resultBundlePath` already exists, so unit 1 clears a leftover at its own key first — otherwise a
