@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0357](BE-0357-xcuitest-duplicate-node-hittable-tiebreak.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Proposal (deferred)** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0357") |
 | Topic | Platform support |
 | Related | [BE-0312](../BE-0312-xcuitest-content-addressed-snapshot-handle/BE-0312-xcuitest-content-addressed-snapshot-handle.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md), [BE-0349](../BE-0349-tap-target-hittability-check/BE-0349-tap-target-hittability-check.md), [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) |
@@ -301,10 +301,11 @@ cost proportional to how often the artifact this item targets actually occurs.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Spike (gates the rest): on a real Simulator, present a `UIAlertController` double-registration,
+- [x] Spike (gates the rest): on a real Simulator, present a `UIAlertController` double-registration,
       capture both twins' `backingElement` references from `queryElements()`, and call
       `isHittable(backingElement:)` on each directly. Confirm exactly one reports `.ok` before building
       anything below; if the premise doesn't hold, this design needs to change rather than proceed.
+      **Ran, and the premise did not hold** — see the log entry below. Everything under it is on hold.
 - [ ] Group `queryElements()` results by the shared identity (`identifier`, `label`, `traits`,
       `value`, `frame`) inside `handleElements`'s `caughtOnMain` closure in `Router.swift`. Probe each
       member of a group of two or more with `isHittable(backingElement:)`, catching a raise per member
@@ -334,6 +335,24 @@ cost proportional to how often the artifact this item targets actually occurs.
       Update the conditional language in `_collapse_identical_duplicates`'s docstring
       (`bajutsu/drivers/base.py`), which this item's own Introduction quotes as the residual cost being
       removed, and `DESIGN.md` / `docs/architecture.md` if either describes this behavior (BE-0113).
+
+Log:
+
+- The spike above ran against a `UIAlertController` presented by the showcase UIKit fixture on an
+  iOS 26.5 Simulator, and **disproved this item's premise**: `isHittable(backingElement:)` reported
+  `stale` — neither `.ok` nor `.notHittable` — for **every** member of both duplicate pairs, while
+  ordinary non-duplicated nodes in the same alert subtree reported `.ok`. Zero members report `.ok`
+  rather than exactly one, so *Detailed design*'s filter lands in its own "no member of the group
+  reports `.ok`" branch and drops nothing: as specified, this item is a no-op for the very failure
+  *Motivation* describes. The cause sits one layer below the one this item addresses. `isHittable`
+  resolves its argument through `liveElement(for:)`, whose flat-query recovery calls
+  `uniqueMatchingIndex` and returns nothing on more than one identity match, so the duplicate pair
+  defeats that recovery, neither member resolves to a live element at all, and no hittability signal
+  exists for this item to filter on. The `xcuitest-duplicate-identity-resolution` item repairs that
+  resolution, and measures on the same fixture that a member of the pair actuates once it resolves —
+  which puts the repaired screen in this item's *other* leave-untouched branch, "more than one member
+  reports `.ok`". This item therefore stays deferred until a duplicate pair turns up whose members a
+  live probe can genuinely tell apart.
 
 ## References
 

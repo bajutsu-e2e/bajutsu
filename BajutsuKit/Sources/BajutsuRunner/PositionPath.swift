@@ -14,23 +14,28 @@ public typealias PositionPath = [Int]
 /// upgrading stale detection from the generation-only handle scheme to a same-generation attribute match.
 /// `value` and `frame` are deliberately excluded from that match: a slider or text field's value, and an
 /// element's frame while the UI is still settling, both legitimately change between the snapshot and the
-/// tap, so matching on either would flag a still-valid element as stale (frame: BE-0287). `frame` is
-/// still recorded here because the flattened `ElementSnapshot` reports it; it is just not part of the
-/// identity match `attributesMatch` performs.
+/// tap, so matching on either would flag a still-valid element as stale (frame: BE-0287). Both are still
+/// carried here because the flat-query fallback needs them: `resolvableMatchingIndex` compares candidates
+/// *against one another* on value and frame to tell one control registered twice from two controls
+/// sharing an identity. It is only the recorded-against-live match `attributesMatch` performs that leaves
+/// them out.
 public struct RecordedAttributes {
     public let identifier: String?
     public let label: String?
+    public let value: String?
     public let traits: [String]
     public let frame: (x: Double, y: Double, width: Double, height: Double)
 
     public init(
         identifier: String?,
         label: String?,
+        value: String?,
         traits: [String],
         frame: (x: Double, y: Double, width: Double, height: Double)
     ) {
         self.identifier = identifier
         self.label = label
+        self.value = value
         self.traits = traits
         self.frame = frame
     }
@@ -74,6 +79,7 @@ public func flattenSnapshot(root: SnapshotNode) -> [ElementSnapshot] {
             let recorded = RecordedAttributes(
                 identifier: child.nodeIdentifier,
                 label: child.nodeLabel,
+                value: child.nodeValue,
                 traits: child.nodeTraits,
                 frame: child.nodeFrame
             )
@@ -81,7 +87,7 @@ public func flattenSnapshot(root: SnapshotNode) -> [ElementSnapshot] {
                 ElementSnapshot(
                     identifier: recorded.identifier,
                     label: recorded.label,
-                    value: child.nodeValue,
+                    value: recorded.value,
                     traits: recorded.traits,
                     frame: recorded.frame,
                     backingElement: PositionPathBacking(path: childPath, recorded: recorded)
@@ -118,6 +124,12 @@ public func attributesMatch(
 /// Zero matches and multiple matches both return nil: neither case identifies one element safely.
 /// Callers can then use a stronger discriminator, such as the recorded position path, or report the
 /// element as stale rather than choosing an arbitrary match.
+///
+/// No production path calls this today — `uniquelyIdentifiedElement` resolves through
+/// `resolvableMatchingIndex` below, which subsumes the zero- and one-match answers and additionally
+/// collapses a duplicate registration. Prefer that one unless strict uniqueness is the actual
+/// question: resolving a fresh site through this function reintroduces the `stale` that a
+/// `UIAlertController` button's double registration causes.
 public func uniqueMatchingIndex(
     recorded: RecordedAttributes,
     candidates: [RecordedAttributes]
@@ -129,4 +141,65 @@ public func uniqueMatchingIndex(
         match = index
     }
     return match
+}
+
+/// Return the index to act on, treating several matches that agree on value and frame as one control.
+///
+/// `uniqueMatchingIndex` above refuses several matches because identity alone cannot tell two
+/// different controls apart. A duplicate *registration* is not two controls: XCUITest reports a
+/// standard `UIAlertController` button twice, at one frame, and refusing that pair leaves a button
+/// plainly on screen unreachable — the position path cannot replay through an alert's live wrapper
+/// nodes either, so the flat query is its only route. Matches that also agree on value and frame
+/// therefore resolve to the first of them; any disagreement still returns nil, since two controls
+/// reporting different content are the ambiguity a selector must fail on rather than guess at.
+///
+/// This is the runner-side twin of the host's `_collapse_identical_duplicates`
+/// (`bajutsu/drivers/base.py`), which collapses the same artifact in an `/elements` reply, and the two
+/// deliberately key on the same fields — identifier, label, traits, value, frame. Keep them in step:
+/// this path is reached by `liveElement(for:)` re-resolving a *recorded* handle at actuation time, a
+/// candidate set no `/elements` reply gated, so a field the host treats as distinguishing has to
+/// distinguish here too or the runner guesses where the host fails loudly. In step on the *fields*,
+/// though, never on the comparison: the host keys on the exact frame tuple because its frames come
+/// out of one atomic `app.snapshot()`, while `framesEqual` below allows a point of slack because each
+/// candidate's frame here is its own live fetch. Sync a field, never that tolerance.
+///
+/// Value and frame decide here even though `attributesMatch` ignores both, and the two are consistent:
+/// that function compares what was *recorded* against what is *live now*, across a gap in which a
+/// settling screen legitimately moves an element (BE-0287) and a slider's value legitimately changes,
+/// while these candidates are all read from one live query and compared only against one another.
+public func resolvableMatchingIndex(
+    recorded: RecordedAttributes,
+    candidates: [RecordedAttributes]
+) -> Int? {
+    let matched = candidates.enumerated().filter {
+        attributesMatch(recorded: recorded, current: $0.element)
+    }
+    guard let first = matched.first else { return nil }
+    guard
+        matched.allSatisfy({ candidate in
+            matched.allSatisfy {
+                candidate.element.value == $0.element.value
+                    && framesEqual(candidate.element.frame, $0.element.frame)
+            }
+        })
+    else { return nil }
+    return first.offset
+}
+
+/// Whether two recorded frames describe one place on screen, within a point.
+///
+/// Not exact equality, because the two sides are not read at one instant: `uniquelyIdentifiedElement`
+/// maps `recordedAttributes(of:includingValue:)` over its candidates, and each candidate's `frame` is
+/// its own XCUITest attribute fetch, so a still-settling screen (BE-0287 measured a 49pt shift) can report
+/// one control's two registrations a fraction of a point apart. A point of slack keeps the group rule
+/// from collapsing back into the stale failure it exists to remove, while two controls standing at two
+/// places on screen stay a decisive point apart. The caller compares every match against every other
+/// rather than against one anchor, so the spread across a group of three or more is held to a point
+/// too, and the verdict does not depend on the order `allElementsBoundByIndex` happened to return.
+private func framesEqual(
+    _ a: (x: Double, y: Double, width: Double, height: Double),
+    _ b: (x: Double, y: Double, width: Double, height: Double)
+) -> Bool {
+    abs(a.x - b.x) <= 1 && abs(a.y - b.y) <= 1
+        && abs(a.width - b.width) <= 1 && abs(a.height - b.height) <= 1
 }

@@ -27,6 +27,9 @@ public enum BajutsuNet {
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
         BajutsuMocks.shared.load(environment)
+        // Ahead of the guard below on purpose: touch visualization needs neither a collector nor a
+        // mock rule, and a plain recorded run with no network features at all is the case it is for.
+        BajutsuTouch.startIfEnabled(environment: environment)
         if let raw = environment["BAJUTSU_COLLECTOR"], let url = URL(string: raw) {
             collectorURL = url
             collectorToken = environment["BAJUTSU_COLLECTOR_TOKEN"]

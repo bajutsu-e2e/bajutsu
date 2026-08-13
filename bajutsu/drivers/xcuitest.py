@@ -196,6 +196,9 @@ def _to_element(item: Mapping[str, Any]) -> base.Element:
         "value": item.get("value"),
         "traits": list(item.get("traits") or []),
         "frame": (float(frame[0]), float(frame[1]), float(frame[2]), float(frame[3])),
+        # The runner's reply carries no z signal; the in-app responder that would measure one is
+        # BE-0355's still-open Unit 2, so this stays an honest absence rather than a derived guess.
+        "nativeZ": None,
     }
 
 

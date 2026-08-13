@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import fnmatch
 import functools
+import math
 import re
 import time
 from collections.abc import Iterator
@@ -144,6 +145,36 @@ class Element(TypedDict):
     traits: list[str]
     value: str | None
     frame: Frame
+    # The element's real front-to-back position, measured by the app itself through the opt-in
+    # app-side hook (BE-0355) — never derived from this list's own document order, which is only the
+    # paint-order proxy `topmost_at_point` below already warns about. Diagnostic only: no selector
+    # matches on it and no occlusion check reads it, so `is_tappable` / `topmost_at_point` /
+    # XCUITest's `isHittable` are unaffected. `None` is an honest absence — a backend with no such
+    # hook, or an app that has not opted in — rather than a wrong guess. No backend reports a real
+    # value yet; the iOS and Android reporting paths are BE-0355's still-open Units 2 and 3.
+    # `_collapse_identical_duplicates`'s content key deliberately omits it: two candidates that
+    # agree on every other reported field still collapse, however far apart they measure.
+    nativeZ: float | None
+
+
+def native_z_from_json(value: object) -> float | None:
+    """Read a persisted `nativeZ` back off JSON, degrading anything unrepresentable to `None`.
+
+    The one rule every reader of a written `elements.json` or golden file shares, so a value that
+    round-trips through evidence means the same thing as one straight off a driver. `nativeZ` is
+    diagnostic only (BE-0355) and no assertion reads it, so a malformed value degrades to the same
+    honest absence an uninstrumented app reports instead of failing a load that would otherwise
+    succeed. `bool` is excluded deliberately: it is an `int` subclass, and `True` is not a position.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        z = float(value)
+    except OverflowError:  # JSON holds an arbitrary-precision int; a float cannot
+        return None
+    # `json.loads` accepts the non-standard `NaN` / `Infinity` literals; neither is a position, and
+    # a NaN compares false against every value including itself, so degrade both the same way.
+    return z if math.isfinite(z) else None
 
 
 class Trait:
@@ -713,6 +744,15 @@ def _collapse_identical_duplicates(candidates: list[Element]) -> list[Element]:
     still raises `AmbiguousSelector` below. `traits` is compared as a set (`matches` already treats
     it that way via `issubset`), so two reports of the same trait set in a different order are
     still the same content, not a difference to key on.
+
+    `resolvableMatchingIndex` in `BajutsuKit/Sources/BajutsuRunner/PositionPath.swift` is the
+    runner-side twin, collapsing the same artifact when a recorded handle is re-resolved at actuation
+    time rather than in an `/elements` reply. The two key on the same fields on purpose: a field added
+    to or dropped from this key has to move on that side too, or one of the paths starts guessing where
+    the other fails loudly. The same fields, not the same comparison: `frame` goes into the key here as
+    an exact tuple because these frames come out of one atomic snapshot, whereas that side allows a
+    point of slack because it reads each candidate's frame in its own live call. Sync a field across
+    the two, never that tolerance.
     """
     seen: dict[tuple[object, ...], Element] = {}
     for el in candidates:

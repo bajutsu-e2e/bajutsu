@@ -35,6 +35,7 @@ def _refused(reason: str) -> CaptureResult:
             "traits": [],
             "value": None,
             "frame": (0, 0, 0, 0),
+            "nativeZ": None,
         },
         selector=Selector(id="__refused__"),
         rung="none",
