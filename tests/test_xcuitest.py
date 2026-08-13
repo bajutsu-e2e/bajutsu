@@ -454,6 +454,132 @@ def test_tap_raises_element_not_tappable_when_runner_reports_not_hittable() -> N
         _driver(transport).tap({"id": "ok"})
 
 
+# The measured iOS 18.6 shape around the showcase Stepper: the container's accessibility element is
+# inflated to the whole form row and XCTest refuses it, while both of its named children are
+# reachable. `log.count.label` sits *before* the container, so it is an ancestor/sibling, not an offer.
+_STEPPER_ROW = (16.0, 268.0, 358.0, 44.0)
+
+
+def _stepper_tree(*, decrement: str, increment: str) -> list[dict[str, Any]]:
+    return [
+        _el_wire("h-cell", None, None, frame=_STEPPER_ROW),
+        _el_wire("h-label", "log.count.label", "Count: 1", frame=(32.0, 279.8, 62.7, 20.3)),
+        _el_wire("h-count", "log.count", "Count: 1", traits=["other"], frame=_STEPPER_ROW),
+        _el_wire("h-img", None, None, frame=(264.0, 274.0, 46.5, 32.0)),
+        _el_wire(
+            "h-dec", decrement, "Decrement", traits=["button"], frame=(264.0, 274.0, 46.5, 32.0)
+        ),
+        _el_wire(
+            "h-inc", increment, "Increment", traits=["button"], frame=(311.5, 274.0, 46.5, 32.0)
+        ),
+    ]
+
+
+def _stepper_transport(
+    hittable: dict[str, str], sent: list[tuple[str, dict[str, Any] | None]]
+) -> TransportFn:
+    """A runner that refuses the container and answers `hittable` for each probed child handle."""
+
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(
+                *_stepper_tree(decrement="log.count-Decrement", increment="log.count-Increment")
+            )
+        sent.append((path, body))
+        handle = (body or {}).get("handle")
+        if path == "/isHittable":
+            return _Reply(status=hittable.get(str(handle), "not-hittable"))
+        return _Reply(status="ok" if handle != "h-count" else "not-hittable")
+
+    return transport
+
+
+def test_a_refused_tap_goes_to_the_one_reachable_named_descendant() -> None:
+    # The container is refused but exactly one child is reachable, so there is no choice to make.
+    sent: list[tuple[str, dict[str, Any] | None]] = []
+    driver = _driver(_stepper_transport({"h-inc": "ok"}, sent))
+
+    driver.tap({"id": "log.count"})
+
+    assert ("/tap", {"handle": "h-inc"}) in sent
+    [record] = [a for a in driver.drain_actuations().records if a.target == "log.count-Increment"]
+    assert record.substitution == "soleHittableDescendant"
+
+
+def test_a_refused_tap_with_two_reachable_descendants_names_both_instead_of_choosing() -> None:
+    # The real Stepper: both children are reachable, so `tap: {id: log.count}` has no single meaning.
+    # Picking one would be the guess prime directive 2 forbids, so the failure names the pair.
+    sent: list[tuple[str, dict[str, Any] | None]] = []
+    driver = _driver(_stepper_transport({"h-inc": "ok", "h-dec": "ok"}, sent))
+
+    with pytest.raises(base.ElementNotTappable) as exc:
+        driver.tap({"id": "log.count"})
+
+    assert "log.count-Increment" in str(exc.value) and "log.count-Decrement" in str(exc.value)
+    assert not any(path == "/tap" and (b or {}).get("handle") != "h-count" for path, b in sent)
+
+
+def test_a_refused_tap_with_no_reachable_descendant_keeps_the_original_failure() -> None:
+    sent: list[tuple[str, dict[str, Any] | None]] = []
+    driver = _driver(_stepper_transport({}, sent))
+
+    with pytest.raises(base.ElementNotTappable, match="not hittable"):
+        driver.tap({"id": "log.count"})
+
+
+def test_a_refused_tap_on_a_container_with_no_named_descendant_re_raises_unchanged() -> None:
+    # Nothing to offer, so the original message stands rather than growing a clause about candidates.
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(
+                _el_wire("h-box", "box", "Box", traits=["other"], frame=(0.0, 0.0, 20.0, 20.0)),
+                _el_wire("h-icon", None, None, frame=(5.0, 5.0, 5.0, 5.0)),
+            )
+        return _Reply(status="not-hittable")
+
+    with pytest.raises(base.ElementNotTappable, match=r"^element resolved but not hittable"):
+        _driver(transport).tap({"id": "box"})
+
+
+def test_a_refused_tap_spends_no_probe_on_a_crowded_container() -> None:
+    # Above the cap the container is a layout region, not a control with one actuatable child, and
+    # each probe is a round trip — so it refuses without asking the runner about any of them.
+    row = (0.0, 0.0, 100.0, 100.0)
+    sent: list[str] = []
+
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            kids = [
+                _el_wire(
+                    f"h-{i}",
+                    f"kid.{i}",
+                    f"K{i}",
+                    traits=["button"],
+                    frame=(float(i), 0.0, 5.0, 5.0),
+                )
+                for i in range(base.MAX_REDIRECT_CANDIDATES + 1)
+            ]
+            return _elements(_el_wire("h-box", "box", "Box", traits=["other"], frame=row), *kids)
+        sent.append(path)
+        return _Reply(status="not-hittable")
+
+    with pytest.raises(base.ElementNotTappable):
+        _driver(transport).tap({"id": "box"})
+
+    assert "/isHittable" not in sent
+
+
+def test_a_long_press_on_a_refused_container_is_not_redirected() -> None:
+    # A long-press reaching a child is a different intent, not the same intent reaching its target.
+    sent: list[tuple[str, dict[str, Any] | None]] = []
+    driver = _driver(_stepper_transport({"h-inc": "ok"}, sent))
+
+    with pytest.raises(base.ElementNotTappable, match=r"^element resolved but not hittable"):
+        driver.long_press({"id": "log.count"}, 0.5)
+
+    assert not any(path == "/isHittable" for path, _b in sent)
+
+
 def test_is_tappable_returns_true_when_the_runner_reports_ok() -> None:
     sent: list[tuple[str, str, dict[str, Any] | None]] = []
 
