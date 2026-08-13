@@ -987,6 +987,29 @@ def test_result_bundle_is_requested_only_when_the_env_var_is_set(
     assert bundle.name == f"result-UDID-{env._runner_port}.xcresult"
 
 
+def test_a_requested_bundle_declines_xcodebuilds_own_sysdiagnose(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Measured on CI: with a bundle path and nothing else, `xcodebuild` honoured its
+    # `-collect-test-diagnostics on-failure` default and embedded a Simulator `system.logarchive`,
+    # taking one spawn's bundle to 163 MB. BE-0361 rejected whole-archive collection in favour of
+    # targeted extracts, so the two flags travel together or the rejected alternative comes back in
+    # through the feature that was supposed to be cheap.
+    monkeypatch.setenv(_RESULT_BUNDLE_ENV, str(tmp_path / "bundles"))
+    popen_argvs, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    argv = popen_argvs[0]
+    assert argv[argv.index("-collect-test-diagnostics") + 1] == "never"
+
+    # And it is scoped to the bundle: with no bundle requested there is no argv change at all.
+    monkeypatch.delenv(_RESULT_BUNDLE_ENV, raising=False)
+    popen_argvs, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    assert "-collect-test-diagnostics" not in popen_argvs[0]
+
+
 def test_result_bundle_path_is_cleared_before_the_spawn(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

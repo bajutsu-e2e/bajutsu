@@ -115,8 +115,11 @@ Three layers collect it, split by what each one can see.
   happens.
   `BAJUTSU_XCUITEST_RESULT_BUNDLES` gives every runner spawn a `-resultBundlePath`, so
   `runs/runner-logs/result-<udid>-<port>.xcresult` records what testmanagerd itself saw — the precise
-  XCTest failure, its timestamps, and any attachments — rather than the paraphrase the captured
-  stdout carries. `BAJUTSU_STALL_DIAGNOSTICS` arms a capture that fires the moment the channel
+  XCTest failure and its timestamps — rather than the paraphrase the captured stdout carries. The
+  same argv pins `-collect-test-diagnostics never`: left at its `on-failure` default, `xcodebuild`
+  embeds a Simulator `system.logarchive` in the bundle, measured at 163 MB for a single spawn, which
+  is the whole-archive collection the targeted extracts below exist to replace.
+  `BAJUTSU_STALL_DIAGNOSTICS` arms a capture that fires the moment the channel
   declares a mid-run crash or a `recordVideo` produces no bytes, writing a timed `simctl` screenshot,
   `sample` output for the rendering processes, and a `ps` / `vm_stat` snapshot into
   `runs/diagnostics/stalls/stall-NN-<reason>-<pid>/`. Two limits bound the capture — a wall-clock

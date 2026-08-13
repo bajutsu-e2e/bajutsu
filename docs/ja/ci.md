@@ -106,8 +106,11 @@ iOS レーンでもっとも厄介な失敗は、何もクラッシュしない�
 - **`bajutsu` の内側。** ストールがいつ起きたかを知っているのは実行中のプロセスだけだからです。
   `BAJUTSU_XCUITEST_RESULT_BUNDLES` は、ランナーの起動ごとに `-resultBundlePath` を与えます。
   こうして `runs/runner-logs/result-<udid>-<port>.xcresult` が、testmanagerd 自身の観測、すなわち
-  正確な XCTest の失敗、そのタイムスタンプ、添付物を記録します。捕捉した標準出力が伝えるのは、
-  その言い換えにすぎません。`BAJUTSU_STALL_DIAGNOSTICS` は、チャネルが実行中クラッシュを宣言した
+  正確な XCTest の失敗とそのタイムスタンプを記録します。捕捉した標準出力が伝えるのは、その言い換えに
+  すぎません。同じ引数列で `-collect-test-diagnostics never` も固定します。既定の `on-failure` の
+  ままだと、`xcodebuild` は Simulator の `system.logarchive` を result bundle へ埋め込み、1回の
+  起動ぶんで 163 MB を計測しました。これは以下の狙いを絞った抽出が置き換えるはずの、丸ごと収集
+  そのものです。`BAJUTSU_STALL_DIAGNOSTICS` は、チャネルが実行中クラッシュを宣言した
   瞬間と、`recordVideo` が1バイトも生まなかった瞬間に発火する捕捉を仕掛けます。捕捉は所要時間を
   計測した `simctl` のスクリーンショット、描画を担うプロセスへの `sample`、`ps` と `vm_stat` の
   スナップショットを `runs/diagnostics/stalls/stall-NN-<理由>-<pid>/` へ書きます。捕捉には2つの上限が

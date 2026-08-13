@@ -1096,7 +1096,24 @@ class XcuitestEnvironment(_DeviceEnvironment):
                     # Simulator vs real device (BE-0238); `_destination` validates the udid inline
                     # before it lands on the argv, the same defense-in-depth simctl applies.
                     _destination(device_type, self._udid),
-                    *(("-resultBundlePath", str(bundle)) if bundle is not None else ()),
+                    *(
+                        (
+                            "-resultBundlePath",
+                            str(bundle),
+                            # `-collect-test-diagnostics` defaults to `on-failure`, and on a failure
+                            # that means `xcodebuild` embeds a whole sysdiagnose — a Simulator
+                            # `system.logarchive` — under the bundle's `Staging/…/Diagnostics/`.
+                            # Measured at 163 MB for one spawn, which is both the artifact size and a
+                            # disk write on a host that had 189 MB of memory left. BE-0361 rejected
+                            # exactly that collection in favour of targeted extracts, so asking for a
+                            # bundle must not smuggle it back in: the runner log here plus the CI
+                            # action's own bounded `simctl diagnose` already cover the failure.
+                            "-collect-test-diagnostics",
+                            "never",
+                        )
+                        if bundle is not None
+                        else ()
+                    ),
                 ],
                 env={**os.environ, **forwarded},
                 stdout=runner_out,
