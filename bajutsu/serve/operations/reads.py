@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from bajutsu import handoff
+from bajutsu import device_os, handoff
 from bajutsu.analysis import stats as _stats
 from bajutsu.analytics import ledger as _usage_ledger
 from bajutsu.analytics import stats as _usage_stats
@@ -34,7 +35,10 @@ from bajutsu.serve.operations.config import FS_DISABLED_ERROR
 from bajutsu.serve.operations.runs import sweep_expired_trash
 from bajutsu.serve.orgs import targets_for_org
 from bajutsu.serve.server.db import DEFAULT_RUN_LIMIT as _RUN_HISTORY_LIMIT
+from bajutsu.serve.server.db import Repository, RunRecord
 from bajutsu.serve.state import ServeState
+
+logger = logging.getLogger(__name__)
 
 _REPORT_SUFFIX = "/report.html"
 
@@ -219,9 +223,44 @@ def _flakiness_report(state: ServeState, actor: str | None) -> _flakiness.Flakin
     org = state.org_of(actor)
     if state.repository is not None:
         records = state.repository.list_runs(org_id=org, limit=_flakiness.DEFAULT_RUN_LIMIT)
+        _backfill_device_runtime(state, org, state.repository, records)
     else:
         records = _flakiness.records_from_manifests(_run_manifests(state, actor))
     return _flakiness.rank_flakiness(records)
+
+
+def _backfill_device_runtime(
+    state: ServeState, org: str, repository: Repository, records: list[RunRecord]
+) -> None:
+    """Determine `device_runtime` for runs recorded before the column existed, from their manifests.
+
+    Without it a deployment's history splits at the deploy boundary — older runs under the unknown OS,
+    newer ones per OS — so a genuine flake spanning that boundary reads as two `unproven` histories:
+    BE-0358's own misclassification with the sign reversed. No migration can do this, since the
+    per-scenario label lives in the run's `manifest.json` in the artifact store, not in the database.
+
+    Only rows that were never determined (None, as distinct from the `""` a determined run with no
+    single OS records) are read, and each is written back once, so the repair terminates instead of
+    re-reading object storage on every panel load. A run whose manifest is gone stays undetermined and
+    keeps grouping under the unknown OS, which the report discloses rather than passing off as
+    evidence. Best-effort throughout: a read-only replica or a storage hiccup degrades the panel to
+    that same disclosure, never to an error (mirroring `jobs._persist_run`).
+    """
+    pending = [r for r in records if r.device_runtime is None]
+    if not pending:
+        return
+    artifacts = state.for_org(org).artifacts
+    manifests = {m.get("runId"): m for m in run_set_manifests(artifacts, [r.id for r in pending])}
+    for record in pending:
+        manifest = manifests.get(record.id)
+        if manifest is None:
+            continue
+        run_os = device_os.from_manifest(manifest)
+        record.device_runtime = run_os.label if run_os is not None else ""
+        try:
+            repository.record_run(record)
+        except Exception:
+            logger.warning("failed to backfill the device OS of run %s", record.id, exc_info=True)
 
 
 def _run_manifests(state: ServeState, actor: str | None) -> list[dict[str, Any]]:

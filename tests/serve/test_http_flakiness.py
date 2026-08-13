@@ -30,7 +30,14 @@ def _repo(serve_engine: Callable[..., Engine]) -> SqlRepository:
     return repo
 
 
-def _write_manifest(runs: Path, run_id: str, *, ok: bool, scenario_hash: str = "sha256:a") -> None:
+def _write_manifest(
+    runs: Path,
+    run_id: str,
+    *,
+    ok: bool,
+    scenario_hash: str = "sha256:a",
+    device_runtime: str = "",
+) -> None:
     """A full manifest.json with a provenance stamp, as the runner writes it."""
     d = runs / run_id
     d.mkdir(parents=True)
@@ -40,7 +47,7 @@ def _write_manifest(runs: Path, run_id: str, *, ok: bool, scenario_hash: str = "
                 "runId": run_id,
                 "ok": ok,
                 "provenance": {"scenarioHash": scenario_hash},
-                "scenarios": [{"scenario": "login", "ok": ok}],
+                "scenarios": [{"scenario": "login", "ok": ok, "device_runtime": device_runtime}],
             }
         ),
         encoding="utf-8",
@@ -113,6 +120,72 @@ def test_flakiness_html_from_repository_is_org_scoped(
     assert "login" in html and "flaky" in html
     # The other org's scenario is never mined.
     assert "secret" not in html and "sha256:z" not in html
+
+
+def test_flakiness_html_backfills_the_device_os_of_rows_recorded_before_the_column(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # BE-0358: a run recorded before `device_runtime` existed carries None, so it would group under
+    # the unknown OS while later runs group per OS — splitting one scenario's history at the deploy
+    # boundary. The panel repairs those rows from each run's stored manifest, where the per-scenario
+    # label already sits, and writes the value back so the repair happens once.
+    scn_dir, cfg, runs = project(tmp_path)
+    repo = _repo(serve_engine)
+    for run_id, ok in (("20260101-000000", True), ("20260102-000000", False)):
+        _write_manifest(runs, run_id, ok=ok, device_runtime="iOS 18.6")
+        repo.record_run(
+            RunRecord(
+                id=run_id,
+                org_id="default",
+                status="done",
+                ok=ok,
+                summary={"scenarios": ["login"]},
+                scenario_hash="sha256:a",
+            )
+        )
+    state = srv.ServeState(
+        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, repository=repo
+    )
+
+    html, status = flakiness_html(state)
+
+    assert status == 200
+    # Both runs now group under the OS their manifests recorded, so the flip reads as flakiness on
+    # that OS rather than as two split, unprovable histories.
+    assert "iOS 18.6" in html and "flaky" in html
+    assert "no recorded device OS" not in html
+    # Written back, so the next panel load reads it from the row instead of the artifact store.
+    assert [r.device_runtime for r in repo.list_runs(org_id="default")] == ["iOS 18.6"] * 2
+
+
+def test_flakiness_html_discloses_a_row_whose_manifest_is_gone(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # Where a deployment no longer holds the manifest there is nothing to backfill from, so the row
+    # stays unknown — disclosed in the report rather than passed off as evidence (BE-0358).
+    scn_dir, cfg, runs = project(tmp_path)
+    repo = _repo(serve_engine)
+    for run_id, ok in (("20260101-000000", True), ("20260102-000000", False)):
+        repo.record_run(
+            RunRecord(
+                id=run_id,
+                org_id="default",
+                status="done",
+                ok=ok,
+                summary={"scenarios": ["login"]},
+                scenario_hash="sha256:a",
+            )
+        )
+    state = srv.ServeState(
+        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, repository=repo
+    )
+
+    html, status = flakiness_html(state)
+
+    assert status == 200
+    assert "unknown OS" in html and "no recorded device OS" in html
+    # Undetermined, not determined-as-none: a manifest that reappears can still repair the row.
+    assert [r.device_runtime for r in repo.list_runs(org_id="default")] == [None, None]
 
 
 def test_flakiness_html_empty(tmp_path: Path) -> None:

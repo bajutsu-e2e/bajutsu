@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0358](BE-0358-device-os-as-a-first-class-fact-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0358") |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md), [BE-0220](../BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix-ja.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md) |
@@ -195,23 +195,23 @@ runner の `typeName` で今日 `other` に落ちている `.stepper` を分類�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `device_id.py` の隣に解析済みの型とその解析関数を置く。プラットフォーム・major・minor・生の
+- [x] `device_id.py` の隣に解析済みの型とその解析関数を置く。プラットフォーム・major・minor・生の
       ラベルを持ち、ラベルが不在または認識できない場合は `None` を返し、比較演算子は持たない。ラベルの
       表からユニットテストで固定する。
-- [ ] `ScenarioHistory` と `FlakyScenario` に解析済みの OS を持たせ、表示と `--json` の出力に出し、
+- [x] `ScenarioHistory` と `FlakyScenario` に解析済みの OS を持たせ、表示と `--json` の出力に出し、
       両方のソートキーへ名前より前に入れる。
-- [ ] `longitudinal`（`bajutsu/analysis/audit.py`）で解析済みの OS を含めてグループ化する。ラベルが
+- [x] `longitudinal`（`bajutsu/analysis/audit.py`）で解析済みの OS を含めてグループ化する。ラベルが
       欠けているか解析できない実行には「不明」のキーを与える。`rank_flakiness`
       （`bajutsu/serve/flakiness.py`）にも同じ要素を加え、この単位が記録へ足す項目から読む。`_run_summary`
       は今日ランタイムを残していない。`records_from_manifests` の縮約でも同じ項目を埋める。シナリオが OS バージョンをまたぐ実行は「不明」のキーへ入れる。
       両者が同じ要素と同じ「不明」の規則を得ることを確かめる。
-- [ ] 項目が入る前に記録された行を、各実行が保存している manifest から埋め直す。manifest を保持して
+- [x] 項目が入る前に記録された行を、各実行が保存している manifest から埋め直す。manifest を保持して
       いない配備では行を「不明」のままとし、境界をまたぐ flake が 2 つの `unproven` に見えることを
       レポートで開示する。
-- [ ] 解析済みの OS を `make_driver` のキーワードとして XCUITest のドライバへ渡す。環境がすでに取得
+- [x] 解析済みの OS を `make_driver` のキーワードとして XCUITest のドライバへ渡す。環境がすでに取得
       しているランタイム識別子から、2 か所の構築地点で導く。`Driver` のメンバーもテストダブルも増やさない。
       本項目ではこれで分岐しない。
-- [ ] 文書：flakiness の履歴が OS バージョンごとになったこと、および解析済みの OS はドライバから読めるが
+- [x] 文書：flakiness の履歴が OS バージョンごとになったこと、および解析済みの OS はドライバから読めるが
       それは分岐の許可ではないことを `docs/`（と `docs/ja/` の対）に記す。振る舞いの OS 差は、項目が別途
       論じないかぎりバージョン非依存で直す。
 
