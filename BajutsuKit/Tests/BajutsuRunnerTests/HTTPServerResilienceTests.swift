@@ -140,6 +140,63 @@ final class HTTPServerResilienceTests: XCTestCase {
         )
     }
 
+    /// The header test's invariant, applied to the body. `/selectAll` and `/copy` read no body at
+    /// all, so a truncated request that reached a handler would actuate the device rather than draw
+    /// the loud `400 missing or invalid JSON body` the body-reading routes answer with. The receive
+    /// timeout is what makes the case reachable from a peer that merely stalls mid-body, where
+    /// before only a peer that closed got this far.
+    func testBodyThatStopsShortIsRejectedWithoutReachingTheHandler() throws {
+        let reached = DispatchSemaphore(value: 0)
+        let server = HTTPServer(receiveTimeout: 0.3, sendTimeout: 3) { _ in
+            reached.signal()
+            return .json(200, ["status": "handled"])
+        }
+        let port = try server.start()
+        defer { server.stop() }
+
+        let fd = try Self.connect(port: port)
+        defer { close(fd) }
+        // A complete header declaring 64 bytes, then a body that stops short and never resumes.
+        Self.write(fd, "POST /selectAll HTTP/1.1\r\nContent-Length: 64\r\n\r\n{\"partial\":")
+
+        XCTAssertTrue(
+            Self.readAll(fd).hasPrefix("HTTP/1.1 400 "),
+            "a body that stopped short must be answered 400, not dispatched"
+        )
+        XCTAssertEqual(
+            reached.wait(timeout: .now()), .timedOut,
+            "/selectAll takes no body, so dispatching a truncated request would actuate the device"
+        )
+    }
+
+    /// A declared length the server cannot honour must fail the request outright. Clamping it to the
+    /// 64 KiB cap would satisfy the read after `maxBodySize` bytes and hand a handler a body the
+    /// client never finished — the same defect as a short body, reached from the other direction.
+    func testUnreadableContentLengthIsRejectedWithoutReachingTheHandler() throws {
+        for declared in ["999999", "-1", "not-a-number"] {
+            let reached = DispatchSemaphore(value: 0)
+            let server = HTTPServer(receiveTimeout: 1, sendTimeout: 3) { _ in
+                reached.signal()
+                return .json(200, ["status": "handled"])
+            }
+            let port = try server.start()
+            defer { server.stop() }
+
+            let fd = try Self.connect(port: port)
+            defer { close(fd) }
+            Self.write(fd, "POST /selectAll HTTP/1.1\r\nContent-Length: \(declared)\r\n\r\n")
+
+            XCTAssertTrue(
+                Self.readAll(fd).hasPrefix("HTTP/1.1 400 "),
+                "Content-Length '\(declared)' describes a body the server cannot read faithfully"
+            )
+            XCTAssertEqual(
+                reached.wait(timeout: .now()), .timedOut,
+                "Content-Length '\(declared)' must not reach a handler"
+            )
+        }
+    }
+
     // MARK: - Raw socket helpers
 
     private enum SocketFailure: Error { case create, connect }

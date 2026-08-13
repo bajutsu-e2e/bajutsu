@@ -72,6 +72,15 @@ anyway, and the resulting method and path were dispatched. Removing the fix demo
 consequence directly: the handler is invoked with a request the client never finished sending, which
 on an actuation endpoint means acting on the device.
 
+The same gap ran through the body, where the consequence is sharper. A read that stopped short of the
+declared `Content-Length` left the body empty and dispatched the request anyway, and a declared length
+above the 64 KiB cap was silently clamped, so reading the first 64 KiB satisfied the count and a
+truncated body passed as a complete one. Most routes answer `400 missing or invalid JSON body` and so
+fail loudly, but `/selectAll` and `/copy` read no body at all: a truncated request on either actuates
+the device. The receive timeout of the third unit widens the reach of that path rather than narrowing
+it, because before the timeout only a peer that closed got there, and now a peer that merely stalls
+does too.
+
 We claim no attribution to any specific observed continuous-integration failure. What the evidence
 above establishes is that each defect is real, that the first is fatal to the process, and that all
 four produce the signature the iOS jobs already fail with. Establishing which of them fired in a
@@ -107,9 +116,14 @@ server ([`BajutsuKit/Sources/BajutsuRunner/HTTPServer.swift`](../../BajutsuKit/S
    would still have accepted. A timed-out read surfaces as `EAGAIN`, which the parser already
    treats the same way as a closed peer.
 
-4. **Reject a header that never terminates.** Track whether the parser found the blank line that
-   terminates the header, and report the request as unparseable when it did not. The caller already
-   answers 400 for an unparseable request, so the fix is confined to the parser.
+4. **Reject a request the client never finished sending.** One invariant, covering the header and
+   the body alike. Track whether the parser found the blank line that terminates the header, and
+   report the request as unparseable when it did not. Hold the body to the same rule: a read that
+   stops short of the declared `Content-Length` fails the request, as does a declared length that
+   does not parse, is negative, or exceeds the 64 KiB cap. Yielding a request with a missing body
+   instead would leave the call to each route, and `/selectAll` and `/copy` read no body at all, so
+   either would actuate the device on a truncated request. The caller already answers 400 for an
+   unparseable request, so the fix is confined to the parser.
 
 The tests cover each unit, and every one of them fails — or, for the `SIGPIPE` unit, kills the test
 process — when its fix is reverted. Two units are verified by reading the socket options back off a
@@ -155,8 +169,9 @@ peers against the eight handler slots.
       accept loop ends only when the listening socket has failed.
 - [x] Unit 3 — set `SO_RCVTIMEO` and `SO_SNDTIMEO` on every accepted connection, so a silent peer
       cannot hold a handler slot for the life of the process.
-- [x] Unit 4 — reject a header that reaches the size cap without its terminating blank line, so a
-      partial request never reaches a handler.
+- [x] Unit 4 — reject a header that reaches the size cap without its terminating blank line, and a
+      body that stops short of or overruns its declared length, so a partial request never reaches a
+      handler.
 
 ## References
 

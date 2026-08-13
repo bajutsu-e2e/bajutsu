@@ -261,13 +261,15 @@ final class HTTPServer {
         let method = String(parts[0])
         let path = String(parts[1])
 
+        // A length that does not parse, is negative, or exceeds the cap describes a body we cannot
+        // read faithfully. Clamping it to the cap — the earlier behaviour — would read the first
+        // `maxBodySize` bytes, find the count satisfied, and dispatch a truncated body as a complete
+        // one, so reject the request instead and let the caller answer 400.
         var contentLength = 0
-        for line in lines.dropFirst() {
-            let lower = line.lowercased()
-            if lower.hasPrefix("content-length:") {
-                let value = line.dropFirst("content-length:".count).trimmingCharacters(in: .whitespaces)
-                contentLength = min(Int(value) ?? 0, maxBodySize)
-            }
+        for line in lines.dropFirst() where line.lowercased().hasPrefix("content-length:") {
+            let value = line.dropFirst("content-length:".count).trimmingCharacters(in: .whitespaces)
+            guard let declared = Int(value), declared >= 0, declared <= maxBodySize else { return nil }
+            contentLength = declared
         }
 
         var body: Data?
@@ -282,9 +284,14 @@ final class HTTPServer {
                     totalRead += n
                 }
             }
-            if totalRead == contentLength {
-                body = bodyBuf
-            }
+            // The same invariant as the unterminated header above, applied to the body: a client that
+            // stopped short never finished sending this request, so it must not reach a handler.
+            // Returning it with a nil body would leave that call to each route, and `/selectAll` and
+            // `/copy` read no body at all — they would actuate the device on a truncated request.
+            // The receive timeout above makes the short read reachable from a peer that merely
+            // stalls, not only from one that closed, which is what makes the guard load-bearing.
+            guard totalRead == contentLength else { return nil }
+            body = bodyBuf
         }
 
         return HTTPRequest(method: method, path: path, body: body)
