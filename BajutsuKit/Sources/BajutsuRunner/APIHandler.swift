@@ -7,8 +7,14 @@ import OpenAPIRuntime
 /// the provider; the actuation logic itself is unchanged from `Router`, which this replaces
 /// endpoint by endpoint.
 ///
-/// Two invariants carry over from the hand-rolled server and are load-bearing rather than
-/// incidental — see `serialized(_:)` for how each is preserved now that handlers are `async`.
+/// The hand-rolled server carries two load-bearing invariants. `serialized(_:)` below preserves the
+/// first — XCUITest operations never run concurrently (BE-0323) — now that handlers are `async`.
+///
+/// The second, BE-0287's cap of eight concurrently-handled connections, is **not** reimplemented
+/// here, because nothing in this type accepts a connection: it is the transport's to enforce, and
+/// the transport is still `HTTPServer`, whose `DispatchSemaphore(value: 8)` continues to apply.
+/// Unit 4, which points the driver at a server built on this handler, has to carry that cap over
+/// explicitly — a router that serves these operations with no bound would drop it silently.
 final class APIHandler: APIProtocol {
     private let provider: ElementProviding
     private let store = SnapshotStore()
@@ -44,7 +50,7 @@ final class APIHandler: APIProtocol {
     func health(_ input: Operations.health.Input) async throws -> Operations.health.Output {
         // Deliberately does not touch `operations`: it reports whether the runner is serving, which
         // must stay answerable while a long gesture holds the main thread.
-        .ok(.init(body: .json(.init(status: "ready"))))
+        .ok(.init(body: .json(.init(status: .ready))))
     }
 
     func queryElements(
@@ -221,7 +227,7 @@ final class APIHandler: APIProtocol {
         store: SnapshotStore, elements: [ElementSnapshot]
     ) -> Components.Schemas.ElementsReply {
         .init(
-            status: "ok",
+            status: .ok,
             elements: store.refreshSnapshot(elements: elements).map { entry in
                 .init(
                     traits: entry.snapshot.traits,

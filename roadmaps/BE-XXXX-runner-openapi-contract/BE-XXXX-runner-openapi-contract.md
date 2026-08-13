@@ -136,22 +136,20 @@ Swift 6 language mode's strict concurrency checking or stays on the Swift 5 mode
 this item makes deliberately rather than letting them fall out of whichever transport candidate
 happens to require one.
 
-**Decided, and measured.** `BajutsuKit/Package.swift` moves to `swift-tools-version:6.0` and the
-package declares `platforms: [.iOS(.v18), .macOS(.v14)]`, while every target pins
-`swiftLanguageMode(.v5)`. The three move together and none of them is free-standing: Unit 2 adopts
-Hummingbird, whose OpenAPI adapter requires iOS 17 or newer; iOS 18 is not expressible below tools
-6.0, since `.v18` is unavailable there; and tools 6.0 defaults every target to the Swift 6
-language mode, whose strict concurrency checking the runner's existing main-thread hop does not pass
-(`sending 'result' risks causing data races` on `Router.onMain`). Pinning the Swift 5 mode keeps that
-concurrency migration a deliberate future item rather than a silent consequence of a platform bump.
-The runner project's `deploymentTarget` rises to iOS 18 to match.
+**Decided, and measured.** `BajutsuKit/Package.swift` **stays at `swift-tools-version:5.9`** with
+`platforms: [.iOS(.v15), .macOS(.v11)]`, and `BajutsuRunner` stays in the Swift 5 language mode. A
+`5.9` manifest resolves, runs the plugin, and builds against the `6.1`-tools OpenAPI packages —
+verified by building rather than inferred — so the OpenAPI tooling forces neither the manifest bump
+nor a floor change. What would force both is the Hummingbird dependency, and that arrives with Unit
+4 rather than here (see *Measured result* below), so the floor question travels with it.
 
-An earlier revision of this item recorded the opposite of the first half — tools 5.9, no floor
-change — and that was correct for the transport it assumed. A `5.9` manifest does resolve, run the
-plugin, and build against the `6.1`-tools OpenAPI packages, verified by building rather than
-inferred, so the OpenAPI tooling alone forces neither the manifest bump nor the language-mode
-decision. What forces both is the Hummingbird adoption, which is why this paragraph moved with that
-choice rather than standing independently of it.
+That ordering is not tidiness. An intermediate revision of this item raised the floor to iOS 18 and
+declared Hummingbird here, and the iOS end-to-end gate rejected it: the showcase apps declare
+`iOS: "17.0"`, and a `BajutsuKit` at iOS 18 cannot be linked by them
+(`compiling for iOS 17.0, but module 'BajutsuKit' has a minimum deployment target of iOS 18.0`).
+The floor a dependency needs is worth paying when the dependency is used, and iOS 17 is that floor
+— the adapter's actual minimum — not a release beyond it.
+
 
 **The plugin is attached to the shipped `BajutsuRunner` library**, which the sketch above satisfies
 as "a `BajutsuRunner`-adjacent target": the generated code is `internal` to the module that uses it,
@@ -217,7 +215,7 @@ without invalidating Unit 1's contract work; if both candidates fail, this item 
 the OpenAPI contract in hand and the transport question reopened, rather than resolved by default to
 whichever framework a circulated proposal happened to name first.
 
-#### Measured result: Candidate F wins, and the OpenAPI layer costs more than the winning transport
+#### Measured result: Candidate H is adopted against the measurement, and the OpenAPI layer costs more than either transport
 
 Both PoCs were built inside the real runner and their transports confirmed linked with `nm`
 (Hummingbird 10,415 symbols; FlyingFox 8,056), so no figure below is an unlinked dead-code artifact.
@@ -242,21 +240,25 @@ targets, dropping iOS 15 and 16 is a capability loss rather than a housekeeping 
 `LocalHTTPServer`-style isolation contains it — a platform floor propagates to every consumer. Its
 60.8 MB bundle, 74 times the baseline, independently fails the size criterion.
 
-**Decided: Candidate H, with the platform floor raised to iOS 18.** The maintainer accepted an
-iOS 18 floor, which clears the criterion H failed. Re-measuring both candidates at that floor
-changed nothing else — H stayed at 62,272 KB and F at 15,648 KB, because H's bulk is SwiftNIO's
-static linkage rather than anything the deployment target governs — so the choice trades roughly
-46 MB of runner bundle, and iOS 15 to 17 Simulator support, for an upstream-maintained adapter in
-place of a self-maintained one. That is the maintainer's call to make and it is recorded here as
-made, alongside the measurement that argued the other way.
+**Decided: Candidate H, adopted against the measurement.** The maintainer accepted raising the
+platform floor, which clears the criterion H failed, and chose H for its upstream-maintained
+adapter. Re-measuring both candidates at the raised floor changed nothing else — H stayed at
+62,272 KB and F at 15,648 KB, because H's bulk is SwiftNIO's static linkage rather than anything the
+deployment target governs — so the choice trades roughly 46 MB of runner bundle, and the Simulator
+versions below the new floor, for an upstream-maintained adapter in place of a self-maintained one.
+That is the maintainer's call to make, and it is recorded here as made, alongside the measurement
+that argued the other way.
 
-Raising the floor pulled in two changes worth recording, neither of them obvious from the version
-number. `.v18` is not expressible below `swift-tools-version:6.0`, so the manifest's tools version
-rises with the floor; and tools 6.0 defaults every target to the Swift 6 language mode, whose strict
-concurrency checking the runner's existing main-thread hop does not pass
-(`sending 'result' risks causing data races`). Every target therefore pins
-`swiftLanguageMode(.v5)`, which keeps the concurrency migration a deliberate future item rather than
-a side effect of a platform bump.
+**The dependency itself lands in Unit 4, not here.** `swift-openapi-hummingbird` requires iOS 17,
+and nothing imports Hummingbird until a server is wired to `APIHandler`, so declaring it while Unit 3
+is the newest work would link SwiftNIO into the wheel-bundled runner for code nothing calls and raise
+the package's floor for the same nothing. Unit 4 adds the dependency, raises the floor to iOS 17 —
+the adapter's actual minimum, not a release beyond it — and pays the 62,272 KB at the point the
+runner serves through it. Two consequences to expect there, neither obvious from the version number:
+iOS 18 would not be expressible below `swift-tools-version:6.0`, and tools 6.0 defaults every target
+to the Swift 6 language mode, whose strict concurrency checking the runner's main-thread hop does not
+pass (`sending 'result' risks causing data races`), so that step needs `swiftLanguageMode(.v5)` to
+keep the concurrency migration deliberate rather than a side effect of a platform bump.
 
 **Candidate F remains the smaller transport**: a quarter of H's size, no platform-floor change, and a
 `ServerTransport` conformance that came to about 70 lines, confirming the proposal's estimate that the
@@ -296,6 +298,12 @@ a bounded task group, rather than `NSLock` and `DispatchSemaphore` — but the i
 XCUITest operation in flight at a time and at most eight requests handled concurrently, carries over
 unchanged. This item does not revisit the reasoning behind either bound, only the mechanism that
 enforces it.
+
+The two land in different places, though, which is easy to miss. Serialization belongs to the
+handler and is Unit 3's to preserve. The handler bound belongs to whatever accepts connections, so
+it stays with the transport: `APIHandler` never sees a connection, and while `HTTPServer` is still
+serving, its own semaphore still applies. Unit 4 is therefore where the bound has to be restated on
+the new router — and a router configured with no bound would drop it with nothing failing.
 
 ### Unit 4 — Migrate the fifteen endpoints behind a comparison harness
 
@@ -389,24 +397,26 @@ Python driver needs no change at any stage.
 
 - [x] Unit 1 — author `openapi.yaml` for the fifteen existing endpoints, wire Swift OpenAPI
       Generator's build plugin into `BajutsuKit`, and record the swift-tools-version and
-      language-mode decision: tools 6.0 and `platforms: [.iOS(.v18), .macOS(.v14)]`, with every
-      target pinning `swiftLanguageMode(.v5)` so Hummingbird's iOS 17 floor does not drag a Swift 6
-      strict-concurrency migration along with it. The plugin sits on the shipped library, which
-      costs `-skipPackagePluginValidation` on both runner builds; `exact:` pins plus a committed
-      `Package.resolved` are what make accepting that prompt-suppression defensible.
+      language-mode decision: both stay put (tools 5.9, iOS 15, Swift 5 mode), because the OpenAPI
+      tooling forces neither — only the Hummingbird dependency would, and that lands with Unit 4.
+      The plugin sits on the shipped library, which costs `-skipPackagePluginValidation` on both
+      runner builds; `exact:` pins plus a committed `Package.resolved` are what make accepting that
+      prompt-suppression defensible.
 - [x] Unit 2 — build the `/health`-only PoC under both Hummingbird and FlyingFox and record the
       Go/No-Go outcome for each candidate: **F is the smaller transport** at 15.6 MB with no floor
       change, while **H costs 60.8 MB and an iOS 17 floor** — which the maintainer cleared by
       raising the floor to iOS 18 and adopting H for its upstream-maintained adapter. Size and platform floors are measured; the
       on-device memory and CI-contention health-poll latency axes still need a real E2E job, and
       the build times are single unrepeated runs carrying visible variance.
-- [x] Unit 3 — implement `APIHandler` against the winning candidate, preserving the `actuationLock`
-      and bounded-concurrency invariants. Both survive as one serial `operations` queue: it
-      serializes XCUITest work as the lock did, and absorbs the blocking main-thread hop off
-      Hummingbird's event loops, so `/health` — the one operation that never touches it — stays
-      answerable during a long gesture. Parity tests compare every endpoint's generated reply
-      against the legacy `Router`'s for the same input, and mutation-testing confirms they fail on
-      a drifted status string or a dropped optional field.
+- [x] Unit 3 — implement `APIHandler` against the winning candidate. The `actuationLock`
+      serialization carries over as one serial `operations` queue, which also absorbs the blocking
+      main-thread hop so a future event loop is never held; `/health` is the one operation that
+      never touches it, and so stays answerable during a long gesture. **BE-0287's eight-handler
+      bound does not carry over here** — nothing in `APIHandler` accepts a connection, so the bound
+      is the transport's, still enforced by `HTTPServer`'s semaphore. Unit 4 must carry it onto
+      whatever router it builds; a server with no bound would drop it silently. Parity tests compare
+      every endpoint's generated reply against the legacy `Router`'s for the same input, and
+      mutation-testing confirms they fail on a drifted status string or a dropped optional field.
 - [ ] Unit 4 — migrate the fifteen endpoints in the four groups above, one group at a time, behind the
       comparison harness.
 - [ ] Unit 5 — remove `HTTPServer.swift`'s and `Router.swift`'s hand-rolled transport code once

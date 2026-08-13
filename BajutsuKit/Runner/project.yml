@@ -6,7 +6,7 @@ name: BajutsuRunner
 options:
   bundleIdPrefix: com.bajutsu.runner
   deploymentTarget:
-    iOS: "18.0"
+    iOS: "15.0"
   createIntermediateGroups: true
 settings:
   base:

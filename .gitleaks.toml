@@ -54,11 +54,15 @@ description = "generic-api-key (entropy heuristic, a default rule) false-positiv
 targetRules = ["generic-api-key"]
 paths = ['''\.github/workflows/android-e2e\.yml''', '''bajutsu/templates/serve\.metrics\.mjs''', '''tests/test_totp(_step)?\.py''']
 
-# Swift build output, which `gitleaks dir .` walks because — unlike the git-history scan the hooks
-# run — a directory scan does not consult .gitignore. Both trees below hold vendored SwiftPM
-# dependency checkouts (OpenAPIKit's spec fixtures alone carry 57 findings), so they are third-party
-# test data that is generated, git-ignored, and never committed. Scoped to these two generated paths
-# rather than to any rule, so a real secret anywhere in the working tree is still caught.
+# Vendored SwiftPM dependency checkouts, which `gitleaks dir .` walks because — unlike the
+# git-history scan the hooks run — a directory scan does not consult .gitignore. Their test fixtures
+# carry third-party sample credentials (OpenAPIKit's OpenAPI spec fixtures alone account for 57
+# findings). Both patterns name where a package manager *puts* dependency sources, not a project
+# directory: `.build/` is SwiftPM's own, and `SourcePackages/checkouts/` is where Xcode vendors them
+# under any DerivedData path — so this keeps covering new build trees (the showcase apps resolve
+# BajutsuKit's dependencies into theirs) without listing each one. Every match is generated,
+# git-ignored, and never committed. Scoped to these paths rather than to any rule, so a real secret
+# anywhere in tracked source is still caught.
 [[allowlists]]
-description = "SwiftPM/Xcode build output (BajutsuKit/.build, BajutsuKit/Runner/build) holds vendored dependency checkouts and their test fixtures; generated and git-ignored, never committed"
-paths = ['''(^|/)\.build/''', '''BajutsuKit/Runner/build/''']
+description = "vendored SwiftPM dependency checkouts (.build/ and any DerivedData SourcePackages/checkouts/) and their third-party test fixtures; generated and git-ignored, never committed"
+paths = ['''(^|/)\.build/''', '''/SourcePackages/checkouts/''']

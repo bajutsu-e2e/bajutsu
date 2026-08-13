@@ -210,6 +210,151 @@ final class APIHandlerParityTests: XCTestCase {
         }
     }
 
+    /// `/isHittable` shares `tap`'s resolution outcomes but must not act, so it is compared across
+    /// the hittable and covered results as well as the two handle-resolution failures.
+    func testIsHittableParityAcrossEveryStatus() async throws {
+        for result in [TapResult.ok, .notHittable, .stale, .notFound] {
+            let forNew = elementProvider([Self.sample]); forNew.isHittableResult = result
+            let forLegacy = elementProvider([Self.sample]); forLegacy.isHittableResult = result
+
+            let handler = APIHandler(provider: forNew)
+            let handle = try await firstHandle(handler)
+            let new = try await handler.isHittable(.init(body: .json(.init(handle: handle))))
+            guard case .ok(let ok) = new, case .json(let payload) = ok.body else {
+                return XCTFail("unexpected isHittable output")
+            }
+
+            let router = Router(provider: forLegacy)
+            let legacyHandle = try legacyFirstHandle(router)
+            let response = router.handle(
+                HTTPRequest(
+                    method: "POST", path: "/isHittable",
+                    body: try JSONSerialization.data(withJSONObject: ["handle": legacyHandle])
+                )
+            )
+            assertSame(
+                try XCTUnwrap(JSONSerialization.jsonObject(with: response.body) as? [String: Any]),
+                try generated(payload), "/isHittable (\(result))"
+            )
+            XCTAssertTrue(forNew.tapCalls.isEmpty, "isHittable must query, never actuate")
+        }
+    }
+
+    /// `/gesture` is the one operation whose kind the legacy router validates itself. Both
+    /// well-formed kinds are compared here; the unknown-kind case is deliberately absent, because
+    /// the schema's `enum` moves that rejection into the generated decoder — see
+    /// `testUnknownGestureKindIsRejectedBeforeTheHandler`.
+    func testGestureParity() async throws {
+        for (kind, payloadKind) in [("pinch", Components.Schemas.GestureRequest.kindPayload.pinch),
+                                    ("rotate", .rotate)] {
+            let forNew = elementProvider([Self.sample])
+            let forLegacy = elementProvider([Self.sample])
+            let handler = APIHandler(provider: forNew)
+            let handle = try await firstHandle(handler)
+            let new = try await handler.gesture(
+                .init(body: .json(.init(handle: handle, kind: payloadKind, scale: 2.0)))
+            )
+            guard case .ok(let ok) = new, case .json(let payload) = ok.body else {
+                return XCTFail("unexpected gesture output")
+            }
+
+            let router = Router(provider: forLegacy)
+            let legacyHandle = try legacyFirstHandle(router)
+            let response = router.handle(
+                HTTPRequest(
+                    method: "POST", path: "/gesture",
+                    body: try JSONSerialization.data(
+                        withJSONObject: ["handle": legacyHandle, "kind": kind, "scale": 2.0]
+                    )
+                )
+            )
+            assertSame(
+                try XCTUnwrap(JSONSerialization.jsonObject(with: response.body) as? [String: Any]),
+                try generated(payload), "/gesture (\(kind))"
+            )
+            XCTAssertEqual(forNew.gestureCalls.first?.kind, kind)
+            XCTAssertEqual(forNew.gestureCalls.first?.scale, 2.0)
+        }
+    }
+
+    /// A contract change the port makes deliberately, recorded so it is not mistaken for a
+    /// regression: the legacy router answered `400 {"status":"error","message":"missing or unknown
+    /// gesture kind"}` for an unrecognised kind, whereas the schema's `enum: [pinch, rotate]` now
+    /// rejects it in the generated decoder, before any handler runs. The rejection still happens —
+    /// its body is the transport's, not this handler's.
+    func testUnknownGestureKindIsRejectedBeforeTheHandler() throws {
+        let body = Data(#"{"handle": "h1", "kind": "wiggle"}"#.utf8)
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(Components.Schemas.GestureRequest.self, from: body),
+            "an unknown kind must not decode"
+        )
+        let legacyResponse = Router(provider: FakeElementProvider()).handle(
+            HTTPRequest(method: "POST", path: "/gesture", body: body)
+        )
+        XCTAssertEqual(legacyResponse.statusCode, 400, "the legacy router rejected it in the handler")
+    }
+
+    /// `/systemAlert/tap` is the only operation that resolves against `alertStore` rather than the
+    /// app-tree `store` (BE-0316). Reading a handle minted by the alert query back out through the
+    /// tap is what would catch a copy-paste of the wrong store, which no other test covers.
+    func testSystemAlertTapParity() async throws {
+        let forNew = FakeElementProvider(); forNew.systemAlertButtons = [Self.sample]
+        let forLegacy = FakeElementProvider(); forLegacy.systemAlertButtons = [Self.sample]
+
+        let handler = APIHandler(provider: forNew)
+        let query = try await handler.querySystemAlert(.init(body: .json(.init())))
+        guard case .ok(let queried) = query, case .json(let queryPayload) = queried.body,
+              let handle = queryPayload.elements.first?.handle else {
+            return XCTFail("the alert query minted no handle")
+        }
+        let new = try await handler.tapSystemAlert(.init(body: .json(.init(handle: handle))))
+        guard case .ok(let ok) = new, case .json(let payload) = ok.body else {
+            return XCTFail("unexpected systemAlert/tap output")
+        }
+        XCTAssertEqual(payload.status, .ok, "a handle from the alert store must resolve, not 404")
+        XCTAssertEqual(forNew.systemAlertTapCalls.count, 1, "the tap must reach the alert provider")
+
+        let router = Router(provider: forLegacy)
+        let legacyQuery = router.handle(
+            HTTPRequest(method: "POST", path: "/systemAlert/query", body: Data("{}".utf8))
+        )
+        let legacyJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: legacyQuery.body) as? [String: Any]
+        )
+        let legacyHandle = try XCTUnwrap(
+            (legacyJSON["elements"] as? [[String: Any]])?.first?["handle"] as? String
+        )
+        let legacyTap = router.handle(
+            HTTPRequest(
+                method: "POST", path: "/systemAlert/tap",
+                body: try JSONSerialization.data(withJSONObject: ["handle": legacyHandle])
+            )
+        )
+        assertSame(
+            try XCTUnwrap(JSONSerialization.jsonObject(with: legacyTap.body) as? [String: Any]),
+            try generated(payload), "/systemAlert/tap"
+        )
+    }
+
+    /// The 200 path of `/screenshot`, which returns PNG bytes rather than JSON, so it is compared
+    /// as bytes against what the legacy router wrote.
+    func testScreenshotSuccessParity() async throws {
+        let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+        let forNew = FakeElementProvider(); forNew.screenshotData = png
+        let forLegacy = FakeElementProvider(); forLegacy.screenshotData = png
+
+        let new = try await APIHandler(provider: forNew).screenshot(.init())
+        guard case .ok(let ok) = new, case .png(let body) = ok.body else {
+            return XCTFail("unexpected screenshot output")
+        }
+        let generatedBytes = try await Data(collecting: body, upTo: 1024)
+        let legacyResponse = Router(provider: forLegacy).handle(
+            HTTPRequest(method: "GET", path: "/screenshot", body: nil)
+        )
+        XCTAssertEqual(generatedBytes, legacyResponse.body, "/screenshot bytes differ")
+        XCTAssertEqual(legacyResponse.contentType, "image/png")
+    }
+
     // MARK: - Error paths
 
     func testBadRequestParity() async throws {

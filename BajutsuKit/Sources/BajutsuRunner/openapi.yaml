@@ -299,7 +299,10 @@ components:
       properties:
         status:
           type: string
-          description: '`ready` once the runner is serving.'
+          enum: [ready]
+          description: >-
+            The driver's readiness wait compares this against the literal `ready`, so it is an enum
+            for the same reason `ActuationReply.status` is: a rename has to stop compiling.
     ScreenReply:
       type: object
       required: [width, height]
@@ -344,6 +347,10 @@ components:
       properties:
         status:
           type: string
+          enum: [ok]
+          description: >-
+            Matched against the driver's own `_OK` constant, so it is an enum rather than a free
+            string for the same reason the actuation statuses are.
         elements:
           type: array
           items:

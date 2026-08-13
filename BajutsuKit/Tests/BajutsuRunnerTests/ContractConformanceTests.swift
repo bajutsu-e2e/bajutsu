@@ -31,7 +31,7 @@ final class ContractConformanceTests: XCTestCase {
             Components.Schemas.HealthReply.self, from: route("GET", "/health")
         )
         // The driver's readiness wait polls until this exact string comes back.
-        XCTAssertEqual(reply.status, "ready")
+        XCTAssertEqual(reply.status, .ready)
     }
 
     func testScreenReplyDecodesFromTheRouter() throws {
@@ -67,7 +67,7 @@ final class ContractConformanceTests: XCTestCase {
             Components.Schemas.ElementsReply.self,
             from: route("GET", "/elements", provider: provider)
         )
-        XCTAssertEqual(reply.status, "ok")
+        XCTAssertEqual(reply.status, .ok)
         let element = try XCTUnwrap(reply.elements.first)
         XCTAssertEqual(element.identifier, "home.title")
         XCTAssertEqual(element.label, "Home")
@@ -104,8 +104,10 @@ final class ContractConformanceTests: XCTestCase {
     }
 
     /// The four status strings the driver matches against its own `_OK` / `_STALE` /
-    /// `_NOT_FOUND` / `_NOT_HITTABLE` constants. The enum is the whole point of the contract:
-    /// renaming one on either side stops compiling instead of silently mismatching at run time.
+    /// `_NOT_FOUND` / `_NOT_HITTABLE` constants. Every status the driver compares as a literal is
+    /// modelled as an enum — these four, plus `ready` and `/elements`' own `ok` — which is the whole
+    /// point of the contract: renaming one on either side stops compiling instead of silently
+    /// mismatching at run time.
     func testActuationReplyCoversEveryStatusTheRouterEmits() throws {
         let cases: [(TapResult, Components.Schemas.ActuationReply.statusPayload)] = [
             (.ok, .ok),
