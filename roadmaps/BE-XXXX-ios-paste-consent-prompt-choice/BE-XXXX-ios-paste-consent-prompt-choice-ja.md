@@ -22,7 +22,9 @@ iOS が表示するシステムアラートで、読み取りを許可するか�
 対象を意図的に2つのプロンプト(通知許可と App Tracking Transparency (ATT))に絞りました。
 [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md)
 の事前権限設定がどちらも事前に答えられないプロンプトだったからです。ペースト許諾プロンプトも同じ系列に属します。
-`simctl privacy` にもほかのどの事前設定にも、このプロンプトへ事前に答える手段がないため、許可または拒否したい
+`simctl privacy` はこのプロンプトに届かず、ほかの事前設定で答えられることも知られていません。「他のアプリ
+からのペースト」というアプリごとの設定をアプリの外から事前に設定できるかどうかは、ユニット3で確かめる未解決の
+問いです。そのため許可または拒否したい
 作成者は今のところ、ロケールに依存する文字通りの `sel: { label: "Allow Paste" }` しか使えません。この項目の
 貢献は2つあります。1つは、BE-0320 が最初の2つのプロンプトについて埋めたのと同じやり方で、このラベル対応表の
 欠落を埋めることです。もう1つは、アプリの外からペーストボードへ書き込んでから内側で読み戻すという、実際に別
@@ -39,7 +41,7 @@ Permissions タブは今のところ、まさにこのケースを避けて通�
 元が同一のアプリである場合を除きます。アプリの外からペーストボードへ書き込み、テスト対象アプリの内側でそれを
 読み戻すシナリオは、そのままこのペースト許諾プロンプトに突き当たります。
 
-このプロンプトには、事前に答える手段がありません。BE-0276 の権限プリセットは、アプリのプロセスが起動する前に、
+このプロンプトに事前に答える手段は知られていません。BE-0276 の権限プリセットは、アプリのプロセスが起動する前に、
 `simctl privacy` を通じて Transparency, Consent, and Control (TCC) の状態を書き込みます。しかしペースト許諾
 プロンプトは、通知許可(そもそも TCC のサービスではありません)や ATT(`kTCCServiceUserTracking` として TCC に
 属しますが、`simctl` のトグルがありません)と同じく、`simctl privacy` の手が届きません。
@@ -69,9 +71,9 @@ Permissions タブは今のところ、まさにこのケースを避けて通�
 
 ## 詳細設計
 
-作業は4つに分かれます。ロケール別対応表の拡張、既存の Permissions タブを使った showcase フィクスチャの作成、
-実機(実 Simulator)での検証、そしてドキュメントの更新です。このうち検証は最初から独立したユニットとして
-扱います。BE-0052 の `setClipboard` が、実際のアプリ間ペーストと同じようにこのプロンプトを引き起こすかどうかを、
+作業は5つに分かれます。ロケール別対応表の拡張、既存の Permissions タブを使った showcase フィクスチャの作成、
+実機(実 Simulator)での検証、ドキュメントの更新、そして新しい項目を高速なテストスイートで押さえることです。
+このうち検証は最初から独立したユニットとして扱います。BE-0052 の `setClipboard` が、実際のアプリ間ペーストと同じようにこのプロンプトを引き起こすかどうかを、
 この提案自身ではまだ確認していないからです。
 
 1. **`bajutsu/scenario/system_alerts.py` のプロンプト対応表に3つ目の項目を追加します。** `SystemAlertPrompt`
@@ -82,7 +84,11 @@ Permissions タブは今のところ、まさにこのケースを避けて通�
    のどの `Localizable.strings` のキーから文言を書き写したかを明記しています(`UserNotificationsServer.framework`
    と `TCC.framework`)。実装するセッションは、3つ目の項目を書く前に、ペースト許諾アラートについても同じやり方
    で出荷済みの文言を見つけ出す必要があります。文言を推測してはいけません。この対応表がユニット3で実機に
-   よって確認されるのは、まさにそのためです。モジュールのそれ以外の部分は変わりません。`system_alert_label`
+   よって確認されるのは、まさにそのためです。このモジュールの docstring、`SystemAlertPrompt` の上のコメント、
+   そして `bajutsu/scenario/models/actions.py` の `HandleSystemAlert` 自身の docstring は、いずれも「2つの
+   プロンプト」と明記しています。`make check` はこの記述を `Literal` と突き合わせないため、同じ変更で3箇所とも
+   書き換えます。そうしなければ、ユニット1は docstring が自身の型と矛盾したモジュールを出荷することになります。
+   モジュールのそれ以外の振る舞いは変わりません。`system_alert_label`
    の解決、`UncoveredSystemAlertLocale` という失敗の扱い、`covered_languages` はいずれも、本体を変えなくても
    3つ目のプロンプトへそのまま一般化します。`HandleSystemAlert`(`bajutsu/scenario/models/actions.py`)も、
    すでに import している型を広げる以外にスキーマの変更は要りません。`sel` / `label` / `labelMatches` /
@@ -109,6 +115,9 @@ Permissions タブは今のところ、まさにこのケースを避けて通�
        - scroll: { to: { id: [sys.paste.value, sys_paste_value] }, direction: down }
        - tap: { id: [sys.paste, sys_paste] }                              # アプリが UIPasteboard.general.string を読み取る
        - handleSystemAlert: { prompt: paste, choice: grant, timeout: 10 } # 許諾プロンプトを承認する
+       # アプリが値を公開するのは読み取りが返ったあとで、アラートとは別プロセスの出来事です。
+       # 検証と競合させず、条件待ちで受けます(第二の指針)。
+       - wait: { for: { id: [sys.paste.value, sys_paste_value], value: "bajutsu-cross-clip" }, timeout: 10 }
      expect:
        - value: { sel: { id: [sys.paste.value, sys_paste_value] }, equals: "bajutsu-cross-clip" }
    ```
@@ -118,10 +127,15 @@ Permissions タブは今のところ、まさにこのケースを避けて通�
    BE-0316 自身が作った `systemalert` タグを再利用します。Android の `smoke (adb)` ジョブは固定されたシナリオ
    の一覧を実行するため、このファイルを名指ししない限り実行対象になりません。同じタグは、シナリオ単位の権限
    状態をリセットしないローカルの一括実行(`run-swiftui` / `run-uikit`)からも、すでにこのフィクスチャを除外
-   しています。CI への組み込みも BE-0316 と同じやり方をとり、`run (xcuitest)` ジョブが持つ単一の `scenarios:`
-   リストに、新しいファイルを名指しするエントリを追加します。CI のジョブはどれもシナリオファイルを明示的に
-   名指ししており、タグを付けるだけでは何も実行対象に加わらないからです。このリストは、デバイスの状態を
-   乱さないように権限系のシナリオを最後に並べているため、新しいエントリもそこに加えます。
+   しています。CI へは、ジョブの `scenarios:` の一覧に新しいファイルを名指しして組み込みます。CI のジョブは
+   どれもシナリオファイルを明示的に名指ししており、タグを付けるだけでは何も実行対象に加わらないからです。
+   最初に置くのは、ゲートではない `actuation (xcuitest)` ジョブです。このジョブは、まだ gating の `run`
+   ジョブに入る資格を得ていない実機カバレッジの着地場所であり(BE-0218)、`setClipboard` を使う `device.yaml`
+   もここで動いています。`run` の一覧へは、デバイスの状態を乱さないよう権限系のシナリオの後ろに置く形で、
+   ユニット3がプロンプトの表示を実証してから昇格させます。いきなり `run` に置けば、この項目自身が未検証と
+   認めている機構に必須の `E2E` ゲートを預けることになります。プロンプトが出なければ `handleSystemAlert`
+   ステップがタイムアウトし、無関係なすべての PR で必須チェックを赤くしてしまいます。どちらのジョブに置く
+   場合も、同じ変更で、そのジョブが実行するファイル数とシナリオ数を数えているヘッダーのコメントも更新します。
 3. **実機で検証し、検証が成り立たなかった場合の代替案も名指しします。** ここには、off-Simulator のゲートで
    は証明できない、確認できていない事実が2つあります。1つは、`simctl pbcopy` による書き込みが「別プロセス」
    として十分な強さで扱われ、iOS がそもそもこのプロンプトを出すかどうかです(Simulator 自身の制御チャネルを
@@ -140,10 +154,21 @@ Permissions タブは今のところ、まさにこのケースを避けて通�
    かどうかも、コストをかけずに確かめるべきです。もし事前に設定できるとわかった場合は、この項目が防止策を
    退けた判断を検証しないまま放置せず、その旨を報告してください。
 4. **ドキュメント。** [`docs/scenarios.md`](../../docs/scenarios.md#naming-the-intent-instead-of-the-text)
-   の「テキストではなく意図で指定する」節とその日本語訳に、ユニット3が文言を確認した時点で `notifications`、
-   `tracking` と並べて `paste` を追加します。同じ節がすでに述べている2つの限界(Simulator 専用であること、
-   リアクティブなガードの初期値が英語のままであること)は、この3つ目のプロンプトにもそのまま当てはまるため、
-   あらためて書き直す必要はありません。
+   の「テキストではなく意図で指定する」節と、[`docs/dsl-grammar.md`](../../docs/dsl-grammar.md) の
+   `handleSystemAlert` の生成規則(このフィールドを `prompt: notifications|tracking` と書き出しています)、
+   そして両方の日本語訳に、ユニット3が文言を確認した時点で `notifications`、
+   `tracking` と並べて `paste` を追加します。`make check` はこの生成規則をモデルと突き合わせないため、
+   `scenarios.md` だけを対象にすると、`paste` を黙って省いたまま、スキーマが受け付けないかのように読める
+   リファレンスが残ります。`docs/scenarios.md` がすでに述べている2つの限界(言語の固定が Simulator 専用で
+   あること、リアクティブなガードの初期値が英語のままであること)は、この3つ目のプロンプトにもそのまま
+   当てはまるため、あらためて書き直す必要はありません。
+5. **テスト。** [`tests/scenario/test_system_alerts.py`](../../tests/scenario/test_system_alerts.py)
+   で `paste` を検証します。このファイルは今日のプロンプトを直接書き出しており、
+   `test_every_covered_language_answers_both_choices` は `("notifications", "tracking")` を回し、
+   ラベルの期待値は手書きの `parametrize` の一覧です。このファイルに触れずに `_LABELS` へ項目を足すと、
+   gate は緑のまま、中途半端に埋まった項目を防ぐ検査(`grant` が `KeyError` を投げるあいだ `deny` だけが
+   解決してしまう事態を止める検査)が新しいプロンプトを一切見ません。ユニット3の実機検証では代われません。
+   `make check` は Simulator のない Linux で走るからです。
 
 ## 検討した代替案
 
@@ -177,13 +202,19 @@ Permissions タブは今のところ、まさにこのケースを避けて通�
 > ともに記録します。
 
 - [ ] ユニット1 — `bajutsu/scenario/system_alerts.py` に3つ目のプロンプト `paste` を追加する(スキーマ、
-      `_Prompts` / `_LABELS`、`HandleSystemAlert` の型を広げる)。
+      `_Prompts` / `_LABELS`、`HandleSystemAlert` の型を広げる)。あわせて「2つのプロンプト」と書いている
+      モジュールの docstring、`SystemAlertPrompt` の上のコメント、`HandleSystemAlert` の docstring も書き換える。
 - [ ] ユニット2 — `setClipboard` でペーストボードを書き込み、既存の Permissions タブを通じて読み戻す
-      showcase シナリオを追加する。BE-0316 のフィクスチャと同じようにタグを付け、CI に組み込む。
+      showcase シナリオを追加する。BE-0316 のフィクスチャと同じようにタグを付け、まずゲートではない
+      `actuation (xcuitest)` ジョブに置き、ユニット3の実証を経てから gating の `run` の一覧へ昇格させる。
 - [ ] ユニット3 — `setClipboard` がそもそもこのプロンプトを引き起こすかどうかを実機で検証し、実際の
-      ボタン文言を書き写す。引き起こさない場合は代替のフィクスチャを名指しする。
-- [ ] ユニット4 — ドキュメント: `docs/scenarios.md` の「テキストではなく意図で指定する」節とその日本語訳に
-      `paste` を追加する。
+      ボタン文言を書き写す。引き起こさない場合は代替のフィクスチャを名指しする。あわせて「他のアプリからの
+      ペースト」の設定をアプリの外から事前に設定できるかどうかも確かめる。
+- [ ] ユニット4 — ドキュメント: `docs/scenarios.md` の「テキストではなく意図で指定する」節と
+      `docs/dsl-grammar.md` の `handleSystemAlert` の生成規則、そして両方の日本語訳に `paste` を追加する。
+- [ ] ユニット5 — テスト: `tests/scenario/test_system_alerts.py` で `paste` を検証する。このファイルは
+      `("notifications", "tracking")` というプロンプトの組と、ラベルの `parametrize` の一覧で、今日の2つの
+      プロンプトを直接書き出している。
 
 ## 参考
 
