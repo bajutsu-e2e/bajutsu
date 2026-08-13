@@ -334,15 +334,15 @@ def test_make_driver_forwards_the_xcuitest_diagnostics_hook(
     # declares the crash. Dropping the kwarg here would leave the runner-crash trigger collecting
     # nothing while CI stayed green — so pin that both injected callables actually arrive, the same
     # way the browser-engine test above pins its own forwarding.
-    import bajutsu.drivers.xcuitest as xcuitest_mod
-
     captured: dict[str, object] = {}
 
     class _Recorder:
         def __init__(self, **kwargs: object) -> None:
             captured.update(kwargs)
 
-    monkeypatch.setattr(xcuitest_mod, "XcuitestDriver", _Recorder)
+    # Patched by name so this file keeps one import form for the driver module — `make_driver` imports
+    # `XcuitestDriver` from it at call time, so the module attribute is what it reads.
+    monkeypatch.setattr("bajutsu.drivers.xcuitest.XcuitestDriver", _Recorder)
     fired: list[bool] = []
     make_driver(
         "xcuitest",

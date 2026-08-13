@@ -25,7 +25,7 @@ def _capture_dir(root: Path, index: int, reason: str) -> Path:
 
 @pytest.fixture(autouse=True)
 def _fresh_capture_count() -> Any:
-    """The per-trigger budget is module state; a leaked count would make these tests order-dependent."""
+    """The budget and the warn-once flag are module state; a leak would make these tests order-dependent."""
     stall_diagnostics.reset()
     yield
     stall_diagnostics.reset()
@@ -380,8 +380,9 @@ def test_an_unwritable_summary_warns_once(
     # An unwritable summary loses *every* probe outcome, so it cannot vanish at debug on a lane that
     # installs no log handler — and it must not flood the log either, since the same failure repeats
     # for every probe and would bury the crash underneath it.
+    # The warn-once state is process-wide, so `reset()` — which the autouse fixture runs — is what keeps
+    # an earlier test's warning from suppressing this one's.
     monkeypatch.setenv(stall_diagnostics._DIAGNOSTICS_ENV, str(tmp_path))
-    monkeypatch.setattr(stall_diagnostics, "_summary_warned", False)
     _record_runs(monkeypatch)
     real_open = Path.open
 
@@ -395,6 +396,12 @@ def test_an_unwritable_summary_warns_once(
         stall_diagnostics.capture("runner-crash", "UDID")
     unwritable = [r for r in caplog.records if "cannot write" in r.message]
     assert len(unwritable) == 1
+    # And `reset()` must forget the warning too, or a long-lived process — the `bajutsu serve` case the
+    # module's own budget comment calls out — goes permanently silent after its first unwritable summary.
+    stall_diagnostics.reset()
+    with caplog.at_level("WARNING", logger="bajutsu.stall_diagnostics"):
+        stall_diagnostics.capture("runner-crash", "UDID")
+    assert len([r for r in caplog.records if "cannot write" in r.message]) == 2
 
 
 def test_a_sample_written_before_an_error_is_still_locked_down(

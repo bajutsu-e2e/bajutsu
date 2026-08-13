@@ -98,10 +98,12 @@ _STDERR_EXCERPT = 400
 
 _SUMMARY = "probe.txt"
 
-# One warning per process when the summary itself cannot be written (see `_note`).
-_summary_warned = False
-
 _captures: dict[str, int] = {}
+
+# Failures already warned about, once per process — currently only an unwritable summary (see `_note`).
+# A set of keys rather than a rebound flag, so every piece of this module's process-scoped state lives
+# in a mutable container next to `_captures` and `reset()` clears all of it in one place.
+_warned: set[str] = set()
 
 
 def capture(reason: str, udid: str | None = None) -> None:
@@ -182,8 +184,9 @@ def _capture(reason: str, udid: str | None) -> None:
 
 
 def reset() -> None:
-    """Forget how many captures this process has taken (the per-trigger budget's only state)."""
+    """Forget this process's state: how many captures each trigger took, and what it has warned about."""
     _captures.clear()
+    _warned.clear()
 
 
 def _slug(reason: str) -> str:
@@ -342,7 +345,6 @@ def _secure(dest: Path, label: str, writes: Path | None) -> None:
 
 def _note(dest: Path, line: str) -> None:
     """Append one outcome line to the capture's summary, warning once if the summary is unwritable."""
-    global _summary_warned
     try:
         with (dest / _SUMMARY).open("a", encoding="utf-8") as fh:
             fh.write(line + "\n")
@@ -351,6 +353,6 @@ def _note(dest: Path, line: str) -> None:
         # Warned rather than dropped at debug — an unwritable summary loses *every* probe outcome, and
         # a full disk on a degrading job is exactly when that happens. Once per process: the same
         # failure repeats for every probe, and a log flooded with it hides the crash underneath.
-        if not _summary_warned:
-            _summary_warned = True
+        if _SUMMARY not in _warned:
+            _warned.add(_SUMMARY)
             _logger.warning("stall diagnostics: cannot write %s (%s)", dest / _SUMMARY, exc)
