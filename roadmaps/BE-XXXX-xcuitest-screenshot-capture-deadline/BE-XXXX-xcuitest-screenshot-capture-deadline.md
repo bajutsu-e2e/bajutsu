@@ -27,7 +27,8 @@ that runs far longer than the client waits, answering `/health` all the while.
 This item does not remove the underlying cause, which is host exhaustion and belongs to other work.
 It removes two things layered on top of it. The runner captures from the screen rather than from the
 application element, dropping an element-resolution round trip that has no bearing on the resulting
-image and that degrades — silently, at `HTTP 200` — into a 1×1 pixel image when the app is unhealthy. The screenshot handler then
+image and that, when the app is unhealthy, silently degrades the capture — at `HTTP 200` — into a 1×1
+pixel image. The screenshot handler then
 gains a deadline shorter than the client's socket timeout, so a capture that still runs long answers
 with an explicit, attributable failure instead of the silence the channel is left to interpret today.
 The first change addresses the capture we can see failing. The second does not free the main thread
