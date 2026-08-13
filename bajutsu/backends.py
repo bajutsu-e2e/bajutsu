@@ -403,6 +403,7 @@ def make_driver(
     record_video_dir: Path | None = None,
     runner_port: int = 0,
     runner_alive: Callable[[], bool] | None = None,
+    on_stall: Callable[[str], None] | None = None,
     fetch_hierarchy: HierarchyFetch | None = None,
     fetch_clock: ClockFetch | None = None,
     act: ActFn | None = None,
@@ -415,7 +416,9 @@ def make_driver(
     resolves its target on the device, so no host-computed coordinate is injected; without it the
     coordinate actuators stand in. Every other actuator ignores all three. The xcuitest backend reads
     `runner_alive` — the environment's `xcodebuild`-process liveness check — so crash-recovery can fail
-    fast on a runner whose process has exited; every other actuator ignores it.
+    fast on a runner whose process has exited; every other actuator ignores it. It also takes
+    `on_stall`, the environment's bounded diagnostics capture (BE-0361), called when that same layer
+    declares a mid-run crash.
     """
     if actuator == "adb":
         from bajutsu.drivers.adb import AdbDriver
@@ -430,7 +433,9 @@ def make_driver(
             )
         from bajutsu.drivers.xcuitest import XcuitestDriver
 
-        return XcuitestDriver(host="127.0.0.1", port=runner_port, runner_alive=runner_alive)
+        return XcuitestDriver(
+            host="127.0.0.1", port=runner_port, runner_alive=runner_alive, on_stall=on_stall
+        )
     if actuator == "playwright":
         # Lazy: keep Playwright (a heavy optional dep) off the default import path.
         from bajutsu.drivers.playwright import PlaywrightDriver

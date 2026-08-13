@@ -96,6 +96,56 @@ hook step-for-step; every check except `actionlint` (a standalone binary CI inst
 identically on a fresh clone via `uv` alone, which is what makes "green locally" predict
 "green in CI".
 
+### What a failing iOS job collects (BE-0361)
+
+The iOS lane's hardest failures are the ones where nothing crashes. The resident XCUITest runner —
+the XCTest host `bajutsu` spawns with `xcodebuild test-without-building` and drives over a loopback
+Hypertext Transfer Protocol (HTTP) channel — reports `Timed out while requesting screenshot`, ends
+its test method, and leaves the Python side to declare a mid-run crash. No process died, so a
+crash-report sweep finds nothing, and the state that would say whether the Simulator's render service
+wedged or the virtualized macOS host starved it disappears before anyone opens the job. Every iOS
+job that boots a Simulator collects a layered set of evidence into `runs/`, which those jobs already
+upload — every job but `codegen`, which uploads only its `.xcresult` and has no `runs/` artifact for
+the collection to ride. None of it reaches a verdict: the collection writes files and nothing else, and
+the deterministic assertions still decide pass/fail.
+
+Three layers collect it, split by what each one can see.
+
+- **Inside `bajutsu`**, because the running process is the one thing that knows *when* a stall
+  happens.
+  `BAJUTSU_XCUITEST_RESULT_BUNDLES` gives every runner spawn a `-resultBundlePath`, so
+  `runs/runner-logs/result-<udid>-<port>.xcresult` records what testmanagerd itself saw — the precise
+  XCTest failure, its timestamps, and any attachments — rather than the paraphrase the captured
+  stdout carries. `BAJUTSU_STALL_DIAGNOSTICS` arms a capture that fires the moment the channel
+  declares a mid-run crash or a `recordVideo` produces no bytes, writing a timed `simctl` screenshot,
+  `sample` output for the rendering processes, and a `ps` / `vm_stat` snapshot into
+  `runs/diagnostics/stalls/stall-NN-<reason>/`. Two limits bound the capture — a wall-clock
+  budget per capture, and a cap of three per run — so a crash-looping job cannot spend its
+  `timeout-minutes` collecting evidence. Both variables are unset outside this lane, and unset leaves
+  the behavior unchanged.
+- **From CI, about the Simulator and CoreSimulator**, through the
+  [`collect-ios-diagnostics`](../.github/actions/collect-ios-diagnostics/action.yml) composite action
+  every Simulator-driving job calls. Its cheap tier runs on every job: the tail of
+  `CoreSimulator.log`, the booted device's own CoreSimulator log directory, a crash-report sweep
+  widened past `.ips` / `.crash` to the hang, spin, and jetsam reports this failure class actually
+  leaves, and a host snapshot (`sw_vers`, `sysctl`, `xcodebuild -version`, `simctl list`) that keys
+  each red run against a runner image and hardware generation. Its heavy tier runs when the job's own
+  run step failed, and not otherwise: `xcrun simctl diagnose`, and two targeted unified-log extracts.
+- **Over time, about the host**, from the same action's `start` phase: a background sampler appends
+  `top`, `vm_stat`, and `memory_pressure` to `runs/diagnostics/host-telemetry.log` every 20 seconds,
+  and a one-shot render probe records how long a screenshot takes and whether a five-second
+  `recordVideo` produces any bytes at all. The sampler is an observer outside every run loop, so its
+  interval is a sampling cadence and not a wait a verdict depends on.
+
+We split the unified-log extract in two on purpose, and the reason is worth stating because the
+opposite is the natural assumption. The Simulator's guest processes that serve screenshots —
+`SpringBoard`, `backboardd`, and `testmanagerd` — do **not** write to the host's unified log.
+Measured on a booted device, a host-side `log show` filtered on those process names returns its
+header and nothing else. The guest's entries live in the device's own log store, so the action runs a
+second `log show` inside the guest through `simctl spawn`, and keeps the host-side extract for the
+CoreSimulator service processes that genuinely do log there. A single host-side extract would have
+produced an empty file — the same empty-by-construction artifact this collection replaced.
+
 ## Running bajutsu in your app's CI
 
 > bajutsu is pre-release (unpublished). Until it is on PyPI, vendor it (a submodule or a

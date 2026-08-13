@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0361](BE-0361-ios-ci-simulator-diagnostics-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0361") |
+| 実装 PR | （未定） |
 | トピック | CI / build infrastructure |
 | 関連 | [BE-0319](../BE-0319-xcuitest-cold-spawn-resilience/BE-0319-xcuitest-cold-spawn-resilience-ja.md)、[BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md)、[BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md)、[BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md)、[BE-0346](../BE-0346-video-timing-sync/BE-0346-video-timing-sync-ja.md)、[BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation-ja.md) |
 <!-- /BE-METADATA -->
@@ -124,10 +125,35 @@ Simulator を駆動する 7 つの macOS ジョブがそれぞれ自前のシェ
   デバイス状態に対する Apple 純正のコレクタ）を実行し、unified log は
   `log show --last <window> --predicate` で対象を絞って抽出します。抽出対象は描画と
   スクリーンショットを担うプロセス群、すなわち `backboardd` / `SpringBoard` /
-  `testmanagerd` / `CoreSimulatorService` と `com.apple.CoreSimulator` サブシステムです。
-  Simulator のゲストプロセスはホストの unified log に書き込むため、この抽出は仮想化境界の
-  両側を覆います。`bajutsu-e2e/action.yml` の内部ではこの段を実行ステップ自身の結果で
-  ゲートし、pytest のレーンでは呼び出し側が `if: failure()` でゲートします。
+  `testmanagerd` と CoreSimulator のサービスプロセスです。`bajutsu-e2e/action.yml` の内部では
+  この段を実行ステップ自身の結果でゲートします。pytest のレーンでも呼び出し側が実行ステップの
+  結果でゲートします。`failure()` は `with:` の値としては使えないためです。
+
+実装の過程で、この設計の誤りが3つ実測で判明しました。どれも、放置すれば「静かに何も集めない
+収集器」を出荷することになり、この提案が終わらせようとしている失敗そのものになります。
+
+- **ゲストはホストのログに書き込みません。** 上の「Simulator のゲストプロセスはホストの
+  unified log に書き込む」という記述は誤りです。起動済みデバイスで `SpringBoard` /
+  `backboardd` / `testmanagerd` をホスト側の `log show` で絞ると、見出し行だけが返ります。
+  これらのエントリはデバイス自身のログストアにあります。そこで収集は抽出を**2つ**走らせます。
+  1つはホスト側で CoreSimulator のサービスプロセス向けです（プロセス名は
+  `CoreSimulatorService` ではなく `com.apple.CoreSimulator.CoreSimulatorService` で、サブ
+  システムは `CONTAINS` での一致が必要です）。もう1つは `simctl spawn` を通してゲストの内側で
+  走らせます。30分の窓での実測は、ホスト側 34.5k 行、ゲスト側 11.4k 行で、いずれも約1秒です。
+- **`simctl diagnose` は標準入力で止まり、`--output` のディレクトリを破壊します。** 同意通知を
+  表示して改行を待ちます。CI ステップの標準入力は `/dev/null` なので、そこで EOF を読み、何も
+  収集せずに exit 0 します。さらに `--output` をアーカイブの*基準パス*として扱い、そのディレクトリ
+  を `<パス>.tar.gz` で置き換えて、中にあった他のものを削除します。収集先ディレクトリを指定すると、
+  収集物の残りが消えます。実測では起動済みデバイス1台で約15秒、22〜78MB でした。フラグは
+  `--flag=value` の形式が必須です。
+- **`CoreSimulator.log` には上限がありません。** 丸ごとコピーすると、長寿命のホストでは 183MB の
+  成果物になり、しかもそれが*常時*段です。収集では末尾だけを取ります。
+
+同じ実測から、小さな形が2つ決まりました。`xcodebuild` は `-resultBundlePath` が既存だと起動
+そのものを拒むため、Unit 1 は自分の鍵にある残骸を先に消します。そうしないと、エフェメラルポートの
+再利用が診断機能を起動失敗に変えてしまいます。そして `start` フェーズは、呼び出す各ジョブではなく
+`bajutsu-e2e/action.yml` の内側に置きます。`bundled-runner` がこの action を2回呼ぶため、ジョブ側に
+置くと1回目の `collect` がサンプラを止めてしまうからです。
 
 ### 第3層は時系列のホストテレメトリ
 
@@ -161,9 +187,15 @@ Simulator を駆動する 7 つの macOS ジョブがそれぞれ自前のシェ
    各収集物が `runs/` のどこに置かれるか、4つの仮説に対して収集物をどう読むかを記します。
 5. **テスト。** `bajutsu` 側の2つのフックのユニットテストです。環境変数が設定されたときに
    限り起動 argv が `-resultBundlePath` を得ること、未設定ならプローブが no-op であること、
-   設定時は上限付きかつベストエフォートであることを固定します。新しい composite action は
-   `make lint-actions` / `actionlint` が検査し、正のパスリストへの追加が必要なら
-   `tests/test_e2e_changes.py` を拡張します。
+   設定時は上限付きかつベストエフォートであることを固定します。あわせて
+   `tests/test_e2e_changes.py` が、iOS レーンの正のパスリストに新しい action を名指しすることを
+   固定します。これがないと、その action への変更はどのレーンも発火させません。この unit が当初
+   想定していたのに反して、composite action のシェルには静的なゲートの検査が**ありません**。
+   `actionlint` が検査するのは `.github/workflows/` だけで、`action.yml` を指定すると `jobs`
+   セクションがないと報告します。`make lint-sh` は名指しした `.sh` ファイルの一覧に対して
+   `shellcheck` を走らせるので、`.github/actions/` 配下には届きません。シェルは各ステップを
+   抽出し、起動済みの Simulator に対して実行して検証しました。すべての composite action について
+   このゲートの穴を閉じるのは、別途の後続作業とします。
 
 ### 最重要原則の維持
 
@@ -199,11 +231,11 @@ Simulator を駆動する 7 つの macOS ジョブがそれぞれ自前のシェ
 > 作業分解を鏡写しにします（作業単位ごとに1つのボックス）。ログには何がいつ変わったかを
 > 古い順に、PR へのリンク付きで記録します。
 
-- [ ] Unit 1 — ランナー起動ごとの result bundle
-- [ ] Unit 2 — ストール時プローブのフック
-- [ ] Unit 3 — composite action `collect-ios-diagnostics` とその配線
-- [ ] Unit 4 — ドキュメント（`docs/ci.md` とその `ja` ミラー）
-- [ ] Unit 5 — テスト
+- [x] Unit 1 — ランナー起動ごとの result bundle
+- [x] Unit 2 — ストール時プローブのフック
+- [x] Unit 3 — composite action `collect-ios-diagnostics` とその配線
+- [x] Unit 4 — ドキュメント（`docs/ci.md` とその `ja` ミラー）
+- [x] Unit 5 — テスト
 
 ## 参考
 

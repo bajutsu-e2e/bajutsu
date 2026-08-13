@@ -88,6 +88,55 @@ dev ツールは `dev` 依存グループにあるため、Linux ジョブは `u
 段ごとにミラーしており、`actionlint`（CI が導入する単体バイナリ）以外は新規クローンでも `uv`
 だけで同一に走ります。これが「ローカルで緑」＝「CI で緑」を担保します。
 
+### iOS ジョブが失敗したときに集まる証跡（BE-0361）
+
+iOS レーンでもっとも厄介な失敗は、何もクラッシュしない失敗です。常駐 XCUITest ランナーとは、
+`bajutsu` が `xcodebuild test-without-building` で起動する XCTest ホストのことです。`bajutsu` は
+このホストを、ループバックの Hypertext Transfer Protocol（HTTP）チャネルで駆動します。ランナーが
+`Timed out while requesting screenshot` を報告してテストメソッドを終え、Python 側は実行中
+クラッシュを宣言します。プロセスは1つも死んでいないので、クラッシュレポートの走査は何も見つけません。
+そして、Simulator の描画サービスが固まったのか、仮想化された macOS ホストが Simulator から資源を
+奪ったのかを言い当てる状態は、人がジョブを開く頃には消えています。そこで `codegen` を除き、Simulator を起動する iOS ジョブはすべて、層に分けた証跡を `runs/` 配下へ
+集めます。`runs/` はそれらのジョブがすでにアップロードしている場所です。`codegen` が対象外なのは、
+このジョブが `.xcresult` だけをアップロードし、収集物を載せる `runs/` の成果物を持たないからです。集めたものが判定に
+入ることはありません。収集はファイルを書くだけで、合否は従来どおり決定的なアサーションが決めます。
+
+収集は3層で、それぞれ何を見られるかで分かれます。
+
+- **`bajutsu` の内側。** ストールがいつ起きたかを知っているのは実行中のプロセスだけだからです。
+  `BAJUTSU_XCUITEST_RESULT_BUNDLES` は、ランナーの起動ごとに `-resultBundlePath` を与えます。
+  こうして `runs/runner-logs/result-<udid>-<port>.xcresult` が、testmanagerd 自身の観測、すなわち
+  正確な XCTest の失敗、そのタイムスタンプ、添付物を記録します。捕捉した標準出力が伝えるのは、
+  その言い換えにすぎません。`BAJUTSU_STALL_DIAGNOSTICS` は、チャネルが実行中クラッシュを宣言した
+  瞬間と、`recordVideo` が1バイトも生まなかった瞬間に発火する捕捉を仕掛けます。捕捉は所要時間を
+  計測した `simctl` のスクリーンショット、描画を担うプロセスへの `sample`、`ps` と `vm_stat` の
+  スナップショットを `runs/diagnostics/stalls/stall-NN-<理由>/` へ書きます。捕捉には2つの上限が
+  あります。1回あたりの実時間の予算と、1実行あたり3回という回数です。クラッシュを繰り返すジョブが
+  証跡収集に `timeout-minutes` を使い果たすことはありません。どちらの環境変数もこのレーンの外では
+  未設定で、未設定なら挙動はこの機能が入る前と完全に同じです。
+- **CI から見た Simulator と CoreSimulator。** Simulator を駆動する各ジョブが呼ぶ複合アクション
+  [`collect-ios-diagnostics`](../../.github/actions/collect-ios-diagnostics/action.yml) が担います。
+  軽い段は毎回走ります。`CoreSimulator.log` の末尾、起動済みデバイス自身の CoreSimulator ログ
+  ディレクトリ、`.ips` / `.crash` の先へ広げた（この失敗が実際に残すハング、スピン、jetsam の
+  レポートまで含む）クラッシュレポートの走査、そして実行をまたいで失敗をランナーイメージと
+  ハードウェア世代に結びつけるホストのスナップショット（`sw_vers`、`sysctl`、`xcodebuild
+  -version`、`simctl list`）です。重い段は、そのジョブの実行ステップ自身が失敗したときだけ走ります。
+  `xcrun simctl diagnose` と、対象を絞った2つの unified log の抽出です。
+- **時系列で見たホスト。** 同じアクションの `start` フェーズが担います。バックグラウンドのサンプラが
+  20秒ごとに `top`、`vm_stat`、`memory_pressure` を `runs/diagnostics/host-telemetry.log` へ
+  追記します。一発の描画プローブが、スクリーンショットに何秒かかるか、5秒の `recordVideo` が
+  そもそも1バイトでも生むかを記録します。サンプラはあらゆる実行ループの外にいる観測者なので、
+  その間隔は採取の周期であって、判定が依存する待ち合わせではありません。
+
+unified log の抽出を2つに分けているのには理由があります。自然な想定はむしろ逆なので、ここに
+書いておきます。スクリーンショットを担うゲストプロセス、すなわち `SpringBoard`、`backboardd`、
+`testmanagerd` は、ホストの unified log に**書き込みません**。起動済みデバイスで
+実測したところ、これらのプロセス名で絞ったホスト側の `log show` は、見出し行だけを返しました。
+ゲストのエントリはデバイス自身のログストアにあるため、アクションは `simctl spawn` を通して
+ゲストの内側で2つ目の `log show` を走らせます。ホスト側の抽出は、実際にそこへ書き込む
+CoreSimulator のサービスプロセス向けに残しています。ホスト側の抽出1つで済ませていたら、空のファイルができていました。
+この収集が置き換えた、構造上必ず空になる成果物と同じものです。
+
 ## あなたのアプリの CI で回す
 
 > bajutsu はプレリリース（未公開）です。PyPI 公開までは vendor（submodule / checkout）して、その

@@ -24,6 +24,7 @@ import pytest
 from bajutsu import backends, simctl
 from bajutsu.config import Effective, load_config, resolve
 from bajutsu.drivers.xcuitest import XcuitestChannelError
+from bajutsu.platform_lifecycle.environments import xcuitest as xcuitest_env
 from bajutsu.platform_lifecycle.environments.xcuitest import (
     _MAX_WARM_REUSES,
     _MAX_WARM_REUSES_ENV,
@@ -918,6 +919,54 @@ def test_runner_output_is_captured_when_the_env_var_is_set(
     assert (
         "see" in env._runner_log_hint()
     )  # the hint points at the captured log, not at the env var
+
+
+def test_result_bundle_is_requested_only_when_the_env_var_is_set(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # BE-0361 unit 1: the spawn argv gains `-resultBundlePath` exactly when
+    # BAJUTSU_XCUITEST_RESULT_BUNDLES names a directory. Unset is the shipped default for every lane
+    # but the iOS one, so the argv must be byte-for-byte what it was before this feature existed.
+    monkeypatch.delenv("BAJUTSU_XCUITEST_RESULT_BUNDLES", raising=False)
+    popen_argvs, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    assert "-resultBundlePath" not in popen_argvs[0]
+
+    bundles = tmp_path / "bundles"
+    monkeypatch.setenv("BAJUTSU_XCUITEST_RESULT_BUNDLES", str(bundles))
+    popen_argvs, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    argv = popen_argvs[0]
+    assert "-resultBundlePath" in argv
+    bundle = Path(argv[argv.index("-resultBundlePath") + 1])
+    # Keyed like the runner log — udid plus this spawn's fresh ephemeral port — so a respawn never
+    # overwrites the crashed predecessor's bundle.
+    assert bundle.parent == bundles
+    assert bundle.name == f"result-UDID-{env._runner_port}.xcresult"
+
+
+def test_result_bundle_path_is_cleared_before_the_spawn(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # `xcodebuild` refuses to start at all when the result bundle path already exists, so a recycled
+    # ephemeral port would turn this diagnostics feature into a spawn failure. A leftover at the
+    # exact key is cleared first; nothing else in the directory is touched.
+    bundles = tmp_path / "bundles"
+    monkeypatch.setenv("BAJUTSU_XCUITEST_RESULT_BUNDLES", str(bundles))
+    _, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    monkeypatch.setattr(xcuitest_env, "_allocate_port", lambda: 4242)
+    stale = bundles / "result-UDID-4242.xcresult"
+    stale.mkdir(parents=True)
+    (stale / "Info.plist").write_bytes(b"leftover")
+    keep = bundles / "result-UDID-9999.xcresult"
+    keep.mkdir(parents=True)
+
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    assert not stale.exists()
+    assert keep.exists()  # another spawn's bundle is never collateral
 
 
 def test_warm_resume_reapplies_the_per_scenario_reset(

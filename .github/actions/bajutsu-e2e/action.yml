@@ -51,6 +51,18 @@ runs:
       shell: bash
       run: uv sync --no-dev
 
+    # Host telemetry has to be running *before* the scenarios do, or a stall's correlation with host
+    # load is unrecoverable after the fact (BE-0361 layer 3). It lives here rather than in each
+    # calling job because `bundled-runner` invokes this action twice: a job-level start would be
+    # stopped by the first invocation's collect, leaving the second run unsampled. On that second
+    # invocation this step restarts the sampler the first collect stopped; the one-shot render probe
+    # keeps its original pre-run reading rather than being re-taken mid-job.
+    - name: Start iOS diagnostics
+      uses: ./.github/actions/collect-ios-diagnostics
+      with:
+        phase: start
+        udid: ${{ inputs.udid }}
+
     # Inputs go through env: so the shell sees them as data, not as script text spliced in
     # before parsing (the GitHub Actions ${{ }} injection pattern). See BE-0123.
     #
@@ -59,6 +71,7 @@ runs:
     # print — but without cold-spawning a second XCUITest runner (the run already holds a live lease).
     # It writes to stderr and never affects pass/fail; the deterministic verdict stays `run`'s alone.
     - name: Run scenarios
+      id: run
       shell: bash
       env:
         SCENARIOS: ${{ inputs.scenarios }}
@@ -85,22 +98,20 @@ runs:
         uv run --no-sync bajutsu run "${scenario_args[@]}" --exclude "$EXCLUDE" --target "$TARGET" \
           --udid "$UDID" --backend "$BACKEND" --config "$CONFIG" --score
 
-    # Collect any macOS crash reports the run produced into the uploaded artifact, so a resident-
-    # runner mid-run crash is diagnosable even when the pipeline's scenario-level retry recovers it
-    # (the run then passes and would otherwise leave no crash trace). Reads
-    # ~/Library/Logs/DiagnosticReports (the XCTest host / app crash `.ips` land there). Best-effort
-    # (`always`, errors swallowed): no reports is the normal healthy case, so a missing directory or
-    # zero matches must never fail the job.
-    - name: Collect crash diagnostics
+    # Replaces the crash-report copy this step used to be (BE-0361). That sweep read only `.ips` /
+    # `.crash` under ~/Library/Logs/DiagnosticReports, and collected zero files on every run of the
+    # failure class it was meant to explain: the resident runner's mid-run death crashes no process,
+    # so there is no report to find. The composite action widens the sweep and adds the Simulator,
+    # CoreSimulator, and host state that failure actually leaves behind, gating the expensive half on
+    # whether the run above failed. Still best-effort and still `always()`: a healthy run collecting
+    # little is the normal case and must never fail the job.
+    - name: Collect iOS diagnostics
       if: always()
-      shell: bash
-      run: |
-        dest="runs/diagnostics"
-        mkdir -p "$dest"
-        cp -f ~/Library/Logs/DiagnosticReports/*.ips "$dest"/ 2>/dev/null || true
-        cp -f ~/Library/Logs/DiagnosticReports/*.crash "$dest"/ 2>/dev/null || true
-        found=$(find "$dest" -type f 2>/dev/null | wc -l | tr -d ' ')
-        echo "crash diagnostics collected: $found file(s) in $dest"
+      uses: ./.github/actions/collect-ios-diagnostics
+      with:
+        phase: collect
+        udid: ${{ inputs.udid }}
+        failed: ${{ steps.run.outcome != 'success' }}
 
     # artifact-name is a `with:` value on a `uses:` step, not a shell `run:` block, so the
     # ${{ }} injection pattern does not apply — no env: indirection needed here (BE-0123).

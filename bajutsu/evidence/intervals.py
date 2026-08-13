@@ -30,7 +30,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
-from bajutsu import adb, simctl
+from bajutsu import adb, simctl, stall_diagnostics
 
 _logger = logging.getLogger(__name__)
 
@@ -313,6 +313,13 @@ def start_video(
         if confirm_started
         else None
     )
+    if confirm_started and true_start is None:
+        # A recording that produces no byte says the Simulator's video pipeline is degraded *now*,
+        # which is the same stall the runner channel dies of — so capture the state while it is still
+        # there (BE-0361 unit 2). Fired here rather than inside the poll because the udid the capture
+        # screenshots is a parameter of this function, not of the poll. Opt-in and bounded; unset, it
+        # returns without doing anything.
+        stall_diagnostics.capture("video-no-bytes", udid)
     return Interval(
         kind="video",
         path=path,

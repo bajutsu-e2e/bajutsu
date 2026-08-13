@@ -1,0 +1,264 @@
+name: Collect iOS diagnostics
+description: >-
+  Collect the Simulator, CoreSimulator, and macOS host evidence an iOS E2E failure needs (BE-0361).
+  The runner's own mid-run crashes are invisible in today's artifacts — no process crashes, so the
+  crash-report sweep gathers nothing, and the state that would say whether the Simulator's render
+  service wedged or the virtualized host starved it is gone by the time a human looks. Called in two
+  phases: `start`, right after the device is booted, begins a background host-telemetry sampler and
+  probes the render pipeline once; `collect`, at the end of the job, stops the sampler and gathers
+  the OS-side state. Everything lands under `runs/`, which the consuming jobs already upload, so no
+  new upload wiring is needed. Purely an observer — it collects evidence and never decides a verdict.
+
+inputs:
+  phase:
+    description: >-
+      'start' to begin host telemetry and probe the render pipeline; 'collect' to stop the sampler
+      and gather diagnostics. A job calls both, with 'collect' guarded by `if: always()` so a failing
+      run is the case that is actually collected.
+    required: true
+  udid:
+    description: >-
+      Simulator UDID, or 'booted' (the default) to resolve the currently booted one. The device's own
+      CoreSimulator log directory is keyed by UDID, so an unresolvable device costs that part of the
+      collection and nothing else.
+    required: false
+    default: booted
+  failed:
+    description: >-
+      'true' runs the heavy failure tier as well — `simctl diagnose` and the targeted unified-log
+      extracts. The caller passes its run step's own outcome, so a green job pays only the cheap
+      always tier.
+    required: false
+    default: "false"
+  dest:
+    description: Directory the collection is written into, under the uploaded `runs/` artifact.
+    required: false
+    default: runs/diagnostics
+
+runs:
+  using: composite
+  steps:
+    # Inputs go through env: so the shell sees them as data, not as script text spliced in before
+    # parsing (the GitHub Actions ${{ }} injection pattern). See BE-0123. `set -e` is deliberately
+    # absent from both steps below: every probe here is best-effort, and a missing log or an absent
+    # process must never fail a job whose real verdict has already been decided.
+    - name: Start host telemetry and probe the render pipeline
+      if: inputs.phase == 'start'
+      shell: bash
+      env:
+        UDID: ${{ inputs.udid }}
+        DEST: ${{ inputs.dest }}
+      run: |
+        set -uo pipefail
+        mkdir -p "$DEST"
+
+        udid="$UDID"
+        if [ -z "$udid" ] || [ "$udid" = "booted" ]; then
+          udid=$(xcrun simctl list devices booted -j | jq -r '[.devices | to_entries[] | .value[] | .udid] | first // empty')
+        fi
+        echo "$udid" >"$DEST/device-udid.txt"
+
+        # Stop a background child after `$1` seconds, then report whether it had to be killed. The
+        # macOS runner ships no `timeout`/`gtimeout`, and both probes below can hang on exactly the
+        # wedged device they are probing for — an unbounded probe here would cancel the job at its
+        # `timeout-minutes` before a single scenario ran, which is strictly worse than not probing.
+        reap() {
+          local pid="$1" limit="$2" waited=0
+          while kill -0 "$pid" 2>/dev/null; do
+            if [ "$waited" -ge "$limit" ]; then
+              kill -9 "$pid" 2>/dev/null
+              wait "$pid" 2>/dev/null
+              return 124
+            fi
+            sleep 1
+            waited=$((waited + 1))
+          done
+          wait "$pid" 2>/dev/null
+        }
+
+        # A render-pipeline probe, once per job. `recordVideo produced no new bytes` fires on every
+        # scenario of these runners, green runs included, so the byte count here answers whether the
+        # pipeline was already dead before any scenario ran — separating a job that degraded mid-run
+        # from one that never had a working pipeline at all. Guarded on the report's own absence so a
+        # second `start` (bundled-runner calls this action twice) cannot overwrite that pre-run
+        # baseline with a mid-job reading.
+        if [ ! -f "$DEST/render-probe.txt" ]; then
+          {
+            echo "probed at $(date -u +%FT%TZ) against ${udid:-<no booted device>}"
+            if [ -n "$udid" ]; then
+              start=$(date +%s)
+              xcrun simctl io "$udid" screenshot "$DEST/render-probe.png" >/dev/null 2>&1 &
+              reap $! 30
+              rc=$?
+              elapsed=$(( $(date +%s) - start ))
+              [ "$rc" -eq 124 ] && echo "screenshot: STILL RUNNING after ${elapsed}s — killed" \
+                || echo "screenshot: exit $rc in ${elapsed}s, $(wc -c <"$DEST/render-probe.png" 2>/dev/null || echo 0) bytes"
+              xcrun simctl io "$udid" recordVideo "$DEST/render-probe.mp4" >/dev/null 2>&1 &
+              video=$!
+              sleep 5
+              kill -INT "$video" 2>/dev/null
+              reap "$video" 15
+              echo "recordVideo: $(wc -c <"$DEST/render-probe.mp4" 2>/dev/null || echo 0) bytes in 5s"
+            fi
+          } >"$DEST/render-probe.txt" 2>&1
+        fi
+
+        # The sampler is an observer outside any run loop: its interval is a sampling cadence, not a
+        # wait a verdict depends on, so the ban on fixed sleeps in the run loop is untouched. Started
+        # idempotently, because the jobs that call this action twice (bundled-runner runs two smoke
+        # steps) would otherwise leave two samplers appending to one file.
+        pidfile="$DEST/host-telemetry.pid"
+        if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+          echo "host telemetry already sampling (pid $(cat "$pidfile"))"
+          exit 0
+        fi
+        sampler="${RUNNER_TEMP:-/tmp}/bajutsu-host-telemetry.sh"
+        telemetry="$PWD/$DEST/host-telemetry.log"
+        cat >"$sampler" <<EOF
+        #!/bin/bash
+        while true; do
+          {
+            echo "=== \$(date -u +%FT%TZ) ==="
+            /usr/bin/top -l 1 -n 10 -o cpu
+            /usr/bin/vm_stat
+            /usr/bin/memory_pressure
+          } >>"$telemetry" 2>&1
+          sleep 20
+        done
+        EOF
+        chmod +x "$sampler"
+        nohup "$sampler" >/dev/null 2>&1 &
+        echo $! >"$pidfile"
+        echo "host telemetry sampling every 20s → $telemetry (pid $(cat "$pidfile"))"
+
+    - name: Collect Simulator, CoreSimulator, and host diagnostics
+      if: inputs.phase == 'collect'
+      shell: bash
+      env:
+        UDID: ${{ inputs.udid }}
+        DEST: ${{ inputs.dest }}
+        FAILED: ${{ inputs.failed }}
+        # 20MB of an append-only host log, and a 30-minute window over the unified log — comfortably
+        # more than any single job's own span, so the evidence is never clipped short of the failure.
+        CORESIM_LOG_BYTES: "20971520"
+        LOG_WINDOW: 30m
+      run: |
+        set -uo pipefail
+        mkdir -p "$DEST"
+
+        # Keep a handle on the job log. Both `log show` calls below redirect the whole `bounded …`
+        # invocation into their output file, so a `::warning::` written to plain stdout would land
+        # *inside* the collected log rather than annotating the job — losing the annotation on exactly
+        # the hang the bound exists to report.
+        exec 9>&1
+
+        pidfile="$DEST/host-telemetry.pid"
+        if [ -f "$pidfile" ]; then
+          kill "$(cat "$pidfile")" 2>/dev/null
+          rm -f "$pidfile"
+        fi
+
+        udid="$UDID"
+        if [ -z "$udid" ] || [ "$udid" = "booted" ]; then
+          udid=$(cat "$DEST/device-udid.txt" 2>/dev/null || true)
+        fi
+        if [ -z "$udid" ] || [ "$udid" = "booted" ]; then
+          udid=$(xcrun simctl list devices booted -j | jq -r '[.devices | to_entries[] | .value[] | .udid] | first // empty')
+        fi
+
+        # Bound a command without GNU coreutils: the macOS runner ships no `timeout`/`gtimeout`, and
+        # the heavy collectors below are exactly the ones that can hang on the wedged CoreSimulator
+        # this action exists to document.
+        bounded() {
+          local limit="$1" waited=0 pid
+          shift
+          # `<&0` is load-bearing, not decoration: bash redirects a background job's stdin from
+          # /dev/null "in the absence of any explicit redirections", and `simctl diagnose` reads EOF
+          # there and exits 0 having collected nothing. The explicit redirection keeps the caller's
+          # stdin, which is what lets the piped newline below answer its consent prompt.
+          "$@" <&0 &
+          pid=$!
+          while kill -0 "$pid" 2>/dev/null; do
+            if [ "$waited" -ge "$limit" ]; then
+              kill -9 "$pid" 2>/dev/null
+              wait "$pid" 2>/dev/null
+              echo "::warning::bajutsu diagnostics: '$1' exceeded ${limit}s and was killed" >&9
+              return 124
+            fi
+            sleep 1
+            waited=$((waited + 1))
+          done
+          wait "$pid"
+        }
+
+        # --- Always: cheap, every run ---------------------------------------------------------
+        # Tail rather than copy: this file is append-only for the life of the host and is measured at
+        # 183MB on a developer Mac. A CI runner is fresh, so the cap costs nothing there and keeps a
+        # reused or long-lived runner from putting a nine-figure file into every green job's artifact.
+        tail -c "$CORESIM_LOG_BYTES" ~/Library/Logs/CoreSimulator/CoreSimulator.log \
+          >"$DEST/CoreSimulator.log" 2>/dev/null || true
+        if [ -n "$udid" ] && [ -d ~/Library/Logs/CoreSimulator/"$udid" ]; then
+          mkdir -p "$DEST/coresimulator-$udid"
+          cp -Rf ~/Library/Logs/CoreSimulator/"$udid"/. "$DEST/coresimulator-$udid"/ 2>/dev/null || true
+        fi
+
+        # Widened past the `.ips`/`.crash` the previous step swept: this failure class crashes no
+        # process at all, so the reports that do land are the hang/spin/jetsam kind. The system-wide
+        # directory is added for the same reason — a jetsam event is recorded there, not per user.
+        mkdir -p "$DEST/crash-reports"
+        for dir in ~/Library/Logs/DiagnosticReports /Library/Logs/DiagnosticReports; do
+          for pattern in '*.ips' '*.crash' '*.diag' '*.spin' '*.hang' 'JetsamEvent*'; do
+            # $pattern is deliberately unquoted — the shell must expand the glob here, and a
+            # non-matching pattern is the ordinary case a healthy run leaves behind.
+            cp -f "$dir"/$pattern "$DEST/crash-reports"/ 2>/dev/null || true
+          done
+        done
+        echo "crash reports collected: $(find "$DEST/crash-reports" -type f 2>/dev/null | wc -l | tr -d ' ') file(s)"
+
+        # The cross-run key: which runner image and hardware generation a failure landed on.
+        {
+          sw_vers
+          sysctl hw.model hw.ncpu hw.memsize kern.hv_vmm_present 2>/dev/null
+          xcodebuild -version
+          system_profiler SPDisplaysDataType 2>/dev/null
+        } >"$DEST/host-environment.txt" 2>&1
+        xcrun simctl list -j >"$DEST/simctl-list.json" 2>/dev/null || true
+
+        if [ "$FAILED" != "true" ]; then
+          # The render probe's *byte counts* are the cross-run datum and stay in render-probe.txt;
+          # the frame and clip themselves are only worth keeping when something went wrong. Dropping
+          # them takes ~3MB per green job off every run's artifacts.
+          rm -f "$DEST/render-probe.png" "$DEST/render-probe.mp4"
+          echo "run passed: skipping the heavy failure tier"
+          exit 0
+        fi
+
+        # --- On failure only: heavy -----------------------------------------------------------
+        # `simctl diagnose` prints a consent notice and then blocks on stdin. A CI step's stdin is
+        # /dev/null, where it reads EOF and exits 0 having collected nothing — so the newline below
+        # is what makes this tier collect anything at all. `--output` is the archive's base path and
+        # is REPLACED by `<path>.tar.gz` on success, deleting whatever was in it, so it must name a
+        # path of its own and never "$DEST". Measured: ~15s and ~78MB for one booted device.
+        diagnose=(xcrun simctl diagnose -b --timeout=60 --output="$DEST/simctl-diagnose")
+        [ -n "$udid" ] && diagnose+=(--udid="$udid")
+        printf '\n' | bounded 300 "${diagnose[@]}"
+        echo "simctl diagnose: $(du -sh "$DEST"/simctl-diagnose* 2>/dev/null | cut -f1 | tr '\n' ' ')"
+
+        # Targeted extracts instead of a whole-window `log collect` archive: the failure signature
+        # already names the processes that serve rendering and screenshots. It takes TWO extracts,
+        # not one — measured on a booted Simulator, the guest's `SpringBoard` / `backboardd` /
+        # `testmanagerd` do NOT appear in the host's unified log at all; they log to the device's own
+        # store, which is reachable only by running `log show` inside the guest. A host-only extract
+        # would come back with nothing but its header, which is exactly the empty-by-construction
+        # artifact this action exists to stop shipping.
+        bounded 180 /usr/bin/log show --last "$LOG_WINDOW" --style compact \
+          --predicate 'process CONTAINS "CoreSimulator" OR process == "simctl" OR process CONTAINS "SimLaunchHost" OR process == "simdiskimaged" OR subsystem CONTAINS "CoreSimulator"' \
+          >"$DEST/unified-log-host.txt" 2>&1
+        echo "unified log (host): $(wc -l <"$DEST/unified-log-host.txt" 2>/dev/null || echo 0) line(s)"
+
+        if [ -n "$udid" ]; then
+          bounded 180 xcrun simctl spawn "$udid" log show --last "$LOG_WINDOW" --style compact \
+            --predicate 'process == "backboardd" OR process == "SpringBoard" OR process == "testmanagerd"' \
+            >"$DEST/unified-log-guest.txt" 2>&1
+          echo "unified log (guest): $(wc -l <"$DEST/unified-log-guest.txt" 2>/dev/null || echo 0) line(s)"
+        fi
