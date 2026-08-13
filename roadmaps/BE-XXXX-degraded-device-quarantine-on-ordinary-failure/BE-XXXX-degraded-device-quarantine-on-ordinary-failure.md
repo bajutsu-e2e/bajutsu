@@ -82,9 +82,9 @@ unchanged. The caller must hold that gate itself — every exclusion is config-s
 environment never has to second-guess a request — and its pool-of-one guarantee is what makes a remedy
 served on a later lease land on the run's only device.
 
-### Quarantine, not retry
-
-The request goes through the lease's own `request_device_replacement`
+unchanged. The caller applies that gate itself, because every exclusion is config-static precisely so
+the environment never has to second-guess a request. That gate also guarantees a pool of one device,
+which is what lands a remedy served on a later lease on the run's only device.
 (`bajutsu/runner/types.py:73`, wired to the environment's method in `bajutsu/runner/pool.py:520`), the
 mechanism
 [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md)
