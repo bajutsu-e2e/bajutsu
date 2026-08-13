@@ -305,21 +305,26 @@ final class Router {
             return .png(png)
         case .failed:
             return .error(500, "screenshot failed")
-        case .overran:
-            // Loud and attributable, which is the whole point: the client would otherwise see only a
-            // socket timeout and classify a live runner as a crashed one.
-            return .error(500, "screenshot exceeded its \(screenshotDeadline)s deadline")
+        case .overran(let startedCapture):
+            // `stalled`, not `error`: the client keys on this status to re-issue the read and, if the
+            // stall persists, to recover — the same path a socket timeout used to take, but now with a
+            // reason instead of silence. A plain `error` stays a genuine capture failure.
+            let what = startedCapture
+                ? "the capture did not finish"
+                : "another operation still held the runner"
+            return .stalled("screenshot exceeded its \(screenshotDeadline)s deadline: \(what)")
         }
     }
 
     /// The outcome of a screenshot bounded by `screenshotDeadline`.
     ///
-    /// `overran` is not a failed capture — the capture is still running on the main thread, and this
-    /// case says only that the handler stopped waiting for it.
+    /// `overran` is not a failed capture — it says only that no image arrived inside the deadline.
+    /// `startedCapture` distinguishes the two ways that happens: the capture ran and did not finish, or
+    /// the deadline expired while another operation still held the lock, so this request never dispatched.
     private enum DeadlinedCapture {
         case captured(Data)
         case failed  // the capture returned within the deadline, but produced no image
-        case overran
+        case overran(startedCapture: Bool)
     }
 
     /// A box for the captured bytes, handed between the main queue that fills it and the connection
@@ -343,11 +348,20 @@ final class Router {
     /// main thread therefore stays busy after an `overran` reply, and the next request waits for it;
     /// what this buys is an attributable answer on the request that caused the stall, and a reply the
     /// client is still listening for.
+    ///
+    /// One deadline covers the *whole* handler, lock wait included, because the lock is exactly what a
+    /// second stalled screenshot waits on: an abandoned capture keeps the lock for as long as XCUITest
+    /// gives its own request (~90s), so bounding only the capture would leave the next request blocked
+    /// well past the client's window — reaching it as the silence this exists to remove. A request that
+    /// cannot even acquire the lock in time never dispatches, so there is nothing to abandon.
     private func captureScreenshotWithinDeadline() -> DeadlinedCapture {
         // Already on main (a direct call): there is no second thread to wait from, so no deadline is
         // possible and nothing to serialize against — the same in-place case `onMain` handles.
         if Thread.isMainThread { return outcome(caught(Data?.none, provider.screenshot)) }
-        actuationLock.wait()
+        let deadline = DispatchTime.now() + screenshotDeadline
+        guard actuationLock.wait(timeout: deadline) == .success else {
+            return .overran(startedCapture: false)
+        }
         let box = CaptureBox()
         let done = DispatchSemaphore(value: 0)
         DispatchQueue.main.async { [self] in
@@ -357,7 +371,7 @@ final class Router {
             actuationLock.signal()
             done.signal()
         }
-        guard done.wait(timeout: .now() + screenshotDeadline) == .success else { return .overran }
+        guard done.wait(timeout: deadline) == .success else { return .overran(startedCapture: true) }
         return outcome(box.data)
     }
 

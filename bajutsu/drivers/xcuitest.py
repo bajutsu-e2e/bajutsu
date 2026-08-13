@@ -100,6 +100,10 @@ _OK = "ok"
 _STALE = "stale"  # the resolved handle no longer maps to a live element (the screen changed)
 _NOT_FOUND = "not-found"  # the runner could not act on the handle (no matching live element)
 _NOT_HITTABLE = "not-hittable"  # the element is live but not reachable at its own point right now
+# A read the runner accepted but could not complete inside its own deadline. Distinct from "error"
+# because the two need opposite handling: a stalled read is re-issued and, if it keeps stalling,
+# recovered, while a genuine failure fails the step.
+_STALLED = "stalled"
 
 # Socket timeout for a single runner *read* request (GET). BE-0105 replaced the per-attribute
 # `/elements` walk (~10s+ per screen) with one `app.snapshot()`, so the 60s stopgap is reverted to a
@@ -210,6 +214,21 @@ def _to_element(item: Mapping[str, Any]) -> base.Element:
     }
 
 
+def _status_of(raw: bytes | None) -> str:
+    """The `status` from a runner error body, defaulting to `error` when there is none to read.
+
+    Anything unreadable (no body, not JSON, no string `status`) is `error` — the conservative default,
+    since `error` fails the step loudly while `stalled` asks the channel to re-issue.
+    """
+    if not raw:
+        return "error"
+    try:
+        status = json.loads(raw).get("status")
+    except (ValueError, AttributeError):
+        return "error"
+    return status if isinstance(status, str) and status else "error"
+
+
 def _reason(raw: bytes | None) -> str:
     """The runner's `message` from an error body, as a `: …` suffix — empty when there is none to add.
 
@@ -221,7 +240,7 @@ def _reason(raw: bytes | None) -> str:
         return ""
     try:
         message = json.loads(raw).get("message")
-    except (json.JSONDecodeError, AttributeError):
+    except (ValueError, AttributeError):  # ValueError covers JSONDecodeError and a non-UTF-8 body
         return ""
     return f": {message}" if isinstance(message, str) and message else ""
 
@@ -237,10 +256,10 @@ def _decode(path: str, status_code: int, body: bytes) -> _Reply:
     if path == "/screenshot":
         if status_code == 200:
             return _Reply(status=_OK, png=body)
-        # A non-200 body is the runner's JSON diagnostic, not PNG bytes. Keep it as `raw` so the caller
-        # can report *why* the capture failed — the runner distinguishes a capture that failed from one
-        # that outran its own deadline, and that distinction is worthless if it stops here.
-        return _Reply(status="error", raw=body)
+        # A non-200 body is the runner's JSON diagnostic, not PNG bytes. Read its `status` so a stalled
+        # read stays distinguishable from a failed one, and keep the body as `raw` so the caller can
+        # report *why* — a distinction that is worthless if it stops here.
+        return _Reply(status=_status_of(body), raw=body)
     try:
         data = json.loads(body) if body else {}
     except json.JSONDecodeError as exc:
@@ -572,7 +591,20 @@ def _raw_http_transport(host: str, port: int) -> TransportFn:
             headers = {"Content-Type": "application/json"} if payload is not None else {}
             conn.request(method, path, body=payload, headers=headers)
             resp = conn.getresponse()
-            return _decode(path, resp.status, resp.read())
+            reply = _decode(path, resp.status, resp.read())
+            if reply.status == _STALLED:
+                # The runner answered "I could not finish this read in time". Before it could say so,
+                # the same stall reached here as a socket timeout — a `_TransportFailure` that BE-0207
+                # re-issues and, on exhaustion, BE-0287 recovers. Raising the same failure keeps that
+                # behaviour (a re-issued capture often finishes) instead of turning a stall the lanes
+                # absorb today into an unrecovered scenario failure. `hung=False`: the runner is
+                # answering, so this is not the wedged session BE-0354 fast-fails on.
+                raise _TransportFailure(
+                    f"the runner could not complete the read in time{_reason(reply.raw)}",
+                    delivered=True,
+                    hung=False,
+                )
+            return reply
         except OSError as exc:  # pragma: no cover - see above
             # A socket timeout on an open connection is the hang BE-0354 keys on; a refused connect
             # or a reset mid-response is the runner going away, which recovery still rides out.

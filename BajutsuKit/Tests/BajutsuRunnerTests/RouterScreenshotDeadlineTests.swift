@@ -128,6 +128,60 @@ final class RouterScreenshotDeadlineTests: XCTestCase {
         XCTAssertEqual(provider.maxConcurrent, 1, "XCUITest operations must never run or re-enter concurrently")
     }
 
+    /// A second stalled screenshot must be bounded by the *lock* wait, not just the capture wait.
+    ///
+    /// The reviewer's case, and the normal one rather than an exotic one: a green `visual` job logs
+    /// ~10 screenshot stalls, so the second arrives while the first abandoned capture still owns the
+    /// lock for as long as XCUITest gives its own request (~90s). Bounding only the capture would leave
+    /// this request blocked past the client's window, reaching it as exactly the silence the deadline
+    /// exists to remove.
+    func testASecondScreenshotIsBoundedByTheLockWaitToo() {
+        let provider = SpinningScreenshotProvider(spin: 1.0)
+        let router = Router(provider: provider, screenshotDeadline: 0.2)
+        let first = XCTestExpectation(description: "first screenshot replied")
+        let second = XCTestExpectation(description: "second screenshot replied")
+        var secondResponse: HTTPResponse?
+        var secondTook: TimeInterval = .infinity
+
+        DispatchQueue.global().async {
+            _ = router.handle(HTTPRequest(method: "GET", path: "/screenshot", body: nil))
+            first.fulfill()
+            // The first capture still holds the lock here and will for ~0.8s more.
+            let start = ProcessInfo.processInfo.systemUptime
+            secondResponse = router.handle(HTTPRequest(method: "GET", path: "/screenshot", body: nil))
+            secondTook = ProcessInfo.processInfo.systemUptime - start
+            second.fulfill()
+        }
+        wait(for: [first, second], timeout: 5)
+
+        XCTAssertEqual(secondResponse?.statusCode, 500)
+        // Bounded by its own deadline, not by the capture that holds the lock.
+        // Bounded: ~0.2s (its own deadline). Unbounded: ~0.8s (waiting out the first capture). 0.5s
+        // sits well clear of both, rather than a hair under the unbounded figure.
+        XCTAssertLessThan(secondTook, 0.5, "the lock wait must be bounded by the deadline")
+        XCTAssertTrue(
+            errorMessage(secondResponse)?.contains("another operation still held the runner") == true,
+            "the reply must name the lock wait: \(errorMessage(secondResponse) ?? "<none>")"
+        )
+    }
+
+    func testAStalledReplyCarriesTheStalledStatusNotAPlainError() {
+        // The Python client keys on this status to re-issue the read rather than fail the step, so the
+        // distinction from a plain `error` is load-bearing, not cosmetic.
+        let provider = SpinningScreenshotProvider(spin: 1.0)
+        let router = Router(provider: provider, screenshotDeadline: 0.2)
+        let replied = XCTestExpectation(description: "screenshot replied")
+        var response: HTTPResponse?
+        DispatchQueue.global().async {
+            response = router.handle(HTTPRequest(method: "GET", path: "/screenshot", body: nil))
+            replied.fulfill()
+        }
+        wait(for: [replied], timeout: 5)
+
+        let json = try? JSONSerialization.jsonObject(with: response!.body) as? [String: Any]
+        XCTAssertEqual(json?["status"] as? String, "stalled")
+    }
+
     func testACaptureInsideTheDeadlineStillReturnsThePng() {
         let provider = SpinningScreenshotProvider(spin: 0)
         let router = Router(provider: provider, screenshotDeadline: 5)

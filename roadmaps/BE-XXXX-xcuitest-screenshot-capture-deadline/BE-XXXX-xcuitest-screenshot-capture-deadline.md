@@ -150,6 +150,24 @@ The late completion must also write nothing. The waiting handler has already sen
 connection will receive, and a second write into a socket the client has closed raises `SIGPIPE`,
 whose default disposition terminates the whole test host.
 
+One deadline covers the whole handler, the lock wait included, and that scope is the point rather
+than a detail. The lock is exactly what a second stalled screenshot waits on: an abandoned capture
+keeps it for as long as XCUITest gives its own request, so bounding only the capture would leave the
+next request blocked well past the client's window — arriving as the very silence this unit removes.
+Two stalls in one job is the ordinary case, not an exotic one, since even a job that passes logs about
+ten. A request that cannot acquire the lock inside the deadline never dispatches, so it has nothing to
+abandon, and its reply names the lock rather than the capture.
+
+The reply also has to stay inside the recovery machinery it would otherwise fall out of. A stall
+reaches the client today as a socket timeout, which BE-0207 re-issues and, on exhaustion, BE-0287
+recovers by re-leasing and re-running the scenario; an `HTTP 500` is a decoded reply, which the retry
+returns untouched, so answering with one would convert every stall the passing lanes absorb into an
+unrecovered scenario failure. The runner therefore answers `status: "stalled"`, distinct from the
+`error` a genuinely failed capture returns, and the client turns that status back into the same
+transport failure a timeout raised — re-issued as an idempotent read, and recovered if it persists. It
+is marked as *not* hung, because the runner is answering, so BE-0354's wedged-session fast-fail
+correctly stays out of it.
+
 The deadline's value is coupled to the client's read window, and the coupling is enforced by comment
 on both sides rather than mechanically — the two constants live in different languages, and no check
 spans them. Twelve seconds against the client's fifteen leaves the reply time to reach the client
@@ -212,8 +230,9 @@ reports nothing, both of which sit above the exhaustion BE-0361 identifies.
 
 - [x] Unit 1 — capture from the screen (`XCUIScreen.main.screenshot()`), verified pixel-neutral by a
   before-and-after image comparison on a booted iPhone 17.
-- [x] Unit 2 — bound the screenshot handler with a deadline below the client's read window, keeping
-  the serialization invariant and writing exactly one reply per connection.
+- [x] Unit 2 — bound the whole screenshot handler (lock wait included) with a deadline below the
+  client's read window, keeping the serialization invariant, writing exactly one reply per connection,
+  and answering `status: "stalled"` so the stall stays inside BE-0207's retry and BE-0287's recovery.
 
 ## References
 

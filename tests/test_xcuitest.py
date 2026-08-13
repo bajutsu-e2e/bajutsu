@@ -33,6 +33,7 @@ from bajutsu.drivers.xcuitest import (
     _raw_http_transport,
     _reason,
     _Reply,
+    _status_of,
     _timeout_for,
     _TransportFailure,
     _with_crash_recovery,
@@ -772,6 +773,59 @@ def test_reason_is_empty_when_there_is_nothing_to_add() -> None:
     assert _reason(json.dumps({"status": "error"}).encode()) == ""
     assert _reason(json.dumps({"message": ""}).encode()) == ""
     assert _reason(json.dumps({"message": 7}).encode()) == ""
+    # A non-UTF-8 body raises UnicodeDecodeError (a ValueError, not a JSONDecodeError) from
+    # json.loads' own decode step — it must not escape the failure path this helper decorates.
+    assert _reason(b"\x89PNG\r\n\x1a\n") == ""
+
+
+def test_decode_screenshot_stall_is_distinguishable_from_a_failure() -> None:
+    # The two need opposite handling, so the status must survive decoding: `stalled` is re-issued,
+    # `error` fails the step.
+    stalled = json.dumps({"status": "stalled", "message": "exceeded its 12.0s deadline"}).encode()
+    assert _decode("/screenshot", 500, stalled).status == "stalled"
+    assert _decode("/screenshot", 500, json.dumps({"status": "error"}).encode()).status == "error"
+    # Anything unreadable defaults to the conservative `error`, which fails loudly.
+    assert _decode("/screenshot", 500, b"not json").status == "error"
+    assert _decode("/screenshot", 500, b"").status == "error"
+
+
+def test_status_of_defaults_to_error_when_unreadable() -> None:
+    assert _status_of(json.dumps({"status": "stalled"}).encode()) == "stalled"
+    assert _status_of(None) == "error"
+    assert _status_of(b"") == "error"
+    assert _status_of(b"[1, 2]") == "error"
+    assert _status_of(b"\x89PNG") == "error"
+    assert _status_of(json.dumps({"status": 7}).encode()) == "error"
+
+
+def test_a_stalled_screenshot_is_retried_then_recovered_not_failed() -> None:
+    # A stalled read used to reach the client as a socket timeout, which BE-0207 re-issues and BE-0287
+    # recovers. Now the runner says so explicitly, and that must take the same path — otherwise the
+    # stalls the green lanes absorb today become unrecovered scenario failures.
+    calls: list[str] = []
+
+    def transport(method: str, path: str, body: object) -> _Reply:
+        calls.append(path)
+        if len(calls) < 3:
+            raise _TransportFailure("stalled", delivered=True, hung=False)
+        return _Reply(status="ok", png=b"\x89PNG")
+
+    wrapped = _with_retry(transport, sleep=lambda _s: None)
+    assert wrapped("GET", "/screenshot", None).png == b"\x89PNG"
+    assert len(calls) == 3  # re-issued twice, then succeeded
+
+
+def test_a_persistently_stalled_screenshot_becomes_a_recoverable_crash() -> None:
+    # On exhaustion it must be a BackendCrashError so pipeline.py's crash loop recovers the scenario,
+    # and `hung=False` so BE-0354 does not read it as a wedged session.
+    def transport(method: str, path: str, body: object) -> _Reply:
+        raise _TransportFailure("stalled", delivered=True, hung=False)
+
+    wrapped = _with_retry(transport, sleep=lambda _s: None)
+    with pytest.raises(XcuitestRunnerCrashError) as caught:
+        wrapped("GET", "/screenshot", None)
+    assert isinstance(caught.value, base.BackendCrashError)
+    assert caught.value.hung is False
 
 
 def test_decode_non_200_carries_the_servers_status() -> None:

@@ -24,6 +24,12 @@ struct HTTPResponse {
     static func error(_ statusCode: Int, _ message: String) -> HTTPResponse {
         json(statusCode, ["status": "error", "message": message])
     }
+
+    /// A read the runner could not complete in time, distinct from `error` so the client can tell a
+    /// stalled runner (re-issue, then recover) from a genuinely failed operation (fail the step).
+    static func stalled(_ message: String) -> HTTPResponse {
+        json(500, ["status": "stalled", "message": message])
+    }
 }
 
 typealias RequestHandler = (HTTPRequest) -> HTTPResponse
