@@ -230,13 +230,19 @@ final class XcuitestElementProvider: ElementProviding {
     ///
     /// A narrow flat query is the recovery step, reached only when the position path fails — the
     /// element moved, or its snapshot child indices cannot be replayed through a live hierarchy with
-    /// different system-owned wrapper nodes, as happens for the iOS Save Password sheet. The query
-    /// must yield exactly one identity match; duplicate or anonymous elements have no identity to
-    /// recover by, so a position-path miss on them is a genuine stale. Frame is deliberately excluded
-    /// from both identity checks (BE-0287).
+    /// different system-owned wrapper nodes, as happens for the iOS Save Password sheet and for a
+    /// presented `UIAlertController`. The query must yield one identity match, or several that also
+    /// agree on value and frame — XCUITest registers an alert's button twice at one place, and that
+    /// pair is one control rather than an ambiguity. Matches that disagree on either, and anonymous
+    /// elements, have no identity to recover by, so a position-path miss on them is a genuine stale.
+    /// Frame is deliberately excluded from the recorded-against-live identity check (BE-0287), and
+    /// value with it, for its own reason — a slider or text field legitimately changes value between
+    /// the snapshot and the tap; both decide only between candidates read from one live query.
     private func liveElement(for backing: PositionPathBacking) -> XCUIElement? {
         let el = element(at: backing.path)
-        if el.exists, attributesMatch(recorded: backing.recorded, current: recordedAttributes(of: el)) {
+        if el.exists, attributesMatch(
+            recorded: backing.recorded, current: recordedAttributes(of: el, includingValue: false)
+        ) {
             return el
         }
         return uniquelyIdentifiedElement(matching: backing.recorded)
@@ -253,18 +259,35 @@ final class XcuitestElementProvider: ElementProviding {
             query = query.matching(NSPredicate(format: "label == %@", label))
         }
         let candidates = query.allElementsBoundByIndex.filter { $0.exists }
-        let attributes = candidates.map(recordedAttributes)
-        guard let index = uniqueMatchingIndex(recorded: recorded, candidates: attributes) else {
+        let attributes = candidates.map { recordedAttributes(of: $0, includingValue: true) }
+        guard let index = resolvableMatchingIndex(recorded: recorded, candidates: attributes) else {
             return nil
         }
         return candidates[index]
     }
 
     /// Read the identity fields shared by flat-query and position-path resolution.
-    private func recordedAttributes(of el: XCUIElement) -> RecordedAttributes {
+    ///
+    /// `value` is read for the flat-query group check alone (`resolvableMatchingIndex`), which needs the
+    /// same fields the host's `_collapse_identical_duplicates` keys on; the recorded-against-live
+    /// identity match ignores it. It is therefore read only where it is asked for: `liveElement(for:)`
+    /// calls this on the position-path element on every actuation that resolves normally, and one more
+    /// XCUITest round-trip on that path would buy nothing — the per-interaction cost this class's
+    /// one-`snapshot()` design (BE-0105) exists to keep down. `includingValue` carries no default on
+    /// purpose, so each caller states its choice and the compiler asks a new one: a candidate list
+    /// built without it reports `value` as `nil` throughout, which reads to `resolvableMatchingIndex`
+    /// as every candidate agreeing, collapsing the ambiguity the field was added to preserve. Unlike
+    /// `identifier` and `label`, `value` is read straight off the optional rather than through
+    /// `nonEmpty`: the host's key keeps an absent value and an empty one apart (`Router` drops the key
+    /// entirely for `nil`, so Python sees `None` against `""`), and `flattenSnapshot` records it
+    /// unnormalized as well. Normalizing here alone would collapse a pair those two keep apart.
+    private func recordedAttributes(
+        of el: XCUIElement, includingValue: Bool
+    ) -> RecordedAttributes {
         RecordedAttributes(
             identifier: nonEmpty(el.identifier),
             label: nonEmpty(el.label),
+            value: includingValue ? el.value as? String : nil,
             traits: traitTokens(
                 elementType: el.elementType, isEnabled: el.isEnabled, isSelected: el.isSelected
             ),

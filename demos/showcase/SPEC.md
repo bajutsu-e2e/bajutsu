@@ -211,7 +211,7 @@ Modals reachable from Log (the five presentation styles):
 - `log.openFilter` → **sheet** with detents: `log.sheet.title`, `log.sheet.apply`, `log.sheet.close`
 - `log.openGallery` → **fullScreenCover**: `log.cover.title`, `log.cover.close`
 - `log.openDelete` → **action sheet** (a custom overlay of plain buttons, not a confirmationDialog / UIAlertController, whose actions the retired idb backend could not drive on iOS 26, BE-0290): choices `log.dialog.archive`, `log.dialog.delete` (destructive), `log.dialog.cancel`; result mirrored to `log.dialog.value` (`none`/`archive`/`delete`)
-- `log.openAlert` → **native alert** (SwiftUI `.alert` / UIKit `UIAlertController` style `.alert` — unlike the action sheet above, this genuinely native style is drivable on the XCUITest backend): two actions, "Cancel" and "OK", each addressed by `label`/`traits` since `UIAlertAction` carries no accessibilityIdentifier on either platform; result mirrored to `log.alert.value` (`none`/`cancel`/`ok`). **iOS-only for now** — the Compose / Views / Flutter Log screens carry no native-alert affordance, which is why its scenario lives apart in `scenarios/alert.yaml`
+- `log.openAlert` → **native alert** (SwiftUI `.alert` / UIKit `UIAlertController` style `.alert` — unlike the action sheet above, this genuinely native style is drivable on the XCUITest backend): two actions, `log.alert.cancel` ("Cancel") and `log.alert.ok` ("OK"); result mirrored to `log.alert.value` (`none`/`cancel`/`ok`). On UIKit the alert action is the one identifier surface that needs a helper of its own (§8), a `UIAlertAction` being no kind of view; SwiftUI's alert buttons take the ordinary helper. In the `-noax` twin, which carries no identifier at all, `label` + `traits` stays the only route to either button. **iOS-only for now** — the Compose / Views / Flutter Log screens carry no native-alert affordance, which is why its scenario lives apart in `scenarios/alert.yaml`
 - `log.toast` — the transient toast described above
 
 ### 5.4 Tab: Permissions — `perm`, `sys` namespaces (**the OS-integration screen**)
@@ -324,6 +324,27 @@ extension UIAccessibilityIdentification {
         accessibilityIdentifier = id
         #endif
         return self
+    }
+}
+```
+
+`UIAlertAction` — the native alert's two actions in §5.3 — takes an overload of its own. It is not
+a `UIView`, and its header never declares `UIAccessibilityIdentification`, yet the class does
+implement `setAccessibilityIdentifier:` and the identifier reaches the alert button XCUITest sees;
+key-value coding is what gets to that setter, guarded so an SDK that ever drops it leaves the button
+unidentified rather than raising `NSUnknownKeyException`. Nothing absorbs that loss silently: the
+a11y build's `scenarios/alert.yaml` addresses both buttons by `id`, so a dropped setter reddens the
+gating lane. Only the `-noax` twin, which never carried an identifier, addresses them by `label` +
+`traits`:
+
+```swift
+extension UIAlertAction {
+    /// Set the identifier the alert button carries in the a11y build; no-op otherwise.
+    func accessibilityID(_ id: String) {
+        #if ACCESSIBLE
+        guard responds(to: Selector(("setAccessibilityIdentifier:"))) else { return }
+        setValue(id, forKey: "accessibilityIdentifier")
+        #endif
     }
 }
 ```

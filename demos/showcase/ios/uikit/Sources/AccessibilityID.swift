@@ -24,6 +24,22 @@ extension UIView {
     }
 }
 
+extension UIAlertAction {
+    /// `UIAlertAction` is not a `UIView` and its header never declares
+    /// `UIAccessibilityIdentification`, but it does implement `setAccessibilityIdentifier:`,
+    /// and the identifier reaches the alert button XCUITest sees. Set it through KVC, guarded so
+    /// an SDK that ever drops the setter leaves the button unidentified rather than raising
+    /// `NSUnknownKeyException`. There is no silent fallback: the a11y `alert.yaml` addresses both
+    /// buttons by `id`, so that case fails the gating lane loudly. Only the `-noax` twin, which
+    /// never carried an identifier, still addresses them by label + traits.
+    func accessibilityID(_ id: String) {
+        #if ACCESSIBLE
+        guard responds(to: Selector(("setAccessibilityIdentifier:"))) else { return }
+        setValue(id, forKey: "accessibilityIdentifier")
+        #endif
+    }
+}
+
 extension UIBarItem {
     /// UIBarItem (tab/bar button items) exposes accessibilityValue but is not a UIView.
     func accessibilityStateValue(_ value: String?) {
