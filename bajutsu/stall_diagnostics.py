@@ -24,6 +24,7 @@ import re
 import subprocess
 import time
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 
 from bajutsu import simctl
@@ -35,9 +36,17 @@ _logger = logging.getLogger(__name__)
 # CI's to opt into, and an ordinary local run should not shell out to `sample` on a crash.
 _DIAGNOSTICS_ENV = "BAJUTSU_STALL_DIAGNOSTICS"
 
-# Captures per process. A degrading device crashes the runner repeatedly, and the second and third
-# captures still add information (is the host load rising?); past that they only repeat themselves.
-_MAX_CAPTURES = 3
+# Captures per trigger, per *process*. Budgeted per trigger rather than globally, because the two
+# triggers do not fire at comparable rates: `recordVideo produced no new bytes` fires on every
+# scenario of these runners — green runs included — and a job runs a dozen scenarios in one process,
+# so a single shared cap would be spent on the third scenario's video warning and the runner crash
+# that the whole capture exists to explain would arrive to find nothing left. In CI per-process equals
+# per run (a run is one `bajutsu run` process, and the variable is armed nowhere else); a long-lived
+# process such as `bajutsu serve` would consume the budget once, which `reset()` undoes.
+#
+# Two per trigger: a degrading device stalls repeatedly, and the second capture still adds information
+# (is the host load rising?), while a third mostly repeats it.
+_MAX_CAPTURES_PER_REASON = 2
 
 # Wall clock one capture may spend, across every probe it runs. The capture happens on a path that is
 # already failing and already waiting out a recovery window, so it must stay small next to that
@@ -73,10 +82,15 @@ _SAMPLE_PROCESSES = (
     "xcodebuild",
 )
 
-# Thread samples per capture, across every process above. `sample` is the expensive probe, so the cap
-# keeps one process's fan-out (several pids of one name) from starving the rest; the per-capture
-# budget, not this number, is what bounds the wall clock.
-_MAX_SAMPLES = len(_SAMPLE_PROCESSES)
+# Pids sampled per process name. One name resolves to several pids whenever the host has more than
+# one Simulator booted — each device runs its own `backboardd` and `SpringBoard` — and without this
+# those two names alone would spend the whole allowance, leaving `testmanagerd` (central to the
+# XCTest-host wedge) unsampled. The global cap below is the outer bound; this is the fairness one.
+_MAX_PIDS_PER_PROCESS = 2
+
+# Thread samples per capture, across every process above. `sample` is the expensive probe, so this
+# bounds the total; the per-capture budget, not this number, is what bounds the wall clock.
+_MAX_SAMPLES = len(_SAMPLE_PROCESSES) * _MAX_PIDS_PER_PROCESS
 
 # How much of a probe's stderr is folded into the summary — enough to identify a failure without
 # turning the summary into a log.
@@ -84,37 +98,59 @@ _STDERR_EXCERPT = 400
 
 _SUMMARY = "probe.txt"
 
-_captures = 0
+# One warning per process when the summary itself cannot be written (see `_note`).
+_summary_warned = False
+
+_captures: dict[str, int] = {}
 
 
 def capture(reason: str, udid: str | None = None) -> None:
     """Capture the state behind a stall into a fresh directory, if the operator asked for it.
 
-    Returns without touching the filesystem when `BAJUTSU_STALL_DIAGNOSTICS` is unset or this run has
-    already taken `_MAX_CAPTURES`. Never raises: the caller is a failure path, and a capture that
-    fails must not become the failure that surfaces.
+    Returns without touching the filesystem when `BAJUTSU_STALL_DIAGNOSTICS` is unset or this process
+    has already taken `_MAX_CAPTURES_PER_REASON` captures for this trigger.
+
+    Never raises. The caller is a failure path — one of them, the video trigger, calls this from inside
+    a live scenario's evidence setup — so a bug in here must cost a log line and nothing else. The
+    promise is enforced once, here, rather than re-derived at each probe.
 
     Args:
-        reason: Which trigger fired, e.g. `runner-crash`. Names the capture directory, so a run that
-            stalls twice for different reasons keeps both.
+        reason: Which trigger fired. Names the capture directory and carries its own budget, so a
+            frequent trigger cannot starve a rare one.
         udid: The device to screenshot, when the trigger knows it. Absent, the host-side probes still
             run — they answer the starvation hypothesis on their own.
     """
-    global _captures
+    try:
+        _capture(reason, udid)
+    except Exception:
+        _logger.warning("stall diagnostics: the capture of '%s' failed", reason, exc_info=True)
 
+
+def _capture(reason: str, udid: str | None) -> None:
     root = os.environ.get(_DIAGNOSTICS_ENV)
     if not root:
         return
-    if _captures >= _MAX_CAPTURES:
-        _logger.debug("stall diagnostics: %s ignored, already captured %s", reason, _captures)
+    slug = _slug(reason)
+    taken = _captures.get(slug, 0)
+    if taken >= _MAX_CAPTURES_PER_REASON:
+        # A warning, not a debug line: the iOS lane installs no log handler, so a debug line is no
+        # record at all — and "the stall was not captured" is exactly what the operator reading the
+        # artifact needs to know before concluding the evidence says nothing.
+        _logger.warning(
+            "stall diagnostics: NOT capturing '%s' — this process already took %s for that trigger",
+            reason,
+            taken,
+        )
         return
-    _captures += 1
+    # Counted before the directory is attempted, so a stream of unusable destinations spends the budget
+    # rather than retrying the same broken path on every stall of a crash-looping run.
+    _captures[slug] = taken + 1
 
     # The pid keys the directory to this process, not just to the counter: one CI job can run two
     # `bajutsu run` processes against the same collection directory (the `bundled-runner` lane runs
     # two smoke steps), and both would otherwise write `stall-01-<reason>` and overwrite each other's
     # evidence — losing the earlier stall, which is the one that started the degradation.
-    dest = Path(root) / f"stall-{_captures:02d}-{_slug(reason)}-{os.getpid()}"
+    dest = Path(root) / f"stall-{_captures[slug]:02d}-{slug}-{os.getpid()}"
     try:
         make_run_dir(dest)
     except (OSError, ValueError) as exc:
@@ -122,20 +158,32 @@ def capture(reason: str, udid: str | None = None) -> None:
         return
 
     _logger.warning("stall diagnostics: capturing the state behind '%s' → %s", reason, dest)
+    # An absolute stamp, because the whole point of the three layers is correlation: the host telemetry
+    # and the unified-log extracts are wall-clock stamped, and without this the only thing tying a
+    # capture to a moment in them is a directory mtime that may not survive artifact upload.
+    _note(dest, f"captured at {datetime.now(UTC).isoformat()} — reason={reason}")
     deadline = time.monotonic() + _CAPTURE_BUDGET
+    # Sub-second snapshots first, then the screenshot, then the expensive `sample`s. Ordering by cost
+    # matters on the interesting case: a wedged render service makes the screenshot spend its whole
+    # ceiling, which is half the budget, and the host's load — the answer to the starvation
+    # hypothesis — must already be on record by then rather than lost to the probe that outran it.
+    _probe(dest, "ps", ["/bin/ps", "aux"], _SNAPSHOT_TIMEOUT, deadline, output=dest / "ps.txt")
+    _probe(
+        dest,
+        "vm_stat",
+        ["/usr/bin/vm_stat"],
+        _SNAPSHOT_TIMEOUT,
+        deadline,
+        output=dest / "vm_stat.txt",
+    )
     if udid is not None:
         _screenshot(dest, udid, deadline)
-    # Cheap snapshots before the expensive `sample`s, so the budget cannot run out with the host's
-    # load — the answer to the starvation hypothesis — unrecorded.
-    _probe(dest, "ps", ["/bin/ps", "aux"], _SNAPSHOT_TIMEOUT, deadline, output="ps.txt")
-    _probe(dest, "vm_stat", ["/usr/bin/vm_stat"], _SNAPSHOT_TIMEOUT, deadline, output="vm_stat.txt")
     _sample_processes(dest, deadline)
 
 
 def reset() -> None:
-    """Forget how many captures this process has taken (the per-run cap's only mutable state)."""
-    global _captures
-    _captures = 0
+    """Forget how many captures this process has taken (the per-trigger budget's only state)."""
+    _captures.clear()
 
 
 def _slug(reason: str) -> str:
@@ -155,12 +203,14 @@ def _screenshot(dest: Path, udid: str, deadline: float) -> None:
 
 
 def _sample_processes(dest: Path, deadline: float) -> None:
-    """Thread-sample the rendering and screenshot processes, up to `_MAX_SAMPLES` of them."""
+    """Thread-sample the rendering and screenshot processes, bounded per name and in total."""
     taken = 0
     for name in _SAMPLE_PROCESSES:
-        for pid in _pids_of(name, dest, deadline):
+        # Sliced per name so a multi-device host's several `backboardd`s cannot spend the whole
+        # allowance before the later names are reached.
+        for pid in _pids_of(name, dest, deadline)[:_MAX_PIDS_PER_PROCESS]:
             if taken >= _MAX_SAMPLES:
-                _note(dest, f"sample: stopped at {_MAX_SAMPLES} processes")
+                _note(dest, f"sample: stopped at {_MAX_SAMPLES} samples")
                 return
             taken += 1
             report = dest / f"sample-{name}-{pid}.txt"
@@ -178,6 +228,10 @@ def _pids_of(name: str, dest: Path, deadline: float) -> list[int]:
     """The live pids of `name`, or an empty list when it isn't running (or the lookup failed)."""
     remaining = deadline - time.monotonic()
     if remaining <= 0:
+        # Noted, unlike a `pgrep` that simply found nothing: "the budget ran out before we looked" and
+        # "this process is not running" are different answers, and a summary that conflated them would
+        # read as a complete capture.
+        _note(dest, f"pgrep {name}: skipped, the capture budget is spent")
         return []
     try:
         found = subprocess.run(
@@ -190,9 +244,21 @@ def _pids_of(name: str, dest: Path, deadline: float) -> list[int]:
     except (OSError, subprocess.SubprocessError) as exc:
         _note(dest, f"pgrep {name}: {type(exc).__name__} ({exc})")
         return []
-    # `pgrep` exits 1 when nothing matches, which is the ordinary case for a process this host
-    # doesn't run — not worth a note.
-    return [int(line) for line in found.stdout.split() if line.isdigit()]
+    # `pgrep` exits 1 when nothing matches and 2/3 on a usage or fatal error. Reading only stdout would
+    # make an error indistinguishable from "not running" and leave the process unsampled with no note.
+    if found.returncode not in (0, 1):
+        _note(
+            dest,
+            f"pgrep {name}: exit {found.returncode} — the lookup failed, so it was not sampled",
+        )
+        return []
+    pids = [int(line) for line in found.stdout.split() if line.isdigit()]
+    if not pids:
+        # An absent render process is a *finding*, not an empty result: a wedged Simulator whose
+        # `backboardd` has died is the diagnosis for hypothesis (1), and omitting the line would leave
+        # "dead" indistinguishable from "never probed".
+        _note(dest, f"sample:{name}: NOT RUNNING")
+    return pids
 
 
 def _probe(
@@ -202,13 +268,16 @@ def _probe(
     timeout: float,
     deadline: float,
     *,
-    output: str | None = None,
+    output: Path | None = None,
     writes: Path | None = None,
 ) -> None:
     """Run one bounded probe, recording its exit and elapsed time in the summary. Never raises.
 
+    Exactly one of `output` / `writes` is given: a probe either hands us its stdout or writes its own
+    file, never both.
+
     Args:
-        output: Name under `dest` to write the probe's own stdout into.
+        output: Where to write the probe's own stdout.
         writes: The file the command writes for itself (`simctl io screenshot`, `sample -file`),
             restricted afterwards like any other artifact — a device screenshot is exactly the
             sensitive kind BE-0131 locks down, and the capture directory's own mode must not be the
@@ -239,10 +308,11 @@ def _probe(
     elapsed = time.monotonic() - started
     try:
         if output is not None:
-            (dest / output).write_bytes(done.stdout)
-            restrict_file(dest / output)
+            output.write_bytes(done.stdout)
+            restrict_file(output)
     except OSError as exc:
-        _note(dest, f"{label}: could not write {output} ({exc})")
+        _note(dest, f"{label}: could not write the probe's output ({exc})")
+        _secure(dest, label, writes)
         return
     _secure(dest, label, writes)
     stderr = done.stderr.decode(errors="replace")[:_STDERR_EXCERPT]
@@ -258,8 +328,9 @@ def _secure(dest: Path, label: str, writes: Path | None) -> None:
 
     Called from the failure paths too, not only after a clean exit: a killed `simctl io screenshot`
     can already have written the frame, and a device screenshot is exactly the artifact BE-0131 locks
-    to owner-only. `restrict_file` raises when the file vanishes underneath it, and that exception
-    would escape `capture` — which the video trigger calls bare — so the `chmod` stays guarded.
+    to owner-only. The `chmod` stays guarded because it can still fail on a file that is present — a
+    permission error, or the file replaced between the probe and the mode change — and that exception
+    would otherwise escape `capture`, which the video trigger calls bare.
     """
     if writes is None:
         return
@@ -270,10 +341,16 @@ def _secure(dest: Path, label: str, writes: Path | None) -> None:
 
 
 def _note(dest: Path, line: str) -> None:
-    """Append one outcome line to the capture's summary; a summary that cannot be written is dropped."""
+    """Append one outcome line to the capture's summary, warning once if the summary is unwritable."""
+    global _summary_warned
     try:
         with (dest / _SUMMARY).open("a", encoding="utf-8") as fh:
             fh.write(line + "\n")
         restrict_file(dest / _SUMMARY)
     except OSError as exc:
-        _logger.debug("stall diagnostics: could not record '%s' (%s)", line, exc)
+        # Warned rather than dropped at debug — an unwritable summary loses *every* probe outcome, and
+        # a full disk on a degrading job is exactly when that happens. Once per process: the same
+        # failure repeats for every probe, and a log flooded with it hides the crash underneath.
+        if not _summary_warned:
+            _summary_warned = True
+            _logger.warning("stall diagnostics: cannot write %s (%s)", dest / _SUMMARY, exc)

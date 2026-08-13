@@ -302,7 +302,8 @@ def start_video(
     premature kill would truncate the mp4 (no `moov` atom) and wedge the simulator's recording session.
     `confirm_started`, when set, polls for the recording to write past its pre-spawn size so the
     returned `Interval.true_start` reflects when it actually began rather than when the process was
-    spawned.
+    spawned. A confirmation that gives up also triggers the BE-0361 stall capture, which is a bounded,
+    opt-in side effect: a dead video pipeline is evidence about the device, not just about this clip.
     """
     baseline_size = _file_size(path, disclose=True) if confirm_started else 0
     proc = spawn(record_video_cmd(udid, str(path)), None)
@@ -313,18 +314,19 @@ def start_video(
         if confirm_started
         else None
     )
-    if confirm_started and true_start is None:
+    start_confirmed = (true_start is not None) if confirm_started else None
+    if start_confirmed is False:
         # A recording that produces no byte says the Simulator's video pipeline is degraded *now*,
         # which is the same stall the runner channel dies of — so capture the state while it is still
-        # there (BE-0361 unit 2). Fired here rather than inside the poll because the udid the capture
-        # screenshots is a parameter of this function, not of the poll. Opt-in and bounded; unset, it
-        # returns without doing anything.
+        # there (BE-0361 unit 2). Keyed on the tri-state the `Interval` already models rather than
+        # re-deriving it, and fired here rather than inside the poll because the udid the capture
+        # screenshots is a parameter of this function. Opt-in and bounded; unset, it does nothing.
         stall_diagnostics.capture("video-no-bytes", udid)
     return Interval(
         kind="video",
         path=path,
         true_start=true_start,
-        start_confirmed=(true_start is not None) if confirm_started else None,
+        start_confirmed=start_confirmed,
         _proc=proc,
         _stop_signal=signal.SIGINT,
         _stop_timeout=_VIDEO_FINALIZE_TIMEOUT,

@@ -98,7 +98,12 @@ runs:
               sleep 5
               kill -INT "$video" 2>/dev/null
               reap "$video" 15
-              echo "recordVideo: $(wc -c <"$DEST/render-probe.mp4" 2>/dev/null || echo 0) bytes in 5s"
+              vrc=$?
+              echo "recordVideo: exit $vrc, $(wc -c <"$DEST/render-probe.mp4" 2>/dev/null || echo 0) bytes in 5s"
+              [ "$vrc" -eq 124 ] && echo "recordVideo: did not finalize after SIGINT — the clip is truncated"
+              # A device frame and a screen recording, locked down like every other artifact of this
+              # class (the Python side pins the same files to owner-only under BE-0131).
+              chmod 600 "$DEST/render-probe.png" "$DEST/render-probe.mp4" 2>/dev/null || true
             fi
           } >"$DEST/render-probe.txt" 2>&1
         fi
@@ -195,9 +200,21 @@ runs:
         # Tail rather than copy: this file is append-only for the life of the host and is measured at
         # 183MB on a developer Mac. A CI runner is fresh, so the cap costs nothing there and keeps a
         # reused or long-lived runner from putting a nine-figure file into every green job's artifact.
-        tail -c "$CORESIM_LOG_BYTES" ~/Library/Logs/CoreSimulator/CoreSimulator.log \
-          >"$DEST/CoreSimulator.log" 2>/dev/null || true
-        if [ -n "$udid" ] && [ -d ~/Library/Logs/CoreSimulator/"$udid" ]; then
+        # Guarded on the source existing, because a redirection creates its target before `tail` runs —
+        # an absent log would otherwise ship as a 0-byte file that reads as "collected, nothing to say",
+        # which is the empty-by-construction artifact this action exists to stop producing.
+        coresim=~/Library/Logs/CoreSimulator/CoreSimulator.log
+        if [ -f "$coresim" ]; then
+          tail -c "$CORESIM_LOG_BYTES" "$coresim" >"$DEST/CoreSimulator.log"
+        else
+          echo "::warning::bajutsu diagnostics: $coresim is absent; no CoreSimulator log collected"
+        fi
+
+        if [ -z "$udid" ]; then
+          echo "::warning::bajutsu diagnostics: no device id resolved; the device's own CoreSimulator log directory was NOT collected"
+        elif [ ! -d ~/Library/Logs/CoreSimulator/"$udid" ]; then
+          echo "::warning::bajutsu diagnostics: ~/Library/Logs/CoreSimulator/$udid does not exist; nothing to collect for this device"
+        else
           mkdir -p "$DEST/coresimulator-$udid"
           cp -Rf ~/Library/Logs/CoreSimulator/"$udid"/. "$DEST/coresimulator-$udid"/ 2>/dev/null || true
         fi
@@ -222,7 +239,9 @@ runs:
           xcodebuild -version
           system_profiler SPDisplaysDataType 2>/dev/null
         } >"$DEST/host-environment.txt" 2>&1
-        xcrun simctl list -j >"$DEST/simctl-list.json" 2>/dev/null || true
+        if ! xcrun simctl list -j >"$DEST/simctl-list.json" 2>"$DEST/simctl-list.err"; then
+          echo "::warning::bajutsu diagnostics: simctl list failed ($(head -c 200 "$DEST/simctl-list.err"))"
+        fi
 
         if [ "$FAILED" != "true" ]; then
           # The render probe's *byte counts* are the cross-run datum and stay in render-probe.txt;
@@ -242,7 +261,12 @@ runs:
         diagnose=(xcrun simctl diagnose -b --timeout=60 --output="$DEST/simctl-diagnose")
         [ -n "$udid" ] && diagnose+=(--udid="$udid")
         printf '\n' | bounded 300 "${diagnose[@]}"
-        echo "simctl diagnose: $(du -sh "$DEST"/simctl-diagnose* 2>/dev/null | cut -f1 | tr '\n' ' ')"
+        rc=$?
+        size=$(du -sh "$DEST"/simctl-diagnose* 2>/dev/null | cut -f1 | tr '\n' ' ')
+        echo "simctl diagnose: exit $rc, ${size:-nothing collected}"
+        # It has a documented silent-zero-collection mode (the stdin EOF above), so an empty result is
+        # how a regression of that fix would look — say so rather than printing a blank size.
+        [ -n "$size" ] || echo "::warning::bajutsu diagnostics: simctl diagnose collected nothing (exit $rc)"
 
         # Targeted extracts instead of a whole-window `log collect` archive: the failure signature
         # already names the processes that serve rendering and screenshots. It takes TWO extracts,
@@ -254,11 +278,21 @@ runs:
         bounded 180 /usr/bin/log show --last "$LOG_WINDOW" --style compact \
           --predicate 'process CONTAINS "CoreSimulator" OR process == "simctl" OR process CONTAINS "SimLaunchHost" OR process == "simdiskimaged" OR subsystem CONTAINS "CoreSimulator"' \
           >"$DEST/unified-log-host.txt" 2>&1
-        echo "unified log (host): $(wc -l <"$DEST/unified-log-host.txt" 2>/dev/null || echo 0) line(s)"
+        rc=$?
+        lines=$(wc -l <"$DEST/unified-log-host.txt" 2>/dev/null || echo 0)
+        echo "unified log (host): exit $rc, $lines line(s)"
+        # `2>&1` folds stderr into the artifact, so a failed extract leaves a handful of error lines
+        # that read exactly like a genuinely quiet window — the exit status is what tells them apart.
+        [ "$rc" -eq 0 ] || echo "::warning::bajutsu diagnostics: the host unified-log extract failed (exit $rc)"
 
-        if [ -n "$udid" ]; then
+        if [ -z "$udid" ]; then
+          echo "::warning::bajutsu diagnostics: no device id resolved; the GUEST unified log (SpringBoard/backboardd/testmanagerd) was NOT collected, and the host extract does not contain it"
+        else
           bounded 180 xcrun simctl spawn "$udid" log show --last "$LOG_WINDOW" --style compact \
             --predicate 'process == "backboardd" OR process == "SpringBoard" OR process == "testmanagerd"' \
             >"$DEST/unified-log-guest.txt" 2>&1
-          echo "unified log (guest): $(wc -l <"$DEST/unified-log-guest.txt" 2>/dev/null || echo 0) line(s)"
+          rc=$?
+          lines=$(wc -l <"$DEST/unified-log-guest.txt" 2>/dev/null || echo 0)
+          echo "unified log (guest): exit $rc, $lines line(s)"
+          [ "$rc" -eq 0 ] || echo "::warning::bajutsu diagnostics: the guest unified-log extract failed (exit $rc) — the render-wedge evidence is missing"
         fi

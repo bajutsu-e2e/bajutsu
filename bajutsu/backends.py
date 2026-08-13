@@ -403,7 +403,7 @@ def make_driver(
     record_video_dir: Path | None = None,
     runner_port: int = 0,
     runner_alive: Callable[[], bool] | None = None,
-    on_stall: Callable[[str], None] | None = None,
+    on_stall: Callable[[], None] | None = None,
     fetch_hierarchy: HierarchyFetch | None = None,
     fetch_clock: ClockFetch | None = None,
     act: ActFn | None = None,

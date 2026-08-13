@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from bajutsu import stall_diagnostics
+from bajutsu import artifact_perms, stall_diagnostics
 
 
 def _capture_dir(root: Path, index: int, reason: str) -> Path:
@@ -25,7 +25,7 @@ def _capture_dir(root: Path, index: int, reason: str) -> Path:
 
 @pytest.fixture(autouse=True)
 def _fresh_capture_count() -> Any:
-    """The per-run cap is module state; a leaked count would make these tests order-dependent."""
+    """The per-trigger budget is module state; a leaked count would make these tests order-dependent."""
     stall_diagnostics.reset()
     yield
     stall_diagnostics.reset()
@@ -38,15 +38,28 @@ class _FakeCompleted:
         self.returncode = returncode
 
 
-def _record_runs(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
-    """Capture every subprocess the module would have spawned, answering each one successfully."""
+def _record_runs(
+    monkeypatch: pytest.MonkeyPatch, *, pids: dict[str, bytes] | None = None
+) -> list[dict[str, Any]]:
+    """Capture every subprocess the module would have spawned, answering each one successfully.
+
+    The fake also *writes* the files the real commands write for themselves — `simctl io screenshot`'s
+    png and `sample -file`'s report — because `restrict_file` is a no-op on an absent file, so a fake
+    that skipped them would leave the owner-only guarantee asserted by nothing. `pids` overrides what
+    `pgrep` answers per process name, for the several-pids fan-out the sample cap exists to bound.
+    """
     calls: list[dict[str, Any]] = []
 
     def _run(argv: list[str], **kw: Any) -> _FakeCompleted:
         calls.append({"argv": argv, "timeout": kw.get("timeout")})
-        # `pgrep` drives the sample loop; one pid per process keeps the fan-out predictable.
-        stdout = b"4242\n" if argv[0].endswith("pgrep") else b"out"
-        return _FakeCompleted(stdout=stdout)
+        if argv[0].endswith("pgrep"):
+            # `pgrep` drives the sample loop; one pid per name unless a test asks for a fan-out.
+            return _FakeCompleted(stdout=(pids or {}).get(argv[-1], b"4242\n"))
+        if argv[0].endswith("sample"):
+            Path(argv[argv.index("-file") + 1]).write_bytes(b"stack")
+        elif "screenshot" in argv:
+            Path(argv[-1]).write_bytes(b"png")
+        return _FakeCompleted(stdout=b"out")
 
     monkeypatch.setattr(subprocess, "run", _run)
     return calls
@@ -109,15 +122,63 @@ def test_the_screenshot_is_skipped_without_a_device(
     assert (_capture_dir(tmp_path, 1, "video-no-bytes") / "vm_stat.txt").exists()
 
 
-def test_a_run_takes_at_most_the_capture_cap(
+def test_a_run_takes_at_most_the_budget_for_one_trigger(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # A crash-looping run must not fill the disk or the wall clock with repeats of the same evidence.
     monkeypatch.setenv(stall_diagnostics._DIAGNOSTICS_ENV, str(tmp_path))
     _record_runs(monkeypatch)
-    for _ in range(stall_diagnostics._MAX_CAPTURES + 3):
+    for _ in range(stall_diagnostics._MAX_CAPTURES_PER_REASON + 3):
         stall_diagnostics.capture("runner-crash", "UDID")
-    assert len(list(tmp_path.iterdir())) == stall_diagnostics._MAX_CAPTURES
+    assert len(list(tmp_path.iterdir())) == stall_diagnostics._MAX_CAPTURES_PER_REASON
+
+
+def test_a_frequent_trigger_cannot_starve_the_crash_trigger(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The budget is per trigger for one reason: `recordVideo produced no new bytes` fires on every
+    # scenario of these runners, green runs included, and a job runs a dozen scenarios in one process.
+    # Under a single shared budget the video warnings would spend it before the runner crash — the very
+    # failure the capture exists to explain — ever reached the collector.
+    monkeypatch.setenv(stall_diagnostics._DIAGNOSTICS_ENV, str(tmp_path))
+    _record_runs(monkeypatch)
+    for _ in range(12):
+        stall_diagnostics.capture("video-no-bytes", "UDID")
+    stall_diagnostics.capture("runner-crash", "UDID")
+
+    names = sorted(p.name for p in tmp_path.iterdir())
+    assert sum("video-no-bytes" in n for n in names) == stall_diagnostics._MAX_CAPTURES_PER_REASON
+    assert sum("runner-crash" in n for n in names) == 1
+
+
+def test_a_declined_capture_is_logged_loudly_enough_to_be_seen(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The iOS lane installs no log handler, so a `debug` refusal is no record at all — and the operator
+    # reading the artifact needs to know a stall went uncaptured before concluding the evidence is silent.
+    monkeypatch.setenv(stall_diagnostics._DIAGNOSTICS_ENV, str(tmp_path))
+    _record_runs(monkeypatch)
+    for _ in range(stall_diagnostics._MAX_CAPTURES_PER_REASON):
+        stall_diagnostics.capture("runner-crash", "UDID")
+    with caplog.at_level("WARNING", logger="bajutsu.stall_diagnostics"):
+        stall_diagnostics.capture("runner-crash", "UDID")
+    assert any("NOT capturing" in record.message for record in caplog.records)
+
+
+def test_an_unexpected_error_inside_the_capture_never_escapes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # `_probe` catches OSError and SubprocessError; the module's promise is broader than that, because
+    # the video trigger calls `capture` bare from inside a live scenario's evidence setup. A malformed
+    # argv raises ValueError from `subprocess.run`, and the next probe someone adds may raise something
+    # else again — so the wall lives in `capture`, not in each probe.
+    monkeypatch.setenv(stall_diagnostics._DIAGNOSTICS_ENV, str(tmp_path))
+
+    def _run(argv: list[str], **_kw: Any) -> _FakeCompleted:
+        raise ValueError("malformed argv")
+
+    monkeypatch.setattr(subprocess, "run", _run)
+    stall_diagnostics.capture("runner-crash", "UDID")  # must not raise
 
 
 def test_a_probe_that_times_out_is_recorded_rather_than_raised(
@@ -172,3 +233,102 @@ def test_the_reason_cannot_escape_the_capture_directory(
     _record_runs(monkeypatch)
     stall_diagnostics.capture("../../escaped")
     assert [p.name for p in (tmp_path / "root").iterdir()] == [f"stall-01-escaped-{os.getpid()}"]
+
+
+def test_the_capture_budget_clamps_and_then_skips_the_remaining_probes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The module's headline bound: a capture spends at most `_CAPTURE_BUDGET` across *all* its probes,
+    # not per probe. Driven by a fake clock rather than real waiting, so the test stays deterministic —
+    # each `monotonic()` reading advances a fixed step, which walks the budget down predictably.
+    monkeypatch.setenv(stall_diagnostics._DIAGNOSTICS_ENV, str(tmp_path))
+    ticks = iter(range(10_000))
+    monkeypatch.setattr(stall_diagnostics.time, "monotonic", lambda: float(next(ticks)) * 4.0)
+    calls = _record_runs(monkeypatch)
+    stall_diagnostics.capture("runner-crash", "UDID")
+
+    timeouts = [call["timeout"] for call in calls]
+    assert timeouts, "no probe ran, so the clamp below is vacuous"
+    # No probe may be handed more than the budget has left, so the total never exceeds the budget's
+    # own ceiling — the property an unclamped `timeout=` would break while every other test passed.
+    assert all(0 < t <= stall_diagnostics._CAPTURE_BUDGET for t in timeouts)
+    assert min(timeouts) < stall_diagnostics._SNAPSHOT_TIMEOUT  # a later probe was clamped down
+    summary = (_capture_dir(tmp_path, 1, "runner-crash") / stall_diagnostics._SUMMARY).read_text()
+    assert "the capture budget is spent" in summary
+
+
+def test_every_collected_file_is_owner_only(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A device screenshot and a thread sample are exactly the artifacts BE-0131 locks to owner-only,
+    # and the files the probes write for *themselves* are the ones a `restrict_file` slip would leave
+    # world-readable — the capture directory's mode must not be the only guard.
+    monkeypatch.setenv(stall_diagnostics._DIAGNOSTICS_ENV, str(tmp_path))
+    _record_runs(monkeypatch)
+    stall_diagnostics.capture("runner-crash", "UDID")
+
+    dest = _capture_dir(tmp_path, 1, "runner-crash")
+    assert dest.stat().st_mode & 0o777 == artifact_perms.RUN_DIR_MODE
+    written = sorted(p.name for p in dest.iterdir())
+    assert "screenshot.png" in written and any(n.startswith("sample-") for n in written)
+    for path in dest.iterdir():
+        assert path.stat().st_mode & 0o777 == artifact_perms.ARTIFACT_FILE_MODE, path.name
+
+
+def test_a_frame_written_before_a_probe_was_killed_is_still_locked_down(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The wedge case: `simctl` writes the png, then stops answering and the probe times out. The frame
+    # exists and is just as sensitive, so the failure paths must secure it too.
+    monkeypatch.setenv(stall_diagnostics._DIAGNOSTICS_ENV, str(tmp_path))
+
+    def _run(argv: list[str], **kw: Any) -> _FakeCompleted:
+        if "screenshot" in argv:
+            Path(argv[-1]).write_bytes(b"png")
+            raise subprocess.TimeoutExpired(argv, kw.get("timeout", 0))
+        return _FakeCompleted()
+
+    monkeypatch.setattr(subprocess, "run", _run)
+    stall_diagnostics.capture("runner-crash", "UDID")
+    png = _capture_dir(tmp_path, 1, "runner-crash") / "screenshot.png"
+    assert png.stat().st_mode & 0o777 == artifact_perms.ARTIFACT_FILE_MODE
+
+
+def test_one_process_fan_out_cannot_crowd_out_the_render_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Why the per-name slice exists: one name resolves to several pids whenever the host has more than
+    # one Simulator booted (each device runs its own `backboardd`), and an unsliced walk would let that
+    # one name spend the whole allowance — leaving `testmanagerd`, central to the XCTest-host wedge,
+    # unsampled.
+    monkeypatch.setenv(stall_diagnostics._DIAGNOSTICS_ENV, str(tmp_path))
+    crowded = stall_diagnostics._SAMPLE_PROCESSES[0]
+    calls = _record_runs(monkeypatch, pids={crowded: b"1 2 3 4 5 6\n"})
+    stall_diagnostics.capture("runner-crash", "UDID")
+
+    sampled = [
+        call["argv"][1] for call in calls if call["argv"][0].endswith("sample")
+    ]  # the pid argument
+    # The crowded name gets its slice and no more, and every other process still gets sampled.
+    assert sum(pid in {"1", "2", "3", "4", "5", "6"} for pid in sampled) == (
+        stall_diagnostics._MAX_PIDS_PER_PROCESS
+    )
+    others = len(stall_diagnostics._SAMPLE_PROCESSES) - 1
+    assert sum(pid == "4242" for pid in sampled) == others
+
+
+def test_a_non_simulator_device_id_is_refused_without_stopping_the_capture(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # `screenshot_cmd` validates the id before it reaches an argv. A caller that hands over an Android
+    # serial should lose the screenshot only — the host-side probes still answer the starvation
+    # hypothesis, and nothing may raise back into the failure path.
+    monkeypatch.setenv(stall_diagnostics._DIAGNOSTICS_ENV, str(tmp_path))
+    calls = _record_runs(monkeypatch)
+    stall_diagnostics.capture("runner-crash", "-not-a-udid")
+
+    dest = _capture_dir(tmp_path, 1, "runner-crash")
+    assert "refused the device id" in (dest / stall_diagnostics._SUMMARY).read_text()
+    assert not (dest / "screenshot.png").exists()
+    assert (dest / "vm_stat.txt").exists()
+    assert "xcrun" not in [call["argv"][0] for call in calls]

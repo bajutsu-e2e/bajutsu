@@ -326,15 +326,18 @@ def _await_health(
         sleep(poll)
 
 
-def _observe_stall(hook: Callable[[str], None], logger: logging.Logger) -> None:
+def _observe_stall(hook: Callable[[], None], logger: logging.Logger) -> None:
     """Let the diagnostics hook look at a declared crash, absorbing whatever it does (BE-0361).
 
     A capture runs on the failure path it documents, so a broken hook must cost that path a log line
     and nothing else — never the exception that would replace the crash diagnostic the caller is
     about to raise.
+
+    The hook takes no argument: naming the trigger (and therefore the directory the capture writes) is
+    the environment's business, not the channel's, so nothing the channel passes can reach a path.
     """
     try:
-        hook("runner-crash")
+        hook()
     except Exception:
         # With the traceback: a capture that regresses would otherwise log the same opaque line on
         # every CI failure, leaving the diagnostics themselves undiagnosable.
@@ -348,7 +351,7 @@ def _with_crash_recovery(
     *,
     health: Callable[[float], bool],
     runner_alive: Callable[[], bool] | None = None,
-    on_stall: Callable[[str], None] | None = None,
+    on_stall: Callable[[], None] | None = None,
     recovery_timeout: float = _RECOVERY_TIMEOUT_SECONDS,
     max_recoveries: int = _MAX_CRASH_RECOVERIES,
     max_hung_calls: int = _MAX_HUNG_CALLS,
@@ -524,8 +527,9 @@ def _raw_http_transport(host: str, port: int) -> TransportFn:
 def _http_transport(
     host: str,
     port: int,
+    *,
     runner_alive: Callable[[], bool] | None = None,
-    on_stall: Callable[[str], None] | None = None,
+    on_stall: Callable[[], None] | None = None,
 ) -> tuple[TransportFn, TransportFn]:
     """The real transport, plus the raw single-attempt transport used for fast health probes.
 
@@ -539,7 +543,9 @@ def _http_transport(
 
     `runner_alive`, when the environment supplies its `xcodebuild`-process liveness check, lets
     crash-recovery fail fast on a runner whose process has exited rather than polling the dead port
-    for the whole recovery window; absent, recovery is exactly BE-0287's.
+    for the whole recovery window; absent, recovery is exactly BE-0287's. `on_stall` is the
+    environment's bounded diagnostics capture (BE-0361), an observer of the same crash declaration.
+    Both are keyword-only, so two adjacent optional callbacks cannot be swapped at a call site.
     """
     raw = _raw_http_transport(host, port)
     wrapped = _with_crash_recovery(
@@ -589,7 +595,7 @@ class XcuitestDriver:
         host: str = "127.0.0.1",
         port: int = 0,
         runner_alive: Callable[[], bool] | None = None,
-        on_stall: Callable[[str], None] | None = None,
+        on_stall: Callable[[], None] | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         if transport is not None:
@@ -602,7 +608,7 @@ class XcuitestDriver:
             # `on_stall` is the environment's diagnostics capture (BE-0361), an observer of the same
             # crash declaration.
             self._transport, self._probe_transport = _http_transport(
-                host, port, runner_alive, on_stall
+                host, port, runner_alive=runner_alive, on_stall=on_stall
             )
         # Injectable so the stale re-resolution backoff (BE-0289) adds no wall time under test.
         self._sleep = sleep

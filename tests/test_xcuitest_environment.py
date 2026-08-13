@@ -30,6 +30,7 @@ from bajutsu.platform_lifecycle.environments.xcuitest import (
     _MAX_WARM_REUSES_ENV,
     _RECOVERY_TIMEOUT,
     _RESPAWN_TIMEOUT_ENV,
+    _RESULT_BUNDLE_ENV,
     _RUNNER_STARTUP_TIMEOUT,
     _RUNNER_STARTUP_TIMEOUT_ENV,
     _WARM_HEALTH_TIMEOUT,
@@ -315,6 +316,11 @@ def _globals_plist(locale: str | None) -> str:
     return plistlib.dumps({"AppleLanguages": [language], "AppleLocale": locale}).decode()
 
 
+# What each faked `make_driver` call was handed, newest last. Module-level rather than another
+# element of `_fake_toolchain`'s return tuple, which some thirty existing tests already unpack.
+DRIVER_KWARGS: list[dict[str, object]] = []
+
+
 def _fake_toolchain(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -329,6 +335,9 @@ def _fake_toolchain(
     is True, so a test can wedge the reused runner; the cold-startup `await_ready` (the long timeout)
     always succeeds, so a respawn still comes up.
 
+    The kwargs each `make_driver` call received are recorded into the module-level `DRIVER_KWARGS`
+    (reset per fixture), so a test can assert on the callbacks the environment injects.
+
     `system_locale`, when given, models the device's global preference domain in `["v"]` — the fake
     device answers `defaults export` from it and a `defaults write` updates it, so a test can drive
     the BE-0320 pin the way a real Simulator would answer. Omitted, the domain reads as unwritten and
@@ -337,6 +346,7 @@ def _fake_toolchain(
     """
     popen_argvs: list[list[str]] = []
     simctl_calls: list[list[str]] = []
+    DRIVER_KWARGS.clear()
     domain: dict[str, str | None] = system_locale if system_locale is not None else {"v": None}
 
     def _popen(argv: list[str], **_kw: Any) -> _FakeProc:
@@ -367,8 +377,14 @@ def _fake_toolchain(
             domain["v"] = argv[-1]
         return ""
 
+    def _make_driver(*_a: object, **kwargs: object) -> _Driver:
+        # Recorded, not discarded: the environment injects `runner_alive` and BE-0361's `on_stall`
+        # here, and a swallowed **kwargs would let either wiring be deleted with the suite still green.
+        DRIVER_KWARGS.append(kwargs)
+        return _Driver()
+
     monkeypatch.setattr(subprocess, "Popen", _popen)
-    monkeypatch.setattr(backends, "make_driver", lambda *_a, **_k: _Driver())
+    monkeypatch.setattr(backends, "make_driver", _make_driver)
     _patch_group_signals(monkeypatch)
     return popen_argvs, simctl_calls, _run
 
@@ -921,20 +937,44 @@ def test_runner_output_is_captured_when_the_env_var_is_set(
     )  # the hint points at the captured log, not at the env var
 
 
+def test_the_spawn_hands_the_channel_a_stall_capture_bound_to_this_device(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # BE-0361 unit 2: the udid the capture screenshots deliberately never reaches the channel, so the
+    # environment injects a callback closed over it — the same shape `runner_alive` uses. Without this
+    # wiring the runner-crash trigger captures nothing, and every other test would still pass.
+    _, _, run = _fake_toolchain(monkeypatch)
+    captured: list[tuple[str, str | None]] = []
+    monkeypatch.setattr(
+        xcuitest_env.stall_diagnostics,
+        "capture",
+        lambda reason, udid=None: captured.append((reason, udid)),
+    )
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+
+    hook = DRIVER_KWARGS[-1]["on_stall"]
+    assert callable(hook)
+    hook()
+    # The channel passes nothing: naming the trigger — and so the directory the capture writes — stays
+    # on this side, where the udid also lives.
+    assert captured == [("runner-crash", "UDID")]
+
+
 def test_result_bundle_is_requested_only_when_the_env_var_is_set(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # BE-0361 unit 1: the spawn argv gains `-resultBundlePath` exactly when
     # BAJUTSU_XCUITEST_RESULT_BUNDLES names a directory. Unset is the shipped default for every lane
     # but the iOS one, so the argv must be byte-for-byte what it was before this feature existed.
-    monkeypatch.delenv("BAJUTSU_XCUITEST_RESULT_BUNDLES", raising=False)
+    monkeypatch.delenv(_RESULT_BUNDLE_ENV, raising=False)
     popen_argvs, _, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
     assert "-resultBundlePath" not in popen_argvs[0]
 
     bundles = tmp_path / "bundles"
-    monkeypatch.setenv("BAJUTSU_XCUITEST_RESULT_BUNDLES", str(bundles))
+    monkeypatch.setenv(_RESULT_BUNDLE_ENV, str(bundles))
     popen_argvs, _, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
@@ -954,7 +994,7 @@ def test_result_bundle_path_is_cleared_before_the_spawn(
     # ephemeral port would turn this diagnostics feature into a spawn failure. A leftover at the
     # exact key is cleared first; nothing else in the directory is touched.
     bundles = tmp_path / "bundles"
-    monkeypatch.setenv("BAJUTSU_XCUITEST_RESULT_BUNDLES", str(bundles))
+    monkeypatch.setenv(_RESULT_BUNDLE_ENV, str(bundles))
     _, _, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     monkeypatch.setattr(xcuitest_env, "_allocate_port", lambda: 4242)

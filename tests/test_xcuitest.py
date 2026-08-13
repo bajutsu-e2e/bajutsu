@@ -895,19 +895,23 @@ def test_a_declared_crash_offers_the_diagnostics_hook_the_moment_it_happens() ->
     # BE-0361 unit 2: the capture fires on the crash *declaration*, before recovery decides anything,
     # because that is while the Simulator state explaining the crash still exists. Once per crash —
     # the per-run cap lives in the capture, not here.
-    seen: list[str] = []
-    inner, _calls = _counting([_crash("GET", delivered=True), _Reply(status="ok")])
-    reply = _with_crash_recovery(inner, health=lambda _t: True, on_stall=seen.append)(
+    seen: list[bool] = []
+    inner, _calls = _counting(
+        [_crash("GET", delivered=True), _crash("GET", delivered=True), _Reply(status="ok")]
+    )
+    reply = _with_crash_recovery(inner, health=lambda _t: True, on_stall=lambda: seen.append(True))(
         "GET", "/elements", None
     )
     assert reply.status == "ok"
-    assert seen == ["runner-crash"]
+    # Once per crash, so a flapping runner's second and third stalls are offered too — the per-run cap
+    # lives in the capture, not here.
+    assert seen == [True, True]
 
 
 def test_a_broken_diagnostics_hook_never_changes_the_crash_verdict() -> None:
     # The hook is an observer on a failure path. If it raises, the run must still fail with the crash
     # diagnostic the caller acts on — never with the diagnostics' own error standing in for it.
-    def _explode(_reason: str) -> None:
+    def _explode() -> None:
         raise RuntimeError("the probe itself broke")
 
     inner, calls = _counting([_crash("GET", delivered=False)])

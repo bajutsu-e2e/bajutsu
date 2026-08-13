@@ -1307,14 +1307,16 @@ class XcuitestEnvironment(_DeviceEnvironment):
             return False
         return self._run_ended() is None
 
-    def _capture_stall(self, reason: str) -> None:
+    def _capture_stall(self) -> None:
         """Let the channel's crash declaration capture the device state behind it (BE-0361 unit 2).
 
         The environment supplies this rather than the driver reaching for it, because the udid the
         capture screenshots is here and deliberately never reaches the channel — the same shape
-        `_runner_alive` already uses. Opt-in and bounded on the other side; unset, it does nothing.
+        `_runner_alive` already uses. Naming the trigger is this side's business too, so the channel
+        never passes a string that becomes a directory. Opt-in and bounded on the other side; unset,
+        it does nothing.
         """
-        stall_diagnostics.capture(reason, self._udid)
+        stall_diagnostics.capture("runner-crash", self._udid)
 
     def _healthy_resident_driver(self) -> base.Driver | None:
         """The driver for the warm runner if it is up and answering `/health`, else None (BE-0291 Unit 4).
@@ -1372,10 +1374,19 @@ class XcuitestEnvironment(_DeviceEnvironment):
         bundle_dir_env = os.environ.get(_RESULT_BUNDLE_ENV)
         if not bundle_dir_env:
             return None
-        bundle_root = Path(bundle_dir_env)
-        bundle_root.mkdir(parents=True, exist_ok=True)
-        bundle = bundle_root / f"result-{self._udid}-{self._runner_port}.xcresult"
-        shutil.rmtree(bundle, ignore_errors=True)
+        # Validated here, not only on the `-destination` argv below: this is a *new* boundary where the
+        # udid composes a path that feeds a recursive delete, and the real-device path never runs the
+        # simctl prep that would otherwise have vetted it.
+        udid = simctl.validated_udid(self._udid)
+        bundle = Path(bundle_dir_env) / f"result-{udid}-{self._runner_port}.xcresult"
+        try:
+            bundle.parent.mkdir(parents=True, exist_ok=True)
+            shutil.rmtree(bundle, ignore_errors=True)
+        except OSError as exc:
+            # An opt-in diagnostic must never be what fails a spawn — an operator typo naming a file
+            # or a read-only mount degrades to "no bundles", the way the stall capture already does.
+            _logger.warning("xcuitest: cannot prepare a result bundle at %s (%s)", bundle, exc)
+            return None
         _logger.info("xcuitest runner result bundle → %s", bundle)
         return bundle
 

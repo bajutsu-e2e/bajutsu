@@ -134,6 +134,13 @@ collector that quietly gathers nothing — the very failure the proposal exists 
   booted device. Its flags additionally require the `--flag=value` form.
 - **`CoreSimulator.log` is unbounded.** Copying it wholesale is a 183MB artifact on a long-lived
   host, on the *always* tier. The collection tails it instead.
+- **One shared capture budget would have starved the trigger that matters.** The Motivation above
+  records that `recordVideo produced no new bytes` fires for every scenario, green runs included, and a
+  job runs a dozen scenario documents in one `bajutsu run` process. A single per-process cap of three
+  is therefore spent on the third scenario's video warning, and the runner crash — the failure the
+  capture exists to explain, and the only trigger that reaches it with the device's id — finds nothing
+  left. The budget is per trigger, and a declined capture is logged at warning rather than debug,
+  since the lane installs no log handler and a debug line is no record at all.
 
 Two smaller shapes follow from the same measurements. `xcodebuild` refuses to start when its
 `-resultBundlePath` already exists, so unit 1 clears a leftover at its own key first — otherwise a

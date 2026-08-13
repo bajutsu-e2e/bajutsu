@@ -105,8 +105,8 @@ its test method, and leaves the Python side to declare a mid-run crash. No proce
 crash-report sweep finds nothing, and the state that would say whether the Simulator's render service
 wedged or the virtualized macOS host starved it disappears before anyone opens the job. Every iOS
 job that boots a Simulator collects a layered set of evidence into `runs/`, which those jobs already
-upload — every job but `codegen`, which uploads only its `.xcresult` and has no `runs/` artifact for
-the collection to ride. None of it reaches a verdict: the collection writes files and nothing else, and
+upload — every job but `codegen`, whose sole artifact is its `.xcresult`, leaving the collection no
+`runs/` directory to ride. None of it reaches a verdict: the collection writes files and nothing else, and
 the deterministic assertions still decide pass/fail.
 
 Three layers collect it, split by what each one can see.
@@ -119,9 +119,11 @@ Three layers collect it, split by what each one can see.
   stdout carries. `BAJUTSU_STALL_DIAGNOSTICS` arms a capture that fires the moment the channel
   declares a mid-run crash or a `recordVideo` produces no bytes, writing a timed `simctl` screenshot,
   `sample` output for the rendering processes, and a `ps` / `vm_stat` snapshot into
-  `runs/diagnostics/stalls/stall-NN-<reason>/`. Two limits bound the capture — a wall-clock
-  budget per capture, and a cap of three per run — so a crash-looping job cannot spend its
-  `timeout-minutes` collecting evidence. Both variables are unset outside this lane, and unset leaves
+  `runs/diagnostics/stalls/stall-NN-<reason>-<pid>/`. Two limits bound the capture — a wall-clock
+  budget per capture, and a budget of two captures per trigger — so a crash-looping job cannot spend
+  its `timeout-minutes` collecting evidence. The budget is per *trigger* because the video warning
+  fires on every scenario of these runners, green runs included, so the video warnings would spend a
+  shared budget before the runner crash it exists to explain ever arrived. Both variables are unset outside this lane, and unset leaves
   the behavior unchanged.
 - **From CI, about the Simulator and CoreSimulator**, through the
   [`collect-ios-diagnostics`](../.github/actions/collect-ios-diagnostics/action.yml) composite action
