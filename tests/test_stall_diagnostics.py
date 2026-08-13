@@ -94,7 +94,14 @@ def test_capture_writes_the_probes_the_hypotheses_need(
     assert "/usr/bin/vm_stat" in programs
     assert "/usr/bin/sample" in programs
     assert (dest / "ps.txt").read_bytes() == b"out"
-    assert "screenshot: exit 0" in (dest / stall_diagnostics._SUMMARY).read_text()
+    summary = (dest / stall_diagnostics._SUMMARY).read_text()
+    assert "screenshot: exit 0" in summary
+    # An absolute stamp is what lets a capture be lined up against the host telemetry and the
+    # unified-log extracts, which are the other two layers' wall-clock-stamped output.
+    assert "captured at" in summary
+    # The sub-second snapshots run before the screenshot, which can spend half the budget on the
+    # interesting case: the host's load must already be on record by the time that probe runs.
+    assert programs.index("/bin/ps") < programs.index("xcrun")
 
 
 def test_every_probe_carries_a_timeout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -332,3 +339,82 @@ def test_a_non_simulator_device_id_is_refused_without_stopping_the_capture(
     assert not (dest / "screenshot.png").exists()
     assert (dest / "vm_stat.txt").exists()
     assert "xcrun" not in [call["argv"][0] for call in calls]
+
+
+def test_a_process_that_is_not_running_is_recorded_rather_than_omitted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A wedged Simulator whose `backboardd` has died IS the diagnosis for the render-service
+    # hypothesis. Omitting the line would leave "dead" indistinguishable from "never probed".
+    monkeypatch.setenv(stall_diagnostics._DIAGNOSTICS_ENV, str(tmp_path))
+    absent = stall_diagnostics._SAMPLE_PROCESSES[1]
+    _record_runs(monkeypatch, pids={absent: b""})
+    stall_diagnostics.capture("runner-crash", "UDID")
+    summary = (_capture_dir(tmp_path, 1, "runner-crash") / stall_diagnostics._SUMMARY).read_text()
+    assert f"sample:{absent}: NOT RUNNING" in summary
+
+
+def test_a_failed_process_lookup_is_not_read_as_absence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # `pgrep` exits 1 for "no match" but 2/3 for a usage or fatal error. Reading only stdout would make
+    # a broken lookup indistinguishable from a process that simply is not there, and the wedge-central
+    # CoreSimulator service would go unsampled with nothing saying so.
+    monkeypatch.setenv(stall_diagnostics._DIAGNOSTICS_ENV, str(tmp_path))
+
+    def _run(argv: list[str], **_kw: Any) -> _FakeCompleted:
+        if argv[0].endswith("pgrep"):
+            return _FakeCompleted(returncode=2)
+        return _FakeCompleted(stdout=b"out")
+
+    monkeypatch.setattr(subprocess, "run", _run)
+    stall_diagnostics.capture("runner-crash", "UDID")
+    summary = (_capture_dir(tmp_path, 1, "runner-crash") / stall_diagnostics._SUMMARY).read_text()
+    assert "exit 2 — the lookup failed" in summary
+    assert "NOT RUNNING" not in summary  # a broken lookup is not an absent process
+
+
+def test_an_unwritable_summary_warns_once(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # An unwritable summary loses *every* probe outcome, so it cannot vanish at debug on a lane that
+    # installs no log handler — and it must not flood the log either, since the same failure repeats
+    # for every probe and would bury the crash underneath it.
+    monkeypatch.setenv(stall_diagnostics._DIAGNOSTICS_ENV, str(tmp_path))
+    monkeypatch.setattr(stall_diagnostics, "_summary_warned", False)
+    _record_runs(monkeypatch)
+    real_open = Path.open
+
+    def _open(self: Path, *args: Any, **kwargs: Any) -> Any:
+        if self.name == stall_diagnostics._SUMMARY:
+            raise OSError("no space left on device")
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", _open)
+    with caplog.at_level("WARNING", logger="bajutsu.stall_diagnostics"):
+        stall_diagnostics.capture("runner-crash", "UDID")
+    unwritable = [r for r in caplog.records if "cannot write" in r.message]
+    assert len(unwritable) == 1
+
+
+def test_a_sample_written_before_an_error_is_still_locked_down(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The OSError sibling of the timeout case: `sample` writes its report, then the call fails. The
+    # report exists and is just as sensitive, so this failure path must secure it too.
+    monkeypatch.setenv(stall_diagnostics._DIAGNOSTICS_ENV, str(tmp_path))
+
+    def _run(argv: list[str], **_kw: Any) -> _FakeCompleted:
+        if argv[0].endswith("pgrep"):
+            return _FakeCompleted(stdout=b"4242\n")
+        if argv[0].endswith("sample"):
+            Path(argv[argv.index("-file") + 1]).write_bytes(b"stack")
+            raise OSError("the sampler died writing")
+        return _FakeCompleted(stdout=b"out")
+
+    monkeypatch.setattr(subprocess, "run", _run)
+    stall_diagnostics.capture("runner-crash", "UDID")
+    reports = list(_capture_dir(tmp_path, 1, "runner-crash").glob("sample-*.txt"))
+    assert reports
+    for report in reports:
+        assert report.stat().st_mode & 0o777 == artifact_perms.ARTIFACT_FILE_MODE, report.name

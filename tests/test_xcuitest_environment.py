@@ -1009,6 +1009,34 @@ def test_result_bundle_path_is_cleared_before_the_spawn(
     assert keep.exists()  # another spawn's bundle is never collateral
 
 
+def test_the_result_bundle_path_refuses_an_unsafe_device_id(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A *new* boundary where the udid composes a path — and that path feeds a recursive delete, so it
+    # gets the same shared device-id policy the `-destination` argv applies. The real-device path never
+    # runs the simctl prep that would otherwise have vetted the id.
+    monkeypatch.setenv(_RESULT_BUNDLE_ENV, str(tmp_path / "bundles"))
+    _, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "../../escape", env_run=run)
+    with pytest.raises(simctl.DeviceError):
+        env._result_bundle_path()
+    assert not (tmp_path / "bundles").exists()  # nothing was created on the way to refusing
+
+
+def test_an_unusable_result_bundle_directory_never_fails_the_spawn(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # An opt-in diagnostic must not be what reddens a lane: an operator typo naming a file, or a
+    # read-only mount, degrades to "no bundles" — the argv falls back to exactly what it is unset.
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("")
+    monkeypatch.setenv(_RESULT_BUNDLE_ENV, str(blocker))
+    popen_argvs, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    assert "-resultBundlePath" not in popen_argvs[0]
+
+
 def test_warm_resume_reapplies_the_per_scenario_reset(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
