@@ -124,11 +124,26 @@ short grace period, rather than a `SIGTERM` that ends the process wherever it st
   on itself: a second, internal timer started when the event is set that — if the graceful shutdown
   has not finished by its own deadline — restores `SIGTERM`'s default disposition and re-raises it,
   so a genuinely wedged runner dies exactly as it would have without this item, instead of outliving
-  the signal indefinitely. Either way, a cancel request is delayed by at most one grace period
-  beyond today's immediate kill.
+  the signal indefinitely. The two deadlines must not be picked independently: were the handler's
+  internal one shorter than `serve`'s own grace window, the run would kill itself before
+  `_assemble_report` ever wrote a manifest, reproducing the exact silent-gap failure this item removes
+  — for every ordinary `serve` cancel too, since `serve`'s longer window could never rescue a run that
+  already killed itself. `cancel_job` therefore passes its own grace window to the spawned run (an
+  environment value on the job spec) and the handler binds its internal deadline strictly beyond the
+  value it receives, rather than an independently chosen constant; a `run` invoked outside `serve`,
+  which receives no such value, falls back to a fixed default long enough to clear the longest driver
+  call on its own. Either way, a cancel request is delayed by at most one grace period beyond today's
+  immediate kill.
 - **Scope: `run` jobs only.** This covers `run` jobs and the per-engine passes of a cross-browser
   matrix — `run_matrix_and_report` calls `run_all` once per engine, and each pass returns the same
-  `RunResult` shape. `record` and `crawl` jobs have no pass/fail verdict to preserve: `record.py`
+  `RunResult` shape. Its engine loop ([`pipeline.py:938`](../../bajutsu/runner/pipeline.py)) checks
+  the event too, before starting the next pass: each pass first builds a whole `device_pool` —
+  resolving the environment, reading the device catalog, starting the per-device collectors
+  ([`run.py:653`](../../bajutsu/cli/commands/run.py),
+  [`pool.py:128`](../../bajutsu/runner/pool.py)) — so without that check a cancel during the first
+  engine would still pay every remaining engine's bring-up and teardown before the run could finish,
+  overrunning the grace period on a matrix run. `record` and `crawl` jobs have no pass/fail verdict
+  to preserve: `record.py`
   authors a scenario file and produces no `RunResult` or manifest at all. Cancelling one of those
   jobs keeps today's behavior unchanged — `Job.cancelled` set, process terminated. Whether a
   cancelled `record`/`crawl` job should be visible in some other way is a separate concern this item
@@ -205,7 +220,13 @@ handling and the `RunResult` shape are the same for every target.
   unconditional kill only past the deadline.
 - [ ] Give the `SIGTERM` handler its own internally-enforced shutdown deadline, independent of
   `serve`, so a `run` invoked outside `serve` (`docker stop`, systemd, a CI job cancellation) stays
-  bounded with no external escalator watching it.
+  bounded with no external escalator watching it. Pass `cancel_job`'s own grace window down to the
+  spawned run (an environment value on the job spec) and bind the handler's internal deadline
+  strictly beyond the value it receives, so the two never race each other; fall back to a fixed
+  default when no value is passed (a `run` invoked outside `serve`).
+- [ ] Check the cancellation event in `run_matrix_and_report`'s engine loop before starting the next
+  pass, so a cancel during one engine's `device_pool` bring-up doesn't have to pay every remaining
+  engine's bring-up and teardown before the run can finish.
 - [ ] Confirm `_persist_run` and the run-history summary read the resulting `manifest.json`
   correctly with no further changes.
 
