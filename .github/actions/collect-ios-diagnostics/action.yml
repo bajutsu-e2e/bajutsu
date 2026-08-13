@@ -82,6 +82,14 @@ runs:
           return 0
         }
 
+        # Size of a probe artifact, or 0 when the probe never produced one. Written as an explicit
+        # existence test because `wc -c <missing 2>/dev/null` does not silence what it looks like it
+        # silences: the shell performs the redirection and reports its own failure before `wc` is
+        # ever exec'd, so the redirect error lands in the report this function feeds.
+        bytes() {
+          if [ -f "$1" ]; then wc -c <"$1"; else echo 0; fi
+        }
+
         udid="$UDID"
         if [ -z "$udid" ] || [ "$udid" = "booted" ]; then
           # Bounded like every other `simctl` call: this one runs before the device is known to be
@@ -110,14 +118,14 @@ runs:
               rc=$?
               elapsed=$(( $(date +%s) - start ))
               [ "$rc" -eq 124 ] && echo "screenshot: STILL RUNNING after ${elapsed}s — killed (the render service is not answering)" \
-                || echo "screenshot: exit $rc in ${elapsed}s, $(wc -c <"$DEST/render-probe.png" 2>/dev/null || echo 0) bytes"
+                || echo "screenshot: exit $rc in ${elapsed}s, $(bytes "$DEST/render-probe.png") bytes"
               xcrun simctl io "$udid" recordVideo "$DEST/render-probe.mp4" >/dev/null 2>&1 &
               video=$!
               sleep 5
               kill -INT "$video" 2>/dev/null
               reap "$video" 15
               vrc=$?
-              echo "recordVideo: exit $vrc, $(wc -c <"$DEST/render-probe.mp4" 2>/dev/null || echo 0) bytes in 5s"
+              echo "recordVideo: exit $vrc, $(bytes "$DEST/render-probe.mp4") bytes in 5s"
               [ "$vrc" -eq 124 ] && echo "recordVideo: did not finalize after SIGINT — the clip is truncated"
               # A device frame and a screen recording, locked down like every other artifact of this
               # class (the Python side pins the same files to owner-only under BE-0131).

@@ -105,6 +105,17 @@ def test_a_probe_that_has_to_be_killed_does_not_fail_the_step(tmp_path: Path) ->
     assert "STILL RUNNING" in report
 
 
+def test_a_probe_that_produced_no_file_reports_zero_rather_than_a_shell_error(tmp_path: Path) -> None:
+    # Observed in a real job: `wc -c <missing 2>/dev/null` does not suppress the redirect failure,
+    # because the shell reports that before `wc` runs — so the byte count the report exists to carry
+    # arrived under a line of shell diagnostics naming a temp script. The report is read by a human
+    # deciding whether the pipeline was alive; noise in it is a defect in the evidence.
+    _run("start", tmp_path, hangs=True)
+    report = (tmp_path / "runs/diagnostics/render-probe.txt").read_text()
+    assert "No such file or directory" not in report, report
+    assert "recordVideo: exit 124, 0 bytes" in report, report
+
+
 def test_the_start_phase_succeeds_against_a_healthy_device(tmp_path: Path) -> None:
     done = _run("start", tmp_path, hangs=False)
     assert done.returncode == 0, done.stderr
