@@ -1300,13 +1300,15 @@ class XcuitestEnvironment(_DeviceEnvironment):
             )
             return
         if not went_down:
-            # The read-back just passed on a device that never restarted: it reads the value the
-            # write changed, not the one SpringBoard loaded, so it confirms the write rather than the
-            # pin. Nothing is known to be wrong, so the run proceeds — but an unconfirmed pin is not
-            # recorded, exactly as an unreadable one above is not.
+            # The read-back just passed on a device whose restart was never confirmed: it reads the
+            # value the write changed, not the one SpringBoard loaded, so it confirms the write
+            # rather than the pin. Nothing is known to be wrong, so the run proceeds — but an
+            # unconfirmed pin is not recorded, exactly as an unreadable one above is not. The wording
+            # below says "could not confirm" rather than "did not", because `went_down` folds an
+            # unreadable listing in with a refused shutdown and only the latter is a wedged device.
             _logger.warning(
-                "Simulator %s did not shut down after its system locale was pinned to %r, so "
-                "SpringBoard may still render the previous language; the run continues, but "
+                "could not confirm Simulator %s shut down after its system locale was pinned to "
+                "%r, so SpringBoard may still render the previous language; the run continues, but "
                 "warm-runner reuse is disabled until a spawn confirms the pin (BE-0359)",
                 self._udid,
                 locale,
