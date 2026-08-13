@@ -63,22 +63,33 @@ class ScreenTransition(BaseModel):
     """One screen-transition event the app's `BajutsuScreen` observer reported (BE-0310).
 
     Minimal by design: no screen content, only what a positive "the transition finished"
-    signal needs. Extra keys are ignored and the app's own `timestamp` is informational only —
-    the collector stamps its own receive time (`snapshot_timed`), the same monotonic clock
-    domain the readiness gate and the `settled` wait already poll in, so nothing here depends on
-    the app process's separate clock.
+    signal needs. The app's own `timestamp` is informational and nothing reads it — the collector
+    stamps its own receive time (`snapshot_timed`), the same monotonic clock domain the readiness
+    gate and the `settled` wait already poll in, so nothing here depends on the app process's
+    separate clock. It is declared all the same, because it is half of what `BajutsuScreen.report`
+    puts on the wire and `_recognized_keys` below derives from these declarations: leaving it out
+    would make `kind` the sole recognized key, and so effectively mandatory.
     """
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     kind: str = ""
+    timestamp: float | None = None
 
 
 def _recognized_keys(model: type[BaseModel]) -> frozenset[str]:
-    """The payload keys *model* would actually read — its field names plus their JSON aliases."""
+    """The payload keys *model* would actually read — its field names and every alias it validates.
+
+    `validation_alias` counts alongside `alias`, since pydantic accepts either on input; a field
+    declared with only the former would otherwise be readable by `model_validate` yet missing here,
+    which is the drift this helper exists to prevent. An `AliasPath` / `AliasChoices` is skipped
+    rather than guessed at — none is used today, and one added later needs this widened with it.
+    """
+    fields = model.model_fields.values()
     return frozenset(
         set(model.model_fields)
-        | {f.alias for f in model.model_fields.values() if f.alias is not None}
+        | {f.alias for f in fields if f.alias is not None}
+        | {f.validation_alias for f in fields if isinstance(f.validation_alias, str)}
     )
 
 
@@ -96,6 +107,13 @@ def _recognized_keys(model: type[BaseModel]) -> frozenset[str]:
 # more, since the readiness gate consults only a transition's receive time and never its `kind`
 # (`platform_lifecycle/readiness.py`), so a misdirected report would satisfy readiness as though a
 # screen transition had finished.
+#
+# Requiring *one* recognized key rather than a specific one is what keeps this from becoming the
+# mandatory-discriminator design the roadmap item rejects: either model can rename or drop any single
+# field and its reports stay recognizable. That margin only exists while a model declares more than
+# one key, which is why `ScreenTransition` declares the `timestamp` it never reads. The two key sets
+# stay disjoint — an exchange names `startedAt` / `durationMs`, never `kind` or `timestamp` — so a
+# report posted to the wrong endpoint is still refused.
 _EXCHANGE_KEYS = _recognized_keys(NetworkExchange)
 _TRANSITION_KEYS = _recognized_keys(ScreenTransition)
 

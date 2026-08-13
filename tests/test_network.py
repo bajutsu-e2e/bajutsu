@@ -10,6 +10,7 @@ import urllib.error
 import urllib.request
 
 import pytest
+from pydantic import AliasChoices, BaseModel, Field
 
 from bajutsu.assertions import EvalContext, evaluate, evaluate_one
 from bajutsu.drivers.fake import FakeDriver
@@ -572,6 +573,46 @@ def test_collector_add_keeps_forward_compatibility_for_unknown_extras() -> None:
     c = NetworkCollector()
     c.add({"method": "GET", "path": "/a", "brandNewSdkField": "whatever"})
     assert [ex.method for ex in c.snapshot()] == ["GET"]
+
+
+def test_collector_add_transition_keeps_forward_compatibility_for_a_renamed_kind() -> None:
+    """The transition side needs the same margin as the exchange side, or the guard becomes the
+    mandatory-discriminator design the item rejects.
+
+    `timestamp` is the other half of the wire contract, so a reporter that renamed or dropped `kind`
+    while still sending a real transition stays recognizable.
+    """
+    c = NetworkCollector()
+    c.add_transition({"timestamp": 12345.6, "event": "screen-did-appear"})
+    assert len(c.transitions_snapshot_timed()) == 1
+
+
+def test_recognized_key_sets_stay_disjoint() -> None:
+    """The guard only refuses a misdirected report while the two key sets share nothing.
+
+    A field added to either model that collides with the other's keys would silently let a report
+    through the wrong endpoint, which is exactly what the guard exists to stop.
+    """
+    assert not (network._EXCHANGE_KEYS & network._TRANSITION_KEYS)
+
+
+def test_recognized_keys_covers_a_validation_alias() -> None:
+    """pydantic validates `validation_alias` too, so the recognized set must include it.
+
+    A field readable by `model_validate` but missing here would make a legitimate payload look
+    foreign — the drift the helper promises to prevent.
+    """
+
+    class Aliased(BaseModel):
+        plain: int = 0
+        renamed: int = Field(default=0, validation_alias="onTheWire")
+        multi: int = Field(default=0, validation_alias=AliasChoices("a", "b"))
+
+    keys = network._recognized_keys(Aliased)
+    assert {"plain", "renamed", "onTheWire"} <= keys
+    assert "multi" in keys  # the field name still counts
+    # An AliasChoices is skipped rather than guessed at, so its members are absent by design.
+    assert not ({"a", "b"} & keys)
 
 
 def test_collector_add_transition_drops_a_payload_with_no_kind(

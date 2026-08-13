@@ -60,11 +60,21 @@ Two units sharing one helper, both in
 [`bajutsu/evidence/network.py`](../../bajutsu/evidence/network.py).
 
 1. **Require at least one recognised key before validating.** Derive each record type's recognised
-   key set from the model itself — its field names plus their JSON aliases — so the sets cannot drift
-   from the models they describe. A payload sharing none of a type's keys is dropped. One recognised
-   key is enough to proceed, which preserves the forward compatibility the models were given
-   `extra="ignore"` for: a newer SDK that adds a field still validates, and only a payload with
-   nothing in common is refused.
+   key set from the model itself — its field names and every alias it accepts on input, `alias` and
+   `validation_alias` alike — so the sets cannot drift from the models they describe. A payload
+   sharing none of a type's keys is dropped. One recognised key is enough to proceed, which preserves
+   the forward compatibility the models were given `extra="ignore"` for: a newer SDK that adds a
+   field still validates, and only a payload with nothing in common is refused.
+
+   Requiring *one* key rather than a named one is also what keeps this from collapsing into the
+   mandatory-discriminator design rejected below: either model may rename or drop any single field
+   and its reports stay recognisable. That margin exists only while a model declares more than one
+   key, and the transition model declared just `kind`, which made the guard on that side exactly the
+   rejected design. It now also declares the `timestamp` it never reads — the other half of what the
+   app puts on the wire — so the margin is real on both sides and stays derived from the model rather
+   than from a literal the code would have to keep in step by hand. The two key sets remain disjoint,
+   since an exchange names `startedAt` and `durationMs` and never `kind` or `timestamp`, so a report
+   sent to the wrong endpoint is still refused.
 
 2. **Log the dropped payload's key names.** Log at warning level, naming the keys the payload
    carried, so the next occurrence identifies its sender rather than leaving an unattributable blank
