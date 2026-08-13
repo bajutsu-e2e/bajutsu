@@ -583,6 +583,61 @@ def test_parallel_crawl_isolates_a_wedged_device() -> None:
     assert sm.stop_reason == "completed"
 
 
+def test_parallel_crawl_says_when_it_absorbs_a_device_fault_and_retires_the_device(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Isolation must not be silent. A pool absorbs a device fault and keeps going, so the only place
+    a lost device can be reported is the log: the absorb names the device and the fault, and the
+    retire says the map may be incomplete — otherwise a crawl that lost a device still ends
+    "completed" and reads exactly like a finished one."""
+    import logging
+    import threading
+
+    react, home = _wide_app(6)
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    # The primary is permanently wedged, and the healthy lane is held back until the primary has used
+    # up its fault budget — so the retire is reached by construction rather than by thread timing.
+    budget_spent = threading.Event()
+    faults = {"n": 0}
+
+    def always_wedged(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind != "tap":
+            return
+        faults["n"] += 1
+        if faults["n"] >= crawl._MAX_WORKER_DEVICE_ERRORS:
+            budget_spent.set()
+        raise crawl.device_errors.DeviceError("simulator wedged: simctl exceeded its deadline")
+
+    def healthy_lane() -> tuple[FakeDriver, crawl.Reset]:
+        assert budget_spent.wait(timeout=30), "the wedged device never used up its fault budget"
+        return FakeDriver(screen=list(home), react=react), reset
+
+    with caplog.at_level(logging.WARNING, logger="bajutsu.crawl.core"):
+        sm = crawl.crawl(
+            FakeDriver(screen=list(home), react=always_wedged),
+            reset,
+            extra_workers=[healthy_lane],
+        )
+
+    assert len(sm.nodes) == 7  # the healthy device still mapped everything — control flow unchanged
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+
+    absorbed = [m for m in warnings if "device fault" in m]
+    assert absorbed, f"the absorbed device fault was never logged: {warnings}"
+    assert "fake lane 1/2" in absorbed[0]  # which device faulted
+    assert "simctl exceeded its deadline" in absorbed[0]  # and what the fault was
+    assert "home.leaf" in absorbed[0]  # on which action
+
+    retired = [m for m in warnings if "retiring this device" in m]
+    assert retired, f"the retire was never logged: {warnings}"
+    assert "fake lane 1/2" in retired[0]
+    assert f"{crawl._MAX_WORKER_DEVICE_ERRORS} consecutive faults" in retired[0]
+    assert "may be incomplete" in retired[0]  # the map is partial, and says so
+
+
 def test_lone_worker_surfaces_a_device_error() -> None:
     """Without a pool there's nothing to fall back to, so a device error propagates as it always
     did (the serial engine's behavior) rather than being silently swallowed."""
