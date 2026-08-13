@@ -1,14 +1,14 @@
-[English](BE-XXXX-graceful-run-cancel.md) · **日本語**
+[English](BE-0370-graceful-run-cancel.md) · **日本語**
 
-# BE-XXXX — キャンセルされた run を正常に終了させ、失敗した run として記録する
+# BE-0370 — キャンセルされた run を正常に終了させ、失敗した run として記録する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-graceful-run-cancel-ja.md) |
+| 提案 | [BE-0370](BE-0370-graceful-run-cancel-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0370") |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff-ja.md), [BE-0147](../BE-0147-serve-triage/BE-0147-serve-triage-ja.md), [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) |
 <!-- /BE-METADATA -->
