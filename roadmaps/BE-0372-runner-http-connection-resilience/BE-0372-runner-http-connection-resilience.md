@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-runner-http-connection-resilience-ja.md)
+**English** · [日本語](BE-0372-runner-http-connection-resilience-ja.md)
 
-# BE-XXXX — Harden the runner's HTTP server against the connection failures a driver timeout produces
+# BE-0372 — Harden the runner's HTTP server against the connection failures a driver timeout produces
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-runner-http-connection-resilience.md) |
+| Proposal | [BE-0372](BE-0372-runner-http-connection-resilience.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0372") |
 | Topic | Platform support |
 | Related | [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn.md), [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md), [BE-0362](../BE-0362-runner-http-queue-qos/BE-0362-runner-http-queue-qos.md) |
 <!-- /BE-METADATA -->

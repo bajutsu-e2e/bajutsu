@@ -1,14 +1,14 @@
-[English](BE-XXXX-runner-http-connection-resilience.md) · **日本語**
+[English](BE-0372-runner-http-connection-resilience.md) · **日本語**
 
-# BE-XXXX — runner の HTTP サーバを、driver のタイムアウトが生む接続の異常に耐えるようにする
+# BE-0372 — runner の HTTP サーバを、driver のタイムアウトが生む接続の異常に耐えるようにする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-runner-http-connection-resilience-ja.md) |
+| 提案 | [BE-0372](BE-0372-runner-http-connection-resilience-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0372") |
 | トピック | Platform support |
 | 関連 | [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn-ja.md), [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md), [BE-0362](../BE-0362-runner-http-queue-qos/BE-0362-runner-http-queue-qos-ja.md) |
 <!-- /BE-METADATA -->
