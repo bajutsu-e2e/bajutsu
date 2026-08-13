@@ -32,7 +32,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 from bajutsu import device_os
-from bajutsu.analysis.audit import classify_stability, unknown_os_note
+from bajutsu.analysis.audit import canonical_os, classify_stability, unknown_os_note
 from bajutsu.device_os import DeviceOS
 from bajutsu.run_id import parse_run_id_timestamp
 from bajutsu.serve.server.db import RunRecord
@@ -169,7 +169,7 @@ def _score(scenario_hash: str, os: DeviceOS | None, runs: list[RunRecord]) -> Fl
     return FlakyScenario(
         scenario_hash=scenario_hash,
         name=next((name for r in runs if (name := _scenario_name(r))), ""),
-        device_os=os,
+        device_os=canonical_os(os),
         runs=total,
         passed=passed,
         failed=failed,

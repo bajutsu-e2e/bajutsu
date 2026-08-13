@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 from bajutsu import device_os
@@ -509,7 +509,7 @@ def _history(
     return ScenarioHistory(
         scenario_hash=scenario_hash,
         name=name,
-        device_os=os,
+        device_os=canonical_os(os),
         runs=runs,
         passed=passed,
         failed=runs - passed,
@@ -518,16 +518,28 @@ def _history(
     )
 
 
+def canonical_os(os: DeviceOS | None) -> DeviceOS | None:
+    """The parsed OS with its raw label replaced by the canonical spelling, for a report entry.
+
+    A group can hold several spellings of one version (`iOS 18.6` and `iOS 18.6.1` are the same OS),
+    and the one that survives into the group key is whichever run was read first. Emitting that raw
+    label would make `--json` depend on input order for a history that is otherwise identical — the
+    same order-dependence the OS component of the sort keys exists to remove.
+    """
+    return replace(os, label=os.display) if os is not None else None
+
+
 def unknown_os_note(unknown: int) -> str:
     """The disclosure line both flakiness surfaces print when *unknown* histories have no recorded OS.
 
     Shared so the file-backed audit and the hosted ranking word it identically (BE-0358). Without it,
     a deployment that started recording the OS mid-history would show its older runs split off under
     the unknown OS with nothing saying why, and a genuine flake spanning that boundary would read as
-    two `unproven` histories rather than as one finding.
+    two `unproven` histories rather than as one finding. "No *single* OS" rather than "no OS": a run
+    whose scenarios spanned two versions lands here too, and did record one per scenario.
     """
     return (
-        f"{unknown} of these have no recorded device OS and group under "
+        f"{unknown} of these have no single recorded device OS and group under "
         f"{device_os.describe(None)}, separately from the per-OS histories"
     )
 

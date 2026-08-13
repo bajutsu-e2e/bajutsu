@@ -116,7 +116,8 @@ class ProjectMetrics:
     A per-project roll-up of the same `Stats` `aggregate_runs` already computes, reduced to the
     scalars a comparison ranks on plus a trend series for a sparkline. `flaky_rate` is a plain
     count over the BE-0102/BE-0049 per-scenario classification (flaky-classified ÷ total),
-    adding no new flakiness heuristic.
+    adding no new flakiness heuristic. Both counts are over distinct scenarios, not over the per-OS
+    series (BE-0358), so a wider device matrix neither inflates nor deflates the rate.
     """
 
     project_id: str
@@ -213,14 +214,20 @@ def project_metrics(
         The project's `ProjectMetrics`.
     """
     s = aggregate_runs(manifests)
-    flaky = sum(1 for sc in s.scenarios if sc.classification == "flaky")
+    # Counted over *scenarios*, not over the per-OS series `aggregate_runs` produces (BE-0358): a
+    # project running one suite across a three-device matrix has three series per scenario, so a
+    # per-series denominator would rank it three times healthier than an identical project running
+    # the same suite on one device — broader coverage would improve the score. A scenario is flaky
+    # here when it flakes on any OS it ran on.
+    scenarios = {(sc.scenario_hash, sc.name) for sc in s.scenarios}
+    flaky = {(sc.scenario_hash, sc.name) for sc in s.scenarios if sc.classification == "flaky"}
     durations = [p.duration_s for p in s.by_run]
     return ProjectMetrics(
         project_id=project_id,
         name=name,
         runs=s.runs,
         pass_rate=s.pass_rate,
-        flaky_rate=(flaky / len(s.scenarios)) if s.scenarios else 0.0,
+        flaky_rate=(len(flaky) / len(scenarios)) if scenarios else 0.0,
         duration_p50_s=_percentile(durations, 0.5),
         duration_p95_s=_percentile(durations, 0.95),
         trend=s.by_day,

@@ -11,7 +11,7 @@ aggregate joins durations against the same widened key.
 from __future__ import annotations
 
 from bajutsu.analysis.audit import longitudinal, render_longitudinal
-from bajutsu.analysis.stats import aggregate_runs
+from bajutsu.analysis.stats import aggregate_runs, project_metrics
 from bajutsu.serve.flakiness import rank_flakiness, records_from_manifests, render
 from bajutsu.serve.server.db import RunRecord
 
@@ -86,14 +86,17 @@ def test_longitudinal_still_flags_a_mix_on_one_os_as_flaky() -> None:
 
 
 def test_longitudinal_treats_a_patch_release_as_the_same_os() -> None:
-    report = longitudinal(
-        [
-            _manifest("20260812-013907", ok=True, runtime="iOS 18.6"),
-            _manifest("20260812-014335", ok=False, runtime="iOS 18.6.1"),
-        ]
-    )
-    (h,) = report.histories
+    runs = [
+        _manifest("20260812-013907", ok=True, runtime="iOS 18.6"),
+        _manifest("20260812-014335", ok=False, runtime="iOS 18.6.1"),
+    ]
+    (h,) = longitudinal(runs).histories
     assert h.runs == 2 and h.classification == "flaky"
+    # The merged group holds two spellings, so the reported label is the canonical one either way —
+    # `--json` must not change with the order the manifests were read in.
+    assert h.device_os is not None and h.device_os.label == "iOS 18.6"
+    (reversed_h,) = longitudinal(list(reversed(runs))).histories
+    assert reversed_h.device_os is not None and reversed_h.device_os.label == "iOS 18.6"
 
 
 def test_longitudinal_keeps_an_unrecorded_os_in_its_own_history() -> None:
@@ -121,7 +124,7 @@ def test_render_longitudinal_names_the_os_and_discloses_the_unknown_split() -> N
     )
     assert "on iOS 18.6" in out
     assert "on unknown OS" in out
-    assert "1 of these have no recorded device OS" in out
+    assert "1 of these have no single recorded device OS" in out
 
 
 def test_longitudinal_orders_two_os_histories_deterministically() -> None:
@@ -196,7 +199,7 @@ def test_render_flakiness_names_the_os_and_discloses_the_unknown_split() -> None
     )
     assert "on iOS 18.6" in out
     assert "on unknown OS" in out
-    assert "1 of these have no recorded device OS" in out
+    assert "1 of these have no single recorded device OS" in out
 
 
 def test_records_from_manifests_fills_the_os_the_db_column_carries() -> None:
@@ -242,3 +245,19 @@ def test_stats_does_not_pool_durations_across_os_versions() -> None:
     )
     by_os = {sc.device_os.display: sc.avg_duration_s for sc in stats.scenarios if sc.device_os}
     assert by_os == {"iOS 18.6": 1.0, "iOS 26.5": 9.0}
+
+
+def test_project_metrics_flaky_rate_counts_scenarios_not_per_os_series() -> None:
+    """A wider device matrix must not make a project look healthier than an identical one-device one."""
+    one_device = [
+        _manifest("20260812-013907", ok=True, runtime="iOS 18.6"),
+        _manifest("20260812-013908", ok=False, runtime="iOS 18.6"),
+    ]
+    # The same scenario, flaky on one OS of two, plus a run on a second OS that is consistent.
+    matrix = [
+        *one_device,
+        _manifest("20260812-014335", ok=True, runtime="iOS 26.5"),
+        _manifest("20260812-014336", ok=True, runtime="iOS 26.5"),
+    ]
+    assert project_metrics("p1", "one device", one_device).flaky_rate == 1.0
+    assert project_metrics("p2", "device matrix", matrix).flaky_rate == 1.0

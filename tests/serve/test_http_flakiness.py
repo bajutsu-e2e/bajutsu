@@ -154,8 +154,9 @@ def test_flakiness_html_backfills_the_device_os_of_rows_recorded_before_the_colu
     # that OS rather than as two split, unprovable histories.
     assert "iOS 18.6" in html and "flaky" in html
     assert "no recorded device OS" not in html
-    # Written back, so the next panel load reads it from the row instead of the artifact store.
-    assert [r.device_runtime for r in repo.list_runs(org_id="default")] == ["iOS 18.6"] * 2
+    # Repaired for this request only: `record_run` is a full-row upsert, so writing back from a read
+    # path would re-insert a run an operator hard-purged between the listing and the repair.
+    assert [r.device_runtime for r in repo.list_runs(org_id="default")] == [None, None]
 
 
 def test_flakiness_html_discloses_a_row_whose_manifest_is_gone(
@@ -183,7 +184,7 @@ def test_flakiness_html_discloses_a_row_whose_manifest_is_gone(
     html, status = flakiness_html(state)
 
     assert status == 200
-    assert "unknown OS" in html and "no recorded device OS" in html
+    assert "unknown OS" in html and "no single recorded device OS" in html
     # Undetermined, not determined-as-none: a manifest that reappears can still repair the row.
     assert [r.device_runtime for r in repo.list_runs(org_id="default")] == [None, None]
 

@@ -25,15 +25,20 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+# The platform token -> how it is spelled to a human, and the set of platforms recognized at all:
+# the parser's alternation below is derived from these spellings, so adding a platform is one edit
+# rather than two that must agree. A `watchOS` / `tvOS` runtime is not one Bajutsu runs against, so
+# its label parses to None.
+_PLATFORMS = {"ios": "iOS", "android": "Android"}
+
 # `iOS 18.6` / `Android 14` / `iOS 18.6.1` — anchored (`fullmatch`), so a label this doesn't
 # recognize parses to None rather than to a version read out of its prefix. The patch component is
 # matched but dropped: no observed behavioural difference distinguishes 18.6 from 18.6.1, and
 # splitting a scenario's history across patch releases is the cost the raw-string alternative pays.
-_LABEL_RE = re.compile(r"\s*(iOS|Android)\s+(\d+)(?:\.(\d+))?(?:\.\d+)*\s*", re.IGNORECASE)
-
-# The platform token -> how it is spelled to a human. Also the set of platforms this recognizes at
-# all: a `watchOS` / `tvOS` runtime is not one Bajutsu runs against, so its label parses to None.
-_PLATFORMS = {"ios": "iOS", "android": "Android"}
+_LABEL_RE = re.compile(
+    rf"\s*({'|'.join(re.escape(p) for p in _PLATFORMS.values())})\s+(\d+)(?:\.(\d+))?(?:\.\d+)*\s*",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -35,10 +34,8 @@ from bajutsu.serve.operations.config import FS_DISABLED_ERROR
 from bajutsu.serve.operations.runs import sweep_expired_trash
 from bajutsu.serve.orgs import targets_for_org
 from bajutsu.serve.server.db import DEFAULT_RUN_LIMIT as _RUN_HISTORY_LIMIT
-from bajutsu.serve.server.db import Repository, RunRecord
+from bajutsu.serve.server.db import RunRecord
 from bajutsu.serve.state import ServeState
-
-logger = logging.getLogger(__name__)
 
 _REPORT_SUFFIX = "/report.html"
 
@@ -223,44 +220,44 @@ def _flakiness_report(state: ServeState, actor: str | None) -> _flakiness.Flakin
     org = state.org_of(actor)
     if state.repository is not None:
         records = state.repository.list_runs(org_id=org, limit=_flakiness.DEFAULT_RUN_LIMIT)
-        _backfill_device_runtime(state, org, state.repository, records)
+        _fill_device_runtime(state, org, records)
     else:
         records = _flakiness.records_from_manifests(_run_manifests(state, actor))
     return _flakiness.rank_flakiness(records)
 
 
-def _backfill_device_runtime(
-    state: ServeState, org: str, repository: Repository, records: list[RunRecord]
-) -> None:
-    """Determine `device_runtime` for runs recorded before the column existed, from their manifests.
+def _fill_device_runtime(state: ServeState, org: str, records: list[RunRecord]) -> None:
+    """Fill `device_runtime` on runs recorded before the column existed, from their manifests (BE-0358).
 
     Without it a deployment's history splits at the deploy boundary — older runs under the unknown OS,
     newer ones per OS — so a genuine flake spanning that boundary reads as two `unproven` histories:
-    BE-0358's own misclassification with the sign reversed. No migration can do this, since the
-    per-scenario label lives in the run's `manifest.json` in the artifact store, not in the database.
+    BE-0358's own misclassification with the sign reversed. No migration can repair those rows, since
+    the per-scenario label lives in the run's `manifest.json` in the artifact store, not in the
+    database.
 
-    Only rows that were never determined (None, as distinct from the `""` a determined run with no
-    single OS records) are read, and each is written back once, so the repair terminates instead of
-    re-reading object storage on every panel load. A run whose manifest is gone stays undetermined and
-    keeps grouping under the unknown OS, which the report discloses rather than passing off as
-    evidence. Best-effort throughout: a read-only replica or a storage hiccup degrades the panel to
-    that same disclosure, never to an error (mirroring `jobs._persist_run`).
+    **Repaired for this request only, never written back.** Persisting would put a write on a read
+    path, where `record_run`'s full-row upsert would insert a row it does not find — resurrecting a
+    run an operator had hard-purged between the listing and this loop, silently and with no audit
+    trail. The cost of re-reading is bounded and self-limiting instead: every run recorded since the
+    column exists carries a determined value (a label, or `""` for a run that named no single OS), so
+    only pre-column rows are ever read, and they age out of the newest-N window. A row is also skipped
+    when it has no `scenario_hash`, since `rank_flakiness` cannot group it whatever its OS turns out
+    to be.
+
+    A run whose manifest is gone stays undetermined and keeps grouping under the unknown OS, which the
+    report discloses rather than passing off as evidence.
     """
-    pending = [r for r in records if r.device_runtime is None]
-    if not pending:
-        return
+    pending = [r for r in records if r.device_runtime is None and isinstance(r.scenario_hash, str)]
     artifacts = state.for_org(org).artifacts
-    manifests = {m.get("runId"): m for m in run_set_manifests(artifacts, [r.id for r in pending])}
     for record in pending:
-        manifest = manifests.get(record.id)
-        if manifest is None:
+        # Read one id at a time: `run_set_manifests` skips a manifest it can't parse, so a returned
+        # list can't be zipped back onto the ids, and keying on each manifest's self-reported `runId`
+        # would attribute a copied or restored run's OS to whichever row shares that id.
+        manifests = run_set_manifests(artifacts, [record.id])
+        if not manifests:
             continue
-        run_os = device_os.from_manifest(manifest)
+        run_os = device_os.from_manifest(manifests[0])
         record.device_runtime = run_os.label if run_os is not None else ""
-        try:
-            repository.record_run(record)
-        except Exception:
-            logger.warning("failed to backfill the device OS of run %s", record.id, exc_info=True)
 
 
 def _run_manifests(state: ServeState, actor: str | None) -> list[dict[str, Any]]:
