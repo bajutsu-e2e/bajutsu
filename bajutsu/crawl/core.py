@@ -1040,13 +1040,16 @@ def crawl(
             except device_errors.DeviceError as exc:
                 if not isolate:
                     raise  # a lone worker surfaces the device failure, as the serial engine did
-                # Isolation absorbs the fault so a healthy device retries the action, which is right
-                # — but absorbing it silently is not: the crawl can finish "completed" having lost a
+                # Isolation absorbs the fault so the action can be retried, which is right — but
+                # absorbing it silently is not: the crawl can finish "completed" having lost a
                 # device, and nothing in the output says a device faulted. Name it here (BE-0363
-                # routes a `simctl` call that exceeded its deadline into this same handler).
+                # routes a `simctl` call that exceeded its deadline into this same handler). All
+                # that is settled at this point is that the action returns to the frontier; whether
+                # a peer takes it, this lane is healed (`recover`) and retries it, or the lane
+                # retires is the neighbouring lines' story, so the wording claims none of them.
                 _logger.warning(
                     "crawl %s: device fault performing %s from screen %s — handing the action back "
-                    "to another device: %s",
+                    "to the frontier for a retry: %s",
                     lane,
                     action.describe(),
                     src_fp,
