@@ -1,14 +1,14 @@
-[English](BE-XXXX-android-ci-emulator-diagnostics.md) · **日本語**
+[English](BE-0367-android-ci-emulator-diagnostics.md) · **日本語**
 
-# BE-XXXX — Android の CI 失敗の原因究明に必要な多層の診断ログを収集する
+# BE-0367 — Android の CI 失敗の原因究明に必要な多層の診断ログを収集する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-android-ci-emulator-diagnostics-ja.md) |
+| 提案 | [BE-0367](BE-0367-android-ci-emulator-diagnostics-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0367") |
 | トピック | Platform support |
 | 関連 | [BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics-ja.md)、[BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md)、[BE-0270](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance-ja.md)、[BE-0350](../BE-0350-ondevice-conformance-evidence-capture/BE-0350-ondevice-conformance-evidence-capture-ja.md) |
 <!-- /BE-METADATA -->
