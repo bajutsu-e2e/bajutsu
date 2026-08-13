@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ios-paste-consent-prompt-choice-ja.md)
+**English** · [日本語](BE-0369-ios-paste-consent-prompt-choice-ja.md)
 
-# BE-XXXX — Extend the iOS system-alert prompt/choice table to the paste-consent prompt
+# BE-0369 — Extend the iOS system-alert prompt/choice table to the paste-consent prompt
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ios-paste-consent-prompt-choice.md) |
+| Proposal | [BE-0369](BE-0369-ios-paste-consent-prompt-choice.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0369") |
 | Topic | Platform support |
 | Related | [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md), [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md) |
 <!-- /BE-METADATA -->
