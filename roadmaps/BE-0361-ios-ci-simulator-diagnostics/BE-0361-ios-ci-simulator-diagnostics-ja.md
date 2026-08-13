@@ -201,9 +201,17 @@ Simulator を駆動する 7 つの macOS ジョブがそれぞれ自前のシェ
    想定していたのに反して、composite action のシェルには静的なゲートの検査が**ありません**。
    `actionlint` が検査するのは `.github/workflows/` だけで、`action.yml` を指定すると `jobs`
    セクションがないと報告します。`make lint-sh` は名指しした `.sh` ファイルの一覧に対して
-   `shellcheck` を走らせるので、`.github/actions/` 配下には届きません。シェルは各ステップを
-   抽出し、起動済みの Simulator に対して実行して検証しました。すべての composite action について
-   このゲートの穴を閉じるのは、別途の後続作業とします。
+   `shellcheck` を走らせるので、`.github/actions/` 配下には届きません。この穴から実際に欠陥が
+   出荷されました。action の番犬が、固まった `simctl` のスクリーンショットを SIGKILL し、`wait`
+   がその子の 137 を返し、**Actions 自身がシェル行に付ける** errexit、すなわち
+   `bash --noprofile --norc -e -o pipefail`（スクリプト側の `set -uo pipefail` では解除できません）
+   がステップを落として、本来のテストステップを skip させ、iOS の5ジョブを赤くしました。そこで
+   テストは、action 自身の `run:` ブロックを、まさにその処理系とフラグの下で、ハングする `xcrun`
+   のスタブとともに実行します（`tests/test_collect_ios_diagnostics_action.py`）。固定するのは、
+   ただ1つの性質です。診断のステップはジョブを落とせない、ということです。このテストを書く過程で、
+   上限のない呼び出しがもう1つ見つかりました。*常時*段の `simctl list` で、CoreSimulator が固まって
+   いればすべてのジョブを止めていたはずのものです。すべての composite action について静的な lint の
+   穴を閉じるのは、引き続き別途の後続作業とします。
 
 ### 最重要原則の維持
 

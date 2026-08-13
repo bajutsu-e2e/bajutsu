@@ -183,8 +183,15 @@ Mutually exclusive, collectively exhaustive (`MECE`) units of work follow.
    static gate coverage, contrary to what this unit first assumed: `actionlint` lints
    `.github/workflows/` only (pointed at an `action.yml` it reports a missing `jobs` section), and
    `make lint-sh` runs `shellcheck` over a named list of `.sh` files that reaches nothing under
-   `.github/actions/`. The shell was verified by extracting each step and running it against a booted
-   Simulator; closing the gate gap for every composite action is its own follow-up.
+   `.github/actions/`. That gap shipped a defect: the action's watchdog SIGKILLed a hung `simctl`
+   screenshot, `wait` returned the child's 137, and the errexit **Actions itself puts on the shell
+   line** — `bash --noprofile --norc -e -o pipefail`, which a script's own `set -uo pipefail` does not
+   clear — failed the step, skipping the real test step and reddening five iOS jobs. So the tests now
+   run the action's own `run:` blocks under exactly that interpreter and those flags, with `xcrun`
+   stubbed to hang (`tests/test_collect_ios_diagnostics_action.py`), pinning the one property that
+   matters: a diagnostics step cannot fail a job. Writing them found a second unbounded call
+   (`simctl list` on the *always* tier) that would have hung every job on a wedged CoreSimulator.
+   Closing the static-lint gap for every composite action is still its own follow-up.
 
 ### Prime directives preserved
 

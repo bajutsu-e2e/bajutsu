@@ -39,9 +39,16 @@ runs:
   using: composite
   steps:
     # Inputs go through env: so the shell sees them as data, not as script text spliced in before
-    # parsing (the GitHub Actions ${{ }} injection pattern). See BE-0123. `set -e` is deliberately
-    # absent from both steps below: every probe here is best-effort, and a missing log or an absent
-    # process must never fail a job whose real verdict has already been decided.
+    # parsing (the GitHub Actions ${{ }} injection pattern). See BE-0123.
+    #
+    # Both steps below turn errexit OFF explicitly. GitHub Actions runs a composite `run:` block as
+    # `bash --noprofile --norc -e -o pipefail`, so `-e` is on unless the script says otherwise — and
+    # writing only `set -uo pipefail` does not clear it. That bit us: a `simctl` screenshot that hung
+    # on a degraded Simulator was killed by the watchdog below, `wait` returned the child's 137, and
+    # errexit took the whole step — and with it five iOS jobs, whose real test step was then skipped.
+    # Every probe here is best-effort by construction: a missing log, an absent process, or a wedged
+    # collector must never decide a job whose verdict belongs to the test step alone. Each step ends
+    # with an explicit `exit 0` for the same reason.
     - name: Start host telemetry and probe the render pipeline
       if: inputs.phase == 'start'
       shell: bash
@@ -49,32 +56,43 @@ runs:
         UDID: ${{ inputs.udid }}
         DEST: ${{ inputs.dest }}
       run: |
+        set +e
         set -uo pipefail
         mkdir -p "$DEST"
 
-        udid="$UDID"
-        if [ -z "$udid" ] || [ "$udid" = "booted" ]; then
-          udid=$(xcrun simctl list devices booted -j | jq -r '[.devices | to_entries[] | .value[] | .udid] | first // empty')
-        fi
-        echo "$udid" >"$DEST/device-udid.txt"
-
         # Stop a background child after `$1` seconds, then report whether it had to be killed. The
-        # macOS runner ships no `timeout`/`gtimeout`, and both probes below can hang on exactly the
-        # wedged device they are probing for — an unbounded probe here would cancel the job at its
+        # macOS runner ships no `timeout`/`gtimeout`, and every `simctl` call below can hang on exactly
+        # the wedged device it is asking about — an unbounded one here would cancel the job at its
         # `timeout-minutes` before a single scenario ran, which is strictly worse than not probing.
+        # Defined before the first `simctl` call for that reason. Every status here is absorbed with
+        # `|| true`: `wait` on a child this function just SIGKILLed returns 137, and the caller reads
+        # the outcome from the return value, never from a status that could abort the step.
         reap() {
           local pid="$1" limit="$2" waited=0
           while kill -0 "$pid" 2>/dev/null; do
             if [ "$waited" -ge "$limit" ]; then
-              kill -9 "$pid" 2>/dev/null
-              wait "$pid" 2>/dev/null
+              kill -9 "$pid" 2>/dev/null || true
+              wait "$pid" 2>/dev/null || true
               return 124
             fi
             sleep 1
             waited=$((waited + 1))
           done
-          wait "$pid" 2>/dev/null
+          wait "$pid" 2>/dev/null || true
+          return 0
         }
+
+        udid="$UDID"
+        if [ -z "$udid" ] || [ "$udid" = "booted" ]; then
+          # Bounded like every other `simctl` call: this one runs before the device is known to be
+          # answering, which is precisely when it can hang.
+          xcrun simctl list devices booted -j >"$DEST/.booted.json" 2>/dev/null &
+          reap $! 20
+          udid=$(jq -r '[.devices | to_entries[] | .value[] | .udid] | first // empty' \
+            <"$DEST/.booted.json" 2>/dev/null || true)
+          rm -f "$DEST/.booted.json"
+        fi
+        echo "$udid" >"$DEST/device-udid.txt"
 
         # A render-pipeline probe, once per job. `recordVideo produced no new bytes` fires on every
         # scenario of these runners, green runs included, so the byte count here answers whether the
@@ -88,10 +106,10 @@ runs:
             if [ -n "$udid" ]; then
               start=$(date +%s)
               xcrun simctl io "$udid" screenshot "$DEST/render-probe.png" >/dev/null 2>&1 &
-              reap $! 30
+              reap $! 15
               rc=$?
               elapsed=$(( $(date +%s) - start ))
-              [ "$rc" -eq 124 ] && echo "screenshot: STILL RUNNING after ${elapsed}s — killed" \
+              [ "$rc" -eq 124 ] && echo "screenshot: STILL RUNNING after ${elapsed}s — killed (the render service is not answering)" \
                 || echo "screenshot: exit $rc in ${elapsed}s, $(wc -c <"$DEST/render-probe.png" 2>/dev/null || echo 0) bytes"
               xcrun simctl io "$udid" recordVideo "$DEST/render-probe.mp4" >/dev/null 2>&1 &
               video=$!
@@ -135,6 +153,7 @@ runs:
         nohup "$sampler" >/dev/null 2>&1 &
         echo $! >"$pidfile"
         echo "host telemetry sampling every 20s → $telemetry (pid $(cat "$pidfile"))"
+        exit 0
 
     - name: Collect Simulator, CoreSimulator, and host diagnostics
       if: inputs.phase == 'collect'
@@ -148,6 +167,7 @@ runs:
         CORESIM_LOG_BYTES: "20971520"
         LOG_WINDOW: 30m
       run: |
+        set +e
         set -uo pipefail
         mkdir -p "$DEST"
 
@@ -168,7 +188,10 @@ runs:
           udid=$(cat "$DEST/device-udid.txt" 2>/dev/null || true)
         fi
         if [ -z "$udid" ] || [ "$udid" = "booted" ]; then
-          udid=$(xcrun simctl list devices booted -j | jq -r '[.devices | to_entries[] | .value[] | .udid] | first // empty')
+          bounded 20 xcrun simctl list devices booted -j >"$DEST/.booted.json" 2>/dev/null
+          udid=$(jq -r '[.devices | to_entries[] | .value[] | .udid] | first // empty' \
+            <"$DEST/.booted.json" 2>/dev/null || true)
+          rm -f "$DEST/.booted.json"
         fi
 
         # Bound a command without GNU coreutils: the macOS runner ships no `timeout`/`gtimeout`, and
@@ -185,15 +208,16 @@ runs:
           pid=$!
           while kill -0 "$pid" 2>/dev/null; do
             if [ "$waited" -ge "$limit" ]; then
-              kill -9 "$pid" 2>/dev/null
-              wait "$pid" 2>/dev/null
+              kill -9 "$pid" 2>/dev/null || true
+              wait "$pid" 2>/dev/null || true
               echo "::warning::bajutsu diagnostics: '$1' exceeded ${limit}s and was killed" >&9
               return 124
             fi
             sleep 1
             waited=$((waited + 1))
           done
-          wait "$pid"
+          wait "$pid" 2>/dev/null || true
+          return 0
         }
 
         # --- Always: cheap, every run ---------------------------------------------------------
@@ -239,7 +263,10 @@ runs:
           xcodebuild -version
           system_profiler SPDisplaysDataType 2>/dev/null
         } >"$DEST/host-environment.txt" 2>&1
-        if ! xcrun simctl list -j >"$DEST/simctl-list.json" 2>"$DEST/simctl-list.err"; then
+        # Bounded: this is the *always* tier, so an unbounded call here would hang every job on a
+        # wedged CoreSimulator — including the green ones that have nothing to diagnose.
+        bounded 30 xcrun simctl list -j >"$DEST/simctl-list.json" 2>"$DEST/simctl-list.err"
+        if [ $? -ne 0 ]; then
           echo "::warning::bajutsu diagnostics: simctl list failed ($(head -c 200 "$DEST/simctl-list.err"))"
         fi
 
@@ -296,3 +323,4 @@ runs:
           echo "unified log (guest): exit $rc, $lines line(s)"
           [ "$rc" -eq 0 ] || echo "::warning::bajutsu diagnostics: the guest unified-log extract failed (exit $rc) — the render-wedge evidence is missing"
         fi
+        exit 0
