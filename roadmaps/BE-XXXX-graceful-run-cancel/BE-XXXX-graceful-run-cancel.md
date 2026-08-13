@@ -21,8 +21,8 @@ verdict, so the cancelled run leaves no trace in the run history: it disappears 
 started. This item makes cancellation cooperative instead of abrupt: the run pipeline notices the
 cancel request at a safe boundary, closes out every scenario that did not finish as failed with
 reason `"cancelled"`, and writes the same `manifest.json`, `report.html`, and database record an
-ordinary failing run would — so a cancelled run always lands in history as a failed run, never as a
-silent gap.
+ordinary failing run would — so a run cancelled once it has begun executing scenarios always lands
+in history as a failed run, never as a silent gap.
 
 ## Motivation
 
@@ -58,21 +58,29 @@ short grace period, rather than a `SIGTERM` that ends the process wherever it st
 - **Catch the signal, don't die from it.** `bajutsu run`'s entry point installs a `SIGTERM` handler
   that sets a `threading.Event` instead of falling back to Python's default disposition (immediate
   termination).
-- **Signal the run process alone, not its process group.** `serve/jobs.py` spawns a run job in its
-  own session (`start_new_session=True`) precisely so `_terminate`'s `killpg` can stop its children
-  too — the backend driver a scenario is actuating through, such as a Playwright-launched browser or
-  an `xcodebuild test` process. Killing that driver out from under an in-flight scenario would crash
-  it before the next safe boundary, which is exactly the abrupt failure this item removes. The
-  cancel path for a `run` job therefore signals only the leading process (`proc.send_signal`), not
-  the group; the driver keeps running until the runner itself, noticing the event at its next
-  boundary, tears it down through its own ordinary end-of-scenario teardown. `_terminate`'s
-  group-wide `killpg` stays exactly as it is today for `record`/`crawl` jobs (unaffected by this
-  item) and for the grace-period escalation below.
+- **Signal the run process alone first, not its process group.** `serve/jobs.py` spawns every job —
+  run, record, and crawl alike — in its own session (`start_new_session=True`); today's cancel path
+  relies on that grouping so `_terminate`'s group-wide `killpg` reaps a `record` job's
+  authoring-agent children (`claude -p`) instead of orphaning them
+  ([`jobs.py:71`](../../bajutsu/serve/jobs.py), [`jobs.py:417`](../../bajutsu/serve/jobs.py)). For a
+  `run` job the same grouping also happens to hold the backend driver a scenario is actuating
+  through — a Playwright-launched browser, an `xcodebuild test` process — so killing the group would
+  kill that driver out from under an in-flight scenario, crashing it before the next safe boundary:
+  exactly the abrupt failure this item removes. The cancel path for a `run` job therefore signals
+  only the leading process first (`proc.send_signal`), not the group; the driver keeps running until
+  the runner itself, noticing the event at its next boundary, tears it down through its own ordinary
+  end-of-scenario teardown. Once the leader has exited — cleanly, or via the grace-period escalation
+  below — the cancel path still sweeps the group with `killpg`, so a driver child that outlived that
+  teardown is reaped rather than left orphaned on the serve host. `_terminate`'s group-wide `killpg`
+  stays exactly as it is today for `record`/`crawl` jobs, which this item leaves unaffected.
 - **Check the event at safe boundaries.** The event is read at the top of each scenario in
-  `run_all`'s dispatch loop ([`pipeline.py:822`](../../bajutsu/runner/pipeline.py)) and inside the
-  poll loops that already back every condition wait, so a scenario mid-step notices cancellation
-  within one polling tick instead of riding out its own timeout. No new wait is introduced; an
-  existing bounded poll loop gains one more exit condition.
+  `run_all`'s dispatch loop ([`pipeline.py:822`](../../bajutsu/runner/pipeline.py)), between steps
+  within a scenario, and inside the poll loops that already back every condition wait. A scenario
+  waiting on a condition notices cancellation within one polling tick; one blocked inside a single
+  driver call — an `xcuitest` HTTP request, an `adb` `subprocess.run`, a Playwright call — notices
+  only once that call returns, so the grace period below must exceed the longest such call for the
+  cooperative path to win rather than escalate. No new wait is introduced; an existing bounded poll
+  loop gains one more exit condition.
 - **A cancelled scenario is a failed scenario.** A scenario interrupted this way, or one that never
   started because the event was already set, becomes a `RunResult(ok=False,
   failure="cancelled", ...)` — the same shape `pipeline.py` already builds for a crash or a preflight
@@ -90,11 +98,18 @@ short grace period, rather than a `SIGTERM` that ends the process wherever it st
   <manifest>` line and exits 1 exactly as it would for any other failed run, so `_RUN_ID_RE` matches
   and `_persist_run` records the run precisely as it would any other failure — with no changes
   needed to the database write path itself.
-- **The shutdown stays bounded.** A cancel request must resolve in bounded time, the same guarantee
-  `record`'s human handoff already gives ([BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md)).
-  `cancel_job` keeps a short grace window after the signal; if the process has not exited by that
-  deadline — a genuinely wedged runner, not a slow scenario — it escalates to today's unconditional,
-  group-wide `killpg`, so in the worst case a cancel request is delayed by at most the grace period
+- **The shutdown stays bounded — with or without `serve` watching.** The `SIGTERM` handler lives in
+  `bajutsu run`'s entry point, not behind any `serve`-only gate, so it answers every `SIGTERM` the
+  process receives — a `docker stop`, a systemd unit stop, a CI job cancellation — not only the one
+  `cancel_job` sends. `serve`'s side of the bound is external: `cancel_job` keeps a short grace
+  window after the signal and escalates to today's unconditional, group-wide `killpg` if the process
+  has not exited by that deadline, the same guarantee `record`'s human handoff already gives
+  ([BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md)). A `run` invoked
+  outside `serve` has no such external escalator watching it, so the handler enforces the same bound
+  on itself: a second, internal timer started when the event is set that — if the graceful shutdown
+  has not finished by its own deadline — restores `SIGTERM`'s default disposition and re-raises it,
+  so a genuinely wedged runner dies exactly as it would have without this item, instead of outliving
+  the signal indefinitely. Either way, a cancel request is delayed by at most one grace period
   beyond today's immediate kill.
 - **Scope: `run` jobs only.** This covers `run` jobs and the per-engine passes of a cross-browser
   matrix — `run_matrix_and_report` calls `run_all` once per engine, and each pass returns the same
@@ -102,7 +117,19 @@ short grace period, rather than a `SIGTERM` that ends the process wherever it st
   authors a scenario file and produces no `RunResult` or manifest at all. Cancelling one of those
   jobs keeps today's behavior unchanged — `Job.cancelled` set, process terminated. Whether a
   cancelled `record`/`crawl` job should be visible in some other way is a separate concern this item
-  leaves untouched.
+  leaves untouched. This bounds which job *type* gets the cooperative treatment, not which `SIGTERM`
+  *sender* triggers it — the handler installed in `bajutsu run`'s entry point (previous bullet)
+  answers any sender, not only `serve`'s Cancel button.
+- **Before the pipeline starts, cancellation still kills outright.** `_run_job` boots devices and
+  builds the app before it ever spawns the run process
+  ([`jobs.py:399,401`](../../bajutsu/serve/jobs.py)), and `_register_proc`
+  ([`jobs.py:85`](../../bajutsu/serve/jobs.py)) kills a process cancelled before it got a chance to
+  register; its caller then only reaps it with `proc.wait()` without ever reading `proc.stdout`, so
+  routing that narrow race through the cooperative shutdown would leave the runner blocked writing to
+  a full pipe with no reader. Cancelling during device boot, app build, or that brief pre-registration
+  window keeps
+  today's behavior unchanged: `Job.cancelled` set, process killed outright, nothing persisted. This
+  item closes the gap once a run has begun executing scenarios, not the window before it starts one.
 
 This respects the prime directives by construction. The verdict a cancelled run receives still
 comes from the deterministic pipeline — a scenario that did not finish is marked failed, never
@@ -122,9 +149,9 @@ handling and the `RunResult` shape are the same for every target.
   Stopping partway through an actuation, or while a network exchange is being written to evidence,
   could leave a driver session or a captured artifact in an inconsistent state — in tension with
   determinism-first (prime directive 2 bars a fixed sleep, and by the same logic bars cutting off an
-  in-flight actuation at an arbitrary point). Waiting for the current step or poll tick to finish —
-  at most one polling interval, not the step's own timeout — stops the run exactly where the pipeline
-  already tolerates a pause.
+  in-flight actuation at an arbitrary point). Waiting for the current step, poll tick, or driver call
+  to finish — at most one polling interval or one driver call, not the scenario's own timeout — stops
+  the run exactly where the pipeline already tolerates a pause.
 - **Model cancellation as a third run-level verdict, distinct from pass and fail.** Rejected for this
   item. Counting a cancelled run against the suite matches how an operator reads the history: a
   cancelled run is not a success. `failure: "cancelled"` already gives the report and the Web UI
@@ -132,10 +159,11 @@ handling and the `RunResult` shape are the same for every target.
   top-level verdict rippling through the database schema, the flakiness ranking
   ([BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)), and
   every report renderer that assumes `ok: bool`.
-- **Also catch `SIGINT`, so a bare `bajutsu run` cancelled with Ctrl-C gets the same treatment.** Out
-  of scope here — this item is the Web UI's Cancel button specifically — but the mechanism is the
-  same signal-to-event bridge, so a follow-up item can wire `SIGINT` to the identical
-  `threading.Event` with no new design.
+- **Also catch `SIGINT`, so a bare `bajutsu run` cancelled with Ctrl-C at a terminal gets the same
+  treatment.** Out of scope here — this item wires only `SIGTERM`, which already reaches every
+  external cancellation path (`serve`'s Cancel button, `docker stop`, systemd, a CI job
+  cancellation) — but the mechanism is the same signal-to-event bridge, so a follow-up item can wire
+  `SIGINT` to the identical `threading.Event` with no new design.
 
 ## Progress
 
@@ -145,14 +173,18 @@ handling and the `RunResult` shape are the same for every target.
 
 - [ ] Install a `SIGTERM` handler in `bajutsu run`'s entry point that sets a `threading.Event`
   instead of letting the process die immediately.
-- [ ] Change a `run` job's cancel path to signal the run process alone (not its process group),
-  reserving the group-wide `killpg` for the grace-period escalation.
-- [ ] Check that event at the top of each scenario in `run_all`'s dispatch loop and inside the
-  existing condition-wait poll loops.
+- [ ] Change a `run` job's cancel path to signal the run process alone first (not its process
+  group), then sweep the group with `killpg` once the leader has exited — cleanly or via the
+  grace-period escalation — so a surviving driver child is reaped rather than orphaned.
+- [ ] Check that event at the top of each scenario in `run_all`'s dispatch loop, between steps
+  within a scenario, and inside the existing condition-wait poll loops.
 - [ ] Synthesize `RunResult(ok=False, failure="cancelled")` for a scenario interrupted this way or
   one that never started.
 - [ ] Add a bounded grace period to `serve/jobs.py`'s `cancel_job`, escalating to today's
   unconditional kill only past the deadline.
+- [ ] Give the `SIGTERM` handler its own internally-enforced shutdown deadline, independent of
+  `serve`, so a `run` invoked outside `serve` (`docker stop`, systemd, a CI job cancellation) stays
+  bounded with no external escalator watching it.
 - [ ] Confirm `_persist_run` and the run-history summary read the resulting `manifest.json`
   correctly with no further changes.
 
