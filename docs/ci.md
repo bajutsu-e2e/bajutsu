@@ -104,11 +104,11 @@ Hypertext Transfer Protocol (HTTP) channel — reports `Timed out while requesti
 its test method, and leaves the Python side to declare a mid-run crash. No process died, so a
 crash-report sweep finds nothing, and the state that would say whether the Simulator's render service
 wedged or the virtualized macOS host starved it disappears before anyone opens the job. Every iOS
-job that boots a Simulator collects a layered set of evidence into `runs/`, which those jobs already
-upload — every job but `codegen`, whose sole artifact is its `.xcresult`, leaving the collection no
-`runs/` directory to ride. None of it reaches a verdict: the collection writes files and nothing else, and
-the deterministic assertions still decide pass/fail.
-
+wedged or the virtualized macOS host starved it disappears before anyone opens the job. Every iOS
+job that boots a Simulator except `codegen` collects a layered set of evidence into `runs/`, which
+those jobs already upload; `codegen`'s sole artifact is its `.xcresult`, so the collection has no
+`runs/` directory to ride there. None of it reaches a verdict: the collection writes files and
+nothing else, and the deterministic assertions still decide pass/fail.
 Three layers collect it, split by what each one can see.
 
 - **Inside `bajutsu`**, because the running process is the one thing that knows *when* a stall
