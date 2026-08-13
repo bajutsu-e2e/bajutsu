@@ -2212,6 +2212,34 @@ def test_a_degraded_device_that_refuses_to_shut_down_is_still_replaced(
     assert "create" in _verb_seq(calls)
 
 
+def test_a_degraded_device_whose_shutdown_hangs_is_still_replaced(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The same reasoning as the refusal above, for the wedge BE-0363 made visible: a `simctl
+    # shutdown` that exceeds its deadline propagates out of `Env.shutdown` now, and this site is past
+    # the ladder's decision point — a replacement was already confirmed creatable, so raising here
+    # would abandon it and fail the run on the very device the escalation exists to leave behind.
+    app = tmp_path / "App.app"
+    app.mkdir()
+    _fake_toolchain(monkeypatch)
+    calls, run = _ladder_run(["UDID"])
+
+    def hanging_shutdown(argv: list[str], env: object = None) -> str:
+        if argv[2:4] == ["shutdown", "UDID"]:
+            calls.append(argv)
+            raise simctl.DeviceTimeout("device operation timed out after 60s: " + " ".join(argv))
+        return str(run(argv, env))
+
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=hanging_shutdown)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)), app_path=str(app))
+    env.start(eff, Preconditions())
+    env.request_device_replacement()
+    del calls[:]
+    env.start(eff, Preconditions())
+    assert env._udid == "UDID-NEW"
+    assert "create" in _verb_seq(calls)
+
+
 def test_a_replacement_bring_up_drops_the_erase_it_was_asked_to_carry(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

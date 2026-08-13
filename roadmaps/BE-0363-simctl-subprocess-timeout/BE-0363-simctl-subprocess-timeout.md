@@ -173,7 +173,16 @@ untouched. Neither needs a Simulator, so both run in the deterministic gate rath
 - [x] Unit 2 — translate a timeout into the module's device-fault type inside the helper; let a
       timeout propagate from the four deliberately suppressed calls, narrow the two discard-path
       `terminate` suppressions so it is not re-absorbed there, and fold it into the existing fallback
-      of each best-effort probe.
+      of each best-effort probe. Shipped with three callers that catch the now-propagating timeout
+      instead of letting it out, each logging the wedge so the diagnosis this item exists to produce
+      survives: the `serve` job's parallel boot, where an uncaught one dies on its worker thread and
+      leaves the job reporting a boot it never got; `guarded_teardown`, where a `mid_run=False`
+      re-raise surfaces inside `run`'s `finally: shutdown()` and would replace a finished run's
+      verdicts with an exception; and the crash retry's quarantine `shutdown`, which runs past the
+      recovery ladder's decision point with a replacement already confirmed creatable. The design
+      above states where a timeout is raised from, not that every caller must let it reach the top —
+      a timeout that destroys what the run already produced diagnoses no better than the hang it
+      replaced.
 - [x] Unit 3 — resolve the bound inside the real helper so the substituted test callable keeps its
       two-argument shape, and cover both the timeout and the healthy path in the deterministic gate.
 

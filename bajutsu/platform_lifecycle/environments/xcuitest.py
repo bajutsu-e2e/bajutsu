@@ -841,7 +841,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
     def _reboot_device(self) -> _Recovery:
         """Shut the Simulator down and boot it back up. `_finish_repair` re-establishes scenario state.
 
-        `Env.shutdown()` suppresses its own failure — right for the benign "already shutting down"
+        `Env.shutdown()` suppresses its own failure — though no longer a deadline it exceeded, which
+        BE-0363 lets out so this rung raises rather than reporting a reboot it never performed —
+        right for the benign "already shutting down"
         case it was written for, but a CoreSimulator wedged enough to stop honouring automation is
         exactly where `simctl shutdown` itself fails. Left unchecked, that failure is invisible: `boot`
         no-ops on a device that never left `Booted`, `bootstatus -b` sees it already booted and returns
@@ -906,9 +908,13 @@ class XcuitestEnvironment(_DeviceEnvironment):
 
         The degraded device is shut down and, because the pool follows `replaced_device` onto the
         replacement, never freed back to the queue — the same quarantine a vanished device gets today.
-        The shutdown is best effort (`Env.shutdown` suppresses its own failure): a CoreSimulator wedged
-        enough to refuse it is exactly why the run is leaving this device, so failing here would only
-        replace one loud failure with a less useful one. It runs only once a replacement is known to be
+        The shutdown is best effort (`Env.shutdown` suppresses its own failure, and a deadline it
+        exceeded is suppressed here, since BE-0363 deliberately lets that one out of the module): a
+        CoreSimulator wedged enough to refuse or to hang on it is exactly why the run is leaving this
+        device, so failing here would only replace one loud failure with a less useful one — and
+        would abandon a replacement already confirmed creatable. Unlike `_reboot_device`, which keeps
+        the timeout because the ladder still has a rung to choose, this site is past that decision.
+        It runs only once a replacement is known to be
         creatable, so a host that cannot mint one leaves the degraded device up for the caller's
         fallback rather than turned off on the way to a loud failure.
 
@@ -920,7 +926,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # *first* crash, where no erase was ever forced — and this clause reaches the operator on the
         # path where no replacement could be made, so it must not claim one was.
         device_type = self._replacement_target(eff, why="needs replacing after a crash")
-        simctl.Env(old, run=self._run).shutdown()
+        try:
+            simctl.Env(old, run=self._run).shutdown()
+        except simctl.DeviceTimeout as exc:
+            _logger.warning("quarantining Simulator %s: %s; replacing it anyway", old, exc)
         note = self._create_replacement(eff, device_type)
         # The spawn that follows is a genuine first bring-up — a device just created and booted, with
         # no app installed and no XCTest host this boot — so it earns the full cold readiness ceiling,
