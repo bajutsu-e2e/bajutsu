@@ -24,8 +24,13 @@ membership data — which GitHub login or GitHub organization can sign in as thi
 (`members`/`githubOrgs`) and which GitHub Team its editors belong to (`editorTeam`,
 [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)) — from the
 configuration file into the database `serve` already runs against once one is wired
-(`BAJUTSU_DATABASE_URL`). A deployment with no database keeps reading `orgs:` from configuration
-exactly as today; this item changes nothing there.
+(`BAJUTSU_DATABASE_URL`). Once that database holds an org's membership it is the only thing
+consulted for it: the sign-in gate itself stops reading the configuration file, so a configuration
+that fails to load no longer turns every sign-in into a denial. The item also settles what an
+admin-created org means for target ownership, which stays in configuration — an org's targets
+resolve per org rather than per name, so two orgs may each claim a target of the same name instead
+of configuration order silently awarding it to one of them. A deployment with no database keeps
+reading `orgs:` from configuration exactly as today; this item changes nothing there.
 
 ## Motivation
 
@@ -54,6 +59,15 @@ a slug, and a name the first time a login for that org signs in, and stops there
 of `members`, `github_orgs`, or `editor_team`. Onboarding a tenant on a database-backed deployment
 still needs the same file edit and redeploy a database-less one does, even though the deployment
 already has a database sitting idle for exactly this kind of operational, per-org data.
+
+Moving that data also exposes two assumptions the configuration file was quietly carrying, both of
+which hold only while orgs are rare and hand-written. The first is that the file is always
+readable: `oauth_callback` gates sign-in on the parsed `orgs:` block, and a parse failure fails
+closed to an empty roster, so one malformed line denies every non-admin user on a deployment whose
+database already knows exactly who they are. The second is that no two orgs ever claim the same
+target name, which a reviewer could enforce across a single hand-edited file and no one can enforce
+once an admin creates tenants from a web UI that shows no other tenant's entry. Both are cheap to
+settle while the source of org data is being changed anyway, and neither gets cheaper later.
 
 ## Detailed design
 
@@ -87,37 +101,49 @@ moving `targets` too would duplicate that mechanism rather than complete this on
 A new `orgs_from_db(repository: Repository) -> dict[str, OrgConfig]` function, alongside the
 existing `parse_orgs` in the same module, queries every `Org` row and its membership columns and
 assembles the identical `dict[str, OrgConfig]` shape `parse_orgs` already produces from YAML —
-with `targets` always empty, since a database-sourced org owns no targets under this item. Only the
-sign-in and membership-resolution call sites inside `oauth_callback` switch to that database-backed
-dictionary: its calls to `identity_matches_org` and `org_for_identity`, and the `editor_team` it
-reads off the matched `OrgConfig` to pass as an argument into `role_for`
-([`bajutsu/serve/authz.py`](../../bajutsu/serve/authz.py)). That switch also reaches
-`oauth_callback`'s diagnostic and recovery paths, which consult the same dictionary rather than a
-copy of their own: `_unmatched_org_cause`'s `orgs` parameter (the denial and bypass-admission
-messages it composes), the `not matched_org and parsed is None and state.config is not None` guard
-that keeps a signed-in user's already-recorded org rather than relocating them over a config load
-failure, and the `parsed is None or not orgs` condition that decides whether a bypass sign-in logs
-at WARNING. Each of these keys its behavior on a shape — `parsed is None`, `not orgs` — that only a
-configuration-parsed dictionary can take: "no config is bound," "the config failed to load," "the
-config declares no `orgs:` block." On a database-backed deployment, where the switched dictionary
-comes from `orgs_from_db` instead, that cause classification needs its own re-reading for what a
-database source can and cannot fail at, rather than carrying the config-shaped causes over
-unchanged. Target resolution keeps reading the
-configuration-parsed dictionary unchanged: `targets_for_org` and the `org_for_target` that
-`authz.py`'s `_target_forbidden` calls both need an org's actual target ownership, which — per unit
-1 — only the configuration-sourced dictionary carries; a database-sourced `OrgConfig` always reports
-an empty `targets`, so pointing either helper at `orgs_from_db`'s output instead would break every
-target's ownership on a database-backed deployment. This is the same principle
+with `targets` always empty, since a database-sourced org owns no targets under this item. Every
+membership consumer inside `oauth_callback` reads that database-sourced dictionary once a
+repository is wired, with no exception and no fallback to the configuration-parsed one: the
+sign-in gate's `identity_matches_org`, the `org_for_identity` that places a signed-in user, the
+`editor_team` read off the matched `OrgConfig` and passed as an argument into `role_for`
+([`bajutsu/serve/authz.py`](../../bajutsu/serve/authz.py)), and the denial diagnostics unit 3
+re-reads for that source. Target resolution is the one consumer that keeps reading configuration —
+`targets_for_org` and the `org_for_target` that `authz.py`'s `_target_forbidden` calls both need an
+org's actual target ownership, which only the configuration-sourced dictionary carries — and unit 4
+covers what that resolution has to become. Routing membership through a second producer of the same
+dictionary shape is the same principle
 [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md) itself invoked when it
 swapped a login list for GitHub Team membership — a policy is recomputed from its source on every
 sign-in, so changing the source needs no data migration for the resolution logic itself.
 
-### 2. The database gate: which deployments this item changes
+### 2. One org source per deployment, chosen once
 
-`oauth_callback` ([`bajutsu/serve/authz.py`](../../bajutsu/serve/authz.py)) calls `orgs_from_db`
-in place of the configuration-parsed `orgs:` dictionary only when a repository is wired
-(`state.repository is not None`) — the same condition that already gates every other DB-backed
-seam in `serve`. A database-less deployment keeps calling `parse_orgs` against the configuration
+`oauth_callback` ([`bajutsu/serve/authz.py`](../../bajutsu/serve/authz.py)) reads the org model
+once, near the top, and hands that one dictionary to every check below it — today always the
+`orgs:` block `load_serve_config_file(state.config)` parses, on every deployment. This item makes
+that single read conditional on the deployment's shape and on nothing else: `orgs_from_db` when a
+repository is wired (`state.repository is not None`, the same condition that already gates every
+other database-backed seam in `serve`), `parse_orgs` against the configuration file otherwise. The
+consequence for a database-backed deployment is the one this item is named for — the database
+decides who signs in, and the configuration file no longer participates in that decision at all.
+
+The sign-in gate's *placement* is unchanged: the `members`/`github_orgs` match check still runs
+before `org_for_identity` is ever called, and still sits above the `if state.repository is not
+None:` block, so a database-less, OAuth-configured deployment keeps gating sign-in
+([BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)). Only the dictionary
+that check consults now depends on whether a database is wired, not where in `oauth_callback` the
+check itself runs.
+
+Choosing the source before the gate, rather than after it, also severs a coupling that is a live
+operational hazard today. `load_serve_config_file` fails closed to `None`, `orgs` collapses to an
+empty mapping, and `identity_matches_org` then matches nobody — so on a database-backed deployment
+a configuration file that is unreadable, malformed, or not yet bound turns every non-admin sign-in
+into a denial, even though every one of those users, their orgs, and their roles are already rows
+in the database. After this item, an unloadable configuration on that deployment stops the seeding
+of unit 6 and leaves target resolution (unit 4) with nothing to resolve against, and stops nothing
+else: sign-in, org placement, and role assignment keep working from the database.
+
+A database-less deployment keeps calling `parse_orgs` against the configuration
 file exactly as today, with no admin UI for org management: that deployment is local and
 single-user by construction
 ([BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md)'s own motivation), it has
@@ -127,14 +153,69 @@ no tenant boundary to administer, and
 model exists only to gate sign-in itself, not to grant a role, so nothing in this item's design
 gives it anything to gain from a per-org membership store.
 
-The sign-in gate's placement — the `members`/`github_orgs` match check that runs before
-`org_for_identity` is ever called, itself positioned before the `if state.repository is not None:`
-block so a database-less, OAuth-configured deployment still gates sign-in
-([BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)) — is unchanged by
-this item: only the dictionary that check consults now depends on whether a database is wired, not
-where in `oauth_callback` the check itself runs.
+### 3. Denial diagnostics, re-read for a database source
 
-### 3. Admin API and UI: create, delete, and edit membership
+`_unmatched_org_cause` ([`bajutsu/serve/authz.py`](../../bajutsu/serve/authz.py)) names which of
+five shapes left a login unmatched, and it decides a log level: a denial or a bypass admission logs
+at WARNING when `parsed is None or not orgs`, on the reasoning that a configuration-shaped failure
+is an operator's problem while an ordinary roster miss is not. Three of those five shapes — no
+configuration is bound yet, the configuration failed to load, the configuration declares no `orgs:`
+block — are shapes only a file can take, so neither the causes nor the level survive a database
+source unread. Carrying them over would tell an operator to inspect a file that no longer decides
+anything.
+
+On a database-backed deployment those three collapse into one — the `orgs` table holds no live row
+this login matches — and the failure that replaces them never reaches the cause classifier at all.
+This item gives `orgs_from_db` the opposite failure mode from `load_serve_config_file`'s: a
+database error propagates rather than failing closed to an empty mapping, so a database `serve`
+cannot read answers with a 5xx naming it, instead of denying every user with a message that blames
+their GitHub membership. What remains to report is therefore: the `orgs` table holds no live row at
+all (nothing created or seeded yet — the shape unit 7's bypass exists for), GitHub returned no
+organizations for this login, or a real, unmatching roster. WARNING stays reserved for the
+operator-actionable one, an empty table.
+
+The recovery guard beside them — `not matched_org and parsed is None and state.config is not None`,
+which keeps a bypass-admitted user's already-recorded org rather than relocating them to `default`
+over one failed configuration load — is removed on this path rather than translated onto it. It
+sits inside the `if state.repository is not None:` block, so it only ever ran on a database-backed
+deployment: exactly the deployment whose org source stops being a file here. Its motivating failure
+goes away with its cause, since no configuration load can misplace a user whose org the database
+decides, and `orgs_from_db` raises rather than silently presenting an empty roster to be misread as
+one. A database-less deployment never entered that block to begin with, so it loses no protection
+either.
+
+### 4. A target's identity becomes (org, target)
+
+Target ownership stays in configuration (unit 1), but the way it is *resolved* does not survive an
+admin who can create orgs at will. `org_for_target`
+([`bajutsu/serve/orgs.py`](../../bajutsu/serve/orgs.py)) maps a bare target name to the first org
+whose `targets` list names it, and `_target_forbidden` forbids that target to every other org on
+exactly that basis. Two orgs that both name `checkout` therefore do not each get a `checkout`:
+configuration order silently awards it to whichever entry comes first, and the second org is
+forbidden every operation on it — while still being shown it, because `targets_for_org` lists a
+target whenever the org's own entry names it. The result is a target that appears in an org's list
+and refuses every read of it, with nothing in the configuration file saying which org won.
+
+Under a hand-edited `orgs:` block that collision was a mistake a reviewer could catch in the same
+diff. Once unit 5 lets an admin create a tenant from the web UI, with no view of another tenant's
+configuration entry, it becomes routine — and its symptom reads like a permissions bug rather than
+the name clash it is.
+
+This item therefore makes an org's target ownership resolve per org rather than per name.
+`_target_forbidden` asks whether *this* org's own entry claims the target, instead of which single
+org the name resolves to, which leaves `org_for_target`'s global name-to-org lookup with no caller.
+`targets_for_org` is already keyed by org and needs no change, including its `default` rule — an
+org named in no entry gets every target no entry claims. Two orgs may then each claim a target
+named `checkout`, and each is authorized for it. Under one bound configuration they still share the
+one `targets:` definition that name resolves to; giving each org a definition of its own needs a
+configuration bound per org, which is where
+[BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md)'s per-project config binding
+already points and where this item deliberately stops. Making the *identity* `(org, target)` first
+is what keeps that later step from having to re-decide who owns a name — the same key BE-0225's
+project registry already uses for a project, whose `add` and `get` are keyed by `(org_id, name)`
+([`bajutsu/serve/project_registry.py`](../../bajutsu/serve/project_registry.py)).
+
+### 5. Admin API and UI: create, delete, and edit membership
 
 Four endpoints, all admin-only (an org's membership decides who else can sign in and write, the
 same sensitivity level BE-0225 already gives registering or repointing a project) and each
@@ -145,7 +226,7 @@ mutation recorded through the existing `Repository.record_audit` (`org.create` /
   editor Team is set, and its project count.
 - `POST /api/orgs` — create an org from `{slug, name}`; membership starts empty (no member, no
   GitHub organization, no editor Team), so a freshly created org admits nobody until an admin adds
-  to it. Creation marks the new row seeded immediately, the same per-row marker unit 4 sets on
+  to it. Creation marks the new row seeded immediately, the same per-row marker unit 6 sets on
   cutover, so the row is treated as already past cutover: no later `orgs:` entry for that slug
   seeds or re-seeds it, and so cannot overwrite membership an admin sets through this API.
 - `PUT /api/orgs/<slug>/membership` — replace an org's `{members, githubOrgs, editorTeam}` as one
@@ -177,7 +258,7 @@ a UNIQUE constraint end-to-end
 ([`bajutsu/serve/server/models.py`](../../bajutsu/serve/server/models.py)), and a soft-deleted row
 still occupies it, so `POST /api/orgs` rejects that slug with a dedicated 409 error rather than
 reactivating or reusing the row; reactivation, should it ever be needed, is a separate, explicit
-operation left to a future item. Unit 4's backfill likewise skips any row already marked deleted
+operation left to a future item. Unit 6's backfill likewise skips any row already marked deleted
 (`deleted_at` set): it neither seeds nor revives one, since a soft-deleted org is retired, not
 merely unseeded.
 
@@ -188,7 +269,7 @@ count shown, while the org still owns one), and a membership form per org (membe
 organizations, editor Team) that calls the `PUT` endpoint above. Both the API and the page exist
 only when a repository is wired, following unit 2's gate.
 
-### 4. One-time backfill, then a hard cutover
+### 6. One-time backfill, then a hard cutover
 
 A deployment upgrading from configuration-only org membership needs its existing `orgs:` block
 represented in the database before this item's admin UI has anything to show or edit. One
@@ -223,7 +304,7 @@ over keeping two independent sources for the same role-deciding data (see *Alter
 considered*); a wholly new `orgs:` entry still seeds normally at the next startup or rebind, but
 only when its row does not yet exist, or exists only as an unmarked, passive row — one
 `ensure_org` created at sign-in holding nothing but an id, a slug, and a name. An org created
-through unit 3's API is marked seeded at creation (see unit 3), so a later `orgs:` entry for that
+through unit 5's API is marked seeded at creation (see unit 5), so a later `orgs:` entry for that
 same slug never seeds over it. `serve` warns, once per run, whenever a repository is wired, a
 configuration is bound, and that configuration's `orgs:` block has an entry — for an org already
 marked seeded — that still declares any of the membership fields
@@ -237,10 +318,10 @@ gives for its own retired environment variable.
 
 A fresh deployment — a repository wired from its first boot, no prior configuration-only history —
 seeds against whatever `orgs:` block that first boot binds, typically empty; every org it has from
-that point on is one an admin creates through unit 3's API, or a later `orgs:` entry that seeds the
+that point on is one an admin creates through unit 5's API, or a later `orgs:` entry that seeds the
 same way at a subsequent startup or rebind.
 
-### 5. The admin-Team bootstrap bypass answers the empty-table case
+### 7. The admin-Team bootstrap bypass answers the empty-table case
 
 A freshly created, database-backed deployment has no org until an admin creates one, which raises
 the same bootstrap question
@@ -251,7 +332,7 @@ into the database — it is the recovery path for exactly the case in which the 
 wherever it lives, cannot yet admit anyone. A member of a configured admin Team clears the sign-in
 gate through that bypass regardless of how many `Org` rows exist, signs in with the admin role
 (unaffected by this item, [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)'s
-"admin stays one server-wide tier"), and uses unit 3's API to create the deployment's first org.
+"admin stays one server-wide tier"), and uses unit 5's API to create the deployment's first org.
 No chicken-and-egg: the one piece of tenancy data this item deliberately leaves outside the
 database is exactly the piece that makes an empty `orgs` table recoverable.
 
@@ -275,6 +356,18 @@ database is exactly the piece that makes an empty `orgs` table recoverable.
   admin-editable operational store; a database-backed deployment already has a differently-shaped,
   more actively maintained mechanism for scoping an application to an org —
   [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md)'s project registry.
+- **Leave target ownership resolved by name, and reject a `POST /api/orgs` whose org would collide
+  with another org's target names.** Rejected: the collision is not the admin's to avoid. The
+  target names an org claims live in the configuration file, which the admin creating the org has
+  no view of and, on a deployment that moved membership out of that file precisely so admins need
+  not read it, no reason to. Validating the collision away would also make org creation fail for a
+  reason unrelated to the org, while unit 4 makes the two orgs simply coexist.
+- **Give each org its own `targets:` definitions by binding a configuration per org, rather than
+  only making the identity `(org, target)`.** Deferred, not rejected: it is the natural end state,
+  and [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md)'s per-project config
+  binding already points at it. It needs `serve` to hold more than one bound configuration at a
+  time — `state.config` is a single path today — which is a change to config binding rather than to
+  the org model, and belongs with the item that makes it, not with this one.
 - **Cascade-delete an org's projects, runs, and audit-log entries when the org itself is
   deleted.** Rejected: it mirrors BE-0225's own choice to retain a project's run history when the
   project is deregistered, and an audit log exists precisely so an admin action is never itself the
@@ -296,26 +389,42 @@ database is exactly the piece that makes an empty `orgs` table recoverable.
 - [ ] 1 — Add `members`/`github_orgs`/`editor_team` columns to the `Org` table (Alembic migration)
       and an `orgs_from_db` builder that assembles the same `dict[str, OrgConfig]` shape
       `parse_orgs` produces from configuration, with `targets` always empty.
-- [ ] 2 — Switch `oauth_callback` to `orgs_from_db` when `state.repository is not None`, leaving a
-      database-less deployment's configuration-sourced `orgs:` path unchanged.
-- [ ] 3 — The four `/api/orgs…` endpoints (admin-only, each mutation recorded through `record_audit`)
+- [ ] 2 — Choose `oauth_callback`'s org source once, before the sign-in gate: `orgs_from_db` when
+      `state.repository is not None`, `parse_orgs` otherwise, with no caller reading both and none
+      falling back between them; a database-less deployment's configuration-sourced path is
+      unchanged.
+- [ ] 3 — Re-read the denial diagnostics for a database source: `_unmatched_org_cause`'s three
+      configuration-shaped causes collapse to "no live `Org` row matched," `orgs_from_db` propagates
+      a database error instead of failing closed to an empty mapping, WARNING keys on an empty
+      table, and the `parsed is None` org-recovery guard is removed rather than translated.
+- [ ] 4 — Resolve target ownership per org rather than per name: `_target_forbidden` asks whether
+      this org's own entry claims the target, leaving `org_for_target` with no caller, so two orgs
+      may each claim a target of the same name instead of configuration order awarding it to one and
+      forbidding the other a target it is still shown.
+- [ ] 5 — The four `/api/orgs…` endpoints (admin-only, each mutation recorded through `record_audit`)
       and the Orgs admin page (create / delete-when-empty / edit membership), gated
       on a repository being wired; `POST /api/orgs` marks the new row seeded at creation, so no
       later `orgs:` entry re-seeds it; delete is a soft delete (`Org.deleted_at`) that excludes the
       org from sign-in resolution and `GET /api/orgs` without removing its row or violating any
       foreign key that still points at it.
-- [ ] 4 — The backfill from a bound configuration's `orgs:` block into the database, seeded
+- [ ] 6 — The backfill from a bound configuration's `orgs:` block into the database, seeded
       whenever a repository is wired and a configuration is bound (at startup and at a `POST
       /api/config` rebind alike), guarded by a persisted per-row marker on each `Org` row rather
       than inferred from empty membership columns; the Alembic migration adds only the membership
       and marker columns and runs no seeding of its own; the startup/rebind warning when an
       already-seeded org's `orgs:` entry still declares `members`/`githubOrgs`/`editorTeam` (an
       entry that carries only `targets` stays expected and does not warn).
-- [ ] 5 — Tests: `orgs_from_db` round-trips the same resolution behavior `parse_orgs` gives for an
-      equivalent `orgs:` block; the database-less path is unaffected; org creation, membership
-      replacement, and delete-while-non-empty through the API, all admin-only and audited; the
-      backfill runs once and a later configuration edit to `orgs:` has no effect after it; the
-      admin-Team bypass ([BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass.md))
+- [ ] 7 — Confirm the admin-Team bypass still admits sign-in against an empty or wholly
+      unmatching `orgs` table, now that the table rather than the configuration file decides the
+      gate, and leave `BAJUTSU_OAUTH_ADMIN_TEAMS` in the environment.
+- [ ] 8 — Tests: `orgs_from_db` round-trips the same resolution behavior `parse_orgs` gives for an
+      equivalent `orgs:` block; the database-less path is unaffected; a configuration that fails to
+      load no longer denies sign-in on a database-backed deployment, and a database error surfaces
+      as a 5xx rather than a denial; two orgs each claiming a target of the same name are each
+      authorized for it; org creation, membership replacement, and delete-while-non-empty through
+      the API, all admin-only and audited; the backfill runs once and a later configuration edit to
+      `orgs:` has no effect after it; the admin-Team bypass
+      ([BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass.md))
       still admits sign-in and lets that admin create the deployment's first org against an empty
       `orgs` table.
 
@@ -340,14 +449,19 @@ database is exactly the piece that makes an empty `orgs` table recoverable.
 - [BE-0170 — Weighted fair org dispatch](../BE-0170-weighted-fair-org-dispatch/BE-0170-weighted-fair-org-dispatch.md) —
   a `Proposal` this item's admin-created orgs make more consequential, since a dynamically growing
   set of tenants is exactly the shape that item's fairness scheme is for.
-- [`bajutsu/serve/orgs.py`](../../bajutsu/serve/orgs.py) — `OrgConfig`, `parse_orgs`, and the
-  resolution helpers this item adds a second producer for (`orgs_from_db`) without changing.
+- [`bajutsu/serve/orgs.py`](../../bajutsu/serve/orgs.py) — `OrgConfig` and `parse_orgs`, which this
+  item adds a second producer beside (`orgs_from_db`); `identity_matches_org` and `org_for_identity`
+  keep their behavior and change only their source, while `org_for_target` loses its only caller.
+- [`bajutsu/serve/project_registry.py`](../../bajutsu/serve/project_registry.py) — the `(org_id,
+  name)` key a project already carries, which this item's target identity follows.
 - [`bajutsu/serve/server/models.py`](../../bajutsu/serve/server/models.py) — the `Org` table this
   item adds membership columns to.
 - [`bajutsu/serve/server/db.py`](../../bajutsu/serve/server/db.py) — `Repository.ensure_org`, which
   this item extends to seed membership, and the `ProjectRecord`/`create_project`/`delete_project`
   shape this item's `OrgRecord` and its create/delete/membership-update operations mirror.
 - [`bajutsu/serve/authz.py`](../../bajutsu/serve/authz.py) — `oauth_callback`'s sign-in gate, whose
-  data source (not placement) this item changes when a repository is wired.
+  data source (not placement) this item changes when a repository is wired; `_unmatched_org_cause`,
+  whose causes this item re-reads for that source; and `_target_forbidden`, which this item
+  re-resolves per org.
 - [`bajutsu/serve/operations/projects.py`](../../bajutsu/serve/operations/projects.py) — the
   endpoint and RBAC shape this item's `/api/orgs…` endpoints follow.
