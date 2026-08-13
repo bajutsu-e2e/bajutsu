@@ -49,8 +49,27 @@ recordVideo produced no new bytes in runs/.../scenario.mp4 within 20.0s
 That warning is the video-start confirmation the evidence layer already logs;
 [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md)
 surfaced it on the lease as the stall signal precisely to name this degradation class — the capture
-services are not producing, so the device is not painting either. It was standing when the retry failed, and the retry's failure was not
-a crash, so nothing read it. The device was never replaced. Scenarios two through ten ran on it.
+services are not producing, so the device is not painting either. It was standing throughout, and the
+device was never replaced. Scenarios two through ten ran on it.
+
+Two separate reasons kept it from being replaced, and only one of them is this proposal's. That lane
+runs **pinned**: `ios-e2e.yml` passes the concrete UUID `boot-simulator` minted, and
+`.github/actions/bajutsu-e2e` forwards it as `--udid <uuid>`, so `device_replacement_supported`
+returned `False` (`bajutsu/backends.py`, which requires `udid_spec == "booted"`) and `can_replace` was
+`False` for the whole run. The first scenario *did* crash twice with the stall standing, so the crash
+handler reached `lz.video_start_stalled()` at `bajutsu/runner/pipeline.py:484` and still could not
+escalate — the pin, not the shape of the later failure, is what blocked it there. Stated plainly: on
+this recorded lane neither BE-0354's rung nor this proposal's new check could have fired, because both
+sit behind the same gate.
+
+The occurrence therefore establishes the degradation class and its cost, not the gap this item closes.
+That gap is reachable on an **unpinned** run — `--udid booted`, which `_resolve_lanes` resolves to a
+pool of one device served by one worker, the shape a developer's Mac takes and the shape BE-0354's own
+deferred-remedy reasoning depends on. There, a crash followed by a respawned attempt that fails on an
+ordinary assertion leaves the degraded device in the pool with nothing having read the standing signal.
+Whether the actuation lane should also become able to benefit — by running unpinned, or by revisiting
+the `booted` restriction that carries the pool-of-one invariant — is a design question this item does
+not settle; see *Alternatives considered*.
 
 Two costs follow, and this proposal treats them differently. The first is that every later scenario
 inherits a device already known to be degraded, which is what turns one bad device into a job-long
@@ -78,9 +97,9 @@ then return the result unchanged.
 The new condition sits behind the same `can_replace` gate the crash handler already computes
 (`bajutsu/runner/pipeline.py:360`): the operator's `--no-erase`, the scenario's `reinstall: overwrite`,
 and `device_replacement_supported`'s pinned-run and `appPath` exclusions (`bajutsu/backends.py`) apply
-unchanged. The caller must hold that gate itself — every exclusion is config-static precisely so the
-environment never has to second-guess a request — and its pool-of-one guarantee is what makes a remedy
-served on a later lease land on the run's only device.
+unchanged. The caller applies that gate itself, because every exclusion is config-static precisely so
+the environment never has to second-guess a request. That gate also guarantees a pool of one device,
+which is what lands a remedy served on a later lease on the run's only device.
 
 ### Quarantine, not retry
 
@@ -112,7 +131,9 @@ residue a `bajutsu-recovered-*` device leaves on a developer's Mac.
 The allowance must stay bounded for the same reason — but BE-0354's per-scenario allowance bounds only
 what one scenario can mint, so under it a chronically stalling host still mints one device per failing
 scenario. Unit 0 settles whether that per-scenario bound is enough in practice or this path needs a
-per-run cap.
+per-run cap, and whether this call site spends the crash handler's own `replaced` allowance: sharing it
+makes the quarantine a no-op once a crash on the same scenario already escalated, while not sharing it
+lets one scenario mint two devices.
 
 ### What Unit 0 has to confirm before the rest lands
 
@@ -187,6 +208,14 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
   [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md)
   and [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md) both
   measured for their own budgets, and it would hide the degradation this proposal exists to act on.
+- **Unpin the actuation lane, or widen `device_replacement_supported` past `booted`, so CI can benefit.**
+  Neither this proposal's check nor BE-0354's own rung can fire on a pinned run, which is every
+  `ios-e2e.yml` job today, so the lane that surfaced this degradation is also the lane that cannot be
+  helped by either. Left open rather than decided here, because both routes are load-bearing: `--udid`
+  names a device the operator meant, and the `booted` restriction is what guarantees the pool of one
+  device that makes a remedy served on a *later* lease land on the device that asked for it
+  (`bajutsu/backends.py`). Widening it would need the request routed through the pool instead. This
+  needs its own item.
 - **Extend the same quarantine to the Android emulator.** The adb backend confirms its video start
   too (`start_screenrecord` polls for the device-side process, so its lease can report the stall);
   what is missing there is the remedy — an emulator or handset is brought up out of band, so
