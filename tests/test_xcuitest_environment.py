@@ -1009,6 +1009,24 @@ def test_result_bundle_path_is_cleared_before_the_spawn(
     assert keep.exists()  # another spawn's bundle is never collateral
 
 
+def test_a_leftover_that_survives_the_clearing_degrades_to_no_bundles(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # `rmtree(ignore_errors=True)` returns cleanly when the removal did *not* happen — a plain file at
+    # this key is the reachable case. Handing `xcodebuild` the argv anyway would make it refuse to
+    # start, which is the very spawn failure the clearing exists to prevent.
+    bundles = tmp_path / "bundles"
+    monkeypatch.setenv(_RESULT_BUNDLE_ENV, str(bundles))
+    popen_argvs, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    monkeypatch.setattr(xcuitest_env, "_allocate_port", lambda: 4242)
+    bundles.mkdir(parents=True)
+    (bundles / "result-UDID-4242.xcresult").write_text("not a directory")
+
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    assert "-resultBundlePath" not in popen_argvs[0]
+
+
 def test_the_result_bundle_path_refuses_an_unsafe_device_id(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

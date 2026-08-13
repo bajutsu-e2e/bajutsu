@@ -1382,6 +1382,13 @@ class XcuitestEnvironment(_DeviceEnvironment):
         try:
             bundle.parent.mkdir(parents=True, exist_ok=True)
             shutil.rmtree(bundle, ignore_errors=True)
+            if bundle.exists():
+                # `ignore_errors` also hides a removal that did not happen — a plain file at this key,
+                # or a tree `xcodebuild` wrote that is no longer removable. `xcodebuild` then refuses to
+                # start at all, which is the spawn failure this clearing exists to prevent, so degrade
+                # to "no bundles" rather than hand it an argv it will reject.
+                _logger.warning("xcuitest: cannot clear the stale result bundle at %s", bundle)
+                return None
         except OSError as exc:
             # An opt-in diagnostic must never be what fails a spawn — an operator typo naming a file
             # or a read-only mount degrades to "no bundles", the way the stall capture already does.

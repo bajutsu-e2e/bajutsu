@@ -8,8 +8,9 @@ process knows when that moment is, which is why this capture lives here rather t
 Two properties bound what it may cost the failure it documents. It is **opt-in**: with
 `BAJUTSU_STALL_DIAGNOSTICS` unset (the default) every entry point returns immediately, so no run
 that has not asked for it pays anything. And when it is set, each capture spends at most
-`_CAPTURE_BUDGET` seconds across all of its probes and a run takes at most `_MAX_CAPTURES` of them —
-a crash-looping run cannot fill the disk or push its job into `timeout-minutes`.
+`_CAPTURE_BUDGET` seconds across all of its probes and each trigger takes at most
+`_MAX_CAPTURES_PER_REASON` of them — a crash-looping run cannot fill the disk or push its job into
+`timeout-minutes`.
 
 Nothing here reaches a verdict: the probes only write files, and a probe that fails is noted and
 skipped rather than raised, since a diagnostics failure must never replace the failure being
@@ -71,9 +72,11 @@ _SAMPLE_SECONDS = 1
 # CoreSimulatorService` matches nothing, which would have left the host service most central to the
 # wedge hypothesis silently unsampled.
 #
-# Ordered most-central-first, because `_MAX_SAMPLES` cuts the walk off from the end: the render and
-# screenshot path is what the capture exists to explain, and `xcodebuild` — which is alive by
-# definition whenever a run is still going — would otherwise crowd it out of every capture.
+# Ordered most-central-first, because the capture budget is what cuts the walk off from the end: once
+# the deadline is spent every remaining `sample` is skipped with a note, and on the interesting case —
+# a wedged screenshot spending its whole ceiling — that is most of the walk. The render and screenshot
+# path is what the capture exists to explain, so `xcodebuild`, alive by definition whenever a run is
+# still going, is the name that should be dropped when something has to be.
 _SAMPLE_PROCESSES = (
     "com.apple.CoreSimulator.CoreSimulatorService",
     "backboardd",
@@ -88,8 +91,10 @@ _SAMPLE_PROCESSES = (
 # XCTest-host wedge) unsampled. The global cap below is the outer bound; this is the fairness one.
 _MAX_PIDS_PER_PROCESS = 2
 
-# Thread samples per capture, across every process above. `sample` is the expensive probe, so this
-# bounds the total; the per-capture budget, not this number, is what bounds the wall clock.
+# Thread samples per capture, across every process above — a backstop, not the rule that binds today:
+# the per-name slice already holds the walk to exactly this product, so what this catches is a later
+# change that widens the fan-out (a third pid per name, an unbounded pid list). The per-capture budget,
+# not this number, is what bounds the wall clock.
 _MAX_SAMPLES = len(_SAMPLE_PROCESSES) * _MAX_PIDS_PER_PROCESS
 
 # How much of a probe's stderr is folded into the summary — enough to identify a failure without

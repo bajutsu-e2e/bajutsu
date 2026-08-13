@@ -115,7 +115,7 @@ and has no `runs/` artifact for the collection to ride. The action runs in two t
   tier is gated on the run step's own outcome; in the pytest lanes the caller gates it on the run
   step's outcome too, since `failure()` is rejected in a `with:` value.
 
-Implementation measured three things this design had wrong, each of which would have shipped a
+Implementation measured four things this design had wrong, each of which would have shipped a
 collector that quietly gathers nothing — the very failure the proposal exists to end:
 
 - **The guest does not log to the host.** The claim above that "Simulator guest processes write to
