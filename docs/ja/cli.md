@@ -196,7 +196,7 @@ bajutsu flakiness [--org <org>] [--json] [--window N]          # serve のデー
 - run は `provenance.scenarioHash` でグルーピングし、各シナリオを**判定の反転率**（`2·min(passed, failed)/runs`。一貫していれば 0、五分五分で 1）で採点します。分類は [BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) から再利用します。出力は flaky を先頭に、次いで反転率の降順、さらに run 数の降順で並びます。
 - **グループ化は OS バージョン単位でもあります。** 規則は `audit --history` と同じです（[BE-0358](../../roadmaps/BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)）。デバイスのマトリックスで 1 つのスイートを走らせる fleet が、そこにある本物の OS 差をフレーキネスとして採点することは、もうありません。この面が束ねる単位は run です（`audit --history` はシナリオ単位です）。そのため、複数の OS バージョンにまたがった run はどのバージョンも代表できず、解釈できないラベルと同じ `unknown OS` のグループに入ります。データベースを読むときの OS は、各 run の行が持つ列から得ます。その列より早く記録された run は、`serve` のパネルがランク付けするたびに、その run の manifest からメモリ上で修復します。データベースには書き戻しません。読み取り経路での書き込みは、運用者が消去した run を挿入し直しかねないためです。manifest が失われている行は `unknown OS` のまま残し、レポートがその件数を開示します。
 - 各エントリは最新の合格 run と最新の失敗 run の id を持ちます。`--json` の利用側や serve パネルは、両側の代表的な証跡へ直接リンクできます。
-- **`--window N`** は採点前に各シナリオの最新 N run だけを残します（既定の 0 は履歴全体です）。**`--org <org>`** はデータベースを読むときに掘り起こす対象のテナントを選びます。
+- **`--window N`** は採点前に、各履歴の最新 N run だけを残します。採点する単位がシナリオ × OS バージョンなので、残す単位もそれに揃えます（既定の 0 は履歴全体です）。シナリオ単位で残すと、最新の run がすべて新しい OS に移った時点で古い OS の履歴が落ち、この grouping が浮かび上がらせるはずのバージョン間の所見が隠れます。**`--org <org>`** はデータベースを読むときに掘り起こす対象のテナントを選びます。
 - `provenance.scenarioHash` を持たない run（provenance 導入前）や、判定が記録されていない run はグルーピングできず、`audit --history` と同様にスキップとして報告します。
 - **助言的かつ read-only** です。履歴にすでに記録されたフレーキネスを報告するだけで、何も再実行せず、判定を再計算せず、**CI ゲートにもなりません**。
 

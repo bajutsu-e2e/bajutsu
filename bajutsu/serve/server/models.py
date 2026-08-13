@@ -67,9 +67,10 @@ class Project(Base):
 
 class Run(Base):
     __tablename__ = "runs"
-    # scenario_hash is the flakiness grouping key; the DB-level score groups by this alone (run
-    # level), as documented in bajutsu/serve/flakiness.py — the coarser counterpart to
-    # audit --history's per-(fingerprint, scenario) grouping.
+    # scenario_hash is half the flakiness grouping key: the DB-level score groups by it together
+    # with the run's device OS (BE-0358), at the run level, as documented in
+    # bajutsu/serve/flakiness.py — the coarser counterpart to audit --history's
+    # per-(fingerprint, scenario, OS) grouping.
     __table_args__ = (Index("ix_runs_scenario_hash", "scenario_hash"),)
 
     id: Mapped[str] = mapped_column(primary_key=True)

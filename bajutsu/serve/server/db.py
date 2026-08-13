@@ -93,8 +93,8 @@ class RunRecord:
     ok: bool | None = None
     created_at: datetime | None = None
     summary: dict[str, Any] = field(default_factory=dict)
-    # Run provenance mirrored from the run's manifest.json (BE-0049 stamp), the grouping key for
-    # cross-run flakiness (BE-0220); None for a pre-provenance run.
+    # Run provenance mirrored from the run's manifest.json (BE-0049 stamp); with `device_runtime`
+    # below, the grouping key for cross-run flakiness (BE-0220). None for a pre-provenance run.
     scenario_hash: str | None = None
     tool_version: str | None = None
     git_revision: str | None = None

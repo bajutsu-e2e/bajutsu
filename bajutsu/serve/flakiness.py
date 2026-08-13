@@ -111,9 +111,11 @@ def rank_flakiness(
         records: Run records to mine, in any order. A record whose `device_runtime` is absent or
             unrecognized groups under a distinct unknown-OS key rather than joining any version's
             history — the same rule `audit --history` applies.
-        window_runs: Keep only each scenario's newest this-many runs (by `created_at`); unbounded
-            when None. Must be a positive integer when set — zero or negative is caller-invalid
-            and raises ValueError.
+        window_runs: Keep only each *history's* newest this-many runs (by `created_at`) — per
+            scenario per OS, since that is the group being scored (BE-0358); unbounded when None.
+            Windowing per scenario instead would evict an older OS's history once the newest runs
+            had all moved to a newer one, masking the cross-version finding. Must be a positive
+            integer when set — zero or negative is caller-invalid and raises ValueError.
         since: Drop runs created before this instant (and any run with no `created_at`) when set.
 
     Returns:

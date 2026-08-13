@@ -340,8 +340,11 @@ bajutsu flakiness [--org <org>] [--json] [--window N]          # read the serve 
   the report discloses that count.
 - Each entry carries the newest passing and newest failing run ids, so `--json` consumers (and the
   serve panel) can link straight to the representative evidence on both sides.
-- **`--window N`** keeps only each scenario's newest `N` runs before scoring (0, the default, uses the
-  whole history); **`--org <org>`** picks the tenant whose runs the database read mines.
+- **`--window N`** keeps only each history's newest `N` runs before scoring — per scenario *per OS
+  version*, since that is the group being scored (0, the default, uses the whole history). Windowing
+  per scenario instead would evict an older OS version's history once the newest runs had all moved
+  to a newer one, hiding the very cross-version finding the grouping exists to surface. **`--org
+  <org>`** picks the tenant whose runs the database read mines.
 - A run with no `provenance.scenarioHash` (a pre-provenance run) or no recorded verdict can't be
   grouped and is reported as skipped, exactly as in `audit --history`.
 - **Advisory and read-only**: it only reports flakiness already recorded in history — it re-runs
