@@ -82,8 +82,16 @@ runs:
         # on the exact jobs (golden/actuation/run/bundled-runner) the 2026-08-06 incident named.
         scenario_args=()
         for s in $SCENARIOS; do scenario_args+=(--scenario "$s"); done
+        #
+        # `--touch-markers` draws each touch the app receives into the recorded video and the step
+        # screenshots, so a failure on these lanes shows where the gesture landed instead of only its
+        # consequences. It cannot change a verdict here: `visual` is the one assertion kind that reads
+        # pixels, and `run` skips any scenario carrying one (naming it on stderr), while every other
+        # kind reads the accessibility tree, the network exchanges, or the clipboard. The marker is a
+        # CALayer, which has no accessibility representation — `golden_xcuitest.yaml` asserts the same
+        # tree golden with the markers on and off to keep that true.
         uv run --no-sync bajutsu run "${scenario_args[@]}" --exclude "$EXCLUDE" --target "$TARGET" \
-          --udid "$UDID" --backend "$BACKEND" --config "$CONFIG" --score
+          --udid "$UDID" --backend "$BACKEND" --config "$CONFIG" --score --touch-markers
 
     # Collect any macOS crash reports the run produced into the uploaded artifact, so a resident-
     # runner mid-run crash is diagnosable even when the pipeline's scenario-level retry recovers it

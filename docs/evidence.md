@@ -258,6 +258,53 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   backward mid-run and would corrupt a wait's timeout or a step's duration. See
   [reporting](reporting.md#manifestjson) for what each recorded field means to a report reader.
 
+### Touch markers in the recording (`--touch-markers`)
+
+A recording shows every consequence of a gesture and never the gesture itself, so `bajutsu run
+--touch-markers` asks the app under test to draw a marker at each touch it receives: a translucent
+circle at the contact, and a trail behind a contact that moves. Both are green while the touch is
+down and red once it has lifted, so a single still frame says whether the contact it shows is the
+gesture happening at that moment or the one it left behind. The marks are drawn inside the app's
+own process, so they reach the recorded video and each step's `after.png` alike. Because they are
+drawn from the `UIEvent` the app dequeues rather than from the coordinate the driver sent, a marker
+is evidence that the touch was *delivered*, which a driver-side coordinate record cannot show.
+
+Three properties matter before turning the flag on.
+
+- **It needs an app that links BajutsuKit.** The drawing lives in `BajutsuKit` (`BajutsuTouch`),
+  which the demo apps already link. The flag sets `BAJUTSU_TOUCH_MARKERS=1` on the app's launch
+  environment, and an app that does not link BajutsuKit ignores the variable.
+- **The marker is a `CALayer`, so it never enters the accessibility tree.** A layer is not a
+  `UIResponder` and conforms to no accessibility protocol, so no selector can resolve to it and it
+  can swallow no gesture. Two checks keep the claim honest:
+  `demos/showcase/scenarios/golden/golden_xcuitest.yaml` asserts the same tree golden twice, once
+  with the markers on and once with them off, so a visualization that perturbed the pinned controls
+  fails on device; and `tests/test_touch_markers.py` fails if the drawing code ever reaches for a
+  `UIView`, which is the only way a marker could gain an accessibility representation at all.
+- **A gesture's marks stay until the next gesture starts.** No timer removes them, which is what
+  keeps them in the step's screenshot, and equally why a run with the flag on produces screenshots
+  that differ from a run without it. Leave the flag off for any pixel comparison, the way the
+  Android lanes leave the operating system's `show_touches` and `pointer_location` settings off for
+  theirs (`demos/showcase/android/Makefile`).
+
+The markers are evidence only — no assertion reads them — and the flag is off by default for a
+plain `bajutsu run`. The repository's own iOS lanes do pass it: `.github/actions/bajutsu-e2e`
+and the showcase's `run-swiftui` / `run-uikit` targets run with the markers on, so a failure
+there shows where the gesture landed. That is safe because `visual` is the only assertion kind
+fed by a screenshot; every other kind reads the accessibility tree, the network exchanges, or
+the clipboard.
+
+One combination turns itself off: a scenario whose verdict compares a screenshot. A `visual`
+assertion reads the very image the markers are drawn into, so `--touch-markers` skips that scenario
+and says which on stderr, rather than letting a baseline fail for a reason that has nothing to do
+with the app. Masking cannot rescue the case, because the marker follows the gesture instead of
+sitting in a fixed region. The skip costs the rest of the run nothing: the app is terminated and
+relaunched with **each scenario's own** launch env, so a skipped scenario runs in a process where
+the hook was never installed while every other scenario in the same run still draws its markers.
+Narrowing further — markers for a scenario's gestures but not for its `visual` step — is not
+possible today, since the launch environment is the only channel into the app and it is fixed for
+the life of the process.
+
 ## Sinks (where evidence goes)
 
 ```python
