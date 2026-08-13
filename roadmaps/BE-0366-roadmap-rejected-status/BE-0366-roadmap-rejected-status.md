@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-roadmap-rejected-status-ja.md)
+**English** · [日本語](BE-0366-roadmap-rejected-status-ja.md)
 
-# BE-XXXX — Add a Rejected roadmap status, distinct from Deferred
+# BE-0366 — Add a Rejected roadmap status, distinct from Deferred
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-roadmap-rejected-status.md) |
+| Proposal | [BE-0366](BE-0366-roadmap-rejected-status.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0366") |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
