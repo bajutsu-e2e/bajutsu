@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-visualize-touches-in-app-ja.md)
+**English** · [日本語](BE-0371-visualize-touches-in-app-ja.md)
 
-# BE-XXXX — Draw a marker at each touch the app receives so recordings show where a gesture landed
+# BE-0371 — Draw a marker at each touch the app receives so recordings show where a gesture landed
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-visualize-touches-in-app.md) |
+| Proposal | [BE-0371](BE-0371-visualize-touches-in-app.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0371") |
 | Implementing PR | [#1588](https://github.com/bajutsu-e2e/bajutsu/pull/1588) |
 | Topic | Verification & coverage |
 <!-- /BE-METADATA -->
