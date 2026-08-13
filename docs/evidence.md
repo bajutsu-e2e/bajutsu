@@ -287,7 +287,12 @@ Three properties matter before turning the flag on.
   Android lanes leave the operating system's `show_touches` and `pointer_location` settings off for
   theirs (`demos/showcase/android/Makefile`).
 
-The markers are evidence only — no assertion reads them — and the flag is off by default.
+The markers are evidence only — no assertion reads them — and the flag is off by default for a
+plain `bajutsu run`. The repository's own iOS lanes do pass it: `.github/actions/bajutsu-e2e`
+and the showcase's `run-swiftui` / `run-uikit` targets run with the markers on, so a failure
+there shows where the gesture landed. That is safe because `visual` is the only assertion kind
+fed by a screenshot; every other kind reads the accessibility tree, the network exchanges, or
+the clipboard.
 
 One combination turns itself off: a scenario whose verdict compares a screenshot. A `visual`
 assertion reads the very image the markers are drawn into, so `--touch-markers` skips that scenario

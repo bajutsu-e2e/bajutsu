@@ -66,14 +66,13 @@ def test_the_golden_pair_stays_paired() -> None:
     onto a different golden, would leave the visualization asserting nothing while still passing.
     """
     scenarios = load_scenarios(GOLDEN_XCUITEST.read_text(encoding="utf-8"))
-    with_markers = [s for s in scenarios if ACTIVATION_KEY in s.preconditions.launch_env]
-    without_markers = [s for s in scenarios if ACTIVATION_KEY not in s.preconditions.launch_env]
-    assert len(with_markers) == 1, "exactly one scenario runs with the visualization on"
-    assert without_markers, "its twin runs with the visualization off"
-    assert with_markers[0].preconditions.launch_env[ACTIVATION_KEY] == "1", (
-        "the hook installs on '1' alone, so any other value would silently run the twin with the "
-        "visualization off while the pair still looked paired"
-    )
+    settings = [s.preconditions.launch_env.get(ACTIVATION_KEY) for s in scenarios]
+    assert settings.count("1") == 1, "exactly one scenario runs with the visualization on"
+    # The off twin must pin "0" rather than leave the key unset: the iOS lanes pass
+    # `--touch-markers`, which fills the key in on any scenario that does not carry one, and an
+    # unpinned twin would quietly become a second marked run — leaving the pair looking paired while
+    # comparing nothing.
+    assert settings.count("0") == 1, "its twin must pin the visualization off, not merely omit it"
 
     goldens = {a.golden.path for s in scenarios for a in s.expect if a.golden}
     assert len(goldens) == 1, f"both scenarios must assert one baseline, got {goldens}"

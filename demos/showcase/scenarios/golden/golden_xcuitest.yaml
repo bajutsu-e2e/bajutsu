@@ -14,7 +14,11 @@
     recorded golden — a text field, a value-mirrored stepper/toggle, and buttons
     (identity, state, traits exact; frame sane).
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    # Pinned to "0", not merely left unset: the iOS lanes run with `--touch-markers`, which sets the
+    # key on every scenario that does not already carry it. Without the pin this scenario would run
+    # with the markers on too, and the pair below would compare two marked runs instead of a marked
+    # run against an unmarked one.
+    launchEnv: { SHOWCASE_UITEST: "1", BAJUTSU_TOUCH_MARKERS: "0" }
   steps:
     - tap: { label: "Log", traits: [button] }
       capture: [video]
