@@ -202,10 +202,14 @@ configuration entry, it becomes routine — and its symptom reads like a permiss
 the name clash it is.
 
 This item therefore makes an org's target ownership resolve per org rather than per name.
-`_target_forbidden` asks whether *this* org's own entry claims the target, instead of which single
-org the name resolves to, which leaves `org_for_target`'s global name-to-org lookup with no caller.
-`targets_for_org` is already keyed by org and needs no change, including its `default` rule — an
-org named in no entry gets every target no entry claims. Two orgs may then each claim a target
+`_target_forbidden` asks whether the target appears in *this* org's own list, instead of which
+single org the name resolves to, which leaves `org_for_target`'s global name-to-org lookup with no
+caller. It has to ask that through `targets_for_org` rather than by reading an `orgs:` entry
+itself. `targets_for_org` needs no change, but its fallback keys on the literal `DEFAULT_ORG` slug,
+not on "named in no entry": `default` gets every target no entry claims, while every *other* org
+absent from the block falls to the `orgs.get(org) is None` branch and owns nothing. Reading an
+entry directly would therefore forbid `default` every target it reaches today, since a deployment
+typically declares no `default` entry at all. Two orgs may then each claim a target
 named `checkout`, and each is authorized for it. Under one bound configuration they still share the
 one `targets:` definition that name resolves to; giving each org a definition of its own needs a
 configuration bound per org, which is where
@@ -214,6 +218,17 @@ already points and where this item deliberately stops. Making the *identity* `(o
 is what keeps that later step from having to re-decide who owns a name — the same key BE-0225's
 project registry already uses for a project, whose `add` and `get` are keyed by `(org_id, name)`
 ([`bajutsu/serve/project_registry.py`](../../bajutsu/serve/project_registry.py)).
+
+That same `orgs.get(org) is None` branch decides what an org created through unit 5's API owns, and
+the answer is nothing: such an org has no `orgs:` entry by construction, so `targets_for_org`
+returns an empty list for it until someone adds one. This item accepts that rather than closing it,
+and says so plainly because it is the one place where an admin who onboards a tenant from the web UI
+still waits on a configuration edit — the org exists, admits its members, and can be administered
+immediately, but is authorized for no target until an `orgs:` entry names some. Closing it means
+either giving an org targets an admin can set, which is the move into the database unit 1 rejects,
+or a configuration bound per org, which is the deferral recorded under *Alternatives considered*.
+Both are larger changes than this one, and both are better decided once admin-created orgs exist to
+motivate them.
 
 ### 5. Admin API and UI: create, delete, and edit membership
 
@@ -226,7 +241,13 @@ mutation recorded through the existing `Repository.record_audit` (`org.create` /
   editor Team is set, and its project count.
 - `POST /api/orgs` — create an org from `{slug, name}`; membership starts empty (no member, no
   GitHub organization, no editor Team), so a freshly created org admits nobody until an admin adds
-  to it. Creation marks the new row seeded immediately, the same per-row marker unit 6 sets on
+  to it. The created row's `id` is its slug, matching what every existing writer already does:
+  `ensure_org(org, slug=org, name=org)` puts one string in all three columns, and that same string
+  is what `upsert_user(org_id=…)`, `state.org_of()`, and the org-scoped stores carry — so
+  `orgs_from_db` keys its dictionary by it exactly as `parse_orgs` keys by an `orgs:` entry name.
+  A generated id distinct from the slug would instead need a slug-to-id lookup on every one of
+  those paths, which this item does not introduce. Creation marks the new row seeded immediately,
+  the same per-row marker unit 6 sets on
   cutover, so the row is treated as already past cutover: no later `orgs:` entry for that slug
   seeds or re-seeds it, and so cannot overwrite membership an admin sets through this API.
 - `PUT /api/orgs/<slug>/membership` — replace an org's `{members, githubOrgs, editorTeam}` as one
@@ -279,9 +300,16 @@ wired and a configuration is bound — at startup (`_build_server_state`), and a
 [`bajutsu/serve/operations/config.py`](../../bajutsu/serve/operations/config.py)) — `serve` seeds
 the membership columns of every configuration-declared org whose `Org` row a persisted, per-row
 marker shows is not yet seeded. For each entry in the bound configuration's `orgs:` block whose row
-carries no such marker, `ensure_org` (extended to accept the membership fields, not only
-`slug`/`name`) creates or updates that row's `members`/`github_orgs`/`editor_team` from the entry
-and sets the marker. Running the same seed at a rebind, not only at startup, is what makes this
+carries no such marker, a dedicated seeding method creates or updates that row's
+`members`/`github_orgs`/`editor_team` from the entry and sets the marker. Not `ensure_org`:
+`oauth_callback` and job completion already call it as `ensure_org(org, slug=org, name=org)` on
+every sign-in and every finished run, with no membership to pass and — on a database-backed
+deployment, where unit 2 makes the database the source — none they could pass. Widening it into a
+create-or-update would either give one method two meanings depending on which argument is omitted,
+or let the next sign-in clear membership an admin set through unit 5's `PUT` — the overwrite this
+unit's marker exists to prevent, arriving through a different door. `ensure_org` stays the
+idempotent create it is today, and the write surface for membership stays unit 5's API plus this
+backfill. Running the same seed at a rebind, not only at startup, is what makes this
 correct for both paths this item's own Motivation names as how a bound configuration reaches
 `serve` — without it, an org newly declared through a rebind would never be seeded, and every login
 for that org would fail once the cutover below takes effect for the deployment. The marker tracks
@@ -398,7 +426,9 @@ database is exactly the piece that makes an empty `orgs` table recoverable.
       a database error instead of failing closed to an empty mapping, WARNING keys on an empty
       table, and the `parsed is None` org-recovery guard is removed rather than translated.
 - [ ] 4 — Resolve target ownership per org rather than per name: `_target_forbidden` asks whether
-      this org's own entry claims the target, leaving `org_for_target` with no caller, so two orgs
+      the target is in this org's own `targets_for_org` list, leaving `org_for_target` with no
+      caller (through `targets_for_org`, so `default` keeps the unclaimed targets its literal-slug
+      fallback gives it), so two orgs
       may each claim a target of the same name instead of configuration order awarding it to one and
       forbidding the other a target it is still shown.
 - [ ] 5 — The four `/api/orgs…` endpoints (admin-only, each mutation recorded through `record_audit`)
@@ -457,7 +487,8 @@ database is exactly the piece that makes an empty `orgs` table recoverable.
 - [`bajutsu/serve/server/models.py`](../../bajutsu/serve/server/models.py) — the `Org` table this
   item adds membership columns to.
 - [`bajutsu/serve/server/db.py`](../../bajutsu/serve/server/db.py) — `Repository.ensure_org`, which
-  this item extends to seed membership, and the `ProjectRecord`/`create_project`/`delete_project`
+  this item leaves an idempotent create and adds a separate seeding method beside, and the
+  `ProjectRecord`/`create_project`/`delete_project`
   shape this item's `OrgRecord` and its create/delete/membership-update operations mirror.
 - [`bajutsu/serve/authz.py`](../../bajutsu/serve/authz.py) — `oauth_callback`'s sign-in gate, whose
   data source (not placement) this item changes when a repository is wired; `_unmatched_org_cause`,

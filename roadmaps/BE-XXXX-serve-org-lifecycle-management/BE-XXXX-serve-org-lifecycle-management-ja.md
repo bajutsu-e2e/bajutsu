@@ -213,13 +213,17 @@ target への操作をすべて禁じられます。しかも、その org に�
 見られないとなれば、これは日常的に起こります。そして症状は、名前の衝突ではなく権限のバグに見えます。
 
 そこでこの項目は、org の target 所有を、名前単位ではなく org 単位で解決するようにします。
-`_target_forbidden` は、その名前がどの1つの org に解決されるかではなく、*その* org 自身のエントリが
-その target を主張しているかを問います。これにより、`org_for_target` の「名前から org を引く」検索は
-呼び出し元を失います。`targets_for_org` はすでに org を鍵にしており、変更は要りません。どのエントリ
-にも名指しされていない org が、どのエントリも主張していない target をすべて得るという `default` の
-規則も、そのままです。以後、2つの org がそれぞれ `checkout` という名前の target を主張でき、どちらも
-その target に対して認可されます。バインドされた config が1つである以上、その名前が指す `targets:`
-の定義自体は共有されたままです。org ごとに定義を持たせるには、org ごとに config をバインドする必要が
+`_target_forbidden` は、その名前がどの1つの org に解決されるかではなく、*その* org 自身の一覧に
+その target が含まれるかを問います。これにより、`org_for_target` の「名前から org を引く」検索は
+呼び出し元を失います。ただしこの問いは、`orgs:` エントリを直接読むのではなく `targets_for_org` を
+経由して立てる必要があります。`targets_for_org` 自体に変更は要りません。一方でそのフォールバック
+は、「どのエントリにも名指しされていない org」ではなく `DEFAULT_ORG` という**リテラルの slug** を
+条件にしています。つまり、どのエントリも主張していない target をすべて得るのは `default` だけです。
+ブロックに現れない他のすべての org は、`orgs.get(org) is None` の分岐に落ち、何も所有しません。
+エントリを直接読めば、`default` は今日到達できているすべての target を禁じられます。デプロイは
+`default` のエントリ自体を宣言しないのが通常だからです。以後、2つの org がそれぞれ `checkout` と
+いう名前の target を主張でき、どちらもその target に対して認可されます。バインドされた config が
+1つである以上、その名前が指す `targets:` の定義自体は共有されたままです。org ごとに定義を持たせるには、org ごとに config をバインドする必要が
 あります。それは
 [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md) の project ごとの config
 バインディングが向かっている先であり、この項目が意図して立ち止まる地点です。先に*同一性*を
@@ -227,6 +231,17 @@ target への操作をすべて禁じられます。しかも、その org に�
 これは BE-0225 の project registry が project にすでに使っている鍵と同じです。その `add` と
 `get` は `(org_id, name)` を鍵にしています
 （[`bajutsu/serve/project_registry.py`](../../bajutsu/serve/project_registry.py)）。
+
+同じ `orgs.get(org) is None` の分岐は、ユニット5の API で作成した org が何を所有するかも決めます。
+そしてその答えは、何も所有しない、です。そうした org は `orgs:` エントリを持たないため、誰かが
+エントリを追加するまで `targets_for_org` は空の一覧を返します。この項目は、これを塞がずに受け入れ、
+そのことを明記します。admin が Web UI からテナントを迎え入れても、なお config の編集を待つ箇所が
+ここだけ残るからです。org は作成された時点で存在し、メンバーを受け入れ、管理もできます。しかし
+`orgs:` エントリが target を名指しするまで、どの target にも認可されません。これを塞ぐには2つの道が
+あります。1つは、admin が設定できる target を org に与えることです（ユニット1が却下した、
+データベースへ移す案です）。もう1つは、org ごとに config をバインドすることです（*検討した代替案*
+に記録した先送りです）。どちらもこの項目より大きな変更であり、admin が作成した org が実在するように
+なってから判断するほうが適切です。
 
 ### 5. admin 用 API と UI：作成・削除・メンバーシップの編集
 
@@ -240,7 +255,13 @@ target への操作をすべて禁じられます。しかも、その org に�
   editor Team が設定されているか・project の件数を返します。
 - `POST /api/orgs` — `{slug, name}` から org を作成します。メンバーシップは空から始まります
   （member・GitHub Organization・editor Team のいずれもなし）。admin が追加するまで、新設した org は
-  誰も受け入れません。作成した行には、ユニット6が一本化の際に立てるのと同じ引き込み済みマーカーを
+  誰も受け入れません。作成した行の `id` は、その slug とします。既存の書き込み側がすでにそう
+  しているためです。`ensure_org(org, slug=org, name=org)` は、3つのカラムすべてに1つの文字列を
+  入れます。その同じ文字列を、`upsert_user(org_id=…)`・`state.org_of()`・org 単位のストアが
+  持ち回ります。
+  したがって `orgs_from_db` は、`parse_orgs` が `orgs:` エントリ名を鍵にするのと同じように、その
+  文字列を鍵にできます。slug と異なる id を生成すれば、これらすべての経路で slug から id を引く
+  処理が要りますが、この項目はそれを導入しません。作成した行には、ユニット6が一本化の際に立てるのと同じ引き込み済みマーカーを
   作成時点で立てます。この行はすでに一本化を終えたものとして扱われるため、以後どの `orgs:` エントリ
   もこの行を引き込むことはなく、admin がこの API で設定したメンバーシップを上書きすることもありません。
 - `PUT /api/orgs/<slug>/membership` — org の `{members, githubOrgs, editorTeam}` を一括で
@@ -293,9 +314,16 @@ config だけでメンバーシップを管理していたデプロイを、こ�
 （[`bajutsu/serve/operations/config.py`](../../bajutsu/serve/operations/config.py)）。
 serve は、バインドされた config が宣言する org のうち、まだ引き込み済みでない org を選びます。
 引き込み済みかどうかは、永続化した行単位のマーカーが示します。`orgs:` ブロックの各エントリに
-ついて、その org 行にマーカーが立っていない場合を考えます。このとき `ensure_org` が、そのエントリ
-から `members` / `github_orgs` / `editor_team` を作成または更新し、マーカーを立てます。`ensure_org`
-は、`slug` / `name` だけでなくメンバーシップのフィールドも受け取るよう拡張します。起動時だけでなく
+ついて、その org 行にマーカーが立っていない場合を考えます。このとき専用の引き込みメソッドが、その
+エントリから `members` / `github_orgs` / `editor_team` を作成または更新し、マーカーを立てます。
+`ensure_org` ではありません。`oauth_callback` と run の完了処理は、すでにこれを
+`ensure_org(org, slug=org, name=org)` という形で呼んでいます。サインインのたび、そして run の
+完了のたびです。どちらも渡すメンバーシップを持ちません。データベースを配線したデプロイでは、ユニット2により出どころが
+データベースになります。したがって、渡せるメンバーシップもありません。これを作成兼更新へ広げれば、
+2つのうちどちらかが起きます。省略した引数によって1つのメソッドが2つの意味を持つか、次のサインイン
+が、admin がユニット5の `PUT` で設定したメンバーシップを消してしまうかです。後者は、このユニットのマーカーが
+防ぐために存在する上書きが、別の入口から現れたものです。`ensure_org` は今日と同じ冪等な作成のまま
+とし、メンバーシップへの書き込み口はユニット5の API とこの引き込みだけに保ちます。起動時だけでなく
 再バインド時にも同じ引き込みを走らせるのは、config が serve に届く2つの経路のどちらでも正しく動く
 ようにするためです。この2つは、この項目自身の動機が挙げたものです。起動時にしか引き込まなければ、
 再バインドで新しく宣言された org は永遠に引き込まれません。そして後述の一本化がそのデプロイに効いた
@@ -418,9 +446,11 @@ repository を最初の起動から配線している、config だけの履歴�
       WARNING はテーブルが空の場合を基準にし、`parsed is None` を条件とする org の回復ガードは
       翻訳せずに取り除く。
 - [ ] 4 — target の所有を、名前単位ではなく org 単位で解決する。`_target_forbidden` は、その org
-      自身のエントリがその target を主張しているかを問うようにし、`org_for_target` は呼び出し元を
-      失う。これにより、config の記述順が一方に与えて他方には見えているだけの target を禁じる代わりに、
-      2つの org がそれぞれ同じ名前の target を主張できるようにする。
+      自身の `targets_for_org` の一覧にその target が含まれるかを問う。`org_for_target` は呼び出し元
+      を失う。問いは `targets_for_org` を経由させ、`default` がリテラルの slug によるフォールバック
+      で得ている未主張の target を失わないようにする。これにより、2つの org がそれぞれ同じ名前の
+      target を主張できるようにする。config の記述順が一方に与え、他方には見えているだけの target を
+      禁じる、という今日の挙動を置き換える。
 - [ ] 5 — 4つの `/api/orgs…` エンドポイントと、Orgs 用の admin ページを、repository を配線して
       いる場合にのみ用意する。エンドポイントは admin 限定とし、いずれも `record_audit` で記録する。
       ページは作成・空のときのみ削除・メンバーシップ編集を扱う。`POST /api/orgs` は作成時点で新しい行に引き込み済みマーカーを
@@ -474,9 +504,10 @@ repository を最初の起動から配線している、config だけの履歴�
   持つ `(org_id, name)` という鍵。この項目の target の同一性はこれに倣います。
 - [`bajutsu/serve/server/models.py`](../../bajutsu/serve/server/models.py) — この項目がメンバー
   シップ用のカラムを追加する `Org` テーブル。
-- [`bajutsu/serve/server/db.py`](../../bajutsu/serve/server/db.py) — この項目が拡張する
-  `Repository.ensure_org`。および、この項目の `OrgRecord` とその作成・削除・メンバーシップ更新の
-  各操作が手本にする `ProjectRecord` / `create_project` / `delete_project` の形。
+- [`bajutsu/serve/server/db.py`](../../bajutsu/serve/server/db.py) — `Repository.ensure_org`。
+  この項目はこれを冪等な作成のまま残し、その隣に専用の引き込みメソッドを置きます。および、この
+  項目の `OrgRecord` とその作成・削除・メンバーシップ更新の各操作が手本にする
+  `ProjectRecord` / `create_project` / `delete_project` の形。
 - [`bajutsu/serve/authz.py`](../../bajutsu/serve/authz.py) — `oauth_callback` のサインインゲート。
   この項目が変えるのはそのデータの出どころであり、位置づけではありません。あわせて、新しい出どころ
   に合わせて読み替える `_unmatched_org_cause` と、org 単位で解決し直す `_target_forbidden`。
