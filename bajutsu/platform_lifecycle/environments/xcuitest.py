@@ -1432,7 +1432,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         never passes a string that becomes a directory. Opt-in and bounded on the other side; unset,
         it does nothing.
         """
-        stall_diagnostics.capture("runner-crash", self._udid)
+        stall_diagnostics.capture("runner-crash", stall_diagnostics.simulator_probes(self._udid))
 
     def _healthy_resident_driver(self) -> base.Driver | None:
         """The driver for the warm runner if it is up and answering `/health`, else None (BE-0291 Unit 4).
