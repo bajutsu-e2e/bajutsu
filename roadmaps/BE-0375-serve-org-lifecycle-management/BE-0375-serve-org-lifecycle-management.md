@@ -210,7 +210,13 @@ itself. `targets_for_org` needs no change, but its fallback keys on the literal 
 not on "named in no entry": `default` gets every target no entry claims, while every *other* org
 absent from the block falls to the `orgs.get(org) is None` branch and owns nothing. Reading an
 entry directly would therefore forbid `default` every target it reaches today, since a deployment
-typically declares no `default` entry at all. Two orgs may then each claim a target
+typically declares no `default` entry at all. Routing through `targets_for_org` does change one
+shape, in the direction of consistency: a deployment that declares an org *literally named*
+`default` with its own `targets:` loses authorization for the targets that entry names, because
+`targets_for_org` decides `default` by its literal slug before it ever reads an entry. Nothing is
+taken away that was usable — `targets_for_org` already refused to list those targets for that org,
+so the retired name-based resolution was authorizing a target the same deployment never showed. The
+unclaimed-target fallback itself is untouched. Two orgs may then each claim a target
 named `checkout`, and each is authorized for it. Under one bound configuration they still share the
 one `targets:` definition that name resolves to; giving each org a definition of its own needs a
 configuration bound per org, which is where

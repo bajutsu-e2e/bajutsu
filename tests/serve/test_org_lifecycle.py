@@ -251,6 +251,29 @@ def test_the_default_org_keeps_every_unclaimed_target(
     assert _target_forbidden(state, "acme", "spare") is True
 
 
+def test_an_org_literally_named_default_owns_nothing_it_declares(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # `targets_for_org` decides `default` by its literal slug before it ever looks up an entry, so a
+    # deployment that declares an org *named* `default` gets the unclaimed-target fallback and not
+    # the targets its own entry lists. Resolving through that function therefore forbids such an org
+    # a target it declares, where the retired `org_for_target` allowed it — a change that only makes
+    # the two agree: `targets_for_org` already refused to list the target either way, so the old
+    # pairing showed an empty list and authorized a target that was not in it.
+    state = _state(
+        serve_engine,
+        tmp_path,
+        body=(
+            "targets:\n  checkout: { bundleId: com.x }\n  spare: { bundleId: com.y }\n"
+            "orgs:\n  default:\n    members: [alice]\n    targets: [checkout]\n"
+        ),
+    )
+    assert _target_forbidden(state, "default", "checkout") is True
+    # Its unclaimed-target fallback is untouched: `spare` is named by no entry, so `default` keeps it.
+    assert _target_forbidden(state, "default", "spare") is False
+    assert [t["name"] for t in ops.list_targets_payload(state, actor=None)[0]] == ["spare"]
+
+
 # --- unit 5: the admin API ---------------------------------------------------------------------
 
 
