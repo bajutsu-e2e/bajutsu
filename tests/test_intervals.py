@@ -183,6 +183,33 @@ def test_start_video_separates_an_unconfirmed_start_from_an_unattempted_one(
     assert confirmed.start_confirmed is True
 
 
+def test_a_recording_that_never_produces_bytes_captures_the_stall(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # BE-0361 unit 2's second trigger. A dead video pipeline is the same degradation the runner
+    # channel dies of, so the capture fires here too — but only on the stall, never on a healthy
+    # start, and never on a capture nobody asked to confirm.
+    captured: list[tuple[str, str | None]] = []
+    monkeypatch.setattr(
+        intervals.stall_diagnostics,
+        "capture",
+        lambda reason, udid=None: captured.append((reason, udid)),
+    )
+
+    monkeypatch.setattr(intervals, "_await_video_file_growing", lambda *_a, **_k: 12.0)
+    intervals.start_video(
+        "UDID", tmp_path / "ok.mp4", spawn=lambda argv, out: FakeProc(), confirm_started=True
+    )
+    intervals.start_video("UDID", tmp_path / "unattempted.mp4", spawn=lambda argv, out: FakeProc())
+    assert captured == []
+
+    monkeypatch.setattr(intervals, "_await_video_file_growing", lambda *_a, **_k: None)
+    intervals.start_video(
+        "UDID", tmp_path / "stalled.mp4", spawn=lambda argv, out: FakeProc(), confirm_started=True
+    )
+    assert captured == [("video-no-bytes", "UDID")]
+
+
 def test_adopt_carries_the_start_confirmation_onto_the_relocated_capture(tmp_path: Path) -> None:
     # Android hands its pre-launch recording over for the sink to adopt; whether that recording ever
     # confirmed it began does not change because its file is later moved.

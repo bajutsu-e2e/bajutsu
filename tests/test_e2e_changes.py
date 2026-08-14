@@ -292,6 +292,12 @@ def test_ios_lane_surface() -> None:
     assert is_relevant(["demos/showcase/ios/swiftui/App.swift"]) is True
     assert is_relevant(["tests/test_driver_conformance_ondevice.py"]) is True
     assert is_relevant([".github/workflows/ios-e2e.yml"]) is True
+    # The composite actions every Simulator-driving job calls: the run wrapper, the boot, and the
+    # BE-0361 diagnostics collector. A change to any of them can take a lane down as surely as
+    # editing the workflow file, so each must fire the lane that runs it.
+    assert is_relevant([".github/actions/bajutsu-e2e/action.yml"]) is True
+    assert is_relevant([".github/actions/boot-simulator/action.yml"]) is True
+    assert is_relevant([".github/actions/collect-ios-diagnostics/action.yml"]) is True
     # ...but not another lane's driver, app SDK, or workflow — the regression this fixes: a bare
     # `bajutsu/drivers/` sweep previously fired the metered macOS jobs on an adb-only or
     # playwright-only change that XCUITest never imports.

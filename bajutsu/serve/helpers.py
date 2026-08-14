@@ -284,6 +284,12 @@ def list_simulators(simctl: _simctl.RunFn = _simctl._real_run) -> list[dict[str,
     A run boots any picked-but-shut-down device first, so the UI can start from a cold list."""
     try:
         data = json.loads(simctl(_simctl.list_devices_cmd(), None))
+    except _simctl.DeviceTimeout as exc:
+        # A wedged host is folded like every other read failure here, so the picker keeps its
+        # empty-on-failure contract; logging it is what keeps the wedge from passing silently,
+        # matching what simctl.py's own probes do (BE-0363).
+        logging.getLogger(__name__).warning("%s; reporting no simulators instead", exc)
+        return []
     except (OSError, subprocess.CalledProcessError, json.JSONDecodeError, ValueError):
         return []
     sims: list[dict[str, Any]] = []

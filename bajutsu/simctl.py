@@ -36,6 +36,17 @@ class DeviceError(device_errors.DeviceError):
     """
 
 
+class DeviceTimeout(DeviceError):
+    """A simctl command exceeded its deadline — the observable symptom of a wedged CoreSimulator.
+
+    Subclassing `DeviceError` leaves every handler that already converts or propagates a device
+    fault working unchanged. Being a distinct type is what lets the runner-discard teardown — which
+    absorbs a device fault so an app that is not running cannot fail a teardown — still let a hang
+    through (BE-0363). This module's own deliberate suppressions key on `CalledProcessError` alone,
+    so a timeout escapes them with none of them narrowed.
+    """
+
+
 def device_error(exc: subprocess.CalledProcessError) -> DeviceError:
     """Turn a raw simctl failure into a clean DeviceError.
 
@@ -364,9 +375,82 @@ def validated_device_arg(value: str) -> str:
     raise DeviceError(f"invalid simctl device argument: {value!r}")
 
 
+# Every simctl call that goes through `_real_run` carries a deadline (BE-0363), so a wedged
+# CoreSimulator surfaces as a named device fault rather than hanging until CI cancels the whole job
+# — a cancelled job names no cause at all. One value cannot serve every command, which is why there
+# are two below and why the helper picks between them from the command itself: `bootstatus` waits
+# out a full boot, while `list` returns in well under a second.
+
+# The commands whose duration the device or the app sets, not simctl. `bootstatus` waits out a full
+# boot and `boot` / `erase` drive the same machinery, while `install` transfers a whole app bundle,
+# so its cost scales with the app under test — an input no bound can see. Sized against the roughly
+# 80 seconds the iOS end-to-end workflow prices a CI Simulator boot at, since CI is both the slower
+# environment and the one where a hang matters; the headroom over that is deliberate, because the
+# bound exists to catch a call that will never return, not to police a slow one.
+_DEVICE_BLOCKING_TIMEOUT_S = 300.0
+_DEVICE_BLOCKING_SUBCOMMANDS = frozenset({"bootstatus", "boot", "erase", "install"})
+
+# Every other command costs only simctl's own small, bounded work, so nothing about the app or the
+# scenario can stretch it — `list` returns in well under a second. This sits far above all of them,
+# and still catches a wedge long before a CI job's own `timeout-minutes` would.
+#
+# The pasteboard is the one family the host itself can stall (see `_PBCOPY_*` above), and the two
+# halves are bounded differently on purpose. The write runs outside this helper with its own
+# per-attempt deadline and a retry, because it was measured stalling transiently and re-feeding the
+# same stdin is safe. The read (`pbpaste`) takes this bound and raises, because its result is the
+# scenario's data: retrying it is the device-level decision BE-0363 deferred to the recovery ladder,
+# and a read that raises at a named deadline already improves on the unbounded hang it replaced.
+_SIMCTL_TIMEOUT_S = 60.0
+
+
+def _subcommand_of(args: list[str]) -> str:
+    """The token `args` names after `simctl`, or "" when it names none.
+
+    Read structurally rather than by position because `RunFn` is public and `_real_run` is a
+    default nine other modules import, so an argv with a different prefix must not silently take
+    the wrong bound.
+    """
+    try:
+        index = args.index("simctl")
+    except ValueError:
+        return ""
+    return args[index + 1] if index + 1 < len(args) else ""
+
+
+def _timeout_for(args: list[str]) -> float:
+    """The deadline `args` runs under, read off the simctl subcommand it names.
+
+    Classifying here rather than taking the bound from the caller is what lets a new call site
+    inherit the right one without its author having to know a bound exists at all.
+    """
+    if _subcommand_of(args) in _DEVICE_BLOCKING_SUBCOMMANDS:
+        return _DEVICE_BLOCKING_TIMEOUT_S
+    return _SIMCTL_TIMEOUT_S
+
+
 def _real_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
     full_env = {**os.environ, **(extra_env or {})}
-    return subprocess.run(args, capture_output=True, text=True, check=True, env=full_env).stdout
+    timeout = _timeout_for(args)
+    try:
+        return subprocess.run(
+            args, capture_output=True, text=True, check=True, env=full_env, timeout=timeout
+        ).stdout
+    except subprocess.TimeoutExpired as exc:
+        raise DeviceTimeout(
+            f"device operation timed out after {timeout:g}s: {' '.join(args)}"
+            " (this host's CoreSimulator may be wedged)"
+        ) from exc
+
+
+def _probe_timed_out(exc: DeviceTimeout, fallback: str) -> None:
+    """Log a best-effort probe's timeout, which the probe folds into `fallback` rather than raising.
+
+    Folding it keeps a diagnostic read from becoming a run-visible fault: BE-0344's recovery ladder
+    decides on what a probe observed, and a probe that raised would take that decision away from it.
+    Logging it is what keeps the wedge from passing silently, which would diagnose no better than
+    the hang this replaced.
+    """
+    _logger.warning("%s; reporting %s instead", exc, fallback)
 
 
 def resolve_udid(udid: str, run: RunFn = _real_run) -> str:
@@ -381,6 +465,9 @@ def resolve_udid(udid: str, run: RunFn = _real_run) -> str:
         return udid
     try:
         data = json.loads(run(list_booted_cmd(), None))
+    except DeviceTimeout as exc:
+        _probe_timed_out(exc, "the unresolved handle")
+        return udid
     except (subprocess.CalledProcessError, json.JSONDecodeError):
         return udid
     for devices in (data.get("devices") or {}).values():
@@ -394,6 +481,9 @@ def booted_udids(run: RunFn = _real_run) -> list[str]:
     """UDIDs of the currently-booted Simulators (empty on any failure)."""
     try:
         data = json.loads(run(list_booted_cmd(), None))
+    except DeviceTimeout as exc:
+        _probe_timed_out(exc, "no booted devices")
+        return []
     except (subprocess.CalledProcessError, json.JSONDecodeError, OSError):
         return []
     return [
@@ -414,6 +504,9 @@ def device_booted(udid: str, run: RunFn = _real_run) -> bool | None:
     """
     try:
         data = json.loads(run(list_booted_cmd(), None))
+    except DeviceTimeout as exc:
+        _probe_timed_out(exc, "an unknown boot state")
+        return None
     except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError):
         return None
     return any(
@@ -444,6 +537,9 @@ def device_catalog(run: RunFn = _real_run) -> dict[str, dict[str, str]]:
     failure). Lets a run label which simulator (device model + OS) each scenario ran on."""
     try:
         data = json.loads(run(list_devices_cmd(), None))
+    except DeviceTimeout as exc:
+        _probe_timed_out(exc, "an empty device catalog")
+        return {}
     except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError):
         return {}
     catalog: dict[str, dict[str, str]] = {}
@@ -465,6 +561,9 @@ def device_available(udid: str, run: RunFn = _real_run) -> bool | None:
     """
     try:
         data = json.loads(run(list_devices_cmd(), None))
+    except DeviceTimeout as exc:
+        _probe_timed_out(exc, "an unknown availability")
+        return None
     except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError):
         return None
     return any(
@@ -485,6 +584,9 @@ def device_type_of(udid: str, run: RunFn = _real_run) -> tuple[str, str] | None:
     """
     try:
         data = json.loads(run(list_all_devices_cmd(), None))
+    except DeviceTimeout as exc:
+        _probe_timed_out(exc, "an unresolvable device type")
+        return None
     except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError):
         return None
     for runtime, devices in (data.get("devices") or {}).items():
@@ -502,6 +604,9 @@ def device_type_identifier(name: str, run: RunFn = _real_run) -> str | None:
     """
     try:
         data = json.loads(run(list_devicetypes_cmd(), None))
+    except DeviceTimeout as exc:
+        _probe_timed_out(exc, "no such device type on this host")
+        return None
     except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError):
         return None
     for dev_type in data.get("devicetypes") or []:
@@ -519,6 +624,9 @@ def newest_iphone_device_type(run: RunFn = _real_run) -> str | None:
     """
     try:
         data = json.loads(run(list_devicetypes_cmd(), None))
+    except DeviceTimeout as exc:
+        _probe_timed_out(exc, "no iPhone device type")
+        return None
     except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError):
         return None
     iphones = [
@@ -587,6 +695,12 @@ class Env:
     def erase(self) -> None:
         self._run(erase_cmd(self.udid), None)
 
+    # The four suppressions below absorb the ordinary "already in that state" failure — shutting a
+    # device down that is already off, uninstalling an app that was never installed. Each keys on
+    # `CalledProcessError` alone, so a `DeviceTimeout` propagates instead (BE-0363): a hung
+    # `shutdown` is not that ordinary outcome, it is the wedge the recovery ladder needs to hear
+    # about. Widening any of them to `DeviceError` would put the silence back.
+
     def shutdown(self) -> None:
         with contextlib.suppress(subprocess.CalledProcessError):
             self._run(shutdown_cmd(self.udid), None)
@@ -619,6 +733,9 @@ class Env:
         checked = validated_locale(locale)
         try:
             exported = plistlib.loads(self._run(export_globals_cmd(self.udid), None).encode())
+        except DeviceTimeout as exc:
+            _probe_timed_out(exc, "an unreadable global domain")
+            return None
         except (subprocess.CalledProcessError, plistlib.InvalidFileException, ValueError):
             return None
         if not isinstance(exported, dict):
@@ -651,6 +768,9 @@ class Env:
         try:
             self._run(get_app_container_cmd(self.udid, bundle_id), None)
             return True
+        except DeviceTimeout as exc:
+            _probe_timed_out(exc, "not installed")
+            return False
         except subprocess.CalledProcessError:
             return False
 
