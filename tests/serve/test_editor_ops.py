@@ -430,6 +430,66 @@ def test_read_scenario_prefers_the_post_action_screenshot_for_the_picker(tmp_pat
     assert payload["steps"][0]["elementsUrl"] == "/runs/run1/00-login/step0/elements.json"
 
 
+def test_read_scenario_falls_back_when_the_post_action_screenshot_is_missing(
+    tmp_path: Path,
+) -> None:
+    """The manifest can name a file the store no longer holds — a run restored from Trash, or one
+    synced into an object store that never received the last write. The picker then falls back to
+    the `before.png` beside it rather than going inert: the choice is made among the names that
+    exist, not among every name recorded (review follow-up)."""
+    state, runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
+
+    run_dir = runs / "run1"
+    step_dir = run_dir / "00-login/step0"
+    step_dir.mkdir(parents=True)
+    (step_dir / "elements.json").write_text(json.dumps(_elements()), encoding="utf-8")
+    (step_dir / "before.png").write_bytes(b"PNG")  # `after.png` is recorded below but never written
+    manifest = {
+        "runId": "run1",
+        "ok": True,
+        "scenarios": [
+            {
+                "scenario": "login",
+                "ok": True,
+                "sid": "00-login",
+                "steps": [
+                    {
+                        "index": 0,
+                        "action": "tap",
+                        "ok": True,
+                        "artifacts": [
+                            {
+                                "name": "00-login/step0/before.png",
+                                "kind": "screenshot",
+                                "provider": "driver",
+                            },
+                            {
+                                "name": "00-login/step0/after.png",
+                                "kind": "screenshot",
+                                "provider": "driver",
+                            },
+                            {
+                                "name": "00-login/step0/elements.json",
+                                "kind": "elements",
+                                "provider": "driver",
+                            },
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    payload, status = ops.read_scenario(
+        state, "demo", str(scn_dir / "login.yaml"), run_id="run1", scenario_name="login"
+    )
+    assert status == 200
+    assert payload["steps"][0]["screenshotUrl"] == "/runs/run1/00-login/step0/before.png"
+
+
 def test_read_scenario_with_run_resolves_manifest_recorded_names_not_hardcoded(
     tmp_path: Path,
 ) -> None:

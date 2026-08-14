@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
@@ -488,7 +488,10 @@ def _step_artifacts(
     for idx, step in enumerate(matched.steps):
         step_id = f"{sid}/{step.name or f'step{idx}'}"
         action, fields = _step_action_fields(step)
-        elements_name, screenshot_name = _artifact_names(artifacts_by_step_id.get(step_id, []))
+        elements_name, screenshot_name = _artifact_names(
+            artifacts_by_step_id.get(step_id, []),
+            lambda name: _safe_exists(artifacts, f"{run_id}/{name}"),
+        )
         result.append(
             {
                 "stepId": step_id,
@@ -498,9 +501,10 @@ def _step_artifacts(
                 if elements_name is not None
                 and _safe_exists(artifacts, f"{run_id}/{elements_name}")
                 else None,
+                # No existence check here: `_artifact_names` chose among the names the store
+                # actually holds, so a name at all means the file is there.
                 "screenshotUrl": f"/runs/{run_id}/{screenshot_name}"
                 if screenshot_name is not None
-                and _safe_exists(artifacts, f"{run_id}/{screenshot_name}")
                 else None,
             }
         )
@@ -518,7 +522,9 @@ def _find_scenario(manifest: dict[str, Any], scenario_name: str | None) -> dict[
     return None
 
 
-def _artifact_names(step_artifacts: list[dict[str, Any]]) -> tuple[str | None, str | None]:
+def _artifact_names(
+    step_artifacts: list[dict[str, Any]], exists: Callable[[str], bool]
+) -> tuple[str | None, str | None]:
     """The `elements` / `screenshot` artifact names the editor shows for a step, or `None` for
     either the run never recorded (BE-0341).
 
@@ -526,6 +532,14 @@ def _artifact_names(step_artifacts: list[dict[str, Any]]) -> tuple[str | None, s
     names the same file. `screenshot` goes through `displayed_screenshot`, so the editor's element
     picker and the HTML report resolve one step to one image: the post-action `after.png` when the
     run recorded one, else the pre-step baseline's `before.png`.
+
+    Args:
+        exists: whether the store actually holds a named artifact. The screenshot candidates are
+            filtered through it *before* the choice, not after: the manifest can name a file the
+            store no longer holds (a run restored from Trash, or one synced into an object store
+            that never received the last write), and choosing `after.png` from the names alone
+            would spend the fallback on a missing file, leaving the step with no image to pick
+            against while its `before.png` sits right there.
     """
     by_kind: dict[str, str] = {}
     shots: list[str] = []
@@ -543,7 +557,7 @@ def _artifact_names(step_artifacts: list[dict[str, Any]]) -> tuple[str | None, s
             by_kind.setdefault(kind, name)
             if kind == "screenshot":
                 shots.append(name)
-    return by_kind.get("elements"), displayed_screenshot(shots)
+    return by_kind.get("elements"), displayed_screenshot([n for n in shots if exists(n)])
 
 
 def _safe_exists(store: ArtifactStore, rel: str) -> bool:

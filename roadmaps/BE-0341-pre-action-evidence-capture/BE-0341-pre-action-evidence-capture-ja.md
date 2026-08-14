@@ -357,6 +357,18 @@
       `extract` / `assert` の非回帰について決定的な網羅を追加する。
 - [x] Unit 7 — `docs/evidence.md`（日本語版含む）、`DESIGN.md`、`docs/architecture.md` を更新する。
 
+### その後の改訂
+
+[#1633](https://github.com/bajutsu-e2e/bajutsu/pull/1633) は、ここまでに記録した決定のうち 2 つを
+改訂しています。あわせて読んでください。ステップ後の取得は、`screenshot.after` と `elements` を
+常に記録するようになりました。そのため実行が残すツリーは、`capture` が要求したかどうかによらず、
+どのステップでも動作後のものになります。Unit 4 の優先順位は、シナリオが何を要求したかについての
+規則ではなくなり、「`elements` は動作前のツリーのまま」が成り立つのは、動作する前に失敗したステップ
+だけです。`rawTree` も同じ理由で全ステップがステップ後の取得に移りました。動作前のダンプは、隣に
+置かれるツリーと対応しなくなるためです。動作前のダンプは、`rawTree.before` 修飾子ができるまで
+取得できません。この項目が定めたこと自体は、どちらの改訂でも変わっていません。どのステップも、
+動作する前に `screenshot.before` と `elements` を取得します。
+
 ## 参考
 
 - [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) — 遅延評価でキャッシュ

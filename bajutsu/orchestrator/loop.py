@@ -1288,15 +1288,28 @@ class _StepRunner:
             # an unrelated backend entirely, next to this step's *web* `elements.json`. Drop the
             # request rather than pair the two: no artifact beats a mismatched one.
             instant = [t for t in instant if _kind_of(t) != "rawTree"]
-        # Read the tree here rather than leave `elements=None` for the sink's own writer to read
-        # (`write_elements`) whenever that writer will actually run: a read issued inside the sink is
-        # invisible to `_ScreenRead`, so it is neither counted in `total_reads` nor carried into
-        # `prev_after` — and the next step's pre-step baseline, finding `prev_after` unset, pays a
-        # second read for the same screen. Routing it through `screen.get()` costs one read per step
-        # instead of two, the reuse BE-0234 Unit 2 is built on (~2.4s per read on adb). A sink that
-        # writes nothing must still pay nothing, hence the `NullSink` guard the pre-step baseline
-        # uses too.
-        writes_elements = any(_kind_of(t) == "elements" for t in instant) and not isinstance(
+        # Two calls, screenshots first, because the tree read has to happen between them.
+        #
+        # The read goes through `screen.get()` rather than being left to the sink's own writer
+        # (`write_elements`, when `elements=None`): a read issued inside the sink is invisible to
+        # `_ScreenRead`, so it is neither counted in `total_reads` nor carried into `prev_after` —
+        # and the next step's pre-step baseline, finding `prev_after` unset, pays a second read for
+        # the same screen. Routing it here costs one read per step instead of two, the reuse
+        # BE-0234 Unit 2 is built on (~2.4s per read on adb).
+        #
+        # That read cannot precede the shutter, though, or the same ~2.4s opens back up between the
+        # tree and the pixels it describes — with the tree the *older* of the two, which is the worse
+        # order: a viewer draws element frames from the tree onto the image, so a tree read
+        # mid-animation would frame a screen that has since settled. Capturing the screenshots in
+        # their own call first keeps the image no older than the tree, the gap the pre-step baseline
+        # already lives with.
+        shots = [t for t in instant if _kind_of(t) == "screenshot"]
+        rest = [t for t in instant if _kind_of(t) != "screenshot"]
+        if shots:
+            outcome.artifacts.extend(self.cfg.sink.capture(self.cfg.driver, step_id, shots))
+        # A sink that writes nothing must still pay nothing, hence the `NullSink` guard the pre-step
+        # baseline uses too.
+        writes_elements = any(_kind_of(t) == "elements" for t in rest) and not isinstance(
             self.cfg.sink, NullSink
         )
         els = (
@@ -1304,9 +1317,10 @@ class _StepRunner:
             if active_driver is not self.cfg.driver or writes_elements
             else screen.cached
         )
-        outcome.artifacts.extend(
-            self.cfg.sink.capture(self.cfg.driver, step_id, instant, elements=els)
-        )
+        if rest:
+            outcome.artifacts.extend(
+                self.cfg.sink.capture(self.cfg.driver, step_id, rest, elements=els)
+            )
         if screen.queried:
             self.state.total_reads += 1
         # The last leaf step to actually run (BE-0341): `_run_steps` uses this after the whole run

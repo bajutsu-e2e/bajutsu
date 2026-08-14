@@ -339,6 +339,22 @@ item keeps that shape unchanged and documents the one precedence rule instead.
       invariant, `reads.py` resolution, and the extract/assert non-regression.
 - [x] Unit 7 — `docs/evidence.md` (+ ja), `DESIGN.md`, `docs/architecture.md` updated.
 
+### Later revision
+
+[#1633](https://github.com/bajutsu-e2e/bajutsu/pull/1633) revises two of the decisions recorded
+above, so read them together.
+
+The post-step capture now always records `screenshot.after` **and** `elements`. Every step keeps the
+post-action tree, not only the steps whose `capture` list asked for one. Unit 4's precedence rule no
+longer turns on what a scenario requested, and "`elements` stays the pre-action tree" now holds for
+one case: a step that fails before it acts.
+
+`rawTree` moved to the post-step call for the same reason. A pre-action dump would no longer pair
+with the tree beside it, and nothing can request one until a `rawTree.before` modifier exists.
+
+What this item established survives both revisions: every step captures `screenshot.before` +
+`elements` before it acts.
+
 ## References
 
 - [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) — the lazy, cached
