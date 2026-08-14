@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0355](BE-0355-native-z-position-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0355") |
+| 実装 PR | [#1556](https://github.com/bajutsu-e2e/bajutsu/pull/1556) |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0349](../BE-0349-tap-target-hittability-check/BE-0349-tap-target-hittability-check-ja.md)、[BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)、[BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md)、[BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) |
 <!-- /BE-METADATA -->
@@ -298,13 +299,37 @@ Android 側設計、具体的には Compose が上記の `View` オーバーラ�
 
 - [ ] Unit 0 — スパイク: iOS のレイヤー走査の実現性とレスポンダの形、Android の Compose の
       追加データ対応、両 OS での要素ごとの往復コスト
-- [ ] Unit 1 — `Element` への `nativeZ` フィールド
+- [x] Unit 1 — `Element` への `nativeZ` フィールド
 - [ ] Unit 2 — iOS 側の報告(BajutsuKit のレスポンダ、`xcuitest.py` の読み取り)
 - [ ] Unit 3 — Android 側の報告(追加データヘルパー、常駐サーバーの往復、`adb.py` の読み取り)
-- [ ] Unit 4 — `FakeDriver` 対応
-- [ ] Unit 5 — driver conformance suite のケース
+- [x] Unit 4 — `FakeDriver` 対応
+- [x] Unit 5 — driver conformance suite のケース
 - [ ] Unit 6 — ドキュメント(`evidence.md` / `architecture.md` とその `ja` 側)
 - [ ] Unit 7 — テスト
+
+### ログ
+
+- 最初のスライスでは Python 側の土台を入れ、実機を必要とする作業の単位はすべて後続の変更に回しました。
+  `Element` に必須フィールドとして `nativeZ` を追加したので、ドライバのパーサー、`record_capture`、
+  デモ用のスクリプト、証跡の読み手にまたがる、`Element` を構築する12箇所を `mypy --strict` がすべて指摘し、後から
+  1箇所だけ取り残される余地はありません。このうちドライバのパーサー、`record_capture`、デモ用の
+  スクリプトの10箇所はいずれも `None` を返します。
+  アプリ側のフックを持たないバックエンドが読み手に対して負うべき、正直な欠損の表現です。残る2箇所は
+  後述する証跡の読み手で、成果物が記録していた値をそのまま持ち回ります。`FakeDriver` は、テストが与えた
+  `nativeZ` をそのまま返します。
+  スクロール可能モードでフレームを平行移動する経路を通しても値は保たれ、この経路こそ、実機なしの決定的な
+  ゲートで `nativeZ` を読むコードを動かすための接点です。書き出した証跡を読み戻す2つの経路、すなわち
+  golden ファイルのローダーと `serve` の pick 解決は、`base.native_z_from_json` という1つの変換を共有します。
+  成果物を経由した値が、ドライバから直接読んだ値と同じ意味を持つようにするためです。あわせて golden の
+  ローダーは、このフィールドを必須の項目から外しました。今回の変更より前に記録した golden はどれもこの
+  フィールドを持たず、また golden が固定するのは同一性と状態であって、その瞬間の測定値ではないからです。
+  driver conformance suite には、現時点の契約を全バックエンド共通で固定するケースを追加しました。フィールドは
+  常に存在し、アプリが測るまでは常に `None` である、という内容です。`docs/evidence.md` とその日本語版には、
+  このフィールドの意味と、重なりの判定がこれを読まないことを明記しました。Unit 6 は、`nativeZ` が
+  バックエンド間で何を意味するかという Unit 0 の決定を待って残し、Unit 7 も Units 2 と 3 が追加する
+  バックエンドごとの報告経路を待って残しています。今回のスライスが持つ回帰テストは
+  `tests/test_native_z.py` にあり、正直な欠損と、`is_tappable` および `topmost_at_point` の挙動が
+  変わっていないことの両方を固定します。
 
 ## 参考
 

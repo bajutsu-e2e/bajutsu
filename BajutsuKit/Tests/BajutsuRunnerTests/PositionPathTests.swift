@@ -66,6 +66,7 @@ final class PositionPathTests: XCTestCase {
         let recorded = backing(el).recorded
         XCTAssertEqual(recorded.identifier, "id")
         XCTAssertEqual(recorded.label, "Label")
+        XCTAssertEqual(recorded.value, "v")
         XCTAssertEqual(recorded.traits, ["button"])
         XCTAssertEqual(recorded.frame.width, 3)
     }
@@ -77,11 +78,12 @@ final class PositionPathTests: XCTestCase {
     private func attrs(
         id: String? = "id",
         label: String? = "Label",
+        value: String? = nil,
         traits: [String] = ["button"],
         frame: (Double, Double, Double, Double) = (0, 0, 10, 10)
     ) -> RecordedAttributes {
         RecordedAttributes(
-            identifier: id, label: label, traits: traits,
+            identifier: id, label: label, value: value, traits: traits,
             frame: (frame.0, frame.1, frame.2, frame.3)
         )
     }
@@ -157,6 +159,153 @@ final class PositionPathTests: XCTestCase {
                 recorded: attrs(label: "Not Now"),
                 candidates: [attrs(label: "Not Now"), attrs(label: "Not Now")]
             )
+        )
+    }
+
+    func testResolvableMatchingIndexReturnsSoleIdentityMatch() {
+        XCTAssertEqual(
+            resolvableMatchingIndex(
+                recorded: attrs(label: "Not Now"),
+                candidates: [attrs(label: "Save"), attrs(label: "Not Now")]
+            ),
+            1
+        )
+    }
+
+    func testResolvableMatchingIndexReturnsNilWithoutAMatch() {
+        XCTAssertNil(
+            resolvableMatchingIndex(
+                recorded: attrs(label: "Not Now"),
+                candidates: [attrs(label: "Save"), attrs(label: "Cancel")]
+            )
+        )
+    }
+
+    func testResolvableMatchingIndexTakesTheFirstOfADuplicateRegistration() {
+        // The UIAlertController pair: same identity, same frame, so one control registered twice.
+        // The recorded frame plays no part — the element may have settled elsewhere since the
+        // snapshot (BE-0287), which is one of the ways the position path misses in the first place.
+        XCTAssertEqual(
+            resolvableMatchingIndex(
+                recorded: attrs(label: "OK", frame: (205, 414, 140, 48)),
+                candidates: [
+                    attrs(label: "Cancel", frame: (57, 463, 140, 48)),
+                    attrs(label: "OK", frame: (205, 463, 140, 48)),
+                    attrs(label: "OK", frame: (205, 463, 140, 48)),
+                ]
+            ),
+            1
+        )
+    }
+
+    func testResolvableMatchingIndexRejectsMatchesAtDifferentFrames() {
+        // Two controls sharing an identity but standing at two places: still a genuine ambiguity.
+        XCTAssertNil(
+            resolvableMatchingIndex(
+                recorded: attrs(label: "OK", frame: (205, 463, 140, 48)),
+                candidates: [
+                    attrs(label: "OK", frame: (205, 463, 140, 48)),
+                    attrs(label: "OK", frame: (205, 611, 140, 48)),
+                ]
+            )
+        )
+    }
+
+    func testResolvableMatchingIndexRejectsMatchesDifferingOnlyInSize() {
+        // Every frame field decides, not the origin alone.
+        XCTAssertNil(
+            resolvableMatchingIndex(
+                recorded: attrs(label: "OK", frame: (205, 463, 140, 48)),
+                candidates: [
+                    attrs(label: "OK", frame: (205, 463, 140, 48)),
+                    attrs(label: "OK", frame: (205, 463, 140, 96)),
+                ]
+            )
+        )
+    }
+
+    func testResolvableMatchingIndexToleratesASubPointFrameDifference() {
+        // The candidates are not read at one instant: each one's frame is its own XCUITest attribute
+        // fetch, so a still-settling screen can report one control's two registrations a fraction of
+        // a point apart. That must stay one control, not fall back to the stale failure.
+        XCTAssertEqual(
+            resolvableMatchingIndex(
+                recorded: attrs(label: "OK", frame: (205, 463, 140, 48)),
+                candidates: [
+                    attrs(label: "OK", frame: (205, 463, 140, 48)),
+                    attrs(label: "OK", frame: (205.5, 463.25, 140, 48)),
+                ]
+            ),
+            0
+        )
+    }
+
+    func testResolvableMatchingIndexRejectsMatchesJustOverAPointApart() {
+        // The slack is a point and nothing wider: pin its far side so a later widening of
+        // `framesEqual` cannot pass unnoticed and collapse two genuinely distinct controls.
+        XCTAssertNil(
+            resolvableMatchingIndex(
+                recorded: attrs(label: "OK", frame: (205, 463, 140, 48)),
+                candidates: [
+                    attrs(label: "OK", frame: (205, 463, 140, 48)),
+                    attrs(label: "OK", frame: (206.5, 463, 140, 48)),
+                ]
+            )
+        )
+    }
+
+    func testResolvableMatchingIndexHoldsTheSpreadAcrossThreeMatches() {
+        // Every match is compared against every other, not against whichever one the query bound
+        // first. Anchored on index 0 this collapses — 206 and 207 both sit within a point of it —
+        // and two controls 2pt apart would be tapped as one, with the verdict depending on the order
+        // `allElementsBoundByIndex` returned.
+        XCTAssertNil(
+            resolvableMatchingIndex(
+                recorded: attrs(label: "OK", frame: (205, 463, 140, 48)),
+                candidates: [
+                    attrs(label: "OK", frame: (206, 463, 140, 48)),
+                    attrs(label: "OK", frame: (205, 463, 140, 48)),
+                    attrs(label: "OK", frame: (207, 463, 140, 48)),
+                ]
+            )
+        )
+    }
+
+    func testAttributesMatchIgnoresValue() {
+        // `value` joined RecordedAttributes for the group rule alone. The recorded-against-live
+        // match must keep ignoring it: a slider or text field legitimately changes value between
+        // the snapshot and the tap, so matching on it would resurrect BE-0287's false stale.
+        XCTAssertTrue(
+            attributesMatch(recorded: attrs(value: "1"), current: attrs(value: "2"))
+        )
+    }
+
+    func testResolvableMatchingIndexRejectsMatchesDifferingOnlyInValue() {
+        // The host's `_collapse_identical_duplicates` keys on `value` too, so a value-bearing control
+        // whose two registrations disagree is a genuine ambiguity on both sides — never a guess here.
+        XCTAssertNil(
+            resolvableMatchingIndex(
+                recorded: attrs(label: "Quantity", value: "2", frame: (205, 463, 140, 48)),
+                candidates: [
+                    attrs(label: "Quantity", value: "2", frame: (205, 463, 140, 48)),
+                    attrs(label: "Quantity", value: "3", frame: (205, 463, 140, 48)),
+                ]
+            )
+        )
+    }
+
+    func testResolvableMatchingIndexTakesTheFirstOfAValueBearingDuplicate() {
+        // Agreeing on value keeps the duplicate collapsible: the recorded value plays no part, only
+        // the candidates' agreement with one another does.
+        XCTAssertEqual(
+            resolvableMatchingIndex(
+                recorded: attrs(label: "Quantity", value: "1", frame: (205, 463, 140, 48)),
+                candidates: [
+                    attrs(label: "Quantity", value: "2", frame: (205, 463, 140, 48)),
+                    attrs(label: "Quantity", value: "2", frame: (205, 463, 140, 48)),
+                ]
+            ),
+            0
         )
     }
 }

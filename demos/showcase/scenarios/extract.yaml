@@ -6,18 +6,29 @@
 # the three taps below land it on "4" and the expectation is one absolute number everywhere.
 # Each id lists both its dotted SPEC form (Compose, iOS) and its underscore Android Views form, so the
 # one scenario runs unchanged on every toolkit (BE-0221).
+#
+# The counter's selector also lists `log.count-Increment` and pins `traits: [button]`, because
+# `log.count` names a different thing per platform. On Android it is the increment control itself
+# (`LogScreen.kt` / `LogTab.kt` put the id on a "Count +" button); on iOS it is the Stepper's
+# container, which XCUITest reports with the `other` trait and beside which it synthesizes
+# `log.count-Increment` / `-Decrement` from the container's own id. The trait is what disambiguates:
+# it drops the iOS container and leaves exactly the increment, while on Android the one button the id
+# names is already a `button`. Naming the increment is also what makes the intent explicit — the
+# SwiftUI container is not even hittable on iOS 18 (its accessibility element is inflated to the whole
+# form row), and on UIKit a tap on the container lands wherever its centre happens to fall between the
+# two halves.
 - name: extract captures the counter's real tree value and feeds a later step
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
       capture: [deviceLog]
-    - wait: { for: { id: [log.count, log_count] }, timeout: 10 }
-    - tap: { id: [log.count, log_count] }
-    - tap: { id: [log.count, log_count] }
+    - wait: { for: { id: [log.count-Increment, log.count, log_count], traits: [button] }, timeout: 10 }
+    - tap: { id: [log.count-Increment, log.count, log_count], traits: [button] }
+    - tap: { id: [log.count-Increment, log.count, log_count], traits: [button] }
       extract: { count: { sel: { id: [log.count.value, log_count_value] } } }
     - assert:
         - value: { sel: { id: [log.count.value, log_count_value] }, equals: "${vars.count}" }
-    - tap: { id: [log.count, log_count] }
+    - tap: { id: [log.count-Increment, log.count, log_count], traits: [button] }
   expect:
     - value: { sel: { id: [log.count.value, log_count_value] }, equals: "4" }

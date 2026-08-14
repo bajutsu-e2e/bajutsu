@@ -49,8 +49,8 @@ XCUITest backend は、**事前ビルドしたオンデバイスの runner**（t
 Xcode だけで十分です。
 
 一発で通す経路は `make` ターゲットです。runner をビルドし、ビルドしたばかりのアプリを install します。
-続けて、showcase のシナリオ一式（`xcuitest` または `systemalert` タグ付きのシナリオは除きます）を booted
-デバイスで実行します。
+続けて、showcase のシナリオ一式（`xcuitest`・`systemalert`・`visual`・`android` タグ付きのシナリオは、
+それぞれ専用のレーンがあるため除きます）を booted デバイスで実行します。
 
 ```bash
 make -C demos/showcase run-swiftui

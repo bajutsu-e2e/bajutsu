@@ -63,6 +63,16 @@ CHANNELS: tuple[str, ...] = (
     "history",  # browser history navigation
 )
 
+# Why the element actuated is not the one the driver's default rule would have named. Absent on the
+# ordinary path. This is a separate axis from `via`, which answers how the gesture reached its target:
+# a substituted tap still travels by `handle`; what changed is *which* element. Like `GESTURES`, an
+# unlisted value is opaque text to a reader rather than an error, so an older report stays loadable.
+SUBSTITUTIONS: tuple[str, ...] = (
+    # The tap resolved uniquely but was refused, and exactly one named descendant inside its frame
+    # was reachable — a container inflated over the control it wraps (BE-XXXX).
+    "soleHittableDescendant",
+)
+
 # The coordinate space a record's numbers live in. iOS reports points, Android raw pixels, a browser
 # (and a WebView's own space) CSS pixels — so a coordinate is only comparable alongside its space.
 UNITS: tuple[str, ...] = ("point", "pixel", "cssPixel")
@@ -104,6 +114,9 @@ class Actuation:
         duration_s: How long a press or drag was held.
         scale: A pinch's spread factor.
         radians: A rotation's angle.
+        substitution: Why the element actuated is not the one the driver's default rule would have
+            named, from `SUBSTITUTIONS`; absent on the ordinary path. Rule 3 holds: a fixed token,
+            never a string a scenario authored.
     """
 
     gesture: str
@@ -116,6 +129,7 @@ class Actuation:
     duration_s: float | None = None
     scale: float | None = None
     radians: float | None = None
+    substitution: str | None = None
 
 
 @dataclass(frozen=True)

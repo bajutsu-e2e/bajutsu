@@ -284,6 +284,10 @@ _LANE_PATHS: dict[str, str] = {
         r"|\.github/workflows/ios-e2e\.yml$"
         r"|\.github/actions/bajutsu-e2e/"
         r"|\.github/actions/boot-simulator/"
+        # The BE-0361 diagnostics collector every Simulator-driving job now calls. It runs on the
+        # same jobs the two actions above do, and a change to it (a probe that hangs, a collection
+        # that fails a step) can take a lane down as surely as editing the workflow file.
+        r"|\.github/actions/collect-ios-diagnostics/"
     ),
     "android": (
         # Only the adb driver and the Python side of the resident UI Automator channel (BE-0245) this

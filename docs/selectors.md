@@ -170,6 +170,18 @@ so lumping it in with resolution failure would blur that "who matched" and "is i
 different questions. The orchestrator's step-execution catch handles it the same way it handles
 `SelectorError`: a clean step failure, never a crash.
 
+On the XCUITest backend a refused **tap** takes one more step before it fails, because iOS can
+report a container inflated over the control it wraps — a SwiftUI `Stepper` whose accessibility
+element spans its whole form row, refused while the buttons inside it are perfectly reachable. The
+driver probes the target's *named* descendants (those emitted after it, inside its frame, carrying
+an identifier). Where exactly one is reachable there is no choice to make and the tap goes there,
+recorded with `substitution: soleHittableDescendant` so the report and the `trace` timeline both
+say the element actuated is not the one the selector named. Where none or several are, there *is* a
+choice an author cannot predict, so the tap fails and the message names the candidates instead of
+picking one — a real `Stepper` has two reachable children, and `tap: { id: log.count }` has no
+single meaning between them. Only `tap` does this: a long-press redirected to a child is a
+different intent, not the same intent reaching its target.
+
 The bounded scroll is a safety net for an obstruction an author could not have anticipated (a
 transient overlay, a sticky header settling into place) — it is not a substitute for the explicit
 [`scroll` action](scenarios.md#scroll). An author who already knows a target starts off-screen

@@ -27,6 +27,7 @@ def _el(identifier: str, label: str) -> base.Element:
         "traits": ["button"],
         "value": None,
         "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
     }
 
 
@@ -86,6 +87,7 @@ def test_secret_in_context_is_masked_before_send() -> None:
                 "traits": ["staticText"],
                 "value": "sk-secret-token",
                 "frame": (0.0, 0.0, 1.0, 1.0),
+                "nativeZ": None,
             }
         ],
         scenario_yaml="- name: s\n  steps:\n    - type: { into: { id: f }, text: sk-secret-token }\n",
@@ -158,6 +160,7 @@ def test_render_app_root_only_tree_is_not_a_failed_capture() -> None:
         "traits": ["application"],
         "value": None,
         "frame": (0.0, 0.0, 100.0, 100.0),
+        "nativeZ": None,
     }
     text = _render(_ctx(elements=[app_root]))
     assert "(no element tree captured)" not in text
@@ -354,6 +357,7 @@ def test_cross_run_app_root_only_tree_is_distinct_from_failed_capture() -> None:
         "traits": ["application"],
         "value": None,
         "frame": (0.0, 0.0, 100.0, 100.0),
+        "nativeZ": None,
     }
     text = _render_cross_run(
         _cross_ctx(
@@ -407,6 +411,7 @@ def test_cross_run_secret_is_masked_before_send() -> None:
                         "traits": ["staticText"],
                         "value": "sk-secret-token",
                         "frame": (0.0, 0.0, 1.0, 1.0),
+                        "nativeZ": None,
                     }
                 ],
             )

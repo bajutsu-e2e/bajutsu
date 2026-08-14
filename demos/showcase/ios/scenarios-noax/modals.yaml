@@ -53,9 +53,9 @@
   expect:
     - exists: { label: "Dialog: delete" }
 
-# Native alert: the fifth modal style, distinct from the action sheet above. Neither of its two
-# buttons ("Cancel", "OK") carries an identifier even in the a11y build (scenarios/alert.yaml), so
-# this -noax twin addresses them by label exactly the same way.
+# Native alert: the fifth modal style, distinct from the action sheet above. Its two buttons carry
+# `log.alert.cancel` / `log.alert.ok` in the a11y build (scenarios/alert.yaml) and nothing here, so
+# this -noax twin addresses them by label.
 - name: native alert can be tapped
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
