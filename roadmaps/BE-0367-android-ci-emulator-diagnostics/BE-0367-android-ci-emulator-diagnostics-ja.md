@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0367") |
+| 実装 PR | [#1631](https://github.com/bajutsu-e2e/bajutsu/pull/1631) |
 | トピック | Platform support |
 | 関連 | [BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics-ja.md)、[BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md)、[BE-0270](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance-ja.md)、[BE-0350](../BE-0350-ondevice-conformance-evidence-capture/BE-0350-ondevice-conformance-evidence-capture-ja.md) |
 <!-- /BE-METADATA -->
