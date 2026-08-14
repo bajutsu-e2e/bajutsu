@@ -327,9 +327,11 @@ def test_pre_step_capture_precedes_a_non_mutating_step(tmp_path: Path) -> None:
     assert first_screenshot < first_query
 
 
-def test_last_step_gets_a_final_capture_earlier_steps_do_not(tmp_path: Path) -> None:
-    """Only the scenario's last step gets a post-step baseline too — every step already gets the
-    pre-step one, but only the last has no following step to carry its result forward (BE-0341)."""
+def test_every_step_records_both_screenshots(tmp_path: Path) -> None:
+    """Every step records `before.png` and `after.png`, not just the scenario's last one — this
+    scenario asks for no capture at all, so both come from the always-on baselines: the pre-step one
+    (BE-0341) and the `screenshot.after` the post-step call always leads with. A step showing only
+    the screen it was about to act on would leave the result it produced unrecorded."""
     driver = FakeDriver([el("a", "A", ["button"]), el("b", "B", ["button"])])
     run_dir = tmp_path / "run1"
     result = run_scenario(
@@ -339,16 +341,22 @@ def test_last_step_gets_a_final_capture_earlier_steps_do_not(tmp_path: Path) -> 
         sink=FileSink(run_dir),
     )
     assert result.ok
-    step0_kinds = {a.kind for a in result.steps[0].artifacts}
-    step1_kinds = {a.kind for a in result.steps[1].artifacts}
-    step0_names = {a.name for a in result.steps[0].artifacts}
-    step1_names = {a.name for a in result.steps[1].artifacts}
-    assert step0_kinds == {"screenshot", "elements"}
-    assert step1_kinds == {"screenshot", "elements"}
-    # Only the first step's screenshot is the pre-step one; the last step's is the final one.
-    assert any(name.endswith("before.png") for name in step0_names)
-    assert any(name.endswith("after.png") for name in step1_names)
-    assert not any(name.endswith("after.png") for name in step0_names)
+    for step in result.steps:
+        names = {a.name for a in step.artifacts}
+        assert {a.kind for a in step.artifacts} == {"screenshot", "elements"}
+        assert any(name.endswith("before.png") for name in names)
+        assert any(name.endswith("after.png") for name in names)
+    # Each name is rooted at that step's own dir, so the two steps' shots never collide.
+    assert {a.name for a in result.steps[0].artifacts} == {
+        "x/step0/before.png",
+        "x/step0/elements.json",
+        "x/step0/after.png",
+    }
+    # One `after.png` per step: the end-of-run safety capture sees the last step's and skips.
+    assert all(
+        len([a for a in step.artifacts if a.name.endswith("after.png")]) == 1
+        for step in result.steps
+    )
 
 
 def test_final_capture_does_not_duplicate_a_rule_fired_after_png(tmp_path: Path) -> None:
@@ -452,10 +460,10 @@ def test_final_capture_lands_on_the_last_leaf_step_inside_an_if(tmp_path: Path) 
     assert any(name.endswith("after.png") for name in leaf_names)
 
 
-def test_final_capture_lands_on_the_last_leaf_step_inside_a_for_each(tmp_path: Path) -> None:
-    """A scenario ending in a `forEach` with matches still gets its final capture on the last
-    iteration's last leaf step, not the `forEach` container's own (artifact-less) outcome, and not
-    an earlier iteration's step (BE-0341)."""
+def test_for_each_iterations_each_get_their_own_evidence_pair(tmp_path: Path) -> None:
+    """A `forEach` iteration is a leaf step like any other, so each one records its own
+    `before.png` / `after.png` pair. The `forEach` container is not: it acts on nothing itself, so
+    its own outcome stays artifact-less and the end-of-run capture never lands there (BE-0341)."""
     driver = FakeDriver(
         [
             el("a", "A", ["button"]),
@@ -488,14 +496,12 @@ def test_final_capture_lands_on_the_last_leaf_step_inside_a_for_each(tmp_path: P
     assert for_each_outcome.artifacts == []
     iteration_taps = [s for s in result.steps if s.action == "tap" and s.index != 0]
     assert len(iteration_taps) == 2  # both items matched
-    first_iter_names = {a.name for a in iteration_taps[0].artifacts}
-    last_iter_names = {a.name for a in iteration_taps[-1].artifacts}
-    # Only the last iteration's tap gets the final capture; an earlier iteration gets only its
-    # own pre-step baseline.
-    assert any(name.endswith("before.png") for name in first_iter_names)
-    assert not any(name.endswith("after.png") for name in first_iter_names)
-    assert any(name.endswith("before.png") for name in last_iter_names)
-    assert any(name.endswith("after.png") for name in last_iter_names)
+    for tap in iteration_taps:
+        names = {a.name for a in tap.artifacts}
+        assert any(name.endswith("before.png") for name in names)
+        assert any(name.endswith("after.png") for name in names)
+    # The last iteration's shot is its own post-step one, not a second, end-of-run duplicate.
+    assert len([a for a in iteration_taps[-1].artifacts if a.name.endswith("after.png")]) == 1
 
 
 def test_final_capture_lands_on_the_last_leaf_step_before_a_no_match_for_each(

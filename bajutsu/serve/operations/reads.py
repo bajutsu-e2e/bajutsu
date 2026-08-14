@@ -15,6 +15,7 @@ from bajutsu.analytics import ledger as _usage_ledger
 from bajutsu.analytics import stats as _usage_stats
 from bajutsu.config import Config, load_config
 from bajutsu.drivers import base as driver_base
+from bajutsu.evidence import displayed_screenshot
 from bajutsu.scenario import load_scenario_file
 from bajutsu.scenario.models import STEP_ACTIONS, Scenario, Step
 from bajutsu.serve import flakiness as _flakiness
@@ -518,10 +519,16 @@ def _find_scenario(manifest: dict[str, Any], scenario_name: str | None) -> dict[
 
 
 def _artifact_names(step_artifacts: list[dict[str, Any]]) -> tuple[str | None, str | None]:
-    """The first recorded `elements` / `screenshot` artifact name for a step, or `None` for either
-    the run never recorded (BE-0341) — mirrors `report/rows.py`'s `by_kind.setdefault` precedence:
-    the pre-step baseline is first in the list, so it wins even when a capturePolicy rule fired too."""
+    """The `elements` / `screenshot` artifact names the editor shows for a step, or `None` for
+    either the run never recorded (BE-0341).
+
+    `elements` takes the first recorded name — the file has one fixed name, so every later entry
+    names the same file. `screenshot` goes through `displayed_screenshot`, so the editor's element
+    picker and the HTML report resolve one step to one image: the post-action `after.png` when the
+    run recorded one, else the pre-step baseline's `before.png`.
+    """
     by_kind: dict[str, str] = {}
+    shots: list[str] = []
     for art in step_artifacts:
         if not isinstance(art, dict):
             continue
@@ -534,7 +541,9 @@ def _artifact_names(step_artifacts: list[dict[str, Any]]) -> tuple[str | None, s
         # unrelated artifact elsewhere in the org's runs tree.
         if isinstance(kind, str) and isinstance(name, str) and _valid_step_id(name):
             by_kind.setdefault(kind, name)
-    return by_kind.get("elements"), by_kind.get("screenshot")
+            if kind == "screenshot":
+                shots.append(name)
+    return by_kind.get("elements"), displayed_screenshot(shots)
 
 
 def _safe_exists(store: ArtifactStore, rel: str) -> bool:

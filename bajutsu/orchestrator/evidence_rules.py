@@ -160,18 +160,30 @@ def _collect_captures(
     screen_changed: bool,
     config_capture: list[str] | None = None,
 ) -> list[str]:
-    """Post-step capture kinds for this step: inline `capture`, any matching capturePolicy rules,
-    and the config's `defaults.capture` baseline (`config_capture`) — a guarantee applied to every
-    step regardless of trigger, unlike the other two sources. The always-on instant baseline
-    (`screenshot.before` + `elements`) is captured separately, before the step acts (BE-0341) — this
-    returns only what the scenario/config asked for, minus any `screenshot.before` token: that
-    pre-step baseline already wrote the file, so re-taking it here would silently mislabel a
-    post-action pixel as `before.png`. Interval kinds (`video` / `deviceLog` / `appTrace`) are left
-    in; the caller splits those out separately."""
-    fired: list[str] = [*(step.capture or []), *(config_capture or [])]
+    """Post-step capture kinds for this step: `screenshot.after`, then inline `capture`, any
+    matching capturePolicy rules, and the config's `defaults.capture` baseline (`config_capture`) —
+    a guarantee applied to every step regardless of trigger, unlike the other two sources.
+
+    `screenshot.after` leads the list because every step records one whether or not anything asked
+    for it, the post-action half of the always-on screenshot pair: the pre-step baseline
+    (`screenshot.before` + `elements`) is captured separately, before the step acts (BE-0341), and a
+    step showing only the screen it was about to act on leaves the result it produced unrecorded.
+    Both viewers display `after.png` in preference to `before.png` (`displayed_screenshot`), so
+    without it a narrowed `capture` list would silently cost a step its displayed screenshot.
+
+    Any `screenshot.before` token is dropped instead: the pre-step baseline already wrote that file,
+    so re-taking it here would mislabel a post-action pixel as `before.png`. Interval kinds
+    (`video` / `deviceLog` / `appTrace`) are left in; the caller splits those out separately.
+    """
+    fired: list[str] = ["screenshot.after", *(step.capture or []), *(config_capture or [])]
     primary = _primary_selector(step)
     primary_id = primary.first_id() if primary is not None else None
     for rule in scenario.capture_policy:
         if _rule_fires(rule, kind, primary_id, screen_changed, ok):
             fired.extend(rule.capture)
-    return [t for t in _dedupe(fired) if t != "screenshot.before"]
+    # A bare `screenshot` names the file `screenshot.after` does (`evidence.capture` defaults the
+    # modifier to `after`), and `_dedupe` compares whole tokens — so normalize first, or the
+    # always-on token above and a scenario's own bare `screenshot` both fire, writing `after.png`
+    # twice and leaving a duplicate artifact entry in the manifest.
+    normalized = ["screenshot.after" if t == "screenshot" else t for t in fired]
+    return [t for t in _dedupe(normalized) if t != "screenshot.before"]

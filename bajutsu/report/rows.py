@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu.drivers.actuation import Actuation
+from bajutsu.evidence import displayed_screenshot
 from bajutsu.from_grouping import grouped_provenance
 from bajutsu.orchestrator import RunResult
 from bajutsu.report.format import (
@@ -114,13 +115,15 @@ def _screen_rect(elements: list[dict[str, Any]]) -> tuple[str | None, str | None
 
 def _view_data(out: Any, run_dir: Path | None) -> dict[str, Any]:
     # Build a kind -> artifact index once so later lookups are O(1) instead of repeated
-    # O(n) scans over the same list. Use setdefault so the first artifact of each kind
-    # wins, matching the previous next(...) semantics (a kind can appear more than once
-    # when e.g. screenshot.before and screenshot.after are both requested).
+    # O(n) scans over the same list. Use setdefault so the first artifact of each kind wins, which
+    # is all `elements` needs: the kind can appear more than once (a post-step capture on top of the
+    # pre-step baseline), but it writes one fixed filename, so every entry names the same file.
+    # `screenshot` does not work that way — `before.png` and `after.png` are different files — so it
+    # is resolved by `displayed_screenshot`, the choice the serve editor's picker also makes.
     by_kind: dict[str, Any] = {}
     for a in out.artifacts:
         by_kind.setdefault(a.kind, a)
-    shot = by_kind.get("screenshot")
+    shot = displayed_screenshot([a.name for a in out.artifacts if a.kind == "screenshot"])
     tree = by_kind.get("elements")
     # Embed the captured elements inline so the report shows them in an overlay (no
     # new tab), matching how logs/network are embedded for offline (file://) viewing.
@@ -133,7 +136,7 @@ def _view_data(out: Any, run_dir: Path | None) -> dict[str, Any]:
             tree_rows = [_tree_row(e) for e in els]
             screen_w, screen_h = _screen_rect(els)
     return {
-        "shot": shot.name if shot else None,
+        "shot": shot,
         "tree": tree.name if tree else None,
         "tree_rows": tree_rows,
         "tree_count": len(tree_rows) if tree_rows is not None else 0,

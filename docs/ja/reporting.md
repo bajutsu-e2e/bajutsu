@@ -20,7 +20,8 @@ runs/<runId>/
 ├── ctrf.json         # Common Test Report Format（PR コメントやダッシュボードなど、より豊かな CI の消費側向け）
 ├── report.html       # 自己完結 HTML（外部アセット無し）
 └── <stepId>/         # ステップごとの証跡（FileSink 使用時）
-    ├── after.png     # screenshot
+    ├── before.png    # screenshot（ステップが動作する前）
+    ├── after.png     # screenshot（動作したあと）
     ├── elements.json # query() ダンプ
     ├── segment.mp4   # video（区間）
     └── device.log    # deviceLog（区間）
@@ -47,7 +48,10 @@ runs/<runId>/
           "index": 5, "action": "tap", "ok": true, "reason": "",
           "duration_s": 0.12,
           "assertion_results": [],
-          "artifacts": [{ "name": "after.png", "kind": "screenshot", "provider": "driver" }]
+          "artifacts": [
+            { "name": "before.png", "kind": "screenshot", "provider": "driver" },
+            { "name": "after.png", "kind": "screenshot", "provider": "driver" }
+          ]
         }
       ],
       "expect_results": [
@@ -144,6 +148,11 @@ step 1 tap: FAIL 一致なし: {...}</failure>
 （**preconditions** / **steps** / **expectations**）ごとにテーブルで描画されます。steps テーブル：`#` / `result`（PASS/FAIL ピルを独立カラムで）/
 `action`（色付きバッジ）/ `detail`（対象説明）/ `at` / `view`（スクリーンショット＋レポート内 element tree
 ビューア: キャプチャした要素を別タブではなくページ内オーバーレイで開く）/ `reason`。
+表示するスクリーンショットは、どのステップも記録している動作後の `after.png` です
+（[evidence](evidence.md#区間証跡video--devicelog--apptrace)）。ビューアで要素にカーソルを合わせると、
+その要素の枠をスクリーンショット上に重ねます。枠の座標は `elements.json` から来ますが、この
+`elements.json` はステップ後の `elements` キャプチャによって動作後のものになっています。serve の
+エディタの要素ピッカーも、同じ理由から同じ画像を使います。
 detail 中の識別子（`#home.title`）と定数リテラル（`”text”` や数値）は、控えめなインライントークンで
 描画します。ソリッドな action/assert バッジと視覚的に区別されるため、変数と定数を一目で識別できます。`assert` ステップの複数チェックはネストしたテーブルになり、1 アサーション 1 行で
 `kind` / `target` / `comparison` のセルに分割します（読みにくい `a; b; c` 形式を解消）。実行されなかった

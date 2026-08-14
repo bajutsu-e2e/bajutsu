@@ -14,7 +14,7 @@ import logging
 import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Protocol
 
 from bajutsu.artifact_perms import restrict_file
@@ -48,6 +48,29 @@ class Artifact:
     name: str
     kind: str
     provider: str
+
+
+def displayed_screenshot(screenshot_names: list[str]) -> str | None:
+    """Which of a step's screenshots a viewer shows.
+
+    The post-action `after.png` when the run recorded one, else the first screenshot it did record.
+    Both viewers — the HTML report's steps table and element viewer, and the serve editor's element
+    picker — resolve a step to one image through here, so the two never disagree about which
+    screenshot a step "is". Preferring `after.png` keeps that image next to the tree in
+    `elements.json`: the pre-step baseline writes the pre-action tree (BE-0341), but the file has one
+    fixed name, so a post-step `elements` capture (the default `defaults.capture` asks for one)
+    replaces it with the post-action tree. The fallback covers a capture policy recording no
+    `after.png` at all, so a step still shows whichever screenshot it has.
+
+    Args:
+        screenshot_names: every `screenshot` artifact name the step recorded, in capture order.
+            Names are re-rooted under the step id (`00-login/step0/after.png`), so the post-action
+            one is matched on its filename — the only name `screenshot.after` writes.
+    """
+    return next(
+        (n for n in screenshot_names if PurePosixPath(n).name == "after.png"),
+        screenshot_names[0] if screenshot_names else None,
+    )
 
 
 def write_elements(

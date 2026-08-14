@@ -40,7 +40,13 @@ class _RecordingSink:
     ) -> list[Artifact]:
         if kinds:
             self.calls.append((step_id, kinds))
-        return []
+        # Named the way `evidence.capture` names them, so the end-of-run safety capture sees the
+        # `after.png` the post-step call already recorded and skips rather than shooting again.
+        return [
+            Artifact(f"{step_id}/{token.partition('.')[2] or 'after'}.png", "screenshot", "driver")
+            for token in kinds
+            if token.partition(".")[0] == "screenshot"
+        ]
 
     def start_scenario_intervals(self, sid: str, kinds: list[str]) -> list[intervals.Interval]:
         return []

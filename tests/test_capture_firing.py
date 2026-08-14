@@ -1,17 +1,19 @@
 """Tests for evidence firing in the run loop.
 
-Every step always captures a pre-step baseline (screenshot.before + elements, taken before the step
-acts, BE-0341); only the scenario's last leaf step also gets a second, post-step one (screenshot.after
-alone — `elements` is deliberately not re-captured, since `elements.json` has one fixed filename and
-re-capturing it would overwrite the pre-step baseline's pre-action tree with a post-action one,
-decoupling it from what `before.png` shows). capturePolicy / inline `capture` add
-extra instant captures on top of the post-step call — never `screenshot.before`, which the pre-step
-baseline already wrote (filtered out as redundant). Interval kinds (video / deviceLog / appTrace)
-are heavy and opt-in (BE-0028): recorded once for the whole scenario, but only when the scenario
-actually requests that kind.
+Every step captures two instant baselines: a pre-step one (screenshot.before + elements, taken
+before the step acts, BE-0341) and a post-step one that always leads with screenshot.after, so both
+halves of the screenshot pair exist for every step whatever the scenario asked for. `elements` is
+deliberately not re-captured post-step unless something asks: `elements.json` has one fixed
+filename, so an unconditional second write would overwrite the pre-action tree on every step.
+capturePolicy / inline `capture` add extra instant kinds onto the post-step call — never
+`screenshot.before`, which the pre-step baseline already wrote (filtered out as redundant). Interval
+kinds (video / deviceLog / appTrace) are heavy and opt-in (BE-0028): recorded once for the whole
+scenario, but only when the scenario actually requests that kind.
 
-Every scenario below has exactly one step, which is therefore always also the last leaf step — so
-every test sees both baselines around whatever a capturePolicy rule itself contributes.
+Every scenario below has exactly one step, which is therefore also the last leaf step. That step's
+end-of-run safety capture (BE-0341) is skipped whenever the post-step call already recorded an
+`after.png`, so these tests see exactly two calls — which is why `RecordingSink` returns artifacts
+rather than an empty list: a sink reporting nothing would leave that gate blind.
 """
 
 from __future__ import annotations
@@ -44,7 +46,14 @@ class RecordingSink:
     ) -> list[Artifact]:
         if kinds:
             self.calls.append((step_id, kinds))
-        return []
+        # Name the screenshots the way `evidence.capture` does, so the end-of-run safety capture
+        # sees the `after.png` this call just recorded and skips — a sink returning nothing would
+        # make every scenario here look like it needs that extra capture.
+        return [
+            Artifact(f"{step_id}/{token.partition('.')[2] or 'after'}.png", "screenshot", "driver")
+            for token in kinds
+            if token.partition(".")[0] == "screenshot"
+        ]
 
     def start_scenario_intervals(
         self, scenario_id: str, kinds: list[str]
@@ -157,9 +166,22 @@ def test_action_trigger_adds_to_baseline() -> None:
     )
     assert sink.calls == [
         ("x/step0", BASELINE_BEFORE),
-        ("x/step0", ["actionLog"]),
-        ("x/step0", BASELINE_AFTER),
+        ("x/step0", [*BASELINE_AFTER, "actionLog"]),
     ]
+
+
+def test_bare_screenshot_token_does_not_double_the_always_on_after_shot() -> None:
+    # A bare `screenshot` means `screenshot.after` (the modifier defaults to `after`), so a scenario
+    # spelling it that way must not shoot `after.png` twice against the always-on token — which
+    # would also leave a duplicate artifact entry in the manifest for that one file.
+    driver = FakeDriver([_el("a", "A")])
+    sink = RecordingSink()
+    run_scenario(
+        driver,
+        _scn({"name": "x", "steps": [{"tap": {"id": "a"}, "capture": ["screenshot"]}]}),
+        sink=sink,
+    )
+    assert sink.calls == [("x/step0", BASELINE_BEFORE), ("x/step0", BASELINE_AFTER)]
 
 
 def test_action_trigger_skips_on_id_mismatch() -> None:
@@ -207,8 +229,7 @@ def test_screen_changed_trigger_adds_to_baseline() -> None:
     )
     assert sink.calls == [
         ("x/step0", BASELINE_BEFORE),
-        ("x/step0", ["actionLog"]),
-        ("x/step0", BASELINE_AFTER),
+        ("x/step0", [*BASELINE_AFTER, "actionLog"]),
     ]
 
 
@@ -228,8 +249,7 @@ def test_error_trigger_is_the_safety_net() -> None:
     )
     assert sink.calls == [
         ("x/step0", BASELINE_BEFORE),
-        ("x/step0", ["actionLog"]),
-        ("x/step0", BASELINE_AFTER),
+        ("x/step0", [*BASELINE_AFTER, "actionLog"]),
     ]
 
 
@@ -267,8 +287,7 @@ def test_inline_raw_tree_and_elements_together_both_go_post_step() -> None:
     )
     assert sink.calls == [
         ("x/step0", BASELINE_BEFORE),
-        ("x/step0", ["elements", "rawTree"]),
-        ("x/step0", BASELINE_AFTER),
+        ("x/step0", [*BASELINE_AFTER, "elements", "rawTree"]),
     ]
 
 
@@ -491,8 +510,7 @@ def test_config_capture_is_a_baseline_guarantee_on_every_step() -> None:
     )
     assert sink.calls == [
         ("x/step0", BASELINE_BEFORE),
-        ("x/step0", ["actionLog"]),
-        ("x/step0", BASELINE_AFTER),
+        ("x/step0", [*BASELINE_AFTER, "actionLog"]),
     ]
 
 
@@ -516,8 +534,7 @@ def test_config_capture_dedupes_against_inline_and_policy() -> None:
     # actionLog appears once (inline, policy, and config all name it); elements joins from config.
     assert sink.calls == [
         ("x/step0", BASELINE_BEFORE),
-        ("x/step0", ["actionLog", "elements"]),
-        ("x/step0", BASELINE_AFTER),
+        ("x/step0", [*BASELINE_AFTER, "actionLog", "elements"]),
     ]
 
 

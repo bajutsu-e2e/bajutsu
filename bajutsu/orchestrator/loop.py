@@ -1280,7 +1280,9 @@ class _StepRunner:
             if not ext_ok:
                 outcome.ok, outcome.reason = False, ext_reason
 
-        # `_collect_captures` already excludes `screenshot.before` (BE-0341): the pre-step baseline
+        # `_collect_captures` always leads with `screenshot.after`, so this call records the
+        # post-action half of every step's screenshot pair whatever the scenario asked for. It
+        # excludes `screenshot.before` for the mirror-image reason (BE-0341): the pre-step baseline
         # above wrote that file from the true pre-action state, so re-taking it here would silently
         # mislabel a post-action pixel as `before.png`.
         fired = _collect_captures(
@@ -1379,25 +1381,17 @@ def _run_steps(
     )
     result = _StepRunner(state, cfg).exec_steps(scenario.steps, driver)
     _logger.debug("%s: %d runner-issued screen reads (BE-0234)", sid, state.total_reads)
-    # The scenario's true final state has no following step to carry it forward as a pre-step
-    # baseline, so the last leaf step's outcome gets one more screenshot here (BE-0341). `elements`
-    # is deliberately NOT re-captured: `elements.json` has one fixed filename, so re-capturing it
-    # here would overwrite the pre-step baseline's pre-action tree with a post-action one — while
-    # `screenshotUrl` (the editor's element-picker pairing, `bajutsu/serve/operations/reads.py`) keeps
-    # resolving to the *first*-recorded screenshot, `before.png`. That mismatch would let a picked
-    # element's coordinates (from the post-action tree) drift from what `before.png` actually shows.
-    # Keeping `elements.json` the pre-action tree for every step, including the last, keeps that pair
-    # consistent throughout. `after.png` is written as a raw artifact for anyone reading the manifest
-    # directly; today's viewers (the HTML report and the serve editor) both resolve a step's
-    # displayed screenshot to the *first*-recorded one, `before.png`, so this file is not surfaced by
-    # default — making a viewer prefer it for the scenario's last step, if ever wanted, is separate,
-    # future scope.
-    # Gated on the leaf not already having recorded an `after.png`: a `capturePolicy` rule
-    # (`screenshot.after`, or bare `screenshot` — defaults to `after`) firing post-step on this same
-    # last leaf already wrote one. Capturing again would silently overwrite the rule's own shot with
-    # a slightly later one (same fixed filename) and leave a second, duplicate `screenshot`/`after.png`
-    # entry in `leaf.outcome.artifacts` for anyone reading the manifest directly — exactly the
-    # audience the comment above names for this file.
+    # The end-of-run safety capture (BE-0341), now a narrow one: the post-step call leads with
+    # `screenshot.after` for every leaf step, so the last leaf almost always already has its
+    # `after.png` and the gate below skips. What it still covers is the one path that returns before
+    # reaching that call — a step failing on `UncoveredSystemAlertLocale` — which sets `last_leaf`
+    # from its except block precisely so a scenario ending there still records the screen it ended
+    # on. `elements` is deliberately NOT captured alongside: `elements.json` has one fixed filename,
+    # so a capture here would replace the tree the step already recorded — the one its `actionLog`
+    # and network artifacts describe — with a strictly later read.
+    # The gate is on the leaf not already having an `after.png`, not on which call produced one: a
+    # second shot would silently overwrite the first (same fixed filename) and leave a duplicate
+    # `screenshot`/`after.png` entry in `leaf.outcome.artifacts` for anyone reading the manifest.
     if (leaf := state.last_leaf) is not None and not any(
         a.kind == "screenshot" and a.name.endswith("after.png") for a in leaf.outcome.artifacts
     ):
