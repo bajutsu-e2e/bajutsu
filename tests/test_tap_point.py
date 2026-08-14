@@ -22,7 +22,7 @@ from bajutsu.scenario import Step, load_scenarios
 def _app(w: float, h: float) -> base.Element:
     """An application-root element carrying the window frame — what `tapPoint` scales against."""
     return {"identifier": None, "label": None, "traits": ["application"], "value": None,
-            "frame": (0.0, 0.0, w, h)}  # fmt: skip
+            "frame": (0.0, 0.0, w, h), "nativeZ": None}  # fmt: skip
 
 
 # --- DSL parse + validation ---
@@ -63,7 +63,7 @@ def test_dispatch_scales_by_the_screen_extent_shared_helper() -> None:
     # No application element: the screen size is the max element edge (screen_size_from_elements —
     # the one helper the crawl and alert guard also use), here (10+100, 20+200) = (110, 220).
     el: base.Element = {"identifier": "x", "label": None, "traits": [], "value": None,
-                        "frame": (10.0, 20.0, 100.0, 200.0)}  # fmt: skip
+                        "frame": (10.0, 20.0, 100.0, 200.0), "nativeZ": None}  # fmt: skip
     driver = FakeDriver(screen=[el])
     scenario = load_scenarios("- name: t\n  steps:\n    - tapPoint: { x: 0.5, y: 0.5 }\n")[0]
     assert run_scenario(driver, scenario).ok

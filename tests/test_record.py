@@ -77,6 +77,7 @@ def _el(identifier: str, label: str, traits: list[str] | None = None) -> base.El
         "traits": traits or ["button"],
         "value": None,
         "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
     }
 
 
@@ -128,6 +129,7 @@ def test_record_preserves_selection_across_recording_turns() -> None:
         "traits": [],
         "value": "hello",
         "frame": (0.0, 0.0, 100.0, 40.0),
+        "nativeZ": None,
     }
     driver = FakeDriver([field])
     # Two separate observations: `select` on the first turn, `copy` on the next — so `copy` only
@@ -776,6 +778,7 @@ def _noid(label: str) -> base.Element:
         "traits": ["button"],
         "value": None,
         "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
     }
 
 
@@ -1094,6 +1097,7 @@ def _vel(label: str | None, traits: list[str]) -> base.Element:
         "traits": traits,
         "value": None,
         "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
     }
 
 
@@ -1249,6 +1253,7 @@ def _field(identifier: str, label: str) -> base.Element:
         "traits": ["textField"],
         "value": None,
         "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
     }
 
 

@@ -9,8 +9,12 @@
 # android Makefile's `e2e-network` target runs. Only the *collector* transport (BajutsuNet → host,
 # over `adb reverse`) is the feature under test; the API endpoint is an ordinary app request, so the
 # host-loopback alias is fine for it (unlike the collector, which uses `adb reverse` uniformly).
+#
+# Tagged `android` on top of `network` so the iOS bulk lanes exclude it by that tag alone: they sweep
+# this directory and would otherwise run a scenario whose endpoint only an emulator can reach, where
+# it can only time out. The android Makefile names this file explicitly, so the tag costs it nothing.
 - name: refresh issues an observed catalog request (android)
-  tags: [network]
+  tags: [network, android]
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_API_URL: "http://10.0.2.2:8770" }
   steps:

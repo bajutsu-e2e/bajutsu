@@ -18,6 +18,7 @@ def _obs() -> Observation:
         "traits": ["button"],
         "value": None,
         "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
     }
     return Observation(goal="g", screen=[el], history=[])
 

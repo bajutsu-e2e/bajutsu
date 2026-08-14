@@ -133,7 +133,12 @@ than resolving through frame-center coordinates. Needs Xcode's `xcodebuild`.
 - `tap(sel)`: `_resolve` confirms uniqueness (**retries not-found, fails ambiguity fast**: a
   real-device tree can be transiently empty during transitions), then taps the element **directly by
   its accessibility identifier** — a semantic tap, no coordinates (BE-0289 re-resolves a stale
-  snapshot handle and re-actuates only on a still-unique match).
+  snapshot handle and re-actuates only on a still-unique match). A tap XCTest *refuses* takes one
+  more step: iOS can report a container inflated over the control it wraps, so the driver probes the
+  target's named descendants and, where **exactly one** is reachable, taps that one and records
+  `substitution: soleHittableDescendant`. Where none or several are, it fails and names the
+  candidates rather than choosing between them
+  ([selectors](selectors.md#elementnottappable-a-resolved-but-unreachable-target)).
 - `wait_for`: uses the runner's native condition waiting.
 - `pinch` / `rotate`: two-finger multi-touch gestures performed natively by the runner.
 - `select` / `copy`: native text selection on the focused field.

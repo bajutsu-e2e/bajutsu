@@ -116,13 +116,22 @@ runner-build-device:
 # these bulk runs discover every scenario file and do not reset per-scenario permission state, so the
 # `notDetermined` prompt its handleSystemAlert step needs is not guaranteed here (its own iOS CI job
 # installs a fresh app for it). A dedicated tag keeps it out without riding the legacy `xcuitest` tag.
+# Two more tags are excluded for the same "this file has its own lane" reason: `visual`
+# (scenarios/visual.yaml), because these lanes pass no `--baselines` and every pixel check could only
+# report its baseline missing — `vrt` below names that file and its baseline directory explicitly;
+# and `android` (scenarios/network_android.yaml), whose endpoint is the Android emulator's
+# host-loopback alias, reachable from no Simulator.
 # Prereqs: a booted simulator, `make runner-build`.
 SIM ?= $(shell xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | head -1)
 
+# `--touch-markers` draws each touch the app receives into the video and the step screenshots, the
+# iOS counterpart of the `show_touches` / `pointer_location` settings android/Makefile turns on for
+# its own runs. These targets already exclude the `visual` tag, and `run` skips a screenshot-comparing
+# scenario anyway, so the markers reach no assertion that reads pixels.
 run-swiftui: swiftui-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest,systemalert --config $(CONFIG)
+	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android --config $(CONFIG) --touch-markers
 run-uikit: uikit-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest,systemalert --config $(CONFIG)
+	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android --config $(CONFIG) --touch-markers
 
 # scenarios/tabs.yaml on its own, forced onto XCUITest (see the comment above run-swiftui/run-uikit).
 run-swiftui-tabs: swiftui-build runner-build
@@ -267,11 +276,12 @@ flutter-android-noax-build:
 # The shared id-based scenarios against the Flutter app. iOS resolves to XCUITest; `--exclude`
 # drops what a Flutter target does not serve (see docs/drivers.md "Flutter" out-of-scope): `network`
 # (Dart HTTP bypasses the native interceptors, so capture / mocks see nothing), the AI-path
-# `systemalert`, and `alert` (scenarios/alert.yaml — no Flutter Log screen has a native-alert
-# affordance yet). Prereqs: a booted Simulator, `make runner-build`; an attached emulator for Android.
+# `systemalert`, `alert` (scenarios/alert.yaml — no Flutter Log screen has a native-alert affordance
+# yet), and `visual` (scenarios/visual.yaml, which needs the `--baselines` directory `vrt` supplies).
+# Prereqs: a booted Simulator, `make runner-build`; an attached emulator for Android.
 run-flutter: flutter-build runner-build
 	cd $(ROOT) && uv run bajutsu run --target showcase-flutter --udid $(SIM) --backend xcuitest \
-		--exclude network,systemalert,alert --config $(CONFIG)
+		--exclude network,systemalert,alert,visual --config $(CONFIG)
 
 # The same on-device set the native Compose lane runs (demos/showcase/android/Makefile), minus
 # device.yaml — its device-control clipboard round-trips through the in-app BajutsuAndroid receiver

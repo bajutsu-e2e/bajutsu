@@ -93,8 +93,8 @@ def test_round_trip_through_manifest_is_lossless() -> None:
 
 def test_manifest_carries_schema_version_and_source_name() -> None:
     data = manifest_dict("r1", [_result()], source_name="smoke.yaml")
-    # bumped for absolute wall-clock timestamps plus the persisted video anchor (BE-0348)
-    assert data["schemaVersion"] == 6
+    # bumped for the actuation record's optional `substitution` (BE-XXXX)
+    assert data["schemaVersion"] == 7
     assert data["sourceName"] == "smoke.yaml"
 
 
@@ -153,6 +153,50 @@ def test_a_malformed_actuation_record_is_dropped_whole_not_field_by_field() -> N
 
     # Only the well-formed record survives; the three damaged ones are gone, not half-reconstructed.
     assert [(a.gesture, a.points) for a in restored.steps[0].actuations] == [("tap", ((9.0, 9.0),))]
+
+
+def test_a_substitution_survives_the_round_trip() -> None:
+    # The token is the only signal that the element actuated is not the one the selector named, so a
+    # report re-rendered offline has to still carry it.
+    original = [_result()]
+    original[0].steps[0].actuations.append(
+        Actuation(
+            gesture="tap",
+            via="handle",
+            unit="point",
+            target="log.count-Increment",
+            substitution="soleHittableDescendant",
+        )
+    )
+    data = json.loads(json.dumps(manifest_dict("r1", original)))
+    assert results_from_manifest(data) == original
+
+
+def test_an_older_manifest_without_substitution_loads_as_none() -> None:
+    # v6 and earlier carry no such key, and its absence means exactly what a reader should conclude:
+    # no substitution happened.
+    data = manifest_dict("r1", [_result()])
+    step = data["scenarios"][0]["steps"][0]  # type: ignore[index]
+    step["actuations"] = [{"gesture": "tap", "via": "handle", "unit": "point"}]
+
+    [restored] = results_from_manifest(data)
+
+    assert restored.steps[0].actuations[0].substitution is None
+
+
+def test_a_malformed_substitution_degrades_without_dropping_the_record() -> None:
+    # Unlike geometry, a damaged token cannot make a record read as a different gesture — dropping
+    # the whole record over it would lose the coordinate evidence for no gain.
+    data = manifest_dict("r1", [_result()])
+    step = data["scenarios"][0]["steps"][0]  # type: ignore[index]
+    step["actuations"] = [
+        {"gesture": "tap", "via": "handle", "unit": "point", "substitution": 7},
+    ]
+
+    [restored] = results_from_manifest(data)
+
+    assert len(restored.steps[0].actuations) == 1
+    assert restored.steps[0].actuations[0].substitution is None
 
 
 def test_a_loader_side_drop_is_disclosed_through_dropped_actuations() -> None:
