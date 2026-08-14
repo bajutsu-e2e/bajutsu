@@ -362,6 +362,9 @@ page rather than from this file, and a later edit to those three fields has no e
 records a warning naming the org whose entry still declares them, so an operator learns the file
 stopped deciding rather than watching an edit vanish. `targets` is the field that keeps working
 here, so an entry pared down to `targets:` alone is the expected end state on such a deployment.
+Paring an entry down before that first copy is safe too, since the order is not yours to get wrong:
+an entry declaring only `targets` is skipped rather than copied, so it neither creates a row nor
+spends the org's one copy, and restoring `members` later still takes effect.
 Two orgs may each claim a target of the same name, and each is authorized for it; under a single
 bound configuration they share the one `targets:` definition that name resolves to. A deployment
 with no database keeps reading every field from this file, none of the above applying to it.

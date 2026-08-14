@@ -54,6 +54,15 @@ def test_js_wires_all_four_org_endpoints(tmp_path: Path) -> None:
     assert "renderOrgsView" in text
 
 
+def test_js_renders_a_display_name_that_differs_from_the_slug(tmp_path: Path) -> None:
+    # The create form collects a display name and no endpoint can change it afterwards, so a value
+    # no row ever showed would leave a typo permanent and invisible. Rendered only when it differs
+    # from the slug the row already leads with, so the common case is not printed twice.
+    text = _fetch(tmp_path, "/serve.orgs.mjs")
+    body = text.split("function orgRow")[1].split("\n}")[0]
+    assert "o.name !== o.slug" in body and "esc(o.name)" in body
+
+
 def test_js_keeps_one_membership_form_open_at_a_time(tmp_path: Path) -> None:
     # The form's input ids (`#orgs-members` and friends) are singletons, so two open forms would
     # make every save read the first form's fields — silently replacing one org's roster with

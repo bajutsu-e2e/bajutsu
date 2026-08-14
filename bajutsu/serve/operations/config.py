@@ -43,6 +43,7 @@ from bajutsu.serve.helpers import (
 from bajutsu.serve.orgs import DEFAULT_ORG, seed_orgs_from_config
 from bajutsu.serve.provider_store import ProviderSettingsError
 from bajutsu.serve.state import OrgProviderSettings, ProviderSettings, ServeState
+from bajutsu.serve.uploads import Upload
 
 # The logical name of the Claude API key in the secret store (BE-0136). The store holds each named
 # credential under its own name; the second one below is the `claude-code` provider's OAuth token.
@@ -576,6 +577,18 @@ def seed_orgs_from_bound_config(state: ServeState) -> None:
             level=logging.WARNING,
             check="orgs_membership_ignored",
         )
+
+
+def bind_upload_and_seed(state: ServeState, upload: Upload) -> None:
+    """Make *upload* the bound configuration and seed its `orgs:` block (BE-0375).
+
+    One operation rather than two calls each upload bind site must remember, because forgetting the
+    second is silent in both directions: nothing warns at bind time, and the operator's first signal
+    is a tenant whose members are all turned away at sign-in. `state.py` cannot import `operations`,
+    so the pairing lives here beside the seed rather than inside `ServeState.bind_upload`.
+    """
+    state.bind_upload(upload)
+    seed_orgs_from_bound_config(state)
 
 
 def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:

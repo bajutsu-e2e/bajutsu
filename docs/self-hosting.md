@@ -688,7 +688,9 @@ next start, once per org, so an existing deployment keeps admitting the same peo
 then on the file no longer decides those three fields, and `serve` writes a warning under
 `event=org.membership.ignored` (with `check=orgs_membership_ignored`) naming any org whose entry
 still declares them. Pare those entries down to `targets:` at your convenience — that field is still
-read. Two behaviors change with the cutover, both by design: an unreadable or unbound config no
+read, and paring before the first copy is as safe as paring after: an entry declaring only `targets:`
+is skipped rather than copied, so it is left uncopied for a later config to seed rather than fixed at
+admitting nobody. Two behaviors change with the cutover, both by design: an unreadable or unbound config no
 longer denies anyone, because the database alone decides sign-in, and a database `serve` cannot read
 answers a sign-in with HTTP 503 naming the store rather than a 403 blaming the user's GitHub
 membership. That 503 is recorded under its own `event=oauth.store_unavailable` at `WARNING`, not

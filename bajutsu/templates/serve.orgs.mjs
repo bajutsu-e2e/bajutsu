@@ -26,7 +26,7 @@ function orgRow(o) {
     : 'retire this org — it stops admitting sign-ins; its history is kept';
   return `<li class="prjrow orgrow" data-testid="orgs.row" data-slug="${esc(o.slug)}">
     <span class="prjname" data-testid="orgs.slug">${esc(o.slug)}</span>
-    <span class="prjsrc" data-testid="orgs.summary">${o.members.length} member(s) · ${o.githubOrgs.length} GitHub org(s) · ${o.editorTeam ? esc(o.editorTeam) : 'no editor Team'} · ${o.projectCount} project(s)</span>
+    <span class="prjsrc" data-testid="orgs.summary">${o.name && o.name !== o.slug ? esc(o.name) + ' · ' : ''}${o.members.length} member(s) · ${o.githubOrgs.length} GitHub org(s) · ${o.editorTeam ? esc(o.editorTeam) : 'no editor Team'} · ${o.projectCount} project(s)</span>
     <button class="cfgbtn" data-act="edit" data-testid="orgs.edit">Membership</button>
     <button class="cfgbtn prjremove" data-act="remove" data-testid="orgs.remove" title="${esc(removeTitle)}"${disabled ? ' disabled' : ''}>Delete</button>
   </li>`;

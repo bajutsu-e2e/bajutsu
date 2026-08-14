@@ -143,13 +143,21 @@ def seed_orgs_from_config(repository: Repository, orgs: dict[str, OrgConfig]) ->
     most once: `seed_org_membership` skips one already marked seeded (or soft-deleted), which is
     the hard cutover — from then on the database owns that org's membership.
 
+    An entry declaring only `targets` is skipped rather than seeded, so the cutover marker is never
+    spent on a roster nobody wrote. That entry is legitimate in both directions: it is the end state
+    the docs recommend *after* the cutover, and paring the config down before the first seeded start
+    must not be the irreversible act of locking every org at "admits nobody". Its row is therefore
+    left uncreated — target ownership resolves from the configuration, not the table — and a config
+    that later declares membership can still seed it.
+
     Returns the names of the entries that were *not* seeded but still declare
     `members`/`githubOrgs`/`editorTeam`, so the caller can tell an operator that configuration no
-    longer decides them. An entry carrying only `targets` is legitimate after the cutover — target
-    ownership stays in configuration — and is never reported.
+    longer decides them. A `targets:`-only entry is never reported.
     """
     stale: list[str] = []
     for name, oc in orgs.items():
+        if not (oc.members or oc.github_orgs or oc.editor_team is not None):
+            continue
         seeded = repository.seed_org_membership(
             name,
             slug=name,
@@ -158,7 +166,7 @@ def seed_orgs_from_config(repository: Repository, orgs: dict[str, OrgConfig]) ->
             github_orgs=list(oc.github_orgs),
             editor_team=oc.editor_team,
         )
-        if not seeded and (oc.members or oc.github_orgs or oc.editor_team is not None):
+        if not seeded:
             stale.append(name)
     return stale
 

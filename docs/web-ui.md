@@ -190,7 +190,8 @@ admin edits it (BE-0375). The tab appears for an admin on such a deployment, and
 any other deployment the server declines to list orgs, which is what keeps the tab hidden.
 
 Each row shows an org's slug, how many members and GitHub organizations it holds, its editor Team,
-and how many projects it owns. **Create** takes a slug and an optional display name, and the new org
+and how many projects it owns — plus its display name, when that differs from the slug the row
+already leads with. **Create** takes a slug and an optional display name, and the new org
 starts with no members at all — nobody can sign in as it until you fill in its membership, which the
 page says inline so an empty tenant does not read as a bug. **Membership** opens a form that replaces
 all three fields at once, prefilled from what the server holds right now; a change takes effect on

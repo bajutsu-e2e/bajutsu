@@ -307,8 +307,10 @@ A new admin-only **Orgs** page in the serve shell, parallel to
 [BE-0275](../BE-0275-serve-projects-management-page/BE-0275-serve-projects-management-page.md)'s
 Projects page: a list of orgs with create and delete actions (delete disabled, with the project
 count shown, while the org still owns one), and a membership form per org (members, GitHub
-organizations, editor Team) that calls the `POST` endpoint above. Both the API and the page exist
-only when a repository is wired, following unit 2's gate.
+organizations, editor Team) that calls the `POST` endpoint above. Each row renders the display name
+the create form collects whenever it differs from the slug: no endpoint can change `name` afterwards,
+so a display name the page never showed would leave a typo permanent and invisible. Both the API and
+the page exist only when a repository is wired, following unit 2's gate.
 
 ### 6. One-time backfill, then a hard cutover
 
@@ -363,6 +365,24 @@ a correctly configured deployment or push an operator to empty `orgs:` and lose 
 target-ownership data. This is the same "an operator forgot this is no longer read" signal
 [BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass.md) already
 gives for its own retired environment variable.
+
+An entry declaring only `targets` is skipped before the seed rather than seeded with an empty
+roster, which is what keeps the cutover from turning on the order an operator pares the file down
+in. The documentation tells an operator to leave only `targets:` and says nothing about when, so
+paring first must not be the act that fixes an org at admitting nobody — and seeding such an entry
+would do exactly that: it would spend the row's marker on a roster nobody wrote, stay deliberately
+silent about it (the warning above never reports a `targets:`-only entry), and leave a restored
+`members:` list unreachable short of re-entering every roster by hand on the Orgs page. Skipping
+leaves the row uncreated, which unit 1's own reasoning permits — target ownership resolves from the
+configuration, never from the table — so a configuration that later declares membership still seeds
+it, in either order.
+
+Each of the three upload bind paths (`bind_upload_config`, the composed-triple bind, and
+`activate_uploaded_project` in
+[`bajutsu/serve/operations/upload.py`](../../bajutsu/serve/operations/upload.py)) reaches the seed
+through one `bind_upload_and_seed` helper rather than a seed call each site remembers to make, since
+forgetting one is silent in both directions: nothing warns at bind time, and the operator's first
+signal is a tenant whose members are all turned away at sign-in.
 
 A fresh deployment — a repository wired from its first boot, no prior configuration-only history —
 seeds against whatever `orgs:` block that first boot binds, typically empty; every org it has from
@@ -453,7 +473,8 @@ database is exactly the piece that makes an empty `orgs` table recoverable.
       may each claim a target of the same name instead of configuration order awarding it to one and
       forbidding the other a target it is still shown.
 - [x] 5 — The four `/api/orgs…` endpoints (admin-only, each mutation recorded through `record_audit`)
-      and the Orgs admin page (create / delete-when-empty / edit membership), gated
+      and the Orgs admin page (create / delete-when-empty / edit membership, each row rendering the
+      display name when it differs from the slug), gated
       on a repository being wired; `POST /api/orgs` marks the new row seeded at creation, so no
       later `orgs:` entry re-seeds it; delete is a soft delete (`Org.deleted_at`) that excludes the
       org from sign-in resolution and `GET /api/orgs` without removing its row or violating any
@@ -464,7 +485,9 @@ database is exactly the piece that makes an empty `orgs` table recoverable.
       than inferred from empty membership columns; the Alembic migration adds only the membership
       and marker columns and runs no seeding of its own; the startup/rebind warning when an
       already-seeded org's `orgs:` entry still declares `members`/`githubOrgs`/`editorTeam` (an
-      entry that carries only `targets` stays expected and does not warn).
+      entry that carries only `targets` stays expected, does not warn, and is skipped rather than
+      seeded, so paring the file down before the first seeded start leaves the row unseeded instead
+      of fixing the org at admitting nobody).
 - [x] 7 — Confirm the admin-Team bypass still admits sign-in against an empty or wholly
       unmatching `orgs` table, now that the table rather than the configuration file decides the
       gate, and leave `BAJUTSU_OAUTH_ADMIN_TEAMS` in the environment.

@@ -444,6 +444,31 @@ def test_seeding_reports_nothing_for_an_entry_that_only_declares_targets(
     assert not [r for r in caplog.records if getattr(r, "event", None) == "org.membership.ignored"]
 
 
+def test_a_targets_only_entry_is_left_unseeded_so_a_restored_roster_still_seeds(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # The docs tell an operator to pare an entry down to `targets:` and say nothing about when, so
+    # doing it before the first seeded start must stay recoverable. Seeding such an entry would
+    # spend its cutover marker on an empty roster and lock the org at "admits nobody" for good, with
+    # `org.membership.ignored` deliberately silent about it. No row is created either: target
+    # ownership resolves from the configuration, never from the table.
+    state = _state(
+        serve_engine,
+        tmp_path,
+        body="targets:\n  checkout: { bundleId: com.x }\norgs:\n  acme:\n    targets: [checkout]\n",
+    )
+    assert state.repository is not None
+    assert orgs_from_db(state.repository) == {}
+
+    state.config.write_text(
+        "targets:\n  checkout: { bundleId: com.x }\n"
+        "orgs:\n  acme:\n    members: [alice]\n    targets: [checkout]\n",
+        encoding="utf-8",
+    )
+    seed_orgs_from_bound_config(state)
+    assert orgs_from_db(state.repository)["acme"].members == ["alice"]
+
+
 def test_a_new_orgs_entry_is_seeded_at_a_later_rebind(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
@@ -455,6 +480,30 @@ def test_a_new_orgs_entry_is_seeded_at_a_later_rebind(
         _COLLIDING_YAML + "  initech:\n    members: [peter]\n", encoding="utf-8"
     )
     seed_orgs_from_bound_config(state)
+    assert orgs_from_db(state.repository)["initech"].members == ["peter"]
+
+
+def test_binding_an_uploaded_bundle_seeds_its_orgs_block(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # Every path that repoints `state.config` has to seed, and forgetting one is silent in both
+    # directions — nothing warns at bind time, and the first signal is a tenant turned away at
+    # sign-in. The three upload bind sites reach the seed through `bind_upload_and_seed` rather than
+    # a hand-copied call each, so a fourth site gets the seed by calling the same helper instead of
+    # by remembering a second call.
+    from bajutsu.serve.operations.config import bind_upload_and_seed
+    from bajutsu.serve.uploads import Upload
+
+    state = _state(serve_engine, tmp_path)
+    assert state.repository is not None
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    config = bundle / "bajutsu.config.yaml"
+    config.write_text("targets: {}\norgs:\n  initech:\n    members: [peter]\n", encoding="utf-8")
+    bind_upload_and_seed(
+        state, Upload(dir=bundle, config=config, filename="b.zip", sha256="x", size=1, org="acme")
+    )
+    assert state.config == config
     assert orgs_from_db(state.repository)["initech"].members == ["peter"]
 
 

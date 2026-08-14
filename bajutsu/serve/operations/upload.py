@@ -21,7 +21,7 @@ import yaml
 from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.helpers import list_targets
 from bajutsu.serve.operations.composition import materialize_composition
-from bajutsu.serve.operations.config import seed_orgs_from_bound_config
+from bajutsu.serve.operations.config import bind_upload_and_seed
 from bajutsu.serve.server.object_store import org_prefix, upload_prefix
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.upload_artifacts import (
@@ -169,8 +169,7 @@ def bind_upload_config(
         org=org,
         actor=actor,
     )
-    state.bind_upload(upload)
-    seed_orgs_from_bound_config(state)  # a newly bound `orgs:` block seeds its orgs (BE-0375)
+    bind_upload_and_seed(state, upload)  # a newly bound `orgs:` block seeds its orgs (BE-0375)
     _record_audit(state, actor, org, "upload", upload.filename, {"sha256": sha256})
     return {
         "ok": True,
@@ -424,8 +423,7 @@ def _compose_and_bind(
             shas, filename=filename, scenarios_filename=scenarios_filename
         ),
     )
-    state.bind_upload(upload)
-    seed_orgs_from_bound_config(state)  # a newly bound `orgs:` block seeds its orgs (BE-0375)
+    bind_upload_and_seed(state, upload)  # a newly bound `orgs:` block seeds its orgs (BE-0375)
     return upload, 200
 
 
@@ -610,6 +608,5 @@ def activate_uploaded_project(
         org=org,
         actor=actor,
     )
-    state.bind_upload(upload)
-    seed_orgs_from_bound_config(state)  # a newly bound `orgs:` block seeds its orgs (BE-0375)
+    bind_upload_and_seed(state, upload)  # a newly bound `orgs:` block seeds its orgs (BE-0375)
     return {"ok": True, "config": str(config_path)}, 200
