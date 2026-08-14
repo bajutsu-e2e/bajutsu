@@ -534,12 +534,15 @@ def _artifact_names(
     run recorded one, else the pre-step baseline's `before.png`.
 
     Args:
-        exists: whether the store actually holds a named artifact. The screenshot candidates are
-            filtered through it *before* the choice, not after: the manifest can name a file the
+        exists: whether the store actually holds a named artifact. The manifest can name a file the
             store no longer holds (a run restored from Trash, or one synced into an object store
             that never received the last write), and choosing `after.png` from the names alone
-            would spend the fallback on a missing file, leaving the step with no image to pick
-            against while its `before.png` sits right there.
+            would leave the step with no image to pick against while its `before.png` sits right
+            there. Probed lazily, on the chosen name only, with the rest filtered just for the
+            fallback: this call site's `exists` is a live object-store lookup on the hosted backend,
+            and `read_scenario` walks every step of a scenario, so filtering all candidates up front
+            would cost one round trip per recorded screenshot per step — two, now that every acting
+            step records both — for a fallback that fires almost never.
     """
     by_kind: dict[str, str] = {}
     shots: list[str] = []
@@ -557,7 +560,10 @@ def _artifact_names(
             by_kind.setdefault(kind, name)
             if kind == "screenshot":
                 shots.append(name)
-    return by_kind.get("elements"), displayed_screenshot([n for n in shots if exists(n)])
+    chosen = displayed_screenshot(shots)
+    if chosen is not None and not exists(chosen):
+        chosen = displayed_screenshot([n for n in shots if n != chosen and exists(n)])
+    return by_kind.get("elements"), chosen
 
 
 def _safe_exists(store: ArtifactStore, rel: str) -> bool:

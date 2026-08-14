@@ -221,11 +221,12 @@ descriptions throughout. Bajutsu merges the scenario definition and its executio
 **expectations**), each a table. The **steps** table: `#` / `result` (a PASS/FAIL pill in its own
 column) / `action` (a colored badge) / `detail` (the target description) / `at` / `view` (screenshot +
 an **in-report element-tree viewer**: the captured elements open in an in-page overlay, no new tab) /
-`reason`. The screenshot shown is the post-action `after.png`, which every step records
-([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)). Hovering an element in the
-viewer highlights its frame on the screenshot. That frame comes from `elements.json`, which every
-step also re-reads after it acts — so the frame and the pixels under it describe the same moment
-whatever the `capture` list asked for. The serve editor's element picker resolves a step to the
+`reason`. The screenshot shown is the post-action `after.png`
+([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)). Every step that acts records
+one. A step that fails before acting records none, and shows its `before.png` instead. Hovering an
+element in the viewer highlights its frame on the screenshot. That frame comes from `elements.json`,
+which a step re-reads after acting. So the frame and the pixels under it describe the same moment,
+whatever `capture` asked for. The serve editor's element picker resolves a step to the
 same image, for the same reason. In the detail, identifiers (`#home.title`) and literal constants (`“text”`,
 numbers) are rendered as subtly-styled inline tokens — visually distinct from the solid
 action/assert badges, so variables and constants are distinguishable at a glance. An `assert` step's

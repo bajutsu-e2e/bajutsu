@@ -148,10 +148,12 @@ step 1 tap: FAIL 一致なし: {...}</failure>
 （**preconditions** / **steps** / **expectations**）ごとにテーブルで描画されます。steps テーブル：`#` / `result`（PASS/FAIL ピルを独立カラムで）/
 `action`（色付きバッジ）/ `detail`（対象説明）/ `at` / `view`（スクリーンショット＋レポート内 element tree
 ビューア: キャプチャした要素を別タブではなくページ内オーバーレイで開く）/ `reason`。
-表示するスクリーンショットは、どのステップも記録している動作後の `after.png` です
-（[evidence](evidence.md#区間証跡video--devicelog--apptrace)）。ビューアで要素にカーソルを合わせると、
+表示するスクリーンショットは、動作後の `after.png` です
+（[evidence](evidence.md#区間証跡video--devicelog--apptrace)）。動作したステップは、いずれも
+`after.png` を記録します。動作する前に失敗したステップは `after.png` を記録しないため、
+動作前の `before.png` を表示します。ビューアで要素にカーソルを合わせると、
 その要素の枠をスクリーンショット上に重ねます。枠の座標は `elements.json` から来ます。
-`elements.json` も、どのステップでも動作したあとに取り直します。そのため `capture` に何を指定しても、
+`elements.json` も、ステップが動作したあとに取り直します。そのため `capture` に何を指定しても、
 枠と、その下にある画素とは同じ瞬間を表します。serve のエディタの要素ピッカーも、同じ理由から同じ
 画像を使います。
 detail 中の識別子（`#home.title`）と定数リテラル（`”text”` や数値）は、控えめなインライントークンで

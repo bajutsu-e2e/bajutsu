@@ -40,8 +40,9 @@ class _RecordingSink:
     ) -> list[Artifact]:
         if kinds:
             self.calls.append((step_id, kinds))
-        # Named the way `evidence.capture` names them, so a caller reading the returned artifacts
-        # sees what a real sink would have written.
+        # Named the way a `FileSink` names them — `evidence.capture` returns the bare filename
+        # (`after.png`) and `FileSink.capture` re-roots it under the step id — so a caller reading
+        # the returned artifacts sees what a real run's manifest would carry.
         return [
             Artifact(f"{step_id}/{token.partition('.')[2] or 'after'}.png", "screenshot", "driver")
             for token in kinds
