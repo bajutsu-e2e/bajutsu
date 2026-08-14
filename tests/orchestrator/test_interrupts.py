@@ -358,9 +358,9 @@ def test_cleared_interstitial_is_not_misattributed_as_the_steps_screen_change() 
     )
     # step0 is the `go` tap; its `before` is re-baselined to the post-recovery tree, so its own
     # (no-op) action fires no screenChanged capture — the middle `actionLog` call the rule would
-    # add is absent. It carries only the two always-on baselines: the pre-step one every step
-    # gets, and the final-step one since it is also the scenario's only (and therefore last)
-    # step (BE-0341).
+    # add is absent. It carries only the two always-on captures every leaf step gets: the pre-step
+    # baseline and the post-step one. The end-of-run safety capture skips, having found the
+    # `after.png` the post-step call already recorded (BE-0341).
     step0 = [kinds for sid, kinds in sink.calls if sid == "x/step0"]
     assert step0 == [["screenshot.before", "elements"], ["screenshot.after", "elements"]]
 

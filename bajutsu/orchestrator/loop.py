@@ -1020,6 +1020,11 @@ class _StepRunner:
         # `elements` token re-reads the tree on every step, so a dump taken here would describe the
         # pre-action read while the `elements.json` beside it describes the post-action one. Post-step
         # the two land together, where `capture()`'s own stable sort pairs them on the same read.
+        # The cost is that no token asks for a pre-action raw dump any more — the investigation that
+        # wants one (comparing a `longPress`/`doubleTap`'s mis-resolved coordinate against the
+        # backend's own reply at resolution time) would need a `rawTree.before` modifier, the
+        # counterpart to `screenshot.before`, captured in this baseline where `pre_elements` pairs
+        # with it. That is a scenario-schema addition, so it belongs to its own item.
         outcome.artifacts.extend(
             self.cfg.sink.capture(self.cfg.driver, step_id, pre_kinds, elements=pre_elements)
         )
@@ -1272,11 +1277,9 @@ class _StepRunner:
             self.cfg.scenario, step, kind, outcome.ok, screen_changed, self.cfg.capture
         )
         # Interval kinds are recorded scenario-wide (run_scenario), so only the
-        # instant kinds are captured per step here. Pass the tree only if we already read it;
-        # otherwise `elements=None` lets the sink's `elements` writer read on its own (a NullSink
-        # reads nothing), so a FileSink run stays at one read and a NullSink run at zero. A `web`
-        # block captures against the native `driver`, so it must read the active (web) tree here
-        # rather than let the native writer fall back to a mismatched tree (BE-0234 Unit 2).
+        # instant kinds are captured per step here. A `web` block captures against the native
+        # `driver`, so it must read the active (web) tree here rather than let the native writer
+        # fall back to a mismatched tree (BE-0234 Unit 2).
         instant = [t for t in fired if _kind_of(t) not in intervals.INTERVAL_KINDS]
         if active_driver is not self.cfg.driver:
             # A `web` block's capture call below always targets the native `self.cfg.driver` (a
@@ -1285,7 +1288,22 @@ class _StepRunner:
             # an unrelated backend entirely, next to this step's *web* `elements.json`. Drop the
             # request rather than pair the two: no artifact beats a mismatched one.
             instant = [t for t in instant if _kind_of(t) != "rawTree"]
-        els = screen.get() if active_driver is not self.cfg.driver else screen.cached
+        # Read the tree here rather than leave `elements=None` for the sink's own writer to read
+        # (`write_elements`) whenever that writer will actually run: a read issued inside the sink is
+        # invisible to `_ScreenRead`, so it is neither counted in `total_reads` nor carried into
+        # `prev_after` — and the next step's pre-step baseline, finding `prev_after` unset, pays a
+        # second read for the same screen. Routing it through `screen.get()` costs one read per step
+        # instead of two, the reuse BE-0234 Unit 2 is built on (~2.4s per read on adb). A sink that
+        # writes nothing must still pay nothing, hence the `NullSink` guard the pre-step baseline
+        # uses too.
+        writes_elements = any(_kind_of(t) == "elements" for t in instant) and not isinstance(
+            self.cfg.sink, NullSink
+        )
+        els = (
+            screen.get()
+            if active_driver is not self.cfg.driver or writes_elements
+            else screen.cached
+        )
         outcome.artifacts.extend(
             self.cfg.sink.capture(self.cfg.driver, step_id, instant, elements=els)
         )

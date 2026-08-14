@@ -11,17 +11,17 @@ adb driver's internal `_settle` reads are counted separately in `tests/test_adb.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 
 from _orch import FakeClock, _scenario
 from conftest import el
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver, React
-from bajutsu.evidence import Artifact
+from bajutsu.evidence import Artifact, FileSink, NullSink
 from bajutsu.evidence.intervals import Interval
 from bajutsu.evidence.network import NetworkExchange
 from bajutsu.orchestrator import run_scenario
-from bajutsu.orchestrator.waits import WaitTrace
 
 
 class _CountingDriver(FakeDriver):
@@ -41,9 +41,13 @@ class _CountingDriver(FakeDriver):
         return super().query()
 
 
-class _KindsSink:
-    """Records the capture kinds requested per step (a NullSink that reads nothing, so it never
-    forces the loop to materialize a tree — the counter stays a pure measure of loop-issued reads)."""
+class _KindsSink(NullSink):
+    """Records the capture kinds requested per step, writing nothing.
+
+    Subclasses `NullSink` rather than duck-typing the protocol so the loop recognizes it as a sink
+    that reads nothing and skips materializing a tree for it — the counter then stays a pure measure
+    of loop-issued reads.
+    """
 
     def __init__(self) -> None:
         self.kinds_by_step: dict[str, list[str]] = {}
@@ -57,14 +61,6 @@ class _KindsSink:
         elements: list[base.Element] | None = None,
     ) -> list[Artifact]:
         self.kinds_by_step[step_id] = kinds
-        return []
-
-    def wait_diagnostic(
-        self, step_id: str, *, trace: WaitTrace, elements: list[base.Element]
-    ) -> Artifact | None:
-        return None
-
-    def start_scenario_intervals(self, scenario_id: str, kinds: list[str]) -> list[Interval]:
         return []
 
     def finish_scenario_intervals(
@@ -118,6 +114,25 @@ def test_pre_step_baseline_issues_no_extra_runner_read() -> None:
     )
     assert result.ok
     assert driver.queries == 0
+
+
+def test_a_writing_sink_pays_one_read_per_step_not_two(tmp_path: Path) -> None:
+    # A sink that writes `elements` reads the tree once per step, not once per capture call. The
+    # post-step read goes through `_ScreenRead` rather than being left to `write_elements`, so it is
+    # counted *and* seeds `prev_after` — which the next step's pre-step baseline then reuses instead
+    # of reading again. Leaving it to the sink would cost two uncounted reads per step (~2.4s each on
+    # adb) and keep `prev_after` unset for the whole scenario, defeating BE-0234 Unit 2's reuse.
+    # Two steps therefore cost three reads: step0's baseline (nothing to reuse yet) plus one
+    # post-step read each.
+    driver = _CountingDriver([el("a", "A", ["button"]), el("b", "B", ["button"])])
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"tap": {"id": "a"}}, {"tap": {"id": "b"}}]}),
+        clock=FakeClock(),
+        sink=FileSink(tmp_path / "run1"),
+    )
+    assert result.ok
+    assert driver.queries == 3
 
 
 def test_pre_step_baseline_skips_the_web_query_under_a_null_sink() -> None:

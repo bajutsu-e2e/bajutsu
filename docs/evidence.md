@@ -23,9 +23,10 @@ Related: [the capture tokens in scenarios](scenarios.md#capture-token-grammar) �
 > `capture` — unlike those two, it fires unconditionally rather than on a trigger, so it acts as a
 > baseline guarantee rather than a rule.
 >
-> All three ways request evidence *on top of* the two screenshots every step already records. Naming
-> `screenshot.after` in any of them therefore changes nothing, and leaving it out costs nothing:
-> `before.png` and `after.png` are captured whatever the three ask for (below).
+> All three ways request evidence *on top of* what every step already records on both sides of its
+> action. Naming `screenshot.after` or `elements` in any of them therefore changes nothing, and
+> leaving either out costs nothing: `before.png`, `after.png`, and the post-action `elements.json`
+> are captured whatever the three ask for (below).
 
 ## Evidence kinds and acquisition timing
 
@@ -197,7 +198,7 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 > Every step captures evidence on **both** sides of its action: `before.png` and `elements.json`
 > before it acts, showing the screen it is about to act on, and `after.png` and a second
 > `elements` read once it has, showing what the action left behind. Neither side depends on the
-> `capture` list — narrowing that list never costs a step one of its two screenshots. `elements.json`
+> `capture` list — narrowing that list costs a step neither screenshot, nor its tree. `elements.json`
 > has a single filename, so the post-action read replaces the pre-action tree: the tree a run keeps
 > describes the screen the action produced, which is the screen `after.png` shows and the one every
 > viewer draws element frames from.

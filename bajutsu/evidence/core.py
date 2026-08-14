@@ -58,9 +58,10 @@ def displayed_screenshot(screenshot_names: list[str]) -> str | None:
     table and element viewer, the serve editor's element picker, and the triage context handed to a
     failure investigator — so none of them disagrees about which screenshot a step "is". Preferring
     `after.png` keeps that image next to the tree in `elements.json`: the pre-step baseline writes
-    the pre-action tree (BE-0341), but the file has one fixed name, so a post-step `elements` capture
-    (the default `defaults.capture` asks for one) replaces it with the post-action tree. The fallback covers a capture policy recording no
-    `after.png` at all, so a step still shows whichever screenshot it has.
+    the pre-action tree (BE-0341), but the file has one fixed name, so the always-on post-step
+    `elements` capture replaces it with the post-action tree. The fallback covers the one path that
+    returns before that post-step call — a step failing on `UncoveredSystemAlertLocale` — so a step
+    still shows whichever screenshot it has.
 
     Args:
         screenshot_names: every `screenshot` artifact name the step recorded, in capture order.

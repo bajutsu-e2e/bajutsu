@@ -208,9 +208,9 @@ def _one_step_report(tmp_path: Path, artifacts: list[Artifact]) -> str:
 def test_step_shows_the_post_action_screenshot(tmp_path: Path) -> None:
     # A step recording both screenshots shows `after.png` — in the steps-table thumbnail and, since
     # the element viewer reads that same `img.shot`, in the viewer beside the element table.
-    # `elements.json` has one fixed name, so the post-step `elements` capture the default
-    # `defaults.capture` asks for leaves the embedded tree describing the post-action screen;
-    # `before.png` would put a hovered element's highlight on pixels from another moment.
+    # `elements.json` has one fixed name, so the always-on post-step `elements` capture leaves the
+    # embedded tree describing the post-action screen; `before.png` would put a hovered element's
+    # highlight on pixels from another moment.
     out = _one_step_report(
         tmp_path,
         [
@@ -227,7 +227,8 @@ def test_step_shows_the_post_action_screenshot(tmp_path: Path) -> None:
 def test_step_falls_back_to_the_pre_action_screenshot_when_no_after_png_exists(
     tmp_path: Path,
 ) -> None:
-    # A capture policy that never asks for `screenshot.after` records no `after.png`, so the step
+    # No `capture` list can suppress `after.png` any more, but one path still records none: a step
+    # that fails before it acts (`UncoveredSystemAlertLocale`) returns before the post-step call. It
     # keeps showing the pre-step baseline's `before.png` rather than nothing.
     out = _one_step_report(
         tmp_path,
