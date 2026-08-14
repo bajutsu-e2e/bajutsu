@@ -327,6 +327,37 @@ def test_make_driver_xcuitest() -> None:
     assert base.Capability.MULTI_TOUCH in driver.capabilities()
 
 
+def test_make_driver_forwards_the_xcuitest_diagnostics_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # BE-0361: this call is the only link between the environment's stall capture and the channel that
+    # declares the crash. Dropping the kwarg here would leave the runner-crash trigger collecting
+    # nothing while CI stayed green — so pin that both injected callables actually arrive, the same
+    # way the browser-engine test above pins its own forwarding.
+    captured: dict[str, object] = {}
+
+    class _Recorder:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    # Patched by name so this file keeps one import form for the driver module — `make_driver` imports
+    # `XcuitestDriver` from it at call time, so the module attribute is what it reads.
+    monkeypatch.setattr("bajutsu.drivers.xcuitest.XcuitestDriver", _Recorder)
+    fired: list[bool] = []
+    make_driver(
+        "xcuitest",
+        "UDID-1",
+        runner_port=9999,
+        runner_alive=lambda: True,
+        on_stall=lambda: fired.append(True),
+    )
+    assert callable(captured["runner_alive"])
+    hook = captured["on_stall"]
+    assert callable(hook)
+    hook()
+    assert fired == [True]  # the driver got *this* hook, not a stand-in
+
+
 def test_make_driver_xcuitest_requires_runner_port() -> None:
     with pytest.raises(ValueError, match="runner_port"):
         make_driver("xcuitest", "UDID-1")

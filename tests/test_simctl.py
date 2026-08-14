@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import plistlib
 import subprocess
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -756,3 +758,116 @@ def test_device_type_label_recovers_the_model_name() -> None:
     )
     # The family token is what `serve`'s capability inventory reads by substring, so it must survive.
     assert "iphone" in simctl.device_type_label("com.apple.x.iPhone-16").lower()
+
+
+# --- Bounded simctl calls (BE-0363) -----------------------------------------------------------
+
+
+def test_the_bound_is_chosen_from_the_subcommand() -> None:
+    # The classification is what lets a new call site inherit the right bound without its author
+    # knowing one exists, so it is checked against the builders rather than hand-typed argvs.
+    for cmd in (
+        simctl.bootstatus_cmd("U"),
+        simctl.boot_cmd("U"),
+        simctl.erase_cmd("U"),
+        simctl.install_cmd("U", "/p.app"),
+    ):
+        assert simctl._timeout_for(cmd) == simctl._DEVICE_BLOCKING_TIMEOUT_S
+    for cmd in (
+        simctl.list_booted_cmd(),
+        simctl.list_devicetypes_cmd(),
+        simctl.terminate_cmd("U", "com.x"),
+        simctl.shutdown_cmd("U"),
+    ):
+        assert simctl._timeout_for(cmd) == simctl._SIMCTL_TIMEOUT_S
+    # A device that legitimately blocks must be given far longer than one that does not, or the
+    # short bound would kill every boot.
+    assert simctl._DEVICE_BLOCKING_TIMEOUT_S > simctl._SIMCTL_TIMEOUT_S
+
+
+def test_every_call_carries_its_bound(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_run(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+        calls.append({"cmd": cmd, **kw})
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(simctl.subprocess, "run", fake_run)
+    simctl._real_run(simctl.list_booted_cmd())
+    simctl._real_run(simctl.bootstatus_cmd("UDID"))
+
+    assert calls[0]["timeout"] == simctl._SIMCTL_TIMEOUT_S
+    assert calls[1]["timeout"] == simctl._DEVICE_BLOCKING_TIMEOUT_S
+
+
+def test_a_call_that_never_returns_raises_a_device_fault(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Driven against a real subprocess that outlives its bound, since what is under test is the
+    # translation of `subprocess.run`'s own timeout — not a stub standing in for it.
+    monkeypatch.setattr(simctl, "_SIMCTL_TIMEOUT_S", 0.3)
+    sleeper = [sys.executable, "-c", "import time; time.sleep(30)"]
+
+    with pytest.raises(simctl.DeviceTimeout) as excinfo:
+        simctl._real_run(sleeper)
+
+    message = str(excinfo.value)
+    assert "0.3s" in message  # the deadline it exceeded
+    assert sys.executable in message  # and the command that exceeded it
+    # A device fault, so the handlers that already convert one keep working unchanged.
+    assert isinstance(excinfo.value, simctl.DeviceError)
+
+
+def test_the_healthy_path_is_untouched() -> None:
+    assert simctl._real_run([sys.executable, "-c", "print('ok')"]) == "ok\n"
+    # A failing command still raises rather than returning empty stdout: the whole error
+    # architecture above (`device_error`, the probes' fallbacks) reads that raise, not a "".
+    with pytest.raises(subprocess.CalledProcessError):
+        simctl._real_run([sys.executable, "-c", "raise SystemExit(3)"])
+
+
+def _timing_out(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
+    raise simctl.DeviceTimeout("device operation timed out after 60s: xcrun simctl list")
+
+
+def test_a_probe_folds_a_timeout_into_its_fallback(caplog: pytest.LogCaptureFixture) -> None:
+    # BE-0344's recovery ladder decides on what a probe observed, so a probe must not raise; the
+    # log is what keeps the wedge from passing silently.
+    caplog.set_level(logging.WARNING, logger="bajutsu.simctl")
+
+    assert simctl.resolve_udid("booted", run=_timing_out) == "booted"
+    assert simctl.booted_udids(run=_timing_out) == []
+    assert simctl.device_booted("AAA", run=_timing_out) is None
+    assert simctl.device_catalog(run=_timing_out) == {}
+    assert simctl.device_available("AAA", run=_timing_out) is None
+    assert simctl.device_type_of("AAA", run=_timing_out) is None
+    assert simctl.device_type_identifier("iPhone 17 Pro", run=_timing_out) is None
+    assert simctl.newest_iphone_device_type(run=_timing_out) is None
+    assert simctl.Env("UDID", run=_timing_out).system_locale_matches("ja_JP") is None
+    assert simctl.Env("UDID", run=_timing_out).is_installed("com.x") is False
+
+    logged = [r.getMessage() for r in caplog.records]
+    assert len(logged) == 10  # one trace per probe, none of them silent
+    assert all("timed out" in message for message in logged)
+    # Each names the fallback it reported, so a trace says what the caller was told, not only that
+    # something timed out.
+    assert len(set(logged)) == 10
+
+
+def test_a_timeout_is_not_absorbed_by_the_idempotent_calls() -> None:
+    # These suppress the ordinary "already in that state" failure. A hang is not that, and is the
+    # signal the recovery ladder exists to act on.
+    env = simctl.Env("UDID", run=_timing_out)
+    for call in (env.shutdown, env.boot, lambda: env.uninstall("com.x")):
+        with pytest.raises(simctl.DeviceTimeout):
+            call()
+    with pytest.raises(simctl.DeviceTimeout):
+        env.terminate("com.x")
+
+    # The failure they *do* exist to absorb still passes silently.
+    def failing(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
+        raise subprocess.CalledProcessError(1, args, output="", stderr="already off")
+
+    quiet = simctl.Env("UDID", run=failing)
+    quiet.shutdown()
+    quiet.boot()
+    quiet.uninstall("com.x")
+    quiet.terminate("com.x")

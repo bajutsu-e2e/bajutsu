@@ -150,7 +150,11 @@ def _boot_devices(state: ServeState, job: Job) -> bool:
         try:
             state.simctl(_simctl.bootstatus_cmd(udid), None)
             _log(job, f"booted {udid}")
-        except (OSError, subprocess.CalledProcessError) as e:
+        except (OSError, subprocess.CalledProcessError, _simctl.DeviceError) as e:
+            # `DeviceError` covers the `DeviceTimeout` a wedged host now raises (BE-0363). It is
+            # caught here rather than left to escape: this runs on a thread, so an uncaught
+            # exception would leave `errors` empty and report the boot as having succeeded — the
+            # cause-free failure BE-0363 exists to remove, moved to the `serve` job path.
             with errlock:
                 errors[udid] = str(e)
 

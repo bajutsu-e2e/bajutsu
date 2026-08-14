@@ -611,6 +611,19 @@ through an injectable `RunFn`.
 | `openurl(url)` | `simctl openurl <udid> <url>` | deeplink |
 | `screenshot(path)` | `simctl io <udid> screenshot <path>` | — |
 
+> **Every call is bounded** ([BE-0363](../roadmaps/BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout.md)):
+> the shared runner passes a deadline to every one-shot `simctl` subprocess, chosen from the command
+> itself — a long one for the commands whose duration the device or the app sets rather than simctl
+> (`bootstatus`, `boot`, `erase`, `install`), a short one for everything else. A call that never returns, the observable symptom of a
+> wedged CoreSimulator, therefore raises `simctl.DeviceTimeout` naming the command and the deadline
+> it exceeded, instead of hanging until CI cancels the whole job with no cause. `DeviceTimeout`
+> subclasses `DeviceError`, so a handler that already converts a device fault needs no change. Where
+> it lands differs by caller: the best-effort probes (`device_booted`, `device_available`,
+> `device_catalog`, and the rest) fold it into their documented fallback and log it, so the recovery
+> ladder still decides on what it observed; every other call raises, including the idempotent
+> `shutdown` / `boot` / `uninstall` / `terminate`, whose suppressions absorb a *failing* call and not
+> a hanging one.
+
 > **Injecting launch env**: an env var to pass to the app is set on the parent process as
 > `SIMCTL_CHILD_<NAME>`, which reaches the child (the app) as `<NAME>`. `child_env()` does this
 > conversion. The showcase's launch hooks like `SHOWCASE_UITEST` use this mechanism

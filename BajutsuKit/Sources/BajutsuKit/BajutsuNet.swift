@@ -21,6 +21,24 @@ public enum BajutsuNet {
     /// is kept separate so the report POST is never itself intercepted.
     static let reportSession = URLSession(configuration: .ephemeral)
 
+    /// Restore the `//` that `xcodebuild` strips out of a forwarded collector URL.
+    ///
+    /// Measured on the Simulator: Python injects `http://127.0.0.1:<port>` (22 characters) and the
+    /// XCTest runner's own environment already holds `http:/127.0.0.1:<port>` (21). `xcodebuild`
+    /// path-normalizes `.xctestrun` `TestingEnvironmentVariables` — the same machinery that expands
+    /// `__TESTROOT__` — and collapses the empty authority on the way through. `URL(string:)` then
+    /// parses the result with a **nil host**, which is not a cosmetic loss: it silently disarmed
+    /// `BajutsuURLProtocol.canInit`'s loopback guard, so every report POST was itself intercepted and
+    /// re-reported, ~1,200 times a second, each carrying the last payload. Repaired here, at the one
+    /// place the value is read, rather than by loosening the guard alone — a collector that cannot be
+    /// addressed collects nothing either way.
+    static func repairedURL(_ raw: String) -> String {
+        for scheme in ["http", "https"] where raw.hasPrefix("\(scheme):/") && !raw.hasPrefix("\(scheme)://") {
+            return "\(scheme)://" + raw.dropFirst(scheme.count + 2)
+        }
+        return raw
+    }
+
     /// Activate capture if `BAJUTSU_COLLECTOR` is set. Call once, early (e.g. in the
     /// app's `init` / `application(_:didFinishLaunchingWithOptions:)`).
     public static func startIfEnabled(
@@ -30,7 +48,7 @@ public enum BajutsuNet {
         // Ahead of the guard below on purpose: touch visualization needs neither a collector nor a
         // mock rule, and a plain recorded run with no network features at all is the case it is for.
         BajutsuTouch.startIfEnabled(environment: environment)
-        if let raw = environment["BAJUTSU_COLLECTOR"], let url = URL(string: raw) {
+        if let raw = environment["BAJUTSU_COLLECTOR"], let url = URL(string: repairedURL(raw)) {
             collectorURL = url
             collectorToken = environment["BAJUTSU_COLLECTOR_TOKEN"]
         }
@@ -69,6 +87,12 @@ public enum BajutsuNet {
         if let error { payload["error"] = String(describing: error) }
         payload["requestHeaders"] = request.allHTTPHeaderFields ?? [:]
         if let http { payload["responseHeaders"] = stringHeaders(http.allHeaderFields) }
+        // Reported whole, deliberately. A cap here looks like cheap insurance and is not: every
+        // consumer of these bodies parses them — `responseSchema` and the `request.body` matcher both
+        // run `json.loads`, so a body cut mid-object stops being JSON and the assertion fails with
+        // "response body is not JSON" about a payload that was valid. That trades a memory bug for a
+        // false verdict, which is the worse of the two. The memory this once cost came from the
+        // report loop above, not from body size, and `repairedURL` closes that at the source.
         if let reqBody = requestBody, let s = String(data: reqBody, encoding: .utf8), !s.isEmpty {
             payload["requestBody"] = s
         }

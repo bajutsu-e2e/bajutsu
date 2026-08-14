@@ -415,7 +415,7 @@ class _ScenarioRunner:
                 try:
                     try:
                         lz = self.lease(self.eff, retry_scenario)
-                    except device_errors.DeviceError:
+                    except device_errors.DeviceError as exc:
                         # A failed forced-erase prep (`simctl.DeviceError`/`adb.DeviceError`, e.g. the
                         # device rejected `erase`/`shutdown`/`boot`) is not a `BackendCrashError`, so it
                         # would otherwise escape this loop's own `except` below and abort the whole run
@@ -427,9 +427,17 @@ class _ScenarioRunner:
                         # the run, since nothing about *that* path changed. An escalated attempt
                         # degrades through the same branch and for the same reason: creating a device
                         # can fail on a host with no runtimes left, and losing every passed scenario's
-                        # verdict over that is worse than retrying onto the device this run has.
+                        # verdict over that is worse than retrying onto the device this run has. The
+                        # degradation is logged because the fault is otherwise dropped here: a hung
+                        # device (`simctl.DeviceTimeout`) would leave no trace at all of the wedge.
                         if not forced_erase:
                             raise
+                        _logger.warning(
+                            "scenario %s: forced-erase prep failed (%s); "
+                            "degrading to a bare respawn",
+                            s.name,
+                            exc,
+                        )
                         lz = self.lease(self.eff, s)
                     if attempt > 1:
                         _logger.info(
