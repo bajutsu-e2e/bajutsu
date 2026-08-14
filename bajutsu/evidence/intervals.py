@@ -475,13 +475,25 @@ def _screenrecord_baseline_size(serial: str, run: adb.RunFn, device_path: str) -
     return size or 0
 
 
+# How often the growth check asks the device for the recording's size. Deliberately coarser than
+# either sibling poll, because this one is the only poll of the three that is both *device-side* and
+# *purely diagnostic*. The iOS twin polls at 0.05s, but it reads a host file — a `stat` that costs
+# nothing. `_await_screenrecord_started` also round-trips to the device, but at 0.2s because its
+# answer *is* the video anchor, so its resolution is the measurement. This check answers only yes or
+# no, and it sits on the critical path: `AndroidEnvironment` prestarts the recording immediately
+# before it launches the app, so every probe here is an `adb shell` round trip and a device-side
+# shell spawn competing with a cold start on a two-core emulator. One second resolves "is it
+# producing?" just as well as a fifth of one, at a fifth of the traffic.
+_SCREENRECORD_GROWTH_POLL = 1.0
+
+
 def _await_screenrecord_growing(
     serial: str,
     run: adb.RunFn,
     device_path: str,
     baseline_size: int,
     timeout: float = _VIDEO_START_TIMEOUT,
-    poll: float = 0.2,
+    poll: float = _SCREENRECORD_GROWTH_POLL,
 ) -> bool:
     """Wait until the device-side recording grows past `baseline_size`, confirming it emits frames.
 
@@ -491,6 +503,10 @@ def _await_screenrecord_growing(
     difference between a slow run and a stalled one. Poll to a bounded deadline (a condition wait,
     not a fixed sleep); a probe failure is retried like any other unmet condition, since a stalled
     device is exactly where the probe itself is most likely to fail transiently.
+
+    The healthy case costs exactly one probe, because a producing recording has already passed its
+    baseline by the time the first one lands. Only a stall pays the rest, and `_SCREENRECORD_GROWTH_POLL`
+    keeps even that bounded (see its comment for why this poll is coarser than its two siblings).
 
     Returns:
         Whether growth was confirmed before the deadline. False is a stall signal the caller acts

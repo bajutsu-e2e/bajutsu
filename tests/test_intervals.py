@@ -679,6 +679,30 @@ def test_await_screenrecord_growing_returns_as_soon_as_the_file_grows(monkeypatc
     assert len(device.size_probes()) == 1
 
 
+def test_the_growth_poll_stays_cheap_on_the_launch_path(monkeypatch) -> None:
+    # This poll sits on the critical path — `AndroidEnvironment` prestarts the recording immediately
+    # before it launches the app — and every probe is an `adb shell` round trip plus a device-side
+    # shell spawn, competing with a cold start on a two-core emulator. So it must stay coarser than
+    # its two siblings: the iOS twin reads a host file for free, and the pid confirmation's answer is
+    # the video anchor, so its resolution is the measurement. This one answers only yes or no.
+    assert intervals._SCREENRECORD_GROWTH_POLL > 0.2
+    # And a full stall — the worst case, the only one that pays more than a single probe — must stay
+    # in single digits rather than the ~25 round trips a 0.2s cadence would spend. Driven on a fake
+    # clock that each `sleep` advances, so this counts the probes the cadence really produces rather
+    # than however many a no-op `sleep` would spin through.
+    clock = [0.0]
+    monkeypatch.setattr(intervals.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(
+        intervals.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds)
+    )
+    device = FakeDevice(sizes=["0"])  # never grows, so the poll runs to its deadline
+
+    assert not intervals._await_screenrecord_growing(
+        "SER", device, "/sdcard/x.mp4", 0, timeout=intervals._VIDEO_START_TIMEOUT
+    )
+    assert len(device.size_probes()) <= 10
+
+
 def test_await_screenrecord_growing_retries_past_a_transient_probe_error(monkeypatch) -> None:
     # A stalled device is exactly where the probe itself is most likely to fail transiently, so a
     # failed read is an unmet condition to retry, never a reason to declare the recording dead.
