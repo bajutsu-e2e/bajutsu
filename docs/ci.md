@@ -89,6 +89,13 @@ lane, so it never skips a job a change could have broken, and — reading only t
 workflow's own declarations, and those Makefile targets — puts no LLM on the path and has no bearing
 on any run's pass/fail verdict.
 
+The dev tools live in the `dev` dependency group, so the Linux job runs `uv sync --group
+dev` then `uv run --no-sync …` (plain `uv run` would re-sync to the default set and drop
+them). The gate mirrors [`make check`](../Makefile) and the [`pre-push`](../.githooks/pre-push)
+hook step-for-step; every check except `actionlint` (a standalone binary CI installs) runs
+identically on a fresh clone via `uv` alone, which is what makes "green locally" predict
+"green in CI".
+
 ### What a failing E2E job collects (BE-0361, BE-0367)
 
 The hardest E2E failures are the ones where nothing crashes. On iOS the resident XCUITest runner —
@@ -209,6 +216,12 @@ producing bytes, which is what a wedged renderer — this lane's known flake —
   comprehensive collector, and a rooted pull of `/data/tombstones` (native crash reports) and
   `/data/anr/` (Application Not Responding (ANR) traces) — the two crash-report classes the iOS
   sweep gets for free from the host's own diagnostic reports, but which live device-side here.
+  The sweep bounds itself as well as each command, for the same reason the in-process capture
+  carries a budget above its per-probe timeouts: on the wedged-device failure this exists to
+  document, every `adb` read hangs to its full ceiling, so per-command ceilings alone would let the
+  collection spend most of a job's `timeout-minutes` and turn a reportable failure into a cancelled
+  job holding a truncated collection. A read the deadline cuts off says so in its own file, since
+  "the budget ran out" and "this read found nothing" are different answers about the device.
 - **Over time, about the host**, from the
   [`collect-android-diagnostics`](../.github/actions/collect-android-diagnostics/action.yml)
   composite action, whose `start` phase before each job's emulator step launches a background

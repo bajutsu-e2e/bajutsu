@@ -285,14 +285,6 @@ jobs:
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
-      # Boot the AVD under KVM and run the core scenarios over the adb backend (the action owns
-      # boot + readiness; the default serial `booted` resolves to the one running emulator). The
-      # onboarding gate (BE-0304) runs first, inside the emulator session where a device is attached:
-      # `bajutsu doctor --environment-only` must report no ✗ in its `environment:` section, exercising
-      # the real `adb` presence check and attached-device count through the real actuator — the drift
-      # no injected-fake unit test can see. It must run here (not as a plain step) because the
-      # environment gate counts attached devices, which only exist while this action holds the
-      # emulator up. A ✗ fails the step and this gating job before the scenarios run.
       # Sample the Linux host's own load for the whole emulator step (BE-0367 Layer 3). It reads
       # only the host, so it can bracket that step from outside — which is also what lets it cover a
       # job whose emulator step dies outright.
@@ -301,6 +293,14 @@ jobs:
         with:
           phase: start
 
+      # Boot the AVD under KVM and run the core scenarios over the adb backend (the action owns
+      # boot + readiness; the default serial `booted` resolves to the one running emulator). The
+      # onboarding gate (BE-0304) runs first, inside the emulator session where a device is attached:
+      # `bajutsu doctor --environment-only` must report no ✗ in its `environment:` section, exercising
+      # the real `adb` presence check and attached-device count through the real actuator — the drift
+      # no injected-fake unit test can see. It must run here (not as a plain step) because the
+      # environment gate counts attached devices, which only exist while this action holds the
+      # emulator up. A ✗ fails the step and this gating job before the scenarios run.
       - name: Run the core scenarios (adb)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         env:
@@ -619,15 +619,15 @@ jobs:
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
-      # `e2e-conformance` runs `adb root` (the MULTI_TOUCH pinch/rotate test needs the rooted
-      # `sendevent` sweep, BE-0232) then the `ondevice`-marked contract serially (`-n0`) against the one
-      # booted emulator.
       # Layer 3, bracketing the emulator step — see `smoke`'s own pair for why it can be a step.
       - name: Start host telemetry
         uses: ./.github/actions/collect-android-diagnostics
         with:
           phase: start
 
+      # `e2e-conformance` runs `adb root` (the MULTI_TOUCH pinch/rotate test needs the rooted
+      # `sendevent` sweep, BE-0232) then the `ondevice`-marked contract serially (`-n0`) against the one
+      # booted emulator.
       - name: Run the driver conformance contract (adb)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         env:
@@ -725,14 +725,14 @@ jobs:
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
-      # `e2e-fault-injection` runs the `ondevice`-marked cases serially (`-n0`) against the one booted
-      # emulator, and leaves the display awake however they end.
       # Layer 3, bracketing the emulator step — see `smoke`'s own pair for why it can be a step.
       - name: Start host telemetry
         uses: ./.github/actions/collect-android-diagnostics
         with:
           phase: start
 
+      # `e2e-fault-injection` runs the `ondevice`-marked cases serially (`-n0`) against the one booted
+      # emulator, and leaves the display awake however they end.
       - name: Run the adb fault injection (transient-empty retry)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         env:

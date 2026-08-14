@@ -30,10 +30,21 @@ esac
 out="runs/diagnostics"
 mkdir -p "$out" || exit 0
 
-# Bounds every collection. The cheap tier is a handful of device reads; `adb bugreport` is Android's
-# own comprehensive collector and runs tens of seconds, so it gets its own longer ceiling below.
-readonly CHEAP_TIMEOUT=120
-readonly BUGREPORT_TIMEOUT=300
+# Bounds every collection, and the sweep as a whole. On the wedged-device failure this exists to
+# document, every `adb` read hangs to its full ceiling — `dumpsys` and `bugreport` block on the same
+# stuck `system_server`, and `wait-for-device` waits out its ceiling by definition — so per-command
+# ceilings alone would let the sweep spend most of a job's `timeout-minutes` and turn a reportable
+# failure into a cancelled job with a truncated collection. Layer 1 carries a capture budget on top
+# of its per-probe timeouts for exactly this reason. `adb bugreport` is Android's own comprehensive
+# collector and runs tens of seconds, so it keeps a longer ceiling than the cheap reads.
+readonly CHEAP_TIMEOUT=30
+readonly BUGREPORT_TIMEOUT=180
+readonly SWEEP_DEADLINE=$((SECONDS + 360))
+
+# True while the sweep may still start another collection.
+within_budget() {
+  [ "$SECONDS" -lt "$SWEEP_DEADLINE" ]
+}
 
 # Run one collection into `$out/<name>`, recording a failure in the file instead of aborting.
 collect() {
@@ -41,6 +52,12 @@ collect() {
   local seconds="$2"
   shift 2
   local path="$out/$name"
+  if ! within_budget; then
+    # Said out loud rather than skipped silently: "the sweep budget ran out" and "this read found
+    # nothing" are different answers about the device.
+    printf '<skipped: the sweep budget is spent>\n' >"$path"
+    return
+  fi
   printf '+ %s\n' "$*" >"$path"
   # `$?` on the right of `||` is the collection's own status, which `if !` would have swallowed.
   timeout "$seconds" "$@" >>"$path" 2>&1 || printf '<collection failed (exit %s)>\n' "$?" >>"$path"
@@ -79,7 +96,9 @@ collect bugreport.log "$BUGREPORT_TIMEOUT" adb bugreport "$out/bugreport.zip"
 # two classes the iOS sweep gets for free from the host's own DiagnosticReports directory — so they
 # need an explicit rooted pull. The AVD profile these jobs use (`target: google_apis`, not
 # `google_apis_playstore`) permits `adb root`; `wait-for-device` covers adbd restarting as root.
-if timeout "$CHEAP_TIMEOUT" adb root >>"$out/root.log" 2>&1 &&
+if ! within_budget; then
+  printf '<skipped: the sweep budget is spent>\n' >>"$out/root.log"
+elif timeout "$CHEAP_TIMEOUT" adb root >>"$out/root.log" 2>&1 &&
   timeout "$CHEAP_TIMEOUT" adb wait-for-device >>"$out/root.log" 2>&1; then
   collect tombstones.log "$CHEAP_TIMEOUT" adb pull /data/tombstones "$out/tombstones"
   collect anr.log "$CHEAP_TIMEOUT" adb pull /data/anr "$out/anr"
