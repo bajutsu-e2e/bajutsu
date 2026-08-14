@@ -327,6 +327,7 @@ def _fake_toolchain(
     wedged: dict[str, bool] | None = None,
     system_locale: dict[str, str | None] | None = None,
     export_fails: bool = False,
+    stays_booted_after_shutdown: bool = False,
 ) -> tuple[list[list[str]], list[list[str]], simctl.RunFn]:
     """Fake Popen (the runner), the driver factory, and simctl; return (popen log, simctl log, run).
 
@@ -343,11 +344,16 @@ def _fake_toolchain(
     the BE-0320 pin the way a real Simulator would answer. Omitted, the domain reads as unwritten and
     every cold spawn pins it. `export_fails` instead makes every read of that domain fail, modelling
     a device whose pin can be written but never confirmed.
+
+    The fake device also tracks whether it is booted, so the pin's own post-shutdown read-back
+    (BE-0359) sees what a real device would. `stays_booted_after_shutdown` models a CoreSimulator
+    wedged enough that `simctl shutdown` silently no-ops — the case that read-back exists to catch.
     """
     popen_argvs: list[list[str]] = []
     simctl_calls: list[list[str]] = []
     DRIVER_KWARGS.clear()
     domain: dict[str, str | None] = system_locale if system_locale is not None else {"v": None}
+    booted = {"v": True}  # the leased device starts booted, as one handed over by the pool is
 
     def _popen(argv: list[str], **_kw: Any) -> _FakeProc:
         popen_argvs.append(argv)
@@ -365,6 +371,12 @@ def _fake_toolchain(
         simctl_calls.append(argv)
         if argv[2:3] == ["erase"]:
             domain["v"] = None  # a real erase wipes the device's preferences with everything else
+        if argv[2:3] == ["shutdown"] and not stays_booted_after_shutdown:
+            booted["v"] = False
+        if argv[2:3] in (["boot"], ["bootstatus"]):
+            booted["v"] = True
+        if argv[2:5] == ["list", "devices", "booted"]:
+            return _device_json(["UDID"] if booted["v"] else [])
         if argv[2:3] == ["list"]:
             # The device listing a cold prep reads to record what kind of device this is, so a
             # replacement can later be cloned from it.
@@ -437,17 +449,21 @@ def test_cold_spawn_pins_the_system_locale_and_reboots_for_it(
 
     assert domain["v"] == "ja_JP"  # the device now carries the configured locale
     assert simctl.system_locale_cmds("UDID", "ja_JP")[0] in simctl_calls
-    # boot (the initial one) -> list (recording the device type a replacement would be cloned from)
-    # -> spawn (the read, then the two writes) -> shutdown -> boot (the one that re-renders
-    # SpringBoard) -> spawn (the read-back that verifies it took).
+    # boot (the initial one) -> bootstatus (waiting it out, BE-0359) -> list (recording the device
+    # type a replacement would be cloned from) -> spawn (the read, then the two writes) -> shutdown
+    # -> list (confirming the device went down) -> boot (the one that re-renders SpringBoard) ->
+    # bootstatus (waiting that one out too) -> spawn (the read-back that verifies it took).
     assert _verbs(simctl_calls) == [
         "boot",
+        "bootstatus",
         "list",
         "spawn",
         "spawn",
         "spawn",
         "shutdown",
+        "list",
         "boot",
+        "bootstatus",
         "spawn",
     ]
 
@@ -539,6 +555,106 @@ def test_an_unconfirmable_pin_runs_on_but_is_not_remembered(
     # so the run proceeds — but the pin is unconfirmed, so it must not be recorded: warm reuse is
     # gated on it, and remembering it would carry the doubt across every later lease.
     popen_argvs, _, run = _fake_toolchain(monkeypatch, export_fails=True)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="ja_JP")
+
+    env.start(eff, Preconditions())  # no raise: nothing was observed to be wrong
+    assert env._pinned_locale is None
+    env.start(eff, Preconditions())
+    assert (
+        len(popen_argvs) == 2
+    )  # the unconfirmed pin blocked warm reuse, so the next lease is cold
+
+
+# --- waiting for the boot to finish before using the device (BE-0359) --- #
+#
+# `simctl boot` returns once the boot has been *requested*; `bootstatus -b` is what waits for it to
+# finish. These pin the ordering, which is the whole behaviour: a wait that runs after the install
+# would be no wait at all.
+
+
+def test_the_cold_prep_waits_for_the_boot_before_it_uses_the_device(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Installing the app or starting `xcodebuild` against a SpringBoard that is still coming up is
+    # what produces the `Timed out attempting to launch app` signature the recovery ladder repairs
+    # after the fact — so the wait lands immediately after the boot, ahead of everything that uses
+    # the device (the device-type listing, the locale pin, the install).
+    _, simctl_calls, run = _fake_toolchain(monkeypatch, system_locale={"v": "en_US"})
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(
+        _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="en_US"), Preconditions()
+    )
+
+    verbs = _verbs(simctl_calls)
+    assert verbs[:2] == ["boot", "bootstatus"]
+
+
+def test_an_erasing_cold_prep_waits_for_the_boot_that_follows_the_erase(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The widest window: an erased device boots from a genuine first-boot state, and BE-0353 puts
+    # exactly that path on every crash-triggered retry.
+    _, simctl_calls, run = _fake_toolchain(monkeypatch, system_locale={"v": "en_US"})
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(
+        _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="en_US"),
+        Preconditions(erase=True),
+    )
+
+    verbs = _verbs(simctl_calls)
+    assert verbs[:4] == ["shutdown", "erase", "boot", "bootstatus"]
+
+
+def test_a_boot_that_never_completes_fails_the_run_loudly(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The wait is the only step that can report a device which never finishes booting, so a
+    # `bootstatus` that fails must surface as a device fault rather than a raw subprocess error.
+    def run(argv: list[str], env: object = None) -> str:
+        if argv[2:3] == ["bootstatus"]:
+            raise subprocess.CalledProcessError(1, argv, stderr="Unable to boot device")
+        return ""
+
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    with pytest.raises(simctl.DeviceError, match="Unable to boot device"):
+        env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+
+
+def test_the_locale_pin_waits_for_its_reboot_before_reading_the_value_back(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The pin's own reboot is the second unwaited boot: without the wait the read-back — and the
+    # caller's install after it — run against a device that is still starting.
+    domain: dict[str, str | None] = {"v": "en_US"}
+    _, simctl_calls, run = _fake_toolchain(monkeypatch, system_locale=domain)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    with caplog.at_level("INFO"):
+        env.start(
+            _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="ja_JP"),
+            Preconditions(),
+        )
+
+    verbs = _verbs(simctl_calls)
+    # The pin's reboot is the second `boot`; the read-back is the `spawn` that follows it.
+    reboot = verbs.index("boot", verbs.index("shutdown"))
+    assert verbs[reboot : reboot + 3] == ["boot", "bootstatus", "spawn"]
+    assert env._pinned_locale == "ja_JP"
+    # The one line that says the pin fired at all. Nothing else in a CI log distinguishes a job that
+    # reaches this reboot from one whose device already carried the locale.
+    assert "pinning Simulator UDID's system locale to 'ja_JP'" in caplog.text
+
+
+def test_a_pin_whose_shutdown_was_refused_is_not_remembered(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # `Env.shutdown()` suppresses its own failure and `bootstatus -b` returns at once on a device
+    # that never left `Booted`, so a wedged CoreSimulator would otherwise hand back a "ready" device
+    # and a confirmed pin while SpringBoard still renders the old language. The plist cannot tell:
+    # it reads the value the write changed, not the one SpringBoard loaded. Only the booted state can.
+    popen_argvs, _, run = _fake_toolchain(
+        monkeypatch, system_locale={"v": "en_US"}, stays_booted_after_shutdown=True
+    )
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="ja_JP")
 
@@ -1901,7 +2017,16 @@ def test_an_app_launch_timeout_reboots_and_re_prepares_the_device() -> None:
     )
     assert recovery is not None and recovery.fresh_budget == _runner_startup_timeout()
     # "list" after "shutdown" is the booted-udids read-back confirming the shutdown actually took.
-    assert _verb_seq(calls)[:6] == ["list", "shutdown", "list", "boot", "bootstatus", "boot"]
+    # The trailing pair is the re-prepare's own boot, waited out like the rung's own (BE-0359).
+    assert _verb_seq(calls)[:7] == [
+        "list",
+        "shutdown",
+        "list",
+        "boot",
+        "bootstatus",
+        "boot",
+        "bootstatus",
+    ]
     assert "rebooted UDID" in recovery.note
 
 

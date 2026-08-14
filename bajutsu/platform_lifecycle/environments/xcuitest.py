@@ -835,6 +835,28 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 f"Simulator recovery exceeded {_recovery_timeout()}s (spent {spent:.1f}s): {note}"
             )
 
+    def _await_boot(self) -> None:
+        """Block until the device this environment holds has finished booting (BE-0359).
+
+        `simctl boot` returns once the boot has been *requested*, so every caller that boots a device
+        and then uses it needs this: installing an app or starting `xcodebuild` against a SpringBoard
+        that is still coming up is what produces the `Timed out attempting to launch app` signature
+        the recovery ladder above exists to repair after the fact. The wait is deliberately unbounded,
+        like the install and permission steps beside it — a device that takes 80 seconds to come up
+        has not failed, and BE-0363 owns the question of a deadline for `simctl` calls as a whole.
+
+        Private to this class because `Env.boot()` suppresses its own failure: a future caller that
+        boots outside these call sites stays outside the wait, the same boundary the recovery ladder's
+        two rungs already lived within.
+
+        Raises:
+            DeviceError: if `bootstatus` itself fails — a device that will not finish booting.
+        """
+        try:
+            self._run(simctl.bootstatus_cmd(self._udid), None)
+        except subprocess.CalledProcessError as exc:
+            raise simctl.device_error(exc) from exc
+
     def _reboot_device(self) -> _Recovery:
         """Shut the Simulator down and boot it back up. `_finish_repair` re-establishes scenario state.
 
@@ -852,17 +874,14 @@ class XcuitestEnvironment(_DeviceEnvironment):
         a listing that still shows the device up does.
         """
         e = simctl.Env(self._udid, run=self._run)
-        try:
-            e.shutdown()
-            if simctl.device_booted(self._udid, self._run) is not False:
-                _logger.warning(
-                    "Simulator %s did not shut down; the reboot rung had no effect", self._udid
-                )
-                return _Recovery(f"{self._udid} would not shut down; left as it is")
-            e.boot()
-            self._run(simctl.bootstatus_cmd(self._udid), None)
-        except subprocess.CalledProcessError as exc:
-            raise simctl.device_error(exc) from exc
+        e.shutdown()
+        if simctl.device_booted(self._udid, self._run) is not False:
+            _logger.warning(
+                "Simulator %s did not shut down; the reboot rung had no effect", self._udid
+            )
+            return _Recovery(f"{self._udid} would not shut down; left as it is")
+        e.boot()
+        self._await_boot()
         _logger.warning("rebooted Simulator %s after a failed cold runner spawn", self._udid)
         return _Recovery(f"rebooted {self._udid}", fresh_budget=_runner_startup_timeout())
 
@@ -1028,10 +1047,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # is gone, so what it got is not necessarily what was asked for. `_finish_repair`'s prep
         # re-reads both from the replacement itself.
         self._device_type_id = self._device_runtime_id = None
-        try:
-            self._run(simctl.bootstatus_cmd(replacement), None)
-        except subprocess.CalledProcessError as exc:
-            raise simctl.device_error(exc) from exc
+        self._await_boot()
         return (
             f"created replacement {replacement} "
             f"({device_type}, requested runtime {requested_runtime or 'any'})"
@@ -1225,6 +1241,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
                     e.shutdown()
                     e.erase()
                 e.boot()
+                # Both the cold bring-up and the ladder's re-preparation pass through here, so this
+                # one wait covers every caller that boots and then installs onto the device.
+                self._await_boot()
                 # Remember what kind of device this is while it is still listed: a replacement is
                 # cloned from this type and runtime, and by the time one is needed the device is gone.
                 if self._device_type_id is None:
@@ -1261,6 +1280,17 @@ class XcuitestEnvironment(_DeviceEnvironment):
         `_pinned_locale` gates warm reuse, so recording an unconfirmed one would carry the doubt
         across every later lease instead of re-checking on the next cold spawn.
 
+        One failure that read-back cannot see is a reboot that never happened, which is why the
+        shutdown is confirmed separately (BE-0359). `Env.shutdown()` suppresses its own failure, so a
+        CoreSimulator wedged enough to refuse it leaves SpringBoard on the old language while the
+        plist reads back exactly what was written — the value the write changed, not the one
+        SpringBoard loaded. Reading the device's booted state back is the only thing that separates
+        the two, three-valued as `_reboot_device` reads it, and a device that did not go down leaves
+        the pin unrecorded. It only ever downgrades a confirmation: a definite *mis*match still fails
+        the run below, since a device reading back another locale is wrong however it got there. The
+        boot and its wait run either way, because an unreadable listing may well be a device that
+        *did* shut down, and the caller is about to install onto it.
+
         Raises:
             DeviceError: if the reboot demonstrably left the device on another locale — the run would
                 otherwise proceed against an alert language nothing predicts.
@@ -1269,8 +1299,20 @@ class XcuitestEnvironment(_DeviceEnvironment):
         if not e.pin_system_locale(locale):
             self._pinned_locale = locale  # the read already confirmed it; nothing was written
             return
+        # The only line that says the pin fired. Without it a CI log cannot answer whether a job even
+        # reaches the reboot below, which is what decides how much of this path applies there.
+        _logger.info(
+            "pinning Simulator %s's system locale to %r; rebooting so SpringBoard renders it "
+            "(BE-0320)",
+            self._udid,
+            locale,
+        )
         e.shutdown()
+        # Read back before the boot, while a refused shutdown is still distinguishable: `boot` is
+        # about to make the device booted either way.
+        went_down = simctl.device_booted(self._udid, self._run) is False
         e.boot()
+        self._await_boot()
         confirmed = e.system_locale_matches(locale)
         if confirmed is False:
             raise simctl.DeviceError(
@@ -1285,6 +1327,21 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 "could not read the Simulator's global domain back after pinning it to %r; "
                 "the run continues, but warm-runner reuse is disabled until a spawn confirms it "
                 "(BE-0320)",
+                locale,
+            )
+            return
+        if not went_down:
+            # The read-back just passed on a device whose restart was never confirmed: it reads the
+            # value the write changed, not the one SpringBoard loaded, so it confirms the write
+            # rather than the pin. Nothing is known to be wrong, so the run proceeds — but an
+            # unconfirmed pin is not recorded, exactly as an unreadable one above is not. The wording
+            # below says "could not confirm" rather than "did not", because `went_down` folds an
+            # unreadable listing in with a refused shutdown and only the latter is a wedged device.
+            _logger.warning(
+                "could not confirm Simulator %s shut down after its system locale was pinned to "
+                "%r, so SpringBoard may still render the previous language; the run continues, but "
+                "warm-runner reuse is disabled until a spawn confirms the pin (BE-0359)",
+                self._udid,
                 locale,
             )
             return
