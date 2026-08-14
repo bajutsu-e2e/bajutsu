@@ -27,6 +27,7 @@ worker (the default) walks exactly as the serial engine always did.
 from __future__ import annotations
 
 import hashlib
+import logging
 import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -34,6 +35,8 @@ from dataclasses import dataclass, field
 from bajutsu import device_errors
 from bajutsu.drivers import base
 from bajutsu.elements import screen_size_from_elements, shows_app_ui
+
+_logger = logging.getLogger(__name__)
 
 # Controls a tap drives forward: navigation / activation, toggling a switch, or switching tabs.
 TAP_TRAITS = frozenset({"button", "link", "switch", "tab"})
@@ -968,17 +971,29 @@ def crawl(
             on_node(d, node)
         return node, actions
 
-    def _worker(d: base.Driver, rst: Reset, current_fp: str | None) -> None:
+    def _worker(d: base.Driver, rst: Reset, current_fp: str | None, lane: str) -> None:
         errors = 0  # consecutive device faults → retire so a wedged device can't busy-loop
 
-        def _give_back(src_fp: str, action: Action) -> bool:
+        def _give_back(src_fp: str, action: Action, cause: str) -> bool:
             # Pool failure isolation: a device misbehaved (a broken replay or a device error), so
             # hand the popped action back to the front of its frontier — a healthy worker retries
             # it — and report whether this worker has faulted enough times in a row to retire.
             nonlocal errors
             coord.give_back(src_fp, action)
             errors += 1
-            return errors >= _MAX_WORKER_DEVICE_ERRORS
+            if errors < _MAX_WORKER_DEVICE_ERRORS:
+                return False
+            # Retiring shrinks the pool for the rest of the crawl, and a crawl that then drains its
+            # frontier still stops as "completed" — so say it here. Otherwise a map missing whatever
+            # this device would have reached is indistinguishable from a finished one.
+            _logger.warning(
+                "crawl %s: retiring this device after %d consecutive faults (last: %s); the crawl "
+                "continues on the remaining devices, so its map may be incomplete",
+                lane,
+                errors,
+                cause,
+            )
+            return True
 
         while True:
             work = coord.select_next_work(current_fp)
@@ -1000,7 +1015,16 @@ def crawl(
                     if not _replay(d, src_path, settle, clear_blocking):
                         if isolate:  # may be this device misbehaving — let a healthy worker retry
                             current_fp = None
-                            if _give_back(src_fp, action):
+                            # A stale path is an ordinary exploration outcome, so this stays at
+                            # debug — but in a pool it also counts against the lane's fault budget,
+                            # so the trail has to reach the retire warning above.
+                            _logger.debug(
+                                "crawl %s: replay to screen %s no longer resolves — handing %s back",
+                                lane,
+                                src_fp,
+                                action.describe(),
+                            )
+                            if _give_back(src_fp, action, f"broken replay to screen {src_fp}"):
                                 return
                             continue
                         coord.drop_screen(src_fp)  # the path no longer resolves — drop this screen
@@ -1013,11 +1037,26 @@ def crawl(
                 coord.cancel_action()
                 current_fp = None
                 continue
-            except device_errors.DeviceError:
+            except device_errors.DeviceError as exc:
                 if not isolate:
                     raise  # a lone worker surfaces the device failure, as the serial engine did
+                # Isolation absorbs the fault so the action can be retried, which is right — but
+                # absorbing it silently is not: the crawl can finish "completed" having lost a
+                # device, and nothing in the output says a device faulted. Name it here (BE-0363
+                # routes a `simctl` call that exceeded its deadline into this same handler). All
+                # that is settled at this point is that the action returns to the frontier; whether
+                # a peer takes it, this lane is healed (`recover`) and retries it, or the lane
+                # retires is the neighbouring lines' story, so the wording claims none of them.
+                _logger.warning(
+                    "crawl %s: device fault performing %s from screen %s — handing the action back "
+                    "to the frontier for a retry: %s",
+                    lane,
+                    action.describe(),
+                    src_fp,
+                    exc,
+                )
                 current_fp = None
-                retire = _give_back(src_fp, action)
+                retire = _give_back(src_fp, action, str(exc))
                 if recover is not None and not retire:
                     # The lane can be healed in place (web: relaunch its browser process), so do
                     # that and keep crawling rather than abandoning the worker (BE-0077). A clean
@@ -1052,11 +1091,13 @@ def crawl(
             node, actions = _discover(d, dst_fp, landed, reached)
             coord.finish_discovery(node, actions)
 
-    def _run(d: base.Driver, rst: Reset, current_fp: str | None) -> None:
+    def _run(d: base.Driver, rst: Reset, current_fp: str | None, lane: int) -> None:
         # Surface an unexpected worker error after join (a bare thread would otherwise swallow it),
         # while device-error isolation is handled inside `_worker`.
+        # The engine never learns a lane's udid (the caller's factory holds it), so a log names a
+        # device by its backend and lane number — enough to tell two lanes of a pool apart.
         try:
-            _worker(d, rst, current_fp)
+            _worker(d, rst, current_fp, f"{d.name} lane {lane}/{1 + len(extra_factories)}")
         except Exception as exc:  # re-raised on the main thread after join
             coord.note_failure(exc)
 
@@ -1067,7 +1108,7 @@ def crawl(
         # continuation with a live frontier keeps going with the primary starting cold (start_fp None).
         return screen_map
 
-    def _run_extra(factory: WorkerFactory) -> None:
+    def _run_extra(factory: WorkerFactory, lane: int) -> None:
         # Build this lane's driver on *this* thread (the Playwright sync API is bound to its creating
         # thread — BE-0077), then walk. A lane that can't even start is surfaced after join, like any
         # other worker fault, rather than silently dropping a worker.
@@ -1076,13 +1117,16 @@ def crawl(
         except Exception as exc:
             coord.note_failure(exc)
             return
-        _run(d, rst, None)
+        _run(d, rst, None, lane)
 
     # The primary worker is left on the entry screen; extras start cold and reset to a frontier.
-    threads = [threading.Thread(target=_run_extra, args=(f,), daemon=True) for f in extra_factories]
+    threads = [
+        threading.Thread(target=_run_extra, args=(f, lane), daemon=True)
+        for lane, f in enumerate(extra_factories, start=2)  # lane 1 is the primary, below
+    ]
     for t in threads:
         t.start()
-    _run(driver, reset, start_fp)
+    _run(driver, reset, start_fp, 1)
     for t in threads:
         t.join()
     if coord.failure:

@@ -88,6 +88,9 @@ class FakeDriver:
     # --- Driver Protocol ---
 
     def query(self) -> list[base.Element]:
+        # Whatever `screen` was seeded with is reported back unchanged apart from the scroll
+        # translation below — including `nativeZ` (BE-0355), which the fake never invents and never
+        # drops, so a test can script a stacking order the fast gate can exercise with no device.
         if self._viewport is None:
             return list(self.screen)
         # Scrollable mode: report every element with its frame translated by the scroll offset, so a

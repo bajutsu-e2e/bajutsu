@@ -390,9 +390,16 @@ def validated_device_arg(value: str) -> str:
 _DEVICE_BLOCKING_TIMEOUT_S = 300.0
 _DEVICE_BLOCKING_SUBCOMMANDS = frozenset({"bootstatus", "boot", "erase", "install"})
 
-# Every other command costs only simctl's own small, bounded work, so no input can stretch it —
-# `list` returns in well under a second. This sits far above all of them, and still catches a wedge
-# long before a CI job's own `timeout-minutes` would.
+# Every other command costs only simctl's own small, bounded work, so nothing about the app or the
+# scenario can stretch it — `list` returns in well under a second. This sits far above all of them,
+# and still catches a wedge long before a CI job's own `timeout-minutes` would.
+#
+# The pasteboard is the one family the host itself can stall (see `_PBCOPY_*` above), and the two
+# halves are bounded differently on purpose. The write runs outside this helper with its own
+# per-attempt deadline and a retry, because it was measured stalling transiently and re-feeding the
+# same stdin is safe. The read (`pbpaste`) takes this bound and raises, because its result is the
+# scenario's data: retrying it is the device-level decision BE-0363 deferred to the recovery ladder,
+# and a read that raises at a named deadline already improves on the unbounded hang it replaced.
 _SIMCTL_TIMEOUT_S = 60.0
 
 

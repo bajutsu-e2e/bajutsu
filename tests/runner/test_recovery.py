@@ -229,6 +229,39 @@ def test_guarded_teardown_warns_on_os_error(caplog) -> None:
     assert any("tearing down the warm runner on UDID failed" in r.message for r in caplog.records)
 
 
+def test_guarded_teardown_warns_on_a_device_timeout_rather_than_calling_it_a_defect(caplog) -> None:
+    """A wedged `simctl terminate` at teardown must not become a wiring defect (BE-0363).
+
+    `mid_run=False` re-raises a defect, and the pool's `shutdown()` raises it from `run`'s
+    `finally` — which would replace the results a finished run was about to return. Only
+    `DeviceTimeout` is warned here; an ordinary `simctl.DeviceError` stays a defect.
+    """
+    import logging
+
+    from bajutsu import simctl
+
+    with caplog.at_level(logging.WARNING):
+        guarded_teardown(
+            _raising(simctl.DeviceTimeout("device operation timed out after 60s: terminate")),
+            mid_run=False,
+            what="tearing down the warm runner on UDID",
+        )
+    assert any("tearing down the warm runner on UDID failed" in r.message for r in caplog.records)
+
+
+def test_guarded_teardown_still_treats_a_plain_device_error_as_a_defect() -> None:
+    import pytest
+
+    from bajutsu import simctl
+
+    with pytest.raises(simctl.DeviceError, match="refused"):
+        guarded_teardown(
+            _raising(simctl.DeviceError("the device refused it")),
+            mid_run=False,
+            what="tearing down the warm runner on UDID",
+        )
+
+
 def test_guarded_teardown_propagates_unexpected_when_not_mid_run() -> None:
     import pytest
 

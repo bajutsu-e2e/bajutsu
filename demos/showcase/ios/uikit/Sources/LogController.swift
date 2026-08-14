@@ -371,15 +371,18 @@ final class LogController: UIViewController {
     }
 
     /// 4) Native alert: a real `UIAlertController` in style `.alert` — the SwiftUI twin's `.alert`
-    /// renders through this same style underneath. Two actions, "Cancel" and "OK", neither with a
-    /// custom `id` (`UIAlertAction` carries no accessibilityIdentifier on either platform), so a
-    /// scenario resolves either by `label` + `traits`, the same way it resolves a tab bar item.
-    /// Result mirrors to log.alert.value (`none`/`cancel`/`ok`), so a scenario can tell the two
-    /// actions apart by which value lands.
+    /// renders through this same style underneath. Two actions, "Cancel" and "OK", each carrying an
+    /// `id` in the a11y build (see the `UIAlertAction` helper in AccessibilityID.swift). Result
+    /// mirrors to log.alert.value (`none`/`cancel`/`ok`), so a scenario can tell the two actions
+    /// apart by which value lands.
     private func openAlert() {
         let alert = UIAlertController(title: "Sample Alert", message: "This is a native alert.", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in self?.setAlertResult("cancel") })
-        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in self?.setAlertResult("ok") })
+        let cancel = UIAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in self?.setAlertResult("cancel") }
+        cancel.accessibilityID("log.alert.cancel")
+        let ok = UIAlertAction(title: "OK", style: .default) { [weak self] _ in self?.setAlertResult("ok") }
+        ok.accessibilityID("log.alert.ok")
+        alert.addAction(cancel)
+        alert.addAction(ok)
         present(alert, animated: !model.animationsDisabled)
     }
 

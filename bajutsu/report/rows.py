@@ -206,6 +206,9 @@ def _actuation_rows(actuations: list[Actuation]) -> list[dict[str, Any]]:
                 # A refused attempt (a stale handle, a declined device-side gesture) must not read as
                 # one that landed; `None` means the channel gave no separate answer.
                 "refused": a.accepted is False,
+                # Why this element rather than the one the selector named. Empty on the ordinary
+                # path, so a reader sees the token only where a driver really substituted.
+                "substitution": a.substitution or "",
             }
         )
     return rows

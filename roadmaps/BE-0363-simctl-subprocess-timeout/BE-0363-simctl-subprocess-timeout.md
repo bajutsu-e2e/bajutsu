@@ -169,11 +169,28 @@ untouched. Neither needs a Simulator, so both run in the deterministic gate rath
       Shipped with `install` in the long class beside `bootstatus` / `boot` / `erase`, which the
       design above names but does not enumerate exhaustively: `simctl install` transfers the whole
       app bundle, so its duration is set by the app under test rather than by simctl, and a short
-      bound would leave an app-agnostic tool carrying an app-size-dependent ceiling.
+      bound would leave an app-agnostic tool carrying an app-size-dependent ceiling. The short bound
+      also lands on `pbpaste`, the read half of the one command family this module already records as
+      stalling transiently, and the two halves stay bounded differently on purpose: the write keeps
+      its own deadline and retry outside the helper, because re-feeding the same stdin is safe, while
+      the read raises, because its result is the scenario's own data and retrying it is the
+      device-level decision this item's *Alternatives considered* defers to the recovery ladder. A
+      read that raises at a named deadline already improves on the unbounded hang it replaced.
 - [x] Unit 2 — translate a timeout into the module's device-fault type inside the helper; let a
       timeout propagate from the four deliberately suppressed calls, narrow the two discard-path
       `terminate` suppressions so it is not re-absorbed there, and fold it into the existing fallback
-      of each best-effort probe.
+      of each best-effort probe. Shipped with four callers that catch the now-propagating timeout
+      instead of letting it out: the `serve` job's parallel boot, where an uncaught one dies on its
+      worker thread and leaves the job reporting a boot it never got; `guarded_teardown`, where a
+      `mid_run=False` re-raise surfaces inside `run`'s `finally: shutdown()` and would replace a
+      finished run's verdicts with an exception; and the two calls the crash retry's replacement rung
+      makes on the device it is abandoning — the runner discard and the quarantine `shutdown` — both
+      of which run past the recovery ladder's decision point with a replacement already confirmed
+      creatable, and the first of which cannot be retried, since the escalation request is consumed
+      before it. Each logs the wedge, so the diagnosis this item exists to produce survives. The
+      design above states where a timeout is raised from, not that every caller must let it reach the
+      top — a timeout that destroys what the run already produced, or that spends the one remedy left
+      for the device that caused it, diagnoses no better than the hang it replaced.
 - [x] Unit 3 — resolve the bound inside the real helper so the substituted test callable keeps its
       two-argument shape, and cover both the timeout and the healthy path in the deterministic gate.
 

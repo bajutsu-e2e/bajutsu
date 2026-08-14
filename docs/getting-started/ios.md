@@ -49,8 +49,8 @@ one-shot `make` target below (`make runner-build`), so there is nothing extra to
 alone is enough.
 
 The one-shot path is the `make` target. It builds the runner, installs the freshly built app, and
-runs the full showcase suite (skipping scenarios tagged `xcuitest` or `systemalert`) on the booted
-device:
+runs the full showcase suite (skipping scenarios tagged `xcuitest`, `systemalert`, `visual`, or
+`android`, each of which has its own lane) on the booted device:
 
 ```bash
 make -C demos/showcase run-swiftui

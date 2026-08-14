@@ -200,13 +200,14 @@ struct LogView: View {
         }
         // Native alert (SwiftUI `.alert`, UIAlertController style `.alert` underneath — the
         // fifth modal style, distinct from the action sheet above): two actions, "Cancel" and
-        // "OK", neither with a custom `id` (UIAlertAction carries no accessibilityIdentifier on
-        // either platform), so a scenario resolves either the same way it resolves a tab bar item
-        // — by `label` + `traits`. Result mirrors to log.alert.value (`none`/`cancel`/`ok`), so a
-        // scenario can tell the two actions apart by which value lands.
+        // "OK", each carrying an `id` in the a11y build. Result mirrors to log.alert.value
+        // (`none`/`cancel`/`ok`), so a scenario can tell the two actions apart by which value
+        // lands.
         .alert("Sample Alert", isPresented: $showAlert) {
             Button("Cancel", role: .cancel) { alertResult = "cancel" }
+                .accessibilityID("log.alert.cancel")
             Button("OK") { alertResult = "ok" }
+                .accessibilityID("log.alert.ok")
         } message: {
             Text("This is a native alert.")
         }

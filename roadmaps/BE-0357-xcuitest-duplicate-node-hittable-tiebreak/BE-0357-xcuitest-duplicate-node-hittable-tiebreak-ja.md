@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0357](BE-0357-xcuitest-duplicate-node-hittable-tiebreak-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **提案（保留）** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0357") |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0312](../BE-0312-xcuitest-content-addressed-snapshot-handle/BE-0312-xcuitest-content-addressed-snapshot-handle-ja.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve-ja.md), [BE-0349](../BE-0349-tap-target-hittability-check/BE-0349-tap-target-hittability-check-ja.md), [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) |
@@ -293,10 +293,11 @@ XCUITest の挙動として位置づけています。重複グループのな�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] Spike（この先すべての前提）：実機の Simulator で `UIAlertController` の二重登録を表示し、
+- [x] Spike（この先すべての前提）：実機の Simulator で `UIAlertController` の二重登録を表示し、
       `queryElements()` から両方の要素の `backingElement` を取り出して、それぞれに直接
       `isHittable(backingElement:)` を呼ぶ。下の作業に取りかかる前に、ちょうど 1 件が `.ok` を
       返すことを確かめる。前提が成立しなければ、そのまま進めるのではなく設計を見直す。
+      **実施し、前提は成立しませんでした**（下のログを参照）。以下の作業はすべて保留です。
 - [ ] `Router.swift` の `handleElements` の `caughtOnMain` クロージャの中で、`queryElements()` の
       結果を共有する同一性（識別子・ラベル・traits・value・frame）でグループ化する。2 件以上の
       グループの各要素へ `isHittable(backingElement:)` を呼び、要素ごとに例外を捕まえる（例外は、
@@ -325,6 +326,23 @@ XCUITest の挙動として位置づけています。重複グループのな�
       の「はじめに」が引用している `_collapse_identical_duplicates` の docstring は、本項目のあとも
       無条件のままでは実際の挙動と食い違うので、その条件づけを直す。`DESIGN.md` / `docs/architecture.md`
       がこの挙動を述べているなら、それも直す（BE-0113）。
+
+ログを次に記します。
+
+- 上の Spike を、showcase の UIKit 版が表示する `UIAlertController` に対して iOS 26.5 の Simulator で
+  実施し、**本項目の前提が成立しないことを確かめました**。`isHittable(backingElement:)` は、2 組の
+  重複ペアの**どの要素についても** `.ok` でも `.notHittable` でもなく `stale` を返しました。同じ
+  アラートの部分木にある重複していない通常のノードは `.ok` を返しています。`.ok` がちょうど 1 件では
+  なく 0 件なので、*詳細設計* のフィルタは自身の「`.ok` を返す要素がないグループ」の分岐に落ち、何も
+  取り除きません。仕様どおりに実装しても、*動機* が述べる当の失敗には効きません。原因は本項目が扱う
+  層のひとつ下にあります。`isHittable` は引数を `liveElement(for:)` で解決しますが、その flat-query
+  による退避は `uniqueMatchingIndex` を呼び、同一性の一致が 2 件以上あると何も返しません。重複ペアは
+  この退避を破るため、どちらの要素もライブの要素へ解決できず、本項目がフィルタに使うべき hittability
+  の手がかり自体が存在しません。`xcuitest-duplicate-identity-resolution` の項目がこの解決を修理し、
+  同じ fixture で、解決さえできればペアの要素が実際に操作できることまで測っています。つまり修理後の
+  画面は、本項目のもう一方の「触れないままにする」分岐、すなわち「`.ok` を返す要素が複数あるグループ」に
+  当たります。したがって本項目は、ライブの検査で要素どうしを本当に区別できる重複ペアが現れるまで保留と
+  します。
 
 ## 参考
 

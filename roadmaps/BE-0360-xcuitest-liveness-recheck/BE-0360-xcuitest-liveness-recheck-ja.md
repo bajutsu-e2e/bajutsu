@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0360](BE-0360-xcuitest-liveness-recheck-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0360") |
+| 実装 PR | [#1601](https://github.com/bajutsu-e2e/bajutsu/pull/1601) |
 | トピック | Platform support |
 | 関連 | [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn-ja.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md) |
 <!-- /BE-METADATA -->
@@ -119,10 +120,10 @@ runner を描いています。クラッシュした瞬間に応答をやめた 
 > 作業の進行に合わせて最新の状態に保ってください。チェックリストは*詳細設計*の MECE な作業分解を
 > 反映し（作業単位ごとに1つ）、ログには何がいつ変わったかを古い順に記録し、PR へリンクします。
 
-- [ ] 単位1 — 準備完了の待機の引数に、省略可能な生存判定のコールバックを加える。
-- [ ] 単位2 — ポーリングループのなかで毎秒1回コールバックを尋ね、否定の判定で打ち切る。その終わり方を
+- [x] 単位1 — 準備完了の待機の引数に、省略可能な生存判定のコールバックを加える。
+- [x] 単位2 — ポーリングループのなかで毎秒1回コールバックを尋ね、否定の判定で打ち切る。その終わり方を
       期限切れと区別する。
-- [ ] 単位3 — 新しい終わり方を「runner が消えた」診断へ振り分け、待機前の確認は早期脱出として残す。
+- [x] 単位3 — 新しい終わり方を「runner が消えた」診断へ振り分け、待機前の確認は早期脱出として残す。
 
 ## 参考
 

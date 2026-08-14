@@ -74,7 +74,7 @@ class Driver(Protocol):
 [BE-0290](../../roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) で idb を撤去して以来、**iOS の唯一の backend** です。**XCTest のオートメーションスナップショット**を、**実機上に常駐する runner**（`BajutsuKit`）を loopback HTTP で駆動して読み取り、アプリ側の統合なしに任意のアプリを bundle id で駆動します。実装: `drivers/xcuitest.py`。frame 中心の座標に解決するのではなく、能力モデルの豊かな端に位置します（semantic tap、ネイティブ条件待機、multi-touch、テキスト選択）。Xcode の `xcodebuild` が必要です。
 
 - `query()`: XCTest のオートメーションスナップショットを読み取り、各要素を `Element` に写します。このスナップショットは**グループコンテナの内側まで降りる**ので、座標系 backend のフラットな frame ダンプと違い、**完全に展開された要素ツリー**を描き出します（`AXLabel`/`AXValue`/アクセシビリティ識別子 を `label`/`value`/`id` に写します）。
-- `tap(sel)`: `_resolve` で一意確定します（**not-found はリトライ、ambiguity は即失敗**: 実機ツリーは遷移中に一時的に空になり得るため）。確定後、要素を**アクセシビリティ識別子で直接** tap します（座標を経由しない semantic tap。BE-0289 はスタックしたスナップショットハンドルを再解決し、依然として一意に一致するときだけ再操作します）。
+- `tap(sel)`: `_resolve` で一意確定します（**not-found はリトライ、ambiguity は即失敗**: 実機ツリーは遷移中に一時的に空になり得るため）。確定後、要素を**アクセシビリティ識別子で直接** tap します（座標を経由しない semantic tap。BE-0289 はスタックしたスナップショットハンドルを再解決し、依然として一意に一致するときだけ再操作します）。XCTest が*拒んだ* tap は、失敗する前にもう 1 段進みます。iOS は包んでいるコントロールより膨らんだ container を報告することがあるので、ドライバは対象の名前付きの子孫を調べ、到達できるものが**ちょうど 1 つ**ならそこへタップして `substitution: soleHittableDescendant` を記録します。0 個または複数なら、どれかを選ばずに失敗し、候補を名指します（[selectors](selectors.md#elementnottappable-解決はしたが到達できない対象)）。
 - `wait_for`: runner のネイティブな条件待機を使います。
 - `pinch` / `rotate`: runner がネイティブに実行する 2 本指の multi-touch ジェスチャです。
 - `select` / `copy`: フォーカス中フィールドのネイティブなテキスト選択です。

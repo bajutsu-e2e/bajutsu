@@ -1,8 +1,9 @@
 # Native alert (UIAlertController style `.alert` / SwiftUI `.alert`): the Log tab's fifth modal
 # style, distinct from modals.yaml's action sheet. It carries two actions, "Cancel" and "OK", so a
-# scenario can prove both are independently reachable and produce distinct outcomes. `UIAlertAction`
-# carries no accessibilityIdentifier on either platform, so — like a tab bar item — each button is
-# addressed by `label` + `traits` rather than `id`.
+# scenario can prove both are independently reachable and produce distinct outcomes. Both actions
+# carry an `id` in the a11y build (`log.alert.cancel` / `log.alert.ok`), so this file addresses them
+# the same way every other scenario addresses a control; the -noax twin has none, which is why the
+# label + traits route stays the documented fallback in SPEC §5.3.
 #
 # Kept in its own file rather than folded into the shared modals.yaml: unlike that file's other
 # three modal styles, no Android (Compose/Views) or Flutter Log screen has a matching native-alert
@@ -26,11 +27,11 @@
     - assert:
         - value: { sel: { id: log.alert.value }, equals: "none" }
     - tap: { id: log.openAlert }
-    - wait: { for: { label: "OK", traits: [button] }, timeout: 5 }
+    - wait: { for: { id: log.alert.ok }, timeout: 5 }
     - assert:
-        - exists: { label: "Cancel", traits: [button] }
-    - tap: { label: "OK", traits: [button] }
-    - wait: { until: { gone: { label: "OK", traits: [button] } }, timeout: 5 }
+        - exists: { id: log.alert.cancel }
+    - tap: { id: log.alert.ok }
+    - wait: { until: { gone: { id: log.alert.ok } }, timeout: 5 }
   expect:
     - value: { sel: { id: log.alert.value }, equals: "ok" }
 
@@ -45,8 +46,8 @@
     - scroll: { to: { id: log.alert.value }, direction: down }
     - wait: { for: { id: log.openAlert }, timeout: 5 }
     - tap: { id: log.openAlert }
-    - wait: { for: { label: "Cancel", traits: [button] }, timeout: 5 }
-    - tap: { label: "Cancel", traits: [button] }
-    - wait: { until: { gone: { label: "Cancel", traits: [button] } }, timeout: 5 }
+    - wait: { for: { id: log.alert.cancel }, timeout: 5 }
+    - tap: { id: log.alert.cancel }
+    - wait: { until: { gone: { id: log.alert.cancel } }, timeout: 5 }
   expect:
     - value: { sel: { id: log.alert.value }, equals: "cancel" }
