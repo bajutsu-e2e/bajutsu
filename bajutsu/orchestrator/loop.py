@@ -235,7 +235,9 @@ class _ScreenRead:
     actuates between that query and this read, so the caller can `seed` it with that snapshot: a
     consumer then reuses it instead of issuing a second identical query (BE-0259). A seeded read is
     not a runner-issued read — `queried` stays False — so the BE-0234 read-count yardstick keeps
-    counting only the queries this class actually performs.
+    counting only the queries this class actually performs. The seed is also the one tree that
+    predates the step's post-action shutter (`_handle_action`), since the body took it: on those two
+    step kinds the recorded `elements.json` is that fraction older than the `after.png` beside it.
 
     `read` overrides the default `query()` for the first, uncached read: a step whose `extract` will
     consume the tree passes a property-aware settle poll here (`_settle_extract_read`), so the value
@@ -1182,14 +1184,22 @@ class _StepRunner:
         outcome.actuations, outcome.dropped_actuations = drained.records, drained.dropped
 
         # The post-action shutter, taken here rather than down with the rest of the post-step
-        # capture. Every step records `after.png` (`_collect_captures` leads with it, so no token
-        # list is needed yet), and it has to be the *first* post-action evidence taken: three
-        # consumers between here and that capture call can force a tree read — a `screenChanged`
-        # policy's `before` comparison, a `for`-wait timeout diagnostic, and `extract` — and on adb a
-        # read costs ~2.4s. Shooting after one of those would leave the tree the older half of the
-        # pair, framing settled pixels with a tree read mid-animation. The capture call below drops
-        # `screenshot.after` from its own list; any other screenshot modifier a rule asks for writes
-        # its own filename and stays there.
+        # capture. Every step records `after.png` (the capture call below drops `screenshot.after`
+        # from its own list, so no token list is needed yet; any other screenshot modifier a rule
+        # asks for writes its own filename and stays there). Taking it here puts it ahead of the
+        # three consumers that can force a tree read between this point and that call — a
+        # `screenChanged` policy's `before` comparison, a `for`-wait timeout diagnostic, and
+        # `extract` — where a read costs ~2.4s on adb; shooting after one of those would leave the
+        # tree the older half of the pair by that whole read.
+        #
+        # It is not the first read on a *non-mutating* step, and cannot be: `assert` and `wait`
+        # already queried a tree to evaluate themselves, and the runner reuses it rather than paying
+        # a second identical query (BE-0259, `_run_step_body`'s `snapshot` seeding `_ScreenRead`
+        # below). Such a step's `elements.json` therefore predates its `after.png` by this shutter's
+        # own latency — a `wait for` that returns the instant its target appears can pair a tree read
+        # mid-transition with pixels a moment later. Dropping the seed here would swap that for the
+        # opposite skew and a full tree read per `assert`/`wait` step, so the reuse stays and the
+        # guarantee is stated for what it is: the shutter leads every consumer downstream of it.
         outcome.artifacts.extend(
             self.cfg.sink.capture(self.cfg.driver, step_id, ["screenshot.after"])
         )

@@ -344,8 +344,9 @@ item keeps that shape unchanged and documents the one precedence rule instead.
 [#1633](https://github.com/bajutsu-e2e/bajutsu/pull/1633) revises two of the decisions recorded
 above, so read them together.
 
-The post-step capture now always records `screenshot.after` **and** `elements`. Every step keeps the
-post-action tree, not only the steps whose `capture` list asked for one. Unit 4's precedence rule no
+The post-step capture now always records `elements`, and `_handle_action` shoots `screenshot.after`
+itself, right after the step's action. Every step keeps the post-action tree, not only the steps
+whose `capture` list asked for one. Unit 4's precedence rule no
 longer turns on what a scenario requested, and "`elements` stays the pre-action tree" now holds for
 one case: a step that fails before it acts.
 

@@ -79,11 +79,13 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
   先頭の `elements` があるため、3つの取得元が何を要求したかによらず、どのステップにも動作後のツリーが
   残ります。`elements.json` のファイル名は 1 つなので、この取得は、ステップ前の baseline が書いた動作前の
   ツリーを置き換えます。
-- 対になるもう一方の `after.png` は、この一覧にはありません。`_handle_action` が、ステップの動作の直後、
-  ツリーを読みうるどの処理よりも先に自分で撮ります。ビューアが表示する画像が、要素の枠を描く基準とする
-  ツリーより古くならないようにするためです。そのうえで、上記の一覧から `screenshot.after` を取り除きます。
+- 対になるもう一方の `after.png` は、この一覧にはありません。`_handle_action` が、ステップの動作の直後に
+  自分で撮ります。ここでツリーを読みうる処理（`screenChanged` の比較、`for` wait のタイムアウト診断、
+  `extract`）よりも先に撮るためです。そのうえで、上記の一覧から `screenshot.after` を取り除きます。
   どの取得元から来た `screenshot` 単体のトークンも先に `screenshot.after` へ正規化するのは、このためです。
-  同じ 1 枚を二重に撮ることはありません。
+  同じ 1 枚を二重に撮ることはありません。ただし、この撮影より前に読まれるツリーが 1 つあります。
+  動作しないステップ（`assert`、`wait`）は、自身が評価に使ったツリーを読み直さずに再利用します
+  （BE-0259）。この 2 種類では、`elements.json` は `after.png` の直後ではなく直前の時点のものになります。
 - 瞬時種別（screenshot/elements）は sink の `capture()` で取得し、区間種別（video/deviceLog）は事前に `start_intervals()` で開始済みのものを停止して回収します。
 
 `primary_id` は「ステップの主対象セレクタの `id`」です（tap なら tap 先、type なら `into`、swipe なら `on`）。`idMatches` トリガーはこの `id` に対して `fnmatch` します。

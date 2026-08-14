@@ -196,12 +196,15 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 > requests none records none, keeping the common case cheap; the lightweight instant baseline
 > (`screenshot` + `elements`) is always captured, so a failure still leaves evidence (DESIGN §10).
 > Every step captures evidence on **both** sides of its action: `before.png` and `elements.json`
-> before it acts, showing the screen it is about to act on, and `after.png` and a second
-> `elements` read once it has, showing what the action left behind. Neither side depends on the
-> `capture` list — narrowing that list costs a step neither screenshot, nor its tree. `elements.json`
-> has a single filename, so the post-action read replaces the pre-action tree: the tree a run keeps
-> describes the screen the action produced, which is the screen `after.png` shows and the one every
-> viewer draws element frames from.
+> before it acts, showing the screen it is about to act on, and `after.png` and a post-action
+> `elements` write once it has, showing what the action left behind. Neither side depends on the
+> `capture` list — narrowing that list costs a step neither of its two screenshots nor its tree.
+> `elements.json` has a single filename, so the post-action write replaces the pre-action tree: the
+> tree a run keeps describes the screen the action produced, which is the screen `after.png` shows
+> and the one every viewer draws element frames from. On a non-mutating step (`assert`, `wait`) that
+> tree is the one the step itself settled on, reused rather than re-read
+> ([BE-0259](../roadmaps/BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md)), so there it
+> comes from a moment just before the screenshot rather than just after.
 > Preview what a scenario would record with `bajutsu trace --explain` (see [cli](cli.md#trace)).
 
 | Kind | Start command (iOS / Android) | Stop signal | Filename |
