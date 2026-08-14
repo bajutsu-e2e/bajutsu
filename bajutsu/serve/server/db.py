@@ -215,7 +215,11 @@ class Repository(Protocol):
     def set_org_membership(
         self, org_id: str, *, members: list[str], github_orgs: list[str], editor_team: str | None
     ) -> bool:
-        """Replace a live org's membership as one unit (BE-0375). False when there is no such org."""
+        """Replace a live org's membership as one unit (BE-0375). False when there is no such org.
+
+        Stamps `membership_seeded_at` when it is not yet set: an API write is a cutover event just
+        as creation is, so no later `orgs:` entry can seed over what an admin set here.
+        """
 
     def seed_org_membership(
         self,
@@ -658,6 +662,13 @@ class SqlRepository:
             if row is None or row.deleted_at is not None:
                 return False
             row.members, row.github_orgs, row.editor_team = members, github_orgs, editor_team
+            if row.membership_seeded_at is None:
+                # An admin can reach a row the backfill never marked — one `ensure_org` created at
+                # sign-in, one predating the migration, or one left unseeded because the config
+                # failed to load at boot. Mark it now, or the next startup or rebind would find it
+                # unseeded and replace this roster with the `orgs:` entry's: exactly the overwrite
+                # the per-row marker exists to prevent, arriving through the admin's own edit.
+                row.membership_seeded_at = datetime.now(UTC)
             session.commit()
             return True
 

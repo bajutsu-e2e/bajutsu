@@ -422,6 +422,24 @@ def test_an_org_created_through_the_api_is_never_seeded_over(
     assert orgs_from_db(state.repository)["initech"].members == ["peter"]
 
 
+def test_a_membership_edit_on_an_unseeded_row_is_never_seeded_over(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # An admin can reach a row the backfill never marked — one `ensure_org` created at sign-in, one
+    # predating the migration, or one left unseeded because the config failed to load at boot. The
+    # edit itself is the cutover for that row, so a later `orgs:` entry for the same slug must not
+    # replace what the admin set.
+    state = _state(serve_engine, tmp_path)
+    assert state.repository is not None
+    state.repository.ensure_org("legacy", slug="legacy", name="legacy")
+    assert ops.update_org_membership(state, "legacy", {"members": ["zoe"]}, actor="root")[1] == 200
+    state.config.write_text(
+        _COLLIDING_YAML + "  legacy:\n    members: [mallory]\n", encoding="utf-8"
+    )
+    seed_orgs_from_bound_config(state)
+    assert orgs_from_db(state.repository)["legacy"].members == ["zoe"]
+
+
 def test_a_sign_in_after_the_cutover_never_clears_membership(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
