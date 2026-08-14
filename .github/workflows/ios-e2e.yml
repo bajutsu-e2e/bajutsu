@@ -113,6 +113,19 @@ concurrency:
 # arithmetic this lane's `timeout-minutes` are set against.
 env:
   BAJUTSU_XCUITEST_RUNNER_LOG: ${{ github.workspace }}/runs/runner-logs
+  # BAJUTSU_XCUITEST_RESULT_BUNDLES puts one `.xcresult` per runner spawn beside that log (BE-0361
+  # unit 1). The captured stdout above paraphrases an XCTest failure; the bundle is what testmanagerd
+  # itself recorded — the precise failure, its timestamps, and any attachments — which is the
+  # difference between knowing the runner reported "Timed out while requesting screenshot" and being
+  # able to read the state around it. Every bundle is kept: the variable is this lane asking for them.
+  #
+  # BAJUTSU_STALL_DIAGNOSTICS arms the in-process capture (BE-0361 unit 2) that fires the moment the
+  # channel declares a mid-run crash or `recordVideo` produces no bytes — the two moments when the
+  # state separating "the render service wedged" from "the host starved the Simulator" still exists.
+  # Bounded on the Python side (a per-capture wall-clock budget, a per-run capture cap), so a
+  # crash-looping job cannot spend its `timeout-minutes` here.
+  BAJUTSU_XCUITEST_RESULT_BUNDLES: ${{ github.workspace }}/runs/runner-logs
+  BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
   BAJUTSU_XCUITEST_STARTUP_TIMEOUT: "300"
   # A *respawn* readiness ceiling, tighter than the 300s cold-start one above
   # (bajutsu/platform_lifecycle/environments/xcuitest.py, _respawn_timeout). The 300s ceiling exists
@@ -696,11 +709,17 @@ jobs:
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
       # Runs golden.yaml over XCUITest; the scenario compares against its goldens/ baseline, a
-      # field-level tolerant compare (bajutsu/golden.py) that is ABI-stable.
+      # field-level tolerant compare (bajutsu/golden.py) that is ABI-stable. golden_xcuitest.yaml
+      # rides the same warm runner (the action passes each file as its own `--scenario`): it pins
+      # the Log tab's Entry controls, and its second scenario is the accessibility-invariance check
+      # for `run --touch-markers` — the same controls.json asserted with the in-app touch markers
+      # on, so a visualization that perturbed the pinned controls fails here.
       - name: Run golden scenarios (BE-0006)
         uses: ./.github/actions/bajutsu-e2e
         with:
-          scenarios: demos/showcase/scenarios/golden/golden.yaml
+          scenarios: >-
+            demos/showcase/scenarios/golden/golden.yaml
+            demos/showcase/scenarios/golden/golden_xcuitest.yaml
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
@@ -889,12 +908,25 @@ jobs:
       - name: Wait for the Simulator
         run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
 
+      # This lane drives pytest, not the bajutsu-e2e action, so it wires the BE-0361 diagnostics
+      # itself: `start` right after the device is up, `collect` below with `if: always()`.
+      - name: Start iOS diagnostics
+        # An observer may never decide this job: the step's own shell disables errexit and exits 0, and
+        # this is the outer net for anything that gets past it (BE-0361). A lane that reddens because
+        # its *diagnostics* fell over reports nothing about the software under test.
+        continue-on-error: true
+        uses: ./.github/actions/collect-ios-diagnostics
+        with:
+          phase: start
+          udid: ${{ steps.toolchain.outputs.udid }}
+
       # `launch_driver` erases/installs/launches the backend, so no explicit install here. `-m
       # ondevice` overrides the repo default (`-m 'not web and not ondevice'`) to select exactly the
       # on-device suite; BAJUTSU_CONFORMANCE_UDID both routes the backend and un-skips the module.
       # `-n0` overrides the default `-n auto`: the suite reseeds one shared Simulator via a single
       # spec file the app polls, so parallel workers would clobber each other's screen — run serially.
       - name: Run the conformance suite (xcuitest)
+        id: suite
         env:
           BAJUTSU_CONFORMANCE_UDID: ${{ steps.toolchain.outputs.udid }}
           # Recover a Simulator infrastructure fault the way `bajutsu run` does (BE-0334): a runner
@@ -906,6 +938,15 @@ jobs:
           # Count every respawn into an uploaded artifact, so a degrading lane shows as a rising count.
           BAJUTSU_BACKEND_RECOVERY_REPORT: conformance-recovery.json
         run: uv run pytest tests/test_driver_conformance_ondevice.py -m ondevice -n0 -v
+
+      - name: Collect iOS diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/collect-ios-diagnostics
+        with:
+          phase: collect
+          udid: ${{ steps.toolchain.outputs.udid }}
+          failed: ${{ steps.suite.outcome != 'success' }}
 
       # Upload the recovery report even when the suite fails, so an exhausted recovery is inspectable.
       - name: Upload the conformance recovery report
@@ -974,6 +1015,19 @@ jobs:
       - name: Wait for the Simulator
         run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
 
+      # As in `conformance` above: a pytest lane wires the BE-0361 diagnostics itself. This lane
+      # breaks the runner deliberately, so its captures are the closest thing to a control group for
+      # what a *genuine* stall's evidence should look like.
+      - name: Start iOS diagnostics
+        # An observer may never decide this job: the step's own shell disables errexit and exits 0, and
+        # this is the outer net for anything that gets past it (BE-0361). A lane that reddens because
+        # its *diagnostics* fell over reports nothing about the software under test.
+        continue-on-error: true
+        uses: ./.github/actions/collect-ios-diagnostics
+        with:
+          phase: start
+          udid: ${{ steps.toolchain.outputs.udid }}
+
       # `launch_driver` erases/installs/launches the backend, so no explicit install here.
       # BAJUTSU_FAULT_INJECTION_UDID both routes the backend and un-skips the module; the cases find the
       # runner process to signal by that same UDID, so they can only ever reach this job's device. `-n0`
@@ -984,6 +1038,7 @@ jobs:
       # not run) would turn this whole lane into a green check that injected no fault at all. Refuse to
       # run instead, since a lane reporting green having tested nothing is the one outcome worse than red.
       - name: Run the XCUITest fault injection (retry, crash recovery, killed runner)
+        id: suite
         env:
           BAJUTSU_FAULT_INJECTION_UDID: ${{ steps.toolchain.outputs.udid }}
         run: |
@@ -992,6 +1047,15 @@ jobs:
             exit 1
           fi
           uv run pytest tests/test_fault_injection_ondevice.py -m ondevice -n0 -v
+
+      - name: Collect iOS diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/collect-ios-diagnostics
+        with:
+          phase: collect
+          udid: ${{ steps.toolchain.outputs.udid }}
+          failed: ${{ steps.suite.outcome != 'success' }}
 
       # The runner's own log (the workflow-level BAJUTSU_XCUITEST_RUNNER_LOG puts it under `runs/`) is
       # where a fault that did not land the way a case expected is diagnosable.
@@ -1090,11 +1154,33 @@ jobs:
       - name: Wait for the Simulator
         run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
 
+      # As in the two pytest lanes above: this job drives `make`, not the bajutsu-e2e action, so it
+      # wires the BE-0361 diagnostics itself.
+      - name: Start iOS diagnostics
+        # An observer may never decide this job: the step's own shell disables errexit and exits 0, and
+        # this is the outer net for anything that gets past it (BE-0361). A lane that reddens because
+        # its *diagnostics* fell over reports nothing about the software under test.
+        continue-on-error: true
+        uses: ./.github/actions/collect-ios-diagnostics
+        with:
+          phase: start
+          udid: ${{ steps.toolchain.outputs.udid }}
+
       # Run the committed pixel VRT over XCUITest. `make e2e-visual` (demos/showcase/Makefile)
       # installs the freshly-built app, drives the Stable catalog on the launch tab, and
       # pixel-compares it against baselines_ios/stable.png with the status bar + tab bar masked.
       - name: Run the visual regression (VRT, pixel snapshot)
+        id: vrt
         run: make -C demos/showcase e2e-visual SIM=${{ steps.toolchain.outputs.udid }}
+
+      - name: Collect iOS diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/collect-ios-diagnostics
+        with:
+          phase: collect
+          udid: ${{ steps.toolchain.outputs.udid }}
+          failed: ${{ steps.vrt.outcome != 'success' }}
 
       - name: Upload run artifacts
         if: always()

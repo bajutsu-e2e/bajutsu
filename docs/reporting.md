@@ -96,7 +96,10 @@ means the same thing after the run that produced it exits
   `actionLog` evidence kind, inherent in the manifest rather than a file
   ([evidence](evidence.md#actionlog--what-each-step-actually-did-to-the-screen)). A run recorded before
   `schemaVersion` 5 carries none. `expect_actuations` holds the same for the scenario-level `expect`
-  re-check, where the system-alert guard can actuate with no step to attribute it to.
+  re-check, where the system-alert guard can actuate with no step to attribute it to. From
+  `schemaVersion` 7 a record may also carry `substitution`, naming why the element actuated is not
+  the one the driver's default rule would have named; an older run carries none, which reads the
+  same way as its absence today.
 - `network.json`'s `startedAt` (one file per scenario, not shown in the manifest above): each
   observed exchange's absolute start, on the same footing as `steps[].started_at` and derived
   through the same scenario anchor, so a viewer subtracts `video_anchor_s` from both — see
@@ -109,7 +112,7 @@ means the same thing after the run that produced it exits
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
   It groups accumulated runs by identity, so a verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. Pure metadata — it never enters
-  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `6` today.)
+  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `7` today.)
 - `idb` (top, optional, legacy): older manifests may carry an `idb_companion` / client version
   block (BE-0005). It was retired with the idb backend (BE-0290) and is no longer written; an old
   manifest that still has it loads fine, since an unknown top-level key is ignored.

@@ -34,6 +34,7 @@ def _el(identifier: str, label: str, traits: list[str] | None = None) -> base.El
         "traits": traits or ["button"],
         "value": None,
         "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
     }
 
 
@@ -185,6 +186,7 @@ def test_enrich_preserves_selection_across_steps() -> None:
         "traits": [],
         "value": "hello",
         "frame": (0.0, 0.0, 100.0, 40.0),
+        "nativeZ": None,
     }
     driver = FakeDriver([field])
     steps = [
@@ -238,6 +240,7 @@ def test_enrich_uses_alert_guard_during_replay() -> None:
         "traits": ["application"],
         "value": None,
         "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
     }
     driver = FakeDriver([app])  # blocked: only bare app window
 

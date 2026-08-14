@@ -124,6 +124,7 @@ def element(
     traits: list[str] | None = None,
     value: str | None = None,
     frame: base.Frame = (0.0, 0.0, 10.0, 10.0),
+    native_z: float | None = None,
 ) -> base.Element:
     """Build one `Element` for a conformance screen — a plain fixture, not a behavior mock."""
     return base.Element(
@@ -132,6 +133,7 @@ def element(
         traits=traits if traits is not None else [],
         value=value,
         frame=frame,
+        nativeZ=native_z,
     )
 
 
@@ -316,6 +318,18 @@ class DriverConformanceContract:
         driver = harness.with_screen([element(identifier="a"), element(identifier="b")])
         identifiers = {el["identifier"] for el in driver.query()}
         assert {"a", "b"} <= identifiers
+
+    def test_native_z_is_none_unless_the_backend_measures_it(
+        self, harness: ConformanceHarness
+    ) -> None:
+        # `nativeZ` (BE-0355) is diagnostic only and app-measured: every element carries the field,
+        # and a backend that cannot measure a real front-to-back position reports `None` rather than
+        # deriving one from the tree's own document order — an honest absence over a wrong guess.
+        # No backend measures one yet (the iOS and Android reporting paths are that item's still-open
+        # Units 2 and 3), so the whole contract today is that absence, and this case is what fails on
+        # the day a backend starts fabricating a value instead of reporting one the app measured.
+        driver = harness.with_screen([element(identifier="a"), element(identifier="b")])
+        assert all(el["nativeZ"] is None for el in driver.query())
 
     def test_baseline_capabilities_are_declared(self, harness: ConformanceHarness) -> None:
         # Every backend must read the screen: the preflight baseline (BE-0082) is QUERY + ELEMENTS.

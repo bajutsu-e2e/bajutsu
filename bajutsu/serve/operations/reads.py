@@ -734,6 +734,10 @@ def resolve_scenario_pick(
                 "traits": list(el.get("traits", [])),
                 "value": el.get("value"),
                 "frame": tuple(el.get("frame", (0, 0, 0, 0))),
+                # Carried through rather than blanked: this rebuilds an `Element` from what the file
+                # actually recorded, and a reconstruction that drops a field the file holds would
+                # claim an absence the evidence contradicts. Nothing downstream reads it today.
+                "nativeZ": driver_base.native_z_from_json(el.get("nativeZ")),
             }
             for el in raw
         ]

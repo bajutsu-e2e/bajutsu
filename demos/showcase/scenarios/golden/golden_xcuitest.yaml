@@ -14,10 +14,38 @@
     recorded golden — a text field, a value-mirrored stepper/toggle, and buttons
     (identity, state, traits exact; frame sane).
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    # Pinned to "0", not merely left unset: the iOS lanes run with `--touch-markers`, which sets the
+    # key on every scenario that does not already carry it. Without the pin this scenario would run
+    # with the markers on too, and the pair below would compare two marked runs instead of a marked
+    # run against an unmarked one.
+    launchEnv: { SHOWCASE_UITEST: "1", BAJUTSU_TOUCH_MARKERS: "0" }
   steps:
     - tap: { label: "Log", traits: [button] }
       capture: [video]
+    - wait: { for: { id: log.note }, timeout: 10 }
+  expect:
+    - golden: { path: controls.json }
+
+# The same tree, recorded with the in-app touch visualization on: the invariance check for
+# `bajutsu run --touch-markers`. The marker is a CALayer, which is not a UIResponder and conforms to
+# no accessibility protocol, so it cannot enter the hierarchy `app.snapshot()` walks. This scenario
+# asserts the *same* controls.json the scenario above asserts with the visualization off, so a
+# visualization that perturbed the pinned controls fails here. The compare walks the baseline's own
+# keys (bajutsu/evidence/golden.py), so what it catches is a control that changed, not a node that
+# was added; tests/test_touch_markers.py guards the other half by failing if the drawing code ever
+# reaches for a UIView instead of a CALayer.
+# It pairs with the scenario above deliberately: the tap is what makes a marker exist at all, so
+# adding the launch env to a scenario that touches nothing (golden.yaml waits, and never taps)
+# would prove nothing.
+- name: golden controls with touch markers
+  tags: [golden, controls]
+  description: >-
+    Assert that enabling the in-app touch visualization leaves the normalized element tree
+    identical to the golden recorded without it.
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", BAJUTSU_TOUCH_MARKERS: "1" }
+  steps:
+    - tap: { label: "Log", traits: [button] }
     - wait: { for: { id: log.note }, timeout: 10 }
   expect:
     - golden: { path: controls.json }

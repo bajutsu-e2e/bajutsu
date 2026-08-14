@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import fnmatch
 import functools
+import math
 import re
 import time
 from collections.abc import Iterator
@@ -144,6 +145,36 @@ class Element(TypedDict):
     traits: list[str]
     value: str | None
     frame: Frame
+    # The element's real front-to-back position, measured by the app itself through the opt-in
+    # app-side hook (BE-0355) — never derived from this list's own document order, which is only the
+    # paint-order proxy `topmost_at_point` below already warns about. Diagnostic only: no selector
+    # matches on it and no occlusion check reads it, so `is_tappable` / `topmost_at_point` /
+    # XCUITest's `isHittable` are unaffected. `None` is an honest absence — a backend with no such
+    # hook, or an app that has not opted in — rather than a wrong guess. No backend reports a real
+    # value yet; the iOS and Android reporting paths are BE-0355's still-open Units 2 and 3.
+    # `_collapse_identical_duplicates`'s content key deliberately omits it: two candidates that
+    # agree on every other reported field still collapse, however far apart they measure.
+    nativeZ: float | None
+
+
+def native_z_from_json(value: object) -> float | None:
+    """Read a persisted `nativeZ` back off JSON, degrading anything unrepresentable to `None`.
+
+    The one rule every reader of a written `elements.json` or golden file shares, so a value that
+    round-trips through evidence means the same thing as one straight off a driver. `nativeZ` is
+    diagnostic only (BE-0355) and no assertion reads it, so a malformed value degrades to the same
+    honest absence an uninstrumented app reports instead of failing a load that would otherwise
+    succeed. `bool` is excluded deliberately: it is an `int` subclass, and `True` is not a position.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        z = float(value)
+    except OverflowError:  # JSON holds an arbitrary-precision int; a float cannot
+        return None
+    # `json.loads` accepts the non-standard `NaN` / `Infinity` literals; neither is a position, and
+    # a NaN compares false against every value including itself, so degrade both the same way.
+    return z if math.isfinite(z) else None
 
 
 class Trait:
@@ -880,6 +911,49 @@ def topmost_at_point(elements: list[Element], point: Point, target: Element) -> 
             continue
         return el
     return None
+
+
+# Above this many named descendants, a refused actuation fails rather than probing them: a container
+# this crowded is a layout region, not a control with one actuatable child, and every probe a backend
+# spends asking "is this one reachable" is a round trip.
+MAX_REDIRECT_CANDIDATES = 4
+
+
+def redirect_candidates(elements: list[Element], target: Element) -> list[Element]:
+    """The named descendants a refused actuation on `target` could be redirected to, in document order.
+
+    The mirror image of `topmost_at_point`: that function scans the same after-`target` slice and
+    throws away exactly what this one keeps. A platform can report a container inflated over the
+    control it wraps — a SwiftUI `Stepper` whose accessibility element spans its whole form row, say —
+    and refuse a tap on the container while the control inside it is perfectly reachable. These are
+    the elements a caller may then offer the platform instead.
+
+    Three conditions, each ruling out a way the offer could be wrong:
+
+    - **After `target` in document order.** `Element` carries no parent pointer, so geometry alone
+      cannot tell a descendant from an ancestor or from an unrelated overlay that happens to enclose
+      the same frame. A pre-order walk always emits an ancestor before its descendants, so the slice
+      does the work no frame check can — the same reasoning `topmost_at_point` spells out.
+    - **Inside `target`'s frame** (`_contains`, edge-inclusive). An equal frame counts: a control
+      registered twice at one place is a redirect target as legitimate as a smaller child, and it
+      still has to satisfy the last condition.
+    - **Carrying an identifier.** The offer is then always an element the caller could have named
+      directly, which is what keeps a redirect from becoming a guess the scenario's author cannot
+      predict — and what lets a refusal print the candidates it declined to choose between.
+
+    `target` must be one of the objects in `elements`, found by identity (`is`) rather than equality,
+    the way every caller already resolves it from the very tree it now re-scans. A `target` absent
+    from the list has no descendants to offer, so the result is empty rather than an error.
+    """
+    try:
+        after_target = next(i for i, el in enumerate(elements) if el is target) + 1
+    except StopIteration:
+        return []
+    return [
+        el
+        for el in elements[after_target:]
+        if el["identifier"] and _contains(target["frame"], el["frame"])
+    ]
 
 
 def raise_if_covered(elements: list[Element], el: Element, sel: Selector) -> None:

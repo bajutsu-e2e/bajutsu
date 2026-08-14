@@ -18,9 +18,18 @@ final class BajutsuURLProtocol: URLProtocol, URLSessionDataDelegate {
 
     override class func canInit(with request: URLRequest) -> Bool {
         if URLProtocol.property(forKey: handledKey, in: request) != nil { return false }
-        // Never intercept the loopback (the collector + any local stub server).
-        if let host = request.url?.host, host == "127.0.0.1" || host == "localhost" { return false }
-        return (request.url?.scheme == "http" || request.url?.scheme == "https")
+        guard let url = request.url else { return false }
+        // Never intercept the loopback (the collector + any local stub server). Matched on the whole
+        // URL, not on `host` alone: a URL whose authority did not survive being forwarded parses with
+        // a nil host, and a guard that reads only `host` waves it through — which is exactly how the
+        // collector's own POSTs came to be intercepted and re-reported in an amplifying loop. The
+        // string test costs nothing and holds whether or not the URL parsed the way it should have.
+        let text = url.absoluteString
+        for loopback in ["127.0.0.1", "localhost", "[::1]"]
+        where url.host == loopback || text.contains("/\(loopback):") || text.contains("/\(loopback)/") {
+            return false
+        }
+        return (url.scheme == "http" || url.scheme == "https")
     }
 
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
