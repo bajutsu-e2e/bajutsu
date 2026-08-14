@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-dynamic-value-generation-ja.md)
+**English** · [日本語](BE-0377-dynamic-value-generation-ja.md)
 
-# BE-XXXX — Random and datetime value generation
+# BE-0377 — Random and datetime value generation
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-dynamic-value-generation.md) |
+| Proposal | [BE-0377](BE-0377-dynamic-value-generation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0377") |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
