@@ -61,8 +61,11 @@ def test_js_keeps_one_membership_form_open_at_a_time(tmp_path: Path) -> None:
     # inserted after rather than through document order.
     text = _fetch(tmp_path, "/serve.orgs.mjs")
     body = text.split("function openMembership")[1].split("\n}")[0]
-    assert "renderOrgsView();" in body
-    assert "row.nextElementSibling.querySelector('.orgedit')" in body
+    # Ordering, not source text: the bare name also matches the cancel handler's own
+    # `renderOrgsView()` at the end of the body, so `in body` alone would survive deleting the
+    # re-render this test exists to pin.
+    assert body.index("renderOrgsView") < body.index("insertAdjacentHTML")
+    assert "nextElementSibling" in body and ".orgedit" in body  # bound via the row just inserted
 
 
 def test_core_js_refreshes_the_orgs_page_on_entry(tmp_path: Path) -> None:
