@@ -85,7 +85,9 @@ def _state(
     from bajutsu.serve.server.db import SqlRepository
     from bajutsu.serve.server.models import Base
 
-    engine = serve_engine()
+    # `foreign_keys=True` so the SQLite parameter enforces the same foreign keys Postgres always
+    # does — `audit_log.org_id` among them, which every audited operation here writes.
+    engine = serve_engine(foreign_keys=True)
     Base.metadata.create_all(engine)
     state = ServeState(
         runs_dir=tmp_path / "runs",
@@ -101,6 +103,20 @@ def _state(
 
 def _sign_in(state: ServeState) -> tuple[Any, int, str | None]:
     return ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
+
+
+def _admin(state: ServeState) -> str:
+    """The admin the audited operations below act as, holding the user row a sign-in leaves behind.
+
+    An audit entry carries foreign keys on both its actor and that actor's org, and an actor with no
+    user row resolves to the `default` org (`ServeState.org_of`) — an org this deployment never
+    created. A real sign-in cannot produce either dangling key, since `oauth_callback` calls
+    `ensure_org` and then `upsert_user` before it ever issues a session, so an actor fabricated here
+    needs the same row or the operation 500s on any database that enforces the keys.
+    """
+    assert state.repository is not None
+    state.repository.upsert_user("root", org_id="acme", github_login="root", email="root@x")
+    return "root"
 
 
 # --- unit 1: the database is a second producer of the same org model -------------------------
@@ -291,12 +307,12 @@ def test_create_then_re_member_an_org_and_audit_both(
 ) -> None:
     state = _state(serve_engine, tmp_path)
     assert state.repository is not None
-    state.repository.upsert_user("root", org_id="acme", github_login="root", email="root@x")
+    admin = _admin(state)
 
-    payload, status = ops.create_org(state, {"slug": "initech", "name": "Initech"}, actor="root")
+    payload, status = ops.create_org(state, {"slug": "initech", "name": "Initech"}, actor=admin)
     assert status == 200 and payload["slug"] == "initech"
     # A fresh org admits nobody: membership is never inherited from anywhere.
-    created = next(o for o in ops.list_orgs_view(state, actor="root")[0] if o["slug"] == "initech")
+    created = next(o for o in ops.list_orgs_view(state, actor=admin)[0] if o["slug"] == "initech")
     assert created == {
         "slug": "initech",
         "name": "Initech",
@@ -310,7 +326,7 @@ def test_create_then_re_member_an_org_and_audit_both(
         state,
         "initech",
         {"members": ["peter"], "githubOrgs": ["initech-gh"], "editorTeam": "initech-gh/leads"},
-        actor="root",
+        actor=admin,
     )
     assert status == 200
     orgs = orgs_from_db(state.repository)
@@ -336,16 +352,17 @@ def test_deleting_an_org_retires_it_without_removing_its_row(
     # foreign keys on this id — including the deletion's own audit entry.
     state = _state(serve_engine, tmp_path, oauth=_FakeOAuth("bob"))
     assert state.repository is not None
+    admin = _admin(state)
     assert _sign_in(state)[1] == 200  # bob belongs to globex while it is live
 
-    assert ops.delete_org(state, "globex", actor="root")[1] == 200
-    assert [o["slug"] for o in ops.list_orgs_view(state, actor="root")[0]] == ["acme"]
+    assert ops.delete_org(state, "globex", actor=admin)[1] == 200
+    assert [o["slug"] for o in ops.list_orgs_view(state, actor=admin)[0]] == ["acme"]
     assert state.repository.get_org("globex") is None
     assert state.repository.get_org("globex", include_deleted=True) is not None
     # Retired means "admits nobody", so bob's next sign-in is turned away rather than resolved.
     assert _sign_in(state)[1] == 403
     # ...and the slug stays taken, so nothing silently reactivates it.
-    assert ops.create_org(state, {"slug": "globex"}, actor="root")[1] == 409
+    assert ops.create_org(state, {"slug": "globex"}, actor=admin)[1] == 409
 
 
 def test_deleting_an_org_is_refused_while_it_owns_a_project_or_is_the_default(
@@ -382,7 +399,7 @@ def test_the_backfill_seeds_once_and_a_later_config_edit_cannot_undo_it(
 ) -> None:
     state = _state(serve_engine, tmp_path)
     assert state.repository is not None
-    ops.update_org_membership(state, "acme", {"members": ["zoe"]}, actor="root")
+    ops.update_org_membership(state, "acme", {"members": ["zoe"]}, actor=_admin(state))
 
     # An operator edits `orgs:` and rebinds. The row is already past cutover, so the edit does not
     # reach it — and the entry is reported so they learn the file no longer decides this.
@@ -436,8 +453,9 @@ def test_an_org_created_through_the_api_is_never_seeded_over(
     # membership an admin set — the overwrite the per-row marker exists to prevent.
     state = _state(serve_engine, tmp_path)
     assert state.repository is not None
-    ops.create_org(state, {"slug": "initech"}, actor="root")
-    ops.update_org_membership(state, "initech", {"members": ["peter"]}, actor="root")
+    admin = _admin(state)
+    ops.create_org(state, {"slug": "initech"}, actor=admin)
+    ops.update_org_membership(state, "initech", {"members": ["peter"]}, actor=admin)
     state.config.write_text(
         _COLLIDING_YAML + "  initech:\n    members: [mallory]\n", encoding="utf-8"
     )
@@ -455,7 +473,8 @@ def test_a_membership_edit_on_an_unseeded_row_is_never_seeded_over(
     state = _state(serve_engine, tmp_path)
     assert state.repository is not None
     state.repository.ensure_org("legacy", slug="legacy", name="legacy")
-    assert ops.update_org_membership(state, "legacy", {"members": ["zoe"]}, actor="root")[1] == 200
+    edit = ops.update_org_membership(state, "legacy", {"members": ["zoe"]}, actor=_admin(state))
+    assert edit[1] == 200
     state.config.write_text(
         _COLLIDING_YAML + "  legacy:\n    members: [mallory]\n", encoding="utf-8"
     )
@@ -482,7 +501,7 @@ def test_a_soft_deleted_org_is_never_reseeded(
     # at the next restart, with nothing in the configuration file saying so.
     state = _state(serve_engine, tmp_path)
     assert state.repository is not None
-    assert ops.delete_org(state, "globex", actor="root")[1] == 200
+    assert ops.delete_org(state, "globex", actor=_admin(state))[1] == 200
     seed_orgs_from_bound_config(state)
     assert state.repository.get_org("globex") is None
 
