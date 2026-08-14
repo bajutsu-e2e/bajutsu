@@ -757,8 +757,13 @@ every successful sign-in and carries a `bypass` field, true only when a configur
 `orgs:` — is what admitted the login; that field is the only record a bypass admission leaves. Most
 bypass admissions are `INFO`, since an admin Team in an operations-only organization bypasses on
 every sign-in by design; `oauth.login` is `WARNING` only when the bypass admitted a login while the
-org model itself was unusable (no config bound, a config that failed to load, or one declaring no
-`orgs:` block) — so alert on `WARNING`, and grep `bypass` when auditing who signed in and when.
+org model itself was unusable. Which state that is depends on where the org model comes from: on a
+deployment whose `orgs:` block is the source, no config bound, a config that failed to load, or one
+declaring no `orgs:` block; on a deployment whose database holds the membership, an `orgs` table in
+which no row declares any membership yet — an empty table, but equally one whose rows all carry an
+empty roster: the passive row a bypass sign-in creates for itself, or orgs an admin created on the
+Orgs page and has not filled in yet. So alert on `WARNING`, and grep `bypass` when
+auditing who signed in and when.
 
 **Redaction is structural.** A single filter sits at the root logger, so *every* line — including
 ones from third-party libraries — is scrubbed before it is written; correctness does not depend on

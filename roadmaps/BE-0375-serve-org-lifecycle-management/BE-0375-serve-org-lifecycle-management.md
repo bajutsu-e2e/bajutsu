@@ -165,16 +165,20 @@ block — are shapes only a file can take, so neither the causes nor the level s
 source unread. Carrying them over would tell an operator to inspect a file that no longer decides
 anything.
 
-On a database-backed deployment those three collapse into one — the `orgs` table holds no live row
-this login matches — and the failure that replaces them never reaches the cause classifier at all.
+On a database-backed deployment those three collapse into one — no live `Org` row this login matches
+— and the failure that replaces them never reaches the cause classifier at all.
 This item gives `orgs_from_db` the opposite failure mode from `load_serve_config_file`'s: a
 database error propagates rather than failing closed to an empty mapping: when `serve` cannot read
 the database, it answers with a 5xx that names the database, rather than denying every user with a
-message that blames their GitHub membership. What remains to report is therefore: the `orgs` table
-holds no live row at
-all (nothing created or seeded yet — the shape unit 7's bypass exists for), GitHub returned no
-organizations for this login, or a real, unmatching roster. WARNING stays reserved for the
-operator-actionable one, an empty table.
+message that blames their GitHub membership. What remains to report is therefore: no row in the
+`orgs` table declares any membership yet (nothing created or seeded, or nothing that admits anybody
+— the shape unit 7's bypass exists for), GitHub returned no organizations for this login, or a real,
+unmatching roster. WARNING
+stays reserved for the operator-actionable one, a table nobody yet belongs to. Keying it on
+membership rather than on row count is what keeps it from decaying after one use: the bypass sign-in
+the WARNING reports calls `ensure_org` on its way past, leaving a passive `default` row behind, so a
+level keyed on an empty table would drop to INFO from the second sign-in on while the deployment
+still admits nobody but admin-Team members.
 
 The recovery guard beside them — `not matched_org and parsed is None and state.config is not None`,
 which keeps a bypass-admitted user's already-recorded org rather than relocating them to `default`
@@ -439,8 +443,9 @@ database is exactly the piece that makes an empty `orgs` table recoverable.
       unchanged.
 - [x] 3 — Re-read the denial diagnostics for a database source: `_unmatched_org_cause`'s three
       configuration-shaped causes collapse to "no live `Org` row matched," `orgs_from_db` propagates
-      a database error instead of failing closed to an empty mapping, WARNING keys on an empty
-      table, and the `parsed is None` org-recovery guard is removed rather than translated.
+      a database error instead of failing closed to an empty mapping, WARNING keys on a table in
+      which no row declares membership yet, and the `parsed is None` org-recovery guard is removed
+      rather than translated.
 - [x] 4 — Resolve target ownership per org rather than per name: `_target_forbidden` asks whether
       the target is in this org's own `targets_for_org` list, leaving `org_for_target` with no
       caller (through `targets_for_org`, so `default` keeps the unclaimed targets its literal-slug
