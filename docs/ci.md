@@ -170,10 +170,15 @@ produced an empty file — the same empty-by-construction artifact this collecti
 
 #### The Android lane
 
-The six jobs that boot an Android Virtual Device (AVD) — `smoke`, `golden`, `network`,
-`conformance`, `fault-injection`, and `visual` — collect the same three layers. `uiautomator
-(codegen)` stays out for the reason `codegen` does on iOS: it drives Gradle's `connectedAndroidTest`
-directly and writes nothing under `runs/` for the collection to ride.
+Every job that boots an Android Virtual Device (AVD) collects the same three layers, `uiautomator
+(codegen)` included. That job is where the collection matters most, not least: every path it uploads
+is produced by Gradle *running the generated test*, so a failure before that point — a wedged AVD
+boot, a codegen or build error, the job's own `timeout-minutes` — left `if-no-files-found: ignore`
+to drop the artifact silently, and a job that failed outside its own test uploaded nothing at all.
+Unlike the six `bajutsu run` jobs it runs no adb driver at test time, so the resident-read trigger
+cannot fire there; its Layer 1 hook is the host-side recorder
+([`screenrecord.py`](../demos/showcase/android/screenrecord.py)) confirming its recording is
+producing bytes, which is what a wedged renderer — this lane's known flake — fails to do.
 
 - **Inside `bajutsu`.** The stall capture fires at two moments, both narrow on purpose. The first is
   the resident channel's hierarchy-read fallback, where the driver gives up on the channel and

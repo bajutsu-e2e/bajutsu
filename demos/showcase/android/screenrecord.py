@@ -27,12 +27,20 @@ def main() -> None:
     serial = adb.resolve_serial(sys.argv[1])
     target = Path(sys.argv[2])
     target.parent.mkdir(parents=True, exist_ok=True)
+    # `confirm_started` for the stall signal, not the anchor: nothing here reads `Interval.true_start`
+    # (this lane has no report to correct), but the confirmation is also what runs BE-0367's
+    # no-growth check, and a recording that stays empty is the one hook the stall capture has on this
+    # lane — no adb driver runs at test time, so the resident-read trigger cannot fire here. That
+    # matters because the flake this recording exists to diagnose looks exactly like a wedged
+    # renderer: an accessibility tree reporting empty right after launch. The cost is a few bounded
+    # probes before the recorder settles, paid in a backgrounded process while Gradle builds.
     interval = intervals.start_screenrecord(
         serial,
         target,
         time_limit=intervals.SCREENRECORD_TIME_LIMIT_S,
         size=intervals.SCREENRECORD_SIZE,
         bit_rate=intervals.SCREENRECORD_BIT_RATE,
+        confirm_started=True,
     )
 
     def _stop(_signum: int, _frame: FrameType | None) -> None:

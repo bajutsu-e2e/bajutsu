@@ -913,10 +913,23 @@ jobs:
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
+      # Layer 3, bracketing the emulator step — see `smoke`'s own pair for why it can be a step.
+      - name: Start host telemetry
+        uses: ./.github/actions/collect-android-diagnostics
+        with:
+          phase: start
+
       # `e2e-codegen` regenerates the .kt, then `connectedA11yDebugAndroidTest` builds/installs the app +
       # instrumentation APKs and runs the generated test against the one booted emulator.
       - name: Codegen + run native UI Automator test (adb)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        env:
+          # Reached by exactly one hook on this lane, unlike the six `bajutsu run` jobs: no adb driver
+          # runs at test time, so the resident-read trigger cannot fire, but the host-side recorder
+          # (`demos/showcase/android/screenrecord.py`) confirms its recording is producing bytes and
+          # captures when it is not. That is the case this lane's known flake actually looks like —
+          # an empty tree right after launch, which a black recording and an idle compositor explain.
+          BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
         with:
           api-level: 34
           arch: x86_64
@@ -925,7 +938,23 @@ jobs:
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
-          script: make -C demos/showcase/android e2e-codegen
+          # The device-side sweep runs from inside this step, on the preserved `rc` — see `smoke`'s
+          # own `script:` for why it cannot be a later step. This job needs it more than the six
+          # `bajutsu run` jobs, not less: every path it uploads below is produced by Gradle *running
+          # the test*, so a failure before that point — a wedged AVD boot, a codegen or build error,
+          # the job's own `timeout-minutes` — left `if-no-files-found: ignore` to drop the artifact
+          # silently, and the job that failed outside its own test uploaded nothing at all.
+          script: >-
+            make -C demos/showcase/android e2e-codegen
+            ; rc=$?
+            ; scripts/collect_android_diagnostics.sh "$rc" || true
+            ; exit $rc
+
+      - name: Collect host telemetry
+        if: always()
+        uses: ./.github/actions/collect-android-diagnostics
+        with:
+          phase: collect
 
       # `androidTest-results/` carries Gradle's own per-test logcat;
       # `connected_android_test_additional_output/` carries the `codegen-diagnostics/` the generated
@@ -949,6 +978,7 @@ jobs:
             demos/showcase/android/compose/build/outputs/androidTest-results/
             demos/showcase/android/compose/build/outputs/connected_android_test_additional_output/
             demos/showcase/android/compose/build/outputs/screenrecord/
+            runs/
           if-no-files-found: ignore
 
   # Single required status check for the Android lane — the Android twin of ios-e2e.yml's `E2E`.

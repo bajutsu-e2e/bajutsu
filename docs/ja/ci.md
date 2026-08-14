@@ -159,10 +159,15 @@ CoreSimulator のサービスプロセス向けに残しています。ホスト
 
 #### Android レーン
 
-同じ3層を集めるのは、Android Virtual Device（AVD）を起動する6ジョブです。`smoke`、`golden`、
-`network`、`conformance`、`fault-injection`、`visual` の6つを指します。`uiautomator (codegen)` が対象外
-なのは、iOS の `codegen` と同じ理由です。Gradle の `connectedAndroidTest` を直接駆動し、収集物を
-載せるものを `runs/` の下に何も書きません。
+同じ3層を集めるのは、Android Virtual Device（AVD）を起動するジョブすべてです。`uiautomator
+(codegen)` も含みます。むしろこのジョブこそ収集が効きます。このジョブがアップロードする経路は、
+どれも Gradle が生成テストを**実行して**初めて生まれるからです。その手前で落ちる原因は、AVD の boot の
+固まり、codegen やビルドの失敗、ジョブ自身の `timeout-minutes` の発火です。いずれの場合も
+`if-no-files-found: ignore` が成果物を黙って捨てていました。自分のテストの外側で落ちたジョブは、1つも
+アップロードできていなかったのです。ただし `bajutsu run` を回す6ジョブと違い、このジョブはテスト時に
+adb ドライバを走らせないので、階層読み取りのトリガーはここでは発火しません。第1層のフックは、ホスト側の
+レコーダ（[`screenrecord.py`](../../demos/showcase/android/screenrecord.py)）が録画のバイト増加を
+確認する経路です。描画が固まった状態、つまりこのレーンの既知のフレークでは、この確認が通りません。
 
 - **`bajutsu` の内側。** ストール時の捕捉の発火点は2つだけで、どちらも意図的に絞ってあります。
   1つめは常駐チャネルの階層読み取りのフォールバックで、ドライバがチャネルを諦めてリース残りを

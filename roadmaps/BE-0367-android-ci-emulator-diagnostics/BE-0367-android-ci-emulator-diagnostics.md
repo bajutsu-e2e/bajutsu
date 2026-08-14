@@ -285,6 +285,19 @@ contributes — and the two lanes' probes became `simulator_probes` and `device_
 backend adds a probe set and nothing else. Unit 5 folded the two lanes' `docs/ci.md` write-ups into
 one section for the same reason.
 
+Units 3 and 4 also cover `uiautomator (codegen)`, which *Detailed design* above excludes. That
+exclusion reasons from the collection's *mechanism* — the job writes nothing under `runs/`, so
+nothing rides there — and mistakes it for the job's *need*, which is the opposite of what the
+uploads show: every path `codegen` uploads is produced by Gradle running the generated test, so a
+failure before that point (a wedged AVD boot, a codegen or build error, the job's own
+`timeout-minutes`) met `if-no-files-found: ignore` and uploaded nothing at all. The collection's
+output directory is a parameter, not a constraint, so the job takes the same two tiers and the same
+host sampler, and its upload gains `runs/`. Layer 1 reaches it through one hook rather than two: no
+adb driver runs at test time, so only the host-side recorder
+([`demos/showcase/android/screenrecord.py`](../../demos/showcase/android/screenrecord.py), which now
+confirms its recording is producing bytes) can fire — which is the right hook anyway, since a wedged
+renderer is this lane's known flake.
+
 ## References
 
 - [BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics.md) — the
