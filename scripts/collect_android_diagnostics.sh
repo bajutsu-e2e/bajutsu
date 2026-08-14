@@ -60,6 +60,12 @@ collect getprop.txt "$CHEAP_TIMEOUT" adb shell getprop
 collect devices.txt "$CHEAP_TIMEOUT" adb devices -l
 
 if [ "$rc" -eq 0 ]; then
+  # Say where the evidence went. Every collection above writes to a file and prints nothing, so
+  # without this the job log's only trace of the sweep is an unexplained gap — and on the failing
+  # tier below that gap is the tens of seconds `adb bugreport` takes, which reads as the job having
+  # hung rather than having collected. A reader should not have to know this script exists to find
+  # what it wrote.
+  printf 'collect_android_diagnostics: wrote the always tier to %s\n' "$out"
   exit 0
 fi
 
@@ -81,4 +87,6 @@ else
   printf '<adb root unavailable; tombstones and ANR traces not pulled>\n' >>"$out/root.log"
 fi
 
+printf 'collect_android_diagnostics: wrote the always and on-failure tiers to %s (run exit %s)\n' \
+  "$out" "$rc"
 exit 0
