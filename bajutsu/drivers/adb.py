@@ -38,7 +38,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from bajutsu import adb
+from bajutsu import adb, stall_diagnostics
 from bajutsu.drivers import base
 from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
 from bajutsu.drivers.coordinate_tree import CoordinateTreeDriver, StableKey
@@ -669,6 +669,12 @@ class AdbDriver(CoordinateTreeDriver):
                 )
                 self._fetch_hierarchy = None
                 self._fetch_clock = None  # the clock endpoint shares the dead channel
+                # The read channel is gone rather than momentarily noisy, so this is the moment the
+                # state explaining it still exists (BE-0367). Hooked here, at the propagation site,
+                # and never on the act path: `AdbActUnsupported` and `AdbActUncertain` fire during
+                # perfectly healthy runs, and capturing there would spend this run's cap before a
+                # genuine stall could use it. Off unless the operator opted in.
+                stall_diagnostics.capture_adb_stall(self.serial, "resident-read")
         # The dump subprocess carries no event mark, so the barrier reverts to its wall-clock budget.
         self._read_mark = None
         t0 = time.monotonic()

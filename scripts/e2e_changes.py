@@ -308,6 +308,11 @@ _LANE_PATHS: dict[str, str] = {
         r"|tests/test_fault_injection_ondevice_android\.py$"
         r"|\.github/workflows/android-e2e\.yml$"
         r"|\.github/actions/setup-android-toolchain/"
+        # The lane's own diagnostics collection (BE-0367): the host-telemetry action every job
+        # brackets its emulator step with, and the device-side sweep each job's `script:` invokes.
+        # Both run in every KVM job, so a break in either is only visible on this lane.
+        r"|\.github/actions/collect-android-diagnostics/"
+        r"|scripts/collect_android_diagnostics\.sh$"
     ),
     "web": (
         r"|bajutsu/drivers/playwright\.py$"

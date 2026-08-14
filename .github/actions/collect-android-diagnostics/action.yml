@@ -1,0 +1,58 @@
+name: Collect Android host diagnostics
+description: >-
+  Sample the Linux runner's own load for the whole of an android-e2e.yml job (BE-0367 Layer 3). A
+  `start` phase before the job's emulator step launches a background sampler; a `collect` phase after
+  it stops the sampler. It reads only the *host* — never the device — which is what lets it be a
+  composite action at all: the emulator lives only inside the `reactivecircus/android-emulator-runner`
+  step, so device-side collection has to run from inside that step's own `script:`
+  (`scripts/collect_android_diagnostics.sh`) instead. Bracketing that step from outside is also what
+  lets this cover a job whose emulator step died outright, which a sampler launched inside it could
+  not. The log lands under `runs/diagnostics/`, which each job's existing `Upload run artifacts` step
+  already carries.
+
+inputs:
+  phase:
+    description: >-
+      'start' to launch the sampler before the emulator step, 'collect' to stop it afterwards. Any
+      other value is a no-op, so a typo cannot silently leave a job unsampled *and* green — the
+      missing log says so.
+    required: true
+  interval:
+    description: >-
+      Seconds between samples. ~20s is deliberately a hundredth of the `poll_cpuinfo` sampler's 2s
+      cadence and issues no adb traffic at all, so — unlike that opt-in poller — this one has no
+      observer effect on the contention it measures and stays always-on.
+    required: false
+    default: '20'
+
+runs:
+  using: composite
+  steps:
+    - name: Start the host telemetry sampler
+      if: inputs.phase == 'start'
+      shell: bash
+      env:
+        INTERVAL: ${{ inputs.interval }}
+      run: |
+        mkdir -p runs/diagnostics
+        nohup bash -c 'while true; do
+          {
+            date -u +%Y-%m-%dT%H:%M:%SZ
+            top -bn1 2>&1 | head -20
+            free -m 2>&1
+          } >>runs/diagnostics/host-telemetry.log 2>&1
+          sleep "$1"
+        done' _ "$INTERVAL" >/dev/null 2>&1 &
+        # The pid file is deliberately outside `runs/`, so bookkeeping never rides along into the
+        # uploaded artifact.
+        echo $! >"$RUNNER_TEMP/bajutsu-host-telemetry.pid"
+
+    - name: Stop the host telemetry sampler
+      if: inputs.phase == 'collect'
+      shell: bash
+      run: |
+        pidfile="$RUNNER_TEMP/bajutsu-host-telemetry.pid"
+        if [ -f "$pidfile" ]; then
+          kill "$(cat "$pidfile")" 2>/dev/null || true
+          rm -f "$pidfile"
+        fi

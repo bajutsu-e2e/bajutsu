@@ -443,6 +443,89 @@ def _await_screenrecord_started(
     return None
 
 
+def _screenrecord_file_size(serial: str, run: adb.RunFn, device_path: str) -> int:
+    """The device-side recording's current size, or 0 when nothing could be read.
+
+    0 is also the honest answer for the ordinary case (the file does not exist until the first byte
+    lands), so a probe failure is indistinguishable from it and is disclosed by the one caller that
+    needs the distinction — the pre-spawn baseline, whose whole job is to not be fooled by an
+    earlier attempt's leftover bytes.
+    """
+    try:
+        return adb.parse_file_size(run(adb.file_size_cmd(serial, device_path))) or 0
+    except (subprocess.CalledProcessError, OSError):
+        return 0
+
+
+def _screenrecord_baseline_size(serial: str, run: adb.RunFn, device_path: str) -> int:
+    """The recording file's size *before* this spawn, so leftover bytes can't confirm a start."""
+    try:
+        size = adb.parse_file_size(run(adb.file_size_cmd(serial, device_path)))
+    except (subprocess.CalledProcessError, OSError) as exc:
+        # A 0 from a failed probe reads as "no leftover bytes", silently disabling the stale-retry
+        # guard the baseline exists for — the same reason the iOS `_file_size` baseline discloses.
+        _logger.warning(
+            "could not size %s on %s before spawning screenrecord (%s); a finalized earlier "
+            "attempt's leftover bytes may now confirm growth that never happened",
+            device_path,
+            serial,
+            exc,
+        )
+        return 0
+    return size or 0
+
+
+def _await_screenrecord_growing(
+    serial: str,
+    run: adb.RunFn,
+    device_path: str,
+    baseline_size: int,
+    timeout: float = _VIDEO_START_TIMEOUT,
+    poll: float = 0.2,
+) -> bool:
+    """Wait until the device-side recording grows past `baseline_size`, confirming it emits frames.
+
+    The Android half of the iOS `_await_video_file_growing` check (BE-0367). `screenrecord`'s
+    process existing — all `_await_screenrecord_started` can see — is not proof the encoder is
+    producing: a wedged renderer leaves the process alive and the file empty, and that is the
+    difference between a slow run and a stalled one. Poll to a bounded deadline (a condition wait,
+    not a fixed sleep); a probe failure is retried like any other unmet condition, since a stalled
+    device is exactly where the probe itself is most likely to fail transiently.
+
+    Returns:
+        Whether growth was confirmed before the deadline. False is a stall signal the caller acts
+        on, never a run-ending failure — the recording continues either way.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if _screenrecord_file_size(serial, run, device_path) > baseline_size:
+            return True
+        time.sleep(poll)
+    return False
+
+
+def _confirm_screenrecord_growing(
+    serial: str, run: adb.RunFn, device_path: str, baseline_size: int
+) -> None:
+    """Check the recording is producing bytes; on no growth, warn and capture the stall's state.
+
+    Deliberately observational: it leaves `true_start` and `start_confirmed` exactly as the pid
+    confirmation settled them. Whether "the encoder is producing nothing" should also drive the
+    BE-0354 recovery rung is a recovery-semantics question, not a diagnostics one, so BE-0367
+    records the condition and changes no verdict or recovery behavior.
+    """
+    if _await_screenrecord_growing(serial, run, device_path, baseline_size, _video_start_timeout()):
+        return
+    _logger.warning(
+        "screenrecord on %s produced no new bytes in %s within %ss; the recording may be empty "
+        "and the device's renderer wedged",
+        serial,
+        device_path,
+        _video_start_timeout(),
+    )
+    stall_diagnostics.capture_adb_stall(serial, "screenrecord-no-growth")
+
+
 # Shared by every caller outside `bajutsu run` that needs an install+test-window recording bound:
 # the on-device conformance/fault-injection suites' `tests/ondevice_evidence.py` and the codegen
 # lane's `demos/showcase/android/screenrecord.py`. One definition and one rationale comment, so a
@@ -487,8 +570,11 @@ def start_screenrecord(
     """
     device_path = adb.VIDEO_DEVICE_PATH
     # Captured before spawning: a leaked screenrecord from a crash-retry (BE-0049) or any other
-    # stale process on the same device must not confirm a start that never happened.
+    # stale process on the same device must not confirm a start that never happened. The size
+    # baseline guards the same case for the growth check below — a leftover mp4 from a finalized
+    # earlier attempt already has bytes.
     baseline_pids = frozenset(_screenrecord_pids(serial, run)) if confirm_started else frozenset()
+    baseline_size = _screenrecord_baseline_size(serial, run, device_path) if confirm_started else 0
     proc = spawn(
         adb.screenrecord_cmd(
             serial, device_path, time_limit=time_limit, size=size, bit_rate=bit_rate
@@ -501,6 +587,12 @@ def start_screenrecord(
         if confirm_started
         else None
     )
+    # Only worth asking once the process is known to exist: with no process there is nothing to
+    # produce bytes, that path already warned, and a second full timeout would buy no new fact.
+    # This one separates a live-but-producing-nothing recording — a wedged renderer — from a
+    # healthy one, and is the second of BE-0367's two stall triggers.
+    if confirm_started and true_start is not None:
+        _confirm_screenrecord_growing(serial, run, device_path, baseline_size)
 
     def transform(target: Path) -> Path:
         # The local `adb shell` has returned, but the device-side screenrecord is still finalizing;

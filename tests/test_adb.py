@@ -524,6 +524,53 @@ def test_resident_fallback_logs_warning(caplog: pytest.LogCaptureFixture) -> Non
     assert any("resident" in r.message.lower() for r in caplog.records)
 
 
+def _recording_stall_capture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[tuple[str, str]]:
+    """Record every stall capture the driver fires, so a test can pin which paths trigger one."""
+    captured: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        adb_driver_mod.stall_diagnostics,
+        "capture_adb_stall",
+        lambda serial, trigger: captured.append((serial, trigger)),
+    )
+    return captured
+
+
+def test_resident_read_fallback_captures_stall_diagnostics(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The hierarchy-read fallback means the read channel is gone rather than momentarily noisy, and
+    # the state explaining it is about to be overwritten by the next frame (BE-0367). The hook sits
+    # at this propagation site, so it fires exactly once — with the channel latched off, later reads
+    # never reach it again.
+    captured = _recording_stall_capture(monkeypatch)
+
+    def fetch(_since: float | None) -> HierarchyRead:
+        raise AdbResidentError("channel down")
+
+    driver = AdbDriver("U", run=lambda a: FIXTURE, fetch_hierarchy=fetch)
+    driver.query()
+    driver.query()
+
+    assert captured == [("U", "resident-read")]
+
+
+def test_the_act_path_never_captures_stall_diagnostics(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `AdbActUnsupported` (an older server with no /act endpoint) and `AdbActUncertain` (a lost
+    # response the driver deliberately treats as landed) both fire during perfectly healthy runs and
+    # mean the opposite of a stall. Capturing there would spend the per-run cap before a genuine
+    # stall could use it — the one case the probe exists for — so the act path is excluded outright.
+    for reply in (
+        AdbActUnsupported("no /act endpoint"),
+        adb_driver_mod.AdbActUncertain("reply lost"),
+        AdbResidentError("connection reset"),
+    ):
+        captured = _recording_stall_capture(monkeypatch)
+        act, _seen = _recording_act([reply, True])
+        run, _calls = _capturing_run([FIXTURE])
+        AdbDriver("U", run=run, act=act).tap({"id": "stable.submit"})
+        assert captured == [], reply
+
+
 def test_resident_failure_latches_to_dump_for_the_rest_of_the_lease() -> None:
     # A mid-lease channel death must not re-pay the failed-connect cost (and re-log) on every read:
     # after the first AdbResidentError the driver disables the channel and reads via dump silently.

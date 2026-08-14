@@ -89,6 +89,71 @@ lane, so it never skips a job a change could have broken, and — reading only t
 workflow's own declarations, and those Makefile targets — puts no LLM on the path and has no bearing
 on any run's pass/fail verdict.
 
+### Diagnostics an Android E2E failure leaves behind (BE-0367)
+
+An [`android-e2e.yml`](../.github/workflows/android-e2e.yml) job can fail for a reason no scenario
+assertion describes: the resident UI Automator server — the on-device process the adb backend reads
+the element tree from — stops answering, the emulator's own renderer wedges, or the job runs
+out its `timeout-minutes`. The uploaded artifact used to carry no evidence of the cause, only that a
+scenario or the job did not finish. Three layers of collection now record it, each seeing something
+the other two cannot: `bajutsu` itself knows *when* a stall starts, the device-side sweep reads the
+emulator's state at that moment, and the host sampler is the only layer that watches the whole job
+rather than one point in it. Every artifact lands under `runs/diagnostics/`, which each job's
+existing `Upload run artifacts` step already carries, so no new upload wiring exists to break.
+Nothing collected here reaches a verdict: every layer is an observer, and pass/fail is decided
+exactly as before.
+
+**Layer 1 — the stall-time probe inside `bajutsu`.** Two moments trigger it, both narrow on purpose.
+The first is the resident channel's hierarchy-read fallback, where the driver gives up on the channel
+and degrades to the `uiautomator dump` subprocess for the rest of the lease — the point at which the
+read channel is gone rather than momentarily noisy. The second is a new check that the device-side
+`screenrecord` is producing bytes rather than merely running, which separates a wedged renderer from
+a recording that never started. When the environment variable `BAJUTSU_STALL_DIAGNOSTICS` names a
+directory, either moment captures `dumpsys SurfaceFlinger --latency`, a `logcat` tail, and a host
+`ps` and `top` snapshot into `<directory>/stall-NN-<trigger>/`. Each probe carries its own subprocess
+timeout, a failure is written into the artifact rather than raised, and one run takes at most three
+captures, so a crash-looping run can spend neither the disk nor the wall clock. Left unset, the
+variable makes every one of those paths a no-op, so a local run pays nothing for the hook; the
+Android lane points it at `runs/diagnostics/stalls`. The actuation path is excluded deliberately: two
+of the resident channel's own errors fire during perfectly healthy runs — an older server that has no
+actuation endpoint, and a lost response the driver treats as having landed rather than actuating
+twice — so capturing there would spend the per-run cap before a genuine stall could use it. The
+variable's name carries no backend prefix, so one operator setting turns the hook on for whichever
+backend a job drives.
+
+**Layer 2 — the emulator's own state, swept from inside the emulator step.** Every device-touching
+step in the Android lane runs inside a `reactivecircus/android-emulator-runner` step, which boots the
+Android Virtual Device (AVD), runs its `script:`, and kills it when that step ends. An ordinary step
+placed after it — and a step-level `if: failure()` gate — would therefore run with no device attached
+and collect nothing at all. The device-side sweep lives in a script instead,
+[`scripts/collect_android_diagnostics.sh`](../scripts/collect_android_diagnostics.sh), invoked from
+the tail of each job's own `script:` and keyed off the run command's own exit code, the same shape
+the lane's `poll_cpuinfo` poller already uses to survive a failing run. It runs two tiers. The always
+tier is cheap enough for every run: a full-buffer `logcat -d` dump — which, unlike the per-scenario
+`deviceLog` interval evidence, reads the device's own retained ring buffer and so still has something
+to show for a job that failed before any scenario's capture began, plus `dumpsys meminfo`, `getprop`,
+and `adb devices -l` for an environment snapshot. The on-failure tier is heavier and reserved for the
+runs that need it: `adb bugreport`, Android's own comprehensive collector, and a rooted pull of
+`/data/tombstones` (native crash reports) and `/data/anr/` (Application Not Responding (ANR) traces).
+All six emulator jobs — `smoke`, `golden`, `network`, `conformance`, `fault-injection`, and `visual` —
+invoke the sweep. `uiautomator (codegen)` stays out: it drives Gradle's `connectedAndroidTest`
+directly and writes nothing under `runs/` for the collection to ride.
+
+**Layer 3 — host telemetry over the whole job.** A stall correlates with host starvation only if the
+host's load is on record when the stall happens. The composite action
+[`.github/actions/collect-android-diagnostics`](../.github/actions/collect-android-diagnostics/action.yml)
+brackets each job's emulator step: a `start` phase before it launches a background sampler appending
+`top` and `free` output to `runs/diagnostics/host-telemetry.log` about every 20 seconds, and a
+`collect` phase after it stops the sampler. Reading only the Linux runner is what lets this layer be
+a step at all, and bracketing from outside is what lets it cover a job whose emulator step died
+outright. It coexists with the lane's existing `poll_cpuinfo` input rather than replacing it, because
+the two measure different things from different sides: `poll_cpuinfo` reads the guest's view over
+adb, this sampler reads the host's own load. That difference is also why this one is always on where
+`poll_cpuinfo` is opt-in — a host-side sample every 20 seconds issues no adb traffic and samples a
+hundredth as often, so it lacks the observer effect that keeps `poll_cpuinfo` off by default. The
+sampler is an observer off the verdict path, and its interval is a sampling cadence rather than a
+wait, so the ban on fixed sleeps in the run loop is untouched.
+
 The dev tools live in the `dev` dependency group, so the Linux job runs `uv sync --group
 dev` then `uv run --no-sync …` (plain `uv run` would re-sync to the default set and drop
 them). The gate mirrors [`make check`](../Makefile) and the [`pre-push`](../.githooks/pre-push)

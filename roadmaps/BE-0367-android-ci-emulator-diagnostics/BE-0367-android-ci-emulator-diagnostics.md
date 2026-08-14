@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0367](BE-0367-android-ci-emulator-diagnostics.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0367") |
 | Topic | Platform support |
 | Related | [BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0270](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance.md), [BE-0350](../BE-0350-ondevice-conformance-evidence-capture/BE-0350-ondevice-conformance-evidence-capture.md) |
@@ -266,12 +266,12 @@ Mutually exclusive, collectively exhaustive (`MECE`) units of work follow.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — screenrecord growth watcher for the Android `video` provider
-- [ ] Unit 2 — stall-time probe hook (hierarchy-read fallback, the new no-growth warning)
-- [ ] Unit 3 — `scripts/collect_android_diagnostics.sh` and its per-job `script:` wiring
-- [ ] Unit 4 — the `collect-android-diagnostics` composite action (host telemetry only)
-- [ ] Unit 5 — docs (`docs/ci.md` and its `ja` mirror)
-- [ ] Unit 6 — tests
+- [x] Unit 1 — screenrecord growth watcher for the Android `video` provider
+- [x] Unit 2 — stall-time probe hook (hierarchy-read fallback, the new no-growth warning)
+- [x] Unit 3 — `scripts/collect_android_diagnostics.sh` and its per-job `script:` wiring
+- [x] Unit 4 — the `collect-android-diagnostics` composite action (host telemetry only)
+- [x] Unit 5 — docs (`docs/ci.md` and its `ja` mirror)
+- [x] Unit 6 — tests
 
 ## References
 
