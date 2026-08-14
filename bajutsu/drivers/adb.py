@@ -674,7 +674,9 @@ class AdbDriver(CoordinateTreeDriver):
                 # and never on the act path: `AdbActUnsupported` and `AdbActUncertain` fire during
                 # perfectly healthy runs, and capturing there would spend this run's cap before a
                 # genuine stall could use it. Off unless the operator opted in.
-                stall_diagnostics.capture_adb_stall(self.serial, "resident-read")
+                stall_diagnostics.capture(
+                    "resident-read", stall_diagnostics.device_probes(self.serial)
+                )
         # The dump subprocess carries no event mark, so the barrier reverts to its wall-clock budget.
         self._read_mark = None
         t0 = time.monotonic()

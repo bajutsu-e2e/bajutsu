@@ -527,12 +527,18 @@ def test_resident_fallback_logs_warning(caplog: pytest.LogCaptureFixture) -> Non
 def _recording_stall_capture(
     monkeypatch: pytest.MonkeyPatch,
 ) -> list[tuple[str, str]]:
-    """Record every stall capture the driver fires, so a test can pin which paths trigger one."""
+    """Record every stall capture the driver fires, as (serial, reason).
+
+    Both halves of the call are stubbed. `device_probes` hands back the serial it was built for, so
+    what `capture` receives names the device those probes would have read — recording only the reason
+    would let the driver address the wrong emulator with no test noticing.
+    """
     captured: list[tuple[str, str]] = []
+    monkeypatch.setattr(adb_driver_mod.stall_diagnostics, "device_probes", lambda serial: serial)
     monkeypatch.setattr(
         adb_driver_mod.stall_diagnostics,
-        "capture_adb_stall",
-        lambda serial, trigger: captured.append((serial, trigger)),
+        "capture",
+        lambda reason, probes: captured.append((probes, reason)),
     )
     return captured
 

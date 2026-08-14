@@ -321,7 +321,7 @@ def start_video(
         # there (BE-0361 unit 2). Keyed on the tri-state the `Interval` already models rather than
         # re-deriving it, and fired here rather than inside the poll because the udid the capture
         # screenshots is a parameter of this function. Opt-in and bounded; unset, it does nothing.
-        stall_diagnostics.capture("video-no-bytes", udid)
+        stall_diagnostics.capture("video-no-bytes", stall_diagnostics.simulator_probes(udid))
     return Interval(
         kind="video",
         path=path,
@@ -523,7 +523,7 @@ def _confirm_screenrecord_growing(
         device_path,
         _video_start_timeout(),
     )
-    stall_diagnostics.capture_adb_stall(serial, "screenrecord-no-growth")
+    stall_diagnostics.capture("screenrecord-no-growth", stall_diagnostics.device_probes(serial))
 
 
 # Shared by every caller outside `bajutsu run` that needs an install+test-window recording bound:

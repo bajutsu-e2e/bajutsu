@@ -223,7 +223,7 @@ Mutually exclusive, collectively exhaustive (`MECE`) units of work follow.
   reason `poll_cpuinfo` stays off for every `pull_request` and `merge_group` run does not carry over
   either — that input is off because "polling every 2s is itself continuous adb traffic and host load
   on the very lane whose CPU contention it measures," an observer effect a host-side `top`/`free`
-  every ~20 seconds does not have: it issues no adb traffic at all and samples a hundredth as often.
+  every ~20 seconds does not have: it issues no adb traffic at all and samples a tenth as often.
   Layer 3 is therefore always on where `poll_cpuinfo` is opt-in. An implementer should read the two as
   complementary, not as one superseding the other.
 - **Share one composite action between the iOS and Android lanes.** Rejected: `collect-ios-diagnostics`
@@ -272,6 +272,17 @@ Mutually exclusive, collectively exhaustive (`MECE`) units of work follow.
 - [x] Unit 4 — the `collect-android-diagnostics` composite action (host telemetry only)
 - [x] Unit 5 — docs (`docs/ci.md` and its `ja` mirror)
 - [x] Unit 6 — tests
+
+[BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics.md) landed
+first, so this item wired its two triggers into that item's existing `bajutsu/stall_diagnostics.py`
+rather than adding a second module beside it — the outcome *Alternatives considered* anticipated when
+it refused to gate this item on that one. Doing so surfaced a seam neither item had named: *when* to
+capture, what a capture may cost, and where it lands are identical for both backends, while *what to
+read* shares no command between them. Unit 2 therefore split the module along that seam — a `capture`
+that owns the opt-in gate, the per-trigger budget, and the summary, and a `ProbeSet` each backend
+contributes — and the two lanes' probes became `simulator_probes` and `device_probes`. A third
+backend adds a probe set and nothing else. Unit 5 folded the two lanes' `docs/ci.md` write-ups into
+one section for the same reason.
 
 ## References
 

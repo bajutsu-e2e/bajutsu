@@ -945,10 +945,13 @@ def test_the_spawn_hands_the_channel_a_stall_capture_bound_to_this_device(
     # wiring the runner-crash trigger captures nothing, and every other test would still pass.
     _, _, run = _fake_toolchain(monkeypatch)
     captured: list[tuple[str, str | None]] = []
+    # `simulator_probes` hands back its udid, so the recorded pair names the device the probes would
+    # have screenshotted as well as the trigger that fired.
+    monkeypatch.setattr(xcuitest_env.stall_diagnostics, "simulator_probes", lambda udid=None: udid)
     monkeypatch.setattr(
         xcuitest_env.stall_diagnostics,
         "capture",
-        lambda reason, udid=None: captured.append((reason, udid)),
+        lambda reason, probes: captured.append((reason, probes)),
     )
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())

@@ -221,10 +221,13 @@ def test_a_recording_that_never_produces_bytes_captures_the_stall(
     # channel dies of, so the capture fires here too — but only on the stall, never on a healthy
     # start, and never on a capture nobody asked to confirm.
     captured: list[tuple[str, str | None]] = []
+    # `simulator_probes` hands back its udid, so the recorded pair names the device the probes would
+    # have screenshotted as well as the trigger that fired.
+    monkeypatch.setattr(intervals.stall_diagnostics, "simulator_probes", lambda udid=None: udid)
     monkeypatch.setattr(
         intervals.stall_diagnostics,
         "capture",
-        lambda reason, udid=None: captured.append((reason, udid)),
+        lambda reason, probes: captured.append((reason, probes)),
     )
 
     monkeypatch.setattr(intervals, "_await_video_file_growing", lambda *_a, **_k: 12.0)
@@ -579,10 +582,13 @@ def test_start_screenrecord_warns_and_captures_when_the_recording_never_grows(
     monkeypatch.setenv(intervals._VIDEO_START_TIMEOUT_ENV, "0.01")
     monkeypatch.setattr(intervals.time, "sleep", lambda _s: None)
     captured: list[tuple[str, str]] = []
+    # `device_probes` hands back its serial, so the recorded pair names the device the probes would
+    # have read as well as the trigger that fired.
+    monkeypatch.setattr(intervals.stall_diagnostics, "device_probes", lambda serial: serial)
     monkeypatch.setattr(
         intervals.stall_diagnostics,
-        "capture_adb_stall",
-        lambda serial, trigger: captured.append((serial, trigger)),
+        "capture",
+        lambda reason, probes: captured.append((probes, reason)),
     )
     device = FakeDevice(pids=["", "1234"], sizes=["0"])  # process appears; the file stays empty
 
@@ -612,9 +618,7 @@ def test_start_screenrecord_growth_is_confirmed_only_past_the_pre_spawn_baseline
     # would confirm growth that never happened — the same trap the iOS video baseline guards.
     monkeypatch.setenv(intervals._VIDEO_START_TIMEOUT_ENV, "0.01")
     monkeypatch.setattr(intervals.time, "sleep", lambda _s: None)
-    monkeypatch.setattr(
-        intervals.stall_diagnostics, "capture_adb_stall", lambda serial, trigger: None
-    )
+    monkeypatch.setattr(intervals.stall_diagnostics, "capture", lambda reason, probes: None)
     device = FakeDevice(pids=["", "1234"], sizes=["4096"])  # leftover bytes, never growing
 
     with caplog.at_level("WARNING"):
@@ -638,9 +642,7 @@ def test_start_screenrecord_growth_check_is_skipped_when_no_process_appeared(
     monkeypatch.setattr(intervals.time, "sleep", lambda _s: None)
     captured: list[str] = []
     monkeypatch.setattr(
-        intervals.stall_diagnostics,
-        "capture_adb_stall",
-        lambda serial, trigger: captured.append(trigger),
+        intervals.stall_diagnostics, "capture", lambda reason, probes: captured.append(reason)
     )
     device = FakeDevice(pids=[""], sizes=["0"])  # the device-side process never appears
 

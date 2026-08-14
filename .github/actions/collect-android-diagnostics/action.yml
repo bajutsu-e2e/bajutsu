@@ -19,7 +19,7 @@ inputs:
     required: true
   interval:
     description: >-
-      Seconds between samples. ~20s is deliberately a hundredth of the `poll_cpuinfo` sampler's 2s
+      Seconds between samples. ~20s is deliberately a tenth of the `poll_cpuinfo` sampler's 2s
       cadence and issues no adb traffic at all, so — unlike that opt-in poller — this one has no
       observer effect on the contention it measures and stays always-on.
     required: false
