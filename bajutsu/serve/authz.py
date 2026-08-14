@@ -202,10 +202,14 @@ def oauth_callback(
         # the store instead — the opposite of `load_serve_config_file`'s fail-closed shape, and the
         # reason `orgs_from_db` propagates rather than collapsing to an empty mapping. The exception
         # *type* is diagnostic enough here; its message can carry the database URL, which has no
-        # place in a log an operator greps for sign-in failures.
+        # place in a log an operator greps for sign-in failures. Under its own event, not
+        # `oauth.denied`: this request is answered 503, so it is not a denial and must not be
+        # counted as one — and an operator alerting on `oauth.denied` at WARNING is watching for an
+        # unusable admin Team (nobody left who can sign in and fix `orgs:`), a diagnosis a store
+        # outage would send them chasing through `BAJUTSU_OAUTH_ADMIN_TEAMS` for nothing.
         oplog.log_event(
             _logger,
-            "oauth.denied",
+            "oauth.store_unavailable",
             f"the org database could not be read ({type(exc).__name__})",
             level=logging.WARNING,
             actor=login,

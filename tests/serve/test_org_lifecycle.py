@@ -197,10 +197,15 @@ def test_an_unreadable_database_is_a_5xx_not_a_denial(
         payload, status, sid = _sign_in(state)
     assert status == 503 and sid is None
     assert "unavailable" in payload["error"]
-    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
+    record = next(
+        r for r in caplog.records if getattr(r, "event", None) == "oauth.store_unavailable"
+    )
     # The exception type, never its message: a driver's error text can carry the database URL.
     assert "OSError" in record.getMessage()
     assert "database is down" not in record.getMessage()
+    # And under no other name: an alert on `oauth.denied` at WARNING reports total admin lockout,
+    # so an outage of ours reaching it would page the operator with the wrong diagnosis.
+    assert not any(getattr(r, "event", None) == "oauth.denied" for r in caplog.records)
 
 
 def test_a_membershipless_orgs_table_is_the_operator_actionable_denial(

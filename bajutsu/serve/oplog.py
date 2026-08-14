@@ -54,6 +54,10 @@ EVENTS: frozenset[str] = frozenset(
         # startup or rebind (BE-0375). Its own name, not the one above: an operator alerting on a
         # stale config entry must not also be paged by a transient database blip.
         "org.seed.failed",
+        # A sign-in answered 503 because the org database could not be read (BE-0375). Its own name,
+        # not `oauth.denied`: that event means a login was turned away, and an operator alerting on
+        # its WARNING is watching for a total admin lockout, not for a transient store outage.
+        "oauth.store_unavailable",
         "server.startup_warning",
         "quota.rejected",
         "worker.job.started",

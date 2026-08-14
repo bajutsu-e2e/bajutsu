@@ -691,7 +691,9 @@ still declares them. Pare those entries down to `targets:` at your convenience â
 read. Two behaviors change with the cutover, both by design: an unreadable or unbound config no
 longer denies anyone, because the database alone decides sign-in, and a database `serve` cannot read
 answers a sign-in with HTTP 503 naming the store rather than a 403 blaming the user's GitHub
-membership.
+membership. That 503 is recorded under its own `event=oauth.store_unavailable` at `WARNING`, not
+under `oauth.denied` â€” nobody was turned away, and an alert on a denial should point at your GitHub
+configuration, never at an outage of the store.
 
 **Bootstrapping the first org.** A brand-new database has no org, so nobody matches the sign-in gate.
 A member of a configured `BAJUTSU_OAUTH_ADMIN_TEAMS` Team clears that gate regardless of how many
