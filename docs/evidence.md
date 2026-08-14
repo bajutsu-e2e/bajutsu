@@ -194,10 +194,13 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 > or a `capturePolicy` rule (e.g. a `result: error` rule that captures `video`). A scenario that
 > requests none records none, keeping the common case cheap; the lightweight instant baseline
 > (`screenshot` + `elements`) is always captured, so a failure still leaves evidence (DESIGN §10).
-> Every step captures a screenshot on **both** sides of its action: `before.png` and
-> `elements.json` before it acts, showing the screen it is about to act on, and `after.png` once it
-> has, showing what the action left behind. Neither depends on the `capture` list — narrowing that
-> list never costs a step one of its two screenshots.
+> Every step captures evidence on **both** sides of its action: `before.png` and `elements.json`
+> before it acts, showing the screen it is about to act on, and `after.png` and a second
+> `elements` read once it has, showing what the action left behind. Neither side depends on the
+> `capture` list — narrowing that list never costs a step one of its two screenshots. `elements.json`
+> has a single filename, so the post-action read replaces the pre-action tree: the tree a run keeps
+> describes the screen the action produced, which is the screen `after.png` shows and the one every
+> viewer draws element frames from.
 > Preview what a scenario would record with `bajutsu trace --explain` (see [cli](cli.md#trace)).
 
 | Kind | Start command (iOS / Android) | Stop signal | Filename |

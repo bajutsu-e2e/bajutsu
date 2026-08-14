@@ -568,9 +568,9 @@ def test_pre_step_capture_queries_the_web_driver_for_a_blocks_first_nested_step(
     """The pre-step baseline for a `web` block's first nested step queries the *web* driver, not
     the native one, since `prev_after` is reset to `None` around the whole block (BE-0234 Unit 2)
     and the sink call always targets the native driver otherwise (BE-0341) — proven by content:
-    the DOM-only element must appear in the written elements.json. The scenario's final capture
-    (screenshot only, added since this is also the last step) never touches `elements` at all, so
-    it needs no web-driver interaction of its own."""
+    the DOM-only element must appear in the written elements.json. The post-step capture reads the
+    web tree too, so both of the step's `elements` entries describe the DOM, never the native
+    screen the sink call targets."""
     native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
     dom_elements: list[base.Element] = [
         el("confirm", "Confirm", ["button"], frame=(10.0, 10.0, 100.0, 20.0))
@@ -602,9 +602,9 @@ def test_pre_step_capture_queries_the_web_driver_for_a_blocks_first_nested_step(
     els_artifact = next(a for a in leaf_outcome.artifacts if a.kind == "elements")
     written = json.loads((run_dir / els_artifact.name).read_text(encoding="utf-8"))
     assert any(e["identifier"] == "confirm" for e in written)  # the DOM tree, not the native one
-    # Exactly one `elements` entry: the final capture (this is also the last step) adds only a
-    # second screenshot, never a second `elements`.
-    assert sum(1 for a in leaf_outcome.artifacts if a.kind == "elements") == 1
+    # Two `elements` entries, both naming the one fixed filename: the pre-step baseline's
+    # pre-action write and the post-step capture that replaces it with the post-action tree.
+    assert sum(1 for a in leaf_outcome.artifacts if a.kind == "elements") == 2
     names = {a.name for a in leaf_outcome.artifacts}
     assert any(name.endswith("before.png") for name in names)
     assert any(name.endswith("after.png") for name in names)
@@ -615,9 +615,10 @@ def test_pre_step_capture_downgrades_to_screenshot_only_when_web_query_fails(
 ) -> None:
     """A `web` block's first nested step still gets its native `screenshot.before` when the bridge
     query fails: only `elements` needs the web driver, so the pre-step baseline drops just that
-    token rather than the whole capture (BE-0341 review follow-up). The bridge recovers for the
-    post-step read (an unrelated, pre-existing capture path), modeling a transient hiccup rather
-    than a permanently dead bridge."""
+    token rather than the whole capture (BE-0341 review follow-up). The bridge recovers in time for
+    the post-step capture, modeling a transient hiccup rather than a permanently dead bridge — so
+    the step ends with exactly one `elements` entry, the post-action one, instead of the usual
+    two."""
 
     class _FlakyBridge(_FakeBridge):
         def __init__(self, dom_elements: list[base.Element]) -> None:
@@ -656,7 +657,7 @@ def test_pre_step_capture_downgrades_to_screenshot_only_when_web_query_fails(
     leaf_outcome = next(s for s in result.steps if s.action == "type")
     names = {a.name for a in leaf_outcome.artifacts}
     assert any(name.endswith("before.png") for name in names)
-    assert not any(a.kind == "elements" for a in leaf_outcome.artifacts)
+    assert sum(1 for a in leaf_outcome.artifacts if a.kind == "elements") == 1
 
 
 def test_pre_step_query_marks_prev_after_fresh_for_the_interrupt_guard(tmp_path: Path) -> None:
@@ -715,15 +716,15 @@ def test_pre_step_query_marks_prev_after_fresh_for_the_interrupt_guard(tmp_path:
     assert bridge.calls == 2
 
 
-def test_pre_step_and_final_captures_write_content_from_the_same_pre_action_moment(
+def test_every_step_writes_the_tree_that_matches_its_displayed_screenshot(
     tmp_path: Path,
 ) -> None:
-    """Content check, not just call ordering: every step's elements.json holds the pre-action tree
-    it acted on — including the scenario's last step, whose final capture only adds a screenshot
-    (`after.png`), never re-capturing `elements` (BE-0341). `elements.json` has one fixed filename,
-    so if the final capture re-wrote it, the last step's `elements.json` would silently disagree
-    with the `before.png` the editor's `screenshotUrl` still resolves to — a real review finding
-    this test now guards against.
+    """Content check, not just call ordering: every step's elements.json holds the *post-action*
+    tree, the moment `after.png` shows and the moment both viewers draw element frames for. The
+    pre-step baseline writes the pre-action tree first (BE-0341), but the file has one fixed
+    filename and the post-step capture always re-captures `elements`, so the surviving content is
+    the post-action read — for the scenario's last step too, whose end-of-run safety capture adds
+    nothing here (it sees the `after.png` already recorded and skips).
     """
 
     def react(d: FakeDriver, kind: str, arg: object) -> None:
@@ -749,15 +750,11 @@ def test_pre_step_and_final_captures_write_content_from_the_same_pre_action_mome
         data = json.loads((run_dir / art.name).read_text(encoding="utf-8"))
         return {e["identifier"] for e in data}
 
-    # step0's elements.json is the pre-step baseline, written before its own tap ran — the
-    # original screen, not the one its own tap produced.
-    assert _tree_ids(0) == {"a", "b"}
-    # step1 is the last step, but its elements.json is *also* the pre-step baseline — written
-    # before its own tap ran, matching the moment `before.png` shows. "final" (produced only by
-    # step1's own tap) never appears, since the final capture does not touch `elements`.
-    assert _tree_ids(1) == {"a", "b", "mid"}
-    assert "final" not in _tree_ids(1)
-    # The final capture still adds the extra screenshot, visually showing the true end state.
+    # step0's tap revealed "mid": its elements.json describes that screen, the one `after.png`
+    # shows — not the original screen the pre-step baseline wrote first.
+    assert _tree_ids(0) == {"a", "b", "mid"}
+    # The same holds for the last step, whose own tap produced "final".
+    assert _tree_ids(1) == {"a", "b", "final"}
     names = {a.name for a in result.steps[1].artifacts}
     assert any(name.endswith("after.png") for name in names)
 

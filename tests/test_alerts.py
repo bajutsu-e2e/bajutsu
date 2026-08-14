@@ -174,9 +174,9 @@ def test_end_of_step_alert_guard_retry_preserves_correct_before_after_evidence(
     tmp_path: Path,
 ) -> None:
     """The end-of-step alert-guard retry must not corrupt the report's evidence (BE-0341
-    non-regression): the retried step's pre-step baseline still shows the true pre-attempt
-    state, and the *next* step's own baseline reflects the post-retry, settled state — not
-    something stale from the failed first attempt."""
+    non-regression): every step's recorded tree is the settled post-action one, so neither the
+    retried step nor the one after it is left describing the screen the failed first attempt
+    found."""
     go = {
         "identifier": "go",
         "label": "Go",
@@ -214,19 +214,21 @@ def test_end_of_step_alert_guard_retry_preserves_correct_before_after_evidence(
         art = next(a for a in result.steps[step_index].artifacts if a.kind == "elements")
         return json.loads((run_dir / art.name).read_text(encoding="utf-8"))
 
-    # step0's pre-step baseline is the *true* pre-attempt state — the empty screen the runner
-    # actually found when it started this step — not the post-dismissal state.
-    assert _els(0) == []
-    # step1's own pre-step baseline reflects the post-retry, settled state (both targets present).
+    # step0's tree is its post-action one: the screen the retried tap actually left behind, with
+    # both targets present — never the empty screen its failed first attempt found.
+    assert {e["identifier"] for e in _els(0)} == {"go", "next"}
+    # step1's own tree likewise reflects the post-retry, settled state.
     assert {e["identifier"] for e in _els(1)} == {"go", "next"}
+    # The pre-attempt screen is not lost: step0 still records its own pre-action `before.png`.
+    assert any(a.name.endswith("before.png") for a in result.steps[0].artifacts)
 
 
 def test_end_of_step_alert_guard_retry_on_the_last_step_still_gets_a_final_capture(
     tmp_path: Path,
 ) -> None:
-    """The scenario's last step still gets its final post-action screenshot after an end-of-step
-    alert-guard retry — reflecting the retried, successful attempt, not the failed first one.
-    `elements.json`, unaffected, stays the pre-step baseline (BE-0341)."""
+    """The scenario's last step still gets its post-action screenshot after an end-of-step
+    alert-guard retry — reflecting the retried, successful attempt, not the failed first one — and
+    its `elements.json` describes that same settled screen (BE-0341)."""
     go = {
         "identifier": "go",
         "label": "Go",
@@ -260,10 +262,9 @@ def test_end_of_step_alert_guard_retry_on_the_last_step_still_gets_a_final_captu
             run_dir / next(a.name for a in result.steps[0].artifacts if a.kind == "elements")
         ).read_text(encoding="utf-8")
     )
-    # elements.json is the pre-step baseline (the true pre-attempt, empty screen) even though this
-    # is the last step: the final capture only adds a screenshot, never re-capturing `elements`
-    # (BE-0341) — so it stays paired with `before.png`, not the post-retry `after.png`.
-    assert els == []
+    # elements.json is the post-action tree, paired with the `after.png` beside it: the retried
+    # tap's settled screen, not the empty one the failed first attempt found.
+    assert [e["identifier"] for e in els] == ["go"]
 
 
 def test_failure_stands_without_handler() -> None:

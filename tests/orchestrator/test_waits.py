@@ -719,9 +719,9 @@ def test_mid_wait_alert_guard_dismiss_preserves_correct_before_after_evidence(
     tmp_path: Path,
 ) -> None:
     """The mid-wait alert-guard dismiss must not corrupt the report's evidence (BE-0341
-    non-regression): the waiting step's pre-step baseline still shows the true, collapsed
-    pre-dismiss state, and the *next* step's own baseline reflects the post-dismiss, settled
-    state — not something stale from before the alert cleared."""
+    non-regression): every step's recorded tree is the settled post-dismiss one, so neither the
+    waiting step nor the one after it is left describing the collapsed screen the guard fired
+    against — which the waiting step still keeps as its own `before.png`."""
     from bajutsu.orchestrator.types import AlertEvent
 
     ready = el("ready", "R")
@@ -755,10 +755,11 @@ def test_mid_wait_alert_guard_dismiss_preserves_correct_before_after_evidence(
         art = next(a for a in result.steps[step_index].artifacts if a.kind == "elements")
         return json.loads((run_dir / art.name).read_text(encoding="utf-8"))
 
-    # step0's (the wait's) pre-step baseline is the true pre-wait state: collapsed, before the
-    # alert was ever detected.
-    assert _els(0) == []
-    # step1's own pre-step baseline reflects the post-dismiss, settled state.
+    # step0's (the wait's) tree is its post-action one: the screen the dismissal settled on, never
+    # the collapsed one the guard fired against. Its `before.png` still holds that pre-wait moment.
+    assert {e["identifier"] for e in _els(0)} == {"ready", "next"}
+    assert any(a.name.endswith("before.png") for a in result.steps[0].artifacts)
+    # step1's own tree likewise reflects the post-dismiss, settled state.
     assert {e["identifier"] for e in _els(1)} == {"ready", "next"}
 
 

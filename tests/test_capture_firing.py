@@ -1,10 +1,11 @@
 """Tests for evidence firing in the run loop.
 
 Every step captures two instant baselines: a pre-step one (screenshot.before + elements, taken
-before the step acts, BE-0341) and a post-step one that always leads with screenshot.after, so both
-halves of the screenshot pair exist for every step whatever the scenario asked for. `elements` is
-deliberately not re-captured post-step unless something asks: `elements.json` has one fixed
-filename, so an unconditional second write would overwrite the pre-action tree on every step.
+before the step acts, BE-0341) and a post-step one that always leads with screenshot.after +
+elements, so both halves of the pair exist for every step whatever the scenario asked for.
+`elements.json` has one fixed filename, so the post-step write replaces the pre-action tree: the
+tree a step records describes the screen its action produced, the same moment `after.png` shows and
+the moment a viewer draws element frames for.
 capturePolicy / inline `capture` add extra instant kinds onto the post-step call — never
 `screenshot.before`, which the pre-step baseline already wrote (filtered out as redundant). Interval
 kinds (video / deviceLog / appTrace) are heavy and opt-in (BE-0028): recorded once for the whole
@@ -28,7 +29,7 @@ from bajutsu.orchestrator.evidence_rules import requested_intervals
 from bajutsu.scenario import Scenario
 
 BASELINE_BEFORE = ["screenshot.before", "elements"]
-BASELINE_AFTER = ["screenshot.after"]
+BASELINE_AFTER = ["screenshot.after", "elements"]
 
 
 class RecordingSink:
@@ -253,11 +254,11 @@ def test_error_trigger_is_the_safety_net() -> None:
     ]
 
 
-def test_inline_raw_tree_joins_the_pre_step_baseline() -> None:
-    # `rawTree` is deferred to no post-step call: it moves into the pre-step baseline instead, next
-    # to the `elements` token that read the same pre-action tree — `write_raw_tree` persists the
-    # driver's *last* read, and pairing it with a post-action read instead (the plain post-step
-    # capture call) would describe a different moment than `elements.json` does.
+def test_inline_raw_tree_fires_post_step_beside_the_tree_it_describes() -> None:
+    # `rawTree` stays on the post-step call rather than joining the pre-step baseline:
+    # `write_raw_tree` persists the driver's *last* read, and the post-step baseline's always-on
+    # `elements` token re-reads the tree on every step — so a pre-step dump would describe the
+    # pre-action read while the elements.json beside it describes the post-action one.
     driver = FakeDriver([_el("a", "A")])
     sink = RecordingSink()
     run_scenario(
@@ -266,18 +267,16 @@ def test_inline_raw_tree_joins_the_pre_step_baseline() -> None:
         sink=sink,
     )
     assert sink.calls == [
-        ("x/step0", [*BASELINE_BEFORE, "rawTree"]),
-        ("x/step0", BASELINE_AFTER),
+        ("x/step0", BASELINE_BEFORE),
+        ("x/step0", [*BASELINE_AFTER, "rawTree"]),
     ]
 
 
 def test_inline_raw_tree_and_elements_together_both_go_post_step() -> None:
     # Naming both kinds inline (`capture: [elements, rawTree]`) is the combination an author
-    # reaching for this feature is most likely to write. Pre-capturing only `rawTree` here would
-    # still mismatch: the post-step `elements` token would overwrite the pre-step baseline's
-    # elements.json with a post-action tree, leaving a pre-action rawTree dump beside it. Instead
-    # neither joins the pre-step baseline, and both fire together post-step, where `capture()`'s
-    # own stable sort pairs them on the same (post-action) read.
+    # reaching for this feature is most likely to write. The inline `elements` dedupes against the
+    # always-on token, and both fire post-step, where `capture()`'s own stable sort pairs them on
+    # the same (post-action) read.
     driver = FakeDriver([_el("a", "A")])
     sink = RecordingSink()
     run_scenario(
@@ -287,7 +286,7 @@ def test_inline_raw_tree_and_elements_together_both_go_post_step() -> None:
     )
     assert sink.calls == [
         ("x/step0", BASELINE_BEFORE),
-        ("x/step0", [*BASELINE_AFTER, "elements", "rawTree"]),
+        ("x/step0", [*BASELINE_AFTER, "rawTree"]),
     ]
 
 
@@ -531,10 +530,11 @@ def test_config_capture_dedupes_against_inline_and_policy() -> None:
         sink=sink,
         capture=["actionLog", "elements"],
     )
-    # actionLog appears once (inline, policy, and config all name it); elements joins from config.
+    # actionLog appears once (inline, policy, and config all name it); the config's `elements`
+    # dedupes against the always-on token the post-step baseline already leads with.
     assert sink.calls == [
         ("x/step0", BASELINE_BEFORE),
-        ("x/step0", [*BASELINE_AFTER, "actionLog", "elements"]),
+        ("x/step0", [*BASELINE_AFTER, "actionLog"]),
     ]
 
 

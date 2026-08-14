@@ -92,11 +92,14 @@ Decides whether each `capturePolicy` rule fires for this step ([evidence](eviden
 - `_rule_fires`: whether it matches one of `on.action` (+ optional `idMatches`) / `on.event ==
   screenChanged` / `on.result == error`. The action name is mapped to the DSL name
   (`long_press`→`longPress`, `assert_`→`assert`).
-- `_collect_captures`: leads with `screenshot.after`, then gathers the inline `step.capture` + the
-  fired rules' captures + the config's `defaults.capture` baseline (applied unconditionally, unlike
-  the other two) and dedupes. Leading with `screenshot.after` is what gives every step the
-  post-action half of its screenshot pair whatever the three sources asked for; a bare `screenshot`
-  from any of them is normalized to the same token first, so the shot is never taken twice.
+- `_collect_captures`: leads with `screenshot.after` + `elements`, then gathers the inline
+  `step.capture` + the fired rules' captures + the config's `defaults.capture` baseline (applied
+  unconditionally, unlike the other two) and dedupes. Leading with that pair is what gives every step
+  the post-action half of its evidence whatever the three sources asked for — the image a viewer
+  shows and the tree it draws element frames from, read at the same moment. `elements.json` has a
+  single filename, so the second read replaces the pre-action tree the pre-step baseline wrote. A
+  bare `screenshot` from any source is normalized to `screenshot.after` first, so the shot is never
+  taken twice.
 - Instant kinds (screenshot/elements) are acquired by the sink's `capture()`; interval kinds
   (video/deviceLog) are collected by stopping the ones started earlier via `start_intervals()`.
 

@@ -74,11 +74,13 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
 `capturePolicy` の各ルールがこのステップで発火するかを判定します（[evidence](evidence.md#a-capturepolicyルール方式)）。
 
 - `_rule_fires`: `on.action`（+ 任意の `idMatches`）/ `on.event == screenChanged` / `on.result == error` のいずれかに一致するかを確認します。アクション名は DSL（ドメイン固有言語）名へ変換します（`long_press`→`longPress`、`assert_`→`assert`）。
-- `_collect_captures`: 先頭に `screenshot.after` を置いたうえで、インライン `step.capture`、発火した
-  ルールの capture、config の `defaults.capture`（他の2つと異なり常に適用される最低保証）を集めて
-  重複排除します。先頭の `screenshot.after` があるため、3つの取得元が何を要求したかによらず、どの
-  ステップにも動作後のスクリーンショットが残ります。どの取得元から来た `screenshot` 単体のトークンも
-  先に同じトークンへ正規化するので、同じ 1 枚を二重に撮ることはありません。
+- `_collect_captures`: 先頭に `screenshot.after` と `elements` を置いたうえで、インライン
+  `step.capture`、発火したルールの capture、config の `defaults.capture`（他の2つと異なり常に適用される
+  最低保証）を集めて重複排除します。先頭の 2 つがあるため、3つの取得元が何を要求したかによらず、どの
+  ステップにも動作後の証跡が残ります。ビューアが表示する画像と、要素の枠を描く基準とするツリーとを、
+  同じ瞬間に取得するということです。`elements.json` のファイル名は 1 つなので、2 度目の取得は、ステップ前の
+  baseline が書いた動作前のツリーを置き換えます。どの取得元から来た `screenshot` 単体のトークンも
+  先に `screenshot.after` へ正規化するので、同じ 1 枚を二重に撮ることはありません。
 - 瞬時種別（screenshot/elements）は sink の `capture()` で取得し、区間種別（video/deviceLog）は事前に `start_intervals()` で開始済みのものを停止して回収します。
 
 `primary_id` は「ステップの主対象セレクタの `id`」です（tap なら tap 先、type なら `into`、swipe なら `on`）。`idMatches` トリガーはこの `id` に対して `fnmatch` します。

@@ -160,22 +160,31 @@ def _collect_captures(
     screen_changed: bool,
     config_capture: list[str] | None = None,
 ) -> list[str]:
-    """Post-step capture kinds for this step: `screenshot.after`, then inline `capture`, any
-    matching capturePolicy rules, and the config's `defaults.capture` baseline (`config_capture`) —
-    a guarantee applied to every step regardless of trigger, unlike the other two sources.
+    """Post-step capture kinds for this step: `screenshot.after` and `elements`, then inline
+    `capture`, any matching capturePolicy rules, and the config's `defaults.capture` baseline
+    (`config_capture`) — a guarantee applied to every step regardless of trigger, unlike the other
+    two sources.
 
-    `screenshot.after` leads the list because every step records one whether or not anything asked
-    for it, the post-action half of the always-on screenshot pair: the pre-step baseline
-    (`screenshot.before` + `elements`) is captured separately, before the step acts (BE-0341), and a
-    step showing only the screen it was about to act on leaves the result it produced unrecorded.
-    Both viewers display `after.png` in preference to `before.png` (`displayed_screenshot`), so
-    without it a narrowed `capture` list would silently cost a step its displayed screenshot.
+    The pair leads the list because every step records it whether or not anything asked, the
+    post-action half of the always-on evidence the pre-step baseline (`screenshot.before` +
+    `elements`) starts before the step acts (BE-0341). A step showing only the screen it was about
+    to act on leaves the result it produced unrecorded — and the two must move together: viewers
+    display `after.png` in preference to `before.png` (`displayed_screenshot`) and draw an element's
+    highlight frame from `elements.json`, so capturing the screenshot alone would pair post-action
+    pixels with the pre-action tree. `elements.json` has one fixed filename, so this second write
+    replaces the baseline's tree rather than adding a file: after any step that acts, the recorded
+    tree describes the screen the action produced.
 
     Any `screenshot.before` token is dropped instead: the pre-step baseline already wrote that file,
     so re-taking it here would mislabel a post-action pixel as `before.png`. Interval kinds
     (`video` / `deviceLog` / `appTrace`) are left in; the caller splits those out separately.
     """
-    fired: list[str] = ["screenshot.after", *(step.capture or []), *(config_capture or [])]
+    fired: list[str] = [
+        "screenshot.after",
+        "elements",
+        *(step.capture or []),
+        *(config_capture or []),
+    ]
     primary = _primary_selector(step)
     primary_id = primary.first_id() if primary is not None else None
     for rule in scenario.capture_policy:
