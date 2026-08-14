@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0361](BE-0361-ios-ci-simulator-diagnostics.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0361") |
+| Implementing PR | [#1619](https://github.com/bajutsu-e2e/bajutsu/pull/1619) |
 | Topic | CI / build infrastructure |
 | Related | [BE-0319](../BE-0319-xcuitest-cold-spawn-resilience/BE-0319-xcuitest-cold-spawn-resilience.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md), [BE-0346](../BE-0346-video-timing-sync/BE-0346-video-timing-sync.md), [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md) |
 <!-- /BE-METADATA -->
@@ -110,10 +111,52 @@ and has no `runs/` artifact for the collection to ride. The action runs in two t
 - **On failure only** (heavy): `xcrun simctl diagnose` with a timeout, Apple's own collector for
   CoreSimulator and device state; and targeted unified-log extracts via `log show --last <window>
   --predicate` for the processes that serve rendering and screenshots — `backboardd`,
-  `SpringBoard`, `testmanagerd`, `CoreSimulatorService`, and the `com.apple.CoreSimulator`
-  subsystem. Simulator guest processes write to the host's unified log, so these extracts cover
-  both sides of the virtualization boundary. Inside `bajutsu-e2e/action.yml` the tier is gated on
-  the run step's own outcome; in the pytest lanes the caller gates it with `if: failure()`.
+  `SpringBoard`, `testmanagerd`, and the CoreSimulator service. Inside `bajutsu-e2e/action.yml` the
+  tier is gated on the run step's own outcome; in the pytest lanes the caller gates it on the run
+  step's outcome too, since `failure()` is rejected in a `with:` value.
+
+Implementation measured five things this design had wrong, each of which would have shipped a
+collector that quietly gathers nothing — the very failure the proposal exists to end:
+
+- **The guest does not log to the host.** The claim above that "Simulator guest processes write to
+  the host's unified log" is false. On a booted device, a host-side `log show` filtered on
+  `SpringBoard` / `backboardd` / `testmanagerd` returns its header and no entries; those entries live
+  in the device's own log store. The collection therefore runs **two** extracts: one on the host for
+  the CoreSimulator service processes (whose process name is `com.apple.CoreSimulator.CoreSimulatorService`,
+  not `CoreSimulatorService`, and whose subsystem needs a `CONTAINS` match), and one inside the guest
+  through `simctl spawn`. Measured over a 30-minute window: 34.5k host lines and 11.4k guest lines,
+  about a second each.
+- **`simctl diagnose` blocks on stdin and destroys its `--output` directory.** It prints a consent
+  notice and waits for a newline; a CI step's stdin is `/dev/null`, where it reads EOF and exits 0
+  having collected nothing. It also treats `--output` as the archive's *base path*, replacing that
+  directory with `<path>.tar.gz` and deleting whatever else was in it — so pointing it at the
+  collection directory would delete the rest of the collection. Measured at ~15s and 22–78MB for one
+  booted device. Its flags additionally require the `--flag=value` form.
+- **`CoreSimulator.log` is unbounded.** Copying it wholesale is a 183MB artifact on a long-lived
+  host, on the *always* tier. The collection tails it instead.
+- **One shared capture budget would have starved the trigger that matters.** The Motivation above
+  records that `recordVideo produced no new bytes` fires for every scenario, green runs included, and a
+  job runs a dozen scenario documents in one `bajutsu run` process. A single per-process cap of three
+  is therefore spent on the third scenario's video warning, and the runner crash — the failure the
+  capture exists to explain, and the only trigger that reaches it with the device's id — finds nothing
+  left. The budget is per trigger, and a declined capture is logged at warning rather than debug,
+  since the lane installs no log handler and a debug line is no record at all.
+
+- **A capture is charged to a clock it does not own.** BE-0353's `CrashRecoveryBudget` is a wall-clock
+  deadline set at the *first* crash and re-checked at each later one, so every second a capture spends
+  is a second the recovery no longer has. The first CI run of this change showed it: a `visual` job
+  missed its 300s recovery deadline by 75s with two captures of up to 30s inside that window, which is
+  a diagnostic turning a recoverable degradation into a failed run — exactly what an observer may not
+  do. The per-capture budget is 10s against that lane's 300s, the screenshot ceiling is 5s (the
+  runner's own read timeout is 15s, so a `simctl` path unanswered at 5s has already answered the
+  question), and a test pins the relationship against the lane's configured budget rather than the
+  bare number.
+
+Two smaller shapes follow from the same measurements. `xcodebuild` refuses to start when its
+`-resultBundlePath` already exists, so unit 1 clears a leftover at its own key first — otherwise a
+recycled ephemeral port would turn the diagnostics into a spawn failure. And the `start` phase lives
+inside `bajutsu-e2e/action.yml` rather than in each calling job, because `bundled-runner` invokes that
+action twice and a job-level start would be stopped by the first invocation's `collect`.
 
 ### Layer 3: host telemetry over time
 
@@ -145,8 +188,20 @@ Mutually exclusive, collectively exhaustive (`MECE`) units of work follow.
    each artifact lands in `runs/`, and how to read them against the four hypotheses.
 5. **Tests.** Unit tests for the two `bajutsu` hooks — the spawn argv gains `-resultBundlePath`
    exactly when the variable is set, the probe is a no-op when unset, bounded and best-effort when
-   set; `make lint-actions` / `actionlint` cover the new composite action, and
-   `tests/test_e2e_changes.py` is extended if the positive path list must name it.
+   set — and `tests/test_e2e_changes.py` names the new action in the iOS lane's positive path list,
+   without which a change to it would fire no lane at all. The composite action's own shell has **no**
+   static gate coverage, contrary to what this unit first assumed: `actionlint` lints
+   `.github/workflows/` only (pointed at an `action.yml` it reports a missing `jobs` section), and
+   `make lint-sh` runs `shellcheck` over a named list of `.sh` files that reaches nothing under
+   `.github/actions/`. That gap shipped a defect: the action's watchdog SIGKILLed a hung `simctl`
+   screenshot, `wait` returned the child's 137, and the errexit **Actions itself puts on the shell
+   line** — `bash --noprofile --norc -e -o pipefail`, which a script's own `set -uo pipefail` does not
+   clear — failed the step, skipping the real test step and reddening five iOS jobs. So the tests now
+   run the action's own `run:` blocks under exactly that interpreter and those flags, with `xcrun`
+   stubbed to hang (`tests/test_collect_ios_diagnostics_action.py`), pinning the one property that
+   matters: a diagnostics step cannot fail a job. Writing them found a second unbounded call
+   (`simctl list` on the *always* tier) that would have hung every job on a wedged CoreSimulator.
+   Closing the static-lint gap for every composite action is still its own follow-up.
 
 ### Prime directives preserved
 
@@ -181,11 +236,11 @@ Mutually exclusive, collectively exhaustive (`MECE`) units of work follow.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — result bundles per runner spawn
-- [ ] Unit 2 — stall-time probe hook
-- [ ] Unit 3 — the `collect-ios-diagnostics` composite action and its wiring
-- [ ] Unit 4 — docs (`docs/ci.md` and its `ja` mirror)
-- [ ] Unit 5 — tests
+- [x] Unit 1 — result bundles per runner spawn
+- [x] Unit 2 — stall-time probe hook
+- [x] Unit 3 — the `collect-ios-diagnostics` composite action and its wiring
+- [x] Unit 4 — docs (`docs/ci.md` and its `ja` mirror)
+- [x] Unit 5 — tests
 
 ## References
 

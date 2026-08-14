@@ -57,7 +57,10 @@ def _run_backend(results: list[RunResult]) -> str:
 #   rather than video-relative offsets, and the anchor to subtract from them — "video_anchor_s", now
 #   itself absolute — is persisted instead of dropped. A v5-or-older run carries no anchor, so a
 #   reader derives 0.0 for it and its already-relative timestamps render unchanged.
-SCHEMA_VERSION = 6
+# v7 (BE-XXXX): an actuation may carry "substitution" — why the element actuated is not the one the
+#   driver's default rule would have named. Absent on the ordinary path and on every older run, which
+#   is the same thing a reader sees either way: no substitution happened.
+SCHEMA_VERSION = 7
 
 
 def _matrix(results: list[RunResult]) -> dict[str, object] | None:

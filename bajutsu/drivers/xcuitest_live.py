@@ -334,6 +334,7 @@ class XcuitestLiveDriver:
             "value": _str_or_none(self._client.attribute(element_id, "value")),
             "traits": traits,
             "frame": frame,
+            "nativeZ": None,  # WebDriverAgent exposes no z signal (BE-0355)
         }
 
     def query(self) -> list[base.Element]:

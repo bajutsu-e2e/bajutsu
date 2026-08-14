@@ -124,10 +124,14 @@ runner-build-device:
 # Prereqs: a booted simulator, `make runner-build`.
 SIM ?= $(shell xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | head -1)
 
+# `--touch-markers` draws each touch the app receives into the video and the step screenshots, the
+# iOS counterpart of the `show_touches` / `pointer_location` settings android/Makefile turns on for
+# its own runs. These targets already exclude the `visual` tag, and `run` skips a screenshot-comparing
+# scenario anyway, so the markers reach no assertion that reads pixels.
 run-swiftui: swiftui-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android --config $(CONFIG)
+	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android --config $(CONFIG) --touch-markers
 run-uikit: uikit-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android --config $(CONFIG)
+	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android --config $(CONFIG) --touch-markers
 
 # scenarios/tabs.yaml on its own, forced onto XCUITest (see the comment above run-swiftui/run-uikit).
 run-swiftui-tabs: swiftui-build runner-build

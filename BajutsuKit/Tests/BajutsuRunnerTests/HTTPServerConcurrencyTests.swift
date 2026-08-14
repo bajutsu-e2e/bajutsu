@@ -29,28 +29,11 @@ final class HTTPServerConcurrencyTests: XCTestCase {
         }
 
         // Occupy the server with a request that blocks until we release it.
-        DispatchQueue.global().async { _ = Self.syncGet(port: port, path: "/slow") }
+        DispatchQueue.global().async { _ = HTTPTestClient.get(port: port, path: "/slow") }
         wait(for: [slowEntered], timeout: 5)
 
         // While /slow is blocked, a concurrent /fast must still be answered.
-        let status = Self.syncGet(port: port, path: "/fast").status
+        let status = HTTPTestClient.get(port: port, path: "/fast").status
         XCTAssertEqual(status, 200, "a concurrent request should be served while another handler is blocked")
-    }
-
-    private static func syncGet(port: UInt16, path: String) -> (status: Int?, data: Data?) {
-        let sem = DispatchSemaphore(value: 0)
-        var status: Int?
-        var payload: Data?
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 3
-        let session = URLSession(configuration: config)
-        let url = URL(string: "http://127.0.0.1:\(port)\(path)")!
-        session.dataTask(with: url) { data, response, _ in
-            status = (response as? HTTPURLResponse)?.statusCode
-            payload = data
-            sem.signal()
-        }.resume()
-        _ = sem.wait(timeout: .now() + 4)
-        return (status, payload)
     }
 }

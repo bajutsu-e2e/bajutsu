@@ -292,6 +292,12 @@ def test_ios_lane_surface() -> None:
     assert is_relevant(["demos/showcase/ios/swiftui/App.swift"]) is True
     assert is_relevant(["tests/test_driver_conformance_ondevice.py"]) is True
     assert is_relevant([".github/workflows/ios-e2e.yml"]) is True
+    # The composite actions every Simulator-driving job calls: the run wrapper, the boot, and the
+    # BE-0361 diagnostics collector. A change to any of them can take a lane down as surely as
+    # editing the workflow file, so each must fire the lane that runs it.
+    assert is_relevant([".github/actions/bajutsu-e2e/action.yml"]) is True
+    assert is_relevant([".github/actions/boot-simulator/action.yml"]) is True
+    assert is_relevant([".github/actions/collect-ios-diagnostics/action.yml"]) is True
     # ...but not another lane's driver, app SDK, or workflow — the regression this fixes: a bare
     # `bajutsu/drivers/` sweep previously fired the metered macOS jobs on an adb-only or
     # playwright-only change that XCUITest never imports.
@@ -1071,7 +1077,13 @@ def test_real_ios_workflow_declares_the_scenario_keyed_jobs() -> None:
     assert set(job_map) == {"run", "actuation", "golden", "bundled-runner"}
     assert "demos/showcase/scenarios/smoke.yaml" in job_map["run"]
     assert job_map["bundled-runner"] == {"demos/showcase/scenarios/smoke.yaml"}
-    assert job_map["golden"] == {"demos/showcase/scenarios/golden/golden.yaml"}
+    # The golden job runs both tree goldens on one warm runner: golden.yaml's Stable rows, and
+    # golden_xcuitest.yaml's Log-tab controls — whose second scenario asserts the same baseline with
+    # `run --touch-markers`'s in-app markers on, so the visualization cannot perturb them unnoticed.
+    assert job_map["golden"] == {
+        "demos/showcase/scenarios/golden/golden.yaml",
+        "demos/showcase/scenarios/golden/golden_xcuitest.yaml",
+    }
 
 
 def test_ios_actuation_job_still_declares_the_authoring_scenarios() -> None:

@@ -33,6 +33,7 @@ def _el(identifier: str, traits: list[str] | None = None, value: str | None = No
         "traits": traits or [],
         "value": value,
         "frame": (0.0, 0.0, 100.0, 40.0),
+        "nativeZ": None,
     }
 
 

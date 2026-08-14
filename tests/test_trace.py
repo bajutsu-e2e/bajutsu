@@ -147,6 +147,29 @@ def test_trace_shows_what_each_step_actually_actuated(tmp_path: Path) -> None:
     assert "typeText [focused]" in out  # no point to show, so the channel alone
 
 
+def test_trace_names_a_substituted_element_on_the_step_line(tmp_path: Path) -> None:
+    # The timeline is where a failure gets triaged, so a tap that reached an element the selector
+    # never named must not print like an ordinary one. A damaged token degrades to no segment
+    # instead, the same way the loader's `_typed` guard does.
+    run = _write_run(tmp_path, "20250101-000000")
+    manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
+    manifest["scenarios"][0]["steps"][0]["actuations"] = [
+        {
+            "gesture": "tap",
+            "via": "handle",
+            "unit": "point",
+            "substitution": "soleHittableDescendant",
+        },
+        {"gesture": "tap", "via": "handle", "unit": "point", "substitution": 7},
+    ]
+    (run / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    out = trace.trace_run(run)
+
+    assert "tap [handle] ↷soleHittableDescendant" in out
+    assert "↷7" not in out
+
+
 def test_trace_never_invents_a_coordinate_for_a_malformed_point(tmp_path: Path) -> None:
     # The timeline's float coercion would render `["a","b"]` as the entirely plausible `(0, 0)`.
     # Inventing a coordinate is the one thing this record must never do, so it shows unreadable.
