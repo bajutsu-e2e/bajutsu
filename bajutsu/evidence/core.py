@@ -63,6 +63,15 @@ def displayed_screenshot(screenshot_names: list[str]) -> str | None:
     returns before that post-step call — a step failing on `UncoveredSystemAlertLocale` — so a step
     still shows whichever screenshot it has.
 
+    The preference is sound only because the post-step `elements` write is unconditional, which is
+    true from this change onward and not of runs recorded before it. A stored run made under a
+    narrowed `capture` list can hold a pre-action `elements.json` next to an `after.png`, and
+    nothing in the manifest distinguishes the two — `kind` records the artifact, not which side of
+    the action it was taken on. Reading such a run (a re-rendered report, the serve editor's picker,
+    triage) therefore pairs its post-action image with a pre-action tree, where before it paired
+    `before.png` with that same tree. Pairing them correctly would mean recording the capture token
+    on each artifact entry, a manifest-schema change left to its own item.
+
     Args:
         screenshot_names: every `screenshot` artifact name the step recorded, in capture order.
             Names are re-rooted under the step id (`00-login/step0/after.png`), so the post-action

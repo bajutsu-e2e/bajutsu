@@ -180,12 +180,17 @@ def test_html_tree_rows_carry_frame_for_screenshot_highlight(tmp_path: Path) -> 
     step_dir = tmp_path / "00-s1" / "step0"
     step_dir.mkdir(parents=True)
     (step_dir / "elements.json").write_text(json.dumps([el]), encoding="utf-8")
+    (step_dir / "after.png").write_bytes(b"PNG")
     out = html_report("run1", [r], tmp_path)
     # the row carries the frame; the table carries the screen extent (bbox: 112x76)
     assert 'class="tvrow" data-x="12" data-y="40" data-w="100" data-h="36"' in out
     assert 'data-sw="112" data-sh="76"' in out
     # the highlight overlay + frame wrapper are wired in JS/CSS
     assert "tv-hl" in out and "tv-shotframe" in out
+    # …and the shot those frames are drawn onto is really there. `tv-hl` / `tv-shotframe` are static
+    # strings the self-contained HTML embeds whether or not a screenshot resolved, so without this
+    # the on-disk filter could empty the test unnoticed (review follow-up).
+    assert 'class="shot"' in out and 'src="00-s1/step0/after.png"' in out
 
 
 def _one_step_report(

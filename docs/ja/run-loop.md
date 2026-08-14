@@ -74,13 +74,16 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
 `capturePolicy` の各ルールがこのステップで発火するかを判定します（[evidence](evidence.md#a-capturepolicyルール方式)）。
 
 - `_rule_fires`: `on.action`（+ 任意の `idMatches`）/ `on.event == screenChanged` / `on.result == error` のいずれかに一致するかを確認します。アクション名は DSL（ドメイン固有言語）名へ変換します（`long_press`→`longPress`、`assert_`→`assert`）。
-- `_collect_captures`: 先頭に `screenshot.after` と `elements` を置いたうえで、インライン
-  `step.capture`、発火したルールの capture、config の `defaults.capture`（他の2つと異なり常に適用される
-  最低保証）を集めて重複排除します。先頭の 2 つがあるため、3つの取得元が何を要求したかによらず、どの
-  ステップにも動作後の証跡が残ります。ビューアが表示する画像と、要素の枠を描く基準とするツリーとを、
-  同じ瞬間に取得するということです。`elements.json` のファイル名は 1 つなので、2 度目の取得は、ステップ前の
-  baseline が書いた動作前のツリーを置き換えます。どの取得元から来た `screenshot` 単体のトークンも
-  先に `screenshot.after` へ正規化するので、同じ 1 枚を二重に撮ることはありません。
+- `_collect_captures`: 先頭に `elements` を置いたうえで、インライン `step.capture`、発火したルールの
+  capture、config の `defaults.capture`（他の2つと異なり常に適用される最低保証）を集めて重複排除します。
+  先頭の `elements` があるため、3つの取得元が何を要求したかによらず、どのステップにも動作後のツリーが
+  残ります。`elements.json` のファイル名は 1 つなので、この取得は、ステップ前の baseline が書いた動作前の
+  ツリーを置き換えます。
+- 対になるもう一方の `after.png` は、この一覧にはありません。`_handle_action` が、ステップの動作の直後、
+  ツリーを読みうるどの処理よりも先に自分で撮ります。ビューアが表示する画像が、要素の枠を描く基準とする
+  ツリーより古くならないようにするためです。そのうえで、上記の一覧から `screenshot.after` を取り除きます。
+  どの取得元から来た `screenshot` 単体のトークンも先に `screenshot.after` へ正規化するのは、このためです。
+  同じ 1 枚を二重に撮ることはありません。
 - 瞬時種別（screenshot/elements）は sink の `capture()` で取得し、区間種別（video/deviceLog）は事前に `start_intervals()` で開始済みのものを停止して回収します。
 
 `primary_id` は「ステップの主対象セレクタの `id`」です（tap なら tap 先、type なら `into`、swipe なら `on`）。`idMatches` トリガーはこの `id` に対して `fnmatch` します。

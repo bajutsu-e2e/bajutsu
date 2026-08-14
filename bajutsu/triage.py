@@ -444,17 +444,29 @@ def _first(artifacts: list[dict[str, Any]]) -> dict[str, Any] | None:
     return artifacts[0] if artifacts else None
 
 
-def _displayed_screenshot(artifacts: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """The screenshot a viewer shows for this step, chosen the way the viewers choose it.
+def _displayed_screenshot(
+    run_dir: Path,
+) -> Callable[[list[dict[str, Any]]], dict[str, Any] | None]:
+    """A pick that resolves a step to the screenshot a viewer shows, from the files `run_dir` holds.
 
     A step records more than one screenshot (`before.png` and `after.png`), and its `elements.json`
     has a single fixed name — so taking whichever came first would hand the investigator an image
     and a tree from different moments. Routing through `displayed_screenshot` keeps triage on the
-    same image the report's element viewer and the serve editor's picker show.
+    same image the report's element viewer and the serve editor's picker show, and filtering the
+    candidates by existence first keeps it on an image that is actually there: a manifest can name a
+    screenshot the run no longer holds, and choosing that one would cost the investigator the
+    `before.png` beside it — and, since the backward scan commits to whatever this returns, the
+    nearest earlier step's screenshot too.
     """
-    by_name = {str(a.get("name")): a for a in artifacts}
-    name = displayed_screenshot(list(by_name))
-    return by_name.get(name) if name is not None else None
+
+    def pick(artifacts: list[dict[str, Any]]) -> dict[str, Any] | None:
+        by_name = {
+            str(a.get("name")): a for a in artifacts if (run_dir / str(a.get("name"))).exists()
+        }
+        name = displayed_screenshot(list(by_name))
+        return by_name.get(name) if name is not None else None
+
+    return pick
 
 
 def _nearest_artifact(
@@ -529,7 +541,13 @@ def _screenshot_near(
 ) -> bytes | None:
     """The screenshot from the failing step (or the nearest earlier step that has one)."""
     return _read_artifact(
-        run_dir, steps, failed_index, "screenshot", _load_bytes, None, _displayed_screenshot
+        run_dir,
+        steps,
+        failed_index,
+        "screenshot",
+        _load_bytes,
+        None,
+        _displayed_screenshot(run_dir),
     )
 
 

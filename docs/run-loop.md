@@ -92,14 +92,16 @@ Decides whether each `capturePolicy` rule fires for this step ([evidence](eviden
 - `_rule_fires`: whether it matches one of `on.action` (+ optional `idMatches`) / `on.event ==
   screenChanged` / `on.result == error`. The action name is mapped to the DSL name
   (`long_press`→`longPress`, `assert_`→`assert`).
-- `_collect_captures`: leads with `screenshot.after` + `elements`, then gathers the inline
-  `step.capture` + the fired rules' captures + the config's `defaults.capture` baseline (applied
-  unconditionally, unlike the other two) and dedupes. Leading with that pair is what gives every step
-  the post-action half of its evidence whatever the three sources asked for — the image a viewer
-  shows and the tree it draws element frames from, read at the same moment. `elements.json` has a
-  single filename, so the second read replaces the pre-action tree the pre-step baseline wrote. A
-  bare `screenshot` from any source is normalized to `screenshot.after` first, so the shot is never
-  taken twice.
+- `_collect_captures`: leads with `elements`, then gathers the inline `step.capture` + the fired
+  rules' captures + the config's `defaults.capture` baseline (applied unconditionally, unlike the
+  other two) and dedupes. Leading with `elements` is what gives every step the post-action tree
+  whatever the three sources asked for; `elements.json` has a single filename, so that read replaces
+  the pre-action tree the pre-step baseline wrote.
+- The other half of the pair — `after.png` — is not on this list. `_handle_action` shoots it itself,
+  immediately after the step's action and ahead of anything that could read the tree, so the image a
+  viewer shows is never older than the tree it draws element frames from. It then drops
+  `screenshot.after` from the capture list above, which is why a bare `screenshot` from any source is
+  normalized to that token first: the shot is never taken twice.
 - Instant kinds (screenshot/elements) are acquired by the sink's `capture()`; interval kinds
   (video/deviceLog) are collected by stopping the ones started earlier via `start_intervals()`.
 

@@ -224,8 +224,10 @@ class _ScreenRead:
 
     On the adb backend a screen read (`uiautomator dump`) is the dominant per-step cost — ~2.4s
     against ~0.1-0.3s for a lighter read channel — so the end-of-step read is deferred until a
-    consumer actually needs it: a `screenChanged` capture, an `extract`, or a `wait`-timeout
-    diagnostic. A plain `tap`/`assert` step with none of these under a `NullSink` never reads.
+    consumer actually needs it: a `screenChanged` capture, an `extract`, a `wait`-timeout
+    diagnostic, or the always-on post-step `elements` write. That last one makes the read
+    unconditional under any sink that writes, so the deferral now buys a run nothing beyond a
+    `NullSink` — where a plain `tap`/`assert` step with none of the other three still never reads.
     When it is read, the tree also seeds the next step's `before` — nothing actuates between a
     step's `after` and the next step's `before`, so they observe identical device state.
 
@@ -1281,7 +1283,10 @@ class _StepRunner:
             # request rather than pair the two: no artifact beats a mismatched one.
             instant = [t for t in instant if _kind_of(t) != "rawTree"]
         # `screenshot.after` was already shot above, right after the action; re-taking it here would
-        # overwrite that pixel with a later one and leave a duplicate entry in the manifest.
+        # overwrite that pixel with a later one and leave a duplicate entry in the manifest. This
+        # also swallows a scenario's own request for it (a bare `screenshot`, normalized in
+        # `_collect_captures`, or a `capturePolicy` rule's `screenshot.after`) — the shutter above
+        # already satisfied it, from a moment closer to the action than this call could manage.
         instant = [t for t in instant if t != "screenshot.after"]
         # The tree read goes through `screen.get()` rather than being left to the sink's own writer
         # (`write_elements`, when `elements=None`): a read issued inside the sink is invisible to

@@ -160,27 +160,25 @@ def _collect_captures(
     screen_changed: bool,
     config_capture: list[str] | None = None,
 ) -> list[str]:
-    """Post-step capture kinds for this step: `screenshot.after` and `elements`, then inline
-    `capture`, any matching capturePolicy rules, and the config's `defaults.capture` baseline
-    (`config_capture`) — a guarantee applied to every step regardless of trigger, unlike the other
-    two sources.
+    """Post-step capture kinds for this step: `elements`, then inline `capture`, any matching
+    capturePolicy rules, and the config's `defaults.capture` baseline (`config_capture`) — a
+    guarantee applied to every step regardless of trigger, unlike the other two sources.
 
-    The pair leads the list because every step records it whether or not anything asked, the
-    post-action half of the always-on evidence the pre-step baseline (`screenshot.before` +
-    `elements`) starts before the step acts (BE-0341). A step showing only the screen it was about
-    to act on leaves the result it produced unrecorded — and the two must move together: viewers
-    display `after.png` in preference to `before.png` (`displayed_screenshot`) and draw an element's
-    highlight frame from `elements.json`, so capturing the screenshot alone would pair post-action
-    pixels with the pre-action tree. `elements.json` has one fixed filename, so this second write
-    replaces the baseline's tree rather than adding a file: after any step that acts, the recorded
-    tree describes the screen the action produced.
+    `elements` leads the list because every step records the post-action tree whether or not
+    anything asked, the counterpart to the pre-step baseline's tree (BE-0341). It has one fixed
+    filename, so this second write replaces that pre-action tree rather than adding a file: after
+    any step that acts, the recorded tree describes the screen the action produced — the screen the
+    step's `after.png` shows, which viewers draw element frames onto.
 
-    Any `screenshot.before` token is dropped instead: the pre-step baseline already wrote that file,
-    so re-taking it here would mislabel a post-action pixel as `before.png`. Interval kinds
-    (`video` / `deviceLog` / `appTrace`) are left in; the caller splits those out separately.
+    The screenshot half of that pair is *not* here. `_handle_action` shoots it directly, right after
+    the step's action and ahead of anything that could read the tree, so the image is never the older
+    of the two (`loop.py`); it then drops any `screenshot.after` from this list, which is why a
+    scenario's own `screenshot` spelling normalizes to that token below rather than shooting again.
+    `screenshot.before` is dropped for a different reason: the pre-step baseline already wrote that
+    file, so re-taking it post-step would mislabel a post-action pixel as `before.png`. Interval
+    kinds (`video` / `deviceLog` / `appTrace`) are left in; the caller splits those out separately.
     """
     fired: list[str] = [
-        "screenshot.after",
         "elements",
         *(step.capture or []),
         *(config_capture or []),
