@@ -78,8 +78,9 @@ class _OrgModel:
 
         The cause names what an operator should go look at, so it differs by source: a config-sourced
         model can be unbound, unreadable, or blockless — shapes only a file can take — while a
-        database-sourced one collapses all three into an empty table, since a database `serve`
-        cannot read never reaches here at all (`orgs_from_db` raises instead of failing closed).
+        database-sourced one collapses all three into a table in which no row declares membership
+        yet, since a database `serve` cannot read never reaches here at all (`orgs_from_db` raises
+        instead of failing closed).
 
         The two returns travel together because both records below need them in lock-step: an
         operator-actionable shape is the one worth WARNING about, and an earlier revision let the
@@ -98,8 +99,13 @@ class _OrgModel:
                 )
             if not self.orgs:
                 return "the serve config declares no orgs: block", True
-        elif not self.orgs:
-            return "the orgs table holds no org yet", True
+        elif not any(oc.members or oc.github_orgs for oc in self.orgs.values()):
+            # Not `not self.orgs`: the bypass sign-in this reports calls `ensure_org` on its way
+            # past, so a passive `default` row lands in the table — and every later sign-in would
+            # read a non-empty table and quietly drop to INFO while the deployment still admits
+            # nobody but admin-Team members. What an operator can act on is that no row declares
+            # membership yet, not that no row exists.
+            return "no org in the orgs table declares any membership yet", True
         if not identity.orgs:
             return "GitHub returned no orgs for this login", False
         return "no org membership matched this login", False
@@ -286,9 +292,10 @@ def oauth_callback(
     # configured admin Team in an operations-only GitHub organization no `orgs:` entry lists, so
     # `matched_org` is `False` on *every* admin sign-in there, permanently -- the normal operating
     # condition of a working deployment, not something worth paging on. What IS worth paging on is
-    # the org model itself being unusable: `parsed is None` (no config bound, or one that failed to
-    # load) or `not orgs` (a config that loaded but declares no `orgs:` block at all) -- either way
-    # the bypass just admitted a login into a deployment nobody but an admin Team member can
+    # the org model itself being unusable -- on the configuration path `parsed is None` (no config
+    # bound, or one that failed to load) or `not orgs` (a config that loaded but declares no `orgs:`
+    # block at all), on the database path a table in which no row declares membership yet. Either
+    # way the bypass just admitted a login into a deployment nobody but an admin Team member can
     # currently sign in to repair. A GitHub-side outage (`not identity.orgs`) or a real, unmatching
     # roster stay INFO: the org model itself is fine there, so there is nothing an admin needs paged
     # in to fix. Key the level on which of `_OrgModel.unmatched`'s shapes this is, not on

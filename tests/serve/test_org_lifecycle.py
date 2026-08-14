@@ -203,11 +203,14 @@ def test_an_unreadable_database_is_a_5xx_not_a_denial(
     assert "database is down" not in record.getMessage()
 
 
-def test_an_empty_orgs_table_is_the_operator_actionable_denial(
+def test_a_membershipless_orgs_table_is_the_operator_actionable_denial(
     serve_engine: Callable[..., Engine], tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     # The three config-shaped causes collapse into one on this source, and it keeps the WARNING the
-    # config-shaped ones had: an empty table is the operator's problem, not the user's.
+    # config-shaped ones had: a roster nobody belongs to is the operator's problem, not the user's.
+    # The second sign-in is the point: the first one's `ensure_org` leaves a passive `default` row
+    # behind, so a WARNING keyed on "the table is empty" would go quiet from here on while the
+    # deployment still admits nobody but admin-Team members.
     state = _state(
         serve_engine,
         tmp_path,
@@ -215,13 +218,17 @@ def test_an_empty_orgs_table_is_the_operator_actionable_denial(
         oauth=_FakeOAuth("mallory", teams=["ops-gh/root"]),
         admin_teams=["ops-gh/root"],
     )
-    with caplog.at_level(logging.INFO):
-        _payload, status, _sid = _sign_in(state)
-    assert status == 200  # the admin-Team bypass, not the roster, admitted them
-    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.login")
-    assert "the orgs table holds no org yet" in record.getMessage()
-    assert "serve config" not in record.getMessage()  # no file decides this deployment's roster
-    assert record.levelno == logging.WARNING
+    for _ in range(2):
+        caplog.clear()
+        with caplog.at_level(logging.INFO):
+            _payload, status, _sid = _sign_in(state)
+        assert status == 200  # the admin-Team bypass, not the roster, admitted them
+        record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.login")
+        assert "no org in the orgs table declares any membership yet" in record.getMessage()
+        assert "serve config" not in record.getMessage()  # no file decides this deployment's roster
+        assert record.levelno == logging.WARNING
+    assert state.repository is not None
+    assert state.repository.get_org("default") is not None  # the row the first sign-in left
 
 
 def test_a_database_less_deployment_still_reads_the_orgs_block(tmp_path: Path) -> None:
