@@ -15,7 +15,7 @@ import re
 import signal
 import subprocess
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -952,6 +952,68 @@ def test_a_discard_terminates_the_xctrunner_app_too(
     ] in simctl_calls  # and the app, as before
 
 
+def test_a_hung_terminate_is_not_absorbed_by_a_discard(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The discard absorbs a failing `terminate` because the common case is an app that is not
+    # running. A `terminate` that never returns is the opposite case — a wedged CoreSimulator — and
+    # absorbing it here would leave the discard path exactly as silent as it was before BE-0363.
+    _, _, run = _fake_toolchain(monkeypatch)
+    runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.runner.uitests.xctrunner")
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(runner)), Preconditions())
+
+    def hung(argv: list[str], extra_env: Mapping[str, str] | None = None) -> str:
+        if argv[2:3] == ["terminate"]:
+            raise simctl.DeviceTimeout(f"device operation timed out after 60s: {' '.join(argv)}")
+        return run(argv, extra_env)
+
+    env._run = hung
+    patched = env._patched_runner
+    assert patched is not None and patched.exists()
+    log = env._runner_log
+    assert log is not None and log.exists()
+    with pytest.raises(simctl.DeviceTimeout):
+        env._discard_runner(warn_on_crash=False, keep_log=False)
+    # Surfacing the wedge must not cost the discard's own bookkeeping: a leaked patched .xctestrun
+    # and an orphaned capture per discard are what skipping it would buy.
+    assert not patched.exists()
+    assert not log.exists()
+    assert env._runner_log is None
+    assert env.has_reusable_resident() is False
+    # The runner app's own terminate is narrowed the same way, which the raise above hides — the
+    # app under test is terminated first, so it never reaches this one.
+    with pytest.raises(simctl.DeviceTimeout):
+        env._terminate_runner_app()
+
+
+def test_a_failing_terminate_is_still_absorbed_by_a_discard(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The other side of the narrowing above: the failures those suppressions were written for stay
+    # absorbed, so a discard whose `terminate` fails is still a no-op rather than a fault. A
+    # `CalledProcessError` never reaches that handler — `simctl.Env.terminate` suppresses it a layer
+    # below — so what it actually catches is a host-level `OSError` (a fork that fails, an `xcrun`
+    # that has gone) and a plain `simctl.DeviceError`.
+    _, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+
+    def _failing(exc: Exception) -> simctl.RunFn:
+        def fake(argv: list[str], extra_env: Mapping[str, str] | None = None) -> str:
+            if argv[2:3] == ["terminate"]:
+                raise exc
+            return run(argv, extra_env)
+
+        return fake
+
+    env._run = _failing(OSError("fork failed"))
+    env._discard_runner(warn_on_crash=False, keep_log=True)
+
+    env._run = _failing(simctl.DeviceError("device operation failed (exit 1)"))
+    env._discard_runner(warn_on_crash=False, keep_log=True)
+
+
 def test_end_lease_leaves_the_xctrunner_app_running(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1713,6 +1775,71 @@ def test_spawn_cold_fails_loudly_after_exactly_two_attempts_with_both_tails() ->
     assert "exited (code 65)" in message  # the dead-process reason (unit 3) reaches the error
 
 
+def test_a_wedged_discard_never_replaces_the_exception_in_flight(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # The discard that runs while an exception propagates now terminates through simctl, so it can
+    # raise a `DeviceTimeout` of its own (BE-0363). That fault must never take the propagating
+    # exception's place: the CLI prints `str(exc)`, not a chained traceback, so replacing it would
+    # lose the reason the teardown ran at all — and a KeyboardInterrupt would stop reaching the
+    # operator. Logged instead, so the wedge is still visible.
+    def spawn() -> _Spawned:
+        def wedged_discard() -> None:
+            raise simctl.DeviceTimeout(
+                "device operation timed out after 60s: xcrun simctl terminate"
+            )
+
+        def ready() -> bool:
+            # Deliberately outside the `DeviceError` hierarchy (which subclasses `RuntimeError`), so
+            # a discard fault that took its place would fail this test on the type, not only the text.
+            raise ValueError("<<the original failure>>")
+
+        return _Spawned(
+            driver=None,
+            ready=ready,
+            poll=lambda: None,
+            log_tail=lambda: "",
+            discard=wedged_discard,
+        )
+
+    # The propagating exception is the original one, by type and by message — not the DeviceTimeout.
+    with (
+        caplog.at_level("WARNING"),
+        pytest.raises(ValueError, match="<<the original failure>>"),
+    ):
+        _spawn_cold_with_retry(
+            spawn, timeout=1.0, poll=0.0, sleep=lambda _s: None, clock=lambda: 0.0
+        )
+    assert "timed out" in caplog.text  # the swallowed discard fault is still traceable
+
+
+def test_a_wedged_discard_between_attempts_keeps_every_attempt_s_diagnostic() -> None:
+    # The per-attempt discard can now raise too, and escaping bare would throw away the diagnostics
+    # this function exists to build (unit 2) — the operator would learn that simctl timed out and
+    # nothing about why the runner never came up. Folded in exactly like an unrepairable device is.
+    def spawn() -> _Spawned:
+        def wedged_discard() -> None:
+            raise simctl.DeviceTimeout(
+                "device operation timed out after 60s: xcrun simctl terminate"
+            )
+
+        return _Spawned(
+            driver=None,
+            ready=lambda: False,
+            poll=lambda: 65,  # xcodebuild exited: a classified failure with a tail to preserve
+            log_tail=lambda: "\n<<tail-1>>",
+            discard=wedged_discard,
+        )
+
+    with pytest.raises(simctl.DeviceError) as excinfo:
+        _spawn_cold_with_retry(
+            spawn, timeout=1.0, poll=0.0, sleep=lambda _s: None, clock=lambda: 0.0
+        )
+    message = str(excinfo.value)
+    assert "attempt 1/2" in message and "<<tail-1>>" in message  # what the attempt observed
+    assert "discard after attempt 1 failed" in message and "timed out" in message
+
+
 # --- device recovery between cold-spawn attempts --- #
 #
 # BE-0319's retry isolates every *host*-side resource per attempt (port, .xctestrun, capture) but
@@ -2367,6 +2494,66 @@ def test_a_degraded_device_that_refuses_to_shut_down_is_still_replaced(
     env.start(eff, Preconditions())
     assert env._udid == "UDID-NEW"
     assert "create" in _verb_seq(calls)
+
+
+def test_a_degraded_device_whose_shutdown_hangs_is_still_replaced(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The same reasoning as the refusal above, for the wedge BE-0363 made visible: a `simctl
+    # shutdown` that exceeds its deadline propagates out of `Env.shutdown` now, and this site is past
+    # the ladder's decision point — a replacement was already confirmed creatable, so raising here
+    # would abandon it and fail the run on the very device the escalation exists to leave behind.
+    app = tmp_path / "App.app"
+    app.mkdir()
+    _fake_toolchain(monkeypatch)
+    calls, run = _ladder_run(["UDID"])
+
+    def hanging_shutdown(argv: list[str], env: object = None) -> str:
+        if argv[2:4] == ["shutdown", "UDID"]:
+            calls.append(argv)
+            raise simctl.DeviceTimeout("device operation timed out after 60s: " + " ".join(argv))
+        return str(run(argv, env))
+
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=hanging_shutdown)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)), app_path=str(app))
+    env.start(eff, Preconditions())
+    env.request_device_replacement()
+    del calls[:]
+    env.start(eff, Preconditions())
+    assert env._udid == "UDID-NEW"
+    assert "create" in _verb_seq(calls)
+
+
+def test_a_degraded_device_whose_discard_hangs_is_still_replaced(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The escalation discards the runner before it swaps the device, and on this device a hung
+    # `terminate` is the wedge the escalation exists to abandon. Raising there would also be
+    # unrecoverable: the request is consumed at the top of `start`, so the retry lease would take the
+    # ordinary path and hang on the same call.
+    app = tmp_path / "App.app"
+    app.mkdir()
+    _fake_toolchain(monkeypatch)
+    calls, run = _ladder_run(["UDID"])
+
+    def hanging_terminate(argv: list[str], env: object = None) -> str:
+        if argv[2:4] == ["terminate", "UDID"]:
+            calls.append(argv)
+            raise simctl.DeviceTimeout("device operation timed out after 60s: " + " ".join(argv))
+        return str(run(argv, env))
+
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=hanging_terminate)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)), app_path=str(app))
+    env.start(eff, Preconditions())
+    env.request_device_replacement()
+    del calls[:]
+    with caplog.at_level("WARNING"):
+        env.start(eff, Preconditions())
+    assert env._udid == "UDID-NEW"
+    assert "create" in _verb_seq(calls)
+    # Absorbed, never silent: this is the one caller whose own `shutdown` may still return, so a
+    # suppressed timeout here would be the only place the wedge left no trace at all.
+    assert "discarding the runner on Simulator UDID" in caplog.text
 
 
 def test_a_replacement_bring_up_drops_the_erase_it_was_asked_to_carry(

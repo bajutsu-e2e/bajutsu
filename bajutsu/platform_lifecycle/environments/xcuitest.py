@@ -463,8 +463,14 @@ def _spawn_cold_with_retry(
             )
         except BaseException:
             # An unexpected failure while awaiting must not leak the just-spawned runner (the leak
-            # BE-0290 prevents); discard it before propagating.
-            spawned.discard()
+            # BE-0290 prevents); discard it before propagating. A device fault raised by the discard
+            # itself is only logged: the exception already in flight is the reason we are here, and
+            # replacing it would hide it — including a KeyboardInterrupt, which must still reach the
+            # operator.
+            try:
+                spawned.discard()
+            except simctl.DeviceError as discard_exc:
+                _logger.warning("discarding the xcuitest runner failed: %s", discard_exc)
             raise
         if failure is None:
             if n > 1:
@@ -476,7 +482,15 @@ def _spawn_cold_with_retry(
                 )
             return spawned
         diagnostics.append(f"attempt {n}/{attempts}: {failure.detail}{spawned.log_tail()}")
-        spawned.discard()
+        try:
+            spawned.discard()
+        except simctl.DeviceError as exc:
+            # A discard that hits a wedged device must not throw away what the attempts observed;
+            # fold it in exactly as an unrepairable device is folded in below.
+            diagnostics.append(f"discard after attempt {n} failed: {exc}")
+            raise simctl.DeviceError(
+                "xcuitest runner did not come up:\n" + "\n".join(diagnostics)
+            ) from exc
         if n == attempts:
             break  # no further attempt to prepare a device for
         # Recovery runs after the discard, so it acts on a device this run no longer holds a runner
@@ -638,7 +652,23 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # the remedy the escalation exists to skip. The swap leaves the environment on a device that
         # has never run anything, which is a cold spawn by construction — no warm runner to reuse.
         if replace_device:
-            self._discard_runner()
+            # The discard's `terminate` is bounded now (BE-0363), and on *this* device the wedge it
+            # would report is the reason the escalation exists — so raising here would consume the
+            # one remedy left, with no second chance: `_replacement_requested` was already cleared
+            # above, so the retry lease would take the ordinary path below and fail the same way.
+            # The swap itself keeps every other timeout loud, and `_replace_degraded_device` makes
+            # the same call for its own shutdown two lines down. Logged rather than suppressed, like
+            # every other caller that absorbs this timeout: `terminate` and `shutdown` are different
+            # commands, so the one below is not guaranteed to wedge too, and swallowing this one
+            # silently would lose the very diagnosis BE-0363 exists to produce.
+            try:
+                self._discard_runner()
+            except simctl.DeviceTimeout as exc:
+                _logger.warning(
+                    "discarding the runner on Simulator %s: %s; replacing it anyway",
+                    self._udid,
+                    exc,
+                )
             self._replace_degraded_device(eff)
             # The erase is dropped *here*, where the swap actually happened, rather than by the
             # caller that asked for it: a device this method just created has nothing to erase, and
@@ -749,10 +779,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
         """Repair the Simulator a failed cold attempt leaves behind, so the retry spawns onto a live device.
 
         Times the repair proper and checks it against `_recovery_timeout()` once the rung returns — a
-        bound on a *slow* recovery, not a hard ceiling: every rung's `simctl` call goes through
-        `self._run`, which carries no subprocess-level timeout, so a rung whose call itself wedges (the
-        exact CoreSimulator degradation this ladder exists to recover from) is never interrupted, and
-        only the run's own outer timeout catches it. Covers every rung that does return promptly,
+        bound on a *slow* recovery, not a hard ceiling: the budget is consulted only between rungs,
+        and a rung whose call itself wedges (the exact CoreSimulator degradation this ladder exists
+        to recover from) is interrupted by the per-call `simctl` deadline instead, surfacing as a
+        device fault rather than a hang (BE-0363). Covers every rung that does return promptly,
         including the two that deliberately change nothing: the probe that opens the ladder is itself a
         subprocess, so a host slow enough to blow the bound merely answering `simctl list` is a host the
         run must give up on, whatever the rung then decided.
@@ -860,7 +890,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
     def _reboot_device(self) -> _Recovery:
         """Shut the Simulator down and boot it back up. `_finish_repair` re-establishes scenario state.
 
-        `Env.shutdown()` suppresses its own failure — right for the benign "already shutting down"
+        `Env.shutdown()` suppresses its own failure — though no longer a deadline it exceeded, which
+        BE-0363 lets out so this rung raises rather than reporting a reboot it never performed —
+        right for the benign "already shutting down"
         case it was written for, but a CoreSimulator wedged enough to stop honouring automation is
         exactly where `simctl shutdown` itself fails. Left unchecked, that failure is invisible: `boot`
         no-ops on a device that never left `Booted`, `bootstatus -b` sees it already booted and returns
@@ -922,9 +954,13 @@ class XcuitestEnvironment(_DeviceEnvironment):
 
         The degraded device is shut down and, because the pool follows `replaced_device` onto the
         replacement, never freed back to the queue — the same quarantine a vanished device gets today.
-        The shutdown is best effort (`Env.shutdown` suppresses its own failure): a CoreSimulator wedged
-        enough to refuse it is exactly why the run is leaving this device, so failing here would only
-        replace one loud failure with a less useful one. It runs only once a replacement is known to be
+        The shutdown is best effort (`Env.shutdown` suppresses its own failure, and a deadline it
+        exceeded is suppressed here, since BE-0363 deliberately lets that one out of the module): a
+        CoreSimulator wedged enough to refuse or to hang on it is exactly why the run is leaving this
+        device, so failing here would only replace one loud failure with a less useful one — and
+        would abandon a replacement already confirmed creatable. Unlike `_reboot_device`, which keeps
+        the timeout because the ladder still has a rung to choose, this site is past that decision.
+        It runs only once a replacement is known to be
         creatable, so a host that cannot mint one leaves the degraded device up for the caller's
         fallback rather than turned off on the way to a loud failure.
 
@@ -936,7 +972,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # *first* crash, where no erase was ever forced — and this clause reaches the operator on the
         # path where no replacement could be made, so it must not claim one was.
         device_type = self._replacement_target(eff, why="needs replacing after a crash")
-        simctl.Env(old, run=self._run).shutdown()
+        try:
+            simctl.Env(old, run=self._run).shutdown()
+        except simctl.DeviceTimeout as exc:
+            _logger.warning("quarantining Simulator %s: %s; replacing it anyway", old, exc)
         note = self._create_replacement(eff, device_type)
         # The spawn that follows is a genuine first bring-up — a device just created and booted, with
         # no app installed and no XCTest host this boot — so it earns the full cold readiness ceiling,
@@ -1542,26 +1581,37 @@ class XcuitestEnvironment(_DeviceEnvironment):
             self._runner_proc = None
         # The capture this probe reads may be pruned below, and the next spawn wires its own.
         self._run_ended = _never_ended
-        self._terminate_app_under_test()
-        self._terminate_runner_app()
-        self._release_log(keep=keep_log or crashed)  # after the hint above has read the tail
-        if self._patched_runner is not None:
-            self._patched_runner.unlink(missing_ok=True)
-            self._patched_runner = None
-        self._reusable = False
+        # A `finally`, because the two terminates now let a `simctl` timeout through (BE-0363): this
+        # discard's own bookkeeping — the capture, the patched .xctestrun, the reuse flag — must
+        # still complete, or surfacing a wedged device would cost a leaked temp file each time.
+        try:
+            self._terminate_app_under_test()
+            self._terminate_runner_app()
+        finally:
+            self._release_log(keep=keep_log or crashed)  # after the hint above has read the tail
+            if self._patched_runner is not None:
+                self._patched_runner.unlink(missing_ok=True)
+                self._patched_runner = None
+            self._reusable = False
 
     def _terminate_app_under_test(self) -> None:
         """Best-effort `simctl terminate` of the app the runner launched (Simulator only).
 
         The Swift runner `_exit`s on a pre-serving failure rather than unwinding XCTest, so nothing
         else brings the app down: an app left mid-launch by the timeout that failed one attempt is
-        exactly what the next attempt would call `launch()` on again. Every failure here is ignored —
-        the common case is an app that is not running, and a discard must never fail.
+        exactly what the next attempt would call `launch()` on again. Failures here are ignored —
+        the common case is an app that is not running, and a discard must never fail — except a
+        `simctl` call that exceeded its own deadline, which says the device is wedged rather than
+        the app absent, and so is exactly what this teardown must not swallow (BE-0363).
         """
         if self._bundle_id is None:
             return
-        with contextlib.suppress(subprocess.CalledProcessError, simctl.DeviceError, OSError):
+        try:
             simctl.Env(self._udid, run=self._run).terminate(self._bundle_id)
+        except simctl.DeviceTimeout:
+            raise
+        except (subprocess.CalledProcessError, simctl.DeviceError, OSError):
+            pass  # not running, or the device is already gone — a discard must not fail on either
 
     def _terminate_runner_app(self) -> None:
         """Best-effort `simctl terminate` of the XCTRunner app itself (Simulator only).
@@ -1573,11 +1623,17 @@ class XcuitestEnvironment(_DeviceEnvironment):
         one way a device reaches the state where the runner never comes up at all. The ids come from
         the resolved `.xctestrun` (`_runner_host_bundle_ids`) rather than the bundled runner's known
         id, so an explicit `xcuitest.testRunner` is cleaned up just as readily. Failures are ignored
-        for the same reason as the app under test: the common case is one that is not running.
+        for the same reason as the app under test: the common case is one that is not running — and
+        a deadline exceeded is excluded for that same reason, being a wedged device rather than an
+        absent app (BE-0363).
         """
         for bundle_id in self._runner_bundle_ids:
-            with contextlib.suppress(subprocess.CalledProcessError, simctl.DeviceError, OSError):
+            try:
                 simctl.Env(self._udid, run=self._run).terminate(bundle_id)
+            except simctl.DeviceTimeout:
+                raise
+            except (subprocess.CalledProcessError, simctl.DeviceError, OSError):
+                continue
 
     def _release_log(self, *, keep: bool) -> None:
         """Drop the reference to the current capture, pruning a default (env-unset) one unless kept.
