@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-degraded-device-quarantine-on-ordinary-failure-ja.md)
+**English** · [日本語](BE-0376-degraded-device-quarantine-on-ordinary-failure-ja.md)
 
-# BE-XXXX — Quarantine a device whose capture pipeline stalled, even when the scenario failed on its own assertion
+# BE-0376 — Quarantine a device whose capture pipeline stalled, even when the scenario failed on its own assertion
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-degraded-device-quarantine-on-ordinary-failure.md) |
+| Proposal | [BE-0376](BE-0376-degraded-device-quarantine-on-ordinary-failure.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0376") |
 | Topic | Platform support |
 | Related | [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md) |
 <!-- /BE-METADATA -->
