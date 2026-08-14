@@ -14,6 +14,7 @@ import logging
 import os
 import plistlib
 import shlex
+import shutil
 import signal
 import socket
 import subprocess
@@ -25,7 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Literal, cast
 
-from bajutsu import backends, simctl
+from bajutsu import backends, simctl, stall_diagnostics
 from bajutsu.config import Effective, XcuitestConfig, require_ios
 from bajutsu.drivers import base
 from bajutsu.platform_lifecycle.environments._bundled_runner import (
@@ -52,6 +53,14 @@ _DEFAULT_RUNNER_LOG_DIR = Path(tempfile.gettempdir()) / "bajutsu-xcuitest-runner
 # Lines of captured runner output to fold into the crash warning and the startup-failure error —
 # enough to show the tail of an `xcodebuild` failure without dumping the whole (verbose) log.
 _RUNNER_LOG_TAIL_LINES = 20
+
+# Names the directory `xcodebuild` writes its XCTest result bundle into, one per spawn (BE-0361
+# unit 1). The bundle records what testmanagerd itself saw — the precise XCTest failure, its
+# timestamps, and any attachments — which the captured stdout above only paraphrases. Unset (the
+# default) leaves the spawn argv exactly as it was, so this costs nothing until CI opts in; set, the
+# variable *is* the operator asking for the bundles, so every one is kept (unlike the runner log
+# above, whose env-unset default capture teardown prunes).
+_RESULT_BUNDLE_ENV = "BAJUTSU_XCUITEST_RESULT_BUNDLES"
 
 # A cold XCTest-host launch that never binds its port is a transient blip (the class BE-0207 absorbs
 # at the transport layer). One retry absorbs a one-off cold-start blip; a repeatable failure — a
@@ -1077,6 +1086,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # `_runner_alive`, and shared with the cold gate — a second instance would race this one for
         # the marker (BE-0354).
         self._run_ended = _run_ended_probe(self._runner_log)
+        bundle = self._result_bundle_path()
         try:
             proc = subprocess.Popen(
                 [  # noqa: S607 — xcodebuild resolved on PATH; requires Xcode
@@ -1088,6 +1098,24 @@ class XcuitestEnvironment(_DeviceEnvironment):
                     # Simulator vs real device (BE-0238); `_destination` validates the udid inline
                     # before it lands on the argv, the same defense-in-depth simctl applies.
                     _destination(device_type, self._udid),
+                    *(
+                        (
+                            "-resultBundlePath",
+                            str(bundle),
+                            # `-collect-test-diagnostics` defaults to `on-failure`, and on a failure
+                            # that means `xcodebuild` embeds a whole sysdiagnose — a Simulator
+                            # `system.logarchive` — under the bundle's `Staging/…/Diagnostics/`.
+                            # Measured at 163 MB for one spawn, which is both the artifact size and a
+                            # disk write on a host that had 189 MB of memory left. BE-0361 rejected
+                            # exactly that collection in favour of targeted extracts, so asking for a
+                            # bundle must not smuggle it back in: the runner log here plus the CI
+                            # action's own bounded `simctl diagnose` already cover the failure.
+                            "-collect-test-diagnostics",
+                            "never",
+                        )
+                        if bundle is not None
+                        else ()
+                    ),
                 ],
                 env={**os.environ, **forwarded},
                 stdout=runner_out,
@@ -1123,6 +1151,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             self._udid,
             runner_port=self._runner_port,
             runner_alive=self._runner_alive,
+            on_stall=self._capture_stall,
         )
         # `log_tail` / `discard` reach live environment state (`self._runner_log` / `self._runner_proc`);
         # they are valid only until the next `spawn()` overwrites it, which the strictly sequential
@@ -1298,6 +1327,17 @@ class XcuitestEnvironment(_DeviceEnvironment):
             return False
         return self._run_ended() is None
 
+    def _capture_stall(self) -> None:
+        """Let the channel's crash declaration capture the device state behind it (BE-0361 unit 2).
+
+        The environment supplies this rather than the driver reaching for it, because the udid the
+        capture screenshots is here and deliberately never reaches the channel — the same shape
+        `_runner_alive` already uses. Naming the trigger is this side's business too, so the channel
+        never passes a string that becomes a directory. Opt-in and bounded on the other side; unset,
+        it does nothing.
+        """
+        stall_diagnostics.capture("runner-crash", self._udid)
+
     def _healthy_resident_driver(self) -> base.Driver | None:
         """The driver for the warm runner if it is up and answering `/health`, else None (BE-0291 Unit 4).
 
@@ -1315,6 +1355,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             self._udid,
             runner_port=self._runner_port,
             runner_alive=self._runner_alive,
+            on_stall=self._capture_stall,
         )
         try:
             cast(base.BackendLifecycle, driver).await_ready(timeout=_WARM_HEALTH_TIMEOUT)
@@ -1339,6 +1380,42 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # respawns on one device leave separate logs rather than overwriting the crashed one.
         self._runner_log = log_dir / f"runner-{self._udid}-{self._runner_port}.log"
         return self._runner_log.open("wb")
+
+    def _result_bundle_path(self) -> Path | None:
+        """Where this spawn's XCTest result bundle goes, or `None` when the operator didn't ask (BE-0361).
+
+        Keyed like the runner log above — a fresh ephemeral port per spawn — so a respawn never
+        overwrites the crashed predecessor's bundle. `xcodebuild` refuses to start at all when the
+        path already exists ("Result bundle at path ... already exists"), which would turn a
+        diagnostics feature into a spawn failure the one time an ephemeral port is recycled onto the
+        same device, so a leftover at this exact key is cleared first. That is not the retention
+        policy leaking: it can only ever remove a bundle whose spawn is long gone.
+        """
+        bundle_dir_env = os.environ.get(_RESULT_BUNDLE_ENV)
+        if not bundle_dir_env:
+            return None
+        # Validated here, not only on the `-destination` argv below: this is a *new* boundary where the
+        # udid composes a path that feeds a recursive delete, and the real-device path never runs the
+        # simctl prep that would otherwise have vetted it.
+        udid = simctl.validated_udid(self._udid)
+        bundle = Path(bundle_dir_env) / f"result-{udid}-{self._runner_port}.xcresult"
+        try:
+            bundle.parent.mkdir(parents=True, exist_ok=True)
+            shutil.rmtree(bundle, ignore_errors=True)
+            if bundle.exists():
+                # `ignore_errors` also hides a removal that did not happen — a plain file at this key,
+                # or a tree `xcodebuild` wrote that is no longer removable. `xcodebuild` then refuses to
+                # start at all, which is the spawn failure this clearing exists to prevent, so degrade
+                # to "no bundles" rather than hand it an argv it will reject.
+                _logger.warning("xcuitest: cannot clear the stale result bundle at %s", bundle)
+                return None
+        except OSError as exc:
+            # An opt-in diagnostic must never be what fails a spawn — an operator typo naming a file
+            # or a read-only mount degrades to "no bundles", the way the stall capture already does.
+            _logger.warning("xcuitest: cannot prepare a result bundle at %s (%s)", bundle, exc)
+            return None
+        _logger.info("xcuitest runner result bundle → %s", bundle)
+        return bundle
 
     def _runner_log_hint(self) -> str:
         """A trailer for the crash warning and the startup-failure error: the captured log's path and tail."""
