@@ -24,11 +24,13 @@ import pytest
 from bajutsu import backends, simctl
 from bajutsu.config import Effective, load_config, resolve
 from bajutsu.drivers.xcuitest import XcuitestChannelError
+from bajutsu.platform_lifecycle.environments import xcuitest as xcuitest_env
 from bajutsu.platform_lifecycle.environments.xcuitest import (
     _MAX_WARM_REUSES,
     _MAX_WARM_REUSES_ENV,
     _RECOVERY_TIMEOUT,
     _RESPAWN_TIMEOUT_ENV,
+    _RESULT_BUNDLE_ENV,
     _RUNNER_STARTUP_TIMEOUT,
     _RUNNER_STARTUP_TIMEOUT_ENV,
     _WARM_HEALTH_TIMEOUT,
@@ -314,6 +316,11 @@ def _globals_plist(locale: str | None) -> str:
     return plistlib.dumps({"AppleLanguages": [language], "AppleLocale": locale}).decode()
 
 
+# What each faked `make_driver` call was handed, newest last. Module-level rather than another
+# element of `_fake_toolchain`'s return tuple, which some thirty existing tests already unpack.
+DRIVER_KWARGS: list[dict[str, object]] = []
+
+
 def _fake_toolchain(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -328,6 +335,9 @@ def _fake_toolchain(
     is True, so a test can wedge the reused runner; the cold-startup `await_ready` (the long timeout)
     always succeeds, so a respawn still comes up.
 
+    The kwargs each `make_driver` call received are recorded into the module-level `DRIVER_KWARGS`
+    (reset per fixture), so a test can assert on the callbacks the environment injects.
+
     `system_locale`, when given, models the device's global preference domain in `["v"]` — the fake
     device answers `defaults export` from it and a `defaults write` updates it, so a test can drive
     the BE-0320 pin the way a real Simulator would answer. Omitted, the domain reads as unwritten and
@@ -336,6 +346,7 @@ def _fake_toolchain(
     """
     popen_argvs: list[list[str]] = []
     simctl_calls: list[list[str]] = []
+    DRIVER_KWARGS.clear()
     domain: dict[str, str | None] = system_locale if system_locale is not None else {"v": None}
 
     def _popen(argv: list[str], **_kw: Any) -> _FakeProc:
@@ -366,8 +377,14 @@ def _fake_toolchain(
             domain["v"] = argv[-1]
         return ""
 
+    def _make_driver(*_a: object, **kwargs: object) -> _Driver:
+        # Recorded, not discarded: the environment injects `runner_alive` and BE-0361's `on_stall`
+        # here, and a swallowed **kwargs would let either wiring be deleted with the suite still green.
+        DRIVER_KWARGS.append(kwargs)
+        return _Driver()
+
     monkeypatch.setattr(subprocess, "Popen", _popen)
-    monkeypatch.setattr(backends, "make_driver", lambda *_a, **_k: _Driver())
+    monkeypatch.setattr(backends, "make_driver", _make_driver)
     _patch_group_signals(monkeypatch)
     return popen_argvs, simctl_calls, _run
 
@@ -918,6 +935,147 @@ def test_runner_output_is_captured_when_the_env_var_is_set(
     assert (
         "see" in env._runner_log_hint()
     )  # the hint points at the captured log, not at the env var
+
+
+def test_the_spawn_hands_the_channel_a_stall_capture_bound_to_this_device(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # BE-0361 unit 2: the udid the capture screenshots deliberately never reaches the channel, so the
+    # environment injects a callback closed over it — the same shape `runner_alive` uses. Without this
+    # wiring the runner-crash trigger captures nothing, and every other test would still pass.
+    _, _, run = _fake_toolchain(monkeypatch)
+    captured: list[tuple[str, str | None]] = []
+    monkeypatch.setattr(
+        xcuitest_env.stall_diagnostics,
+        "capture",
+        lambda reason, udid=None: captured.append((reason, udid)),
+    )
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+
+    hook = DRIVER_KWARGS[-1]["on_stall"]
+    assert callable(hook)
+    hook()
+    # The channel passes nothing: naming the trigger — and so the directory the capture writes — stays
+    # on this side, where the udid also lives.
+    assert captured == [("runner-crash", "UDID")]
+
+
+def test_result_bundle_is_requested_only_when_the_env_var_is_set(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # BE-0361 unit 1: the spawn argv gains `-resultBundlePath` exactly when
+    # BAJUTSU_XCUITEST_RESULT_BUNDLES names a directory. Unset is the shipped default for every lane
+    # but the iOS one, so the argv must be byte-for-byte what it was before this feature existed.
+    monkeypatch.delenv(_RESULT_BUNDLE_ENV, raising=False)
+    popen_argvs, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    assert "-resultBundlePath" not in popen_argvs[0]
+
+    bundles = tmp_path / "bundles"
+    monkeypatch.setenv(_RESULT_BUNDLE_ENV, str(bundles))
+    popen_argvs, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    argv = popen_argvs[0]
+    assert "-resultBundlePath" in argv
+    bundle = Path(argv[argv.index("-resultBundlePath") + 1])
+    # Keyed like the runner log — udid plus this spawn's fresh ephemeral port — so a respawn never
+    # overwrites the crashed predecessor's bundle.
+    assert bundle.parent == bundles
+    assert bundle.name == f"result-UDID-{env._runner_port}.xcresult"
+
+
+def test_a_requested_bundle_declines_xcodebuilds_own_sysdiagnose(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Measured on CI: with a bundle path and nothing else, `xcodebuild` honoured its
+    # `-collect-test-diagnostics on-failure` default and embedded a Simulator `system.logarchive`,
+    # taking one spawn's bundle to 163 MB. BE-0361 rejected whole-archive collection in favour of
+    # targeted extracts, so the two flags travel together or the rejected alternative comes back in
+    # through the feature that was supposed to be cheap.
+    monkeypatch.setenv(_RESULT_BUNDLE_ENV, str(tmp_path / "bundles"))
+    popen_argvs, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    argv = popen_argvs[0]
+    assert argv[argv.index("-collect-test-diagnostics") + 1] == "never"
+
+    # And it is scoped to the bundle: with no bundle requested there is no argv change at all.
+    monkeypatch.delenv(_RESULT_BUNDLE_ENV, raising=False)
+    popen_argvs, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    assert "-collect-test-diagnostics" not in popen_argvs[0]
+
+
+def test_result_bundle_path_is_cleared_before_the_spawn(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # `xcodebuild` refuses to start at all when the result bundle path already exists, so a recycled
+    # ephemeral port would turn this diagnostics feature into a spawn failure. A leftover at the
+    # exact key is cleared first; nothing else in the directory is touched.
+    bundles = tmp_path / "bundles"
+    monkeypatch.setenv(_RESULT_BUNDLE_ENV, str(bundles))
+    _, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    monkeypatch.setattr(xcuitest_env, "_allocate_port", lambda: 4242)
+    stale = bundles / "result-UDID-4242.xcresult"
+    stale.mkdir(parents=True)
+    (stale / "Info.plist").write_bytes(b"leftover")
+    keep = bundles / "result-UDID-9999.xcresult"
+    keep.mkdir(parents=True)
+
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    assert not stale.exists()
+    assert keep.exists()  # another spawn's bundle is never collateral
+
+
+def test_a_leftover_that_survives_the_clearing_degrades_to_no_bundles(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # `rmtree(ignore_errors=True)` returns cleanly when the removal did *not* happen — a plain file at
+    # this key is the reachable case. Handing `xcodebuild` the argv anyway would make it refuse to
+    # start, which is the very spawn failure the clearing exists to prevent.
+    bundles = tmp_path / "bundles"
+    monkeypatch.setenv(_RESULT_BUNDLE_ENV, str(bundles))
+    popen_argvs, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    monkeypatch.setattr(xcuitest_env, "_allocate_port", lambda: 4242)
+    bundles.mkdir(parents=True)
+    (bundles / "result-UDID-4242.xcresult").write_text("not a directory")
+
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    assert "-resultBundlePath" not in popen_argvs[0]
+
+
+def test_the_result_bundle_path_refuses_an_unsafe_device_id(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A *new* boundary where the udid composes a path — and that path feeds a recursive delete, so it
+    # gets the same shared device-id policy the `-destination` argv applies. The real-device path never
+    # runs the simctl prep that would otherwise have vetted the id.
+    monkeypatch.setenv(_RESULT_BUNDLE_ENV, str(tmp_path / "bundles"))
+    _, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "../../escape", env_run=run)
+    with pytest.raises(simctl.DeviceError):
+        env._result_bundle_path()
+    assert not (tmp_path / "bundles").exists()  # nothing was created on the way to refusing
+
+
+def test_an_unusable_result_bundle_directory_never_fails_the_spawn(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # An opt-in diagnostic must not be what reddens a lane: an operator typo naming a file, or a
+    # read-only mount, degrades to "no bundles" — the argv falls back to exactly what it is unset.
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("")
+    monkeypatch.setenv(_RESULT_BUNDLE_ENV, str(blocker))
+    popen_argvs, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    assert "-resultBundlePath" not in popen_argvs[0]
 
 
 def test_warm_resume_reapplies_the_per_scenario_reset(
