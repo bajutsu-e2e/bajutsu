@@ -54,12 +54,12 @@ def displayed_screenshot(screenshot_names: list[str]) -> str | None:
     """Which of a step's screenshots a viewer shows.
 
     The post-action `after.png` when the run recorded one, else the first screenshot it did record.
-    Both viewers — the HTML report's steps table and element viewer, and the serve editor's element
-    picker — resolve a step to one image through here, so the two never disagree about which
-    screenshot a step "is". Preferring `after.png` keeps that image next to the tree in
-    `elements.json`: the pre-step baseline writes the pre-action tree (BE-0341), but the file has one
-    fixed name, so a post-step `elements` capture (the default `defaults.capture` asks for one)
-    replaces it with the post-action tree. The fallback covers a capture policy recording no
+    Every consumer that shows a step's screenshot resolves it through here — the HTML report's steps
+    table and element viewer, the serve editor's element picker, and the triage context handed to a
+    failure investigator — so none of them disagrees about which screenshot a step "is". Preferring
+    `after.png` keeps that image next to the tree in `elements.json`: the pre-step baseline writes
+    the pre-action tree (BE-0341), but the file has one fixed name, so a post-step `elements` capture
+    (the default `defaults.capture` asks for one) replaces it with the post-action tree. The fallback covers a capture policy recording no
     `after.png` at all, so a step still shows whichever screenshot it has.
 
     Args:

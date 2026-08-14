@@ -44,11 +44,18 @@ def _write_run(
     reason: str = "",
     step_action: str = "tap",
     with_screenshot: bool = False,
+    with_pre_action_screenshot: bool = False,
     scenario_id: str = "home.titel",
 ) -> Path:
     run = runs / "r"
     (run / "00-s" / "step0").mkdir(parents=True)
     artifacts = [{"name": "00-s/step0/elements.json", "kind": "elements", "provider": "driver"}]
+    # The pre-step baseline shoots first (BE-0341), so `before.png` leads the step's capture order.
+    if with_pre_action_screenshot:
+        artifacts.append(
+            {"name": "00-s/step0/before.png", "kind": "screenshot", "provider": "driver"}
+        )
+        (run / "00-s" / "step0" / "before.png").write_bytes(b"\x89PNG\r\n\x1a\n pre-action")
     if with_screenshot:
         artifacts.append(
             {"name": "00-s/step0/after.png", "kind": "screenshot", "provider": "driver"}
@@ -126,6 +133,34 @@ def test_assemble_reads_failure_screenshot(tmp_path: Path) -> None:
     ctx = triage.assemble(_write_run(tmp_path / "runs", ok=False, reason="x", with_screenshot=True))
     assert ctx is not None
     assert ctx.screenshot == b"\x89PNG\r\n\x1a\n demo"
+
+
+def test_assemble_reads_the_screenshot_the_viewers_show(tmp_path: Path) -> None:
+    """A step records `before.png` first and `after.png` second, but its `elements.json` holds one
+    tree — the post-action one under the default `defaults.capture`. Triage therefore resolves its
+    screenshot through `displayed_screenshot`, the same choice the report and the serve editor make,
+    so the investigator's image and tree describe the same moment (review follow-up)."""
+    ctx = triage.assemble(
+        _write_run(
+            tmp_path / "runs",
+            ok=False,
+            reason="x",
+            with_screenshot=True,
+            with_pre_action_screenshot=True,
+        )
+    )
+    assert ctx is not None
+    assert ctx.screenshot == b"\x89PNG\r\n\x1a\n demo"  # after.png, not the earlier before.png
+
+
+def test_assemble_falls_back_to_the_only_screenshot_a_step_recorded(tmp_path: Path) -> None:
+    """A step whose only screenshot is the pre-action one still yields it: the preference is for
+    `after.png`, not a requirement for it."""
+    ctx = triage.assemble(
+        _write_run(tmp_path / "runs", ok=False, reason="x", with_pre_action_screenshot=True)
+    )
+    assert ctx is not None
+    assert ctx.screenshot == b"\x89PNG\r\n\x1a\n pre-action"
 
 
 def test_assemble_no_screenshot_is_none(tmp_path: Path) -> None:

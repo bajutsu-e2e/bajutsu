@@ -427,9 +427,14 @@ def test_a_step_that_fails_before_it_acts_still_gets_its_full_evidence_pair(
     assert any(name.endswith("after.png") for name in step0_names)
 
 
-def test_final_capture_lands_on_the_last_leaf_step_inside_an_if(tmp_path: Path) -> None:
-    """A scenario ending in an `if` still gets its final capture on the last *leaf* step actually
-    run, not on the `if` container's own (artifact-less) outcome (BE-0341)."""
+def test_a_step_nested_in_an_if_gets_the_evidence_pair_its_container_does_not(
+    tmp_path: Path,
+) -> None:
+    """Evidence is attributed to the *leaf* step that acts, never to the `if` container around it:
+    the nested `tap` records the `before.png` / `after.png` pair, the `if`'s own outcome stays
+    artifact-less (BE-0341). The pair comes from the two always-on captures the leaf itself runs,
+    so this holds wherever the leaf sits in the scenario — it is not the end-of-run safety capture,
+    which sees the leaf's own `after.png` and skips."""
     driver = FakeDriver([el("a", "A", ["button"]), el("b", "B", ["button"])])
     result = run_scenario(
         driver,
@@ -504,12 +509,12 @@ def test_for_each_iterations_each_get_their_own_evidence_pair(tmp_path: Path) ->
     assert len([a for a in iteration_taps[-1].artifacts if a.name.endswith("after.png")]) == 1
 
 
-def test_final_capture_lands_on_the_last_leaf_step_before_a_no_match_for_each(
+def test_a_trailing_no_match_for_each_leaves_the_last_acting_step_its_evidence_pair(
     tmp_path: Path,
 ) -> None:
-    """A trailing `forEach` that matches nothing never calls `_handle_action`, so it must not
-    silently swallow the final capture: it still lands on the last leaf step that actually ran
-    before it (BE-0341)."""
+    """A trailing `forEach` that matches nothing never calls `_handle_action`, so it records no
+    evidence of its own and takes none from the step before it: that step keeps the complete
+    `before.png` / `after.png` pair its own captures wrote (BE-0341)."""
     driver = FakeDriver([el("a", "A", ["button"])])  # no `item.*` elements to match
     result = run_scenario(
         driver,
