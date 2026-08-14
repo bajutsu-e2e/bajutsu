@@ -352,6 +352,12 @@ one case: a step that fails before it acts.
 `rawTree` moved to the post-step call for the same reason. A pre-action dump would no longer pair
 with the tree beside it, and nothing can request one until a `rawTree.before` modifier exists.
 
+Unit 2's end-of-run capture is gone with them. Every step that acts now shoots `after.png` itself,
+right after its action, so the safety net only ever reached the step that returns before acting at
+all — the `UncoveredSystemAlertLocale` failure — and giving *that* step a screenshot taken once the
+run had finished left it pairing post-run pixels with a pre-action tree. It now keeps the matched
+`before.png` + pre-action tree its baseline already gave it.
+
 What this item established survives both revisions: every step captures `screenshot.before` +
 `elements` before it acts.
 

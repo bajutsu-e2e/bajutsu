@@ -134,6 +134,7 @@ def test_html_shows_step_screenshot_and_tree(tmp_path: Path) -> None:
     (step_dir / "elements.json").write_text(
         json.dumps([_el("home.title", "Welcome", ["staticText"])]), encoding="utf-8"
     )
+    (step_dir / "after.png").write_bytes(b"PNG")
     out = html_report("run1", [r], tmp_path)
     # the step's screenshot thumbnail and its element viewer are shown
     assert 'class="shot"' in out and 'src="00-s1/step0/after.png"' in out
@@ -187,8 +188,14 @@ def test_html_tree_rows_carry_frame_for_screenshot_highlight(tmp_path: Path) -> 
     assert "tv-hl" in out and "tv-shotframe" in out
 
 
-def _one_step_report(tmp_path: Path, artifacts: list[Artifact]) -> str:
-    """Render a one-step report whose step recorded *artifacts* and one framed element."""
+def _one_step_report(
+    tmp_path: Path, artifacts: list[Artifact], *, missing: set[str] | None = None
+) -> str:
+    """Render a one-step report whose step recorded *artifacts* and one framed element.
+
+    Every screenshot the step recorded is written to disk, since the report picks among the files
+    that are actually there; name one in *missing* to model a run whose store lost it.
+    """
     el = {**_el("home.cta", "Buy", ["button"]), "frame": (12.0, 40.0, 100.0, 36.0)}
     r = RunResult(
         scenario="s1",
@@ -202,6 +209,9 @@ def _one_step_report(tmp_path: Path, artifacts: list[Artifact]) -> str:
     step_dir = tmp_path / "00-s1" / "step0"
     step_dir.mkdir(parents=True, exist_ok=True)
     (step_dir / "elements.json").write_text(json.dumps([el]), encoding="utf-8")
+    for a in artifacts:
+        if a.kind == "screenshot" and a.name not in (missing or set()):
+            (tmp_path / a.name).write_bytes(b"PNG")
     return html_report("run1", [r], tmp_path)
 
 
@@ -224,12 +234,31 @@ def test_step_shows_the_post_action_screenshot(tmp_path: Path) -> None:
     assert "before.png" not in out
 
 
+def test_step_falls_back_when_the_recorded_after_png_is_not_on_disk(tmp_path: Path) -> None:
+    # A report re-rendered from a stored run (`serve/artifacts.py`) can name a screenshot the store
+    # no longer holds. Choosing it would emit a broken `<img>` and leave the element viewer with
+    # nothing to draw frames on, so the choice is made among the files that are there — the same
+    # filter the serve editor's picker applies (review follow-up).
+    out = _one_step_report(
+        tmp_path,
+        [
+            Artifact("00-s1/step0/before.png", "screenshot", "driver"),
+            Artifact("00-s1/step0/elements.json", "elements", "driver"),
+            Artifact("00-s1/step0/after.png", "screenshot", "driver"),
+        ],
+        missing={"00-s1/step0/after.png"},
+    )
+    assert 'class="shot" loading="lazy" src="00-s1/step0/before.png"' in out
+
+
 def test_step_falls_back_to_the_pre_action_screenshot_when_no_after_png_exists(
     tmp_path: Path,
 ) -> None:
     # No `capture` list can suppress `after.png` any more, but one path still records none: a step
-    # that fails before it acts (`UncoveredSystemAlertLocale`) returns before the post-step call. It
-    # keeps showing the pre-step baseline's `before.png` rather than nothing.
+    # that fails before it acts (`UncoveredSystemAlertLocale`) returns before the shutter, and
+    # nothing fills one in for it afterwards. It keeps showing the pre-step baseline's `before.png`,
+    # which matches the pre-action tree recorded beside it. A run recorded before this change lands
+    # here too.
     out = _one_step_report(
         tmp_path,
         [

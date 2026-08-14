@@ -119,11 +119,21 @@ def _view_data(out: Any, run_dir: Path | None) -> dict[str, Any]:
     # is all `elements` needs: the kind can appear more than once (a post-step capture on top of the
     # pre-step baseline), but it writes one fixed filename, so every entry names the same file.
     # `screenshot` does not work that way — `before.png` and `after.png` are different files — so it
-    # is resolved by `displayed_screenshot`, the choice the serve editor's picker also makes.
+    # is resolved by `displayed_screenshot`, the choice the serve editor's picker also makes. Like
+    # the picker, the candidates are filtered to the files that are actually there first: a report
+    # re-rendered from a stored run (`serve/artifacts.py`) can name a screenshot the store no longer
+    # holds, and choosing it would emit a broken `<img>` and an element viewer with nothing to draw
+    # frames on, while the `before.png` beside it sits unused.
     by_kind: dict[str, Any] = {}
     for a in out.artifacts:
         by_kind.setdefault(a.kind, a)
-    shot = displayed_screenshot([a.name for a in out.artifacts if a.kind == "screenshot"])
+    shot = displayed_screenshot(
+        [
+            a.name
+            for a in out.artifacts
+            if a.kind == "screenshot" and (run_dir is None or (run_dir / a.name).exists())
+        ]
+    )
     tree = by_kind.get("elements")
     # Embed the captured elements inline so the report shows them in an overlay (no
     # new tab), matching how logs/network are embedded for offline (file://) viewing.

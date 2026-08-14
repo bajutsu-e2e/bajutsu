@@ -352,7 +352,7 @@ def test_every_step_records_both_screenshots(tmp_path: Path) -> None:
         "x/step0/elements.json",
         "x/step0/after.png",
     }
-    # One `after.png` per step: the end-of-run safety capture sees the last step's and skips.
+    # One `after.png` per step: the shutter fires once, right after the step's action.
     assert all(
         len([a for a in step.artifacts if a.name.endswith("after.png")]) == 1
         for step in result.steps
@@ -362,8 +362,8 @@ def test_every_step_records_both_screenshots(tmp_path: Path) -> None:
 def test_final_capture_does_not_duplicate_a_rule_fired_after_png(tmp_path: Path) -> None:
     """When a `capturePolicy` rule already fires `screenshot.after` post-step on the scenario's
     last (and only) leaf step — e.g. a `result: error` safety net on a failing final step — the
-    final capture must not re-shoot and duplicate `after.png` (review follow-up): the rule's own
-    shot already satisfies the same contract the final capture exists for."""
+    always-on shutter must not shoot it a second time (review follow-up): both name the one file,
+    so a duplicate would overwrite the pixel and leave two manifest entries for it."""
     driver = FakeDriver([el("a", "A", ["button"])])
     run_dir = tmp_path / "run1"
     result = run_scenario(
@@ -387,16 +387,15 @@ def test_final_capture_does_not_duplicate_a_rule_fired_after_png(tmp_path: Path)
     assert len(after_artifacts) == 1
 
 
-def test_a_step_that_fails_before_it_acts_still_gets_its_full_evidence_pair(
+def test_a_step_that_fails_before_it_acts_keeps_a_matched_pre_action_pair(
     tmp_path: Path,
 ) -> None:
     """A step that fails resolving `handleSystemAlert`'s label against an uncovered locale returns
-    early, before the `last_leaf` assignment at the end of `_handle_action` — but the pre-step
-    baseline itself runs *before* locale resolution, so this failure still gets the same complete
-    `before.png`/`elements.json`/`after.png` evidence set every other leaf step does (review
-    follow-up). Without also setting `last_leaf` in that except block, the final capture would
-    either land on a stale, earlier step or (for a single-step scenario, as here) never fire at
-    all."""
+    before it acts. The pre-step baseline runs *ahead* of locale resolution, so the step still
+    records evidence — `before.png` and the tree read at that same moment — and records no
+    `after.png`, since nothing acted and no later capture fills one in. That keeps the one path
+    without a post-action screenshot internally consistent: the viewers show `before.png`, matching
+    the tree they draw element frames from (review follow-up)."""
     driver = FakeDriver([el("a", "A", ["button"])])
     run_dir = tmp_path / "run1"
     result = run_scenario(
@@ -424,7 +423,7 @@ def test_a_step_that_fails_before_it_acts_still_gets_its_full_evidence_pair(
     step0_names = {a.name for a in result.steps[0].artifacts}
     assert any(name.endswith("before.png") for name in step0_names)
     assert any(name.endswith("elements.json") for name in step0_names)
-    assert any(name.endswith("after.png") for name in step0_names)
+    assert not any(name.endswith("after.png") for name in step0_names)
 
 
 def test_a_step_nested_in_an_if_gets_the_evidence_pair_its_container_does_not(
@@ -433,8 +432,7 @@ def test_a_step_nested_in_an_if_gets_the_evidence_pair_its_container_does_not(
     """Evidence is attributed to the *leaf* step that acts, never to the `if` container around it:
     the nested `tap` records the `before.png` / `after.png` pair, the `if`'s own outcome stays
     artifact-less (BE-0341). The pair comes from the two always-on captures the leaf itself runs,
-    so this holds wherever the leaf sits in the scenario — it is not the end-of-run safety capture,
-    which sees the leaf's own `after.png` and skips."""
+    so this holds wherever the leaf sits in the scenario."""
     driver = FakeDriver([el("a", "A", ["button"]), el("b", "B", ["button"])])
     result = run_scenario(
         driver,
@@ -468,7 +466,7 @@ def test_a_step_nested_in_an_if_gets_the_evidence_pair_its_container_does_not(
 def test_for_each_iterations_each_get_their_own_evidence_pair(tmp_path: Path) -> None:
     """A `forEach` iteration is a leaf step like any other, so each one records its own
     `before.png` / `after.png` pair. The `forEach` container is not: it acts on nothing itself, so
-    its own outcome stays artifact-less and the end-of-run capture never lands there (BE-0341)."""
+    its own outcome stays artifact-less, since evidence follows the step that acts (BE-0341)."""
     driver = FakeDriver(
         [
             el("a", "A", ["button"]),
@@ -505,7 +503,7 @@ def test_for_each_iterations_each_get_their_own_evidence_pair(tmp_path: Path) ->
         names = {a.name for a in tap.artifacts}
         assert any(name.endswith("before.png") for name in names)
         assert any(name.endswith("after.png") for name in names)
-    # The last iteration's shot is its own post-step one, not a second, end-of-run duplicate.
+    # One shot for the last iteration, like every other step: nothing adds a second afterwards.
     assert len([a for a in iteration_taps[-1].artifacts if a.name.endswith("after.png")]) == 1
 
 
@@ -723,8 +721,7 @@ def test_every_step_writes_the_tree_that_matches_its_displayed_screenshot(
     tree, the moment `after.png` shows and the moment both viewers draw element frames for. The
     pre-step baseline writes the pre-action tree first (BE-0341), but the file has one fixed
     filename and the post-step capture always re-captures `elements`, so the surviving content is
-    the post-action read — for the scenario's last step too, whose end-of-run safety capture adds
-    nothing here (it sees the `after.png` already recorded and skips).
+    the post-action read — for the scenario's last step too, which is captured like any other.
     """
 
     def react(d: FakeDriver, kind: str, arg: object) -> None:

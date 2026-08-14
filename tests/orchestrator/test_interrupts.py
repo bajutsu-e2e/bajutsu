@@ -40,8 +40,8 @@ class _RecordingSink:
     ) -> list[Artifact]:
         if kinds:
             self.calls.append((step_id, kinds))
-        # Named the way `evidence.capture` names them, so the end-of-run safety capture sees the
-        # `after.png` the post-step call already recorded and skips rather than shooting again.
+        # Named the way `evidence.capture` names them, so a caller reading the returned artifacts
+        # sees what a real sink would have written.
         return [
             Artifact(f"{step_id}/{token.partition('.')[2] or 'after'}.png", "screenshot", "driver")
             for token in kinds
@@ -359,9 +359,7 @@ def test_cleared_interstitial_is_not_misattributed_as_the_steps_screen_change() 
     # step0 is the `go` tap; its `before` is re-baselined to the post-recovery tree, so its own
     # (no-op) action fires no screenChanged capture — the middle `actionLog` call the rule would
     # add is absent. It carries only the always-on captures every leaf step gets: the pre-step
-    # baseline, then the post-step one — split in two so the screenshot is taken before the tree
-    # read that pairs with it. The end-of-run safety capture skips, having found the `after.png`
-    # the post-step call already recorded (BE-0341).
+    # baseline, the post-action shutter, and the tree read that pairs with it (BE-0341).
     step0 = [kinds for sid, kinds in sink.calls if sid == "x/step0"]
     assert step0 == [["screenshot.before", "elements"], ["screenshot.after"], ["elements"]]
 

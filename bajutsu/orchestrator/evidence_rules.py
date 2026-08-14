@@ -190,9 +190,13 @@ def _collect_captures(
     for rule in scenario.capture_policy:
         if _rule_fires(rule, kind, primary_id, screen_changed, ok):
             fired.extend(rule.capture)
-    # A bare `screenshot` names the file `screenshot.after` does (`evidence.capture` defaults the
-    # modifier to `after`), and `_dedupe` compares whole tokens — so normalize first, or the
-    # always-on token above and a scenario's own bare `screenshot` both fire, writing `after.png`
-    # twice and leaving a duplicate artifact entry in the manifest.
-    normalized = ["screenshot.after" if t == "screenshot" else t for t in fired]
+    # A bare `screenshot` names the file `screenshot.after` does, and every `elements.<modifier>`
+    # names the one bare `elements` does (`evidence.capture` defaults the screenshot modifier to
+    # `after` and ignores it entirely for `elements`) — and `_dedupe` compares whole tokens, so
+    # normalize both first, or the always-on tokens above and a scenario's own spelling each fire,
+    # writing the same file twice and leaving a duplicate artifact entry in the manifest.
+    normalized = [
+        "screenshot.after" if t == "screenshot" else "elements" if _kind_of(t) == "elements" else t
+        for t in fired
+    ]
     return [t for t in _dedupe(normalized) if t != "screenshot.before"]

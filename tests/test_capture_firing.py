@@ -14,10 +14,8 @@ scenario, but only when the scenario actually requests that kind.
 The post-step capture arrives as two calls, not one: the screenshot is taken first, then the tree is
 read and written, so the image is never older than the tree a viewer draws element frames from.
 
-Every scenario below has exactly one step, which is therefore also the last leaf step. That step's
-end-of-run safety capture (BE-0341) is skipped whenever the post-step call already recorded an
-`after.png`, so these tests see exactly three calls — which is why `RecordingSink` returns artifacts
-rather than an empty list: a sink reporting nothing would leave that gate blind.
+Every scenario below has exactly one step, so each sees exactly three capture calls: the pre-step
+baseline, the post-action shutter, and the tree read that follows it.
 """
 
 from __future__ import annotations
@@ -61,9 +59,8 @@ class RecordingSink:
     ) -> list[Artifact]:
         if kinds:
             self.calls.append((step_id, kinds))
-        # Name the screenshots the way `evidence.capture` does, so the end-of-run safety capture
-        # sees the `after.png` this call just recorded and skips — a sink returning nothing would
-        # make every scenario here look like it needs that extra capture.
+        # Named the way `evidence.capture` names them, so a caller reading the returned artifacts
+        # sees what a real sink would have written.
         return [
             Artifact(f"{step_id}/{token.partition('.')[2] or 'after'}.png", "screenshot", "driver")
             for token in kinds
@@ -191,6 +188,21 @@ def test_bare_screenshot_token_does_not_double_the_always_on_after_shot() -> Non
     run_scenario(
         driver,
         _scn({"name": "x", "steps": [{"tap": {"id": "a"}, "capture": ["screenshot"]}]}),
+        sink=sink,
+    )
+    assert sink.calls == _baseline_calls()
+
+
+def test_an_elements_modifier_does_not_double_the_always_on_tree_read() -> None:
+    # `capture()` ignores the modifier for `elements` — `elements.after`, `.before`, `.around` and
+    # `.onError` all write the one `elements.json` — so a scenario spelling it any of those ways
+    # must not fire beside the always-on `elements`, which would write the file twice and leave a
+    # duplicate artifact entry in the manifest (review follow-up).
+    driver = FakeDriver([_el("a", "A")])
+    sink = RecordingSink()
+    run_scenario(
+        driver,
+        _scn({"name": "x", "steps": [{"tap": {"id": "a"}, "capture": ["elements.after"]}]}),
         sink=sink,
     )
     assert sink.calls == _baseline_calls()

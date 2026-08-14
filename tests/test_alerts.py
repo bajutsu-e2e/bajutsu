@@ -253,8 +253,7 @@ def test_end_of_step_alert_guard_retry_on_the_last_step_still_gets_a_final_captu
     )
     assert result.ok is True, result.failure
     names = {a.name for a in result.steps[0].artifacts}
-    # The only (and therefore last) step gets both the pre-step baseline and the final capture,
-    # even though it took a retry to get there.
+    # The step gets both halves of its evidence, even though it took a retry to get there.
     assert any(name.endswith("before.png") for name in names)
     assert any(name.endswith("after.png") for name in names)
     els = json.loads(
