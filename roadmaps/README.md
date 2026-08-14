@@ -50,4 +50,13 @@ editing to reflect it.
 
 > Add unformed thoughts here. Promote them to a numbered BE item later.
 
--
+- **Selecting among a project's past config bindings, not only its current one.** A project holds
+  one active config-source binding at a time
+  ([BE-0225](BE-0225-config-project-hub/BE-0225-config-project-hub.md)); the durable, content-addressed
+  storage the binding already goes through ([BE-0243](BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md), [BE-0268](BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md))
+  could support a history list and a way to rebind to an earlier entry, but no such list or rollback UI
+  exists yet.
+- **Redirecting a fresh sign-in straight to the org's active project.** Today a signed-in user sees
+  whatever the serve shell already has open; landing on the org's active project
+  ([BE-0225](BE-0225-config-project-hub/BE-0225-config-project-hub.md) §4) right after sign-in is a
+  small UI increment once that destination already exists.
