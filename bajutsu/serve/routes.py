@@ -203,6 +203,9 @@ ROUTES: tuple[Route, ...] = (
         "/api/projects/{name}/runs",
         lambda state, ctx: ops.project_runs(state, ctx.path_param("name"), actor=ctx.actor()),
     ),
+    # The org roster an admin administers (BE-0375). Admin-gated in `authz.required_role`, which
+    # needs its own early case for this path since three of the four verbs here aren't POST.
+    Route("GET", "/api/orgs", lambda state, ctx: ops.list_orgs_view(state, actor=ctx.actor())),
     Route(
         "GET",
         "/api/metrics/projects",
@@ -363,6 +366,23 @@ ROUTES: tuple[Route, ...] = (
         "POST",
         "/api/projects/{name}/activate",
         lambda state, ctx: ops.activate_project(state, ctx.path_param("name"), actor=ctx.actor()),
+    ),
+    Route(
+        "POST",
+        "/api/orgs",
+        lambda state, ctx: ops.create_org(state, ctx.body(), actor=ctx.actor()),
+    ),
+    # Replacing an org's membership is a whole-value write, which REST would spell PUT; it is a POST
+    # because that is the only body-carrying verb both transports implement (BE-0375), and every
+    # other whole-value write in `serve` — `/api/projects/{name}/activate`, `/api/provider` — is
+    # already one. Widening the transports to a fourth verb is a cross-cutting change this item has
+    # no other need for.
+    Route(
+        "POST",
+        "/api/orgs/{slug}/membership",
+        lambda state, ctx: ops.update_org_membership(
+            state, ctx.path_param("slug"), ctx.body(), actor=ctx.actor()
+        ),
     ),
     Route(
         "POST",
@@ -540,5 +560,10 @@ ROUTES: tuple[Route, ...] = (
         "DELETE",
         "/api/projects/{name}",
         lambda state, ctx: ops.deregister_project(state, ctx.path_param("name"), actor=ctx.actor()),
+    ),
+    Route(
+        "DELETE",
+        "/api/orgs/{slug}",
+        lambda state, ctx: ops.delete_org(state, ctx.path_param("slug"), actor=ctx.actor()),
     ),
 )

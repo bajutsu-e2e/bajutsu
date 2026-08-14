@@ -86,6 +86,10 @@
             it shows for any project count so a single-config `serve` can grow into a hub from its Add
             form; serve.core.mjs (loadProjects) reveals it whenever there is a project to manage. -#}
         <button class="toptab" data-view="projects" data-testid="nav.projects-view" hidden>Projects</button>
+        {#- Orgs page (BE-0375): tenant lifecycle and membership. Admin-only and database-only, and
+            serve.orgs.mjs (loadOrgs) reveals it on exactly that basis — whether `/api/orgs` answered
+            with a list — rather than by asking what role this session holds. -#}
+        <button class="toptab" data-view="orgs" data-testid="nav.orgs-view" hidden>Orgs</button>
         {#- Trash (BE-0239): soft-deleted runs, restorable within the retention window. Always offered —
             run deletion is available on every deployment. -#}
         <button class="toptab" data-view="trash" data-testid="nav.trash">Trash</button>
@@ -614,6 +618,33 @@
       <div class="gitsrcerr" id="projects-error" data-testid="projects.error" hidden></div>
     </div>
     <div class="statshost" id="projects-host" data-testid="projects.host"><div class="empty" data-testid="projects.empty">Loading projects…</div></div>
+  </div>
+</main>
+
+<!-- ===== Orgs (BE-0375): the tenants themselves — create, retire, and re-member them =====
+     The counterpart to Projects: that page manages what a tenant tests, this one manages who the
+     tenant *is*. Admin-only and database-only, both enforced server-side — `/api/orgs` simply
+     answers with something that isn't a list otherwise, which is what keeps the tab hidden.
+     Its JS ships as the serve.orgs.mjs ES module. -->
+<main id="view-orgs" data-testid="view.orgs" hidden>
+  <div class="card statscard">
+    <div class="yamlhead">
+      <span class="ttl">Orgs</span>
+      <span class="muted" style="font-size:.8em">An org is a tenant: its membership decides who may sign in as it and who among them may write. Changes take effect on each member's next sign-in. Which targets an org owns still comes from the config's <code>orgs:</code> block.</span>
+      <button class="refresh" id="orgs-refresh" data-testid="orgs.refresh" title="refresh">&#8635;</button>
+    </div>
+    <div class="gitsrc prj-add">
+      <label class="gitsrclbl" for="orgs-add-slug">Create an org</label>
+      <div class="gitsrcrow">
+        <input type="text" id="orgs-add-slug" data-testid="orgs.add-slug" placeholder="slug, e.g. acme">
+        <input type="text" id="orgs-add-name" data-testid="orgs.add-name" placeholder="display name (optional)">
+        <button class="cfgbtn" id="orgs-add-submit" data-testid="orgs.add-submit">Create</button>
+      </div>
+      <div class="gitsrchint">A new org starts with <b>no</b> members, so nobody can sign in as it until you set its membership below. It also owns no target until the config's <code>orgs:</code> block names some. Deleting an org keeps its runs and audit history, and its slug stays reserved.</div>
+      <span class="status" id="orgs-add-status" data-testid="orgs.add-status"></span>
+      <div class="gitsrcerr" id="orgs-error" data-testid="orgs.error" hidden></div>
+    </div>
+    <div class="statshost" id="orgs-host" data-testid="orgs.host"><div class="empty" data-testid="orgs.empty">Loading orgs…</div></div>
   </div>
 </main>
 

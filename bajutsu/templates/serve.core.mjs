@@ -11,6 +11,7 @@
 import {loadHistory, loadStats, loadFlaky, loadUsage, coverageInit, showInfo, replayAudit, onSimChange, loadTrash, seedComposeFromCurrent} from './serve.panels.mjs';
 import {loadMetrics} from './serve.metrics.mjs';
 import {renderProjectsView} from './serve.projects.mjs';
+import {loadOrgs} from './serve.orgs.mjs';
 import {onCrawlSimChange} from './serve.crawl.mjs';
 import {authorInit, authorRefresh, syncPlatform, replayCodegen} from './serve.author.mjs';
 
@@ -461,6 +462,7 @@ function showView(name){
   if(name==='coverage')coverageInit();
   if(name==='metrics')loadMetrics();
   if(name==='projects')loadProjects();  // re-fetch so the page reflects any CLI-side add/remove
+  if(name==='orgs')loadOrgs();  // re-fetch so the page reflects an org another admin just changed
   if(name==='trash')loadTrash();  // BE-0239: list soft-deleted runs on entry
 }
 document.querySelectorAll('.toptab').forEach(t=>t.addEventListener('click',()=>showView(t.dataset.view)));

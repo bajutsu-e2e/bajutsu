@@ -181,6 +181,27 @@ the same shared store, so a project added either way appears in both. Registerin
 switching all rebind the active config, so in a hosted deployment they are admin actions like binding
 a config — the server enforces that restriction, and a refused action shows inline on the page.
 
+### Managing orgs
+
+An **org** is a tenant of a hosted deployment: which GitHub logins and GitHub organizations may sign
+in as it, and which GitHub Team among them may write. A deployment that runs against a database keeps
+that membership in the database rather than in the config file, and the **Orgs** tab is where an
+admin edits it (BE-0375). The tab appears for an admin on such a deployment, and nowhere else: on
+any other deployment the server declines to list orgs, which is what keeps the tab hidden.
+
+Each row shows an org's slug, how many members and GitHub organizations it holds, its editor Team,
+and how many projects it owns. **Create** takes a slug and an optional display name, and the new org
+starts with no members at all — nobody can sign in as it until you fill in its membership, which the
+page says inline so an empty tenant does not read as a bug. **Membership** opens a form that replaces
+all three fields at once, prefilled from what the server holds right now; a change takes effect on
+each member's next sign-in. **Delete** retires an org, and stays greyed out while the org still owns
+a project (deregister those first). Retiring keeps the org's runs and audit history and keeps its
+slug reserved, both of which the confirmation states, since a reader would otherwise discover
+neither until afterwards.
+
+Which targets an org owns still comes from the config file's `orgs:` block, so an org created here
+owns none until an entry there names some.
+
 ### Comparing projects
 
 Once a hub holds more than one project, the **Metrics** tab opens a read-only comparison across all

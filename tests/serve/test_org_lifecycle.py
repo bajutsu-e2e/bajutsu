@@ -1,0 +1,515 @@
+"""Database-backed org lifecycle and membership for serve (BE-0375).
+
+What these lock: the database, not the `orgs:` block, decides who signs in as which org once one is
+wired; a configuration that fails to load no longer denies anyone there, while a database that
+cannot be read says so with a 5xx instead of blaming a user's GitHub membership; a target's identity
+is `(org, target)`, so two orgs may each claim one name; the four admin `/api/orgs…` endpoints
+create, re-member, and retire a tenant, each audited; the backfill seeds each org row exactly once
+and a later configuration edit cannot overwrite it; and the admin-Team bypass still admits a sign-in
+against an empty table so the first org can be created at all.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+import pytest
+
+from bajutsu.serve import operations as ops
+from bajutsu.serve.authz import _target_forbidden
+from bajutsu.serve.operations.config import seed_orgs_from_bound_config
+from bajutsu.serve.orgs import identity_matches_org, org_for_identity, orgs_from_db, parse_orgs
+from bajutsu.serve.server.oauth import Identity
+from bajutsu.serve.state import ServeState, SessionManager
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from sqlalchemy import Engine
+
+    from bajutsu.serve.server.db import Repository
+
+# Two orgs that each claim a target named `checkout` — the collision an admin who creates tenants
+# from the web UI cannot see coming, and `default` left owning the one target neither claims.
+_COLLIDING_YAML = """
+targets:
+  checkout: { bundleId: com.example.checkout }
+  spare: { bundleId: com.example.spare }
+
+orgs:
+  acme:
+    members: [alice]
+    githubOrgs: [acme-gh]
+    editorTeam: acme-gh/scenario-maintainers
+    targets: [checkout]
+  globex:
+    members: [bob]
+    targets: [checkout]
+"""
+
+
+class _FakeOAuth:
+    """The slice of the OAuth flow `oauth_callback` drives, in memory — no GitHub call."""
+
+    def __init__(
+        self, login: str, orgs: list[str] | None = None, teams: list[str] | None = None
+    ) -> None:
+        self._login, self._orgs, self._teams = login, orgs or [], teams or []
+
+    def authorize_url(self, state: str) -> str:
+        return f"https://github.test/?state={state}"
+
+    def fetch_identity(self, code: str) -> Identity:
+        return Identity(login=self._login, orgs=list(self._orgs), teams=list(self._teams))
+
+
+def _config(tmp_path: Path, body: str = _COLLIDING_YAML) -> Path:
+    path = tmp_path / "bajutsu.config.yaml"
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+def _state(
+    serve_engine: Callable[..., Engine],
+    tmp_path: Path,
+    *,
+    body: str = _COLLIDING_YAML,
+    oauth: object = None,
+    admin_teams: list[str] | None = None,
+    seed: bool = True,
+) -> ServeState:
+    """A database-backed serve, seeded from its bound config the way `serve()` seeds at startup."""
+    from bajutsu.serve.server.db import SqlRepository
+    from bajutsu.serve.server.models import Base
+
+    engine = serve_engine()
+    Base.metadata.create_all(engine)
+    state = ServeState(
+        runs_dir=tmp_path / "runs",
+        config=_config(tmp_path, body),
+        cwd=tmp_path,
+        repository=SqlRepository(engine),
+        auth=SessionManager(oauth=oauth, oauth_admin_teams=tuple(admin_teams or ())),
+    )
+    if seed:
+        seed_orgs_from_bound_config(state)
+    return state
+
+
+def _sign_in(state: ServeState) -> tuple[Any, int, str | None]:
+    return ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
+
+
+# --- unit 1: the database is a second producer of the same org model -------------------------
+
+
+def test_orgs_from_db_resolves_exactly_as_the_equivalent_orgs_block(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # The seeded table must answer every resolution question the `orgs:` block answers, or the
+    # cutover would quietly change who belongs where. Only `targets` differs, and deliberately:
+    # target ownership stays in configuration, so a database-sourced org carries none.
+    state = _state(serve_engine, tmp_path)
+    assert state.repository is not None
+    from_config = parse_orgs(
+        {
+            "acme": {
+                "members": ["alice"],
+                "githubOrgs": ["acme-gh"],
+                "editorTeam": "acme-gh/scenario-maintainers",
+            },
+            "globex": {"members": ["bob"]},
+        }
+    )
+    from_db = orgs_from_db(state.repository)
+    assert from_db == from_config
+    for login, github_orgs in (("alice", []), ("dave", ["acme-gh"]), ("stranger", ["other-gh"])):
+        assert identity_matches_org(from_db, login, github_orgs) == identity_matches_org(
+            from_config, login, github_orgs
+        )
+        assert org_for_identity(from_db, login, github_orgs) == org_for_identity(
+            from_config, login, github_orgs
+        )
+
+
+def test_orgs_from_db_reads_a_row_with_no_membership_as_empty(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # A row that predates the membership columns, or one `ensure_org` created at sign-in, holds NULL
+    # rather than `[]` — the model's Python-side default never reached it. Reading that as `None`
+    # would break `identity_matches_org`'s membership scan on the first such row.
+    state = _state(serve_engine, tmp_path, body="targets:\n  checkout: { bundleId: com.x }\n")
+    assert state.repository is not None
+    state.repository.ensure_org("legacy", slug="legacy", name="legacy")
+    assert orgs_from_db(state.repository)["legacy"].members == []
+    assert orgs_from_db(state.repository)["legacy"].github_orgs == []
+
+
+# --- unit 2 and 3: one source, chosen once, and what a failure of it looks like ----------------
+
+
+def test_sign_in_survives_a_config_that_cannot_load(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # The failure this item exists to remove: an unreadable configuration used to collapse the org
+    # roster to empty and deny every non-admin sign-in, on a deployment whose database already knew
+    # exactly who they were.
+    state = _state(serve_engine, tmp_path, oauth=_FakeOAuth("alice"))
+    state.config = tmp_path / "gone.yaml"  # never written
+    _payload, status, sid = _sign_in(state)
+    assert status == 200 and sid is not None
+    assert state.repository is not None
+    assert state.repository.user_org("alice") == "acme"
+
+
+def test_an_unreadable_database_is_a_5xx_not_a_denial(
+    serve_engine: Callable[..., Engine], tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # `orgs_from_db` propagates where `load_serve_config_file` fails closed, so an outage of ours
+    # answers with an error naming our store rather than telling a legitimate user they don't belong
+    # — a 403 would send them to their GitHub admin for a fault only ours can fix.
+    class _BrokenRepository:
+        def __getattr__(self, name: str) -> Any:
+            raise OSError("database is down")
+
+    state = _state(serve_engine, tmp_path, oauth=_FakeOAuth("alice"))
+    state.repository = _BrokenRepository()  # type: ignore[assignment]
+    with caplog.at_level(logging.WARNING):
+        payload, status, sid = _sign_in(state)
+    assert status == 503 and sid is None
+    assert "unavailable" in payload["error"]
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
+    # The exception type, never its message: a driver's error text can carry the database URL.
+    assert "OSError" in record.getMessage()
+    assert "database is down" not in record.getMessage()
+
+
+def test_an_empty_orgs_table_is_the_operator_actionable_denial(
+    serve_engine: Callable[..., Engine], tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The three config-shaped causes collapse into one on this source, and it keeps the WARNING the
+    # config-shaped ones had: an empty table is the operator's problem, not the user's.
+    state = _state(
+        serve_engine,
+        tmp_path,
+        body="targets:\n  checkout: { bundleId: com.x }\n",  # no orgs: block, so nothing to seed
+        oauth=_FakeOAuth("mallory", teams=["ops-gh/root"]),
+        admin_teams=["ops-gh/root"],
+    )
+    with caplog.at_level(logging.INFO):
+        _payload, status, _sid = _sign_in(state)
+    assert status == 200  # the admin-Team bypass, not the roster, admitted them
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.login")
+    assert "the orgs table holds no org yet" in record.getMessage()
+    assert "serve config" not in record.getMessage()  # no file decides this deployment's roster
+    assert record.levelno == logging.WARNING
+
+
+def test_a_database_less_deployment_still_reads_the_orgs_block(tmp_path: Path) -> None:
+    # Unchanged for the deployment shape this item does not touch: no repository, so the `orgs:`
+    # block still gates sign-in exactly as BE-0313 left it.
+    state = ServeState(
+        runs_dir=tmp_path / "runs",
+        config=_config(tmp_path),
+        auth=SessionManager(oauth=_FakeOAuth("alice")),
+    )
+    assert _sign_in(state)[1] == 200
+    state.auth.oauth = _FakeOAuth("stranger", orgs=["unrelated-gh"])
+    assert _sign_in(state)[1] == 403
+
+
+# --- unit 4: a target's identity is (org, target) ---------------------------------------------
+
+
+def test_two_orgs_may_each_claim_a_target_of_the_same_name(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # Before this item, config order awarded `checkout` to `acme` and forbade `globex` every
+    # operation on it — while still listing it for `globex`, so the symptom read as a permissions
+    # bug rather than the name clash it is.
+    state = _state(serve_engine, tmp_path)
+    assert state.repository is not None
+    for login, org in (("alice", "acme"), ("bob", "globex")):
+        state.repository.upsert_user(login, org_id=org, github_login=login, email=f"{login}@x")
+        assert _target_forbidden(state, org, "checkout") is False
+        assert [t["name"] for t in ops.list_targets_payload(state, actor=login)[0]] == ["checkout"]
+
+
+def test_the_default_org_keeps_every_unclaimed_target(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # Asked through `targets_for_org`, not by reading an `orgs:` entry: ownership is not symmetrical
+    # — `default` owns whatever no entry claims, through a fallback keyed on its literal slug, and a
+    # deployment typically declares no `default` entry at all. Reading the entry would forbid
+    # `default` every target it reaches today.
+    state = _state(serve_engine, tmp_path)
+    assert _target_forbidden(state, "default", "spare") is False
+    assert _target_forbidden(state, "default", "checkout") is True
+    assert _target_forbidden(state, "acme", "spare") is True
+
+
+# --- unit 5: the admin API ---------------------------------------------------------------------
+
+
+def test_every_org_endpoint_is_admin_only() -> None:
+    # An org's membership decides who else can sign in and write, so no verb here is below admin —
+    # the list included, since it discloses one tenant's roster to another.
+    assert ops.required_role("GET", "/api/orgs") == "admin"
+    assert ops.required_role("POST", "/api/orgs") == "admin"
+    assert ops.required_role("POST", "/api/orgs/acme/membership") == "admin"
+    assert ops.required_role("DELETE", "/api/orgs/acme") == "admin"
+
+
+def test_create_then_re_member_an_org_and_audit_both(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state = _state(serve_engine, tmp_path)
+    assert state.repository is not None
+    state.repository.upsert_user("root", org_id="acme", github_login="root", email="root@x")
+
+    payload, status = ops.create_org(state, {"slug": "initech", "name": "Initech"}, actor="root")
+    assert status == 200 and payload["slug"] == "initech"
+    # A fresh org admits nobody: membership is never inherited from anywhere.
+    created = next(o for o in ops.list_orgs_view(state, actor="root")[0] if o["slug"] == "initech")
+    assert created == {
+        "slug": "initech",
+        "name": "Initech",
+        "members": [],
+        "githubOrgs": [],
+        "editorTeam": None,
+        "projectCount": 0,
+    }
+
+    _payload, status = ops.update_org_membership(
+        state,
+        "initech",
+        {"members": ["peter"], "githubOrgs": ["initech-gh"], "editorTeam": "initech-gh/leads"},
+        actor="root",
+    )
+    assert status == 200
+    orgs = orgs_from_db(state.repository)
+    assert orgs["initech"].members == ["peter"]
+    assert orgs["initech"].editor_team == "initech-gh/leads"
+
+    assert _audit_actions(state.repository) == ["org.create", "org.membership.update"]
+
+
+def test_creating_an_org_rejects_a_taken_slug_and_a_slug_that_is_not_a_safe_id(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state = _state(serve_engine, tmp_path)
+    assert ops.create_org(state, {"slug": "acme"}, actor="root")[1] == 409  # seeded above
+    for bad in ("", "ACME", "a/b", "..", "a b", "x" * 65):
+        assert ops.create_org(state, {"slug": bad}, actor="root")[1] == 400, bad
+
+
+def test_deleting_an_org_retires_it_without_removing_its_row(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # A soft delete: `users`, `runs`, `secrets`, `provider_settings`, and `audit_log` all still hold
+    # foreign keys on this id — including the deletion's own audit entry.
+    state = _state(serve_engine, tmp_path, oauth=_FakeOAuth("bob"))
+    assert state.repository is not None
+    assert _sign_in(state)[1] == 200  # bob belongs to globex while it is live
+
+    assert ops.delete_org(state, "globex", actor="root")[1] == 200
+    assert [o["slug"] for o in ops.list_orgs_view(state, actor="root")[0]] == ["acme"]
+    assert state.repository.get_org("globex") is None
+    assert state.repository.get_org("globex", include_deleted=True) is not None
+    # Retired means "admits nobody", so bob's next sign-in is turned away rather than resolved.
+    assert _sign_in(state)[1] == 403
+    # ...and the slug stays taken, so nothing silently reactivates it.
+    assert ops.create_org(state, {"slug": "globex"}, actor="root")[1] == 409
+
+
+def test_deleting_an_org_is_refused_while_it_owns_a_project_or_is_the_default(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    from bajutsu.serve.server.db import ProjectRecord
+
+    state = _state(serve_engine, tmp_path)
+    assert state.repository is not None
+    state.repository.create_project(ProjectRecord(id="p1", org_id="acme", name="hub"))
+    assert ops.delete_org(state, "acme", actor="root")[1] == 409
+    # `default` is the fallback an unmatched bypass sign-in resolves to regardless of table state,
+    # so retiring it would only leave a dead org users keep landing on.
+    state.repository.ensure_org("default", slug="default", name="default")
+    assert ops.delete_org(state, "default", actor="root")[1] == 409
+    assert ops.delete_org(state, "nosuch", actor="root")[1] == 404
+
+
+def test_the_org_endpoints_need_a_database(tmp_path: Path) -> None:
+    # A database-less serve is single-user by construction: no tenant boundary to administer, and
+    # nowhere to keep what an admin would set.
+    state = ServeState(runs_dir=tmp_path / "runs", config=_config(tmp_path))
+    assert ops.list_orgs_view(state)[1] == 400
+    assert ops.create_org(state, {"slug": "initech"})[1] == 400
+    assert ops.update_org_membership(state, "acme", {})[1] == 400
+    assert ops.delete_org(state, "acme")[1] == 400
+
+
+# --- unit 6: seed once, then the database owns it ----------------------------------------------
+
+
+def test_the_backfill_seeds_once_and_a_later_config_edit_cannot_undo_it(
+    serve_engine: Callable[..., Engine], tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    state = _state(serve_engine, tmp_path)
+    assert state.repository is not None
+    ops.update_org_membership(state, "acme", {"members": ["zoe"]}, actor="root")
+
+    # An operator edits `orgs:` and rebinds. The row is already past cutover, so the edit does not
+    # reach it — and the entry is reported so they learn the file no longer decides this.
+    state.config.write_text(
+        _COLLIDING_YAML.replace("members: [alice]", "members: [alice, mallory]"), encoding="utf-8"
+    )
+    with caplog.at_level(logging.WARNING):
+        seed_orgs_from_bound_config(state)
+    assert orgs_from_db(state.repository)["acme"].members == ["zoe"]
+    record = next(
+        r for r in caplog.records if getattr(r, "event", None) == "org.membership.ignored"
+    )
+    assert "acme" in record.getMessage() and record.check == "orgs_membership_ignored"
+
+
+def test_seeding_reports_nothing_for_an_entry_that_only_declares_targets(
+    serve_engine: Callable[..., Engine], tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Target ownership stays in configuration, so a `targets:`-only entry is the expected end state
+    # after the cutover. Warning on a merely non-empty `orgs:` block would fire forever on a
+    # correctly configured deployment, or push an operator to empty it and lose that ownership.
+    state = _state(serve_engine, tmp_path)
+    state.config.write_text(
+        "targets:\n  checkout: { bundleId: com.x }\n"
+        "orgs:\n  acme:\n    targets: [checkout]\n  globex:\n    targets: [checkout]\n",
+        encoding="utf-8",
+    )
+    with caplog.at_level(logging.WARNING):
+        seed_orgs_from_bound_config(state)
+    assert not [r for r in caplog.records if getattr(r, "event", None) == "org.membership.ignored"]
+
+
+def test_a_new_orgs_entry_is_seeded_at_a_later_rebind(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # Seeding at a rebind, not only at startup, is what keeps an org first declared through
+    # `POST /api/config` from admitting nobody until the next restart.
+    state = _state(serve_engine, tmp_path)
+    assert state.repository is not None
+    state.config.write_text(
+        _COLLIDING_YAML + "  initech:\n    members: [peter]\n", encoding="utf-8"
+    )
+    seed_orgs_from_bound_config(state)
+    assert orgs_from_db(state.repository)["initech"].members == ["peter"]
+
+
+def test_an_org_created_through_the_api_is_never_seeded_over(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # Marked seeded at creation, so a later `orgs:` entry for the same slug cannot overwrite the
+    # membership an admin set — the overwrite the per-row marker exists to prevent.
+    state = _state(serve_engine, tmp_path)
+    assert state.repository is not None
+    ops.create_org(state, {"slug": "initech"}, actor="root")
+    ops.update_org_membership(state, "initech", {"members": ["peter"]}, actor="root")
+    state.config.write_text(
+        _COLLIDING_YAML + "  initech:\n    members: [mallory]\n", encoding="utf-8"
+    )
+    seed_orgs_from_bound_config(state)
+    assert orgs_from_db(state.repository)["initech"].members == ["peter"]
+
+
+def test_a_sign_in_after_the_cutover_never_clears_membership(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # `ensure_org` stays the idempotent create it always was: it runs on every sign-in with no
+    # membership to pass, so widening it into a create-or-update would empty an admin's edit on the
+    # next login — the same overwrite arriving through a different door.
+    state = _state(serve_engine, tmp_path, oauth=_FakeOAuth("alice"))
+    assert state.repository is not None
+    assert _sign_in(state)[1] == 200
+    assert orgs_from_db(state.repository)["acme"].members == ["alice"]
+
+
+def test_a_soft_deleted_org_is_never_reseeded(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # Retired, not merely unseeded: a backfill that revived a deleted org would undo an admin action
+    # at the next restart, with nothing in the configuration file saying so.
+    state = _state(serve_engine, tmp_path)
+    assert state.repository is not None
+    assert ops.delete_org(state, "globex", actor="root")[1] == 200
+    seed_orgs_from_bound_config(state)
+    assert state.repository.get_org("globex") is None
+
+
+def test_seeding_survives_an_unreadable_database(
+    serve_engine: Callable[..., Engine], tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Seeding is a convergence step that re-runs at the next startup or rebind, so a database blip
+    # must not fail a bind that otherwise succeeded. Reported loudly, never swallowed silently.
+    class _BrokenRepository:
+        def __getattr__(self, name: str) -> Any:
+            raise OSError("database is down")
+
+    state = _state(serve_engine, tmp_path)
+    state.repository = _BrokenRepository()  # type: ignore[assignment]
+    with caplog.at_level(logging.WARNING):
+        seed_orgs_from_bound_config(state)
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "org.seed.failed")
+    assert record.check == "orgs_seed_failed"
+
+
+# --- unit 7: the admin-Team bypass answers the empty-table case --------------------------------
+
+
+def test_the_admin_team_bypass_admits_a_sign_in_against_an_empty_table_and_creates_the_first_org(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # The bootstrap this item leans on rather than re-solving: with no `Org` row at all, the one
+    # piece of tenancy data deliberately left in the environment is what lets anyone in to create
+    # the first one. No chicken-and-egg.
+    state = _state(
+        serve_engine,
+        tmp_path,
+        body="targets:\n  checkout: { bundleId: com.x }\n",
+        oauth=_FakeOAuth("root", teams=["ops-gh/root"]),
+        admin_teams=["ops-gh/root"],
+    )
+    assert state.repository is not None
+    assert state.repository.list_orgs() == []
+    assert _sign_in(state)[1] == 200
+    assert state.repository.user_role("root") == "admin"
+
+    assert ops.create_org(state, {"slug": "initech"}, actor="root")[1] == 200
+    ops.update_org_membership(state, "initech", {"members": ["peter"]}, actor="root")
+    state.auth.oauth = _FakeOAuth("peter")
+    assert _sign_in(state)[1] == 200
+    assert state.repository.user_org("peter") == "initech"
+
+
+def _audit_actions(repository: Repository) -> list[str]:
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+
+    from bajutsu.serve.server.models import AuditLog
+
+    engine = repository._engine  # type: ignore[attr-defined]
+    with Session(engine) as session:
+        return [row.action for row in session.scalars(select(AuditLog).order_by(AuditLog.action))]
+
+
+def test_soft_delete_stamps_the_moment_it_happened(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state = _state(serve_engine, tmp_path)
+    assert state.repository is not None
+    at = datetime(2026, 8, 14, tzinfo=UTC)
+    assert state.repository.soft_delete_org("globex", at=at) is True
+    # Already retired: a second delete is a clean False, not a re-stamp of the original moment.
+    assert state.repository.soft_delete_org("globex", at=datetime.now(UTC)) is False
+    retired = state.repository.get_org("globex", include_deleted=True)
+    assert retired is not None and retired.deleted_at is not None

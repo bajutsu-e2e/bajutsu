@@ -353,6 +353,19 @@ a deployment relying on that recovery should avoid declaring a real org named `d
 recovering admin's user row, audit entries, and object-storage prefix land inside that tenant instead
 of a neutral catch-all.
 
+**A deployment with a database reads three of these four fields only once**
+([BE-0375](../roadmaps/BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management.md)).
+`serve` copies each org's `members`, `githubOrgs`, and `editorTeam` into its database the first time
+it sees that org — at startup, and again whenever a new configuration is bound — and every sign-in
+after that resolves against the database alone. An admin then edits the membership from the Orgs
+page rather than from this file, and a later edit to those three fields has no effect: `serve`
+records a warning naming the org whose entry still declares them, so an operator learns the file
+stopped deciding rather than watching an edit vanish. `targets` is the field that keeps working
+here, so an entry pared down to `targets:` alone is the expected end state on such a deployment.
+Two orgs may each claim a target of the same name, and each is authorized for it; under a single
+bound configuration they share the one `targets:` definition that name resolves to. A deployment
+with no database keeps reading every field from this file, none of the above applying to it.
+
 ## Selecting from the CLI
 
 Every command in the CLI (command-line interface) selects one app with `--target <name>` and points at

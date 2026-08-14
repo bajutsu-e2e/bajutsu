@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0375](BE-0375-serve-org-lifecycle-management.md) |
 | Author | [@paihu](https://github.com/paihu) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0375") |
 | Topic | Hosting the web UI |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md), [BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass.md), [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md), [BE-0170](../BE-0170-weighted-fair-org-dispatch/BE-0170-weighted-fair-org-dispatch.md) |
@@ -238,8 +238,11 @@ same sensitivity level BE-0225 already gives registering or repointing a project
 mutation recorded through the existing `Repository.record_audit` (`org.create` / `org.delete` /
 `org.membership.update`, the org's slug as `target`):
 
-- `GET /api/orgs` — list every org: slug, name, member/GitHub-organization counts, whether an
-  editor Team is set, and its project count.
+- `GET /api/orgs` — list every live org: slug, name, its `members` / `githubOrgs` / `editorTeam`
+  themselves, and its project count. The rosters rather than their sizes, because the membership
+  form below replaces all three fields as one unit and so must start from the current values; the
+  endpoint is admin-only, the same tier that can already read the whole `orgs:` block through `GET
+  /api/config/content`.
 - `POST /api/orgs` — create an org from `{slug, name}`; membership starts empty (no member, no
   GitHub organization, no editor Team), so a freshly created org admits nobody until an admin adds
   to it. The created row's `id` is its slug, matching what every existing writer already does:
@@ -251,9 +254,14 @@ mutation recorded through the existing `Repository.record_audit` (`org.create` /
   the same per-row marker unit 6 sets on
   cutover, so the row is treated as already past cutover: no later `orgs:` entry for that slug
   seeds or re-seeds it, and so cannot overwrite membership an admin sets through this API.
-- `PUT /api/orgs/<slug>/membership` — replace an org's `{members, githubOrgs, editorTeam}` as one
+- `POST /api/orgs/<slug>/membership` — replace an org's `{members, githubOrgs, editorTeam}` as one
   unit, the same granularity a config-file edit already has, rather than separate add/remove
-  endpoints per list entry.
+  endpoints per list entry. `POST` rather than the `PUT` a whole-value write would normally take,
+  because `PUT` is the one body-carrying verb neither transport implements — the stdlib handler
+  serves `GET`/`POST`/`DELETE` and the FastAPI generator parses a body only for `POST` — so spelling
+  it `PUT` would mean widening both transports for this one route, a cross-cutting change this item
+  has no other need for. Every other whole-value write in `serve` is already a `POST`
+  (`/api/projects/<name>/activate`, `/api/provider`).
 - `DELETE /api/orgs/<slug>` — delete an org, rejected with 409 while it still owns any project
   (`list_projects` non-empty): an admin must deregister the org's projects first (BE-0225's
   deregister, which retains their run history). Deletion also rejects the `default` org outright:
@@ -288,7 +296,7 @@ A new admin-only **Orgs** page in the serve shell, parallel to
 [BE-0275](../BE-0275-serve-projects-management-page/BE-0275-serve-projects-management-page.md)'s
 Projects page: a list of orgs with create and delete actions (delete disabled, with the project
 count shown, while the org still owns one), and a membership form per org (members, GitHub
-organizations, editor Team) that calls the `PUT` endpoint above. Both the API and the page exist
+organizations, editor Team) that calls the `POST` endpoint above. Both the API and the page exist
 only when a repository is wired, following unit 2's gate.
 
 ### 6. One-time backfill, then a hard cutover
@@ -307,7 +315,7 @@ carries no such marker, a dedicated seeding method creates or updates that row's
 every sign-in and every finished run, with no membership to pass and — on a database-backed
 deployment, where unit 2 makes the database the source — none they could pass. Widening it into a
 create-or-update would either give one method two meanings depending on which argument is omitted,
-or let the next sign-in clear membership an admin set through unit 5's `PUT` — the overwrite this
+or let the next sign-in clear membership an admin set through unit 5's membership endpoint — the overwrite this
 unit's marker exists to prevent, arriving through a different door. `ensure_org` stays the
 idempotent create it is today, and the write surface for membership stays unit 5's API plus this
 backfill. Running the same seed at a rebind, not only at startup, is what makes this
@@ -415,40 +423,40 @@ database is exactly the piece that makes an empty `orgs` table recoverable.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1 — Add `members`/`github_orgs`/`editor_team` columns to the `Org` table (Alembic migration)
+- [x] 1 — Add `members`/`github_orgs`/`editor_team` columns to the `Org` table (Alembic migration)
       and an `orgs_from_db` builder that assembles the same `dict[str, OrgConfig]` shape
       `parse_orgs` produces from configuration, with `targets` always empty.
-- [ ] 2 — Choose `oauth_callback`'s org source once, before the sign-in gate: `orgs_from_db` when
+- [x] 2 — Choose `oauth_callback`'s org source once, before the sign-in gate: `orgs_from_db` when
       `state.repository is not None`, `parse_orgs` otherwise, with no caller reading both and none
       falling back between them; a database-less deployment's configuration-sourced path is
       unchanged.
-- [ ] 3 — Re-read the denial diagnostics for a database source: `_unmatched_org_cause`'s three
+- [x] 3 — Re-read the denial diagnostics for a database source: `_unmatched_org_cause`'s three
       configuration-shaped causes collapse to "no live `Org` row matched," `orgs_from_db` propagates
       a database error instead of failing closed to an empty mapping, WARNING keys on an empty
       table, and the `parsed is None` org-recovery guard is removed rather than translated.
-- [ ] 4 — Resolve target ownership per org rather than per name: `_target_forbidden` asks whether
+- [x] 4 — Resolve target ownership per org rather than per name: `_target_forbidden` asks whether
       the target is in this org's own `targets_for_org` list, leaving `org_for_target` with no
       caller (through `targets_for_org`, so `default` keeps the unclaimed targets its literal-slug
       fallback gives it), so two orgs
       may each claim a target of the same name instead of configuration order awarding it to one and
       forbidding the other a target it is still shown.
-- [ ] 5 — The four `/api/orgs…` endpoints (admin-only, each mutation recorded through `record_audit`)
+- [x] 5 — The four `/api/orgs…` endpoints (admin-only, each mutation recorded through `record_audit`)
       and the Orgs admin page (create / delete-when-empty / edit membership), gated
       on a repository being wired; `POST /api/orgs` marks the new row seeded at creation, so no
       later `orgs:` entry re-seeds it; delete is a soft delete (`Org.deleted_at`) that excludes the
       org from sign-in resolution and `GET /api/orgs` without removing its row or violating any
       foreign key that still points at it.
-- [ ] 6 — The backfill from a bound configuration's `orgs:` block into the database, seeded
+- [x] 6 — The backfill from a bound configuration's `orgs:` block into the database, seeded
       whenever a repository is wired and a configuration is bound (at startup and at a `POST
       /api/config` rebind alike), guarded by a persisted per-row marker on each `Org` row rather
       than inferred from empty membership columns; the Alembic migration adds only the membership
       and marker columns and runs no seeding of its own; the startup/rebind warning when an
       already-seeded org's `orgs:` entry still declares `members`/`githubOrgs`/`editorTeam` (an
       entry that carries only `targets` stays expected and does not warn).
-- [ ] 7 — Confirm the admin-Team bypass still admits sign-in against an empty or wholly
+- [x] 7 — Confirm the admin-Team bypass still admits sign-in against an empty or wholly
       unmatching `orgs` table, now that the table rather than the configuration file decides the
       gate, and leave `BAJUTSU_OAUTH_ADMIN_TEAMS` in the environment.
-- [ ] 8 — Tests: `orgs_from_db` round-trips the same resolution behavior `parse_orgs` gives for an
+- [x] 8 — Tests: `orgs_from_db` round-trips the same resolution behavior `parse_orgs` gives for an
       equivalent `orgs:` block; the database-less path is unaffected; a configuration that fails to
       load no longer denies sign-in on a database-backed deployment, and a database error surfaces
       as a 5xx rather than a denial; two orgs each claiming a target of the same name are each

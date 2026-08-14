@@ -12,12 +12,19 @@ import logging
 import re
 import secrets
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from bajutsu.serve import oplog
 from bajutsu.serve.helpers import load_serve_config_file
-from bajutsu.serve.orgs import OrgConfig, identity_matches_org, org_for_identity, org_for_target
+from bajutsu.serve.orgs import (
+    OrgConfig,
+    identity_matches_org,
+    org_for_identity,
+    orgs_from_db,
+    targets_for_org,
+)
 from bajutsu.serve.state import ServeState
 
 if TYPE_CHECKING:  # keeps the default serve/CLI path free of `serve.server` (server/__init__.py)
@@ -50,32 +57,75 @@ def oauth_login(state: ServeState) -> tuple[Any, int, str | None]:
     return {"redirect": state.auth.oauth.authorize_url(csrf)}, 200, csrf
 
 
-def _unmatched_org_cause(
-    parsed: tuple[Any, dict[str, OrgConfig]] | None,
-    orgs: dict[str, OrgConfig],
-    identity: Identity,
-    config: Path | None,
-) -> str:
-    """Which of the five shapes left *orgs* unmatched for *identity* in `oauth_callback`, named so an
-    operator is sent to the config itself (the first two) rather than the org roster (the last three):
-    no config is bound yet, the config failed to load, the config declares no `orgs:` block, GitHub
-    reported no orgs for this login, or a real, unmatching roster. Read by both the bypass-success
-    record and the denial record — one shared copy so a sixth shape can only be added in one place,
-    the same reasoning `in_admin_team` is factored out for below.
+@dataclass(frozen=True)
+class _OrgModel:
+    """The org model `oauth_callback` resolved for this deployment, and which source produced it.
 
-    *config* (`state.config`, threaded through separately from *parsed*) is what tells the first two
-    shapes apart: `load_serve_config_file` returns `None` immediately when *config* itself is `None`
-    — the ordinary, no-error bootstrap state `serve()` treats as normal ("open a config.yml in the
-    UI") — not only when a bound path fails to load. Collapsing both into "the serve config failed to
-    load" would send an operator hunting a filesystem error or a YAML typo in a file that was never
-    supposed to exist yet."""
-    if parsed is None:
-        return "no serve config is bound" if config is None else "the serve config failed to load"
-    if not orgs:
-        return "the serve config declares no orgs: block"
-    if not identity.orgs:
-        return "GitHub returned no orgs for this login"
-    return "no orgs: entry matched this login"
+    One source per deployment, chosen once (BE-0375): the database when a repository is wired,
+    the `orgs:` block otherwise — never both, and never a fallback between them. *parsed* and
+    *config* carry the config path's own state and are meaningful only when `from_db` is False,
+    which is why they are bundled with the flag that decides whether to read them rather than
+    threaded through the callers separately.
+    """
+
+    orgs: dict[str, OrgConfig]
+    from_db: bool
+    parsed: tuple[Any, dict[str, OrgConfig]] | None = None
+    config: Path | None = None
+
+    def unmatched(self, identity: Identity) -> tuple[str, bool]:
+        """Why this model matched nothing for *identity*, and whether that is operator-actionable.
+
+        The cause names what an operator should go look at, so it differs by source: a config-sourced
+        model can be unbound, unreadable, or blockless — shapes only a file can take — while a
+        database-sourced one collapses all three into an empty table, since a database `serve`
+        cannot read never reaches here at all (`orgs_from_db` raises instead of failing closed).
+
+        The two returns travel together because both records below need them in lock-step: an
+        operator-actionable shape is the one worth WARNING about, and an earlier revision let the
+        message and the level drift apart by computing them at separate call sites.
+        """
+        if not self.from_db:
+            if self.parsed is None:
+                return (
+                    # `load_serve_config_file` returns None immediately when no path is bound at all
+                    # — the ordinary bootstrap state `serve()` treats as normal ("open a config.yml
+                    # in the UI") — not only when a bound path fails to load. Collapsing the two
+                    # would send an operator hunting a YAML typo in a file that never existed yet.
+                    ("no serve config is bound", True)
+                    if self.config is None
+                    else ("the serve config failed to load", True)
+                )
+            if not self.orgs:
+                return "the serve config declares no orgs: block", True
+        elif not self.orgs:
+            return "the orgs table holds no org yet", True
+        if not identity.orgs:
+            return "GitHub returned no orgs for this login", False
+        return "no org membership matched this login", False
+
+
+def _resolve_org_model(state: ServeState) -> _OrgModel:
+    """The one org model this deployment's sign-in resolves against (BE-0375).
+
+    The database once a repository is wired — the same condition that gates every other
+    database-backed seam in `serve` — so a configuration that fails to load no longer turns every
+    sign-in into a denial on a deployment whose database already knows exactly who its users are.
+    A database-less deployment keeps reading the `orgs:` block exactly as before.
+
+    Raises:
+        Exception: whatever the repository read failed with, so the caller answers with an error
+            naming the database rather than an empty roster that reads as "you don't belong".
+    """
+    if state.repository is not None:
+        return _OrgModel(orgs=orgs_from_db(state.repository), from_db=True)
+    parsed = load_serve_config_file(state.config)
+    return _OrgModel(
+        orgs=parsed[1] if parsed is not None else {},
+        from_db=False,
+        parsed=parsed,
+        config=state.config,
+    )
 
 
 def oauth_callback(
@@ -131,14 +181,31 @@ def oauth_callback(
         )
         return {"error": "oauth exchange failed"}, 403, None
     login = identity.login
-    # Read the config-declared org model once, for both the sign-in gate and the org/role
-    # resolution below (BE-0313). Sign-in is gated on GitHub org membership: a login matching no
+    # Read the org model once, for both the sign-in gate and the org/role resolution below
+    # (BE-0313). Sign-in is gated on GitHub org membership: a login matching no
     # `members`/`githubOrgs` entry is turned away — unless it also matches a configured admin Team,
     # in which case the admin-Team check below admits it regardless. This runs at the top level,
     # before the database block, so an OAuth-configured but database-less deployment still gates
-    # sign-in rather than admitting every GitHub user.
-    parsed = load_serve_config_file(state.config)
-    orgs = parsed[1] if parsed is not None else {}
+    # sign-in rather than admitting every GitHub user. Only the model's *source* depends on whether
+    # a database is wired (BE-0375); where the gate itself sits is unchanged.
+    try:
+        model = _resolve_org_model(state)
+    except Exception as exc:
+        # The database this deployment's org model lives in is unreadable. Denying every login here
+        # would blame their GitHub membership for an outage of ours, so answer with a 5xx that names
+        # the store instead — the opposite of `load_serve_config_file`'s fail-closed shape, and the
+        # reason `orgs_from_db` propagates rather than collapsing to an empty mapping. The exception
+        # *type* is diagnostic enough here; its message can carry the database URL, which has no
+        # place in a log an operator greps for sign-in failures.
+        oplog.log_event(
+            _logger,
+            "oauth.denied",
+            f"the org database could not be read ({type(exc).__name__})",
+            level=logging.WARNING,
+            actor=login,
+        )
+        return {"error": "the org store is unavailable"}, 503, None
+    orgs = model.orgs
     admin_teams = state.auth.oauth_admin_teams
     # A member of a configured admin Team clears the sign-in gate directly, even when no `orgs:`
     # entry lists their GitHub organization (or `orgs:` is absent entirely) — an admin must be able to
@@ -174,46 +241,24 @@ def oauth_callback(
         oplog.log_event(
             _logger,
             "oauth.denied",
-            f"{login} rejected: {_unmatched_org_cause(parsed, orgs, identity, state.config)}, "
-            f"and {admin_note}",
+            f"{login} rejected: {model.unmatched(identity)[0]}, and {admin_note}",
             level=logging.WARNING if admin_teams_unusable(admin_teams) else logging.INFO,
             actor=login,
         )
         return {"error": "user not allowed"}, 403, None
     if state.repository is not None:
         # Persist the identity into the system of record, so audit entries and RBAC can reference
-        # the user. The org comes from the config-declared org model — an explicit member listing or
+        # the user. The org comes from the org model resolved above — an explicit member listing or
         # the user's GitHub org membership. email is unknown from this scope, so we store GitHub's
         # canonical no-reply form (valid + unique per login).
+        #
+        # BE-0313's org-recovery guard (keep a bypass-admitted user's recorded org rather than
+        # relocating them to `default` when the config failed to load) is gone with its cause: this
+        # block only ever ran on a database-backed deployment, and there the database now decides
+        # org placement, so no config load can misplace anyone. `orgs_from_db` raises rather than
+        # presenting an empty roster, so there is no silent "everything is empty" state left to
+        # mistake for a real one.
         org = org_for_identity(orgs, login, identity.orgs)
-        if not matched_org and parsed is None and state.config is not None:
-            # The bypass, not `orgs:`, admitted this login, and a config path IS bound but failed to
-            # load (`load_serve_config_file`'s fail-closed shape for a transient filesystem error or a
-            # config typo — this item's own motivating scenario). Keep whatever org is already on
-            # record rather than relocating them to `default` over one hiccup; a config that loads
-            # clean next time re-resolves through `org_for_identity` above like any other login.
-            #
-            # `state.config is None` is excluded deliberately: `load_serve_config_file` returns that
-            # same `None` immediately when no config path is bound at all -- the ordinary, no-error
-            # bootstrap state `serve()` treats as normal, not a hiccup -- and it is a *standing*
-            # state, not a transient one: `parsed` stays `None` on every login until an admin binds a
-            # config, so guarding on it here would pin an org forever, the same permanent-wrong-state
-            # failure the next guard below declines to risk for the `not identity.orgs` case.
-            #
-            # Deliberately NOT guarded on `not identity.orgs` too, even though that is also the shape
-            # a failed `/user/orgs` fetch takes (`_fetch_orgs` fails closed to `[]`): it is equally
-            # the shape of a login that genuinely belongs to no GitHub org at all -- a `members:`
-            # -listed bot/ops account, say -- and `_fetch_orgs` gives no way to tell the two apart.
-            # Guarding on it would pin such a login to its org forever once revoked from `members:`,
-            # since no future login could ever report a non-empty `identity.orgs` to escape the
-            # guard -- a permanent wrong state, worse than the transient one this trades away (a
-            # `githubOrgs`-only member relocated to `default` for one login on a real API hiccup,
-            # self-healing on their next clean login). Distinguishing "the fetch failed" from
-            # "GitHub said zero orgs" needs `_fetch_orgs` to report failure as `None` rather than
-            # `[]`, which changes `_paginate`'s shared contract, `_fetch_teams`'s, `Identity.orgs`'s
-            # type, and every fake in the test suite -- out of scope for this item; tracked as a
-            # follow-up rather than done here.
-            org = state.repository.user_org(login) or org
         oc = orgs.get(org)
         editor_team = oc.editor_team if oc is not None else None
         state.repository.ensure_org(org, slug=org, name=org)
@@ -245,20 +290,21 @@ def oauth_callback(
     # load) or `not orgs` (a config that loaded but declares no `orgs:` block at all) -- either way
     # the bypass just admitted a login into a deployment nobody but an admin Team member can
     # currently sign in to repair. A GitHub-side outage (`not identity.orgs`) or a real, unmatching
-    # roster stay INFO: the config itself is fine there, so there is nothing an admin needs paged in
-    # to fix. Key the level on which of `_unmatched_org_cause`'s shapes this is, not on
+    # roster stay INFO: the org model itself is fine there, so there is nothing an admin needs paged
+    # in to fix. Key the level on which of `_OrgModel.unmatched`'s shapes this is, not on
     # `matched_org`, so `bypass` keeps varying on what an operator greps while `WARNING` keeps
-    # meaning "something is wrong."
+    # meaning "something is wrong." Cause and level come from the one call, so neither can be
+    # rewritten without the other.
+    cause, operator_actionable = model.unmatched(identity)
     oplog.log_event(
         _logger,
         "oauth.login",
         (
-            f"admin-Team bypass admitted {login}: "
-            f"{_unmatched_org_cause(parsed, orgs, identity, state.config)}"
+            f"admin-Team bypass admitted {login}: {cause}"
             if not matched_org
             else f"{login} signed in"
         ),
-        level=logging.WARNING if not matched_org and (parsed is None or not orgs) else logging.INFO,
+        level=logging.WARNING if not matched_org and operator_actionable else logging.INFO,
         bypass=not matched_org,
         actor=login,
     )
@@ -266,17 +312,26 @@ def oauth_callback(
 
 
 def _target_forbidden(state: ServeState, org: str, target: str) -> bool:
-    """True when an actor resolved to *org* may not touch *target* because the target belongs to a
-    different org (BE-0015 multi-tenancy). Org scoping applies only on a server backend with a
-    system of record; local serve / token mode has no identity to scope to and ignores `orgs:`
-    entirely. A target not declared under `targets:` is "unknown", not cross-org — the caller handles it
-    as a missing target downstream. *org* is resolved once by the caller (via `ServeState.org_of`)."""
+    """True when an actor resolved to *org* may not touch *target* because *org* does not own it
+    (BE-0015 multi-tenancy). Org scoping applies only on a server backend with a system of record;
+    local serve / token mode has no identity to scope to and ignores `orgs:` entirely. A target not
+    declared under `targets:` is "unknown", not cross-org — the caller handles it as a missing target
+    downstream. *org* is resolved once by the caller (via `ServeState.org_of`).
+
+    A target's identity is `(org, target)`, not the name alone (BE-0375): this asks whether *this*
+    org owns the target, rather than which single org the name resolves to, so two orgs may each
+    claim a `checkout` and each be authorized for it — instead of config order silently awarding it
+    to the first and forbidding the second a target `targets_for_org` still shows it. Asked through
+    `targets_for_org` rather than by reading an `orgs:` entry directly, because ownership is not
+    symmetrical: `default` owns every target no entry claims, a fallback that keys on the literal
+    slug, so reading the entry would forbid `default` every target it reaches today.
+    """
     if state.repository is None:
         return False
     parsed = load_serve_config_file(state.config)
     if parsed is None or target not in parsed[0].targets:
         return False
-    return org_for_target(parsed[1], target) != org
+    return target not in targets_for_org(parsed[1], parsed[0].targets, org)
 
 
 def _record_audit(
@@ -395,8 +450,8 @@ def required_role(method: str, path: str) -> str | None:
     """The minimum role a request needs, or None for reads (GET) and the open auth endpoints.
     Cancelling a job or answering its handoff are editor actions (they mutate a running job). The
     gated reads are ``GET /api/config/content``, ``GET /api/artifacts/exists``,
-    ``GET /api/compose/current`` and ``GET /api/version/checkout`` (all admin), a wider
-    disclosure than their paths."""
+    ``GET /api/compose/current``, ``GET /api/version/checkout`` and ``GET /api/orgs`` (all admin), a
+    wider disclosure than their paths."""
     # Config content is the one gated GET: it returns the active config's full body, a wider
     # disclosure than the path-only `/api/config`, and a local/uploaded config may embed literal
     # secrets. Gate it like binding the config (admin) so a viewer/editor can't read it.
@@ -430,6 +485,12 @@ def required_role(method: str, path: str) -> str | None:
         if method in ("POST", "DELETE"):
             return "admin"
         return None
+    # Org lifecycle (BE-0375): creating, deleting, or re-membering an org decides who else can sign
+    # in and write, so every verb is admin — the list included, since it discloses one tenant's
+    # membership to another. Handled ahead of the `method != "POST"` guard below because the list is
+    # a GET and the delete a DELETE, both of which that guard would otherwise let through ungated.
+    if path == "/api/orgs" or path.startswith("/api/orgs/"):
+        return "admin"
     # Run lifecycle (BE-0239): soft-delete (DELETE /api/runs/{id} or /api/crawl/runs/{id}), restore
     # (POST .../restore), and bulk-delete (POST /api/runs/bulk-delete) are editor actions, like
     # triggering a run. Permanent purge (``?purge=true``) is admin, but the query string isn't in the

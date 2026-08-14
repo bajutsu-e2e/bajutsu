@@ -4,16 +4,25 @@ Hosting is a `serve` concern the deterministic core does not model, so the `orgs
 resolution helpers live here rather than in `bajutsu/config`. `load_serve_config` parses a raw
 config once, splitting it into the core `Config` (org-agnostic) and the org model the serve auth /
 storage layer resolves against.
+
+That model has two producers (BE-0375): `parse_orgs` from the `orgs:` block, and `orgs_from_db`
+from the database a hosted deployment runs against. They yield the same `{name: OrgConfig}` shape,
+so every resolution helper below is unchanged by which one a deployment reads — only `targets`
+differs, since target ownership stays in configuration either way.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 from pydantic import Field
 
 from bajutsu import _yaml
 from bajutsu.config import Config, _Model, parse_config_dict
+
+if TYPE_CHECKING:  # keeps the default serve/CLI path free of `serve.server` (server/__init__.py)
+    from bajutsu.serve.server.db import Repository
 
 
 class OrgConfig(_Model):
@@ -39,11 +48,6 @@ DEFAULT_ORG = "default"
 def org_for_user(orgs: dict[str, OrgConfig], login: str) -> str:
     """The org whose members list *login*, or `default` if none do."""
     return next((org for org, oc in orgs.items() if login in oc.members), DEFAULT_ORG)
-
-
-def org_for_target(orgs: dict[str, OrgConfig], target: str) -> str:
-    """The org whose targets list *target*, or `default` if none do."""
-    return next((org for org, oc in orgs.items() if target in oc.targets), DEFAULT_ORG)
 
 
 def identity_matches_org(orgs: dict[str, OrgConfig], login: str, github_orgs: list[str]) -> bool:
@@ -105,6 +109,58 @@ def parse_orgs(orgs_block: object) -> dict[str, OrgConfig]:
     if not isinstance(orgs_block, dict):
         raise ValueError("orgs: must be a mapping of org name to its config")
     return {name: OrgConfig.model_validate(body or {}) for name, body in orgs_block.items()}
+
+
+def orgs_from_db(repository: Repository) -> dict[str, OrgConfig]:
+    """The org model read from the database — `parse_orgs`'s shape from a second source (BE-0375).
+
+    Assembles the identical `{name: OrgConfig}` mapping the `orgs:` block produces, keyed by each
+    row's id (the same string `state.org_of` hands back as `org_id`), so every membership consumer
+    resolves against it unchanged. `targets` is always empty: an org's target ownership stays in
+    configuration, resolved through `targets_for_org` against the config-parsed model.
+
+    Unlike `load_serve_config_file`, a read failure propagates rather than collapsing to an empty
+    mapping. An empty mapping means "no org matched"; a database `serve` cannot read must answer
+    with an error naming the database, not deny every user by blaming their GitHub membership.
+    """
+    return {
+        # Built through the field aliases, the same names the `orgs:` block itself uses, so this
+        # producer and `parse_orgs` construct the identical model from the identical key names.
+        row.id: OrgConfig(
+            members=list(row.members),
+            githubOrgs=list(row.github_orgs),
+            editorTeam=row.editor_team,
+        )
+        for row in repository.list_orgs()
+    }
+
+
+def seed_orgs_from_config(repository: Repository, orgs: dict[str, OrgConfig]) -> list[str]:
+    """Seed each config-declared org's membership into the database, once per row (BE-0375).
+
+    Run whenever a repository is wired and a configuration is bound — at startup and at every
+    rebind alike, so an org first declared through a rebind is seeded too. Each row is seeded at
+    most once: `seed_org_membership` skips one already marked seeded (or soft-deleted), which is
+    the hard cutover — from then on the database owns that org's membership.
+
+    Returns the names of the entries that were *not* seeded but still declare
+    `members`/`githubOrgs`/`editorTeam`, so the caller can tell an operator that configuration no
+    longer decides them. An entry carrying only `targets` is legitimate after the cutover — target
+    ownership stays in configuration — and is never reported.
+    """
+    stale: list[str] = []
+    for name, oc in orgs.items():
+        seeded = repository.seed_org_membership(
+            name,
+            slug=name,
+            name=name,
+            members=list(oc.members),
+            github_orgs=list(oc.github_orgs),
+            editor_team=oc.editor_team,
+        )
+        if not seeded and (oc.members or oc.github_orgs or oc.editor_team is not None):
+            stale.append(name)
+    return stale
 
 
 def load_serve_config(text: str) -> tuple[Config, dict[str, OrgConfig]]:

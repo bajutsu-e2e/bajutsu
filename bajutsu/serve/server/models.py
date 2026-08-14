@@ -35,6 +35,25 @@ class Org(Base):
     slug: Mapped[str] = mapped_column(unique=True)
     name: Mapped[str]
     created_at: Mapped[datetime] = _created_at()
+    # The org's membership (BE-0375): who may sign in as this org and who among them may write —
+    # `OrgConfig`'s own `members` / `github_orgs` / `editor_team`, relocated here from the `orgs:`
+    # block so an admin can edit them without a redeploy. Null on a row that predates the move (or
+    # one `ensure_org` created at sign-in), which `orgs_from_db` reads as empty; `targets` stays in
+    # config and gets no column.
+    members: Mapped[list[str] | None] = mapped_column(_JSON, default=None)
+    github_orgs: Mapped[list[str] | None] = mapped_column(_JSON, default=None)
+    editor_team: Mapped[str | None] = mapped_column(default=None)
+    # When this row's membership was seeded from a bound config's `orgs:` entry — the per-row
+    # cutover marker (BE-0375). Null means "not yet seeded"; set means the database owns this org's
+    # membership from then on, so a later `orgs:` edit can never overwrite what an admin set. A
+    # timestamp rather than a flag for the same reason `deleted_at` is one: it records when.
+    membership_seeded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+    # Soft-delete (BE-0375), the same shape `runs` uses: a deleted org drops out of sign-in
+    # resolution and the admin list, but its row stays so the users / runs / secrets /
+    # provider_settings / audit_log foreign keys that still point at it stay intact.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
 
 class User(Base):

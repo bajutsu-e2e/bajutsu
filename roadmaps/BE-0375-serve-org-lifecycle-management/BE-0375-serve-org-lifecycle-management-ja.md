@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0375](BE-0375-serve-org-lifecycle-management-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0375") |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md)、[BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass-ja.md)、[BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md)、[BE-0170](../BE-0170-weighted-fair-org-dispatch/BE-0170-weighted-fair-org-dispatch-ja.md) |
@@ -251,8 +251,11 @@ target への操作をすべて禁じられます。しかも、その org に�
 記録するアクションは `org.create` / `org.delete` / `org.membership.update` で、対象は org の slug
 です。
 
-- `GET /api/orgs` — すべての org を一覧します。slug・name・メンバーと GitHub Organization の件数・
-  editor Team が設定されているか・project の件数を返します。
+- `GET /api/orgs` — 生存しているすべての org を一覧します。slug、name、`members` / `githubOrgs` /
+  `editorTeam` そのもの、project の件数を返します。件数ではなく名簿そのものを返すのは、下のメンバー
+  シップフォームが3つのフィールドを一括で置き換えるため、現在の値から始める必要があるからです。この
+  エンドポイントは admin 専用であり、admin はすでに `GET /api/config/content` から `orgs:` ブロック
+  全体を読めます。
 - `POST /api/orgs` — `{slug, name}` から org を作成します。メンバーシップは空から始まります
   （member・GitHub Organization・editor Team のいずれもなし）。admin が追加するまで、新設した org は
   誰も受け入れません。作成した行の `id` は、その slug とします。既存の書き込み側がすでにそう
@@ -264,9 +267,14 @@ target への操作をすべて禁じられます。しかも、その org に�
   処理が要りますが、この項目はそれを導入しません。作成した行には、ユニット6が一本化の際に立てるのと同じ引き込み済みマーカーを
   作成時点で立てます。この行はすでに一本化を終えたものとして扱われるため、以後どの `orgs:` エントリ
   もこの行を引き込むことはなく、admin がこの API で設定したメンバーシップを上書きすることもありません。
-- `PUT /api/orgs/<slug>/membership` — org の `{members, githubOrgs, editorTeam}` を一括で
+- `POST /api/orgs/<slug>/membership` — org の `{members, githubOrgs, editorTeam}` を一括で
   置き換えます。エントリ単位の追加・削除エンドポイントに分けず、設定ファイルの編集がすでに持つのと
-  同じ粒度にします。
+  同じ粒度にします。値全体を書き換える操作は通常 `PUT` で表しますが、ここでは `POST` を使います。
+  `PUT` は、どちらのトランスポートも実装していない唯一の本文つきメソッドだからです。標準ライブラリ
+  のハンドラは `GET` / `POST` / `DELETE` だけを提供し、FastAPI 側の生成器も本文を解析するのは
+  `POST` に限られます。この1本のルートのために両方のトランスポートを広げるのは、この項目が他に必要と
+  しない横断的な変更です。`serve` の値全体を書き換える他の操作も、すでにすべて `POST` です
+  （`/api/projects/<name>/activate`、`/api/provider`）。
 - `DELETE /api/orgs/<slug>` — org を削除します。その org がまだ project を1つでも所有している間は
   409 で拒否します（`list_projects` が空でない）。admin は、先に org の project を登録解除する
   必要があります（BE-0225 の登録解除は run 履歴を残します）。削除は `default` org も拒否します。
@@ -301,7 +309,7 @@ serve のシェルには、admin 限定の新しい **Orgs** ページを追加�
 [BE-0275](../BE-0275-serve-projects-management-page/BE-0275-serve-projects-management-page-ja.md)
 の Projects ページと並ぶ位置づけです。org の一覧に、作成と削除の操作を添えます。org がまだ project
 を持つ間は削除を無効にし、その件数を表示します。あわせて、org ごとのメンバーシップ編集フォーム
-（member・GitHub Organization・editor Team）を置き、上記の `PUT` エンドポイントを呼びます。この API とページは
+（member・GitHub Organization・editor Team）を置き、上記の `POST` エンドポイントを呼びます。この API とページは
 いずれも、ユニット2のゲートに従い、repository を配線している場合にのみ存在します。
 
 ### 6. 一度きりの引き込みと、その後の一本化
@@ -321,7 +329,7 @@ serve は、バインドされた config が宣言する org のうち、まだ�
 完了のたびです。どちらも渡すメンバーシップを持ちません。データベースを配線したデプロイでは、ユニット2により出どころが
 データベースになります。したがって、渡せるメンバーシップもありません。これを作成兼更新へ広げれば、
 2つのうちどちらかが起きます。省略した引数によって1つのメソッドが2つの意味を持つか、次のサインイン
-が、admin がユニット5の `PUT` で設定したメンバーシップを消してしまうかです。後者は、このユニットのマーカーが
+が、admin がユニット5のメンバーシップエンドポイントで設定したメンバーシップを消してしまうかです。後者は、このユニットのマーカーが
 防ぐために存在する上書きが、別の入口から現れたものです。`ensure_org` は今日と同じ冪等な作成のまま
 とし、メンバーシップへの書き込み口はユニット5の API とこの引き込みだけに保ちます。起動時だけでなく
 再バインド時にも同じ引き込みを走らせるのは、config が serve に届く2つの経路のどちらでも正しく動く
@@ -433,41 +441,41 @@ repository を最初の起動から配線している、config だけの履歴�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 1 — `Org` テーブルに `members` / `github_orgs` / `editor_team` カラムを追加する（Alembic
+- [x] 1 — `Org` テーブルに `members` / `github_orgs` / `editor_team` カラムを追加する（Alembic
       マイグレーション）。あわせて `orgs_from_db` を追加する。`parse_orgs` が設定ファイルから
       組み立てるのと同じ形を、`targets` を常に空にして組み立てるものとする。
-- [ ] 2 — `oauth_callback` の org の出どころを、サインインゲートの手前で一度だけ選ぶようにする。
+- [x] 2 — `oauth_callback` の org の出どころを、サインインゲートの手前で一度だけ選ぶようにする。
       `state.repository is not None` なら `orgs_from_db`、そうでなければ `parse_orgs` とし、両方を
       読む呼び出し元も、一方から他方へ引き当て直す経路も設けない。データベースを持たないデプロイの、
       設定ファイル由来の経路は変更しない。
-- [ ] 3 — 拒否時の診断を、データベースという出どころに合わせて読み替える。
+- [x] 3 — 拒否時の診断を、データベースという出どころに合わせて読み替える。
       `_unmatched_org_cause` の config 由来の3つの原因を「マッチする有効な `Org` 行がない」に畳み、
       `orgs_from_db` は空のマッピングへフェイルクローズせずデータベースのエラーを伝播させ、
       WARNING はテーブルが空の場合を基準にし、`parsed is None` を条件とする org の回復ガードは
       翻訳せずに取り除く。
-- [ ] 4 — target の所有を、名前単位ではなく org 単位で解決する。`_target_forbidden` は、その org
+- [x] 4 — target の所有を、名前単位ではなく org 単位で解決する。`_target_forbidden` は、その org
       自身の `targets_for_org` の一覧にその target が含まれるかを問う。`org_for_target` は呼び出し元
       を失う。問いは `targets_for_org` を経由させ、`default` がリテラルの slug によるフォールバック
       で得ている未主張の target を失わないようにする。これにより、2つの org がそれぞれ同じ名前の
       target を主張できるようにする。config の記述順が一方に与え、他方には見えているだけの target を
       禁じる、という今日の挙動を置き換える。
-- [ ] 5 — 4つの `/api/orgs…` エンドポイントと、Orgs 用の admin ページを、repository を配線して
+- [x] 5 — 4つの `/api/orgs…` エンドポイントと、Orgs 用の admin ページを、repository を配線して
       いる場合にのみ用意する。エンドポイントは admin 限定とし、いずれも `record_audit` で記録する。
       ページは作成・空のときのみ削除・メンバーシップ編集を扱う。`POST /api/orgs` は作成時点で新しい行に引き込み済みマーカーを
       立て、以後どの `orgs:` エントリもその行を引き込まないようにする。削除はソフトデリート
       （`Org.deleted_at`）とする。行を削除せず、外部キーを壊すこともなく、その org をサインインの
       解決処理と `GET /api/orgs` の対象から外す。
-- [ ] 6 — バインドされた設定ファイルの `orgs:` ブロックをデータベースへ引き込む処理を追加する。
+- [x] 6 — バインドされた設定ファイルの `orgs:` ブロックをデータベースへ引き込む処理を追加する。
       repository を配線し、かつ config をバインドしている状態になるたび走らせる。起動時と
       `POST /api/config` の再バインド時の両方が対象となる。`Org` 行ごとの永続化したマーカーで
       一度きりを保証し、メンバーシップカラムの空欄からの推定はしない。Alembic マイグレーションは
       メンバーシップとマーカーのカラムを追加するだけで、引き込み自体は行わない。引き込み済みの
       org の `orgs:` エントリが `members` / `githubOrgs` / `editorTeam` を宣言している場合は、
       起動時・再バインド時に警告する。`targets` だけを持つエントリは、警告の対象外とする。
-- [ ] 7 — ゲートの判断が設定ファイルからテーブルへ移ったうえで、admin Team の迂回を確認する。
+- [x] 7 — ゲートの判断が設定ファイルからテーブルへ移ったうえで、admin Team の迂回を確認する。
       `orgs` テーブルが空、あるいはどの行にもマッチしない状態でも、サインインを許可すること。
       `BAJUTSU_OAUTH_ADMIN_TEAMS` は環境変数のまま残す。
-- [ ] 8 — テスト：`orgs_from_db` が、同等の `orgs:` ブロックについて `parse_orgs` と同じ解決結果を
+- [x] 8 — テスト：`orgs_from_db` が、同等の `orgs:` ブロックについて `parse_orgs` と同じ解決結果を
       再現すること。データベースを持たない経路に影響がないこと。データベースを配線したデプロイで、
       config の読み込み失敗がサインインを拒否しなくなること、およびデータベースのエラーが拒否では
       なく 5xx として現れること。同じ名前の target をそれぞれ主張する2つの org が、どちらもその

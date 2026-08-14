@@ -71,6 +71,12 @@ from bajutsu.serve.operations.enrich import start_enrich
 from bajutsu.serve.operations.evidence import generate_upload_urls
 from bajutsu.serve.operations.lint import lint_scenario, scenario_schema
 from bajutsu.serve.operations.metrics import PROMETHEUS_CONTENT_TYPE, render_metrics
+from bajutsu.serve.operations.orgs import (
+    create_org,
+    delete_org,
+    list_orgs_view,
+    update_org_membership,
+)
 from bajutsu.serve.operations.project_comparison import project_metrics_view
 from bajutsu.serve.operations.projects import (
     activate_project,
@@ -184,7 +190,9 @@ __all__ = [
     "config_info",
     "coverage_view",
     "crawl_runs_payload",
+    "create_org",
     "declared_secret_names",
+    "delete_org",
     "delete_run",
     "deregister_project",
     "doctor_check",
@@ -200,6 +208,7 @@ __all__ = [
     "job_sse",
     "job_view",
     "lint_scenario",
+    "list_orgs_view",
     "list_projects_view",
     "list_scenarios",
     "list_targets_payload",
@@ -245,6 +254,7 @@ __all__ = [
     "stats_html",
     "sweep_expired_trash",
     "trashed_runs_payload",
+    "update_org_membership",
     "upload_theme",
     "usage_html",
     "worker_artifact_urls",
