@@ -92,12 +92,6 @@ expect:
 | `bodyMatches` | regex/substring over the request body |
 | `count` | exact number of matching exchanges — an aggregate, exempt from the 1:1 rule (omit ⇒ at least one) |
 
-`bodyMatches` reads the body **as reported**, and the app-side SDK reports at most the first 64 KB of
-each body — enough for the assertions this feature is for, and bounded because an unbounded copy of
-every payload is held in the app under test, which measured at gigabytes per scenario. A body that
-was cut carries its full size alongside it (`requestBodyBytes` / `responseBodyBytes`), so a report
-never looks complete when it is not; match on something inside that window.
-
 ## Deterministic mocks
 
 A scenario's `mocks` make the network deterministic: when an outgoing request matches a

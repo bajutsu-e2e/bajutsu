@@ -39,39 +39,6 @@ public enum BajutsuNet {
         return raw
     }
 
-    /// Cap on the bytes of each body a report carries.
-    ///
-    /// A report is evidence a human reads, not a copy of the payload, and stringifying a body
-    /// allocates a second copy of whatever it is handed. Unbounded, that is not a rounding error:
-    /// measured on a Simulator, an app under automation grew ~1.6 GB/s here and reached 18.6 GB
-    /// inside one 11-second scenario — on a 7 GiB CI host it exhausts the machine, and the Simulator's
-    /// render service starts failing long before any test does. Bounding the *report* rather than the
-    /// capture is deliberate: `capturedRequestBody` is also what mock rules match on and what the
-    /// forwarded request carries, so truncating at capture would change what the app under test sees.
-    static let maximumReportedBodyBytes = 64 * 1024
-
-    /// The reportable text of a body, plus its full byte count when it did not fit.
-    ///
-    /// Returns nil for an absent, empty, or non-text body — the same "omit the key" outcome the
-    /// unbounded conversion produced, so a binary payload still contributes nothing to the report.
-    static func reportableBody(_ data: Data?) -> (text: String, fullBytes: Int)? {
-        guard let data, !data.isEmpty else { return nil }
-        if data.count <= maximumReportedBodyBytes {
-            guard let text = String(data: data, encoding: .utf8), !text.isEmpty else { return nil }
-            return (text, 0)
-        }
-        // The cut can land inside a multi-byte UTF-8 sequence, which no encoding can decode; back off
-        // up to three bytes to reach a boundary rather than discarding a body that is good text right
-        // up to that point. Failing all four, the body is not UTF-8 at all and is omitted as before.
-        for drop in 0...3 {
-            let head = data.prefix(maximumReportedBodyBytes - drop)
-            if let text = String(data: head, encoding: .utf8), !text.isEmpty {
-                return (text, data.count)
-            }
-        }
-        return nil
-    }
-
     /// Activate capture if `BAJUTSU_COLLECTOR` is set. Call once, early (e.g. in the
     /// app's `init` / `application(_:didFinishLaunchingWithOptions:)`).
     public static func startIfEnabled(
@@ -120,16 +87,17 @@ public enum BajutsuNet {
         if let error { payload["error"] = String(describing: error) }
         payload["requestHeaders"] = request.allHTTPHeaderFields ?? [:]
         if let http { payload["responseHeaders"] = stringHeaders(http.allHeaderFields) }
-        // Truncation is reported beside the body, never applied silently: a reader has to be able to
-        // tell a short body from a long one that was cut. The collector ignores keys it does not know
-        // (`NetworkExchange` is `extra="ignore"`), so an older bajutsu reads these reports unchanged.
-        if let (text, fullBytes) = reportableBody(requestBody) {
-            payload["requestBody"] = text
-            if fullBytes > 0 { payload["requestBodyBytes"] = fullBytes }
+        // Reported whole, deliberately. A cap here looks like cheap insurance and is not: every
+        // consumer of these bodies parses them — `responseSchema` and the `request.body` matcher both
+        // run `json.loads`, so a body cut mid-object stops being JSON and the assertion fails with
+        // "response body is not JSON" about a payload that was valid. That trades a memory bug for a
+        // false verdict, which is the worse of the two. The memory this once cost came from the
+        // report loop above, not from body size, and `repairedURL` closes that at the source.
+        if let reqBody = requestBody, let s = String(data: reqBody, encoding: .utf8), !s.isEmpty {
+            payload["requestBody"] = s
         }
-        if let (text, fullBytes) = reportableBody(body) {
-            payload["responseBody"] = text
-            if fullBytes > 0 { payload["responseBodyBytes"] = fullBytes }
+        if let s = String(data: body, encoding: .utf8), !s.isEmpty {
+            payload["responseBody"] = s
         }
         postJSON(payload, to: collectorURL, token: collectorToken, session: reportSession)
     }
