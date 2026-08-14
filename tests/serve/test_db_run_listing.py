@@ -77,7 +77,7 @@ def test_run_job_stamps_run_provenance_from_the_manifest(
             {
                 "runId": "20260621-4",
                 "ok": True,
-                "scenarios": [{"scenario": "alpha", "ok": True}],
+                "scenarios": [{"scenario": "alpha", "ok": True, "device_runtime": "iOS 18.6"}],
                 "provenance": {
                     "scenarioHash": "sha256:abc123",
                     "toolVersion": "9.9.9",
@@ -104,6 +104,9 @@ def test_run_job_stamps_run_provenance_from_the_manifest(
     assert rec.scenario_hash == "sha256:abc123"
     assert rec.tool_version == "9.9.9"
     assert rec.git_revision == "deadbeef"
+    # The device OS travels the same way (BE-0358) — `_run_summary` drops it, so this is its only
+    # channel onto the record the hosted flakiness score groups by.
+    assert rec.device_runtime == "iOS 18.6"
 
 
 def test_run_job_leaves_provenance_null_for_a_pre_provenance_run(
@@ -129,6 +132,8 @@ def test_run_job_leaves_provenance_null_for_a_pre_provenance_run(
     assert rec.scenario_hash is None
     assert rec.tool_version is None
     assert rec.git_revision is None
+    # Read, but naming no OS: recorded as determined-and-none rather than left for the backfill.
+    assert rec.device_runtime == ""
 
 
 def test_run_job_records_a_malformed_manifest_with_null_provenance(
@@ -159,6 +164,8 @@ def test_run_job_records_a_malformed_manifest_with_null_provenance(
     assert rec.scenario_hash is None
     assert rec.tool_version is None
     assert rec.git_revision is None
+    # Unreadable, so the OS was never determined — the row stays eligible for the panel's backfill.
+    assert rec.device_runtime is None
 
 
 def test_run_job_reads_the_run_manifest_only_once(

@@ -23,6 +23,7 @@ import pytest
 
 from bajutsu import backends, simctl
 from bajutsu.config import Effective, load_config, resolve
+from bajutsu.device_os import DeviceOS
 from bajutsu.drivers.xcuitest import XcuitestChannelError
 from bajutsu.platform_lifecycle.environments import xcuitest as xcuitest_env
 from bajutsu.platform_lifecycle.environments.xcuitest import (
@@ -2221,6 +2222,37 @@ def test_a_vanished_device_is_replaced_and_reported_to_the_pool(tmp_path: Path) 
     assert seq[0] == "list" and "create" in seq
     assert seq[seq.index("create") + 1] == "bootstatus"
     assert "vanished" in recovery.note and "UDID-NEW" in recovery.note
+
+
+def test_both_driver_construction_sites_hand_over_the_parsed_device_os(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # BE-0358: the OS is derived from the runtime identifier the cold prep already captures for
+    # device cloning, so it costs no extra simctl call — and it is passed at the warm resume too,
+    # because a device replacement can move a lease onto a different Simulator mid-run and both
+    # sites build a fresh driver afterwards.
+    _, _, run = _fake_toolchain(monkeypatch)
+    handed: list[object] = []
+
+    class _Driver:
+        def await_ready(self, timeout: float = 10.0) -> None: ...
+
+        def health_ready(self) -> bool:
+            return True
+
+    def _make_driver(*_a: object, **kwargs: object) -> _Driver:
+        handed.append(kwargs.get("device_os"))
+        return _Driver()
+
+    monkeypatch.setattr(backends, "make_driver", _make_driver)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
+    env.start(eff, Preconditions())  # cold spawn
+    env.start(eff, Preconditions())  # warm resume — the second construction site
+
+    assert len(handed) == 2
+    assert handed == [DeviceOS("ios", 26, 0, "iOS 26.0")] * 2
+    assert [o.label for o in handed if isinstance(o, DeviceOS)] == ["iOS 26.0"] * 2
 
 
 def test_a_replacement_clones_the_type_captured_while_the_device_was_healthy(

@@ -25,6 +25,7 @@ from bajutsu.drivers.fake import FakeDriver
 
 if TYPE_CHECKING:
     from bajutsu.config import Effective
+    from bajutsu.device_os import DeviceOS
     from bajutsu.drivers.adb import ActFn, ClockFetch, HierarchyFetch
     from bajutsu.scenario import Scenario
 
@@ -407,6 +408,7 @@ def make_driver(
     fetch_hierarchy: HierarchyFetch | None = None,
     fetch_clock: ClockFetch | None = None,
     act: ActFn | None = None,
+    device_os: DeviceOS | None = None,
 ) -> base.Driver:
     """Construct the driver for an actuator, wiring up its backend-specific arguments.
 
@@ -416,9 +418,13 @@ def make_driver(
     resolves its target on the device, so no host-computed coordinate is injected; without it the
     coordinate actuators stand in. Every other actuator ignores all three. The xcuitest backend reads
     `runner_alive` — the environment's `xcodebuild`-process liveness check — so crash-recovery can fail
-    fast on a runner whose process has exited; every other actuator ignores it. It also takes
-    `on_stall`, the environment's bounded diagnostics capture (BE-0361), called when that same layer
-    declares a mid-run crash.
+    fast on a runner whose process has exited. It also takes `on_stall`, the environment's bounded
+    diagnostics capture (BE-0361), called when that same layer declares a mid-run crash, and
+    `device_os`, the parsed OS version of the device it is driving (BE-0358), so a driver-level
+    failure can name the OS it happened on. Every other actuator ignores all three. `device_os`
+    travels as a keyword rather than as a `Driver` member because that Protocol is
+    `@runtime_checkable` with no shared base class: a data member there would be a declaration every
+    backend and every inline test double has to repeat.
     """
     if actuator == "adb":
         from bajutsu.drivers.adb import AdbDriver
@@ -434,7 +440,11 @@ def make_driver(
         from bajutsu.drivers.xcuitest import XcuitestDriver
 
         return XcuitestDriver(
-            host="127.0.0.1", port=runner_port, runner_alive=runner_alive, on_stall=on_stall
+            host="127.0.0.1",
+            port=runner_port,
+            runner_alive=runner_alive,
+            on_stall=on_stall,
+            device_os=device_os,
         )
     if actuator == "playwright":
         # Lazy: keep Playwright (a heavy optional dep) off the default import path.

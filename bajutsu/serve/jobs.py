@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from bajutsu import device_os
 from bajutsu import simctl as _simctl
 from bajutsu.agents.ai_config import PROVIDER_MANAGED_ENV
 from bajutsu.handoff import REQUEST_LINE_PREFIX as _HANDOFF_REQUEST_PREFIX
@@ -340,6 +341,7 @@ def _persist_run(state: ServeState, job: Job) -> None:
                 scenario_hash=scenario_hash,
                 tool_version=tool_version,
                 git_revision=git_revision,
+                device_runtime=_run_device_runtime(manifest),
             )
         )
     except Exception:
@@ -375,6 +377,18 @@ def _run_provenance(manifest: dict[str, Any] | None) -> tuple[str | None, str | 
         return value if isinstance(value, str) else None
 
     return _str("scenarioHash"), _str("toolVersion"), _str("gitRevision")
+
+
+def _run_device_runtime(manifest: dict[str, Any] | None) -> str | None:
+    """The OS label this run happened on, mirrored onto the DB record so flakiness groups per OS
+    version straight from the DB (BE-0358) — `_run_summary` keeps no runtime, so this is the only
+    channel. `""` records a run that named no single OS (no device catalog, or scenarios spanning
+    versions); None is reserved for a manifest that couldn't be read at all, which leaves the row
+    undetermined and therefore still eligible for the panel's backfill."""
+    if manifest is None:
+        return None
+    run_os = device_os.from_manifest(manifest)
+    return run_os.label if run_os is not None else ""
 
 
 def _run_summary(run_id: str, manifest: dict[str, Any] | None, *, ok: bool) -> dict[str, Any]:

@@ -26,8 +26,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Literal, cast
 
-from bajutsu import backends, simctl, stall_diagnostics
+from bajutsu import backends, device_os, simctl, stall_diagnostics
 from bajutsu.config import Effective, XcuitestConfig, require_ios
+from bajutsu.device_os import DeviceOS
 from bajutsu.drivers import base
 from bajutsu.platform_lifecycle.environments._bundled_runner import (
     bundled_products_dir,
@@ -1207,6 +1208,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             runner_port=self._runner_port,
             runner_alive=self._runner_alive,
             on_stall=self._capture_stall,
+            device_os=self._device_os(),
         )
         # `log_tail` / `discard` reach live environment state (`self._runner_log` / `self._runner_proc`);
         # they are valid only until the next `spawn()` overwrites it, which the strictly sequential
@@ -1434,6 +1436,18 @@ class XcuitestEnvironment(_DeviceEnvironment):
         """
         stall_diagnostics.capture("runner-crash", stall_diagnostics.simulator_probes(self._udid))
 
+    def _device_os(self) -> DeviceOS | None:
+        """The parsed OS version of the device this environment drives, for the driver (BE-0358).
+
+        Derived from the runtime identifier the cold prep already captures for device cloning, so it
+        costs no extra `simctl` call and follows a device replacement (which clears it, and whose
+        `_finish_repair` re-reads it from the replacement). None on a real device, and before the
+        first cold prep has read one: the driver then reports no OS rather than a guessed one.
+        """
+        if self._device_runtime_id is None:
+            return None
+        return device_os.parse(simctl.runtime_label(self._device_runtime_id))
+
     def _healthy_resident_driver(self) -> base.Driver | None:
         """The driver for the warm runner if it is up and answering `/health`, else None (BE-0291 Unit 4).
 
@@ -1452,6 +1466,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             runner_port=self._runner_port,
             runner_alive=self._runner_alive,
             on_stall=self._capture_stall,
+            device_os=self._device_os(),
         )
         try:
             cast(base.BackendLifecycle, driver).await_ready(timeout=_WARM_HEALTH_TIMEOUT)
