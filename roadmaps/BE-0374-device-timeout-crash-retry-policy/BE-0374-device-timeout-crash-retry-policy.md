@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-device-timeout-crash-retry-policy-ja.md)
+**English** · [日本語](BE-0374-device-timeout-crash-retry-policy-ja.md)
 
-# BE-XXXX — Fail the scenario when a crash retry's device prep times out, instead of retrying onto the wedged device
+# BE-0374 — Fail the scenario when a crash retry's device prep times out, instead of retrying onto the wedged device
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-device-timeout-crash-retry-policy.md) |
+| Proposal | [BE-0374](BE-0374-device-timeout-crash-retry-policy.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0374") |
 | Topic | Platform support |
 | Related | [BE-0363](../BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md), [BE-0260](../BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation.md) |
 <!-- /BE-METADATA -->

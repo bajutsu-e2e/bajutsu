@@ -1,14 +1,14 @@
-[English](BE-XXXX-device-timeout-crash-retry-policy.md) · **日本語**
+[English](BE-0374-device-timeout-crash-retry-policy.md) · **日本語**
 
-# BE-XXXX — クラッシュ再試行のデバイス準備がタイムアウトしたら、応答しないデバイスへ再試行せずシナリオを失敗させる
+# BE-0374 — クラッシュ再試行のデバイス準備がタイムアウトしたら、応答しないデバイスへ再試行せずシナリオを失敗させる
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-device-timeout-crash-retry-policy-ja.md) |
+| 提案 | [BE-0374](BE-0374-device-timeout-crash-retry-policy-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0374") |
 | トピック | Platform support |
 | 関連 | [BE-0363](../BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout-ja.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md), [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md), [BE-0260](../BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation-ja.md) |
 <!-- /BE-METADATA -->
