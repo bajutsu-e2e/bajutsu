@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-org-lifecycle-management-ja.md)
+**English** · [日本語](BE-0375-serve-org-lifecycle-management-ja.md)
 
-# BE-XXXX — Database-backed org lifecycle and membership management for serve
+# BE-0375 — Database-backed org lifecycle and membership management for serve
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-org-lifecycle-management.md) |
+| Proposal | [BE-0375](BE-0375-serve-org-lifecycle-management.md) |
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0375") |
 | Topic | Hosting the web UI |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md), [BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass.md), [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md), [BE-0170](../BE-0170-weighted-fair-org-dispatch/BE-0170-weighted-fair-org-dispatch.md) |
 <!-- /BE-METADATA -->

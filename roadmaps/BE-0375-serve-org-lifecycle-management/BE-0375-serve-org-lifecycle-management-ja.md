@@ -1,14 +1,14 @@
-[English](BE-XXXX-serve-org-lifecycle-management.md) · **日本語**
+[English](BE-0375-serve-org-lifecycle-management.md) · **日本語**
 
-# BE-XXXX — serve の org のライフサイクルとメンバーシップをデータベースで管理する
+# BE-0375 — serve の org のライフサイクルとメンバーシップをデータベースで管理する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-serve-org-lifecycle-management-ja.md) |
+| 提案 | [BE-0375](BE-0375-serve-org-lifecycle-management-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0375") |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md)、[BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass-ja.md)、[BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md)、[BE-0170](../BE-0170-weighted-fair-org-dispatch/BE-0170-weighted-fair-org-dispatch-ja.md) |
 <!-- /BE-METADATA -->
