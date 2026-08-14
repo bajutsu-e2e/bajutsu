@@ -167,9 +167,10 @@ anything.
 On a database-backed deployment those three collapse into one — the `orgs` table holds no live row
 this login matches — and the failure that replaces them never reaches the cause classifier at all.
 This item gives `orgs_from_db` the opposite failure mode from `load_serve_config_file`'s: a
-database error propagates rather than failing closed to an empty mapping, so a database `serve`
-cannot read answers with a 5xx naming it, instead of denying every user with a message that blames
-their GitHub membership. What remains to report is therefore: the `orgs` table holds no live row at
+database error propagates rather than failing closed to an empty mapping: when `serve` cannot read
+the database, it answers with a 5xx that names the database, rather than denying every user with a
+message that blames their GitHub membership. What remains to report is therefore: the `orgs` table
+holds no live row at
 all (nothing created or seeded yet — the shape unit 7's bypass exists for), GitHub returned no
 organizations for this login, or a real, unmatching roster. WARNING stays reserved for the
 operator-actionable one, an empty table.
