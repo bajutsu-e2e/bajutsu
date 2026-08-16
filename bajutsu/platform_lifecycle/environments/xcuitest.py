@@ -85,7 +85,26 @@ _COLD_POLL_SECONDS = 0.1
 # Reading the terminal marker out of the capture ends the wait as soon as the run actually ended.
 # Both outcomes end the run — a suite that passed has exited too — so neither can be a runner still
 # on its way up.
-_RUN_ENDED_MARKERS = (b"Test Suite 'All tests' failed", b"Test Suite 'All tests' passed")
+#
+# `Selected tests` is the *restarted* run's root suite, and matching it is what lets this probe see
+# the case it most needs to: when XCTest's own watchdog judges the in-Simulator host unresponsive it
+# logs "Restarting after unexpected exit, crash, or test timeout", relaunches, re-runs zero tests, and
+# ends — under `Selected tests`, never `All tests`. The port is dead from that moment, but with only
+# the `All tests` spellings matched the probe answered "still running" forever, so `_runner_alive`
+# kept reporting the runner alive and crash recovery polled a dead port for its whole window (the
+# fault-injection lane's own captures show exactly this). Widening the family is safe because all
+# four spellings are *terminal*: a root suite that reported passed or failed has ended whatever it is
+# named, so the port is dead either way. Do not lean instead on `_spawn_runner` passing no
+# `-only-testing`: the `.xctestrun` a per-target `xcuitest.build` (or a prebuilt `testRunner`) hands
+# over can carry `OnlyTestIdentifiers` and report under `Selected tests` on a perfectly healthy run —
+# which is exactly why only the terminal spellings may join this family. A `started` line, or the
+# "Restarting after unexpected exit" line itself, would abort a runner still on its way up.
+_RUN_ENDED_MARKERS = (
+    b"Test Suite 'All tests' failed",
+    b"Test Suite 'All tests' passed",
+    b"Test Suite 'Selected tests' failed",
+    b"Test Suite 'Selected tests' passed",
+)
 
 # `XCUIApplication.launch()` giving up on the app under test — the dominant CI signature, and the one
 # that says the *device* is degraded rather than the build broken. Read for the diagnostic only: the

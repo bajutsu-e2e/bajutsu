@@ -1568,6 +1568,57 @@ def test_run_ended_probe_keeps_reporting_the_marker_it_already_found(tmp_path: P
     assert probe() == first
 
 
+def test_run_ended_probe_reads_the_watchdog_restarts_selected_tests_suite(tmp_path: Path) -> None:
+    # The capture a real wedged runner leaves behind, and the one the `All tests` spellings alone
+    # could not read. XCTest's watchdog judges the unresponsive in-Simulator host a test timeout,
+    # relaunches it, re-runs zero tests, and ends — reporting under `Selected tests`, so a probe
+    # matching only `All tests` answers "still running" about a port that is already dead. Taken
+    # verbatim (bar the elision) from the fault-injection lane's own runner capture.
+    log = tmp_path / "runner.log"
+    log.write_bytes(
+        b"Restarting after unexpected exit, crash, or test timeout; summary will include totals "
+        b"from previous launches.\n"
+        b"Test Suite 'Selected tests' started at 2026-08-11 17:42:16.444.\n"
+        b"Test Suite 'RunnerUITest' passed at 2026-08-11 17:42:16.446.\n"
+        b"Test Suite 'Selected tests' passed at 2026-08-11 17:42:16.447.\n"
+        b"** BUILD INTERRUPTED **\n"
+    )
+    reason = _run_ended_probe(log)()
+    assert reason is not None and "Test Suite 'Selected tests' passed" in reason
+
+
+def test_run_ended_probe_waits_for_a_terminal_line_before_calling_a_restart_ended(
+    tmp_path: Path,
+) -> None:
+    # The guard on the markers above, and the reason only *terminal* spellings may join that family:
+    # what ends a run is `passed` / `failed`, never the suite name and never the restart itself.
+    #
+    # Two ways a live runner reports under `Selected tests`. A `.xctestrun` carrying
+    # `OnlyTestIdentifiers` — which a per-target `xcuitest.build` or a prebuilt `testRunner` can hand
+    # over, outside this module's control — names a perfectly healthy run that way from its first
+    # line. And a restarted run re-runs the *remaining* tests rather than zero of them whenever the
+    # relaunch succeeds, binding its port during that window. Latching on either would have the cold
+    # gate discard a runner that was about to serve, and `_runner_alive` call a live runner gone
+    # mid-call — so the probe stays quiet until a terminal line actually lands.
+    log = tmp_path / "runner.log"
+    log.write_bytes(
+        b"Test Suite 'Selected tests' started at 2026-08-11 17:40:08.199.\n"
+        b"Test Suite 'BajutsuRunnerUITests.xctest' started at 2026-08-11 17:40:08.200.\n"
+        b"Test Suite 'RunnerUITest' started at 2026-08-11 17:40:08.201.\n"
+        b"Restarting after unexpected exit, crash, or test timeout; summary will include totals "
+        b"from previous launches.\n"
+        b"Test Suite 'Selected tests' started at 2026-08-11 17:40:12.201.\n"
+    )
+    probe = _run_ended_probe(log)
+    assert probe() is None
+    # The `failed` half of the restarted family — the watchdog capture above reports `passed` only
+    # because it re-ran zero tests, so this is the spelling a restart that re-runs and fails lands on.
+    with log.open("ab") as fh:
+        fh.write(b"Test Suite 'Selected tests' failed at 2026-08-11 17:40:31.884.\n")
+    reason = probe()
+    assert reason is not None and "Test Suite 'Selected tests' failed" in reason
+
+
 def test_runner_alive_reports_gone_once_the_test_run_ended(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
