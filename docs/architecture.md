@@ -675,5 +675,6 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
 |---|---|---|
 | `mockServer` (external mock command) | config schema only; the `cmd`/`port` external server is **not implemented** — superseded by scenario `mocks` (declarative in-protocol stubs, implemented) | `config/schema.py` `MockServer` |
 | `appTrace` interval evidence on the **web** backend | `appTrace` is `os_log`/simctl-based (iOS only); the Playwright backend implements the `video` and `deviceLog`-equivalent (console / page-error) interval kinds instead (BE-0054), but has no `appTrace` analogue | `evidence/intervals.py` · `drivers/playwright.py` |
+| `nativeZ` (element real front-to-back position) | The field exists on every `Element` and every reader (`FakeDriver`, the golden loader, `serve`'s pick resolver) carries it, but **no backend measures one**, so every element off a real driver reports `None` (only a test-seeded `FakeDriver` element carries a value): reporting a real value needs the opt-in app-side hook that BE-0355 has not yet shipped on either platform (Units 2–3 still open). Diagnostic only — no selector or occlusion check reads it | `drivers/base.py` `Element` |
 
-Both features are also flagged inline on the relevant feature pages.
+Every feature above is also flagged inline on its relevant feature page.
