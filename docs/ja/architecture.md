@@ -343,5 +343,6 @@ adb の harness はその代わりに、新しい `SHOWCASE_CONFORMANCE` の int
 |---|---|---|
 | `mockServer`（外部モックコマンド） | config スキーマのみ。`cmd`/`port` の外部サーバは**未実装**で、シナリオ `mocks`（宣言的なプロトコル内スタブ、実装済み）で代替する | `config/schema.py` `MockServer` |
 | **web** バックエンドでの `appTrace` 区間証跡 | `appTrace` は `os_log`/simctl 由来（iOS 専用）。Playwright バックエンドは代わりに `video` と `deviceLog` 相当（console / page-error）の区間証跡を実装する（BE-0054）が、`appTrace` に相当するものは持たない | `evidence/intervals.py` · `drivers/playwright.py` |
+| `nativeZ`（要素の実際の前後位置） | フィールドとしてはすべての `Element` に存在し、`FakeDriver`・golden ローダー・`serve` の pick リゾルバもこれを引き継ぐが、値は常に `null` である。実際の値を報告するには opt-in のアプリ側フックが要り、BE-0355 はそのフックを iOS・Android のどちらにもまだ出荷していない（Unit 2・3 が未着手のまま残っている）。診断専用のフィールドで、セレクタも重なり判定もこれを読まない | `drivers/base.py` の `Element` |
 
-これらは各機能ページでも該当箇所に「未実装」と注記しています。
+これらはいずれも各機能ページで該当箇所に注記しています。
