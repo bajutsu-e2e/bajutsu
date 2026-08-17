@@ -1075,7 +1075,7 @@ alternatives considered, the scope decision, and the rest of the derivation, and
 Some genuinely long comments still earn their length — the Device Farm bootstrap block in
 [`bajutsu/cloud/devicefarm.py`](../bajutsu/cloud/devicefarm.py) is one, holding operational facts a
 maintainer needs at that exact line rather than one argument to trim — so check the comment's
-shape (the three shapes in the section above) before cutting.
+shape (the three shapes in *Cite an argument instead of repeating it*) before cutting.
 
 ### Describe the code as it is, never the change that produced it
 
