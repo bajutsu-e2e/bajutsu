@@ -1,7 +1,7 @@
 """add org membership, its seeded marker, and a soft-delete marker to orgs (BE-0375)
 
-Revision ID: 0014
-Revises: 0013
+Revision ID: 0015
+Revises: 0014
 Create Date: 2026-08-14
 """
 
@@ -14,8 +14,8 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 # revision identifiers, used by Alembic.
-revision: str = "0014"
-down_revision: str | None = "0013"
+revision: str = "0015"
+down_revision: str | None = "0014"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
