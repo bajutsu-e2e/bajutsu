@@ -990,8 +990,8 @@ either side, and it inflates the file with reasoning a reader can look up.
   true, Y would break"), the full chain from premise to conclusion. That belongs in the cited
   document.
 - **A citation is not a substitute for content.** A fact the comment's own sentence rests on belongs
-  in the comment; a pointer never stands in for it. The comment must read correctly on its own, for
-  someone who has not opened the cited document.
+  in the comment, not behind a pointer — the comment must read correctly on its own for someone who
+  has not opened the cited document.
 - **Distinguish three shapes before trimming:**
   - **A repeated argument.** The comment re-derives a decision the cited document already argues in
     full (a rejected alternative, a "because … because …" chain, a worked example). Trim to the
