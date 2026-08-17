@@ -32,7 +32,6 @@ from bajutsu.serve.helpers import (
 from bajutsu.serve.operations._common import _resolve_org_or_forbid
 from bajutsu.serve.operations.config import FS_DISABLED_ERROR
 from bajutsu.serve.operations.runs import sweep_expired_trash
-from bajutsu.serve.orgs import targets_for_org
 from bajutsu.serve.server.db import DEFAULT_RUN_LIMIT as _RUN_HISTORY_LIMIT
 from bajutsu.serve.server.db import RunRecord
 from bajutsu.serve.state import ServeState
@@ -85,13 +84,13 @@ def list_targets_payload(state: ServeState, *, actor: str | None = None) -> tupl
     parsed = load_serve_config_file(state.config)
     if parsed is None:
         return [], 200
-    config, orgs = parsed
+    config = parsed[0]
     # Org scoping applies only on a server backend with a system of record; local serve / token mode
     # ignores `orgs:` and lists every target (BE-0015 multi-tenancy).
     if state.repository is None:
         names = list_targets(state.config)
     else:
-        names = sorted(targets_for_org(orgs, config.targets, state.org_of(actor)))
+        names = sorted(state.targets_for(state.org_of(actor)))
     return [{"name": n, "backend": _primary_backend(config, n)} for n in names], 200
 
 

@@ -11,6 +11,7 @@
 import {loadHistory, loadStats, loadFlaky, loadUsage, coverageInit, showInfo, replayAudit, onSimChange, loadTrash, seedComposeFromCurrent} from './serve.panels.mjs';
 import {loadMetrics} from './serve.metrics.mjs';
 import {renderProjectsView} from './serve.projects.mjs';
+import {loadOrgs} from './serve.orgs.mjs';
 import {onCrawlSimChange} from './serve.crawl.mjs';
 import {authorInit, authorRefresh, syncPlatform, replayCodegen} from './serve.author.mjs';
 
@@ -449,7 +450,7 @@ function openModal(el){
 // ---- top-level Record / Replay / Crawl views ----
 function showView(name){
   document.querySelectorAll('.toptab').forEach(t=>t.classList.toggle('active',t.dataset.view===name));
-  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';$('#view-flaky').hidden=name!=='flaky';$('#view-usage').hidden=name!=='usage';$('#view-coverage').hidden=name!=='coverage';$('#view-metrics').hidden=name!=='metrics';$('#view-projects').hidden=name!=='projects';$('#view-trash').hidden=name!=='trash';
+  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';$('#view-flaky').hidden=name!=='flaky';$('#view-usage').hidden=name!=='usage';$('#view-coverage').hidden=name!=='coverage';$('#view-metrics').hidden=name!=='metrics';$('#view-projects').hidden=name!=='projects';$('#view-orgs').hidden=name!=='orgs';$('#view-trash').hidden=name!=='trash';
   // The incoming view animates in (enter-only: the outgoing one is hidden instantly, so two sibling
   // views never overlap in the flex column). The picked theme decides the motion via --motion-view-*.
   const shown=$('#view-'+name);if(shown)playEnter(shown,'--motion-view-enter');
@@ -461,6 +462,7 @@ function showView(name){
   if(name==='coverage')coverageInit();
   if(name==='metrics')loadMetrics();
   if(name==='projects')loadProjects();  // re-fetch so the page reflects any CLI-side add/remove
+  if(name==='orgs')loadOrgs();  // re-fetch so the page reflects an org another admin just changed
   if(name==='trash')loadTrash();  // BE-0239: list soft-deleted runs on entry
 }
 document.querySelectorAll('.toptab').forEach(t=>t.addEventListener('click',()=>showView(t.dataset.view)));
@@ -475,7 +477,17 @@ async function loadConfig(){
   fsSourceEnabled=!c.configSources||c.configSources.includes('fs');
   $('#fssrc').hidden=!fsSourceEnabled;
   setCfgName(c.hasConfig?c.config:'no config bound — open one →',c.hasConfig);
+  setOrgBadge(c.actor,c.org);
   if(c.hasConfig){await loadShared()}else{openFs()}
+}
+// Show which org this session acts as, next to the config it acts on (BE-0375). Both come from the
+// same boot read; the badge stays hidden unless the server named an identity, so a local or
+// shared-token serve looks exactly as before rather than reporting a `default` nobody chose.
+function setOrgBadge(actor,org){
+  const el=$('#orgbadge');if(!el)return;
+  const show=Boolean(actor&&org);
+  el.hidden=!show;
+  if(show){el.textContent=org;el.title=`signed in as ${actor} — acting as org "${org}"`}
 }
 // Set the nav's config-name label and reveal the "View" button only when a config is actually bound.
 function setCfgName(text,hasConfig){$('#cfgname').textContent=text;$('#viewcfg').hidden=!hasConfig}

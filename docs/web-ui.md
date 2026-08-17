@@ -65,7 +65,12 @@ project registered), since it compares projects against each other — see
 [Comparing projects](#comparing-projects).
 To their right are **Open config** (with the active config's name shown beside it once one is bound,
 and a **View** button to inspect it — see below), **Settings**, and a theme picker that
-follows your system by default. Each tab is a full screen of its own; switching tabs never discards
+follows your system by default. On a deployment where you sign in with GitHub, a small badge beside
+the config name names the **org** this session acts as: every tab is scoped to it — the targets you
+can run, the runs and evidence you see, the secrets and the project list — so it is worth being able
+to read at a glance, particularly for an admin who administers several. Hovering it names the login
+too. A local or shared-token `serve` has no signed-in identity and no tenants, so the badge does not
+appear there. Each tab is a full screen of its own; switching tabs never discards
 what another tab was doing.
 
 Some forms change with the backend. Against the iOS Simulator (XCUITest) you see a **Device** picker,
@@ -180,6 +185,33 @@ confirmation; its run history is kept, only the binding is dropped. The `bajutsu
 the same shared store, so a project added either way appears in both. Registering, removing, and
 switching all rebind the active config, so in a hosted deployment they are admin actions like binding
 a config — the server enforces that restriction, and a refused action shows inline on the page.
+
+### Managing orgs
+
+An **org** is a tenant of a hosted deployment: which GitHub logins and GitHub organizations may sign
+in as it, and which GitHub Team among them may write. A deployment that runs against a database keeps
+that membership in the database rather than in the config file, and the **Orgs** tab is where an
+admin edits it (BE-0375). The tab appears for an admin on such a deployment, and nowhere else: on
+any other deployment the server declines to list orgs, which is what keeps the tab hidden.
+
+Each row shows an org's slug, how many members and GitHub organizations it holds, its editor Team,
+and how many projects it owns — plus its display name, when that differs from the slug the row
+already leads with. **Create** takes a slug and an optional display name, and the new org
+starts with no members at all — nobody can sign in as it until you fill in its membership, which the
+page says inline so an empty tenant does not read as a bug. The slug `default` is refused: it is
+where a sign-in matching no org lands — including every admin admitted by the admin-Team bypass — so
+a real tenant there would take the namespace an admin recovers through. That row still appears in
+the list, marked as the fallback and with both its controls disabled, since an admin who arrived
+that way is sitting in it. **Membership** opens a form that replaces
+all three fields at once, prefilled from what the server holds right now; a change takes effect on
+each member's next sign-in. **Delete** retires an org, and stays greyed out while the org still owns
+a project (deregister those first). Retiring signs out everyone holding a session as that org at the
+same moment, so nobody keeps acting as it on a cookie issued beforehand; it keeps the org's runs and
+audit history, and keeps its slug reserved. The confirmation states all three, since a reader would
+otherwise discover none of them until afterwards.
+
+Which targets an org owns still comes from the config file's `orgs:` block, so an org created here
+owns none until an entry there names some.
 
 ### Comparing projects
 

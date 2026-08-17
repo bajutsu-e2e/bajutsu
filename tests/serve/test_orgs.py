@@ -10,7 +10,6 @@ from bajutsu.serve.orgs import (
     identity_matches_org,
     load_serve_config,
     org_for_identity,
-    org_for_target,
     org_for_user,
     targets_for_org,
 )
@@ -37,14 +36,6 @@ def test_org_for_user_resolves_membership() -> None:
     assert org_for_user(orgs, "carol") == "globex"
     # A login in no org's members falls back to the default org.
     assert org_for_user(orgs, "stranger") == "default"
-
-
-def test_org_for_target_resolves_ownership() -> None:
-    _, orgs = load_serve_config(CONFIG_YAML)
-    assert org_for_target(orgs, "demo") == "acme"
-    assert org_for_target(orgs, "other") == "globex"
-    # A target in no org belongs to the default org.
-    assert org_for_target(orgs, "unlisted") == "default"
 
 
 def test_targets_for_org_lists_its_targets() -> None:
@@ -166,6 +157,5 @@ def test_no_orgs_block_is_single_tenant() -> None:
     cfg, orgs = load_serve_config("targets:\n  demo: { bundleId: com.example.demo }\n")
     assert orgs == {}
     assert org_for_user(orgs, "alice") == "default"
-    assert org_for_target(orgs, "demo") == "default"
     # With no orgs declared, the default org owns every target.
     assert targets_for_org(orgs, cfg.targets, "default") == ["demo"]

@@ -67,8 +67,9 @@ from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 from bajutsu.serve.operations.config import (
     register_launch_project,
     restore_persisted_provider_settings,
+    seed_orgs_from_bound_config,
 )
-from bajutsu.serve.orgs import DEFAULT_ORG, targets_for_org
+from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.project_registry import LocalProjectRegistry, SqlProjectRegistry
 from bajutsu.serve.provider_store import LocalProviderSettingsStore
 from bajutsu.serve.scenarios import (
@@ -116,6 +117,7 @@ __all__ = [
     "list_scenarios",
     "list_simulators",
     "list_targets",
+    "load_serve_config_file",
     "make_server",
     "mask_secret",
     "parse_byte_range",
@@ -533,8 +535,7 @@ def _build_server_state(
     # the targets that org owns. The scenario targets are read from the live config, so a config
     # opened later is reflected.
     def _org_apps(org: str) -> list[str]:
-        parsed = load_serve_config_file(state.config)
-        return targets_for_org(parsed[1], parsed[0].targets, org) if parsed is not None else []
+        return state.targets_for(org)
 
     def make_bundle(org: str) -> StoreBundle:
         base = org_prefix(prefix, org)
@@ -697,6 +698,12 @@ def serve(
     # gains the project hub and its runs are attributed to X from the first one. After the provider
     # restore, sharing its boot placement; a no-op when no config is bound or no registry is wired.
     register_launch_project(state)
+    # Seed the launch config's `orgs:` block into the database, once per org row (BE-0375), so a
+    # deployment upgrading from config-only org membership keeps admitting exactly who it did
+    # before the database became the source. Shares the boot placement above for the same reason —
+    # its "this entry is no longer read" warning must reach the live log sink — and re-runs at every
+    # config rebind; a no-op without a database or a loadable config.
+    seed_orgs_from_bound_config(state)
     hint = str(config) if config else "open a config.yml in the UI"
     if not gate.allowed_hosts(host):
         # A wildcard bind can't enumerate its reachable hostnames, so the Host allowlist is off

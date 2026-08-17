@@ -13,6 +13,7 @@ from sqlalchemy import Engine
 
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
+from bajutsu.serve.operations.config import seed_orgs_from_bound_config
 from bajutsu.serve.server.db import SqlRepository
 from bajutsu.serve.server.models import Base
 from bajutsu.serve.server.oauth import Identity
@@ -43,11 +44,16 @@ def _state(
     engine = serve_engine()
     Base.metadata.create_all(engine)
     repo = SqlRepository(engine)
+    state = srv.ServeState(runs_dir=tmp_path / "runs", config=cfg, repository=repo)
+    # A database-backed deployment resolves sign-in and org placement against the `orgs` table
+    # (BE-0375), which `serve()` fills from the bound config at startup — and only while the table
+    # is still empty, so this runs before the rows below rather than after them.
+    seed_orgs_from_bound_config(state)
     for org, members in (("acme", ["alice"]), ("globex", ["bob"])):
         repo.ensure_org(org, slug=org, name=org)
         for m in members:
             repo.upsert_user(m, org_id=org, github_login=m, email=f"{m}@x")
-    return srv.ServeState(runs_dir=tmp_path / "runs", config=cfg, repository=repo)
+    return state
 
 
 def test_list_targets_is_scoped_to_the_actors_org(
@@ -174,6 +180,7 @@ def test_oauth_login_assigns_the_org_from_github_org_membership(
         repository=repo,
         auth=srv.SessionManager(oauth=_FakeOAuthClient("dave", orgs=["acme-gh"])),
     )
+    seed_orgs_from_bound_config(state)  # the startup seed `serve()` runs (BE-0375)
     _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
     assert status == 200 and sid is not None
     assert repo.user_org("dave") == "acme"

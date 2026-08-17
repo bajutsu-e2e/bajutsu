@@ -379,7 +379,10 @@ hand-maintained login list:
   [`orgs:`](configuration.md#orgs-orgs-the-multi-tenant-server-backend)) — and a successful sign-in
   grants **viewer** (read-only). A login that matches no org is turned away, so an OAuth deployment
   must declare an `orgs:` block — with one exception, a member of a configured admin Team, who
-  clears this gate regardless (see **Admin** below).
+  clears this gate regardless (see **Admin** below). A deployment that also wires a database keeps
+  this membership in the database instead, seeded once from that same `orgs:` block and administered
+  from the web UI afterward (see [Multiple orgs](#multiple-orgs) below); which org owns which target
+  still comes from the block either way.
 - **Editor** follows the org's `editorTeam`: a direct member of that one flat GitHub Team may run,
   record, and edit scenarios.
 - **Admin** follows one or more server-wide GitHub Teams, `BAJUTSU_OAUTH_ADMIN_TEAMS` (a
@@ -419,7 +422,8 @@ either, leaves every endpoint unauthenticated). Read the first lines of the log 
 of these warnings is also re-emitted through the structured log under `event=server.startup_warning`
 (with a stable `check` field naming which one — see [Operational logging](#operational-logging)), so a
 deployment can alert on them rather than relying on someone reading boot output. A sign-in the org
-gate turned away is recorded under `event=oauth.denied`, naming the reason `orgs:` did not match; it
+gate turned away is recorded under `event=oauth.denied`, naming the reason the org model did not
+match — the `orgs:` block, or the org table on a deployment whose database holds the membership; it
 is `WARNING` only when no admin Team is *usable* — the list is empty, or every entry is malformed, so
 no admin can sign in to fix `orgs:` either — and `INFO` for an ordinary denial (a configured admin
 Team simply didn't match this login) and for four earlier failures reachable with no GitHub account
@@ -655,6 +659,56 @@ its own object-store prefix. With no `orgs:` block the backend stays single-tena
 and the shared token plus the GitHub allowlist are the access boundary. The fully managed public
 cloud offering (a hosted Mac worker pool + IaC) is still future work in BE-0015.
 
+**Managing orgs from the web UI, once a database is wired.** A backend with `BAJUTSU_DATABASE_URL`
+set keeps each org's membership — its `members`, `githubOrgs`, and `editorTeam` — in that database
+rather than in the config file, so onboarding a tenant or moving a team's write access to a
+different GitHub Team no longer needs a config edit and a redeploy
+([BE-0375](../roadmaps/BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management.md)).
+An **Orgs** page appears in the web UI for admins, backed by four admin-only endpoints:
+
+| Request | What it does |
+|---|---|
+| `GET /api/orgs` | List every live org with its membership and its project count. |
+| `POST /api/orgs` | Create an org from `{"slug": "...", "name": "..."}`, with **no** members — so it admits nobody until you set its membership. |
+| `POST /api/orgs/<slug>/membership` | Replace `{"members": [...], "githubOrgs": [...], "editorTeam": "..."}` as one unit. |
+| `DELETE /api/orgs/<slug>` | Retire an org. Refused while it still owns a project, and refused outright for `default`. |
+
+The audit log records every one of the four. `default` is reserved on all three mutations — created,
+re-membered, and retired are each refused for it. It is the org an unmatched sign-in falls into,
+including every admin admitted by the admin-Team bypass, so a real tenant there would take the
+namespace an admin recovers through; giving it a roster would do that just as surely as creating it,
+since membership is what places a login in an org. It is still *listed*, marked as the fallback,
+because a bypassed admin is sitting in it and hiding that would hide where their own runs, secrets,
+and evidence land. Deleting an org is a soft delete: it stops admitting sign-ins
+and leaves the list, and every session its members already hold is revoked at the same moment, so
+nobody keeps acting as the retired tenant on a cookie issued before it. Its runs and audit entries
+stay queryable — an admin action removes a tenant's ability to act, not the record of what it
+already did — and its slug stays reserved, so it cannot be re-created under the same name.
+
+Which targets an org owns still comes from the `orgs:` block above, so an org created this way owns
+none until an entry there names some. Two orgs may each claim a target of the same name, and each is
+authorized for it.
+
+**Upgrading a database-backed deployment.** Run the Alembic migration as usual; it adds columns and
+seeds nothing. `serve` itself copies the bound config's `orgs:` membership into the database on its
+next start, once per org, so an existing deployment keeps admitting the same people it did before. From
+then on the file no longer decides those three fields, and `serve` writes a warning under
+`event=org.membership.ignored` (with `check=orgs_membership_ignored`) naming any org whose entry
+still declares them. Pare those entries down to `targets:` at your convenience — that field is still
+read, and paring before the first copy is as safe as paring after: an entry declaring only `targets:`
+is skipped rather than copied, so it is left uncopied for a later config to seed rather than fixed at
+admitting nobody. Two behaviors change with the cutover, both by design: an unreadable or unbound config no
+longer denies anyone, because the database alone decides sign-in, and a database `serve` cannot read
+answers a sign-in with HTTP 503 naming the store rather than a 403 blaming the user's GitHub
+membership. That 503 is recorded under its own `event=oauth.store_unavailable` at `WARNING`, not
+under `oauth.denied` — nobody was turned away, and an alert on a denial should point at your GitHub
+configuration, never at an outage of the store.
+
+**Bootstrapping the first org.** A brand-new database has no org, so nobody matches the sign-in gate.
+A member of a configured `BAJUTSU_OAUTH_ADMIN_TEAMS` Team clears that gate regardless of how many
+orgs exist (see [Add GitHub OAuth](#2-add-github-oauth-optional) above), signs in as admin, and
+creates the first one from the Orgs page.
+
 **Keeping the Mac pool fair across orgs.** Set `BAJUTSU_MAX_CONCURRENT_PER_ORG` to cap how many runs
 one org may have in flight at once, so a busy org can't monopolize the scarce devices even when its
 users each stay under their own `BAJUTSU_MAX_CONCURRENT_PER_USER`. Both default to unlimited (`0`),
@@ -714,8 +768,13 @@ every successful sign-in and carries a `bypass` field, true only when a configur
 `orgs:` — is what admitted the login; that field is the only record a bypass admission leaves. Most
 bypass admissions are `INFO`, since an admin Team in an operations-only organization bypasses on
 every sign-in by design; `oauth.login` is `WARNING` only when the bypass admitted a login while the
-org model itself was unusable (no config bound, a config that failed to load, or one declaring no
-`orgs:` block) — so alert on `WARNING`, and grep `bypass` when auditing who signed in and when.
+org model itself was unusable. Which state that is depends on where the org model comes from: on a
+deployment whose `orgs:` block is the source, no config bound, a config that failed to load, or one
+declaring no `orgs:` block; on a deployment whose database holds the membership, an `orgs` table in
+which no row declares any membership yet — an empty table, but equally one whose rows all carry an
+empty roster: the passive row a bypass sign-in creates for itself, or orgs an admin created on the
+Orgs page and has not filled in yet. So alert on `WARNING`, and grep `bypass` when
+auditing who signed in and when.
 
 **Redaction is structural.** A single filter sits at the root logger, so *every* line — including
 ones from third-party libraries — is scrubbed before it is written; correctness does not depend on

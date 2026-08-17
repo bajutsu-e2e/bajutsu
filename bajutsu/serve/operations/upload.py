@@ -169,6 +169,7 @@ def bind_upload_config(
         actor=actor,
     )
     state.bind_upload(upload)
+    state.config_org = upload.org  # the bundle is this org's; its `orgs:` owns nothing (BE-0375)
     _record_audit(state, actor, org, "upload", upload.filename, {"sha256": sha256})
     return {
         "ok": True,
@@ -423,6 +424,7 @@ def _compose_and_bind(
         ),
     )
     state.bind_upload(upload)
+    state.config_org = upload.org  # the bundle is this org's; its `orgs:` owns nothing (BE-0375)
     return upload, 200
 
 
@@ -608,4 +610,5 @@ def activate_uploaded_project(
         actor=actor,
     )
     state.bind_upload(upload)
+    state.config_org = upload.org  # the bundle is this org's; its `orgs:` owns nothing (BE-0375)
     return {"ok": True, "config": str(config_path)}, 200

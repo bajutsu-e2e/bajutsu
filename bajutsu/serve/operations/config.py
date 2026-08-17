@@ -35,10 +35,16 @@ from bajutsu.platform_lifecycle.environments import (
     bundled_products_dir,
     bundled_runner_build_info,
 )
+from bajutsu.serve import oplog
 from bajutsu.serve.helpers import (
     list_targets,
+    load_serve_config_file,
 )
-from bajutsu.serve.orgs import DEFAULT_ORG
+from bajutsu.serve.orgs import (
+    DEFAULT_ORG,
+    orgs_declaring_membership,
+    seed_orgs_from_config,
+)
 from bajutsu.serve.provider_store import ProviderSettingsError
 from bajutsu.serve.state import OrgProviderSettings, ProviderSettings, ServeState
 
@@ -127,7 +133,16 @@ def config_sources(state: ServeState) -> list[str]:
     return ["git", "upload"] if state.hosted else ["git", "upload", "fs"]
 
 
-def config_info(state: ServeState) -> tuple[Any, int]:
+def config_info(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+    """The boot read every tab starts from: what config is bound, what this deployment offers, and
+    who the caller is (BE-0375).
+
+    *actor* is the caller's own GitHub login, so returning it and the org it resolves to discloses
+    nothing they did not already present — unlike the org *roster*, which stays behind the admin-only
+    `GET /api/orgs`. Both are None on a deployment with no signed-in identity (local serve, a
+    shared-token session), where `org_of` would answer `default` for everyone and a header badge
+    saying so would be noise rather than information.
+    """
     sources = config_sources(state)
     return {
         "config": str(state.config) if state.config else None,
@@ -144,6 +159,11 @@ def config_info(state: ServeState) -> tuple[Any, int]:
         # long a trashed run stays restorable (BE-0239). <= 0 means retention is disabled — trash is
         # kept until a manual purge.
         "retentionDays": state.run_retention_days,
+        # Who this request is, and which tenant it acts as (BE-0375). The header shows the pair so an
+        # admin managing several orgs can see which one their own runs, secrets, and evidence land
+        # in — the one org whose scope every other tab silently applies.
+        "actor": actor,
+        "org": state.org_of(actor) if actor else None,
     }, 200
 
 
@@ -529,6 +549,70 @@ def _confined_config_path(root: Path, raw: str) -> Path | None:
     return target
 
 
+def seed_orgs_from_bound_config(state: ServeState) -> None:
+    """Seed the launch config's `orgs:` block into an empty `orgs` table, once (BE-0375).
+
+    Called from `serve()` at startup and from nowhere else. Deliberately *not* from the API binds
+    (`bind_config`, `bind_git_config`, the upload and compose binds): those accept a configuration
+    whose content the deployment does not own — BE-0121 says as much of the same file's `build:`,
+    which stays ungoverned until `--allow-remote-build` opts in — and seeding from one would hand
+    that file authority over who may sign in. Before this item that authority existed but was live
+    and reversible, because sign-in re-read the file every time; a seeded row outlives the bind, so
+    rebinding away would no longer revoke it. An org first declared through an API bind is therefore
+    created on the Orgs page instead.
+
+    Seeds only when the table holds no org at all, deleted ones included. One boot converts a
+    configuration-only deployment; from then on the database is the sole author of its own roster,
+    and no later configuration edit — nor a restart carrying one — can add, revive, or reshape a
+    tenant behind an admin's back. A no-op without a repository (a database-less deployment keeps
+    reading `orgs:` directly) or without a loadable config.
+
+    A repository failure is reported and swallowed rather than propagated: a bad database read must
+    not stop a server from booting, and the next start re-runs this. It is not thereby hidden — it
+    is logged at WARNING here, and a database `serve` cannot read independently turns sign-in into a
+    5xx that names the store (`oauth_callback`), never a silent denial.
+    """
+    if state.repository is None:
+        return
+    parsed = load_serve_config_file(state.config)
+    if parsed is None:
+        return
+    try:
+        if state.repository.list_orgs(include_deleted=True):
+            # Past the conversion: the database has a roster of its own and config no longer writes
+            # it, so every entry still declaring membership is one an operator should hear about.
+            # Reported rather than skipped silently — the warning is the only signal that a field
+            # they are still editing stopped being read.
+            ignored = orgs_declaring_membership(parsed[1])
+        else:
+            ignored = seed_orgs_from_config(state.repository, parsed[1])
+    except Exception as exc:
+        oplog.log_event(
+            logging.getLogger(__name__),
+            "org.seed.failed",
+            f"could not seed org membership from the launch config ({type(exc).__name__}); "
+            "it will be retried at the next startup",
+            level=logging.WARNING,
+            check="orgs_seed_failed",
+        )
+        return
+    if ignored:
+        # An `orgs:` entry that carries only `targets` stays legitimate — target ownership is still
+        # config's (BE-0375 unit 1) — so this fires only on an entry still declaring membership
+        # fields the database has already taken over. The same "an operator forgot this is no longer
+        # read" signal BE-0352 gives for its own retired environment variable.
+        oplog.log_event(
+            logging.getLogger(__name__),
+            "org.membership.ignored",
+            "these orgs: entries still declare members/githubOrgs/editorTeam, which the database "
+            f"now owns and this deployment no longer reads: {sorted(ignored)} — pare each entry "
+            "down to targets: only, and edit membership on the Orgs page instead (an org already "
+            "retired there is gone from the page, so paring its entry is all that is left to do)",
+            level=logging.WARNING,
+            check="orgs_membership_ignored",
+        )
+
+
 def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
     """Bind a config.yml chosen in the UI's file browser.  The path is confined to ``--root``; we
     validate it loads and its path fields stay within ``--root`` too, then re-point ``state.config``
@@ -575,7 +659,9 @@ def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
     return {"ok": True, "config": str(target), "targets": list_targets(target)}, 200
 
 
-def bind_git_config(state: ServeState, spec_str: str) -> tuple[Any, int]:
+def bind_git_config(
+    state: ServeState, spec_str: str, *, actor: str | None = None
+) -> tuple[Any, int]:
     """Bind a config from a Git source chosen in the UI (the "from Git" picker, BE-0063).
 
     *spec_str* is a `github:owner/repo@ref:path` (or `git+https://…`) string. We materialize the
@@ -618,6 +704,10 @@ def bind_git_config(state: ServeState, spec_str: str) -> tuple[Any, int]:
     # A Git config bound here came in over the API, not from the operator's startup flags, so its
     # `build:` command is untrusted and stays ungoverned until --allow-remote-build opts in (BE-0121).
     state.git_config_from_api = True
+    # A Git-sourced config is bound *as* the acting org, and its content is not this deployment's
+    # (the `build:` trust note above says as much), so that org owns every target it declares and
+    # its `orgs:` block partitions nothing (BE-0375).
+    state.config_org = state.org_of(actor)
     return {
         "ok": True,
         "config": str(mat.config_path),
