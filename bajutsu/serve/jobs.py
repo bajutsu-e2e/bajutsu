@@ -503,7 +503,15 @@ def _batch_checkpoint(state: ServeState, job_id: str) -> _RepositoryBatchCheckpo
 def _run_batch_job(state: ServeState, job: Job) -> None:
     """Run a cloud-batch job (BE-0336): submit its one scenario to the named batch provider, land the
     downloaded run under ``runs_dir`` so serve records and renders it like a local run, and set the
-    job's verdict from the run's own manifest — no local device, no subprocess, off the verdict path."""
+    job's verdict from the run's own manifest — no local device, no subprocess, off the verdict path.
+
+    Note: cloud-batch dispatch currently works only through the in-process serve path. The DB-queue
+    worker path (``bajutsu/serve/server/worker_job.py``) builds its own ``ServeState`` without
+    ``devicefarm_package_root``, so it falls back to the ephemeral workspace — a directory that holds
+    only the scenario and config, not Bajutsu's ``tests/`` or ``pyproject.toml``. Any cloud-batch job
+    leased from the DB queue will fail Device Farm's ``APPIUM_PYTHON_TEST_PACKAGE`` validation until
+    the worker's ``ServeState`` is wired with the package root and a host-portable app artifact path.
+    """
     request = job.batch
     if (
         request is None

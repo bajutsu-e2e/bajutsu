@@ -19,7 +19,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
-from bajutsu.cloud.devicefarm import DeviceFarmClient, DeviceFarmError, Transfer
+from bajutsu.cloud.devicefarm import DeviceFarmClient, DeviceFarmError, HttpTransfer
 from bajutsu.serve import batch_provider
 
 # Device Farm's control plane lives only in us-west-2; `DEVICEFARM_REGION` overrides it for a rare
@@ -40,24 +40,6 @@ def _make_devicefarm_client(region: str) -> DeviceFarmClient:
         ) from exc
     # boto3's dynamically built client is untyped, so present it as the DeviceFarmClient slice used.
     return cast("DeviceFarmClient", boto3.client("devicefarm", region_name=region))
-
-
-class _HttpTransfer:
-    """The real presigned-URL transfer over urllib (mirrors the CLI wrapper's, kept lazy here)."""
-
-    def upload(self, url: str, path: Path) -> None:
-        import urllib.request
-
-        request = urllib.request.Request(url, data=path.read_bytes(), method="PUT")  # noqa: S310
-        # An explicit timeout keeps a stalled S3 connection from hanging past the poll loops' cap.
-        urllib.request.urlopen(request, timeout=300).close()  # noqa: S310 - Device Farm presigned https URL
-
-    def download(self, url: str) -> bytes:
-        import urllib.request
-
-        with urllib.request.urlopen(url, timeout=300) as response:  # noqa: S310 - Device Farm presigned https URL
-            payload: bytes = response.read()
-        return payload
 
 
 def bajutsu_source_root() -> Path | None:
@@ -93,7 +75,7 @@ def register_batch_providers(env: Mapping[str, str] | None = None) -> list[str]:
     region = resolved.get(_REGION_ENV) or _DEFAULT_REGION
     provider = batch_provider.DeviceFarmBatchProvider(
         client=_make_devicefarm_client(region),
-        transfer=cast("Transfer", _HttpTransfer()),
+        transfer=HttpTransfer(),
         project_arn=project_arn,
     )
     batch_provider.register("devicefarm", provider)

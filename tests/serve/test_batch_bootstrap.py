@@ -47,7 +47,7 @@ def test_registers_devicefarm_when_project_arn_is_set(monkeypatch: pytest.Monkey
         "_make_devicefarm_client",
         lambda region: regions.append(region) or object(),
     )
-    monkeypatch.setattr(batch_bootstrap, "_HttpTransfer", object)
+    monkeypatch.setattr(batch_bootstrap, "HttpTransfer", object)
 
     # The ARN embeds a *different* region on purpose: the default must come from the code, not be
     # parsed back out of the ARN, so an ARN naming ap-northeast-1 must still reach the client as
@@ -70,7 +70,7 @@ def test_region_override_reaches_the_client_factory(monkeypatch: pytest.MonkeyPa
         "_make_devicefarm_client",
         lambda region: regions.append(region) or object(),
     )
-    monkeypatch.setattr(batch_bootstrap, "_HttpTransfer", object)
+    monkeypatch.setattr(batch_bootstrap, "HttpTransfer", object)
 
     # ARN region and the override differ, so the region reaching the client must be DEVICEFARM_REGION,
     # not the one embedded in the ARN.
@@ -97,3 +97,23 @@ def test_no_devicefarm_without_project_arn(monkeypatch: pytest.MonkeyPatch) -> N
     assert registered == []
     with pytest.raises(ValueError, match="unknown batch provider 'devicefarm'"):
         bp.resolve("devicefarm")
+
+
+def test_register_batch_providers_raises_when_client_factory_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # `register_batch_providers` propagates a client-factory failure (missing boto3, bad credentials)
+    # so the serve() caller can catch it and keep the process running rather than dying at boot.
+    from bajutsu.cloud.devicefarm import DeviceFarmError
+
+    monkeypatch.setattr(
+        batch_bootstrap,
+        "_make_devicefarm_client",
+        lambda _region: (_ for _ in ()).throw(DeviceFarmError("cloud-batch dispatch needs boto3")),
+    )
+    monkeypatch.setattr(batch_bootstrap, "HttpTransfer", object)
+
+    with pytest.raises(DeviceFarmError, match="boto3"):
+        batch_bootstrap.register_batch_providers(
+            {"DEVICEFARM_PROJECT_ARN": "arn:aws:devicefarm:us-west-2:1:project:abc"}
+        )

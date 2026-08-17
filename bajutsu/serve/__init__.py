@@ -710,8 +710,13 @@ def serve(
     # Fill the batch-provider registry from the environment (BE-0336): with DEVICEFARM_PROJECT_ARN set,
     # cloud-batch dispatch reaches AWS Device Farm; with it unset the registry stays empty and a
     # mis-dispatched cloud-batch job fails loud at resolve() rather than silently vanishing.
-    for kind in register_batch_providers():
-        print(f"cloud-batch dispatch enabled: {kind}")  # noqa: T201
+    # A broken wiring (missing boto3, bad credentials) must not take down the whole serve process —
+    # the failure belongs at dispatch, not at boot. Leave the provider unregistered and say so.
+    try:
+        for kind in register_batch_providers():
+            print(f"cloud-batch dispatch enabled: {kind}")  # noqa: T201
+    except Exception as exc:  # an optional feature must never block the bind
+        print(f"note: cloud-batch dispatch is off — {exc}")  # noqa: T201
     hint = str(config) if config else "open a config.yml in the UI"
     if not gate.allowed_hosts(host):
         # A wildcard bind can't enumerate its reachable hostnames, so the Host allowlist is off

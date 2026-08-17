@@ -342,8 +342,14 @@ def start_run_set(
     if _escapes(config_arg):
         # The provider packages work_dir at the package root, so a config outside it would travel as
         # a `../…` path that won't exist in the package and would fail opaquely on the cloud host.
-        # Fail loud here instead (determinism first): this target's config isn't under the run cwd.
-        return {"error": "config is not under the run directory; cannot package it"}, 400
+        # Fail loud here instead (determinism first): this target's config isn't under work_dir.
+        return {
+            "error": (
+                f"config is not under the cloud-batch package root {work_dir}; "
+                "for cloud-batch targets, the config and its scenarios must live inside the "
+                "Bajutsu source tree"
+            )
+        }, 400
     requests: list[BatchRequest] = []
     for name in names:
         runnable = scope.runnable(name)
