@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0336") |
-| 実装 PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425)（単位1 — submitter core の移行）、[#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429)（単位2 — batch executor seam）、[#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435)（単位3 — シナリオ単位の分割）、[#1438](https://github.com/bajutsu-e2e/bajutsu/pull/1438)（単位4 — デバイス予算）、[#1440](https://github.com/bajutsu-e2e/bajutsu/pull/1440)（単位5 — 長時間ポーリングの永続化）、[#1441](https://github.com/bajutsu-e2e/bajutsu/pull/1441)（単位6 — ドキュメントと fake AWS 検証） |
+| 実装 PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425)（単位1 — submitter core の移行）、[#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429)（単位2 — batch executor seam）、[#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435)（単位3 — シナリオ単位の分割）、[#1438](https://github.com/bajutsu-e2e/bajutsu/pull/1438)（単位4 — デバイス予算）、[#1440](https://github.com/bajutsu-e2e/bajutsu/pull/1440)（単位5 — 長時間ポーリングの永続化）、[#1441](https://github.com/bajutsu-e2e/bajutsu/pull/1441)（単位6 — ドキュメントと fake AWS 検証）、[#1641](https://github.com/bajutsu-e2e/bajutsu/pull/1641)（実 AWS 修正 — ソースツリーをパッケージルートにし、ネストされたアーティファクトを着地） |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter-ja.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md), [BE-0198](../BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split-ja.md) |
 <!-- /BE-METADATA -->
