@@ -166,6 +166,32 @@ def test_land_batch_run_does_not_claim_a_colliding_existing_run(tmp_path: Path) 
     assert (existing / "manifest.json").read_text() == "EXISTING"
 
 
+def test_land_batch_run_lands_a_manifest_nested_under_the_device_farm_prefix(
+    tmp_path: Path,
+) -> None:
+    # Device Farm's Customer Artifacts zip does not unpack `runs/` at the download root: it wraps the
+    # collected `$DEVICEFARM_LOG_DIR` under `Host_Machine_Files/$DEVICEFARM_LOG_DIR/`, so the run lands
+    # at `<download>/Host_Machine_Files/$DEVICEFARM_LOG_DIR/runs/<run_id>/manifest.json`. Landing must
+    # find the run wherever `runs/<run_id>/manifest.json` sits — matching how `verdict_from_manifest`
+    # globs the whole tree — not only at `<download>/runs/`, or a real cloud run passes but never lands.
+    import json
+
+    from bajutsu.serve.jobs import _land_batch_run
+
+    download = tmp_path / "download"
+    nested = download / "Host_Machine_Files" / "$DEVICEFARM_LOG_DIR" / "runs" / "20260817-064608"
+    nested.mkdir(parents=True)
+    (nested / "manifest.json").write_text(
+        json.dumps({"ok": True, "scenarios": [{"name": "s1", "ok": True}]}), encoding="utf-8"
+    )
+    runs_root = tmp_path / "runs"
+
+    run_id = _land_batch_run(download, runs_root)
+
+    assert run_id == "20260817-064608"
+    assert (runs_root / "20260817-064608" / "manifest.json").is_file()
+
+
 def test_land_batch_run_warns_when_the_download_carries_more_than_one_manifest(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -194,9 +220,9 @@ def test_land_batch_run_warns_when_the_download_carries_more_than_one_manifest(
 
 
 def test_land_batch_run_ignores_manifests_outside_runs_subdirectory(tmp_path: Path) -> None:
-    # _land_batch_run only searches download_dir/runs/ (not the whole tree). A malformed download
-    # that has a manifest.json outside that subdirectory (e.g. at the top of download_dir) contains
-    # no runs/ directory, so runs_subdir.is_dir() is False, rglob never runs, manifests is empty,
+    # _land_batch_run globs the whole tree but keeps only a manifest whose parent's parent is a runs/
+    # directory. A malformed download with a manifest.json at the top of download_dir has parent
+    # `download` (parent's parent is tmp_path, not "runs"), so it is filtered out, manifests is empty,
     # and _land_batch_run returns None via the `if not manifests` branch — valid_run_id and
     # shutil.move are never reached.
     import json

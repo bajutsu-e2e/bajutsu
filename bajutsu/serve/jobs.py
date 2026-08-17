@@ -503,7 +503,15 @@ def _batch_checkpoint(state: ServeState, job_id: str) -> _RepositoryBatchCheckpo
 def _run_batch_job(state: ServeState, job: Job) -> None:
     """Run a cloud-batch job (BE-0336): submit its one scenario to the named batch provider, land the
     downloaded run under ``runs_dir`` so serve records and renders it like a local run, and set the
-    job's verdict from the run's own manifest — no local device, no subprocess, off the verdict path."""
+    job's verdict from the run's own manifest — no local device, no subprocess, off the verdict path.
+
+    Note: cloud-batch dispatch currently works only through the in-process serve path. The DB-queue
+    worker path (``bajutsu/serve/server/worker_job.py``) builds its own ``ServeState`` without
+    ``devicefarm_package_root``, so it falls back to the ephemeral workspace — a directory that holds
+    only the scenario and config, not Bajutsu's ``tests/`` or ``pyproject.toml``. Any cloud-batch job
+    leased from the DB queue will fail Device Farm's ``APPIUM_PYTHON_TEST_PACKAGE`` validation until
+    the worker's ``ServeState`` is wired with the package root and a host-portable app artifact path.
+    """
     request = job.batch
     if (
         request is None
@@ -523,7 +531,9 @@ def _run_batch_job(state: ServeState, job: Job) -> None:
         try:
             verdict = provider.submit(
                 request,
-                work_dir=job.cwd or state.cwd,
+                # Same package root start_run_set relativized the config/scenario paths against (see
+                # ServeState.devicefarm_package_root), falling back to the job's own cwd then state.cwd.
+                work_dir=state.devicefarm_package_root or job.cwd or state.cwd,
                 dest=Path(download_name),
                 checkpoint=_batch_checkpoint(state, job.id),
             )
@@ -580,11 +590,14 @@ def _land_batch_run(download_dir: Path, runs_root: Path) -> str | None:
     they do a local run. Returns the run id only when the run was actually landed, or None when the
     download carried no manifest (a failed cloud run the verdict already reports as a fail), the run id
     is unsafe, or the id already exists under ``runs_root``."""
-    # The Device Farm download unpacks as runs/<run_id>/manifest.json; restrict the search to that
-    # subdirectory so a malformed download with a manifest elsewhere can't make us move an arbitrary
-    # directory under runs_root.
-    runs_subdir = download_dir / "runs"
-    manifests = sorted(runs_subdir.rglob("manifest.json")) if runs_subdir.is_dir() else []
+    # A run lands as `runs/<run_id>/manifest.json`, but Device Farm's Customer Artifacts zip nests it
+    # under a `Host_Machine_Files/$DEVICEFARM_LOG_DIR/` prefix rather than at the download root. Glob
+    # the whole tree (as `verdict_from_manifest` does), but keep only manifests under a `runs/` dir so
+    # a stray manifest elsewhere can't move an arbitrary directory — `valid_run_id` below is the actual
+    # guard that the moved directory can't escape runs_root.
+    manifests = sorted(
+        m for m in download_dir.rglob("manifest.json") if m.parent.parent.name == "runs"
+    )
     if not manifests:
         return None
     if len(manifests) > 1:
