@@ -20,14 +20,22 @@ function parseList(raw) {
 }
 
 function orgRow(o) {
-  const disabled = o.projectCount > 0;
-  const removeTitle = disabled
-    ? `deregister this org's ${o.projectCount} project(s) first`
-    : 'retire this org — it stops admitting sign-ins; its history is kept';
-  return `<li class="prjrow orgrow" data-testid="orgs.row" data-slug="${esc(o.slug)}">
+  // The sign-in fallback is listed — an admin admitted by the admin-Team bypass is sitting in it,
+  // and hiding that would hide where their own runs and secrets land — but it is not a tenant: the
+  // server refuses to create, re-member, or retire it, so offer no control that can only answer 409.
+  const disabled = o.reserved || o.projectCount > 0;
+  const removeTitle = o.reserved
+    ? 'the sign-in fallback cannot be retired — an unmatched sign-in keeps resolving to it'
+    : disabled
+      ? `deregister this org's ${o.projectCount} project(s) first`
+      : 'retire this org — it stops admitting sign-ins; its history is kept';
+  const editTitle = o.reserved
+    ? 'the sign-in fallback has no membership to edit — giving it one would make it a tenant'
+    : 'replace this org\'s members, GitHub organizations, and editor Team';
+  return `<li class="prjrow orgrow" data-testid="orgs.row" data-slug="${esc(o.slug)}"${o.reserved ? ' data-reserved="1"' : ''}>
     <span class="prjname" data-testid="orgs.slug">${esc(o.slug)}</span>
-    <span class="prjsrc" data-testid="orgs.summary">${o.name && o.name !== o.slug ? esc(o.name) + ' · ' : ''}${o.members.length} member(s) · ${o.githubOrgs.length} GitHub org(s) · ${o.editorTeam ? esc(o.editorTeam) : 'no editor Team'} · ${o.projectCount} project(s)</span>
-    <button class="cfgbtn" data-act="edit" data-testid="orgs.edit">Membership</button>
+    <span class="prjsrc" data-testid="orgs.summary">${o.reserved ? 'sign-in fallback · ' : ''}${o.name && o.name !== o.slug ? esc(o.name) + ' · ' : ''}${o.members.length} member(s) · ${o.githubOrgs.length} GitHub org(s) · ${o.editorTeam ? esc(o.editorTeam) : 'no editor Team'} · ${o.projectCount} project(s)</span>
+    <button class="cfgbtn" data-act="edit" data-testid="orgs.edit" title="${esc(editTitle)}"${o.reserved ? ' disabled' : ''}>Membership</button>
     <button class="cfgbtn prjremove" data-act="remove" data-testid="orgs.remove" title="${esc(removeTitle)}"${disabled ? ' disabled' : ''}>Delete</button>
   </li>`;
 }

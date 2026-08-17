@@ -78,6 +78,11 @@ def list_orgs_view(state: ServeState, *, actor: str | None = None) -> tuple[Any,
             "githubOrgs": org.github_orgs,
             "editorTeam": org.editor_team,
             "projectCount": len(repository.list_projects(org_id=org.id)),
+            # The fallback an unmatched sign-in resolves to is listed (an admin admitted by the
+            # bypass is sitting in it, and hiding that would hide where their own work lands) but is
+            # not a tenant: all three mutations refuse it, so the page marks it rather than offering
+            # controls that only ever answer 409.
+            "reserved": org.slug == DEFAULT_ORG,
         }
         for org in repository.list_orgs()
     ], 200
@@ -131,6 +136,15 @@ def update_org_membership(
     """
     if state.repository is None:
         return _NO_ORG_STORE
+    if slug == DEFAULT_ORG:
+        # The same reservation `create_org` and `delete_org` apply, and for the same reason: giving
+        # this slug a roster makes `identity_matches_org` place those logins in it, so the fallback
+        # an unmatched sign-in resolves to becomes a real tenant — exactly what refusing to create it
+        # prevents. The row is listed and reachable (a bypass sign-in's `ensure_org` creates it), so
+        # without this guard the reservation held on two verbs out of three.
+        return {
+            "error": f"{DEFAULT_ORG!r} is the sign-in fallback; its membership is not editable"
+        }, 409
     if state.repository.get_org(slug) is None:
         return {"error": f"no org named {slug!r}"}, 404
     members, invalid = _string_list(body.get("members"), "members")

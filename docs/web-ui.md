@@ -199,8 +199,10 @@ and how many projects it owns — plus its display name, when that differs from 
 already leads with. **Create** takes a slug and an optional display name, and the new org
 starts with no members at all — nobody can sign in as it until you fill in its membership, which the
 page says inline so an empty tenant does not read as a bug. The slug `default` is refused: it is
-where a sign-in matching no org lands, so a real tenant there would take the namespace an admin
-recovers through. **Membership** opens a form that replaces
+where a sign-in matching no org lands — including every admin admitted by the admin-Team bypass — so
+a real tenant there would take the namespace an admin recovers through. That row still appears in
+the list, marked as the fallback and with both its controls disabled, since an admin who arrived
+that way is sitting in it. **Membership** opens a form that replaces
 all three fields at once, prefilled from what the server holds right now; a change takes effect on
 each member's next sign-in. **Delete** retires an org, and stays greyed out while the org still owns
 a project (deregister those first). Retiring signs out everyone holding a session as that org at the

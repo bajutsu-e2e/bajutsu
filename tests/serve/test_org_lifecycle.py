@@ -339,6 +339,7 @@ def test_create_then_re_member_an_org_and_audit_both(
         "githubOrgs": [],
         "editorTeam": None,
         "projectCount": 0,
+        "reserved": False,
     }
 
     _payload, status = ops.update_org_membership(
@@ -389,6 +390,33 @@ def test_retiring_an_org_revokes_its_members_live_sessions(
     assert status == 200 and payload["sessionsRevoked"] == 1
     assert not state.auth.valid_session(sid)
     assert state.auth.valid_session(other) and state.auth.valid_session(anonymous)
+
+
+def test_the_default_orgs_membership_is_not_editable(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # The reservation has to hold on all three verbs, not two. A bypass sign-in's `ensure_org`
+    # creates a live `default` row, so the Orgs page lists it and its Membership form could reach
+    # it — and a roster there makes `identity_matches_org` place those logins in the fallback, which
+    # is the very thing refusing to create it prevents.
+    state = _state(
+        serve_engine,
+        tmp_path,
+        oauth=_FakeOAuth("root", teams=["ops-gh/admins"]),
+        admin_teams=["ops-gh/admins"],
+    )
+    assert state.repository is not None
+    assert _sign_in(state)[1] == 200  # the bypass admits root and lands them in `default`
+    assert state.repository.user_org("root") == "default"
+    payload, status = ops.update_org_membership(
+        state, "default", {"members": ["mallory"]}, actor="root"
+    )
+    assert status == 409 and "fallback" in payload["error"]
+    assert orgs_from_db(state.repository)["default"].members == []
+    # Listed, not hidden: the admin is sitting in it, so the page marks it instead of concealing it.
+    listed = {o["slug"]: o for o in ops.list_orgs_view(state, actor="root")[0]}
+    assert listed["default"]["reserved"] is True
+    assert listed["acme"]["reserved"] is False
 
 
 def test_creating_an_org_rejects_a_taken_slug_and_a_slug_that_is_not_a_safe_id(

@@ -69,6 +69,16 @@ def test_js_renders_a_display_name_that_differs_from_the_slug(tmp_path: Path) ->
     assert "o.name !== o.slug" in body and "esc(o.name)" in body
 
 
+def test_js_offers_no_control_on_the_reserved_fallback_row(tmp_path: Path) -> None:
+    # The server refuses all three mutations on `default`, so the row must not offer buttons that
+    # can only answer 409 — and it must still be rendered, since an admin admitted by the bypass is
+    # the one sitting in it.
+    text = _fetch(tmp_path, "/serve.orgs.mjs")
+    body = text.split("function orgRow")[1].split("\n}")[0]
+    assert "o.reserved" in body
+    assert 'data-act="edit"' in body and "disabled" in body
+
+
 def test_js_keeps_one_membership_form_open_at_a_time(tmp_path: Path) -> None:
     # The form's input ids (`#orgs-members` and friends) are singletons, so two open forms would
     # make every save read the first form's fields — silently replacing one org's roster with

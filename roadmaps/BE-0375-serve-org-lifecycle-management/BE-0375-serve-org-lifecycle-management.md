@@ -282,7 +282,10 @@ mutation recorded through the existing `Repository.record_audit` (`org.create` /
   cutover, so the row is treated as already past cutover: no later `orgs:` entry for that slug
   seeds or re-seeds it, and so cannot overwrite membership an admin sets through this API.
 - `POST /api/orgs/<slug>/membership` — replace an org's `{members, githubOrgs, editorTeam}` as one
-  unit, the same granularity a config-file edit already has, rather than separate add/remove
+  unit, and refused for `default` for the same reason creation is: membership is what places a login
+  in an org, so a roster on the fallback slug makes it a tenant just as surely as creating it would.
+  A bypass sign-in's `ensure_org` leaves a live `default` row, so the page lists and could otherwise
+  reach it — the reservation has to hold on all three verbs, not two. the same granularity a config-file edit already has, rather than separate add/remove
   endpoints per list entry. `POST` rather than the `PUT` a whole-value write would normally take,
   because `PUT` is the one body-carrying verb neither transport implements — the stdlib handler
   serves `GET`/`POST`/`DELETE` and the FastAPI generator parses a body only for `POST` — so spelling

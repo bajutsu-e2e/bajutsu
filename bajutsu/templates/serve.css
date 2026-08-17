@@ -703,6 +703,10 @@ header .appversion .dirty{color:var(--acc);font-weight:700}
    The read-only dashboards (Stats / Flaky / Usage / Coverage / Metrics) are a single card: one
    full-width column. */
 #view-stats,#view-flaky,#view-usage,#view-coverage,#view-metrics,#view-projects,#view-orgs{grid-template-columns:1fr}
+/* A disabled .cfgbtn must not read as pressable. The Orgs page is the first place one is disabled
+   (the sign-in fallback's row, and a Delete on an org that still owns projects), and without this it
+   rendered identically to a live button. Matches button.run:disabled / .shotnav:disabled. */
+.cfgbtn:disabled{opacity:.5;cursor:default}
 /* Which org this session acts as (BE-0375), beside the config name it acts on. Reads as a quiet
    label rather than a control: it is a fact about the session, and nothing here changes it. */
 .orgbadge{font-size:.78rem;padding:.1rem .4rem;border:1px solid var(--line);border-radius:.5rem;color:var(--mut);white-space:nowrap}

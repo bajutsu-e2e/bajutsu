@@ -673,9 +673,13 @@ An **Orgs** page appears in the web UI for admins, backed by four admin-only end
 | `POST /api/orgs/<slug>/membership` | Replace `{"members": [...], "githubOrgs": [...], "editorTeam": "..."}` as one unit. |
 | `DELETE /api/orgs/<slug>` | Retire an org. Refused while it still owns a project, and refused outright for `default`. |
 
-The audit log records every one of the four. `default` is reserved: it is the org an unmatched
-sign-in falls into, so `POST /api/orgs` refuses that slug rather than let a real tenant take the
-namespace an admin recovers through. Deleting an org is a soft delete: it stops admitting sign-ins
+The audit log records every one of the four. `default` is reserved on all three mutations — created,
+re-membered, and retired are each refused for it. It is the org an unmatched sign-in falls into,
+including every admin admitted by the admin-Team bypass, so a real tenant there would take the
+namespace an admin recovers through; giving it a roster would do that just as surely as creating it,
+since membership is what places a login in an org. It is still *listed*, marked as the fallback,
+because a bypassed admin is sitting in it and hiding that would hide where their own runs, secrets,
+and evidence land. Deleting an org is a soft delete: it stops admitting sign-ins
 and leaves the list, and every session its members already hold is revoked at the same moment, so
 nobody keeps acting as the retired tenant on a cookie issued before it. Its runs and audit entries
 stay queryable — an admin action removes a tenant's ability to act, not the record of what it
