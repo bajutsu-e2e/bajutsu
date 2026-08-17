@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0358](BE-0358-device-os-as-a-first-class-fact.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0358") |
+| Implementing PR | [#1610](https://github.com/bajutsu-e2e/bajutsu/pull/1610) |
 | Topic | Platform support |
 | Related | [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md), [BE-0220](../BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md) |
 <!-- /BE-METADATA -->
@@ -211,23 +212,23 @@ a branch, for the reason given in *Detailed design*. Both fixes belong in their 
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] The parsed type and its parser, beside `device_id.py`: platform, major, minor, raw label;
+- [x] The parsed type and its parser, beside `device_id.py`: platform, major, minor, raw label;
       `None` for an absent or unrecognized label; no comparison operators. Unit-tested from a table
       of labels.
-- [ ] Carry the parsed OS on `ScenarioHistory` and `FlakyScenario`, print it in the rendered and
+- [x] Carry the parsed OS on `ScenarioHistory` and `FlakyScenario`, print it in the rendered and
       `--json` output, and put it in both sort keys ahead of the name.
-- [ ] Group by the parsed OS in `longitudinal` (`bajutsu/analysis/audit.py`), with an "unknown" key
+- [x] Group by the parsed OS in `longitudinal` (`bajutsu/analysis/audit.py`), with an "unknown" key
       for a run whose label is missing or unparseable, and the same component in `rank_flakiness`
       (`bajutsu/serve/flakiness.py`), reading the label from the field this unit adds to the record —
       `_run_summary` keeps none today — filling that field in `records_from_manifests` too, and
       grouping a run whose scenarios span OS versions under the "unknown" key. Both surfaces must gain the same component and the same unknown-key rule.
-- [ ] Backfill the field on rows recorded before it existed, from each run's stored manifest; where
+- [x] Backfill the field on rows recorded before it existed, from each run's stored manifest; where
       a deployment no longer holds the manifest, leave the row `unknown` and disclose the split in
       the report rather than letting a boundary-spanning flake read as two `unproven` histories.
-- [ ] Hand the parsed OS to the XCUITest driver as a `make_driver` keyword, derived in the
+- [x] Hand the parsed OS to the XCUITest driver as a `make_driver` keyword, derived in the
       environment from the runtime identifier it already captures, at both construction sites. No
       `Driver` protocol member and no test double changes. Nothing branches on it in this item.
-- [ ] Documentation: record in `docs/` (and its `docs/ja/` mirror) that a flakiness history is now
+- [x] Documentation: record in `docs/` (and its `docs/ja/` mirror) that a flakiness history is now
       per OS version, and that the parsed OS is available to a driver but is not a licence to
       branch — a behavioural OS difference is fixed version-agnostically unless an item argues
       otherwise.

@@ -1024,6 +1024,37 @@ def test_a_delivered_write_crash_is_never_re_issued_and_fails_distinctly() -> No
     assert calls[0] == 1  # never re-issued
 
 
+def test_a_declared_crash_offers_the_diagnostics_hook_the_moment_it_happens() -> None:
+    # BE-0361 unit 2: the capture fires on the crash *declaration*, before recovery decides anything,
+    # because that is while the Simulator state explaining the crash still exists. Once per crash —
+    # the per-run cap lives in the capture, not here.
+    seen: list[bool] = []
+    inner, _calls = _counting(
+        [_crash("GET", delivered=True), _crash("GET", delivered=True), _Reply(status="ok")]
+    )
+    reply = _with_crash_recovery(
+        inner, health=lambda _t: _HealthWait.READY, on_stall=lambda: seen.append(True)
+    )("GET", "/elements", None)
+    assert reply.status == "ok"
+    # Once per crash, so a flapping runner's second and third stalls are offered too — the per-run cap
+    # lives in the capture, not here.
+    assert seen == [True, True]
+
+
+def test_a_broken_diagnostics_hook_never_changes_the_crash_verdict() -> None:
+    # The hook is an observer on a failure path. If it raises, the run must still fail with the crash
+    # diagnostic the caller acts on — never with the diagnostics' own error standing in for it.
+    def _explode() -> None:
+        raise RuntimeError("the probe itself broke")
+
+    inner, calls = _counting([_crash("GET", delivered=False)])
+    with pytest.raises(XcuitestRunnerCrashError, match="did not recover"):
+        _with_crash_recovery(inner, health=lambda _t: _HealthWait.TIMED_OUT, on_stall=_explode)(
+            "GET", "/elements", None
+        )
+    assert calls[0] == 1
+
+
 def test_a_read_crash_that_never_recovers_fails_loudly() -> None:
     inner, calls = _counting([_crash("GET", delivered=False)])
     with pytest.raises(XcuitestRunnerCrashError, match="did not recover"):

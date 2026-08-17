@@ -42,19 +42,20 @@ a:hover { text-decoration: underline; }
 </head>
 <body>
 <h1>Flaky scenarios</h1>
-<p class="sub">Scenarios ranked by how much their verdict flips at a constant content fingerprint,
-mined from the run history. Read-only and advisory — nothing here decides a pass/fail.</p>
+<p class="sub">Scenarios ranked by how much their verdict flips at a constant content fingerprint
+on one OS version, mined from the run history. Read-only and advisory — nothing here decides a pass/fail.</p>
 {%- if not report.scenarios %}
 <p class="empty">No runs with a scenario fingerprint to rank
 {%- if report.skipped %} ({{ report.skipped }} run(s) had no fingerprint or verdict){% endif %}.</p>
 {%- else %}
 <table><thead><tr>
-<th>scenario</th><th>class</th><th class="num">passed</th><th class="num">failed</th>
+<th>scenario</th><th>OS</th><th>class</th><th class="num">passed</th><th class="num">failed</th>
 <th class="num">runs</th><th>flip rate</th><th>evidence</th>
 </tr></thead><tbody>
 {%- for s in report.scenarios %}
 <tr>
 <td>{{ s.name or s.scenario_hash }}<br><code>{{ s.scenario_hash }}</code></td>
+<td>{{ describe_os(s.device_os) }}</td>
 <td>{% if s.classification == "flaky" %}<span class="tag flaky">flaky</span>{% else %}{{ s.classification }}{% endif %}</td>
 <td class="num">{{ s.passed }}</td>
 <td class="num">{{ s.failed }}</td>
@@ -68,6 +69,9 @@ mined from the run history. Read-only and advisory — nothing here decides a pa
 </tr>
 {%- endfor %}
 </tbody></table>
+{%- if unknown_os %}
+<p class="sub">{{ unknown_os_note(unknown_os) }}.</p>
+{%- endif %}
 {%- if report.skipped %}
 <p class="sub">{{ report.skipped }} run(s) skipped — no scenario fingerprint or no recorded verdict.</p>
 {%- endif %}

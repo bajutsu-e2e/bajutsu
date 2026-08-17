@@ -86,9 +86,10 @@ class Project(Base):
 
 class Run(Base):
     __tablename__ = "runs"
-    # scenario_hash is the flakiness grouping key; the DB-level score groups by this alone (run
-    # level), as documented in bajutsu/serve/flakiness.py — the coarser counterpart to
-    # audit --history's per-(fingerprint, scenario) grouping.
+    # scenario_hash is half the flakiness grouping key: the DB-level score groups by it together
+    # with the run's device OS (BE-0358), at the run level, as documented in
+    # bajutsu/serve/flakiness.py — the coarser counterpart to audit --history's
+    # per-(fingerprint, scenario, OS) grouping.
     __table_args__ = (Index("ix_runs_scenario_hash", "scenario_hash"),)
 
     id: Mapped[str] = mapped_column(primary_key=True)
@@ -107,6 +108,11 @@ class Run(Base):
     scenario_hash: Mapped[str | None] = mapped_column(default=None)
     tool_version: Mapped[str | None] = mapped_column(default=None)
     git_revision: Mapped[str | None] = mapped_column(default=None)
+    # The device OS the run happened on, mirrored from the manifest's per-scenario `device_runtime`
+    # so the flakiness score groups per OS version straight from the DB (BE-0358). Null means "never
+    # determined" — a row recorded before this column existed — as distinct from the empty string,
+    # which records that the run named no single OS; see `db.RunRecord`.
+    device_runtime: Mapped[str | None] = mapped_column(default=None)
     # Soft-delete (BE-0239): a run with `deleted_at` set is trashed — hidden from `list_runs` but
     # restorable within the retention window; `deleted_by` records the user id who did it, for the
     # audit reach. Null for a live run. `deleted_by` is a plain column, not an FK to users.id like

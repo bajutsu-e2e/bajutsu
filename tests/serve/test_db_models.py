@@ -37,6 +37,8 @@ def test_runs_has_its_columns_and_foreign_keys(serve_engine: Callable[..., Engin
         "scenario_hash",
         "tool_version",
         "git_revision",
+        # The other half of that grouping key: the OS version the run happened on (BE-0358).
+        "device_runtime",
     } <= cols
     referred = {fk["referred_table"] for fk in insp.get_foreign_keys("runs")}
     assert {"orgs", "projects", "users"} <= referred

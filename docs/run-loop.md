@@ -137,7 +137,8 @@ to the report.
 Builds the environment with `simctl` per the `preconditions`:
 
 ```
-erase (if pre.erase: shutdown → erase) → boot → terminate(bundle) (for a clean launch state)
+erase (if pre.erase: shutdown → erase) → boot → bootstatus -b (wait out the boot)
+  → terminate(bundle) (for a clean launch state)
   → launch(bundle, [launchArgs, *locale_args(locale)], {**config.launchEnv, **pre.launchEnv})
   → openurl(deeplink) (if any) → make_driver(actuator, udid)
   → _await_ready (poll until query() returns 2+ elements, up to 10s)
@@ -149,7 +150,10 @@ erase (if pre.erase: shutdown → erase) → boot → terminate(bundle) (for a c
 > (more than the root element)" — up to 10s ([configuration](configuration.md) documents each rung in
 > full). `locale` **is**
 > applied at launch (the scenario's `preconditions.locale` overrides the config default, passed as
-> launch args via `env.locale_args`). The simctl launch sequencing is validated on a real device
+> launch args via `env.locale_args`). `simctl boot` returns as soon as the boot has been *requested*,
+> so every step that follows it waits the boot out with `bootstatus` first — including the extra boot
+> cycle the system-locale pin runs ([BE-0359](../roadmaps/BE-0359-xcuitest-boot-completion-wait/BE-0359-xcuitest-boot-completion-wait.md)).
+> The simctl launch sequencing is validated on a real device
 > (iPhone 17 Pro) via `make -C demos/showcase run-swiftui` + the `ios-e2e.yml` CI workflow.
 
 ### `device_pool` / `run_all` / `run_and_report`

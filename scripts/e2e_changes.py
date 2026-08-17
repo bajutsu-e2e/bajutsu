@@ -284,6 +284,10 @@ _LANE_PATHS: dict[str, str] = {
         r"|\.github/workflows/ios-e2e\.yml$"
         r"|\.github/actions/bajutsu-e2e/"
         r"|\.github/actions/boot-simulator/"
+        # The BE-0361 diagnostics collector every Simulator-driving job now calls. It runs on the
+        # same jobs the two actions above do, and a change to it (a probe that hangs, a collection
+        # that fails a step) can take a lane down as surely as editing the workflow file.
+        r"|\.github/actions/collect-ios-diagnostics/"
     ),
     "android": (
         # Only the adb driver and the Python side of the resident UI Automator channel (BE-0245) this
@@ -304,6 +308,11 @@ _LANE_PATHS: dict[str, str] = {
         r"|tests/test_fault_injection_ondevice_android\.py$"
         r"|\.github/workflows/android-e2e\.yml$"
         r"|\.github/actions/setup-android-toolchain/"
+        # The lane's own diagnostics collection (BE-0367): the host-telemetry action every job
+        # brackets its emulator step with, and the device-side sweep each job's `script:` invokes.
+        # Both run in every KVM job, so a break in either is only visible on this lane.
+        r"|\.github/actions/collect-android-diagnostics/"
+        r"|scripts/collect_android_diagnostics\.sh$"
     ),
     "web": (
         r"|bajutsu/drivers/playwright\.py$"

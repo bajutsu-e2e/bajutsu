@@ -36,6 +36,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from bajutsu.device_os import DeviceOS
 from bajutsu.drivers import base
 from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
 
@@ -369,6 +370,26 @@ def _await_health(
         sleep(poll)
 
 
+def _observe_stall(hook: Callable[[], None], logger: logging.Logger) -> None:
+    """Let the diagnostics hook look at a declared crash, absorbing whatever it does (BE-0361).
+
+    A capture runs on the failure path it documents, so a broken hook must cost that path a log line
+    and nothing else — never the exception that would replace the crash diagnostic the caller is
+    about to raise.
+
+    The hook takes no argument: naming the trigger (and therefore the directory the capture writes) is
+    the environment's business, not the channel's, so nothing the channel passes can reach a path.
+    """
+    try:
+        hook()
+    except Exception:
+        # With the traceback: a capture that regresses would otherwise log the same opaque line on
+        # every CI failure, leaving the diagnostics themselves undiagnosable.
+        logger.warning(
+            "stall diagnostics hook failed; the crash diagnosis is unaffected", exc_info=True
+        )
+
+
 def _runner_gone_mid_run(
     method: str, path: str, crash: XcuitestRunnerCrashError
 ) -> XcuitestRunnerCrashError:
@@ -390,6 +411,7 @@ def _with_crash_recovery(
     *,
     health: Callable[[float], _HealthWait],
     runner_alive: Callable[[], bool] | None = None,
+    on_stall: Callable[[], None] | None = None,
     recovery_timeout: float = _RECOVERY_TIMEOUT_SECONDS,
     max_recoveries: int = _MAX_CRASH_RECOVERIES,
     max_hung_calls: int = _MAX_HUNG_CALLS,
@@ -432,6 +454,11 @@ def _with_crash_recovery(
     declared, while the ordinary mid-run crash — whose `xcodebuild` exit and suite result line both
     follow it — became observable a moment later and was waited out in full. A wait that ends on that
     verdict is reported with the same "gone" diagnostic as the early exit, not as a window waited out.
+
+    `on_stall`, when the environment supplies it, is called once per declared crash — before recovery
+    decides anything, so ahead of both liveness samples above — and a bounded capture of the Simulator
+    and host state therefore runs while that state still exists (BE-0361). It is an observer: its own
+    failure is swallowed, and neither it nor anything it returns reaches the crash verdict below.
     """
     logger = logging.getLogger("bajutsu.xcuitest.channel")
 
@@ -453,6 +480,8 @@ def _with_crash_recovery(
                     path,
                     crash,
                 )
+                if on_stall is not None:
+                    _observe_stall(on_stall, logger)
                 if not _is_retry_eligible(method, delivered=crash.delivered):
                     raise XcuitestRunnerCrashError(
                         f"runner channel {method} {path} failed after delivery: the runner did not confirm "
@@ -565,7 +594,11 @@ def _raw_http_transport(host: str, port: int) -> TransportFn:
 
 
 def _http_transport(
-    host: str, port: int, runner_alive: Callable[[], bool] | None = None
+    host: str,
+    port: int,
+    *,
+    runner_alive: Callable[[], bool] | None = None,
+    on_stall: Callable[[], None] | None = None,
 ) -> tuple[TransportFn, TransportFn]:
     """The real transport, plus the raw single-attempt transport used for fast health probes.
 
@@ -581,13 +614,16 @@ def _http_transport(
     a runner that cannot come back — its process exited, or its XCTest run already ended (BE-0354) —
     rather than polling the dead port for the whole recovery window. It reaches both places that ask
     the question: the check before the wait, and the wait itself, which re-asks it as the window runs
-    (BE-0360). Absent, recovery is exactly BE-0287's.
+    (BE-0360). Absent, recovery is exactly BE-0287's. `on_stall` is the environment's bounded
+    diagnostics capture (BE-0361), an observer of the same crash declaration. Both are keyword-only,
+    so two adjacent optional callbacks cannot be swapped at a call site.
     """
     raw = _raw_http_transport(host, port)
     wrapped = _with_crash_recovery(
         _with_retry(raw),
         health=lambda timeout: _await_health(raw, timeout=timeout, runner_alive=runner_alive),
         runner_alive=runner_alive,
+        on_stall=on_stall,
     )
     return wrapped, raw
 
@@ -630,16 +666,30 @@ class XcuitestDriver:
         host: str = "127.0.0.1",
         port: int = 0,
         runner_alive: Callable[[], bool] | None = None,
+        on_stall: Callable[[], None] | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        device_os: DeviceOS | None = None,
     ) -> None:
+        # The parsed OS version of the device this drives (BE-0358), or None when the environment
+        # could not name one. Nothing here branches on it — it exists so a driver-level failure can
+        # say which OS it happened on, and so the first genuinely per-OS decision has one route to
+        # read instead of inventing its own. Set per construction, not per lease: a device
+        # replacement can move a lease onto a different Simulator mid-run, and both construction
+        # sites build a fresh driver afterwards, so a fact stamped once onto the `Lease` would go
+        # stale where this one follows the swap.
+        self.device_os = device_os
         if transport is not None:
             # A test fake serves both roles: it has no BE-0207 retry to distinguish away.
             self._transport = transport
             self._probe_transport = transport
         else:
             # `runner_alive` lets crash-recovery fail fast on a runner that cannot come back; the
-            # environment supplies its liveness check, None keeps BE-0287's recovery.
-            self._transport, self._probe_transport = _http_transport(host, port, runner_alive)
+            # environment supplies its liveness check, None keeps BE-0287's recovery. `on_stall` is
+            # the environment's diagnostics capture (BE-0361), an observer of the same crash
+            # declaration.
+            self._transport, self._probe_transport = _http_transport(
+                host, port, runner_alive=runner_alive, on_stall=on_stall
+            )
         # Injectable so the stale re-resolution backoff (BE-0289) adds no wall time under test.
         self._sleep = sleep
         # The device screen size (BE-0326), fetched once from the runner; fixed for a run.

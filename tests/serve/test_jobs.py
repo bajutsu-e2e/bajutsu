@@ -11,6 +11,7 @@ import pytest
 from _shared import FakeProc, fake_popen, project
 
 from bajutsu import serve as srv
+from bajutsu import simctl as simctl_mod
 from bajutsu.serve import jobs as srv_jobs
 from bajutsu.serve import state as srv_state
 from bajutsu.serve.logbus import InMemoryLogBus
@@ -438,6 +439,34 @@ def test_run_job_boot_failure_skips_the_run(tmp_path: Path) -> None:
     assert v["status"] == "done" and v["ok"] is False
     assert spawned == []  # the run is not spawned when a device won't boot
     assert any("boot failed" in line for line in v["lines"])
+
+
+def test_run_job_boot_timeout_fails_the_job_rather_than_passing_silently(tmp_path: Path) -> None:
+    """A wedged host times the `bootstatus` out; the job must fail, not report a boot it never got.
+
+    The boot runs on a thread, so a `DeviceTimeout` the handler missed would die there and leave the
+    error map empty — reporting success and spawning the run against a Simulator that never came up
+    (BE-0363).
+    """
+    scn_dir, cfg, runs = project(tmp_path)
+    spawned: list[Any] = []
+
+    def simctl(args: list[str], _e: object = None) -> str:
+        raise simctl_mod.DeviceTimeout("device operation timed out after 300s: " + " ".join(args))
+
+    def popen(*a: Any, **_k: Any) -> FakeProc:
+        spawned.append(a)
+        return FakeProc([])
+
+    state = srv.ServeState(
+        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, popen=popen, simctl=simctl
+    )
+    job = state.register(srv.Job(cmd=["x"], udids=["WEDGED"]))
+    srv.run_job(state, job)
+    v = job.view()
+    assert v["status"] == "done" and v["ok"] is False
+    assert spawned == []
+    assert any("boot failed" in line and "timed out" in line for line in v["lines"])
 
 
 def test_run_job_terminates_process_on_output_error(tmp_path: Path) -> None:

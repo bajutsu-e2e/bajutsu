@@ -13,6 +13,12 @@ The DB `Run` record carries one run-level verdict (`ok`) and one provenance stam
 (`scenario_hash`) per run, so the grouping key here is the `scenario_hash` and the metric is the
 run-level verdict flip — the coarser DB counterpart to `audit --history`'s per-scenario grouping.
 For the common single-scenario run the two coincide.
+
+The key also carries the parsed device OS (BE-0358), the one component the two surfaces must share
+exactly: without it a fleet running one suite across a device matrix scores every genuine OS
+difference in it as flakiness. The granularities stay deliberately different — this side is per run,
+the file-backed side per scenario — but the OS component and its unknown-key rule are the same, so
+the two keep labelling a scenario identically.
 """
 
 from __future__ import annotations
@@ -25,7 +31,9 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
-from bajutsu.analysis.audit import classify_stability
+from bajutsu import device_os
+from bajutsu.analysis.audit import canonical_os, classify_stability, unknown_os_note
+from bajutsu.device_os import DeviceOS
 from bajutsu.run_id import parse_run_id_timestamp
 from bajutsu.serve.server.db import RunRecord
 
@@ -43,10 +51,13 @@ def _as_utc(dt: datetime) -> datetime:
 
 @dataclass(frozen=True)
 class FlakyScenario:
-    """One scenario's cross-run stability at a fixed fingerprint — the unit of the ranked surface."""
+    """One scenario's cross-run stability at a fixed fingerprint, on one OS — the ranked unit."""
 
-    scenario_hash: str  # the runs' shared `provenance.scenarioHash`, the grouping key
+    scenario_hash: str  # the runs' shared `provenance.scenarioHash`, half the grouping key
     name: str  # a representative scenario name from the runs' summaries (for display / linking)
+    # The OS these runs ran on, parsed from the record's `device_runtime` (BE-0358) — the other half
+    # of the key. None when the run recorded none, or when its scenarios spanned OS versions.
+    device_os: DeviceOS | None
     runs: int  # runs observed at this fingerprint inside the window
     passed: int  # runs that passed
     failed: int  # runs that failed
@@ -91,16 +102,20 @@ def rank_flakiness(
 ) -> FlakinessReport:
     """Rank scenarios by cross-run flakiness over the DB run history.
 
-    Groups runs by `scenario_hash`, reuses `audit --history`'s classification, and orders the flaky
-    scenarios to the top. A run with no `scenario_hash` (pre-provenance) or no recorded verdict
-    (`ok is None`, e.g. still queued or errored before a verdict) can't contribute and is counted in
-    `skipped`, mirroring `audit --history`.
+    Groups runs by `scenario_hash` and parsed device OS, reuses `audit --history`'s classification,
+    and orders the flaky scenarios to the top. A run with no `scenario_hash` (pre-provenance) or no
+    recorded verdict (`ok is None`, e.g. still queued or errored before a verdict) can't contribute
+    and is counted in `skipped`, mirroring `audit --history`.
 
     Args:
-        records: Run records to mine, in any order.
-        window_runs: Keep only each scenario's newest this-many runs (by `created_at`); unbounded
-            when None. Must be a positive integer when set — zero or negative is caller-invalid
-            and raises ValueError.
+        records: Run records to mine, in any order. A record whose `device_runtime` is absent or
+            unrecognized groups under a distinct unknown-OS key rather than joining any version's
+            history — the same rule `audit --history` applies.
+        window_runs: Keep only each *history's* newest this-many runs (by `created_at`) — per
+            scenario per OS, since that is the group being scored (BE-0358); unbounded when None.
+            Windowing per scenario instead would evict an older OS's history once the newest runs
+            had all moved to a newer one, masking the cross-version finding. Must be a positive
+            integer when set — zero or negative is caller-invalid and raises ValueError.
         since: Drop runs created before this instant (and any run with no `created_at`) when set.
 
     Returns:
@@ -109,7 +124,7 @@ def rank_flakiness(
     """
     if window_runs is not None and window_runs <= 0:
         raise ValueError(f"window_runs must be a positive integer, got {window_runs!r}")
-    groups: dict[str, list[RunRecord]] = {}
+    groups: dict[tuple[str, DeviceOS | None], list[RunRecord]] = {}
     skipped = 0
     for record in records:
         if since is not None and (
@@ -119,14 +134,24 @@ def rank_flakiness(
         if not isinstance(record.scenario_hash, str) or record.ok is None:
             skipped += 1
             continue
-        groups.setdefault(record.scenario_hash, []).append(record)
+        groups.setdefault(
+            (record.scenario_hash, device_os.parse(record.device_runtime)), []
+        ).append(record)
 
     scenarios = [
-        _score(scenario_hash, _window(runs, window_runs)) for scenario_hash, runs in groups.items()
+        _score(scenario_hash, os, _window(runs, window_runs))
+        for (scenario_hash, os), runs in groups.items()
     ]
-    # Flaky first (the findings to act on), then flakiest by flip rate, then the most-observed.
+    # Flaky first (the findings to act on), then flakiest by flip rate, then the most-observed. The
+    # OS closes the tie two rows that differ only by it would otherwise leave to input order.
     scenarios.sort(
-        key=lambda s: (s.classification != "flaky", -s.flip_rate, -s.runs, s.scenario_hash)
+        key=lambda s: (
+            s.classification != "flaky",
+            -s.flip_rate,
+            -s.runs,
+            s.scenario_hash,
+            device_os.ordering_key(s.device_os),
+        )
     )
     return FlakinessReport(scenarios=scenarios, skipped=skipped)
 
@@ -137,8 +162,8 @@ def _window(runs: list[RunRecord], window_runs: int | None) -> list[RunRecord]:
     return ordered[:window_runs] if window_runs is not None else ordered
 
 
-def _score(scenario_hash: str, runs: list[RunRecord]) -> FlakyScenario:
-    """Tally one scenario's windowed runs into a classified, ranked entry."""
+def _score(scenario_hash: str, os: DeviceOS | None, runs: list[RunRecord]) -> FlakyScenario:
+    """Tally one scenario's windowed runs on one OS into a classified, ranked entry."""
     passed = sum(1 for r in runs if r.ok)
     failed = len(runs) - passed
     total = len(runs)
@@ -146,6 +171,7 @@ def _score(scenario_hash: str, runs: list[RunRecord]) -> FlakyScenario:
     return FlakyScenario(
         scenario_hash=scenario_hash,
         name=next((name for r in runs if (name := _scenario_name(r))), ""),
+        device_os=canonical_os(os),
         runs=total,
         passed=passed,
         failed=failed,
@@ -174,7 +200,10 @@ def records_from_manifests(manifests: Iterable[Mapping[str, object]]) -> list[Ru
     the runs' `manifest.json` to read. This reduces each manifest to the same shape — the run-level
     verdict, the `provenance.scenarioHash` grouping key, a representative scenario name, and the run
     id (as both the identity and, parsed, the `created_at` used for windowing) — so all three inputs
-    feed `rank_flakiness` identically. Read-only: it carries over recorded verdicts, deciding none.
+    feed `rank_flakiness` identically. That includes the run's device OS (BE-0358): the DB row carries
+    it as a column, and this fills the same field from the manifest's per-scenario `device_runtime`,
+    or these two callers would group every run under the unknown OS and keep the misclassification
+    while the other surfaces are fixed. Read-only: it carries over recorded verdicts, deciding none.
 
     Args:
         manifests: Parsed `manifest.json` mappings, in any order. A manifest with no run-level `ok`
@@ -197,6 +226,7 @@ def _record_from_manifest(manifest: Mapping[str, object]) -> RunRecord:
         for s in (scenarios if isinstance(scenarios, list) else [])
         if isinstance(s, Mapping) and (name := s.get("scenario"))
     ]
+    run_os = device_os.from_manifest(manifest)
     return RunRecord(
         id=run_id,
         org_id="",
@@ -205,6 +235,9 @@ def _record_from_manifest(manifest: Mapping[str, object]) -> RunRecord:
         created_at=parse_run_id_timestamp(run_id),
         summary={"scenarios": names},
         scenario_hash=scenario_hash if isinstance(scenario_hash, str) else None,
+        # "" — determined, no single OS — rather than None, which marks a row whose OS was never
+        # determined and which the hosted backfill is still free to repair (BE-0358).
+        device_runtime=run_os.label if run_os is not None else "",
     )
 
 
@@ -218,14 +251,16 @@ def render(report: FlakinessReport) -> str:
         body = ["no runs with a scenario fingerprint to rank"]
     else:
         body = [_render_scenario(s) for s in report.scenarios]
+    if unknown := sum(1 for s in report.scenarios if s.device_os is None):
+        body.append(unknown_os_note(unknown))
     if report.skipped:
         body.append(f"skipped {report.skipped} run(s) with no fingerprint or verdict")
     return "\n".join(body)
 
 
 def _render_scenario(s: FlakyScenario) -> str:
-    """One scenario's text block: its class, verdict tally, flip rate, and representative run ids."""
-    head = f"{s.name or s.scenario_hash}: {s.classification} "
+    """One scenario's text block: its OS, class, verdict tally, flip rate, and representative runs."""
+    head = f"{s.name or s.scenario_hash} on {device_os.describe(s.device_os)}: {s.classification} "
     head += f"({s.runs} runs · {s.passed} passed / {s.failed} failed · flip {s.flip_rate:.0%})"
     evidence = " · ".join(
         part
@@ -255,4 +290,15 @@ def render_html(report: FlakinessReport) -> str:
     passing and failing runs' evidence under the existing `/runs/<id>/...` mount. Read-only and
     AI-free: it displays the ranking, computing and gating nothing.
     """
-    return _env().get_template("flakiness.html.j2").render(report=report)
+    return (
+        _env()
+        .get_template("flakiness.html.j2")
+        .render(
+            report=report,
+            unknown_os=sum(1 for s in report.scenarios if s.device_os is None),
+            # Shared with the text form (and with `stats`) so every surface names an OS — and the
+            # unknown one — with the same words (BE-0358).
+            describe_os=device_os.describe,
+            unknown_os_note=unknown_os_note,
+        )
+    )

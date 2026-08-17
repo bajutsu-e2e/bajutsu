@@ -114,11 +114,16 @@ class RunRecord:
     ok: bool | None = None
     created_at: datetime | None = None
     summary: dict[str, Any] = field(default_factory=dict)
-    # Run provenance mirrored from the run's manifest.json (BE-0049 stamp), the grouping key for
-    # cross-run flakiness (BE-0220); None for a pre-provenance run.
+    # Run provenance mirrored from the run's manifest.json (BE-0049 stamp); with `device_runtime`
+    # below, the grouping key for cross-run flakiness (BE-0220). None for a pre-provenance run.
     scenario_hash: str | None = None
     tool_version: str | None = None
     git_revision: str | None = None
+    # The OS label every scenario in the run ran on (`"iOS 18.6"`), the other half of the flakiness
+    # grouping key (BE-0358). Three states: the label; `""` when the run was read but named no single
+    # OS (no device catalog, or scenarios spanning versions); None when it was never determined — a
+    # row recorded before this field existed, which the hosted panel backfills from its manifest.
+    device_runtime: str | None = None
     # Soft-delete marker (BE-0239): when set, the run is trashed — hidden from `list_runs` unless
     # `include_deleted`. None for a live run. `record_run` never writes these (a status update must
     # not resurrect or re-trash a run); only `soft_delete_run`/`restore_run` touch them.
@@ -387,6 +392,7 @@ def _to_record(row: Run) -> RunRecord:
         scenario_hash=row.scenario_hash,
         tool_version=row.tool_version,
         git_revision=row.git_revision,
+        device_runtime=row.device_runtime,
         deleted_at=row.deleted_at,
         deleted_by=row.deleted_by,
     )
@@ -425,6 +431,7 @@ class SqlRepository:
             "scenario_hash": run.scenario_hash,
             "tool_version": run.tool_version,
             "git_revision": run.git_revision,
+            "device_runtime": run.device_runtime,
         }
         if run.created_at is not None:
             fields["created_at"] = run.created_at

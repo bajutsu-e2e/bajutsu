@@ -96,6 +96,152 @@ hook step-for-step; every check except `actionlint` (a standalone binary CI inst
 identically on a fresh clone via `uv` alone, which is what makes "green locally" predict
 "green in CI".
 
+### What a failing E2E job collects (BE-0361, BE-0367)
+
+The hardest E2E failures are the ones where nothing crashes. On iOS the resident XCUITest runner —
+the XCTest host `bajutsu` spawns with `xcodebuild test-without-building` and drives over a loopback
+Hypertext Transfer Protocol (HTTP) channel — reports `Timed out while requesting screenshot`, ends
+its test method, and leaves the Python side to declare a mid-run crash. On Android the resident UI
+Automator server — the on-device process the adb backend reads the element tree from — stops
+answering, or the emulator's own renderer wedges, or the job runs out its `timeout-minutes`. No
+process died in any of those, so a crash-report sweep finds nothing, and the state that would say
+whether the device's render service wedged or the host starved it disappears before anyone opens the
+job.
+
+Both lanes answer that question the same way, in three layers split by what each one can see: inside
+`bajutsu`, because the running process is the one thing that knows *when* a stall happens; from CI
+about the device, which only something holding that device can read; and over time about the host,
+which only a sampler running alongside the job can record. Every artifact lands under
+`runs/diagnostics/`, which the jobs already upload. None of it reaches a verdict: the collection
+writes files and nothing else, and the deterministic assertions still decide pass/fail.
+
+One environment variable arms the first layer on both backends. `BAJUTSU_STALL_DIAGNOSTICS` names
+the directory captures are written into and deliberately carries no backend prefix, so a single
+operator setting turns the hook on for whichever backend a job drives. What a capture *reads* is
+per backend, because the two share no command — a Simulator answers to `simctl` and a macOS host to
+`vm_stat`, an emulator answers to `adb` and a Linux host to `top` — so each backend contributes its
+own set of probes to one shared capture, which owns everything else: the opt-in gate, a wall-clock
+budget per capture, a budget of two captures per trigger, and the summary each probe's outcome is
+written to. The budget is per *trigger* because the video warning fires on every scenario of these
+runners, green runs included, so the video warnings would spend a shared budget before the crash
+that the capture exists to explain ever arrived. Unset — which it is everywhere but these two
+lanes — the hook does nothing at all.
+
+#### The iOS lane
+
+Every iOS job that boots a Simulator except `codegen` collects the three layers into `runs/`;
+`codegen`'s sole artifact is its `.xcresult`, so the collection has no `runs/` directory to ride
+there.
+
+- **Inside `bajutsu`.** `BAJUTSU_XCUITEST_RESULT_BUNDLES` gives every runner spawn a
+  `-resultBundlePath`, so `runs/runner-logs/result-<udid>-<port>.xcresult` records what testmanagerd
+  itself saw — the precise XCTest failure and its timestamps — rather than the paraphrase the
+  captured stdout carries. The same argv pins `-collect-test-diagnostics never`: left at its
+  `on-failure` default, `xcodebuild` embeds a Simulator `system.logarchive` in the bundle, measured
+  at 163 MB for a single spawn, which is the whole-archive collection the targeted extracts below
+  exist to replace. The stall capture fires the moment the channel declares a mid-run crash or a
+  `recordVideo` produces no bytes, writing a timed `simctl` screenshot, `sample` output for the
+  rendering processes, and a `ps` / `vm_stat` snapshot into
+  `runs/diagnostics/stalls/stall-NN-<reason>-<pid>/`.
+- **From CI, about the Simulator and CoreSimulator**, through the
+  [`collect-ios-diagnostics`](../.github/actions/collect-ios-diagnostics/action.yml) composite action
+  every Simulator-driving job calls. Its cheap tier runs on every job: the tail of
+  `CoreSimulator.log`, the booted device's own CoreSimulator log directory, a crash-report sweep
+  widened past `.ips` / `.crash` to the hang, spin, and jetsam reports this failure class actually
+  leaves, and a host snapshot (`sw_vers`, `sysctl`, `xcodebuild -version`, `simctl list`) that keys
+  each red run against a runner image and hardware generation. Its heavy tier runs when the job's own
+  run step failed, and not otherwise: `xcrun simctl diagnose`, and two targeted unified-log extracts.
+- **Over time, about the host**, from the same action's `start` phase: a background sampler appends
+  `top`, `vm_stat`, and `memory_pressure` to `runs/diagnostics/host-telemetry.log` every 20 seconds,
+  and a one-shot render probe records how long a screenshot takes and whether a five-second
+  `recordVideo` produces any bytes at all. The sampler is an observer outside every run loop, so its
+  interval is a sampling cadence and not a wait a verdict depends on. It ranks `top`'s rows by
+  resident size rather than CPU, because `top -l 1` differences nothing and so reports every process
+  at 0.0% — sorting by CPU there sorts on a constant, and the first collection's rows never once
+  included the app under test.
+- **Before anything ran**, also from `start`: one bounded `ps aux` plus `vm_stat` land in
+  `runs/diagnostics/ps-baseline.txt`. The stall captures snapshot `ps` at a stall, which answers what
+  was resident when it broke and cannot answer whether that differed from normal — the first
+  collection had to settle that question from a launch-env argument instead of a measurement. Both
+  this and the render probe are written once per job, so the second `start` a job may make never
+  overwrites the pre-run reading with a mid-job one.
+
+We split the unified-log extract in two on purpose, and the reason is worth stating because the
+opposite is the natural assumption. The Simulator's guest processes that serve screenshots —
+`SpringBoard`, `backboardd`, and `testmanagerd` — do **not** write to the host's unified log.
+Measured on a booted device, a host-side `log show` filtered on those process names returns its
+header and nothing else. The guest's entries live in the device's own log store, so the action runs a
+second `log show` inside the guest through `simctl spawn`, and keeps the host-side extract for the
+CoreSimulator service processes that genuinely do log there. A single host-side extract would have
+produced an empty file — the same empty-by-construction artifact this collection replaced.
+
+#### The Android lane
+
+Every job that boots an Android Virtual Device (AVD) collects the same three layers, `uiautomator
+(codegen)` included. That job is where the collection matters most, not least: every path it uploads
+is produced by Gradle *running the generated test*, so a failure before that point — a wedged AVD
+boot, a codegen or build error, the job's own `timeout-minutes` — left `if-no-files-found: ignore`
+to drop the artifact silently, and a job that failed outside its own test uploaded nothing at all.
+Unlike the six `bajutsu run` jobs it runs no adb driver at test time, so the resident-read trigger
+cannot fire there; its Layer 1 hook is the host-side recorder
+([`screenrecord.py`](../demos/showcase/android/screenrecord.py)) confirming its recording is
+producing bytes, which is what a wedged renderer — this lane's known flake — fails to do.
+
+- **Inside `bajutsu`.** The stall capture fires at two moments, both narrow on purpose. The first is
+  the resident channel's hierarchy-read fallback, where the driver gives up on the channel and
+  degrades to the `uiautomator dump` subprocess for the rest of the lease — the point at which the
+  read channel is gone rather than momentarily noisy. The second is a check that the device-side
+  `screenrecord` is producing bytes rather than merely running, which separates a wedged renderer
+  from a recording that never started. Either moment writes a host `ps` and `top` snapshot,
+  `dumpsys SurfaceFlinger --latency`, and a `logcat` tail into
+  `runs/diagnostics/stalls/stall-NN-<reason>-<pid>/`. The actuation path is excluded deliberately:
+  two of the resident channel's own errors fire during perfectly healthy runs — an older server that
+  has no actuation endpoint, and a lost response the driver treats as having landed rather than
+  actuating twice — so capturing there would spend the per-trigger budget before a genuine stall
+  could use it.
+- **From CI, about the emulator**, through
+  [`scripts/collect_android_diagnostics.sh`](../scripts/collect_android_diagnostics.sh). This half is
+  a script rather than a composite action, and the constraint behind that is the sharpest way the
+  Android lane diverges from the iOS one. Every device-touching step in the lane runs *inside* a
+  `reactivecircus/android-emulator-runner` step, which boots the AVD, runs its `script:`, and kills
+  it when that step ends. An ordinary step placed after it — and a step-level `if: failure()` gate —
+  would therefore run with no device attached and collect nothing at all. So the sweep is invoked
+  from the tail of each job's own `script:` and keyed off the run command's own exit code, the same
+  shape the lane's `poll_cpuinfo` poller already uses to survive a failing run. Its cheap tier runs
+  on every job: a full-buffer `logcat -d` dump — which, unlike the per-scenario `deviceLog` interval
+  evidence, reads the device's own retained ring buffer and so still has something to show for a job
+  that failed before any scenario's capture began — plus `dumpsys meminfo`, `getprop`, and
+  `adb devices -l` for the environment snapshot that keys a red run against an API level and ABI.
+  Its heavy tier runs when the run itself failed, and not otherwise: `adb bugreport`, Android's own
+  comprehensive collector, and a rooted pull of `/data/tombstones` (native crash reports) and
+  `/data/anr/` (Application Not Responding (ANR) traces) — the two crash-report classes the iOS
+  sweep gets for free from the host's own diagnostic reports, but which live device-side here.
+  The sweep bounds itself as well as each command, for the same reason the in-process capture
+  carries a budget above its per-probe timeouts: on the wedged-device failure this exists to
+  document, every `adb` read hangs to its full ceiling, so per-command ceilings alone would let the
+  collection spend most of a job's `timeout-minutes` and turn a reportable failure into a cancelled
+  job holding a truncated collection. A read the deadline cuts off says so in its own file, since
+  "the budget ran out" and "this read found nothing" are different answers about the device.
+- **Over time, about the host**, from the
+  [`collect-android-diagnostics`](../.github/actions/collect-android-diagnostics/action.yml)
+  composite action, whose `start` phase before each job's emulator step launches a background
+  sampler appending `top` and `free` output to `runs/diagnostics/host-telemetry.log` about every 20
+  seconds, and whose `collect` phase after it stops the sampler. Reading only the Linux runner is
+  what lets this layer be a step at all, and bracketing the emulator step from outside is what lets
+  it cover a job whose emulator step died outright.
+
+The host sampler coexists with the lane's existing `poll_cpuinfo` input rather than replacing it,
+because the two measure different things from different sides: `poll_cpuinfo` reads the guest's view
+over adb, the sampler reads the host's own load. That difference is also why the sampler is always on
+where `poll_cpuinfo` is opt-in — a host-side sample every 20 seconds issues no adb traffic and
+samples a tenth as often, so it lacks the observer effect that keeps `poll_cpuinfo` off by default.
+
+The two lanes keep separate composite actions on purpose. `collect-ios-diagnostics` reads `simctl`,
+CoreSimulator, and the macOS unified log; `collect-android-diagnostics` reads the Linux host. The
+underlying tools share no surface, so a single action would be a branch on the backend rather than
+shared logic. What the two do share is the design — the cheap/heavy split, the `start` / `collect`
+telemetry phases — and, inside `bajutsu`, the capture itself.
+
 ## Running bajutsu in your app's CI
 
 > bajutsu is pre-release (unpublished). Until it is on PyPI, vendor it (a submodule or a
