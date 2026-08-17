@@ -298,10 +298,8 @@ def render(report: AuditReport) -> str:
 
 # --- repeat-and-diff: prove determinism dynamically (BE-0049) ---
 #
-# Run a scenario K times under identical preconditions and compare outcomes. Anything that varies
-# is reported as non-deterministic — a *finding to fix*, never a retry that turns red into green.
-# The audit never changes a verdict and never feeds the run/CI gate (the opposite of flakiness
-# tolerance / auto-retry, which hides instability).
+# Run a scenario K times under identical preconditions and report anything that varies as a
+# *finding to fix*. The audit never changes a verdict and never feeds the run/CI gate.
 
 
 @dataclass(frozen=True)

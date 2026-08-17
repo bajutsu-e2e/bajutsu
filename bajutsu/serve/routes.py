@@ -74,7 +74,7 @@ Handle = Callable[[ServeState, RequestCtx], tuple[Any, int]]
 
 @dataclass(frozen=True)
 class Route:
-    """One endpoint's declaration, shared by both backends.
+    """One endpoint's declaration, shared by both backends (BE-0253).
 
     Attributes:
         method: HTTP method — "GET", "POST", or "DELETE".

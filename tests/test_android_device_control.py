@@ -271,6 +271,6 @@ def test_device_is_preflight_clean_on_adb() -> None:
 def test_push_scenario_is_rejected_by_preflight_on_adb() -> None:
     # push.yaml is iOS-only: adb does not advertise `deviceControl.push`, so preflight fails the
     # scenario fast rather than letting the run reach a runtime UnsupportedAction. This is why the
-    # push flow is split out of the shared device.yaml (which stays runnable on Android).
+    # push flow is split out of the shared device.yaml (which stays runnable on Android) (BE-0007).
     reasons = capability_preflight.unsupported(_single(_PUSH), AdbDriver.CAPABILITIES)
     assert any("push" in r for r in reasons), reasons

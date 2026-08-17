@@ -2,7 +2,7 @@
 
 Split out from `gestures.py` so `scroll.py` can depend on it without `gestures.py` in turn needing to
 import from `scroll.py` — the cycle `gestures.py`'s own import of `scroll_until_tappable` would
-otherwise create.
+otherwise create (BE-0349).
 """
 
 from __future__ import annotations

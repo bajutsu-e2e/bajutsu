@@ -1377,7 +1377,8 @@ def test_catchup_dwell_close_sets_the_settled_key(
 ) -> None:
     # `_advance_catchup`'s projection-dwell closing a barrier is itself a two-observations-apart proof
     # of rest, so it earns `_settle`'s fast path exactly like `_settle`'s own poll would (this is what
-    # keeps `test_reads_the_runner_already_takes_close_the_barrier_for_free` free of extra polling).
+    # keeps `test_reads_the_runner_already_takes_close_the_barrier_for_free` free of extra polling)
+    # (BE-0351).
     clock = _Clock()
     monkeypatch.setattr(adb_driver_mod, "time", clock)
     run, _ = _capturing_run([FIXTURE, _scrolled(_SCROLLED_BY)])

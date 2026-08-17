@@ -129,7 +129,7 @@ def test_xcuitest_panel_reports_xcode_tools(tmp_path: Path) -> None:
 def test_current_screen_maps_probe_error_to_value_error(tmp_path: Path) -> None:
     # The serve adapter maps the probe's typed DoctorProbeError to its existing ValueError surface.
     # A baseUrl-less web target can't be resolved directly (the config gate rejects it), so resolve
-    # a valid one and null the baseUrl to reach the probe's defensive backstop.
+    # a valid one and null the baseUrl to reach the probe's defensive backstop (BE-0199).
     import dataclasses
 
     from bajutsu.config import WebConfig, load_config, resolve

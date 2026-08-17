@@ -49,7 +49,7 @@ class _HitResult(NamedTuple):
 
     `cover` / `rect` name the covering element the same way `base.raise_if_covered` names a cover on
     the other backends; both are `None` together on a hit, or when nothing rendered at the point at
-    all.
+    all (BE-0349).
     """
 
     ok: bool

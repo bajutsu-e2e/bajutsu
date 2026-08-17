@@ -480,16 +480,10 @@ def _step_artifacts(
     if not isinstance(sid, str) or not _valid_step_id(sid):
         return []
     # step id (parsed from each outcome's own recorded artifact paths) -> that step's artifacts, so
-    # the loop below resolves the real names the run recorded (BE-0341) instead of assuming the
-    # baseline is always `before.png`/`after.png` under fixed names — a capturePolicy rule can add
-    # or replace either. Keyed by the runtime step id, not the outcome's `index`: `index` is a
-    # counter across *all executed steps* including nested `if`/`forEach`/`web` steps, while the
-    # loop below counts only top-level YAML steps, so the two diverge as soon as the scenario has
-    # any nesting before this step. A named step's runtime id doesn't depend on either counter, so
-    # this keeps resolving to the right artifacts regardless of nesting; an unnamed step still falls
-    # back to `step{idx}` on both sides, the same positional ambiguity as before this rework. Skips
-    # a non-`dict` entry rather than raising, so a malformed/partially written manifest degrades to
-    # missing artifacts for that step instead of a 500.
+    # the loop below resolves the real names the run recorded (BE-0341) rather than assuming fixed
+    # `before.png`/`after.png`. Keyed by the runtime step id, not the outcome's `index`, which
+    # counts nested `if`/`forEach`/`web` steps the loop below does not. Skips a non-`dict` entry
+    # rather than raising, so a malformed manifest degrades to missing artifacts, not a 500.
     steps = (scenario or {}).get("steps")
     artifacts_by_step_id: dict[str, list[dict[str, Any]]] = {}
     for out in steps if isinstance(steps, list) else []:
@@ -505,7 +499,7 @@ def _step_artifacts(
         # the search. `_valid_step_id`, not a bare `"/" in name` check: a traversal-shaped name
         # (e.g. `../../../run2/...`) would otherwise become the key itself, hiding every other,
         # legitimate artifact recorded for this same step under a key no real `step_id` ever
-        # matches.
+        # matches (BE-0341).
         dict_artifacts = [a for a in step_artifacts if isinstance(a, dict)]
         name = next(
             (

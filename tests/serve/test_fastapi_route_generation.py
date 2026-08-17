@@ -55,7 +55,7 @@ def _exposed(app: object) -> set[tuple[str, str]]:
 def test_fastapi_app_exposes_every_non_local_only_registry_route(tmp_path: Path) -> None:
     # The generated (uniform/text) routes and the bespoke off_loop ones together must cover every
     # non-local_only entry in ROUTES. A route added to the registry without a FastAPI counterpart
-    # (a generated handle, or a bespoke off_loop handler for handle=None) fails here.
+    # (a generated handle, or a bespoke off_loop handler for handle=None) fails here (BE-0253).
     exposed = _exposed(make_app(_state(tmp_path)))
     missing = [
         (r.method, r.path) for r in ROUTES if not r.local_only and (r.method, r.path) not in exposed

@@ -3,7 +3,7 @@
 The request matcher (`match_request` / `count_matching`) is shared beyond assertions — the web
 mock router and the `until: {request}` wait both depend on it — so a mock stubs exactly what an
 assertion would match. `_assign_requests` is the one-to-one bipartite assignment that keeps a
-broad `request` matcher from stealing the only exchange a more specific one needs.
+broad `request` matcher from stealing the only exchange a more specific one needs (BE-0250).
 """
 
 from __future__ import annotations

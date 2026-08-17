@@ -112,7 +112,7 @@ def _locate_config_or_heal(dest: Path) -> tuple[Any, int]:
     `materialize_bundle` never deletes a directory once it exists, since another bind (this org, this
     replica or another) may already depend on it, and this rare branch is no exception — an operator
     inspects/clears the entry rather than a caller silently pulling it out from under a possible
-    concurrent user."""
+    concurrent user (BE-0268)."""
     config_path = find_bundle_config(dest)
     if config_path is None:
         return {"error": "cached bundle is missing its config (try re-uploading)"}, 500

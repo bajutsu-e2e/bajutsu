@@ -26,7 +26,8 @@ from bajutsu.platform_lifecycle.protocols import (
 
 # Only `_await_ready` still needs the flat re-export path: `runner/launch.py` reaches it via
 # `from bajutsu.platform_lifecycle import _await_ready`. The other private names (`_DeviceEnvironment`,
-# `_await_boot`, `_web_relauncher`) are reached only through their submodules, so they stay there.
+# `_await_boot`, `_web_relauncher`) are reached only through their submodules, so they stay there
+# (BE-0256).
 from bajutsu.platform_lifecycle.readiness import _await_ready
 from bajutsu.platform_lifecycle.relaunchers import device_relauncher
 
