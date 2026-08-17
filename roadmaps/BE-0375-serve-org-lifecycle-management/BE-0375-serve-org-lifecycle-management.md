@@ -242,6 +242,18 @@ is what keeps that later step from having to re-decide who owns a name — the s
 project registry already uses for a project, whose `add` and `get` are keyed by `(org_id, name)`
 ([`bajutsu/serve/project_registry.py`](../../bajutsu/serve/project_registry.py)).
 
+The `orgs:` block decides ownership only for the configuration the operator **launched** the server
+with. A configuration bound through the API — an uploaded bundle, a composed triple, or a Git source
+— is bound *as* an org (`Upload.org` already records which, and the bundle already lives under that
+org's own cache prefix), so every target it declares belongs to that org and to no other, and its
+`orgs:` block is not read at all. Leaving that block authoritative would have been the same trust
+problem this item already refused for membership, one layer over: a file the deployment does not
+control deciding what a tenant may reach. It also failed silently in practice — a bundle uploaded by
+one org whose `orgs:` claimed its only target for another left the uploader with an empty target
+list and no signal, since `targets_for_org` then handed them only the targets nobody claimed. One
+`ServeState.targets_for` answers this for all three readers (the target list, the cross-org guard,
+and the per-org scenario store), so a fourth cannot answer it differently.
+
 That same `orgs.get(org) is None` branch decides what an org created through unit 5's API owns, and
 the answer is nothing: such an org has no `orgs:` entry by construction, so `targets_for_org`
 returns an empty list for it until someone adds one. This item accepts that rather than closing it,
@@ -493,7 +505,11 @@ database is exactly the piece that makes an empty `orgs` table recoverable.
       a database error instead of failing closed to an empty mapping, WARNING keys on a table in
       which no row declares membership yet, and the `parsed is None` org-recovery guard is removed
       rather than translated.
-- [x] 4 — Resolve target ownership per org rather than per name: `_target_forbidden` asks whether
+- [x] 4 — Resolve target ownership per org rather than per name; let an API-bound configuration's
+      `orgs:` block decide nothing, since such a bind is made *as* an org and that org owns every
+      target the file declares, answered for every reader by one `ServeState.targets_for`; and
+      record the slug-order tie-break as a third, narrower conversion-time change.
+      `_target_forbidden` asks whether
       the target is in this org's own `targets_for_org` list, leaving `org_for_target` with no
       caller (through `targets_for_org`, so `default` keeps the unclaimed targets its literal-slug
       fallback gives it), so two orgs

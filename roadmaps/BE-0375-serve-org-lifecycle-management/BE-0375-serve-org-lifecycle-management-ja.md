@@ -251,6 +251,19 @@ GitHub organization を挙げているデプロイでは、この解決先が移
 本当の答えは、複数の org に属する login が、そのどれとして振る舞うかを選べるようにすることです。それには
 `users.org_id` が単一の列であることをやめる必要があり、別の項目になります。
 
+`orgs:` ブロックが所有を決めるのは、operator がサーバを**起動したときの** config に対してだけです。
+API 経由で bind した config――アップロードした bundle、compose した組、Git ソース――は、ある org
+**として** bind されます（`Upload.org` がすでにどの org かを記録しており、bundle 自体もその org 専用の
+キャッシュ prefix の下に置かれます）。したがって、そこで宣言されている target はすべてその org のもので
+あり、ほかのどの org のものでもなく、`orgs:` ブロックは読みません。このブロックに権限を残すことは、この
+項目がメンバーシップについてすでに拒否した信頼の問題を、一段上で繰り返すことになります。デプロイが管理
+していないファイルが、テナントの手の届く範囲を決めてしまうからです。実際にも黙って失敗していました。
+ある org がアップロードした bundle の `orgs:` が、唯一の target を別の org のものだと主張していると、
+`targets_for_org` はその人に「誰も主張していない target」だけを返すので、一覧は空になり、信号は何も
+出ませんでした。この問いには `ServeState.targets_for` が1つで答え、3つの読み手（target の一覧、org
+跨ぎのガード、org ごとの scenario ストア）がすべてそれを通るので、4つ目が別の答えを返すことは
+ありません。
+
 先に*同一性*を `(org, target)` にしておけば、その次の一歩で「その名前を誰が所有するのか」を決め直さずに済みます。
 これは BE-0225 の project registry が project にすでに使っている鍵と同じです。その `add` と
 `get` は `(org_id, name)` を鍵にしています
@@ -512,7 +525,10 @@ admin がユニット5の API で作ったものです。
       `orgs_from_db` は空のマッピングへフェイルクローズせずデータベースのエラーを伝播させ、
       WARNING はどの行もまだメンバーシップを宣言していない場合を基準にし、`parsed is None` を
       条件とする org の回復ガードは翻訳せずに取り除く。
-- [x] 4 — target の所有を、名前単位ではなく org 単位で解決する。`_target_forbidden` は、その org
+- [x] 4 — target の所有を、名前単位ではなく org 単位で解決する。API 経由で bind した config の
+      `orgs:` ブロックには何も決めさせない。その bind はある org として行われ、その org がファイル
+      の宣言するすべての target を所有するからで、この問いには `ServeState.targets_for` が1つで
+      答える。`_target_forbidden` は、その org
       自身の `targets_for_org` の一覧にその target が含まれるかを問う。`org_for_target` は呼び出し元
       を失う。問いは `targets_for_org` を経由させ、`default` がリテラルの slug によるフォールバック
       で得ている未主張の target を失わないようにする。これにより、2つの org がそれぞれ同じ名前の

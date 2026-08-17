@@ -90,13 +90,30 @@ def org_for_identity(orgs: dict[str, OrgConfig], login: str, github_orgs: list[s
     )
 
 
-def targets_for_org(orgs: dict[str, OrgConfig], targets: Iterable[str], org: str) -> list[str]:
+def targets_for_org(
+    orgs: dict[str, OrgConfig],
+    targets: Iterable[str],
+    org: str,
+    *,
+    bound_by: str | None = None,
+) -> list[str]:
     """The targets belonging to *org*, restricted to *targets* actually declared under `targets:`.
 
     An org that lists an undeclared target name doesn't conjure a runnable target. For `default`,
     that's every declared target no org claims.
+
+    *bound_by* names the org that bound this configuration through the API — an uploaded bundle, a
+    composed triple, or a Git source (BE-0375). The `orgs:` block is then not consulted at all: the
+    bundle was uploaded *as* that org, so every target it declares is that org's and no other org's.
+    Reading ownership out of a file the deployment does not control is the same trust problem this
+    item already refused for membership, and it fails silently — an entry claiming a target for an
+    org the reader is not in leaves them a target list that is simply empty, with nothing said. The
+    launch configuration passes None and keeps the `orgs:`-declared ownership, which is the
+    multi-tenant deployment shape an operator writes by hand.
     """
     declared = list(targets)
+    if bound_by is not None:
+        return declared if org == bound_by else []
     if org == DEFAULT_ORG:
         claimed = {a for oc in orgs.values() for a in oc.targets}
         return [a for a in declared if a not in claimed]

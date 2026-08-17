@@ -309,6 +309,99 @@ def test_an_org_literally_named_default_owns_nothing_it_declares(
     assert [t["name"] for t in ops.list_targets_payload(state, actor=None)[0]] == ["spare"]
 
 
+def test_an_uploaded_bundle_belongs_to_the_org_that_bound_it(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # The failure this closes, reported from a real deployment: a bundle uploaded as `sansaninc`
+    # whose `orgs:` claims its one target for `sansaninc` left the uploader with an *empty* target
+    # list, because the reader's own org was not the one the file named and `targets_for_org` then
+    # gave them the targets nobody claimed — none. The bundle was uploaded *as* an org; that is who
+    # owns it, and the file's `orgs:` block decides nothing (BE-0375).
+    import hashlib
+    import io
+    import zipfile
+
+    body = (
+        "targets:\n  docs: { baseUrl: 'https://example.test/', backend: [web] }\n"
+        "orgs:\n  sansaninc:\n    githubOrgs: [sansaninc]\n    targets: [docs]\n"
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("bajutsu.config.yaml", body)
+    blob = buf.getvalue()
+    zip_path = tmp_path / "bundle.zip"
+    zip_path.write_bytes(blob)
+
+    state = _state(serve_engine, tmp_path, uploads_dir=tmp_path / "uploads")
+    assert state.repository is not None
+    state.repository.upsert_user("kazu", org_id="acme", github_login="kazu", email="k@x")
+    _, status = ops.bind_upload_config(
+        state, zip_path, "bundle.zip", sha256=hashlib.sha256(blob).hexdigest(), actor="kazu"
+    )
+    assert status == 200
+    # `acme` bound it, so `acme` owns its target — even though the file names `sansaninc`.
+    assert state.config_org == "acme"
+    assert state.targets_for("acme") == ["docs"]
+    assert [t["name"] for t in ops.list_targets_payload(state, actor="kazu")[0]] == ["docs"]
+    # And nobody else does, including the org the file claims it for and the fallback.
+    assert state.targets_for("sansaninc") == []
+    assert state.targets_for("default") == []
+    assert _target_forbidden(state, "globex", "docs") is True
+
+
+def test_a_git_bound_config_belongs_to_the_org_that_bound_it(
+    serve_engine: Callable[..., Engine], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Same rule for a Git source: an arbitrary repository and ref is no more the deployment's own
+    # content than an uploaded zip, and BE-0121 already says so of the same file's `build:`.
+    import bajutsu.serve.operations.config as config_ops
+    from bajutsu.config_source import Materialized
+
+    state = _state(serve_engine, tmp_path)
+    assert state.repository is not None
+    state.repository.upsert_user("kazu", org_id="acme", github_login="kazu", email="k@x")
+    checkout = tmp_path / "gitsrc"
+    checkout.mkdir()
+    git_config = checkout / "bajutsu.config.yaml"
+    git_config.write_text(
+        "targets:\n  docs: { baseUrl: 'https://example.test/', backend: [web] }\n"
+        "orgs:\n  someone-else:\n    targets: [docs]\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        config_ops, "materialize", lambda spec, **kw: Materialized(git_config, checkout, "sha")
+    )
+    assert ops.bind_git_config(state, "github:acme/repo@main", actor="kazu")[1] == 200
+    assert state.config_org == "acme"
+    assert state.targets_for("acme") == ["docs"]
+    assert state.targets_for("someone-else") == []
+
+
+def test_the_launch_config_still_partitions_targets_by_its_orgs_block(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # The operator's own launch configuration is unchanged: it is the multi-tenant deployment shape
+    # BE-0015 defines, written by hand, so its `orgs:` block keeps deciding who owns what.
+    state = _state(serve_engine, tmp_path)
+    assert state.config_org is None
+    assert state.targets_for("acme") == ["checkout"]
+    assert state.targets_for("globex") == ["checkout"]  # both claim it (BE-0375 unit 4)
+    assert state.targets_for("default") == ["spare"]  # the one neither claims
+
+
+def test_rebinding_the_launch_config_drops_the_previous_owner(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # `release_upload` clears the owner so a bind that does not set one cannot inherit the last
+    # bind's org — the same "a forgotten call must fail safe, not silently persist" shape the seed
+    # call sites were bitten by twice.
+    state = _state(serve_engine, tmp_path, root=tmp_path)
+    state.config_org = "acme"
+    (tmp_path / "next.config.yaml").write_text(_COLLIDING_YAML, encoding="utf-8")
+    assert ops.bind_config(state, "next.config.yaml")[1] == 200
+    assert state.config_org is None
+
+
 # --- unit 5: the admin API ---------------------------------------------------------------------
 
 

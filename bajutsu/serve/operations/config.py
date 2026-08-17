@@ -659,7 +659,9 @@ def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
     return {"ok": True, "config": str(target), "targets": list_targets(target)}, 200
 
 
-def bind_git_config(state: ServeState, spec_str: str) -> tuple[Any, int]:
+def bind_git_config(
+    state: ServeState, spec_str: str, *, actor: str | None = None
+) -> tuple[Any, int]:
     """Bind a config from a Git source chosen in the UI (the "from Git" picker, BE-0063).
 
     *spec_str* is a `github:owner/repo@ref:path` (or `git+https://…`) string. We materialize the
@@ -702,6 +704,10 @@ def bind_git_config(state: ServeState, spec_str: str) -> tuple[Any, int]:
     # A Git config bound here came in over the API, not from the operator's startup flags, so its
     # `build:` command is untrusted and stays ungoverned until --allow-remote-build opts in (BE-0121).
     state.git_config_from_api = True
+    # A Git-sourced config is bound *as* the acting org, and its content is not this deployment's
+    # (the `build:` trust note above says as much), so that org owns every target it declares and
+    # its `orgs:` block partitions nothing (BE-0375).
+    state.config_org = state.org_of(actor)
     return {
         "ok": True,
         "config": str(mat.config_path),

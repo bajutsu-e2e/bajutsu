@@ -69,7 +69,7 @@ from bajutsu.serve.operations.config import (
     restore_persisted_provider_settings,
     seed_orgs_from_bound_config,
 )
-from bajutsu.serve.orgs import DEFAULT_ORG, targets_for_org
+from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.project_registry import LocalProjectRegistry, SqlProjectRegistry
 from bajutsu.serve.provider_store import LocalProviderSettingsStore
 from bajutsu.serve.scenarios import (
@@ -117,6 +117,7 @@ __all__ = [
     "list_scenarios",
     "list_simulators",
     "list_targets",
+    "load_serve_config_file",
     "make_server",
     "mask_secret",
     "parse_byte_range",
@@ -534,8 +535,7 @@ def _build_server_state(
     # the targets that org owns. The scenario targets are read from the live config, so a config
     # opened later is reflected.
     def _org_apps(org: str) -> list[str]:
-        parsed = load_serve_config_file(state.config)
-        return targets_for_org(parsed[1], parsed[0].targets, org) if parsed is not None else []
+        return state.targets_for(org)
 
     def make_bundle(org: str) -> StoreBundle:
         base = org_prefix(prefix, org)

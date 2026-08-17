@@ -370,7 +370,15 @@ such a deployment. Paring an entry down before that first boot is safe too, sinc
 yours to get wrong: an entry declaring only `targets` is skipped rather than copied, so it never
 locks an org at "admits nobody".
 Two orgs may each claim a target of the same name, and each is authorized for it; under a single
-bound configuration they share the one `targets:` definition that name resolves to. A deployment
+bound configuration they share the one `targets:` definition that name resolves to.
+
+**A configuration bound through the API — an uploaded bundle, a composed triple, or a Git source —
+has its `orgs:` block ignored for target ownership entirely.** It was bound *as* an org, so every
+target it declares belongs to that org and to no other, whatever the block says. Reading ownership
+out of a file the deployment does not control is the same trust problem that keeps such a file from
+seeding membership, and it failed quietly: a bundle whose `orgs:` claimed its only target for an org
+you are not in left you with an empty target list and nothing explaining why. Leave `orgs:` out of
+an uploaded bundle — it decides nothing there. A deployment
 with no database keeps reading every field from this file, none of the above applying to it.
 
 ## Selecting from the CLI

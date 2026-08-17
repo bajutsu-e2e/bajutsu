@@ -23,7 +23,6 @@ from bajutsu.serve.orgs import (
     identity_matches_org,
     org_for_identity,
     orgs_from_db,
-    targets_for_org,
 )
 from bajutsu.serve.state import ServeState
 
@@ -342,7 +341,7 @@ def _target_forbidden(state: ServeState, org: str, target: str) -> bool:
     parsed = load_serve_config_file(state.config)
     if parsed is None or target not in parsed[0].targets:
         return False
-    return target not in targets_for_org(parsed[1], parsed[0].targets, org)
+    return target not in state.targets_for(org)
 
 
 def _record_audit(

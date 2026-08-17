@@ -297,7 +297,7 @@ ROUTES: tuple[Route, ...] = (
         # A `git` key selects the from-Git picker (BE-0063); `path` the local browser. Key presence
         # (not truthiness) routes, so an empty `git` still reaches the Git binder's 400.
         lambda state, ctx: (
-            ops.bind_git_config(state, str(ctx.body().get("git") or ""))
+            ops.bind_git_config(state, str(ctx.body().get("git") or ""), actor=ctx.actor())
             if "git" in ctx.body()
             else ops.bind_config(state, str(ctx.body().get("path", "") or ""))
         ),
