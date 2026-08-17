@@ -1488,3 +1488,45 @@ def test_system_alert_labels_returns_empty_when_no_alert_is_up() -> None:
     # An empty `/systemAlert/query` (no alert, or a caught proxy-in-flux query) reads as no labels,
     # which the reactive guard treats as "no alert this poll" and re-checks next interval (BE-0315).
     assert _driver(lambda m, p, b: _elements()).system_alert_labels() == []
+
+
+# --- setPickerValue: the value-not-found status branch (BE-0356) ---
+
+
+def test_set_picker_value_posts_the_handle_and_the_value() -> None:
+    sent: list[tuple[str, dict[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        sent.append((path, body))
+        if path == "/elements":
+            return _elements(_el_wire("h-wheel", "form.school", None, "高校", ["pickerWheel"]))
+        return _Reply(status="ok")
+
+    _driver(transport).set_picker_value({"id": "form.school"}, "大学")
+    assert ("/setPickerValue", {"handle": "h-wheel", "value": "大学"}) in sent
+
+
+def test_set_picker_value_raises_element_not_found_naming_the_absent_value() -> None:
+    # The runner resolved and adjusted a live wheel that never showed the value, so it answers with
+    # its own status rather than `not-found` — whose "no actuatable element" message names the
+    # selector and would misreport a perfectly resolved wheel. A SelectorError, so the run loop's
+    # existing selector-failure handling covers it (the `select_option` precedent).
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_el_wire("h-wheel", "form.school", None, "高校", ["pickerWheel"]))
+        return _Reply(status="value-not-found")
+
+    with pytest.raises(base.ElementNotFound, match="picker wheel has no value '大学院'"):
+        _driver(transport).set_picker_value({"id": "form.school"}, "大学院")
+
+
+def test_set_picker_value_reports_an_unknown_status_as_a_channel_error() -> None:
+    # The catch-all still stands behind the new branch: an unrecognized status is a runner failure,
+    # not a test outcome, so it must not be masked as a selector failure.
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_el_wire("h-wheel", "form.school", None, "高校", ["pickerWheel"]))
+        return _Reply(status="error")
+
+    with pytest.raises(XcuitestChannelError):
+        _driver(transport).set_picker_value({"id": "form.school"}, "大学")

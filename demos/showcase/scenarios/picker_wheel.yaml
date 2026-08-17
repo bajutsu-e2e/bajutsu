@@ -10,12 +10,19 @@
 # PickerView), mirroring the SHOWCASE_GESTURES affordance: both wheels are then always in the
 # accessibility tree, so the run never depends on XCUITest's unreliable swipe-to-scroll.
 #
-# The `UIDatePicker` is the multi-component case. Its year and month are two sibling `pickerWheel`
-# children with no identifier of their own, so each is addressed by the `within` / `traits` / `index`
-# fields every selector already carries — one step per component, rather than a second addressing
-# mechanism of `setPickerValue`'s own. Each assertion reads the app's own mirrored value, not the
-# wheel's, so it proves the app saw the selection; `form.birthdate.value` is `YYYY-MM` rather than
-# the wheels' localized row labels, which would tie the assertion to the pinned system language.
+# The `UIDatePicker` is the multi-component case. Under `.date`, it lays out three sibling
+# `pickerWheel` children, none carrying an identifier of its own, so each is addressed by the
+# `within` / `traits` / `index` fields every selector already carries — one step per component,
+# rather than a second addressing mechanism of `setPickerValue`'s own. Only two of the three are set
+# here; the day wheel between them is left alone, which is itself the point that `index` picks out
+# one component rather than the picker as a whole.
+#
+# Both the wheel *order* and the row *labels* follow the locale the run pins. Nothing here overrides
+# it, so it is the config default `en_US` (`Defaults.locale`), under which the wheels read
+# month | day | year in English — hence `index: 0` / `"May"` and `index: 2` / `"2016"`. Do not
+# translate these values without also changing the scenario's `locale`: they name rows iOS renders,
+# not strings the app owns. `form.birthdate.value` is deliberately `YYYY-MM` instead, so the
+# assertion reads a projection the app controls rather than a localized label.
 - name: setPickerValue moves a single-component wheel to an exact value
   tags: [swiftui]
   preconditions:
@@ -41,10 +48,10 @@
         - value: { sel: { id: form.birthdate.value }, equals: "2015-04" }
     - setPickerValue:
         sel: { within: { id: form.birthdate }, traits: [pickerWheel], index: 0 }
-        value: "2016年"
+        value: "May"
       capture: [rawTree]
     - setPickerValue:
-        sel: { within: { id: form.birthdate }, traits: [pickerWheel], index: 1 }
-        value: "5月"
+        sel: { within: { id: form.birthdate }, traits: [pickerWheel], index: 2 }
+        value: "2016"
   expect:
     - value: { sel: { id: form.birthdate.value }, equals: "2016-05" }

@@ -12,9 +12,11 @@ import SwiftUI
 struct PickerView: View {
     // The single-component case: a plain `UIPickerView`, addressed by its own identifier.
     @State private var school = "高校"
-    // The multi-component case: a wheel-mode `UIDatePicker` lays year and month out as two sibling
-    // `pickerWheel` children, neither carrying an identifier of its own — exactly the shape
-    // `within` + `traits` + `index` addressing exists for.
+    // The multi-component case: a wheel-mode `UIDatePicker` lays its components out as sibling
+    // `pickerWheel` children, none carrying an identifier of its own — exactly the shape
+    // `within` + `traits` + `index` addressing exists for. Both how many components there are and
+    // how they are ordered follow the locale the run pins (month | day | year under the `en_US`
+    // default), so the scenario names rows by index rather than assuming a fixed layout.
     @State private var birthdate = PickerView.fixedBirthdate
 
     private static let schools = ["中学", "高校", "大学", "大学院"]
@@ -61,8 +63,10 @@ struct PickerView: View {
     }
 
     /// The selected year and month as `YYYY-MM`, the stable projection the run asserts on. The
-    /// wheels' own row labels are localized (`2016年` / `4月` under a Japanese locale), so mirroring
-    /// them verbatim would tie the assertion to the language the run pins the Simulator to.
+    /// wheels' own row labels are whatever the pinned locale renders (`May` / `2016` under `en_US`),
+    /// so mirroring them verbatim would tie the assertion to that locale as well as to the
+    /// selection. The scenario still has to name those labels to *set* a wheel — it has nothing else
+    /// to name a row by — but it reads the result back from here instead.
     private static func yearMonth(_ date: Date) -> String {
         let parts = Calendar(identifier: .gregorian).dateComponents([.year, .month], from: date)
         return String(format: "%04d-%02d", parts.year ?? 0, parts.month ?? 0)

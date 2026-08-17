@@ -205,8 +205,10 @@ final class XcuitestElementProvider: ElementProviding {
     }
 
     /// The most times `setPickerValue` re-reads the wheel before calling the value absent. A wheel
-    /// decelerating through rows needs more than one look; each read is a real query, so this bounds
-    /// observations rather than standing in for a sleep (BE-0356).
+    /// decelerating through rows needs more than one look, and `settlesTo` spends two of these
+    /// confirming the value holds, so the cap leaves room for a few passing rows before the run that
+    /// counts. Each read is a real query, so this bounds observations rather than standing in for a
+    /// sleep (BE-0356).
     private static let maxPickerValueSamples = 5
 
     func querySystemAlertButtons() -> [ElementSnapshot] {

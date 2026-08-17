@@ -234,7 +234,7 @@ the Japanese mirror. `docs/drivers.md`'s capability table gains a `pickerWheel` 
 - [x] codegen: xcuitest emitter case
 - [x] Docs: `docs/scenarios.md`, `docs/drivers.md`, `docs/selectors.md` (both languages)
 - [x] Tests: value found, value absent (`ElementNotFound`), missing-capability preflight failure,
-      the multi-component (year/month) case
+      the multi-component (year/month) case, the `PICKER_WHEEL` case in `tests/driver_conformance.py`
 
 ## References
 

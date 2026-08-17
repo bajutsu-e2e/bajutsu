@@ -82,24 +82,38 @@ final class GestureRetryTests: XCTestCase {
 
     // MARK: - settlesTo (the setPickerValue read-back, BE-0356)
 
-    func testSettlesToReturnsTrueOnTheFirstMatchingSample() {
+    func testSettlesToConfirmsAValueAlreadyAtRest() {
         var reads = 0
         let landed = settlesTo("大学", maxSamples: 5, sample: { reads += 1; return "大学" })
         XCTAssertTrue(landed)
-        XCTAssertEqual(reads, 1, "a value already showing costs exactly one read")
+        XCTAssertEqual(reads, 2, "a wheel already at rest costs one confirming read beyond the first")
     }
 
     func testSettlesToKeepsSamplingWhileTheWheelIsStillSettling() {
-        // A decelerating wheel reports the rows it passes before it stops, so a single read would
+        // A decelerating wheel reports the rows it passes before it stops, so an early read would
         // call a value the wheel does have absent.
         var reads = 0
-        let rows = ["中学", "高校", "大学"]
+        let rows = ["中学", "高校", "大学", "大学"]
         let landed = settlesTo("大学", maxSamples: 5, sample: {
             defer { reads += 1 }
             return rows[min(reads, rows.count - 1)]
         })
         XCTAssertTrue(landed)
-        XCTAssertEqual(reads, 3)
+        XCTAssertEqual(reads, 4)
+    }
+
+    func testSettlesToRejectsAValueTheWheelOnlyPassedThrough() {
+        // The failure the two-consecutive-sample rule exists for: the wheel sweeps through the
+        // wanted row and rests one past it. A first-match rule would report a landing, leaving the
+        // step green with the wheel on the wrong row — the silent approximate outcome the
+        // determinism directive rules out.
+        var reads = 0
+        let rows = ["中学", "大学", "大学院", "大学院", "大学院"]
+        let landed = settlesTo("大学", maxSamples: 5, sample: {
+            defer { reads += 1 }
+            return rows[min(reads, rows.count - 1)]
+        })
+        XCTAssertFalse(landed)
     }
 
     func testSettlesToReportsAValueTheWheelNeverShows() {
@@ -109,22 +123,26 @@ final class GestureRetryTests: XCTestCase {
         XCTAssertEqual(reads, 4, "an absent value costs the cap and then fails loudly")
     }
 
-    func testSettlesToTreatsAnUnreadableSampleAsNotMatching() {
+    func testSettlesToTreatsAnUnreadableSampleAsBreakingTheRun() {
         // nil means *couldn't observe*, never *matched* — the same rule actuateUntilStateChanges
-        // follows, so a transiently failed read keeps sampling instead of deciding early.
+        // follows. A value that could not be read has not been shown to be holding, so it restarts
+        // the run rather than counting toward it.
         var reads = 0
-        let landed = settlesTo("大学", maxSamples: 3, sample: {
+        let rows: [String?] = ["大学", nil, "大学", "大学"]
+        let landed = settlesTo("大学", maxSamples: 5, sample: {
             defer { reads += 1 }
-            return reads < 2 ? nil : "大学"
+            return rows[min(reads, rows.count - 1)]
         })
         XCTAssertTrue(landed)
-        XCTAssertEqual(reads, 3)
+        XCTAssertEqual(reads, 4, "the nil broke the first run, so the match had to be re-established")
     }
 
-    func testSettlesToAlwaysReadsAtLeastOnce() {
+    func testSettlesToAlwaysReadsEnoughToConfirmARun() {
+        // The cap clamps to two, not one: a lower cap could never satisfy the two-sample rule and
+        // would report every landing as absent.
         var reads = 0
         let landed = settlesTo("大学", maxSamples: 0, sample: { reads += 1; return "大学" })
         XCTAssertTrue(landed)
-        XCTAssertEqual(reads, 1)
+        XCTAssertEqual(reads, 2)
     }
 }

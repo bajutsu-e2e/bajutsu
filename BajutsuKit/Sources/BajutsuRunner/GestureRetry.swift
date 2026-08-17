@@ -54,39 +54,50 @@ public func actuateUntilStateChanges(
     }
 }
 
-/// Re-read a projection of observable state until it equals `wanted`, to a bounded sample count.
+/// Read a projection of observable state until it holds at `wanted` on two consecutive samples.
 ///
 /// The read-back half of a set-a-value actuation, where the platform reports nothing: XCUITest's
 /// `adjust(toPickerWheelValue:)` returns `Void`, never throws, and records a value it could not
 /// reach as a soft `XCTIssue` the resident runner's `continueAfterFailure` swallows (BE-0356). The
 /// only way to know whether the value landed is to look.
 ///
-/// One read is not enough — a wheel still settling its deceleration reports the row it is passing,
-/// so a single sample would call a value the wheel does have "not found". Sampling to a cap closes
-/// that without a fixed sleep, which prime directive 2 rules out: each sample is a real query whose
-/// own round trip is the only pacing, so the bound is a number of observations rather than a guessed
-/// duration. A wheel that genuinely has no such row costs exactly `maxSamples` reads and then fails
-/// loudly, rather than looping or passing on a best-effort landing.
+/// One read is not enough, in both directions. A wheel still settling its deceleration reports the
+/// rows it passes, so a single early read would call a value the wheel does have absent — and, for
+/// the same reason, a single read that happens to catch the wheel *passing through* the wanted row
+/// on its way to resting one row past it would call a value that never landed present. The second
+/// error is the dangerous one: it reports success for a wheel left on the wrong row, which is
+/// exactly the silent, approximate outcome prime directive 2 exists to rule out. Requiring the
+/// value to survive a second consecutive read costs one extra query in the common case (the wheel
+/// is already at rest) and rejects a value merely passed through.
+///
+/// Sampling bounds the wait without a fixed sleep, which prime directive 2 also rules out: each
+/// sample is a real query whose own round trip is the only pacing, so the bound is a number of
+/// observations rather than a guessed duration. A wheel that genuinely has no such row costs
+/// exactly `maxSamples` reads and then fails loudly, rather than looping or passing on a
+/// best-effort landing.
 ///
 /// A `nil` sample means *couldn't observe*, never *matched* — the same rule
 /// `actuateUntilStateChanges` follows, so a transiently failed read keeps sampling instead of
-/// reading as a mismatch and deciding early.
+/// deciding early. It also breaks a run of matches, since a value that could not be read has not
+/// been shown to be holding.
 ///
 /// Unlike `actuateUntilStateChanges` this actuates nothing and reports its outcome: the caller needs
 /// to distinguish "landed" from "hit the cap" in order to answer the driver at all.
 ///
 /// - Parameters:
-///   - wanted: The value the state must reach.
-///   - maxSamples: The most reads to take (clamped to at least 1).
+///   - wanted: The value the state must hold at.
+///   - maxSamples: The most reads to take (clamped to at least 2, the minimum a run of two needs).
 ///   - sample: The projection to read; `nil` when it could not be read.
-/// - Returns: Whether some sample equalled `wanted`.
+/// - Returns: Whether two consecutive samples equalled `wanted`.
 public func settlesTo(
     _ wanted: String,
     maxSamples: Int,
     sample: () -> String?
 ) -> Bool {
-    for _ in 0..<max(1, maxSamples) {
-        if sample() == wanted { return true }
+    var consecutiveMatches = 0
+    for _ in 0..<max(2, maxSamples) {
+        consecutiveMatches = sample() == wanted ? consecutiveMatches + 1 : 0
+        if consecutiveMatches == 2 { return true }
     }
     return false
 }
