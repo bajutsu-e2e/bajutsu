@@ -11,6 +11,7 @@ singletons and a second form would make a save write one org's roster onto anoth
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from _shared import _get, _serve, project
@@ -18,16 +19,21 @@ from _shared import _get, _serve, project
 from bajutsu import serve as srv
 
 
-def _fetch(tmp_path: Path, route: str) -> str:
+def _fetch_many(tmp_path: Path, *routes: str) -> list[str]:
+    """Every *route*'s body from one server, so a test comparing two assets builds the tree once."""
     scn_dir, cfg, runs = project(tmp_path)
     server, port = _serve(
         srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
     )
     try:
-        return _get(port, route)[1].decode("utf-8")
+        return [_get(port, route)[1].decode("utf-8") for route in routes]
     finally:
         server.shutdown()
         server.server_close()
+
+
+def _fetch(tmp_path: Path, route: str) -> str:
+    return _fetch_many(tmp_path, route)[0]
 
 
 def test_orgs_tab_and_view_ship_with_the_tab_hidden(tmp_path: Path) -> None:
@@ -75,6 +81,33 @@ def test_js_keeps_one_membership_form_open_at_a_time(tmp_path: Path) -> None:
     # re-render this test exists to pin.
     assert body.index("renderOrgsView") < body.index("insertAdjacentHTML")
     assert "nextElementSibling" in body and ".orgedit" in body  # bound via the row just inserted
+
+
+def test_show_view_toggles_every_declared_view(tmp_path: Path) -> None:
+    # The bug this exists for: the Orgs tab, its section, and its refresh hook all shipped, every
+    # test passed, and the page was unreachable — `showView` sets `.hidden` on one `#view-<name>` per
+    # view by hand, and `#view-orgs` was missing from that line, so selecting the tab hid every other
+    # view and revealed nothing. Asserted over every tab the shell declares rather than over `orgs`
+    # alone, since the hand-written line is one edit away from dropping the next view the same way.
+    index, core = _fetch_many(tmp_path, "/", "/serve.core.mjs")
+    views = set(re.findall(r'data-view="([a-z]+)"', index))
+    assert "orgs" in views  # the regex has to be finding tabs at all for the rest to mean anything
+    missing = [v for v in sorted(views) if f"#view-{v}" not in core]
+    assert not missing, f"showView never unhides these declared views: {missing}"
+
+
+def test_the_orgs_view_gets_the_single_column_layout(tmp_path: Path) -> None:
+    # The second thing only a browser showed: the page rendered, in a ~340px column with every row
+    # truncated. A `main` view is a grid, and the single-card views name themselves in one rule to
+    # take the full width. The Orgs section is copied from the Projects section, so it needs that
+    # rule too — copying the markup without it is exactly the miss this pins.
+    css = _fetch(tmp_path, "/")  # serve.css is inlined into the index
+    rule = next(
+        line
+        for line in css.splitlines()
+        if "grid-template-columns:1fr}" in line and "#view-" in line
+    )
+    assert "#view-orgs" in rule and "#view-projects" in rule
 
 
 def test_core_js_refreshes_the_orgs_page_on_entry(tmp_path: Path) -> None:
