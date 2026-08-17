@@ -354,7 +354,6 @@ def test_a_git_bound_config_belongs_to_the_org_that_bound_it(
 ) -> None:
     # Same rule for a Git source: an arbitrary repository and ref is no more the deployment's own
     # content than an uploaded zip, and BE-0121 already says so of the same file's `build:`.
-    import bajutsu.serve.operations.config as config_ops
     from bajutsu.config_source import Materialized
 
     state = _state(serve_engine, tmp_path)
@@ -368,8 +367,13 @@ def test_a_git_bound_config_belongs_to_the_org_that_bound_it(
         "orgs:\n  someone-else:\n    targets: [docs]\n",
         encoding="utf-8",
     )
+    # Patched by dotted path rather than through a second import of a module this file already
+    # imports a name from: `bind_git_config` resolves `materialize` in its own module globals, so the
+    # target has to be that module's attribute either way, and the string form says so without the
+    # two-import shape an analyzer reads as redundant.
     monkeypatch.setattr(
-        config_ops, "materialize", lambda spec, **kw: Materialized(git_config, checkout, "sha")
+        "bajutsu.serve.operations.config.materialize",
+        lambda spec, **kw: Materialized(git_config, checkout, "sha"),
     )
     assert ops.bind_git_config(state, "github:acme/repo@main", actor="kazu")[1] == 200
     assert state.config_org == "acme"
@@ -736,7 +740,6 @@ def test_binding_a_config_from_the_file_browser_does_not_seed(
 def test_binding_a_git_config_does_not_seed(
     serve_engine: Callable[..., Engine], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import bajutsu.serve.operations.config as config_ops
     from bajutsu.config_source import Materialized
 
     state = _unconverted(serve_engine, tmp_path)
@@ -745,8 +748,13 @@ def test_binding_a_git_config_does_not_seed(
     checkout.mkdir()
     git_config = checkout / "bajutsu.config.yaml"
     git_config.write_text(_ORGS_ONLY_YAML, encoding="utf-8")
+    # Patched by dotted path rather than through a second import of a module this file already
+    # imports a name from: `bind_git_config` resolves `materialize` in its own module globals, so the
+    # target has to be that module's attribute either way, and the string form says so without the
+    # two-import shape an analyzer reads as redundant.
     monkeypatch.setattr(
-        config_ops, "materialize", lambda spec, **kw: Materialized(git_config, checkout, "sha")
+        "bajutsu.serve.operations.config.materialize",
+        lambda spec, **kw: Materialized(git_config, checkout, "sha"),
     )
     _, status = ops.bind_git_config(state, "github:acme/repo@main")
     assert status == 200
