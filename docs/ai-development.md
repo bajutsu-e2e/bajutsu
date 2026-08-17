@@ -989,8 +989,9 @@ either side, and it inflates the file with reasoning a reader can look up.
   a prose page. Drop the derivation — the alternatives considered, the counterfactual ("were X ever
   true, Y would break"), the full chain from premise to conclusion. That belongs in the cited
   document.
-- **A citation is not a substitute for content.** Never cite a document for a fact the current
-  sentence depends on; the comment must stand on its own for a reader who has not opened the item.
+- **A citation is not a substitute for content.** A fact the comment's own sentence rests on belongs
+  in the comment; a pointer never stands in for it. The comment must make sense on its own, to
+  someone who has not opened the cited document.
 - **Distinguish three shapes before trimming:**
   - **A repeated argument.** The comment re-derives a decision the cited document already argues in
     full (a rejected alternative, a "because … because …" chain, a worked example). Trim to the
@@ -1010,8 +1011,9 @@ either side, and it inflates the file with reasoning a reader can look up.
 Example — trimmed to its result, with the derivation left in the item:
 
 ```python
-# Skipped when the scenario declares `reinstall: overwrite`: the operator's `--no-erase` and the
-# CLI's already-resolved `erase: false` are NOT the same signal (BE-0353).
+# A retry forces the device recovery `erase: true` would give. Skipped on `reinstall: overwrite`
+# (the scenario needs its app data preserved) and on the operator's `--no-erase`; a CLI-resolved
+# `erase: false` is NOT the same signal (BE-0353).
 ```
 
 not:

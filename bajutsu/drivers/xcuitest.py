@@ -669,8 +669,10 @@ class XcuitestDriver:
         device_os: DeviceOS | None = None,
     ) -> None:
         # The parsed OS version of the device this drives (BE-0358), or None when the environment
-        # could not name one. Nothing here branches on it yet. Set per construction, not per lease,
-        # so it follows a mid-run device replacement instead of going stale.
+        # could not name one. Nothing here branches on it yet — it exists so a driver-level failure
+        # can name the OS it happened on, and so the first genuinely per-OS decision has one route
+        # to read. Set per construction, not per lease, so it follows a mid-run device replacement
+        # instead of going stale.
         self.device_os = device_os
         if transport is not None:
             # A test fake serves both roles: it has no BE-0207 retry to distinguish away.
