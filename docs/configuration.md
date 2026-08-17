@@ -353,6 +353,34 @@ a deployment relying on that recovery should avoid declaring a real org named `d
 recovering admin's user row, audit entries, and object-storage prefix land inside that tenant instead
 of a neutral catch-all.
 
+**A deployment with a database reads three of these four fields only once**
+([BE-0375](../roadmaps/BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management.md)).
+On the one boot that finds the `orgs` table still empty, `serve` copies each org's `members`,
+`githubOrgs`, and `editorTeam` into it from the configuration this server was **launched** with;
+every sign-in after that resolves against the database alone. That copy happens once for the life of
+the deployment: a boot that finds any org already there — a retired one included — copies nothing,
+so no later configuration edit, and no restart carrying one, can add or reshape a tenant behind an
+admin's back. A configuration bound afterwards through the web UI or `POST /api/config` never
+copies at all, whatever its `orgs:` block says.
+An admin edits the membership from the Orgs page from then on, and an edit to those three fields
+here has no effect: `serve` records a warning naming the org whose entry still declares them, so an
+operator learns the file stopped deciding rather than watching an edit vanish. `targets` is the
+field that keeps working, so an entry pared down to `targets:` alone is the expected end state on
+such a deployment. Paring an entry down before that first boot is safe too, since the order is not
+yours to get wrong: an entry declaring only `targets` is skipped rather than copied, so it never
+locks an org at "admits nobody".
+Two orgs may each claim a target of the same name, and each is authorized for it; under a single
+bound configuration they share the one `targets:` definition that name resolves to.
+
+**A configuration bound through the API — an uploaded bundle, a composed triple, or a Git source —
+has its `orgs:` block ignored for target ownership entirely.** It was bound *as* an org, so every
+target it declares belongs to that org and to no other, whatever the block says. Reading ownership
+out of a file the deployment does not control is the same trust problem that keeps such a file from
+seeding membership, and it failed quietly: a bundle whose `orgs:` claimed its only target for an org
+you are not in left you with an empty target list and nothing explaining why. Leave `orgs:` out of
+an uploaded bundle — it decides nothing there. A deployment
+with no database keeps reading every field from this file, none of the above applying to it.
+
 ## Selecting from the CLI
 
 Every command in the CLI (command-line interface) selects one app with `--target <name>` and points at

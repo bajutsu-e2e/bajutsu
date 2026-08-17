@@ -36,6 +36,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from bajutsu.device_os import DeviceOS
 from bajutsu.drivers import base
 from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
 
@@ -667,7 +668,16 @@ class XcuitestDriver:
         runner_alive: Callable[[], bool] | None = None,
         on_stall: Callable[[], None] | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        device_os: DeviceOS | None = None,
     ) -> None:
+        # The parsed OS version of the device this drives (BE-0358), or None when the environment
+        # could not name one. Nothing here branches on it — it exists so a driver-level failure can
+        # say which OS it happened on, and so the first genuinely per-OS decision has one route to
+        # read instead of inventing its own. Set per construction, not per lease: a device
+        # replacement can move a lease onto a different Simulator mid-run, and both construction
+        # sites build a fresh driver afterwards, so a fact stamped once onto the `Lease` would go
+        # stale where this one follows the swap.
+        self.device_os = device_os
         if transport is not None:
             # A test fake serves both roles: it has no BE-0207 retry to distinguish away.
             self._transport = transport

@@ -627,6 +627,7 @@ _JS_MODULES = (
     "serve.crawl.mjs",
     "serve.metrics.mjs",
     "serve.projects.mjs",
+    "serve.orgs.mjs",
     "serve.author.mjs",
 )
 _JS_ENTRY = "serve.author.mjs"  # the module <script type="module"> loads; pulls in the rest

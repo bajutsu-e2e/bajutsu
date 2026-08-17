@@ -119,9 +119,9 @@ a.drill:hover { color: #0071e3; text-decoration: underline; }
 <section>
 <h2>Slowest scenarios</h2>
 {%- if slowest %}
-<table><thead><tr><th>scenario</th><th>avg</th><th>max</th><th>runs</th><th>class</th></tr></thead><tbody>
+<table><thead><tr><th>scenario</th><th>OS</th><th>avg</th><th>max</th><th>runs</th><th>class</th></tr></thead><tbody>
 {%- for sc in slowest[:20] %}
-<tr><td>{{ sc.name }}</td><td class="num">{{ sc.avg_duration_s | round(2) }}s</td><td class="num">{{ sc.max_duration_s | round(2) }}s</td><td class="num">{{ sc.runs }}</td>
+<tr><td>{{ sc.name }}</td><td>{{ describe_os(sc.device_os) }}</td><td class="num">{{ sc.avg_duration_s | round(2) }}s</td><td class="num">{{ sc.max_duration_s | round(2) }}s</td><td class="num">{{ sc.runs }}</td>
 <td>{% if sc.classification == "flaky" %}<span class="tag flaky">flaky</span>{% else %}{{ sc.classification }}{% endif %}</td></tr>
 {%- endfor %}
 </tbody></table>
@@ -133,9 +133,9 @@ a.drill:hover { color: #0071e3; text-decoration: underline; }
 {%- if flaky %}
 <section>
 <h2>Flaky scenarios</h2>
-<table><thead><tr><th>scenario</th><th>passed</th><th>runs</th><th>pass-rate</th></tr></thead><tbody>
+<table><thead><tr><th>scenario</th><th>OS</th><th>passed</th><th>runs</th><th>pass-rate</th></tr></thead><tbody>
 {%- for sc in flaky %}
-<tr><td>{{ sc.name }}</td><td class="num">{{ sc.passed }}</td><td class="num">{{ sc.runs }}</td><td class="num">{{ (sc.pass_rate * 100) | round(0) }}%</td></tr>
+<tr><td>{{ sc.name }}</td><td>{{ describe_os(sc.device_os) }}</td><td class="num">{{ sc.passed }}</td><td class="num">{{ sc.runs }}</td><td class="num">{{ (sc.pass_rate * 100) | round(0) }}%</td></tr>
 {%- endfor %}
 </tbody></table>
 </section>

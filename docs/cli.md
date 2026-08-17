@@ -159,6 +159,16 @@ bajutsu audit --history <runs-dir>                         # mine past runs for 
   in a suite flaked. Runs with no fingerprint (pre-provenance) can't be grouped and are reported as
   skipped. Like the other modes it is read-only and **exits 0 even when it finds flakiness** (only a
   missing runs dir exits 2).
+- **A history is per OS version**
+  ([BE-0358](../roadmaps/BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md)).
+  The group key also carries the device operating-system (OS) version the run happened on, parsed
+  from the `device_runtime` label each `manifest.json` records per scenario. One scenario run on iOS
+  18.6 and on iOS 26.5 forms two histories, each classified on its own evidence. A verdict that
+  differs *because the versions differ* then reads as what it is — a reproducible difference on one
+  OS — rather than as flakiness. Two spellings of one version (`iOS 18.6` and `iOS 18.6.1`) are the
+  same OS, so a history never splits across patch releases. A run whose label is missing or
+  unrecognized (a web run, or one recorded before the label was mined) groups under `unknown OS`
+  rather than joining any version's history, and the output states that count.
 
 ## `coverage`
 
@@ -281,10 +291,14 @@ bajutsu stats --runs <dir> [--json] [--html <path>]
     from the [BE-0049](../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)
     longitudinal audit.
   - **Volume** — run count per backend, the denominator the rates are read against.
-- Scenario series are keyed by the BE-0049 `(scenarioHash, name)` identity, so a verdict that flips at
-  a constant fingerprint is true flakiness while an edited scenario starts a fresh series. A run
-  without a `provenance.scenarioHash` still counts toward the run-level trend but can't join a
-  scenario series (reported as skipped).
+- Scenario series are keyed by the BE-0049 `(scenarioHash, name)` identity, widened with the device
+  OS version the run happened on
+  ([BE-0358](../roadmaps/BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md)),
+  so a verdict that flips at a constant fingerprint on one OS is true flakiness while an edited
+  scenario — or the same scenario on another OS version — starts a fresh series. Each series names
+  its OS and averages durations within it, so two OS versions' timings never pool into one average
+  that neither ran. A run without a `provenance.scenarioHash` still counts toward the
+  run-level trend but can't join a scenario series (reported as skipped).
 - **`--html <path>`** also writes a **self-contained HTML dashboard** of the same figures (inline CSS,
   a minimal inline-SVG trend line, no JavaScript, no external asset — it opens straight from disk).
   The text (or `--json`) output is unchanged; the path is confirmed on stderr.
@@ -314,10 +328,23 @@ bajutsu flakiness [--org <org>] [--json] [--window N]          # read the serve 
   rate** — `2·min(passed, failed)/runs` (0 when consistent, 1 at a 50/50 split) — reusing the
   [BE-0049](../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)
   classification. The output is ordered flaky-first, then by descending flip rate, then by run count.
+- **The grouping is per OS version too**, under the same rule as `audit --history`
+  ([BE-0358](../roadmaps/BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md)).
+  A fleet running one suite across a device matrix no longer scores a genuine OS difference in it as
+  flakiness. This surface groups per *run* where `audit --history` groups per scenario, so a run
+  whose scenarios spanned two OS versions can speak for neither and joins the same `unknown OS`
+  group an unrecognized label gets. Reading the database, the OS comes from the column each run row
+  carries. A run recorded before that column existed is repaired from its stored manifest each time
+  the `serve` panel ranks it — in memory, never written back, since a write on a read path could
+  re-insert a run an operator had purged. Where the manifest is gone the row stays `unknown OS`, and
+  the report discloses that count.
 - Each entry carries the newest passing and newest failing run ids, so `--json` consumers (and the
   serve panel) can link straight to the representative evidence on both sides.
-- **`--window N`** keeps only each scenario's newest `N` runs before scoring (0, the default, uses the
-  whole history); **`--org <org>`** picks the tenant whose runs the database read mines.
+- **`--window N`** keeps only each history's newest `N` runs before scoring — per scenario *per OS
+  version*, since that is the group being scored (0, the default, uses the whole history). Windowing
+  per scenario instead would evict an older OS version's history once the newest runs had all moved
+  to a newer one, hiding the very cross-version finding the grouping exists to surface. **`--org
+  <org>`** picks the tenant whose runs the database read mines.
 - A run with no `provenance.scenarioHash` (a pre-provenance run) or no recorded verdict can't be
   grouped and is reported as skipped, exactly as in `audit --history`.
 - **Advisory and read-only**: it only reports flakiness already recorded in history — it re-runs
@@ -785,8 +812,11 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   the same read-only ranking as `bajutsu flakiness`, live over the server's run history: scenarios
   sorted flaky-first by verdict flip rate, each row linking to the representative passing and failing
   runs' evidence. When a database is wired it groups straight from the provenance stamp on each run
-  row (org-scoped); otherwise it builds the same records from each run's `manifest.json`. No device,
-  no AI, no verdict. It is served at `GET /flakiness` and refreshed with the tab's refresh button.
+  row (org-scoped); otherwise it builds the same records from each run's `manifest.json`. Each row
+  also names the device OS version its runs happened on, and rows are grouped per version
+  ([BE-0358](../roadmaps/BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md)).
+  No device, no AI, no verdict. It is served at `GET /flakiness` and refreshed with the tab's refresh
+  button.
 - **Upload a bundle ([BE-0073](../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)).**
   The "Open config" dialog has a third source, **Upload a bundle**, that lets a browser user **bring
   their own suite** to a hosted `serve` with no file-system access to the host. Drop a `.zip` whose

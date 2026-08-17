@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import secrets
 import threading
+from collections.abc import Iterable
 from typing import Protocol, runtime_checkable
 
 
@@ -27,6 +28,15 @@ class SessionStore(Protocol):
 
     def identity(self, sid: str) -> str | None:
         """The identity bound to *sid* (e.g. a GitHub login), or None if it has none / is unknown."""
+
+    def revoke_identities(self, identities: Iterable[str]) -> int:
+        """Drop every live session bound to one of *identities*; returns how many were dropped.
+
+        Retiring an org has to reach the sessions its members already hold (BE-0375): a soft delete
+        turns away their *next* sign-in, but a cookie issued before it keeps acting as that tenant
+        until it expires. Sessions carrying no identity (a shared-token login) are never touched —
+        they belong to no org.
+        """
 
 
 class InMemorySessionStore:
@@ -50,3 +60,13 @@ class InMemorySessionStore:
     def identity(self, sid: str) -> str | None:
         with self._lock:
             return self._sessions.get(sid)
+
+    def revoke_identities(self, identities: Iterable[str]) -> int:
+        wanted = set(identities)
+        if not wanted:
+            return 0
+        with self._lock:
+            doomed = [sid for sid, who in self._sessions.items() if who in wanted]
+            for sid in doomed:
+                del self._sessions[sid]
+        return len(doomed)

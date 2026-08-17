@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0367](BE-0367-android-ci-emulator-diagnostics.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0367") |
+| Implementing PR | [#1631](https://github.com/bajutsu-e2e/bajutsu/pull/1631) |
 | Topic | Platform support |
 | Related | [BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0270](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance.md), [BE-0350](../BE-0350-ondevice-conformance-evidence-capture/BE-0350-ondevice-conformance-evidence-capture.md) |
 <!-- /BE-METADATA -->
@@ -223,7 +224,7 @@ Mutually exclusive, collectively exhaustive (`MECE`) units of work follow.
   reason `poll_cpuinfo` stays off for every `pull_request` and `merge_group` run does not carry over
   either — that input is off because "polling every 2s is itself continuous adb traffic and host load
   on the very lane whose CPU contention it measures," an observer effect a host-side `top`/`free`
-  every ~20 seconds does not have: it issues no adb traffic at all and samples a hundredth as often.
+  every ~20 seconds does not have: it issues no adb traffic at all and samples a tenth as often.
   Layer 3 is therefore always on where `poll_cpuinfo` is opt-in. An implementer should read the two as
   complementary, not as one superseding the other.
 - **Share one composite action between the iOS and Android lanes.** Rejected: `collect-ios-diagnostics`
@@ -266,12 +267,36 @@ Mutually exclusive, collectively exhaustive (`MECE`) units of work follow.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — screenrecord growth watcher for the Android `video` provider
-- [ ] Unit 2 — stall-time probe hook (hierarchy-read fallback, the new no-growth warning)
-- [ ] Unit 3 — `scripts/collect_android_diagnostics.sh` and its per-job `script:` wiring
-- [ ] Unit 4 — the `collect-android-diagnostics` composite action (host telemetry only)
-- [ ] Unit 5 — docs (`docs/ci.md` and its `ja` mirror)
-- [ ] Unit 6 — tests
+- [x] Unit 1 — screenrecord growth watcher for the Android `video` provider
+- [x] Unit 2 — stall-time probe hook (hierarchy-read fallback, the new no-growth warning)
+- [x] Unit 3 — `scripts/collect_android_diagnostics.sh` and its per-job `script:` wiring
+- [x] Unit 4 — the `collect-android-diagnostics` composite action (host telemetry only)
+- [x] Unit 5 — docs (`docs/ci.md` and its `ja` mirror)
+- [x] Unit 6 — tests
+
+[BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics.md) landed
+first, so this item wired its two triggers into that item's existing `bajutsu/stall_diagnostics.py`
+rather than adding a second module beside it — the outcome *Alternatives considered* anticipated when
+it refused to gate this item on that one. Doing so surfaced a seam neither item had named: *when* to
+capture, what a capture may cost, and where it lands are identical for both backends, while *what to
+read* shares no command between them. Unit 2 therefore split the module along that seam — a `capture`
+that owns the opt-in gate, the per-trigger budget, and the summary, and a `ProbeSet` each backend
+contributes — and the two lanes' probes became `simulator_probes` and `device_probes`. A third
+backend adds a probe set and nothing else. Unit 5 folded the two lanes' `docs/ci.md` write-ups into
+one section for the same reason.
+
+Units 3 and 4 also cover `uiautomator (codegen)`, which *Detailed design* above excludes. That
+exclusion reasons from the collection's *mechanism* — the job writes nothing under `runs/`, so
+nothing rides there — and mistakes it for the job's *need*, which is the opposite of what the
+uploads show: every path `codegen` uploads is produced by Gradle running the generated test, so a
+failure before that point (a wedged AVD boot, a codegen or build error, the job's own
+`timeout-minutes`) met `if-no-files-found: ignore` and uploaded nothing at all. The collection's
+output directory is a parameter, not a constraint, so the job takes the same two tiers and the same
+host sampler, and its upload gains `runs/`. Layer 1 reaches it through one hook rather than two: no
+adb driver runs at test time, so only the host-side recorder
+([`demos/showcase/android/screenrecord.py`](../../demos/showcase/android/screenrecord.py), which now
+confirms its recording is producing bytes) can fire — which is the right hook anyway, since a wedged
+renderer is this lane's known flake.
 
 ## References
 

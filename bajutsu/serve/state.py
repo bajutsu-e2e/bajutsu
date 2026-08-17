@@ -35,9 +35,9 @@ from bajutsu.scenario.models import Step
 from bajutsu.serve.artifacts import ArtifactStore, LocalArtifactStore
 from bajutsu.serve.baselines import BaselineStore, LocalBaselineStore
 from bajutsu.serve.executor import LocalExecutor, RunExecutor
-from bajutsu.serve.helpers import target_scenarios_dir
+from bajutsu.serve.helpers import load_serve_config_file, target_scenarios_dir
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
-from bajutsu.serve.orgs import DEFAULT_ORG
+from bajutsu.serve.orgs import DEFAULT_ORG, targets_for_org
 from bajutsu.serve.scenarios import LocalScenarioStore, ScenarioStore
 from bajutsu.serve.secrets import EnvSecretStore, SecretStore
 from bajutsu.serve.sessions import InMemorySessionStore, SessionStore
@@ -480,6 +480,12 @@ class ServeState:
     # Surfaced by `/api/config/content` so the UI can show *which* commit the opaque cache-path config
     # was materialized from, not just the path. Set at startup (Git `--config`) and on an API bind.
     config_provenance: dict[str, str] | None = None
+    # The org that bound the active configuration through the API — an uploaded bundle, a composed
+    # triple, or a Git source (BE-0375). None for the launch configuration, whose own `orgs:` block
+    # then partitions targets between orgs as an operator wrote it. An API-bound configuration's
+    # `orgs:` block decides nothing: it was bound *as* this org, and its content is not the
+    # deployment's, the same reason such a bind seeds no membership either.
+    config_org: str | None = None
     # Opt-in to run an API-bound Git config's `build:` command on the host (BE-0121). Off by default;
     # serve() sets it from --allow-remote-build / BAJUTSU_ALLOW_REMOTE_BUILD.
     allow_remote_build: bool = False
@@ -707,6 +713,20 @@ class ServeState:
             False  # a bundle is governed by upload_exec, not the Git trust flag
         )
 
+    def targets_for(self, org: str) -> list[str]:
+        """The targets *org* may reach under the bound configuration (BE-0015, BE-0375).
+
+        The one place ownership is decided, so a fourth reader cannot answer it differently from the
+        three that exist (the target list, the cross-org guard, and the per-org scenario store): a
+        configuration bound through the API belongs to the org that bound it, and only the launch
+        configuration's own `orgs:` block partitions targets between orgs. Empty when no
+        configuration is bound or it cannot be read.
+        """
+        parsed = load_serve_config_file(self.config)
+        if parsed is None:
+            return []
+        return targets_for_org(parsed[1], parsed[0].targets, org, bound_by=self.config_org)
+
     def release_upload(self) -> None:
         """Drop the currently bound bundle's binding, if any, and reset `cwd` to serve's launch
         directory. Called whenever a new config is bound (from any source), so the file-browser/Git
@@ -716,6 +736,9 @@ class ServeState:
         disposable per-bind sandbox — its lifetime is independent of any single bind, the same way
         unbinding a Git-sourced config never sweeps that source's own checkout cache."""
         self.upload = None
+        # The next bind sets this if it owns the config; clearing here means a bind that forgets to
+        # falls back to the `orgs:`-declared partition rather than inheriting the previous owner.
+        self.config_org = None
         self.cwd = self.base_cwd
 
 

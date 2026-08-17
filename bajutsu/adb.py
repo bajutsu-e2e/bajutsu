@@ -173,6 +173,59 @@ def screenrecord_pids_cmd(serial: str) -> list[str]:
     return _adb(serial, "shell", "pgrep -x screenrecord || true")
 
 
+def file_size_cmd(serial: str, device_path: str) -> list[str]:
+    """The byte size of a device-side file on stdout — `stat -c %s`, falling back to `ls -l`.
+
+    Used to tell whether a recording is actually producing bytes, not merely running (BE-0367).
+    `stat` is toybox-provided on modern Android but not guaranteed on every image, so `ls -l`
+    stands behind it and `parse_file_size` reads either shape. The trailing `|| true` keeps the
+    exit code 0 when the file does not exist yet — the ordinary case before the first byte lands —
+    so the poll reads the size from stdout rather than classifying an exception (the `RunFn` raises
+    on a non-zero exit).
+    """
+    quoted = shlex.quote(device_path)
+    return _adb(
+        serial, "shell", f"stat -c %s {quoted} 2>/dev/null || ls -l {quoted} 2>/dev/null || true"
+    )
+
+
+def parse_file_size(text: str) -> int | None:
+    """The byte size in `file_size_cmd`'s output, or None when neither form answered.
+
+    `stat -c %s` prints the size alone; toybox `ls -l` prints it as the fifth field (mode, links,
+    owner, group, size). None means "no size to report" — an absent file, or an image where both
+    probes failed — which a caller must not read as zero bytes.
+    """
+    for line in text.splitlines():
+        fields = line.split()
+        if not fields:
+            continue
+        candidate = fields[0] if len(fields) == 1 else fields[4] if len(fields) >= 5 else None
+        # `isascii()` guards `isdigit()`, which is True for fullwidth and superscript digits that
+        # `int()` then rejects or misreads.
+        if candidate is not None and candidate.isascii() and candidate.isdigit():
+            return int(candidate)
+    return None
+
+
+def dumpsys_surfaceflinger_latency_cmd(serial: str) -> list[str]:
+    """SurfaceFlinger's per-frame latency table — the compositor's own view of recent frames.
+
+    A stall-time probe (BE-0367): a wedged renderer shows no recent frames here, which separates it
+    from a host that is merely starved.
+    """
+    return _adb(serial, "shell", "dumpsys", "SurfaceFlinger", "--latency")
+
+
+def logcat_tail_cmd(serial: str, lines: int = 200) -> list[str]:
+    """The most recent `lines` of the device's retained log — a dump (`-d`), not a follow.
+
+    The stall-probe counterpart of `logcat_cmd`'s stream: it reads the ring buffer the device
+    already holds, so it still has something to show at a moment no scenario-scoped stream covers.
+    """
+    return _adb(serial, "logcat", "-d", "-t", str(lines))
+
+
 KEYCODE_BACK = 4  # `input keyevent` code for the system back button (Android's true system back).
 KEYCODE_DEL = 67  # backspace — deletes the character before the cursor (BE-0265 delete / clear).
 KEYCODE_CTRL_LEFT = 113  # left Control, the modifier for the select-all / copy key combinations.

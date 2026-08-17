@@ -51,6 +51,7 @@ _EXPECTED: frozenset[tuple[str, str]] = frozenset(
         ("GET", "/api/runs"),
         ("GET", "/api/projects"),
         ("GET", "/api/projects/{name}/runs"),
+        ("GET", "/api/orgs"),
         ("GET", "/api/metrics/projects"),
         ("GET", "/api/crawl/runs"),
         ("GET", "/api/runs/trash"),
@@ -89,6 +90,8 @@ _EXPECTED: frozenset[tuple[str, str]] = frozenset(
         ("POST", "/api/projects"),
         ("POST", "/api/projects/{name}/run"),
         ("POST", "/api/projects/{name}/activate"),
+        ("POST", "/api/orgs"),
+        ("POST", "/api/orgs/{slug}/membership"),
         ("POST", "/api/record"),
         ("POST", "/api/crawl"),
         ("POST", "/api/triage"),
@@ -122,6 +125,7 @@ _EXPECTED: frozenset[tuple[str, str]] = frozenset(
         ("DELETE", "/api/crawl/runs/{run_id}"),
         ("DELETE", "/api/runs/{run_id}"),
         ("DELETE", "/api/projects/{name}"),
+        ("DELETE", "/api/orgs/{slug}"),
     }
 )
 

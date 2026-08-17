@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from bajutsu import serve as srv
 from bajutsu.agents.ai_config import BEDROCK_MODEL_ENV, PROVIDER_ENV
 from bajutsu.serve import operations as ops
+from bajutsu.serve.operations.config import seed_orgs_from_bound_config
 from bajutsu.serve.server.app import make_app
 from bajutsu.serve.server.oauth import Identity
 
@@ -460,6 +461,7 @@ def test_run_audits_the_logged_in_user(tmp_path: Path) -> None:
         repository=SqlRepository(engine),
         popen=fake_popen([]),
     )
+    seed_orgs_from_bound_config(state)  # the startup seed `serve()` runs (BE-0375)
     client = TestClient(make_app(state))
     csrf = _csrf_from_redirect(client.get("/api/oauth/login", follow_redirects=False))
     assert (
@@ -495,7 +497,7 @@ def _rbac_state(
     _with_orgs(cfg, [login] if in_org else ["someone-else"])
     engine = create_engine(f"sqlite:///{tmp_path / 'rbac.db'}")
     Base.metadata.create_all(engine)
-    return srv.ServeState(
+    state = srv.ServeState(
         config=cfg,
         runs_dir=runs,
         root=tmp_path,
@@ -508,6 +510,10 @@ def _rbac_state(
         repository=SqlRepository(engine),
         popen=fake_popen([]),
     )
+    # With a database wired, the `orgs` table decides sign-in, not the `orgs:` block (BE-0375) --
+    # so run the startup seed `serve()` runs, or every sign-in below would meet an empty roster.
+    seed_orgs_from_bound_config(state)
+    return state
 
 
 def _oauth_signin(client: TestClient) -> None:

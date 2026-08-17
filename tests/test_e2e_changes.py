@@ -322,6 +322,13 @@ def test_android_lane_surface() -> None:
     # there (e.g. the `cache-read-only` default, the pinned `setup-gradle` SHA) can change every job's
     # behavior as much as editing the workflow file itself.
     assert is_relevant([".github/actions/setup-android-toolchain/action.yml"], "android") is True
+    # The BE-0367 diagnostics collection every KVM job runs: the host-telemetry action bracketing
+    # each emulator step, and the device-side sweep each job's `script:` invokes. A break in either
+    # is only visible on this lane, so a pattern dropped from the fragment would go unseen.
+    assert (
+        is_relevant([".github/actions/collect-android-diagnostics/action.yml"], "android") is True
+    )
+    assert is_relevant(["scripts/collect_android_diagnostics.sh"], "android") is True
     # The `uiautomator (codegen)` job (BE-0294) regenerates its test with `bajutsu codegen`, so the
     # codegen CLI command is android-relevant — the one CLI command besides `run` this lane drives.
     assert is_relevant(["bajutsu/cli/commands/codegen.py"], "android") is True

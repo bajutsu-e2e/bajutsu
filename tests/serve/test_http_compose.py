@@ -238,6 +238,34 @@ def test_composed_bind_records_triple_sha_provenance(tmp_path: Path) -> None:
     assert "sha256" not in prov
 
 
+def test_composed_bind_does_not_seed_the_orgs_it_declares(tmp_path: Path) -> None:
+    # A compose binds artifacts uploaded over the API, so its config's content is not the operator's
+    # — the same trust line BE-0121 draws for that file's `build:`. Seeding from it would write rows
+    # deciding who may sign in, and those rows outlive the bind: rebinding away would no longer
+    # revoke the grant. Only `serve()`'s launch config seeds, into an empty table (BE-0375).
+    from sqlalchemy import create_engine
+
+    from bajutsu.serve.orgs import orgs_from_db
+    from bajutsu.serve.server.db import SqlRepository
+    from bajutsu.serve.server.models import Base
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    state = _state(tmp_path)
+    state.repository = SqlRepository(engine)
+    config = _FULL_CONFIG + b"orgs:\n  acme:\n    members: [alice]\n    targets: [demo]\n"
+    _, status = ops.bind_composition(
+        state,
+        {
+            "config": _store_artifact(state, tmp_path, "config", config),
+            "scenarios": _store_artifact(state, tmp_path, "scenarios", _scenarios_zip()),
+            "binary": _store_artifact(state, tmp_path, "binary", _app_zip()),
+        },
+    )
+    assert status == 200
+    assert orgs_from_db(state.repository) == {}
+
+
 def test_compose_current_empty_when_nothing_composed_is_bound(tmp_path: Path) -> None:
     # No config / a non-composed bind: 200 with an empty seed so the UI treats "nothing to inherit"
     # as a normal empty response, never a 404.

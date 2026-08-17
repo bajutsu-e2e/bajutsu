@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
-    from bajutsu.serve.server.models import Project, Run
+    from bajutsu.serve.server.models import Org, Project, Run
 
 # A lease with no heartbeat for this long is treated as a dead worker and reclaimed; a job that is
 # reclaimed this many times is failed rather than re-queued forever (BE-0016 worker liveness). The
@@ -82,6 +82,27 @@ class ProjectRecord:
 
 
 @dataclass
+class OrgRecord:
+    """An org as the seam exchanges it — its identity plus the membership that decides sign-in.
+
+    `members` / `github_orgs` / `editor_team` mirror `OrgConfig`'s own fields (BE-0375); a row that
+    predates the move, or one `ensure_org` created at sign-in, carries empty lists and no Team.
+    `membership_seeded_at` is the per-row cutover marker (set = the database owns this org's
+    membership), `deleted_at` the soft-delete marker.
+    """
+
+    id: str
+    slug: str
+    name: str
+    members: list[str] = field(default_factory=list)
+    github_orgs: list[str] = field(default_factory=list)
+    editor_team: str | None = None
+    membership_seeded_at: datetime | None = None
+    deleted_at: datetime | None = None
+    created_at: datetime | None = None
+
+
+@dataclass
 class RunRecord:
     """A run as the seam exchanges it — the relational core plus the JSON manifest summary."""
 
@@ -93,11 +114,16 @@ class RunRecord:
     ok: bool | None = None
     created_at: datetime | None = None
     summary: dict[str, Any] = field(default_factory=dict)
-    # Run provenance mirrored from the run's manifest.json (BE-0049 stamp), the grouping key for
-    # cross-run flakiness (BE-0220); None for a pre-provenance run.
+    # Run provenance mirrored from the run's manifest.json (BE-0049 stamp); with `device_runtime`
+    # below, the grouping key for cross-run flakiness (BE-0220). None for a pre-provenance run.
     scenario_hash: str | None = None
     tool_version: str | None = None
     git_revision: str | None = None
+    # The OS label every scenario in the run ran on (`"iOS 18.6"`), the other half of the flakiness
+    # grouping key (BE-0358). Three states: the label; `""` when the run was read but named no single
+    # OS (no device catalog, or scenarios spanning versions); None when it was never determined — a
+    # row recorded before this field existed, which the hosted panel backfills from its manifest.
+    device_runtime: str | None = None
     # Soft-delete marker (BE-0239): when set, the run is trashed — hidden from `list_runs` unless
     # `include_deleted`. None for a live run. `record_run` never writes these (a status update must
     # not resurrect or re-trash a run); only `soft_delete_run`/`restore_run` touch them.
@@ -168,7 +194,70 @@ class Repository(Protocol):
         """Deregister the org's project named *name*; its run history is retained (BE-0225)."""
 
     def ensure_org(self, org_id: str, *, slug: str, name: str) -> None:
-        """Create the org if it does not exist yet (idempotent) — 7c-1's single default org."""
+        """Create the org if it does not exist yet (idempotent) — 7c-1's single default org.
+
+        Deliberately still create-only (BE-0375): sign-in and job completion call it on every
+        request with no membership to pass, so widening it into a create-or-update would let the
+        next sign-in clear membership an admin set. `seed_org_membership` writes membership instead.
+        """
+
+    def list_orgs(self, *, include_deleted: bool = False) -> list[OrgRecord]:
+        """Every org, ordered by slug; soft-deleted ones only with *include_deleted* (BE-0375)."""
+
+    def get_org(self, org_id: str, *, include_deleted: bool = False) -> OrgRecord | None:
+        """The org with *org_id*, or None — a soft-deleted one only with *include_deleted*."""
+
+    def create_org(self, *, slug: str, name: str) -> bool:
+        """Create an admin-managed org with empty membership, marked seeded (BE-0375).
+
+        The row's id is its slug, matching what every existing writer already carries as `org_id`.
+        Marked seeded at creation so no later `orgs:` entry for the same slug can overwrite the
+        membership an admin sets. False when the slug is already taken — including by a soft-deleted
+        row, which still occupies the UNIQUE constraint; reactivating one is a separate operation
+        this seam does not offer.
+        """
+
+    def set_org_membership(
+        self, org_id: str, *, members: list[str], github_orgs: list[str], editor_team: str | None
+    ) -> bool:
+        """Replace a live org's membership as one unit (BE-0375). False when there is no such org.
+
+        Stamps `membership_seeded_at` when it is not yet set: an API write is a cutover event just
+        as creation is, so no later `orgs:` entry can seed over what an admin set here.
+        """
+
+    def seed_org_membership(
+        self,
+        org_id: str,
+        *,
+        slug: str,
+        name: str,
+        members: list[str],
+        github_orgs: list[str],
+        editor_team: str | None,
+    ) -> bool:
+        """Seed an org's membership from a bound config's `orgs:` entry, once (BE-0375).
+
+        Creates the row when it does not exist, or fills in one `ensure_org` left holding nothing
+        but an id, a slug, and a name; either way it stamps `membership_seeded_at`, after which the
+        database owns that org's membership and this is a no-op. Returns whether it seeded. A row
+        already marked seeded, and a soft-deleted one, are both left alone — retired, not unseeded.
+        """
+
+    def soft_delete_org(self, org_id: str, *, at: datetime) -> bool:
+        """Mark the org deleted at *at* (BE-0375). False when there is none, or it already was.
+
+        A soft delete, not a row removal: `users`, `runs`, `secrets`, `provider_settings`, and
+        `audit_log` still hold foreign keys on this id — including the delete's own audit entry.
+        """
+
+    def list_org_user_ids(self, org_id: str) -> list[str]:
+        """Every user id recorded under *org_id* — whose sessions retiring the org revokes (BE-0375).
+
+        Read before the soft delete, not after: the delete leaves `users.org_id` pointing at the
+        retired slug, so the set is the same either way, but reading first keeps the caller from
+        depending on that.
+        """
 
     def upsert_user(
         self, user_id: str, *, org_id: str, github_login: str, email: str, role: str = "editor"
@@ -281,6 +370,23 @@ def _to_project(row: Project) -> ProjectRecord:
     )
 
 
+def _to_org(row: Org) -> OrgRecord:
+    # The membership columns are nullable — an org row that predates BE-0375, or one `ensure_org`
+    # created at sign-in, holds NULL rather than `[]` (the model's `default` is Python-side only, so
+    # it never reached those rows). Normalize here, once, so no reader has to.
+    return OrgRecord(
+        id=row.id,
+        slug=row.slug,
+        name=row.name,
+        members=list(row.members or []),
+        github_orgs=list(row.github_orgs or []),
+        editor_team=row.editor_team,
+        membership_seeded_at=row.membership_seeded_at,
+        deleted_at=row.deleted_at,
+        created_at=row.created_at,
+    )
+
+
 def _to_record(row: Run) -> RunRecord:
     return RunRecord(
         id=row.id,
@@ -294,6 +400,7 @@ def _to_record(row: Run) -> RunRecord:
         scenario_hash=row.scenario_hash,
         tool_version=row.tool_version,
         git_revision=row.git_revision,
+        device_runtime=row.device_runtime,
         deleted_at=row.deleted_at,
         deleted_by=row.deleted_by,
     )
@@ -332,6 +439,7 @@ class SqlRepository:
             "scenario_hash": run.scenario_hash,
             "tool_version": run.tool_version,
             "git_revision": run.git_revision,
+            "device_runtime": run.device_runtime,
         }
         if run.created_at is not None:
             fields["created_at"] = run.created_at
@@ -502,6 +610,159 @@ class SqlRepository:
                 # A concurrent login inserted it between the check and the commit — that's the
                 # idempotent outcome we wanted, so swallow it.
                 session.rollback()
+
+    def list_orgs(self, *, include_deleted: bool = False) -> list[OrgRecord]:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Org
+
+        stmt = select(Org)
+        if not include_deleted:
+            stmt = stmt.where(Org.deleted_at.is_(None))
+        stmt = stmt.order_by(Org.slug)
+        with Session(self._engine) as session:
+            return [_to_org(row) for row in session.scalars(stmt)]
+
+    def get_org(self, org_id: str, *, include_deleted: bool = False) -> OrgRecord | None:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Org
+
+        with Session(self._engine) as session:
+            row = session.get(Org, org_id)
+            if row is None or (row.deleted_at is not None and not include_deleted):
+                return None
+            return _to_org(row)
+
+    def create_org(self, *, slug: str, name: str) -> bool:
+        from sqlalchemy.exc import IntegrityError
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Org
+
+        with Session(self._engine) as session:
+            if session.get(Org, slug) is not None:
+                return False
+            session.add(
+                Org(
+                    id=slug,
+                    slug=slug,
+                    name=name,
+                    members=[],
+                    github_orgs=[],
+                    # Seeded at creation, so a later `orgs:` entry for this slug never seeds over
+                    # the membership an admin sets through the API (BE-0375).
+                    membership_seeded_at=datetime.now(UTC),
+                )
+            )
+            try:
+                session.commit()
+            except IntegrityError:
+                # A concurrent create (or a soft-deleted row still holding the UNIQUE slug that the
+                # `get` above raced) — either way the slug is taken, which is this method's False.
+                session.rollback()
+                return False
+            return True
+
+    def set_org_membership(
+        self, org_id: str, *, members: list[str], github_orgs: list[str], editor_team: str | None
+    ) -> bool:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Org
+
+        with Session(self._engine) as session:
+            row = session.get(Org, org_id)
+            if row is None or row.deleted_at is not None:
+                return False
+            row.members, row.github_orgs, row.editor_team = members, github_orgs, editor_team
+            if row.membership_seeded_at is None:
+                # An admin can reach a row the backfill never marked — one `ensure_org` created at
+                # sign-in, one predating the migration, or one left unseeded because the config
+                # failed to load at boot. Mark it now, or the next startup or rebind would find it
+                # unseeded and replace this roster with the `orgs:` entry's: exactly the overwrite
+                # the per-row marker exists to prevent, arriving through the admin's own edit.
+                row.membership_seeded_at = datetime.now(UTC)
+            session.commit()
+            return True
+
+    def seed_org_membership(
+        self,
+        org_id: str,
+        *,
+        slug: str,
+        name: str,
+        members: list[str],
+        github_orgs: list[str],
+        editor_team: str | None,
+    ) -> bool:
+        from sqlalchemy.exc import IntegrityError
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Org
+
+        with Session(self._engine) as session:
+            row = session.get(Org, org_id)
+            if row is not None and (
+                row.membership_seeded_at is not None or row.deleted_at is not None
+            ):
+                return False  # past cutover, or retired — either way config no longer decides it
+            seeded_at = datetime.now(UTC)
+            if row is None:
+                session.add(
+                    Org(
+                        id=org_id,
+                        slug=slug,
+                        name=name,
+                        members=members,
+                        github_orgs=github_orgs,
+                        editor_team=editor_team,
+                        membership_seeded_at=seeded_at,
+                    )
+                )
+                try:
+                    session.commit()
+                    return True
+                except IntegrityError:
+                    # A concurrent sign-in inserted the passive row first; fall through and fill it.
+                    session.rollback()
+                    row = session.get(Org, org_id)
+                    # The same "seeded or retired" guard the check above applies: the row that won
+                    # the race may have been soft-deleted since, and a retired org is not unseeded.
+                    if (
+                        row is None
+                        or row.membership_seeded_at is not None
+                        or row.deleted_at is not None
+                    ):
+                        return False
+            row.members, row.github_orgs, row.editor_team = members, github_orgs, editor_team
+            row.membership_seeded_at = seeded_at
+            session.commit()
+            return True
+
+    def soft_delete_org(self, org_id: str, *, at: datetime) -> bool:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Org
+
+        with Session(self._engine) as session:
+            row = session.get(Org, org_id)
+            if row is None or row.deleted_at is not None:
+                return False
+            row.deleted_at = at
+            session.commit()
+            return True
+
+    def list_org_user_ids(self, org_id: str) -> list[str]:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import User
+
+        stmt = select(User.id).where(User.org_id == org_id)
+        with Session(self._engine) as session:
+            return list(session.scalars(stmt))
 
     def upsert_user(
         self, user_id: str, *, org_id: str, github_login: str, email: str, role: str = "editor"

@@ -161,7 +161,7 @@ ROUTES: tuple[Route, ...] = (
     # (see `authz.required_role`) because a branch name can encode an in-progress topic.
     Route("GET", "/api/version", lambda state, ctx: ops.server_version()),
     Route("GET", "/api/version/checkout", lambda state, ctx: ops.server_checkout()),
-    Route("GET", "/api/config", lambda state, ctx: ops.config_info(state)),
+    Route("GET", "/api/config", lambda state, ctx: ops.config_info(state, actor=ctx.actor())),
     Route("GET", "/api/config/content", lambda state, ctx: ops.config_content(state)),
     # The running server's resolved configuration + the bundled iOS runner state (BE-0318). Read-only
     # and open like /api/config; the operation withholds host paths when hosted (BE-0108).
@@ -203,6 +203,9 @@ ROUTES: tuple[Route, ...] = (
         "/api/projects/{name}/runs",
         lambda state, ctx: ops.project_runs(state, ctx.path_param("name"), actor=ctx.actor()),
     ),
+    # The org roster an admin administers (BE-0375). Admin-gated in `authz.required_role`, which
+    # needs its own early case for this path since two of the four routes here aren't POST.
+    Route("GET", "/api/orgs", lambda state, ctx: ops.list_orgs_view(state, actor=ctx.actor())),
     Route(
         "GET",
         "/api/metrics/projects",
@@ -294,7 +297,7 @@ ROUTES: tuple[Route, ...] = (
         # A `git` key selects the from-Git picker (BE-0063); `path` the local browser. Key presence
         # (not truthiness) routes, so an empty `git` still reaches the Git binder's 400.
         lambda state, ctx: (
-            ops.bind_git_config(state, str(ctx.body().get("git") or ""))
+            ops.bind_git_config(state, str(ctx.body().get("git") or ""), actor=ctx.actor())
             if "git" in ctx.body()
             else ops.bind_config(state, str(ctx.body().get("path", "") or ""))
         ),
@@ -363,6 +366,23 @@ ROUTES: tuple[Route, ...] = (
         "POST",
         "/api/projects/{name}/activate",
         lambda state, ctx: ops.activate_project(state, ctx.path_param("name"), actor=ctx.actor()),
+    ),
+    Route(
+        "POST",
+        "/api/orgs",
+        lambda state, ctx: ops.create_org(state, ctx.body(), actor=ctx.actor()),
+    ),
+    # Replacing an org's membership is a whole-value write, which REST would spell PUT; it is a POST
+    # because that is the only body-carrying verb both transports implement (BE-0375), and every
+    # other whole-value write in `serve` — `/api/projects/{name}/activate`, `/api/provider` — is
+    # already one. Widening the transports to a fourth verb is a cross-cutting change this item has
+    # no other need for.
+    Route(
+        "POST",
+        "/api/orgs/{slug}/membership",
+        lambda state, ctx: ops.update_org_membership(
+            state, ctx.path_param("slug"), ctx.body(), actor=ctx.actor()
+        ),
     ),
     Route(
         "POST",
@@ -540,5 +560,10 @@ ROUTES: tuple[Route, ...] = (
         "DELETE",
         "/api/projects/{name}",
         lambda state, ctx: ops.deregister_project(state, ctx.path_param("name"), actor=ctx.actor()),
+    ),
+    Route(
+        "DELETE",
+        "/api/orgs/{slug}",
+        lambda state, ctx: ops.delete_org(state, ctx.path_param("slug"), actor=ctx.actor()),
     ),
 )
