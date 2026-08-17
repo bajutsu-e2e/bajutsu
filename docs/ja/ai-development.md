@@ -877,3 +877,56 @@ def _contains(outer: Frame, inner: Frame) -> bool:
 
 リファレンスはローカルで `make docs`（プレビューは `make docs-serve`）でビルドします。`docs` extra が要ります。
 このルールの短縮版は [`CLAUDE.md`](../../CLAUDE.md) にあります。
+
+## 議論を繰り返さず参照する（コメントと docstring）
+
+Bajutsu のコメントは、すでに「何を」ではなく「なぜ」を書く方針を取っています（[`CLAUDE.md`](../../CLAUDE.md)
+の Conventions を参照してください）。この節は、その「なぜ」をどこに置くべきかを定める補足です。コメントの
+根拠がロードマップ項目や `docs/` 配下のページにすでに論じられているときは、それを繰り返さず参照します。
+議論を繰り返すコメントは、どちらか一方を編集した瞬間に食い違い始めますし、参照だけで済む論拠でファイルを
+膨らませてしまいます。
+
+- **参照し、結果だけを残す。** その行を触る読者が守るべき不変条件や制約を一節で述べる。末尾に参照を
+  添える。ロードマップ項目には `(BE-NNNN)`、`docs/` の散文ページには `(docs/<page>.md)` を使う。
+  検討して退けた代替案、反実仮想（「もし〜だったなら〜が壊れる」という仮定）、前提から結論までの導出は
+  落とす。それらは参照先にある。
+- **参照は内容の代わりにならない。** その文が成り立つために必要な事実を、参照だけで済ませない。
+  項目を開いていない読者にも、コメントだけで意味が伝わらなければならない。
+- **削る前に、3つの形を見分ける。**
+  - **議論の繰り返し。** 参照先の項目がすでに完全に論じている決定（退けた代替案、「〜だから〜だから」の
+    連鎖、具体例による裏付け）を、コメントが再び導出している形。結果だけに畳んで参照を付ける。
+  - **抽象の不足。** コメントが1行のコードを説明しているのではなく、ある値や型が守るべき契約を説明して
+    いる形。契約を覆う範囲が伸び続けるコメントは、その契約に名前が要る合図。クラスや関数として
+    切り出し、説明を docstring 側に移す（上の BE-0065 を参照）。コメントをさらに削るのではなく、
+    抽象を足す。
+  - **独立した複数の事実。** 1つの議論を追っているのではなく、無関係な複数の確定事実（スキーマのバージョン
+    ごとの互換性の注記など）を列挙しているために長いコメント。この形には参照を強制せず、短くする
+    ために事実を削らない。どの行を削っても、読者が自分で再現しなければならない情報が失われる。
+- **コメントの長さそのものは、目標ではなく点検の合図。** 数行を超えるコメントは、たいてい上の最初の
+  2つの形のどちらか。コメントが単に丁寧なだけだと決めつける前に、その論拠がすでにロードマップ項目に
+  ないかを確かめる。
+
+例(結果に畳み、導出は項目側に残した形)。
+
+```python
+# Skipped when the scenario declares `reinstall: overwrite`: the operator's `--no-erase` and the
+# CLI's already-resolved `erase: false` are NOT the same signal (BE-0353).
+```
+
+次の形にはしません。
+
+```python
+# Skipped when the scenario declares `reinstall: overwrite` — its explicit declaration that it
+# needs its app's data container preserved across a lease — since forcing `erase` would silently
+# override exactly the precondition the scenario was written against. NOT skipped on
+# `preconditions.erase is False`: by the time a scenario reaches here, the CLI has already resolved
+# every scenario's `erase` to a concrete bool — most commonly `False`, the built-in default a
+# scenario never asked for — so a guard on that value would silently disable this whole unit on the
+# one path it was written for (see *Alternatives considered*: only `reinstall: overwrite` actually
+# protects app data; a bare `erase: false` does not, since `reinstall`'s own default `"clean"` wipes
+# the app's data regardless of `erase`).
+```
+
+コメントが議論を繰り返しているか、独立した事実を列挙しているかの判断には意味の理解が要ります。そのため、
+このリポジトリの他のコメント規範・文章規範と同じく、レビュー時の期待にとどめ、`make check` のゲートには
+載せません(prime directive 1)。

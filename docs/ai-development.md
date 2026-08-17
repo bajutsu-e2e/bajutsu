@@ -975,3 +975,59 @@ docstrings as a side effect of an unrelated change** — keep each migration its
 
 Build the reference locally with `make docs` (or `make docs-serve` to preview); it needs the `docs`
 extra.
+
+## Cite an argument instead of repeating it (comments and docstrings)
+
+Bajutsu's comments already favor *why* over *what* (see *Conventions* in [`CLAUDE.md`](../CLAUDE.md));
+this section adds the discipline for *where the why lives*. When a comment's reasoning already
+exists as an argued case in a roadmap item or a `docs/` page, the comment should point to it, not
+restate it. A comment that repeats an argument drifts from its source the moment someone edits
+either side, and it inflates the file with reasoning a reader can look up.
+
+- **Cite, then keep only the result.** State the invariant or constraint the reader needs at this
+  line, in one clause. Close with a citation: `(BE-NNNN)` for a roadmap item, `(docs/<page>.md)` for
+  a prose page. Drop the derivation — the alternatives considered, the counterfactual ("were X ever
+  true, Y would break"), the full chain from premise to conclusion. That belongs in the cited
+  document.
+- **A citation is not a substitute for content.** Never cite a document for a fact the current
+  sentence depends on; the comment must stand on its own for a reader who has not opened the item.
+- **Distinguish three shapes before trimming:**
+  - **A repeated argument.** The comment re-derives a decision the cited document already argues in
+    full (a rejected alternative, a "because … because …" chain, a worked example). Trim to the
+    result and cite.
+  - **A missing abstraction.** The comment documents a contract — an invariant a value or a type
+    must uphold — rather than explaining a line of code. A comment that keeps growing to cover more
+    of that contract is a sign the contract wants a name. Extract a class or a function and move the
+    explanation into its docstring (see BE-0065 above) instead of trimming the comment further.
+  - **Independent facts, not one argument.** A comment can run long because it lists unrelated,
+    fixed facts (for example, a schema version's per-revision compatibility notes) rather than
+    pursuing a single argument. Do not force a citation onto this shape, and do not cut a fact to
+    shorten it — every line still carries information a reader would otherwise have to reconstruct.
+- **A comment's own length is a symptom to check, not a target to hit.** A comment past a handful of
+  lines fits one of the first two shapes above far more often than not. Check whether the reasoning
+  already lives in a roadmap item before crediting the length to thoroughness.
+
+Example — trimmed to its result, with the derivation left in the item:
+
+```python
+# Skipped when the scenario declares `reinstall: overwrite`: the operator's `--no-erase` and the
+# CLI's already-resolved `erase: false` are NOT the same signal (BE-0353).
+```
+
+not:
+
+```python
+# Skipped when the scenario declares `reinstall: overwrite` — its explicit declaration that it
+# needs its app's data container preserved across a lease — since forcing `erase` would silently
+# override exactly the precondition the scenario was written against. NOT skipped on
+# `preconditions.erase is False`: by the time a scenario reaches here, the CLI has already resolved
+# every scenario's `erase` to a concrete bool — most commonly `False`, the built-in default a
+# scenario never asked for — so a guard on that value would silently disable this whole unit on the
+# one path it was written for (see *Alternatives considered*: only `reinstall: overwrite` actually
+# protects app data; a bare `erase: false` does not, since `reinstall`'s own default `"clean"` wipes
+# the app's data regardless of `erase`).
+```
+
+Judging whether a comment repeats an argument or lists independent facts needs semantic
+understanding, so — like the rest of this repo's comment and prose norms — it stays a review-time
+expectation, not a `make check` gate (prime directive 1).
