@@ -32,6 +32,7 @@ from bajutsu.config_source import _bajutsu_cache_root
 from bajutsu.object_store import EvidenceTarget
 from bajutsu.serve import gate, oplog
 from bajutsu.serve.artifacts import Artifact, ArtifactStore, LocalArtifactStore
+from bajutsu.serve.batch_bootstrap import bajutsu_source_root, register_batch_providers
 from bajutsu.serve.commands import (
     _int,
     crawl_command,
@@ -704,6 +705,13 @@ def serve(
     # its "this entry is no longer read" warning must reach the live log sink — and re-runs at every
     # config rebind; a no-op without a database or a loadable config.
     seed_orgs_from_bound_config(state)
+    # Where the cloud-batch (Device Farm) package roots — see ServeState.devicefarm_package_root.
+    state.devicefarm_package_root = bajutsu_source_root()
+    # Fill the batch-provider registry from the environment (BE-0336): with DEVICEFARM_PROJECT_ARN set,
+    # cloud-batch dispatch reaches AWS Device Farm; with it unset the registry stays empty and a
+    # mis-dispatched cloud-batch job fails loud at resolve() rather than silently vanishing.
+    for kind in register_batch_providers():
+        print(f"cloud-batch dispatch enabled: {kind}")  # noqa: T201
     hint = str(config) if config else "open a config.yml in the UI"
     if not gate.allowed_hosts(host):
         # A wildcard bind can't enumerate its reachable hostnames, so the Host allowlist is off

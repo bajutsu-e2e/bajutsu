@@ -457,6 +457,13 @@ class ServeState:
     # serve's launch directory, captured at construction (see __post_init__) before a config bind can
     # repoint `cwd`. Runs off a Git/upload bind still land their tree here (BE-0063/BE-0073).
     base_cwd: Path = field(init=False)
+    # Root the cloud-batch (Device Farm) test package is built from. Device Farm's
+    # APPIUM_PYTHON_TEST_PACKAGE validation needs Bajutsu's own `tests/` and `pyproject.toml` at the
+    # package root, and its test spec `pip install`s that root — so the package must be rooted at the
+    # Bajutsu source tree, not the config's own directory (`cwd`, which BE-0242 points at the config).
+    # serve() sets it to the source root when serving from a checkout; None falls back to `cwd` (the
+    # in-process test model, where the config, scenarios, and source all sit in one tmp tree).
+    devicefarm_package_root: Path | None = None
     # The currently bound uploaded bundle (BE-0073), or None when the active config came from the
     # file browser / Git / startup. Holds the extraction sandbox (removed when another config is
     # bound) and the run provenance. Only one bundle is bound at a time.

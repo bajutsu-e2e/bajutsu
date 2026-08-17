@@ -202,6 +202,16 @@ targets:
     cloudBatchBudget: 4           # reserve at most four devices at once across the pool
 ```
 
+serve reaches AWS through the process environment, not the config file, so no ARN or credential lands
+in a checked-in target. Set **`DEVICEFARM_PROJECT_ARN`** before launching serve to turn cloud-batch
+dispatch on for the process; AWS credentials come from boto3's own chain (an instance role, the
+`AWS_*` variables, or a named profile), and **`DEVICEFARM_REGION`** overrides the default `us-west-2`
+for an account pinned elsewhere. With `DEVICEFARM_PROJECT_ARN` unset the `devicefarm` provider stays
+unregistered, so a cloud-batch dispatch fails loud at that point rather than silently vanishing;
+serve prints `cloud-batch dispatch enabled: devicefarm` at startup when it is wired. Unlike the
+headless submitter, serve reserves a single device per run through a device-selection filter, so it
+needs no device-pool ARN.
+
 A `POST /api/run-set` request fans a target out. Its body names the `target` and, optionally, a
 `scenarios` subset and a `deviceBudget`:
 

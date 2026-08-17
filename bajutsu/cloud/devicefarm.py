@@ -22,10 +22,11 @@ deterministic `run`/CI verdict path:
 
 The AWS SDK (boto3) is reached only through the `DeviceFarmClient` / `Transfer` seams, so this module
 imports without the ``aws`` extra and its logic is unit-tested against an in-memory fake; the real
-boto3 client and the presigned-URL transfer that fill those seams live in the CLI wrapper. Raw-adb
-access on the Device Farm host is a by-product of its toolchain rather than a first-class guarantee
-(the first-class path is Appium); this module documents that so a future Device Farm change does not
-silently break it.
+boto3 client and the presigned-URL transfer that fill those seams live in the CLI wrapper
+(`scripts/devicefarm_submit.py`) and serve's startup bootstrap (`bajutsu/serve/batch_bootstrap.py`).
+Raw-adb access on the Device Farm host is a by-product of its toolchain rather than a first-class
+guarantee (the first-class path is Appium); this module documents that so a future Device Farm change
+does not silently break it.
 """
 
 from __future__ import annotations

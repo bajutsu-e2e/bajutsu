@@ -157,6 +157,90 @@ def _register_devicefarm(*, manifest_ok: bool) -> tuple[_FakeClient, _FakeTransf
     return client, transfer
 
 
+def test_relative_app_path_resolves_against_the_config_dir(tmp_path: Path) -> None:
+    # A config's relative appPath resolves against the config's own directory (state.cwd), like every
+    # other config path (BE-0242) — not against serve's process cwd. The batch provider reads the APK
+    # in-process, so start_run_set must hand it an absolute path; a raw relative appPath would be read
+    # from serve's launch dir and the Device Farm upload would fail with "No such file".
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "one.yaml").write_text(
+        "- name: a\n  steps:\n    - tap: { id: x }\n", encoding="utf-8"
+    )
+    (tmp_path / "app.apk").write_text("APK", encoding="utf-8")
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "targets:\n"
+        "  demo:\n"
+        "    platform: android\n"
+        "    package: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n"
+        "    cloudBatch: devicefarm\n"
+        "    appPath: app.apk\n",  # relative to the config's own directory (tmp_path)
+        encoding="utf-8",
+    )
+    _register_devicefarm(manifest_ok=True)
+    executor = _RecordingExecutor()
+    state = ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=tmp_path / "runs",
+        cwd=tmp_path,
+        executor=executor,
+    )
+
+    _payload, status = start_run_set(state, {"target": "demo"})
+
+    assert status == 200
+    (job,) = executor.jobs
+    assert job.batch is not None
+    assert job.batch.app_path == str(tmp_path / "app.apk")
+
+
+def test_package_root_roots_config_and_scenarios_relative_to_the_source_tree(
+    tmp_path: Path,
+) -> None:
+    # Device Farm needs Bajutsu's tests/ + pyproject.toml at the package root, so the package is built
+    # from the source tree (devicefarm_package_root), not the config's own dir. The config and
+    # scenarios then travel as paths relative to that root — here the config sits a directory below it,
+    # so both args carry the `proj/` prefix rather than resolving from the config dir.
+    root = tmp_path
+    (root / "pyproject.toml").write_text("[project]\nname='bajutsu'\n", encoding="utf-8")
+    (root / "tests").mkdir()
+    proj = root / "proj"
+    scn_dir = proj / "scenarios"
+    scn_dir.mkdir(parents=True)
+    (scn_dir / "one.yaml").write_text(
+        "- name: a\n  steps:\n    - tap: { id: x }\n", encoding="utf-8"
+    )
+    (proj / "app.apk").write_text("APK", encoding="utf-8")
+    cfg = proj / "bajutsu.config.yaml"
+    cfg.write_text(
+        "targets:\n  demo:\n    platform: android\n    package: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    cloudBatch: devicefarm\n    appPath: app.apk\n",
+        encoding="utf-8",
+    )
+    _register_devicefarm(manifest_ok=True)
+    executor = _RecordingExecutor()
+    state = ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=root / "runs",
+        cwd=proj,
+        devicefarm_package_root=root,
+        executor=executor,
+    )
+
+    _payload, status = start_run_set(state, {"target": "demo"})
+
+    assert status == 200
+    (job,) = executor.jobs
+    assert job.batch is not None
+    assert job.batch.config == "proj/bajutsu.config.yaml"
+    assert job.batch.scenario == "proj/scenarios/one.yaml"
+    assert job.batch.app_path == str(proj / "app.apk")  # appPath still resolves from the config dir
+
+
 def test_fan_out_runs_every_scenario_through_the_device_farm_fake(tmp_path: Path) -> None:
     # The whole path, faked end to end: start_run_set fans three scenarios out into three cloud-batch
     # jobs, each runs through the real DeviceFarmBatchProvider against the in-memory Device Farm fake,

@@ -111,6 +111,8 @@ targets:
     cloudBatchBudget: 4           # プール全体で同時に最大 4 台まで予約する
 ```
 
+serve は AWS へ設定ファイルではなくプロセスの環境変数を通じて接続します。そのため、コミットされるターゲットに ARN や認証情報が残りません。serve を起動する前に **`DEVICEFARM_PROJECT_ARN`** を設定すると、そのプロセスでクラウドバッチのディスパッチが有効になります。AWS の認証情報は、boto3 が通常たどる探索順序（インスタンスロール、`AWS_*` 変数、名前付きプロファイル）から取得します。デフォルトのリージョンは `us-west-2` です。別のリージョンに固定したアカウントでは、**`DEVICEFARM_REGION`** で上書きします。`DEVICEFARM_PROJECT_ARN` を設定しないと、`devicefarm` プロバイダーは登録されないままになります。そのため、誤ってクラウドバッチをディスパッチしても、その時点で明示的に失敗します。ジョブが黙って消えることはありません。配線が済んでいるとき、serve は起動時に `cloud-batch dispatch enabled: devicefarm` を表示します。ヘッドレスのサブミッターと異なり、serve はデバイス選択フィルターで実行あたり 1 台のデバイスを予約するため、デバイスプールの ARN は不要です。
+
 `POST /api/run-set` リクエストがターゲットを fan-out します。ボディには `target` を、任意で `scenarios` の部分集合と `deviceBudget` を指定します。
 
 ```json
