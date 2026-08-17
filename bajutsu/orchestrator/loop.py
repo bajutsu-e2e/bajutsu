@@ -1270,12 +1270,13 @@ class _StepRunner:
             if not ext_ok:
                 outcome.ok, outcome.reason = False, ext_reason
 
-        # `_collect_captures` always leads with `screenshot.after` + `elements`, so this call records
-        # the post-action half of every step's evidence whatever the scenario asked for: the image a
-        # viewer shows and the tree it draws element frames from, read at the same moment.
-        # `elements.json` has one fixed name, so this write replaces the pre-step baseline's
-        # pre-action tree. `screenshot.before` is excluded for the mirror-image reason (BE-0341): the
-        # baseline above wrote that file from the true pre-action state, so re-taking it here would
+        # This call records the post-action *tree*: `_collect_captures` always leads with
+        # `elements`, so every step keeps one whatever the scenario asked for. The screenshot
+        # half is not on that list — `_handle_action` shot `screenshot.after` right after the
+        # action, and the `instant` filter below drops the token. `elements.json` has one fixed
+        # name, so this write replaces the pre-step baseline's pre-action tree.
+        # `screenshot.before` is excluded for the mirror-image reason (BE-0341): the baseline
+        # above wrote that file from the true pre-action state, so re-taking it here would
         # silently mislabel a post-action pixel as `before.png`.
         fired = _collect_captures(
             self.cfg.scenario, step, kind, outcome.ok, screen_changed, self.cfg.capture

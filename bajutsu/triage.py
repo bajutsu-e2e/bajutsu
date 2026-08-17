@@ -478,6 +478,13 @@ def _nearest_artifact(
     """The artifact of `kind` from the failing step, else the nearest earlier step that has one.
 
     `pick` chooses among one step's artifacts of that kind, for a kind a step records more than once.
+
+    A step that recorded artifacts of this kind ends the scan even when `pick` can use none of them,
+    rather than reaching back another step. The two callers scan independently — `_elements_near`
+    takes the failing step's `elements.json` without an on-disk check — so a screenshot scan that
+    walked past the failing step would pair one step's image with another step's tree, the
+    cross-step mispairing this seam exists to prevent. Reaching back stays available for the case it
+    was written for: a step that recorded no artifact of this kind at all.
     """
     if failed_index is not None:
         order = [failed_index, *range(failed_index - 1, -1, -1)]
@@ -492,6 +499,8 @@ def _nearest_artifact(
             ]
             if (art := pick(of_kind)) is not None:
                 return art
+            if of_kind:
+                return None
     return None
 
 

@@ -225,8 +225,10 @@ an **in-report element-tree viewer**: the captured elements open in an in-page o
 ([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)). Every step that acts records
 one. A step that fails before acting records none, and shows its `before.png` instead. Hovering an
 element in the viewer highlights its frame on the screenshot. That frame comes from `elements.json`,
-which a step re-reads after acting. So the frame and the pixels under it describe the same moment,
-whatever `capture` asked for. The serve editor's element picker resolves a step to the
+which a step re-reads after acting. Frame and pixels then describe the same moment. One
+exception: a non-mutating step (`assert`, `wait`) reuses the tree it settled on (BE-0259). That tree
+precedes the screenshot rather than following it. The serve editor's element picker resolves a
+step to the
 same image, for the same reason. In the detail, identifiers (`#home.title`) and literal constants (`“text”`,
 numbers) are rendered as subtly-styled inline tokens — visually distinct from the solid
 action/assert badges, so variables and constants are distinguishable at a glance. An `assert` step's
