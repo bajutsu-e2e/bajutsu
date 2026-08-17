@@ -33,6 +33,10 @@ projects.json
 # serve's persisted provider settings (LocalProviderSettingsStore) — runtime state, never committed
 provider-settings.json
 
+# serve's default SQLite database, created by `bajutsu serve` when no DB URL is configured — runtime
+# state, never committed (root-only so a target's own tracked *.db, if any, is unaffected)
+/bajutsu.db
+
 # serve's ephemeral upload sandboxes (BE-0073): extracted bundles, cleared on serve start
 uploads/
 
