@@ -716,6 +716,7 @@ def serve(
         for kind in register_batch_providers():
             print(f"cloud-batch dispatch enabled: {kind}")  # noqa: T201
     except Exception as exc:  # an optional feature must never block the bind
+        _logger.warning("cloud-batch dispatch disabled at startup", exc_info=True)
         print(f"note: cloud-batch dispatch is off — {exc}")  # noqa: T201
     hint = str(config) if config else "open a config.yml in the UI"
     if not gate.allowed_hosts(host):

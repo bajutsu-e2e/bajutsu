@@ -53,7 +53,13 @@ def bajutsu_source_root() -> Path | None:
     falls back rather than packaging a source-less directory.
     """
     root = Path(__file__).resolve().parent.parent.parent
-    return root if (root / "pyproject.toml").is_file() and (root / "tests").is_dir() else None
+    if (
+        (root / "pyproject.toml").is_file()
+        and (root / "tests").is_dir()
+        and (root / "bajutsu").is_dir()
+    ):
+        return root
+    return None
 
 
 def register_batch_providers(env: Mapping[str, str] | None = None) -> list[str]:

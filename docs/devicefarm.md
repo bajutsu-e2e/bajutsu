@@ -212,12 +212,11 @@ serve prints `cloud-batch dispatch enabled: devicefarm` at startup when it is wi
 headless submitter, serve reserves a single device per run through a device-selection filter, so it
 needs no device-pool ARN.
 
-> **Config and scenario placement.** When serving from a Bajutsu checkout, the cloud-batch package
-> is rooted at the source tree (the directory holding `pyproject.toml` and `tests/`), so a
-> cloud-batch target's config file and its `scenarios` directory must live inside that tree. A config
-> outside it — for example at `/home/me/myproject/bajutsu.config.yaml` — causes `POST /api/run-set`
-> to return a 400 error naming the package root. Running from an installed (non-checkout) Bajutsu
-> falls back to the config's own directory as the package root, which has the same requirement.
+> **Config and scenario placement.** The cloud-batch package is rooted at the *cloud-batch package
+> root* — the Bajutsu source tree (holding `pyproject.toml`, `tests/`, and the `bajutsu/` package)
+> when serving from a checkout, or the config's own directory otherwise. A cloud-batch target's
+> config file and its `scenarios` directory must live inside that root. A config outside it causes
+> `POST /api/run-set` to return a 400 error that names the actual package root path.
 
 A `POST /api/run-set` request fans a target out. Its body names the `target` and, optionally, a
 `scenarios` subset and a `deviceBudget`:

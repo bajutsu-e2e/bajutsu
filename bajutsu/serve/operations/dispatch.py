@@ -346,8 +346,7 @@ def start_run_set(
         return {
             "error": (
                 f"config is not under the cloud-batch package root {work_dir}; "
-                "for cloud-batch targets, the config and its scenarios must live inside the "
-                "Bajutsu source tree"
+                "the config and its scenarios must live inside that directory"
             )
         }, 400
     requests: list[BatchRequest] = []

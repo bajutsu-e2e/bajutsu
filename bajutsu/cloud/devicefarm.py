@@ -119,8 +119,9 @@ _PACKAGE_EXCLUDES = frozenset(
     }
 )
 
-# Path *prefixes* (matched against each component's first character) that must never enter the
-# package, regardless of where the source root is. A `.env` at the checkout root holds live API
+# Path component *strings* that must never enter the package even if they are not in _PACKAGE_EXCLUDES
+# (which is an exact-match set). Any component whose string starts with one of these prefixes is
+# excluded — e.g. `.env`, `.env.local`, and `.aws`. A `.env` at the checkout root holds live API
 # keys; `.aws` holds credentials. Neither belongs on a shared Device Farm host.
 _PACKAGE_EXCLUDE_PREFIXES = (".env", ".aws")
 
