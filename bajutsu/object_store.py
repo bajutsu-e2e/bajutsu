@@ -248,14 +248,13 @@ _SCHEME_BACKEND: dict[str, Literal["s3", "gcs"]] = {"s3": "s3", "gs": "gcs"}
 def parse_store_uri(uri: str) -> StoreURI:
     """Parse a store URI (``s3://bucket/prefix`` or ``gs://bucket/prefix``) into a `StoreURI` — the
     shared shape every store-selecting setting parses (``--evidence-store``, ``BAJUTSU_SERVER_STORE``).
+    ``gs://`` is supported alongside ``s3://`` (BE-0204).
 
     The first path segment is the bucket; the remainder is the key prefix, normalized to a trailing
     ``/`` (empty when the URI names only a bucket).
 
     Raises:
         ValueError: the scheme isn't ``s3`` / ``gs``, or the bucket is missing.
-
-    BE-0204.
     """
     scheme, sep, rest = uri.partition("://")
     if not sep or scheme not in _SCHEME_BACKEND:

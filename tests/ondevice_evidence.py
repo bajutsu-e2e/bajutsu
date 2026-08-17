@@ -1,4 +1,4 @@
-"""Per-test video + deviceLog capture for the on-device adb/XCUITest pytest suites.
+"""Per-test video + deviceLog capture for the on-device adb/XCUITest pytest suites (BE-0350).
 
 `conformance (adb)`, `fault-injection (adb)`, and their iOS twins drive their backend straight from
 pytest (`launch_driver`, never `bajutsu run`), so none of them inherits the scenario pipeline's
@@ -33,8 +33,6 @@ A module opts in with one autouse fixture:
             SERIAL, "conformance-adb", request,
             start_video=android_screenrecord, start_log=intervals.start_logcat,
         )
-
-BE-0350.
 """
 
 from __future__ import annotations
