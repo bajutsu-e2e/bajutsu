@@ -186,8 +186,9 @@ a config — the server enforces that restriction, and a refused action shows in
 An **org** is a tenant of a hosted deployment, and its membership decides which GitHub logins and
 GitHub organizations may sign in as it, and which GitHub Team among them may write. A deployment that
 runs against a database keeps that membership in the database rather than in the config file, and the
-admin edits it (BE-0375). The tab appears for an admin on such a deployment, and nowhere else: on
-any other deployment the server declines to list orgs, which is what keeps the tab hidden.
+**Orgs** tab is where an admin edits it (BE-0375). The tab appears for an admin on such a
+deployment, and nowhere else: on any other deployment the server declines to list orgs, which is
+what keeps the tab hidden.
 
 Each row shows an org's slug, how many members and GitHub organizations it holds, its editor Team,
 and how many projects it owns — plus its display name, when that differs from the slug the row
