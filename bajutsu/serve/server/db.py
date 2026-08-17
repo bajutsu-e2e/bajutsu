@@ -251,6 +251,14 @@ class Repository(Protocol):
         `audit_log` still hold foreign keys on this id — including the delete's own audit entry.
         """
 
+    def list_org_user_ids(self, org_id: str) -> list[str]:
+        """Every user id recorded under *org_id* — whose sessions retiring the org revokes (BE-0375).
+
+        Read before the soft delete, not after: the delete leaves `users.org_id` pointing at the
+        retired slug, so the set is the same either way, but reading first keeps the caller from
+        depending on that.
+        """
+
     def upsert_user(
         self, user_id: str, *, org_id: str, github_login: str, email: str, role: str = "editor"
     ) -> None:
@@ -745,6 +753,16 @@ class SqlRepository:
             row.deleted_at = at
             session.commit()
             return True
+
+    def list_org_user_ids(self, org_id: str) -> list[str]:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import User
+
+        stmt = select(User.id).where(User.org_id == org_id)
+        with Session(self._engine) as session:
+            return list(session.scalars(stmt))
 
     def upsert_user(
         self, user_id: str, *, org_id: str, github_login: str, email: str, role: str = "editor"

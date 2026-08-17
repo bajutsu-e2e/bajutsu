@@ -40,10 +40,13 @@ from bajutsu.serve.helpers import (
     list_targets,
     load_serve_config_file,
 )
-from bajutsu.serve.orgs import DEFAULT_ORG, seed_orgs_from_config
+from bajutsu.serve.orgs import (
+    DEFAULT_ORG,
+    orgs_declaring_membership,
+    seed_orgs_from_config,
+)
 from bajutsu.serve.provider_store import ProviderSettingsError
 from bajutsu.serve.state import OrgProviderSettings, ProviderSettings, ServeState
-from bajutsu.serve.uploads import Upload
 
 # The logical name of the Claude API key in the secret store (BE-0136). The store holds each named
 # credential under its own name; the second one below is the `claude-code` provider's OAuth token.
@@ -533,18 +536,27 @@ def _confined_config_path(root: Path, raw: str) -> Path | None:
 
 
 def seed_orgs_from_bound_config(state: ServeState) -> None:
-    """Seed the bound config's `orgs:` block into the database, once per org row (BE-0375).
+    """Seed the launch config's `orgs:` block into an empty `orgs` table, once (BE-0375).
 
-    Called wherever a configuration becomes the bound one on a deployment that has a database — at
-    startup and at every rebind alike, so an org first declared through `POST /api/config` is seeded
-    too rather than silently admitting nobody. A no-op without a repository (a database-less
-    deployment keeps reading `orgs:` directly) or without a loadable config.
+    Called from `serve()` at startup and from nowhere else. Deliberately *not* from the API binds
+    (`bind_config`, `bind_git_config`, the upload and compose binds): those accept a configuration
+    whose content the deployment does not own — BE-0121 says as much of the same file's `build:`,
+    which stays ungoverned until `--allow-remote-build` opts in — and seeding from one would hand
+    that file authority over who may sign in. Before this item that authority existed but was live
+    and reversible, because sign-in re-read the file every time; a seeded row outlives the bind, so
+    rebinding away would no longer revoke it. An org first declared through an API bind is therefore
+    created on the Orgs page instead.
 
-    A repository failure is reported and swallowed rather than propagated: seeding is a convergence
-    step that re-runs on the next startup or rebind, so letting it fail a bind that otherwise
-    succeeded would trade a recoverable state for an unrecoverable one. It is not thereby hidden —
-    it is logged at WARNING here, and a database `serve` cannot read independently turns sign-in
-    into a 5xx that names the store (`oauth_callback`), never a silent denial.
+    Seeds only when the table holds no org at all, deleted ones included. One boot converts a
+    configuration-only deployment; from then on the database is the sole author of its own roster,
+    and no later configuration edit — nor a restart carrying one — can add, revive, or reshape a
+    tenant behind an admin's back. A no-op without a repository (a database-less deployment keeps
+    reading `orgs:` directly) or without a loadable config.
+
+    A repository failure is reported and swallowed rather than propagated: a bad database read must
+    not stop a server from booting, and the next start re-runs this. It is not thereby hidden — it
+    is logged at WARNING here, and a database `serve` cannot read independently turns sign-in into a
+    5xx that names the store (`oauth_callback`), never a silent denial.
     """
     if state.repository is None:
         return
@@ -552,13 +564,20 @@ def seed_orgs_from_bound_config(state: ServeState) -> None:
     if parsed is None:
         return
     try:
-        ignored = seed_orgs_from_config(state.repository, parsed[1])
+        if state.repository.list_orgs(include_deleted=True):
+            # Past the conversion: the database has a roster of its own and config no longer writes
+            # it, so every entry still declaring membership is one an operator should hear about.
+            # Reported rather than skipped silently — the warning is the only signal that a field
+            # they are still editing stopped being read.
+            ignored = orgs_declaring_membership(parsed[1])
+        else:
+            ignored = seed_orgs_from_config(state.repository, parsed[1])
     except Exception as exc:
         oplog.log_event(
             logging.getLogger(__name__),
             "org.seed.failed",
-            f"could not seed org membership from the bound config ({type(exc).__name__}); "
-            "it will be retried at the next startup or config rebind",
+            f"could not seed org membership from the launch config ({type(exc).__name__}); "
+            "it will be retried at the next startup",
             level=logging.WARNING,
             check="orgs_seed_failed",
         )
@@ -578,18 +597,6 @@ def seed_orgs_from_bound_config(state: ServeState) -> None:
             level=logging.WARNING,
             check="orgs_membership_ignored",
         )
-
-
-def bind_upload_and_seed(state: ServeState, upload: Upload) -> None:
-    """Make *upload* the bound configuration and seed its `orgs:` block (BE-0375).
-
-    One operation rather than two calls each upload bind site must remember, because forgetting the
-    second is silent in both directions: nothing warns at bind time, and the operator's first signal
-    is a tenant whose members are all turned away at sign-in. `state.py` cannot import `operations`,
-    so the pairing lives here beside the seed rather than inside `ServeState.bind_upload`.
-    """
-    state.bind_upload(upload)
-    seed_orgs_from_bound_config(state)
 
 
 def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
@@ -635,7 +642,6 @@ def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
     # resolving outside the directory its relative paths are defined against, regardless of who bound
     # it — orthogonal to, not a relaxation of, this build-trust call.
     state.git_config_from_api = False
-    seed_orgs_from_bound_config(state)  # a newly bound `orgs:` block seeds its orgs (BE-0375)
     return {"ok": True, "config": str(target), "targets": list_targets(target)}, 200
 
 
@@ -682,7 +688,6 @@ def bind_git_config(state: ServeState, spec_str: str) -> tuple[Any, int]:
     # A Git config bound here came in over the API, not from the operator's startup flags, so its
     # `build:` command is untrusted and stays ungoverned until --allow-remote-build opts in (BE-0121).
     state.git_config_from_api = True
-    seed_orgs_from_bound_config(state)  # a newly bound `orgs:` block seeds its orgs (BE-0375)
     return {
         "ok": True,
         "config": str(mat.config_path),

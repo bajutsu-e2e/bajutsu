@@ -99,6 +99,14 @@ def create_org(
     invalid = _validate_slug(slug)
     if invalid is not None:
         return {"error": invalid}, 400
+    if slug == DEFAULT_ORG:
+        # `serve` hardcodes this slug as the org an unmatched sign-in falls into — the admin-Team
+        # bypass's landing place, and the fallback `targets_for_org` decides by the literal string
+        # before it reads any entry. A real tenant created here would silently take that namespace,
+        # and `delete_org` refuses the slug outright, so nothing could undo it through this API.
+        return {
+            "error": f"{DEFAULT_ORG!r} is reserved as the sign-in fallback and cannot be created"
+        }, 409
     name = str(body.get("name") or "").strip() or slug
     if not state.repository.create_org(slug=slug, name=name):
         # Taken by a live org, or by a soft-deleted one still holding the UNIQUE slug. Say both, so
@@ -184,7 +192,18 @@ def delete_org(state: ServeState, slug: str, *, actor: str | None = None) -> tup
         return {
             "error": f"org {slug!r} still owns {len(projects)} project(s); deregister them first"
         }, 409
+    # Read the roster before the delete so the revocation below has it, then retire the org first:
+    # the row is what turns away the *next* sign-in, so it must land even if session cleanup fails.
+    members = state.repository.list_org_user_ids(slug)
     if not state.repository.soft_delete_org(slug, at=datetime.now(UTC)):
         return {"error": f"no org named {slug!r}"}, 404
-    _record_audit(state, actor, state.org_of(actor), "org.delete", slug, {})
-    return {"ok": True, "slug": slug}, 200
+    # A soft delete alone reaches only future sign-ins: `users.org_id` still names the retired slug,
+    # so a cookie issued before it would keep listing that tenant's runs, triggering new ones, and
+    # reading its secrets until it expired. Retiring an org used to mean a config edit plus a
+    # redeploy, and the restart dropped every session as a side effect; making it an in-process
+    # admin action removes that incidental revocation, so this does it deliberately (BE-0375).
+    revoked = state.auth.sessions.revoke_identities(members)
+    _record_audit(
+        state, actor, state.org_of(actor), "org.delete", slug, {"sessionsRevoked": revoked}
+    )
+    return {"ok": True, "slug": slug, "sessionsRevoked": revoked}, 200

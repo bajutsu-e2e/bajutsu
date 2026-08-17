@@ -355,6 +355,42 @@ def test_create_then_re_member_an_org_and_audit_both(
     assert _audit_actions(state.repository) == ["org.create", "org.membership.update"]
 
 
+def test_creating_the_default_org_is_refused(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # `default` is where an unmatched sign-in lands — the admin-Team bypass's own landing place —
+    # and `targets_for_org` decides it by the literal slug before reading any entry. A real tenant
+    # created here would silently take that namespace, and `delete_org` refuses the slug, so nothing
+    # could undo it through the API. Refused at creation instead, which is the reversible end.
+    state = _state(serve_engine, tmp_path)
+    assert state.repository is not None
+    payload, status = ops.create_org(state, {"slug": "default"}, actor=_admin(state))
+    assert status == 409
+    assert "reserved" in payload["error"]
+    assert state.repository.get_org("default", include_deleted=True) is None
+
+
+def test_retiring_an_org_revokes_its_members_live_sessions(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # A soft delete alone reaches only the *next* sign-in: `users.org_id` still names the retired
+    # slug, so a cookie issued before it would keep acting as that tenant until it expired. Retiring
+    # used to mean a config edit plus a redeploy, and the restart dropped every session as a side
+    # effect; an in-process admin action has to do it deliberately (BE-0375).
+    state = _state(serve_engine, tmp_path, oauth=_FakeOAuth("bob"))
+    assert state.repository is not None
+    _payload, status, sid = _sign_in(state)  # bob belongs to globex
+    assert status == 200 and sid is not None
+    assert state.auth.valid_session(sid)
+    other = state.auth.issue_session(identity="alice")  # a different org: must survive
+    anonymous = state.auth.issue_session()  # a shared-token login belongs to no org
+
+    payload, status = ops.delete_org(state, "globex", actor=_admin(state))
+    assert status == 200 and payload["sessionsRevoked"] == 1
+    assert not state.auth.valid_session(sid)
+    assert state.auth.valid_session(other) and state.auth.valid_session(anonymous)
+
+
 def test_creating_an_org_rejects_a_taken_slug_and_a_slug_that_is_not_a_safe_id(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
@@ -476,68 +512,88 @@ def test_a_targets_only_entry_is_left_unseeded_so_a_restored_roster_still_seeds(
     assert orgs_from_db(state.repository)["acme"].members == ["alice"]
 
 
-def test_a_new_orgs_entry_is_seeded_at_a_later_rebind(
+def test_seeding_is_skipped_once_the_table_holds_any_org(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
-    # Seeding at a rebind, not only at startup, is what keeps an org first declared through
-    # `POST /api/config` from admitting nobody until the next restart.
+    # One boot converts a configuration-only deployment; after that the database is the sole author
+    # of its own roster (BE-0375). A later `orgs:` entry — an edit, or a restart carrying one — must
+    # not add a tenant behind an admin's back, so a table holding any org at all stops the seed.
     state = _state(serve_engine, tmp_path)
     assert state.repository is not None
     state.config.write_text(
         _COLLIDING_YAML + "  initech:\n    members: [peter]\n", encoding="utf-8"
     )
     seed_orgs_from_bound_config(state)
-    assert orgs_from_db(state.repository)["initech"].members == ["peter"]
+    assert "initech" not in orgs_from_db(state.repository)
 
 
-def test_binding_an_uploaded_bundle_seeds_its_orgs_block(
+def test_seeding_is_skipped_when_every_org_has_been_retired(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
-    # Every path that repoints `state.config` has to seed, and forgetting one is silent in both
-    # directions — nothing warns at bind time, and the first signal is a tenant turned away at
-    # sign-in. The three upload bind sites reach the seed through `bind_upload_and_seed` rather than
-    # a hand-copied call each, so a fourth site gets the seed by calling the same helper instead of
-    # by remembering a second call.
-    from bajutsu.serve.operations.config import bind_upload_and_seed
-    from bajutsu.serve.uploads import Upload
-
+    # A retired org still counts as a roster the database authored: a table emptied by soft-deleting
+    # every tenant must not read as "never converted" and let the config repopulate it on the next
+    # restart, which would revive by another name what an admin deliberately retired.
     state = _state(serve_engine, tmp_path)
     assert state.repository is not None
-    bundle = tmp_path / "bundle"
-    bundle.mkdir()
-    config = bundle / "bajutsu.config.yaml"
-    config.write_text("targets: {}\norgs:\n  initech:\n    members: [peter]\n", encoding="utf-8")
-    bind_upload_and_seed(
-        state, Upload(dir=bundle, config=config, filename="b.zip", sha256="x", size=1, org="acme")
+    admin = _admin(state)
+    for slug in ("acme", "globex"):
+        assert ops.delete_org(state, slug, actor=admin)[1] == 200
+    assert orgs_from_db(state.repository) == {}
+    seed_orgs_from_bound_config(state)
+    assert orgs_from_db(state.repository) == {}
+
+
+def test_seeding_still_reports_config_entries_that_declare_membership(
+    serve_engine: Callable[..., Engine], tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The skip must not silence the operator's one signal that a field they are still editing
+    # stopped being read. Past the conversion every entry declaring membership is reported, which is
+    # strictly more than the pre-conversion case reported (only the entries that failed to seed).
+    state = _state(serve_engine, tmp_path)
+    with caplog.at_level(logging.WARNING):
+        seed_orgs_from_bound_config(state)
+    record = next(
+        r for r in caplog.records if getattr(r, "event", None) == "org.membership.ignored"
     )
-    assert state.config == config
-    assert orgs_from_db(state.repository)["initech"].members == ["peter"]
+    assert "acme" in record.getMessage() and "globex" in record.getMessage()
+    assert record.check == "orgs_membership_ignored"
 
 
-# Each test below drives one *real* bind operation rather than the seed helper, because the helper
-# being right is not what protects a tenant: the wiring is. A bind site that loses its seed call
-# fails silently in both directions — nothing warns at bind time, and the first signal is a tenant
-# turned away at sign-in — so each site the operator can reach carries its own test.
+# Each test below drives one *real* API bind operation. None of them may seed: such a bind accepts a
+# configuration whose content the deployment does not own — BE-0121 says as much of the same file's
+# `build:` — and a seeded row outlives the bind, so rebinding away would no longer revoke the grant
+# the way re-reading the file on every sign-in used to (BE-0375). Only `serve()`'s launch config
+# seeds, and only into an empty table.
 
 
-def test_binding_a_config_from_the_file_browser_seeds_its_orgs(
+def _unconverted(serve_engine: Callable[..., Engine], tmp_path: Path, **extra: Any) -> ServeState:
+    """A database-backed serve whose `orgs` table is still empty, so nothing but the bind could
+    create a row — otherwise these tests would pass on the empty-table guard rather than on the
+    absence of a seed call."""
+    state = _state(serve_engine, tmp_path, body="targets: {}\n", seed=False, **extra)
+    assert state.repository is not None
+    assert state.repository.list_orgs(include_deleted=True) == []
+    return state
+
+
+def test_binding_a_config_from_the_file_browser_does_not_seed(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
-    state = _state(serve_engine, tmp_path, root=tmp_path)
+    state = _unconverted(serve_engine, tmp_path, root=tmp_path)
     assert state.repository is not None
     (tmp_path / "next.config.yaml").write_text(_ORGS_ONLY_YAML, encoding="utf-8")
     _, status = ops.bind_config(state, "next.config.yaml")
     assert status == 200
-    assert orgs_from_db(state.repository)["initech"].members == ["peter"]
+    assert orgs_from_db(state.repository) == {}
 
 
-def test_binding_a_git_config_seeds_its_orgs(
+def test_binding_a_git_config_does_not_seed(
     serve_engine: Callable[..., Engine], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import bajutsu.serve.operations.config as config_ops
     from bajutsu.config_source import Materialized
 
-    state = _state(serve_engine, tmp_path)
+    state = _unconverted(serve_engine, tmp_path)
     assert state.repository is not None
     checkout = tmp_path / "gitsrc"
     checkout.mkdir()
@@ -548,10 +604,13 @@ def test_binding_a_git_config_seeds_its_orgs(
     )
     _, status = ops.bind_git_config(state, "github:acme/repo@main")
     assert status == 200
-    assert orgs_from_db(state.repository)["initech"].members == ["peter"]
+    # The scenario this closes: a config fetched from an arbitrary repo and ref declaring
+    # `initech: {members: [peter]}` would otherwise grant peter a permanent sign-in that rebinding
+    # away could not revoke.
+    assert orgs_from_db(state.repository) == {}
 
 
-def test_binding_an_uploaded_zip_seeds_its_orgs(
+def test_binding_an_uploaded_zip_does_not_seed(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
     import hashlib
@@ -565,19 +624,16 @@ def test_binding_an_uploaded_zip_seeds_its_orgs(
     zip_path = tmp_path / "bundle.zip"
     zip_path.write_bytes(blob)
 
-    state = _state(serve_engine, tmp_path, uploads_dir=tmp_path / "uploads")
+    state = _unconverted(serve_engine, tmp_path, uploads_dir=tmp_path / "uploads")
     assert state.repository is not None
-    # The audited upload writes foreign keys on both actor and org, so it needs the row a real
-    # sign-in leaves behind — the same reason `_admin` exists.
-    actor = _admin(state)
     _, status = ops.bind_upload_config(
-        state, zip_path, "bundle.zip", sha256=hashlib.sha256(blob).hexdigest(), actor=actor
+        state, zip_path, "bundle.zip", sha256=hashlib.sha256(blob).hexdigest()
     )
     assert status == 200
-    assert orgs_from_db(state.repository)["initech"].members == ["peter"]
+    assert orgs_from_db(state.repository) == {}
 
 
-def test_reactivating_an_uploaded_project_seeds_its_orgs(
+def test_reactivating_an_uploaded_project_does_not_seed(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
     from _shared import FakeObjectStore
@@ -588,7 +644,7 @@ def test_reactivating_an_uploaded_project_seeds_its_orgs(
     cached = tmp_path / "uploads" / "acme" / sha256  # an org-scoped cache hit: nothing to fetch
     cached.mkdir(parents=True)
     (cached / "bajutsu.config.yaml").write_text(_ORGS_ONLY_YAML, encoding="utf-8")
-    state = _state(
+    state = _unconverted(
         serve_engine,
         tmp_path,
         uploads_dir=tmp_path / "uploads",
@@ -597,7 +653,7 @@ def test_reactivating_an_uploaded_project_seeds_its_orgs(
     assert state.repository is not None
     result = activate_uploaded_project(state, {"kind": "upload", "sha256": sha256}, org="acme")
     assert result is not None and result[1] == 200
-    assert orgs_from_db(state.repository)["initech"].members == ["peter"]
+    assert orgs_from_db(state.repository) == {}
 
 
 def test_an_org_created_through_the_api_is_never_seeded_over(

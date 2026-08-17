@@ -116,12 +116,12 @@ async function saveMembership(slug) {
   await loadOrgs();
 }
 
-// Retire an org after confirmation. A soft delete: it stops admitting sign-ins and leaves the list,
-// but its runs and audit entries stay queryable and its slug stays taken — say all three, since
-// each is a surprise if discovered afterwards.
+// Retire an org after confirmation. A soft delete: it stops admitting sign-ins, signs out whoever
+// is already signed in as it, and leaves the list — but its runs and audit entries stay queryable
+// and its slug stays taken. Say all four, since each is a surprise if discovered afterwards.
 async function deleteOrg(slug) {
   const err = $('#orgs-error');
-  if (!window.confirm(`Delete org "${slug}"? Nobody will be able to sign in as it. Its runs and audit history are kept, and its slug stays reserved — it cannot be re-created under the same name.`)) return;
+  if (!window.confirm(`Delete org "${slug}"? Anyone signed in as it is signed out immediately, and nobody will be able to sign in as it again. Its runs and audit history are kept, and its slug stays reserved — it cannot be re-created under the same name.`)) return;
   err.hidden = true;
   let d;
   try {

@@ -44,15 +44,15 @@ def _state(
     engine = serve_engine()
     Base.metadata.create_all(engine)
     repo = SqlRepository(engine)
+    state = srv.ServeState(runs_dir=tmp_path / "runs", config=cfg, repository=repo)
+    # A database-backed deployment resolves sign-in and org placement against the `orgs` table
+    # (BE-0375), which `serve()` fills from the bound config at startup — and only while the table
+    # is still empty, so this runs before the rows below rather than after them.
+    seed_orgs_from_bound_config(state)
     for org, members in (("acme", ["alice"]), ("globex", ["bob"])):
         repo.ensure_org(org, slug=org, name=org)
         for m in members:
             repo.upsert_user(m, org_id=org, github_login=m, email=f"{m}@x")
-    state = srv.ServeState(runs_dir=tmp_path / "runs", config=cfg, repository=repo)
-    # A database-backed deployment resolves sign-in and org placement against the `orgs` table
-    # (BE-0375), which `serve()` seeds from the bound config at startup and at every rebind. The
-    # `ensure_org` rows above are the passive shape a sign-in leaves behind; seeding fills them in.
-    seed_orgs_from_bound_config(state)
     return state
 
 

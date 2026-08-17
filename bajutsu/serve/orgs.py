@@ -71,7 +71,14 @@ def org_for_identity(orgs: dict[str, OrgConfig], login: str, github_orgs: list[s
     """The org for a user logging in as *login* with the given GitHub *github_orgs* memberships (BE-0015).
 
     An explicit `members` listing wins; otherwise the first org whose `github_orgs` intersects the
-    user's GitHub orgs; otherwise `default`. Resolution is deterministic in config order.
+    user's GitHub orgs; otherwise `default`.
+
+    "First" is deterministic but source-dependent, which matters only when two orgs name the same
+    GitHub organization: `parse_orgs` preserves the order the `orgs:` block declares them in, while
+    `orgs_from_db` iterates slug order (`list_orgs` sorts by it). Both are stable — the same login
+    resolves the same way on every sign-in — but a deployment holding such an overlap can see the
+    tie-break move once, at the conversion to the database (BE-0375). A login that belongs to more
+    than one org has no way to say which it means today; letting them choose is a separate item.
     """
     explicit = org_for_user(orgs, login)
     if explicit != DEFAULT_ORG:
@@ -135,29 +142,41 @@ def orgs_from_db(repository: Repository) -> dict[str, OrgConfig]:
     }
 
 
-def seed_orgs_from_config(repository: Repository, orgs: dict[str, OrgConfig]) -> list[str]:
-    """Seed each config-declared org's membership into the database, once per row (BE-0375).
+def orgs_declaring_membership(orgs: dict[str, OrgConfig]) -> list[str]:
+    """The entries that declare `members` / `githubOrgs` / `editorTeam` (BE-0375).
 
-    Run whenever a repository is wired and a configuration is bound — at startup and at every
-    rebind alike, so an org first declared through a rebind is seeded too. Each row is seeded at
-    most once: `seed_org_membership` skips one already marked seeded (or soft-deleted), which is
-    the hard cutover — from then on the database owns that org's membership.
+    An entry carrying only `targets` is the end state a database-backed deployment is meant to
+    reach, since target ownership stays in configuration, so it is never one of these — which is
+    what lets the caller warn about the rest without firing forever on a correct configuration.
+    """
+    return [
+        name
+        for name, oc in orgs.items()
+        if oc.members or oc.github_orgs or oc.editor_team is not None
+    ]
+
+
+def seed_orgs_from_config(repository: Repository, orgs: dict[str, OrgConfig]) -> list[str]:
+    """Seed each config-declared org's membership into the database (BE-0375).
+
+    Run once, at startup, against an `orgs` table that holds no row at all — the caller owns that
+    condition. One boot converts a configuration-only deployment; afterwards the database is the
+    sole author of its own roster. `seed_org_membership` still skips a row already marked seeded or
+    soft-deleted, so a partially converted table (a passive row an earlier sign-in left behind)
+    cannot be seeded twice.
 
     An entry declaring only `targets` is skipped rather than seeded, so the cutover marker is never
     spent on a roster nobody wrote. That entry is legitimate in both directions: it is the end state
-    the docs recommend *after* the cutover, and paring the config down before the first seeded start
+    the docs recommend *after* the conversion, and paring the config down before the converting boot
     must not be the irreversible act of locking every org at "admits nobody". Its row is therefore
-    left uncreated — target ownership resolves from the configuration, not the table — and a config
-    that later declares membership can still seed it.
+    left uncreated — target ownership resolves from the configuration, not the table.
 
-    Returns the names of the entries that were *not* seeded but still declare
-    `members`/`githubOrgs`/`editorTeam`, so the caller can tell an operator that configuration no
-    longer decides them. A `targets:`-only entry is never reported.
+    Returns the names of the entries that declared membership and were nonetheless *not* seeded, so
+    the caller can tell an operator that configuration no longer decides them.
     """
     stale: list[str] = []
-    for name, oc in orgs.items():
-        if not (oc.members or oc.github_orgs or oc.editor_team is not None):
-            continue
+    for name in orgs_declaring_membership(orgs):
+        oc = orgs[name]
         seeded = repository.seed_org_membership(
             name,
             slug=name,
