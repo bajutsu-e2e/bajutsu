@@ -51,6 +51,11 @@ orgs:
 """
 
 
+# The config a bind site brings with it: one org the seeded state has never heard of, so the row
+# can only come from that bind's own seed.
+_ORGS_ONLY_YAML = "targets: {}\norgs:\n  initech:\n    members: [peter]\n"
+
+
 class _FakeOAuth:
     """The slice of the OAuth flow `oauth_callback` drives, in memory — no GitHub call."""
 
@@ -80,6 +85,7 @@ def _state(
     oauth: object = None,
     admin_teams: list[str] | None = None,
     seed: bool = True,
+    **extra: Any,
 ) -> ServeState:
     """A database-backed serve, seeded from its bound config the way `serve()` seeds at startup."""
     from bajutsu.serve.server.db import SqlRepository
@@ -95,6 +101,7 @@ def _state(
         cwd=tmp_path,
         repository=SqlRepository(engine),
         auth=SessionManager(oauth=oauth, oauth_admin_teams=tuple(admin_teams or ())),
+        **extra,  # the bind-site tests below wire `root` / `uploads_dir` / `object_store`
     )
     if seed:
         seed_orgs_from_bound_config(state)
@@ -504,6 +511,92 @@ def test_binding_an_uploaded_bundle_seeds_its_orgs_block(
         state, Upload(dir=bundle, config=config, filename="b.zip", sha256="x", size=1, org="acme")
     )
     assert state.config == config
+    assert orgs_from_db(state.repository)["initech"].members == ["peter"]
+
+
+# Each test below drives one *real* bind operation rather than the seed helper, because the helper
+# being right is not what protects a tenant: the wiring is. A bind site that loses its seed call
+# fails silently in both directions — nothing warns at bind time, and the first signal is a tenant
+# turned away at sign-in — so each site the operator can reach carries its own test.
+
+
+def test_binding_a_config_from_the_file_browser_seeds_its_orgs(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state = _state(serve_engine, tmp_path, root=tmp_path)
+    assert state.repository is not None
+    (tmp_path / "next.config.yaml").write_text(_ORGS_ONLY_YAML, encoding="utf-8")
+    _, status = ops.bind_config(state, "next.config.yaml")
+    assert status == 200
+    assert orgs_from_db(state.repository)["initech"].members == ["peter"]
+
+
+def test_binding_a_git_config_seeds_its_orgs(
+    serve_engine: Callable[..., Engine], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import bajutsu.serve.operations.config as config_ops
+    from bajutsu.config_source import Materialized
+
+    state = _state(serve_engine, tmp_path)
+    assert state.repository is not None
+    checkout = tmp_path / "gitsrc"
+    checkout.mkdir()
+    git_config = checkout / "bajutsu.config.yaml"
+    git_config.write_text(_ORGS_ONLY_YAML, encoding="utf-8")
+    monkeypatch.setattr(
+        config_ops, "materialize", lambda spec, **kw: Materialized(git_config, checkout, "sha")
+    )
+    _, status = ops.bind_git_config(state, "github:acme/repo@main")
+    assert status == 200
+    assert orgs_from_db(state.repository)["initech"].members == ["peter"]
+
+
+def test_binding_an_uploaded_zip_seeds_its_orgs(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    import hashlib
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("bajutsu.config.yaml", _ORGS_ONLY_YAML)
+    blob = buf.getvalue()
+    zip_path = tmp_path / "bundle.zip"
+    zip_path.write_bytes(blob)
+
+    state = _state(serve_engine, tmp_path, uploads_dir=tmp_path / "uploads")
+    assert state.repository is not None
+    # The audited upload writes foreign keys on both actor and org, so it needs the row a real
+    # sign-in leaves behind — the same reason `_admin` exists.
+    actor = _admin(state)
+    _, status = ops.bind_upload_config(
+        state, zip_path, "bundle.zip", sha256=hashlib.sha256(blob).hexdigest(), actor=actor
+    )
+    assert status == 200
+    assert orgs_from_db(state.repository)["initech"].members == ["peter"]
+
+
+def test_reactivating_an_uploaded_project_seeds_its_orgs(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    from _shared import FakeObjectStore
+
+    from bajutsu.serve.operations.upload import activate_uploaded_project
+
+    sha256 = "c" * 64
+    cached = tmp_path / "uploads" / "acme" / sha256  # an org-scoped cache hit: nothing to fetch
+    cached.mkdir(parents=True)
+    (cached / "bajutsu.config.yaml").write_text(_ORGS_ONLY_YAML, encoding="utf-8")
+    state = _state(
+        serve_engine,
+        tmp_path,
+        uploads_dir=tmp_path / "uploads",
+        object_store=FakeObjectStore(),  # without one, the operation returns None before binding
+    )
+    assert state.repository is not None
+    result = activate_uploaded_project(state, {"kind": "upload", "sha256": sha256}, org="acme")
+    assert result is not None and result[1] == 200
     assert orgs_from_db(state.repository)["initech"].members == ["peter"]
 
 

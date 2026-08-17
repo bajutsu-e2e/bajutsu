@@ -204,7 +204,7 @@ ROUTES: tuple[Route, ...] = (
         lambda state, ctx: ops.project_runs(state, ctx.path_param("name"), actor=ctx.actor()),
     ),
     # The org roster an admin administers (BE-0375). Admin-gated in `authz.required_role`, which
-    # needs its own early case for this path since three of the four verbs here aren't POST.
+    # needs its own early case for this path since two of the four routes here aren't POST.
     Route("GET", "/api/orgs", lambda state, ctx: ops.list_orgs_view(state, actor=ctx.actor())),
     Route(
         "GET",
