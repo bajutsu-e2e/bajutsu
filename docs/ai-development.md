@@ -1075,7 +1075,7 @@ alternatives considered, the scope decision, and the rest of the derivation, and
 Some genuinely long comments still earn their length — the Device Farm bootstrap block in
 [`bajutsu/cloud/devicefarm.py`](../bajutsu/cloud/devicefarm.py) is one, holding operational facts a
 maintainer needs at that exact line rather than one argument to trim — so check the comment's
-shape (the three shapes in the section above) before cutting.
+shape (the three shapes in *Cite an argument instead of repeating it*) before cutting.
 
 ### Describe the code as it is, never the change that produced it
 
@@ -1133,8 +1133,8 @@ into the bug it avoided.
 - John Ousterhout, *A Philosophy of Software Design*, ch. 12–13 — comments capture what the code
   cannot express, written at a lower (precision) or higher (intent) level than the code, never the
   same one.
-- Steve McConnell, *Code Complete*, 2nd ed., ch. 32 — the six kinds of comments; only summary and
-  intent survive.
+- Steve McConnell, *Code Complete*, 2nd ed., ch. 32 — the six kinds of comments; only summary,
+  intent, and information the code itself cannot express survive.
 - [Python Enhancement Proposal (PEP) 8, "Comments"](https://peps.python.org/pep-0008/#comments) —
   a comment that contradicts the code is worse than none; updating comments is part of changing
   the code.

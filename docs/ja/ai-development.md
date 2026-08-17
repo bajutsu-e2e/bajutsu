@@ -972,7 +972,7 @@ Bajutsu のコメントは、すでに「何を」ではなく「なぜ」を書
 ページを引用し、そこまで削ります。正当に長いコメントもあります。
 [`bajutsu/cloud/devicefarm.py`](../../bajutsu/cloud/devicefarm.py) の Device Farm ブートストラップの
 ブロックはその例で、1つの論証ではなく、その行の保守に必要な運用上の事実を保持しています。削る前に、
-上の節が挙げる3つの形のどれに当たるかを確かめます。
+「議論を繰り返さず参照する（コメントと docstring）」が挙げる3つの形のどれに当たるかを確かめます。
 
 ### 変更の経緯ではなく、現在のコードを書く
 
@@ -1026,7 +1026,8 @@ Bajutsu のコメントは、すでに「何を」ではなく「なぜ」を書
 
 - John Ousterhout『A Philosophy of Software Design』12〜13 章。コメントはコードに表せないことを運び、
   コードより低い水準（精密化）か高い水準（意図）で書き、同じ水準では書きません。
-- Steve McConnell『Code Complete 第 2 版』32 章。コメントの 6 分類のうち、価値を持つのは要約と意図です。
+- Steve McConnell『Code Complete 第 2 版』32 章。コメントの 6 分類のうち、価値を持つのは要約、意図、
+  そしてコード自体では表現できない情報です。
 - [Python Enhancement Proposal（PEP）8「Comments」](https://peps.python.org/pep-0008/#comments)。
   コードと矛盾するコメントはないよりも悪く、コメントの更新はコード変更の一部です。
 - [Google Python Style Guide §3.8](https://google.github.io/styleguide/pyguide.html)（レビューの
