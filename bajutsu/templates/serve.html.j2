@@ -63,6 +63,11 @@
           wraps onto its own second row as a whole — never interleaved button-by-button. -#}
       <div class="cfgctrls">
         <span class="cfgname" id="cfgname" data-testid="nav.config-name"></span>
+        {#- Which tenant this session acts as (BE-0375). Every tab is silently scoped to it — runs,
+            evidence, secrets, the project list — so an admin who administers several orgs can see
+            which one their own work lands in. Hidden until the boot read names an identity: a local
+            or shared-token session has none, and `default` shown to everyone would be noise. -#}
+        <span class="orgbadge" id="orgbadge" data-testid="nav.org" hidden></span>
         <button class="cfgbtn" id="opencfg" data-testid="nav.open-config">Open config</button>
         <button class="cfgbtn" id="viewcfg" data-testid="nav.view-config" hidden>View</button>
         {#- Project hub switcher (BE-0225 unit 4): next to the config viewer. A native <select> lists the

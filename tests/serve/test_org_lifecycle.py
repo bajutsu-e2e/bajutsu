@@ -446,6 +446,31 @@ def test_the_org_endpoints_need_a_database(tmp_path: Path) -> None:
     assert ops.delete_org(state, "acme")[1] == 400
 
 
+def test_the_config_read_reports_the_callers_own_org(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # Every tab is silently scoped to the caller's org — runs, evidence, secrets, the project list —
+    # so the boot read names it, and the header shows it. The caller's own login and org are not a
+    # disclosure: they presented the one and the other follows from it. The roster stays behind the
+    # admin-only `GET /api/orgs`.
+    state = _state(serve_engine, tmp_path, oauth=_FakeOAuth("bob"))
+    assert _sign_in(state)[1] == 200  # bob belongs to globex
+    payload, status = ops.config_info(state, actor="bob")
+    assert status == 200
+    assert (payload["actor"], payload["org"]) == ("bob", "globex")
+
+
+def test_the_config_read_names_no_org_without_an_identity(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # A local or shared-token session has no identity, and `org_of` would answer `default` for
+    # everyone. Reporting that would put a tenant badge on a single-user serve that has no tenants,
+    # so both fields stay None and the header keeps the shape it had.
+    state = _state(serve_engine, tmp_path)
+    payload, _status = ops.config_info(state)
+    assert payload["actor"] is None and payload["org"] is None
+
+
 # --- unit 6: seed once, then the database owns it ----------------------------------------------
 
 

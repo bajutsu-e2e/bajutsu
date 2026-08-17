@@ -133,7 +133,16 @@ def config_sources(state: ServeState) -> list[str]:
     return ["git", "upload"] if state.hosted else ["git", "upload", "fs"]
 
 
-def config_info(state: ServeState) -> tuple[Any, int]:
+def config_info(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+    """The boot read every tab starts from: what config is bound, what this deployment offers, and
+    who the caller is (BE-0375).
+
+    *actor* is the caller's own GitHub login, so returning it and the org it resolves to discloses
+    nothing they did not already present — unlike the org *roster*, which stays behind the admin-only
+    `GET /api/orgs`. Both are None on a deployment with no signed-in identity (local serve, a
+    shared-token session), where `org_of` would answer `default` for everyone and a header badge
+    saying so would be noise rather than information.
+    """
     sources = config_sources(state)
     return {
         "config": str(state.config) if state.config else None,
@@ -150,6 +159,11 @@ def config_info(state: ServeState) -> tuple[Any, int]:
         # long a trashed run stays restorable (BE-0239). <= 0 means retention is disabled — trash is
         # kept until a manual purge.
         "retentionDays": state.run_retention_days,
+        # Who this request is, and which tenant it acts as (BE-0375). The header shows the pair so an
+        # admin managing several orgs can see which one their own runs, secrets, and evidence land
+        # in — the one org whose scope every other tab silently applies.
+        "actor": actor,
+        "org": state.org_of(actor) if actor else None,
     }, 200
 
 

@@ -477,7 +477,17 @@ async function loadConfig(){
   fsSourceEnabled=!c.configSources||c.configSources.includes('fs');
   $('#fssrc').hidden=!fsSourceEnabled;
   setCfgName(c.hasConfig?c.config:'no config bound — open one →',c.hasConfig);
+  setOrgBadge(c.actor,c.org);
   if(c.hasConfig){await loadShared()}else{openFs()}
+}
+// Show which org this session acts as, next to the config it acts on (BE-0375). Both come from the
+// same boot read; the badge stays hidden unless the server named an identity, so a local or
+// shared-token serve looks exactly as before rather than reporting a `default` nobody chose.
+function setOrgBadge(actor,org){
+  const el=$('#orgbadge');if(!el)return;
+  const show=Boolean(actor&&org);
+  el.hidden=!show;
+  if(show){el.textContent=org;el.title=`signed in as ${actor} — acting as org "${org}"`}
 }
 // Set the nav's config-name label and reveal the "View" button only when a config is actually bound.
 function setCfgName(text,hasConfig){$('#cfgname').textContent=text;$('#viewcfg').hidden=!hasConfig}

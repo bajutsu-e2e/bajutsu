@@ -328,6 +328,16 @@ operation left to a future item. Unit 6's backfill likewise skips any row alread
 (`deleted_at` set): it neither seeds nor revives one, since a soft-deleted org is retired, not
 merely unseeded.
 
+The org a session acts as is also surfaced outside that page, in the shell header beside the bound
+configuration's name: `GET /api/config` — the boot read every tab already starts from — gains the
+caller's own `actor` and the `org` it resolves to, and the header shows the org with the login on
+hover. Every tab is silently scoped to that org (which targets are runnable, which runs and evidence
+are visible, the secrets, the project list), so an admin administering several tenants can otherwise
+only infer which one their own work lands in. Returning a caller's own identity to that caller
+discloses nothing they did not present, unlike the roster itself, which stays behind the admin-only
+`GET /api/orgs`; both fields are null where there is no signed-in identity (a local or shared-token
+`serve`, where `org_of` would answer `default` for everyone), and the header omits the badge there.
+
 A new admin-only **Orgs** page in the serve shell, parallel to
 [BE-0275](../BE-0275-serve-projects-management-page/BE-0275-serve-projects-management-page.md)'s
 Projects page: a list of orgs with create and delete actions (delete disabled, with the project
@@ -493,7 +503,9 @@ database is exactly the piece that makes an empty `orgs` table recoverable.
       new row seeded at creation, so no later `orgs:` entry re-seeds it; delete is a soft delete
       (`Org.deleted_at`) that excludes the org from sign-in resolution and `GET /api/orgs` without
       removing its row or violating any foreign key that still points at it, and revokes every
-      session its members hold through the `SessionStore` seam's new `revoke_identities`.
+      session its members hold through the `SessionStore` seam's new `revoke_identities`; `GET
+      /api/config` reports the caller's own `actor` and `org`, which the shell header shows as a
+      badge beside the bound configuration's name.
 - [x] 6 — The one-time conversion from the launch configuration's `orgs:` block into the database:
       at startup only, and only while the `orgs` table holds no row at all (a soft-deleted one
       included), so neither an API-bound configuration nor a later restart carrying an edited one

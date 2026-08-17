@@ -83,6 +83,17 @@ def test_js_keeps_one_membership_form_open_at_a_time(tmp_path: Path) -> None:
     assert "nextElementSibling" in body and ".orgedit" in body  # bound via the row just inserted
 
 
+def test_header_carries_an_org_badge_fed_by_the_config_read(tmp_path: Path) -> None:
+    # The org a session acts as is shown beside the config it acts on, from the same boot read, and
+    # stays hidden until that read names an identity — a local serve must look exactly as it did.
+    index, core = _fetch_many(tmp_path, "/", "/serve.core.mjs")
+    assert 'data-testid="nav.org"' in index
+    assert 'id="orgbadge"' in index and "hidden>" in index.split('id="orgbadge"')[1][:80]
+    body = core.split("function setOrgBadge")[1].split("\n}")[0]
+    assert "el.hidden=!show" in body  # hidden unless both fields came back
+    assert "setOrgBadge(c.actor,c.org)" in core  # fed by the /api/config boot read
+
+
 def test_show_view_toggles_every_declared_view(tmp_path: Path) -> None:
     # The bug this exists for: the Orgs tab, its section, and its refresh hook all shipped, every
     # test passed, and the page was unreachable — `showView` sets `.hidden` on one `#view-<name>` per

@@ -65,7 +65,12 @@ project registered), since it compares projects against each other — see
 [Comparing projects](#comparing-projects).
 To their right are **Open config** (with the active config's name shown beside it once one is bound,
 and a **View** button to inspect it — see below), **Settings**, and a theme picker that
-follows your system by default. Each tab is a full screen of its own; switching tabs never discards
+follows your system by default. On a deployment where you sign in with GitHub, a small badge beside
+the config name names the **org** this session acts as: every tab is scoped to it — the targets you
+can run, the runs and evidence you see, the secrets and the project list — so it is worth being able
+to read at a glance, particularly for an admin who administers several. Hovering it names the login
+too. A local or shared-token `serve` has no signed-in identity and no tenants, so the badge does not
+appear there. Each tab is a full screen of its own; switching tabs never discards
 what another tab was doing.
 
 Some forms change with the backend. Against the iOS Simulator (XCUITest) you see a **Device** picker,
