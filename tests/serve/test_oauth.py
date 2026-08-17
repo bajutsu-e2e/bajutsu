@@ -119,7 +119,7 @@ def test_oauth_callback_rejects_a_state_mismatch(
     # not just an expired cookie, so it still needs its own record. But `state_param`/`state_cookie`
     # are both caller-supplied (a query value and the caller's own Cookie: header), so nothing here
     # distinguishes an attack from an expired cookie on any single request -- this records at INFO,
-    # not a per-request WARNING an anonymous caller can trigger at request rate.
+    # not a per-request WARNING an anonymous caller can trigger at request rate (BE-0352).
     state = _state(tmp_path, oauth=FakeOAuthClient(), config=_config_file(tmp_path))
     with caplog.at_level(logging.INFO):
         _payload, status, sid = ops.oauth_callback(
@@ -154,7 +154,7 @@ def test_oauth_callback_bypasses_csrf_with_matching_fake_state_then_records_at_i
     # An attacker who fully controls both the query value and their own Cookie: header can satisfy
     # `secrets.compare_digest(state_param, state_cookie)` for free by sending the same fake value as
     # both -- this clears the CSRF check with no real GitHub auth, then fails the exchange (a
-    # garbage `code`) and records under the same INFO-level path as the branches above.
+    # garbage `code`) and records under the same INFO-level path as the branches above (BE-0352).
     state = _state(tmp_path, oauth=FakeOAuthClient(), config=_config_file(tmp_path))
     with caplog.at_level(logging.INFO):
         _payload, status, sid = ops.oauth_callback(

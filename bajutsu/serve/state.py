@@ -547,7 +547,7 @@ class ServeState:
     # early), re-emitted through `oplog` once `serve()` calls `_configure_oplog` -- *check* is a
     # stable discriminator (e.g. "admin_teams_empty") carried as its own field, so an operator's alert
     # keys on `check=` rather than substring-matching *msg*, which can reword out from under it. Empty
-    # on local serve.
+    # on local serve (BE-0352).
     startup_warnings: tuple[tuple[str, str], ...] = ()
     # Per-org store factory (BE-0015 multi-tenancy). None on local serve (one tenant); a server
     # backend sets a closure that builds object stores prefixed for the given org. `for_org` falls

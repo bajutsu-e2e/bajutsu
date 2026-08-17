@@ -254,6 +254,8 @@ def parse_store_uri(uri: str) -> StoreURI:
 
     Raises:
         ValueError: the scheme isn't ``s3`` / ``gs``, or the bucket is missing.
+
+    BE-0204.
     """
     scheme, sep, rest = uri.partition("://")
     if not sep or scheme not in _SCHEME_BACKEND:

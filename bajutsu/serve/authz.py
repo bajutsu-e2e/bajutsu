@@ -176,7 +176,7 @@ def oauth_callback(
         # (their own Cookie: header) to the same value, clears the CSRF check above for free, and
         # supplies any garbage `code` — GitHub's token endpoint then errors and this branch fires.
         # INFO for the same reason as the branches above: a per-request WARNING an anonymous caller
-        # can trigger this cheaply isn't a signal an operator can alert on.
+        # can trigger this cheaply isn't a signal an operator can alert on (BE-0352).
         oplog.log_event(_logger, "oauth.denied", "oauth exchange failed", level=logging.INFO)
         return {"error": "oauth exchange failed"}, 502, None
     if identity is None or not identity.login:
@@ -223,16 +223,9 @@ def oauth_callback(
     is_admin_team_member = in_admin_team(identity.teams, admin_teams)
     matched_org = identity_matches_org(orgs, login, identity.orgs)
     if not matched_org and not is_admin_team_member:
-        # A rejection is the one failure this item exists to make recoverable, so it needs a record
-        # too — under its own event rather than `oauth.login`, which stays "login count" (see the
-        # `bypass` reasoning below) rather than absorbing a "denied" outcome it never admitted. "No
-        # admin Team matched" would read the same for an unusable admin_teams (empty, or every entry
-        # malformed) as for a real membership miss, sending an operator to check GitHub Team
-        # membership when the actual fix is the environment variable -- name that shape distinctly,
-        # keyed on the same `admin_teams_unusable` predicate as the level below, so the message and
-        # the level can't drift apart the way an earlier revision of this line let them (a bare
-        # `not admin_teams` here paired with `admin_teams_unusable` on the level would call a
-        # space-separated, entirely-malformed list "matched" at WARNING).
+        # A rejection gets its own event (not `oauth.login`, which stays "login count"). The
+        # message is keyed on the same `admin_teams_unusable` predicate as the level below, so
+        # the two can't drift apart (BE-0352).
         admin_note = (
             "no usable admin Team is configured"
             if admin_teams_unusable(admin_teams)
@@ -246,7 +239,7 @@ def oauth_callback(
         # sign in to fix orgs: either. A non-empty but entirely malformed list (a space-separated
         # value collapsing to one entry that can never match, say) is functionally the same lockout
         # as an empty one; checking `not admin_teams` alone would call it an ordinary INFO denial.
-        # Every other denial still gets a record, just at INFO.
+        # Every other denial still gets a record, just at INFO (BE-0352).
         oplog.log_event(
             _logger,
             "oauth.denied",
@@ -412,7 +405,7 @@ _EDITOR_PATHS = frozenset(
 # `_build_server_state`'s `admin_teams_malformed` startup check and `admin_teams_unusable` below, so
 # the two copies can't drift the way `in_admin_team` and `_unmatched_org_cause` were already factored
 # out to prevent. Does not reject an uppercase character in either half; see `in_admin_team`'s own
-# case-folding for why.
+# case-folding for why (BE-0352).
 ADMIN_TEAM_ENTRY_RE = re.compile(r"[^\s/]+/[^\s/]+")
 
 
@@ -421,21 +414,17 @@ def admin_teams_unusable(admin_teams: tuple[str, ...]) -> bool:
     every entry fails `ADMIN_TEAM_ENTRY_RE`. A non-empty but entirely malformed list (e.g. a
     space-separated value that parses to one `"a/b c/d"` entry) is functionally identical to an
     empty one: `in_admin_team` can never match anyone, so a caller that only checks `not
-    admin_teams` treats a total lockout as an ordinary, healthy configuration."""
+    admin_teams` treats a total lockout as an ordinary, healthy configuration (BE-0352)."""
     return not admin_teams or all(not ADMIN_TEAM_ENTRY_RE.fullmatch(t) for t in admin_teams)
 
 
 def in_admin_team(teams: Sequence[str], admin_teams: tuple[str, ...]) -> bool:
     """Whether any of *teams* is a server-wide admin Team — the one membership test behind both the
     admin role below and `oauth_callback`'s admin-Team sign-in bypass, so the gate that admits a
-    bypassing login and the role it resolves to can never drift apart. Case-folded on both sides:
-    GitHub resolves an org login and a Team slug case-insensitively, so an `admin_teams` entry whose
-    organization half carries whatever case GitHub stores it in (a real GitHub org login can be
-    mixed-case) must still match a login's exact-case membership, and vice versa. Folding never
-    turns an empty team name into a match — `admin_teams` never contains `""` (the comma-split that
-    builds it filters on `t.strip()`) — and doesn't affect the nested-Team guarantee, which rests on
-    exact string equality: `"acme-gh/parent/child"` is a different string from `"acme-gh/parent"`,
-    folded or not."""
+    bypassing login and the role it resolves to can never drift apart. Case-folded on both sides,
+    since GitHub resolves an org login and a Team slug case-insensitively; folding never turns an
+    empty team name into a match, and preserves the nested-Team guarantee, which rests on exact
+    string equality (BE-0352)."""
     folded = {t.casefold() for t in admin_teams}
     return any(team.casefold() in folded for team in teams)
 

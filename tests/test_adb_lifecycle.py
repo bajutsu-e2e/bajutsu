@@ -881,7 +881,7 @@ def test_start_raises_clean_device_error_when_adb_is_missing() -> None:
 def test_relauncher_invalidates_the_driver_settled_cache() -> None:
     # relaunch() replaces the screen via force_stop + launch on adb.Env directly, never through the
     # driver's own actuators — the one door AdbDriver._settled_key needs closed that `_act` cannot
-    # close on its own (base.SettledCacheInvalidator).
+    # close on its own (base.SettledCacheInvalidator, BE-0351).
     from bajutsu.scenario import Relaunch, Scenario
 
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run([]))

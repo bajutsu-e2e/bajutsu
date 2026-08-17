@@ -63,7 +63,8 @@ def _read_json_lists(
 
     Shared by `read_exchanges_via_store`/`read_observed_ids_via_store`: an artifact that can't be
     fetched, or doesn't parse to a JSON list, is skipped — the same "skip what can't be read"
-    discipline `bajutsu.analysis.coverage.read_exchanges`/`read_observed_ids` apply to a local `runs_dir`.
+    discipline `bajutsu.analysis.coverage.read_exchanges`/`read_observed_ids` apply to a local
+    `runs_dir` (BE-0258).
     """
     for rel in _artifact_paths(manifests, kind):
         try:

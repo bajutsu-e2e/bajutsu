@@ -79,6 +79,8 @@ def object_store_from_env() -> tuple[ObjectStore, str] | None:
     Raises:
         ValueError: ``BAJUTSU_SERVER_STORE`` is malformed (not a valid ``s3://`` / ``gs://`` URI).
         ImportError: the URI's backend SDK isn't installed (see `store_target_from_uri`).
+
+    BE-0204.
     """
     uri = os.environ.get("BAJUTSU_SERVER_STORE")
     if not uri:

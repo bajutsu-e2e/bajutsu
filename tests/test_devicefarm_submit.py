@@ -733,7 +733,8 @@ def test_device_selection_for_pins_the_platform_and_a_single_device() -> None:
 def test_submit_and_collect_schedules_with_device_selection_not_a_pool(tmp_path: Path) -> None:
     # The serve fan-out path passes deviceSelectionConfiguration + maxDevices:1 instead of a static
     # devicePoolArn (the two are mutually exclusive in ScheduleRun). Assert the run is scheduled with
-    # the selection and no pool, so one run reserves one device from the shared platform pool.
+    # the selection and no pool, so one run reserves one device from the shared platform pool
+    # (BE-0336).
     client = _FakeClient()
     transfer = _FakeTransfer(downloaded_ok=True)
     package = tmp_path / "package.zip"

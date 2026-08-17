@@ -117,7 +117,7 @@ def screenrecord_cmd(
     left `None`: `time_limit` bounds a recording that would otherwise stop at the 180s default,
     `size`/`bit_rate` shrink the mp4 below the 20 Mbps full-resolution default — a caller with a
     multi-minute window and a size-conscious artifact upload (the Android CI codegen lane) sets all
-    three; a scenario-length `bajutsu run` capture does not need them.
+    three; a scenario-length `bajutsu run` capture does not need them (BE-0350).
     """
     cmd = _adb(serial, "shell", "screenrecord")
     if time_limit is not None:
@@ -133,21 +133,14 @@ def screenrecord_cmd(
 def logcat_cmd(serial: str) -> list[str]:
     """Stream the device log to stdout — the twin of simctl `log stream` for `deviceLog`.
 
-    `-T 1` starts the follow from the tail (one recent line) so the capture reflects the scenario
-    window rather than dumping the whole ring buffer's pre-run history, mirroring `log stream`'s
-    new-events-only semantics. Unfiltered: a logcat tag/priority filterspec is a different syntax
-    from the iOS `os_log` predicate, so the predicate is not forwarded here (a tag filter can be a
-    later knob).
+    `-T 1` follows from the tail (one recent line), mirroring `log stream`'s new-events-only
+    semantics. Unfiltered: a logcat tag/priority filterspec is a different syntax from the iOS
+    `os_log` predicate, so it is not forwarded here.
 
-    `-b main,system,crash,events` widens past bare `logcat`'s default (`main,system,crash` on
-    modern Android) by adding `events`: `crash` alone carries an app's own uncaught-exception dump
-    (`AndroidRuntime`/`DEBUG` tombstone), but a same-shaped symptom — the process dying with no
-    exception of its own — can also be `ActivityManager` killing it for memory pressure, which logs
-    only as a structured `events` entry (`am_kill`/`am_low_memory`, decoded via
-    `/system/etc/event-log-tags`), never through `crash`. Without `events`, that second cause is
-    indistinguishable from a silent, uncaptured failure. The kernel's own OOM/LMK path lands in
-    the kernel ring buffer, which `logcat -b kernel` reaches only where logd bridges `/proc/kmsg`
-    (`ro.logd.kernel`, typically userdebug builds) — so it is left out here, not unreachable.
+    `-b main,system,crash,events` widens past bare `logcat`'s default by adding `events`: an
+    `ActivityManager` kill for memory pressure logs only there (`am_kill`/`am_low_memory`), never
+    through `crash`, so omitting it would make that cause indistinguishable from a silent failure.
+    The kernel's own OOM/LMK path (`/proc/kmsg`) is left out here, not unreachable (docs/evidence.md).
     """
     return _adb(serial, "logcat", "-b", "main,system,crash,events", "-T", "1")
 

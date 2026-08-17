@@ -161,7 +161,7 @@ def test_fan_out_runs_every_scenario_through_the_device_farm_fake(tmp_path: Path
     # The whole path, faked end to end: start_run_set fans three scenarios out into three cloud-batch
     # jobs, each runs through the real DeviceFarmBatchProvider against the in-memory Device Farm fake,
     # and each lands its own run under runs_dir with a PASS verdict — one schedule per scenario, no
-    # collision, off the `run`/CI verdict path.
+    # collision, off the `run`/CI verdict path (BE-0336).
     scn_dir, cfg = _android_batch_project(
         tmp_path, scenarios=["one.yaml", "two.yaml", "three.yaml"]
     )

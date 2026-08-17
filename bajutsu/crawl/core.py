@@ -254,7 +254,7 @@ class _Work:
     and whether the worker must reset+replay first (`replay_needed`) or is already standing on
     `src_fp`. Not frozen: `src_path` is a mutable list (it feeds `_replay`, typed `list[Action]`),
     so `frozen=True` would be only a shallow, misleading guarantee. It is created and consumed
-    within the coordinator, never hashed or shared, so plain mutability is fine.
+    within the coordinator, never hashed or shared, so plain mutability is fine (BE-0092).
     """
 
     src_fp: str
@@ -574,7 +574,7 @@ class _Coordinator:
     lives in one reviewable place and the device-walk (`crawl`'s `_worker`) reads top to bottom with
     no `with cond:` blocks interleaved through it. Workers call these methods off their own driver
     threads; `path_to` / `pending` / `failure` / `screen_map` are read single-threaded by bootstrap
-    and after join.
+    and after join (BE-0092).
     """
 
     def __init__(

@@ -33,6 +33,8 @@ A module opts in with one autouse fixture:
             SERIAL, "conformance-adb", request,
             start_video=android_screenrecord, start_log=intervals.start_logcat,
         )
+
+BE-0350.
 """
 
 from __future__ import annotations
@@ -160,7 +162,7 @@ def capture(
     `start_video`/`start_log` take only `(serial_or_udid, path)` — this function is backend-agnostic,
     so every caller states explicitly which backend's primitives it wants (`android_screenrecord` +
     `intervals.start_logcat` for adb, `xcuitest_video` + `start_device_log` for XCUITest) —
-    and a test can pass a fake pair to exercise this without a real device.
+    and a test can pass a fake pair to exercise this without a real device (BE-0350).
     """
     dest = Path("runs") / lane / _slug(request.node.nodeid)
     # Start every attempt from an empty directory: simctl `recordVideo` (no `--force`) refuses to

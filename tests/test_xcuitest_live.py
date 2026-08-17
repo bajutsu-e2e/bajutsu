@@ -753,7 +753,7 @@ def test_active_element_raises_when_the_reply_lacks_the_element_key() -> None:
 def test_driver_interval_returns_none_for_all_capture_kinds(tmp_path: Any) -> None:
     # `XcuitestLiveDriver` exposes `driver_interval` so the evidence `FileSink` routes through the
     # driver path rather than the simctl path (which would call `simctl.validated_udid(endpoint)`
-    # and crash on the URL). Each kind returns None — no in-driver recording in Slice A.
+    # and crash on the URL). Each kind returns None — no in-driver recording in Slice A (BE-0238).
     driver = XcuitestLiveDriver(WebDriverClient(_FakeGrid([])))
     assert driver.driver_interval("video", tmp_path / "out.mp4") is None
     assert driver.driver_interval("deviceLog", tmp_path / "out.log") is None

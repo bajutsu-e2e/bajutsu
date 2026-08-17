@@ -136,11 +136,9 @@ _MAX_ATTEMPTS = 3
 _BACKOFF_BASE_SECONDS = 0.5  # exponential per retry: 0.5s, 1.0s, … between attempts
 
 # Bounded re-resolution retry for a STALE actuation handle (BE-0289), held separate from BE-0207's
-# transport retry above even though it starts at the same values: the two loops bound different things
-# — a screen settling between `_resolve_handle` and `_actuate` versus a transport blip inside
-# `_with_retry` — so a later re-tune of one (e.g. loosening the transport budget for a slower CI
-# runner) must not silently move the other. The re-query round-trip is the condition wait, not a fixed
-# sleep; this backoff only spaces the attempts so the loop stays a few seconds, not sub-second.
+# transport retry above even though it starts at the same values: the two loops bound different
+# things, so re-tuning one must not silently move the other. The re-query round-trip is the
+# condition wait, not a fixed sleep; this backoff only spaces the attempts.
 _STALE_MAX_ATTEMPTS = 3
 # exponential per retry: 0.5s, 1.0s, … between re-resolve attempts
 _STALE_BACKOFF_BASE_SECONDS = 0.5
@@ -671,12 +669,8 @@ class XcuitestDriver:
         device_os: DeviceOS | None = None,
     ) -> None:
         # The parsed OS version of the device this drives (BE-0358), or None when the environment
-        # could not name one. Nothing here branches on it — it exists so a driver-level failure can
-        # say which OS it happened on, and so the first genuinely per-OS decision has one route to
-        # read instead of inventing its own. Set per construction, not per lease: a device
-        # replacement can move a lease onto a different Simulator mid-run, and both construction
-        # sites build a fresh driver afterwards, so a fact stamped once onto the `Lease` would go
-        # stale where this one follows the swap.
+        # could not name one. Nothing here branches on it yet. Set per construction, not per lease,
+        # so it follows a mid-run device replacement instead of going stale.
         self.device_os = device_os
         if transport is not None:
             # A test fake serves both roles: it has no BE-0207 retry to distinguish away.

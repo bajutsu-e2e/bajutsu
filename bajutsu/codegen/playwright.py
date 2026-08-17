@@ -92,7 +92,7 @@ def _re_raw(pattern: str) -> str:
 # `request` is a point-in-time `filter`/`some`, `requestSequence` a forward scan, and `until:{request}`
 # an `expect.poll` (an already-observed exchange passes at once; otherwise it waits). `bodyMatches`
 # is a regex over the *request* body (`match_request` tests `ex.request_body`, failing when it is
-# None), so the predicate reads `e.body` and guards `!== null` first.
+# None), so the predicate reads `e.body` and guards `!== null` first (BE-0085).
 
 # Installed before navigation so it captures the whole flow. Captured on 'requestfinished' — the same
 # event the runtime web collector uses (`bajutsu/web_network.py`), so `status` is null when a request
@@ -458,9 +458,8 @@ def _emit_assertion(a: Assertion) -> list[str]:
     if a.request_sequence is not None:
         return _emit_request_sequence(a.request_sequence)
     if a.response_schema is not None:
-        # Validating a body against a JSON Schema needs a schema library in the emitted test (an
-        # external dependency the generated file shouldn't assume), so this stays a labeled TODO
-        # naming the endpoint and the schema file (BE-0085), like the XCUITest network TODOs.
+        # A JSON Schema assertion needs a schema library the generated file shouldn't assume, so it
+        # stays a labeled TODO naming the endpoint and the schema file (BE-0085).
         m = a.response_schema
         return [
             f"// TODO: responseSchema assertion ({request_label(m.request)} ~ {m.schema_path}) — "

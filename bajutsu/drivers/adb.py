@@ -571,7 +571,8 @@ class AdbDriver(CoordinateTreeDriver):
         proved at rest — the same class of bug `_settled_key` exists to close, reached through a door
         outside the driver's own actuators. One method, one place every such caller reaches for,
         rather than each hand-rolling the same three-field reset (which is exactly how the
-        `_device_act`/`type_text` gaps this same item fixed were introduced in the first place).
+        `_device_act`/`type_text` gaps this same item fixed were introduced in the first place)
+        (BE-0351).
         """
         self._tree_current = False
         self._read_ordered = False
@@ -1286,7 +1287,7 @@ class AdbDriver(CoordinateTreeDriver):
         # incidental and bets it lands inside the platform's double-tap window; the device builds the
         # `MotionEvent`s itself and states the interval. Two in-process `UiDevice.click` calls were
         # tried first and failed the same way the host recipes do — `click` settles between them — so
-        # the endpoint now stamps the events rather than chaining a convenience API.
+        # the endpoint now stamps the events rather than chaining a convenience API (BE-0339).
         if self._device_act(sel, "doubleTap"):
             return
         # adb has no native double-tap. `input tap ; input tap` chains both taps in one round-trip,
