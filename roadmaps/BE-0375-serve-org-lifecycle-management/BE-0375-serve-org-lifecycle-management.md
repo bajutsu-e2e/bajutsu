@@ -226,7 +226,18 @@ named `checkout`, and each is authorized for it. Under one bound configuration t
 one `targets:` definition that name resolves to; giving each org a definition of its own needs a
 configuration bound per org, which is where
 [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md)'s per-project config binding
-already points and where this item deliberately stops. Making the *identity* `(org, target)` first
+already points and where this item deliberately stops. A third behavior changes at the conversion, narrower than the two this item's Introduction names and
+recorded here rather than left to be discovered: `org_for_identity` resolves a login with no explicit
+`members` entry to the *first* org whose `githubOrgs` match, and "first" is declaration order under
+`parse_orgs` but slug order under `orgs_from_db` (`list_orgs` sorts by it). Both are stable — the
+same login lands in the same org on every sign-in, which is what the tie-break has to be — but a
+deployment where two orgs name the same GitHub organization can see it move once. Preserving
+declaration order would need a position column and an answer for where an org created on the Orgs
+page sits; refusing an ambiguous match outright would turn away logins that sign in today. Both are
+larger than a tie-break, and the real answer is to let a login that belongs to several orgs choose
+between them, which needs `users.org_id` to stop being a single column — a separate item.
+
+Making the *identity* `(org, target)` first
 is what keeps that later step from having to re-decide who owns a name — the same key BE-0225's
 project registry already uses for a project, whose `add` and `get` are keyed by `(org_id, name)`
 ([`bajutsu/serve/project_registry.py`](../../bajutsu/serve/project_registry.py)).
@@ -256,7 +267,12 @@ mutation recorded through the existing `Repository.record_audit` (`org.create` /
   /api/config/content`.
 - `POST /api/orgs` — create an org from `{slug, name}`; membership starts empty (no member, no
   GitHub organization, no editor Team), so a freshly created org admits nobody until an admin adds
-  to it. The created row's `id` is its slug, matching what every existing writer already does:
+  to it. The slug `default` is refused with a 409: three separate places already read it as a
+  fallback rather than a tenant — `org_for_identity` returns it for any login no org claims (every
+  admin-Team bypass admission among them), `targets_for_org` decides it by the literal string before
+  reading any entry, and `delete_org` below refuses it outright — so a real tenant created there
+  would take the namespace an admin recovers through, and nothing could undo it through this API.
+  Refused at the reversible end instead. The created row's `id` is its slug, matching what every existing writer already does:
   `ensure_org(org, slug=org, name=org)` puts one string in all three columns, and that same string
   is what `upsert_user(org_id=…)`, `state.org_of()`, and the org-scoped stores carry — so
   `orgs_from_db` keys its dictionary by it exactly as `parse_orgs` keys by an `orgs:` entry name.
@@ -285,7 +301,16 @@ mutation recorded through the existing `Repository.record_audit` (`org.create` /
   `secrets`, `provider_settings`, and `audit_log` still hold on the org's id even once every
   project is deregistered ([`bajutsu/serve/server/models.py`](../../bajutsu/serve/server/models.py)),
   and the delete's own audit-log entry would then have nothing left to point at; soft-deleting the
-  row instead leaves every one of those foreign keys intact. Sign-in resolution and `GET
+  row instead leaves every one of those foreign keys intact. Retiring also revokes every session bound to a login recorded under that org, through a
+  `revoke_identities` method added to the `SessionStore` seam
+  ([`bajutsu/serve/sessions.py`](../../bajutsu/serve/sessions.py)) and implemented by each of its
+  stores. The soft delete alone reaches only the *next* sign-in — `users.org_id` still names the
+  retired slug, so a cookie issued beforehand would keep listing that tenant's runs, triggering new
+  ones, and reading its secrets until it expired. That gap is newly reachable: retiring a tenant used
+  to mean a configuration edit plus a redeploy, and the restart dropped every session as a side
+  effect, so making it an in-process admin action removes an incidental revocation this restores
+  deliberately. A session carrying no identity (a shared-token login) belongs to no org and is never
+  touched. Sign-in resolution and `GET
   /api/orgs` exclude a deleted org from then on, so it can no longer be matched or listed; a user,
   secret, or provider setting still recorded under that org id keeps its row and stays queryable,
   but admits no new sign-in as that org. Its historical runs and audit-log entries stay retained
@@ -312,82 +337,71 @@ the create form collects whenever it differs from the slug: no endpoint can chan
 so a display name the page never showed would leave a typo permanent and invisible. Both the API and
 the page exist only when a repository is wired, following unit 2's gate.
 
-### 6. One-time backfill, then a hard cutover
+### 6. One conversion at startup, then a hard cutover
 
 A deployment upgrading from configuration-only org membership needs its existing `orgs:` block
-represented in the database before this item's admin UI has anything to show or edit. One
-mechanism does this seeding, wherever the bound configuration comes from: whenever a repository is
-wired and a configuration is bound — at startup (`_build_server_state`), and again whenever `POST
-/api/config` rebinds a new configuration (`bind_config`/`bind_git_config`,
-[`bajutsu/serve/operations/config.py`](../../bajutsu/serve/operations/config.py)) — `serve` seeds
-the membership columns of every configuration-declared org whose `Org` row a persisted, per-row
-marker shows is not yet seeded. For each entry in the bound configuration's `orgs:` block whose row
-carries no such marker, a dedicated seeding method creates or updates that row's
-`members`/`github_orgs`/`editor_team` from the entry and sets the marker. Not `ensure_org`:
+represented in the database before this item's admin UI has anything to show or edit. `serve` does
+that once, at startup (`serve()`, after `_configure_oplog` so the warning below reaches the live log
+sink), from the configuration this server was **launched** with, and only while the `orgs` table
+holds no row at all — a soft-deleted one included. For each entry in that block declaring any
+membership, a dedicated seeding method creates or fills the row's
+`members`/`github_orgs`/`editor_team` and stamps a persisted per-row marker. Not `ensure_org`:
 `oauth_callback` and job completion already call it as `ensure_org(org, slug=org, name=org)` on
 every sign-in and every finished run, with no membership to pass and — on a database-backed
 deployment, where unit 2 makes the database the source — none they could pass. Widening it into a
 create-or-update would either give one method two meanings depending on which argument is omitted,
-or let the next sign-in clear membership an admin set through unit 5's membership endpoint — the overwrite this
-unit's marker exists to prevent, arriving through a different door. `ensure_org` stays the
-idempotent create it is today, and the write surface for membership stays unit 5's API plus this
-backfill. Running the same seed at a rebind, not only at startup, is what makes this
-correct for both paths this item's own Motivation names as how a bound configuration reaches
-`serve` — without it, an org newly declared through a rebind would never be seeded, and every login
-for that org would fail once the cutover below takes effect for the deployment. The marker tracks
-each row's seeded state directly, rather than inferring it from whether the membership columns
-already hold a value: without it, an admin who intentionally empties an already-seeded org's
-membership would look identical to a row never yet seeded, and a later startup or rebind would
-re-seed the stale configuration value and undo the admin's change. The Alembic migration that adds
-the `members`/`github_orgs`/`editor_team` columns (and the seeded-marker column) does only that —
-add columns, not seed data: seeding is `serve`'s own job at startup and at rebind, not something
-the migration can do itself, since Alembic's migration environment
+or let the next sign-in clear membership an admin set through unit 5's membership endpoint. The
+per-row marker stays for the same reason it always did: it tracks each row's converted state
+directly, so an admin who intentionally empties an org's membership is not mistaken for a row never
+yet written and re-seeded from a stale configuration value.
+
+**No API bind seeds, and no second startup does.** `bind_config`, `bind_git_config`, the upload and
+compose binds, and the project switcher all accept a configuration whose content the deployment does
+not own — [BE-0121](../BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist.md) says
+as much of the same file's `build:`, which stays ungoverned until `--allow-remote-build` opts in.
+Seeding from one would hand that file authority over who may sign in. Before this item that
+authority existed but was live and reversible, because `oauth_callback` re-read the file on every
+sign-in, so rebinding to a clean configuration revoked the grant on the next login; a seeded row
+outlives the bind, so the same rebind would no longer revoke anything. An admin binding
+`github:someone/repo@main` whose `orgs:` declares `partners: {githubOrgs: [attacker-gh]}` would
+otherwise grant every member of `attacker-gh` a permanent sign-in. The empty-table condition closes
+the same hole from the other side: a restart carrying an edited configuration cannot add a tenant,
+revive a retired one, or reshape an existing one behind an admin's back. One boot converts a
+deployment; from then on the database is the sole author of its own roster, and an org first
+declared after that is created on the Orgs page.
+
+The cost is named rather than hidden: an org declared only in a configuration bound through the API
+admits nobody until an admin creates it. That is the deliberate trade — the alternative is letting a
+file the deployment does not control decide who signs in — and the Orgs page makes the recovery a
+one-step action rather than a redeploy.
+
+The Alembic migration that adds the `members`/`github_orgs`/`editor_team` columns (and the marker and
+soft-delete columns) does only that — add columns, not seed data: seeding is `serve`'s own job at
+startup, not something the migration can do, since Alembic's migration environment
 ([`bajutsu/serve/server/migrations/env.py`](../../bajutsu/serve/server/migrations/env.py)) resolves
 only `BAJUTSU_DATABASE_URL` and never has access to a bound configuration's `orgs:` block.
 
-Once a given org's row is marked seeded, `oauth_callback` reads that org's membership from the
-database exclusively from then on — a later edit to that org's entry in the configuration file's
-`orgs:` block has no effect, matching the hard cutover
+After the conversion, `oauth_callback` reads membership from the database exclusively — a later edit
+to the `orgs:` block has no effect on it — matching the hard cutover
 [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md) and
 [BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass.md) both chose
 over keeping two independent sources for the same role-deciding data (see *Alternatives
-considered*); a wholly new `orgs:` entry still seeds normally at the next startup or rebind, but
-only when its row does not yet exist, or exists only as an unmarked, passive row — one
-`ensure_org` created at sign-in holding nothing but an id, a slug, and a name. An org created
-through unit 5's API is marked seeded at creation (see unit 5), so a later `orgs:` entry for that
-same slug never seeds over it. `serve` warns, once per run, whenever a repository is wired, a
-configuration is bound, and that configuration's `orgs:` block has an entry — for an org already
-marked seeded — that still declares any of the membership fields
-(`members`/`githubOrgs`/`editorTeam`): an `orgs:` entry that carries only `targets` stays
-legitimate after the cutover and is expected to remain, since target ownership stays in
-configuration (unit 1), so warning on a merely non-empty `orgs:` block would either fire forever on
-a correctly configured deployment or push an operator to empty `orgs:` and lose that
-target-ownership data. This is the same "an operator forgot this is no longer read" signal
+considered*). `serve` warns, once per boot, whenever a repository is wired, a configuration is bound,
+and that configuration's `orgs:` block has an entry still declaring any of the membership fields
+(`members`/`githubOrgs`/`editorTeam`). An `orgs:` entry that carries only `targets` stays legitimate
+and is expected to remain, since target ownership stays in configuration (unit 1), so warning on a
+merely non-empty `orgs:` block would either fire forever on a correctly configured deployment or
+push an operator to empty `orgs:` and lose that target-ownership data. A `targets:`-only entry is
+also skipped by the seeding itself rather than written as an empty roster: paring the configuration
+down before the converting boot — exactly what this item's own documentation recommends doing
+after it — must not be the irreversible act of fixing every org at "admits nobody". This is the same
+"an operator forgot this is no longer read" signal
 [BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass.md) already
 gives for its own retired environment variable.
 
-An entry declaring only `targets` is skipped before the seed rather than seeded with an empty
-roster, which is what keeps the cutover from turning on the order an operator pares the file down
-in. The documentation tells an operator to leave only `targets:` and says nothing about when, so
-paring first must not be the act that fixes an org at admitting nobody — and seeding such an entry
-would do exactly that: it would spend the row's marker on a roster nobody wrote, stay deliberately
-silent about it (the warning above never reports a `targets:`-only entry), and leave a restored
-`members:` list unreachable short of re-entering every roster by hand on the Orgs page. Skipping
-leaves the row uncreated, which unit 1's own reasoning permits — target ownership resolves from the
-configuration, never from the table — so a configuration that later declares membership still seeds
-it, in either order.
-
-Each of the three upload bind paths (`bind_upload_config`, the composed-triple bind, and
-`activate_uploaded_project` in
-[`bajutsu/serve/operations/upload.py`](../../bajutsu/serve/operations/upload.py)) reaches the seed
-through one `bind_upload_and_seed` helper rather than a seed call each site remembers to make, since
-forgetting one is silent in both directions: nothing warns at bind time, and the operator's first
-signal is a tenant whose members are all turned away at sign-in.
-
 A fresh deployment — a repository wired from its first boot, no prior configuration-only history —
-seeds against whatever `orgs:` block that first boot binds, typically empty; every org it has from
-that point on is one an admin creates through unit 5's API, or a later `orgs:` entry that seeds the
-same way at a subsequent startup or rebind.
+converts against whatever `orgs:` block that first boot binds, typically empty; every org it has
+from that point on is one an admin creates through unit 5's API.
 
 ### 7. The admin-Team bootstrap bypass answers the empty-table case
 
@@ -475,19 +489,20 @@ database is exactly the piece that makes an empty `orgs` table recoverable.
 - [x] 5 — The four `/api/orgs…` endpoints (admin-only, each mutation recorded through `record_audit`)
       and the Orgs admin page (create / delete-when-empty / edit membership, each row rendering the
       display name when it differs from the slug), gated
-      on a repository being wired; `POST /api/orgs` marks the new row seeded at creation, so no
-      later `orgs:` entry re-seeds it; delete is a soft delete (`Org.deleted_at`) that excludes the
-      org from sign-in resolution and `GET /api/orgs` without removing its row or violating any
-      foreign key that still points at it.
-- [x] 6 — The backfill from a bound configuration's `orgs:` block into the database, seeded
-      whenever a repository is wired and a configuration is bound (at startup and at a `POST
-      /api/config` rebind alike), guarded by a persisted per-row marker on each `Org` row rather
-      than inferred from empty membership columns; the Alembic migration adds only the membership
-      and marker columns and runs no seeding of its own; the startup/rebind warning when an
-      already-seeded org's `orgs:` entry still declares `members`/`githubOrgs`/`editorTeam` (an
-      entry that carries only `targets` stays expected, does not warn, and is skipped rather than
-      seeded, so paring the file down before the first seeded start leaves the row unseeded instead
-      of fixing the org at admitting nobody).
+      on a repository being wired; `POST /api/orgs` refuses the reserved `default` slug and marks the
+      new row seeded at creation, so no later `orgs:` entry re-seeds it; delete is a soft delete
+      (`Org.deleted_at`) that excludes the org from sign-in resolution and `GET /api/orgs` without
+      removing its row or violating any foreign key that still points at it, and revokes every
+      session its members hold through the `SessionStore` seam's new `revoke_identities`.
+- [x] 6 — The one-time conversion from the launch configuration's `orgs:` block into the database:
+      at startup only, and only while the `orgs` table holds no row at all (a soft-deleted one
+      included), so neither an API-bound configuration nor a later restart carrying an edited one
+      can write who may sign in; guarded additionally by a persisted per-row marker on each `Org`
+      row rather than inferred from empty membership columns; a `targets:`-only entry skipped rather
+      than written as an empty roster; the Alembic migration adds only the membership, marker, and
+      soft-delete columns and runs no seeding of its own; the boot warning when an `orgs:` entry
+      still declares `members`/`githubOrgs`/`editorTeam` (an entry that carries only `targets` stays
+      expected and does not warn).
 - [x] 7 — Confirm the admin-Team bypass still admits sign-in against an empty or wholly
       unmatching `orgs` table, now that the table rather than the configuration file decides the
       gate, and leave `BAJUTSU_OAUTH_ADMIN_TEAMS` in the environment.

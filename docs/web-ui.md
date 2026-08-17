@@ -193,12 +193,15 @@ Each row shows an org's slug, how many members and GitHub organizations it holds
 and how many projects it owns — plus its display name, when that differs from the slug the row
 already leads with. **Create** takes a slug and an optional display name, and the new org
 starts with no members at all — nobody can sign in as it until you fill in its membership, which the
-page says inline so an empty tenant does not read as a bug. **Membership** opens a form that replaces
+page says inline so an empty tenant does not read as a bug. The slug `default` is refused: it is
+where a sign-in matching no org lands, so a real tenant there would take the namespace an admin
+recovers through. **Membership** opens a form that replaces
 all three fields at once, prefilled from what the server holds right now; a change takes effect on
 each member's next sign-in. **Delete** retires an org, and stays greyed out while the org still owns
-a project (deregister those first). Retiring keeps the org's runs and audit history and keeps its
-slug reserved, both of which the confirmation states, since a reader would otherwise discover
-neither until afterwards.
+a project (deregister those first). Retiring signs out everyone holding a session as that org at the
+same moment, so nobody keeps acting as it on a cookie issued beforehand; it keeps the org's runs and
+audit history, and keeps its slug reserved. The confirmation states all three, since a reader would
+otherwise discover none of them until afterwards.
 
 Which targets an org owns still comes from the config file's `orgs:` block, so an org created here
 owns none until an entry there names some.

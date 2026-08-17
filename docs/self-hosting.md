@@ -673,10 +673,13 @@ An **Orgs** page appears in the web UI for admins, backed by four admin-only end
 | `POST /api/orgs/<slug>/membership` | Replace `{"members": [...], "githubOrgs": [...], "editorTeam": "..."}` as one unit. |
 | `DELETE /api/orgs/<slug>` | Retire an org. Refused while it still owns a project, and refused outright for `default`. |
 
-The audit log records every one of the four. Deleting an org is a soft delete: it stops
-admitting sign-ins and leaves the list, but its runs and audit entries stay queryable — an admin
-action removes a tenant's ability to act, not the record of what it already did — and its slug stays
-reserved, so it cannot be re-created under the same name.
+The audit log records every one of the four. `default` is reserved: it is the org an unmatched
+sign-in falls into, so `POST /api/orgs` refuses that slug rather than let a real tenant take the
+namespace an admin recovers through. Deleting an org is a soft delete: it stops admitting sign-ins
+and leaves the list, and every session its members already hold is revoked at the same moment, so
+nobody keeps acting as the retired tenant on a cookie issued before it. Its runs and audit entries
+stay queryable — an admin action removes a tenant's ability to act, not the record of what it
+already did — and its slug stays reserved, so it cannot be re-created under the same name.
 
 Which targets an org owns still comes from the `orgs:` block above, so an org created this way owns
 none until an entry there names some. Two orgs may each claim a target of the same name, and each is
