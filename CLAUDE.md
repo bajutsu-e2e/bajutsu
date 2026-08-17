@@ -151,8 +151,11 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
 
 - Comments explain **why**, not what; match the surrounding density and tone (the codebase
   favors short, purposeful comments). Don't add narration. When the reasoning already lives in a
-  roadmap item or a `docs/` page, cite it and keep only the result — don't re-derive the argument.
-  Full rule: [`docs/ai-development.md`](docs/ai-development.md).
+  roadmap item or a `docs/` page, cite it and keep only the result — don't re-derive the argument
+  ([`docs/ai-development.md`](docs/ai-development.md#cite-an-argument-instead-of-repeating-it-comments-and-docstrings)).
+  The full inline-comment rule (provenance and `TODO(BE-NNNN)` format, suppression reasons, the
+  docstring boundary) is in
+  [`docs/ai-development.md`](docs/ai-development.md#inline-code-comments).
 - **Docstrings (BE-0065).** The public API surface (`Driver` + shared types, CLI, MCP tools,
   scenario schema, public functions of runner / `assertions` / `network`) uses **Google-style**
   docstrings — a one-line summary then `Args:` / `Returns:` / `Raises:` *only where they add

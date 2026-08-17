@@ -1033,3 +1033,116 @@ not:
 Judging whether a comment repeats an argument or lists independent facts needs semantic
 understanding, so — like the rest of this repo's comment and prose norms — it stays a review-time
 expectation, not a `make check` gate (prime directive 1).
+
+## Inline code comments
+
+The docstring rule above governs a function's documentation; this is the companion rule for
+**inline comments** — `#` lines in Python, `//` lines in Swift. It distills the standard
+literature (the references close the section) and this codebase's own best idioms. Like the
+documentation-style rules, it is a review-time norm, not a CI gate: judging whether a comment earns
+its place needs semantic judgment, which prime directive 1 keeps off the `run` / CI verdict path.
+
+### What a comment is for
+
+A comment carries what the code cannot say: the rationale, the invariant, the constraint, the
+non-obvious consequence — information that was in the author's head and would otherwise be lost.
+Write it at a different level than the code. Two levels work; the third does not:
+
+- **Precision** — sharpen the adjacent line with what the code leaves open: units, inclusive or
+  exclusive bounds, what `None` means, where a magic number comes from. The house form is the
+  trailing one-liner ([`bajutsu/totp.py`](../bajutsu/totp.py)):
+
+  ```python
+  cleaned += "=" * (-len(cleaned) % 8)  # b32decode requires the padding authenticators omit
+  ```
+
+- **Intent** — why this way, and, wherever a reader would plausibly "simplify" the code back into
+  the bug it avoids, why not the other way ("Deliberately not the app's own external files
+  directory: `adb` cannot read …"). The review test decides when intent is worth writing: if you
+  would have to explain a line at the next code review, comment it now.
+- **Restating** — a comment a reader could write from the adjacent line alone (`i += 1  # add
+  one`) says nothing; delete it. This codebase has essentially none — keep it that way.
+
+Comments are English, like all code. Write complete sentences, capitalized, with a period on block
+comments; a one-line trailing fragment may drop the period.
+
+### When a comment runs long, cite instead of arguing
+
+A comment that keeps growing past a handful of lines is usually holding an argument that belongs
+elsewhere. [*Cite an argument instead of repeating it*](#cite-an-argument-instead-of-repeating-it-comments-and-docstrings)
+above is the rule: state the conclusion, cite the `BE-NNNN` item or `docs/` page that carries the
+alternatives considered, the scope decision, and the rest of the derivation, and trim to that.
+Some genuinely long comments still earn their length — the Device Farm bootstrap block in
+[`bajutsu/cloud/devicefarm.py`](../bajutsu/cloud/devicefarm.py) is one, holding operational facts a
+maintainer needs at that exact line rather than one argument to trim — so check the comment's
+shape (the three shapes in the section above) before cutting.
+
+### Describe the code as it is, never the change that produced it
+
+A comment must make sense to a reader who never saw the PR, the review thread, or the session that
+wrote the code. "Out of scope for this item", "tracked as a follow-up", "per PR review", and
+"changed X to Y" are commit-message or review-reply content misfiled into source — put them in the
+PR, and write the comment about the code as it now stands. The same rule fixes the provenance
+format:
+
+- Cite a roadmap item as the plain id, `(BE-0319)`. Never write a bare work-breakdown word — "unit
+  1", "Half 2", "phase 5" — without the id; those names mean nothing once the item is merged.
+  Prefer stating the constraint itself and letting the id point to the record.
+- Cite a PR (`PR #1492`) only when no BE item covers the fact; a BE id is the more durable
+  reference.
+
+### The docstring boundary
+
+What a function or class does — its contract — belongs in its docstring, even before the module
+joins the `lint-docstrings` allowlist. A leading `#` block that answers "what this does" is a
+docstring wearing the wrong syntax; write it as a docstring. Inline comments then carry only
+what the docstring should not: line-level precision and intent. Per-field trailing comments on a
+`TypedDict` or a dataclass remain the right idiom (BE-0065 above), but drop any half that restates
+the type annotation (`line: int | None  # None otherwise` restates; "1-based source line" earns
+its place).
+
+### Dividers and typography
+
+New Python code that needs section markers uses the one-line form, `# --- label ---`; Swift uses
+`// MARK: -`. Do not add multi-line banner boxes, and do not reformat an existing file's dividers
+as a side effect of an unrelated change. Comment prose follows the same typography as the docs: an
+em dash (`—`), not a double hyphen.
+
+### Markers and suppressions
+
+- **TODO** is `# TODO(BE-NNNN): <what unblocks it>` — a tracked id, never a person's name, never a
+  bare `TODO`. A temporary workaround names the event that retires it ("delete this block once
+  Device Farm ships Python >= 3.13"), not "someday".
+- **A suppression names its code — and its reason wherever the code alone does not explain it**:
+  `# noqa: S310  # scheme validated above`, `# type: ignore[attr-defined]  # boto3 ships no
+  stubs`. Stale suppressions are already pruned mechanically (`ruff`'s RUF100, and strict `mypy`
+  warns on unused ignores); the reason is the human half, and the `ignore =` block in
+  [`pyproject.toml`](../pyproject.toml) shows the shape.
+- **Commented-out code: never.** Delete it — version control remembers. The codebase is at zero;
+  keep it there.
+
+### Density and scope discipline
+
+Match the surrounding density: short and purposeful, concentrated where the code is least obvious.
+Do not add comments to code you did not otherwise change, and when refactoring, carry the existing
+why-comments over — silently dropping earned rationale is how a workaround gets "simplified" back
+into the bug it avoided.
+
+### References
+
+- John Ousterhout, *A Philosophy of Software Design*, ch. 12–13 — comments capture what the code
+  cannot express, written at a lower (precision) or higher (intent) level than the code, never the
+  same one.
+- Steve McConnell, *Code Complete*, 2nd ed., ch. 32 — the six kinds of comments; only summary and
+  intent survive.
+- [Python Enhancement Proposal (PEP) 8, "Comments"](https://peps.python.org/pep-0008/#comments) —
+  a comment that contradicts the code is worse than none; updating comments is part of changing
+  the code.
+- [Google Python Style Guide §3.8](https://google.github.io/styleguide/pyguide.html) (the review
+  test) and §3.12 (TODO cites a tracked reference, not a person);
+  [Google's reviewer guide](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
+  ("mostly explain *why* instead of *what*").
+- Ellen Spertus,
+  ["Best practices for writing code comments"](https://stackoverflow.blog/2021/12/23/best-practices-for-writing-code-comments/)
+  (Stack Overflow blog, 2021) — explain unidiomatic code so it is not "fixed" into a bug; link the
+  source of copied code.
