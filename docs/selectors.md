@@ -127,7 +127,10 @@ ambiguity count above. Otherwise, a dropped `other` would shift every later posi
 > (`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift`). A tie between such a control and a
 > classified sibling sharing its label silently keeps the sibling rather than raising
 > `AmbiguousSelector`. Only a same-selector tie is affected; a lone unclassified control (no
-> classified sibling sharing the selector) resolves normally.
+> classified sibling sharing the selector) resolves normally. A `UIDatePicker` is the one case where
+> this costs nothing in practice: the wheels underneath its `other` container are each classified
+> `pickerWheel`, so [`setPickerValue`](scenarios.md#setpickervalue) addresses them directly — closing
+> the classification gap on the parent is not needed to set a date picker's value.
 
 ```python
 # drivers/base.py (excerpt)

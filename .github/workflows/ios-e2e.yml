@@ -15,7 +15,7 @@
 #     deterministic permissions surface) folded into one `bajutsu run`. They differed only in which
 #     scenarios they ran, so each re-paid the lane's dominant fixed cost — the cold XCTest-host
 #     startup plus its own build and boot — over again; one job warm-reuses the resident runner
-#     across the twelve scenario documents that run — every scenario the seven files hold, since BE-0315
+#     across the fourteen scenario documents that run — every scenario the eight files hold, since BE-0315
 #     made the notification grant native so nothing is `ai`-tagged to exclude (BE-0291/BE-0287/BE-0315)
 #     — paying that cold startup six times (the lane caps warm reuse
 #     at 1, see the `env` block below) — two more than the four separate jobs' cold startups summed
@@ -399,8 +399,8 @@ jobs:
   # over-XCUITest scenario that used to be its own job (smoke / gestures / permission /
   # runner-actuation). They differed only in which scenarios they ran, so each re-paid the lane's
   # dominant fixed cost — the cold `xcodebuild test-without-building` XCTest-host startup (~2-3 min on
-  # macos-latest) — over again, at 10x macOS billing. Folded into one `bajutsu run`, the twelve scenario
-  # documents that run — every scenario the seven files hold, since BE-0315 made the notification grant
+  # macos-latest) — over again, at 10x macOS billing. Folded into one `bajutsu run`, the fourteen scenario
+  # documents that run — every scenario the eight files hold, since BE-0315 made the notification grant
   # native so nothing is `ai`-tagged to exclude — pay that cold
   # startup six times (BE-0291's warm reuse carries the runner between them, capped at 1 on this lane
   # — see the env block above), two more than the four the separate jobs summed to — but those jobs
@@ -415,6 +415,12 @@ jobs:
   # / `visual` stay out (per-PR signals, deliberately off the gate).
   #   - smoke.yaml: the Stable catalog on the launch tab (wait/expect only).
   #   - gestures_multitouch.yaml (BE-0019): pinch/rotate through the runner's /gesture endpoint.
+  #   - picker_wheel.yaml (BE-0356): `setPickerValue` through the runner's /setPickerValue endpoint,
+  #     on a `UIPickerView` and on a wheel-mode `UIDatePicker`. Like alert.yaml above, it is here for
+  #     coverage `swift test` cannot give: `Package.swift` declares no target over `Runner/Sources`,
+  #     so `XcuitestElementProvider.setPickerValue` — the `adjust(toPickerWheelValue:)` call and its
+  #     value read-back — has no off-device gate at all. The multi-component scenario is what proves
+  #     the `within` / `traits` / `index` addressing separates two real sibling wheels.
   #   - search.yaml (BE-0281): /type into the Search field, then assert the filtered count.
   #   - notices.yaml (BE-0281): /swipe an off-screen row into view, then /back from a pushed detail.
   #   - alert.yaml: tap each button of a presented `UIAlertController` — the only scenario here that
@@ -491,7 +497,7 @@ jobs:
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
       # Every gating XCUITest scenario in one `bajutsu run`: six cold runner startups (MAX_WARM_REUSES=1), warm-reused
-      # across the twelve scenario documents that run (every scenario the seven files below hold; nothing is
+      # across the fourteen scenario documents that run (every scenario the eight files below hold; nothing is
       # `ai`-tagged since BE-0315, so no `--exclude`). State-neutral scenarios first, the three
       # permission scenarios last (see the job header).
       # alert.yaml is here for the duplicate-node resolution wiring: `swift test` compiles no target over
@@ -506,6 +512,7 @@ jobs:
           scenarios: >-
             demos/showcase/scenarios/smoke.yaml
             demos/showcase/scenarios/gestures_multitouch.yaml
+            demos/showcase/scenarios/picker_wheel.yaml
             demos/showcase/scenarios/search.yaml
             demos/showcase/scenarios/notices.yaml
             demos/showcase/scenarios/alert.yaml

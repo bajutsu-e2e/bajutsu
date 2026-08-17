@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0356](BE-0356-xcuitest-picker-wheel-adjust.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0356") |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
@@ -225,15 +225,15 @@ the Japanese mirror. `docs/drivers.md`'s capability table gains a `pickerWheel` 
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Schema: `SetPickerValue` action model, `Step.set_picker_value` field
-- [ ] Runtime: `gestures.py` handler, `Driver.set_picker_value` (xcuitest / adb / playwright /
+- [x] Schema: `SetPickerValue` action model, `Step.set_picker_value` field
+- [x] Runtime: `gestures.py` handler, `Driver.set_picker_value` (xcuitest / adb / playwright /
       webview / xcuitest_live / fake), `Capability.PICKER_WHEEL` + preflight requirement
-- [ ] Swift runner: `/setPickerValue` route, `ElementProviding.setPickerValue`,
+- [x] Swift runner: `/setPickerValue` route, `ElementProviding.setPickerValue`,
       `XcuitestElementProvider` implementation with value-readback detection of an absent option,
       the matching `_actuate` status branch (`bajutsu/drivers/xcuitest.py`)
-- [ ] codegen: xcuitest emitter case
-- [ ] Docs: `docs/scenarios.md`, `docs/drivers.md`, `docs/selectors.md` (both languages)
-- [ ] Tests: value found, value absent (`ElementNotFound`), missing-capability preflight failure,
+- [x] codegen: xcuitest emitter case
+- [x] Docs: `docs/scenarios.md`, `docs/drivers.md`, `docs/selectors.md` (both languages)
+- [x] Tests: value found, value absent (`ElementNotFound`), missing-capability preflight failure,
       the multi-component (year/month) case
 
 ## References

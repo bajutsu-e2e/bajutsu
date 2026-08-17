@@ -50,6 +50,8 @@ final class Router {
             return tapResultResponse(onMainCatching(self.provider.selectAll))
         case ("POST", "/copy"):
             return tapResultResponse(onMainCatching(self.provider.copySelection))
+        case ("POST", "/setPickerValue"):
+            return handleSetPickerValue(request)
         case ("POST", "/systemAlert/query"):
             return handleSystemAlertQuery()
         case ("POST", "/systemAlert/tap"):
@@ -282,6 +284,32 @@ final class Router {
         return tapResultResponse(onMainCatching { self.provider.deleteText(count: count) })
     }
 
+    // Set a picker wheel to a named row (BE-0356). The handle+string shape `handleType` already uses,
+    // over the app tree's `store` like every other element actuation.
+    private func handleSetPickerValue(_ request: HTTPRequest) -> HTTPResponse {
+        guard let body = request.body,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            return .error(400, "missing or invalid JSON body")
+        }
+        guard let handle = json["handle"] as? String else {
+            return .error(400, "missing handle")
+        }
+        guard let value = json["value"] as? String else {
+            return .error(400, "missing value")
+        }
+        switch store.lookup(handle: handle) {
+        case .found(let snapshot):
+            let result = onMainCatching {
+                self.provider.setPickerValue(backingElement: snapshot.backingElement, value: value)
+            }
+            return tapResultResponse(result)
+        case .stale:
+            return .json(200, ["status": "stale"])
+        case .notFound:
+            return .json(200, ["status": "not-found"])
+        }
+    }
+
     private func handleScreenshot() -> HTTPResponse {
         guard let png = caughtOnMain(Data?.none, self.provider.screenshot) else {
             return .error(500, "screenshot failed")
@@ -295,6 +323,7 @@ final class Router {
         case .stale: return .json(200, ["status": "stale"])
         case .notFound: return .json(200, ["status": "not-found"])
         case .notHittable: return .json(200, ["status": "not-hittable"])
+        case .valueNotFound: return .json(200, ["status": "value-not-found"])
         }
     }
 

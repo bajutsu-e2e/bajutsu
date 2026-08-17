@@ -24,6 +24,11 @@ final class FakeElementProvider: ElementProviding {
     var deleteTextCalls: [Int] = []
     var selectAllCalls = 0
     var copyCalls = 0
+    // The picker-wheel rows `setPickerValue` records, and the result it reports (BE-0356). Kept apart
+    // from the shared `tapResult` so a test can script a `.valueNotFound` wheel without changing what
+    // every other actuation returns.
+    var setPickerValueResult: TapResult = .ok
+    var setPickerValueCalls: [(backingElement: AnyObject, value: String)] = []
     // The SpringBoard alert buttons `/systemAlert/query` returns, and the taps it records (BE-0316).
     var systemAlertButtons: [ElementSnapshot] = []
     var systemAlertTapCalls: [AnyObject] = []
@@ -86,6 +91,11 @@ final class FakeElementProvider: ElementProviding {
     func copySelection() -> TapResult {
         copyCalls += 1
         return tapResult
+    }
+
+    func setPickerValue(backingElement: AnyObject, value: String) -> TapResult {
+        setPickerValueCalls.append((backingElement, value))
+        return setPickerValueResult
     }
 
     func querySystemAlertButtons() -> [ElementSnapshot] {

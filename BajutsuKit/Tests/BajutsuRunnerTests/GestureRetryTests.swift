@@ -79,4 +79,52 @@ final class GestureRetryTests: XCTestCase {
         )
         XCTAssertEqual(actuations, 3)
     }
+
+    // MARK: - settlesTo (the setPickerValue read-back, BE-0356)
+
+    func testSettlesToReturnsTrueOnTheFirstMatchingSample() {
+        var reads = 0
+        let landed = settlesTo("大学", maxSamples: 5, sample: { reads += 1; return "大学" })
+        XCTAssertTrue(landed)
+        XCTAssertEqual(reads, 1, "a value already showing costs exactly one read")
+    }
+
+    func testSettlesToKeepsSamplingWhileTheWheelIsStillSettling() {
+        // A decelerating wheel reports the rows it passes before it stops, so a single read would
+        // call a value the wheel does have absent.
+        var reads = 0
+        let rows = ["中学", "高校", "大学"]
+        let landed = settlesTo("大学", maxSamples: 5, sample: {
+            defer { reads += 1 }
+            return rows[min(reads, rows.count - 1)]
+        })
+        XCTAssertTrue(landed)
+        XCTAssertEqual(reads, 3)
+    }
+
+    func testSettlesToReportsAValueTheWheelNeverShows() {
+        var reads = 0
+        let landed = settlesTo("存在しない", maxSamples: 4, sample: { reads += 1; return "大学" })
+        XCTAssertFalse(landed)
+        XCTAssertEqual(reads, 4, "an absent value costs the cap and then fails loudly")
+    }
+
+    func testSettlesToTreatsAnUnreadableSampleAsNotMatching() {
+        // nil means *couldn't observe*, never *matched* — the same rule actuateUntilStateChanges
+        // follows, so a transiently failed read keeps sampling instead of deciding early.
+        var reads = 0
+        let landed = settlesTo("大学", maxSamples: 3, sample: {
+            defer { reads += 1 }
+            return reads < 2 ? nil : "大学"
+        })
+        XCTAssertTrue(landed)
+        XCTAssertEqual(reads, 3)
+    }
+
+    func testSettlesToAlwaysReadsAtLeastOnce() {
+        var reads = 0
+        let landed = settlesTo("大学", maxSamples: 0, sample: { reads += 1; return "大学" })
+        XCTAssertTrue(landed)
+        XCTAssertEqual(reads, 1)
+    }
 }

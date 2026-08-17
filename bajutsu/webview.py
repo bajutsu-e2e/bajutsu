@@ -227,6 +227,9 @@ class WebContextDriver:
     def select_option(self, sel: Selector, option: str) -> None:
         raise UnsupportedAction("selectOption is not supported in web context (first slice)")
 
+    def set_picker_value(self, sel: Selector, value: str) -> None:
+        raise UnsupportedAction("setPickerValue is iOS-only; a DOM has no picker wheel")
+
     def handle_system_alert(self, sel: Selector, timeout: float) -> None:
         # BE-0316 taps an iOS SpringBoard prompt; a WebView DOM context has no OS-level alert, and
         # only the resident-runner XCUITest backend declares the capability, so this never runs.

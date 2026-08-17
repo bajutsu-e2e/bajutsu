@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0356](BE-0356-xcuitest-picker-wheel-adjust-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0356") |
 | トピック | シナリオ記述機能 |
 <!-- /BE-METADATA -->
@@ -85,15 +85,15 @@ XCUITest 自身は、この問題を `XCUIElement.adjust(toPickerWheelValue:)` �
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] スキーマ: `SetPickerValue` アクションモデル、`Step.set_picker_value` フィールド
-- [ ] 実行時: `gestures.py` のハンドラ、`Driver.set_picker_value`（xcuitest / adb / playwright /
+- [x] スキーマ: `SetPickerValue` アクションモデル、`Step.set_picker_value` フィールド
+- [x] 実行時: `gestures.py` のハンドラ、`Driver.set_picker_value`（xcuitest / adb / playwright /
       webview / xcuitest_live / fake）、`Capability.PICKER_WHEEL` と preflight のエントリ
-- [ ] Swift ランナー: `/setPickerValue` ルート、`ElementProviding.setPickerValue`、
+- [x] Swift ランナー: `/setPickerValue` ルート、`ElementProviding.setPickerValue`、
       値の読み戻しで存在しない選択肢を検出する `XcuitestElementProvider` の実装、対応する
       `_actuate` のステータス分岐（`bajutsu/drivers/xcuitest.py`）
-- [ ] codegen: xcuitest emitter のケース
-- [ ] ドキュメント: `docs/scenarios.md` / `docs/drivers.md` / `docs/selectors.md`（両言語）
-- [ ] テスト: 値が見つかる場合、値が存在しない場合（`ElementNotFound`）、ケーパビリティ不足による
+- [x] codegen: xcuitest emitter のケース
+- [x] ドキュメント: `docs/scenarios.md` / `docs/drivers.md` / `docs/selectors.md`（両言語）
+- [x] テスト: 値が見つかる場合、値が存在しない場合（`ElementNotFound`）、ケーパビリティ不足による
       preflight 失敗、複数コンポーネント（年・月）の場合、`PICKER_WHEEL` の `driver_conformance.py` ケース
 
 ## 参考

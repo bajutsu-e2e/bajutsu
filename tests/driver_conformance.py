@@ -18,8 +18,9 @@ The invariants (grounded in the `Driver` Protocol and `drivers/base`):
 * Selector failures share one error type (`SelectorError`), uniform across backends.
 * A unique match acts without error.
 * `capabilities()` matches observed behavior — the `QUERY` / `ELEMENTS` baseline is declared,
-  multi-touch gestures work exactly when `MULTI_TOUCH` is declared (else raise loudly), and
-  select-all / clipboard copy work exactly when `TEXT_SELECTION` is declared (else raise loudly).
+  multi-touch gestures work exactly when `MULTI_TOUCH` is declared (else raise loudly),
+  select-all / clipboard copy work exactly when `TEXT_SELECTION` is declared (else raise loudly),
+  and a picker wheel is set exactly when `PICKER_WHEEL` is declared (else raise loudly).
 * Text editing round-trips on the focused field: typing then deleting reduces the field's
   reported length, on every backend that surfaces the field's value.
 * `tap_point` (a raw coordinate tap) focuses the field when aimed at its center — the same
@@ -373,6 +374,28 @@ class DriverConformanceContract:
         else:
             with pytest.raises(base.UnsupportedAction):
                 driver.select_option({"id": "sel"}, "opt")
+
+    def test_picker_wheel_capability_matches_behavior(self, harness: ConformanceHarness) -> None:
+        # capabilities() is a promise (BE-0356): a PICKER_WHEEL backend must not raise
+        # UnsupportedAction for set_picker_value; one without it must raise rather than silently
+        # no-op'ing (the same shape as MULTI_TOUCH / SELECT_OPTION). A supporting backend may still
+        # fail some other way — the seeded element is an ordinary one, not a real wheel, and no
+        # harness can seed a wheel's rows — so any non-UnsupportedAction error is acceptable, exactly
+        # the tolerance `test_select_option_capability_matches_behavior` already grants a non-<select>.
+        driver = harness.with_screen([element(identifier="wheel", traits=["pickerWheel"])])
+        supports = base.Capability.PICKER_WHEEL in driver.capabilities()
+        if supports:
+            try:
+                driver.set_picker_value({"id": "wheel"}, "opt")
+            except base.UnsupportedAction:
+                pytest.fail(
+                    "PICKER_WHEEL capability declared but set_picker_value raised UnsupportedAction"
+                )
+            except Exception:
+                pass  # not a real wheel / no seeded rows: any other failure is acceptable here
+        else:
+            with pytest.raises(base.UnsupportedAction):
+                driver.set_picker_value({"id": "wheel"}, "opt")
 
     def test_text_selection_capability_matches_behavior(self, harness: ConformanceHarness) -> None:
         # capabilities() is a promise (BE-0280): a TEXT_SELECTION backend actuates select-all + copy

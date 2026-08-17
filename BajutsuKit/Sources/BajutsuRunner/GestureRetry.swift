@@ -53,3 +53,40 @@ public func actuateUntilStateChanges(
         if let before, let after = signature(), after != before { return }
     }
 }
+
+/// Re-read a projection of observable state until it equals `wanted`, to a bounded sample count.
+///
+/// The read-back half of a set-a-value actuation, where the platform reports nothing: XCUITest's
+/// `adjust(toPickerWheelValue:)` returns `Void`, never throws, and records a value it could not
+/// reach as a soft `XCTIssue` the resident runner's `continueAfterFailure` swallows (BE-0356). The
+/// only way to know whether the value landed is to look.
+///
+/// One read is not enough — a wheel still settling its deceleration reports the row it is passing,
+/// so a single sample would call a value the wheel does have "not found". Sampling to a cap closes
+/// that without a fixed sleep, which prime directive 2 rules out: each sample is a real query whose
+/// own round trip is the only pacing, so the bound is a number of observations rather than a guessed
+/// duration. A wheel that genuinely has no such row costs exactly `maxSamples` reads and then fails
+/// loudly, rather than looping or passing on a best-effort landing.
+///
+/// A `nil` sample means *couldn't observe*, never *matched* — the same rule
+/// `actuateUntilStateChanges` follows, so a transiently failed read keeps sampling instead of
+/// reading as a mismatch and deciding early.
+///
+/// Unlike `actuateUntilStateChanges` this actuates nothing and reports its outcome: the caller needs
+/// to distinguish "landed" from "hit the cap" in order to answer the driver at all.
+///
+/// - Parameters:
+///   - wanted: The value the state must reach.
+///   - maxSamples: The most reads to take (clamped to at least 1).
+///   - sample: The projection to read; `nil` when it could not be read.
+/// - Returns: Whether some sample equalled `wanted`.
+public func settlesTo(
+    _ wanted: String,
+    maxSamples: Int,
+    sample: () -> String?
+) -> Bool {
+    for _ in 0..<max(1, maxSamples) {
+        if sample() == wanted { return true }
+    }
+    return false
+}

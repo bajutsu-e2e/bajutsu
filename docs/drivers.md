@@ -58,6 +58,7 @@ resolution, and the **preflight capability check** (below).
 | `textSelection` | select-all + clipboard copy on the focused field | ✅ | ✅ | ✅ | ✅ |
 | `selectOption` | set a native `<select>` by value (web only) | — | — | ✅ | ✅ |
 | `handleSystemAlert` | tap an iOS SpringBoard permission-prompt button natively | ✅ | — | — | ✅ |
+| `pickerWheel` | set a wheel-style picker to a named row (iOS only) | ✅ | — | — | ✅ |
 | `deviceControl.setLocation` | set the simulated GPS location | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | read / write / clear the clipboard | ✅ | ✅ | — | — |
 | `deviceControl.push` | deliver a push notification | ✅ | — | — | — |
@@ -101,6 +102,8 @@ switch; iOS / Android are rejected before any device work), `select` / `copy` ne
 (select-all + clipboard copy; the web context is coordinate-only for these and refuses both —
 `delete` / `clear` stay ungated, as every backend backs `delete_text`), a `visual` assertion needs
 `screenshot`, `handleSystemAlert` needs the `handleSystemAlert` token (only xcuitest declares it),
+`setPickerValue` needs the `pickerWheel` token (also xcuitest only — a picker wheel is a native iOS
+control, so Android and web are rejected before any device work),
 and each device-control step needs the token for its own operation — `setLocation` needs
 `deviceControl.setLocation`, the clipboard steps need `deviceControl.clipboard`, `push` needs
 `deviceControl.push`, and so on (BE-0212 split the coarse `deviceControl` family of BE-0128 into

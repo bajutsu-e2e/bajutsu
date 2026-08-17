@@ -160,6 +160,7 @@ Action    ::=
   | { select:      { into: <Selector>, mode?: "all" } }    # focus the field and select its content (mode default "all"; idb/web-context raise → codegen to XCUITest)
   | { copy:        {} }                                    # copy the active selection to the clipboard (requires a prior select; idb/web-context raise)
   | { selectOption:{ sel: <Selector>, option: string } }   # set a web <select> to the option with this value (web only; iOS/Android raise)
+  | { setPickerValue:{ sel: <Selector>, value: string } }  # move a wheel-style picker to the row with this value (iOS only; sel addresses one wheel)
   | { swipe:       <Swipe> }                          # directional form scrolls; coordinate form is a raw drag
   | { drag:        <Drag> }                           # pointer-drag a grabbed element (handle / divider / slider), not a scroll
   | { scroll:      <Scroll> }                         # scroll (non-inertially) until `to` is on-screen, else fail at a bound (BE-0326)

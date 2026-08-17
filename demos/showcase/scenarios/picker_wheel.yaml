@@ -1,0 +1,50 @@
+# Wheel pickers (BE-0356): set a `UIPickerView` and a wheel-mode `UIDatePicker` to exact values.
+# `setPickerValue` is the only step that can — a wheel's rows are not separately addressable
+# elements, so `tap` cannot reach one, and `swipe` / `drag` / `scroll` / `tapPoint` are coordinate
+# actions that cannot guarantee stopping on a named row. XCUITest's `adjust(toPickerWheelValue:)`
+# acts on the resolved element instead, which is what makes this deterministic. iOS-only: every
+# other backend lacks the `pickerWheel` capability and preflight rejects the scenario up front, so
+# this file carries the `swiftui` tag and runs on the XCUITest lane alone.
+#
+# The SHOWCASE_PICKERS launch env swaps the app for a flat, scroll-free picker screen (see the iOS
+# PickerView), mirroring the SHOWCASE_GESTURES affordance: both wheels are then always in the
+# accessibility tree, so the run never depends on XCUITest's unreliable swipe-to-scroll.
+#
+# The `UIDatePicker` is the multi-component case. Its year and month are two sibling `pickerWheel`
+# children with no identifier of their own, so each is addressed by the `within` / `traits` / `index`
+# fields every selector already carries — one step per component, rather than a second addressing
+# mechanism of `setPickerValue`'s own. Each assertion reads the app's own mirrored value, not the
+# wheel's, so it proves the app saw the selection; `form.birthdate.value` is `YYYY-MM` rather than
+# the wheels' localized row labels, which would tie the assertion to the pinned system language.
+- name: setPickerValue moves a single-component wheel to an exact value
+  tags: [swiftui]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_PICKERS: "1" }
+  steps:
+    - wait: { for: { id: form.school }, timeout: 10 }
+      capture: [deviceLog]
+    - assert:
+        - value: { sel: { id: form.school.value }, equals: "高校" }
+    - setPickerValue: { sel: { id: form.school }, value: "大学" }
+      capture: [rawTree]
+  expect:
+    - value: { sel: { id: form.school.value }, equals: "大学" }
+
+- name: setPickerValue addresses each component of a multi-component wheel
+  tags: [swiftui]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_PICKERS: "1" }
+  steps:
+    - wait: { for: { id: form.birthdate }, timeout: 10 }
+      capture: [deviceLog]
+    - assert:
+        - value: { sel: { id: form.birthdate.value }, equals: "2015-04" }
+    - setPickerValue:
+        sel: { within: { id: form.birthdate }, traits: [pickerWheel], index: 0 }
+        value: "2016年"
+      capture: [rawTree]
+    - setPickerValue:
+        sel: { within: { id: form.birthdate }, traits: [pickerWheel], index: 1 }
+        value: "5月"
+  expect:
+    - value: { sel: { id: form.birthdate.value }, equals: "2016-05" }

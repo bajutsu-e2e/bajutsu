@@ -187,6 +187,28 @@ final class XcuitestElementProvider: ElementProviding {
         return .ok
     }
 
+    func setPickerValue(backingElement: AnyObject, value: String) -> TapResult {
+        guard let backing = backingElement as? PositionPathBacking else { return .notFound }
+        guard let el = liveElement(for: backing) else { return .stale }
+        // `liveElement(for:)` deliberately excludes `value` from its identity check, precisely because
+        // a wheel legitimately changes value between the snapshot and the actuation — which is what
+        // makes it safe to reuse here.
+        el.adjust(toPickerWheelValue: value)
+        // The call reports nothing: it returns Void, never throws, and a value it could not reach is
+        // recorded as a soft XCTIssue that `RunnerUITest.continueAfterFailure` swallows (BE-0356). So
+        // read the wheel back, bounded, and decide here — otherwise a wheel with no such row would
+        // answer `ok` and the run would assert against whatever value it happened to stop on.
+        let landed = settlesTo(
+            value, maxSamples: Self.maxPickerValueSamples, sample: { el.value as? String }
+        )
+        return landed ? .ok : .valueNotFound
+    }
+
+    /// The most times `setPickerValue` re-reads the wheel before calling the value absent. A wheel
+    /// decelerating through rows needs more than one look; each read is a real query, so this bounds
+    /// observations rather than standing in for a sleep (BE-0356).
+    private static let maxPickerValueSamples = 5
+
     func querySystemAlertButtons() -> [ElementSnapshot] {
         // Read the buttons of whatever SpringBoard alert is up, in order; empty when no alert is
         // present (`count` == 0), which the Python driver polls against the step's timeout. A
