@@ -102,7 +102,7 @@ English, and reading naturally alongside `提案` (the proposal link) without co
 | `**Implemented**` | `**実装済み**` |
 | `**Accepted, in progress**` | `**可決・実装中**` |
 | `**Proposal**` | `**提案**` |
-| `**Proposal (deferred)**` | `**提案（保留）**` |
+| `**Deferred**` | `**保留**` |
 
 ### Canonical sections
 

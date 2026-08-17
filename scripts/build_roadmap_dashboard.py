@@ -5,9 +5,10 @@ The roadmap's source of truth is the per-item metadata under ``roadmaps/<categor
 — read through the shared loader in ``build_roadmap_index.py``. This renders that live metadata as a
 single self-contained HTML dashboard, ``docs/api/roadmap.md``, that the existing MkDocs site
 publishes to GitHub Pages: cards grouped by category (Topic), each card carrying its own status
-(Implemented / In progress / Proposal / Deferred) and linking to its item on GitHub. Each category
-shows a progress figure — the share of its items that are Implemented — and a stacked bar of its
-full status composition, and fully-implemented categories are grouped separately under Completed.
+(Implemented / In progress / Proposal / Deferred / Rejected) and linking to its item on GitHub. Each
+category shows a progress figure — the share of its outstanding items that are Implemented — and a
+stacked bar of its full status composition, and fully-implemented categories are grouped separately
+under Completed.
 This dashboard is the only place any item's status is browsable — ``roadmaps/README.md`` /
 ``README-ja.md`` carry no generated status tables of their own.
 
@@ -23,7 +24,8 @@ Usage::
     python scripts/build_roadmap_dashboard.py --emit-script  # print the embedded filter JS (lint-js)
 
 Only facts the metadata carries are shown. The per-category progress percentage is derived purely
-from the Status field (Implemented items / total items in the category), so it has a source of truth;
+from the Status field (Implemented items / outstanding items in the category — Rejected items are
+excluded from the denominator, BE-0366), so it has a source of truth;
 no per-item completion figure is invented — that lives in no item's metadata.
 """
 
@@ -52,12 +54,14 @@ DEFAULT_OUT = ROOT / "docs" / "api" / "roadmap.md"
 REPO_BLOB = "https://github.com/bajutsu-e2e/bajutsu/blob/main"
 
 # Bucket -> the accent colour its cards carry. Greens read as shipped, amber as in flight, indigo as
-# proposed, grey as parked — the same lifecycle ordering the index uses (most-progressed first).
+# proposed, grey as parked, red as closed for good — the same lifecycle ordering the index uses
+# (most-progressed first).
 BUCKET_COLOR: dict[str, str] = {
     "Implemented": "#3B6D11",
     "In progress": "#BA7517",
     "Proposals": "#534AB7",
     "Deferred": "#5F5E5A",
+    "Rejected": "#8B3A3A",
 }
 # The singular status word shown on each card's badge (the bucket name is the plural index heading).
 BUCKET_LABEL: dict[str, str] = {
@@ -65,6 +69,7 @@ BUCKET_LABEL: dict[str, str] = {
     "In progress": "In progress",
     "Proposals": "Proposal",
     "Deferred": "Deferred",
+    "Rejected": "Rejected",
 }
 
 
@@ -171,24 +176,34 @@ def _card(item: Any) -> str:
 
 
 def _progress_bar(counts: dict[str, int], total: int) -> str:
-    """A stacked bar of a category's status composition (one coloured segment per non-zero bucket)."""
+    """A stacked bar of a category's status composition (one coloured segment per non-zero bucket).
+
+    ``total`` is :func:`_topic_progress`'s outstanding-item count, which excludes Rejected, so the
+    Rejected bucket is skipped here too and the segments still sum to 100% (BE-0366).
+    """
     segments = "".join(
         f'<span style="width:{100 * counts[name] / total:.2f}%;'
         f'background:{BUCKET_COLOR[name]}" title="{counts[name]} {html.escape(name)}"></span>'
         for name, _key in bri.BUCKETS
-        if counts[name]
+        if counts[name] and name != "Rejected"
     )
     return f'<div class="be-bar">{segments}</div>'
 
 
 def _topic_progress(cat_items: list[Any]) -> tuple[dict[str, int], int, int]:
-    """A topic's per-bucket counts, item total, and implemented-share percentage — one derivation.
+    """A topic's per-bucket counts, outstanding-item total, and implemented-share percentage.
 
     Shared by the card sections and the table view's progress strip so both show the same figure
     (BE-0311); the percentage is purely a function of Status, so it always has a source of truth.
+    A Rejected item is excluded from the total (BE-0366): it is never coming back, so it is not work
+    the topic still owes, and leaving it in would depress the bar forever. Deferred stays counted —
+    a parked item is still a live question. A topic whose every item is Rejected has nothing left to
+    measure, so it reads 100% rather than dividing by zero.
     """
     counts = {name: sum(1 for it in cat_items if it.bucket == name) for name, _key in bri.BUCKETS}
-    total = len(cat_items)
+    total = len(cat_items) - counts["Rejected"]
+    if not total:
+        return counts, total, 100
     return counts, total, round(100 * counts["Implemented"] / total)
 
 

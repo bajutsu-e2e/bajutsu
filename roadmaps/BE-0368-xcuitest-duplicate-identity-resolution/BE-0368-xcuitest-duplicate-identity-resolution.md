@@ -83,7 +83,7 @@ above is that spike, and it disproved the premise: zero members report `ok`, not
 `isHittable` resolves through the same `liveElement` lookup this item repairs and therefore cannot
 see either member either. Under its own specification BE-0357 would leave such a group untouched,
 so it is a no-op for the failure it was written to remove. Its `Progress` records that outcome, and
-its `Status` moves to `Proposal (deferred)` in the same change that lands this item. Repairing
+its `Status` moves to `Deferred` in the same change that lands this item. Repairing
 resolution first is also what would give BE-0357 a signal to work with at all.
 
 Leaving the defect unfixed costs what this failure class has cost before: a native alert is
@@ -234,7 +234,7 @@ different questions.
 - [x] On-device verification: `demos/showcase/scenarios/alert.yaml` passes against
       `showcase-swiftui` and `showcase-uikit` on an iOS 26 Simulator, and still passes on iOS 18.
 - [x] Record the outcome in BE-0357: its `Progress` carries the disproved premise and the spike
-      evidence, and its `Status` moves to `Proposal (deferred)`. Update
+      evidence, and its `Status` moves to `Deferred`. Update
       `attributesMatch`'s neighbouring documentation if it now reads as though identity alone ever
       decides a flat-query match.
 
@@ -264,7 +264,8 @@ Log:
 - [BE-0357 — Drop XCUITest's non-hittable duplicate accessibility node when exactly one is tappable](../BE-0357-xcuitest-duplicate-node-hittable-tiebreak/BE-0357-xcuitest-duplicate-node-hittable-tiebreak.md):
   attacks the same alert failure by filtering the `/elements` reply; its premise that exactly one
   member of a duplicate pair reports itself hittable is what this item's spike disproved, and this
-  item moves it to `Proposal (deferred)`.
+  item shelved it; [BE-0366](../BE-0366-roadmap-rejected-status/BE-0366-roadmap-rejected-status.md)
+  later reclassified it to `Rejected`.
 - [BE-0287 — XCUITest runner-channel resilience under multi-touch actuation](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md):
   excluded frame from `attributesMatch` (Unit 5), the recorded-against-live comparison this item's
   candidate-against-candidate comparison does not contradict.

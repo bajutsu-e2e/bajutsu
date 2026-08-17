@@ -48,7 +48,8 @@ def test_resolve_status_is_case_insensitive() -> None:
     """A status is matched to its canonical form regardless of case."""
     assert rq.resolve_status("proposal") == "Proposal"
     assert rq.resolve_status("IN PROGRESS") == "In progress"
-    assert rq.resolve_status("Proposal (Deferred)") == "Proposal (deferred)"
+    assert rq.resolve_status("DEFERRED") == "Deferred"
+    assert rq.resolve_status("rejected") == "Rejected"
 
 
 def test_resolve_status_rejects_unknown() -> None:

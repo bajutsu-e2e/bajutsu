@@ -15,7 +15,7 @@
 
 ## Introduction
 
-A roadmap item's `Status` already takes one of **four** values — `Proposal`, `Proposal (deferred)`,
+A roadmap item's `Status` already takes one of **four** values — `Proposal`, `Deferred`,
 `Accepted, in progress`, `Implemented` — but the repository files every item under only **two**
 folders, `roadmaps/proposals/` and `roadmaps/implemented/`. The folder axis is two notches too
 coarse, so two distinctions the metadata already records are lost the moment an item is written to
@@ -38,7 +38,7 @@ lifecycle is divided:
 
 | Axis | Values | What it drives |
 |---|---|---|
-| `Status` | `Proposal` · `Proposal (deferred)` · `Accepted, in progress` · `Implemented` | the source of truth |
+| `Status` | `Proposal` · `Deferred` · `Accepted, in progress` · `Implemented` | the source of truth |
 | `Track` | `Accepted` · `Proposals` | the index's top-level grouping |
 | Folder | `proposals/` · `implemented/` | the item's on-disk home and link path |
 
@@ -73,11 +73,11 @@ bucket — a bijection:
 | Status (EN / JA) | Folder / index bucket |
 |---|---|
 | `Proposal` / `提案` | `roadmaps/proposals/` |
-| `Proposal (deferred)` / `提案（保留）` | `roadmaps/deferred/` |
+| `Deferred` / `保留` | `roadmaps/deferred/` |
 | `In progress` / `実装中` | `roadmaps/in-progress/` |
 | `Implemented` / `実装済み` | `roadmaps/implemented/` |
 
-`Proposal` and `Proposal (deferred)` are siblings — both are proposals, one live and one shelved —
+`Proposal` and `Deferred` are siblings — both are proposals, one live and one shelved —
 so they are *adjacent* buckets, not a parent/child. Splitting them lets a reader see at a glance
 what is actively under consideration versus what has been parked, which is the whole reason the
 `Deferred` distinction exists.
@@ -99,7 +99,7 @@ the status set ([`CLAUDE.md`](../../CLAUDE.md),
 
 The folder is *already* derived from `Status`. The one axis still set by hand is `Track`, and with a
 four-way bucketing it becomes a pure restatement of `Status`: `Implemented` ⇒ Implemented,
-`In progress` ⇒ In progress, `Proposal` ⇒ Proposals, `Proposal (deferred)` ⇒ Deferred. A
+`In progress` ⇒ In progress, `Proposal` ⇒ Proposals, `Deferred` ⇒ Deferred. A
 hand-maintained field that merely echoes `Status` is exactly the drift surface BE-0043 and BE-0074
 work to remove.
 

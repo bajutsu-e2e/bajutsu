@@ -62,7 +62,8 @@ STATUS_JA = {
     "Proposal": "提案",
     "In progress": "実装中",
     "Implemented": "実装済み",
-    "Proposal (deferred)": "提案（保留）",
+    "Deferred": "保留",
+    "Rejected": "却下",
 }
 
 _SECTIONS_EN = [

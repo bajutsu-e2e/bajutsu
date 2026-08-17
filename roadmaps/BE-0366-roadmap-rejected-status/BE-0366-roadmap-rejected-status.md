@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0366](BE-0366-roadmap-rejected-status.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0366") |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
@@ -175,7 +175,7 @@ what happened.
 
 ### Migrating today's roadmap
 
-The schema change above is inert until the six currently `Proposal (deferred)` items are reclassified
+The schema change above is inert until the currently `Proposal (deferred)` items are reclassified
 under it, in the same implementing PR:
 
 - BE-0154 moves to `Rejected`. Its `Superseded by` field already names BE-0159 as the successor;
@@ -187,6 +187,14 @@ under it, in the same implementing PR:
   that outgrows the in-protocol stub language) and carries no filled `Superseded by` field. This item
   recommends leaving BE-0027 `Deferred` by default and flagging it for a maintainer's judgment call at
   implementation time, rather than letting the schema change silently decide a borderline case.
+- [BE-0357](../BE-0357-xcuitest-duplicate-node-hittable-tiebreak/BE-0357-xcuitest-duplicate-node-hittable-tiebreak.md)
+  is a seventh item, deferred after this proposal was authored and so absent from the six listed
+  under *Motivation*. It moves to `Rejected`. Its central premise — that exactly one member of a
+  duplicate accessibility-node pair reports itself hittable — was measured and disproved by
+  [BE-0368](../BE-0368-xcuitest-duplicate-identity-resolution/BE-0368-xcuitest-duplicate-identity-resolution.md)'s
+  spike: zero members report it. Under its own specification BE-0357 is therefore a no-op for the
+  failure it was written to remove, and BE-0368 has since shipped the resolution repair that was the
+  only condition its deferral named. Nothing is left to wait for.
 
 ### Relationship to "Not adopting"
 
@@ -239,20 +247,41 @@ same PR is what closes the actual gap.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Rename `Proposal (deferred)` to `Deferred` and add `Rejected` in `check_roadmap_format.py`
+- [x] Rename `Proposal (deferred)` to `Deferred` and add `Rejected` in `check_roadmap_format.py`
       (`STATUS_PAIR`) and `new_roadmap_item.py` (`STATUS_JA`).
-- [ ] Add the `Rejected` bucket to `build_roadmap_index.py` (`STATUS_TO_BUCKET`, `BUCKETS`) and
+- [x] Add the `Rejected` bucket to `build_roadmap_index.py` (`STATUS_TO_BUCKET`, `BUCKETS`) and
       `build_roadmap_dashboard.py` (`BUCKET_COLOR`, `BUCKET_LABEL`, module docstring), and exclude
       `Rejected` from `_topic_progress`'s denominator.
-- [ ] Update the docstrings and comments naming the old value, and the bucket counts that go stale
+- [x] Update the docstrings and comments naming the old value, and the bucket counts that go stale
       with it, in `sync_roadmap_tracking_issues.py`, `sync_roadmap_topic_labels.py`, and
       `roadmap_query.py`.
-- [ ] Rename the literal across `implement-be`, `.github/roadmap-refresh-prompt.md`,
+- [x] Rename the literal across `implement-be`, `.github/roadmap-refresh-prompt.md`,
       `roadmap-filter`, `docs/roadmap-workflow.md` (+ ja), the `Makefile` comment, `CLAUDE.md`,
       `docs/ai-development.md` (+ ja), and `roadmaps/README.md` (+ ja), adding `Rejected` to every
       valid-value list.
-- [ ] Update the gate tests that pin the literal, and cover the new value.
-- [ ] Migrate today's six deferred items: BE-0154 to `Rejected`, the other five to `Deferred`.
+- [x] Update the gate tests that pin the literal, and cover the new value.
+- [x] Migrate today's deferred items: BE-0154 and BE-0357 to `Rejected`, the other five to
+      `Deferred`.
+
+Log:
+
+- The implementing PR landed all six units at once, with three decisions the proposal left open or
+  could not have anticipated:
+  - **The stacked bar shares the progress denominator.** Excluding `Rejected` from
+    `_topic_progress`'s denominator alone would have left `_progress_bar`'s segments summing past
+    100%, since the bar divides each bucket's count by that same total. The bar therefore skips the
+    `Rejected` bucket too: a rejected item still renders its own card, but contributes to neither the
+    percentage nor the bar. A topic with nothing but rejected items reads 100% rather than dividing
+    by zero, which also lands it in the dashboard's *Completed* group — correct, since it has no
+    outstanding work.
+  - **BE-0357 moved to `Rejected`** as a seventh migration, for the reason recorded under
+    *Migrating today's roadmap*.
+  - **The literal was renamed in shipped items' prose too**, beyond the surfaces *Detailed design*
+    enumerates — BE-0074, BE-0078, BE-0109, BE-0162, and BE-0368 each named `Proposal (deferred)`
+    while recording a past decision. Renaming them leaves a repo-wide grep for the retired value
+    empty, at the cost of a shipped item describing its own decision in vocabulary that postdates it.
+    BE-0368's reference to BE-0357 additionally records the later reclassification, so the two items
+    agree on where BE-0357 now sits.
 
 ## References
 

@@ -96,8 +96,9 @@ to turn an existing proposal into shipped code. The proposal's **Detailed design
 deterministic gate (`make check`) is the judge — never an LLM.
 
 1. **Resolve the item** and read **both** language files. Implementing a `Proposal` *accepts* it —
-   this PR flips it to `Implemented` — so the skill says so up front. An already-`Implemented` or a
-   `Proposal (deferred)` item makes it stop and confirm what you actually want.
+   this PR flips it to `Implemented` — so the skill says so up front. An already-`Implemented`, a
+   `Deferred`, or a `Rejected` item makes it stop and confirm what you actually want — for a
+   `Rejected` one, that a human has explicitly overturned the decision.
 2. **Claim the tracking issue.** Every open item has a GitHub issue labeled `roadmap-tracking`; if
    someone else is already assigned, the skill stops rather than duplicating work. Otherwise it
    self-assigns the issue before branching.

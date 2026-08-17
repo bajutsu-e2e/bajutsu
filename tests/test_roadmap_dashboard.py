@@ -9,6 +9,7 @@ excluded just as the index excludes it.
 
 from __future__ import annotations
 
+import dataclasses
 import html
 import importlib.util
 import re
@@ -48,6 +49,11 @@ def _sample_item(title: str = "T", **over: Any) -> Any:
     )
 
 
+def _bucketed(bucket: str) -> Any:
+    """A synthetic item in one bucket — the lone field the progress derivation reads."""
+    return dataclasses.replace(_sample_item(), bucket=bucket)
+
+
 def test_every_committed_item_is_rendered() -> None:
     """Each real item contributes exactly one status-tagged card linking to its file on GitHub."""
     assert _PAGE.count('class="be-card"') == len(_ITEMS)
@@ -82,15 +88,45 @@ def test_every_nonempty_category_renders_a_section() -> None:
 
 
 def test_per_category_progress_is_implemented_share() -> None:
-    """Each category's percentage equals round(100 * implemented / total) over its own items."""
+    """Each category's percentage is its implemented share of the items it still owes.
+
+    Rejected items are outside that denominator (BE-0366) — they are never coming back, so they are
+    not outstanding work.
+    """
     by_topic: dict[str, list[object]] = {}
     for item in _ITEMS:
         by_topic.setdefault(item.topic, []).append(item)
     for topic, items in by_topic.items():
         implemented = sum(1 for it in items if it.bucket == "Implemented")  # type: ignore[attr-defined]
-        pct = round(100 * implemented / len(items))
+        outstanding = sum(1 for it in items if it.bucket != "Rejected")  # type: ignore[attr-defined]
+        pct = round(100 * implemented / outstanding) if outstanding else 100
         assert f'<span class="be-pct">{pct}%</span>' in _PAGE, topic
-        assert f">{implemented}/{len(items)} implemented<" in _PAGE
+        assert f">{implemented}/{outstanding} implemented<" in _PAGE
+
+
+def test_rejected_items_leave_the_progress_denominator() -> None:
+    """One Rejected item alongside one Implemented reads 100%, not 50% (BE-0366).
+
+    A Deferred item in the same position still counts, since a parked item remains a live question
+    the topic has yet to answer.
+    """
+    implemented = _bucketed("Implemented")
+    rejected = _bucketed("Rejected")
+    deferred = _bucketed("Deferred")
+
+    counts, total, pct = brd._topic_progress([implemented, rejected])
+    assert (counts["Rejected"], total, pct) == (1, 1, 100)
+
+    counts, total, pct = brd._topic_progress([implemented, deferred])
+    assert (counts["Deferred"], total, pct) == (1, 2, 50)
+
+
+def test_an_all_rejected_topic_reads_complete_rather_than_dividing_by_zero() -> None:
+    """A topic with nothing outstanding has no share to compute, so it reads 100% (BE-0366)."""
+    counts, total, pct = brd._topic_progress([_bucketed("Rejected")])
+    assert (counts["Rejected"], total, pct) == (1, 0, 100)
+    # The bar draws no segment either, rather than dividing its widths by an empty denominator.
+    assert brd._progress_bar(counts, total) == '<div class="be-bar"></div>'
 
 
 def test_status_filter_toggles_present() -> None:
@@ -157,11 +193,19 @@ def test_every_card_carries_its_topic() -> None:
 
 
 def test_fully_implemented_categories_are_separated() -> None:
-    """A category whose items are all Implemented lands in the Completed group, others in In progress."""
+    """A category with no outstanding work lands in the Completed group, others in In progress.
+
+    "No outstanding work" means every item is Implemented or Rejected: a Rejected item is outside
+    the progress denominator (BE-0366), so it cannot hold a category back at 99%.
+    """
     by_topic: dict[str, list[object]] = {}
     for item in _ITEMS:
         by_topic.setdefault(item.topic, []).append(item)
-    completed = {t for t, its in by_topic.items() if all(i.bucket == "Implemented" for i in its)}  # type: ignore[attr-defined]
+    completed = {
+        t
+        for t, its in by_topic.items()
+        if all(i.bucket in ("Implemented", "Rejected") for i in its)  # type: ignore[attr-defined]
+    }
     ongoing = set(by_topic) - completed
     # Both group headings appear only when their group has members.
     assert ('data-group="completed"' in _PAGE) == bool(completed)
