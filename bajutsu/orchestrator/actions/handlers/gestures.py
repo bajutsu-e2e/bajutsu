@@ -54,7 +54,7 @@ def _tap_with_recovery(
     via `base.raise_if_covered`) is interpolated into that message rather than dropped, so the
     fact a CI log needs to avoid reproducing the screen by hand survives; the last direction's scroll
     failure that triggered the recovery is chained (`raise … from`) alongside it. It never falls back
-    to the misleading `ElementNotFound` a scroll timeout would otherwise raise.
+    to the misleading `ElementNotFound` a scroll timeout would otherwise raise (BE-0349).
     """
     try:
         actuate()

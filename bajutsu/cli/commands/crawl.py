@@ -249,7 +249,7 @@ class _CrawlPlan:
     `crawl` fills this from the option flags via the `_resolve_*`/`_plan_lanes`/`_wire_health`
     helpers, then hands it to `_execute`. It carries resolved inputs only (config, actuator, the
     resolved paths, the warm-start result, and the lane pool), so each helper stays unit-testable
-    without a Simulator.
+    without a Simulator (BE-0205).
     """
 
     eff: Effective

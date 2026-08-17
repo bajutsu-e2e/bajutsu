@@ -137,7 +137,7 @@ def materialize_composition(
     """Assemble a `(config, scenarios, binary)` triple into a fresh, content-addressed tree under
     *compositions_dir*, keyed by *composition_id* (a caller-computed digest of the triple) — a
     cache hit returns the existing tree with no re-assembly, mirroring `materialize_bundle`'s trust
-    boundary: this replica already proved this exact triple once.
+    boundary: this replica already proved this exact triple once (BE-0268).
 
     A `scenarios` artifact is a zip of the scenario subtree or a single YAML file, told apart by
     content (`zipfile.is_zipfile`): a zip is extracted at the root, a single file is written into the

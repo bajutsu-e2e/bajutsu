@@ -1380,11 +1380,7 @@ def _run_steps(
     )
     result = _StepRunner(state, cfg).exec_steps(scenario.steps, driver)
     _logger.debug("%s: %d runner-issued screen reads (BE-0234)", sid, state.total_reads)
-    # No end-of-run safety capture (BE-0341 Unit 2, removed): every step that acts now shoots
-    # `after.png` itself, right after its action, so the only step the safety net still reached was
-    # the one that returns before acting at all — a step failing on `UncoveredSystemAlertLocale`.
-    # Giving *that* step an `after.png` taken once the whole run had finished is what made its
-    # evidence inconsistent: `elements.json` there is the pre-action tree, which the viewers would
-    # then have drawn element frames from onto pixels captured much later. Left alone, the step
-    # keeps the matched pair it already has — `before.png` and the tree read at the same moment.
+    # No end-of-run safety capture here: every step that acts shoots its own `after.png` in
+    # `_handle_action`, so the net only reached the step that returns before acting at all, where it
+    # paired post-run pixels with a pre-action tree (BE-0341, "Later revision").
     return result

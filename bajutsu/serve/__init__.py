@@ -370,7 +370,7 @@ def _build_server_state(
     # Each entry pairs a stable *check* name with the human-readable *msg*, so an operator's alert can
     # key on `check=` -- a plain structured field `oplog` passes through as-is, not one it validates
     # the way it validates an `event` name -- instead of substring-matching free text that rewords
-    # out from under it.
+    # out from under it (BE-0352).
     startup_warnings: list[tuple[str, str]] = []
 
     def _warn(check: str, msg: str) -> None:
@@ -381,19 +381,11 @@ def _build_server_state(
         startup_warnings.append((check, msg))
 
     # A half-configured deployment (one of the three BAJUTSU_OAUTH_GITHUB_* vars unset) falls back
-    # to token auth silently: every GitHub sign-in 404s and `POST /api/login` re-enables itself, so
-    # the deployment runs wide open on the shared token (a token session has no identity, so
-    # `forbidden_for_role` never applies) while the operator believes OAuth is gating it. The three
-    # checks below cannot reach this shape, since each reads `oauth is None` as "token-auth-only,
-    # deliberately" rather than "OAuth half-configured by mistake". This check is deliberately the
-    # opposite gate from the three below it.
-    #
-    # When no BAJUTSU_SERVE_TOKEN is set either, there is no fallback at all: `SessionManager.check_
-    # token` is `self.token is not None and secrets.compare_digest(...)`, so `POST /api/login` 401s,
-    # and both transports skip the auth+RBAC gate outright on that same `token is None` (handler.py's
-    # `_gate`, server/app.py's middleware) -- every endpoint, `_ADMIN_PATHS` included, is served
-    # unauthenticated. Name which of the two this deployment actually fell into, since *token* is
-    # already a parameter here.
+    # to token auth silently -- or, with no BAJUTSU_SERVE_TOKEN either, to no auth at all -- while
+    # the operator believes OAuth is gating it. This check is deliberately the opposite gate from
+    # the three below it, which each read `oauth is None` as "token-auth-only, deliberately". Name
+    # which of the two shapes this deployment fell into, since *token* is already a parameter here
+    # (BE-0352).
     if oauth is None and any((cid, secret, redirect)):
         # Name which variable(s) are unset -- the three are all in scope here, and a typo'd variable
         # NAME (e.g. _REDIRECT_URL for _REDIRECT_URI) leaves all three look present in a quick .env
@@ -452,7 +444,7 @@ def _build_server_state(
         # one (`admin_teams_unusable`) -- match that severity here too, or the worst shape (every
         # entry malformed) gets the mildest boot message: a syntax note about one entry, not the
         # "no login will have admin access" consequence `admin_teams_empty`'s message names, which
-        # never fires here since the list isn't empty.
+        # never fires here since the list isn't empty (BE-0352).
         if admin_teams_unusable(oauth_admin_teams):
             msg += (
                 " -- no entry is well-formed, so no login will have admin access and no admin can "
@@ -617,7 +609,7 @@ def _emit_startup_warnings(state: ServeState) -> None:
     `"admin_team_retired_name"`, `"admin_teams_empty"`, `"admin_teams_malformed"`) — an operator's
     alert keys on `check=`, not on substring-matching a message that can reword out from under it. A
     no-op when `state.startup_warnings` is empty (local serve, or a server deployment with nothing to
-    warn about)."""
+    warn about) (BE-0352)."""
     for check, msg in state.startup_warnings:
         oplog.log_event(_logger, "server.startup_warning", msg, level=logging.WARNING, check=check)
 

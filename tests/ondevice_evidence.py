@@ -1,4 +1,4 @@
-"""Per-test video + deviceLog capture for the on-device adb/XCUITest pytest suites.
+"""Per-test video + deviceLog capture for the on-device adb/XCUITest pytest suites (BE-0350).
 
 `conformance (adb)`, `fault-injection (adb)`, and their iOS twins drive their backend straight from
 pytest (`launch_driver`, never `bajutsu run`), so none of them inherits the scenario pipeline's
@@ -160,7 +160,7 @@ def capture(
     `start_video`/`start_log` take only `(serial_or_udid, path)` — this function is backend-agnostic,
     so every caller states explicitly which backend's primitives it wants (`android_screenrecord` +
     `intervals.start_logcat` for adb, `xcuitest_video` + `start_device_log` for XCUITest) —
-    and a test can pass a fake pair to exercise this without a real device.
+    and a test can pass a fake pair to exercise this without a real device (BE-0350).
     """
     dest = Path("runs") / lane / _slug(request.node.nodeid)
     # Start every attempt from an empty directory: simctl `recordVideo` (no `--force`) refuses to

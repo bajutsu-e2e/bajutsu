@@ -323,7 +323,7 @@ class AndroidEnvironment:
             e.launch(package, launch_env)
             # `force_stop`/`launch` replace the screen through `adb.Env`, never through the driver's
             # own actuators — the one door `AdbDriver._settled_key` needs closed that its actuators
-            # cannot close themselves (`base.SettledCacheInvalidator`).
+            # cannot close themselves (`base.SettledCacheInvalidator`, BE-0351).
             if isinstance(driver, base.SettledCacheInvalidator):
                 driver.invalidate_settled_cache()
             readiness._await_ready(

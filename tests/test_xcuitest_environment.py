@@ -207,7 +207,8 @@ def test_appium_lease_endpoint_routes_to_the_live_environment() -> None:
     # The live transport (Slice A) closes the Unit 4 boundary: the endpoint the `appium` provider
     # yields no longer flows into `_destination`. `environment_for` recognises the `http(s)://` udid
     # spec and returns the live WebDriver environment, which drives the reserved device off the simctl
-    # / xcodebuild path — so the endpoint reaches the WebDriver session, never the udid machinery.
+    # / xcodebuild path — so the endpoint reaches the WebDriver session, never the udid machinery
+    # (BE-0238).
     from bajutsu.platform_lifecycle.environments.xcuitest_live import XcuitestLiveEnvironment
     from bajutsu.platform_lifecycle.factories import environment_for
     from bajutsu.runner import device_provider as dp
@@ -2125,7 +2126,7 @@ def _ladder_run(
 
     `booted_listing_fails`, when True, makes `simctl list devices booted` itself fail — the host too
     wedged even to answer that probe, the case `simctl.device_booted` reads as unknown rather than
-    "not booted".
+    "not booted" (BE-0359).
     """
     import json
 

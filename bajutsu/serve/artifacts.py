@@ -54,7 +54,7 @@ class ArtifactStore(Protocol):
 
         A HEAD-style probe for callers that only need to decide whether to link to an artifact
         (e.g. an editor's per-step ``elementsUrl``/``screenshotUrl``), not read its bytes — cheap
-        on both backends, unlike keying off `get`/`open_bytes` returning non-None."""
+        on both backends, unlike keying off `get`/`open_bytes` returning non-None (BE-0258)."""
 
     def list_runs(self) -> list[dict[str, Any]]:
         """Past runs, newest first, each summarized for the history list."""

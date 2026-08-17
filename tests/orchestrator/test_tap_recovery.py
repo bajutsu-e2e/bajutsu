@@ -11,7 +11,8 @@ inversion `scroll.py`'s own `_CONTENT_TO_FINGER` applies — so these drivers *d
 `target["frame"]`'s `y` by a fixed amount per call. `_ClearsTopOverlayOnlyViaUpwardRecoveryDriver`
 below instead models a top-anchored cover (a sticky header) that only the `up` fallback direction
 clears, and moves `y` in whichever way the requested direction's finger travel actually implies, by
-the same magnitude in both directions — matching every real backend's single `_SWIPE_FRACTION`.
+the same magnitude in both directions — matching every real backend's single `_SWIPE_FRACTION`
+(BE-0349).
 """
 
 from __future__ import annotations
@@ -59,7 +60,7 @@ class _NeverClearsOverlayDriver(FakeDriver):
     swapped back to `_center_in_viewport`, this driver's very first check would already read
     "on-screen" as true and the recovery would wrongly report success with zero scrolls — the
     assertions below (both directions' bounds are *spent*, not skipped) are what would catch that
-    regression.
+    regression (BE-0349).
     """
 
     def __init__(self) -> None:
@@ -90,7 +91,8 @@ class _ClearsOverlayButScrollsPastTheViewportDriver(FakeDriver):
     `_center_in_viewport` *and* `is_tappable`, not `is_tappable` alone — otherwise the recovery loop
     can "succeed" by scrolling the target out of view instead of clear of the obstruction, and a
     coordinate tap that follows lands outside the viewport, silently touching nothing. `target` never
-    actually becomes tappable-and-on-screen, so both recovery directions exhaust their bound in turn.
+    actually becomes tappable-and-on-screen, so both recovery directions exhaust their bound in turn
+    (BE-0349).
     """
 
     def __init__(self) -> None:
@@ -117,7 +119,8 @@ class _ClearsTopOverlayOnlyViaUpwardRecoveryDriver(FakeDriver):
     direction clears, within its own (widened) bound. Pins both the direction-gap fix (a fixed
     `down`-only recovery would exhaust its bound here and never retry `up`) and the widened-bound
     fix (`up` must first retrace the ground `down` already covered before it can make any net
-    progress of its own, so a bound equal to `down`'s own would exhaust before ever clearing).
+    progress of its own, so a bound equal to `down`'s own would exhaust before ever clearing)
+    (BE-0349).
 
     Unlike the drivers above, `scroll()` here reads the requested direction back out of `frm`/`to`
     rather than assuming `down`: `scroll.py`'s `_CONTENT_TO_FINGER` inversion means a `down` content
@@ -183,7 +186,7 @@ def test_tap_fails_as_element_not_tappable_when_recovery_is_exhausted() -> None:
     assert reason.startswith("still not tappable")
     # The first attempt's own ElementNotTappable (naming what covered the target, via
     # `base.raise_if_covered`) is interpolated in, not dropped — the one fact a CI log would
-    # otherwise force reproducing the screen by hand to learn.
+    # otherwise force reproducing the screen by hand to learn (BE-0349).
     assert "'overlay'" in reason
 
 

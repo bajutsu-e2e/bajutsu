@@ -448,7 +448,7 @@ class RawSourceProvider(Protocol):
     a same-sized text artifact per captured step. `AdbDriver` and `XcuitestDriver` implement it (the raw
     UI Automator dump, the raw `GET /elements` body). Not implementing this means "no raw dump to
     persist", which keeps every other backend (`FakeDriver`, Playwright) exactly as before — the same
-    narrow opt-in as the protocols above.
+    narrow opt-in as the protocols above (BE-0351).
     """
 
     def last_raw_source(self) -> RawSource | None: ...
@@ -468,7 +468,7 @@ class SettledCacheInvalidator(Protocol):
     at rest. A lifecycle path that replaces the screen outside the driver calls
     `invalidate_settled_cache()` to close that door too. Not implementing this means "no such cache
     to invalidate", which keeps every other backend (`FakeDriver`, Playwright, XCUITest) exactly as
-    before — the same narrow opt-in as the protocols above.
+    before — the same narrow opt-in as the protocols above (BE-0351).
     """
 
     def invalidate_settled_cache(self) -> None: ...
@@ -810,7 +810,7 @@ def resolve_unique(elements: list[Element], sel: Selector) -> Element:
         # wrapper. A tie between such a control and a classified sibling sharing its label silently
         # keeps the sibling instead of raising AmbiguousSelector. Only a same-selector tie is
         # affected — an unclassified control resolved on its own (no classified sibling sharing the
-        # selector) is unaffected.
+        # selector) is unaffected (docs/selectors.md).
         without_other = [c for c in candidates if Trait.OTHER not in c["traits"]]
         if without_other:
             candidates = without_other

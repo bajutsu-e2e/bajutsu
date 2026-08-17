@@ -253,7 +253,8 @@ def test_create_project_rejects_a_name_collision_under_a_different_id(
     # `Project` carries UniqueConstraint("org_id", "name") and create_project merges by id only,
     # so minting a *fresh* id for a name the org already uses is a genuine collision — not an
     # idempotent rebind. The DB-backed Repository surfaces it as IntegrityError; a caller must
-    # resolve the existing id via get_project first rather than rely on this to upsert by name.
+    # resolve the existing id via get_project first rather than rely on this to upsert by name
+    # (BE-0225).
     repo = _repo(serve_engine)
     _seed_orgs(repo, "o1")
     repo.create_project(ProjectRecord(id="p1", org_id="o1", name="checkout"))

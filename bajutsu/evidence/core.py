@@ -142,7 +142,7 @@ def write_raw_tree(
     SystemUI decor windows), `hierarchy.parsed-input<suffix>` — what the parser actually consumed after
     that transform — so a mismatch between a resolved coordinate and the real screen can be traced to the
     device's/runner's own reply versus bajutsu's processing of it. `mkdir` creates the step dir first, and
-    is skipped when the caller already made it.
+    is skipped when the caller already made it (BE-0351).
 
     Also a no-op, loudly, when `redactor.has_label_rules`: `redact_elements` (behind `elements.json`)
     blanks a labeled element's `value` structurally, using the parsed tree it has and this function

@@ -575,7 +575,7 @@ def test_capabilities_for_run_narrows_on_a_url_udid_regardless_of_the_provider()
     # `local` (no block) versus an `appium` cloud provider — must narrow identically for the same URL
     # udid spec. If the local case failed to narrow, a `--udid https://…` run under it would advertise
     # the full local set and a select/copy scenario would fail late mid-run instead of being skipped up
-    # front — the exact divergence this slice closes.
+    # front — the exact divergence this slice closes (BE-0238).
     from bajutsu.drivers.xcuitest_live import XcuitestLiveDriver
 
     local = capabilities_for_run("xcuitest", _ios_eff(device_provider=None), _LIVE_ENDPOINT)

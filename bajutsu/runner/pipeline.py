@@ -368,31 +368,14 @@ class _ScenarioRunner:
                 # Reset per attempt: the crash handler reads it to reach the lease's own signals, and
                 # a lease-time crash must not be judged on the previous attempt's lease.
                 lz: Lease | None = None
-                # A retry (attempt > 1) forces the same device recovery a scenario already gets by
-                # declaring `erase: true`, instead of a bare in-place respawn: a fresh runner process
-                # answering /health normally says nothing about a device whose rendering has wedged, so a
-                # respawn onto the very device that just crashed it reproduces the same crash. Skipped
-                # when the scenario declares `reinstall: overwrite` — its explicit declaration that it
-                # needs its app's data container preserved across a lease — since forcing `erase` would
-                # silently override exactly the precondition the scenario was written against. NOT
-                # skipped on `preconditions.erase is False`: by the time a scenario reaches here, the CLI
-                # (`_filter_scenarios` in `bajutsu/cli/commands/run.py`) has already resolved every
-                # scenario's `erase` to a concrete bool — most commonly `False`, the built-in default a
-                # scenario never asked for — so a guard on that value would silently disable this whole
-                # unit on the one path it was written for (see *Alternatives considered*: only
-                # `reinstall: overwrite` actually protects app data; a bare `erase: false` does not, since
-                # `reinstall`'s own default `"clean"` wipes the app's data regardless of `erase`). Skipped
-                # on `not self.force_erase_on_retry` instead: that flag carries the operator's explicit
-                # `bajutsu run --no-erase`, read before `_filter_scenarios` collapses it into the same
-                # per-scenario bool — the one signal an explicit opt-out can still reach this guard
-                # through. Also skipped wherever forcing `erase` would itself raise (a real device or the
-                # live WebDriver route, `erase_precondition_supported` in `bajutsu/backends.py`): that
-                # would abort the whole run past this loop's own `except BackendCrashError`, not merely
-                # fail this one scenario.
-                # An escalated attempt still carries the forced erase from here: the environment that
-                # serves the replacement drops it (a device it is about to create has nothing to
-                # erase), and deciding that here instead would mean predicting what the environment
-                # will do — leaving an attempt whose request never landed with neither remedy.
+                # A retry forces the device recovery `erase: true` would give: respawning onto the
+                # device that just wedged reproduces the crash. Skipped on `reinstall: overwrite`
+                # (the scenario needs its app data preserved), on `not self.force_erase_on_retry`
+                # (the operator's `--no-erase`), and wherever forcing `erase` would itself raise
+                # (`erase_precondition_supported`, which would abort the whole run). `erase: false`
+                # is NOT a skip signal: the CLI has already collapsed it to a concrete bool by here.
+                # An escalated attempt keeps this forced erase; the environment serving a replacement
+                # drops it. Every one of these choices is argued in BE-0353.
                 retry_scenario = s
                 if (
                     attempt > 1
