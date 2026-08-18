@@ -421,7 +421,70 @@ redact:
   headers: ["X-Session"]                # extra HTTP header names (on top of the defaults)
   fields: ["token", "password"]         # JSON/body field names
   unmaskHeaders: ["authorization"]      # opt out of a default (visible, deliberate)
+  unmaskSecureFields: true              # opt out of the platform-marked default (below)
+  unmaskCredentialNames: true           # opt out of the credential-name default (below)
 ```
+
+### Where redaction runs
+
+Every write into a run directory goes through one sink, so an artifact is redacted because of where
+it lands rather than because its writer remembered to ask
+([BE-0331](../roadmaps/BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary.md)).
+The sink takes content before serialization, with one entry point per shape: an element tree,
+network exchanges, a crawl's screen map, free text. Two of the rules below are structural — they
+read an element's trait, or its identifier and label. Once a tree is a JSON string that pairing is
+gone, so a sink that scanned only serialized text could apply neither. Content the sink cannot inspect — a screenshot, a video, an archive — goes
+through a separate entry point that records the artifact as unmasked. An image is never described
+as protected. Implementation: `evidence/sink.py` `RunArtifactWriter`.
+
+The boundary governs writing alone. Reading a run stays unrestricted — the web UI, the evidence
+readers, `export`, and the comparison commands all need it, and none of those operations can create
+an artifact. Two mechanical checks keep the write side closed. An import contract lets the sink
+alone derive a writable run path, and a second check fails a run-root path literal written anywhere
+else. Both read source alone, so a writer nobody has written yet is covered the moment it exists.
+
+### Masking that needs no configuration
+
+Three rules mask without a `redact:` block, because each covers a case a scenario author should not
+have to anticipate. A `crawl` carries no scenario at all, so these are the only rules that reach its
+artifacts.
+
+- **A field the platform marks secret.** An element whose backend reports the masked-input trait has
+  its value masked, and so does a value typed into such a field. Each backend derives the trait from
+  its own source: XCUITest's `secureTextField`, the web `input[type=password]`, and the Android
+  accessibility node's `password` flag. The driver conformance suite
+  ([BE-0114](../roadmaps/BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md)) pins
+  the trait on every backend, so the rule means the same thing on iOS, web, and Android. Release it
+  with `unmaskSecureFields: true`.
+- **A field whose identifier or label names a credential.** The vocabulary is `password`, `passwd`,
+  `secret`, `token`, `apikey`, `api_key`, `credential`, `otp`, and `pin`, matched case-insensitively
+  on word boundaries — so a field called `settings.apikey` is masked and one called `prefs.pinned` is
+  not. The list is small and documented rather than clever, because a rule an author cannot predict
+  is one they cannot rely on. Release it with `unmaskCredentialNames: true`.
+- **A recognizable credential shape.** As a backstop, the sink masks a set of high-confidence shapes
+  in any text it writes. There are five: an Anthropic key (`sk-ant-`); an Amazon Web Services (AWS)
+  access key id (`AKIA`); a GitHub token (`ghp_` and its siblings); a three-segment JSON Web Token
+  (JWT); and a Privacy-Enhanced Mail (PEM) private-key block. The sink masks a match and logs a
+  warning naming the artifact, because a value reaching the backstop means an earlier, more precise
+  rule should have caught it. The patterns are literal regular expressions, so no model is consulted.
+  This rule alone needs to know neither a configured name nor the value in advance, which is why it
+  alone can reach a value the tool itself generated. The leak that motivated this boundary was
+  exactly that: a `crawl --guide ai` run wrote an artifact after the model invented a realistic API
+  key to fill a field.
+
+### What redaction does not guarantee
+
+Masking reduces what a shared artifact reveals; it does not make a leak impossible. Three residues
+remain, and an operator deciding whether to share a report should weigh them.
+
+- **Pixels stay unmasked.** A screenshot of a filled password field still shows it, which is why the
+  runner warns up front rather than implying an image is protected
+  ([BE-0151](../roadmaps/BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning.md)).
+- **An arbitrary value in an unmarked field can survive.** A secret typed into a field the platform
+  does not mark, whose identifier and label name nothing credential-like, that was never bound
+  through `${secrets.X}`, and whose shape matches no backstop pattern, is indistinguishable from
+  ordinary text. Telling the two apart would need semantic judgment, which never sits on this path.
+- **The backstop's vocabulary is finite.** A credential format nobody added a pattern for passes it.
 
 > **Sensitive headers are masked by default** (a scenario needs no `redact:` for this): the
 > built-in set is `authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`,

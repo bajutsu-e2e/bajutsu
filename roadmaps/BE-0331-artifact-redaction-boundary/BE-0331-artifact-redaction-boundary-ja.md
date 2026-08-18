@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0331](BE-0331-artifact-redaction-boundary-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0331") |
 | トピック | Security hardening |
 | 関連 | [BE-0032](../BE-0032-secret-variables/BE-0032-secret-variables-ja.md), [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0097](../BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty-ja.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization-ja.md), [BE-0130](../BE-0130-default-network-secret-redaction/BE-0130-default-network-secret-redaction-ja.md), [BE-0151](../BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning-ja.md), [BE-0153](../BE-0153-encode-aware-secret-redaction/BE-0153-encode-aware-secret-redaction-ja.md) |
@@ -395,15 +395,15 @@ driver conformance suite
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] Unit 1 — redactor を適用する run ディレクトリの出口
-- [ ] Unit 2 — 既存の書き出しをすべて出口へ通す
-- [ ] Unit 3 — パスを返さない読み取りの窓口と書き込みの出口の分離、import の契約、直値の検査
-- [ ] Unit 4 — 全バックエンドで正規化されたマスク入力の trait と、その既定遮蔽
-- [ ] Unit 5 — 資格情報を名指す識別子またはラベルの既定遮蔽
-- [ ] Unit 6 — crawl のアクションの表示名から値を外す
-- [ ] Unit 7 — 資格情報の書式による網
-- [ ] Unit 8 — テスト
-- [ ] Unit 9 — 既定、解除、残余のドキュメント
+- [x] Unit 1 — redactor を適用する run ディレクトリの出口
+- [x] Unit 2 — 既存の書き出しをすべて出口へ通す
+- [x] Unit 3 — パスを返さない読み取りの窓口と書き込みの出口の分離、import の契約、直値の検査
+- [x] Unit 4 — 全バックエンドで正規化されたマスク入力の trait と、その既定遮蔽
+- [x] Unit 5 — 資格情報を名指す識別子またはラベルの既定遮蔽
+- [x] Unit 6 — crawl のアクションの表示名から値を外す
+- [x] Unit 7 — 資格情報の書式による網
+- [x] Unit 8 — テスト
+- [x] Unit 9 — 既定、解除、残余のドキュメント
 
 ## 参考
 

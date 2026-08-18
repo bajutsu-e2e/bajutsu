@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0331](BE-0331-artifact-redaction-boundary.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0331") |
 | Topic | Security hardening |
 | Related | [BE-0032](../BE-0032-secret-variables/BE-0032-secret-variables.md), [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0097](../BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md), [BE-0130](../BE-0130-default-network-secret-redaction/BE-0130-default-network-secret-redaction.md), [BE-0151](../BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning.md), [BE-0153](../BE-0153-encode-aware-secret-redaction/BE-0153-encode-aware-secret-redaction.md) |
@@ -410,15 +410,15 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — the run-directory sink that applies the redactor
-- [ ] Unit 2 — every existing writer routed through the sink
-- [ ] Unit 3 — the path-free read accessor / write sink split, its import contract, and the literal check
-- [ ] Unit 4 — a normalized masked-input trait on every backend, and its default masking
-- [ ] Unit 5 — default masking for a credential-named identifier or label
-- [ ] Unit 6 — the crawl action description stops carrying its value
-- [ ] Unit 7 — the credential-shape pattern backstop
-- [ ] Unit 8 — tests
-- [ ] Unit 9 — docs for the defaults, the opt-out, and the residues
+- [x] Unit 1 — the run-directory sink that applies the redactor
+- [x] Unit 2 — every existing writer routed through the sink
+- [x] Unit 3 — the path-free read accessor / write sink split, its import contract, and the literal check
+- [x] Unit 4 — a normalized masked-input trait on every backend, and its default masking
+- [x] Unit 5 — default masking for a credential-named identifier or label
+- [x] Unit 6 — the crawl action description stops carrying its value
+- [x] Unit 7 — the credential-shape pattern backstop
+- [x] Unit 8 — tests
+- [x] Unit 9 — docs for the defaults, the opt-out, and the residues
 
 ## References
 
