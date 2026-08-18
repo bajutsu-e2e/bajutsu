@@ -199,6 +199,27 @@ def test_a_malformed_substitution_degrades_without_dropping_the_record() -> None
     assert restored.steps[0].actuations[0].substitution is None
 
 
+def test_a_generated_value_survives_the_round_trip() -> None:
+    # The recorded value is the run's only trace of what a `generate` step produced (BE-0377), so a
+    # report re-rendered offline has to still carry it.
+    original = [_result()]
+    original[0].steps[0].generated = "k7fq2xzp"
+    data = json.loads(json.dumps(manifest_dict("r1", original)))
+    assert results_from_manifest(data) == original
+
+
+def test_an_older_manifest_without_generated_loads_as_none() -> None:
+    # v7 and earlier carry no such key, and its absence means what a reader should conclude: this
+    # step produced no value.
+    data = manifest_dict("r1", [_result()])
+    step = data["scenarios"][0]["steps"][0]  # type: ignore[index]
+    del step["generated"]
+
+    [restored] = results_from_manifest(data)
+
+    assert restored.steps[0].generated is None
+
+
 def test_a_loader_side_drop_is_disclosed_through_dropped_actuations() -> None:
     # A truncated log discloses itself through `dropped_actuations` when a *driver* truncates it
     # (BE-0332 Unit 4's own reasoning for why a log line is not evidence). A record that instead

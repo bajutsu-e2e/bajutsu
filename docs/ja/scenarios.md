@@ -512,19 +512,24 @@ targets:
 は事前に用意した固定の表を配り、`extract` はアプリがすでに表示している値を取り込みます。どちらも
 シナリオ自身が値を作り出すわけではありません（[BE-0377](../../roadmaps/BE-0377-dynamic-value-generation/BE-0377-dynamic-value-generation-ja.md)）。
 
-値を作る生成カテゴリは、ちょうど1つ指定します。**`random`** は、`charset`（既定は `alnum`。ほかに
-`alpha`、`numeric`、`hex`）から `length` 文字を引いた `string`、`[min, max]` の閉区間の `int`、
-`[min, max]` の範囲で任意の `precision`（小数桁数）に丸めた `float`、バージョン4の `uuid` のいずれかを
-生成します。**`datetime`** は現在時刻をテキストにします。`format` は `strftime` のパターンを取り
-（省略時は秒までの ISO 8601）、符号付きの `offsetSeconds`、`offsetMinutes`、`offsetHours`、
-`offsetDays` は加算されて時刻をずらし、`timezone` は `America/Los_Angeles` のような
+値を作る生成カテゴリは、ちょうど1つ指定します。**`random`** が生成するのは、次の4種類です。
+
+- **`string`**：`charset` から `length` 文字を引いた文字列。`charset` の既定は `alnum` で、
+  ほかに `alpha`、`numeric`、`hex` を選べます。
+- **`int`**：`[min, max]` の閉区間の整数。
+- **`float`**：`[min, max]` の範囲の数値。任意の `precision` で小数桁数に丸めます。
+- **`uuid`**：バージョン4の UUID。
+
+**`datetime`** は現在時刻をテキストにします。`format` は `strftime` のパターンを取り、省略時は
+秒までの ISO 8601 になります。符号付きの `offsetSeconds`、`offsetMinutes`、`offsetHours`、
+`offsetDays` は加算されて時刻をずらします。`timezone` は `America/Los_Angeles` のような
 Internet Assigned Numbers Authority（IANA）のゾーン名を取ります。既定のゾーンは UTC なので、
 アプリがデバイス自身のゾーンで描画する日付に入力を一致させたいシナリオは、そのゾーンを明示します。
 デバイス自身のゾーンを固定する部分は別の関心事です
 （[BE-0158](../../roadmaps/BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive-ja.md)）。
 
 値は run ごとに変わりますが、フローは決定的なままです。ローダが受理した `generate` ステップは、常に
-実行され常に成功します。生成器から1回引くか、クロックを1回読むだけで、ネットワークもモデルも介しません。
+実行され常に成功します。生成器から値を引くか、クロックを読むだけで、ネットワークとモデルのいずれにも触れません。
 run ごとに違うのは生成された値だけで、これは `totp` の時刻由来のコードがすでにそうであるのと同じです。
 描画できない `format` と解決できない `timezone` は、シナリオのロード時に拒否され、実行中に黙って別の
 値に置き換わることはありません。生成した値は manifest とレポートに記録されるので、後で失敗したときに

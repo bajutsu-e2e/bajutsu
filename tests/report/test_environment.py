@@ -98,6 +98,17 @@ def test_html_shows_the_value_a_generate_step_produced() -> None:
     assert '<span class="tk str">“k7fq2xzp”</span>' in out
     # Every other action produces no value, so no row.
     assert "class='genrow'" not in html_report("run1", [_passing()])
+    # A planned-but-not-run step's row carries no `generated` key at all, and Jinja's Undefined
+    # passes an `is not none` guard — so the row must be gated on truthiness, not on None.
+    skipped = RunResult(
+        scenario="s2",
+        ok=False,
+        steps=[StepOutcome(index=0, action="tap", ok=False, reason="not found", started_at=0.0)],
+        expect_results=[],
+        artifacts=[],
+    )
+    two_planned = {"name": "s2", "steps": [{"tap": {"id": "a"}}, {"tap": {"id": "b"}}]}
+    assert "class='genrow'" not in html_report("run2", [skipped], definitions=[two_planned])
 
 
 def test_html_shows_what_the_step_actuated() -> None:

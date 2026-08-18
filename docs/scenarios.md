@@ -689,8 +689,8 @@ newest wins. Deterministic and LLM-free; the endpoint and credentials live in co
 
 `generate` computes a value in the runner and stores it as `${vars.<var>}`, so a scenario can supply
 an input its author could not write as a literal — a username no earlier run has taken, tomorrow's
-date on a booking form, a reference that collides with no other scenario's. A data-driven row
-([reuse](#reuse-data-and-tags)) supplies a fixed table chosen in advance and `extract` captures a
+date on a booking form, a reference that collides with no other scenario's. Data-driven rows
+([reuse](#reuse-data-and-tags)) supply a fixed table chosen in advance, and `extract` captures a
 value the app already displays; neither invents a value the scenario did not already have
 ([BE-0377](../roadmaps/BE-0377-dynamic-value-generation/BE-0377-dynamic-value-generation.md)).
 
@@ -708,8 +708,8 @@ names that zone explicitly; pinning the *device* to a zone is a separate concern
 The flow is deterministic even though the value is not. A `generate` step the loader accepted always
 executes and always succeeds — a generator draw or a clock read, no network and no model — and only
 the produced value differs between runs, the same way `totp`'s time-derived code already does. A
-`format` that cannot be rendered and a `timezone` that does not resolve are rejected when the
-scenario loads, never substituted silently mid-run. The run records each produced value in the
+`format` that cannot be rendered and a `timezone` that does not resolve fail the load, so no run
+ever substitutes a different value for one mid-flight. The run records each produced value in the
 manifest and the report, so a later failure shows which value the run actually used; a scenario that
 must check a specific value captures it through `${vars.*}` and compares against that capture, not
 against a literal it could not have known in advance. Every codegen target renders `generate` as a
