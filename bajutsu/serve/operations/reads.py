@@ -562,6 +562,12 @@ def _artifact_names(
     picker and the HTML report resolve one step to one image: the post-action `after.png` when the
     run recorded one, else the pre-step baseline's `before.png`.
 
+    Both consumers share that one image because only one tree survives the step: the post-step
+    `elements` write replaces the baseline's pre-action tree, so no pre-action pair is left for
+    the picker to resolve against. The picker writes its resolved selector back into the same
+    step, so a step that navigates offers the screen it reached rather than the one it targets —
+    `docs/web-ui.md` (Author → Edit) sends an author to a live session for that case.
+
     Args:
         exists: whether the store actually holds a named artifact. The manifest can name a file the
             store no longer holds (a run restored from Trash, or one synced into an object store
