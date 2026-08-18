@@ -648,8 +648,9 @@ def render_html(items: list[Any]) -> str:
         "</div>"
     )
 
-    # Split categories into those with work left and those fully implemented; the 100% ones move to a
-    # separate "Completed" group so the main view is the work still in flight.
+    # Split categories into those with outstanding work left and those with none (every item
+    # Implemented or Rejected); the 100% ones move to a separate "Completed" group so the main view
+    # is the work still in flight.
     ongoing: list[str] = []
     completed: list[str] = []
     for topic, _key, _origin in bri.TOPICS:
@@ -1285,10 +1286,11 @@ _INTRO = (
     "[BE-0109](https://github.com/bajutsu-e2e/bajutsu/blob/main/roadmaps/"
     "BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) for how the sync works.\n\n"
     "Live view of every roadmap (BE) item, grouped by category — each category showing the share of "
-    "its items already implemented, and each card its own status. Regenerated from item metadata on "
-    "every docs build, so it always reflects the committed roadmap. Fully-implemented categories are "
-    "grouped separately under Completed. Categories start collapsed to a progress overview — click a "
-    "heading to expand it, toggle the status chips on and off, or type in the search box to narrow the "
+    "its outstanding items already implemented, and each card its own status. Regenerated from item "
+    "metadata on every docs build, so it always reflects the committed roadmap. Categories with no "
+    "outstanding work are grouped separately under Completed. Categories start collapsed to a "
+    "progress overview — click a heading to expand it, toggle the status chips on and off, or type "
+    "in the search box to narrow the "
     "cards by id, title, topic, or status. Switch between the card grid and a sortable table with the "
     "Cards / Table toggle — the table lists every item as a row with sortable Created and Updated "
     "columns, and the search and status filters narrow both views alike. A third view, Map, draws "

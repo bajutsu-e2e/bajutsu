@@ -279,6 +279,9 @@ Log:
     specify the vocabulary *as it stood at the time*, alongside the equally retired
     `Accepted, in progress` and `Track` field, so modernizing one name and not its neighbour would
     misstate the record rather than tidy it.
+- BE-0027 took the default `Deferred`. The maintainer's judgment call *Migrating today's roadmap*
+  asks for is still open — the migration did not decide the borderline case, only declined to let
+  the schema change settle it.
 
 ## References
 
