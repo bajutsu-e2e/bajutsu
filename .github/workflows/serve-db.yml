@@ -46,6 +46,7 @@ jobs:
   changes:
     name: detect relevant changes
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # dorny/paths-filter lists the PR's changed files through the API (no checkout), which needs
     # read access to the pull request. Scoped to this job so the heavier `postgres` job doesn't
     # hold an unnecessary token scope.
@@ -75,6 +76,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # An ephemeral Postgres for the duration of this job alone. The health-check options gate the
     # steps below on the server actually accepting connections, so the test step never races startup.
     services:
@@ -129,6 +131,7 @@ jobs:
     needs: [changes, postgres]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Check serve DB results
         env:

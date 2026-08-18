@@ -21,6 +21,7 @@ permissions:
 jobs:
   enable-auto-merge:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     if: github.event.pull_request.draft == false
     steps:
       - name: Decide which identity enables auto-merge
