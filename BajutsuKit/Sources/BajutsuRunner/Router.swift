@@ -375,6 +375,13 @@ final class Router {
     /// failure precedes any side effect and the re-resolve-and-retry (BE-0289) cannot double-actuate.
     /// The coordinate/keyboard actuations the driver does not retry (`tapPoint`/`swipe`/`type`/…)
     /// surface `.stale` as a loud failure, so they carry no double-actuation risk either.
+    ///
+    /// `/setPickerValue` is the first route where a raise can arrive *after* its actuation — the
+    /// value read-back runs once `adjust(toPickerWheelValue:)` has already moved the wheel — so the
+    /// "precedes any side effect" argument above does not cover it. It is safe only because
+    /// `adjust(toPickerWheelValue:)` is idempotent, and because the read-back catches its own raises
+    /// (`settlesTo`) rather than letting them reach here at all. A future read-back-shaped route must
+    /// re-establish one of those two, not inherit this justification.
     private func onMainCatching(_ work: @escaping () -> TapResult) -> TapResult {
         caughtOnMain(.stale, work)
     }

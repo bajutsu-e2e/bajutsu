@@ -1,4 +1,5 @@
 import Foundation
+import ObjCExceptionCatcher
 
 /// Re-issue a synthesized actuation until the accessibility tree reflects a change.
 ///
@@ -76,10 +77,15 @@ public func actuateUntilStateChanges(
 /// exactly `maxSamples` reads and then fails loudly, rather than looping or passing on a
 /// best-effort landing.
 ///
-/// A `nil` sample means *couldn't observe*, never *matched* — the same rule
+/// A sample that cannot be read means *couldn't observe*, never *matched* — the same rule
 /// `actuateUntilStateChanges` follows, so a transiently failed read keeps sampling instead of
 /// deciding early. It also breaks a run of matches, since a value that could not be read has not
-/// been shown to be holding.
+/// been shown to be holding. Both a `nil` return and a raised `NSException` count as unreadable:
+/// reading an `XCUIElement` property raises while the UI is in flux, and a wheel mid-deceleration is
+/// UI in flux by definition, so the raise is caught here rather than left to `Router`'s handler-wide
+/// shield. Left to the shield it would resolve the whole request to `.stale`, and the driver would
+/// fail the step with "element vanished (stale handle)" for a wheel that never went anywhere —
+/// while this function's own unreadable-sample path, the one its tests cover, could never run.
 ///
 /// Unlike `actuateUntilStateChanges` this actuates nothing and reports its outcome: the caller needs
 /// to distinguish "landed" from "hit the cap" in order to answer the driver at all.
@@ -96,8 +102,23 @@ public func settlesTo(
 ) -> Bool {
     var consecutiveMatches = 0
     for _ in 0..<max(2, maxSamples) {
-        consecutiveMatches = sample() == wanted ? consecutiveMatches + 1 : 0
+        consecutiveMatches = caughtSample(sample) == wanted ? consecutiveMatches + 1 : 0
         if consecutiveMatches == 2 { return true }
     }
     return false
+}
+
+/// Read `sample`, reporting a raised `NSException` as `nil` — an unreadable sample, not a mismatch.
+///
+/// Swift's `do`/`catch` never intercepts an Objective-C `NSException`, so without this an
+/// `XCUIElement` property read that raises unwinds past `settlesTo` entirely (see its doc comment
+/// for what that costs).
+private func caughtSample(_ sample: () -> String?) -> String? {
+    var value: String?
+    do {
+        try ObjCExceptionCatcher.catchException { value = sample() }
+    } catch {
+        return nil
+    }
+    return value
 }

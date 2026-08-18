@@ -490,7 +490,11 @@ wherever it stopped — so the following assertion tests the app, not the gestur
 
 A multi-component picker (a year wheel beside a month wheel) exposes each component as its own
 `pickerWheel` element, and `sel` always addresses exactly one of them. Use the `within` / `traits` /
-`index` fields every selector already carries, one step per component:
+`index` fields every selector already carries, one step per component. Both the component order and
+the row labels follow the locale the run pins. The example below assumes `ja_JP`, whose wheels read
+year | month | day. Under the config default `en_US` the wheels read month | day | year, with rows
+`May` and `2016`. `demos/showcase/scenarios/picker_wheel.yaml` pins no locale, and so reaches that
+second layout:
 
 ```yaml
 - setPickerValue:

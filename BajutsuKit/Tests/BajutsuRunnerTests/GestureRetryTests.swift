@@ -137,6 +137,24 @@ final class GestureRetryTests: XCTestCase {
         XCTAssertEqual(reads, 4, "the nil broke the first run, so the match had to be re-established")
     }
 
+    func testSettlesToTreatsARaisedReadAsUnobservable() {
+        // Reading an XCUIElement property raises an NSException while the UI is in flux, and a wheel
+        // mid-deceleration is exactly that. Caught here, the raise becomes the unreadable sample the
+        // function already models; uncaught it would unwind to Router's shield and the driver would
+        // report "element vanished" for a wheel that never moved. `reads` increments before the
+        // raise, since a `defer` is not guaranteed to run through an Objective-C unwind.
+        var reads = 0
+        let landed = settlesTo("大学", maxSamples: 5, sample: {
+            reads += 1
+            if reads == 2 {
+                NSException(name: .genericException, reason: "UI in flux", userInfo: nil).raise()
+            }
+            return "大学"
+        })
+        XCTAssertTrue(landed)
+        XCTAssertEqual(reads, 4, "the raise broke the run, so the match had to be re-established")
+    }
+
     func testSettlesToAlwaysReadsEnoughToConfirmARun() {
         // The cap clamps to two, not one: a lower cap could never satisfy the two-sample rule and
         // would report every landing as absent.
