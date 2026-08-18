@@ -120,10 +120,12 @@ final class APIHandlerParityTests: XCTestCase {
 
     // MARK: - Actuation
 
-    /// The four statuses are the contract's whole vocabulary, and the driver matches them as
-    /// literals, so each has to survive the port unchanged.
+    /// The five statuses are the contract's whole vocabulary, and the driver matches them as
+    /// literals, so each has to survive the port unchanged. `/tap` never yields `.valueNotFound`
+    /// on a device — only `/setValue` does (BE-0356) — but the reply mapping is shared, so driving
+    /// it here covers the status without a second endpoint's worth of scaffolding.
     func testTapParityAcrossEveryStatus() async throws {
-        for result in [TapResult.ok, .stale, .notFound, .notHittable] {
+        for result in [TapResult.ok, .stale, .notFound, .notHittable, .valueNotFound] {
             let forNew = elementProvider([Self.sample]); forNew.tapResult = result
             let forLegacy = elementProvider([Self.sample]); forLegacy.tapResult = result
 

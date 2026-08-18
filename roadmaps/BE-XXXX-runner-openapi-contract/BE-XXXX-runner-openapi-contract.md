@@ -74,9 +74,10 @@ model.
 
 The same hand-maintenance shows up as a second, distinct cost: no compiler checks the contract between
 the Swift server and the Python driver. `Router.swift` writes reply bodies as literal string values —
-`"ok"`, `"stale"`, `"not-found"`, `"not-hittable"` — and `bajutsu/drivers/xcuitest.py` matches those
-same four literals against its own constants (`_OK`, `_STALE`, `_NOT_FOUND`, `_NOT_HITTABLE`) declared
-independently on the Python side. A change to either side's literal compiles cleanly even when it
+`"ok"`, `"stale"`, `"not-found"`, `"not-hittable"`, `"value-not-found"` — and
+`bajutsu/drivers/xcuitest.py` matches those same five literals against its own constants (`_OK`,
+`_STALE`, `_NOT_FOUND`, `_NOT_HITTABLE`, `_VALUE_NOT_FOUND`) declared independently on the Python
+side. A change to either side's literal compiles cleanly even when it
 silently stops matching the other, because nothing shared enforces agreement — the exact API-drift
 risk a source-of-truth-less contract invites.
 
@@ -118,7 +119,7 @@ of truth for the runner's HTTP surface. The fifteen break down as follows:
 - system alerts: `POST /systemAlert/query` and `POST /systemAlert/tap`
 
 The schema must preserve the exact wire values the Python driver
-already matches — the four status strings from Motivation, and the element shape (`identifier`,
+already matches — the five status strings from Motivation, and the element shape (`identifier`,
 `label`, `value`, `traits`, `frame`, `handle`) that `/elements` and `/systemAlert/query` already
 share — so that generating the contract from today's behavior, rather than from a redesign, is what
 keeps Unit 4's endpoint-by-endpoint migration a behavior-preserving port rather than a rewrite.

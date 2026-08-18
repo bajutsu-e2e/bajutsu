@@ -361,12 +361,13 @@ components:
       properties:
         status:
           type: string
-          enum: [ok, stale, not-found, not-hittable]
+          enum: [ok, stale, not-found, not-hittable, value-not-found]
           description: >-
             `ok` succeeded. `stale` means the handle no longer maps to a live element, and
             `not-found` that no live element matched it; both are test outcomes rather than
             infrastructure errors. `not-hittable` means the element is live but unreachable at
-            its own point right now.
+            its own point right now. `value-not-found` means the element resolved and was acted
+            on, but never took the requested value — a picker wheel with no such row (BE-0356).
     ErrorReply:
       type: object
       required: [status, message]

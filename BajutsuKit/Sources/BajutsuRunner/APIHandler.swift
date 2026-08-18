@@ -250,6 +250,7 @@ final class APIHandler: APIProtocol {
         case .stale: return .init(status: .stale)
         case .notFound: return .init(status: .not_hyphen_found)
         case .notHittable: return .init(status: .not_hyphen_hittable)
+        case .valueNotFound: return .init(status: .value_hyphen_not_hyphen_found)
         }
     }
 

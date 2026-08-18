@@ -103,17 +103,18 @@ final class ContractConformanceTests: XCTestCase {
         XCTAssertNil(element.value)
     }
 
-    /// The four status strings the driver matches against its own `_OK` / `_STALE` /
-    /// `_NOT_FOUND` / `_NOT_HITTABLE` constants. Every status the driver compares as a literal is
-    /// modelled as an enum — these four, plus `ready` and `/elements`' own `ok` — which is the whole
-    /// point of the contract: renaming one on either side stops compiling instead of silently
-    /// mismatching at run time.
+    /// The five status strings the driver matches against its own `_OK` / `_STALE` /
+    /// `_NOT_FOUND` / `_NOT_HITTABLE` / `_VALUE_NOT_FOUND` constants. Every status the driver
+    /// compares as a literal is modelled as an enum — these five, plus `ready` and `/elements`' own
+    /// `ok` — which is the whole point of the contract: renaming one on either side stops compiling
+    /// instead of silently mismatching at run time.
     func testActuationReplyCoversEveryStatusTheRouterEmits() throws {
         let cases: [(TapResult, Components.Schemas.ActuationReply.statusPayload)] = [
             (.ok, .ok),
             (.stale, .stale),
             (.notFound, .not_hyphen_found),
             (.notHittable, .not_hyphen_hittable),
+            (.valueNotFound, .value_hyphen_not_hyphen_found),
         ]
         for (result, expected) in cases {
             let provider = FakeElementProvider()
