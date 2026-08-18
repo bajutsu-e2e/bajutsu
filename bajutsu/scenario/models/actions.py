@@ -80,11 +80,11 @@ class HandleSystemAlert(_Model):
         handleSystemAlert: { prompt: notifications, choice: grant, timeout: 10 }
 
     The second form states the *intent* and lets the run resolve the label from the scenario's
-    locale (BE-0320), for the two prompts a `permissions` preset cannot pre-answer — notification
-    authorization and App Tracking Transparency. It is worth reaching for because the literal text
-    is easy to get subtly wrong: English's own deny button spells its apostrophe typographically, not
-    as the ASCII character a hand-typed label carries. Every other alert keeps naming its button
-    through `sel`, unchanged.
+    locale (BE-0320), for the prompts a `permissions` preset cannot pre-answer — notification
+    authorization, App Tracking Transparency, and the cross-process paste consent (BE-0369). It is
+    worth reaching for because the literal text is easy to get subtly wrong: English's own deny
+    button spells its apostrophe typographically, not as the ASCII character a hand-typed label
+    carries. Every other alert keeps naming its button through `sel`, unchanged.
     """
 
     sel: Selector | None = None
@@ -125,7 +125,7 @@ class HandleSystemAlert(_Model):
     def resolved(self, locale: str) -> HandleSystemAlert:
         """This step with `prompt`/`choice` turned into the `sel` the locale's SpringBoard renders.
 
-        A `sel` form returns unchanged, so the resolution is a no-op for every alert outside the two
+        A `sel` form returns unchanged, so the resolution is a no-op for every alert outside the
         prompts the lookup covers.
 
         Raises:

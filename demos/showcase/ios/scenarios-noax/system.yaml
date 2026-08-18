@@ -14,5 +14,9 @@
     - wait: { for: { labelMatches: "Pasted:" }, timeout: 5 }
     - tap: { label: "Copy", traits: [button] }
     - tap: { label: "Paste", traits: [button] }
+    # The iOS apps read the pasteboard off the main thread (BE-0369), so the mirror is written after
+    # the tap returns rather than within it — condition-wait for it instead of racing the assertion
+    # (prime directive 2).
+    - wait: { for: { label: "Pasted: bajutsu-clip" }, timeout: 10 }
   expect:
     - exists: { label: "Pasted: bajutsu-clip" }

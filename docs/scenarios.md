@@ -211,9 +211,12 @@ When to reach for `handleSystemAlert` versus the two alert fields it stands besi
 
 ### Naming the intent instead of the text
 
-For the two prompts `permissions` cannot pre-answer — notification authorization, which is not a
-TCC (Transparency, Consent, and Control) service, and App Tracking Transparency (ATT), which has no
-`simctl` toggle at all — the step takes a `prompt` and a `choice` in place of `sel`, and the run
+For the prompts `permissions` cannot pre-answer — notification authorization, which is not a
+TCC (Transparency, Consent, and Control) service; App Tracking Transparency (ATT), which has no
+`simctl` toggle at all; and the cross-process paste consent, which iOS records as
+`kTCCServicePasteboard` yet exposes through no `simctl` toggle either
+([BE-0369](../roadmaps/BE-0369-ios-paste-consent-prompt-choice/BE-0369-ios-paste-consent-prompt-choice.md))
+— the step takes a `prompt` and a `choice` in place of `sel`, and the run
 resolves the label the pinned `locale` renders
 ([BE-0320](../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)):
 
@@ -221,10 +224,11 @@ resolves the label the pinned `locale` renders
 - handleSystemAlert: { prompt: notifications, choice: grant, timeout: 5 }
 ```
 
-`prompt` is `notifications` or `tracking`; `choice` is `grant` or `deny`. One step names the button by
-its meaning, so the same file grants the prompt under `en_US` and under `ja_JP` without an author
-transcribing either language's text — worth having even for English alone, whose deny button spells
-its apostrophe typographically (`Don’t Allow`), not as the ASCII character a hand-typed label carries.
+`prompt` is `notifications`, `tracking`, or `paste`; `choice` is `grant` or `deny`. One step names the
+button by its meaning, so the same file grants the prompt under `en_US` and under `ja_JP` without an
+author transcribing either language's text — worth having even for English alone, whose deny buttons
+spell their apostrophe typographically (`Don’t Allow`, `Don’t Allow Paste`), not as the ASCII
+character a hand-typed label carries.
 
 A locale whose language the lookup does not cover (today: English and Japanese) fails the step
 loudly, naming what is covered, rather than tapping a guessed button. Every other alert keeps naming
@@ -240,8 +244,9 @@ Two limits are worth knowing before reaching for it:
   non-English `locale` the native path finds no match and falls back to the AI-vision guard. Give
   the guard an explicit `instruction` list in the pinned language to keep it deterministic.
 
-(real file:
-[`demos/showcase/scenarios/permission_system_alert.yaml`](../demos/showcase/scenarios/permission_system_alert.yaml))
+(real files:
+[`demos/showcase/scenarios/permission_system_alert.yaml`](../demos/showcase/scenarios/permission_system_alert.yaml),
+[`demos/showcase/scenarios/paste_system_alert.yaml`](../demos/showcase/scenarios/paste_system_alert.yaml))
 
 ## permissions (pre-launch permission state)
 
@@ -411,7 +416,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `back` | `back: {}` | navigate back one level, each backend using its platform-correct primitive — the Android system back key, the iOS OS-provided back button, or web history ([BE-0210](../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)) |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | two-finger magnify; `scale > 0` (`>1` zooms in, `<1` out) |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | two-finger rotation; `>0` is clockwise |
-| `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | tap a button on an iOS SpringBoard permission prompt, deterministically ([below](#handlesystemalert-the-deterministic-system-alert-step)); iOS (XCUITest) only. `sel` accepts only `label` / `labelMatches` / `index`, and resolves against the system language the run pins the Simulator to. In place of `sel`, `prompt: notifications\|tracking` + `choice: grant\|deny` names the button by meaning and lets the run resolve its label (BE-0320) |
+| `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | tap a button on an iOS SpringBoard permission prompt, deterministically ([below](#handlesystemalert-the-deterministic-system-alert-step)); iOS (XCUITest) only. `sel` accepts only `label` / `labelMatches` / `index`, and resolves against the system language the run pins the Simulator to. In place of `sel`, `prompt: notifications\|tracking\|paste` + `choice: grant\|deny` names the button by meaning and lets the run resolve its label (BE-0320) |
 | `wait` | `wait: { for\|until: ..., timeout: <sec> }` | condition wait (below) |
 | `assert` | `assert: [ <Assertion>... ]` | mid-step verification |
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | terminate + relaunch the app (re-applying launch env/args, plus the given overrides), then wait until ready |

@@ -1,0 +1,38 @@
+# handleSystemAlert (BE-0369): the third prompt the locale-keyed lookup covers, and the suite's only
+# genuine *cross-process* paste. `setClipboard` writes the pasteboard through simctl — iOS attributes
+# that write to CoreSimulatorBridge, another process — so the app's own read of
+# `UIPasteboard.general.string` raises the consent prompt that system.yaml's in-app Copy → Paste
+# round-trip deliberately never reaches. The prompt is answered by a native accessibility query on
+# the SpringBoard alert: no screenshot, no vision model, no Claude API key, so the whole flow stays
+# deterministic (prime directive 1: AI never decides pass/fail). `systemAlertHandling: false` proves
+# it — with the vision guard off, a handleSystemAlert that failed to tap would fail the run rather
+# than be rescued by the guard.
+#
+# The consent is asked every time (iOS records it as `kTCCServicePasteboard` at "ask", and no
+# `simctl privacy` toggle reaches that service), so the scenario is repeatable on one device rather
+# than passing once and then finding no prompt.
+#
+# iOS (XCUITest) only, kept off every other lane by the same mechanism permission_system_alert.yaml
+# uses: Android's `smoke (adb)` job runs a fixed scenario list that never names this file, and the
+# `systemalert` tag keeps it out of the local bulk run-swiftui / run-uikit runs, which discover every
+# scenario file and do not reset per-scenario device state.
+- name: grant the paste-consent prompt with handleSystemAlert
+  tags: [systemalert]
+  systemAlertHandling: false
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - setClipboard: { text: "bajutsu-cross-clip" }   # written from outside the app (BE-0052)
+    - tap: { label: "Permissions", traits: [button] }
+    - scroll: { to: { id: [sys.paste.value, sys_paste_value] }, direction: down }
+    - tap: { id: [sys.paste, sys_paste] }            # the app reads UIPasteboard.general.string
+    # Name the intent, not the text (BE-0320): the run pins the Simulator's system language to the
+    # target's `locale` and resolves the label SpringBoard renders under it, so this same file grants
+    # the prompt on a contributor's Japanese Simulator as well as on CI's. The English deny button is
+    # why the literal form is a trap — "Don’t Allow Paste" spells its apostrophe typographically.
+    - handleSystemAlert: { prompt: paste, choice: grant, timeout: 10 }
+    # The app reads the pasteboard off the main thread, so it publishes the pasted value only after
+    # that read returns — condition-wait for it rather than racing the assertion (prime directive 2).
+    - wait: { for: { id: [sys.paste.value, sys_paste_value], value: "bajutsu-cross-clip" }, timeout: 10 }
+  expect:
+    - value: { sel: { id: [sys.paste.value, sys_paste_value] }, equals: "bajutsu-cross-clip" }

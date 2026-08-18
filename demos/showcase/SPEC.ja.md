@@ -214,8 +214,8 @@ Log から到達するモーダル（5 つの提示様式）：
 ### 5.4 タブ：Permissions（`perm` / `sys` 名前空間、**OS 連携画面**）
 
 `NavigationStack`（SwiftUI）/ `UINavigationController`（UIKit）。**OS レベルのアラートを意図的に上げる唯一の
-画面**（§7）です。alert-guard のフローへ直接到達できるよう、トップレベルのタブに昇格しました。加えて、アプリ内で
-完結するペーストボードの往復を行う System セクションを持ちます。
+画面**（§7）です。alert-guard のフローへ直接到達できるよう、トップレベルのタブに昇格しました。加えて、
+ペーストボードの往復を行う System セクションを持ちます。
 
 - `perm.requestNotif` — ボタン → `UNUserNotificationCenter.requestAuthorization`。**SpringBoard の通知プロンプト**を上げる（プロセス外で、アプリ内のアクセシビリティ照会には見えず、run の vision alert guard が消すか、`systemAlertHandling` で「Allow」を叩く）。
 - `perm.notif.value` — `notDetermined`/`authorized`/`denied`
@@ -223,12 +223,15 @@ Log から到達するモーダル（5 つの提示様式）：
 - `perm.requestLocation` — ボタン → `CLLocationManager.requestWhenInUseAuthorization`。**システムの位置情報プロンプト**を上げる（同じく SpringBoard）。
 - `perm.location.value` — `notDetermined`/`authorizedWhenInUse`/`denied`
 
-**System** — アプリ内で完結するペーストボードの往復で、バックエンドのアプリ内クエリでは本来観測できない状態をミラーします。
-別プロセスが仕込んだペーストボードを読むと iOS のペースト許可プロンプトが出るため、このアプリ自身が書いた値を読み戻す
-ことで往復をアプリ内に閉じています。
+**System** — ペーストボードの往復で、バックエンドのアプリ内クエリでは本来観測できない状態をミラーします。
+このアプリ自身が書いた値は黙って読み戻せます。別プロセスが仕込んだペーストボードを読むと iOS のペースト同意
+プロンプトが出ます。このプロンプトには `paste_system_alert.yaml` が `handleSystemAlert` で応答します（BE-0369）。iOS の 2 つの
+アプリは、ペーストボードを**メインスレッド外で**読みます。この読み取りはプロンプトが出ているあいだ呼び出し元を
+ブロックするため、メインスレッドが止まると、読み取りを起こした tap そのものが返らなくなるからです。
 - `sys.copy` — 既知の文字列（`bajutsu-clip`）をペーストボードへ書くボタン
 - `sys.paste` — ペーストボードを読み戻して `sys.paste.value` に入れるボタン
-- `sys.paste.value` — ペーストされたテキスト。シナリオは `sys.copy` に続けて `sys.paste` を叩き、この値をアサートします
+- `sys.paste.value` — ペーストされたテキスト。シナリオは `sys.copy` に続けて `sys.paste` を叩き、値を待ってから
+  アサートします
 
 ### 5.5 タブ：Notices（`notice` 名前空間。長いリスト → 詳細、スクロール先の要素）
 
@@ -273,7 +276,10 @@ Log から到達するモーダル（5 つの提示様式）：
 - **意図的なアラート**は **Permissions** タブにのみ存在：通知プロンプトと位置情報プロンプト。どちらも
   SpringBoard（プロセス外）で、アプリ内のどのアクセシビリティ照会にも見えないので、run の **vision alert guard**
   / `systemAlertHandling` の典型フィクスチャになります（このフィクスチャのシナリオは
-  [`permission.yaml`](scenarios/permission.yaml)）。
+  [`permission.yaml`](scenarios/permission.yaml)）。別プロセスが仕込んだペーストボードを読むと、同じタブに
+  3 つ目のプロンプトが上がります。ペースト同意のプロンプトで、
+  [`paste_system_alert.yaml`](scenarios/paste_system_alert.yaml) の `handleSystemAlert` がネイティブに
+  応答します（BE-0369）。
 
 ## 8. `ACCESSIBLE` ビルドフラグ（変種が 1 コードベースを共有する仕組み）
 

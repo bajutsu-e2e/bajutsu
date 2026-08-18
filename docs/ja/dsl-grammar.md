@@ -166,7 +166,7 @@ Action    ::=
   | { pinch:       { sel: <Selector>, scale: number } }    # scale > 0  （>1 拡大, <1 縮小）
   | { rotate:      { sel: <Selector>, radians: number } }  # >0 時計回り
   | { handleSystemAlert: { sel: <Selector>, timeout: number } }  # iOS SpringBoard の権限プロンプトを tap（iOS/XCUITest 専用）。sel は label/labelMatches/index のみ
-  | { handleSystemAlert: { prompt: notifications|tracking, choice: grant|deny, timeout: number } }  # 同じステップ。label は run の locale から解決する（BE-0320）
+  | { handleSystemAlert: { prompt: notifications|tracking|paste, choice: grant|deny, timeout: number } }  # 同じステップ。label は run の locale から解決する（BE-0320）
   | { wait:        <Wait> }
   | { assert:      list(<Assertion>) }
   | { relaunch:    { env?: map(string,string), args?: list(string) } }

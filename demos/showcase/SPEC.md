@@ -218,7 +218,7 @@ Modals reachable from Log (the five presentation styles):
 
 A `NavigationStack` (SwiftUI) / `UINavigationController` (UIKit). **The one screen that
 intentionally raises OS-level alerts** (§7) — promoted to a top-level tab so the alert-guard
-flow is reached directly — plus a System section with an in-app pasteboard round-trip.
+flow is reached directly — plus a System section with a pasteboard round-trip.
 
 - `perm.requestNotif` — button → `UNUserNotificationCenter.requestAuthorization`. Raises the **SpringBoard notification prompt** (out-of-process; an in-app accessibility query cannot see it — cleared by the run's vision alert guard, or tapped "Allow" via `systemAlertHandling`).
 - `perm.notif.value` — `notDetermined`/`authorized`/`denied`
@@ -226,12 +226,16 @@ flow is reached directly — plus a System section with an in-app pasteboard rou
 - `perm.requestLocation` — button → `CLLocationManager.requestWhenInUseAuthorization`. Raises the **system location prompt** (also SpringBoard).
 - `perm.location.value` — `notDetermined`/`authorizedWhenInUse`/`denied`
 
-**System** — an in-app pasteboard round-trip, mirroring state the backend's app-scoped query cannot
-otherwise observe. It stays in-app because reading a pasteboard seeded by another process trips
-iOS's paste-permission prompt; a value this app itself wrote reads back silently:
+**System** — a pasteboard round-trip, mirroring state the backend's app-scoped query cannot
+otherwise observe. A value this app itself wrote reads back silently; a pasteboard seeded by another
+process trips iOS's paste-consent prompt, which `paste_system_alert.yaml` answers with
+`handleSystemAlert` (BE-0369). The iOS apps read the pasteboard **off the main thread**, because
+that read blocks its caller for as long as the prompt is up — a blocked main thread would never let
+the tap that triggered it return:
 - `sys.copy` — button that writes a known string (`bajutsu-clip`) to the pasteboard
 - `sys.paste` — button that reads the pasteboard back into `sys.paste.value`
-- `sys.paste.value` — the pasted text; a scenario taps `sys.copy` then `sys.paste` and asserts it
+- `sys.paste.value` — the pasted text; a scenario taps `sys.copy` then `sys.paste`, waits for the
+  value, and asserts it
 
 ### 5.5 Tab: Notices — `notice` namespace (long list → detail, scroll-to-element)
 
@@ -281,7 +285,10 @@ Uses the standard in-app collector integration (iOS: BajutsuKit; Android: Bajuts
 - **The deliberate alerts** live only on the **Permissions** tab: the notification prompt and the
   location prompt. Both are SpringBoard (out-of-process) — invisible to any in-app accessibility query —
   so they are the canonical fixture for the run's **vision alert guard** / `systemAlertHandling`
-  ([`permission.yaml`](scenarios/permission.yaml) is this fixture's scenario).
+  ([`permission.yaml`](scenarios/permission.yaml) is this fixture's scenario). Reading a pasteboard
+  seeded by another process raises a third on that same tab — the paste-consent prompt, answered
+  natively by [`paste_system_alert.yaml`](scenarios/paste_system_alert.yaml)'s `handleSystemAlert`
+  (BE-0369).
 
 ## 8. The `ACCESSIBLE` build flag (how the variants share one codebase)
 
