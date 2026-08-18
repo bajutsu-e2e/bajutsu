@@ -142,6 +142,16 @@ def _do_select_option(driver: base.Driver, step: Step, _r: object, _c: object, _
     driver.select_option(step.select_option.sel.as_selector(), step.select_option.option)
 
 
+@_handler("set_picker_value")
+def _do_set_picker_value(
+    driver: base.Driver, step: Step, _r: object, _c: object, _b: object
+) -> None:
+    assert step.set_picker_value is not None
+    # No capability guard here: preflight rejects a PICKER_WHEEL-less backend before any device work,
+    # and the driver's own UnsupportedAction is the mid-run backstop (mirrors select_option).
+    driver.set_picker_value(step.set_picker_value.sel.as_selector(), step.set_picker_value.value)
+
+
 @_handler("clear")
 def _do_clear(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
     assert step.clear is not None

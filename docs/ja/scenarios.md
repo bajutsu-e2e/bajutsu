@@ -302,6 +302,7 @@ targets:
 | `select` | `select: { into: <Selector>, mode?: "all" }` | フィールドをフォーカスして内容を選択する（`mode` 既定 `all`）。web コンテキストは非対応。iOS（XCUITest）バックエンドはネイティブに対応し、codegen もネイティブの等価物を出力する |
 | `copy` | `copy: {}` | 選択中の内容をクリップボードへコピーする。事前の `select` が必要。web コンテキストは非対応。iOS（XCUITest）バックエンドはネイティブに対応する |
 | `selectOption` | `selectOption: { sel: <Selector>, option: "..." }` | web の `<select>` をこの value を持つ option に合わせる。web 専用（iOS / Android は失敗する） |
+| `setPickerValue` | `setPickerValue: { sel: <Selector>, value: "..." }` | ホイール型のピッカー（`UIPickerView`、ホイール表示の `UIDatePicker`）をこの value を持つ行へ動かす（[後述](#setpickervalue)）。iOS（XCUITest）専用。`sel` は 1 つのホイールを指し、複数コンポーネントのピッカーは `within` / `traits` / `index` で兄弟のホイールを区別し、コンポーネントごとに 1 ステップずつ書く |
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` または `swipe: { from: [x,y], to: [x,y] }` | セレクタ形と座標形は混在できない。方向指定形式は**スクロール**する |
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | 要素そのものを**ドラッグ**する（ハンドル／仕切り／スライダー）。スクロールではない |
 | `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, maxScrolls?: <int> }` | `to` が画面に入るまで（慣性なしに）スクロールし、上限に達したら失敗する。`direction` は**スクロール**方向（既定 `down`）で、`swipe` とは逆向き |
@@ -359,6 +360,37 @@ targets:
 
 ネイティブの HTML `<select>` は、ドロップダウンがページの要素ツリーに含まれないため、座標タップでは値を決定的に切り替えられません。`selectOption` は、ほかのアクションと同じ一意解決のコアで `<select>` を解決したうえで、表示ラベルではなく option の **value** を指定して値を設定し、`change` イベントを発火します。これにより、ユーザーが選んだときと同じようにページが反応します。指定する value は `value` アサーションが `<select>` から読み取る値と一致するので、選択結果はそのまま検証できます。これは web 専用のアクションです。`<select>` は iOS や Android にネイティブの対応物がないため、これらのバックエンドは何もせずに済ませるのではなく、「サポート外のアクション」という明確な理由でステップを失敗させます。
 
+### `setPickerValue`
+
+```yaml
+- setPickerValue:                                                # ホイールを「大学」の行へ動かす
+    sel: { within: { id: form.school }, traits: [pickerWheel] }
+    value: "大学"
+```
+
+ホイール型のピッカー、つまり `UIPickerView` や、ホイール表示に切り替えた `UIDatePicker` は、iOS のフォームでありふれたコントロールです。その値を設定できるステップは `setPickerValue` だけです。ホイールの各行は個別に指定できる要素になっていないため、解決したハンドルを対象とする `tap` では特定の行に到達できません。座標を扱うステップも同様です。`swipe` / `drag` / `scroll` は距離や方向を指定するドラッグであり、ホイールを目的の値のあたりまで回せても、そこで止まる保証はありません。`tapPoint` にいたっては、すでに表示されている行を叩けるだけで、表示されていない行へホイールを動かせません。いずれの場合も、結果のアサーションはドラッグの距離が行の高さとたまたま一致することに依存します。Bajutsu がほかのすべてのステップで排除している、近似的な操作そのものです。`setPickerValue` は、セレクタが解決した要素に対して XCUITest 自身の `adjust(toPickerWheelValue:)` を呼びます。`swipe` のような座標指定ではなく、`tap` と同じハンドル指定です。
+
+`sel` が解決すべきなのはホイールそのものですが、識別子を持つ要素がホイールであることはまれです。`UIPickerView` は識別子をピッカー側に付け、ピッカーの下にあるホイールを別の子要素として公開します。そのため、識別子だけを指定したセレクタは親であるピッカーを解決し、ステップは失敗します。`adjust(toPickerWheelValue:)` は、ホイールでない要素に対しては例外を投げるからです。上の例のように識別子と `pickerWheel` トレイトを組み合わせると、セレクタは子要素のホイールに届きます。
+
+ホイールが持たない値を指定すると、ホイールが止まった位置をそのままにするのではなく、その値を名指しして**ステップが失敗します**。したがって、後続のアサーションが検証するのはアプリであって、ジェスチャの当たり外れではありません。
+
+複数コンポーネントのピッカー（年のホイールと月のホイールが並ぶもの）は、コンポーネントごとに独立した `pickerWheel` 要素として現れます。`sel` は常にそのうちの 1 つを指します。区別には、どのセレクタも持っている `within` / `traits` / `index` を使い、コンポーネントごとに 1 ステップずつ書きます。コンポーネントの並び順も行のラベルも、run が固定するロケールに従います。下の例は `ja_JP` を前提としており、ホイールは年 | 月 | 日の順に並びます。ロケールを指定しない場合は `en_US` となり、月 | 日 | 年の順で、同じ行のラベルは `May` や `2016` です。`demos/showcase/scenarios/picker_wheel.yaml` はロケールを指定していないため、`en_US` の並びを前提に書いてあります。
+
+```yaml
+- setPickerValue:
+    sel: { within: { id: form.birthdate }, traits: [pickerWheel], index: 0 }   # 年のホイール
+    value: "2016年"
+- setPickerValue:
+    sel: { within: { id: form.birthdate }, traits: [pickerWheel], index: 1 }   # 月のホイール
+    value: "5月"
+```
+
+`within` はフレームの包含関係で範囲を絞ります。したがって `within` が名指しするコンテナは、ホイールを収めるだけの大きさを持っていなければなりません。ホイール表示の `UIDatePicker` は、単体ではその大きさに届きません。iOS は `UIDatePicker` のコンポーネントを本来の高さで配置し、ピッカーの枠に合わせて切り詰めて表示するからです。各コンポーネントは識別子を持つピッカーよりも高いフレームを報告するため、`UIDatePicker` を名指しした `within` はどの要素にも一致しません。識別子は、コンポーネントを覆う大きさを持つ外側のコンテナに付けてください。`demos/showcase/ios/swiftui/Sources/PickerView.swift` が見出しとホイールとミラーのテキストを1つの識別子でまとめているのは、そのためです。
+
+この指定方法は、`datePicker` の分類の隙間（[セレクタ](selectors.md#正規化トレイトtrait)）も回避します。`UIDatePicker` のコンテナ要素自体は `other` に落ちますが、`setPickerValue` が指すのはその下にあるホイールの子要素であり、そちらは `pickerWheel` に分類されるためです。
+
+`setPickerValue` は iOS（XCUITest）のアクションです。ホイール型のピッカーは Android にも web にも対応物がありません。web で同じ意図を表すのは `<select>` であり、それを設定するのは [`selectOption`](#selectoption) です。したがって Android と web のバックエンドは `pickerWheel` ケーパビリティを公開せず、シナリオはデバイス操作が始まる前の preflight で、該当ステップの位置を名指しして棄却されます。
+
 ### `web`（WebView の DOM コンテキストに入る）
 
 ```yaml
@@ -369,7 +401,7 @@ targets:
       - wait: { for: { id: pay.confirmation }, timeout: 10 }
 ```
 
-`web` は `within` をネイティブに解決し、ちょうど 1 つの `WKWebView` ホストを指します。入れ子の `steps` は、アプリのネイティブなアクセシビリティツリーではなく、その WebView の正規化された DOM（`data-testid` → `Element.identifier`）を対象にします。web コンテンツをネイティブアプリに埋め込んだハイブリッド画面向けの構造です（[BE-0037](../../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)）。ブロックの `steps` を終えると、制御はネイティブドライバーに戻ります。入れ子の `steps` は、`if` や `forEach` の分岐と同じく、囲むシナリオの `vars.*` を共有します。`capture` / `extract` 修飾子は `web` ステップ自体には使えません。WebView bridge の設定（`BAJUTSU_WEBVIEW_PORT`）が必要で、未設定のときは何もせず済ませるのではなくステップを明確に失敗させます。この最初の実装は、ブロック内の `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` に対応しています。`longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` / `pinch` / `rotate` / `handleSystemAlert` はまだそこに届かず、いずれも「web コンテキストは非対応」という明確な理由で失敗します。
+`web` は `within` をネイティブに解決し、ちょうど 1 つの `WKWebView` ホストを指します。入れ子の `steps` は、アプリのネイティブなアクセシビリティツリーではなく、その WebView の正規化された DOM（`data-testid` → `Element.identifier`）を対象にします。web コンテンツをネイティブアプリに埋め込んだハイブリッド画面向けの構造です（[BE-0037](../../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)）。ブロックの `steps` を終えると、制御はネイティブドライバーに戻ります。入れ子の `steps` は、`if` や `forEach` の分岐と同じく、囲むシナリオの `vars.*` を共有します。`capture` / `extract` 修飾子は `web` ステップ自体には使えません。WebView bridge の設定（`BAJUTSU_WEBVIEW_PORT`）が必要で、未設定のときは何もせず済ませるのではなくステップを明確に失敗させます。この最初の実装は、ブロック内の `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` に対応しています。`longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` はそこに届かず、いずれも「web コンテキストは非対応」という明確な理由で失敗します。
 
 ### `swipe`
 

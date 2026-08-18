@@ -120,7 +120,10 @@ runner-build-device:
 # (scenarios/visual.yaml), because these lanes pass no `--baselines` and every pixel check could only
 # report its baseline missing — `vrt` below names that file and its baseline directory explicitly;
 # and `android` (scenarios/network_android.yaml), whose endpoint is the Android emulator's
-# host-loopback alias, reachable from no Simulator.
+# host-loopback alias, reachable from no Simulator. The UIKit and Flutter lanes additionally drop
+# `swiftui` (scenarios/picker_wheel.yaml), which drives the SHOWCASE_PICKERS wheel-picker screen only
+# the SwiftUI app renders; the SwiftUI lane keeps it. Backend preflight cannot stand in for the tag —
+# it rejects a backend that lacks a capability, not an app that lacks a screen.
 # Prereqs: a booted simulator, `make runner-build`.
 SIM ?= $(shell xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | head -1)
 
@@ -131,7 +134,7 @@ SIM ?= $(shell xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | hea
 run-swiftui: swiftui-build runner-build
 	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android --config $(CONFIG) --touch-markers
 run-uikit: uikit-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android --config $(CONFIG) --touch-markers
+	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,swiftui --config $(CONFIG) --touch-markers
 
 # scenarios/tabs.yaml on its own, forced onto XCUITest (see the comment above run-swiftui/run-uikit).
 run-swiftui-tabs: swiftui-build runner-build
@@ -281,7 +284,7 @@ flutter-android-noax-build:
 # Prereqs: a booted Simulator, `make runner-build`; an attached emulator for Android.
 run-flutter: flutter-build runner-build
 	cd $(ROOT) && uv run bajutsu run --target showcase-flutter --udid $(SIM) --backend xcuitest \
-		--exclude network,systemalert,alert,visual --config $(CONFIG)
+		--exclude network,systemalert,alert,visual,swiftui --config $(CONFIG)
 
 # The same on-device set the native Compose lane runs (demos/showcase/android/Makefile), minus
 # device.yaml — its device-control clipboard round-trips through the in-app BajutsuAndroid receiver

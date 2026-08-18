@@ -56,6 +56,13 @@ final class AppModel: ObservableObject {
     // targets without depending on scroll — two-finger gestures are the one class the retired idb backend could not drive (BE-0290).
     let gesturesMode: Bool
 
+    // Wheel-picker mode (BE-0356): a test-only affordance gated on the SHOWCASE_PICKERS launch env,
+    // mirroring gestures above. When set, the app renders a flat, scroll-free screen holding a
+    // `UIPickerView` and a wheel-mode `UIDatePicker`, so the on-device `setPickerValue` run resolves
+    // both without depending on scroll — and the multi-component `UIDatePicker` gives the
+    // `within` / `traits` / `index` addressing a real set of sibling wheels to separate.
+    let pickersMode: Bool
+
     let animationsDisabled: Bool
 
     private let env: [String: String]
@@ -68,6 +75,7 @@ final class AppModel: ObservableObject {
         // bar under the XCUITest backend (BE-0107 retired the SHOWCASE_TAB launch-env shortcut).
         selectedTab = .stable
         gesturesMode = env["SHOWCASE_GESTURES"] != nil
+        pickersMode = env["SHOWCASE_PICKERS"] != nil
         conformanceIDs = Self.conformanceIDs(env["SHOWCASE_CONFORMANCE"])
         if conformanceIDs != nil {
             startConformancePolling()

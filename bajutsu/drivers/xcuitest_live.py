@@ -557,6 +557,14 @@ class XcuitestLiveDriver:
     def select_option(self, sel: base.Selector, option: str) -> None:
         raise base.UnsupportedAction("selectOption is web-only; iOS has no native <select>")
 
+    def set_picker_value(self, sel: base.Selector, value: str) -> None:
+        # The same platform as the resident runner, so a live-route implementation through Appium's
+        # XCUITest driver may well be possible — but that is its own evaluation, and BE-0356 does not
+        # commit to it. Refuse loudly meanwhile rather than silently doing nothing.
+        raise base.UnsupportedAction(
+            "setPickerValue is not implemented on the XCUITest live route (BE-0356)"
+        )
+
     def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
         # BE-0316 targets the resident-runner XCUITest backend's SpringBoard query channel, which a
         # live Appium / WebDriver grid does not expose here; this backend does not advertise the

@@ -79,4 +79,88 @@ final class GestureRetryTests: XCTestCase {
         )
         XCTAssertEqual(actuations, 3)
     }
+
+    // MARK: - settlesTo (the setPickerValue read-back, BE-0356)
+
+    func testSettlesToConfirmsAValueAlreadyAtRest() {
+        var reads = 0
+        let landed = settlesTo("大学", maxSamples: 5, sample: { reads += 1; return "大学" })
+        XCTAssertTrue(landed)
+        XCTAssertEqual(reads, 2, "a wheel already at rest costs one confirming read beyond the first")
+    }
+
+    func testSettlesToKeepsSamplingWhileTheWheelIsStillSettling() {
+        // A decelerating wheel reports the rows it passes before it stops, so an early read would
+        // call a value the wheel does have absent.
+        var reads = 0
+        let rows = ["中学", "高校", "大学", "大学"]
+        let landed = settlesTo("大学", maxSamples: 5, sample: {
+            defer { reads += 1 }
+            return rows[min(reads, rows.count - 1)]
+        })
+        XCTAssertTrue(landed)
+        XCTAssertEqual(reads, 4)
+    }
+
+    func testSettlesToRejectsAValueTheWheelOnlyPassedThrough() {
+        // The failure the two-consecutive-sample rule exists for: the wheel sweeps through the
+        // wanted row and rests one past it. A first-match rule would report a landing, leaving the
+        // step green with the wheel on the wrong row — the silent approximate outcome the
+        // determinism directive rules out.
+        var reads = 0
+        let rows = ["中学", "大学", "大学院", "大学院", "大学院"]
+        let landed = settlesTo("大学", maxSamples: 5, sample: {
+            defer { reads += 1 }
+            return rows[min(reads, rows.count - 1)]
+        })
+        XCTAssertFalse(landed)
+    }
+
+    func testSettlesToReportsAValueTheWheelNeverShows() {
+        var reads = 0
+        let landed = settlesTo("存在しない", maxSamples: 4, sample: { reads += 1; return "大学" })
+        XCTAssertFalse(landed)
+        XCTAssertEqual(reads, 4, "an absent value costs the cap and then fails loudly")
+    }
+
+    func testSettlesToTreatsAnUnreadableSampleAsBreakingTheRun() {
+        // nil means *couldn't observe*, never *matched* — the same rule actuateUntilStateChanges
+        // follows. A value that could not be read has not been shown to be holding, so it restarts
+        // the run rather than counting toward it.
+        var reads = 0
+        let rows: [String?] = ["大学", nil, "大学", "大学"]
+        let landed = settlesTo("大学", maxSamples: 5, sample: {
+            defer { reads += 1 }
+            return rows[min(reads, rows.count - 1)]
+        })
+        XCTAssertTrue(landed)
+        XCTAssertEqual(reads, 4, "the nil broke the first run, so the match had to be re-established")
+    }
+
+    func testSettlesToTreatsARaisedReadAsUnobservable() {
+        // Reading an XCUIElement property raises an NSException while the UI is in flux, and a wheel
+        // mid-deceleration is exactly that. Caught here, the raise becomes the unreadable sample the
+        // function already models; uncaught it would unwind to Router's shield and the driver would
+        // report "element vanished" for a wheel that never moved. `reads` increments before the
+        // raise, since a `defer` is not guaranteed to run through an Objective-C unwind.
+        var reads = 0
+        let landed = settlesTo("大学", maxSamples: 5, sample: {
+            reads += 1
+            if reads == 2 {
+                NSException(name: .genericException, reason: "UI in flux", userInfo: nil).raise()
+            }
+            return "大学"
+        })
+        XCTAssertTrue(landed)
+        XCTAssertEqual(reads, 4, "the raise broke the run, so the match had to be re-established")
+    }
+
+    func testSettlesToAlwaysReadsEnoughToConfirmARun() {
+        // The cap clamps to two, not one: a lower cap could never satisfy the two-sample rule and
+        // would report every landing as absent.
+        var reads = 0
+        let landed = settlesTo("大学", maxSamples: 0, sample: { reads += 1; return "大学" })
+        XCTAssertTrue(landed)
+        XCTAssertEqual(reads, 2)
+    }
 }
