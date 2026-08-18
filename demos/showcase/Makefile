@@ -116,8 +116,9 @@ runner-build-device:
 # are tagged `systemalert` and excluded too: these bulk runs discover every scenario file and do not
 # reset per-scenario device state, so the `notDetermined` prompt the first one's handleSystemAlert
 # step needs is not guaranteed here, and the second one leaves the pasteboard holding its own string
-# for whatever scenario the lane discovers next. Each has its own iOS CI job, which installs a fresh
-# app for it. A dedicated tag keeps them out without riding the legacy `xcuitest` tag.
+# for whatever scenario the lane discovers next. Each runs instead on a named iOS CI scenario list
+# (`run` for the first, `actuation` for the second), where what precedes it is controlled rather than
+# discovered. A dedicated tag keeps them out without riding the legacy `xcuitest` tag.
 # Two more tags are excluded for the same "this file has its own lane" reason: `visual`
 # (scenarios/visual.yaml), because these lanes pass no `--baselines` and every pixel check could only
 # report its baseline missing — `vrt` below names that file and its baseline directory explicitly;
