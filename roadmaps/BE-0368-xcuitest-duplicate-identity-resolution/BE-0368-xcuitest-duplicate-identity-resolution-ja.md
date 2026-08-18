@@ -250,9 +250,7 @@ XCUITest 固有の provider の 1 か所から呼ばれています。その隣�
 
 - [BE-0357 — XCUITest の重複アクセシビリティノードでタップできる要素が 1 つだけなら他を取り除く](../BE-0357-xcuitest-duplicate-node-hittable-tiebreak/BE-0357-xcuitest-duplicate-node-hittable-tiebreak-ja.md)：
   同じアラートの失敗を `/elements` の応答を絞ることで直そうとした項目。重複ペアのちょうど 1 件が
-  hittable を報告するという前提を、本項目の Spike が否定した。本項目が棚上げしたのち、
-  [BE-0366](../BE-0366-roadmap-rejected-status/BE-0366-roadmap-rejected-status-ja.md)
-  が「却下」へ再分類した。
+  hittable を報告するという前提を、本項目の Spike が否定した。本項目により「保留」へ移る。
 - [BE-0287 — 多点タッチ操作下での XCUITest runner チャネルの耐障害性](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md)：
   `attributesMatch` から frame を外した項目（Unit 5）。記録した値とライブの値の比較であり、本項目が
   加える候補どうしの比較とは矛盾しない。

@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0357](BE-0357-xcuitest-duplicate-node-hittable-tiebreak-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **却下** |
+| 状態 | **保留** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0357") |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0312](../BE-0312-xcuitest-content-addressed-snapshot-handle/BE-0312-xcuitest-content-addressed-snapshot-handle-ja.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve-ja.md), [BE-0349](../BE-0349-tap-target-hittability-check/BE-0349-tap-target-hittability-check-ja.md), [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) |

@@ -264,8 +264,7 @@ Log:
 - [BE-0357 — Drop XCUITest's non-hittable duplicate accessibility node when exactly one is tappable](../BE-0357-xcuitest-duplicate-node-hittable-tiebreak/BE-0357-xcuitest-duplicate-node-hittable-tiebreak.md):
   attacks the same alert failure by filtering the `/elements` reply; its premise that exactly one
   member of a duplicate pair reports itself hittable is what this item's spike disproved, and this
-  item shelved it; [BE-0366](../BE-0366-roadmap-rejected-status/BE-0366-roadmap-rejected-status.md)
-  later reclassified it to `Rejected`.
+  item moves it to `Deferred`.
 - [BE-0287 — XCUITest runner-channel resilience under multi-touch actuation](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md):
   excluded frame from `attributesMatch` (Unit 5), the recorded-against-live comparison this item's
   candidate-against-candidate comparison does not contradict.

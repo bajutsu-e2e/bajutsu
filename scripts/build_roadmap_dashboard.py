@@ -7,8 +7,8 @@ single self-contained HTML dashboard, ``docs/api/roadmap.md``, that the existing
 publishes to GitHub Pages: cards grouped by category (Topic), each card carrying its own status
 (Implemented / In progress / Proposal / Deferred / Rejected) and linking to its item on GitHub. Each
 category shows a progress figure — the share of its outstanding items that are Implemented — and a
-stacked bar of its full status composition, and fully-implemented categories are grouped separately
-under Completed.
+stacked bar of that same outstanding composition (a Rejected item renders a card but no bar
+segment), and categories with no outstanding work are grouped separately under Completed.
 This dashboard is the only place any item's status is browsable — ``roadmaps/README.md`` /
 ``README-ja.md`` carry no generated status tables of their own.
 
@@ -611,8 +611,9 @@ def render_html(items: list[Any]) -> str:
 
     Both views render the same items (BE-0311): the card view is category-major (by Topic), each
     card carrying its own status (colour + badge) and each category a progress figure derived purely
-    from the Status field — the share of its items Implemented — beside a stacked bar of the full
-    composition; the table view lays every item out as one sortable row. The toggle shows one and
+    from the Status field — the share of its outstanding (non-Rejected) items Implemented — beside a
+    stacked bar of that same outstanding composition; the table view lays every item out as one
+    sortable row. The toggle shows one and
     hides the other; the search box and status filter narrow both alike.
     """
     by_bucket: dict[str, list[Any]] = {name: [] for name, _key in bri.BUCKETS}

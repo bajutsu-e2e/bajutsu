@@ -116,6 +116,9 @@ def test_rejected_items_leave_the_progress_denominator() -> None:
 
     counts, total, pct = brd._topic_progress([implemented, rejected])
     assert (counts["Rejected"], total, pct) == (1, 1, 100)
+    # The bar shares that denominator, so it draws no Rejected segment either — otherwise its
+    # segments would sum past 100%. The segment's title attribute carries the bucket name.
+    assert "Rejected" not in brd._progress_bar(counts, total)
 
     counts, total, pct = brd._topic_progress([implemented, deferred])
     assert (counts["Deferred"], total, pct) == (1, 2, 50)

@@ -189,12 +189,11 @@ under it, in the same implementing PR:
   implementation time, rather than letting the schema change silently decide a borderline case.
 - [BE-0357](../BE-0357-xcuitest-duplicate-node-hittable-tiebreak/BE-0357-xcuitest-duplicate-node-hittable-tiebreak.md)
   is a seventh item, deferred after this proposal was authored and so absent from the six listed
-  under *Motivation*. It moves to `Rejected`. Its central premise — that exactly one member of a
-  duplicate accessibility-node pair reports itself hittable — was measured and disproved by
-  [BE-0368](../BE-0368-xcuitest-duplicate-identity-resolution/BE-0368-xcuitest-duplicate-identity-resolution.md)'s
-  spike: zero members report it. Under its own specification BE-0357 is therefore a no-op for the
-  failure it was written to remove, and BE-0368 has since shipped the resolution repair that was the
-  only condition its deferral named. Nothing is left to wait for.
+  under *Motivation*. It keeps `Deferred`. Its premise — that exactly one member of a duplicate
+  accessibility-node pair reports itself hittable — was measured and disproved, which is what parked
+  it, but its own `Progress` log names the condition that would revive it: a duplicate pair whose
+  members a live probe can genuinely tell apart. A named condition is the dividing line above, so
+  `Rejected` does not apply.
 
 ### Relationship to "Not adopting"
 
@@ -260,13 +259,11 @@ same PR is what closes the actual gap.
       `docs/ai-development.md` (+ ja), and `roadmaps/README.md` (+ ja), adding `Rejected` to every
       valid-value list.
 - [x] Update the gate tests that pin the literal, and cover the new value.
-- [x] Migrate today's deferred items: BE-0154 and BE-0357 to `Rejected`, the other five to
-      `Deferred`.
+- [x] Migrate today's deferred items: BE-0154 to `Rejected`, the other six to `Deferred`.
 
 Log:
 
-- The implementing PR landed all six units at once, with three decisions the proposal left open or
-  could not have anticipated:
+- The implementing PR landed all six units at once, with two decisions the proposal left open:
   - **The stacked bar shares the progress denominator.** Excluding `Rejected` from
     `_topic_progress`'s denominator alone would have left `_progress_bar`'s segments summing past
     100%, since the bar divides each bucket's count by that same total. The bar therefore skips the
@@ -274,14 +271,14 @@ Log:
     percentage nor the bar. A topic with nothing but rejected items reads 100% rather than dividing
     by zero, which also lands it in the dashboard's *Completed* group — correct, since it has no
     outstanding work.
-  - **BE-0357 moved to `Rejected`** as a seventh migration, for the reason recorded under
-    *Migrating today's roadmap*.
-  - **The literal was renamed in shipped items' prose too**, beyond the surfaces *Detailed design*
-    enumerates — BE-0074, BE-0078, BE-0109, BE-0162, and BE-0368 each named `Proposal (deferred)`
-    while recording a past decision. Renaming them leaves a repo-wide grep for the retired value
-    empty, at the cost of a shipped item describing its own decision in vocabulary that postdates it.
-    BE-0368's reference to BE-0357 additionally records the later reclassification, so the two items
-    agree on where BE-0357 now sits.
+  - **The literal was renamed in three shipped items' prose**, beyond the surfaces *Detailed design*
+    enumerates. Five shipped items named `Proposal (deferred)`; the three that describe a
+    still-operating mechanism — BE-0109's tracking-issue lifecycle, BE-0162's status filter, and
+    BE-0368's account of where it left BE-0357 — were renamed, so a grep for the retired value comes
+    back empty everywhere the value is still live. BE-0074 and BE-0078 were left verbatim: both
+    specify the vocabulary *as it stood at the time*, alongside the equally retired
+    `Accepted, in progress` and `Track` field, so modernizing one name and not its neighbour would
+    misstate the record rather than tidy it.
 
 ## References
 
