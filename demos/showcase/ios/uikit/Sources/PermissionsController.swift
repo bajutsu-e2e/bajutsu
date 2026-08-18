@@ -2,13 +2,13 @@ import CoreLocation
 import UIKit
 import UserNotifications
 
-/// Permissions (SPEC §5.4 / §7) — the OS-integration screen. It owns the two deliberate
-/// OS-level alerts (both fire only on explicit taps here, never at launch: the canonical
-/// fixture for the run's vision alert guard / systemAlertHandling), plus a System section: a
-/// Copy → Paste pasteboard round-trip the backend can drive and assert. (Reading a pasteboard seeded
-/// by another process trips iOS's paste-consent prompt; a value this app wrote reads back silently.
-/// Both paths are exercised: system.yaml copies in-app, paste_system_alert.yaml seeds the
-/// pasteboard with `setClipboard` and answers the prompt.)
+/// Permissions (SPEC §5.4 / §7) — the OS-integration screen. It owns the deliberate
+/// OS-level alerts (the notification and location prompts, which fire only on explicit taps here,
+/// never at launch: the canonical fixture for the run's vision alert guard / systemAlertHandling),
+/// plus a System section: a Copy → Paste pasteboard round-trip the backend can drive and assert.
+/// (Reading a pasteboard seeded by another process trips iOS's paste-consent prompt; a value this
+/// app wrote reads back silently. Both paths are exercised: system.yaml copies in-app,
+/// paste_system_alert.yaml seeds the pasteboard with `setClipboard` and answers the prompt.)
 final class PermissionsController: UIViewController, CLLocationManagerDelegate {
     private let notifValueLabel = UILabel()
     private let notifAuthorizedLabel = UILabel()

@@ -57,6 +57,16 @@ def test_the_english_deny_label_is_not_the_ascii_apostrophe(prompt: SystemAlertP
     assert "'" not in label
 
 
+def test_no_label_carries_the_ascii_apostrophe() -> None:
+    # The negative half of the guard above, over the whole table rather than the two prompts whose
+    # label happens to contain an apostrophe today: a fourth prompt transcribed with the ASCII
+    # character cannot then reach `_LABELS` unnoticed (BE-0369).
+    for prompt in get_args(SystemAlertPrompt):
+        for language in covered_languages(prompt):
+            for choice in get_args(SystemAlertChoice):
+                assert "'" not in system_alert_label(prompt, choice, language)
+
+
 def test_the_region_does_not_change_the_labels() -> None:
     # SpringBoard localizes by language, not by region, so every `en_*` resolves alike — which is
     # what lets one table cover a locale the run was configured with, whatever its region.

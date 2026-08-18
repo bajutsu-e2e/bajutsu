@@ -3,7 +3,7 @@ import SwiftUI
 import UIKit
 import UserNotifications
 
-// Tab: Permissions (SPEC §5.4 / §7) — the OS-integration screen. It owns the two deliberate
+// Tab: Permissions (SPEC §5.4 / §7) — the OS-integration screen. It owns the deliberate
 // OS-level alerts (notification + location prompts, both SpringBoard/out-of-process), and a
 // System section: a Copy → Paste pasteboard round-trip that the backend can drive and assert.
 // (Reading a pasteboard seeded by another process trips iOS's paste-consent prompt; a value this
