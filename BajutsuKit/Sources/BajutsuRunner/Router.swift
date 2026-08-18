@@ -284,8 +284,9 @@ final class Router {
         return tapResultResponse(onMainCatching { self.provider.deleteText(count: count) })
     }
 
-    // Set a picker wheel to a named row (BE-0356). The handle+string shape `handleType` already uses,
-    // over the app tree's `store` like every other element actuation.
+    // Set a picker wheel to a named row (BE-0356). `handleTap`'s store-lookup handle shape, over the
+    // app tree's `store` like every other element actuation, plus a string payload like `handleType`'s
+    // `text` — which resolves no handle of its own, since it types into whatever holds focus.
     private func handleSetPickerValue(_ request: HTTPRequest) -> HTTPResponse {
         guard let body = request.body,
               let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
