@@ -24,11 +24,24 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from bajutsu.artifact_perms import make_run_dir, restrict_file
+from bajutsu.artifact_perms import restrict_file
 from bajutsu.drivers import base
 from bajutsu.evidence.redaction import Redactor, mask_credential_shapes
+from bajutsu.run_root import run_dir_for_write
 
 _logger = logging.getLogger(__name__)
+
+
+def prepare_run_dir(runs_dir: str | Path, run_id: str) -> None:
+    """Create a run directory owner-only before a *subdirectory* materializes it (BE-0131).
+
+    A sink creates its own directory, so a run whose first write goes through one needs nothing here.
+    The cross-browser matrix is the exception: each engine pass writes under `run_dir/<engine>`, and
+    the sink creating that directory would materialize the run directory above it with
+    `mkdir(parents=True)`, at the ambient umask. Returns nothing, so the boundary is unchanged — a
+    caller gets no writable handle from it.
+    """
+    run_dir_for_write(runs_dir, run_id)
 
 
 class RunArtifactWriter:
@@ -41,7 +54,9 @@ class RunArtifactWriter:
     """
 
     def __init__(self, run_dir: Path, redactor: Redactor) -> None:
-        self._dir = make_run_dir(run_dir)
+        # The write provider is reached from here and nowhere else (BE-0331 unit 3): the sink is the
+        # single module the import contract lets derive a writable run directory.
+        self._dir = run_dir_for_write(run_dir.parent, run_dir.name)
         self._redactor = redactor
         self.unmasked: list[str] = []
 

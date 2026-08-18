@@ -14,6 +14,7 @@ import typer
 
 from bajutsu.cli._shared import resolve_run_dir
 from bajutsu.report import rebake
+from bajutsu.run_files import DEFAULT_RUNS_DIR
 
 
 def report(
@@ -21,7 +22,9 @@ def report(
     all_runs: bool = typer.Option(
         False, "--all", help="re-render every run dir (with a manifest.json) under --runs"
     ),
-    runs: str = typer.Option("runs", help="runs root (used for a bare run id and for --all)"),
+    runs: str = typer.Option(
+        DEFAULT_RUNS_DIR, help="runs root (used for a bare run id and for --all)"
+    ),
 ) -> None:
     """Re-render a finished run's report.html + junit.xml + ctrf.json from its stored data.
 

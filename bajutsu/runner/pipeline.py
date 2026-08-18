@@ -16,7 +16,6 @@ if TYPE_CHECKING:
     from bajutsu.drivers import base
 
 from bajutsu import capability_preflight, device_errors
-from bajutsu.artifact_perms import make_run_dir
 from bajutsu.assertions import (
     AssertionResult,
     EvalContext,
@@ -35,7 +34,7 @@ from bajutsu.drivers.base import BackendCrashError
 from bajutsu.evidence import Artifact
 from bajutsu.evidence.network import NetworkExchange, _no_transitions
 from bajutsu.evidence.redaction import Redactor
-from bajutsu.evidence.sink import RunArtifactWriter
+from bajutsu.evidence.sink import RunArtifactWriter, prepare_run_dir
 from bajutsu.orchestrator import (
     AlertGuardConfig,
     Clock,
@@ -860,9 +859,6 @@ def run_and_report(
         The per-scenario results and the path to the written `manifest.json`.
     """
     run_dir = runs_dir / run_id
-    # Create the run dir owner-only up front, before any scenario write creates it world-readable
-    # under the ambient umask; everything underneath then inherits a non-world-readable parent (BE-0131).
-    make_run_dir(run_dir)
     results = run_all(
         eff,
         scenarios,
@@ -926,9 +922,9 @@ def run_matrix_and_report(
         The concatenated per-engine results and the path to the written `manifest.json`.
     """
     run_dir = runs_dir / run_id
-    # Owner-only up front (BE-0131): each engine pass writes under run_dir/<engine>, so a 0700 top
-    # dir keeps every engine's evidence non-world-readable without per-subdir chmod.
-    make_run_dir(run_dir)
+    # Owner-only up front (BE-0131): each engine pass writes under run_dir/<engine>, and the sink
+    # that creates *that* directory would materialize this one above it at the ambient umask.
+    prepare_run_dir(runs_dir, run_id)
     results: list[RunResult] = []
     for engine in engines:
         passed = run_pass(engine, run_dir / engine)

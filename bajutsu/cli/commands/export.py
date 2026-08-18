@@ -13,6 +13,7 @@ import typer
 
 from bajutsu.cli._shared import resolve_run_dir
 from bajutsu.report.archive import archive_run_dir
+from bajutsu.run_files import DEFAULT_RUNS_DIR
 
 
 def export(
@@ -21,7 +22,9 @@ def export(
         "", "-o", "--output", help="output zip path (default: <id>.zip beside the run dir)"
     ),
     force: bool = typer.Option(False, "--force", help="overwrite the output file if it exists"),
-    runs: str = typer.Option("runs", help="runs root (used when <run> is an id, not a path)"),
+    runs: str = typer.Option(
+        DEFAULT_RUNS_DIR, help="runs root (used when <run> is an id, not a path)"
+    ),
 ) -> None:
     """Archive an existing run into a single `.zip` for sharing / CI / offline viewing."""
     run_dir = resolve_run_dir(run, runs)

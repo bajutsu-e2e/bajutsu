@@ -56,7 +56,7 @@ from bajutsu.evidence.redaction import Redactor
 from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.platform_lifecycle import CrawlEnvironment, environment_for
 from bajutsu.record import clear_blocking as clear_blocking_overlay
-from bajutsu.run_files import RunArtifactReader
+from bajutsu.run_files import RunArtifactReader, runs_root
 from bajutsu.run_id import new_run_id
 from bajutsu.runner import launch_driver
 from bajutsu.scenario import Preconditions
@@ -545,7 +545,7 @@ def crawl(
     announce_ai(say, default_model=_CRAWL_GUIDE_MODEL, ai=eff.ai)
     crawl_guide = make_guide(report=say, ai=eff.ai, redactor=redactor)
 
-    out_dir = Path(out) if out else Path("runs") / new_run_id()
+    out_dir = Path(out) if out else runs_root() / new_run_id()
     # A Git source is read-only input: the screen map / screenshots go to a local run dir, never into
     # the SHA-keyed checkout cache (BE-0063). The default `runs/` is already local.
     _refuse_out_in_checkout(out_dir, checkout_root)

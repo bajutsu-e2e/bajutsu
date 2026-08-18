@@ -7,14 +7,29 @@ but the write sink from resolving a run path would break all of that, and this i
 of encryption rests on those files staying plainly readable.
 
 So the run directory is reached through two providers, and only one of them writes. This is the
-unrestricted half. It never returns a `Path`: a path into a run directory is writable, so handing one
-out would let any importer call `write_text` on it and reach the directory without the sink — the
-import contract would hold on paper while the boundary leaked.
+unrestricted half. It never returns a `Path` into a run: a path into a run directory is writable, so
+handing one out would let any importer call `write_text` on it and reach the directory without the
+sink — the import contract would hold on paper while the boundary leaked.
+
+The *name* of the runs root belongs on this side by the same test. It is a string, not a handle: every
+command needs it for a flag default, and knowing where runs land grants no more than knowing that they
+land somewhere. Deriving one run's writable directory is the restricted operation, and that lives in
+`bajutsu.run_root`, which only the sink may import. Naming the root here rather than repeating the
+literal is what gives the literal check exactly one place to allow.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+
+#: The directory runs land under by default, relative to the working directory. Every CLI flag
+#: default and every worker/serve path references this rather than repeating the literal.
+DEFAULT_RUNS_DIR = "runs"
+
+
+def runs_root(configured: str | Path | None = None) -> Path:
+    """The directory runs land under — the configured one, or the default."""
+    return Path(configured) if configured else Path(DEFAULT_RUNS_DIR)
 
 
 class RunArtifactReader:

@@ -29,6 +29,7 @@ from bajutsu.backends import PLATFORMS
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.object_store import content_type_for
+from bajutsu.run_files import DEFAULT_RUNS_DIR
 from bajutsu.serve import InMemoryLogBus
 from bajutsu.serve.capabilities import WORKER_CAPABILITIES_ENV, worker_capabilities
 from bajutsu.serve.server.worker_job import WorkerIO, execute_job_spec
@@ -283,7 +284,7 @@ def _write_console_log(work: Path, run_id: str, bus: InMemoryLogBus, job_id: str
     (BE-0331). A worker holds no secret values of its own, so the redactor is inert and only the
     sink's pattern backstop — which needs no configuration — reaches this text.
     """
-    run_dir = work / "runs" / run_id
+    run_dir = work / DEFAULT_RUNS_DIR / run_id
     if not run_dir.is_dir():
         return
     lines = list(bus.stream(job_id, timeout=0.0))
@@ -437,7 +438,7 @@ class PresignedWorkerIO:
         _download_baselines(work, self._baseline_urls)
 
     def upload_run(self, work: Path, run_id: str) -> None:
-        run_dir = work / "runs" / run_id
+        run_dir = work / DEFAULT_RUNS_DIR / run_id
         if not run_dir.is_dir():
             return
         files = _evidence_files(run_dir)
@@ -489,7 +490,7 @@ def _upload_evidence(
     logged and dropped, never raised, and every HTTP call is time-bounded so a stall can't strand the
     worker. When no evidence store is configured the endpoint returns no URLs and this uploads nothing.
     """
-    run_dir = work / "runs" / run_id
+    run_dir = work / DEFAULT_RUNS_DIR / run_id
     if not run_dir.is_dir():
         return
     files = _evidence_files(run_dir)
