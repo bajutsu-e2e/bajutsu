@@ -95,8 +95,14 @@ class RunArtifactWriter:
         return path
 
     def record_unmasked(self, name: str) -> None:
-        """Note that a reserved artifact holds content the sink could not inspect."""
+        """Note that a reserved artifact holds content the sink could not inspect.
+
+        Restricts the file like every other artifact the sink writes: a reserved recording is
+        exactly the kind that carries on-screen secrets (a screenshot, a video), and the recorder
+        that wrote it obeyed the ambient umask (BE-0131).
+        """
         self.unmasked.append(name)
+        restrict_file(self._resolve(name))
 
     def scrub_reserved(self, name: str) -> bool:
         """Scrub a reserved text artifact in place; return whether it is safe to ship.
@@ -120,7 +126,9 @@ class RunArtifactWriter:
         return True
 
     def _write_json(self, name: str, data: Any, *, scrub_text: bool = False) -> Path:
-        body = json.dumps(data, indent=2)
+        # `ensure_ascii=False`: a run's evidence is read by people, and an app under test in
+        # Japanese would otherwise land as a wall of \uXXXX escapes.
+        body = json.dumps(data, ensure_ascii=False, indent=2)
         # A shape-specific rule already ran over the structure; `scrub_text` additionally runs the
         # key/known-value pass for content that had no such rule.
         if scrub_text:

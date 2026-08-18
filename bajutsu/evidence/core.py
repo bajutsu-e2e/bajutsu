@@ -9,7 +9,6 @@ the manifest shows where it came from.
 
 from __future__ import annotations
 
-import json
 import logging
 import subprocess
 from collections.abc import Callable, Mapping
@@ -17,10 +16,10 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Protocol
 
-from bajutsu.artifact_perms import restrict_file
 from bajutsu.drivers import base
 from bajutsu.evidence import intervals
 from bajutsu.evidence.redaction import Redactor
+from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.scenario import Redact
 
 if TYPE_CHECKING:
@@ -85,51 +84,37 @@ def displayed_screenshot(screenshot_names: list[str]) -> str | None:
 
 def write_elements(
     driver: base.Driver,
-    step_dir: Path,
-    redactor: Redactor | None = None,
+    writer: RunArtifactWriter,
+    prefix: str,
     *,
     elements: list[base.Element] | None = None,
-    mkdir: bool = True,
-) -> Path:
-    """Write the element tree (redacted if a redactor is given) to elements.json.
+) -> str:
+    """Write the element tree to `<prefix>/elements.json`, returning the artifact name.
 
-    Uses `elements` if given, otherwise queries the driver now. `mkdir` creates the
-    step dir first, and is skipped when the caller already made it.
+    Uses `elements` if given, otherwise queries the driver now. The sink masks each element's value
+    structurally on the way in, so the redaction the tree needs is a property of where it lands
+    rather than of this writer (BE-0331).
     """
-    if mkdir:
-        step_dir.mkdir(parents=True, exist_ok=True)
-    path = step_dir / "elements.json"
-    els = elements if elements is not None else driver.query()
-    if redactor is not None:
-        els = redactor.redact_elements(els)
-    path.write_text(
-        json.dumps(els, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    # The element dump holds on-screen text (redacted best-effort) — owner-only, umask-independent (BE-0131).
-    restrict_file(path)
-    return path
+    name = f"{prefix}/elements.json"
+    writer.write_elements(name, elements if elements is not None else driver.query())
+    return name
 
 
 def write_screenshot(
-    driver: base.Driver, step_dir: Path, name: str = "after.png", *, mkdir: bool = True
-) -> Path:
-    """Write a screenshot to the step dir.
+    driver: base.Driver, writer: RunArtifactWriter, prefix: str, filename: str = "after.png"
+) -> str:
+    """Write a screenshot to `<prefix>/<filename>`, returning the artifact name.
 
-    `mkdir` creates the step dir first, and is skipped when the caller already made it.
+    The driver writes the image itself, so the sink reserves the path and records that the bytes
+    went in uninspected — pixels cannot be masked (BE-0151).
     """
-    if mkdir:
-        step_dir.mkdir(parents=True, exist_ok=True)
-    path = step_dir / name
-    driver.screenshot(str(path))
-    # A screenshot can capture on-screen secrets — lock it to the owner regardless of umask (BE-0131).
-    restrict_file(path)
-    return path
+    name = f"{prefix}/{filename}"
+    driver.screenshot(str(writer.reserve(name)))
+    writer.record_unmasked(name)
+    return name
 
 
-def write_raw_tree(
-    driver: base.Driver, step_dir: Path, redactor: Redactor | None = None, *, mkdir: bool = True
-) -> list[Path]:
+def write_raw_tree(driver: base.Driver, writer: RunArtifactWriter, prefix: str) -> list[str]:
     """Write the device's own reply behind the driver's last read (`rawTree` capture kind), if it has any.
 
     A no-op for any backend that does not implement `base.RawSourceProvider` (every backend but `adb`
@@ -141,67 +126,63 @@ def write_raw_tree(
     when the backend applied a structural transform that changed it (adb's resident channel stripping
     SystemUI decor windows), `hierarchy.parsed-input<suffix>` — what the parser actually consumed after
     that transform — so a mismatch between a resolved coordinate and the real screen can be traced to the
-    device's/runner's own reply versus bajutsu's processing of it. `mkdir` creates the step dir first, and
-    is skipped when the caller already made it (BE-0351).
+    device's/runner's own reply versus bajutsu's processing of it (BE-0351). Returns the artifact names
+    written, relative to the run dir.
 
-    Also a no-op, loudly, when `redactor.has_label_rules`: `redact_elements` (behind `elements.json`)
-    blanks a labeled element's `value` structurally, using the parsed tree it has and this function
-    does not; `redact_text` over free text can only catch a key pattern or a literal secret value, so
-    it would write an unmasked superset of what `elements.json` just masked. Refusing the artifact is
-    the safe direction — a missing diagnostic file costs an investigation a round trip, an unmasked
-    secret on disk does not un-happen.
+    Also a no-op, loudly, when the run's redactor `has_label_rules`: `redact_elements` (behind
+    `elements.json`) blanks a labeled element's `value` structurally, using the parsed tree it has and
+    this function does not; `redact_text` over free text can only catch a key pattern or a literal
+    secret value, so it would write an unmasked superset of what `elements.json` just masked. Refusing
+    the artifact is the safe direction — a missing diagnostic file costs an investigation a round trip,
+    an unmasked secret on disk does not un-happen.
     """
     if not isinstance(driver, base.RawSourceProvider):
         return []
     raw = driver.last_raw_source()
     if raw is None:
         return []
-    if redactor is not None and redactor.has_label_rules:
+    if writer.redactor.has_label_rules:
         _logger.warning(
             "rawTree capture skipped: redact.labels masks an element's value structurally, which "
             "the raw dump's free-text redaction cannot honor — refusing rather than writing an "
             "unmasked superset of what elements.json just masked"
         )
         return []
-    if mkdir:
-        step_dir.mkdir(parents=True, exist_ok=True)
-    out: list[Path] = []
-    for name, text in (
+    out: list[str] = []
+    for filename, text in (
         (f"hierarchy.raw{raw.suffix}", raw.text),
         (f"hierarchy.parsed-input{raw.suffix}", raw.parsed_input),
     ):
         if text is None:
             continue
-        body = redactor.redact_text(text) if redactor is not None else text
-        path = step_dir / name
-        path.write_text(body, encoding="utf-8")
-        # Same sensitivity as elements.json — the dump holds on-screen text (BE-0131).
-        restrict_file(path)
-        out.append(path)
+        name = f"{prefix}/{filename}"
+        writer.write_text(name, text)
+        out.append(name)
     return out
 
 
 def write_wait_diagnostic(
-    step_dir: Path,
+    writer: RunArtifactWriter,
+    prefix: str,
     *,
     trace: WaitTrace,
     elements: list[base.Element],
     readiness: ReadinessResult | None,
     provenance: Mapping[str, object] | None,
-    redactor: Redactor | None = None,
-    mkdir: bool = True,
-) -> Path:
+) -> str:
     """Write a `for`-wait timeout diagnostic (redacted tree + readiness + trace + provenance).
 
     Everything needed to decide *why* a first `wait` timed out, in one self-contained file so a
     rerun-to-green does not discard the evidence (BE-0231 Unit 1). `awaitedEverQueryable` is always
     false: a `for` wait returns the instant the element matches, so a timeout means it was never
     queryable across the recorded polls. Pure diagnosis — never a verdict input (prime directive 1).
+
+    Returns:
+        The artifact name, relative to the run dir.
     """
-    if mkdir:
-        step_dir.mkdir(parents=True, exist_ok=True)
-    path = step_dir / "wait-timeout.json"
-    els = redactor.redact_elements(elements) if redactor is not None else elements
+    # The tree is masked structurally here rather than by the sink's free-text pass, because it is
+    # only one field of a larger document — the sink's element entry point takes a whole tree.
+    els = writer.redactor.redact_elements(elements)
     doc = {
         "target": trace.target,
         "timeoutSeconds": trace.timeout_s,
@@ -223,26 +204,24 @@ def write_wait_diagnostic(
         "provenance": dict(provenance) if provenance is not None else None,
         "elements": els,
     }
-    path.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
-    # Holds on-screen text (redacted best-effort) — owner-only, umask-independent (BE-0131).
-    restrict_file(path)
-    return path
+    name = f"{prefix}/wait-timeout.json"
+    writer.write_json(name, doc)
+    return name
 
 
 def capture(
     driver: base.Driver,
-    step_dir: Path,
+    writer: RunArtifactWriter,
+    prefix: str,
     kinds: list[str],
-    redactor: Redactor | None = None,
     *,
     elements: list[base.Element] | None = None,
 ) -> list[Artifact]:
-    """Capture the requested instant kinds; return their artifact records."""
-    # Create the step dir once here, only for kinds we actually write, so the per-kind
-    # writers can skip their own mkdir (every kind targets the same step_dir, so repeating
-    # it per writer is wasted syscalls); unmatched-only kinds leave the dir untouched as before.
-    if any(token.partition(".")[0] in ("elements", "screenshot") for token in kinds):
-        step_dir.mkdir(parents=True, exist_ok=True)
+    """Capture the requested instant kinds under `<prefix>/`; return their artifact records.
+
+    Names are relative to the run dir (`00-slug/step0/after.png`), so the HTML report written there
+    can reference them directly. An unmatched-only kind list writes nothing and creates no directory.
+    """
     out: list[Artifact] = []
     # `rawTree` last, whatever order the scenario listed the kinds in: `write_elements` may issue the
     # read itself (`elements is None`, line 69 above), and `write_raw_tree` persists the driver's
@@ -253,22 +232,19 @@ def capture(
         kind, _, modifier = token.partition(".")
         if kind == "rawTree":
             out.extend(
-                Artifact(path.name, "rawTree", "driver")
-                for path in write_raw_tree(driver, step_dir, redactor)
+                Artifact(name, "rawTree", "driver")
+                for name in write_raw_tree(driver, writer, prefix)
             )
         elif kind == "elements":
             out.append(
                 Artifact(
-                    write_elements(driver, step_dir, redactor, elements=elements, mkdir=False).name,
-                    "elements",
-                    "driver",
+                    write_elements(driver, writer, prefix, elements=elements), "elements", "driver"
                 )
             )
         elif kind == "screenshot":
-            name = f"{modifier or 'after'}.png"
             out.append(
                 Artifact(
-                    write_screenshot(driver, step_dir, name, mkdir=False).name,
+                    write_screenshot(driver, writer, prefix, f"{modifier or 'after'}.png"),
                     "screenshot",
                     "driver",
                 )
@@ -365,11 +341,13 @@ class FileSink:
         provenance: Mapping[str, object] | None = None,
         on_video_start_stall: Callable[[], None] | None = None,
     ) -> None:
-        self.run_dir = run_dir
         self.udid = udid
         self.log_predicate = log_predicate
         self.log_subsystem = log_subsystem  # for appTrace: the app's os_log subsystem
         self.redactor = Redactor(redact, values=secrets)
+        # Every byte this sink writes goes through the run's artifact writer, which holds the run
+        # directory so nothing here does (BE-0331).
+        self._writer = RunArtifactWriter(run_dir, self.redactor)
         # When set (a web or Android lane), interval evidence comes from this driver-supplied provider
         # instead of the simctl starters below — the device pool injects the driver's `driver_interval`.
         self.driver_interval = driver_interval
@@ -395,10 +373,7 @@ class FileSink:
         *,
         elements: list[base.Element] | None = None,
     ) -> list[Artifact]:
-        # Re-root each artifact name under step_id so it is relative to the run dir
-        # (e.g. "00-slug/step0/after.png") and the HTML report can reference it.
-        arts = capture(driver, self.run_dir / step_id, kinds, self.redactor, elements=elements)
-        return [Artifact(f"{step_id}/{a.name}", a.kind, a.provider) for a in arts]
+        return capture(driver, self._writer, step_id, kinds, elements=elements)
 
     def wait_diagnostic(
         self,
@@ -408,15 +383,15 @@ class FileSink:
         elements: list[base.Element],
     ) -> Artifact | None:
         """Write the first-wait timeout diagnostic under <step_id>/ and record it as an artifact."""
-        path = write_wait_diagnostic(
-            self.run_dir / step_id,
+        name = write_wait_diagnostic(
+            self._writer,
+            step_id,
             trace=trace,
             elements=elements,
             readiness=self.readiness,
             provenance=self.provenance,
-            redactor=self.redactor,
         )
-        return Artifact(f"{step_id}/{path.name}", "waitDiagnostic", "runner")
+        return Artifact(name, "waitDiagnostic", "runner")
 
     def start_scenario_intervals(
         self, scenario_id: str, kinds: list[str]
@@ -433,12 +408,12 @@ class FileSink:
             return []
         if not (self._prestarted or self.driver_interval is not None or self.udid is not None):
             return []  # no lane can record: skip without creating an empty scenario dir
-        scenario_dir = self.run_dir / scenario_id
-        scenario_dir.mkdir(parents=True, exist_ok=True)
         started: list[intervals.Interval] = []
         for token in kinds:
             kind = token.partition(".")[0]
-            target = scenario_dir / _interval_filename(kind)
+            # An external recorder (simctl, screenrecord, Playwright) writes the file itself, so the
+            # sink reserves the path; `finish_scenario_intervals` below closes the loop (BE-0331).
+            target = self._writer.reserve(f"{scenario_id}/{_interval_filename(kind)}")
             pre = self._prestarted.get(kind)
             if pre is not None:
                 started.append(intervals.adopt(pre, target))
@@ -450,7 +425,7 @@ class FileSink:
                 if interval is not None:
                     started.append(interval)
             elif self.udid is not None:
-                interval = self._start_simctl_interval(kind, target, scenario_dir)
+                interval = self._start_simctl_interval(kind, target, scenario_id)
                 if interval is not None:
                     started.append(interval)
         # A recording that was asked to confirm its start and never did says the device's capture
@@ -463,7 +438,7 @@ class FileSink:
         return started
 
     def _start_simctl_interval(
-        self, kind: str, target: Path, scenario_dir: Path
+        self, kind: str, target: Path, scenario_id: str
     ) -> intervals.Interval | None:
         """Start one simctl interval capture (iOS), or None for a kind this lane does not record."""
         assert self.udid is not None
@@ -473,7 +448,10 @@ class FileSink:
             return intervals.start_device_log(self.udid, target, self.log_predicate)
         if kind == "appTrace" and self.log_subsystem:
             return intervals.start_app_trace(
-                self.udid, target, scenario_dir / "appTrace.json", self.log_subsystem
+                self.udid,
+                target,
+                self._writer.reserve(f"{scenario_id}/appTrace.json"),
+                self.log_subsystem,
             )
         return None
 
@@ -483,7 +461,8 @@ class FileSink:
         """Finalize each recording into an artifact.
 
         Artifact names are relative to the run dir so the HTML report (written there)
-        can link/embed them directly.
+        can link/embed them directly. Each finalized file crosses redaction here — the loop
+        `start_scenario_intervals`' reservation left open (BE-0331).
         """
         out: list[Artifact] = []
         for interval in started:
@@ -498,41 +477,31 @@ class FileSink:
                 # transform (e.g. AttributeError) still surfaces rather than being swallowed here.
                 _logger.warning("dropping %s evidence: capture stop failed: %s", interval.kind, exc)
                 continue
+            # The recording landed in the scenario dir it was reserved under, so its artifact name is
+            # that reservation's — a transform (appTrace's parse, adb's pull) only ever renames within it.
+            name = f"{scenario_id}/{path.name}"
             # appTrace also has a raw stream beside it; both must be scrubbed before the artifact ships.
-            to_scrub = [path]
+            to_scrub = [name]
             if interval.kind == "appTrace":
-                to_scrub.append(path.parent / "appTrace.raw")
-            unsafe = [p for p in to_scrub if not self._redact_file(p)]
+                to_scrub.append(f"{scenario_id}/appTrace.raw")
+            # A video is opaque bytes the sink cannot inspect, so it is recorded as written unmasked
+            # rather than scrubbed — the honesty BE-0151 established for screenshots.
+            unsafe = [n for n in to_scrub if not self._scrub_or_record(n)]
             if unsafe:
                 # Redaction is a security control: if we couldn't read a file to scrub it, don't ship
                 # the artifact (fail closed), and name the offending file loudly rather than leak it.
                 _logger.warning(
                     "dropping %s evidence: could not read %s to redact secrets (failing closed)",
                     interval.kind,
-                    ", ".join(str(p) for p in unsafe),
+                    ", ".join(unsafe),
                 )
                 continue
-            try:
-                name = str(path.relative_to(self.run_dir))
-            except ValueError:
-                name = path.name
             out.append(Artifact(name=name, kind=interval.kind, provider=interval.provider))
         return out
 
-    def _redact_file(self, path: Path) -> bool:
-        """Scrub secrets from a text evidence file in place; return whether it is safe to ship.
-
-        Safe (True) means there is nothing left to leak: the file was scrubbed, or there was nothing
-        to redact (no active redactor, a video, or a missing file). Unsafe (False) means an active
-        redactor could not read the file, so the caller must not emit it.
-        """
-        if not self.redactor.active or path.suffix == ".mp4" or not path.exists():
+    def _scrub_or_record(self, name: str) -> bool:
+        """Close a reserved recording's redaction loop; return whether it is safe to ship."""
+        if PurePosixPath(name).suffix == ".mp4":
+            self._writer.record_unmasked(name)
             return True
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            return False
-        redacted = self.redactor.redact_text(text)
-        if redacted != text:
-            path.write_text(redacted, encoding="utf-8")
-        return True
+        return self._writer.scrub_reserved(name)

@@ -1670,14 +1670,14 @@ def test_run_and_report_writes_owner_only_artifacts(tmp_path: Path) -> None:
 
 def test_write_network_stamps_the_given_provider(tmp_path: Path) -> None:
     from bajutsu.evidence.redaction import Redactor
+    from bajutsu.evidence.sink import RunArtifactWriter
     from bajutsu.runner.pipeline import _write_network
 
     ex = NetworkExchange(method="GET", path="/a", status=200)
     art = _write_network(
         [(ex, 1.0)],
-        tmp_path,
+        RunArtifactWriter(tmp_path, Redactor(None)),
         "00-s",
-        Redactor(None),
         wall_offset_s=0.0,
         provider="fake (fallback)",
     )
@@ -1690,11 +1690,15 @@ def test_write_network_started_at_is_an_absolute_wall_clock_instant(tmp_path: Pa
     # (received + offset - duration) rather than an already-relative number (BE-0348). No clamp: an
     # absolute epoch has no floor to clamp to, and the report applies its own at render time.
     from bajutsu.evidence.redaction import Redactor
+    from bajutsu.evidence.sink import RunArtifactWriter
     from bajutsu.runner.pipeline import _write_network
 
     ex = NetworkExchange(method="GET", path="/a", status=200, durationMs=250.0)
     art = _write_network(
-        [(ex, 1.0)], tmp_path, "00-s", Redactor(None), wall_offset_s=1_700_000_000.0
+        [(ex, 1.0)],
+        RunArtifactWriter(tmp_path, Redactor(None)),
+        "00-s",
+        wall_offset_s=1_700_000_000.0,
     )
     assert art is not None
     data = json.loads((tmp_path / "00-s" / "network.json").read_text(encoding="utf-8"))

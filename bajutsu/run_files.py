@@ -35,9 +35,18 @@ class RunArtifactReader:
         return self._resolve(name).exists()
 
     def names(self, pattern: str = "*") -> list[str]:
-        """Artifact names matching a glob, relative to the run directory, in sorted order."""
+        """Artifact names matching a glob, relative to the run directory, in sorted order.
+
+        Symlinks are skipped: `is_file()` follows them, so one planted in a run directory and
+        pointing outside would otherwise be listed — and then read — as if it belonged to the run.
+        A real run never contains any, so this only ever drops an escape.
+        """
         root = self._dir
-        return sorted(str(p.relative_to(root)) for p in root.glob(pattern) if p.is_file())
+        return sorted(
+            p.relative_to(root).as_posix()
+            for p in root.glob(pattern)
+            if p.is_file() and not p.is_symlink()
+        )
 
     def read_text(self, name: str) -> str:
         return self._resolve(name).read_text(encoding="utf-8")

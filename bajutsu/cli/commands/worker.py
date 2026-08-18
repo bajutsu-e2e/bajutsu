@@ -26,6 +26,8 @@ import typer
 
 from bajutsu import simctl
 from bajutsu.backends import PLATFORMS
+from bajutsu.evidence.redaction import Redactor
+from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.object_store import content_type_for
 from bajutsu.serve import InMemoryLogBus
 from bajutsu.serve.capabilities import WORKER_CAPABILITIES_ENV, worker_capabilities
@@ -275,16 +277,20 @@ def _run_with_heartbeat(
 
 
 def _write_console_log(work: Path, run_id: str, bus: InMemoryLogBus, job_id: str) -> None:
-    """Write the job's buffered log to runs/<run_id>/console.log for upload."""
+    """Write the job's buffered log to runs/<run_id>/console.log for upload.
+
+    The log is whatever the run printed, so it goes through the sink like every other run artifact
+    (BE-0331). A worker holds no secret values of its own, so the redactor is inert and only the
+    sink's pattern backstop — which needs no configuration — reaches this text.
+    """
     run_dir = work / "runs" / run_id
     if not run_dir.is_dir():
         return
     lines = list(bus.stream(job_id, timeout=0.0))
     if not lines:
         return
-    (run_dir / "console.log").write_text(
-        "".join(line for line in lines if line is not None),
-        encoding="utf-8",
+    RunArtifactWriter(run_dir, Redactor(None)).write_text(
+        "console.log", "".join(line for line in lines if line is not None)
     )
 
 

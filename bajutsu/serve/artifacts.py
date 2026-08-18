@@ -17,6 +17,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from bajutsu.evidence.redaction import Redactor
+from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.report.archive import archive_run_dir
 from bajutsu.report.load import rerender_html
 from bajutsu.serve.helpers import list_crawl_runs, list_runs, valid_run_id
@@ -184,8 +186,12 @@ class LocalArtifactStore:
             shutil.rmtree(trashed, ignore_errors=True)
         shutil.move(str(live), str(trashed))
         # Stamp the real deletion time so the retention sweep doesn't key off the dir's mtime, which
-        # a rename doesn't touch (see `_DELETED_MARKER`).
-        (trashed / _DELETED_MARKER).write_text(datetime.now(UTC).isoformat(), encoding="utf-8")
+        # a rename doesn't touch (see `_DELETED_MARKER`). Through the sink like every other write
+        # into a run directory (BE-0331); the timestamp carries nothing to mask, but the boundary is
+        # the location's property rather than this caller's judgement.
+        RunArtifactWriter(trashed, Redactor(None)).write_text(
+            _DELETED_MARKER, datetime.now(UTC).isoformat()
+        )
         return True
 
     def restore_run(self, run_id: str) -> bool:
