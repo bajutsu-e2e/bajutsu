@@ -225,6 +225,23 @@ def test_scenarios_upload_route_delegates_like_stdlib(tmp_path: Path) -> None:
     assert body == {"ok": True, "scenarios": [{"name": "alpha.yaml", "overwritten": False}]}
 
 
+def test_scenarios_upload_route_uses_the_smaller_wire_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The FastAPI leg reads its own `MAX_SCENARIO_ZIP_TOTAL_BYTES` (app.py's imported name), so the
+    # smaller-than-/api/upload cap is FastAPI-specific code the stdlib wire-cap test can't reach:
+    # dropping the route's `cap=` would otherwise leave this route on the 1 GiB bundle cap silently.
+    from bajutsu.serve.server import app as app_mod
+
+    monkeypatch.setattr(app_mod, "MAX_SCENARIO_ZIP_TOTAL_BYTES", 4)
+    resp = _client(_state(tmp_path)).post(
+        "/api/scenarios/upload?target=demo",
+        content=b"more than four bytes",
+        headers={"content-type": "application/zip"},
+    )
+    assert resp.status_code == 413 and "too large" in resp.json()["error"]
+
+
 def test_compose_route_binds_like_stdlib(tmp_path: Path) -> None:
     # The FastAPI shell's `/api/compose` route (BE-0268) reaches the same shared `ops.bind_composition`
     # as the stdlib handler; the compose logic itself is covered once via the stdlib suite

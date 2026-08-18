@@ -125,7 +125,13 @@ async function chooseReplayUpload(file){
       // own — deliberately: it's the same route the Author editor's Save button already uses, so a
       // large single file was always postable this way, and a cap here would be new-only-to-upload
       // policy on an existing, uncapped write path rather than a gap this feature introduced.
-      const text=await file.text();
+      const buf=await file.arrayBuffer();
+      let text;
+      // Decode strictly, matching read_scenario_zip's UTF-8 check on the .zip leg: File.text()
+      // substitutes U+FFFD instead of failing, so a Shift-JIS scenario would be saved as mojibake
+      // and still reported as "added".
+      try{text=new TextDecoder('utf-8',{fatal:true}).decode(buf);}
+      catch(_){setStatus(status,file.name+' is not valid UTF-8 text','ng');return;}
       const r=await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({target,path:file.name,yaml:text})});
       d=await r.json();
