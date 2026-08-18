@@ -307,6 +307,10 @@ def read_scenario_zip(zip_path: Path) -> dict[str, str]:
             name = _scenario_entry_name(info.filename)
             if name is None:
                 continue
+            if name in out:
+                # Two entries mapping to one scenario name: dropping the loser silently is the same
+                # "reported success, file never added" outcome the rejections above exist to prevent.
+                raise BundleError(f"duplicate scenario entry: {name!r}")
             _check_ratio(info)
             try:
                 with archive.open(info) as src:

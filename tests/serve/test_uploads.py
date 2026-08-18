@@ -345,6 +345,20 @@ def test_read_scenario_zip_skips_a_nested_non_scenario_entry(tmp_path: Path) -> 
     assert read_scenario_zip(_written(tmp_path, blob)) == {"smoke.yaml": "- name: a\n  steps: []\n"}
 
 
+def test_read_scenario_zip_rejects_duplicate_scenario_entries(tmp_path: Path) -> None:
+    # A zip may legally carry the same member name twice (an appending build script, or
+    # zipfile.writestr called twice); both entries pass _scenario_entry_name and would otherwise
+    # collapse via last-wins, reporting success while quietly dropping the file the caller meant
+    # to upload — the same failure mode the .yml / case-variant / nested-*.yaml rejections above
+    # exist to prevent.
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("alpha.yaml", b"- name: a\n  steps: []\n")
+        zf.writestr("alpha.yaml", b"- name: a-v2\n  steps: []\n")
+    with pytest.raises(BundleError, match="duplicate scenario entry"):
+        read_scenario_zip(_written(tmp_path, buf.getvalue()))
+
+
 def test_read_scenario_zip_rejects_a_top_level_yml_extension(tmp_path: Path) -> None:
     # The scenario model only ever recognizes *.yaml (valid_scenario_ref, the runnable glob); a
     # *.yml is reported loudly rather than silently skipped like unrelated cruft, so a mixed zip
