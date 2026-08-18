@@ -86,9 +86,9 @@ def test_an_uncovered_language_fails_loudly_and_names_what_is_covered() -> None:
 
 
 def test_every_covered_language_answers_both_choices() -> None:
-    # A half-filled entry would make `deny` resolve while `grant` raised a KeyError mid-run. The
-    # Both axes come from the types themselves, so neither a fourth prompt nor a third choice can be
-    # added to the table while this guard keeps checking only what was named here (BE-0369).
+    # A half-filled entry would make `deny` resolve while `grant` raised a KeyError mid-run. Both
+    # axes come from the types themselves, so neither a fourth prompt nor a third choice can reach
+    # the table without this guard covering it too (BE-0369).
     for prompt in get_args(SystemAlertPrompt):
         for language in covered_languages(prompt):
             for choice in get_args(SystemAlertChoice):

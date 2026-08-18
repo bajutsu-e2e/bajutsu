@@ -24,6 +24,10 @@
   steps:
     - setClipboard: { text: "bajutsu-cross-clip" }   # written from outside the app (BE-0052)
     - tap: { label: "Permissions", traits: [button] }
+    # The tab transition is asynchronous, so wait for the tab's own first control before scrolling —
+    # otherwise the scroll can swipe the launch tab (system.yaml and permission_system_alert.yaml
+    # hold the same wait for the same reason).
+    - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
     - scroll: { to: { id: [sys.paste.value, sys_paste_value] }, direction: down }
     - tap: { id: [sys.paste, sys_paste] }            # the app reads UIPasteboard.general.string
     # Name the intent, not the text (BE-0320): the run pins the Simulator's system language to the
