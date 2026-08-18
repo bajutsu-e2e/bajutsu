@@ -9,6 +9,7 @@
 | Author | [@akira-matsuda](https://github.com/akira-matsuda) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0340") |
+| Implementing PR | [#1653](https://github.com/bajutsu-e2e/bajutsu/pull/1653) |
 | Topic | Surfacing CLI features in the serve Web UI |
 | Related | [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md), [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md), [BE-0273](../BE-0273-serve-replay-scenario-viewer/BE-0273-serve-replay-scenario-viewer.md) |
 <!-- /BE-METADATA -->
