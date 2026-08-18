@@ -1499,6 +1499,11 @@ class AdbDriver(CoordinateTreeDriver):
             "selectOption は <select> を持つ web バックエンド専用; Android ネイティブに <select> はない"
         )
 
+    def set_picker_value(self, sel: base.Selector, value: str) -> None:
+        raise base.UnsupportedAction(
+            "setPickerValue は iOS の picker wheel 専用; Android に相当するコントロールはない"
+        )
+
     def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
         # BE-0316 is iOS-only: Android surfaces a system permission dialog in the topmost-window
         # dump, so an ordinary `tap` already reaches it. Preflight rejects the step before any device

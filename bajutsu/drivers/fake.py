@@ -73,6 +73,12 @@ class FakeDriver:
         # The SpringBoard alert buttons `handle_system_alert` resolves over (BE-0316); tests seed
         # this to stand in for the out-of-process prompt the real backend queries on-device.
         self.system_alert_buttons: list[base.Element] = []
+        # The rows each seeded picker wheel offers `set_picker_value` (BE-0356), keyed by `id()` of
+        # the `Element` object in `screen` rather than by its identifier: a multi-component picker's
+        # sibling wheels (a year wheel beside a month wheel) carry no identifier of their own — they
+        # are told apart by `within` / `traits` / `index` — so an identifier key could not separate
+        # them. Seeded after construction, like `system_alert_buttons`.
+        self.picker_wheel_options: dict[int, list[str]] = {}
         self._react = react
         self.actions: list[tuple[str, object]] = []  # log of performed actions
         # The concrete actuations this driver performed, drained per step by the run loop. The fake
@@ -217,6 +223,26 @@ class FakeDriver:
         self._log_target("selectOption", base.resolve_unique(self.screen, sel))
         self._record("select_option", (sel, option))
 
+    def set_picker_value(self, sel: base.Selector, value: str) -> None:
+        # Same resolution discipline as every other action: zero -> ElementNotFound, ambiguous ->
+        # AmbiguousSelector, `index` picks the nth. Then the seeded rows decide, because an absent
+        # value is the behavior this fake exists to make testable without a Simulator — the real
+        # backend can only detect it by reading the wheel's value back (BE-0356).
+        wheel = base.resolve_unique(self.screen, sel)
+        options = self.picker_wheel_options.get(id(wheel))
+        if options is None:
+            # A resolved wheel with no seed is a broken fixture, not an absent value — a stale key
+            # (a `react` callback that rebuilt `screen`) would otherwise let an absent-value test
+            # pass for the wrong reason. Loud and distinct, so it can never be mistaken for one.
+            raise LookupError(
+                f"fixture error: no picker_wheel_options seeded for the wheel matching {sel!r}"
+            )
+        if value not in options:
+            raise base.ElementNotFound(f"picker wheel has no value {value!r}: {sel!r}")
+        # `value` never reaches the record (it can hold a resolved secret), as with `select_option`.
+        self._log_target("setPickerValue", wheel)
+        self._record("set_picker_value", (sel, value))
+
     def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
         # Resolve `sel` over the seeded alert buttons with the same discipline the real backend uses
         # (BE-0316): zero → ElementNotFound, ambiguous → AmbiguousSelector, `index` picks the nth.
@@ -252,6 +278,7 @@ class FakeDriver:
             base.Capability.SELECT_OPTION,
             base.Capability.TEXT_SELECTION,
             base.Capability.HANDLE_SYSTEM_ALERT,
+            base.Capability.PICKER_WHEEL,
         }
     )
 

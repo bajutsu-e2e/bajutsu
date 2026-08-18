@@ -1,4 +1,5 @@
 import Foundation
+import ObjCExceptionCatcher
 
 /// Re-issue a synthesized actuation until the accessibility tree reflects a change.
 ///
@@ -52,4 +53,72 @@ public func actuateUntilStateChanges(
         actuate()
         if let before, let after = signature(), after != before { return }
     }
+}
+
+/// Read a projection of observable state until it holds at `wanted` on two consecutive samples.
+///
+/// The read-back half of a set-a-value actuation, where the platform reports nothing: XCUITest's
+/// `adjust(toPickerWheelValue:)` returns `Void`, never throws, and records a value it could not
+/// reach as a soft `XCTIssue` the resident runner's `continueAfterFailure` swallows (BE-0356). The
+/// only way to know whether the value landed is to look.
+///
+/// One read is not enough, in both directions. A wheel still settling its deceleration reports the
+/// rows it passes, so a single early read would call a value the wheel does have absent — and, for
+/// the same reason, a single read that happens to catch the wheel *passing through* the wanted row
+/// on its way to resting one row past it would call a value that never landed present. The second
+/// error is the dangerous one: it reports success for a wheel left on the wrong row, which is
+/// exactly the silent, approximate outcome prime directive 2 exists to rule out. Requiring the
+/// value to survive a second consecutive read costs one extra query in the common case (the wheel
+/// is already at rest) and rejects a value merely passed through.
+///
+/// Sampling bounds the wait without a fixed sleep, which prime directive 2 also rules out: each
+/// sample is a real query whose own round trip is the only pacing, so the bound is a number of
+/// observations rather than a guessed duration. A wheel that genuinely has no such row costs
+/// exactly `maxSamples` reads and then fails loudly, rather than looping or passing on a
+/// best-effort landing.
+///
+/// A sample that cannot be read means *couldn't observe*, never *matched* — the same rule
+/// `actuateUntilStateChanges` follows, so a transiently failed read keeps sampling instead of
+/// deciding early. It also breaks a run of matches, since a value that could not be read has not
+/// been shown to be holding. Both a `nil` return and a raised `NSException` count as unreadable:
+/// reading an `XCUIElement` property raises while the UI is in flux, and a wheel mid-deceleration is
+/// UI in flux by definition, so the raise is caught here rather than left to `Router`'s handler-wide
+/// shield. Left to the shield it would resolve the whole request to `.stale`, and the driver would
+/// fail the step with "element vanished (stale handle)" for a wheel that never went anywhere —
+/// while this function's own unreadable-sample path, the one its tests cover, could never run.
+///
+/// Unlike `actuateUntilStateChanges` this actuates nothing and reports its outcome: the caller needs
+/// to distinguish "landed" from "hit the cap" in order to answer the driver at all.
+///
+/// - Parameters:
+///   - wanted: The value the state must hold at.
+///   - maxSamples: The most reads to take (clamped to at least 2, the minimum a run of two needs).
+///   - sample: The projection to read; `nil` when it could not be read.
+/// - Returns: Whether two consecutive samples equalled `wanted`.
+public func settlesTo(
+    _ wanted: String,
+    maxSamples: Int,
+    sample: () -> String?
+) -> Bool {
+    var consecutiveMatches = 0
+    for _ in 0..<max(2, maxSamples) {
+        consecutiveMatches = caughtSample(sample) == wanted ? consecutiveMatches + 1 : 0
+        if consecutiveMatches == 2 { return true }
+    }
+    return false
+}
+
+/// Read `sample`, reporting a raised `NSException` as `nil` — an unreadable sample, not a mismatch.
+///
+/// Swift's `do`/`catch` never intercepts an Objective-C `NSException`, so without this an
+/// `XCUIElement` property read that raises unwinds past `settlesTo` entirely (see its doc comment
+/// for what that costs).
+private func caughtSample(_ sample: () -> String?) -> String? {
+    var value: String?
+    do {
+        try ObjCExceptionCatcher.catchException { value = sample() }
+    } catch {
+        return nil
+    }
+    return value
 }

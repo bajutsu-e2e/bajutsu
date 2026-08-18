@@ -35,6 +35,11 @@ public enum TapResult {
     /// Resolved to a live element, but it is not reachable at its own point right now (covered by
     /// another on-screen element, or the platform's own hit-test refused it).
     case notHittable
+    /// Resolved to a live element and acted on it, but the requested value never became the
+    /// element's own value — a picker wheel with no such row (BE-0356). Its own case rather than a
+    /// reuse of `.notFound`, whose "no actuatable element" meaning would misreport a wheel that
+    /// resolved perfectly well and simply does not carry the value.
+    case valueNotFound
 }
 
 /// Abstraction over XCUITest element access. The library never imports XCTest;
@@ -84,6 +89,15 @@ public protocol ElementProviding: AnyObject {
 
     /// Copy the active selection to the clipboard (BE-0265).
     func copySelection() -> TapResult
+
+    /// Move the picker wheel identified by its backing reference to the row whose value is `value`
+    /// (BE-0356), reporting `.valueNotFound` when the wheel never shows it.
+    ///
+    /// The detection cannot be left to the platform: `adjust(toPickerWheelValue:)` neither throws
+    /// nor returns anything, and records a missed value as a soft `XCTIssue` that the resident
+    /// runner's `continueAfterFailure` deliberately tolerates. An implementation must therefore read
+    /// the wheel's resulting value back and compare it itself.
+    func setPickerValue(backingElement: AnyObject, value: String) -> TapResult
 
     /// Snapshot the buttons of a presented iOS SpringBoard system alert (a permission prompt),
     /// empty when none is up (BE-0316). The alert is out of the app's process, so this queries a

@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0356](BE-0356-xcuitest-picker-wheel-adjust-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0356") |
+| 実装 PR | [#1648](https://github.com/bajutsu-e2e/bajutsu/pull/1648) |
 | トピック | シナリオ記述機能 |
 <!-- /BE-METADATA -->
 
@@ -32,7 +33,7 @@ XCUITest 自身は、この問題を `XCUIElement.adjust(toPickerWheelValue:)` �
 
 **スキーマ。** `Step`（`bajutsu/scenario/models/steps.py`）は判別共用体ではなく、すべてのアクションが optional field として並び、`_one_action` が「ちょうど1つだけ設定されていること」を強制します。`bajutsu/scenario/models/actions.py` に既存の `Drag` / `Swipe` と同じパターンで `SetPickerValue(sel: Selector, value: str)` を定義し、`Step` に `set_picker_value` フィールドを1つ追加すれば、必要なスキーマ変更はそれで終わりです。`_STEP_ACTIONS`（`Step.model_fields` から導出）、`STEP_ACTIONS`（`bajutsu/scenario/models/__init__.py`）、「ちょうど1つ」というバリデーション、`_RUNTIME_ACTIONS`（`bajutsu/orchestrator/actions/_registry.py`）、`_ACTION_KEYS`（`bajutsu/analysis/impact.py`）は、いずれもそのフィールドから自動的に追従します。
 
-**複数コンポーネントのホイールへのアドレス指定。** ホイール専用モードの `UIDatePicker` は、年と月を2つの独立したコンポーネントとしてレイアウトし、それぞれが `pickerWheel` 型の要素になります。ランナーのスナップショット走査（`XcuitestElementProvider.swift` の `SnapshotNode` ツリー）はすでに要素の子を汎用的に再帰しているため、この2つのコンポーネントは今日すでに個別のノードとして現れており、親の `UIDatePicker` だけが現れるわけではありません。`Selector`（`bajutsu/scenario/models/selector.py`）は、まさにこの種の絞り込みのために `within` / `traits` / `index` をすでに持っています。`handleSystemAlert` が複数のボタンから1つを選ぶのに使っているのと同じ `index` の使い方です。`setPickerValue` の `sel` は常にこうしたコンポーネントの1つを指すため、`value` は単純な文字列のままにできます。`within: { id: birthdate.picker }, traits: [pickerWheel], index: 0` で年のホイールを、`index: 1` で月のホイールを選び、`value: "2016年"` と `value: "4月"` はそれぞれ別のステップになります。これは、ほかのすべてのセレクタベースのステップがすでに持っているアドレス指定の仕組みを再利用するものであり、`setPickerValue` 専用の第二の指定方法を新たに増やすものではありません。
+**複数コンポーネントのホイールへのアドレス指定。** ホイール専用モードの `UIDatePicker` は、年と月を2つの独立したコンポーネントとしてレイアウトし、それぞれが `pickerWheel` 型の要素になります。ランナーのスナップショット走査（`XcuitestElementProvider.swift` の `SnapshotNode` ツリー）はすでに要素の子を汎用的に再帰しているため、この2つのコンポーネントは今日すでに個別のノードとして現れており、親の `UIDatePicker` だけが現れるわけではありません。`Selector`（`bajutsu/scenario/models/selector.py`）は、まさにこの種の絞り込みのために `within` / `traits` / `index` をすでに持っています。`handleSystemAlert` が複数のボタンから1つを選ぶのに使っているのと同じ `index` の使い方です。`setPickerValue` の `sel` は常にこうしたコンポーネントの1つを指すため、`value` は単純な文字列のままにできます。`within: { id: birthdate.picker }, traits: [pickerWheel], index: 0` で年のホイールを、`index: 1` で月のホイールを選び、`value: "2016年"` と `value: "4月"` はそれぞれ別のステップになります。実機では、`within` が名指しするコンテナがコンポーネントを包含している必要があります。iOS が各ホイールを、ピッカーよりも高いフレームで報告するためです。識別子は `UIDatePicker` 自体ではなく、外側のコンテナに付けます。これは、ほかのすべてのセレクタベースのステップがすでに持っているアドレス指定の仕組みを再利用するものであり、`setPickerValue` 専用の第二の指定方法を新たに増やすものではありません。
 
 **実行時のディスパッチ。** `bajutsu/orchestrator/actions/handlers/gestures.py` に、`_do_tap` と同じ形で `@_handler("set_picker_value")` の関数を追加し、`driver.set_picker_value(step.set_picker_value.sel, step.set_picker_value.value)` を呼びます。これを追加しないと、フィールドが設定された瞬間に `_registry.py` の `_do_action` が `AssertionError("unhandled action")` を送出します。スキーマの追加だけでは配線されない、唯一の実行時の部品がこのハンドラです。
 
@@ -85,15 +86,15 @@ XCUITest 自身は、この問題を `XCUIElement.adjust(toPickerWheelValue:)` �
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] スキーマ: `SetPickerValue` アクションモデル、`Step.set_picker_value` フィールド
-- [ ] 実行時: `gestures.py` のハンドラ、`Driver.set_picker_value`（xcuitest / adb / playwright /
+- [x] スキーマ: `SetPickerValue` アクションモデル、`Step.set_picker_value` フィールド
+- [x] 実行時: `gestures.py` のハンドラ、`Driver.set_picker_value`（xcuitest / adb / playwright /
       webview / xcuitest_live / fake）、`Capability.PICKER_WHEEL` と preflight のエントリ
-- [ ] Swift ランナー: `/setPickerValue` ルート、`ElementProviding.setPickerValue`、
+- [x] Swift ランナー: `/setPickerValue` ルート、`ElementProviding.setPickerValue`、
       値の読み戻しで存在しない選択肢を検出する `XcuitestElementProvider` の実装、対応する
       `_actuate` のステータス分岐（`bajutsu/drivers/xcuitest.py`）
-- [ ] codegen: xcuitest emitter のケース
-- [ ] ドキュメント: `docs/scenarios.md` / `docs/drivers.md` / `docs/selectors.md`（両言語）
-- [ ] テスト: 値が見つかる場合、値が存在しない場合（`ElementNotFound`）、ケーパビリティ不足による
+- [x] codegen: xcuitest emitter のケース
+- [x] ドキュメント: `docs/scenarios.md` / `docs/drivers.md` / `docs/selectors.md`（両言語）
+- [x] テスト: 値が見つかる場合、値が存在しない場合（`ElementNotFound`）、ケーパビリティ不足による
       preflight 失敗、複数コンポーネント（年・月）の場合、`PICKER_WHEEL` の `driver_conformance.py` ケース
 
 ## 参考

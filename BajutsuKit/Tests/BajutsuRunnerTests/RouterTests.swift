@@ -330,6 +330,109 @@ final class RouterTests: XCTestCase {
         return try XCTUnwrap(elements.first?["handle"] as? String)
     }
 
+    // MARK: - /setPickerValue
+
+    func testSetPickerValueSendsValueToProvider() throws {
+        let provider = FakeElementProvider()
+        let backing = NSObject()
+        provider.elementsToReturn = [
+            ElementSnapshot(
+                identifier: "form.school", label: nil, value: "高校",
+                traits: ["pickerWheel"], frame: (0, 0, 200, 100), backingElement: backing
+            ),
+        ]
+        let router = makeRouter(provider)
+        let handle = try extractHandle(from: router)
+
+        let body = try JSONSerialization.data(
+            withJSONObject: ["handle": handle, "value": "大学"]
+        )
+        let response = router.handle(
+            HTTPRequest(method: "POST", path: "/setPickerValue", body: body)
+        )
+        XCTAssertEqual(parseJSON(response)?["status"] as? String, "ok")
+        XCTAssertEqual(provider.setPickerValueCalls.count, 1)
+        XCTAssertTrue(provider.setPickerValueCalls[0].backingElement === backing)
+        XCTAssertEqual(provider.setPickerValueCalls[0].value, "大学")
+    }
+
+    func testSetPickerValueAbsentValueReportsValueNotFound() throws {
+        // The wheel resolves and is adjusted, but never shows the value — its own status, distinct
+        // from `not-found`, so the Python driver can name the value rather than the selector (BE-0356).
+        let provider = FakeElementProvider()
+        provider.setPickerValueResult = .valueNotFound
+        provider.elementsToReturn = [
+            ElementSnapshot(
+                identifier: "form.school", label: nil, value: "高校",
+                traits: ["pickerWheel"], frame: (0, 0, 200, 100), backingElement: NSObject()
+            ),
+        ]
+        let router = makeRouter(provider)
+        let handle = try extractHandle(from: router)
+
+        let body = try JSONSerialization.data(
+            withJSONObject: ["handle": handle, "value": "存在しない"]
+        )
+        let response = router.handle(
+            HTTPRequest(method: "POST", path: "/setPickerValue", body: body)
+        )
+        XCTAssertEqual(parseJSON(response)?["status"] as? String, "value-not-found")
+    }
+
+    func testSetPickerValueStaleHandleReturnsStale() throws {
+        let provider = FakeElementProvider()
+        provider.elementsToReturn = [
+            ElementSnapshot(
+                identifier: "a", label: nil, value: nil,
+                traits: ["pickerWheel"], frame: (0, 0, 1, 1), backingElement: NSObject()
+            ),
+        ]
+        let router = makeRouter(provider)
+        let handle = try extractHandle(from: router)
+
+        provider.elementsToReturn = [
+            ElementSnapshot(
+                identifier: "b", label: nil, value: nil,
+                traits: ["pickerWheel"], frame: (0, 0, 1, 1), backingElement: NSObject()
+            ),
+        ]
+        _ = router.handle(HTTPRequest(method: "GET", path: "/elements", body: nil))
+
+        let body = try JSONSerialization.data(withJSONObject: ["handle": handle, "value": "x"])
+        let response = router.handle(
+            HTTPRequest(method: "POST", path: "/setPickerValue", body: body)
+        )
+        XCTAssertEqual(parseJSON(response)?["status"] as? String, "stale")
+        XCTAssertEqual(provider.setPickerValueCalls.count, 0)
+    }
+
+    func testSetPickerValueMissingHandleReturns400() throws {
+        let body = try JSONSerialization.data(withJSONObject: ["value": "x"])
+        let response = makeRouter().handle(
+            HTTPRequest(method: "POST", path: "/setPickerValue", body: body)
+        )
+        XCTAssertEqual(response.statusCode, 400)
+    }
+
+    func testSetPickerValueMissingValueReturns400() throws {
+        let provider = FakeElementProvider()
+        provider.elementsToReturn = [
+            ElementSnapshot(
+                identifier: "a", label: nil, value: nil,
+                traits: ["pickerWheel"], frame: (0, 0, 1, 1), backingElement: NSObject()
+            ),
+        ]
+        let router = makeRouter(provider)
+        let handle = try extractHandle(from: router)
+
+        let body = try JSONSerialization.data(withJSONObject: ["handle": handle])
+        let response = router.handle(
+            HTTPRequest(method: "POST", path: "/setPickerValue", body: body)
+        )
+        XCTAssertEqual(response.statusCode, 400)
+        XCTAssertEqual(provider.setPickerValueCalls.count, 0)
+    }
+
     // MARK: - /gesture
 
     func testGesturePinchSendsScaleToProvider() throws {

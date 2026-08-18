@@ -404,6 +404,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `select` | `select: { into: <Selector>, mode?: "all" }` | focus the field and select its content (`mode` default `all`); the web context raises — the iOS (XCUITest) backend supports it natively, and codegen emits the native equivalent |
 | `copy` | `copy: {}` | copy the active selection to the clipboard; requires a prior `select`; the web context raises — the iOS (XCUITest) backend supports it natively |
 | `selectOption` | `selectOption: { sel: <Selector>, option: "..." }` | set a web `<select>` to the option with this value; web only (iOS / Android raise) |
+| `setPickerValue` | `setPickerValue: { sel: <Selector>, value: "..." }` | move a wheel-style picker (`UIPickerView`, a wheel-mode `UIDatePicker`) to the row with this value ([below](#setpickervalue)); iOS (XCUITest) only. `sel` addresses one wheel — a multi-component picker's siblings are separated by `within` / `traits` / `index`, one step each |
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` or `swipe: { from: [x,y], to: [x,y] }` | selector form and coordinate form cannot mix; the directional form **scrolls** |
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | a real pointer **drag** of the element (a handle / divider / slider), not a scroll |
 | `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, maxScrolls?: <int> }` | scroll (non-inertially) until `to` is on-screen, or fail at a bound; `direction` is **scroll** direction (default `down`), the inverse of `swipe`'s |
@@ -467,6 +468,68 @@ value matches what a `value` assertion reads back from the `<select>`, so a sele
 assertable. `selectOption` is a web-only action — a `<select>` has no native counterpart on iOS or Android,
 so those backends fail the step with a clear "unsupported action" reason rather than doing nothing.
 
+### `setPickerValue`
+
+```yaml
+- setPickerValue:                                                # move the wheel to the "大学" row
+    sel: { within: { id: form.school }, traits: [pickerWheel] }
+    value: "大学"
+```
+
+A wheel-style picker — a `UIPickerView`, or a `UIDatePicker` switched to a wheel-only mode — is an
+ordinary iOS form control, and `setPickerValue` is the only step that can set one. Its rows are not
+separately addressable elements, so `tap`, which addresses a resolved handle, cannot land on a
+specific one. The coordinate-driven steps fare no better: `swipe` / `drag` / `scroll` are bounded or
+directional drags that can spin a wheel roughly toward a value but cannot guarantee stopping on it,
+and `tapPoint` can only hit whatever row the wheel already shows. Asserting the result of any of
+those would depend on a drag distance matching the row height by chance — the approximate action
+Bajutsu rules out everywhere else. `setPickerValue` instead calls XCUITest's own
+`adjust(toPickerWheelValue:)` on the element the selector already resolved, so it is handle-based
+the way `tap` is rather than coordinate-based the way `swipe` is.
+
+`sel` must resolve the wheel itself, which is seldom the element carrying the identifier. A
+`UIPickerView` publishes its identifier on the picker, and exposes the wheel as a separate child.
+A selector naming that identifier alone resolves the parent instead, and the step fails.
+`adjust(toPickerWheelValue:)` raises on any element that is not itself a wheel. Pairing the
+identifier with the `pickerWheel` trait, as above, reaches the child.
+
+A value the wheel does not carry **fails the step**, naming the value, rather than leaving the wheel
+wherever it stopped — so the following assertion tests the app, not the gesture.
+
+A multi-component picker (a year wheel beside a month wheel) exposes each component as its own
+`pickerWheel` element, and `sel` always addresses exactly one of them. Use the `within` / `traits` /
+`index` fields every selector already carries, one step per component. Both the component order and
+the row labels follow the locale the run pins. The example below assumes `ja_JP`, whose wheels read
+year | month | day. Under the config default `en_US` the wheels read month | day | year, with rows
+`May` and `2016`. `demos/showcase/scenarios/picker_wheel.yaml` pins no locale, and so reaches that
+second layout:
+
+```yaml
+- setPickerValue:
+    sel: { within: { id: form.birthdate }, traits: [pickerWheel], index: 0 }   # the year wheel
+    value: "2016年"
+- setPickerValue:
+    sel: { within: { id: form.birthdate }, traits: [pickerWheel], index: 1 }   # the month wheel
+    value: "5月"
+```
+
+`within` scopes by frame containment, so its container must be large enough to hold the wheels.
+A wheel-mode `UIDatePicker` fails that test on its own. iOS lays the components out at their
+intrinsic height, then clips them to the picker. Every component reports a frame taller than the
+picker publishing it. A `within` naming the date picker then matches nothing at all. Put the
+identifier on a surrounding container whose frame covers the components instead. The showcase screen
+takes that route: `demos/showcase/ios/swiftui/Sources/PickerView.swift`. The screen groups the
+caption, the wheel, and the mirror text under one identifier.
+
+This also works around the `datePicker` classification gap ([selectors](selectors.md#normalized-traits-trait)):
+a `UIDatePicker`'s own container element falls to `other`, but the step addresses the wheel children
+underneath it, which are classified `pickerWheel`, so the gap never bites here.
+
+`setPickerValue` is an iOS (XCUITest) action. A picker wheel has no counterpart on Android or the
+web — a web `<select>` expresses the same intent, and [`selectOption`](#selectoption) sets that — so
+those backends have no `pickerWheel` capability and the scenario is rejected at preflight, before any
+device work starts, with the step's location named.
+
 ### `web` (entering a WebView's DOM)
 
 ```yaml
@@ -487,8 +550,8 @@ modifiers are not allowed on the `web` step itself. The step needs a WebView bri
 (`BAJUTSU_WEBVIEW_PORT`); without one it fails cleanly rather than doing nothing. This first slice
 supports `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` inside the block. `longPress` /
 `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` /
-`pinch` / `rotate` / `handleSystemAlert` are not yet reachable there, and each fails with a clear
-"not supported in web context" reason.
+`pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` are not reachable there, and each fails
+with a clear "not supported in web context" reason.
 
 ### `swipe`
 

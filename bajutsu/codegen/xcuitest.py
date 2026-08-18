@@ -222,6 +222,11 @@ def _emit_step(step: Step) -> list[str]:
         return [
             f"{_element(step.long_press.sel.as_selector())}.press(forDuration: {step.long_press.duration})"
         ]
+    if step.set_picker_value is not None:
+        # The native idiom, one call on the resolved wheel (BE-0356) — a generated test lands on the
+        # row the same deterministic way `run` does, with no coordinate drag to reproduce.
+        spv = step.set_picker_value
+        return [f"{_element(spv.sel.as_selector())}.adjust(toPickerWheelValue: {_s(spv.value)})"]
     if step.handle_system_alert is not None:
         # Wait for the SpringBoard prompt's button (bounded by the step's own timeout), then tap it —
         # exactly how a hand-written XCUITest clears a permission alert (BE-0316). Native idiom, no
