@@ -279,22 +279,34 @@ def _content(
     return content
 
 
-def _secure_field_ids(elements: list[base.Element]) -> frozenset[str]:
-    """The identifiers of the screen's platform-marked masked inputs (BE-0331).
+@dataclass(frozen=True)
+class _SecureFields:
+    """How the screen's platform-marked masked inputs can be addressed (BE-0331).
 
     A value the guide invents for such a field is masked in the screen map, and the map keeps no
     element to read the trait back from, so it has to be carried on the action the guide proposes.
+    Labels are collected beside identifiers because the tool schema invites label targeting for an
+    id-less element — the action that would otherwise reach a password field unmarked.
     """
-    return frozenset(
-        i
-        for el in elements
-        if (i := el.get("identifier")) and base.Trait.SECURE_TEXT_FIELD in (el.get("traits") or [])
+
+    ids: frozenset[str]
+    labels: frozenset[str]
+
+    def covers(self, target: str, label: str | None) -> bool:
+        """Whether an action addressed this way enters a masked input."""
+        return bool(target and target in self.ids) or bool(label and label in self.labels)
+
+
+def _secure_fields(elements: list[base.Element]) -> _SecureFields:
+    """The identifiers and labels of the screen's platform-marked masked inputs."""
+    marked = [el for el in elements if base.Trait.SECURE_TEXT_FIELD in (el.get("traits") or [])]
+    return _SecureFields(
+        ids=frozenset(i for el in marked if (i := el.get("identifier"))),
+        labels=frozenset(v for el in marked if (v := el.get("label"))),
     )
 
 
-def _actions_from(
-    payload: dict[str, Any], cap: int, secure_ids: frozenset[str]
-) -> list[crawl.Action]:
+def _actions_from(payload: dict[str, Any], cap: int, secure: _SecureFields) -> list[crawl.Action]:
     """Turn the tool call's `actions` array into crawl Actions, skipping malformed entries and capping the count so one screen can't blow the step budget."""
     out: list[crawl.Action] = []
     for item in payload.get("actions") or []:
@@ -314,7 +326,7 @@ def _actions_from(
                     crawl.Action(
                         "fill",
                         fields=pairs,
-                        secure=any(fid in secure_ids for fid, _ in pairs),
+                        secure=any(secure.covers(fid, None) for fid, _ in pairs),
                     )
                 )
         else:
@@ -324,14 +336,15 @@ def _actions_from(
             if not target and not label:
                 continue  # need a stable selector to replay
             index = item.get("index")
+            name = str(label) if label is not None else None
             out.append(
                 crawl.Action(
                     kind,
                     target=target,
-                    label=str(label) if label is not None else None,
+                    label=name,
                     index=int(index) if isinstance(index, int) else None,
                     value=str(item["value"]) if kind == "type" and item.get("value") else None,
-                    secure=target in secure_ids,
+                    secure=secure.covers(target, name),
                 )
             )
         if len(out) >= cap:
@@ -339,10 +352,10 @@ def _actions_from(
     return out
 
 
-def _proposal_from(payload: dict[str, Any], cap: int, secure_ids: frozenset[str]) -> Proposal:
+def _proposal_from(payload: dict[str, Any], cap: int, secure: _SecureFields) -> Proposal:
     """Build a `Proposal` (actions + the model's `thought`) from the tool call's input."""
     return Proposal(
-        actions=_actions_from(payload, cap, secure_ids),
+        actions=_actions_from(payload, cap, secure),
         thought=str(payload.get("thought") or ""),
     )
 
@@ -377,7 +390,7 @@ class ClaudeActionProposer(ClaudeBackedAgent):
         candidates: list[crawl.Action],
         dismissed: tuple[str, ...],
     ) -> Proposal:
-        secure_ids = _secure_field_ids(elements)
+        secure = _secure_fields(elements)
         if self._redactor is not None:
             elements = self._redactor.redact_elements(elements)
         content = _content(elements, screenshot, candidates, dismissed, self._redactor)
@@ -396,6 +409,6 @@ class ClaudeActionProposer(ClaudeBackedAgent):
         block = response.first_tool_use()
         if block is None:
             return Proposal()
-        proposal = _proposal_from(block.input, self._max_actions, secure_ids)
+        proposal = _proposal_from(block.input, self._max_actions, secure)
         proposal.tokens = usage.of(response.usage).total_tokens
         return proposal

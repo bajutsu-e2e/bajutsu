@@ -141,12 +141,27 @@ def _with_cookie_linkage(names: set[str]) -> set[str]:
     return names | _COOKIE_HEADERS if names & _COOKIE_HEADERS else names
 
 
+def _masked(m: re.Match[str]) -> str:
+    """The key, then the placeholder — quoted when it replaces a quoted value.
+
+    The JSON pattern captures the value it consumed (group 2), and a bare placeholder in place of a
+    quoted one leaves `"token": [REDACTED]` behind: no longer parseable, which matters now that the
+    sink runs this pass over whole serialized documents. The other two patterns capture only the key,
+    hence the arity check.
+    """
+    consumed = m.group(2) if m.re.groups > 1 else ""
+    if consumed.startswith('"'):
+        return f'{m.group(1)}"{PLACEHOLDER}"'
+    return m.group(1) + PLACEHOLDER
+
+
 def _patterns(keys: list[str]) -> list[re.Pattern[str]]:
     """For each key, patterns that capture the key (group 1) and consume its value."""
     pats: list[re.Pattern[str]] = []
     for key in keys:
         k = re.escape(key)
-        # JSON: "key": "value"  or  "key": value
+        # JSON: "key": "value"  or  "key": value — group 2 is the consumed value, so `_masked` can
+        # tell a quoted value (whose quotes must survive) from a bare one.
         pats.append(re.compile(rf'("{k}"\s*:\s*)("(?:[^"\\]|\\.)*"|[^\s,}}\]]+)', re.I))
         # query / key=value
         pats.append(re.compile(rf"(?i)\b({k}\s*=\s*)[^\s&;,\"]+"))
@@ -207,7 +222,7 @@ class Redactor:
         Masks the value after any configured key, and any literal secret value.
         """
         for pattern in self._patterns:
-            text = pattern.sub(lambda m: m.group(1) + PLACEHOLDER, text)
+            text = pattern.sub(_masked, text)
         # Decode Basic-auth tokens before the literal-value pass: a secret whose bytes happen
         # to fall inside a base64 token would otherwise splice PLACEHOLDER into it, breaking the
         # decode and leaking the token's tail. Masking the whole token first avoids that.

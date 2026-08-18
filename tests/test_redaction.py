@@ -19,6 +19,7 @@ from bajutsu.evidence.redaction import (
     mask_credential_shapes,
     names_credential,
 )
+from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.scenario import Redact
 
 # Two values with no recognizable credential shape, so the pattern backstop cannot reach them and
@@ -43,11 +44,32 @@ def test_redact_text_masks_known_keys() -> None:
     )
     assert "Bearer abc.def" not in out and "s3cret" not in out and "hunter2" not in out
     assert f"Authorization: {PLACEHOLDER}" in out
-    assert f'"token":{PLACEHOLDER}' in out
+    assert f'"token":"{PLACEHOLDER}"' in out  # the quotes of a quoted value survive the mask
     assert f"password={PLACEHOLDER}" in out
     # untouched: non-secret content and keys
     assert '"keep":"ok"' in out
     assert "page=2" in out and "nothing here" in out
+
+
+def test_redact_text_leaves_a_json_document_parseable() -> None:
+    # The sink runs this pass over whole serialized documents, so a mask that drops a value's
+    # quotes (`"token": [REDACTED]`) does not just look wrong — it makes the artifact unreadable to
+    # every consumer that loads it, for any run configuring a key an artifact actually carries.
+    document = json.dumps(
+        {
+            "kind": "waitTimeout",
+            "value": "hunter2",
+            "elements": [{"identifier": "auth.token", "value": "s3cret"}],
+            "keep": "readable",
+        },
+        indent=2,
+    )
+    out = _r(fields=["value"]).redact_text(document)
+    loaded = json.loads(out)  # the assertion: still a document, not just still masked
+    assert loaded["value"] == PLACEHOLDER
+    assert loaded["elements"][0]["value"] == PLACEHOLDER
+    assert "hunter2" not in out and "s3cret" not in out
+    assert loaded["keep"] == "readable" and loaded["kind"] == "waitTimeout"
 
 
 def test_redact_text_masks_percent_encoded_secret_value() -> None:
@@ -405,6 +427,27 @@ def test_redact_screen_map_masks_a_fill_by_action_and_by_field() -> None:
         marked, named = actions
         assert marked["fields"] == [["field.7", PLACEHOLDER], ["profile.nickname", PLACEHOLDER]]
         assert named["fields"] == [["settings.apikey", PLACEHOLDER], ["profile.nickname", "kitty"]]
+
+
+def test_write_screen_map_scrubs_the_free_text_around_the_actions(tmp_path: Path) -> None:
+    # The structural rule reaches an action's `value`/`fields` and nothing else, so a secret the app
+    # echoes into an on-screen label rides out through a node's ids, an edge's description or a stop
+    # reason — masked in elements.json and verbatim in screenmap.json (and the shared HTML report).
+    writer = RunArtifactWriter(tmp_path / "runs" / "r1", Redactor(Redact(), values=["hunter2"]))
+    path = writer.write_screen_map(
+        "screenmap.json",
+        {
+            "nodes": [{"fingerprint": "abc", "ids": ["greeting.hunter2"], "label": "Hi, hunter2"}],
+            "edges": [{"src": "abc", "action": "tap greeting.hunter2", "dst": "def"}],
+            "crashes": [{"path": ["tap greeting.hunter2"], "actions": []}],
+            "stop_reason": "crashed on hunter2's screen",
+        },
+    )
+    text = path.read_text(encoding="utf-8")
+    assert "hunter2" not in text
+    written = json.loads(text)  # the scrub must leave a document a resume can still read back
+    assert written["nodes"][0]["ids"] == [f"greeting.{PLACEHOLDER}"]
+    assert written["edges"][0]["src"] == "abc"
 
 
 def test_redact_screen_map_leaves_the_artifact_shape_unchanged() -> None:

@@ -1572,3 +1572,41 @@ def test_crawl_screenmap_holds_no_plaintext_value_for_a_named_or_marked_field(
     assert [a["value"] for a in typed] == [PLACEHOLDER] * 2
     # And the descriptions the map carries name the target without the value (BE-0331 unit 6).
     assert {e["action"] for e in data["edges"]} == {"type settings.apikey", "type auth.password"}
+
+
+def test_a_masked_value_replays_as_a_usable_dummy_not_the_placeholder() -> None:
+    # A warm start (`--continue` / `--resume-src`) rebuilds its actions from the persisted map,
+    # where a masked input's value is the placeholder. Typing that verbatim carries no digit, so a
+    # password rule the crawl's own dummy is written to pass would reject it and the resumed crawl
+    # could no longer retrace any path through a login screen.
+    screen = [
+        el(identifier="auth.password", label="Enter it", traits=[base.Trait.SECURE_TEXT_FIELD]),
+        el(identifier="login.email", label="Email", traits=["textField"]),
+    ]
+    driver = FakeDriver(screen=screen)
+    masked = serialize.action_from_dict(
+        serialize.action_to_dict(
+            crawl.Action("type", target="auth.password", value=PLACEHOLDER, secure=True)
+        )
+    )
+    masked.perform(driver)
+    typed = [arg for kind, arg in driver.actions if kind == "type"]
+    assert typed == ["Test1234!"]  # the field's own deterministic dummy, re-derived on replay
+
+    # A fill's field values are rebuilt the same way, and each field's dummy comes from the element
+    # that field resolves to rather than from the action as a whole.
+    driver = FakeDriver(screen=screen)
+    crawl.Action(
+        "fill",
+        fields=(("auth.password", PLACEHOLDER), ("login.email", PLACEHOLDER)),
+        secure=True,
+    ).perform(driver)
+    assert [arg for kind, arg in driver.actions if kind == "type"] == [
+        "Test1234!",
+        "test@example.com",
+    ]
+
+    # An unmasked value is still replayed verbatim — the substitution is scoped to the placeholder.
+    driver = FakeDriver(screen=screen)
+    crawl.Action("type", target="login.email", value="a@b.com").perform(driver)
+    assert [arg for kind, arg in driver.actions if kind == "type"] == ["a@b.com"]

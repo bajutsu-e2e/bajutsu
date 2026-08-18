@@ -18,12 +18,16 @@ from bajutsu.crawl.guide import (
     Proposal,
     _actions_from,
     _proposal_from,
+    _secure_fields,
     ai_guide,
     make_guide,
 )
+from bajutsu.crawl.serialize import action_to_dict
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence.redaction import Redactor
+from bajutsu.evidence.redaction import PLACEHOLDER, Redactor
 from bajutsu.scenario import Redact
+
+_NONE_SECURE = _secure_fields([])  # a screen the platform marked no field on
 
 
 class _FakeProposer:
@@ -150,14 +154,14 @@ def test_actions_from_parses_skips_malformed_and_caps() -> None:
             {"bad": 1},  # malformed -> skipped
         ]
     }
-    acts = _actions_from(payload, cap=10, secure_ids=frozenset())
+    acts = _actions_from(payload, cap=10, secure=_NONE_SECURE)
     assert [(a.kind, a.target or a.label) for a in acts] == [
         ("tap", "a"),
         ("type", "b"),
         ("tap", "L"),
     ]
     assert acts[1].value == "x" and acts[2].index == 1
-    assert len(_actions_from(payload, cap=1, secure_ids=frozenset())) == 1  # capped
+    assert len(_actions_from(payload, cap=1, secure=_NONE_SECURE)) == 1  # capped
 
 
 def test_ai_guide_narrates_the_models_thought_and_choices() -> None:
@@ -186,18 +190,47 @@ def test_actions_from_parses_a_compound_fill() -> None:
             }
         ]
     }
-    acts = _actions_from(payload, cap=10, secure_ids=frozenset())
+    acts = _actions_from(payload, cap=10, secure=_NONE_SECURE)
     assert len(acts) == 1 and acts[0].kind == "fill"
     assert acts[0].fields == (("email", "a@b.com"), ("pw", "P1!"))
 
 
+def test_actions_from_marks_an_id_less_secure_field_addressed_by_label() -> None:
+    # The tool schema tells the model to address an id-less element by `label`, so collecting only
+    # identifiers leaves exactly that action unmarked — and a value the model invents for a
+    # platform-marked password field then lands plaintext in the screen map, the leak BE-0331 closes.
+    secure = _secure_fields(
+        [
+            el(
+                label="Enter it", traits=["secureTextField"]
+            ),  # id-less: only the label addresses it
+            el(identifier="login.user", label="Email", traits=["textField"]),
+        ]
+    )
+    payload = {
+        "actions": [
+            {"action": "type", "label": "Enter it", "value": "Passw0rd!2026"},
+            {"action": "type", "label": "Email", "value": "a@b.com"},
+        ]
+    }
+    marked, ordinary = _actions_from(payload, cap=10, secure=secure)
+    assert marked.secure is True and ordinary.secure is False
+    # …and the mark is what the screen map's masking reads, since the map keeps no element: the
+    # label names no credential, so `secure` alone stands between the value and the artifact.
+    out = Redactor(Redact()).redact_screen_map(
+        {"paths": {"abc": [action_to_dict(marked), action_to_dict(ordinary)]}}
+    )
+    assert out["paths"]["abc"][0]["value"] == PLACEHOLDER
+    assert out["paths"]["abc"][1]["value"] == "a@b.com"
+
+
 def test_proposal_from_parses_thought_and_actions() -> None:
     payload = {"thought": "looks like a form", "actions": [{"action": "tap", "id": "x"}]}
-    proposal = _proposal_from(payload, cap=10, secure_ids=frozenset())
+    proposal = _proposal_from(payload, cap=10, secure=_NONE_SECURE)
     assert proposal.thought == "looks like a form"
     assert [a.target for a in proposal.actions] == ["x"]
     assert (
-        _proposal_from({"actions": []}, cap=10, secure_ids=frozenset()).thought == ""
+        _proposal_from({"actions": []}, cap=10, secure=_NONE_SECURE).thought == ""
     )  # missing thought -> empty
 
 

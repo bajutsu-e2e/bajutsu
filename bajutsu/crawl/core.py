@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from bajutsu import device_errors
 from bajutsu.drivers import base
 from bajutsu.elements import screen_size_from_elements, shows_app_ui
+from bajutsu.evidence.redaction import PLACEHOLDER
 
 _logger = logging.getLogger(__name__)
 
@@ -168,8 +169,9 @@ class Action:
         """
         if self.kind == "fill":
             for fid, val in self.fields:
-                driver.tap({"id": fid})
-                driver.type_text(val)
+                sel: base.Selector = {"id": fid}
+                driver.tap(sel)
+                driver.type_text(self._replay_value(driver, sel, val, hint=fid))
             return
         if self.kind == "tap_point" and self.point is not None:
             w, h = screen_size_from_elements(driver.query())
@@ -177,7 +179,33 @@ class Action:
             return
         driver.tap(self.as_selector())
         if self.kind == "type":
-            driver.type_text(self.value or "")
+            driver.type_text(
+                self._replay_value(
+                    driver,
+                    self.as_selector(),
+                    self.value or "",
+                    hint=f"{self.target} {self.label or ''}",
+                )
+            )
+
+    def _replay_value(
+        self, driver: base.Driver, sel: base.Selector, value: str, *, hint: str
+    ) -> str:
+        """The text to enter, re-deriving a dummy when the recorded value was masked (BE-0331).
+
+        A warm start (`--continue` / `--resume-src`) rebuilds its actions from the persisted screen
+        map, where a masked input's value is the redaction placeholder. Typing that verbatim would
+        fail the very password rule `_input_value` is written to satisfy, so the field's own dummy is
+        derived again from the element the action resolves to — replay fidelity survives masking.
+        """
+        if value != PLACEHOLDER:
+            return value
+        matched = base.find_all(driver.query(), sel)
+        if matched:
+            return _input_value(matched[0])
+        # The tap above already resolved the field, so this is the near-impossible screen change
+        # between the two reads; the action's own record of what it targets still names the field.
+        return _value_for_field(hint, self.secure)
 
 
 @dataclass(frozen=True)
@@ -322,10 +350,18 @@ def _is_enabled(element: base.Element) -> bool:
 
 def _input_value(element: base.Element) -> str:
     """A deterministic placeholder to type into a field (the `--guide off` path), good enough to clear "must be non-empty" preconditions but not validation-gated ones."""
-    hint = f"{_id_of(element) or ''} {element.get('label') or ''}".lower()
+    return _value_for_field(
+        f"{_id_of(element) or ''} {element.get('label') or ''}",
+        base.Trait.SECURE_TEXT_FIELD in _traits(element),
+    )
+
+
+def _value_for_field(hint: str, secure: bool) -> str:
+    """The same choice keyed on a field's name and secrecy alone, for a replay that has no element."""
+    hint = hint.lower()
     if "mail" in hint:
         return "test@example.com"
-    if base.Trait.SECURE_TEXT_FIELD in _traits(element):
+    if secure:
         return "Test1234!"
     return "test"
 

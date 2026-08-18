@@ -27,7 +27,11 @@ from typing import Any
 from bajutsu.artifact_perms import restrict_file
 from bajutsu.drivers import base
 from bajutsu.evidence.redaction import Redactor, mask_credential_shapes
-from bajutsu.run_root import run_dir_for_write
+
+# Aliased private: imported under its public name, this module would re-export the very path
+# derivation the import contract withholds, so `from bajutsu.evidence.sink import run_dir_for_write`
+# would hand a caller a writable run directory while still passing `lint-imports`.
+from bajutsu.run_root import run_dir_for_write as _run_dir_for_write
 
 _logger = logging.getLogger(__name__)
 
@@ -41,7 +45,7 @@ def prepare_run_dir(runs_dir: str | Path, run_id: str) -> None:
     `mkdir(parents=True)`, at the ambient umask. Returns nothing, so the boundary is unchanged — a
     caller gets no writable handle from it.
     """
-    run_dir_for_write(runs_dir, run_id)
+    _run_dir_for_write(runs_dir, run_id)
 
 
 class RunArtifactWriter:
@@ -56,7 +60,7 @@ class RunArtifactWriter:
     def __init__(self, run_dir: Path, redactor: Redactor) -> None:
         # The write provider is reached from here and nowhere else (BE-0331 unit 3): the sink is the
         # single module the import contract lets derive a writable run directory.
-        self._dir = run_dir_for_write(run_dir.parent, run_dir.name)
+        self._dir = _run_dir_for_write(run_dir.parent, run_dir.name)
         self._redactor = redactor
         self.unmasked: list[str] = []
 
@@ -78,8 +82,13 @@ class RunArtifactWriter:
         return self._write_json(name, [self._redactor.redact_exchange(e) for e in exchanges])
 
     def write_screen_map(self, name: str, screen_map: dict[str, Any]) -> Path:
-        """Write a crawl's screen map, masking the input values its actions carry."""
-        return self._write_json(name, self._redactor.redact_screen_map(screen_map))
+        """Write a crawl's screen map, masking the input values its actions carry.
+
+        The structural rule reaches an action's `value`/`fields` only; a node's ids, an edge's
+        description, a stop reason and a crash path carry free text an app can echo a secret into,
+        so the key/known-value pass runs over the serialized map as well.
+        """
+        return self._write_json(name, self._redactor.redact_screen_map(screen_map), scrub_text=True)
 
     def write_json(self, name: str, data: Any) -> Path:
         """Write structured content with no shape-specific rule — the free-text path, serialized."""
