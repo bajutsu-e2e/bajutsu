@@ -242,6 +242,9 @@ tr.actrow>td{background:var(--card);border-top:1px dashed var(--line);color:var(
 .actn-no{opacity:.6;text-decoration:line-through}
 .actn-r,.actn-drop{color:var(--ng)}
 .actn-s{opacity:.85;font-style:italic}
+/* The value a `generate` step produced for ${vars.*} (a sub-row under the step). */
+tr.genrow>td{background:var(--card);border-top:1px dashed var(--line);color:var(--mut);
+ font:.76rem/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;padding:.18rem .7rem}
 .vtoggle{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;margin-bottom:.6rem}
 .vt{background:var(--card);color:var(--mut);border:0;cursor:pointer;font:600 .78rem -apple-system,system-ui,sans-serif;
  padding:.25rem .7rem}

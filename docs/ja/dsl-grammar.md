@@ -174,6 +174,7 @@ Action    ::=
   | { http:        { method?: string, url: string, headers?: map(string,string), body?: string, status?: integer, saveBody?: string } }  # method 既定 GET; saveBody → vars.<name>
   | { totp:        { secret: string, into: { var: string } } }  # RFC 6238 OTP → vars.<var>（secret は base32）
   | { email:       { match: { to?: string, subject?: string, subjectMatches?: string }, extract: { var: string, bodyMatches: string }, timeout: number } }  # メールボックスをポーリング → vars.<var>
+  | { generate:    <Generate> }                            # 実行時に計算した乱数または現在日時の値 → vars.<var>（BE-0377）
   | { background:       {} }                               # Home ボタン（SpringBoard 経由でバックグラウンド化。終了はしない）
   | { foreground:       {} }                               # バックグラウンド化したアプリを前面に戻す（simctl launch、終了なし）。background の対
   | { clearKeychain:    {} }                               # 保存済みパスワード / 証明書をリセット
@@ -202,6 +203,18 @@ Scroll ::= { to: <Selector>, direction?: ("up"|"down"|"left"|"right"), within?: 
     # `to` のフレーム中心が画面に入るまでスクロールし、入らなければ失敗する（BE-0326）。direction はスクロール方向（既定 "down"）で、Swipe の指方向とは逆。
     # within: ジェスチャを行うスクロール可能なコンテナ（既定は画面全体）。maxScrolls: 失敗までのステップ上限（既定 15、> 0）。
 Point ::= [ number, number ]
+
+Generate ::=
+    { random:   <Random>,   into: { var: string } }   # シナリオがまだ持っていない新しい値 ┐ XOR
+  | { datetime: <Datetime>, into: { var: string } }   # 現在時刻をテキストにした値         ┘
+Random ::=
+    { string: { length: integer, charset?: ("alnum"|"alpha"|"numeric"|"hex") } }  # length > 0、charset の既定は "alnum" ┐
+  | { int:    { min: integer, max: integer } }                                    # min ≤ max の閉区間                   │ XOR
+  | { float:  { min: number,  max: number, precision?: integer } }                # min ≤ max、precision ≥ 0 は小数桁数  │
+  | { uuid:   {} }                                                                # バージョン4の UUID                   ┘
+Datetime ::= { format?: string, offsetSeconds?: integer, offsetMinutes?: integer, offsetHours?: integer, offsetDays?: integer, timezone?: string }
+    # format: strftime のパターン。省略時は秒までの ISO 8601。4つの offset は符号付きで、加算されます。
+    # timezone: IANA 名（例 "America/Los_Angeles"）。省略時は UTC。描画できない format と解決できないゾーンはロード時に失敗します。
 
 # ── Selector（1 条件以上・指定フィールドは AND）────────────────────────
 Selector ::= {

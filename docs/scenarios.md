@@ -419,6 +419,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `http` | `http: { method?, url, headers?, body?, status?, saveBody? }` | issue an HTTP request (test-data setup / webhook / API); checks `status`, stores the body as `${vars.<saveBody>}` |
 | `totp` | `totp: { secret, into: { var } }` | generate an RFC 6238 time-based one-time password (2FA) locally into `${vars.<var>}` |
 | `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | poll the configured mailbox until a matching message arrives, extract a code into `${vars.<var>}` |
+| `generate` | `generate: { random\|datetime: {...}, into: { var } }` | compute a random or current-datetime value at run time into `${vars.<var>}` ([below](#generate-a-value-computed-at-run-time)) |
 | `manual` | `manual: { label: "...", bypass?: "..." }` | a human takeover recorded during `record` (BE-0185); has no deterministic run-time equivalent, so it **fails loudly** at `run` time — never a silent pass |
 | `background` | `background: {}` | send the app to the background (Home button) |
 | `foreground` | `foreground: {}` | resume a backgrounded app (`simctl launch`, no settle sleep) |
@@ -671,6 +672,48 @@ clean step failure — never a silent wrong value. Only mail newer than the step
 on message id, so a stale code from an earlier run is never matched), and among new matches the
 newest wins. Deterministic and LLM-free; the endpoint and credentials live in config-referenced
 `${secrets.*}`, so the scenario stays app-agnostic ([BE-0046](../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
+
+### `generate` (a value computed at run time)
+
+```yaml
+- generate: { random: { string: { length: 8, charset: alnum } }, into: { var: username } }
+- type: { text: "${vars.username}", into: { id: signup.username } }
+
+- generate: { random: { uuid: {} }, into: { var: orderRef } }        # a version-4 UUID
+- generate: { random: { int: { min: 1, max: 100 } }, into: { var: quantity } }
+- generate: { random: { float: { min: 0, max: 50, precision: 2 } }, into: { var: amount } }   # e.g. "12.30"
+
+- generate: { datetime: { format: "%Y-%m-%d", offsetDays: 1 }, into: { var: tomorrow } }
+- type: { text: "${vars.tomorrow}", into: { id: booking.date } }
+```
+
+`generate` computes a value in the runner and stores it as `${vars.<var>}`, so a scenario can supply
+an input its author could not write as a literal — a username no earlier run has taken, tomorrow's
+date on a booking form, a reference that collides with no other scenario's. A data-driven row
+([reuse](#reuse-data-and-tags)) supplies a fixed table chosen in advance and `extract` captures a
+value the app already displays; neither invents a value the scenario did not already have
+([BE-0377](../roadmaps/BE-0377-dynamic-value-generation/BE-0377-dynamic-value-generation.md)).
+
+Exactly one generator kind produces the value. **`random`** draws a `string` (a `length` of
+characters from a `charset` — `alnum` by default, or `alpha` / `numeric` / `hex`), an `int` in the
+inclusive range `[min, max]`, a `float` in `[min, max]` rounded to an optional `precision` of decimal
+places, or a version-4 `uuid`. **`datetime`** renders the current time as text: `format` takes a
+`strftime` pattern (ISO 8601 to the second when omitted), the signed `offsetSeconds` /
+`offsetMinutes` / `offsetHours` / `offsetDays` fields add together to shift it, and `timezone` takes
+an Internet Assigned Numbers Authority (IANA) zone name such as `America/Los_Angeles`. The default
+zone is UTC, so a scenario whose input must match a date the app renders in the device's own zone
+names that zone explicitly; pinning the *device* to a zone is a separate concern
+([BE-0158](../roadmaps/BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive.md)).
+
+The flow is deterministic even though the value is not. A `generate` step the loader accepted always
+executes and always succeeds — a generator draw or a clock read, no network and no model — and only
+the produced value differs between runs, the same way `totp`'s time-derived code already does. A
+`format` that cannot be rendered and a `timezone` that does not resolve are rejected when the
+scenario loads, never substituted silently mid-run. The run records each produced value in the
+manifest and the report, so a later failure shows which value the run actually used; a scenario that
+must check a specific value captures it through `${vars.*}` and compares against that capture, not
+against a literal it could not have known in advance. Every codegen target renders `generate` as a
+labeled `// TODO`, because the step runs in the runner rather than the app.
 
 ### `manual`
 

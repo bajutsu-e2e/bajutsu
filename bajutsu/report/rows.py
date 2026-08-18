@@ -181,6 +181,7 @@ def _step_run_row(
         "alerts": [{"label": a.label} for a in out.alerts],
         "actuations": _actuation_rows(out.actuations),
         "dropped_actuations": out.dropped_actuations,
+        "generated": out.generated,
     }
 
 

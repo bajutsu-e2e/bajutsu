@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0377](BE-0377-dynamic-value-generation-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0377") |
 | トピック | シナリオ記述機能 |
 <!-- /BE-METADATA -->
@@ -110,12 +110,12 @@ prime directive の保持：
 
 ## 進捗
 
-- [ ] `generate` ステップのスキーマ（`random`・`datetime` の生成カテゴリ）をシナリオ文法とその
+- [x] `generate` ステップのスキーマ（`random`・`datetime` の生成カテゴリ）をシナリオ文法とその
   バリデータに追加する。
-- [ ] ランナーのアクションハンドラを実装し、生成した値を `vars.<var>` へ書き込む。
-- [ ] 生成した値を証跡・レポート出力に記録する。
-- [ ] 各バックエンド向けに、ラベル付き codegen の `// TODO` を出力する。
-- [ ] `scenarios.md` と `dsl-grammar.md` に `generate` を文書化する（英語・日本語の両方）。
+- [x] ランナーのアクションハンドラを実装し、生成した値を `vars.<var>` へ書き込む。
+- [x] 生成した値を証跡・レポート出力に記録する。
+- [x] 各バックエンド向けに、ラベル付き codegen の `// TODO` を出力する。
+- [x] `scenarios.md` と `dsl-grammar.md` に `generate` を文書化する（英語・日本語の両方）。
 
 ## 参考
 

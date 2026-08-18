@@ -149,6 +149,10 @@ class StepOutcome:
     # the hundreds), a damaged record the report loader had to drop on a later read, or both. Recorded
     # rather than left implicit either way, so the list is never read as more complete than it is.
     dropped_actuations: int = 0
+    # The value a `generate` step produced (BE-0377), so a later failure shows which value this run
+    # actually used. Evidence only — nothing on the verdict path reads it. None for every other
+    # action, and for a `generate` step that failed before it wrote its var.
+    generated: str | None = None
 
 
 @dataclass
