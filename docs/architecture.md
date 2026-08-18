@@ -549,11 +549,11 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
   `adjust(toPickerWheelValue:)` on the resolved wheel — handle-based like `tap`, not
   coordinate-based like `swipe`/`drag`/`scroll`, since a wheel's rows are not separately
   addressable elements a coordinate drag could reliably stop on. A value the wheel does not carry
-  fails the step by name rather than leaving the wheel wherever it stopped. A multi-component
-  picker (a year wheel beside a month wheel) addresses each component through the selector's
-  existing `within`/`traits`/`index` fields, one step per component. Gated on the `PICKER_WHEEL`
-  capability, which only the resident-runner XCUITest backend and `FakeDriver` declare, so Android
-  and web are rejected at preflight before any device work
+  fails the step naming that value rather than leaving the wheel wherever it stopped. A
+  multi-component picker (a year wheel beside a month wheel) addresses each component through the
+  selector's existing `within`/`traits`/`index` fields, one step per component. Gated on the
+  `PICKER_WHEEL` capability, which only the resident-runner XCUITest backend and `FakeDriver`
+  declare, so Android and web are rejected at preflight before any device work
 - DSL `handleSystemAlert` (BE-0316): a deterministic, iOS-only step that taps a SpringBoard
   permission-prompt button by a native accessibility query (the runner's second, on-demand
   SpringBoard handle) — resolution stays Python-side in `resolve_unique`; only the XCUITest backend
