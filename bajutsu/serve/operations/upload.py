@@ -196,7 +196,9 @@ def upload_scenarios(
     scenario fan-out). A write failure partway through the loop that follows — the scope's own
     store rejecting or erroring on a save — is not covered by that guarantee; each file is saved
     through `scope.save` independently, reporting whether it was newly added or overwrote an
-    existing file of the same name."""
+    existing file of the same name — see `save_scenario`'s docstring for the one backend
+    (`LocalTreeScenarioStorage`, a hosted Git/local-tree-sourced config) where that flag is not
+    storage-accurate, since this loop's per-entry probe shares the same limitation."""
     target = target or None
     org = state.org_of(actor)
     if target is not None and _target_forbidden(state, org, target):

@@ -650,7 +650,17 @@ def job_view(state: ServeState, job_id: str) -> tuple[Any, int]:
 def save_scenario(
     state: ServeState, body: dict[str, Any], *, actor: str | None = None
 ) -> tuple[Any, int]:
-    """Save an edited scenario back to its ``*.yaml`` (bounded to the target's scenarios dir)."""
+    """Save an edited scenario back to its ``*.yaml`` (bounded to the target's scenarios dir).
+
+    The response's ``overwritten`` flag is accurate wherever a scope's ``read`` and ``save`` share
+    one backing store (the local filesystem scope, and a hosted scope backed purely by object
+    storage). It is **not** storage-accurate for a hosted config sourced from a Git/local-tree
+    checkout (`LocalTreeScenarioStorage`): BE-0324 deliberately splits that scope's `read` (the
+    extracted local tree) from its `save` (a separate object store), so the pre-write probe below
+    checks a different store than the one the write actually lands on, and can report either
+    direction wrong. Reporting a storage-accurate flag there needs the writer itself to report
+    whether it replaced something — a `ScenarioScope.save` contract change bigger than this
+    operation, tracked as a follow-up rather than attempted here."""
     target = str(body.get("target") or "") or None
     org = state.org_of(actor)
     # Deny saving into another org's target (BE-0015 multi-tenancy); single-tenant never forbids.
