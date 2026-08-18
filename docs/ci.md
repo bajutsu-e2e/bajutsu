@@ -98,11 +98,11 @@ identically on a fresh clone via `uv` alone, which is what makes "green locally"
 
 ### Every job declares a timeout
 
-Every job under [`.github/workflows/`](../.github/workflows/) sets `timeout-minutes`. GitHub's own
-default in its place waits 360 minutes before it cancels a job, so a stalled job holds a runner and
-spends Actions minutes for most of a day before a red check appears. The web lane has done so:
-GitHub cancelled `conformance (playwright)` and `codegen (playwright)` at almost four hours apiece,
-against the two to seven minutes each one takes when it passes.
+Every job under [`.github/workflows/`](../.github/workflows/) sets `timeout-minutes`. When a job
+declares none, GitHub's own default waits 360 minutes before cancelling it, so a stalled job holds a
+runner and spends Actions minutes for most of a day before a red check appears. The web lane has
+already paid that cost: GitHub cancelled `conformance (playwright)` and `codegen (playwright)` at
+almost four hours apiece, against the two to seven minutes each one takes when it passes.
 
 A job whose bound follows from its own arithmetic sets its own value and gives the reasoning in a
 comment beside it: 60 minutes for the iOS scenario jobs, 25 for the Android ones, and 15 for the
