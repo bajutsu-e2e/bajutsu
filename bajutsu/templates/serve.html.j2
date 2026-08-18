@@ -230,6 +230,13 @@
         <button class="cfgbtn" id="viewscn" data-testid="replay.view-scenario" disabled>View scenario</button>
         <!-- Determinism audit badge (BE-0145): the selected scenario's static stability grade. -->
         <div class="grade-badge" id="scn-grade" data-testid="replay.grade" hidden></div>
+        <!-- Add a scenario straight into the open target's scope (BE-0340): a lone .yaml, or a .zip
+             of several, with no config rebind. Enabled once a target is picked, like View scenario
+             needs a scenario picked. A same-named file is overwritten in place; the status line
+             below reports which. -->
+        <input type="file" id="replay-upload-file" data-testid="replay.upload-file" accept=".yaml,application/x-yaml,text/yaml,.zip,application/zip" hidden>
+        <button class="cfgbtn" id="replay-upload-pick" type="button" data-testid="replay.upload-pick" disabled>Upload scenario&hellip;</button>
+        <div class="status" id="replay-upload-status" data-testid="replay.upload-status"></div>
         <label>Target</label><select id="target" data-testid="replay.target"></select>
         <div class="row iosonly"><div><label>Workers</label><input id="workers" type="number" min="1" value="1"></div></div>
         <div class="hhead iosonly" data-testid="replay.simulators"><span>Simulators</span><button class="refresh" id="simrefresh" title="refresh devices">&#8635;</button></div>

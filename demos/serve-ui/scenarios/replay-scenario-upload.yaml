@@ -1,0 +1,26 @@
+# Upload-a-scenario affordance (BE-0340) — the Replay Form offers a control to add a scenario file
+# directly to the bound config's target scope, with no config rebind. Deterministic and read-only:
+# the web backend has no step to drive a native file picker, so this asserts the control's presence
+# and its enabled state (armed once a target is bound, the same precondition every other Replay
+# affordance already applies) rather than exercising an actual upload — the wire path (add /
+# overwrite / all-or-nothing / zip-slip / oversized) is covered end to end by the Python unit and
+# HTTP tests (tests/serve/test_uploads.py, tests/serve/test_http_scenario_upload.py).
+description: >-
+  Upload scenario — the Replay Form's upload control exists and is armed once a target is bound.
+scenarios:
+  - name: the upload control is armed once a target is bound
+    description: >-
+      Switching to Replay auto-binds the default target; the upload control is present and enabled
+      once that resolves — the same precondition View scenario already applies to a picked scenario.
+    steps:
+      - tap: { id: nav.replay }
+      # replay.target is static markup, present empty before the config/scenario fetch resolves —
+      # wait on the scenario picker actually populating (the same settled condition
+      # replay-scenario-view.yaml uses), since that's what also drives the upload control's enabled
+      # state (showInfo, called from loadScenarios).
+      - wait: { for: { id: replay.scenario, labelMatches: "counter" }, timeout: 10 }
+      - assert:
+          - exists: { id: replay.upload-pick }
+          - enabled: { id: replay.upload-pick }
+    expect:
+      - exists: { id: view.replay }

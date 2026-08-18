@@ -134,6 +134,7 @@ from bajutsu.serve.operations.upload import (
     bind_composition,
     bind_upload_config,
     compose_current,
+    upload_scenarios,
 )
 from bajutsu.serve.operations.version import server_checkout, server_version
 from bajutsu.serve.operations.worker import (
@@ -255,6 +256,7 @@ __all__ = [
     "sweep_expired_trash",
     "trashed_runs_payload",
     "update_org_membership",
+    "upload_scenarios",
     "upload_theme",
     "usage_html",
     "worker_artifact_urls",

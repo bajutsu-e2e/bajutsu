@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0340](BE-0340-replay-scenario-upload-ja.md) |
 | 提案者 | [@akira-matsuda](https://github.com/akira-matsuda) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0340") |
 | トピック | serve Web UI への CLI 機能の取り込み |
 | 関連 | [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)、[BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts-ja.md)、[BE-0273](../BE-0273-serve-replay-scenario-viewer/BE-0273-serve-replay-scenario-viewer-ja.md) |
@@ -42,10 +42,10 @@ config が束縛されていなければこの呼び出しは `None` を返す�
 3 つ目の経路は、よくある場面には大がかりすぎます。ローカル・Git 由来・以前のアップロードのいずれかで
 config がすでに開いている状態で、手で書いた、あるいは他所から持ち込んだシナリオファイルを 1 つか
 数個、足したい・差し替えたいだけの場面です。compose 経路（BE-0268）は、config を束縛し直す意図が
-受け付けません（`bajutsu/serve/operations/upload.py`）。旧来の bundle アップロード（BE-0073）は、稼働中の設定をまるごと捨てます。どちらの
-受け付けません（`bajutsu/serve/operations/upload.py`）。旧来の bundle アップロード（BE-0073）は、
-稼働中の設定をまるごと捨てます。どちらの経路も「開いているものにシナリオを足す」ではなく、
-「別のプロジェクトを開く」です。
+なくても config アーティファクトのレグを求め続けます。`bind_composition` は、それを持たない
+リクエストを受け付けません（`bajutsu/serve/operations/upload.py`）。旧来の bundle アップロード
+（BE-0073）は、稼働中の設定をまるごと捨てます。どちらの経路も「開いているものにシナリオを足す」
+ではなく、「別のプロジェクトを開く」です。
 
 このギャップは、ホスト型デプロイでもっとも大きくなります。オペレータがサーバのファイルシステムに触れられず、
 ファイルを直接置けないためです。`record` による AI オーサリングも、あらゆるシナリオに向くわけでは
@@ -83,7 +83,7 @@ seam を共有しており、
 
 - **Replay タブに、単体ファイルの「シナリオをアップロード」操作を置く。** Replay の Form にある
   シナリオピッカーの隣に、アップロード操作を追加します。マークアップは `bajutsu/templates/serve.html.j2`
-  に置き、配線は `bajutsu/templates/serve.core.mjs` に置きます。compose ピッカーがすでに使っている
+  に置き、配線は `bajutsu/templates/serve.panels.mjs` に置きます。compose ピッカーがすでに使っている
   ファイル入力のパターン（`cmp-scenarios-file`）を踏襲します。この操作は、選んだ `.yaml` ファイルの
   テキストをクライアント側で読み取り、Author エディタの Save ボタンが使うのと同じ `/api/scenario`
   エンドポイントへ、ファイル自身の名前をパスとして送信します。こうすると、アップロードでスコープへ
@@ -116,8 +116,11 @@ seam を共有しており、
   `upload_scenarios` もユニットテストで確かめます。1 つの zip に入れた 2 つの正しいシナリオが両方とも
   配置され、`list_scenarios` にも両方現れること、解析に失敗するエントリが 1 つでもあれば何も書き込まれ
   ないこと、zip-slip のエントリとサイズ超過のエントリがどちらも拒まれることを確認します。新しい
-  アップロード操作には `data-testid` を付け、既存の Replay フィクスチャの隣に、単体ファイルのアップロード
-  経路を最初から最後まで動かす dogfood の E2E シナリオを追加します。`docs/architecture.md` とその
+  アップロード操作には `data-testid` を付けます。既存の Replay フィクスチャの隣に、dogfood の E2E
+  シナリオも追加します。web backend にはネイティブのファイル選択を操作する step がないため、この
+  シナリオは操作が存在し、有効になっていることだけを確かめます。追加／上書き／all-or-nothing／
+  zip-slip／サイズ超過の挙動は、Python のユニットテストと HTTP テストが最初から最後まで確かめます。
+  `docs/architecture.md` とその
   `docs/ja/` の対応を更新し、Replay が config を束縛し直すことなく、束縛済み config の scenario scope
   へ直接シナリオを配置できるようになったことを記します。
 
@@ -154,16 +157,26 @@ seam を共有しており、
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `save_scenario` の応答に `overwritten` フィールドを足す。
-- [ ] Replay の Form に、単体ファイルの「シナリオをアップロード」操作を足し、`POST /api/scenario` へ
+- [x] `save_scenario` の応答に `overwritten` フィールドを足す。
+- [x] Replay の Form に、単体ファイルの「シナリオをアップロード」操作を足し、`POST /api/scenario` へ
       送信する。
-- [ ] `.zip` シナリオ向けに `POST /api/scenarios/upload` エンドポイントと `upload_scenarios`
+- [x] `.zip` シナリオ向けに `POST /api/scenarios/upload` エンドポイントと `upload_scenarios`
       オペレーションを足す。書き込み前の確認と、zip-slip／サイズの上限を備える。
       `bajutsu/serve/authz.py` の `_EDITOR_PATHS` にルートを加える。
-- [ ] Replay の Form に zip アップロードの操作を足し、単体ファイルの経路と新規作成／上書きの要約表示を
+- [x] Replay の Form に zip アップロードの操作を足し、単体ファイルの経路と新規作成／上書きの要約表示を
       共有する。
-- [ ] 両方の経路のユニットテスト、`data-testid`、dogfood の E2E シナリオを足す。
-- [ ] `docs/architecture.md` とその `docs/ja/` の対応を更新する。
+- [x] 両方の経路のユニットテスト、`data-testid`、dogfood の E2E シナリオを足す。dogfood のシナリオは、
+      実際にアップロードを実行するのではなく、操作が存在し、有効になっていることだけを確かめます。web backend には
+      ネイティブのファイル選択を操作する step がないためです。新規作成／上書き／all-or-nothing／
+      zip-slip／サイズ超過の挙動は、Python のユニットテストと HTTP テストが最初から最後まで確かめます。
+- [x] `docs/architecture.md` とその `docs/ja/` の対応を更新する。
+
+ログ：
+
+- `overwritten` 応答フィールドを追加しました。単体 `.yaml` は既存の `POST /api/scenario` でアップロード
+  できます。複数本を束ねた `.zip` は新しい `POST /api/scenarios/upload` でアップロードできます。
+  `_EDITOR_PATHS` への追加、Replay の Form の操作、ユニットテストと HTTP テスト、dogfood のシナリオ、
+  両言語のドキュメント更新も併せて実装しました。
 
 ## 参考
 

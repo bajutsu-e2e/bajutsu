@@ -238,6 +238,100 @@ def extract_bundle(zip_path: Path, dest: Path) -> None:
                 raise BundleError(f"could not extract {info.filename!r}: {e}") from e
 
 
+# Resource bounds for a scenario-only zip (BE-0340) — sized for a handful of scenario YAML files (a
+# few KB to tens of KB apiece), far smaller than the whole-bundle bounds above, which exist for app
+# binaries and asset frameworks.
+MAX_SCENARIO_ZIP_ENTRIES = 500
+MAX_SCENARIO_ENTRY_BYTES = 2 * 1024 * 1024  # 2 MiB per scenario file
+MAX_SCENARIO_ZIP_TOTAL_BYTES = 20 * 1024 * 1024  # 20 MiB total uncompressed
+
+
+def _scenario_entry_name(name: str) -> str | None:
+    """The flat top-level ``*.yaml`` basename for archive entry *name*, or None to skip it silently
+    (a directory entry's own path component, or known packaging cruft — ``__MACOSX/``, a dot-file,
+    a non-scenario file). Raises ``BundleError`` for anything else that isn't safe to treat as a
+    scenario entry: a path-traversal attempt, a nested subdirectory outside the cruft dirs — a
+    scenario scope has no subdirectory concept (BE-0340 *Alternatives considered*), so a nested
+    ``*.yaml`` is reported rather than silently dropped — or a top-level ``*.yml``: the scenario
+    model only ever recognizes ``*.yaml`` (`valid_scenario_ref`, `LocalScenarioScope.runnable`'s
+    glob), so silently dropping a ``.yml`` entry the same way as unrelated cruft would leave a
+    mixed zip reporting success while quietly never adding the file the caller actually meant to
+    upload — the same reasoning that makes an unparseable entry abort the whole upload instead of
+    a partial, surprising result."""
+    cleaned = name.replace("\\", "/")
+    pure = PurePosixPath(cleaned)
+    if not cleaned or "\x00" in cleaned or pure.is_absolute() or ".." in pure.parts:
+        raise BundleError(f"unsafe entry path: {name!r}")
+    if len(pure.parts) > 1:
+        if pure.parts[0] in _CRUFT_DIRS:
+            return None
+        raise BundleError(f"nested entry path is not supported: {name!r}")
+    if pure.name.startswith("."):
+        return None
+    if pure.suffix != ".yaml":
+        # A case or spelling variant of the scenario suffix (.yml, .Yaml, .YAML, ...) is reported
+        # rather than silently skipped like unrelated cruft — `valid_scenario_ref` requires the
+        # exact lowercase `.yaml`, so this entry could never be saved even if it were let through.
+        if pure.suffix.lower() in (".yaml", ".yml"):
+            raise BundleError(f"scenario files use a lowercase .yaml extension: {name!r}")
+        return None
+    return pure.name
+
+
+def read_scenario_zip(zip_path: Path) -> dict[str, str]:
+    """Read a ``.zip``'s flat top-level ``*.yaml`` entries into ``{name: text}`` (BE-0340).
+
+    Entirely in memory — a scenario scope has no subdirectory concept and its files are text, so
+    nothing here is extracted to disk the way ``extract_bundle`` extracts an app bundle to disk.
+    Every entry is screened for zip-slip / a symlink / an oversized entry / an oversized total before
+    any text is decoded, the same defenses ``extract_bundle`` applies at a bundle's larger scale.
+    Raises ``BundleError`` on any violation, or if the zip holds no ``*.yaml`` entry at all — an
+    upload that adds nothing is a caller mistake worth reporting, not a silent no-op."""
+    try:
+        archive = zipfile.ZipFile(zip_path)
+    except zipfile.BadZipFile as e:
+        raise BundleError(f"not a valid zip archive: {e}") from e
+    with archive:
+        infos = archive.infolist()
+        if len(infos) > MAX_SCENARIO_ZIP_ENTRIES:
+            raise BundleError(f"too many entries ({len(infos)} > {MAX_SCENARIO_ZIP_ENTRIES})")
+        out: dict[str, str] = {}
+        total = 0
+        for info in infos:
+            if info.is_dir():
+                continue
+            if _is_symlink(info):
+                raise BundleError(f"symlink entries are not allowed: {info.filename!r}")
+            name = _scenario_entry_name(info.filename)
+            if name is None:
+                continue
+            _check_ratio(info)
+            try:
+                with archive.open(info) as src:
+                    chunks = []
+                    size = 0
+                    while chunk := src.read(_CHUNK):
+                        size += len(chunk)
+                        if size > MAX_SCENARIO_ENTRY_BYTES:
+                            raise BundleError(
+                                f"scenario entry too large: {info.filename!r} "
+                                f"(max {MAX_SCENARIO_ENTRY_BYTES} bytes)"
+                            )
+                        chunks.append(chunk)
+            except zipfile.BadZipFile as e:
+                raise BundleError(f"could not read {info.filename!r}: {e}") from e
+            total += size
+            if total > MAX_SCENARIO_ZIP_TOTAL_BYTES:
+                raise BundleError(f"zip exceeds {MAX_SCENARIO_ZIP_TOTAL_BYTES} bytes uncompressed")
+            try:
+                out[name] = b"".join(chunks).decode("utf-8")
+            except UnicodeDecodeError as e:
+                raise BundleError(f"{info.filename!r} is not valid UTF-8 text: {e}") from e
+    if not out:
+        raise BundleError("zip contains no *.yaml scenario files")
+    return out
+
+
 def materialize_bundle(
     zip_path: Path,
     uploads_dir: Path,

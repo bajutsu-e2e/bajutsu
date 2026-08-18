@@ -202,6 +202,29 @@ def test_artifact_upload_routes_bind_like_stdlib(tmp_path: Path) -> None:
     assert exists == {"exists": True}
 
 
+def test_scenarios_upload_route_delegates_like_stdlib(tmp_path: Path) -> None:
+    # The FastAPI shell's `/api/scenarios/upload` route (BE-0340) reaches the same shared
+    # `ops.upload_scenarios` as the stdlib handler; the zip/scope logic itself is covered once via
+    # the stdlib suite (test_http_scenario_upload.py) — this only proves the ASGI route exists,
+    # delegates to it, and — the one FastAPI-specific risk — actually flushes the streamed body to
+    # disk before reading it back as a zip.
+    import io
+    import zipfile
+
+    state = _state(tmp_path)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("alpha.yaml", "- name: alpha\n  steps:\n    - tap: { id: x }\n")
+    resp = _client(state).post(
+        "/api/scenarios/upload?target=demo",
+        content=buf.getvalue(),
+        headers={"content-type": "application/zip"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body == {"ok": True, "scenarios": [{"name": "alpha.yaml", "overwritten": False}]}
+
+
 def test_compose_route_binds_like_stdlib(tmp_path: Path) -> None:
     # The FastAPI shell's `/api/compose` route (BE-0268) reaches the same shared `ops.bind_composition`
     # as the stdlib handler; the compose logic itself is covered once via the stdlib suite

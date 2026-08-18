@@ -668,10 +668,18 @@ def save_scenario(
         load_scenario_file(text)
     except (ValueError, OSError, yaml.YAMLError) as e:
         return {"error": f"invalid scenario: {e}"}, 400
+    try:
+        # A file that exists but can't be decoded (bad encoding, a permission error mid-read)
+        # still proves *something* is there to overwrite — degrade to "overwritten" rather than
+        # letting the probe itself 500 a save that would otherwise succeed (mirrors
+        # LocalTreeScenarioStorage.read's own leniency, bajutsu/serve/server/scenarios.py).
+        overwritten = scope.read(ref) is not None
+    except (OSError, ValueError):
+        overwritten = True
     saved = scope.save(ref, text)
     if saved is None:
         return {"error": "path must be a *.yaml under the scenarios dir"}, 400
-    return {"ok": True, "path": saved}, 200
+    return {"ok": True, "path": saved, "overwritten": overwritten}, 200
 
 
 def approve_baseline(
