@@ -1,9 +1,18 @@
-"""Capture the host and Simulator state a stall destroys, bounded and best-effort (BE-0361 unit 2).
+"""Capture the state a stall destroys, bounded and best-effort (BE-0361 unit 2, BE-0367 unit 2).
 
-When the runner channel declares a mid-run crash, or `recordVideo` never produces a byte, the state
-that says *why* — whether the Simulator's render service is wedged or the virtualized host is
-starving it — exists for a moment and is gone before anyone reads the failing job. Only the running
-process knows when that moment is, which is why this capture lives here rather than in CI.
+When a backend stalls — the XCUITest runner channel declares a mid-run crash, `recordVideo` never
+produces a byte, the adb resident read channel dies, `screenrecord` runs without emitting one — the
+state that says *why* exists for a moment and is gone before anyone reads the failing job. Whether
+the device's render service is wedged or the host is starving it is the question, and only the
+running process knows when the moment to ask it is, which is why this capture lives here rather than
+in CI.
+
+The two backends split cleanly along one seam. *When* to capture, what a capture may cost, and where
+it lands are identical for both, so `capture` owns them. *What to read* is not: a Simulator answers
+to `simctl` and a macOS host to `vm_stat`, an emulator answers to `adb` and a Linux host to `top`,
+and the two share no command. Each backend therefore contributes a `ProbeSet` — `simulator_probes`
+and `device_probes` below — and `capture` runs whichever one the trigger hands it. A third backend
+adds a `ProbeSet` and nothing else.
 
 Two properties bound what it may cost the failure it documents. It is **opt-in**: with
 `BAJUTSU_STALL_DIAGNOSTICS` unset (the default) every entry point returns immediately, so no run
@@ -24,11 +33,12 @@ import os
 import re
 import subprocess
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from bajutsu import simctl
+from bajutsu import adb, simctl
 from bajutsu.artifact_perms import make_run_dir, restrict_file
 
 _logger = logging.getLogger(__name__)
@@ -67,6 +77,13 @@ _CAPTURE_BUDGET = 10.0
 _SCREENSHOT_TIMEOUT = 5.0
 _SNAPSHOT_TIMEOUT = 10.0
 _SAMPLE_TIMEOUT = 15.0
+
+# Ceiling for one `adb` read (BE-0367). Half a snapshot's, because the adb probes are the ones a
+# wedged emulator can hold to their whole ceiling, and two of them at `_SNAPSHOT_TIMEOUT` would
+# outrun the shared budget — the second would be skipped with a note, and a capture that reads the
+# compositor but never the log is missing the half that says what the device was doing. Like the
+# Simulator screenshot, an adb read that times out is itself the datum.
+_ADB_TIMEOUT = 5.0
 
 # Seconds `sample` spends collecting before it symbolicates and writes.
 _SAMPLE_SECONDS = 1
@@ -116,7 +133,115 @@ _captures: dict[str, int] = {}
 _warned: set[str] = set()
 
 
-def capture(reason: str, udid: str | None = None) -> None:
+@dataclass(frozen=True)
+class Capture:
+    """One capture in progress: where its files land, and how much clock its probes have left.
+
+    The object handed across the backend seam, so a `ProbeSet` names what to read and nothing else.
+    The destination, the shared deadline, the summary line every probe leaves behind, and the promise
+    that a probe's failure is recorded rather than raised all stay on this side of the seam.
+    """
+
+    dest: Path
+    deadline: float
+
+    def probe(
+        self,
+        label: str,
+        argv: Sequence[str],
+        timeout: float,
+        *,
+        output: Path | None = None,
+        writes: Path | None = None,
+    ) -> None:
+        """Run one bounded probe, recording its exit and elapsed time in the summary. Never raises."""
+        _probe(self.dest, label, argv, timeout, self.deadline, output=output, writes=writes)
+
+    def note(self, line: str) -> None:
+        """Append one outcome line to this capture's summary."""
+        _note(self.dest, line)
+
+    def path(self, name: str) -> Path:
+        """A file inside this capture, for a probe whose output is written rather than piped."""
+        return self.dest / name
+
+
+# A backend's half of a capture: the probes that answer "wedged device or starved host?" for the
+# platform this run drives. Built by `simulator_probes` / `device_probes` below and passed to
+# `capture`, which owns everything the two backends share. A `Callable` rather than a class, matching
+# how the rest of the codebase injects behavior (`RunFn`, `ActFn`, `Spawn`): a probe set is one
+# operation, and the state it needs — a udid, a serial — is closed over when it is built.
+ProbeSet = Callable[[Capture], None]
+
+
+def simulator_probes(udid: str | None = None) -> ProbeSet:
+    """The probes that separate a wedged Simulator from a starving macOS host (BE-0361).
+
+    Args:
+        udid: The device to screenshot, when the trigger knows it. Absent, the host-side probes still
+            run — they answer the starvation hypothesis on their own.
+    """
+
+    def probes(capture: Capture) -> None:
+        # Sub-second snapshots first, then the screenshot, then the expensive `sample`s. Ordering by
+        # cost matters on the interesting case: a wedged render service makes the screenshot spend
+        # its whole ceiling, which is half the budget, and the host's load — the answer to the
+        # starvation hypothesis — must already be on record by then rather than lost to the probe
+        # that outran it.
+        capture.probe("ps", ["/bin/ps", "aux"], _SNAPSHOT_TIMEOUT, output=capture.path("ps.txt"))
+        capture.probe(
+            "vm_stat", ["/usr/bin/vm_stat"], _SNAPSHOT_TIMEOUT, output=capture.path("vm_stat.txt")
+        )
+        if udid is not None:
+            _screenshot(capture, udid)
+        _sample_processes(capture)
+
+    return probes
+
+
+def device_probes(serial: str) -> ProbeSet:
+    """The probes that separate a wedged emulator from a starving Linux host (BE-0367).
+
+    The adb twin of `simulator_probes`, and deliberately not a variant of it: `simctl`, `vm_stat`,
+    and `sample` have no counterpart in `adb`, `top`, and `dumpsys`, so a single probe set covering
+    both would be a branch on the backend rather than shared logic.
+
+    Args:
+        serial: The device the stalled read or recording was addressing.
+    """
+
+    def probes(capture: Capture) -> None:
+        # Host snapshots first, for the reason the Simulator set takes them first: the two `adb`
+        # reads below are the ones a wedged device can hold to their whole ceiling, and the host's
+        # load must be on record before that happens rather than lost to the probe that outran it.
+        capture.probe("ps", ["ps", "aux"], _SNAPSHOT_TIMEOUT, output=capture.path("ps.txt"))
+        capture.probe("top", ["top", "-bn1"], _SNAPSHOT_TIMEOUT, output=capture.path("top.txt"))
+        try:
+            latency = adb.dumpsys_surfaceflinger_latency_cmd(serial)
+            logcat = adb.logcat_tail_cmd(serial)
+        except (adb.DeviceError, ValueError) as exc:
+            # Noted rather than dropped, like the Simulator screenshot's own id guard: the host
+            # snapshots above already landed, so a summary silent about the device half would read
+            # as a capture that found the device healthy.
+            capture.note(f"adb: refused the device serial ({exc})")
+            return
+        # SurfaceFlinger's per-frame latency table is the compositor's own view of recent frames, so
+        # a renderer that has stopped producing shows up here and not in the host snapshots above.
+        capture.probe(
+            "surfaceflinger",
+            latency,
+            _ADB_TIMEOUT,
+            output=capture.path("surfaceflinger-latency.txt"),
+        )
+        # The device's retained ring buffer, read once after the fact — unlike the per-scenario
+        # `deviceLog` interval, it still has something to show when the process serving that stream
+        # is the one that died.
+        capture.probe("logcat", logcat, _ADB_TIMEOUT, output=capture.path("logcat-tail.txt"))
+
+    return probes
+
+
+def capture(reason: str, probes: ProbeSet) -> None:
     """Capture the state behind a stall into a fresh directory, if the operator asked for it.
 
     Returns without touching the filesystem when `BAJUTSU_STALL_DIAGNOSTICS` is unset or this process
@@ -124,21 +249,21 @@ def capture(reason: str, udid: str | None = None) -> None:
 
     Never raises. The caller is a failure path — one of them, the video trigger, calls this from inside
     a live scenario's evidence setup — so a bug in here must cost a log line and nothing else. The
-    promise is enforced once, here, rather than re-derived at each probe.
+    promise is enforced once, here, rather than re-derived at each probe, and it covers the backend's
+    probe set too: a `ProbeSet` that raises costs the same log line.
 
     Args:
         reason: Which trigger fired. Names the capture directory and carries its own budget, so a
             frequent trigger cannot starve a rare one.
-        udid: The device to screenshot, when the trigger knows it. Absent, the host-side probes still
-            run — they answer the starvation hypothesis on their own.
+        probes: The backend's own reads, from `simulator_probes` or `device_probes`.
     """
     try:
-        _capture(reason, udid)
+        _capture(reason, probes)
     except Exception:
         _logger.warning("stall diagnostics: the capture of '%s' failed", reason, exc_info=True)
 
 
-def _capture(reason: str, udid: str | None) -> None:
+def _capture(reason: str, probes: ProbeSet) -> None:
     root = os.environ.get(_DIAGNOSTICS_ENV)
     if not root:
         return
@@ -174,23 +299,7 @@ def _capture(reason: str, udid: str | None) -> None:
     # and the unified-log extracts are wall-clock stamped, and without this the only thing tying a
     # capture to a moment in them is a directory mtime that may not survive artifact upload.
     _note(dest, f"captured at {datetime.now(UTC).isoformat()} — reason={reason}")
-    deadline = time.monotonic() + _CAPTURE_BUDGET
-    # Sub-second snapshots first, then the screenshot, then the expensive `sample`s. Ordering by cost
-    # matters on the interesting case: a wedged render service makes the screenshot spend its whole
-    # ceiling, which is half the budget, and the host's load — the answer to the starvation
-    # hypothesis — must already be on record by then rather than lost to the probe that outran it.
-    _probe(dest, "ps", ["/bin/ps", "aux"], _SNAPSHOT_TIMEOUT, deadline, output=dest / "ps.txt")
-    _probe(
-        dest,
-        "vm_stat",
-        ["/usr/bin/vm_stat"],
-        _SNAPSHOT_TIMEOUT,
-        deadline,
-        output=dest / "vm_stat.txt",
-    )
-    if udid is not None:
-        _screenshot(dest, udid, deadline)
-    _sample_processes(dest, deadline)
+    probes(Capture(dest=dest, deadline=time.monotonic() + _CAPTURE_BUDGET))
 
 
 def reset() -> None:
@@ -204,47 +313,45 @@ def _slug(reason: str) -> str:
     return re.sub(r"[^a-z0-9-]+", "-", reason.lower()).strip("-") or "stall"
 
 
-def _screenshot(dest: Path, udid: str, deadline: float) -> None:
+def _screenshot(capture: Capture, udid: str) -> None:
     """Time a `simctl` screenshot. Its duration answers hypothesis (1) whether or not the png lands."""
-    png = dest / "screenshot.png"
+    png = capture.path("screenshot.png")
     try:
         argv = simctl.screenshot_cmd(udid, str(png))
     except (simctl.DeviceError, ValueError) as exc:
-        _note(dest, f"screenshot: refused the device id ({exc})")
+        capture.note(f"screenshot: refused the device id ({exc})")
         return
-    _probe(dest, "screenshot", argv, _SCREENSHOT_TIMEOUT, deadline, writes=png)
+    capture.probe("screenshot", argv, _SCREENSHOT_TIMEOUT, writes=png)
 
 
-def _sample_processes(dest: Path, deadline: float) -> None:
+def _sample_processes(capture: Capture) -> None:
     """Thread-sample the rendering and screenshot processes, bounded per name and in total."""
     taken = 0
     for name in _SAMPLE_PROCESSES:
         # Sliced per name so a multi-device host's several `backboardd`s cannot spend the whole
         # allowance before the later names are reached.
-        for pid in _pids_of(name, dest, deadline)[:_MAX_PIDS_PER_PROCESS]:
+        for pid in _pids_of(name, capture)[:_MAX_PIDS_PER_PROCESS]:
             if taken >= _MAX_SAMPLES:
-                _note(dest, f"sample: stopped at {_MAX_SAMPLES} samples")
+                capture.note(f"sample: stopped at {_MAX_SAMPLES} samples")
                 return
             taken += 1
-            report = dest / f"sample-{name}-{pid}.txt"
-            _probe(
-                dest,
+            report = capture.path(f"sample-{name}-{pid}.txt")
+            capture.probe(
                 f"sample:{name}:{pid}",
                 ["/usr/bin/sample", str(pid), str(_SAMPLE_SECONDS), "-file", str(report)],
                 _SAMPLE_TIMEOUT,
-                deadline,
                 writes=report,
             )
 
 
-def _pids_of(name: str, dest: Path, deadline: float) -> list[int]:
+def _pids_of(name: str, capture: Capture) -> list[int]:
     """The live pids of `name`, or an empty list when it isn't running (or the lookup failed)."""
-    remaining = deadline - time.monotonic()
+    remaining = capture.deadline - time.monotonic()
     if remaining <= 0:
         # Noted, unlike a `pgrep` that simply found nothing: "the budget ran out before we looked" and
         # "this process is not running" are different answers, and a summary that conflated them would
         # read as a complete capture.
-        _note(dest, f"pgrep {name}: skipped, the capture budget is spent")
+        capture.note(f"pgrep {name}: skipped, the capture budget is spent")
         return []
     try:
         found = subprocess.run(
@@ -255,14 +362,13 @@ def _pids_of(name: str, dest: Path, deadline: float) -> list[int]:
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        _note(dest, f"pgrep {name}: {type(exc).__name__} ({exc})")
+        capture.note(f"pgrep {name}: {type(exc).__name__} ({exc})")
         return []
     # `pgrep` exits 1 when nothing matches and 2/3 on a usage or fatal error. Reading only stdout would
     # make an error indistinguishable from "not running" and leave the process unsampled with no note.
     if found.returncode not in (0, 1):
-        _note(
-            dest,
-            f"pgrep {name}: exit {found.returncode} — the lookup failed, so it was not sampled",
+        capture.note(
+            f"pgrep {name}: exit {found.returncode} — the lookup failed, so it was not sampled"
         )
         return []
     pids = [int(line) for line in found.stdout.split() if line.isdigit()]
@@ -270,7 +376,7 @@ def _pids_of(name: str, dest: Path, deadline: float) -> list[int]:
         # An absent render process is a *finding*, not an empty result: a wedged Simulator whose
         # `backboardd` has died is the diagnosis for hypothesis (1), and omitting the line would leave
         # "dead" indistinguishable from "never probed".
-        _note(dest, f"sample:{name}: NOT RUNNING")
+        capture.note(f"sample:{name}: NOT RUNNING")
     return pids
 
 

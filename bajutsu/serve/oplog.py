@@ -46,6 +46,18 @@ EVENTS: frozenset[str] = frozenset(
         "run.purged",
         "oauth.login",
         "oauth.denied",
+        # An org's membership is seeded from `orgs:` once and then owned by the database (BE-0375);
+        # this reports a config entry whose membership fields are consequently no longer read. It
+        # fires at a config rebind as well as at boot, so it can't ride on `server.startup_warning`.
+        "org.membership.ignored",
+        # The org backfill from a bound config could not reach the database; retried at the next
+        # startup or rebind (BE-0375). Its own name, not the one above: an operator alerting on a
+        # stale config entry must not also be paged by a transient database blip.
+        "org.seed.failed",
+        # A sign-in answered 503 because the org database could not be read (BE-0375). Its own name,
+        # not `oauth.denied`: that event means a login was turned away, and an operator alerting on
+        # its WARNING is watching for a total admin lockout, not for a transient store outage.
+        "oauth.store_unavailable",
         "server.startup_warning",
         "quota.rejected",
         "worker.job.started",

@@ -134,6 +134,7 @@ def test_html_shows_step_screenshot_and_tree(tmp_path: Path) -> None:
     (step_dir / "elements.json").write_text(
         json.dumps([_el("home.title", "Welcome", ["staticText"])]), encoding="utf-8"
     )
+    (step_dir / "after.png").write_bytes(b"PNG")
     out = html_report("run1", [r], tmp_path)
     # the step's screenshot thumbnail and its element viewer are shown
     assert 'class="shot"' in out and 'src="00-s1/step0/after.png"' in out
@@ -179,12 +180,98 @@ def test_html_tree_rows_carry_frame_for_screenshot_highlight(tmp_path: Path) -> 
     step_dir = tmp_path / "00-s1" / "step0"
     step_dir.mkdir(parents=True)
     (step_dir / "elements.json").write_text(json.dumps([el]), encoding="utf-8")
+    (step_dir / "after.png").write_bytes(b"PNG")
     out = html_report("run1", [r], tmp_path)
     # the row carries the frame; the table carries the screen extent (bbox: 112x76)
     assert 'class="tvrow" data-x="12" data-y="40" data-w="100" data-h="36"' in out
     assert 'data-sw="112" data-sh="76"' in out
     # the highlight overlay + frame wrapper are wired in JS/CSS
     assert "tv-hl" in out and "tv-shotframe" in out
+    # …and the shot those frames are drawn onto is really there. `tv-hl` / `tv-shotframe` are static
+    # strings the self-contained HTML embeds whether or not a screenshot resolved, so without this
+    # the on-disk filter could empty the test unnoticed (review follow-up).
+    assert 'class="shot"' in out and 'src="00-s1/step0/after.png"' in out
+
+
+def _one_step_report(
+    tmp_path: Path, artifacts: list[Artifact], *, missing: set[str] | None = None
+) -> str:
+    """Render a one-step report whose step recorded *artifacts* and one framed element.
+
+    Every screenshot the step recorded is written to disk, since the report picks among the files
+    that are actually there; name one in *missing* to model a run whose store lost it.
+    """
+    el = {**_el("home.cta", "Buy", ["button"]), "frame": (12.0, 40.0, 100.0, 36.0)}
+    r = RunResult(
+        scenario="s1",
+        ok=True,
+        steps=[
+            StepOutcome(index=0, action="tap", ok=True, started_at=0.0, artifacts=artifacts),
+        ],
+        expect_results=[],
+        artifacts=[],
+    )
+    step_dir = tmp_path / "00-s1" / "step0"
+    step_dir.mkdir(parents=True, exist_ok=True)
+    (step_dir / "elements.json").write_text(json.dumps([el]), encoding="utf-8")
+    for a in artifacts:
+        if a.kind == "screenshot" and a.name not in (missing or set()):
+            (tmp_path / a.name).write_bytes(b"PNG")
+    return html_report("run1", [r], tmp_path)
+
+
+def test_step_shows_the_post_action_screenshot(tmp_path: Path) -> None:
+    # A step recording both screenshots shows `after.png` — in the steps-table thumbnail and, since
+    # the element viewer reads that same `img.shot`, in the viewer beside the element table.
+    # `elements.json` has one fixed name, so the always-on post-step `elements` capture leaves the
+    # embedded tree describing the post-action screen; `before.png` would put a hovered element's
+    # highlight on pixels from another moment.
+    out = _one_step_report(
+        tmp_path,
+        [
+            Artifact("00-s1/step0/before.png", "screenshot", "driver"),
+            Artifact("00-s1/step0/elements.json", "elements", "driver"),
+            Artifact("00-s1/step0/after.png", "screenshot", "driver"),
+            Artifact("00-s1/step0/elements.json", "elements", "driver"),
+        ],
+    )
+    assert 'class="shot" loading="lazy" src="00-s1/step0/after.png"' in out
+    assert "before.png" not in out
+
+
+def test_step_falls_back_when_the_recorded_after_png_is_not_on_disk(tmp_path: Path) -> None:
+    # A report re-rendered from a stored run (`serve/artifacts.py`) can name a screenshot the store
+    # no longer holds. Choosing it would emit a broken `<img>` and leave the element viewer with
+    # nothing to draw frames on, so the choice is made among the files that are there — the same
+    # filter the serve editor's picker applies (review follow-up).
+    out = _one_step_report(
+        tmp_path,
+        [
+            Artifact("00-s1/step0/before.png", "screenshot", "driver"),
+            Artifact("00-s1/step0/elements.json", "elements", "driver"),
+            Artifact("00-s1/step0/after.png", "screenshot", "driver"),
+        ],
+        missing={"00-s1/step0/after.png"},
+    )
+    assert 'class="shot" loading="lazy" src="00-s1/step0/before.png"' in out
+
+
+def test_step_falls_back_to_the_pre_action_screenshot_when_no_after_png_exists(
+    tmp_path: Path,
+) -> None:
+    # No `capture` list can suppress `after.png` any more, but one path still records none: a step
+    # that fails before it acts (`UncoveredSystemAlertLocale`) returns before the shutter, and
+    # nothing fills one in for it afterwards. It keeps showing the pre-step baseline's `before.png`,
+    # which matches the pre-action tree recorded beside it. A run recorded before this change lands
+    # here too.
+    out = _one_step_report(
+        tmp_path,
+        [
+            Artifact("00-s1/step0/before.png", "screenshot", "driver"),
+            Artifact("00-s1/step0/elements.json", "elements", "driver"),
+        ],
+    )
+    assert 'class="shot" loading="lazy" src="00-s1/step0/before.png"' in out
 
 
 def test_html_tree_falls_back_to_link_without_run_dir() -> None:
@@ -210,10 +297,10 @@ def test_html_tree_falls_back_to_link_without_run_dir() -> None:
     assert 'href="00-s1/step0/elements.json"' in out
 
 
-def test_view_data_first_artifact_wins_when_kind_appears_more_than_once() -> None:
-    # When two artifacts share the same kind (e.g. screenshot.before + screenshot.after both
-    # produce kind="screenshot"), the first one in the list is selected — matching the
-    # behaviour of the previous next(...) scan.
+def test_view_data_picks_after_png_over_the_earlier_screenshot() -> None:
+    # `screenshot.before` and `screenshot.after` both produce kind="screenshot", so the step carries
+    # two artifacts of one kind. Position does not decide between them: `after.png` wins wherever it
+    # sits in the list, including — as here — after the `before.png` the pre-step baseline wrote.
     r = RunResult(
         scenario="s1",
         ok=True,
@@ -232,7 +319,6 @@ def test_view_data_first_artifact_wins_when_kind_appears_more_than_once() -> Non
         expect_results=[],
         artifacts=[],
     )
-    # The first screenshot artifact is used, not the second.
     out = html_report("run1", [r])
-    assert 'src="00-s1/step0/before.png"' in out
-    assert 'src="00-s1/step0/after.png"' not in out
+    assert 'src="00-s1/step0/after.png"' in out
+    assert 'src="00-s1/step0/before.png"' not in out

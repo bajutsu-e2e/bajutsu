@@ -35,7 +35,9 @@ def flakiness(
     ),
     as_json: bool = typer.Option(False, "--json", help="emit the ranking as JSON instead of text"),
     window: int = typer.Option(
-        0, "--window", help="keep only each scenario's newest N runs (0 = the whole history)"
+        0,
+        "--window",
+        help="keep only each history's newest N runs, per scenario per OS (0 = the whole history)",
     ),
     org: str = typer.Option(
         "default", "--org", help="org whose runs to mine when reading the database"

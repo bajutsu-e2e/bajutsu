@@ -14,7 +14,7 @@ import logging
 import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Protocol
 
 from bajutsu.artifact_perms import restrict_file
@@ -48,6 +48,39 @@ class Artifact:
     name: str
     kind: str
     provider: str
+
+
+def displayed_screenshot(screenshot_names: list[str]) -> str | None:
+    """Which of a step's screenshots a viewer shows.
+
+    The post-action `after.png` when the run recorded one, else the first screenshot it did record.
+    Every consumer that shows a step's screenshot resolves it through here — the HTML report's steps
+    table and element viewer, the serve editor's element picker, and the triage context handed to a
+    failure investigator — so none of them disagrees about which screenshot a step "is". Preferring
+    `after.png` keeps that image next to the tree in `elements.json`: the pre-step baseline writes
+    the pre-action tree (BE-0341), but the file has one fixed name, so the always-on post-step
+    `elements` capture replaces it with the post-action tree. The fallback covers the one path that
+    returns before that post-step call — a step failing on `UncoveredSystemAlertLocale` — so a step
+    still shows whichever screenshot it has.
+
+    The preference is sound only because the post-step `elements` write is unconditional, which is
+    true from this change onward and not of runs recorded before it. A stored run made under a
+    narrowed `capture` list can hold a pre-action `elements.json` next to an `after.png`, and
+    nothing in the manifest distinguishes the two — `kind` records the artifact, not which side of
+    the action it was taken on. Reading such a run (a re-rendered report, the serve editor's picker,
+    triage) therefore pairs its post-action image with a pre-action tree, where before it paired
+    `before.png` with that same tree. Pairing them correctly would mean recording the capture token
+    on each artifact entry, a manifest-schema change left to its own item.
+
+    Args:
+        screenshot_names: every `screenshot` artifact name the step recorded, in capture order.
+            Names are re-rooted under the step id (`00-login/step0/after.png`), so the post-action
+            one is matched on its filename — the only name `screenshot.after` writes.
+    """
+    return next(
+        (n for n in screenshot_names if PurePosixPath(n).name == "after.png"),
+        screenshot_names[0] if screenshot_names else None,
+    )
 
 
 def write_elements(
@@ -109,7 +142,7 @@ def write_raw_tree(
     SystemUI decor windows), `hierarchy.parsed-input<suffix>` — what the parser actually consumed after
     that transform — so a mismatch between a resolved coordinate and the real screen can be traced to the
     device's/runner's own reply versus bajutsu's processing of it. `mkdir` creates the step dir first, and
-    is skipped when the caller already made it.
+    is skipped when the caller already made it (BE-0351).
 
     Also a no-op, loudly, when `redactor.has_label_rules`: `redact_elements` (behind `elements.json`)
     blanks a labeled element's `value` structurally, using the parsed tree it has and this function

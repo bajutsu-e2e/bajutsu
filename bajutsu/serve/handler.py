@@ -68,7 +68,8 @@ class _StdlibCtx:
     def path_param(self, name: str) -> str:
         # The matcher runs on the raw (still percent-encoded) request path, so decode here to honor
         # the `RequestCtx.path_param` contract of returning the decoded segment — the FastAPI ctx's
-        # Starlette params arrive already decoded, so both backends hand closures the same value.
+        # Starlette params arrive already decoded, so both backends hand closures the same value
+        # (BE-0253).
         return unquote(self._params[name])
 
     def query(self, key: str) -> str | None:
@@ -627,6 +628,7 @@ _JS_MODULES = (
     "serve.crawl.mjs",
     "serve.metrics.mjs",
     "serve.projects.mjs",
+    "serve.orgs.mjs",
     "serve.author.mjs",
 )
 _JS_ENTRY = "serve.author.mjs"  # the module <script type="module"> loads; pulls in the rest

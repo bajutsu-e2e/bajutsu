@@ -49,7 +49,7 @@ class _HitResult(NamedTuple):
 
     `cover` / `rect` name the covering element the same way `base.raise_if_covered` names a cover on
     the other backends; both are `None` together on a hit, or when nothing rendered at the point at
-    all.
+    all (BE-0349).
     """
 
     ok: bool
@@ -942,6 +942,13 @@ class PlaywrightDriver:
             raise base.ElementNotFound(f"selectOption: resolved element is not a <select>: {sel!r}")
         if result == "no-option":
             raise base.ElementNotFound(f"selectOption: no option with value {option!r}: {sel!r}")
+
+    def set_picker_value(self, sel: base.Selector, value: str) -> None:
+        # The mirror of `select_option`'s iOS/Android refusal (BE-0356): a picker wheel is a native
+        # iOS control with no DOM counterpart — a `<select>` is how the web expresses the same intent.
+        raise base.UnsupportedAction(
+            "setPickerValue is iOS-only; use selectOption for a web <select>"
+        )
 
     def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
         # BE-0316 is an iOS SpringBoard concept: the web backend has no OS-level permission prompt at

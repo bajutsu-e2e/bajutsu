@@ -12,9 +12,11 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
+from bajutsu import device_os
+from bajutsu.device_os import DeviceOS
 from bajutsu.drivers import base
 from bajutsu.scenario import Assertion, Gone, Scenario, Step
 
@@ -296,10 +298,8 @@ def render(report: AuditReport) -> str:
 
 # --- repeat-and-diff: prove determinism dynamically (BE-0049) ---
 #
-# Run a scenario K times under identical preconditions and compare outcomes. Anything that varies
-# is reported as non-deterministic — a *finding to fix*, never a retry that turns red into green.
-# The audit never changes a verdict and never feeds the run/CI gate (the opposite of flakiness
-# tolerance / auto-retry, which hides instability).
+# Run a scenario K times under identical preconditions and report anything that varies as a
+# *finding to fix*. The audit never changes a verdict and never feeds the run/CI gate.
 
 
 @dataclass(frozen=True)
@@ -396,12 +396,16 @@ def render_repeat(report: RepeatReport) -> str:
 
 @dataclass(frozen=True)
 class ScenarioHistory:
-    """One scenario's verdict history at a fixed fingerprint — the unit of the longitudinal view."""
+    """One scenario's verdict history at a fixed fingerprint *on one OS* — the longitudinal unit."""
 
     scenario_hash: (
         str  # the run's `provenance.scenarioHash` — the executed file's content fingerprint
     )
     name: str  # the scenario whose outcomes these are (the manifest's per-scenario `scenario`)
+    # The OS these runs ran on, parsed from the per-scenario `device_runtime` (BE-0358); None when
+    # no run named one. Part of the identity, so a verdict that differs *because the OS differs* is
+    # two histories rather than one flaky one.
+    device_os: DeviceOS | None
     runs: int  # how many accumulated runs exercised this scenario at this fingerprint
     passed: int  # runs in which it passed
     failed: int  # runs in which it failed
@@ -415,7 +419,7 @@ class LongitudinalReport:
 
     histories: list[
         ScenarioHistory
-    ]  # one per (fingerprint, scenario), flaky first then by run count
+    ]  # one per (fingerprint, scenario, OS), flaky first then by run count
     skipped: int  # runs with no `scenarioHash` provenance — can't be grouped by identity
 
 
@@ -426,19 +430,24 @@ def longitudinal(manifests: Iterable[Mapping[str, object]]) -> LongitudinalRepor
     executed file's content) over its whole `scenarios` list, so each scenario's outcomes are keyed by
     that fingerprint *and* the scenario's name: a verdict that flips at a constant fingerprint is true
     flakiness, while an edited scenario gets a new fingerprint and a fresh group (an edit can't look
-    like a flake). Pure and observational — it reads the identity stamp and the recorded per-scenario
-    verdict only, never deciding or changing a verdict.
+    like a flake). The key also carries the parsed device OS (BE-0358), so two runs of one scenario on
+    two OS versions form two histories, each classified on its own evidence — a reproducible OS
+    difference is a finding about that OS, not a flake. Pure and observational — it reads the identity
+    stamp and the recorded per-scenario verdict only, never deciding or changing a verdict.
 
     Args:
         manifests: Parsed `manifest.json` mappings, in any order. A manifest with no
             `provenance.scenarioHash` (a pre-provenance run) can't be grouped and is counted in
-            `skipped` instead of contributing history.
+            `skipped` instead of contributing history. A scenario entry whose `device_runtime` is
+            missing or unrecognized groups under a distinct unknown-OS key: merging it into a
+            version's history would reintroduce the blending this grouping removes, and dropping it
+            would lose a run the audit can still classify.
 
     Returns:
-        The per-(fingerprint, scenario) histories, flaky first then by descending run count, plus the
-        count of runs skipped for lacking a fingerprint.
+        The per-(fingerprint, scenario, OS) histories, flaky first then by descending run count, plus
+        the count of runs skipped for lacking a fingerprint.
     """
-    groups: dict[tuple[str, str], list[bool]] = {}
+    groups: dict[tuple[str, str, DeviceOS | None], list[bool]] = {}
     skipped = 0
     for m in manifests:
         prov = m.get("provenance")
@@ -450,11 +459,22 @@ def longitudinal(manifests: Iterable[Mapping[str, object]]) -> LongitudinalRepor
         for s in scenarios if isinstance(scenarios, list) else []:
             name = s.get("scenario") if isinstance(s, dict) else None
             if isinstance(name, str) and name:
-                groups.setdefault((scenario_hash, name), []).append(bool(s.get("ok")))
+                key = (scenario_hash, name, device_os.parse(s.get("device_runtime")))
+                groups.setdefault(key, []).append(bool(s.get("ok")))
 
-    histories = [_history(h, name, oks) for (h, name), oks in groups.items()]
-    # Flaky first (the findings to act on), then the most-observed scenarios — both descending.
-    histories.sort(key=lambda h: (h.classification != "flaky", -h.runs, h.scenario_hash, h.name))
+    histories = [_history(h, name, os, oks) for (h, name, os), oks in groups.items()]
+    # Flaky first (the findings to act on), then the most-observed scenarios — both descending. The
+    # OS sits ahead of the name so two histories that differ only by it order deterministically
+    # rather than by input order.
+    histories.sort(
+        key=lambda h: (
+            h.classification != "flaky",
+            -h.runs,
+            h.scenario_hash,
+            device_os.ordering_key(h.device_os),
+            h.name,
+        )
+    )
     return LongitudinalReport(histories=histories, skipped=skipped)
 
 
@@ -478,13 +498,16 @@ def classify_stability(passed: int, runs: int) -> str:
     return "deterministic"
 
 
-def _history(scenario_hash: str, name: str, oks: list[bool]) -> ScenarioHistory:
-    """Tally one scenario's verdicts at a fingerprint into a classified history."""
+def _history(
+    scenario_hash: str, name: str, os: DeviceOS | None, oks: list[bool]
+) -> ScenarioHistory:
+    """Tally one scenario's verdicts at a fingerprint, on one OS, into a classified history."""
     passed = sum(oks)
     runs = len(oks)
     return ScenarioHistory(
         scenario_hash=scenario_hash,
         name=name,
+        device_os=canonical_os(os),
         runs=runs,
         passed=passed,
         failed=runs - passed,
@@ -493,15 +516,45 @@ def _history(scenario_hash: str, name: str, oks: list[bool]) -> ScenarioHistory:
     )
 
 
+def canonical_os(os: DeviceOS | None) -> DeviceOS | None:
+    """The parsed OS with its raw label replaced by the canonical spelling, for a report entry.
+
+    A group can hold several spellings of one version (`iOS 18.6` and `iOS 18.6.1` are the same OS),
+    and the one that survives into the group key is whichever run was read first. Emitting that raw
+    label would make `--json` depend on input order for a history that is otherwise identical — the
+    same order-dependence the OS component of the sort keys exists to remove.
+    """
+    return replace(os, label=os.display) if os is not None else None
+
+
+def unknown_os_note(unknown: int) -> str:
+    """The disclosure line both flakiness surfaces print when *unknown* histories have no recorded OS.
+
+    Shared so the file-backed audit and the hosted ranking word it identically (BE-0358). Without it,
+    a deployment that started recording the OS mid-history would show its older runs split off under
+    the unknown OS with nothing saying why, and a genuine flake spanning that boundary would read as
+    two `unproven` histories rather than as one finding. "No *single* OS" rather than "no OS": a run
+    whose scenarios spanned two versions lands here too, and did record one per scenario.
+    """
+    subject = "history" if unknown == 1 else "histories"
+    return (
+        f"{unknown} {subject} with no single recorded device OS, grouped under "
+        f"{device_os.describe(None)} separately from the per-OS ones"
+    )
+
+
 def render_longitudinal(report: LongitudinalReport) -> str:
-    """Human-readable longitudinal view: each scenario's classification and pass rate."""
+    """Human-readable longitudinal view: each scenario's OS, classification, and pass rate."""
     if not report.histories:
         body = ["no runs with a scenario fingerprint to analyze"]
     else:
         body = [
-            f"{h.name}: {h.classification} ({h.passed}/{h.runs} passed, {h.pass_rate:.0%})"
+            f"{h.name} on {device_os.describe(h.device_os)}: {h.classification} "
+            f"({h.passed}/{h.runs} passed, {h.pass_rate:.0%})"
             for h in report.histories
         ]
+    if unknown := sum(1 for h in report.histories if h.device_os is None):
+        body.append(unknown_os_note(unknown))
     if report.skipped:
         body.append(f"skipped {report.skipped} run(s) with no scenario fingerprint")
     return "\n".join(body)

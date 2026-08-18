@@ -14,6 +14,7 @@ import {loadHistory, setHistoryFilter, showTab, initPanels} from './serve.panels
 import {initCrawl} from './serve.crawl.mjs';
 import {initMetrics} from './serve.metrics.mjs';
 import {initProjectsView} from './serve.projects.mjs';
+import {initOrgsView, loadOrgs} from './serve.orgs.mjs';
 
 // authorInit / authorRefresh are assigned by the Author-tab IIFE below and imported by core's
 // showView / loadShared; declared here so they are real module exports (a live binding core reads at
@@ -29,6 +30,7 @@ initPanels();
 initCrawl();
 initMetrics();
 initProjectsView();
+initOrgsView();
 
 // Device UI is platform-specific: iOS controls (simulators, device pickers, erase, alert-dismiss)
 // show only for an iOS backend, web controls (the headed/show-browser toggle) only for web. The
@@ -1041,6 +1043,9 @@ initTheme();
 loadConfig();
 loadVersion();
 loadProjects();
+// Decides the Orgs tab's visibility as much as it fills the page: a non-list answer means this
+// deployment or this session cannot administer orgs (BE-0375).
+loadOrgs();
 refreshAiAvailability();
 loadSims();
 // Stats drilldown (BE-0241): a deep link lands here as /?tab=history&runs=…&label=…. Read it before

@@ -92,8 +92,19 @@ Decides whether each `capturePolicy` rule fires for this step ([evidence](eviden
 - `_rule_fires`: whether it matches one of `on.action` (+ optional `idMatches`) / `on.event ==
   screenChanged` / `on.result == error`. The action name is mapped to the DSL name
   (`long_press`→`longPress`, `assert_`→`assert`).
-- `_collect_captures`: gathers the inline `step.capture` + the fired rules' captures + the config's
-  `defaults.capture` baseline (applied unconditionally, unlike the other two) and dedupes.
+- `_collect_captures`: leads with `elements`, then gathers the inline `step.capture` + the fired
+  rules' captures + the config's `defaults.capture` baseline (applied unconditionally, unlike the
+  other two) and dedupes. Leading with `elements` is what gives every step the post-action tree
+  whatever the three sources asked for; `elements.json` has a single filename, so that read replaces
+  the pre-action tree the pre-step baseline wrote.
+- The other half of the pair — `after.png` — is not on this list. `_handle_action` shoots it itself,
+  immediately after the step's action, ahead of every consumer that could otherwise read the tree
+  first (a `screenChanged` comparison, a `for`-wait timeout diagnostic, `extract`). It then drops
+  `screenshot.after` from the capture list above, which is why a bare `screenshot` from any source is
+  normalized to that token first: the shot is never taken twice. One tree still predates the shot —
+  a non-mutating step (`assert`, `wait`) reuses the tree it already settled on rather than re-reading
+  it (BE-0259), so on those two kinds `elements.json` comes from just before `after.png` instead of
+  just after.
 - Instant kinds (screenshot/elements) are acquired by the sink's `capture()`; interval kinds
   (video/deviceLog) are collected by stopping the ones started earlier via `start_intervals()`.
 
@@ -137,7 +148,8 @@ to the report.
 Builds the environment with `simctl` per the `preconditions`:
 
 ```
-erase (if pre.erase: shutdown → erase) → boot → terminate(bundle) (for a clean launch state)
+erase (if pre.erase: shutdown → erase) → boot → bootstatus -b (wait out the boot)
+  → terminate(bundle) (for a clean launch state)
   → launch(bundle, [launchArgs, *locale_args(locale)], {**config.launchEnv, **pre.launchEnv})
   → openurl(deeplink) (if any) → make_driver(actuator, udid)
   → _await_ready (poll until query() returns 2+ elements, up to 10s)
@@ -149,7 +161,10 @@ erase (if pre.erase: shutdown → erase) → boot → terminate(bundle) (for a c
 > (more than the root element)" — up to 10s ([configuration](configuration.md) documents each rung in
 > full). `locale` **is**
 > applied at launch (the scenario's `preconditions.locale` overrides the config default, passed as
-> launch args via `env.locale_args`). The simctl launch sequencing is validated on a real device
+> launch args via `env.locale_args`). `simctl boot` returns as soon as the boot has been *requested*,
+> so every step that follows it waits the boot out with `bootstatus` first — including the extra boot
+> cycle the system-locale pin runs ([BE-0359](../roadmaps/BE-0359-xcuitest-boot-completion-wait/BE-0359-xcuitest-boot-completion-wait.md)).
+> The simctl launch sequencing is validated on a real device
 > (iPhone 17 Pro) via `make -C demos/showcase run-swiftui` + the `ios-e2e.yml` CI workflow.
 
 ### `device_pool` / `run_all` / `run_and_report`

@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from bajutsu import device_os
 from bajutsu import simctl as _simctl
 from bajutsu.agents.ai_config import PROVIDER_MANAGED_ENV
 from bajutsu.handoff import REQUEST_LINE_PREFIX as _HANDOFF_REQUEST_PREFIX
@@ -150,7 +151,11 @@ def _boot_devices(state: ServeState, job: Job) -> bool:
         try:
             state.simctl(_simctl.bootstatus_cmd(udid), None)
             _log(job, f"booted {udid}")
-        except (OSError, subprocess.CalledProcessError) as e:
+        except (OSError, subprocess.CalledProcessError, _simctl.DeviceError) as e:
+            # `DeviceError` covers the `DeviceTimeout` a wedged host now raises (BE-0363). It is
+            # caught here rather than left to escape: this runs on a thread, so an uncaught
+            # exception would leave `errors` empty and report the boot as having succeeded — the
+            # cause-free failure BE-0363 exists to remove, moved to the `serve` job path.
             with errlock:
                 errors[udid] = str(e)
 
@@ -336,6 +341,7 @@ def _persist_run(state: ServeState, job: Job) -> None:
                 scenario_hash=scenario_hash,
                 tool_version=tool_version,
                 git_revision=git_revision,
+                device_runtime=_run_device_runtime(manifest),
             )
         )
     except Exception:
@@ -371,6 +377,18 @@ def _run_provenance(manifest: dict[str, Any] | None) -> tuple[str | None, str | 
         return value if isinstance(value, str) else None
 
     return _str("scenarioHash"), _str("toolVersion"), _str("gitRevision")
+
+
+def _run_device_runtime(manifest: dict[str, Any] | None) -> str | None:
+    """The OS label this run happened on, mirrored onto the DB record so flakiness groups per OS
+    version straight from the DB (BE-0358) — `_run_summary` keeps no runtime, so this is the only
+    channel. `""` records a run that named no single OS (no device catalog, or scenarios spanning
+    versions); None is reserved for a manifest that couldn't be read at all, which leaves the row
+    undetermined and therefore still eligible for the panel's backfill."""
+    if manifest is None:
+        return None
+    run_os = device_os.from_manifest(manifest)
+    return run_os.label if run_os is not None else ""
 
 
 def _run_summary(run_id: str, manifest: dict[str, Any] | None, *, ok: bool) -> dict[str, Any]:
@@ -485,7 +503,15 @@ def _batch_checkpoint(state: ServeState, job_id: str) -> _RepositoryBatchCheckpo
 def _run_batch_job(state: ServeState, job: Job) -> None:
     """Run a cloud-batch job (BE-0336): submit its one scenario to the named batch provider, land the
     downloaded run under ``runs_dir`` so serve records and renders it like a local run, and set the
-    job's verdict from the run's own manifest — no local device, no subprocess, off the verdict path."""
+    job's verdict from the run's own manifest — no local device, no subprocess, off the verdict path.
+
+    Note: cloud-batch dispatch currently works only through the in-process serve path. The DB-queue
+    worker path (``bajutsu/serve/server/worker_job.py``) builds its own ``ServeState`` without
+    ``devicefarm_package_root``, so it falls back to the ephemeral workspace — a directory that holds
+    only the scenario and config, not Bajutsu's ``tests/`` or ``pyproject.toml``. Any cloud-batch job
+    leased from the DB queue will fail Device Farm's ``APPIUM_PYTHON_TEST_PACKAGE`` validation until
+    the worker's ``ServeState`` is wired with the package root and a host-portable app artifact path.
+    """
     request = job.batch
     if (
         request is None
@@ -505,7 +531,9 @@ def _run_batch_job(state: ServeState, job: Job) -> None:
         try:
             verdict = provider.submit(
                 request,
-                work_dir=job.cwd or state.cwd,
+                # Same package root start_run_set relativized the config/scenario paths against (see
+                # ServeState.devicefarm_package_root), falling back to the job's own cwd then state.cwd.
+                work_dir=state.devicefarm_package_root or job.cwd or state.cwd,
                 dest=Path(download_name),
                 checkpoint=_batch_checkpoint(state, job.id),
             )
@@ -562,11 +590,14 @@ def _land_batch_run(download_dir: Path, runs_root: Path) -> str | None:
     they do a local run. Returns the run id only when the run was actually landed, or None when the
     download carried no manifest (a failed cloud run the verdict already reports as a fail), the run id
     is unsafe, or the id already exists under ``runs_root``."""
-    # The Device Farm download unpacks as runs/<run_id>/manifest.json; restrict the search to that
-    # subdirectory so a malformed download with a manifest elsewhere can't make us move an arbitrary
-    # directory under runs_root.
-    runs_subdir = download_dir / "runs"
-    manifests = sorted(runs_subdir.rglob("manifest.json")) if runs_subdir.is_dir() else []
+    # A run lands as `runs/<run_id>/manifest.json`, but Device Farm's Customer Artifacts zip nests it
+    # under a `Host_Machine_Files/$DEVICEFARM_LOG_DIR/` prefix rather than at the download root. Glob
+    # the whole tree (as `verdict_from_manifest` does), but keep only manifests under a `runs/` dir so
+    # a stray manifest elsewhere can't move an arbitrary directory — `valid_run_id` below is the actual
+    # guard that the moved directory can't escape runs_root.
+    manifests = sorted(
+        m for m in download_dir.rglob("manifest.json") if m.parent.parent.name == "runs"
+    )
     if not manifests:
         return None
     if len(manifests) > 1:

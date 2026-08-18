@@ -491,7 +491,7 @@ def test_build_state_server_warns_on_the_retired_singular_admin_team_var(
     # exercised by this suite, so this is the one thing that actually drives
     # `_emit_startup_warnings` and would catch a rename/drop of "server.startup_warning" from
     # `oplog.EVENTS` (which `log_event` would otherwise only surface as a boot-time ValueError on
-    # the first deployment that actually has a warning to re-emit).
+    # the first deployment that actually has a warning to re-emit) (BE-0352).
     with caplog.at_level(logging.WARNING):
         srv._emit_startup_warnings(state)
     records = [r for r in caplog.records if getattr(r, "event", None) == "server.startup_warning"]
@@ -704,7 +704,8 @@ def test_build_state_server_warns_on_a_malformed_admin_teams_entry(
     assert any(c == "admin_teams_malformed" for c, _m in state.startup_warnings)
     # This single entry is the WHOLE list -- entirely malformed, the same total lockout
     # `admin_teams_empty` warns about (oauth_callback's `admin_teams_unusable` treats them
-    # identically) -- so the message must name that consequence too, not just the syntax note.
+    # identically) -- so the message must name that consequence too, not just the syntax note
+    # (BE-0352).
     assert "no login will have admin access" in err
 
 

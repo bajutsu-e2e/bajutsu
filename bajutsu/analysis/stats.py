@@ -9,9 +9,10 @@ aggregation; there is no model and no verdict, and it is never part of the CI ga
 It is the operational complement to the two analytical reports Bajutsu already ships — the coverage
 map (BE-0050) answers *"what surface do we test?"* and the determinism audit (BE-0049) answers *"is a
 given scenario reproducible?"*; this answers *"how is the whole suite doing over time?"* The
-scenario-level series are keyed by the BE-0049 `(scenarioHash, name)` identity — a verdict that flips
-at a constant fingerprint is true flakiness, while an edited scenario starts a fresh series — and the
-flakiness classification is reused from the audit rather than re-derived.
+scenario-level series are keyed by the BE-0049 `(scenarioHash, name)` identity, widened with the
+parsed device OS (BE-0358) — a verdict that flips at a constant fingerprint on one OS is true
+flakiness, while an edited scenario, or the same scenario on another OS version, starts a fresh
+series — and the flakiness classification is reused from the audit rather than re-derived.
 """
 
 from __future__ import annotations
@@ -25,7 +26,9 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
+from bajutsu import device_os
 from bajutsu.analysis.audit import longitudinal
+from bajutsu.device_os import DeviceOS
 
 # A run id opens with a UTC timestamp (`YYYYMMDD-HHMMSS`), so the day is a pure prefix parse; a run
 # id that doesn't match (a custom label) simply has no day and buckets under "" (unknown).
@@ -57,15 +60,17 @@ class DayPoint:
 
 @dataclass(frozen=True)
 class ScenarioStat:
-    """One scenario's aggregate at a fixed fingerprint — pass-rate, duration, and flakiness in one.
+    """One scenario's aggregate at a fixed fingerprint, on one OS — pass-rate, duration, flakiness.
 
-    Keyed by the BE-0049 `(scenarioHash, name)` identity, so a content edit starts a fresh series
-    rather than corrupting the old one. Pass-rate and `classification` come from the audit's
-    longitudinal view (reused, not re-derived); the durations are aggregated here.
+    Keyed by the BE-0049 `(scenarioHash, name)` identity plus the parsed device OS (BE-0358), so
+    neither a content edit nor an OS-version difference corrupts the old series. Pass-rate and
+    `classification` come from the audit's longitudinal view (reused, not re-derived); the durations
+    are aggregated here, against the same key.
     """
 
     scenario_hash: str
     name: str
+    device_os: DeviceOS | None  # None when no run named one — see `audit.longitudinal`
     runs: int
     passed: int
     failed: int
@@ -97,7 +102,9 @@ class Stats:
     by_run: list[RunPoint]  # chronological (oldest first) — pass-rate over time and volume
     by_day: list[DayPoint]  # chronological (oldest first)
     by_backend: dict[str, int]  # run count per actuator — the volume denominator
-    scenarios: list[ScenarioStat]  # per (fingerprint, scenario): flaky first, then most-observed
+    # Per (fingerprint, scenario, OS) — so one scenario can hold several rows, one per OS version
+    # it ran on (BE-0358). Flaky first, then most-observed.
+    scenarios: list[ScenarioStat]
     failing_scenarios: list[Hotspot]  # scenarios that fail most, by frequency
     failing_steps: list[Hotspot]  # step actions that fail most, by frequency
     failing_assertions: list[Hotspot]  # assertion kinds that fail most, by frequency
@@ -111,7 +118,8 @@ class ProjectMetrics:
     A per-project roll-up of the same `Stats` `aggregate_runs` already computes, reduced to the
     scalars a comparison ranks on plus a trend series for a sparkline. `flaky_rate` is a plain
     count over the BE-0102/BE-0049 per-scenario classification (flaky-classified ÷ total),
-    adding no new flakiness heuristic.
+    adding no new flakiness heuristic. Both counts are over distinct scenarios, not over the per-OS
+    series (BE-0358), so a wider device matrix neither inflates nor deflates the rate.
     """
 
     project_id: str
@@ -140,8 +148,8 @@ def aggregate_runs(manifests: Iterable[Mapping[str, object]]) -> Stats:
 
     Returns:
         The whole-suite `Stats`: run totals, the per-run and per-day time series, run volume by
-        backend, the per-`(scenarioHash, name)` aggregates (flakiness reused from the BE-0049 audit),
-        and the failure hotspots by scenario / step action / assertion kind.
+        backend, the per-`(scenarioHash, name, OS)` aggregates (flakiness reused from the BE-0049
+        audit), and the failure hotspots by scenario / step action / assertion kind.
     """
     runs = [m for m in manifests if isinstance(m, Mapping) and isinstance(m.get("scenarios"), list)]
 
@@ -150,17 +158,18 @@ def aggregate_runs(manifests: Iterable[Mapping[str, object]]) -> Stats:
     passed_runs = sum(1 for p in by_run if p.ok)
 
     # Reuse the BE-0049 audit for the flakiness classification, then fold in durations keyed by the
-    # same (scenarioHash, name) identity. The two passes must stay grouped identically; if the
+    # same (scenarioHash, name, OS) identity. The two passes must stay grouped identically; if the
     # audit's key ever widens, `_scenario_durations` has to widen with it or the averages drift.
     hist = longitudinal(runs)
     durations = _scenario_durations(runs)
     scenarios = []
     for h in hist.histories:
-        ds = durations.get((h.scenario_hash, h.name), [])
+        ds = durations.get((h.scenario_hash, h.name, h.device_os), [])
         scenarios.append(
             ScenarioStat(
                 scenario_hash=h.scenario_hash,
                 name=h.name,
+                device_os=h.device_os,
                 runs=h.runs,
                 passed=h.passed,
                 failed=h.failed,
@@ -207,14 +216,20 @@ def project_metrics(
         The project's `ProjectMetrics`.
     """
     s = aggregate_runs(manifests)
-    flaky = sum(1 for sc in s.scenarios if sc.classification == "flaky")
+    # Counted over *scenarios*, not over the per-OS series `aggregate_runs` produces (BE-0358): a
+    # project running one suite across a three-device matrix has three series per scenario, so a
+    # per-series denominator would rank it three times healthier than an identical project running
+    # the same suite on one device — broader coverage would improve the score. A scenario is flaky
+    # here when it flakes on any OS it ran on.
+    scenarios = {(sc.scenario_hash, sc.name) for sc in s.scenarios}
+    flaky = {(sc.scenario_hash, sc.name) for sc in s.scenarios if sc.classification == "flaky"}
     durations = [p.duration_s for p in s.by_run]
     return ProjectMetrics(
         project_id=project_id,
         name=name,
         runs=s.runs,
         pass_rate=s.pass_rate,
-        flaky_rate=(flaky / len(s.scenarios)) if s.scenarios else 0.0,
+        flaky_rate=(len(flaky) / len(scenarios)) if scenarios else 0.0,
         duration_p50_s=_percentile(durations, 0.5),
         duration_p95_s=_percentile(durations, 0.95),
         trend=s.by_day,
@@ -280,15 +295,19 @@ def _by_backend(points: list[RunPoint]) -> dict[str, int]:
     return dict(sorted(volume.items()))
 
 
-def _scenario_durations(runs: list[Mapping[str, object]]) -> dict[tuple[str, str], list[float]]:
-    """Per-(fingerprint, scenario) durations, keyed exactly as the BE-0049 longitudinal grouping.
+def _scenario_durations(
+    runs: list[Mapping[str, object]],
+) -> dict[tuple[str, str, DeviceOS | None], list[float]]:
+    """Per-(fingerprint, scenario, OS) durations, keyed exactly as the BE-0049 longitudinal grouping.
 
     Only runs carrying a `provenance.scenarioHash` contribute, so the keys line up with the audit's
-    histories (a run without a fingerprint is `scenarios_skipped` there and omitted here alike). A
-    scenario whose `duration_s` is absent or non-numeric contributes no sample rather than a `0.0`,
-    so a missing timing never drags the average down (it would read as a fast run that never happened).
+    histories (a run without a fingerprint is `scenarios_skipped` there and omitted here alike). The
+    OS component is what keeps them lined up since BE-0358 widened that grouping: without it, two
+    OS versions' timings would pool into one average that neither series ran. A scenario whose
+    `duration_s` is absent or non-numeric contributes no sample rather than a `0.0`, so a missing
+    timing never drags the average down (it would read as a fast run that never happened).
     """
-    durations: dict[tuple[str, str], list[float]] = {}
+    durations: dict[tuple[str, str, DeviceOS | None], list[float]] = {}
     for m in runs:
         prov = m.get("provenance")
         scenario_hash = prov.get("scenarioHash") if isinstance(prov, Mapping) else None
@@ -300,7 +319,8 @@ def _scenario_durations(runs: list[Mapping[str, object]]) -> dict[tuple[str, str
             name = s.get("scenario")
             duration = _opt_float(s.get("duration_s"))
             if isinstance(name, str) and name and duration is not None:
-                durations.setdefault((scenario_hash, name), []).append(duration)
+                key = (scenario_hash, name, device_os.parse(s.get("device_runtime")))
+                durations.setdefault(key, []).append(duration)
     return durations
 
 
@@ -431,14 +451,17 @@ def render(s: Stats) -> str:
     if slowest:
         lines.append("slowest scenarios (avg):")
         lines.extend(
-            f"  {sc.name}: {sc.avg_duration_s:.2f}s (max {sc.max_duration_s:.2f}s)"
+            f"  {sc.name} on {device_os.describe(sc.device_os)}: "
+            f"{sc.avg_duration_s:.2f}s (max {sc.max_duration_s:.2f}s)"
             for sc in slowest
         )
     flaky = _flaky(s.scenarios)
     if flaky:
         lines.append("flaky scenarios:")
         lines.extend(
-            f"  {sc.name}: {sc.passed}/{sc.runs} passed ({sc.pass_rate:.0%})" for sc in flaky
+            f"  {sc.name} on {device_os.describe(sc.device_os)}: "
+            f"{sc.passed}/{sc.runs} passed ({sc.pass_rate:.0%})"
+            for sc in flaky
         )
     if s.failing_scenarios:
         lines.append("failure hotspots (scenarios):")
@@ -479,7 +502,15 @@ def render_html(s: Stats, *, live: bool = False) -> str:
     return (
         _env()
         .get_template("stats.html.j2")
-        .render(stats=s, slowest=_slowest(s.scenarios), flaky=_flaky(s.scenarios), live=live)
+        .render(
+            stats=s,
+            slowest=_slowest(s.scenarios),
+            flaky=_flaky(s.scenarios),
+            live=live,
+            # Passed in rather than spelled out in the template, so every surface names an OS — and
+            # the unknown one — with the same words (BE-0358).
+            describe_os=device_os.describe,
+        )
     )
 
 

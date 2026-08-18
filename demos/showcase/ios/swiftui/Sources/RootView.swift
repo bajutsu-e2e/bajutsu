@@ -5,12 +5,15 @@ struct RootView: View {
 
     var body: some View {
         // BE-0114: the SHOWCASE_CONFORMANCE launch env swaps the whole UI for the flat conformance
-        // screen; BE-0019: SHOWCASE_GESTURES swaps in the flat pinch/rotate screen. Otherwise the
-        // normal tab app (BE-0079) is untouched.
+        // screen; BE-0019: SHOWCASE_GESTURES swaps in the flat pinch/rotate screen; BE-0356:
+        // SHOWCASE_PICKERS swaps in the flat wheel-picker screen. Otherwise the normal tab app
+        // (BE-0079) is untouched.
         if let identifiers = model.conformanceIDs {
             ConformanceView(identifiers: identifiers)
         } else if model.gesturesMode {
             GestureView()
+        } else if model.pickersMode {
+            PickerView()
         } else {
             MainTabView()
         }

@@ -297,6 +297,30 @@ def test_package_excludes_vcs_and_build_noise_dirs(tmp_path: Path) -> None:
     assert "src/runs/leftover.log" not in names
 
 
+def test_package_excludes_credential_files(tmp_path: Path) -> None:
+    # When the package root is the Bajutsu checkout, `.env`, `.env.local`, and `.aws/` can carry live
+    # API keys that must never reach a shared Device Farm host. The build strips any path component
+    # that starts with `.env` or `.aws`.
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "keep.py").write_text("pass")
+    (src / ".env").write_text("ANTHROPIC_API_KEY=sk-live")
+    (src / ".env.local").write_text("SECRET=x")
+    aws_dir = src / ".aws"
+    aws_dir.mkdir()
+    (aws_dir / "credentials").write_text("[default]")
+    out = tmp_path / "package.zip"
+
+    build_package([(src, ".")], out)
+
+    with zipfile.ZipFile(out) as zf:
+        names = set(zf.namelist())
+    assert "keep.py" in names
+    assert ".env" not in names
+    assert ".env.local" not in names
+    assert ".aws/credentials" not in names
+
+
 def test_package_root_arcname_places_contents_at_the_zip_root(tmp_path: Path) -> None:
     # `--package .=.` puts the repo (its real tests/ + pyproject.toml) at the zip root, which
     # Device Farm's APPIUM_PYTHON_TEST_PACKAGE validation requires: the tests/ directory must sit
@@ -733,7 +757,8 @@ def test_device_selection_for_pins_the_platform_and_a_single_device() -> None:
 def test_submit_and_collect_schedules_with_device_selection_not_a_pool(tmp_path: Path) -> None:
     # The serve fan-out path passes deviceSelectionConfiguration + maxDevices:1 instead of a static
     # devicePoolArn (the two are mutually exclusive in ScheduleRun). Assert the run is scheduled with
-    # the selection and no pool, so one run reserves one device from the shared platform pool.
+    # the selection and no pool, so one run reserves one device from the shared platform pool
+    # (BE-0336).
     client = _FakeClient()
     transfer = _FakeTransfer(downloaded_ok=True)
     package = tmp_path / "package.zip"
@@ -971,11 +996,11 @@ def test_main_still_accepts_the_legacy_app_apk_flag(
         captured["app_upload_type"] = app_upload_type
         return Verdict(ok=True, passed=1, total=1)
 
-    # `_devicefarm_client`/`_HttpTransfer` are called only to build args for the faked
+    # `_devicefarm_client`/`HttpTransfer` are called only to build args for the faked
     # submit_and_collect; `object` is a callable that yields a throwaway instance, so it stands in.
     monkeypatch.setattr(mod, "submit_and_collect", _fake_submit)
     monkeypatch.setattr(mod, "_devicefarm_client", object)
-    monkeypatch.setattr(mod, "_HttpTransfer", object)
+    monkeypatch.setattr(mod, "HttpTransfer", object)
 
     exit_code = main(
         [

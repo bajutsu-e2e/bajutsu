@@ -50,6 +50,8 @@ final class Router {
             return tapResultResponse(onMainCatching(self.provider.selectAll))
         case ("POST", "/copy"):
             return tapResultResponse(onMainCatching(self.provider.copySelection))
+        case ("POST", "/setPickerValue"):
+            return handleSetPickerValue(request)
         case ("POST", "/systemAlert/query"):
             return handleSystemAlertQuery()
         case ("POST", "/systemAlert/tap"):
@@ -282,6 +284,33 @@ final class Router {
         return tapResultResponse(onMainCatching { self.provider.deleteText(count: count) })
     }
 
+    // Set a picker wheel to a named row (BE-0356). `handleTap`'s store-lookup handle shape, over the
+    // app tree's `store` like every other element actuation, plus a string payload like `handleType`'s
+    // `text` — which resolves no handle of its own, since it types into whatever holds focus.
+    private func handleSetPickerValue(_ request: HTTPRequest) -> HTTPResponse {
+        guard let body = request.body,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            return .error(400, "missing or invalid JSON body")
+        }
+        guard let handle = json["handle"] as? String else {
+            return .error(400, "missing handle")
+        }
+        guard let value = json["value"] as? String else {
+            return .error(400, "missing value")
+        }
+        switch store.lookup(handle: handle) {
+        case .found(let snapshot):
+            let result = onMainCatching {
+                self.provider.setPickerValue(backingElement: snapshot.backingElement, value: value)
+            }
+            return tapResultResponse(result)
+        case .stale:
+            return .json(200, ["status": "stale"])
+        case .notFound:
+            return .json(200, ["status": "not-found"])
+        }
+    }
+
     private func handleScreenshot() -> HTTPResponse {
         guard let png = caughtOnMain(Data?.none, self.provider.screenshot) else {
             return .error(500, "screenshot failed")
@@ -295,6 +324,7 @@ final class Router {
         case .stale: return .json(200, ["status": "stale"])
         case .notFound: return .json(200, ["status": "not-found"])
         case .notHittable: return .json(200, ["status": "not-hittable"])
+        case .valueNotFound: return .json(200, ["status": "value-not-found"])
         }
     }
 
@@ -345,6 +375,13 @@ final class Router {
     /// failure precedes any side effect and the re-resolve-and-retry (BE-0289) cannot double-actuate.
     /// The coordinate/keyboard actuations the driver does not retry (`tapPoint`/`swipe`/`type`/…)
     /// surface `.stale` as a loud failure, so they carry no double-actuation risk either.
+    ///
+    /// `/setPickerValue` is the first route where a raise can arrive *after* its actuation — the
+    /// value read-back runs once `adjust(toPickerWheelValue:)` has already moved the wheel — so the
+    /// "precedes any side effect" argument above does not cover it. It is safe only because
+    /// `adjust(toPickerWheelValue:)` is idempotent, and because the read-back catches its own raises
+    /// (`settlesTo`) rather than letting them reach here at all. A future read-back-shaped route must
+    /// re-establish one of those two, not inherit this justification.
     private func onMainCatching(_ work: @escaping () -> TapResult) -> TapResult {
         caughtOnMain(.stale, work)
     }

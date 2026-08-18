@@ -36,6 +36,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from bajutsu.device_os import DeviceOS
 from bajutsu.drivers import base
 from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
 
@@ -100,6 +101,10 @@ _OK = "ok"
 _STALE = "stale"  # the resolved handle no longer maps to a live element (the screen changed)
 _NOT_FOUND = "not-found"  # the runner could not act on the handle (no matching live element)
 _NOT_HITTABLE = "not-hittable"  # the element is live but not reachable at its own point right now
+# `setPickerValue` only: the wheel was resolved and adjusted, but never showed the requested value —
+# it has no such row (BE-0356). Distinct from `_NOT_FOUND`, whose "no actuatable element" message
+# names the selector and would misreport a perfectly resolved, live wheel.
+_VALUE_NOT_FOUND = "value-not-found"
 
 # Socket timeout for a single runner *read* request (GET). BE-0105 replaced the per-attribute
 # `/elements` walk (~10s+ per screen) with one `app.snapshot()`, so the 60s stopgap is reverted to a
@@ -135,11 +140,9 @@ _MAX_ATTEMPTS = 3
 _BACKOFF_BASE_SECONDS = 0.5  # exponential per retry: 0.5s, 1.0s, … between attempts
 
 # Bounded re-resolution retry for a STALE actuation handle (BE-0289), held separate from BE-0207's
-# transport retry above even though it starts at the same values: the two loops bound different things
-# — a screen settling between `_resolve_handle` and `_actuate` versus a transport blip inside
-# `_with_retry` — so a later re-tune of one (e.g. loosening the transport budget for a slower CI
-# runner) must not silently move the other. The re-query round-trip is the condition wait, not a fixed
-# sleep; this backoff only spaces the attempts so the loop stays a few seconds, not sub-second.
+# transport retry above even though it starts at the same values: the two loops bound different
+# things, so re-tuning one must not silently move the other. The re-query round-trip is the
+# condition wait, not a fixed sleep; this backoff only spaces the attempts.
 _STALE_MAX_ATTEMPTS = 3
 # exponential per retry: 0.5s, 1.0s, … between re-resolve attempts
 _STALE_BACKOFF_BASE_SECONDS = 0.5
@@ -652,6 +655,7 @@ class XcuitestDriver:
                 base.Capability.MULTI_TOUCH,
                 base.Capability.TEXT_SELECTION,
                 base.Capability.HANDLE_SYSTEM_ALERT,
+                base.Capability.PICKER_WHEEL,
             }
         )
         | base.DEVICE_CONTROL_ALL
@@ -667,7 +671,14 @@ class XcuitestDriver:
         runner_alive: Callable[[], bool] | None = None,
         on_stall: Callable[[], None] | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        device_os: DeviceOS | None = None,
     ) -> None:
+        # The parsed OS version of the device this drives (BE-0358), or None when the environment
+        # could not name one. Nothing here branches on it yet — it exists so a driver-level failure
+        # can name the OS it happened on, and so the first genuinely per-OS decision has one route
+        # to read. Set per construction, not per lease, so it follows a mid-run device replacement
+        # instead of going stale.
+        self.device_os = device_os
         if transport is not None:
             # A test fake serves both roles: it has no BE-0207 retry to distinguish away.
             self._transport = transport
@@ -798,6 +809,14 @@ class XcuitestDriver:
                 # retry here, so it surfaces once as a tappability failure. Any bounded recovery
                 # (a scroll) happens above the driver, in the orchestrator.
                 raise base.ElementNotTappable(f"element resolved but not hittable: {sel!r}")
+            if reply.status == _VALUE_NOT_FOUND:
+                # `setPickerValue` alone returns this, and its request body carries the value, so the
+                # failure names what never landed without threading it through every other actuation.
+                # A `SelectorError`, like `select_option`'s absent-option raise on the web backend, so
+                # the run loop's existing selector-failure handling covers it.
+                raise base.ElementNotFound(
+                    f"picker wheel has no value {request.get('value')!r}: {sel!r}"
+                )
             # Any other status (e.g. an "error" from a 500 / malformed response) is a runner failure,
             # not a test outcome — fail loudly rather than masking it as element-not-found.
             raise XcuitestChannelError(
@@ -1003,6 +1022,21 @@ class XcuitestDriver:
     def select_option(self, sel: base.Selector, option: str) -> None:
         raise base.UnsupportedAction(
             "selectOption は <select> を持つ web バックエンド専用; iOS ネイティブに <select> はない"
+        )
+
+    def set_picker_value(self, sel: base.Selector, value: str) -> None:
+        # Handle-based like `tap`, not coordinate-based like `swipe` / `drag` (BE-0356): the runner
+        # calls `adjust(toPickerWheelValue:)` on the element XCTest already resolved, so the wheel
+        # lands on the named row rather than wherever a drag of a guessed distance happens to stop.
+        # `value` never reaches the actuation record — like a typed string, it can hold a resolved
+        # secret (`drivers/actuation.py`).
+        handle, el = self._resolve_handle(sel)
+        self._actuate(
+            "/setPickerValue",
+            {"handle": handle, "value": value},
+            sel,
+            gesture="setPickerValue",
+            element=el,
         )
 
     def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:

@@ -89,6 +89,49 @@ def test_evidence_command_builders() -> None:
     ]
 
 
+def test_diagnostics_command_builders() -> None:
+    # The stall probe's own reads (BE-0367): both address the device by serial like every other
+    # builder here, so a capture can never land on the wrong emulator in a parallel lane.
+    assert adb.dumpsys_surfaceflinger_latency_cmd("S") == [
+        "adb", "-s", "S", "shell", "dumpsys", "SurfaceFlinger", "--latency",
+    ]  # fmt: skip
+    assert adb.logcat_tail_cmd("S") == ["adb", "-s", "S", "logcat", "-d", "-t", "200"]
+    assert adb.logcat_tail_cmd("S", 20)[-1] == "20"
+
+
+def test_file_size_cmd_falls_back_and_never_fails_on_an_absent_file() -> None:
+    # `stat` is toybox-provided on modern Android but not guaranteed, so `ls -l` stands behind it;
+    # the trailing `|| true` keeps a not-yet-created file at exit 0, since the RunFn raises on a
+    # non-zero exit and "no file yet" is the ordinary case before the first byte lands.
+    cmd = adb.file_size_cmd("S", adb.VIDEO_DEVICE_PATH)
+    assert cmd[:4] == ["adb", "-s", "S", "shell"]
+    assert cmd[4] == (
+        f"stat -c %s {adb.VIDEO_DEVICE_PATH} 2>/dev/null "
+        f"|| ls -l {adb.VIDEO_DEVICE_PATH} 2>/dev/null || true"
+    )
+
+
+def test_file_size_cmd_quotes_the_device_path() -> None:
+    # The path is interpolated into a shell string, unlike every argv-form builder here, so it has
+    # to be quoted — otherwise a path with a space or a metacharacter would run as extra shell.
+    assert "'/sdcard/a b; rm -rf /'" in adb.file_size_cmd("S", "/sdcard/a b; rm -rf /")[4]
+
+
+def test_parse_file_size_reads_both_answer_shapes() -> None:
+    assert adb.parse_file_size("4096\n") == 4096  # `stat -c %s`: the size alone
+    # toybox `ls -l`: mode, links, owner, group, size, then the date and name.
+    assert adb.parse_file_size("-rw-rw---- 1 root sdcard_rw 8192 2026-08-14 01:00 x.mp4\n") == 8192
+
+
+def test_parse_file_size_returns_none_when_neither_form_answered() -> None:
+    # None is not zero: an absent file and an image where both probes failed must not read as "the
+    # recording has written no bytes", which would turn a probe failure into a false stall signal.
+    assert adb.parse_file_size("") is None
+    assert adb.parse_file_size("stat: cannot stat\n") is None
+    # `isdigit()` alone is True for fullwidth digits, which `int()` then misreads.
+    assert adb.parse_file_size("４０９６\n") is None
+
+
 def test_pm_grant_cmd() -> None:
     assert adb.pm_grant_cmd("S", "com.x", "android.permission.CAMERA") == [
         "adb", "-s", "S", "shell", "pm", "grant", "com.x", "android.permission.CAMERA",
@@ -838,7 +881,7 @@ def test_start_raises_clean_device_error_when_adb_is_missing() -> None:
 def test_relauncher_invalidates_the_driver_settled_cache() -> None:
     # relaunch() replaces the screen via force_stop + launch on adb.Env directly, never through the
     # driver's own actuators — the one door AdbDriver._settled_key needs closed that `_act` cannot
-    # close on its own (base.SettledCacheInvalidator).
+    # close on its own (base.SettledCacheInvalidator, BE-0351).
     from bajutsu.scenario import Relaunch, Scenario
 
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run([]))

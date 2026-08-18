@@ -525,7 +525,7 @@ class _RunPlan:
 
     `run` fills this from the option flags via the `_resolve_*`/`_load_*` helpers, then hands it to
     `_dispatch` and `_finish`. It carries resolved inputs only (no methods, no `self`-mutation), so
-    each helper stays unit-testable without a Simulator.
+    each helper stays unit-testable without a Simulator (BE-0143).
     """
 
     eff: Effective

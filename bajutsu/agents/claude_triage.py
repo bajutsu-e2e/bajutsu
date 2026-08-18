@@ -453,7 +453,7 @@ class ClaudeCrossRunTriageAgent(ClaudeBackedAgent):
 
     The Half-2 counterpart to `ClaudeTriageAgent`: same forced-`diagnose` boundary and the same
     advisory `Triage` output, but it reasons over a `CrossRunTriageContext` (a flaky scenario's
-    passing and failing runs) and classifies the intermittency's cause.
+    passing and failing runs) and classifies the intermittency's cause (BE-0220).
     """
 
     def __init__(
