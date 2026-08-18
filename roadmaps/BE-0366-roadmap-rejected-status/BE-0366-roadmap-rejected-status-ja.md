@@ -8,6 +8,7 @@
 | 提案 | [BE-0366](BE-0366-roadmap-rejected-status-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| 実装 PR | [#1647](https://github.com/bajutsu-e2e/bajutsu/pull/1647) |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0366") |
 | トピック | コントリビューターワークフロー |
 <!-- /BE-METADATA -->
