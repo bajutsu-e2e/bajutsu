@@ -487,6 +487,10 @@ operator can trace who removed which run and when.
    Edit needs no run. **Stop session** ends it without saving.
 3. Step through with **← Prev** / **Next →**; the label shows which step is loaded.
 4. Click on the screenshot to re-target the loaded step, then **Apply** the change to the YAML.
+   A run-backed screenshot shows the moment after the step acted. A click resolves against the
+   tree of that same moment ([reporting](reporting.md#reporthtml)). So a step that navigates
+   shows the screen it reached, not the one it targets. Re-target such a step against a live
+   session (step 2) instead.
 
 **Enrich** — add suggested assertions.
 

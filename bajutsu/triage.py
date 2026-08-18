@@ -20,6 +20,7 @@ from typing import Any, Protocol
 from pydantic import BaseModel
 
 from bajutsu.drivers import base
+from bajutsu.evidence import displayed_screenshot
 from bajutsu.scenario import (
     Assertion,
     Gone,
@@ -438,19 +439,68 @@ def _target_id(step: Step) -> str | None:
     return None
 
 
+def _first(artifacts: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The first artifact a step recorded of the requested kind — the manifest's capture order."""
+    return artifacts[0] if artifacts else None
+
+
+def _displayed_screenshot(
+    run_dir: Path,
+) -> Callable[[list[dict[str, Any]]], dict[str, Any] | None]:
+    """A pick that resolves a step to the screenshot a viewer shows, from the files `run_dir` holds.
+
+    A step records more than one screenshot (`before.png` and `after.png`), and its `elements.json`
+    has a single fixed name — so taking whichever came first would hand the investigator an image
+    and a tree from different moments. Routing through `displayed_screenshot` keeps triage on the
+    same image the report's element viewer and the serve editor's picker show, and filtering the
+    candidates by existence first keeps it on an image that is actually there: a manifest can name a
+    screenshot the run no longer holds, and choosing that one would cost the investigator the
+    `before.png` beside it — and, since the backward scan commits to whatever this returns, the
+    nearest earlier step's screenshot too.
+    """
+
+    def pick(artifacts: list[dict[str, Any]]) -> dict[str, Any] | None:
+        by_name = {
+            str(a.get("name")): a for a in artifacts if (run_dir / str(a.get("name"))).exists()
+        }
+        name = displayed_screenshot(list(by_name))
+        return by_name.get(name) if name is not None else None
+
+    return pick
+
+
 def _nearest_artifact(
-    steps: list[dict[str, Any]], failed_index: int | None, kind: str
+    steps: list[dict[str, Any]],
+    failed_index: int | None,
+    kind: str,
+    pick: Callable[[list[dict[str, Any]]], dict[str, Any] | None] = _first,
 ) -> dict[str, Any] | None:
-    """The artifact of `kind` from the failing step, else the nearest earlier step that has one."""
+    """The artifact of `kind` from the failing step, else the nearest earlier step that has one.
+
+    `pick` chooses among one step's artifacts of that kind, for a kind a step records more than once.
+
+    A step that recorded artifacts of this kind ends the scan even when `pick` can use none of them,
+    rather than reaching back another step. The two callers scan independently — `_elements_near`
+    takes the failing step's `elements.json` without an on-disk check — so a screenshot scan that
+    walked past the failing step would pair one step's image with another step's tree, the
+    cross-step mispairing this seam exists to prevent. Reaching back stays available for the case it
+    was written for: a step that recorded no artifact of this kind at all.
+    """
     if failed_index is not None:
         order = [failed_index, *range(failed_index - 1, -1, -1)]
     else:
         order = list(range(len(steps) - 1, -1, -1))
     for i in order:
         if 0 <= i < len(steps):
-            for art in steps[i].get("artifacts") or []:
-                if isinstance(art, dict) and art.get("kind") == kind:
-                    return art
+            of_kind = [
+                art
+                for art in steps[i].get("artifacts") or []
+                if isinstance(art, dict) and art.get("kind") == kind
+            ]
+            if (art := pick(of_kind)) is not None:
+                return art
+            if of_kind:
+                return None
     return None
 
 
@@ -461,13 +511,14 @@ def _read_artifact[T](
     kind: str,
     loader: Callable[[Path], T | None],
     default: T,
+    pick: Callable[[list[dict[str, Any]]], dict[str, Any] | None] = _first,
 ) -> T:
     """Find the nearest artifact of `kind` (backward from `failed_index`) and apply `loader`.
 
     Separates the backward-scan concern (_nearest_artifact) from the per-type deserialization
     so callers only declare what they want, not how to walk the step list.
     """
-    art = _nearest_artifact(steps, failed_index, kind)
+    art = _nearest_artifact(steps, failed_index, kind, pick)
     if art is not None:
         result = loader(run_dir / str(art.get("name")))
         if result is not None:
@@ -498,7 +549,15 @@ def _screenshot_near(
     run_dir: Path, steps: list[dict[str, Any]], failed_index: int | None
 ) -> bytes | None:
     """The screenshot from the failing step (or the nearest earlier step that has one)."""
-    return _read_artifact(run_dir, steps, failed_index, "screenshot", _load_bytes, None)
+    return _read_artifact(
+        run_dir,
+        steps,
+        failed_index,
+        "screenshot",
+        _load_bytes,
+        None,
+        _displayed_screenshot(run_dir),
+    )
 
 
 def assemble(run_dir: Path, scenario_filter: str | None = None) -> TriageContext | None:
