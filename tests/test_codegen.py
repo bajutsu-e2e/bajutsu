@@ -80,6 +80,24 @@ def test_long_press_and_swipe() -> None:
     assert 'el("comp.area").swipeLeft()' in code
 
 
+def test_set_picker_value_maps_to_adjust_to_picker_wheel_value() -> None:
+    # The native idiom (BE-0356): a generated test lands on the row the same deterministic way `run`
+    # does, so there is no coordinate drag to reproduce in Swift.
+    code = _gen(
+        "- name: x\n  steps:\n    - setPickerValue: { sel: { id: form.school }, value: 大学 }\n"
+    )
+    assert 'el("form.school").adjust(toPickerWheelValue: "大学")' in code
+
+
+def test_set_picker_value_escapes_the_value_as_a_swift_literal() -> None:
+    # The value is author-written text that reaches a Swift string literal verbatim, so a quote in it
+    # would otherwise close the literal and emit a file that does not compile.
+    code = _gen(
+        "- name: x\n  steps:\n    - setPickerValue: { sel: { id: p }, value: 'say \"hi\"' }\n"
+    )
+    assert r'adjust(toPickerWheelValue: "say \"hi\"")' in code
+
+
 def test_drag_maps_to_swipe_gesture() -> None:
     # `drag` (BE-0227) is an element-anchored pointer drag; XCUITest's swipeX() is a real drag, so it
     # emits the same primitive a directional swipe does.
