@@ -197,6 +197,19 @@ final class APIHandler: APIProtocol {
         return .ok(.init(body: .json(actuationReply(result))))
     }
 
+    /// Move a picker wheel to the row carrying `value` (BE-0356). Unlike the other actuations this
+    /// can report `value-not-found`: the wheel resolved and moved, but never showed the value.
+    func setPickerValue(
+        _ input: Operations.setPickerValue.Input
+    ) async throws -> Operations.setPickerValue.Output {
+        let request: Components.Schemas.PickerValueRequest
+        switch input.body { case .json(let body): request = body }
+        let value = request.value
+        return .ok(.init(body: .json(await actOnHandle(store, request.handle) { snapshot in
+            self.provider.setPickerValue(backingElement: snapshot.backingElement, value: value)
+        })))
+    }
+
     // MARK: - System alerts
 
     /// The SpringBoard system-alert query (BE-0316): the same element+handle contract as

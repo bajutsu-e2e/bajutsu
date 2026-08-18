@@ -244,6 +244,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ActuationReply"
+  /setPickerValue:
+    post:
+      operationId: setPickerValue
+      summary: Move a picker wheel to the row carrying a given value.
+      description: >-
+        Reports `value-not-found` when the wheel resolved and was adjusted but never showed the
+        requested value (BE-0356). The platform cannot report that itself —
+        `adjust(toPickerWheelValue:)` neither throws nor returns, and records a miss as a soft
+        issue the resident runner deliberately tolerates — so the runner reads the wheel back and
+        compares.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PickerValueRequest"
+      responses:
+        "200":
+          description: The actuation outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActuationReply"
+        "400":
+          $ref: "#/components/responses/BadRequest"
   /systemAlert/query:
     post:
       operationId: querySystemAlert
@@ -412,6 +437,17 @@ components:
         duration:
           type: number
           description: Press duration in seconds; clamped to at least 0. Absent means a plain tap.
+    PickerValueRequest:
+      type: object
+      required: [handle, value]
+      properties:
+        handle:
+          type: string
+        value:
+          type: string
+          description: >-
+            The row value the wheel must end on. It never reaches the actuation record, since like
+            a typed string it can hold a resolved secret.
     GestureRequest:
       type: object
       required: [handle, kind]

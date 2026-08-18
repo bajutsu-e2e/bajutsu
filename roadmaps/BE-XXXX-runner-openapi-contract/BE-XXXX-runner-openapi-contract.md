@@ -18,7 +18,7 @@
 
 BajutsuKit's XCUITest runner (`BajutsuKit/Sources/BajutsuRunner`) answers every query and actuation
 the Python driver sends it through a small HTTP server the runner hand-rolls from raw BSD sockets:
-its own byte-by-byte request parser, its own JSON encoding, its own routing switch over fifteen
+its own byte-by-byte request parser, its own JSON encoding, its own routing switch over sixteen
 paths, and its own connection-lifecycle management. This item replaces that hand-rolled layer with
 one generated from a checked-in OpenAPI contract: an `openapi.yaml` document becomes the single
 source of truth for the runner's HTTP surface, Swift OpenAPI Generator produces the Swift types and
@@ -86,7 +86,7 @@ chose deliberately not to pay for a framework: it built "the minimal runner-side
 `BajutsuKit` rather than adopting a large external dependency, keeping the channel under the
 project's control." That choice was right for the surface it served then — a handful of endpoints
 newly introduced to unblock XCUITest as a second actuator. It is worth revisiting now because the
-surface has tripled to fifteen endpoints, spanning handle-based element addressing
+surface has tripled to sixteen endpoints, spanning handle-based element addressing
 ([BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md)),
 multi-touch gestures, SpringBoard system-alert routing, and screenshots, and three further items have
 each patched a low-level transport concern the original design left implicit. "Keeping the channel
@@ -110,13 +110,20 @@ Units 3 through 5 are the endpoint-migration work that follows once Unit 2 picks
 
 ### Unit 1 — Author the OpenAPI contract, independent of transport
 
-Write `openapi.yaml` describing the runner's fifteen existing paths and methods as the single source
-of truth for the runner's HTTP surface. The fifteen break down as follows:
+Write `openapi.yaml` describing the runner's sixteen existing paths and methods as the single source
+of truth for the runner's HTTP surface. The sixteen break down as follows:
 
 - reads: `GET /health`, `GET /elements`, `GET /screen`, and `GET /screenshot`
-- actuation: `POST /tap`, `POST /isHittable`, `POST /gesture`, `POST /swipe`, and `POST /scroll`
+- actuation: `POST /tap`, `POST /isHittable`, `POST /gesture`, `POST /swipe`, `POST /scroll`, and
+  `POST /setPickerValue`
 - text editing: `POST /type`, `POST /deleteText`, `POST /selectAll`, and `POST /copy`
 - system alerts: `POST /systemAlert/query` and `POST /systemAlert/tap`
+
+`POST /setPickerValue` and its `value-not-found` status
+([BE-0356](../BE-0356-xcuitest-picker-wheel-adjust/BE-0356-xcuitest-picker-wheel-adjust.md)) reached
+`main` while this item was in flight, and were absorbed here. The merge was textually clean and still
+broke the build, which is the useful part of the story: `main` added a `TapResult` case, this branch
+added the first exhaustive `switch` over that enum, and only the compiler saw the conflict.
 
 The schema must preserve the exact wire values the Python driver
 already matches — the five status strings from Motivation, and the element shape (`identifier`,
@@ -306,7 +313,7 @@ it stays with the transport: `APIHandler` never sees a connection, and while `HT
 serving, its own semaphore still applies. Unit 4 is therefore where the bound has to be restated on
 the new router — and a router configured with no bound would drop it with nothing failing.
 
-### Unit 4 — Migrate the fifteen endpoints behind a comparison harness
+### Unit 4 — Migrate the sixteen endpoints behind a comparison harness
 
 Port the endpoints from `Router.swift`'s switch to the generated server protocol in four groups,
 rather than in one step. Both stacks share one port throughout: a transitional `ServerTransport`
@@ -380,7 +387,7 @@ Python driver needs no change at any stage.
   socket-and-parsing layer in-house, and FlyingFox already carries that maintenance elsewhere while
   presenting the same lightweight, Apple-platform-first profile a from-scratch transport would aim
   for.
-- **Migrate all fifteen endpoints in one step, skipping Unit 4's comparison harness.** Rejected: the
+- **Migrate all sixteen endpoints in one step, skipping Unit 4's comparison harness.** Rejected: the
   string of items in Motivation and Unit 3 — BE-0287, BE-0289, BE-0323 — is the history of a channel
   that has broken in production in narrow, specific ways more than once; replacing its entire HTTP
   transport in a single step reopens that whole surface at once, with no staged point to roll one
@@ -396,7 +403,7 @@ Python driver needs no change at any stage.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [x] Unit 1 — author `openapi.yaml` for the fifteen existing endpoints, wire Swift OpenAPI
+- [x] Unit 1 — author `openapi.yaml` for the sixteen existing endpoints, wire Swift OpenAPI
       Generator's build plugin into `BajutsuKit`, and record the swift-tools-version and
       language-mode decision: both stay put (tools 5.9, iOS 15, Swift 5 mode), because the OpenAPI
       tooling forces neither — only the Hummingbird dependency would, and that lands with Unit 4.
@@ -418,7 +425,7 @@ Python driver needs no change at any stage.
       whatever router it builds; a server with no bound would drop it silently. Parity tests compare
       every endpoint's generated reply against the legacy `Router`'s for the same input, and
       mutation-testing confirms they fail on a drifted status string or a dropped optional field.
-- [ ] Unit 4 — migrate the fifteen endpoints in the four groups above, one group at a time, behind the
+- [ ] Unit 4 — migrate the sixteen endpoints in the four groups above, one group at a time, behind the
       comparison harness.
 - [ ] Unit 5 — remove `HTTPServer.swift`'s and `Router.swift`'s hand-rolled transport code once
       cutover is complete.

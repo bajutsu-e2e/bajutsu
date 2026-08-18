@@ -357,6 +357,42 @@ final class APIHandlerParityTests: XCTestCase {
         XCTAssertEqual(legacyResponse.contentType, "image/png")
     }
 
+    /// `/setPickerValue` arrived on `main` while this work was in flight (BE-0356). It is the only
+    /// operation that can report `value-not-found`, and the only one whose request carries a value
+    /// alongside the handle, so both halves are compared here.
+    func testSetPickerValueParityAcrossEveryStatus() async throws {
+        for result in [TapResult.ok, .valueNotFound, .stale, .notFound] {
+            let forNew = elementProvider([Self.sample]); forNew.setPickerValueResult = result
+            let forLegacy = elementProvider([Self.sample]); forLegacy.setPickerValueResult = result
+
+            let handler = APIHandler(provider: forNew)
+            let handle = try await firstHandle(handler)
+            let new = try await handler.setPickerValue(
+                .init(body: .json(.init(handle: handle, value: "Tokyo")))
+            )
+            guard case .ok(let ok) = new, case .json(let payload) = ok.body else {
+                return XCTFail("unexpected setPickerValue output")
+            }
+
+            let router = Router(provider: forLegacy)
+            let legacyHandle = try legacyFirstHandle(router)
+            let response = router.handle(
+                HTTPRequest(
+                    method: "POST", path: "/setPickerValue",
+                    body: try JSONSerialization.data(
+                        withJSONObject: ["handle": legacyHandle, "value": "Tokyo"]
+                    )
+                )
+            )
+            assertSame(
+                try XCTUnwrap(JSONSerialization.jsonObject(with: response.body) as? [String: Any]),
+                try generated(payload), "/setPickerValue (\(result))"
+            )
+            XCTAssertEqual(forNew.setPickerValueCalls.first?.value, "Tokyo",
+                           "the requested row value must reach the provider")
+        }
+    }
+
     // MARK: - Error paths
 
     func testBadRequestParity() async throws {
