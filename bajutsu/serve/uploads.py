@@ -21,6 +21,7 @@ import shutil
 import stat
 import tempfile
 import zipfile
+import zlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -324,7 +325,13 @@ def read_scenario_zip(zip_path: Path) -> dict[str, str]:
                                 f"(max {MAX_SCENARIO_ENTRY_BYTES} bytes)"
                             )
                         chunks.append(chunk)
-            except zipfile.BadZipFile as e:
+            except (OSError, RuntimeError, zlib.error, zipfile.BadZipFile) as e:
+                # Wider than BadZipFile alone (like `extract_bundle` above): `ZipFile.open` raises
+                # RuntimeError for a password-encrypted entry and NotImplementedError (a
+                # RuntimeError subclass) for an unsupported compression method; a corrupted DEFLATE
+                # stream raises zlib.error mid-read, independent of the CRC check that raises
+                # BadZipFile. All three are driven by client-controlled entry data — a rejected zip
+                # is a 400, never a 500.
                 raise BundleError(f"could not read {info.filename!r}: {e}") from e
             total += size
             if total > MAX_SCENARIO_ZIP_TOTAL_BYTES:

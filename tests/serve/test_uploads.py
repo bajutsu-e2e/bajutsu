@@ -415,3 +415,38 @@ def test_read_scenario_zip_rejects_a_zip_with_no_yaml(tmp_path: Path) -> None:
 def test_read_scenario_zip_rejects_a_non_zip(tmp_path: Path) -> None:
     with pytest.raises(BundleError, match="valid zip"):
         read_scenario_zip(_written(tmp_path, b"not a zip at all"))
+
+
+def test_read_scenario_zip_rejects_a_password_encrypted_entry(tmp_path: Path) -> None:
+    # ZipFile.open raises RuntimeError (not BadZipFile) for a password-encrypted entry, driven by
+    # the entry's general-purpose bit flag 0 — metadata a caller fully controls — so it must be
+    # caught alongside BadZipFile, else it escapes as an uncaught 500 instead of a 400. ZipFile
+    # itself can't write that flag (writestr always clears it), so it's set directly on the raw
+    # bytes, in both the local file header and the central directory record.
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("secret.yaml", b"- name: a\n  steps: []\n")
+    raw = bytearray(buf.getvalue())
+    raw[6] |= 0x1  # local file header's general-purpose bit flag (offset 6 from "PK\x03\x04")
+    cd_idx = raw.index(b"PK\x01\x02")
+    raw[cd_idx + 8] |= 0x1  # central directory record's copy of the same flag (offset 8)
+    with pytest.raises(BundleError, match="could not read"):
+        read_scenario_zip(_written(tmp_path, bytes(raw)))
+
+
+def test_read_scenario_zip_rejects_a_corrupted_deflate_stream(tmp_path: Path) -> None:
+    # A corrupted DEFLATE stream raises zlib.error *during decompression* (not BadZipFile, which
+    # only fires afterward on a CRC mismatch) — driven by bytes the client fully controls, so it
+    # must be caught alongside RuntimeError/BadZipFile. Only the stream's first byte reliably
+    # invalidates the DEFLATE header; flipping a later one merely fails the CRC.
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("bad.yaml", b"- name: alpha\n  steps: []\n" * 50)
+    raw = bytearray(buf.getvalue())
+    lfh_idx = raw.index(b"PK\x03\x04")
+    fname_len = int.from_bytes(raw[lfh_idx + 26 : lfh_idx + 28], "little")
+    extra_len = int.from_bytes(raw[lfh_idx + 28 : lfh_idx + 30], "little")
+    data_start = lfh_idx + 30 + fname_len + extra_len
+    raw[data_start] ^= 0xFF
+    with pytest.raises(BundleError, match="could not read"):
+        read_scenario_zip(_written(tmp_path, bytes(raw)))
