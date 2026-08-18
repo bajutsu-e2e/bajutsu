@@ -404,6 +404,14 @@ def _emit_step(step: Step) -> list[str]:
         return ["await page.goto(BASE_URL);"]
     if step.assert_ is not None:
         return [line for a in step.assert_ for line in _emit_assertion(a)]
+    if step.generate is not None:
+        # A value computed in the bajutsu runner (a generator draw or a clock read), not in the
+        # page; no Playwright form, so a labeled TODO names what to wire (BE-0377).
+        kind = "random" if step.generate.random is not None else "datetime"
+        return [
+            f"// TODO: generate({kind}, into: {step.generate.into.var}) — runner-computed value; "
+            "not generated"
+        ]
     if step.manual is not None:
         # A human takeover (BE-0185): an operation only a human can perform, rendered as a labeled
         # TODO rather than a silent skip — the same honest boundary the device-control TODOs keep.

@@ -77,6 +77,40 @@ def test_html_shows_expect_phase_dismissed_alert() -> None:
     assert 'class="alertnote"' not in html_report("run1", [_passing()])
 
 
+def test_html_shows_the_value_a_generate_step_produced() -> None:
+    # BE-0377: the run's record shows which value this run used, so a later failure is traceable to
+    # the value rather than needing a fixed seed to reproduce.
+    r = RunResult(
+        scenario="s1",
+        ok=True,
+        steps=[
+            StepOutcome(index=0, action="generate", ok=True, started_at=0.0, generated="k7fq2xzp")
+        ],
+        expect_results=[],
+        artifacts=[],
+    )
+    definition = {
+        "name": "s1",
+        "steps": [{"generate": {"random": {"string": {"length": 8}}, "into": {"var": "username"}}}],
+    }
+    out = html_report("run1", [r], definitions=[definition])
+    assert "class='genrow'" in out
+    assert '<span class="tk str">“k7fq2xzp”</span>' in out
+    # Every other action produces no value, so no row.
+    assert "class='genrow'" not in html_report("run1", [_passing()])
+    # A planned-but-not-run step's row carries no `generated` key at all, and Jinja's Undefined
+    # passes an `is not none` guard — so the row must be gated on truthiness, not on None.
+    skipped = RunResult(
+        scenario="s2",
+        ok=False,
+        steps=[StepOutcome(index=0, action="tap", ok=False, reason="not found", started_at=0.0)],
+        expect_results=[],
+        artifacts=[],
+    )
+    two_planned = {"name": "s2", "steps": [{"tap": {"id": "a"}}, {"tap": {"id": "b"}}]}
+    assert "class='genrow'" not in html_report("run2", [skipped], definitions=[two_planned])
+
+
 def test_html_shows_what_the_step_actuated() -> None:
     # The report's answer to "where did this tap land": the coordinate the driver sent, the element it
     # resolved, and the channel that carried it, as a sub-row under the step.

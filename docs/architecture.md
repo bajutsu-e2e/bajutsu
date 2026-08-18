@@ -464,6 +464,13 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
   `http` is the shipped adapter, BE-0186) until a message matching `to` / `subject` /
   `subjectMatches` arrives after the step started, then extracts a value via a `bodyMatches` regex
   into `${vars.*}` — a condition wait bounded by `timeout`, never a fixed sleep
+- DSL `generate` step (BE-0377): computes a random value (a string over a chosen character set, an
+  integer, a float with an optional precision, or a version-4 UUID) or the current datetime (an
+  optional `strftime` `format`, additive signed offsets, and an optional IANA `timezone`, defaulting
+  to UTC) into `${vars.*}` — a generator draw or a clock read in the runner, no network and no model.
+  An unrenderable `format` or an unknown `timezone` is rejected when the scenario loads, so an
+  accepted step always executes and always succeeds; the produced value is recorded on the step's
+  manifest entry and shown in the report, and every codegen target emits a labeled `// TODO`
 - DSL `interrupts` (BE-0314): a config-level (app-wide default) and scenario-level (appended) list
   of `{ condition, steps }` entries, checked opportunistically — reusing the assertion-DSL
   `condition` shape `if` already uses — for a screen that can surface at an unpredictable point (an

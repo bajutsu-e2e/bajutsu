@@ -614,6 +614,18 @@ def test_device_control_and_helper_steps_are_labeled_todo() -> None:
     assert "// TODO: unsupported step" in code
 
 
+def test_generate_step_is_a_labeled_todo() -> None:
+    # A runner-computed value (BE-0377) with no UI Automator form — labeled, not the catch-all.
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - generate: { random: { uuid: {} }, into: { var: orderRef } }\n"
+        "    - generate: { datetime: { offsetDays: 1 }, into: { var: tomorrow } }\n"
+    )
+    assert "// TODO: generate(random, into: orderRef) — runner-computed value" in code
+    assert "// TODO: generate(datetime, into: tomorrow) — runner-computed value" in code
+    assert "unsupported step" not in code
+
+
 def test_response_schema_and_visual_assertions_are_todo() -> None:
     code = _gen(
         "- name: x\n  steps:\n    - assert:\n"

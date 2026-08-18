@@ -318,6 +318,7 @@ targets:
 | `http` | `http: { method?, url, headers?, body?, status?, saveBody? }` | HTTP リクエストを送る（テストデータ準備 / Webhook / API）。`status` を検証し、ボディを `${vars.<saveBody>}` に保存する |
 | `totp` | `totp: { secret, into: { var } }` | RFC 6238 の時刻ベースワンタイムパスワード（2FA）をローカルで生成し `${vars.<var>}` に入れる |
 | `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | 設定したメールボックスを一致するメッセージが届くまでポーリングし、コードを `${vars.<var>}` に取り出す |
+| `generate` | `generate: { random\|datetime: {...}, into: { var } }` | 乱数または現在日時の値を実行時に計算し、`${vars.<var>}` に保存する（[後述](#generate実行時に計算する値)） |
 | `manual` | `manual: { label: "...", bypass?: "..." }` | `record` 中に記録される人による操作の引き取り（BE-0185）。決定的な実行時の等価物がないため、`run` 時に**明示的に失敗する**——合格を偽装しない |
 | `background` | `background: {}` | アプリをバックグラウンドへ送る（Home ボタン） |
 | `foreground` | `foreground: {}` | バックグラウンドのアプリを前面へ復帰する（`simctl launch`。settle 用の sleep なし） |
@@ -522,6 +523,52 @@ targets:
 ```
 
 `email` はメールで届く 2FA / 検証コードを待ちます。汎用 HTTP メールボックス（`targets.<name>.mailbox` で設定。[configuration](configuration.md#mailboxemail-ステップ) 参照）をポーリングし、**ステップ開始後に届いた**メッセージのうち `match` を満たすものが現れるまで待って、その本文から `bodyMatches` の正規表現（最初のキャプチャグループ、無ければマッチ全体）で値を `${vars.<var>}` に取り出します。待機は **`timeout` 必須の条件待機**です（固定 sleep なし）。タイムアウト、本文に正規表現が当たらない一致メッセージ、到達不能 / 2xx 以外のメールボックスは、いずれもクリーンなステップ失敗で、黙って誤った値を返すことはありません。対象はステップ開始より新しいメールだけ（メッセージ id で判定するので、以前の run の古いコードには一致しません）で、新着の一致が複数あれば最新を採ります。決定的で LLM 非依存、エンドポイントと認証情報は config 参照の `${secrets.*}` に置くのでシナリオはアプリ非依存のままです（[BE-0046](../../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)）。
+
+### `generate`（実行時に計算する値）
+
+```yaml
+- generate: { random: { string: { length: 8, charset: alnum } }, into: { var: username } }
+- type: { text: "${vars.username}", into: { id: signup.username } }
+
+- generate: { random: { uuid: {} }, into: { var: orderRef } }        # バージョン4の UUID
+- generate: { random: { int: { min: 1, max: 100 } }, into: { var: quantity } }
+- generate: { random: { float: { min: 0, max: 50, precision: 2 } }, into: { var: amount } }   # 例 "12.30"
+
+- generate: { datetime: { format: "%Y-%m-%d", offsetDays: 1 }, into: { var: tomorrow } }
+- type: { text: "${vars.tomorrow}", into: { id: booking.date } }
+```
+
+`generate` はランナー側で値を計算し、`${vars.<var>}` に保存します。これにより、作者がリテラルとして
+書けない入力値をシナリオが供給できます。以前の run がまだ使っていないユーザー名、予約フォームに
+入れる翌日の日付、他のシナリオと衝突しない参照番号などです。データ駆動の行（[再利用](#再利用とデータ駆動とタグ)）
+は事前に用意した固定の表を配り、`extract` はアプリがすでに表示している値を取り込みます。どちらも
+シナリオ自身が値を作り出すわけではありません（[BE-0377](../../roadmaps/BE-0377-dynamic-value-generation/BE-0377-dynamic-value-generation-ja.md)）。
+
+値を作る生成カテゴリは、ちょうど1つ指定します。**`random`** が生成するのは、次の4種類です。
+
+- **`string`**：`charset` から `length` 文字を引いた文字列。`charset` の既定は `alnum` で、
+  ほかに `alpha`、`numeric`、`hex` を選べます。
+- **`int`**：`[min, max]` の閉区間の整数。
+- **`float`**：`[min, max]` の範囲の数値。任意の `precision` で小数桁数に丸めます。
+- **`uuid`**：バージョン4の UUID。
+
+**`datetime`** は現在時刻をテキストにします。`format` は `strftime` のパターンを取り、省略時は
+秒までの ISO 8601 になります。符号付きの `offsetSeconds`、`offsetMinutes`、`offsetHours`、
+`offsetDays` は加算されて時刻をずらします。`timezone` は `America/Los_Angeles` のような
+Internet Assigned Numbers Authority（IANA）のゾーン名を取ります。既定のゾーンは UTC なので、
+アプリがデバイス自身のゾーンで描画する日付に入力を一致させたいシナリオは、そのゾーンを明示します。
+デバイス自身のゾーンを固定する部分は別の関心事です
+（[BE-0158](../../roadmaps/BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive-ja.md)）。
+
+値は run ごとに変わりますが、フローは決定的なままです。ローダが受理した `generate` ステップは、常に
+実行され常に成功します。生成器から値を引くか、クロックを読むだけで、ネットワークとモデルのいずれにも触れません。
+run ごとに違うのは生成された値だけで、これは `totp` の時刻由来のコードがすでにそうであるのと同じです。
+描画できない `format` と解決できない `timezone` は、シナリオのロード時に拒否され、実行中に黙って別の
+値に置き換わることはありません。生成した値は manifest とレポートに記録されるので、後で失敗したときに
+その run が実際に使った値がわかります。特定の値を検証しなければならないシナリオは、その値を
+`${vars.*}` に取り込んでから比較します。事前には知り得なかったリテラルと比較するわけにはいきません。
+`generate` はアプリではなくランナーで動くため、どの codegen ターゲットもラベル付きの `// TODO` として
+描画します。
 
 ### `manual`
 

@@ -1270,6 +1270,12 @@ class _StepRunner:
             if not ext_ok:
                 outcome.ok, outcome.reason = False, ext_reason
 
+        # Read the produced value back out of the bindings the handler just wrote, so the run's
+        # record shows which value this step actually used (BE-0377). Evidence only — the verdict is
+        # unchanged either way.
+        if outcome.ok and interp_step.generate is not None:
+            outcome.generated = self.state.bindings.get(f"vars.{interp_step.generate.into.var}")
+
         # This call records the post-action *tree*: `_collect_captures` always leads with
         # `elements`, so every step keeps one whatever the scenario asked for. The screenshot
         # half is not on that list — `_handle_action` shot `screenshot.after` right after the

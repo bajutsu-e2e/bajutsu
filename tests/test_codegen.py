@@ -276,6 +276,19 @@ def test_device_control_steps_emit_labeled_todo() -> None:
     assert "// TODO: push" in code and "simctl push" in code
 
 
+def test_generate_step_emits_a_labeled_todo() -> None:
+    # `generate` runs in the bajutsu runner (BE-0377), not the app, so there is nothing faithful to
+    # emit — a labeled TODO naming the kind and the var, like `totp` / `email`.
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - generate: { random: { string: { length: 8 } }, into: { var: username } }\n"
+        '    - generate: { datetime: { format: "%Y-%m-%d" }, into: { var: today } }\n'
+    )
+    assert "// TODO: generate(random, into: username) — runner-computed value" in code
+    assert "// TODO: generate(datetime, into: today) — runner-computed value" in code
+    assert "unsupported step" not in code
+
+
 def test_permissions_field_emits_a_labeled_todo_per_service() -> None:
     # `permissions` (BE-0276) is a scenario-level field, not a step: bajutsu applies it before the
     # generated test's launch, so it stays a labeled TODO naming each service individually.

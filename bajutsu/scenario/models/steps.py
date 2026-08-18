@@ -29,6 +29,7 @@ from bajutsu.scenario.models.actions import (
     Drag,
     Email,
     Foreground,
+    Generate,
     HandleSystemAlert,
     HttpRequest,
     LongPress,
@@ -157,6 +158,7 @@ class Step(_Model):
     use: Use | None = None
     http: HttpRequest | None = None
     totp: Totp | None = None
+    generate: Generate | None = None
     email: Email | None = None
     clear_keychain: ClearKeychain | None = Field(default=None, alias="clearKeychain")
     clear_clipboard: ClearClipboard | None = Field(default=None, alias="clearClipboard")
