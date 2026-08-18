@@ -8,14 +8,20 @@ identity are deterministic functions of the element tree.
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Callable
+from dataclasses import replace
 
 from conftest import el
 
+from bajutsu.cli.commands.crawl import SCREENMAP_NAME, _write_screenmap
 from bajutsu.crawl import core as crawl
 from bajutsu.crawl import serialize
+from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
+from bajutsu.evidence.redaction import PLACEHOLDER
+from bajutsu.evidence.sink import RunArtifactWriter
 
 # --- state fingerprint ---------------------------------------------------------------------
 
@@ -1447,3 +1453,122 @@ def test_screen_identity_is_kind_prefixed() -> None:
     struct = [el(label="A", traits=["button"])]
     assert crawl.screen_identity(ids).startswith("id:")
     assert crawl.screen_identity(struct).startswith("structural:")
+
+
+# --- BE-0331: the value an action enters, and where it is allowed to appear ------------------
+
+# Values with no recognizable credential shape, so the sink's pattern backstop cannot reach them:
+# what survives says exactly which structural rule fired, rather than which pattern happened to
+# match. Both stand in for what a guide invents — the class of value no rule keyed on a known
+# secret can cover, since the crawl produced it rather than resolving it from the environment.
+INVENTED_VALUE = "invented-by-the-guide"
+TYPED_PASSWORD = "Passw0rd!2026"
+
+
+def test_type_action_describes_its_target_without_the_value() -> None:
+    # A description is free text that lands in the map's node, edge, plan and path fields, where no
+    # structural rule can reach it. Leaving the value out keeps exactly one field for redaction to
+    # govern, instead of masking inside a display helper the next formatter would have to remember.
+    typed = crawl.Action("type", target="settings.apikey", value=INVENTED_VALUE)
+    assert typed.describe() == "type settings.apikey"
+    assert typed.value == INVENTED_VALUE  # still carried — the one field the sink masks
+    # An id-less action still names what it aims at, so a description stays readable.
+    assert crawl.Action("type", label="API key", value=INVENTED_VALUE).describe() == "type API key"
+    # A fill already counted its fields rather than printing them; that stays true.
+    fill = crawl.Action("fill", fields=(("settings.apikey", INVENTED_VALUE), ("f.b", "x")))
+    assert fill.describe() == "fill 2 fields"
+
+
+def test_type_action_replay_reads_the_value_field_not_the_description() -> None:
+    # Replay is unaffected by the description losing the value, because `perform` never parsed it.
+    driver = FakeDriver(screen=[el(identifier="settings.apikey", traits=["textField"])])
+    crawl.Action("type", target="settings.apikey", value=INVENTED_VALUE).perform(driver)
+    assert driver.actions == [("tap", {"id": "settings.apikey"}), ("type", INVENTED_VALUE)]
+
+
+def test_candidate_actions_carry_the_platform_marking_onto_the_action() -> None:
+    # The screen map keeps no `Element`, so the trait has to ride on the action or the artifact has
+    # nothing left to key the default on.
+    elements = [
+        el(identifier="f.user", traits=["textField"]),
+        el(identifier="f.pass", traits=[base.Trait.SECURE_TEXT_FIELD]),
+    ]
+    actions = crawl.candidate_actions(elements)
+    assert {a.target: a.secure for a in actions if a.kind == "type"} == {
+        "f.user": False,
+        "f.pass": True,
+    }
+    # A fill records one value list, so any marked field among its targets makes the whole action
+    # secure — the stricter answer is the only one that cannot under-mask.
+    assert [a.secure for a in actions if a.kind == "fill"] == [True]
+    unmarked = crawl.candidate_actions(
+        [el(identifier="f.a", traits=["textField"]), el(identifier="f.b", traits=["textField"])]
+    )
+    assert [a.secure for a in unmarked if a.kind == "fill"] == [False]
+    assert not any(a.secure for a in unmarked)
+
+
+def test_the_platform_marking_survives_a_screen_map_round_trip() -> None:
+    # A resume rebuilds its actions from the persisted map, so a flag that did not survive the round
+    # trip would silently drop the default on every continued crawl.
+    secure = crawl.Action("type", target="f.pass", value=TYPED_PASSWORD, secure=True)
+    plain = crawl.Action("type", target="f.user", value="kitty")
+    assert serialize.action_from_dict(serialize.action_to_dict(secure)) == secure
+    assert serialize.action_from_dict(serialize.action_to_dict(plain)) == plain
+    assert "secure" not in serialize.action_to_dict(plain)  # absent, not written as false
+
+
+def test_crawl_screenmap_holds_no_plaintext_value_for_a_named_or_marked_field(
+    run_sink: RunArtifactWriter, tmp_path: Path
+) -> None:
+    """The leak this item exists to close, end to end: a crawl over a screen holding a
+    credential-named field and a platform-marked one, written through the command's own screen-map
+    path, and asserted over the artifact's bytes rather than over an intermediate dict."""
+    home = [
+        el(identifier="settings.apikey", label="Key", traits=["textField"]),
+        el(identifier="auth.password", label="Enter it", traits=[base.Trait.SECURE_TEXT_FIELD]),
+    ]
+    # Each field leads somewhere of its own, so both typed values end up on a recorded path — which
+    # is where the map persists an action's value, and where the leak was found.
+    keyed = [el(identifier="keyed.ok", traits=["button"]), el(identifier="keyed.note")]
+    signed = [el(identifier="signed.ok", traits=["button"]), el(identifier="signed.note")]
+    focused: dict[str, str] = {}
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and isinstance(arg, dict):
+            focused["id"] = str(arg.get("id") or "")
+        elif kind == "type":
+            landed = {"settings.apikey": keyed, "auth.password": signed}.get(focused.get("id", ""))
+            if landed is not None:
+                d.screen = list(landed)
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    def guide(
+        _driver: FakeDriver, elements: list[dict], _ctx: crawl.GuideContext
+    ) -> list[crawl.Action]:
+        # Stands in for the AI guide: the deterministic candidates (so the `secure` flag is derived
+        # by the engine, not by the test) carrying the realistic values a model invents.
+        values = {"settings.apikey": INVENTED_VALUE, "auth.password": TYPED_PASSWORD}
+        return [
+            replace(a, value=values[a.target])
+            for a in crawl.candidate_actions(elements)
+            if a.kind == "type" and a.target in values
+        ]
+
+    screen_map = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, guide=guide)
+    _write_screenmap(run_sink, screen_map)
+
+    raw = (tmp_path / SCREENMAP_NAME).read_text(encoding="utf-8")
+    assert INVENTED_VALUE not in raw
+    assert TYPED_PASSWORD not in raw
+    # Not vacuous: both actions really are recorded, with their targets intact — an artifact that
+    # explains nothing would also contain no plaintext.
+    data = json.loads(raw)
+    assert len(data["nodes"]) == 3
+    typed = [a for path in data["paths"].values() for a in path if a["kind"] == "type"]
+    assert {a["target"] for a in typed} == {"settings.apikey", "auth.password"}
+    assert [a["value"] for a in typed] == [PLACEHOLDER] * 2
+    # And the descriptions the map carries name the target without the value (BE-0331 unit 6).
+    assert {e["action"] for e in data["edges"]} == {"type settings.apikey", "type auth.password"}

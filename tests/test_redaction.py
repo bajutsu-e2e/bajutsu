@@ -6,12 +6,27 @@ import base64
 import html
 import json
 from pathlib import Path
+from typing import Any
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import FileSink, intervals
-from bajutsu.evidence.redaction import PLACEHOLDER, Redactor
+from bajutsu.evidence.redaction import (
+    CREDENTIAL_SHAPES,
+    DEFAULT_CREDENTIAL_NAME_WORDS,
+    PLACEHOLDER,
+    Redactor,
+    mask_credential_shapes,
+    names_credential,
+)
 from bajutsu.scenario import Redact
+
+# Two values with no recognizable credential shape, so the pattern backstop cannot reach them and
+# only the rule under test can: whether they survive says exactly which default fired. The password
+# is the one a remaining local run held verbatim, the reason the platform's own marking became a
+# default; the key stands in for the `settings.apikey` value a `crawl --guide ai` invented.
+INVENTED_VALUE = "invented-by-the-guide"
+TYPED_PASSWORD = "Passw0rd!2026"
 
 
 def _r(**kw: list[str]) -> Redactor:
@@ -178,6 +193,13 @@ def _el(identifier: str, label: str, value: str) -> base.Element:
     }
 
 
+def _secure_el(identifier: str, label: str, value: str) -> base.Element:
+    """An element the platform itself marked a masked input."""
+    element = _el(identifier, label, value)
+    element["traits"] = [base.Trait.SECURE_TEXT_FIELD]
+    return element
+
+
 def test_redact_elements_masks_labeled_value() -> None:
     red = _r(labels=["Password"], fields=["token"])
     els = red.redact_elements(
@@ -225,3 +247,214 @@ def test_filesink_no_redact_leaves_files_untouched(tmp_path: Path) -> None:
         "00-s", [intervals.Interval(kind="deviceLog", path=log)]
     )
     assert log.read_text(encoding="utf-8") == "token=secret\n"  # no redact config -> unchanged
+
+
+# --- BE-0331: the two element defaults that need no configuration ---------------------------
+
+
+def test_platform_marked_field_is_masked_with_nothing_configured() -> None:
+    # The case that matters: no `redact:` at all — what a `crawl` always has, since it carries no
+    # scenario — so the redactor is otherwise inert and this default is the only thing standing
+    # between the value and the artifact. The platform already stated the field's secrecy; a
+    # configuration file should not have to restate it.
+    red = Redactor(Redact())
+    assert red.active is False
+    (masked,) = red.redact_elements([_secure_el("field.7", "Enter it", TYPED_PASSWORD)])
+    assert masked["value"] == PLACEHOLDER
+    assert masked["label"] == "Enter it"  # a label is not a value — it stays legible evidence
+
+
+def test_unmask_secure_fields_releases_the_platform_default() -> None:
+    # Turning a default off is a visible, deliberate choice rather than the mere absence of
+    # `redact:`, exactly as BE-0130's `unmaskHeaders` established for headers.
+    (kept,) = Redactor(Redact(unmaskSecureFields=True)).redact_elements(
+        [_secure_el("field.7", "Enter it", TYPED_PASSWORD)]
+    )
+    assert kept["value"] == TYPED_PASSWORD
+    # Releasing one default must not release the other: a credential-named field is still masked.
+    (still,) = Redactor(Redact(unmaskSecureFields=True)).redact_elements(
+        [_el("settings.apikey", "Key", INVENTED_VALUE)]
+    )
+    assert still["value"] == PLACEHOLDER
+
+
+def test_credential_named_field_is_masked_with_nothing_configured() -> None:
+    # `settings.apikey` is the identifier the motivating leak carried: nothing was configured, the
+    # value was invented by the guide rather than bound through `${secrets.X}`, and no rule reached
+    # it. A label names a field just as well as an identifier does, so it is matched too.
+    ident, labelled, plain = Redactor(Redact()).redact_elements(
+        [
+            _el("settings.apikey", "Key", INVENTED_VALUE),
+            _el("field.7", "Access token", INVENTED_VALUE),
+            _el("profile.nickname", "Nickname", "kitty"),
+        ]
+    )
+    assert ident["value"] == PLACEHOLDER
+    assert labelled["value"] == PLACEHOLDER
+    assert plain["value"] == "kitty"  # nothing credential-like — ordinary evidence stays readable
+
+
+def test_unmask_credential_names_releases_the_name_default() -> None:
+    (kept,) = Redactor(Redact(unmaskCredentialNames=True)).redact_elements(
+        [_el("settings.apikey", "Key", INVENTED_VALUE)]
+    )
+    assert kept["value"] == INVENTED_VALUE
+    # As above, the two defaults release independently.
+    (still,) = Redactor(Redact(unmaskCredentialNames=True)).redact_elements(
+        [_secure_el("field.7", "Enter it", TYPED_PASSWORD)]
+    )
+    assert still["value"] == PLACEHOLDER
+
+
+def test_credential_vocabulary_matches_on_word_boundaries() -> None:
+    # A rule an author cannot predict is a rule an author cannot rely on, so both halves are pinned:
+    # `apikey` and `api_key` are listed separately because `_` is a word character and one
+    # word-boundary match never covers the other, while an unrelated `pinned` must not hit.
+    assert names_credential("settings.apikey")
+    assert names_credential("settings.api_key")
+    assert names_credential(None, "Enter your PIN")
+    assert not names_credential("prefs.pinned")
+    assert not names_credential("profile.nickname", "Nickname")
+    assert not names_credential(None, None)
+    # Every documented word reaches the compiled pattern, so the vocabulary and the rule cannot
+    # drift apart — the vocabulary is what the docs promise an author.
+    for word in DEFAULT_CREDENTIAL_NAME_WORDS:
+        assert names_credential(f"settings.{word}"), word
+
+
+def test_a_default_masked_field_still_gets_its_label_scrubbed() -> None:
+    # Blanking the value comes *after* the text scrub rather than instead of it: a credential-named
+    # field often carries the secret in its label too, and skipping the scrub would mask the value
+    # while handing the same secret over in the label beside it.
+    red = Redactor(Redact(), values=["hunter2"])
+    named, secure = red.redact_elements(
+        [
+            _el("settings.apikey", "Key (hunter2)", INVENTED_VALUE),
+            _secure_el("field.7", "Hint: hunter2", TYPED_PASSWORD),
+        ]
+    )
+    assert named["value"] == PLACEHOLDER and "hunter2" not in (named["label"] or "")
+    assert secure["value"] == PLACEHOLDER and "hunter2" not in (secure["label"] or "")
+
+
+# --- BE-0331: the screen map, whose actions are not elements --------------------------------
+
+
+def _map_with(*actions: dict[str, Any]) -> dict[str, Any]:
+    """A screen map shaped like `screenmap_dict`, with the same actions in all three places.
+
+    `paths`, `crashes` and `pruned` are the only keys that carry a serialized action, and each nests
+    it differently — so one fixture reused across the three is what shows the rule reaches all of
+    them rather than the one the author happened to think of.
+    """
+    return {
+        "nodes": [{"fingerprint": "abc", "ids": ["settings.apikey"]}],
+        "edges": [{"src": "abc", "action": "type settings.apikey", "dst": "def"}],
+        "paths": {"def": [dict(a) for a in actions]},
+        "crashes": [{"path": ["type settings.apikey"], "actions": [dict(a) for a in actions]}],
+        "pruned": [{"src": "abc", "key": "k", "owner": "abc", "path": [dict(a) for a in actions]}],
+        "stop_reason": "completed",
+    }
+
+
+def _actions_of(screen_map: dict[str, Any]) -> list[list[dict[str, Any]]]:
+    """The three serialized action lists, so an assertion covers `paths`, `crashes` and `pruned`."""
+    return [
+        screen_map["paths"]["def"],
+        screen_map["crashes"][0]["actions"],
+        screen_map["pruned"][0]["path"],
+    ]
+
+
+def test_redact_screen_map_masks_a_credential_named_or_marked_target() -> None:
+    # A screen-map action is not an `Element`, so `redact_elements` cannot see the pairing between
+    # what an action targets and the value it entered, and the defaults are structural, so a
+    # free-text pass over the serialized map reaches neither. This is the method that closes it.
+    out = Redactor(Redact()).redact_screen_map(
+        _map_with(
+            {"kind": "type", "target": "settings.apikey", "value": INVENTED_VALUE},
+            {"kind": "type", "target": "field.7", "value": TYPED_PASSWORD, "secure": True},
+            {"kind": "type", "target": "search.query", "value": "kittens"},
+        )
+    )
+    for actions in _actions_of(out):
+        named, marked, ordinary = actions
+        assert named["value"] == PLACEHOLDER
+        assert marked["value"] == PLACEHOLDER  # `secure` stands in for the trait the map dropped
+        assert ordinary["value"] == "kittens"  # what a crawl is written to explain, left readable
+
+
+def test_redact_screen_map_masks_a_fill_by_action_and_by_field() -> None:
+    # A fill records one value list, so its `secure` flag is the OR across its fields and masks the
+    # whole list — over-masking a companion field is the only direction that cannot leak. A fill no
+    # field marked still masks per field, since each pair names its own target.
+    out = Redactor(Redact()).redact_screen_map(
+        _map_with(
+            {
+                "kind": "fill",
+                "fields": [["field.7", TYPED_PASSWORD], ["profile.nickname", "kitty"]],
+                "secure": True,
+            },
+            {
+                "kind": "fill",
+                "fields": [["settings.apikey", INVENTED_VALUE], ["profile.nickname", "kitty"]],
+            },
+        )
+    )
+    for actions in _actions_of(out):
+        marked, named = actions
+        assert marked["fields"] == [["field.7", PLACEHOLDER], ["profile.nickname", PLACEHOLDER]]
+        assert named["fields"] == [["settings.apikey", PLACEHOLDER], ["profile.nickname", "kitty"]]
+
+
+def test_redact_screen_map_leaves_the_artifact_shape_unchanged() -> None:
+    # The map is read back by a resume and by the web UI, so masking must rewrite values and nothing
+    # else — a key invented here (a `secure` flag on an action that carried none) would change what
+    # a reader deserializes.
+    source = _map_with(
+        {"kind": "type", "target": "settings.apikey", "value": INVENTED_VALUE},
+        {"kind": "tap", "target": "home.submit"},
+    )
+    out = Redactor(Redact()).redact_screen_map(source)
+    assert out.keys() == source.keys()
+    assert out["nodes"] == source["nodes"] and out["edges"] == source["edges"]
+    assert out["stop_reason"] == "completed"
+    for actions, originals in zip(_actions_of(out), _actions_of(source), strict=True):
+        assert [a.keys() for a in actions] == [o.keys() for o in originals]
+    # A map with none of the three keys is returned intact rather than gaining them.
+    assert Redactor(Redact()).redact_screen_map({"stop_reason": "max_steps"}) == {
+        "stop_reason": "max_steps"
+    }
+
+
+# --- BE-0331: the pattern backstop ----------------------------------------------------------
+
+
+def test_mask_credential_shapes_masks_every_documented_shape() -> None:
+    # The backstop is the only rule that knows neither a configured name nor the value in advance,
+    # so it is the one that can reach a value the tool itself generated. Each shape is exercised
+    # with a value of that shape and nothing else, so a broken pattern names itself.
+    samples = {
+        "anthropicApiKey": "sk-ant-notarealkey000000000000",
+        "awsAccessKeyId": "AKIAEXAMPLEKEYID1234",
+        "githubToken": "ghp_notarealgithubtoken00000000000000000",
+        "jsonWebToken": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJub25lIn0.c2lnbmF0dXJlLXBsYWNlaG9sZGVy",
+        "pemPrivateKey": (
+            "-----BEGIN RSA PRIVATE KEY-----\nbm90LWEta2V5\n-----END RSA PRIVATE KEY-----"
+        ),
+    }
+    assert samples.keys() == {name for name, _ in CREDENTIAL_SHAPES}, (
+        "a new shape needs a sample here, or the backstop ships untested"
+    )
+    for name, value in samples.items():
+        masked, matched = mask_credential_shapes(f"the guide typed {value} into the field")
+        assert matched == [name], value
+        assert value not in masked
+        assert PLACEHOLDER in masked
+
+
+def test_mask_credential_shapes_leaves_ordinary_text_alone() -> None:
+    # Nothing to report means nothing was masked, and the caller warns on the report — so a
+    # false positive here would cry wolf on every artifact a crawl writes.
+    text = "tap home.submit; type search.query; pinned=true; sk-ant is not a key"
+    assert mask_credential_shapes(text) == (text, [])

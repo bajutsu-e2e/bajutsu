@@ -11,7 +11,7 @@ import pytest
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import FileSink, capture, write_elements, write_raw_tree, write_screenshot
-from bajutsu.evidence.redaction import Redactor
+from bajutsu.evidence.redaction import PLACEHOLDER, Redactor
 from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.scenario import Redact
 
@@ -594,3 +594,100 @@ def test_finish_scenario_intervals_drops_apptrace_when_only_the_raw_is_unredacta
         out = sink.finish_scenario_intervals("s", [_StubInterval(main, kind="appTrace")])
     assert out == []
     assert any("appTrace.raw" in r.getMessage() for r in caplog.records)
+
+
+# --- BE-0331: the pattern backstop, run last over whatever the sink serializes ---------------
+
+# An Anthropic key shape, the one the motivating leak carried. Synthetic: the guide invented a
+# realistic value for a field asking for a key, which is precisely the class no rule keyed on a
+# configured name or a known literal can reach.
+_SHAPED_KEY = "sk-ant-notarealkey000000000000"
+
+
+def test_the_backstop_masks_a_shape_the_structural_rules_never_reach(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Nothing is configured and the element names nothing credential-like, so the two BE-0331
+    # defaults and every configured rule pass this value over — the backstop is the last thing
+    # between it and the artifact. It runs over the serialized bytes, so it reaches an element
+    # tree the structural pass just wrote out.
+    writer = _writer(tmp_path)
+    with caplog.at_level("WARNING"):
+        writer.write_elements("elements.json", [_el("note.body", f"jot {_SHAPED_KEY} down")])
+    written = (tmp_path / "elements.json").read_text(encoding="utf-8")
+    assert _SHAPED_KEY not in written
+    assert PLACEHOLDER in written
+    # Exactly one warning, naming the artifact and the shape: a value reaching the backstop means an
+    # earlier, more precise rule should have caught it, so it is worth surfacing rather than masking
+    # silently — and worth surfacing once, not once per pattern the sink tried.
+    (record,) = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert "elements.json" in record.getMessage()
+    assert "anthropicApiKey" in record.getMessage()
+
+
+def test_the_backstop_names_every_shape_in_one_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # One artifact, one warning: an operator reads it to decide whether the artifact is safe to
+    # share, so the shapes belong together in the line that names the file.
+    writer = _writer(tmp_path)
+    aws = "AKIAEXAMPLEKEYID1234"
+    with caplog.at_level("WARNING"):
+        writer.write_text("guide.log", f"{_SHAPED_KEY}\n{aws}\n")
+    (record,) = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert "anthropicApiKey" in record.getMessage() and "awsAccessKeyId" in record.getMessage()
+    written = (tmp_path / "guide.log").read_text(encoding="utf-8")
+    assert _SHAPED_KEY not in written and aws not in written
+
+
+def test_the_backstop_leaves_ordinary_evidence_alone(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A crawl writes an artifact per screen, so a backstop that cried wolf on ordinary text would
+    # bury the warning that means something.
+    writer = _writer(tmp_path)
+    text = "tap home.submit\ntype search.query\npinned=true\n"
+    with caplog.at_level("WARNING"):
+        writer.write_text("plan.log", text)
+    assert (tmp_path / "plan.log").read_text(encoding="utf-8") == text
+    assert [r for r in caplog.records if r.levelname == "WARNING"] == []
+
+
+# --- BE-0331: the bytes the sink cannot inspect ---------------------------------------------
+
+
+def test_write_bytes_records_the_artifact_as_unmasked(tmp_path: Path) -> None:
+    # Pixels cannot be masked, so the honest thing is to say so rather than let the artifact be
+    # described as scrubbed by rules that never ran (BE-0151, kept for every opaque shape).
+    writer = _writer(tmp_path)
+    writer.write_bytes("screens/abc.png", b"\x89PNG\r\n\x1a\n fake")
+    assert writer.unmasked == ["screens/abc.png"]
+    assert (tmp_path / "screens" / "abc.png").read_bytes().startswith(b"\x89PNG")
+
+
+def test_a_reserved_recording_counts_as_unmasked_only_once_the_caller_says_so(
+    tmp_path: Path,
+) -> None:
+    # `reserve` hands out a path because a subprocess cannot be handed bytes, and reserving alone
+    # settles nothing: the caller closes the loop, and only then is the artifact on the record as
+    # content the sink could not inspect.
+    writer = _writer(tmp_path)
+    path = writer.reserve("video/scenario.mp4")
+    assert writer.unmasked == []
+    path.write_bytes(b"not really a video")
+    writer.record_unmasked("video/scenario.mp4")
+    assert writer.unmasked == ["video/scenario.mp4"]
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600  # restricted like any other artifact
+
+
+def test_the_text_paths_are_never_recorded_as_unmasked(tmp_path: Path) -> None:
+    # The list is what tells a reader which artifacts the rules did not run over, so every shape the
+    # sink *can* inspect must stay off it — an over-broad list is as misleading as a missing one.
+    writer = _writer(tmp_path)
+    writer.write_text("device.log", "nothing here")
+    writer.write_json("manifest.json", {"run": "abc"})
+    writer.write_elements("elements.json", [_el("home.submit", "Submit")])
+    writer.write_exchanges("network.json", [{"url": "https://example.com/"}])
+    writer.write_screen_map("screenmap.json", {"stop_reason": "completed"})
+    assert writer.scrub_reserved("device.log") is True
+    assert writer.unmasked == []

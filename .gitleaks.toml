@@ -53,3 +53,8 @@ paths = ['''bajutsu/serve/launchagent\.py''']
 description = "generic-api-key (entropy heuristic, a default rule) false-positives on Android AVD device names, a JS metrics key literal, and a TOTP test fixture secret — none are API keys"
 targetRules = ["generic-api-key"]
 paths = ['''\.github/workflows/android-e2e\.yml''', '''bajutsu/templates/serve\.metrics\.mjs''', '''tests/test_totp(_step)?\.py''']
+
+[[allowlists]]
+description = "tests/test_redaction.py's BE-0331 backstop fixtures are synthetic tokens of each credential shape; the pattern under test only fires on the real shape, so a placeholder body could not exercise it. The path also covers the module's compiled cache, which `gitleaks dir` walks: without it a `make check` run after any local test run reddens on the bytecode copy of the same fixtures"
+targetRules = ["github-pat", "jwt", "generic-api-key"]
+paths = ['''tests/(__pycache__/)?test_redaction[^/]*\.pyc?$''']
