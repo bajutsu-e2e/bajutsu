@@ -1574,6 +1574,67 @@ def test_crawl_screenmap_holds_no_plaintext_value_for_a_named_or_marked_field(
     assert {e["action"] for e in data["edges"]} == {"type settings.apikey", "type auth.password"}
 
 
+def _typed_branch_app() -> tuple[Callable[[FakeDriver, str, object], None], list[dict]]:
+    """home -> {other (tap home.go), typed (type into home.q)}; each screen ends there."""
+    home = [
+        el(identifier="home.go", traits=["button"]),
+        el(identifier="home.q", traits=["textField"]),
+    ]
+    other = [el(identifier="other.note"), el(identifier="other.stop")]
+    typed = [el(identifier="typed.note"), el(identifier="typed.stop")]
+    focused: dict[str, str] = {}
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and isinstance(arg, dict):
+            focused["id"] = str(arg.get("id") or "")
+            if focused["id"] == "home.go":
+                d.screen = list(other)
+        elif kind == "type" and focused.get("id") == "home.q":
+            d.screen = list(typed)
+
+    return react, home
+
+
+def test_continue_over_a_pre_be0331_plan_entry_still_explores_the_typed_branch() -> None:
+    """A map persisted before BE-0331 spelled a typed operation `type <target>='<value>'`, which
+    today's value-free description never equals. Without normalizing the persisted spelling the
+    continuation matches no candidate, drops every input branch in silence, and can then report
+    `completed` — claiming a full exploration of a map it never finished."""
+    react, home = _typed_branch_app()
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    # A tight budget explores the tap (candidates order taps before types) and leaves the type op
+    # in the plan — the frontier a `--continue` exists to pick up.
+    partial = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, max_steps=1)
+    assert partial.stop_reason == "max_steps"
+    entries = {e for ops in partial.plan.values() for e in ops}
+    assert "type home.q" in entries, "the budget stop must leave the typed branch untried"
+
+    legacy = serialize.screenmap_dict(partial)
+    legacy["plan"] = {
+        fp: [f"{e}='test'" if e.startswith("type ") else e for e in ops]
+        for fp, ops in legacy["plan"].items()
+    }
+    continued = crawl.crawl(
+        FakeDriver(screen=list(home), react=react),
+        reset,
+        base_map=serialize.screenmap_from_dict(legacy),
+        max_steps=100,
+    )
+    modern = crawl.crawl(
+        FakeDriver(screen=list(home), react=react),
+        reset,
+        base_map=serialize.screenmap_from_dict(serialize.screenmap_dict(partial)),
+        max_steps=100,
+    )
+    assert set(continued.nodes) == set(modern.nodes)
+    # Not vacuous: the typed branch really is a screen only that operation reaches.
+    assert len(continued.nodes) == 3
+    assert any("typed.note" in n.ids for n in continued.nodes.values())
+
+
 def test_a_masked_value_replays_as_a_usable_dummy_not_the_placeholder() -> None:
     # A warm start (`--continue` / `--resume-src`) rebuilds its actions from the persisted map,
     # where a masked input's value is the placeholder. Typing that verbatim carries no digit, so a

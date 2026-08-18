@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -205,7 +206,7 @@ class Action:
             return _input_value(matched[0])
         # The tap above already resolved the field, so this is the near-impossible screen change
         # between the two reads; the action's own record of what it targets still names the field.
-        return _value_for_field(hint, self.secure)
+        return value_for_field(hint, self.secure)
 
 
 @dataclass(frozen=True)
@@ -350,20 +351,37 @@ def _is_enabled(element: base.Element) -> bool:
 
 def _input_value(element: base.Element) -> str:
     """A deterministic placeholder to type into a field (the `--guide off` path), good enough to clear "must be non-empty" preconditions but not validation-gated ones."""
-    return _value_for_field(
+    return value_for_field(
         f"{_id_of(element) or ''} {element.get('label') or ''}",
         base.Trait.SECURE_TEXT_FIELD in _traits(element),
     )
 
 
-def _value_for_field(hint: str, secure: bool) -> str:
-    """The same choice keyed on a field's name and secrecy alone, for a replay that has no element."""
+def value_for_field(hint: str, secure: bool) -> str:
+    """The same choice keyed on a field's name and secrecy alone, for a replay that has no element.
+
+    Public because an emitted artifact needs it too: a repro or candidate flow that would otherwise
+    record a masked value writes this dummy instead, so the scenario stays runnable (BE-0331).
+    """
     hint = hint.lower()
     if "mail" in hint:
         return "test@example.com"
     if secure:
         return "Test1234!"
     return "test"
+
+
+# A plan entry written before BE-0331 spelled a typed operation `type <target>='<value>'`; today
+# `Action.describe` leaves the value out. A `--continue` matches today's descriptions against the
+# persisted plan, so without this the older spelling never matches and every input branch the map
+# had left to explore is dropped in silence — the crawl can then stop as "completed".
+_LEGACY_TYPED_ENTRY = re.compile(r"(?s)^(type .+?)=(['\"]).*\2$")
+
+
+def plan_key(entry: str) -> str:
+    """One persisted plan entry reduced to the value-free form `Action.describe` emits today."""
+    match = _LEGACY_TYPED_ENTRY.match(entry)
+    return match.group(1) if match else entry
 
 
 def _fingerprint_token(element: base.Element) -> str:
@@ -932,9 +950,9 @@ def crawl(
         prior_reason = screen_map.stop_reason
         had_frontier = any(screen_map.plan.values())  # the loaded map recorded untried operations
         for fp in sorted(screen_map.plan):
-            remaining = set(
-                screen_map.plan[fp]
-            )  # `fp` is a key of `plan`; empty list → skipped below
+            # `fp` is a key of `plan`; empty list → skipped below. `plan_key` normalizes the
+            # pre-BE-0331 `type <target>='<value>'` spelling so a legacy map's input branches match.
+            remaining = {plan_key(e) for e in screen_map.plan[fp]}
             if not remaining:
                 continue
             path = list(screen_map.paths.get(fp, ()))

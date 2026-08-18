@@ -28,13 +28,15 @@ def write_flows(writer: RunArtifactWriter, screen_map: ScreenMap) -> list[str]:
     an unreplayable path are skipped. Returns the artifact names written.
 
     A flow carries whatever the crawl typed, so it goes through the sink like every other run
-    artifact (BE-0331) rather than writing itself.
+    artifact (BE-0331) — and through the run's redactor before serialization: the login path behind
+    every screen is a `path_to`, so an unredacted flow would hold the password the map beside it
+    masks.
     """
     written: list[str] = []
     ordered = sorted(screen_map.paths.items(), key=lambda item: (len(item[1]), item[0]))
     for fp, actions in ordered:
         name = f"flow-{len(written) + 1:03d}"
-        scenario = scenario_from_actions(actions, name=name)
+        scenario = scenario_from_actions(actions, name, writer.redactor)
         if scenario is None:
             continue
         artifact = f"flows/{name}.yaml"

@@ -60,14 +60,18 @@ def test_redact_text_leaves_a_json_document_parseable() -> None:
             "kind": "waitTimeout",
             "value": "hunter2",
             "elements": [{"identifier": "auth.token", "value": "s3cret"}],
+            "attempts": 3,
             "keep": "readable",
         },
         indent=2,
     )
-    out = _r(fields=["value"]).redact_text(document)
+    out = _r(fields=["value", "attempts"]).redact_text(document)
     loaded = json.loads(out)  # the assertion: still a document, not just still masked
     assert loaded["value"] == PLACEHOLDER
     assert loaded["elements"][0]["value"] == PLACEHOLDER
+    # A bare value is quoted too: `"attempts": [REDACTED]` is not JSON, and a placeholder string is
+    # valid wherever a value of any type stood.
+    assert loaded["attempts"] == PLACEHOLDER
     assert "hunter2" not in out and "s3cret" not in out
     assert loaded["keep"] == "readable" and loaded["kind"] == "waitTimeout"
 
@@ -448,6 +452,39 @@ def test_write_screen_map_scrubs_the_free_text_around_the_actions(tmp_path: Path
     written = json.loads(text)  # the scrub must leave a document a resume can still read back
     assert written["nodes"][0]["ids"] == [f"greeting.{PLACEHOLDER}"]
     assert written["edges"][0]["src"] == "abc"
+
+
+def test_sink_json_survives_a_key_pattern_that_would_eat_the_document(tmp_path: Path) -> None:
+    # A key pattern reaches to end of line, so a *serialized* document is the one thing it must
+    # never be shown: `token: ` consumes the closing quote and the delimiter after it, and it even
+    # re-eats the redactor's own earlier output (`"token: [REDACTED]"`, left by `redact_elements`).
+    # Both artifacts here are read back — `--continue` loads screenmap.json and the web UI polls it
+    # live — so a document that stops parsing is a broken resume, not a cosmetic blemish.
+    writer = RunArtifactWriter(tmp_path / "runs" / "r1", Redactor(Redact(fields=["token"])))
+    elements: list[base.Element] = [
+        {"identifier": "auth.token", "label": "token: abc123", "value": "s3cret"}
+    ]
+    wait_timeout = writer.write_json(
+        "00-x/step0/wait-timeout.json",
+        {
+            "target": {"id": "auth.submit"},
+            "token": 12345,  # a bare value: the mask must stay valid where a number stood
+            "session": {"token": {"kind": "bearer"}},  # nor can a pattern consume an object
+            "elements": writer.redactor.redact_elements(elements),
+        },
+    )
+    screen_map = writer.write_screen_map(
+        "screenmap.json",
+        {"stop_reason": "completed", "nodes": [{"fingerprint": "abc", "ids": ["token: abc123"]}]},
+    )
+    for path in (wait_timeout, screen_map):
+        text = path.read_text(encoding="utf-8")
+        assert "abc123" not in text and "s3cret" not in text
+        json.loads(text)  # the assertion: still a document every consumer can read back
+    doc = json.loads(wait_timeout.read_text(encoding="utf-8"))
+    assert doc["token"] == PLACEHOLDER and doc["session"]["token"] == PLACEHOLDER
+    assert doc["elements"][0]["label"] == f"token: {PLACEHOLDER}"
+    assert doc["target"] == {"id": "auth.submit"}  # nothing configured names it, so it is untouched
 
 
 def test_redact_screen_map_leaves_the_artifact_shape_unchanged() -> None:

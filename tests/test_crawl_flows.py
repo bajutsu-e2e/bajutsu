@@ -11,6 +11,7 @@ from pathlib import Path
 
 from bajutsu.crawl import Action, ScreenMap, screenmap_dict, screenmap_from_dict
 from bajutsu.crawl.flows import write_flows
+from bajutsu.evidence.redaction import PLACEHOLDER
 from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.scenario.load import load_scenarios
 
@@ -102,6 +103,35 @@ def test_fill_and_type_flow_round_trips(tmp_path: Path, run_sink: RunArtifactWri
     assert len(steps) == 3
     assert steps[0].type is not None and steps[0].type.text == "a@b.com"
     assert steps[2].tap is not None and steps[2].tap.id == "submit"
+
+
+def test_flow_records_the_dummy_where_a_default_masks_the_typed_value(
+    tmp_path: Path, run_sink: RunArtifactWriter
+) -> None:
+    # BE-0331: a crawl carries no `redact:`, and an AI-invented password matches no backstop shape,
+    # so only the two element defaults can reach it. The login path is a `path_to` prefix for every
+    # screen behind it, so an unredacted flow would hold in plaintext what `screenmap.json` masks
+    # in the same run directory. The step keeps a runnable dummy, never the placeholder.
+    sm = _map(
+        {
+            "home": (
+                Action(kind="type", target="auth.email", value="ai@example.com"),
+                Action(kind="type", target="auth.password", value="MyR3alistic!Pass", secure=True),
+                Action(kind="fill", fields=(("settings.apikey", "invented-by-the-guide"),)),
+                Action(kind="tap", target="submit"),
+            )
+        }
+    )
+    written = write_flows(run_sink, sm)
+    text = (tmp_path / written[0]).read_text(encoding="utf-8")
+    assert "MyR3alistic!Pass" not in text and "invented-by-the-guide" not in text
+    assert PLACEHOLDER not in text  # masked, but still a scenario `run` can replay
+    steps = load_scenarios(text)[0].steps
+    assert [s.type and s.type.text for s in steps[:3]] == [
+        "ai@example.com",  # no default names this field, so what the crawl typed is kept
+        "Test1234!",  # the platform marked it a masked input
+        "test",  # `apikey` names a credential
+    ]
 
 
 def test_no_paths_writes_nothing(tmp_path: Path, run_sink: RunArtifactWriter) -> None:

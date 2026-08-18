@@ -142,15 +142,14 @@ def _with_cookie_linkage(names: set[str]) -> set[str]:
 
 
 def _masked(m: re.Match[str]) -> str:
-    """The key, then the placeholder — quoted when it replaces a quoted value.
+    """The key, then the placeholder — quoted whenever the pattern consumed a JSON value.
 
-    The JSON pattern captures the value it consumed (group 2), and a bare placeholder in place of a
-    quoted one leaves `"token": [REDACTED]` behind: no longer parseable, which matters now that the
-    sink runs this pass over whole serialized documents. The other two patterns capture only the key,
-    hence the arity check.
+    Only the JSON pattern captures the value (group 2), hence the arity check, and its replacement
+    has to stay valid *in place*: a quoted string is legal JSON wherever a value of any type stood,
+    while the bare `"token": [REDACTED]` a plain placeholder leaves behind is not — so a number or a
+    literal is quoted too, not just a string.
     """
-    consumed = m.group(2) if m.re.groups > 1 else ""
-    if consumed.startswith('"'):
+    if m.re.groups > 1:
         return f'{m.group(1)}"{PLACEHOLDER}"'
     return m.group(1) + PLACEHOLDER
 
@@ -182,6 +181,9 @@ class Redactor:
     def __init__(self, redact: Redact | None, values: list[str] | None = None) -> None:
         redact = redact or Redact()
         self._keys: list[str] = [*redact.headers, *redact.fields]
+        # The same configured names, matched against a *structure's* keys rather than serialized
+        # text, so `redact_structure` can mask a value the key patterns must never be shown.
+        self._key_names: set[str] = {k.lower() for k in self._keys}
         masked = set(DEFAULT_SENSITIVE_HEADERS) | _with_cookie_linkage(
             {h.lower() for h in redact.headers}
         )
@@ -223,6 +225,16 @@ class Redactor:
         """
         for pattern in self._patterns:
             text = pattern.sub(_masked, text)
+        return self.redact_values(text)
+
+    def redact_values(self, text: str) -> str:
+        """Mask only the literal secret values (and a Basic-auth token carrying one) in text.
+
+        The key-free half of `redact_text`, split out because it is the only half safe to run over a
+        *serialized* document: a key pattern reaches to end of line, so inside a JSON string it eats
+        the closing quote and the artifact stops parsing. The sink pairs this with
+        `redact_structure`, which applies the key rules where the structure still exists.
+        """
         # Decode Basic-auth tokens before the literal-value pass: a secret whose bytes happen
         # to fall inside a base64 token would otherwise splice PLACEHOLDER into it, breaking the
         # decode and leaking the token's tail. Masking the whole token first avoids that.
@@ -231,6 +243,29 @@ class Redactor:
         for value in self._values:
             text = text.replace(value, PLACEHOLDER)
         return text
+
+    def redact_structure(self, data: Any) -> Any:
+        """Mask secrets in a JSON-shaped structure, before anything serializes it.
+
+        Keys are matched against the structure's own names and text rules against its string leaves,
+        so a document whose shape carries no dedicated rule (`wait-timeout.json`, a manifest) is
+        covered without a key pattern ever meeting a delimiter it would consume. Masking a keyed
+        value with the placeholder *string* keeps the document valid whatever type it replaced.
+        """
+        if not self.active:
+            return data
+        if isinstance(data, dict):
+            return {
+                k: PLACEHOLDER
+                if isinstance(k, str) and k.lower() in self._key_names
+                else self.redact_structure(v)
+                for k, v in data.items()
+            }
+        if isinstance(data, list):
+            return [self.redact_structure(v) for v in data]
+        if isinstance(data, str):
+            return self.redact_text(data)
+        return data
 
     def _redact_basic_auth(self, text: str) -> str:
         """Mask a `Basic <base64>` token whose decoded `user:pass` carries a known secret.
