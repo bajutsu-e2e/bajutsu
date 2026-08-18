@@ -92,8 +92,19 @@ Decides whether each `capturePolicy` rule fires for this step ([evidence](eviden
 - `_rule_fires`: whether it matches one of `on.action` (+ optional `idMatches`) / `on.event ==
   screenChanged` / `on.result == error`. The action name is mapped to the DSL name
   (`long_press`→`longPress`, `assert_`→`assert`).
-- `_collect_captures`: gathers the inline `step.capture` + the fired rules' captures + the config's
-  `defaults.capture` baseline (applied unconditionally, unlike the other two) and dedupes.
+- `_collect_captures`: leads with `elements`, then gathers the inline `step.capture` + the fired
+  rules' captures + the config's `defaults.capture` baseline (applied unconditionally, unlike the
+  other two) and dedupes. Leading with `elements` is what gives every step the post-action tree
+  whatever the three sources asked for; `elements.json` has a single filename, so that read replaces
+  the pre-action tree the pre-step baseline wrote.
+- The other half of the pair — `after.png` — is not on this list. `_handle_action` shoots it itself,
+  immediately after the step's action, ahead of every consumer that could otherwise read the tree
+  first (a `screenChanged` comparison, a `for`-wait timeout diagnostic, `extract`). It then drops
+  `screenshot.after` from the capture list above, which is why a bare `screenshot` from any source is
+  normalized to that token first: the shot is never taken twice. One tree still predates the shot —
+  a non-mutating step (`assert`, `wait`) reuses the tree it already settled on rather than re-reading
+  it (BE-0259), so on those two kinds `elements.json` comes from just before `after.png` instead of
+  just after.
 - Instant kinds (screenshot/elements) are acquired by the sink's `capture()`; interval kinds
   (video/deviceLog) are collected by stopping the ones started earlier via `start_intervals()`.
 

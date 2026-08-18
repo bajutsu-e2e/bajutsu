@@ -22,10 +22,11 @@ deterministic `run`/CI verdict path:
 
 The AWS SDK (boto3) is reached only through the `DeviceFarmClient` / `Transfer` seams, so this module
 imports without the ``aws`` extra and its logic is unit-tested against an in-memory fake; the real
-boto3 client and the presigned-URL transfer that fill those seams live in the CLI wrapper. Raw-adb
-access on the Device Farm host is a by-product of its toolchain rather than a first-class guarantee
-(the first-class path is Appium); this module documents that so a future Device Farm change does not
-silently break it.
+boto3 client and the presigned-URL transfer that fill those seams live in the CLI wrapper
+(`scripts/devicefarm_submit.py`) and serve's startup bootstrap (`bajutsu/serve/batch_bootstrap.py`).
+Raw-adb access on the Device Farm host is a by-product of its toolchain rather than a first-class
+guarantee (the first-class path is Appium); this module documents that so a future Device Farm change
+does not silently break it.
 """
 
 from __future__ import annotations
@@ -117,6 +118,25 @@ _PACKAGE_EXCLUDES = frozenset(
         ".DS_Store",
     }
 )
+
+# Path component *strings* that must never enter the package even if they are not in _PACKAGE_EXCLUDES
+# (which is an exact-match set). Any component whose string starts with one of these prefixes is
+# excluded — e.g. `.env`, `.env.local`, and `.aws`. A `.env` at the checkout root holds live API
+# keys; `.aws` holds credentials. Neither belongs on a shared Device Farm host.
+_PACKAGE_EXCLUDE_PREFIXES = (".env", ".aws")
+
+
+def _is_excluded(rel_parts: tuple[str, ...]) -> bool:
+    """Return True if *rel_parts* names a path that must not enter the package.
+
+    A component matches `_PACKAGE_EXCLUDES` exactly (e.g. `.git`) or starts with one of
+    `_PACKAGE_EXCLUDE_PREFIXES` (e.g. `.env`, `.env.local`, `.aws`).
+    """
+    return any(
+        part in _PACKAGE_EXCLUDES or part.startswith(_PACKAGE_EXCLUDE_PREFIXES)
+        for part in rel_parts
+    )
+
 
 # Device Farm's APPIUM_PYTHON_TEST_PACKAGE validation requires a `requirements.txt` at the package
 # root (alongside a `tests/` directory). Bajutsu is a pyproject/uv project with no such file, and the
@@ -284,10 +304,10 @@ def build_package(
                 prefix = "" if arcname == "." else f"{arcname}/"
                 for path in sorted(source.rglob("*")):
                     rel = path.relative_to(source)
-                    # Skip noise dirs (`.git`, `.venv`, caches, scratch) so `--package .=.` doesn't
-                    # zip the whole repo root, and skip symlinks so a link pointing outside the
-                    # source tree can't pull in unintended files (mirrors `archive_run_dir`).
-                    if any(part in _PACKAGE_EXCLUDES for part in rel.parts):
+                    # Skip noise dirs, credential files (`.env`, `.aws`), and symlinks — so
+                    # `--package .=.` on the checkout root neither bloats the upload nor leaks a
+                    # secret to the shared Device Farm host (mirrors `archive_run_dir`).
+                    if _is_excluded(rel.parts):
                         continue
                     if path.resolve() == out_resolved:
                         continue
@@ -381,6 +401,29 @@ class Transfer(Protocol):
     def download(self, url: str) -> bytes:
         """Fetch and return the raw bytes of the artifact at `url` (dispatch is `_store_artifact`)."""
         raise NotImplementedError
+
+
+class HttpTransfer:
+    """The real presigned-URL transfer over urllib (lazy import so the base install stays SDK-free).
+
+    Both the CLI wrapper (`scripts/devicefarm_submit.py`) and serve's startup bootstrap
+    (`bajutsu/serve/batch_bootstrap.py`) use this concrete. Keeping it here removes the duplicate
+    and ensures a timeout change or retry policy reaches both callers at once.
+    """
+
+    def upload(self, url: str, path: Path) -> None:
+        import urllib.request
+
+        request = urllib.request.Request(url, data=path.read_bytes(), method="PUT")  # noqa: S310
+        # An explicit timeout keeps a stalled S3 connection from hanging past the poll loops' cap.
+        urllib.request.urlopen(request, timeout=300).close()  # noqa: S310 - Device Farm presigned https URL
+
+    def download(self, url: str) -> bytes:
+        import urllib.request
+
+        with urllib.request.urlopen(url, timeout=300) as response:  # noqa: S310 - Device Farm presigned https URL
+            payload: bytes = response.read()
+        return payload
 
 
 def _upload_one(

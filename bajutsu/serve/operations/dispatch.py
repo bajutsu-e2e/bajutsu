@@ -327,15 +327,28 @@ def start_run_set(
         return {"error": f"target '{target}' has no scenarios to run"}, 400
     # Resolve every scenario to its trusted runnable *before* dispatching any, so an unknown name
     # fails the whole request closed rather than leaving a partial fan-out behind (BE-0051 confines
-    # each to the target's own dir). The batch provider packages state.cwd at the package root, so
-    # the scenario and config travel as package-relative paths.
-    work_dir = state.cwd
+    # each to the target's own dir).
+    # The provider packages work_dir at the zip root, so the config and scenarios below it travel as
+    # package-relative paths; devicefarm_package_root roots that at the source tree (see its field),
+    # falling back to state.cwd for the in-process tests.
+    work_dir = state.devicefarm_package_root or state.cwd
+    # A relative appPath resolves against the config's own directory (state.cwd) like every other
+    # config path (BE-0242) — not against the package root or serve's process cwd. The batch provider
+    # reads the APK/IPA in-process, against the process cwd, so resolve it to an absolute path here —
+    # otherwise a relative appPath is read from serve's launch dir and the upload fails opaquely on
+    # the cloud host with "No such file". An absolute appPath is left as the operator wrote it.
+    app_path = app_path if os.path.isabs(app_path) else os.path.join(state.cwd, app_path)
     config_arg = os.path.relpath(cfg, work_dir)
     if _escapes(config_arg):
         # The provider packages work_dir at the package root, so a config outside it would travel as
         # a `../…` path that won't exist in the package and would fail opaquely on the cloud host.
-        # Fail loud here instead (determinism first): this target's config isn't under the run cwd.
-        return {"error": "config is not under the run directory; cannot package it"}, 400
+        # Fail loud here instead (determinism first): this target's config isn't under work_dir.
+        return {
+            "error": (
+                f"config is not under the cloud-batch package root {work_dir}; "
+                "the config and its scenarios must live inside that directory"
+            )
+        }, 400
     requests: list[BatchRequest] = []
     for name in names:
         runnable = scope.runnable(name)
