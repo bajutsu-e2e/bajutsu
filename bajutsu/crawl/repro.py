@@ -16,9 +16,9 @@ faithful or nothing).
 from __future__ import annotations
 
 from collections.abc import Sequence
-from pathlib import Path
 
 from bajutsu.crawl.core import Action, Crash, ScreenMap
+from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.scenario.models import Scenario, Selector, Step, TypeText
 from bajutsu.scenario.serialize import dump_scenario_file
 
@@ -82,24 +82,24 @@ def crash_scenario(crash: Crash, name: str) -> Scenario | None:
     return scenario_from_actions(crash.actions, name)
 
 
-def write_repros(out_dir: Path, screen_map: ScreenMap) -> list[Path]:
-    """Write one repro scenario file per faithfully reproducible crash, returning the paths written.
+def write_repros(writer: RunArtifactWriter, screen_map: ScreenMap) -> list[str]:
+    """Write one repro scenario file per faithfully reproducible crash, returning the names written.
 
-    Files land under `out_dir/crashes/crash-NNN.yaml` (1-based, in crash order). A crash whose path
+    Files land under `crashes/crash-NNN.yaml` (1-based, in crash order). A crash whose path
     can't be faithfully replayed is skipped, so the numbering tracks the crash list, not the files.
+
+    A repro replays the values the crawl typed, so it goes through the sink like every other run
+    artifact (BE-0331) rather than writing itself.
     """
-    written: list[Path] = []
-    crashes_dir = out_dir / "crashes"
+    written: list[str] = []
     for i, crash in enumerate(screen_map.crashes, start=1):
         name = f"crash-{i:03d}"
         scenario = crash_scenario(crash, name=name)
         if scenario is None:
             continue
-        crashes_dir.mkdir(parents=True, exist_ok=True)
-        path = crashes_dir / f"{name}.yaml"
-        path.write_text(
-            dump_scenario_file([scenario], description=f"Crash repro from crawl: {name}"),
-            encoding="utf-8",
+        artifact = f"crashes/{name}.yaml"
+        writer.write_text(
+            artifact, dump_scenario_file([scenario], description=f"Crash repro from crawl: {name}")
         )
-        written.append(path)
+        written.append(artifact)
     return written

@@ -11,6 +11,7 @@ from pathlib import Path
 
 from bajutsu.crawl import Action, Crash, ScreenMap, screenmap_dict, screenmap_from_dict
 from bajutsu.crawl.repro import crash_scenario, write_repros
+from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.scenario.load import load_scenarios
 
 
@@ -75,9 +76,11 @@ def test_selectorless_action_is_unsupported() -> None:
     assert crash_scenario(crash, name="crash-1") is None
 
 
-def test_write_repros_skips_selectorless_crash_without_raising(tmp_path: Path) -> None:
+def test_write_repros_skips_selectorless_crash_without_raising(
+    tmp_path: Path, run_sink: RunArtifactWriter
+) -> None:
     sm = ScreenMap(crashes=[_crash(Action(kind="tap"))])
-    assert write_repros(tmp_path, sm) == []
+    assert write_repros(run_sink, sm) == []
 
 
 def test_emitted_yaml_round_trips_through_load() -> None:
@@ -95,7 +98,9 @@ def test_emitted_yaml_round_trips_through_load() -> None:
     assert reloaded[0].steps[1].type is not None and reloaded[0].steps[1].type.text == "a@b.com"
 
 
-def test_write_repros_writes_one_file_per_supported_crash(tmp_path: Path) -> None:
+def test_write_repros_writes_one_file_per_supported_crash(
+    tmp_path: Path, run_sink: RunArtifactWriter
+) -> None:
     sm = ScreenMap(
         crashes=[
             _crash(Action(kind="tap", target="a")),
@@ -103,17 +108,20 @@ def test_write_repros_writes_one_file_per_supported_crash(tmp_path: Path) -> Non
             _crash(Action(kind="tap", target="c")),
         ]
     )
-    written = write_repros(tmp_path, sm)
+    written = write_repros(run_sink, sm)
     # The middle crash hits an unsupported tap_point, so only two repros land.
     assert len(written) == 2
-    for path in written:
+    for name in written:
+        path = tmp_path / name
         assert path.exists()
         reloaded = load_scenarios(path.read_text(encoding="utf-8"))
         assert len(reloaded) == 1
 
 
-def test_write_repros_with_no_crashes_writes_nothing(tmp_path: Path) -> None:
-    assert write_repros(tmp_path, ScreenMap()) == []
+def test_write_repros_with_no_crashes_writes_nothing(
+    tmp_path: Path, run_sink: RunArtifactWriter
+) -> None:
+    assert write_repros(run_sink, ScreenMap()) == []
 
 
 def test_screenmap_json_round_trips_crash_actions() -> None:

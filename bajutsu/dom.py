@@ -25,6 +25,7 @@ QUERY_JS = """
       role: el.getAttribute('role') || el.tagName.toLowerCase(),
       label: el.getAttribute('aria-label') || (text ? text.slice(0, 200) : null),
       value: ('value' in el) ? el.value : null,
+      secure: el.type === 'password',
       disabled: el.disabled === true || el.getAttribute('aria-disabled') === 'true',
       selected: el.getAttribute('aria-selected') === 'true'
                 || el.getAttribute('aria-checked') === 'true'
@@ -84,6 +85,11 @@ def _to_element(rec: dict[str, Any]) -> base.Element:
     role = _norm_role(_str_or_none(rec.get("role")))
     if role:
         traits.append(role)
+    # `input[type=password]` carries no ARIA role, so it reaches `_ROLE_MAP` as a bare `input` and
+    # normalizes to `textField` indistinguishably from a plain one. The trait is added alongside
+    # that role rather than replacing it, so the field stays a text input to selectors and the crawl.
+    if rec.get("secure"):
+        traits.append(base.Trait.SECURE_TEXT_FIELD)
     if rec.get("disabled"):
         traits.append(base.Trait.NOT_ENABLED)
     if rec.get("selected"):

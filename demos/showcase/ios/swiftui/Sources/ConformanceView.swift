@@ -24,6 +24,11 @@ struct ConformanceView: View {
     /// coordinate tap has a known center to aim at.
     static let fieldID = "conformance.field"
 
+    /// The always-present masked field (BE-0331) — mirrors the web `type="password"` input and the
+    /// Compose `CONFORMANCE_SECURE_FIELD_ID`. A `SecureField` is reported by XCUITest as
+    /// `.secureTextField`, which is the iOS source for the normalized secure trait the contract pins.
+    static let secureFieldID = "conformance.secureField"
+
     /// The sentinel identifier the scroll conformance test seeds (BE-0326): when it is the whole
     /// seeded set, render the fixed scrollable list below instead of the per-identifier buttons, so
     /// the `scroll` action's re-query loop is driven against XCUITest's real query / scroll code.
@@ -37,6 +42,10 @@ struct ConformanceView: View {
     /// placeholder as the accessibility value when empty, which would make the field read non-empty
     /// before any typing and hide the round-trip length change the contract observes.
     @State private var fieldText = ""
+
+    /// Backs the masked field. Never typed into by the contract — the field exists so `query()` can
+    /// report its trait — so it stays empty.
+    @State private var secureFieldText = ""
 
     /// Focus on the editable field, so a screen reseed can resign it and dismiss any transient iOS UI
     /// the previous text-editing test left up (BE-0280) — see the `onChange` teardown below.
@@ -111,6 +120,10 @@ struct ConformanceView: View {
                 // made SwiftUI re-create the field's accessibility element on every change, so a
                 // handle resolved just before a keystroke went stale under the element — the contract's
                 // text-selection flow then failed with a stale handle (BE-0280).
+            SecureField("", text: $secureFieldText)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 280, height: 44)
+                .accessibilityID(Self.secureFieldID)
             ForEach(Array(identifiers.enumerated()), id: \.offset) { _, identifier in
                 // A generous, opaque hit area: the conformance contract pinches/rotates one of these
                 // (the MULTI_TOUCH case), and XCUITest's two-finger gestures need real room between

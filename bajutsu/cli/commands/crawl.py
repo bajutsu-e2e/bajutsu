@@ -53,26 +53,29 @@ from bajutsu.crawl.guide import MODEL as _CRAWL_GUIDE_MODEL
 from bajutsu.crawl.guide import Report, make_guide
 from bajutsu.drivers import base
 from bajutsu.evidence.redaction import Redactor
+from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.platform_lifecycle import CrawlEnvironment, environment_for
 from bajutsu.record import clear_blocking as clear_blocking_overlay
+from bajutsu.run_files import RunArtifactReader
 from bajutsu.run_id import new_run_id
 from bajutsu.runner import launch_driver
 from bajutsu.scenario import Preconditions
 
+#: The screen map's artifact name inside a crawl's run directory.
+SCREENMAP_NAME = "screenmap.json"
 
-def _write_screenmap(path: Path, screen_map: crawl_engine.ScreenMap) -> None:
-    """Atomically (re)write the screen map JSON.
 
-    Write a sibling temp file then rename, so a concurrent reader (the web UI polling it) never sees
-    a half-written file.
+def _write_screenmap(writer: RunArtifactWriter, screen_map: crawl_engine.ScreenMap) -> None:
+    """(Re)write the screen map JSON through the run's sink.
+
+    The sink masks the input values the map's actions carry and writes atomically, so a concurrent
+    reader (the web UI polling it) never sees a half-written file (BE-0331).
     """
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(crawl_engine.screenmap_dict(screen_map), indent=2), encoding="utf-8")
-    tmp.replace(path)
+    writer.write_screen_map(SCREENMAP_NAME, crawl_engine.screenmap_dict(screen_map))
 
 
 def _resolve_warm_start(
-    screenmap_path: Path,
+    reader: RunArtifactReader,
     *,
     resume_src: str,
     resume_key: str,
@@ -85,7 +88,7 @@ def _resolve_warm_start(
 ]:
     """Resolve how the crawl warm-starts, or return `(None, None, None)` for a fresh crawl.
 
-    Two mutually-exclusive warm-start modes read the existing map from *screenmap_path* (`--out`
+    Two mutually-exclusive warm-start modes read the existing map from the run's existing map (`--out`
     points at the prior run); the caller has already rejected naming both (BE-0181):
 
     - `--resume-src`/`--resume-key` → single-branch resume of one pruned branch, returning its
@@ -103,9 +106,9 @@ def _resolve_warm_start(
     def _load_base_map(mode: str) -> crawl_engine.ScreenMap:
         # Both warm-start modes read the existing run's map from --out; only the failure prefix differs.
         try:
-            data = json.loads(screenmap_path.read_text(encoding="utf-8"))
+            data = json.loads(reader.read_text(SCREENMAP_NAME))
         except (OSError, json.JSONDecodeError) as e:
-            typer.echo(f"{mode}: cannot read {screenmap_path}: {e}")
+            typer.echo(f"{mode}: cannot read {SCREENMAP_NAME}: {e}")
             raise typer.Exit(2) from None
         return crawl_engine.screenmap_from_dict(data)
 
@@ -167,7 +170,7 @@ def _plan_lanes(
 
 
 def _make_callbacks(
-    screenmap_path: Path, screens_dir: Path, report: Report
+    writer: RunArtifactWriter, report: Report
 ) -> tuple[crawl_engine.OnEvent, crawl_engine.OnNode]:
     """Build the crawl engine's `(on_event, on_node)` callbacks.
 
@@ -180,7 +183,7 @@ def _make_callbacks(
     """
 
     def on_event(screen_map: crawl_engine.ScreenMap) -> None:
-        _write_screenmap(screenmap_path, screen_map)
+        _write_screenmap(writer, screen_map)
         report(
             f"🔭 screens={len(screen_map.nodes)} transitions={len(screen_map.edges)} "
             f"crashes={len(screen_map.crashes)} alerts={len(screen_map.alerts)}"
@@ -188,7 +191,11 @@ def _make_callbacks(
 
     def on_node(d: base.Driver, node: crawl_engine.Node) -> None:
         try:
-            d.screenshot(str(screens_dir / f"{node.fingerprint}.png"))
+            name = f"screens/{node.fingerprint}.png"
+            # The driver writes the image itself, so the sink reserves the path and records that the
+            # bytes went in unmasked — pixels cannot be masked (BE-0151).
+            d.screenshot(str(writer.reserve(name)))
+            writer.record_unmasked(name)
         except (OSError, subprocess.CalledProcessError, device_errors.DeviceError) as exc:
             report(f"⚠️  screenshot failed for {node.fingerprint[:7]}: {exc}")
 
@@ -257,8 +264,8 @@ class _CrawlPlan:
     redactor: Redactor
     target_name: str
     out_dir: Path
-    screens_dir: Path
-    screenmap_path: Path
+    writer: RunArtifactWriter
+    reader: RunArtifactReader
     environment: CrawlEnvironment
     udids: list[str]
     base_map: crawl_engine.ScreenMap | None
@@ -346,7 +353,7 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
 
     extra_factories = [lane_factory(u) for u in plan.udids[1:]]
 
-    on_event, on_node = _make_callbacks(plan.screenmap_path, plan.screens_dir, report)
+    on_event, on_node = _make_callbacks(plan.writer, report)
     is_alive, clear_blocking, recover = _wire_health(
         plan.environment,
         plan.eff,
@@ -380,7 +387,7 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
     except device_errors.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
-    _write_screenmap(plan.screenmap_path, screen_map)
+    _write_screenmap(plan.writer, screen_map)
     return screen_map
 
 
@@ -392,9 +399,11 @@ def _finish(plan: _CrawlPlan, screen_map: crawl_engine.ScreenMap) -> None:
     one candidate flow per reachable screen (all directly runnable by `run`), then a one-line summary
     naming why the crawl stopped.
     """
-    report_path = crawl_report.write_html(plan.out_dir, screen_map, plan.out_dir.name)
-    repros = crawl_repro.write_repros(plan.out_dir, screen_map)
-    flows = crawl_flows.write_flows(plan.out_dir, screen_map)
+    report_path = plan.out_dir / crawl_report.write_html(
+        plan.writer, plan.reader, screen_map, plan.out_dir.name
+    )
+    repros = crawl_repro.write_repros(plan.writer, screen_map)
+    flows = crawl_flows.write_flows(plan.writer, screen_map)
     why = {
         "completed": "explored everything reachable",
         "max_screens": f"reached the --max-screens limit ({plan.max_screens})",
@@ -403,7 +412,7 @@ def _finish(plan: _CrawlPlan, screen_map: crawl_engine.ScreenMap) -> None:
     typer.echo(
         f"crawled {len(screen_map.nodes)} screens, {len(screen_map.edges)} transitions, "
         f"{len(screen_map.crashes)} crashes, {len(screen_map.alerts)} alerts dismissed "
-        f"({why}) -> {plan.screenmap_path}"
+        f"({why}) -> {plan.out_dir / SCREENMAP_NAME}"
     )
     typer.echo(f"screen map report -> {report_path}")
     if repros:
@@ -540,24 +549,25 @@ def crawl(
     # A Git source is read-only input: the screen map / screenshots go to a local run dir, never into
     # the SHA-keyed checkout cache (BE-0063). The default `runs/` is already local.
     _refuse_out_in_checkout(out_dir, checkout_root)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    # Per-screen screenshots land here as `<fingerprint>.png`; the web UI shows each as a node
-    # thumbnail (it builds the URL from the run id + fingerprint, so the map needs no extra field).
-    screens_dir = out_dir / "screens"
-    screens_dir.mkdir(exist_ok=True)
-    screenmap_path = out_dir / "screenmap.json"
+    # Every byte this crawl writes goes through the sink, so the redactor built above reaches the
+    # written artifacts and not just the outbound AI prompt (BE-0331). Per-screen screenshots land
+    # under `screens/<fingerprint>.png`; the web UI shows each as a node thumbnail (it builds the URL
+    # from the run id + fingerprint, so the map needs no extra field).
+    writer = RunArtifactWriter(out_dir, redactor)
+    reader = RunArtifactReader(out_dir)
+    screenmap_path = out_dir / SCREENMAP_NAME
 
     # Warm-start from an existing run's map (--out points at it), or a fresh crawl otherwise. A fresh
     # crawl writes the empty starter map the UI can poll now.
     base_map, seed_path, seed_ops = _resolve_warm_start(
-        screenmap_path,
+        reader,
         resume_src=resume_src,
         resume_key=resume_key,
         continue_crawl=continue_crawl,
         report=say,
     )
     if base_map is None:
-        _write_screenmap(screenmap_path, crawl_engine.ScreenMap())
+        _write_screenmap(writer, crawl_engine.ScreenMap())
     typer.echo(f"crawl → {screenmap_path}")  # tells the web UI where the map lands
 
     # The worker pool, all sharing one screen map. The pool-level Environment (no specific udid) sizes
@@ -577,8 +587,8 @@ def crawl(
         redactor=redactor,
         target_name=target_name,
         out_dir=out_dir,
-        screens_dir=screens_dir,
-        screenmap_path=screenmap_path,
+        writer=writer,
+        reader=reader,
         environment=environment,
         udids=udids,
         base_map=base_map,

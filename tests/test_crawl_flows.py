@@ -11,6 +11,7 @@ from pathlib import Path
 
 from bajutsu.crawl import Action, ScreenMap, screenmap_dict, screenmap_from_dict
 from bajutsu.crawl.flows import write_flows
+from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.scenario.load import load_scenarios
 
 
@@ -18,28 +19,33 @@ def _map(paths: dict[str, tuple[Action, ...]]) -> ScreenMap:
     return ScreenMap(paths=paths)
 
 
-def test_writes_one_scenario_per_reachable_screen(tmp_path: Path) -> None:
+def test_writes_one_scenario_per_reachable_screen(
+    tmp_path: Path, run_sink: RunArtifactWriter
+) -> None:
     sm = _map(
         {
             "aaa": (Action(kind="tap", target="login"),),
             "bbb": (Action(kind="tap", target="login"), Action(kind="tap", target="settings")),
         }
     )
-    written = write_flows(tmp_path, sm)
+    written = write_flows(run_sink, sm)
     assert len(written) == 2
-    for path in written:
+    for name in written:
+        path = tmp_path / name
         assert path.exists()
         assert len(load_scenarios(path.read_text(encoding="utf-8"))) == 1
 
 
-def test_entry_screen_with_empty_path_is_skipped(tmp_path: Path) -> None:
+def test_entry_screen_with_empty_path_is_skipped(
+    tmp_path: Path, run_sink: RunArtifactWriter
+) -> None:
     # The entry screen is reached with no actions, so there is no flow to author for it.
     sm = _map({"entry": (), "aaa": (Action(kind="tap", target="go"),)})
-    written = write_flows(tmp_path, sm)
+    written = write_flows(run_sink, sm)
     assert len(written) == 1
 
 
-def test_unreplayable_path_is_skipped(tmp_path: Path) -> None:
+def test_unreplayable_path_is_skipped(tmp_path: Path, run_sink: RunArtifactWriter) -> None:
     # A path that taps a normalized coordinate can't be faithfully replayed, so it emits nothing.
     sm = _map(
         {
@@ -47,13 +53,15 @@ def test_unreplayable_path_is_skipped(tmp_path: Path) -> None:
             "bbb": (Action(kind="tap_point", point=(0.5, 0.9)),),
         }
     )
-    written = write_flows(tmp_path, sm)
+    written = write_flows(run_sink, sm)
     assert len(written) == 1
-    reloaded = load_scenarios(written[0].read_text(encoding="utf-8"))
+    reloaded = load_scenarios((tmp_path / written[0]).read_text(encoding="utf-8"))
     assert reloaded[0].steps[0].tap is not None and reloaded[0].steps[0].tap.id == "ok"
 
 
-def test_numbering_is_sequential_over_written_flows(tmp_path: Path) -> None:
+def test_numbering_is_sequential_over_written_flows(
+    tmp_path: Path, run_sink: RunArtifactWriter
+) -> None:
     # An interleaved unreplayable path must not leave a gap in the flow file numbers.
     sm = _map(
         {
@@ -62,23 +70,23 @@ def test_numbering_is_sequential_over_written_flows(tmp_path: Path) -> None:
             "ccc": (Action(kind="tap", target="c"),),
         }
     )
-    written = write_flows(tmp_path, sm)
-    assert sorted(p.name for p in written) == ["flow-001.yaml", "flow-002.yaml"]
+    written = write_flows(run_sink, sm)
+    assert sorted(written) == ["flows/flow-001.yaml", "flows/flow-002.yaml"]
 
 
-def test_shorter_flows_are_numbered_first(tmp_path: Path) -> None:
+def test_shorter_flows_are_numbered_first(tmp_path: Path, run_sink: RunArtifactWriter) -> None:
     sm = _map(
         {
             "long": (Action(kind="tap", target="a"), Action(kind="tap", target="b")),
             "short": (Action(kind="tap", target="c"),),
         }
     )
-    write_flows(tmp_path, sm)
+    write_flows(run_sink, sm)
     first = load_scenarios((tmp_path / "flows" / "flow-001.yaml").read_text(encoding="utf-8"))
     assert len(first[0].steps) == 1  # the shorter flow
 
 
-def test_fill_and_type_flow_round_trips(tmp_path: Path) -> None:
+def test_fill_and_type_flow_round_trips(tmp_path: Path, run_sink: RunArtifactWriter) -> None:
     sm = _map(
         {
             "form": (
@@ -87,17 +95,17 @@ def test_fill_and_type_flow_round_trips(tmp_path: Path) -> None:
             )
         }
     )
-    written = write_flows(tmp_path, sm)
+    written = write_flows(run_sink, sm)
     assert len(written) == 1
-    reloaded = load_scenarios(written[0].read_text(encoding="utf-8"))
+    reloaded = load_scenarios((tmp_path / written[0]).read_text(encoding="utf-8"))
     steps = reloaded[0].steps
     assert len(steps) == 3
     assert steps[0].type is not None and steps[0].type.text == "a@b.com"
     assert steps[2].tap is not None and steps[2].tap.id == "submit"
 
 
-def test_no_paths_writes_nothing(tmp_path: Path) -> None:
-    assert write_flows(tmp_path, ScreenMap()) == []
+def test_no_paths_writes_nothing(tmp_path: Path, run_sink: RunArtifactWriter) -> None:
+    assert write_flows(run_sink, ScreenMap()) == []
     assert not (tmp_path / "flows").exists()  # no directory when there is nothing to write
 
 

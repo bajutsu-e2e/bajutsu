@@ -19,6 +19,14 @@ from bajutsu.cli.commands.crawl import (
     _write_screenmap,
 )
 from bajutsu.drivers import base
+from bajutsu.evidence.redaction import Redactor
+from bajutsu.evidence.sink import RunArtifactWriter
+from bajutsu.run_files import RunArtifactReader
+
+
+def _writer(run_dir: Path) -> RunArtifactWriter:
+    """A sink over the test's run dir with an unconfigured redactor — a real crawl's own case."""
+    return RunArtifactWriter(run_dir, Redactor(None))
 
 
 def _sink() -> tuple[list[str], object]:
@@ -34,7 +42,7 @@ def test_warm_start_fresh_crawl_returns_all_none(tmp_path: Path) -> None:
     # No resume/continue flags → a fresh crawl; the caller writes the empty starter map.
     _msgs, report = _sink()
     base_map, seed_path, seed_ops = _resolve_warm_start(
-        tmp_path / "screenmap.json",
+        RunArtifactReader(tmp_path),
         resume_src="",
         resume_key="",
         continue_crawl=False,
@@ -55,12 +63,15 @@ def test_warm_start_resume_seeds_path_and_op(tmp_path: Path) -> None:
             )
         ]
     )
-    path = tmp_path / "screenmap.json"
-    _write_screenmap(path, screen_map)
+    _write_screenmap(_writer(tmp_path), screen_map)
 
     _msgs, report = _sink()
     base_map, seed_path, seed_ops = _resolve_warm_start(
-        path, resume_src="abc123", resume_key="k1", continue_crawl=False, report=report
+        RunArtifactReader(tmp_path),
+        resume_src="abc123",
+        resume_key="k1",
+        continue_crawl=False,
+        report=report,
     )
     assert base_map is not None
     assert seed_path == [walk]
@@ -69,11 +80,11 @@ def test_warm_start_resume_seeds_path_and_op(tmp_path: Path) -> None:
 
 
 def test_warm_start_resume_unknown_branch_exits_2(tmp_path: Path) -> None:
-    _write_screenmap(tmp_path / "screenmap.json", crawl_engine.ScreenMap())
+    _write_screenmap(_writer(tmp_path), crawl_engine.ScreenMap())
     _msgs, report = _sink()
     with pytest.raises(typer.Exit) as exc:
         _resolve_warm_start(
-            tmp_path / "screenmap.json",
+            RunArtifactReader(tmp_path),
             resume_src="nope",
             resume_key="missing",
             continue_crawl=False,
@@ -85,12 +96,15 @@ def test_warm_start_resume_unknown_branch_exits_2(tmp_path: Path) -> None:
 def test_warm_start_continue_returns_base_map_only(tmp_path: Path) -> None:
     # A prior run that stopped with a frontier (a screen with untried ops) continues: base map, no seed.
     screen_map = crawl_engine.ScreenMap(plan={"abc123": ["home.button"]})
-    path = tmp_path / "screenmap.json"
-    _write_screenmap(path, screen_map)
+    _write_screenmap(_writer(tmp_path), screen_map)
 
     msgs, report = _sink()
     base_map, seed_path, seed_ops = _resolve_warm_start(
-        path, resume_src="", resume_key="", continue_crawl=True, report=report
+        RunArtifactReader(tmp_path),
+        resume_src="",
+        resume_key="",
+        continue_crawl=True,
+        report=report,
     )
     assert base_map is not None
     assert (seed_path, seed_ops) == (None, None)
@@ -99,11 +113,11 @@ def test_warm_start_continue_returns_base_map_only(tmp_path: Path) -> None:
 
 def test_warm_start_continue_no_frontier_exits_2(tmp_path: Path) -> None:
     # A prior run that explored everything (empty plan) has nothing to continue — reject up front.
-    _write_screenmap(tmp_path / "screenmap.json", crawl_engine.ScreenMap(plan={"abc123": []}))
+    _write_screenmap(_writer(tmp_path), crawl_engine.ScreenMap(plan={"abc123": []}))
     _msgs, report = _sink()
     with pytest.raises(typer.Exit) as exc:
         _resolve_warm_start(
-            tmp_path / "screenmap.json",
+            RunArtifactReader(tmp_path),
             resume_src="",
             resume_key="",
             continue_crawl=True,
@@ -117,7 +131,7 @@ def test_warm_start_unreadable_map_exits_2(tmp_path: Path) -> None:
     _msgs, report = _sink()
     with pytest.raises(typer.Exit) as exc:
         _resolve_warm_start(
-            tmp_path / "missing.json",
+            RunArtifactReader(tmp_path),
             resume_src="abc",
             resume_key="k",
             continue_crawl=False,
@@ -174,28 +188,27 @@ class _FakeDriver:
 
 
 def test_on_event_persists_map_and_reports(tmp_path: Path) -> None:
-    path = tmp_path / "screenmap.json"
     msgs, report = _sink()
-    on_event, _on_node = _make_callbacks(path, tmp_path / "screens", report)
+    on_event, _on_node = _make_callbacks(_writer(tmp_path), report)
     on_event(crawl_engine.ScreenMap())
-    assert path.exists()  # the growing map is persisted for the web UI's poll
+    assert (
+        tmp_path / "screenmap.json"
+    ).exists()  # the growing map is persisted for the web UI's poll
     assert any(m.startswith("🔭") for m in msgs)
 
 
 def test_on_node_screenshots_each_new_screen(tmp_path: Path) -> None:
-    screens = tmp_path / "screens"
-    screens.mkdir()
-    _on_event, on_node = _make_callbacks(tmp_path / "screenmap.json", screens, lambda _m: None)
+    _on_event, on_node = _make_callbacks(_writer(tmp_path), lambda _m: None)
     driver = _FakeDriver()
     node = crawl_engine.Node(fingerprint="abc1234", kind="screen", ids=(), actions=())
     on_node(driver, node)  # type: ignore[arg-type]
-    assert driver.shots == [str(screens / "abc1234.png")]
+    assert driver.shots == [str(tmp_path / "screens" / "abc1234.png")]
 
 
 def test_on_node_swallows_screenshot_failure(tmp_path: Path) -> None:
     # A screenshot hiccup (here an OSError) must not abort the crawl — it warns and moves on.
     msgs, report = _sink()
-    _on_event, on_node = _make_callbacks(tmp_path / "screenmap.json", tmp_path / "screens", report)
+    _on_event, on_node = _make_callbacks(_writer(tmp_path), report)
     node = crawl_engine.Node(fingerprint="abc1234", kind="screen", ids=(), actions=())
     on_node(_FakeDriver(fail=True), node)  # type: ignore[arg-type]
     assert any("screenshot failed" in m for m in msgs)
@@ -338,8 +351,8 @@ def _plan_for_lane(tmp_path: Path, *, actuator: str = "xcuitest") -> object:
         redactor=Redactor([]),
         target_name="s",
         out_dir=tmp_path,
-        screens_dir=tmp_path / "screens",
-        screenmap_path=tmp_path / "screenmap.json",
+        writer=_writer(tmp_path),
+        reader=RunArtifactReader(tmp_path),
         environment=environment_for(actuator, "UDID"),
         udids=["UDID-A"],
         base_map=None,

@@ -41,7 +41,7 @@ _logger = logging.getLogger(__name__)
 # Controls a tap drives forward: navigation / activation, toggling a switch, or switching tabs.
 TAP_TRAITS = frozenset({"button", "link", "switch", "tab"})
 # Text inputs the crawl fills to satisfy a precondition (e.g. enabling a disabled submit button).
-INPUT_TRAITS = frozenset({"textField", "searchField", "secureTextField"})
+INPUT_TRAITS = frozenset({"textField", "searchField", base.Trait.SECURE_TEXT_FIELD})
 # Any interactive control — used by the structural fingerprint and blocked-control detection.
 ACTIONABLE_TRAITS = TAP_TRAITS | INPUT_TRAITS
 # Interactive-*state* traits (as opposed to a control's kind). `screen_identity` drops these from
@@ -104,6 +104,10 @@ class Action:
     duplicates); a "type" carries the text in `value`, a "fill" its (id, value) pairs in `fields`,
     a "tap_point" its (x, y) in `point` (`label` optional, for logging). All fields are hashable so
     an Action can key the frontier / tried set.
+
+    `secure` records that the platform marked the field this action enters as a masked input, read
+    off the element at the moment the action was built. The screen map keeps no `Element`, so this
+    is the only place that trait survives to the artifact, where redaction masks the value (BE-0331).
     """
 
     kind: str
@@ -113,6 +117,7 @@ class Action:
     value: str | None = None
     fields: tuple[tuple[str, str], ...] = ()
     point: tuple[float, float] | None = None
+    secure: bool = False
 
     @property
     def key(self) -> str:
@@ -137,16 +142,21 @@ class Action:
         return sel
 
     def describe(self) -> str:
+        """Name the action and its target, never the value it enters.
+
+        A description is free text that lands in the screen map's node, edge, plan and path fields,
+        where no structural masking rule can reach it (BE-0331). Leaving the value out keeps exactly
+        one field — the action's own `value` — for redaction to govern; `fill` already counted its
+        fields rather than printing them, and replay is unaffected because `perform` reads `value`
+        directly and never parses this string.
+        """
         if self.kind == "fill":
             return f"fill {len(self.fields)} fields"
         if self.kind == "tap_point" and self.point is not None:
             if self.label:
                 return f"tap tab {self.label!r}"
             return f"tap point ({self.point[0]:.2f}, {self.point[1]:.2f})"
-        what = self.target or (self.label or "?")
-        if self.kind == "type" and self.value:
-            return f"type {what}={self.value!r}"
-        return f"{self.kind} {what}"
+        return f"{self.kind} {self.target or (self.label or '?')}"
 
     def perform(self, driver: base.Driver) -> None:
         """Execute against the live screen.
@@ -315,7 +325,7 @@ def _input_value(element: base.Element) -> str:
     hint = f"{_id_of(element) or ''} {element.get('label') or ''}".lower()
     if "mail" in hint:
         return "test@example.com"
-    if "secureTextField" in _traits(element):
+    if base.Trait.SECURE_TEXT_FIELD in _traits(element):
         return "Test1234!"
     return "test"
 
@@ -432,17 +442,22 @@ def candidate_actions(elements: list[base.Element]) -> list[Action]:
             tap_priority[i] = min(tap_priority.get(i, 2), pri)
     taps = sorted(tap_priority, key=lambda i: (tap_priority[i], i))
     actions = [Action("tap", target=t) for t in taps]
-    empty_fields = sorted(
-        (i, _input_value(el))
+    inputs = sorted(
+        (i, _input_value(el), base.Trait.SECURE_TEXT_FIELD in _traits(el))
         for el in elements
         if (i := _id_of(el))
         and _is_enabled(el)
         and INPUT_TRAITS & _traits(el)
         and not (el.get("value") or "")
     )
-    actions += [Action("type", target=fid, value=val) for fid, val in empty_fields]
+    empty_fields = [(fid, val) for fid, val, _ in inputs]
+    actions += [Action("type", target=fid, value=val, secure=sec) for fid, val, sec in inputs]
     if len(empty_fields) >= 2:
-        actions.append(Action("fill", fields=tuple(empty_fields)))
+        # A fill is secure when any of its fields is: the artifact records one value list, so the
+        # stricter of the two answers is the only one that cannot under-mask.
+        actions.append(
+            Action("fill", fields=tuple(empty_fields), secure=any(sec for _, _, sec in inputs))
+        )
     return actions
 
 

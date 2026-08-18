@@ -267,6 +267,10 @@ def _traits(node: ET.Element) -> list[str]:
     # Guarded so a widget already mapped to `button` by class (a Views Button) is not tagged twice.
     if node.get("clickable") == "true" and base.Trait.BUTTON not in out:
         out.append(base.Trait.BUTTON)
+    # UI Automator dumps a masked input as `password="true"`, whatever widget class backs it, so the
+    # normalized trait comes from the flag rather than from `class` (BE-0331).
+    if node.get("password") == "true":
+        out.append(base.Trait.SECURE_TEXT_FIELD)
     if node.get("enabled") == "false":
         out.append(base.Trait.NOT_ENABLED)
     # A UI Automator checkbox/switch reports its state as `checked`; a list selection as `selected`.

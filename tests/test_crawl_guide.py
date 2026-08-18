@@ -150,14 +150,14 @@ def test_actions_from_parses_skips_malformed_and_caps() -> None:
             {"bad": 1},  # malformed -> skipped
         ]
     }
-    acts = _actions_from(payload, cap=10)
+    acts = _actions_from(payload, cap=10, secure_ids=frozenset())
     assert [(a.kind, a.target or a.label) for a in acts] == [
         ("tap", "a"),
         ("type", "b"),
         ("tap", "L"),
     ]
     assert acts[1].value == "x" and acts[2].index == 1
-    assert len(_actions_from(payload, cap=1)) == 1  # capped
+    assert len(_actions_from(payload, cap=1, secure_ids=frozenset())) == 1  # capped
 
 
 def test_ai_guide_narrates_the_models_thought_and_choices() -> None:
@@ -171,7 +171,10 @@ def test_ai_guide_narrates_the_models_thought_and_choices() -> None:
     log: list[str] = []
     ai_guide(proposer, report=log.append)(FakeDriver(screen=elements), elements, _ctx())
     assert any("A login form" in line for line in log)  # the thought is shown
-    assert any("login.user" in line and "a@b.com" in line for line in log)  # the chosen input
+    assert any("login.user" in line for line in log)  # the chosen input, named by its target
+    # …but never its value: a description is free text no structural masking rule can reach, so the
+    # value stays in the action's own field where redaction governs it (BE-0331).
+    assert not any("a@b.com" in line for line in log)
 
 
 def test_actions_from_parses_a_compound_fill() -> None:
@@ -183,17 +186,19 @@ def test_actions_from_parses_a_compound_fill() -> None:
             }
         ]
     }
-    acts = _actions_from(payload, cap=10)
+    acts = _actions_from(payload, cap=10, secure_ids=frozenset())
     assert len(acts) == 1 and acts[0].kind == "fill"
     assert acts[0].fields == (("email", "a@b.com"), ("pw", "P1!"))
 
 
 def test_proposal_from_parses_thought_and_actions() -> None:
     payload = {"thought": "looks like a form", "actions": [{"action": "tap", "id": "x"}]}
-    proposal = _proposal_from(payload, cap=10)
+    proposal = _proposal_from(payload, cap=10, secure_ids=frozenset())
     assert proposal.thought == "looks like a form"
     assert [a.target for a in proposal.actions] == ["x"]
-    assert _proposal_from({"actions": []}, cap=10).thought == ""  # missing thought -> empty
+    assert (
+        _proposal_from({"actions": []}, cap=10, secure_ids=frozenset()).thought == ""
+    )  # missing thought -> empty
 
 
 def test_make_guide_builds_the_ai_guide() -> None:

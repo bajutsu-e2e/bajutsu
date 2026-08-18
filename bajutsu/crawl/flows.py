@@ -13,38 +13,38 @@ scenarios. A path that can't be faithfully replayed (it taps a normalized coordi
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from bajutsu.crawl.core import ScreenMap
 from bajutsu.crawl.repro import scenario_from_actions
+from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.scenario.serialize import dump_scenario_file
 
 
-def write_flows(out_dir: Path, screen_map: ScreenMap) -> list[Path]:
+def write_flows(writer: RunArtifactWriter, screen_map: ScreenMap) -> list[str]:
     """Write one candidate flow scenario per faithfully reachable discovered screen.
 
-    Files land under `out_dir/flows/flow-NNN.yaml`, numbered sequentially (1-based) over the flows
+    Files land under `flows/flow-NNN.yaml`, numbered sequentially (1-based) over the flows
     actually written — screens ordered by path length then fingerprint, so the shortest flows come
     first and the ordering is deterministic. The entry screen (empty path) and any screen reached via
-    an unreplayable path are skipped. Returns the paths written.
+    an unreplayable path are skipped. Returns the artifact names written.
+
+    A flow carries whatever the crawl typed, so it goes through the sink like every other run
+    artifact (BE-0331) rather than writing itself.
     """
-    flows_dir = out_dir / "flows"
-    written: list[Path] = []
+    written: list[str] = []
     ordered = sorted(screen_map.paths.items(), key=lambda item: (len(item[1]), item[0]))
     for fp, actions in ordered:
         name = f"flow-{len(written) + 1:03d}"
         scenario = scenario_from_actions(actions, name=name)
         if scenario is None:
             continue
-        flows_dir.mkdir(parents=True, exist_ok=True)
-        path = flows_dir / f"{name}.yaml"
-        path.write_text(
+        artifact = f"flows/{name}.yaml"
+        writer.write_text(
+            artifact,
             dump_scenario_file(
                 [scenario],
                 description=f"Candidate flow from crawl: reaches screen {fp[:7]} in "
                 f"{len(scenario.steps)} step(s)",
             ),
-            encoding="utf-8",
         )
-        written.append(path)
+        written.append(artifact)
     return written

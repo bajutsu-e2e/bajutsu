@@ -12,11 +12,13 @@ from __future__ import annotations
 import functools
 from collections import deque
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from jinja2 import Environment, FileSystemLoader
 
 from bajutsu.crawl.core import ScreenMap
+from bajutsu.evidence.sink import RunArtifactWriter
+from bajutsu.run_files import RunArtifactReader
 
 # Box + grid geometry. The *layout algorithm* is ported from the web UI's layered graph
 # (templates/serve.js); these constants are retuned for the static card (a smaller thumbnail, no
@@ -176,13 +178,19 @@ def render_html(
     )
 
 
-def write_html(out_dir: Path, screen_map: ScreenMap, run_id: str = "") -> Path:
+def write_html(
+    writer: RunArtifactWriter, reader: RunArtifactReader, screen_map: ScreenMap, run_id: str = ""
+) -> str:
     """Write `screenmap.html` into the run dir, beside `screenmap.json` and `screens/`.
 
-    Globs `screens/*.png` so each captured screen links its thumbnail by a relative path that
-    resolves when the report is opened straight from the run dir. Returns the written path.
+    Lists `screens/*.png` so each captured screen links its thumbnail by a relative path that
+    resolves when the report is opened straight from the run dir. Returns the artifact name.
+
+    The report is a self-contained file meant to be shared, which is why it goes through the sink
+    rather than writing itself: the same redaction that reaches `screenmap.json` reaches the rendered
+    page built from the same map (BE-0331).
     """
-    have = frozenset(p.stem for p in (out_dir / "screens").glob("*.png"))
-    report = out_dir / "screenmap.html"
-    report.write_text(render_html(screen_map, run_id or out_dir.name, have), encoding="utf-8")
-    return report
+    have = frozenset(PurePosixPath(n).stem for n in reader.names("screens/*.png"))
+    name = "screenmap.html"
+    writer.write_text(name, render_html(screen_map, run_id or reader.run_id, have))
+    return name

@@ -16,6 +16,7 @@ from driver_conformance import (
     SCROLL_ROW_COUNT,
     SCROLL_ROW_PREFIX,
     SCROLL_TALL_ID,
+    SECURE_FIELD_ID,
     ConformanceHarness,
     DriverConformanceContract,
     element,
@@ -34,6 +35,19 @@ _TALL_H = 1400.0
 # The conformance field's frame on the fake screen: a known, off-origin box so a coordinate tap at
 # its center is unambiguous and never coincides with the default (0,0)-origin seeded elements.
 _FIELD_FRAME: base.Frame = (0.0, 200.0, 100.0, 40.0)
+
+# The masked field's frame (BE-0331): clear of both the seeded elements and the plain field above,
+# so neither the coordinate tap nor the obstruction case ever resolves to it by accident.
+_SECURE_FIELD_FRAME: base.Frame = (0.0, 300.0, 100.0, 40.0)
+
+
+def _secure_field() -> base.Element:
+    return element(
+        identifier=SECURE_FIELD_ID,
+        value="",
+        traits=[base.Trait.SECURE_TEXT_FIELD],
+        frame=_SECURE_FIELD_FRAME,
+    )
 
 
 def _text_field_react(field: base.Element) -> React:
@@ -73,7 +87,9 @@ class FakeConformanceHarness:
 
     def with_screen(self, elements: list[base.Element]) -> base.Driver:
         field = element(identifier=FIELD_ID, value="", frame=_FIELD_FRAME)
-        return FakeDriver(screen=[*elements, field], react=_text_field_react(field))
+        return FakeDriver(
+            screen=[*elements, field, _secure_field()], react=_text_field_react(field)
+        )
 
     def scrollable_screen(self) -> base.Driver:
         # A FakeDriver in scrollable mode (BE-0326): rows and a taller-than-viewport row in content
@@ -96,7 +112,10 @@ class FakeConformanceHarness:
         target = element(identifier=OBSTRUCTION_TARGET_ID, frame=(0.0, 0.0, 100.0, 20.0))
         cover = element(identifier=OBSTRUCTION_COVER_ID, frame=(0.0, 0.0, 300.0, 15.0))
         clear = element(identifier=OBSTRUCTION_CLEAR_ID, frame=(0.0, 500.0, 100.0, 20.0))
-        return FakeDriver(screen=[target, cover, clear, field], react=_text_field_react(field))
+        return FakeDriver(
+            screen=[target, cover, clear, field, _secure_field()],
+            react=_text_field_react(field),
+        )
 
 
 class TestFakeDriverConformance(DriverConformanceContract):
