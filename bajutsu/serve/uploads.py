@@ -248,22 +248,24 @@ MAX_SCENARIO_ZIP_TOTAL_BYTES = 20 * 1024 * 1024  # 20 MiB total uncompressed
 
 def _scenario_entry_name(name: str) -> str | None:
     """The flat top-level ``*.yaml`` basename for archive entry *name*, or None to skip it silently
-    (a directory entry's own path component, or known packaging cruft — ``__MACOSX/``, a dot-file,
-    a non-scenario file). Raises ``BundleError`` for anything else that isn't safe to treat as a
-    scenario entry: a path-traversal attempt, a nested subdirectory outside the cruft dirs — a
-    scenario scope has no subdirectory concept (BE-0340 *Alternatives considered*), so a nested
-    ``*.yaml`` is reported rather than silently dropped — or a top-level ``*.yml``: the scenario
-    model only ever recognizes ``*.yaml`` (`valid_scenario_ref`, `LocalScenarioScope.runnable`'s
-    glob), so silently dropping a ``.yml`` entry the same way as unrelated cruft would leave a
-    mixed zip reporting success while quietly never adding the file the caller actually meant to
-    upload — the same reasoning that makes an unparseable entry abort the whole upload instead of
-    a partial, surprising result."""
+    (a directory entry's own path component, known packaging cruft — ``__MACOSX/``, a dot-file —
+    or a nested non-scenario file). Raises ``BundleError`` for anything else that isn't safe to
+    treat as a scenario entry: a path-traversal attempt, a nested ``*.yaml``/``*.yml`` — a scenario
+    scope has no subdirectory concept (BE-0340 *Alternatives considered*), so a nested scenario is
+    reported rather than silently dropped — or a top-level ``*.yml``: the scenario model only ever
+    recognizes ``*.yaml`` (`valid_scenario_ref`, `LocalScenarioScope.runnable`'s glob), so silently
+    dropping a ``.yml`` entry the same way as unrelated cruft would leave a mixed zip reporting
+    success while quietly never adding the file the caller actually meant to upload — the same
+    reasoning that makes an unparseable entry abort the whole upload instead of a partial,
+    surprising result. A nested *non*-scenario entry (an asset, a stray editor cache) doesn't share
+    that reasoning — it was never a candidate for upload — so it is skipped like its top-level
+    counterpart below rather than failing an otherwise-valid flat batch."""
     cleaned = name.replace("\\", "/")
     pure = PurePosixPath(cleaned)
     if not cleaned or "\x00" in cleaned or pure.is_absolute() or ".." in pure.parts:
         raise BundleError(f"unsafe entry path: {name!r}")
     if len(pure.parts) > 1:
-        if pure.parts[0] in _CRUFT_DIRS:
+        if pure.parts[0] in _CRUFT_DIRS or pure.suffix.lower() not in (".yaml", ".yml"):
             return None
         raise BundleError(f"nested entry path is not supported: {name!r}")
     if pure.name.startswith("."):

@@ -332,6 +332,19 @@ def test_read_scenario_zip_rejects_a_nested_yaml(tmp_path: Path) -> None:
         read_scenario_zip(_written(tmp_path, _zip({"nested/deeper.yaml": b"- name: a\n"})))
 
 
+def test_read_scenario_zip_skips_a_nested_non_scenario_entry(tmp_path: Path) -> None:
+    # A nested entry that was never a scenario candidate (an asset, editor cache) is skipped
+    # like top-level cruft, so an otherwise-valid flat batch still lands; only a nested
+    # `*.yaml`/`*.yml` aborts (see the test above).
+    blob = _zip(
+        {
+            "smoke.yaml": b"- name: a\n  steps: []\n",
+            "fixtures/data.json": b"{}",
+        }
+    )
+    assert read_scenario_zip(_written(tmp_path, blob)) == {"smoke.yaml": "- name: a\n  steps: []\n"}
+
+
 def test_read_scenario_zip_rejects_a_top_level_yml_extension(tmp_path: Path) -> None:
     # The scenario model only ever recognizes *.yaml (valid_scenario_ref, the runnable glob); a
     # *.yml is reported loudly rather than silently skipped like unrelated cruft, so a mixed zip

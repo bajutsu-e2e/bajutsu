@@ -227,6 +227,7 @@ def upload_scenarios(
         if saved is None:
             return {"error": f"path must be a *.yaml under the scenarios dir: {name!r}"}, 400
         scenarios.append({"name": name, "overwritten": overwritten})
+    _record_audit(state, actor, org, "scenarios.upload", target or "", {"names": list(entries)})
     return {"ok": True, "scenarios": scenarios}, 200
 
 

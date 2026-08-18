@@ -91,6 +91,31 @@ def test_start_run_on_own_orgs_app_passes_the_org_check(
     assert status != 403
 
 
+def test_upload_scenarios_to_another_orgs_app_is_forbidden(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # The same cross-org guard as start_run, checked before the zip is ever touched (BE-0340) — a
+    # bogus zip_path is fine here, since a forbidden target never reaches read_scenario_zip.
+    state = _state(serve_engine, tmp_path)
+    payload, status = ops.upload_scenarios(
+        state, tmp_path / "unused.zip", target="other", actor="alice"
+    )
+    assert status == 403
+    assert payload == {"error": "forbidden"}
+
+
+def test_upload_scenarios_to_own_orgs_app_passes_the_org_check(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # alice owns demo; the org check passes, so it fails later (no scenarios dir), not with 403 —
+    # the same shape as test_start_run_on_own_orgs_app_passes_the_org_check above.
+    state = _state(serve_engine, tmp_path)
+    _payload, status = ops.upload_scenarios(
+        state, tmp_path / "unused.zip", target="demo", actor="alice"
+    )
+    assert status != 403
+
+
 def test_read_scenario_in_another_orgs_app_is_not_found(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:

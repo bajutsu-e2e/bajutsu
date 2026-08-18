@@ -120,6 +120,11 @@ async function chooseReplayUpload(file){
         d={ok:true,summary:names.length?names.join(', '):'zip contained no scenarios'};
       }
     }else{
+      // Unlike the .zip leg above (MAX_SCENARIO_ENTRY_BYTES/MAX_SCENARIO_ZIP_TOTAL_BYTES,
+      // uploads.py), this posts to the general-purpose /api/scenario route with no size cap of its
+      // own — deliberately: it's the same route the Author editor's Save button already uses, so a
+      // large single file was always postable this way, and a cap here would be new-only-to-upload
+      // policy on an existing, uncapped write path rather than a gap this feature introduced.
       const text=await file.text();
       const r=await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({target,path:file.name,yaml:text})});
