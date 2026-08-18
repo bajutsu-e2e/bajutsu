@@ -69,6 +69,11 @@ class Capability:
     # top-level token like MULTI_TOUCH rather than a `deviceControl.*` one. Android reaches a system
     # dialog through an ordinary `tap`, and the web backend has no OS-level prompt, so neither needs it.
     HANDLE_SYSTEM_ALERT = "handleSystemAlert"
+    # Set a wheel-style picker (`UIPickerView`, a wheel-mode `UIDatePicker`) to an exact value
+    # (BE-0356). Only the resident-runner XCUITest backend advertises it: a picker wheel is an
+    # iOS control, and XCUITest's `adjust(toPickerWheelValue:)` is what makes landing on a named
+    # row deterministic — the mirror image of SELECT_OPTION, which only the web backend can honor.
+    PICKER_WHEEL = "pickerWheel"
     # The `DeviceControl` family, one token per operation (BE-0212, split from the coarse
     # `deviceControl` of BE-0128). A backend advertises exactly the operations it can honor, so
     # preflight gates each device-control step on its own operation — the Android emulator backs
@@ -278,6 +283,12 @@ class Driver(Protocol):
     # a `<select>` has no native counterpart on iOS / Android, so those backends raise
     # UnsupportedAction (BE-0191).
     def select_option(self, sel: Selector, option: str) -> None: ...
+    # Move the picker wheel resolved by `sel` to the row whose value is `value` (BE-0356). iOS-only:
+    # a wheel exposes no addressable row, so only XCUITest's `adjust(toPickerWheelValue:)` can land
+    # on one deterministically; a backend without the PICKER_WHEEL capability raises
+    # UnsupportedAction. A value the wheel does not carry raises ElementNotFound rather than leaving
+    # the wheel wherever it happened to stop.
+    def set_picker_value(self, sel: Selector, value: str) -> None: ...
     # Tap a button on an out-of-process iOS SpringBoard permission prompt (BE-0316), resolving `sel`
     # (label-based only) against the alert's buttons within `timeout`. A backend without the
     # HANDLE_SYSTEM_ALERT capability raises UnsupportedAction; preflight (capability_preflight.py)
@@ -448,7 +459,7 @@ class RawSourceProvider(Protocol):
     a same-sized text artifact per captured step. `AdbDriver` and `XcuitestDriver` implement it (the raw
     UI Automator dump, the raw `GET /elements` body). Not implementing this means "no raw dump to
     persist", which keeps every other backend (`FakeDriver`, Playwright) exactly as before — the same
-    narrow opt-in as the protocols above.
+    narrow opt-in as the protocols above (BE-0351).
     """
 
     def last_raw_source(self) -> RawSource | None: ...
@@ -468,7 +479,7 @@ class SettledCacheInvalidator(Protocol):
     at rest. A lifecycle path that replaces the screen outside the driver calls
     `invalidate_settled_cache()` to close that door too. Not implementing this means "no such cache
     to invalidate", which keeps every other backend (`FakeDriver`, Playwright, XCUITest) exactly as
-    before — the same narrow opt-in as the protocols above.
+    before — the same narrow opt-in as the protocols above (BE-0351).
     """
 
     def invalidate_settled_cache(self) -> None: ...
@@ -810,7 +821,7 @@ def resolve_unique(elements: list[Element], sel: Selector) -> Element:
         # wrapper. A tie between such a control and a classified sibling sharing its label silently
         # keeps the sibling instead of raising AmbiguousSelector. Only a same-selector tie is
         # affected — an unclassified control resolved on its own (no classified sibling sharing the
-        # selector) is unaffected.
+        # selector) is unaffected (docs/selectors.md).
         without_other = [c for c in candidates if Trait.OTHER not in c["traits"]]
         if without_other:
             candidates = without_other

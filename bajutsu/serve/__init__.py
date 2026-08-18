@@ -32,6 +32,7 @@ from bajutsu.config_source import _bajutsu_cache_root
 from bajutsu.object_store import EvidenceTarget
 from bajutsu.serve import gate, oplog
 from bajutsu.serve.artifacts import Artifact, ArtifactStore, LocalArtifactStore
+from bajutsu.serve.batch_bootstrap import bajutsu_source_root, register_batch_providers
 from bajutsu.serve.commands import (
     _int,
     crawl_command,
@@ -67,8 +68,9 @@ from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 from bajutsu.serve.operations.config import (
     register_launch_project,
     restore_persisted_provider_settings,
+    seed_orgs_from_bound_config,
 )
-from bajutsu.serve.orgs import DEFAULT_ORG, targets_for_org
+from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.project_registry import LocalProjectRegistry, SqlProjectRegistry
 from bajutsu.serve.provider_store import LocalProviderSettingsStore
 from bajutsu.serve.scenarios import (
@@ -116,6 +118,7 @@ __all__ = [
     "list_scenarios",
     "list_simulators",
     "list_targets",
+    "load_serve_config_file",
     "make_server",
     "mask_secret",
     "parse_byte_range",
@@ -368,7 +371,7 @@ def _build_server_state(
     # Each entry pairs a stable *check* name with the human-readable *msg*, so an operator's alert can
     # key on `check=` -- a plain structured field `oplog` passes through as-is, not one it validates
     # the way it validates an `event` name -- instead of substring-matching free text that rewords
-    # out from under it.
+    # out from under it (BE-0352).
     startup_warnings: list[tuple[str, str]] = []
 
     def _warn(check: str, msg: str) -> None:
@@ -379,19 +382,11 @@ def _build_server_state(
         startup_warnings.append((check, msg))
 
     # A half-configured deployment (one of the three BAJUTSU_OAUTH_GITHUB_* vars unset) falls back
-    # to token auth silently: every GitHub sign-in 404s and `POST /api/login` re-enables itself, so
-    # the deployment runs wide open on the shared token (a token session has no identity, so
-    # `forbidden_for_role` never applies) while the operator believes OAuth is gating it. The three
-    # checks below cannot reach this shape, since each reads `oauth is None` as "token-auth-only,
-    # deliberately" rather than "OAuth half-configured by mistake". This check is deliberately the
-    # opposite gate from the three below it.
-    #
-    # When no BAJUTSU_SERVE_TOKEN is set either, there is no fallback at all: `SessionManager.check_
-    # token` is `self.token is not None and secrets.compare_digest(...)`, so `POST /api/login` 401s,
-    # and both transports skip the auth+RBAC gate outright on that same `token is None` (handler.py's
-    # `_gate`, server/app.py's middleware) -- every endpoint, `_ADMIN_PATHS` included, is served
-    # unauthenticated. Name which of the two this deployment actually fell into, since *token* is
-    # already a parameter here.
+    # to token auth silently -- or, with no BAJUTSU_SERVE_TOKEN either, to no auth at all -- while
+    # the operator believes OAuth is gating it. This check is deliberately the opposite gate from
+    # the three below it, which each read `oauth is None` as "token-auth-only, deliberately". Name
+    # which of the two shapes this deployment fell into, since *token* is already a parameter here
+    # (BE-0352).
     if oauth is None and any((cid, secret, redirect)):
         # Name which variable(s) are unset -- the three are all in scope here, and a typo'd variable
         # NAME (e.g. _REDIRECT_URL for _REDIRECT_URI) leaves all three look present in a quick .env
@@ -450,7 +445,7 @@ def _build_server_state(
         # one (`admin_teams_unusable`) -- match that severity here too, or the worst shape (every
         # entry malformed) gets the mildest boot message: a syntax note about one entry, not the
         # "no login will have admin access" consequence `admin_teams_empty`'s message names, which
-        # never fires here since the list isn't empty.
+        # never fires here since the list isn't empty (BE-0352).
         if admin_teams_unusable(oauth_admin_teams):
             msg += (
                 " -- no entry is well-formed, so no login will have admin access and no admin can "
@@ -533,8 +528,7 @@ def _build_server_state(
     # the targets that org owns. The scenario targets are read from the live config, so a config
     # opened later is reflected.
     def _org_apps(org: str) -> list[str]:
-        parsed = load_serve_config_file(state.config)
-        return targets_for_org(parsed[1], parsed[0].targets, org) if parsed is not None else []
+        return state.targets_for(org)
 
     def make_bundle(org: str) -> StoreBundle:
         base = org_prefix(prefix, org)
@@ -616,7 +610,7 @@ def _emit_startup_warnings(state: ServeState) -> None:
     `"admin_team_retired_name"`, `"admin_teams_empty"`, `"admin_teams_malformed"`) — an operator's
     alert keys on `check=`, not on substring-matching a message that can reword out from under it. A
     no-op when `state.startup_warnings` is empty (local serve, or a server deployment with nothing to
-    warn about)."""
+    warn about) (BE-0352)."""
     for check, msg in state.startup_warnings:
         oplog.log_event(_logger, "server.startup_warning", msg, level=logging.WARNING, check=check)
 
@@ -697,6 +691,25 @@ def serve(
     # gains the project hub and its runs are attributed to X from the first one. After the provider
     # restore, sharing its boot placement; a no-op when no config is bound or no registry is wired.
     register_launch_project(state)
+    # Seed the launch config's `orgs:` block into the database, once per org row (BE-0375), so a
+    # deployment upgrading from config-only org membership keeps admitting exactly who it did
+    # before the database became the source. Shares the boot placement above for the same reason —
+    # its "this entry is no longer read" warning must reach the live log sink — and re-runs at every
+    # config rebind; a no-op without a database or a loadable config.
+    seed_orgs_from_bound_config(state)
+    # Where the cloud-batch (Device Farm) package roots — see ServeState.devicefarm_package_root.
+    state.devicefarm_package_root = bajutsu_source_root()
+    # Fill the batch-provider registry from the environment (BE-0336): with DEVICEFARM_PROJECT_ARN set,
+    # cloud-batch dispatch reaches AWS Device Farm; with it unset the registry stays empty and a
+    # mis-dispatched cloud-batch job fails loud at resolve() rather than silently vanishing.
+    # A broken wiring (missing boto3, bad credentials) must not take down the whole serve process —
+    # the failure belongs at dispatch, not at boot. Leave the provider unregistered and say so.
+    try:
+        for kind in register_batch_providers():
+            print(f"cloud-batch dispatch enabled: {kind}")  # noqa: T201
+    except Exception as exc:  # an optional feature must never block the bind
+        _logger.warning("cloud-batch dispatch disabled at startup", exc_info=True)
+        print(f"note: cloud-batch dispatch is off — {exc}")  # noqa: T201
     hint = str(config) if config else "open a config.yml in the UI"
     if not gate.allowed_hosts(host):
         # A wildcard bind can't enumerate its reachable hostnames, so the Host allowlist is off

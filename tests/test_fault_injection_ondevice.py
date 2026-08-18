@@ -200,27 +200,49 @@ def _read_back_the_marker(driver: base.Driver) -> None:
     base.resolve_unique(driver.query(), _MARKER)
 
 
-def test_a_real_socket_hang_is_absorbed_by_the_transient_retry(driver: base.Driver) -> None:
+def test_a_real_socket_hang_is_absorbed_by_the_transient_retry(
+    lease: LeaseHolder, driver: base.Driver
+) -> None:
     # The BE-0207 seam against the real failure mode: a frozen runner accepts the connection and then
     # answers nothing, so the attempt times out on the socket rather than raising. Released on the
     # seam's own "retrying" record, the next attempt lands on a live runner and the read succeeds —
     # the blip is absorbed, and (asserted below) never escalates to crash recovery.
-    _read_back_the_marker(driver)  # the pre-fault screen, and it warms the channel
-    frozen = _require_runner_pids()
-    with fault_injection.watch(_CHANNEL_LOGGER, _RETRY) as log:
-        _inject(frozen, "-STOP")
-        try:
-            with fault_injection.lifted_when_reached(
-                log, lambda: _release(frozen), timeout=_TRIGGER_TIMEOUT
-            ):
-                elements = driver.query()
-        finally:
-            _release(frozen)  # never leave the runner frozen for the rest of the lane
-    assert log.mentions(_RETRY), f"the retry seam never reported an attempt:\n{log.report()}"
-    assert not log.mentions(_CRASH), (
-        f"a hang lifted at the first retry escalated to crash recovery:\n{log.report()}"
-    )
-    base.resolve_unique(elements, _MARKER)
+    try:
+        _read_back_the_marker(driver)  # the pre-fault screen, and it warms the channel
+        frozen = _require_runner_pids()
+        with fault_injection.watch(_CHANNEL_LOGGER, _RETRY) as log:
+            _inject(frozen, "-STOP")
+            try:
+                with fault_injection.lifted_when_reached(
+                    log, lambda: _release(frozen), timeout=_TRIGGER_TIMEOUT
+                ):
+                    elements = driver.query()
+            finally:
+                _release(frozen)  # never leave the runner frozen for the rest of the lane
+        assert log.mentions(_RETRY), f"the retry seam never reported an attempt:\n{log.report()}"
+        assert not log.mentions(_CRASH), (
+            f"a hang lifted at the first retry escalated to crash recovery:\n{log.report()}"
+        )
+        base.resolve_unique(elements, _MARKER)
+    except BaseException:
+        # Discard the lease on failure only, unlike the case below, which discards unconditionally:
+        # the passing path here absorbs the blip on the very runner it froze, so that runner is
+        # healthy and the next case should inherit it rather than pay a cold respawn.
+        #
+        # A failure carries no such promise, because this freeze races XCTest's own watchdog. On a
+        # loaded host the release can arrive after `testmanagerd` has already judged the frozen host a
+        # test timeout, killed it, and restarted the run — which was observed on CI, leaving the
+        # capture's "Restarting after unexpected exit, crash, or test timeout" line and an XCTest run
+        # that re-ran 0 tests and ended. Nothing binds that port again, so the lease is dead. Left in
+        # place it is what the next case leases, and that case then crashes on its first read, before
+        # it ever injects its own fault — a second failure that says nothing about the layer it
+        # exists to test, and that hides which case actually broke.
+        #
+        # `BaseException` rather than `Exception`: `pytest.fail` (which `_require_runner_pids` and
+        # `_inject` raise through) signals via `OutcomeException`, which does not derive from
+        # `Exception`, and a lease left dead by that path strands the next case exactly the same way.
+        lease.invalidate()
+        raise
 
 
 def test_a_hang_past_the_retry_budget_is_ridden_out_by_crash_recovery(

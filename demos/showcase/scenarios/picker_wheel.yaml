@@ -1,0 +1,70 @@
+# Wheel pickers (BE-0356): set a `UIPickerView` and a wheel-mode `UIDatePicker` to exact values.
+# `setPickerValue` is the only step that can — a wheel's rows are not separately addressable
+# elements, so `tap` cannot reach one, and `swipe` / `drag` / `scroll` / `tapPoint` are coordinate
+# actions that cannot guarantee stopping on a named row. XCUITest's `adjust(toPickerWheelValue:)`
+# acts on the resolved element instead, which is what makes this deterministic. iOS-only: every
+# other backend lacks the `pickerWheel` capability, so preflight rejects the scenario up front there.
+#
+# The `swiftui` tag is a separate gate for a separate reason: preflight rejects a *backend* that
+# lacks a capability, but it cannot see that an *app* lacks a screen. Only the SwiftUI showcase app
+# renders SHOWCASE_PICKERS, so the bulk UIKit and Flutter lanes exclude the tag
+# (demos/showcase/Makefile) and `tests/test_showcase_fixtures.py` asserts every scenario here keeps
+# carrying it — the scenario schema has no file-level `tags`, so each one repeats it.
+#
+# The SHOWCASE_PICKERS launch env swaps the app for a flat, scroll-free picker screen (see the iOS
+# PickerView), mirroring the SHOWCASE_GESTURES affordance: both wheels are then always in the
+# accessibility tree, so the run never depends on XCUITest's unreliable swipe-to-scroll.
+#
+# Both selectors carry the `pickerWheel` trait because an identifier never lands on a wheel: SwiftUI
+# puts it on the picker, whose wheel is a separate child, and `adjust(toPickerWheelValue:)` raises on
+# anything that is not itself a wheel.
+#
+# The `UIDatePicker` is the multi-component case. Under `.date`, it lays out three sibling
+# `pickerWheel` children, none carrying an identifier of its own, so each is addressed by the
+# `within` / `traits` / `index` fields every selector already carries — one step per component,
+# rather than a second addressing mechanism of `setPickerValue`'s own. Only two of the three are set
+# here; the day wheel between them is left alone, which is itself the point that `index` picks out
+# one component rather than the picker as a whole. `within` scopes by frame containment and iOS
+# reports these wheels taller than the picker holding them, so `form.birthdate` names a container
+# built to enclose them (see the iOS PickerView) rather than the date picker itself.
+#
+# Both the wheel *order* and the row *labels* follow the locale the run pins. Nothing here overrides
+# it, so it is the config default `en_US` (`Defaults.locale`), under which the wheels read
+# month | day | year in English — hence `index: 0` / `"May"` and `index: 2` / `"2016"`. Do not
+# translate these values without also changing the scenario's `locale`: they name rows iOS renders,
+# not strings the app owns. `form.birthdate.value` is deliberately `YYYY-MM` instead, so the
+# assertion reads a projection the app controls rather than a localized label.
+- name: setPickerValue moves a single-component wheel to an exact value
+  tags: [swiftui]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_PICKERS: "1" }
+  steps:
+    - wait: { for: { id: form.school }, timeout: 10 }
+      capture: [deviceLog]
+    - assert:
+        - value: { sel: { id: form.school.value }, equals: "高校" }
+    - setPickerValue:
+        sel: { within: { id: form.school }, traits: [pickerWheel] }
+        value: "大学"
+      capture: [rawTree]
+  expect:
+    - value: { sel: { id: form.school.value }, equals: "大学" }
+
+- name: setPickerValue addresses each component of a multi-component wheel
+  tags: [swiftui]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_PICKERS: "1" }
+  steps:
+    - wait: { for: { id: form.birthdate }, timeout: 10 }
+      capture: [deviceLog]
+    - assert:
+        - value: { sel: { id: form.birthdate.value }, equals: "2015-04" }
+    - setPickerValue:
+        sel: { within: { id: form.birthdate }, traits: [pickerWheel], index: 0 }
+        value: "May"
+      capture: [rawTree]
+    - setPickerValue:
+        sel: { within: { id: form.birthdate }, traits: [pickerWheel], index: 2 }
+        value: "2016"
+  expect:
+    - value: { sel: { id: form.birthdate.value }, equals: "2016-05" }

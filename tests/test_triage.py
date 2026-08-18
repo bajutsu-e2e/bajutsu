@@ -44,11 +44,18 @@ def _write_run(
     reason: str = "",
     step_action: str = "tap",
     with_screenshot: bool = False,
+    with_pre_action_screenshot: bool = False,
     scenario_id: str = "home.titel",
 ) -> Path:
     run = runs / "r"
     (run / "00-s" / "step0").mkdir(parents=True)
     artifacts = [{"name": "00-s/step0/elements.json", "kind": "elements", "provider": "driver"}]
+    # The pre-step baseline shoots first (BE-0341), so `before.png` leads the step's capture order.
+    if with_pre_action_screenshot:
+        artifacts.append(
+            {"name": "00-s/step0/before.png", "kind": "screenshot", "provider": "driver"}
+        )
+        (run / "00-s" / "step0" / "before.png").write_bytes(b"\x89PNG\r\n\x1a\n pre-action")
     if with_screenshot:
         artifacts.append(
             {"name": "00-s/step0/after.png", "kind": "screenshot", "provider": "driver"}
@@ -128,9 +135,94 @@ def test_assemble_reads_failure_screenshot(tmp_path: Path) -> None:
     assert ctx.screenshot == b"\x89PNG\r\n\x1a\n demo"
 
 
+def test_assemble_reads_the_screenshot_the_viewers_show(tmp_path: Path) -> None:
+    """A step records `before.png` first and `after.png` second, but its `elements.json` holds one
+    tree — the post-action one under the default `defaults.capture`. Triage therefore resolves its
+    screenshot through `displayed_screenshot`, the same choice the report and the serve editor make,
+    so the investigator's image and tree describe the same moment (review follow-up)."""
+    ctx = triage.assemble(
+        _write_run(
+            tmp_path / "runs",
+            ok=False,
+            reason="x",
+            with_screenshot=True,
+            with_pre_action_screenshot=True,
+        )
+    )
+    assert ctx is not None
+    assert ctx.screenshot == b"\x89PNG\r\n\x1a\n demo"  # after.png, not the earlier before.png
+
+
+def test_assemble_falls_back_to_the_only_screenshot_a_step_recorded(tmp_path: Path) -> None:
+    """A step whose only screenshot is the pre-action one still yields it: the preference is for
+    `after.png`, not a requirement for it."""
+    ctx = triage.assemble(
+        _write_run(tmp_path / "runs", ok=False, reason="x", with_pre_action_screenshot=True)
+    )
+    assert ctx is not None
+    assert ctx.screenshot == b"\x89PNG\r\n\x1a\n pre-action"
+
+
 def test_assemble_no_screenshot_is_none(tmp_path: Path) -> None:
     ctx = triage.assemble(_write_run(tmp_path / "runs", ok=False, reason="x"))
     assert ctx is not None and ctx.screenshot is None
+
+
+def test_assemble_never_pairs_one_step_s_image_with_another_step_s_tree(tmp_path: Path) -> None:
+    """The failing step's screenshots are named in the manifest but absent from disk (a run whose
+    PNGs were pruned, or one partially restored from Trash). The screenshot scan must not reach back
+    to the previous step: `_elements_near` takes the failing step's own `elements.json` with no such
+    scan, so an image from step 0 beside a tree from step 1 would hand the investigator frames from
+    one screen over pixels of another — the mispairing this seam exists to prevent (review
+    follow-up). No image is the honest answer, and the one the pre-`displayed_screenshot` code gave.
+    """
+    run = tmp_path / "runs" / "r"
+    for step in ("step0", "step1"):
+        (run / "00-s" / step).mkdir(parents=True)
+        (run / "00-s" / step / "elements.json").write_text("[]", encoding="utf-8")
+    # step0's image is on disk; step1 names its own and has neither file.
+    (run / "00-s" / "step0" / "after.png").write_bytes(b"\x89PNG\r\n\x1a\n step0")
+
+    def _step(i: int, ok: bool) -> dict[str, object]:
+        return {
+            "index": i,
+            "action": "tap",
+            "ok": ok,
+            "reason": "" if ok else "x",
+            "artifacts": [
+                {"name": f"00-s/step{i}/elements.json", "kind": "elements", "provider": "driver"},
+                {"name": f"00-s/step{i}/before.png", "kind": "screenshot", "provider": "driver"},
+                {"name": f"00-s/step{i}/after.png", "kind": "screenshot", "provider": "driver"},
+            ],
+        }
+
+    (run / "manifest.json").write_text(
+        json.dumps(
+            {
+                "runId": "r",
+                "ok": False,
+                "backend": "xcuitest",
+                "scenarios": [
+                    {
+                        "scenario": "s",
+                        "ok": False,
+                        "backend": "xcuitest",
+                        "steps": [_step(0, True), _step(1, False)],
+                        "expect_results": [],
+                        "failure": "step1 tap: x",
+                        "artifacts": [],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run / "scenario.yaml").write_text(
+        "- name: s\n  steps:\n    - tap: { id: a }\n    - tap: { id: b }\n", encoding="utf-8"
+    )
+    ctx = triage.assemble(run)
+    assert ctx is not None
+    assert ctx.screenshot is None  # not step0's after.png, which sits one step from step1's tree
 
 
 def test_heuristic_selector_suggests_close_id(tmp_path: Path) -> None:

@@ -227,7 +227,7 @@ def test_fan_out_rejects_a_config_outside_the_run_directory(tmp_path: Path) -> N
     payload, status = start_run_set(state, {"target": "demo"})
 
     assert status == 400
-    assert "run directory" in payload["error"]
+    assert "cloud-batch package root" in payload["error"]
     assert executor.jobs == []
 
 

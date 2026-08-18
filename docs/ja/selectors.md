@@ -91,7 +91,7 @@ class Element(TypedDict):
 
 例外として `index` が指定されたときだけ、複数候補から n 番目を選びます（範囲外は `ElementNotFound`）。この除外は `index` の分岐より前に走ります。そのため `index` は、上記の曖昧件数と同じ、除外後の候補集合を数えます。除外前の `find_all` の結果を数えてしまうと、取り除かれた `other` の分だけ後続の位置がずれます。`index` は順序変化でも壊れるため、いずれにせよ最終手段です。集合を扱う場合は `idMatches` + `count` を使ってください（[scenarios](scenarios.md#アサーション-dsl)）。
 
-> **トレードオフ**：iOS では `other` が、このドライバが名前を付けていない実在のコントロールも含みます。`checkBox`、`radioButton`、`popUpButton`、`stepper`、`datePicker` などは、汎用ラッパーと同じく `typeName` の `default:` 節に落ちます（`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift`）。そうしたコントロールが、同じ label を持つ分類済みの兄弟要素と衝突すると、`AmbiguousSelector` を送出せず分類済みの側を黙って残します。影響するのは同一セレクタでの衝突だけであり、分類済みの兄弟要素がなく単独で解決される未分類コントロールには影響しません。
+> **トレードオフ**：iOS では `other` が、このドライバが名前を付けていない実在のコントロールも含みます。`checkBox`、`radioButton`、`popUpButton`、`stepper`、`datePicker` などは、汎用ラッパーと同じく `typeName` の `default:` 節に落ちます（`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift`）。そうしたコントロールが、同じ label を持つ分類済みの兄弟要素と衝突すると、`AmbiguousSelector` を送出せず分類済みの側を黙って残します。影響するのは同一セレクタでの衝突だけであり、分類済みの兄弟要素がなく単独で解決される未分類コントロールには影響しません。`UIDatePicker` は、この隙間が実質的な損失にならない例です。`other` のコンテナの下にあるホイールはそれぞれ `pickerWheel` に分類されるため、[`setPickerValue`](scenarios.md#setpickervalue) はホイールを直接指定できます。日付ピッカーの値を設定するために、親要素の分類を埋める必要はありません。
 
 ```python
 # drivers/base.py（抜粋）

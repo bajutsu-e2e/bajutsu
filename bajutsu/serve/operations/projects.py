@@ -193,7 +193,9 @@ def activate_project(state: ServeState, name: str, *, actor: str | None = None) 
             spec = config_from_source(source)
         except ValueError as e:
             return {"error": str(e)}, 400
-        result, status = bind_git_config(state, spec) if kind == "git" else bind_config(state, spec)
+        result, status = (
+            bind_git_config(state, spec, actor=actor) if kind == "git" else bind_config(state, spec)
+        )
     if status != 200:
         # The bind failed (a moved file, an unreachable repo, an unresolvable upload). Leave the
         # active project unchanged rather than flipping it to a config we could not load, and

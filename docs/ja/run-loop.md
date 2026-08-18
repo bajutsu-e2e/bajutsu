@@ -74,8 +74,18 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
 `capturePolicy` の各ルールがこのステップで発火するかを判定します（[evidence](evidence.md#a-capturepolicyルール方式)）。
 
 - `_rule_fires`: `on.action`（+ 任意の `idMatches`）/ `on.event == screenChanged` / `on.result == error` のいずれかに一致するかを確認します。アクション名は DSL（ドメイン固有言語）名へ変換します（`long_press`→`longPress`、`assert_`→`assert`）。
-- `_collect_captures`: インライン `step.capture`、発火したルールの capture、config の
-  `defaults.capture`（他の2つと異なり常に適用される最低保証）を集めて重複排除します。
+- `_collect_captures`: 先頭に `elements` を置いたうえで、インライン `step.capture`、発火したルールの
+  capture、config の `defaults.capture`（他の2つと異なり常に適用される最低保証）を集めて重複排除します。
+  先頭の `elements` があるため、3つの取得元が何を要求したかによらず、どのステップにも動作後のツリーが
+  残ります。`elements.json` のファイル名は 1 つなので、この取得は、ステップ前の baseline が書いた動作前の
+  ツリーを置き換えます。
+- 対になるもう一方の `after.png` は、この一覧にはありません。`_handle_action` が、ステップの動作の直後に
+  自分で撮ります。ここでツリーを読みうる処理（`screenChanged` の比較、`for` wait のタイムアウト診断、
+  `extract`）よりも先に撮るためです。そのうえで、上記の一覧から `screenshot.after` を取り除きます。
+  どの取得元から来た `screenshot` 単体のトークンも先に `screenshot.after` へ正規化するのは、このためです。
+  同じ 1 枚を二重に撮ることはありません。ただし、この撮影より前に読まれるツリーが 1 つあります。
+  動作しないステップ（`assert`、`wait`）は、自身が評価に使ったツリーを読み直さずに再利用します
+  （BE-0259）。この 2 種類では、`elements.json` は `after.png` の直後ではなく直前の時点のものになります。
 - 瞬時種別（screenshot/elements）は sink の `capture()` で取得し、区間種別（video/deviceLog）は事前に `start_intervals()` で開始済みのものを停止して回収します。
 
 `primary_id` は「ステップの主対象セレクタの `id`」です（tap なら tap 先、type なら `into`、swipe なら `on`）。`idMatches` トリガーはこの `id` に対して `fnmatch` します。
@@ -114,13 +124,14 @@ class RunResult:
 `preconditions` に従って `simctl` で環境を構築します:
 
 ```
-erase（pre.erase なら shutdown → erase） → boot → terminate(bundle)（クリーンな起動状態に）
+erase（pre.erase なら shutdown → erase） → boot → bootstatus -b（起動の完了を待つ）
+  → terminate(bundle)（クリーンな起動状態に）
   → launch(bundle, [launchArgs, *locale_args(locale)], {**config.launchEnv, **pre.launchEnv})
   → openurl(deeplink)（あれば） → make_driver(actuator, udid)
   → _await_ready（query() が 2 要素以上返すまで最大 10s ポーリング）
 ```
 
-> `_await_ready` は、利用できる中で最も強いレディネスシグナルを順に探してポーリングします。明示的な `readyWhen` セレクタ、次にアプリが報告する画面遷移イベント（[BE-0310](../../roadmaps/BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)。`BajutsuKit` 経由のオプトイン）、次に宣言済みの `idNamespaces` に属する id を持つ要素、そしてどれも無ければ「アプリが UI を描画した（ルート要素より多い）」ことへとフォールバックし、最大 10s まで待ちます（各段の詳細は [configuration](configuration.md) を参照）。`locale` は launch 時に **適用されます**（シナリオの `preconditions.locale` が config 既定を上書きし、`env.locale_args` で launch 引数として渡ります）。simctl の launch 手順は `make -C demos/showcase run-swiftui` ＋ `ios-e2e.yml` CI ワークフローで実機（iPhone 17 Pro）検証済みです。
+> `_await_ready` は、利用できる中で最も強いレディネスシグナルを順に探してポーリングします。明示的な `readyWhen` セレクタ、次にアプリが報告する画面遷移イベント（[BE-0310](../../roadmaps/BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)。`BajutsuKit` 経由のオプトイン）、次に宣言済みの `idNamespaces` に属する id を持つ要素、そしてどれも無ければ「アプリが UI を描画した（ルート要素より多い）」ことへとフォールバックし、最大 10s まで待ちます（各段の詳細は [configuration](configuration.md) を参照）。`locale` は launch 時に **適用されます**（シナリオの `preconditions.locale` が config 既定を上書きし、`env.locale_args` で launch 引数として渡ります）。`simctl boot` は起動を要求した時点で返るため、boot に続く手順はいずれも `bootstatus` で起動の完了を待ってから進みます。システムロケールの固定が行うもう1回の起動も同じです（[BE-0359](../../roadmaps/BE-0359-xcuitest-boot-completion-wait/BE-0359-xcuitest-boot-completion-wait-ja.md)）。simctl の launch 手順は `make -C demos/showcase run-swiftui` ＋ `ios-e2e.yml` CI ワークフローで実機（iPhone 17 Pro）検証済みです。
 
 ### `device_pool` / `run_all` / `run_and_report`
 

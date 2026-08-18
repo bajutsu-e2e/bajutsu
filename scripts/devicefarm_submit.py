@@ -24,6 +24,7 @@ from bajutsu.cloud.devicefarm import (
     REQUIREMENTS_TXT,
     DeviceFarmClient,
     DeviceFarmError,
+    HttpTransfer,
     build_package,
     render_test_spec,
     submit_and_collect,
@@ -41,24 +42,6 @@ def _devicefarm_client() -> DeviceFarmClient:
     # Device Farm's control plane lives only in us-west-2. boto3's dynamically built client is
     # untyped, so present it as the DeviceFarmClient slice we actually use.
     return cast("DeviceFarmClient", boto3.client("devicefarm", region_name="us-west-2"))
-
-
-class _HttpTransfer:
-    """The real presigned-URL transfer over urllib — used by `main`, replaced by a fake in tests."""
-
-    def upload(self, url: str, path: Path) -> None:
-        import urllib.request
-
-        request = urllib.request.Request(url, data=path.read_bytes(), method="PUT")  # noqa: S310
-        # An explicit timeout keeps a stalled S3 connection from hanging past the poll loops' cap.
-        urllib.request.urlopen(request, timeout=300).close()  # noqa: S310 - Device Farm presigned https URL
-
-    def download(self, url: str) -> bytes:
-        import urllib.request
-
-        with urllib.request.urlopen(url, timeout=300) as response:  # noqa: S310 - Device Farm presigned https URL
-            payload: bytes = response.read()
-        return payload
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -149,7 +132,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     verdict = submit_and_collect(
         _devicefarm_client(),
-        _HttpTransfer(),
+        HttpTransfer(),
         project_arn=args.project_arn,
         device_pool_arn=args.device_pool_arn,
         app_path=args.app,

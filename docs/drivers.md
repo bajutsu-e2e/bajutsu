@@ -58,6 +58,7 @@ resolution, and the **preflight capability check** (below).
 | `textSelection` | select-all + clipboard copy on the focused field | ✅ | ✅ | ✅ | ✅ |
 | `selectOption` | set a native `<select>` by value (web only) | — | — | ✅ | ✅ |
 | `handleSystemAlert` | tap an iOS SpringBoard permission-prompt button natively | ✅ | — | — | ✅ |
+| `pickerWheel` | set a wheel-style picker to a named row (iOS only) | ✅ | — | — | ✅ |
 | `deviceControl.setLocation` | set the simulated GPS location | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | read / write / clear the clipboard | ✅ | ✅ | — | — |
 | `deviceControl.push` | deliver a push notification | ✅ | — | — | — |
@@ -101,6 +102,8 @@ switch; iOS / Android are rejected before any device work), `select` / `copy` ne
 (select-all + clipboard copy; the web context is coordinate-only for these and refuses both —
 `delete` / `clear` stay ungated, as every backend backs `delete_text`), a `visual` assertion needs
 `screenshot`, `handleSystemAlert` needs the `handleSystemAlert` token (only xcuitest declares it),
+`setPickerValue` needs the `pickerWheel` token (also xcuitest only — a picker wheel is a native iOS
+control, so Android and web are rejected before any device work),
 and each device-control step needs the token for its own operation — `setLocation` needs
 `deviceControl.setLocation`, the clipboard steps need `deviceControl.clipboard`, `push` needs
 `deviceControl.push`, and so on (BE-0212 split the coarse `deviceControl` family of BE-0128 into
@@ -610,6 +613,19 @@ through an injectable `RunFn`.
 | `terminate(bundle)` | `simctl terminate <udid> <bundle>` | ignored if not running |
 | `openurl(url)` | `simctl openurl <udid> <url>` | deeplink |
 | `screenshot(path)` | `simctl io <udid> screenshot <path>` | — |
+
+> **Every call is bounded** ([BE-0363](../roadmaps/BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout.md)):
+> the shared runner passes a deadline to every one-shot `simctl` subprocess, chosen from the command
+> itself — a long one for the commands whose duration the device or the app sets rather than simctl
+> (`bootstatus`, `boot`, `erase`, `install`), a short one for everything else. A call that never returns, the observable symptom of a
+> wedged CoreSimulator, therefore raises `simctl.DeviceTimeout` naming the command and the deadline
+> it exceeded, instead of hanging until CI cancels the whole job with no cause. `DeviceTimeout`
+> subclasses `DeviceError`, so a handler that already converts a device fault needs no change. Where
+> it lands differs by caller: the best-effort probes (`device_booted`, `device_available`,
+> `device_catalog`, and the rest) fold it into their documented fallback and log it, so the recovery
+> ladder still decides on what it observed; every other call raises, including the idempotent
+> `shutdown` / `boot` / `uninstall` / `terminate`, whose suppressions absorb a *failing* call and not
+> a hanging one.
 
 > **Injecting launch env**: an env var to pass to the app is set on the parent process as
 > `SIMCTL_CHILD_<NAME>`, which reaches the child (the app) as `<NAME>`. `child_env()` does this

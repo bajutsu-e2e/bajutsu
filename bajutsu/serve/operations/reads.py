@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from bajutsu import handoff
+from bajutsu import device_os, handoff
 from bajutsu.analysis import stats as _stats
 from bajutsu.analytics import ledger as _usage_ledger
 from bajutsu.analytics import stats as _usage_stats
 from bajutsu.config import Config, load_config
 from bajutsu.drivers import base as driver_base
+from bajutsu.evidence import displayed_screenshot
 from bajutsu.scenario import load_scenario_file
 from bajutsu.scenario.models import STEP_ACTIONS, Scenario, Step
 from bajutsu.serve import flakiness as _flakiness
@@ -32,8 +33,8 @@ from bajutsu.serve.helpers import (
 from bajutsu.serve.operations._common import _resolve_org_or_forbid
 from bajutsu.serve.operations.config import FS_DISABLED_ERROR
 from bajutsu.serve.operations.runs import sweep_expired_trash
-from bajutsu.serve.orgs import targets_for_org
 from bajutsu.serve.server.db import DEFAULT_RUN_LIMIT as _RUN_HISTORY_LIMIT
+from bajutsu.serve.server.db import RunRecord
 from bajutsu.serve.state import ServeState
 
 _REPORT_SUFFIX = "/report.html"
@@ -84,13 +85,13 @@ def list_targets_payload(state: ServeState, *, actor: str | None = None) -> tupl
     parsed = load_serve_config_file(state.config)
     if parsed is None:
         return [], 200
-    config, orgs = parsed
+    config = parsed[0]
     # Org scoping applies only on a server backend with a system of record; local serve / token mode
     # ignores `orgs:` and lists every target (BE-0015 multi-tenancy).
     if state.repository is None:
         names = list_targets(state.config)
     else:
-        names = sorted(targets_for_org(orgs, config.targets, state.org_of(actor)))
+        names = sorted(state.targets_for(state.org_of(actor)))
     return [{"name": n, "backend": _primary_backend(config, n)} for n in names], 200
 
 
@@ -219,9 +220,44 @@ def _flakiness_report(state: ServeState, actor: str | None) -> _flakiness.Flakin
     org = state.org_of(actor)
     if state.repository is not None:
         records = state.repository.list_runs(org_id=org, limit=_flakiness.DEFAULT_RUN_LIMIT)
+        _fill_device_runtime(state, org, records)
     else:
         records = _flakiness.records_from_manifests(_run_manifests(state, actor))
     return _flakiness.rank_flakiness(records)
+
+
+def _fill_device_runtime(state: ServeState, org: str, records: list[RunRecord]) -> None:
+    """Fill `device_runtime` on runs recorded before the column existed, from their manifests (BE-0358).
+
+    Without it a deployment's history splits at the deploy boundary — older runs under the unknown OS,
+    newer ones per OS — so a genuine flake spanning that boundary reads as two `unproven` histories:
+    BE-0358's own misclassification with the sign reversed. No migration can repair those rows, since
+    the per-scenario label lives in the run's `manifest.json` in the artifact store, not in the
+    database.
+
+    **Repaired for this request only, never written back.** Persisting would put a write on a read
+    path, where `record_run`'s full-row upsert would insert a row it does not find — resurrecting a
+    run an operator had hard-purged between the listing and this loop, silently and with no audit
+    trail. The cost of re-reading is bounded and self-limiting instead: every run recorded since the
+    column exists carries a determined value (a label, or `""` for a run that named no single OS), so
+    only pre-column rows are ever read, and they age out of the newest-N window. A row is also skipped
+    when it has no `scenario_hash`, since `rank_flakiness` cannot group it whatever its OS turns out
+    to be.
+
+    A run whose manifest is gone stays undetermined and keeps grouping under the unknown OS, which the
+    report discloses rather than passing off as evidence.
+    """
+    pending = [r for r in records if r.device_runtime is None and isinstance(r.scenario_hash, str)]
+    artifacts = state.for_org(org).artifacts
+    for record in pending:
+        # Read one id at a time: `run_set_manifests` skips a manifest it can't parse, so a returned
+        # list can't be zipped back onto the ids, and keying on each manifest's self-reported `runId`
+        # would attribute a copied or restored run's OS to whichever row shares that id.
+        manifests = run_set_manifests(artifacts, [record.id])
+        if not manifests:
+            continue
+        run_os = device_os.from_manifest(manifests[0])
+        record.device_runtime = run_os.label if run_os is not None else ""
 
 
 def _run_manifests(state: ServeState, actor: str | None) -> list[dict[str, Any]]:
@@ -445,16 +481,10 @@ def _step_artifacts(
     if not isinstance(sid, str) or not _valid_step_id(sid):
         return []
     # step id (parsed from each outcome's own recorded artifact paths) -> that step's artifacts, so
-    # the loop below resolves the real names the run recorded (BE-0341) instead of assuming the
-    # baseline is always `before.png`/`after.png` under fixed names — a capturePolicy rule can add
-    # or replace either. Keyed by the runtime step id, not the outcome's `index`: `index` is a
-    # counter across *all executed steps* including nested `if`/`forEach`/`web` steps, while the
-    # loop below counts only top-level YAML steps, so the two diverge as soon as the scenario has
-    # any nesting before this step. A named step's runtime id doesn't depend on either counter, so
-    # this keeps resolving to the right artifacts regardless of nesting; an unnamed step still falls
-    # back to `step{idx}` on both sides, the same positional ambiguity as before this rework. Skips
-    # a non-`dict` entry rather than raising, so a malformed/partially written manifest degrades to
-    # missing artifacts for that step instead of a 500.
+    # the loop below resolves the real names the run recorded (BE-0341) rather than assuming fixed
+    # `before.png`/`after.png`. Keyed by the runtime step id, not the outcome's `index`, which
+    # counts nested `if`/`forEach`/`web` steps the loop below does not. Skips a non-`dict` entry
+    # rather than raising, so a malformed manifest degrades to missing artifacts, not a 500.
     steps = (scenario or {}).get("steps")
     artifacts_by_step_id: dict[str, list[dict[str, Any]]] = {}
     for out in steps if isinstance(steps, list) else []:
@@ -470,7 +500,7 @@ def _step_artifacts(
         # the search. `_valid_step_id`, not a bare `"/" in name` check: a traversal-shaped name
         # (e.g. `../../../run2/...`) would otherwise become the key itself, hiding every other,
         # legitimate artifact recorded for this same step under a key no real `step_id` ever
-        # matches.
+        # matches (BE-0341).
         dict_artifacts = [a for a in step_artifacts if isinstance(a, dict)]
         name = next(
             (
@@ -487,7 +517,10 @@ def _step_artifacts(
     for idx, step in enumerate(matched.steps):
         step_id = f"{sid}/{step.name or f'step{idx}'}"
         action, fields = _step_action_fields(step)
-        elements_name, screenshot_name = _artifact_names(artifacts_by_step_id.get(step_id, []))
+        elements_name, screenshot_name = _artifact_names(
+            artifacts_by_step_id.get(step_id, []),
+            lambda name: _safe_exists(artifacts, f"{run_id}/{name}"),
+        )
         result.append(
             {
                 "stepId": step_id,
@@ -497,9 +530,10 @@ def _step_artifacts(
                 if elements_name is not None
                 and _safe_exists(artifacts, f"{run_id}/{elements_name}")
                 else None,
+                # No existence check here: `_artifact_names` chose among the names the store
+                # actually holds, so a name at all means the file is there.
                 "screenshotUrl": f"/runs/{run_id}/{screenshot_name}"
                 if screenshot_name is not None
-                and _safe_exists(artifacts, f"{run_id}/{screenshot_name}")
                 else None,
             }
         )
@@ -517,11 +551,36 @@ def _find_scenario(manifest: dict[str, Any], scenario_name: str | None) -> dict[
     return None
 
 
-def _artifact_names(step_artifacts: list[dict[str, Any]]) -> tuple[str | None, str | None]:
-    """The first recorded `elements` / `screenshot` artifact name for a step, or `None` for either
-    the run never recorded (BE-0341) — mirrors `report/rows.py`'s `by_kind.setdefault` precedence:
-    the pre-step baseline is first in the list, so it wins even when a capturePolicy rule fired too."""
+def _artifact_names(
+    step_artifacts: list[dict[str, Any]], exists: Callable[[str], bool]
+) -> tuple[str | None, str | None]:
+    """The `elements` / `screenshot` artifact names the editor shows for a step, or `None` for
+    either the run never recorded (BE-0341).
+
+    `elements` takes the first recorded name — the file has one fixed name, so every later entry
+    names the same file. `screenshot` goes through `displayed_screenshot`, so the editor's element
+    picker and the HTML report resolve one step to one image: the post-action `after.png` when the
+    run recorded one, else the pre-step baseline's `before.png`.
+
+    Both consumers share that one image because only one tree survives the step: the post-step
+    `elements` write replaces the baseline's pre-action tree, so no pre-action pair is left for
+    the picker to resolve against. The picker writes its resolved selector back into the same
+    step, so a step that navigates offers the screen it reached rather than the one it targets —
+    `docs/web-ui.md` (Author → Edit) sends an author to a live session for that case.
+
+    Args:
+        exists: whether the store actually holds a named artifact. The manifest can name a file the
+            store no longer holds (a run restored from Trash, or one synced into an object store
+            that never received the last write), and choosing `after.png` from the names alone
+            would leave the step with no image to pick against while its `before.png` sits right
+            there. Probed lazily, on the chosen name only, with the rest filtered just for the
+            fallback: this call site's `exists` is a live object-store lookup on the hosted backend,
+            and `read_scenario` walks every step of a scenario, so filtering all candidates up front
+            would cost one round trip per recorded screenshot per step — two, now that every acting
+            step records both — for a fallback that fires almost never.
+    """
     by_kind: dict[str, str] = {}
+    shots: list[str] = []
     for art in step_artifacts:
         if not isinstance(art, dict):
             continue
@@ -534,7 +593,12 @@ def _artifact_names(step_artifacts: list[dict[str, Any]]) -> tuple[str | None, s
         # unrelated artifact elsewhere in the org's runs tree.
         if isinstance(kind, str) and isinstance(name, str) and _valid_step_id(name):
             by_kind.setdefault(kind, name)
-    return by_kind.get("elements"), by_kind.get("screenshot")
+            if kind == "screenshot":
+                shots.append(name)
+    chosen = displayed_screenshot(shots)
+    if chosen is not None and not exists(chosen):
+        chosen = displayed_screenshot([n for n in shots if n != chosen and exists(n)])
+    return by_kind.get("elements"), chosen
 
 
 def _safe_exists(store: ArtifactStore, rel: str) -> bool:

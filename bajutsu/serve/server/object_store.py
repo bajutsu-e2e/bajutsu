@@ -73,8 +73,8 @@ def org_prefix(base: str, org: str) -> str:
 
 def object_store_from_env() -> tuple[ObjectStore, str] | None:
     """The (`ObjectStore`, key-prefix) pair ``BAJUTSU_SERVER_STORE`` names (``s3://bucket/prefix``
-    or ``gs://bucket/prefix``), or None when unset — so a caller can require it (control plane) or
-    skip (a worker with no object storage). The prefix already ends with ``/`` (or is empty).
+    or ``gs://bucket/prefix``, BE-0204), or None when unset — so a caller can require it (control
+    plane) or skip (a worker with no object storage). The prefix already ends with ``/`` (or is empty).
 
     Raises:
         ValueError: ``BAJUTSU_SERVER_STORE`` is malformed (not a valid ``s3://`` / ``gs://`` URI).

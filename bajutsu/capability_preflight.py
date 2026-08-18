@@ -19,6 +19,9 @@ The map gates only the **true hard requirements** the capability set cleanly dec
 - `selectOption` needs `selectOption` (BE-0191): a web-only action that sets a native `<select>`;
   iOS / Android backends raise `UnsupportedAction`, so a scenario with this step is rejected before
   any device work on those platforms.
+- `setPickerValue` needs `pickerWheel` (BE-0356): a picker wheel is an iOS control, and only the
+  resident-runner XCUITest backend can land on a named row deterministically, so a scenario setting
+  a wheel's value is rejected up front on every other backend.
 - `select` / `copy` need `textSelection` (BE-0280): select-all + clipboard copy on the focused
   field. A backend with no select-all handle raises `UnsupportedAction` and does not advertise the
   token, so a scenario selecting or copying is rejected up front. `delete` / `clear` are not gated:
@@ -181,6 +184,11 @@ _REQUIREMENTS = (
         base.Capability.SELECT_OPTION,
         "selectOption (web <select> switch; not supported on iOS / Android)",
         _select_option_locations,
+    ),
+    _Requirement(
+        base.Capability.PICKER_WHEEL,
+        "setPickerValue (iOS picker-wheel value; iOS XCUITest only)",
+        _step_locations(lambda s: s.set_picker_value is not None),
     ),
     _Requirement(
         base.Capability.TEXT_SELECTION,

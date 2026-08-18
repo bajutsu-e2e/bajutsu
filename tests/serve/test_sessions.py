@@ -67,6 +67,14 @@ class FakeRedis:
         v = self._kv.get(key)
         return v.encode() if v is not None else None
 
+    def scan_iter(self, match: str) -> list[bytes]:
+        prefix = match.rstrip("*")
+        return [k.encode() for k in self._kv if k.startswith(prefix)]
+
+    def delete(self, *keys: str) -> int:
+        gone = [k for k in keys if self._kv.pop(k, None) is not None]
+        return len(gone)
+
 
 def test_redis_issue_then_valid() -> None:
     store = RedisSessionStore(FakeRedis())
@@ -152,3 +160,63 @@ def test_sql_expired_session_is_invalid(serve_engine: Callable[..., Engine]) -> 
     sid = store.issue()
     assert not store.valid(sid)
     assert store.identity(sid) is None
+
+
+# revoke_identities (BE-0375) — retiring an org has to reach the sessions its members already hold.
+# Every store implements it, since which one is wired is a deployment choice the operation cannot
+# see: a hole in any of them would be a retired tenant still acting through a live cookie.
+
+
+def test_in_memory_revoke_drops_only_the_named_identities() -> None:
+    store = InMemorySessionStore()
+    bob, alice = store.issue(identity="bob"), store.issue(identity="alice")
+    anonymous = store.issue()  # a shared-token login carries no identity, so it belongs to no org
+    assert store.revoke_identities(["bob", "never-signed-in"]) == 1
+    assert not store.valid(bob)
+    assert store.valid(alice) and store.valid(anonymous)
+
+
+def test_in_memory_revoke_of_nothing_is_a_no_op() -> None:
+    # Retiring an org with no recorded user must not walk the whole session map, nor report a drop.
+    store = InMemorySessionStore()
+    live = store.issue(identity="bob")
+    assert store.revoke_identities([]) == 0
+    assert store.valid(live)
+
+
+def test_redis_revoke_drops_only_the_named_identities() -> None:
+    # The identity is the key's value, not an index, so this store has to read every session key.
+    store = RedisSessionStore(FakeRedis())
+    bob, alice = store.issue(identity="bob"), store.issue(identity="alice")
+    anonymous = store.issue()
+    assert store.revoke_identities(["bob"]) == 1
+    assert not store.valid(bob)
+    assert store.valid(alice) and store.valid(anonymous)
+
+
+def test_sql_revoke_drops_only_the_named_identities(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    store = _sql_store(serve_engine)
+    bob, alice = store.issue(identity="bob"), store.issue(identity="alice")
+    anonymous = store.issue()
+    assert store.revoke_identities(["bob"]) == 1
+    assert not store.valid(bob)
+    assert store.valid(alice) and store.valid(anonymous)
+
+
+def test_sql_revoke_removes_the_row_rather_than_expiring_it(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    # Removed, not expired in place: `valid` and `identity` both read the row before checking its
+    # expiry, so a revoked session must not be able to come back if a clock moves.
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+
+    from bajutsu.serve.server.models import SessionRecord
+
+    store = _sql_store(serve_engine)
+    store.issue(identity="bob")
+    assert store.revoke_identities(["bob"]) == 1
+    with Session(store._engine) as session:
+        assert list(session.scalars(select(SessionRecord))) == []

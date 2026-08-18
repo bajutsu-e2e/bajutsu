@@ -23,6 +23,37 @@ class FakeProc:
         self.stopped_timeout = timeout
 
 
+class FakeDevice:
+    """An `adb` runner answering the two distinct probes `start_screenrecord` makes.
+
+    "Is the recording process there?" (`pgrep`) and "is it producing bytes?" (the file's size) are
+    different questions with different answers, so a fake serving one canned string for both would
+    let a pid be read as a byte count. Each sequence serves its entries in order and then holds its
+    last, the same shape the driver-side act fakes use.
+    """
+
+    def __init__(self, *, pids: list[str] | None = None, sizes: list[str] | None = None) -> None:
+        self._pids = list(pids or [""])
+        self._sizes = list(sizes or ["0"])
+        self.calls: list[list[str]] = []
+
+    @staticmethod
+    def _next(seq: list[str]) -> str:
+        return seq.pop(0) if len(seq) > 1 else seq[0]
+
+    def __call__(self, argv: list[str]) -> str:
+        self.calls.append(argv)
+        tail = argv[-1]
+        if "pgrep" in tail:
+            return self._next(self._pids)
+        if "stat -c" in tail:
+            return self._next(self._sizes)
+        return ""
+
+    def size_probes(self) -> list[list[str]]:
+        return [argv for argv in self.calls if "stat -c" in argv[-1]]
+
+
 def test_record_video_cmd() -> None:
     assert intervals.record_video_cmd("UDID", "/tmp/v.mp4") == [
         "xcrun",
@@ -190,10 +221,13 @@ def test_a_recording_that_never_produces_bytes_captures_the_stall(
     # channel dies of, so the capture fires here too — but only on the stall, never on a healthy
     # start, and never on a capture nobody asked to confirm.
     captured: list[tuple[str, str | None]] = []
+    # `simulator_probes` hands back its udid, so the recorded pair names the device the probes would
+    # have screenshotted as well as the trigger that fired.
+    monkeypatch.setattr(intervals.stall_diagnostics, "simulator_probes", lambda udid=None: udid)
     monkeypatch.setattr(
         intervals.stall_diagnostics,
         "capture",
-        lambda reason, udid=None: captured.append((reason, udid)),
+        lambda reason, probes: captured.append((reason, probes)),
     )
 
     monkeypatch.setattr(intervals, "_await_video_file_growing", lambda *_a, **_k: 12.0)
@@ -500,15 +534,10 @@ def test_start_screenrecord_confirm_started_sets_true_start_on_first_poll(tmp_pa
     def spawn(argv: list[str], stdout_path: Path | None) -> FakeProc:
         return FakeProc()
 
-    calls = 0
-
-    def run(argv: list[str]) -> str:
-        nonlocal calls
-        calls += 1
-        return "" if calls == 1 else "1234"  # baseline: nothing yet; then: our own process appears
+    device = FakeDevice(pids=["", "1234"], sizes=["0", "512"])
 
     interval = intervals.start_screenrecord(
-        "SER", tmp_path / "scenario.mp4", spawn=spawn, run=run, confirm_started=True
+        "SER", tmp_path / "scenario.mp4", spawn=spawn, run=device, confirm_started=True
     )
     assert isinstance(interval.true_start, float)
 
@@ -542,6 +571,163 @@ def test_start_screenrecord_confirm_started_ignores_a_leaked_pid_from_a_stale_re
         "SER", tmp_path / "scenario.mp4", spawn=spawn, run=run, confirm_started=True
     )
     assert interval.true_start is None
+
+
+def test_start_screenrecord_warns_and_captures_when_the_recording_never_grows(
+    tmp_path: Path, monkeypatch, caplog
+) -> None:
+    # The process existing is all `_await_screenrecord_started` can see, and a wedged renderer
+    # leaves it alive with an empty file — the difference between a slow run and a stalled one
+    # (BE-0367). Growth never confirming must warn and fire the stall probe.
+    monkeypatch.setenv(intervals._VIDEO_START_TIMEOUT_ENV, "0.01")
+    monkeypatch.setattr(intervals.time, "sleep", lambda _s: None)
+    captured: list[tuple[str, str]] = []
+    # `device_probes` hands back its serial, so the recorded pair names the device the probes would
+    # have read as well as the trigger that fired.
+    monkeypatch.setattr(intervals.stall_diagnostics, "device_probes", lambda serial: serial)
+    monkeypatch.setattr(
+        intervals.stall_diagnostics,
+        "capture",
+        lambda reason, probes: captured.append((probes, reason)),
+    )
+    device = FakeDevice(pids=["", "1234"], sizes=["0"])  # process appears; the file stays empty
+
+    with caplog.at_level("WARNING"):
+        interval = intervals.start_screenrecord(
+            "SER",
+            tmp_path / "scenario.mp4",
+            spawn=lambda a, o: FakeProc(),
+            run=device,
+            confirm_started=True,
+        )
+
+    assert any("produced no new bytes" in r.message for r in caplog.records)
+    assert captured == [("SER", "screenrecord-no-growth")]
+    # Observational only: the pid confirmation still settled the anchor, and BE-0354's recovery rung
+    # reads exactly what it read before. Deciding that a producing-nothing recording should change
+    # recovery is a separate question this item deliberately leaves alone.
+    assert isinstance(interval.true_start, float)
+    assert interval.start_confirmed is True
+
+
+def test_start_screenrecord_growth_is_confirmed_only_past_the_pre_spawn_baseline(
+    tmp_path: Path, monkeypatch, caplog
+) -> None:
+    # A crash-retry (BE-0049) reuses the scenario id and so the one fixed device-side path, so a
+    # finalized earlier attempt's leftover mp4 already has bytes. Without the baseline those bytes
+    # would confirm growth that never happened — the same trap the iOS video baseline guards.
+    monkeypatch.setenv(intervals._VIDEO_START_TIMEOUT_ENV, "0.01")
+    monkeypatch.setattr(intervals.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(intervals.stall_diagnostics, "capture", lambda reason, probes: None)
+    device = FakeDevice(pids=["", "1234"], sizes=["4096"])  # leftover bytes, never growing
+
+    with caplog.at_level("WARNING"):
+        intervals.start_screenrecord(
+            "SER",
+            tmp_path / "scenario.mp4",
+            spawn=lambda a, o: FakeProc(),
+            run=device,
+            confirm_started=True,
+        )
+
+    assert any("produced no new bytes" in r.message for r in caplog.records)
+
+
+def test_start_screenrecord_growth_check_is_skipped_when_no_process_appeared(
+    tmp_path: Path, monkeypatch, caplog
+) -> None:
+    # With no process there is nothing to produce bytes, that path already warned, and a second full
+    # timeout would buy no new fact — so only the pre-spawn baseline probe should have run.
+    monkeypatch.setenv(intervals._VIDEO_START_TIMEOUT_ENV, "0.01")
+    monkeypatch.setattr(intervals.time, "sleep", lambda _s: None)
+    captured: list[str] = []
+    monkeypatch.setattr(
+        intervals.stall_diagnostics, "capture", lambda reason, probes: captured.append(reason)
+    )
+    device = FakeDevice(pids=[""], sizes=["0"])  # the device-side process never appears
+
+    with caplog.at_level("WARNING"):
+        interval = intervals.start_screenrecord(
+            "SER",
+            tmp_path / "scenario.mp4",
+            spawn=lambda a, o: FakeProc(),
+            run=device,
+            confirm_started=True,
+        )
+
+    assert interval.true_start is None
+    assert len(device.size_probes()) == 1
+    assert not any("produced no new bytes" in r.message for r in caplog.records)
+    assert captured == []
+
+
+def test_start_screenrecord_makes_no_size_probe_without_confirm_started(tmp_path: Path) -> None:
+    # Every existing caller leaves `confirm_started` off, and must pay no extra device round trip
+    # for a check it never asked for.
+    device = FakeDevice()
+    intervals.start_screenrecord(
+        "SER", tmp_path / "scenario.mp4", spawn=lambda a, o: FakeProc(), run=device
+    )
+    assert device.size_probes() == []
+
+
+def test_await_screenrecord_growing_returns_as_soon_as_the_file_grows(monkeypatch) -> None:
+    # A real condition wait, not a fixed sleep: growth on the first poll returns immediately, so no
+    # clock needs monkeypatching for this to finish.
+    device = FakeDevice(sizes=["10"])
+    assert intervals._await_screenrecord_growing("SER", device, "/sdcard/x.mp4", 0, timeout=60.0)
+    assert len(device.size_probes()) == 1
+
+
+def test_the_growth_poll_stays_cheap_on_the_launch_path(monkeypatch) -> None:
+    # This poll sits on the critical path — `AndroidEnvironment` prestarts the recording immediately
+    # before it launches the app — and every probe is an `adb shell` round trip plus a device-side
+    # shell spawn, competing with a cold start on a two-core emulator. So it must stay coarser than
+    # its two siblings: the iOS twin reads a host file for free, and the pid confirmation's answer is
+    # the video anchor, so its resolution is the measurement. This one answers only yes or no.
+    assert intervals._SCREENRECORD_GROWTH_POLL > 0.2
+    # And a full stall — the worst case, the only one that pays more than a single probe — must stay
+    # in single digits rather than the ~25 round trips a 0.2s cadence would spend. Driven on a fake
+    # clock that each `sleep` advances, so this counts the probes the cadence really produces rather
+    # than however many a no-op `sleep` would spin through.
+    clock = [0.0]
+    monkeypatch.setattr(intervals.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(
+        intervals.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds)
+    )
+    device = FakeDevice(sizes=["0"])  # never grows, so the poll runs to its deadline
+
+    assert not intervals._await_screenrecord_growing(
+        "SER", device, "/sdcard/x.mp4", 0, timeout=intervals._VIDEO_START_TIMEOUT
+    )
+    assert len(device.size_probes()) <= 10
+
+
+def test_await_screenrecord_growing_retries_past_a_transient_probe_error(monkeypatch) -> None:
+    # A stalled device is exactly where the probe itself is most likely to fail transiently, so a
+    # failed read is an unmet condition to retry, never a reason to declare the recording dead.
+    monkeypatch.setattr(intervals.time, "sleep", lambda _s: None)
+    calls = 0
+
+    def run(argv: list[str]) -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise subprocess.CalledProcessError(1, argv)
+        return "512"
+
+    assert intervals._await_screenrecord_growing("SER", run, "/sdcard/x.mp4", 0, timeout=60.0)
+
+
+def test_screenrecord_baseline_size_discloses_a_failed_probe(monkeypatch, caplog) -> None:
+    # A 0 from a failed probe reads as "no leftover bytes", silently disabling the stale-retry guard
+    # the baseline exists for — so it must be said out loud rather than mistimed in silence.
+    def run(argv: list[str]) -> str:
+        raise subprocess.CalledProcessError(1, argv)
+
+    with caplog.at_level("WARNING"):
+        assert intervals._screenrecord_baseline_size("SER", run, "/sdcard/x.mp4") == 0
+    assert any("could not size" in r.message for r in caplog.records)
 
 
 def test_await_screenrecord_started_warns_on_timeout(monkeypatch, caplog) -> None:

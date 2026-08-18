@@ -35,6 +35,25 @@ class Org(Base):
     slug: Mapped[str] = mapped_column(unique=True)
     name: Mapped[str]
     created_at: Mapped[datetime] = _created_at()
+    # The org's membership (BE-0375): who may sign in as this org and who among them may write —
+    # `OrgConfig`'s own `members` / `github_orgs` / `editor_team`, relocated here from the `orgs:`
+    # block so an admin can edit them without a redeploy. Null on a row that predates the move (or
+    # one `ensure_org` created at sign-in), which `orgs_from_db` reads as empty; `targets` stays in
+    # config and gets no column.
+    members: Mapped[list[str] | None] = mapped_column(_JSON, default=None)
+    github_orgs: Mapped[list[str] | None] = mapped_column(_JSON, default=None)
+    editor_team: Mapped[str | None] = mapped_column(default=None)
+    # When this row's membership was seeded from a bound config's `orgs:` entry — the per-row
+    # cutover marker (BE-0375). Null means "not yet seeded"; set means the database owns this org's
+    # membership from then on, so a later `orgs:` edit can never overwrite what an admin set. A
+    # timestamp rather than a flag for the same reason `deleted_at` is one: it records when.
+    membership_seeded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+    # Soft-delete (BE-0375), the same shape `runs` uses: a deleted org drops out of sign-in
+    # resolution and the admin list, but its row stays so the users / runs / secrets /
+    # provider_settings / audit_log foreign keys that still point at it stay intact.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
 
 class User(Base):
@@ -67,9 +86,10 @@ class Project(Base):
 
 class Run(Base):
     __tablename__ = "runs"
-    # scenario_hash is the flakiness grouping key; the DB-level score groups by this alone (run
-    # level), as documented in bajutsu/serve/flakiness.py — the coarser counterpart to
-    # audit --history's per-(fingerprint, scenario) grouping.
+    # scenario_hash is half the flakiness grouping key: the DB-level score groups by it together
+    # with the run's device OS (BE-0358), at the run level, as documented in
+    # bajutsu/serve/flakiness.py — the coarser counterpart to audit --history's
+    # per-(fingerprint, scenario, OS) grouping.
     __table_args__ = (Index("ix_runs_scenario_hash", "scenario_hash"),)
 
     id: Mapped[str] = mapped_column(primary_key=True)
@@ -88,6 +108,11 @@ class Run(Base):
     scenario_hash: Mapped[str | None] = mapped_column(default=None)
     tool_version: Mapped[str | None] = mapped_column(default=None)
     git_revision: Mapped[str | None] = mapped_column(default=None)
+    # The device OS the run happened on, mirrored from the manifest's per-scenario `device_runtime`
+    # so the flakiness score groups per OS version straight from the DB (BE-0358). Null means "never
+    # determined" — a row recorded before this column existed — as distinct from the empty string,
+    # which records that the run named no single OS; see `db.RunRecord`.
+    device_runtime: Mapped[str | None] = mapped_column(default=None)
     # Soft-delete (BE-0239): a run with `deleted_at` set is trashed — hidden from `list_runs` but
     # restorable within the retention window; `deleted_by` records the user id who did it, for the
     # audit reach. Null for a live run. `deleted_by` is a plain column, not an FK to users.id like

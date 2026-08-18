@@ -434,7 +434,7 @@ class XcuitestLiveDriver:
     def driver_interval(self, kind: str, path: Path) -> intervals.Interval | None:
         # Returning None for every kind routes the evidence FileSink through the driver path rather
         # than the simctl path (which calls `simctl.validated_udid(endpoint)` and crashes on a URL).
-        # In-driver recording over WebDriver actions is Slice B.
+        # In-driver recording over WebDriver actions is Slice B (BE-0238).
         return None
 
     # --- Slice B: input and gestures, mapped onto Appium's XCUITest `mobile:` commands ---
@@ -556,6 +556,14 @@ class XcuitestLiveDriver:
 
     def select_option(self, sel: base.Selector, option: str) -> None:
         raise base.UnsupportedAction("selectOption is web-only; iOS has no native <select>")
+
+    def set_picker_value(self, sel: base.Selector, value: str) -> None:
+        # The same platform as the resident runner, so a live-route implementation through Appium's
+        # XCUITest driver may well be possible — but that is its own evaluation, and BE-0356 does not
+        # commit to it. Refuse loudly meanwhile rather than silently doing nothing.
+        raise base.UnsupportedAction(
+            "setPickerValue is not implemented on the XCUITest live route (BE-0356)"
+        )
 
     def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
         # BE-0316 targets the resident-runner XCUITest backend's SpringBoard query channel, which a

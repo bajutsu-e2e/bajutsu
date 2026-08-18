@@ -285,6 +285,14 @@ jobs:
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
+      # Sample the Linux host's own load for the whole emulator step (BE-0367 Layer 3). It reads
+      # only the host, so it can bracket that step from outside — which is also what lets it cover a
+      # job whose emulator step dies outright.
+      - name: Start host telemetry
+        uses: ./.github/actions/collect-android-diagnostics
+        with:
+          phase: start
+
       # Boot the AVD under KVM and run the core scenarios over the adb backend (the action owns
       # boot + readiness; the default serial `booted` resolves to the one running emulator). The
       # onboarding gate (BE-0304) runs first, inside the emulator session where a device is attached:
@@ -301,6 +309,11 @@ jobs:
           # env var rather than interpolated into `script` directly, so the value crosses the
           # expression/shell boundary as data, never as YAML-into-shell text.
           POLL_CPUINFO: ${{ github.event.inputs.poll_cpuinfo || 'false' }}
+          # Turn on bajutsu's own stall-time probe (BE-0367 Layer 1): at the moment the resident read
+          # channel dies or a recording is confirmed to be producing no bytes, capture the device and
+          # host state that is about to be overwritten. Absolute, because each `make` target `cd`s to
+          # the repo root and this must not depend on any one of them doing so.
+          BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
         with:
           api-level: 34
           arch: x86_64
@@ -325,6 +338,11 @@ jobs:
           # When it runs, it is killed and the real exit code preserved (`rc`) so it never masks a
           # scenario failure; the log rides on the existing "Upload run artifacts" step below since
           # it is written under `runs/`.
+          #
+          # The device-side diagnostics sweep (BE-0367 Layer 2) rides on that same preserved `rc`,
+          # and for the same reason it has to run *here* rather than as a later step: the emulator
+          # lives only as long as this action's own step, so a step placed after it — even one gated
+          # on `if: failure()` — would sweep a machine with no device attached.
           script: >-
             if [ "$POLL_CPUINFO" = "true" ]; then mkdir -p runs && ( while true; do { date -u
             +%Y-%m-%dT%H:%M:%S.%3NZ; adb shell dumpsys cpuinfo; } >>runs/cpuinfo.log 2>&1; sleep 2;
@@ -335,7 +353,14 @@ jobs:
             && make -C demos/showcase/android e2e
             ; rc=$?
             ; if [ "$POLL_CPUINFO" = "true" ]; then kill "$(cat /tmp/cpuinfo.pid)" 2>/dev/null; fi
+            ; scripts/collect_android_diagnostics.sh "$rc" || true
             ; exit $rc
+
+      - name: Collect host telemetry
+        if: always()
+        uses: ./.github/actions/collect-android-diagnostics
+        with:
+          phase: collect
 
       - name: Upload run artifacts
         if: always()
@@ -400,11 +425,19 @@ jobs:
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
+      # Layer 3, bracketing the emulator step — see `smoke`'s own pair for why it can be a step.
+      - name: Start host telemetry
+        uses: ./.github/actions/collect-android-diagnostics
+        with:
+          phase: start
+
       # `e2e-golden` reads over the resident channel (server APKs built above); `e2e-fallback`
       # re-runs the same golden with the channel forced off, so both paths are exercised and the
       # golden proves they yield the same tree.
       - name: Run the element-tree golden over both read channels (adb)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        env:
+          BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
         with:
           api-level: 34
           arch: x86_64
@@ -413,7 +446,20 @@ jobs:
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
-          script: make -C demos/showcase/android e2e-golden && make -C demos/showcase/android e2e-fallback
+          # The device-side sweep runs from inside this step, on the preserved `rc` — see `smoke`'s
+          # own `script:` for why it cannot be a later step.
+          script: >-
+            make -C demos/showcase/android e2e-golden
+            && make -C demos/showcase/android e2e-fallback
+            ; rc=$?
+            ; scripts/collect_android_diagnostics.sh "$rc" || true
+            ; exit $rc
+
+      - name: Collect host telemetry
+        if: always()
+        uses: ./.github/actions/collect-android-diagnostics
+        with:
+          phase: collect
 
       - name: Upload run artifacts
         if: always()
@@ -474,8 +520,16 @@ jobs:
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
+      # Layer 3, bracketing the emulator step — see `smoke`'s own pair for why it can be a step.
+      - name: Start host telemetry
+        uses: ./.github/actions/collect-android-diagnostics
+        with:
+          phase: start
+
       - name: Run the network-capture scenario (adb)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        env:
+          BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
         with:
           api-level: 34
           arch: x86_64
@@ -484,7 +538,19 @@ jobs:
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
-          script: make -C demos/showcase/android e2e-network
+          # The device-side sweep runs from inside this step, on the preserved `rc` — see `smoke`'s
+          # own `script:` for why it cannot be a later step.
+          script: >-
+            make -C demos/showcase/android e2e-network
+            ; rc=$?
+            ; scripts/collect_android_diagnostics.sh "$rc" || true
+            ; exit $rc
+
+      - name: Collect host telemetry
+        if: always()
+        uses: ./.github/actions/collect-android-diagnostics
+        with:
+          phase: collect
 
       - name: Upload run artifacts
         if: always()
@@ -553,11 +619,19 @@ jobs:
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
+      # Layer 3, bracketing the emulator step — see `smoke`'s own pair for why it can be a step.
+      - name: Start host telemetry
+        uses: ./.github/actions/collect-android-diagnostics
+        with:
+          phase: start
+
       # `e2e-conformance` runs `adb root` (the MULTI_TOUCH pinch/rotate test needs the rooted
       # `sendevent` sweep, BE-0232) then the `ondevice`-marked contract serially (`-n0`) against the one
       # booted emulator.
       - name: Run the driver conformance contract (adb)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        env:
+          BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
         with:
           api-level: 34
           arch: x86_64
@@ -566,7 +640,19 @@ jobs:
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
-          script: make -C demos/showcase/android e2e-conformance
+          # The device-side sweep runs from inside this step, on the preserved `rc` — see `smoke`'s
+          # own `script:` for why it cannot be a later step.
+          script: >-
+            make -C demos/showcase/android e2e-conformance
+            ; rc=$?
+            ; scripts/collect_android_diagnostics.sh "$rc" || true
+            ; exit $rc
+
+      - name: Collect host telemetry
+        if: always()
+        uses: ./.github/actions/collect-android-diagnostics
+        with:
+          phase: collect
 
       - name: Upload run artifacts
         if: always()
@@ -639,10 +725,18 @@ jobs:
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
+      # Layer 3, bracketing the emulator step — see `smoke`'s own pair for why it can be a step.
+      - name: Start host telemetry
+        uses: ./.github/actions/collect-android-diagnostics
+        with:
+          phase: start
+
       # `e2e-fault-injection` runs the `ondevice`-marked cases serially (`-n0`) against the one booted
       # emulator, and leaves the display awake however they end.
       - name: Run the adb fault injection (transient-empty retry)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        env:
+          BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
         with:
           api-level: 34
           arch: x86_64
@@ -651,7 +745,19 @@ jobs:
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
-          script: make -C demos/showcase/android e2e-fault-injection
+          # The device-side sweep runs from inside this step, on the preserved `rc` — see `smoke`'s
+          # own `script:` for why it cannot be a later step.
+          script: >-
+            make -C demos/showcase/android e2e-fault-injection
+            ; rc=$?
+            ; scripts/collect_android_diagnostics.sh "$rc" || true
+            ; exit $rc
+
+      - name: Collect host telemetry
+        if: always()
+        uses: ./.github/actions/collect-android-diagnostics
+        with:
+          phase: collect
 
       - name: Upload run artifacts
         if: always()
@@ -714,8 +820,16 @@ jobs:
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
+      # Layer 3, bracketing the emulator step — see `smoke`'s own pair for why it can be a step.
+      - name: Start host telemetry
+        uses: ./.github/actions/collect-android-diagnostics
+        with:
+          phase: start
+
       - name: Run the visual regression (VRT, pixel snapshot) (adb)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        env:
+          BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
         with:
           api-level: 34
           arch: x86_64
@@ -724,7 +838,19 @@ jobs:
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
-          script: make -C demos/showcase/android e2e-visual
+          # The device-side sweep runs from inside this step, on the preserved `rc` — see `smoke`'s
+          # own `script:` for why it cannot be a later step.
+          script: >-
+            make -C demos/showcase/android e2e-visual
+            ; rc=$?
+            ; scripts/collect_android_diagnostics.sh "$rc" || true
+            ; exit $rc
+
+      - name: Collect host telemetry
+        if: always()
+        uses: ./.github/actions/collect-android-diagnostics
+        with:
+          phase: collect
 
       - name: Upload run artifacts
         if: always()
@@ -787,10 +913,23 @@ jobs:
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
+      # Layer 3, bracketing the emulator step — see `smoke`'s own pair for why it can be a step.
+      - name: Start host telemetry
+        uses: ./.github/actions/collect-android-diagnostics
+        with:
+          phase: start
+
       # `e2e-codegen` regenerates the .kt, then `connectedA11yDebugAndroidTest` builds/installs the app +
       # instrumentation APKs and runs the generated test against the one booted emulator.
       - name: Codegen + run native UI Automator test (adb)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        env:
+          # Reached by exactly one hook on this lane, unlike the six `bajutsu run` jobs: no adb driver
+          # runs at test time, so the resident-read trigger cannot fire, but the host-side recorder
+          # (`demos/showcase/android/screenrecord.py`) confirms its recording is producing bytes and
+          # captures when it is not. That is the case this lane's known flake actually looks like —
+          # an empty tree right after launch, which a black recording and an idle compositor explain.
+          BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
         with:
           api-level: 34
           arch: x86_64
@@ -799,7 +938,23 @@ jobs:
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
-          script: make -C demos/showcase/android e2e-codegen
+          # The device-side sweep runs from inside this step, on the preserved `rc` — see `smoke`'s
+          # own `script:` for why it cannot be a later step. This job needs it more than the six
+          # `bajutsu run` jobs, not less: every path it uploads below is produced by Gradle *running
+          # the test*, so a failure before that point — a wedged AVD boot, a codegen or build error,
+          # the job's own `timeout-minutes` — left `if-no-files-found: ignore` to drop the artifact
+          # silently, and the job that failed outside its own test uploaded nothing at all.
+          script: >-
+            make -C demos/showcase/android e2e-codegen
+            ; rc=$?
+            ; scripts/collect_android_diagnostics.sh "$rc" || true
+            ; exit $rc
+
+      - name: Collect host telemetry
+        if: always()
+        uses: ./.github/actions/collect-android-diagnostics
+        with:
+          phase: collect
 
       # `androidTest-results/` carries Gradle's own per-test logcat;
       # `connected_android_test_additional_output/` carries the `codegen-diagnostics/` the generated
@@ -823,6 +978,7 @@ jobs:
             demos/showcase/android/compose/build/outputs/androidTest-results/
             demos/showcase/android/compose/build/outputs/connected_android_test_additional_output/
             demos/showcase/android/compose/build/outputs/screenrecord/
+            runs/
           if-no-files-found: ignore
 
   # Single required status check for the Android lane — the Android twin of ios-e2e.yml's `E2E`.

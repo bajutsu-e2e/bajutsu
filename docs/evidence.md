@@ -22,6 +22,11 @@ Related: [the capture tokens in scenarios](scenarios.md#capture-token-grammar) �
 > and is applied on top of every step, alongside the scenario's `capturePolicy` and the per-step
 > `capture` — unlike those two, it fires unconditionally rather than on a trigger, so it acts as a
 > baseline guarantee rather than a rule.
+>
+> All three ways request evidence *on top of* what every step already records on both sides of its
+> action. Naming `screenshot.after` or `elements` in any of them therefore changes nothing, and
+> leaving either out costs nothing: `before.png`, `after.png`, and the post-action `elements.json`
+> are captured whatever the three ask for (below).
 
 ## Evidence kinds and acquisition timing
 
@@ -89,7 +94,7 @@ tree cannot: *where did this tap land, and how far did this swipe travel*.
 
 | Field | Meaning |
 |---|---|
-| `gesture` | the driver primitive — `tap`, `doubleTap`, `longPress`, `swipe`, `scroll`, `pinch`, `rotate`, the text primitives, `selectOption`, `systemAlert`, `back` |
+| `gesture` | the driver primitive — `tap`, `doubleTap`, `longPress`, `swipe`, `scroll`, `pinch`, `rotate`, the text primitives, `selectOption`, `setPickerValue`, `systemAlert`, `back` |
 | `via` | how the gesture reached its target: `coordinate` (the driver computed a point and sent it), `handle` (XCUITest actuated a snapshot handle), `identity` (the Android device resolved the element and chose the point), `bridge` (a WebView call addressed by element id), `focused` (a text primitive on whatever field holds focus), `key`, `history` |
 | `unit` | the coordinate space: `point` (iOS), `pixel` (Android), `cssPixel` (a browser page, or a WebView's own space) |
 | `points` | the coordinates the driver sent, in order — one for a tap, two for a drag's start and end. A two-finger gesture records the single anchor its two contacts were derived from, not the contacts |
@@ -108,7 +113,8 @@ Three rules bound what a record may say, and every backend honors them:
   read, or round trip.
 - **No authored string, ever.** `manifest.json` is written without a redactor, so the record carries
   neither a `type` step's text (not even its length — `Redactor` uses a fixed-width placeholder
-  precisely so no artifact discloses a secret's length), nor a `selectOption`'s option, nor an element's
+  precisely so no artifact discloses a secret's length), nor a `selectOption`'s option or a
+  `setPickerValue`'s value, nor an element's
   accessibility label. `target` is always the resolved accessibility identifier and nothing else, so it
   is unset for an element that has none.
 
@@ -190,10 +196,16 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 > or a `capturePolicy` rule (e.g. a `result: error` rule that captures `video`). A scenario that
 > requests none records none, keeping the common case cheap; the lightweight instant baseline
 > (`screenshot` + `elements`) is always captured, so a failure still leaves evidence (DESIGN §10).
-> It is captured **before** the step acts — `before.png` and `elements.json`, showing the screen the
-> step is about to act on rather than the one its action left behind. The scenario's last step gets
-> one further baseline capture after it acts (`after.png`), since no following step exists to carry
-> its result forward the way every other step's pre-step baseline already does.
+> Every step captures evidence on **both** sides of its action: `before.png` and `elements.json`
+> before it acts, showing the screen it is about to act on, and `after.png` and a post-action
+> `elements` write once it has, showing what the action left behind. Neither side depends on the
+> `capture` list — narrowing that list costs a step neither of its two screenshots nor its tree.
+> `elements.json` has a single filename, so the post-action write replaces the pre-action tree: the
+> tree a run keeps describes the screen the action produced, which is the screen `after.png` shows
+> and the one every viewer draws element frames from. On a non-mutating step (`assert`, `wait`) that
+> tree is the one the step itself settled on, reused rather than re-read
+> ([BE-0259](../roadmaps/BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md)), so there it
+> comes from a moment just before the screenshot rather than just after.
 > Preview what a scenario would record with `bajutsu trace --explain` (see [cli](cli.md#trace)).
 
 | Kind | Start command (iOS / Android) | Stop signal | Filename |

@@ -9,6 +9,7 @@ the real client/engine is wired in by the server selection."""
 from __future__ import annotations
 
 import secrets
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Protocol
 
@@ -30,6 +31,12 @@ class RedisLike(Protocol):
 
     def get(self, key: str) -> object:
         """Return *key*'s value (bytes), or None if unset."""
+
+    def scan_iter(self, match: str) -> Iterable[object]:
+        """Iterate the keys matching *match* (a glob), as redis-py's own `scan_iter` does."""
+
+    def delete(self, *keys: str) -> object:
+        """Delete the named keys, returning how many existed."""
 
 
 class RedisSessionStore:
@@ -54,6 +61,27 @@ class RedisSessionStore:
             return None
         value = raw.decode() if isinstance(raw, bytes) else str(raw)
         return value or None
+
+    def revoke_identities(self, identities: Iterable[str]) -> int:
+        wanted = set(identities)
+        if not wanted:
+            return 0
+        # The identity is the key's *value*, so there is no index to look it up by — every live
+        # session key has to be read. Acceptable because revocation is a rare admin action (retiring
+        # an org), and the alternative is leaving this store unable to revoke at all, which is the
+        # hole BE-0375 closed for the two stores a deployment actually runs.
+        doomed = []
+        for key in self._redis.scan_iter(f"{_SESSION}*"):
+            name = key.decode() if isinstance(key, bytes) else str(key)
+            raw = self._redis.get(name)
+            if raw is None:
+                continue
+            who = raw.decode() if isinstance(raw, bytes) else str(raw)
+            if who in wanted:
+                doomed.append(name)
+        if doomed:
+            self._redis.delete(*doomed)
+        return len(doomed)
 
 
 class SqlSessionStore:
@@ -111,3 +139,21 @@ class SqlSessionStore:
             if row is None or self._ensure_aware(row.expires_at) < self._now():
                 return None
             return row.identity
+
+    def revoke_identities(self, identities: Iterable[str]) -> int:
+        from sqlalchemy import delete
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import SessionRecord
+
+        wanted = list(set(identities))
+        if not wanted:
+            return 0
+        # Rows are removed rather than expired in place: a revoked session must not come back if a
+        # clock moves, and `valid`/`identity` both read the row before checking its expiry.
+        with Session(self._engine) as session:
+            result = session.execute(
+                delete(SessionRecord).where(SessionRecord.identity.in_(wanted))
+            )
+            session.commit()
+            return int(getattr(result, "rowcount", 0) or 0)

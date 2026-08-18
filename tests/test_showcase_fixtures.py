@@ -38,7 +38,11 @@ def test_dedicated_lane_scenarios_carry_their_exclusion_tag() -> None:
     # files by tag alone; an untagged scenario silently rejoins a lane that can only fail it. The
     # scenario schema has no file-level `tags`, so the tag is repeated per scenario and nothing but
     # this assertion notices an omission — no CI lane runs those bulk targets.
-    for name, tag in (("visual.yaml", "visual"), ("network_android.yaml", "android")):
+    for name, tag in (
+        ("visual.yaml", "visual"),
+        ("network_android.yaml", "android"),
+        ("picker_wheel.yaml", "swiftui"),
+    ):
         for s in load_scenarios((SCENARIO_DIR / name).read_text(encoding="utf-8")):
             assert tag in s.tags, f"{name}: {s.name!r} is missing the `{tag}` tag"
 

@@ -10,6 +10,7 @@ import pytest
 from _shared import project, write_run
 
 from bajutsu import serve as srv
+from bajutsu import simctl
 
 
 def test_list_scenarios_parses_names(tmp_path: Path) -> None:
@@ -617,6 +618,18 @@ def test_list_simulators_parses_and_orders() -> None:
     assert [s["udid"] for s in sims] == ["A1", "B1"]  # booted first, then by name
     assert sims[0] == {"udid": "A1", "name": "iPhone 17 Pro", "runtime": "iOS 26.5", "booted": True}
     assert srv.list_simulators(simctl=_boom) == []  # failure -> empty, never raises
+
+
+def test_list_simulators_folds_a_wedged_host(caplog: pytest.LogCaptureFixture) -> None:
+    # A `DeviceTimeout` is none of the failures the tuple above names (BE-0363), so without its own
+    # branch a wedged host would escape this picker's empty-on-failure contract. Folded like every
+    # other read failure, and logged the way simctl.py's own probes log theirs.
+    def _wedged(_args: list[str], _e: object = None) -> str:
+        raise simctl.DeviceTimeout("device operation timed out after 60s: xcrun simctl list")
+
+    with caplog.at_level("WARNING"):
+        assert srv.list_simulators(simctl=_wedged) == []
+    assert "timed out" in caplog.text  # the wedge is named, not passed silently
 
 
 @pytest.mark.parametrize(

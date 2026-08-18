@@ -11,6 +11,7 @@ import pytest
 from _shared import FakeProc, fake_popen, project
 
 from bajutsu import serve as srv
+from bajutsu import simctl as simctl_mod
 from bajutsu.serve import jobs as srv_jobs
 from bajutsu.serve import state as srv_state
 from bajutsu.serve.logbus import InMemoryLogBus
@@ -165,6 +166,32 @@ def test_land_batch_run_does_not_claim_a_colliding_existing_run(tmp_path: Path) 
     assert (existing / "manifest.json").read_text() == "EXISTING"
 
 
+def test_land_batch_run_lands_a_manifest_nested_under_the_device_farm_prefix(
+    tmp_path: Path,
+) -> None:
+    # Device Farm's Customer Artifacts zip does not unpack `runs/` at the download root: it wraps the
+    # collected `$DEVICEFARM_LOG_DIR` under `Host_Machine_Files/$DEVICEFARM_LOG_DIR/`, so the run lands
+    # at `<download>/Host_Machine_Files/$DEVICEFARM_LOG_DIR/runs/<run_id>/manifest.json`. Landing must
+    # find the run wherever `runs/<run_id>/manifest.json` sits — matching how `verdict_from_manifest`
+    # globs the whole tree — not only at `<download>/runs/`, or a real cloud run passes but never lands.
+    import json
+
+    from bajutsu.serve.jobs import _land_batch_run
+
+    download = tmp_path / "download"
+    nested = download / "Host_Machine_Files" / "$DEVICEFARM_LOG_DIR" / "runs" / "20260817-064608"
+    nested.mkdir(parents=True)
+    (nested / "manifest.json").write_text(
+        json.dumps({"ok": True, "scenarios": [{"name": "s1", "ok": True}]}), encoding="utf-8"
+    )
+    runs_root = tmp_path / "runs"
+
+    run_id = _land_batch_run(download, runs_root)
+
+    assert run_id == "20260817-064608"
+    assert (runs_root / "20260817-064608" / "manifest.json").is_file()
+
+
 def test_land_batch_run_warns_when_the_download_carries_more_than_one_manifest(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -193,9 +220,9 @@ def test_land_batch_run_warns_when_the_download_carries_more_than_one_manifest(
 
 
 def test_land_batch_run_ignores_manifests_outside_runs_subdirectory(tmp_path: Path) -> None:
-    # _land_batch_run only searches download_dir/runs/ (not the whole tree). A malformed download
-    # that has a manifest.json outside that subdirectory (e.g. at the top of download_dir) contains
-    # no runs/ directory, so runs_subdir.is_dir() is False, rglob never runs, manifests is empty,
+    # _land_batch_run globs the whole tree but keeps only a manifest whose parent's parent is a runs/
+    # directory. A malformed download with a manifest.json at the top of download_dir has parent
+    # `download` (parent's parent is tmp_path, not "runs"), so it is filtered out, manifests is empty,
     # and _land_batch_run returns None via the `if not manifests` branch — valid_run_id and
     # shutil.move are never reached.
     import json
@@ -438,6 +465,34 @@ def test_run_job_boot_failure_skips_the_run(tmp_path: Path) -> None:
     assert v["status"] == "done" and v["ok"] is False
     assert spawned == []  # the run is not spawned when a device won't boot
     assert any("boot failed" in line for line in v["lines"])
+
+
+def test_run_job_boot_timeout_fails_the_job_rather_than_passing_silently(tmp_path: Path) -> None:
+    """A wedged host times the `bootstatus` out; the job must fail, not report a boot it never got.
+
+    The boot runs on a thread, so a `DeviceTimeout` the handler missed would die there and leave the
+    error map empty — reporting success and spawning the run against a Simulator that never came up
+    (BE-0363).
+    """
+    scn_dir, cfg, runs = project(tmp_path)
+    spawned: list[Any] = []
+
+    def simctl(args: list[str], _e: object = None) -> str:
+        raise simctl_mod.DeviceTimeout("device operation timed out after 300s: " + " ".join(args))
+
+    def popen(*a: Any, **_k: Any) -> FakeProc:
+        spawned.append(a)
+        return FakeProc([])
+
+    state = srv.ServeState(
+        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, popen=popen, simctl=simctl
+    )
+    job = state.register(srv.Job(cmd=["x"], udids=["WEDGED"]))
+    srv.run_job(state, job)
+    v = job.view()
+    assert v["status"] == "done" and v["ok"] is False
+    assert spawned == []
+    assert any("boot failed" in line and "timed out" in line for line in v["lines"])
 
 
 def test_run_job_terminates_process_on_output_error(tmp_path: Path) -> None:

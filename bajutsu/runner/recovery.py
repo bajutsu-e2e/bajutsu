@@ -32,6 +32,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from bajutsu import simctl
 from bajutsu.drivers import base
 
 _logger = logging.getLogger(__name__)
@@ -47,7 +48,16 @@ def guarded_teardown(teardown: Callable[[], None], *, mid_run: bool, what: str) 
     before it ever reaches this function, the same way `reset_context`/`relaunch` already do, so an
     ordinary dead browser never lands in the branch below either — and
     `XcuitestLiveEnvironment.teardown()` suppresses its own already-expired-session `WebDriverError`
-    the same way, since that class subclasses `RuntimeError`, not `OSError`. Anything
+    the same way, since that class subclasses `RuntimeError`, not `OSError`. A `simctl.DeviceTimeout`
+    joins them (BE-0363): a `simctl terminate` that exceeded its deadline says the device is wedged,
+    which is a fact about the host and not about this run's wiring, and it reaches here from the two
+    environment teardowns that deliberately let a timeout through (`_terminate_app_under_test` /
+    `_terminate_runner_app`, and `IosEnvironment.teardown`'s own `Env.terminate`). Treating it as a
+    defect below would let a run whose every scenario passed end with no verdicts at all, since
+    `mid_run=False`'s re-raise surfaces inside `run`'s `finally: shutdown()` and a raising `finally`
+    replaces the results being returned. The timeout still gets its warning, and the discard path
+    BE-0363 audited — `_spawn_cold_with_retry`, which calls `discard()` directly — is untouched by
+    this, so the signal still reaches the retry that acts on it. Anything
     else is a wiring defect: at most call sites (`mid_run=True`) it is also swallowed into a warning
     so it cannot mask the fault that prompted the teardown, or abandon cleanup the caller still owes
     (the pool's `free.put(udid)`, on a site that runs ahead of its own `try`); only `mid_run=False`
@@ -66,7 +76,7 @@ def guarded_teardown(teardown: Callable[[], None], *, mid_run: bool, what: str) 
     """
     try:
         teardown()
-    except (subprocess.CalledProcessError, OSError) as exc:
+    except (subprocess.CalledProcessError, OSError, simctl.DeviceTimeout) as exc:
         _logger.warning("%s failed: %s", what, exc)
     except Exception:
         if mid_run:

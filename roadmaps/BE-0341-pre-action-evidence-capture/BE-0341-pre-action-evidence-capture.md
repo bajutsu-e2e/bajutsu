@@ -339,6 +339,29 @@ item keeps that shape unchanged and documents the one precedence rule instead.
       invariant, `reads.py` resolution, and the extract/assert non-regression.
 - [x] Unit 7 — `docs/evidence.md` (+ ja), `DESIGN.md`, `docs/architecture.md` updated.
 
+### Later revision
+
+[#1633](https://github.com/bajutsu-e2e/bajutsu/pull/1633) revises two of the decisions recorded
+above, so read them together.
+
+The post-step capture now always records `elements`, and `_handle_action` shoots `screenshot.after`
+itself, right after the step's action. Every step keeps the post-action tree, not only the steps
+whose `capture` list asked for one. Unit 4's precedence rule no
+longer turns on what a scenario requested, and "`elements` stays the pre-action tree" now holds for
+one case: a step that fails before it acts.
+
+`rawTree` moved to the post-step call for the same reason. A pre-action dump would no longer pair
+with the tree beside it, and nothing can request one until a `rawTree.before` modifier exists.
+
+Unit 2's end-of-run capture is gone with them. Every step that acts now shoots `after.png` itself,
+right after its action, so the safety net only ever reached the step that returns before acting at
+all — the `UncoveredSystemAlertLocale` failure — and giving *that* step a screenshot taken once the
+run had finished left it pairing post-run pixels with a pre-action tree. It now keeps the matched
+`before.png` + pre-action tree its baseline already gave it.
+
+What this item established survives both revisions: every step captures `screenshot.before` +
+`elements` before it acts.
+
 ## References
 
 - [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) — the lazy, cached

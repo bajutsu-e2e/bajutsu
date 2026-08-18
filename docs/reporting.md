@@ -20,7 +20,8 @@ runs/<runId>/
 ├── ctrf.json         # Common Test Report Format (richer CI consumers: PR comments, dashboards)
 ├── report.html       # self-contained HTML (no external assets)
 └── <stepId>/         # per-step evidence (when using FileSink)
-    ├── after.png     # screenshot
+    ├── before.png    # screenshot, before the step acts
+    ├── after.png     # screenshot, after it acts
     ├── elements.json # query() dump
     ├── segment.mp4   # video (interval)
     └── device.log    # deviceLog (interval)
@@ -53,7 +54,10 @@ means the same thing after the run that produced it exits
           "index": 5, "action": "tap", "ok": true, "reason": "",
           "duration_s": 0.12,
           "assertion_results": [],
-          "artifacts": [{ "name": "after.png", "kind": "screenshot", "provider": "driver" }]
+          "artifacts": [
+            { "name": "before.png", "kind": "screenshot", "provider": "driver" },
+            { "name": "after.png", "kind": "screenshot", "provider": "driver" }
+          ]
         }
       ],
       "expect_results": [
@@ -217,7 +221,15 @@ descriptions throughout. Bajutsu merges the scenario definition and its executio
 **expectations**), each a table. The **steps** table: `#` / `result` (a PASS/FAIL pill in its own
 column) / `action` (a colored badge) / `detail` (the target description) / `at` / `view` (screenshot +
 an **in-report element-tree viewer**: the captured elements open in an in-page overlay, no new tab) /
-`reason`. In the detail, identifiers (`#home.title`) and literal constants (`“text”`,
+`reason`. The screenshot shown is the post-action `after.png`
+([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)). Every step that acts records
+one. A step that fails before acting records none, and shows its `before.png` instead. Hovering an
+element in the viewer highlights its frame on the screenshot. That frame comes from `elements.json`,
+which a step re-reads after acting. Frame and pixels then describe the same moment. One
+exception: a non-mutating step (`assert`, `wait`) reuses the tree it settled on (BE-0259). That tree
+precedes the screenshot rather than following it. The serve editor's element picker resolves a
+step to the
+same image, for the same reason. In the detail, identifiers (`#home.title`) and literal constants (`“text”`,
 numbers) are rendered as subtly-styled inline tokens — visually distinct from the solid
 action/assert badges, so variables and constants are distinguishable at a glance. An `assert` step's
 checks become a **nested table**, one row per assertion split into `kind` / `target` / `comparison`

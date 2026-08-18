@@ -119,7 +119,7 @@ def test_oauth_callback_rejects_a_state_mismatch(
     # not just an expired cookie, so it still needs its own record. But `state_param`/`state_cookie`
     # are both caller-supplied (a query value and the caller's own Cookie: header), so nothing here
     # distinguishes an attack from an expired cookie on any single request -- this records at INFO,
-    # not a per-request WARNING an anonymous caller can trigger at request rate.
+    # not a per-request WARNING an anonymous caller can trigger at request rate (BE-0352).
     state = _state(tmp_path, oauth=FakeOAuthClient(), config=_config_file(tmp_path))
     with caplog.at_level(logging.INFO):
         _payload, status, sid = ops.oauth_callback(
@@ -154,7 +154,7 @@ def test_oauth_callback_bypasses_csrf_with_matching_fake_state_then_records_at_i
     # An attacker who fully controls both the query value and their own Cookie: header can satisfy
     # `secrets.compare_digest(state_param, state_cookie)` for free by sending the same fake value as
     # both -- this clears the CSRF check with no real GitHub auth, then fails the exchange (a
-    # garbage `code`) and records under the same INFO-level path as the branches above.
+    # garbage `code`) and records under the same INFO-level path as the branches above (BE-0352).
     state = _state(tmp_path, oauth=FakeOAuthClient(), config=_config_file(tmp_path))
     with caplog.at_level(logging.INFO):
         _payload, status, sid = ops.oauth_callback(
@@ -228,6 +228,7 @@ def _db_state(
     admin_teams: list[str] | None = None,
     config: Path | None = None,
 ) -> tuple[ServeState, Engine]:
+    from bajutsu.serve.operations.config import seed_orgs_from_bound_config
     from bajutsu.serve.server.db import SqlRepository
     from bajutsu.serve.server.models import Base
 
@@ -237,6 +238,10 @@ def _db_state(
         tmp_path, oauth=oauth, config=config or _config_file(tmp_path), admin_teams=admin_teams
     )
     state.repository = SqlRepository(engine)
+    # A database-backed deployment resolves sign-in against the `orgs` table, not the `orgs:` block
+    # (BE-0375), and `serve()` seeds that table from the bound config at startup and at every
+    # rebind. Do the same here, or every test below would be exercising an empty roster.
+    seed_orgs_from_bound_config(state)
     return state, engine
 
 
@@ -353,7 +358,7 @@ def test_oauth_callback_denial_names_a_missing_orgs_block(
     assert sid is None
     record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
     assert "declares no orgs: block" in record.getMessage()
-    assert "no orgs: entry matched this login" not in record.getMessage()
+    assert "no org membership matched this login" not in record.getMessage()
     # admin_teams is configured (non-empty) but mallory isn't in it -- a real membership miss, not
     # an unconfigured admin_teams, so the message must say "matched," not "configured," and this
     # denial is INFO, not the WARNING reserved for the no-admin-Team-at-all case.
@@ -382,7 +387,7 @@ def test_oauth_callback_denial_names_a_github_orgs_outage_not_the_org_roster(
     assert sid is None
     record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
     assert "GitHub returned no orgs for this login" in record.getMessage()
-    assert "no orgs: entry matched this login" not in record.getMessage()
+    assert "no org membership matched this login" not in record.getMessage()
     # No admin_teams is configured at all here (the default) -- distinct from a real membership
     # miss, and the state admin_teams_empty warns about at boot, so it must say "configured," not
     # "matched," or an operator reads a Team-membership problem where the fix is setting
@@ -577,7 +582,9 @@ def test_oauth_callback_admin_team_bypass_places_the_user_in_the_default_org(
     assert status == 200 and sid is not None
     with Session(engine) as s:
         orgs = list(s.scalars(select(Org)))
-    assert [o.slug for o in orgs] == ["default"]
+    # `acme` is there because the startup seed put `_ORGS_YAML`'s entry in the table (BE-0375);
+    # `default` is the row this bypass sign-in created, which is what this test is about.
+    assert sorted(o.slug for o in orgs) == ["acme", "default"]
 
 
 def test_oauth_callback_admin_team_bypass_relocates_on_a_transient_orgs_fetch_failure(
@@ -589,9 +596,10 @@ def test_oauth_callback_admin_team_bypass_relocates_on_a_transient_orgs_fetch_fa
     # `members:`-listed bot/ops account, say), and guarding on it would pin such a login to its old
     # org forever once revoked, since it could never again report a non-empty orgs list. This is the
     # accepted, self-healing cost of that ambiguity: bob is relocated to `default` for this one
-    # login, same as a genuinely un-claimed login, and moves back to `acme` on his next clean login
-    # (see test_oauth_callback_admin_team_bypass_keeps_org_when_config_fails_to_load for the
-    # unambiguous config-load-failure case, which does not have this cost).
+    # login, same as a genuinely un-claimed login, and moves back to `acme` on his next clean login.
+    # The org model itself being unreadable is no longer one of these ambiguous cases: the database
+    # decides org placement now, and a failure to read it never reaches this path at all (see
+    # test_oauth_callback_signs_in_from_the_database_when_the_config_cannot_load).
     state, _ = _db_state(
         serve_engine, tmp_path, FakeOAuthClient(login="bob", orgs=["acme-gh"], teams=[])
     )
@@ -631,49 +639,36 @@ def test_oauth_callback_admin_team_bypass_reresolves_a_revoked_members_org(
     assert state.repository.user_org("bob") == "default"
 
 
-def test_oauth_callback_admin_team_bypass_keeps_org_when_config_fails_to_load(
+def test_oauth_callback_signs_in_from_the_database_when_the_config_cannot_load(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
-    # A GitHub API hiccup isn't the only way the bypass can admit a real org member unmatched: the
-    # config itself can fail to load (`load_serve_config_file` fails closed to None on a transient
-    # filesystem error or a config typo -- exactly the state this item's own motivating scenario, a
-    # broken `orgs:` block, produces). carol still reports her real GitHub orgs; it's the org model
-    # that's unreadable, not her membership -- she must not be relocated to `default` over that.
+    # BE-0375's headline: with a database wired, a config that fails to load no longer denies
+    # anyone. It used to collapse `orgs` to `{}` and turn every non-admin sign-in into a 403 -- on a
+    # deployment whose database already knew exactly who carol was -- which BE-0313 could only
+    # soften with an org-recovery guard, and only for a user already on record. carol is in no admin
+    # Team and has never signed in here, so nothing but the database can admit her.
     state, _ = _db_state(
         serve_engine, tmp_path, FakeOAuthClient(login="carol", orgs=["acme-gh"], teams=[])
     )
-    assert _role_after_login(state, "carol") == "viewer"
-    assert state.repository is not None
-    assert state.repository.user_org("carol") == "acme"
-
-    state.auth.oauth = FakeOAuthClient(login="carol", orgs=["acme-gh"], teams=["ops-gh/root"])
-    state.auth.oauth_admin_teams = ("ops-gh/root",)
     state.config = tmp_path / "missing.yaml"  # never written -- load_serve_config_file -> None
-    assert _role_after_login(state, "carol") == "admin"
-    assert state.repository.user_org("carol") == "acme"
-
-
-def test_oauth_callback_admin_team_bypass_reresolves_when_no_config_is_bound(
-    serve_engine: Callable[..., Engine], tmp_path: Path
-) -> None:
-    # `state.config is None` -- no config path bound at all, the ordinary bootstrap state serve()
-    # treats as normal -- makes load_serve_config_file return the same None a real load failure
-    # does, but it is not transient: it stays None on every login until an admin binds a config, so
-    # pinning carol's org here (like the config-load-failure case above) would never re-resolve.
-    # Guarding the preservation on it would be the permanent-wrong-state failure this item's own
-    # `not identity.orgs` guard already declines to risk.
-    state, _ = _db_state(
-        serve_engine, tmp_path, FakeOAuthClient(login="carol", orgs=["acme-gh"], teams=[])
-    )
     assert _role_after_login(state, "carol") == "viewer"
     assert state.repository is not None
     assert state.repository.user_org("carol") == "acme"
 
-    state.auth.oauth = FakeOAuthClient(login="carol", orgs=["acme-gh"], teams=["ops-gh/root"])
-    state.auth.oauth_admin_teams = ("ops-gh/root",)
+
+def test_oauth_callback_signs_in_from_the_database_when_no_config_is_bound(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # The same, for the other shape `load_serve_config_file` answers None for: no config bound at
+    # all. Once the database is the source, unbinding the config changes nothing about who may sign
+    # in as which org, so the two shapes stop needing to be told apart on this path at all.
+    state, _ = _db_state(
+        serve_engine, tmp_path, FakeOAuthClient(login="carol", orgs=["acme-gh"], teams=[])
+    )
     state.config = None
-    assert _role_after_login(state, "carol") == "admin"
-    assert state.repository.user_org("carol") == "default"
+    assert _role_after_login(state, "carol") == "viewer"
+    assert state.repository is not None
+    assert state.repository.user_org("carol") == "acme"
 
 
 def test_oauth_callback_bypass_names_no_config_bound_not_a_load_failure(
@@ -736,7 +731,9 @@ def test_oauth_callback_rejects_a_login_in_neither_the_org_gate_nor_the_admin_te
     # audit-style visibility, not just a raw 403 with nothing an operator can correlate on).
     record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
     assert record.actor == "mallory"
-    assert "no orgs: entry matched this login" in record.getMessage()
+    # Worded for either source (BE-0375): the same final branch is reached from an `orgs:` block
+    # and from the `orgs` table, and naming one of them would mislead half the deployments.
+    assert "no org membership matched this login" in record.getMessage()
     assert record.levelno == logging.INFO  # admin_teams is configured; WARNING is not this shape
 
 
@@ -760,7 +757,7 @@ def test_oauth_callback_denial_names_a_config_load_failure_not_the_org_roster(
     assert sid is None
     record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
     assert "the serve config failed to load" in record.getMessage()
-    assert "no orgs: entry matched this login" not in record.getMessage()
+    assert "no org membership matched this login" not in record.getMessage()
     assert record.levelno == logging.INFO  # admin_teams is configured; WARNING is not this shape
 
 
