@@ -76,7 +76,9 @@ just the parent `UIDatePicker`. `Selector` (`bajutsu/scenario/models/selector.py
 discipline `handleSystemAlert` uses to pick one button among several. `sel` in `setPickerValue` always
 addresses one such component, so `value` stays a plain string: `within: { id: birthdate.picker },
 traits: [pickerWheel], index: 0` selects the year wheel, `index: 1` the month wheel, and
-`value: "2016年"` and `value: "4月"` are two separate steps. This reuses the addressing mechanism
+`value: "2016年"` and `value: "4月"` are two separate steps. On device, the `within` container must
+enclose the components. iOS reports each wheel taller than the picker holding it. The identifier
+belongs on a surrounding container, not on the `UIDatePicker` itself. This reuses the addressing mechanism
 every other selector-based step already has instead of growing a second,
 `setPickerValue`-specific way to name a component.
 

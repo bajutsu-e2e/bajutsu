@@ -15,12 +15,18 @@
 # PickerView), mirroring the SHOWCASE_GESTURES affordance: both wheels are then always in the
 # accessibility tree, so the run never depends on XCUITest's unreliable swipe-to-scroll.
 #
+# Both selectors carry the `pickerWheel` trait because an identifier never lands on a wheel: SwiftUI
+# puts it on the picker, whose wheel is a separate child, and `adjust(toPickerWheelValue:)` raises on
+# anything that is not itself a wheel.
+#
 # The `UIDatePicker` is the multi-component case. Under `.date`, it lays out three sibling
 # `pickerWheel` children, none carrying an identifier of its own, so each is addressed by the
 # `within` / `traits` / `index` fields every selector already carries — one step per component,
 # rather than a second addressing mechanism of `setPickerValue`'s own. Only two of the three are set
 # here; the day wheel between them is left alone, which is itself the point that `index` picks out
-# one component rather than the picker as a whole.
+# one component rather than the picker as a whole. `within` scopes by frame containment and iOS
+# reports these wheels taller than the picker holding them, so `form.birthdate` names a container
+# built to enclose them (see the iOS PickerView) rather than the date picker itself.
 #
 # Both the wheel *order* and the row *labels* follow the locale the run pins. Nothing here overrides
 # it, so it is the config default `en_US` (`Defaults.locale`), under which the wheels read
@@ -37,7 +43,9 @@
       capture: [deviceLog]
     - assert:
         - value: { sel: { id: form.school.value }, equals: "高校" }
-    - setPickerValue: { sel: { id: form.school }, value: "大学" }
+    - setPickerValue:
+        sel: { within: { id: form.school }, traits: [pickerWheel] }
+        value: "大学"
       capture: [rawTree]
   expect:
     - value: { sel: { id: form.school.value }, equals: "大学" }

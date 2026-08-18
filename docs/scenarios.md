@@ -471,7 +471,9 @@ so those backends fail the step with a clear "unsupported action" reason rather 
 ### `setPickerValue`
 
 ```yaml
-- setPickerValue: { sel: { id: form.school }, value: "大学" }   # move the wheel to the "大学" row
+- setPickerValue:                                                # move the wheel to the "大学" row
+    sel: { within: { id: form.school }, traits: [pickerWheel] }
+    value: "大学"
 ```
 
 A wheel-style picker — a `UIPickerView`, or a `UIDatePicker` switched to a wheel-only mode — is an
@@ -484,6 +486,12 @@ those would depend on a drag distance matching the row height by chance — the 
 Bajutsu rules out everywhere else. `setPickerValue` instead calls XCUITest's own
 `adjust(toPickerWheelValue:)` on the element the selector already resolved, so it is handle-based
 the way `tap` is rather than coordinate-based the way `swipe` is.
+
+`sel` must resolve the wheel itself, which is seldom the element carrying the identifier. A
+`UIPickerView` publishes its identifier on the picker, and exposes the wheel as a separate child.
+A selector naming that identifier alone resolves the parent instead, and the step fails.
+`adjust(toPickerWheelValue:)` raises on any element that is not itself a wheel. Pairing the
+identifier with the `pickerWheel` trait, as above, reaches the child.
 
 A value the wheel does not carry **fails the step**, naming the value, rather than leaving the wheel
 wherever it stopped — so the following assertion tests the app, not the gesture.
@@ -504,6 +512,14 @@ second layout:
     sel: { within: { id: form.birthdate }, traits: [pickerWheel], index: 1 }   # the month wheel
     value: "5月"
 ```
+
+`within` scopes by frame containment, so its container must be large enough to hold the wheels.
+A wheel-mode `UIDatePicker` fails that test on its own. iOS lays the components out at their
+intrinsic height, then clips them to the picker. Every component reports a frame taller than the
+picker publishing it. A `within` naming the date picker then matches nothing at all. Put the
+identifier on a surrounding container whose frame covers the components instead. The showcase screen
+takes that route: `demos/showcase/ios/swiftui/Sources/PickerView.swift`. The screen groups the
+caption, the wheel, and the mirror text under one identifier.
 
 This also works around the `datePicker` classification gap ([selectors](selectors.md#normalized-traits-trait)):
 a `UIDatePicker`'s own container element falls to `other`, but the step addresses the wheel children

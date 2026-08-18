@@ -10,7 +10,11 @@ import SwiftUI
 // untouched. The screen is a flat VStack — no scroll — so both wheels are always in the accessibility
 // tree and the run resolves them without depending on XCUITest's unreliable swipe-to-scroll.
 struct PickerView: View {
-    // The single-component case: a plain `UIPickerView`, addressed by its own identifier.
+    // The single-component case: a plain `UIPickerView`. The identifier lands on the picker, whose
+    // wheel is a separate child element, so the scenario reaches the wheel with `within` + the
+    // `pickerWheel` trait rather than by the identifier alone — `adjust(toPickerWheelValue:)` raises
+    // on anything that is not itself a wheel. Here the child reports the picker's own frame, so the
+    // containment `within` scopes by holds; the date picker below is where that stops being true.
     @State private var school = "高校"
     // The multi-component case: a wheel-mode `UIDatePicker` lays its components out as sibling
     // `pickerWheel` children, none carrying an identifier of its own — exactly the shape
@@ -48,17 +52,30 @@ struct PickerView: View {
                 .accessibilityID("form.school.value")
                 .accessibilityStateValue(school)
 
-            DatePicker(
-                "Birthdate", selection: $birthdate, displayedComponents: [.date]
-            )
-            .datePickerStyle(.wheel)
-            .labelsHidden()
-            .frame(width: 280, height: 180)
+            // Caption, wheel and mirror form one accessibility container, and the grouping is what
+            // makes the wheels addressable at all. iOS lays a wheel `UIDatePicker`'s components out
+            // at their own intrinsic height and clips them to the picker's frame, so each component
+            // reports a frame that overflows the picker by (291 - 216) / 2 pt top and bottom. Since
+            // `within` scopes by frame containment, an id on the picker itself resolves a container
+            // that geometrically excludes its own wheels. A SwiftUI container's accessibility frame
+            // is the union of its children's, so the caption above and the mirror below extend it
+            // past the overflow. Keeping `spacing` alone above that 37.5pt makes containment hold
+            // whatever the caption's font metrics turn out to be.
+            VStack(spacing: 44) {
+                Text("Birthdate")
+                    .font(.headline)
+                DatePicker(
+                    "Birthdate", selection: $birthdate, displayedComponents: [.date]
+                )
+                .datePickerStyle(.wheel)
+                .labelsHidden()
+                Text(Self.yearMonth(birthdate))
+                    .foregroundStyle(.secondary)
+                    .accessibilityID("form.birthdate.value")
+                    .accessibilityStateValue(Self.yearMonth(birthdate))
+            }
+            .accessibilityElement(children: .contain)
             .accessibilityID("form.birthdate")
-            Text(Self.yearMonth(birthdate))
-                .foregroundStyle(.secondary)
-                .accessibilityID("form.birthdate.value")
-                .accessibilityStateValue(Self.yearMonth(birthdate))
         }
     }
 
