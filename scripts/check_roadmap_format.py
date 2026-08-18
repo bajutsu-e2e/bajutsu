@@ -79,7 +79,8 @@ STATUS_PAIR = {
     "Implemented": "実装済み",
     "In progress": "実装中",
     "Proposal": "提案",
-    "Proposal (deferred)": "提案（保留）",
+    "Deferred": "保留",
+    "Rejected": "却下",
 }
 
 HEADINGS_EN = [

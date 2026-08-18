@@ -2,7 +2,7 @@
 """Keep one GitHub tracking issue open per *open* roadmap item (BE-0109).
 
 An open item is one whose ``Status`` is ``Proposal`` or ``In progress`` — everything not yet
-shipped (``Implemented``) or shelved (``Proposal (deferred)``). Each such item gets an issue the
+shipped (``Implemented``) or shelved (``Deferred`` / ``Rejected``). Each such item gets an issue the
 moment it exists, so an issue with **no** assignee is exactly the signal the roadmap lacks: nobody
 has picked it up yet. Assigned issues show who is on what; ``label:roadmap-tracking no:assignee`` is
 the unclaimed backlog.
@@ -17,7 +17,7 @@ idempotent and self-healing (matching BE-0043 / BE-0061): running it twice, or a
 already-consistent set, is a no-op.
 
 - open item (``Proposal`` / ``In progress``) with no matching open issue -> create one.
-- matching open issue whose item is now ``Implemented`` / ``Proposal (deferred)`` -> close it.
+- matching open issue whose item is now ``Implemented`` / ``Deferred`` / ``Rejected`` -> close it.
 
 It scans only numbered ``BE-NNNN`` items, so a ``BE-XXXX`` placeholder — which has no permanent
 number yet — is skipped naturally; its issue is created on the next run, after ``roadmap-id``
@@ -47,7 +47,8 @@ from build_roadmap_index import TITLE_RE, metadata_fields
 from roadmap_ids import iter_item_dirs, numbered_match
 
 ROADMAP = Path("roadmaps")
-# Only these statuses are "open" and get a tracking issue; the other two are shipped / shelved.
+# Only these statuses are "open" and get a tracking issue; the other three (Implemented, Deferred,
+# Rejected) are shipped or shelved.
 OPEN_STATUSES = frozenset({"Proposal", "In progress"})
 LABEL = "roadmap-tracking"
 LABEL_COLOR = "0e8a16"

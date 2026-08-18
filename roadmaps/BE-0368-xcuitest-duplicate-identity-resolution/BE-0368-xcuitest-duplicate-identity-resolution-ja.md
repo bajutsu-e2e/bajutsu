@@ -78,7 +78,7 @@ runner は `stale` を報告します。iOS 18 では同じ退避が働いて成
 います。上の Spike がその Spike であり、前提は成立しませんでした。`.ok` を返す要素は 1 件ではなく 0 件
 です。`isHittable` は本項目が修理する `liveElement` の解決を通るため、どちらの要素も見えないからです。
 BE-0357 は自身の仕様に従えばこのグループに触れないので、書かれたとおりに実装しても、取り除こうとした当の
-失敗には効きません。同項目の *進捗* にこの結果を記録し、`状態` は本項目と同じ変更で「提案（保留）」へ
+失敗には効きません。同項目の *進捗* にこの結果を記録し、`状態` は本項目と同じ変更で「保留」へ
 移します。解決を先に直すことは、BE-0357 が働くための手がかりを与えることでもあります。
 
 放置した場合の代償は、この種の失敗がこれまで払わせてきたものと同じです。ネイティブアラートは実際の
@@ -221,7 +221,7 @@ XCUITest 固有の provider の 1 か所から呼ばれています。その隣�
 - [x] オンデバイスの検証：`demos/showcase/scenarios/alert.yaml` が iOS 26 の Simulator で
       `showcase-swiftui` と `showcase-uikit` の両方に対して通り、iOS 18 でも通り続けることを確かめる。
 - [x] BE-0357 に結果を記録する。*進捗* に、成立しなかった前提と Spike の証拠を書き、`状態` を
-      「提案（保留）」へ移す。flat-query の一致を同一性だけが決めるかのように読める記述が
+      「保留」へ移す。flat-query の一致を同一性だけが決めるかのように読める記述が
       `attributesMatch` の周辺に残っていれば、それも直す。
 
 ログを次に記します。
@@ -250,7 +250,7 @@ XCUITest 固有の provider の 1 か所から呼ばれています。その隣�
 
 - [BE-0357 — XCUITest の重複アクセシビリティノードでタップできる要素が 1 つだけなら他を取り除く](../BE-0357-xcuitest-duplicate-node-hittable-tiebreak/BE-0357-xcuitest-duplicate-node-hittable-tiebreak-ja.md)：
   同じアラートの失敗を `/elements` の応答を絞ることで直そうとした項目。重複ペアのちょうど 1 件が
-  hittable を報告するという前提を、本項目の Spike が否定した。本項目により「提案（保留）」へ移る。
+  hittable を報告するという前提を、本項目の Spike が否定した。本項目により「保留」へ移る。
 - [BE-0287 — 多点タッチ操作下での XCUITest runner チャネルの耐障害性](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md)：
   `attributesMatch` から frame を外した項目（Unit 5）。記録した値とライブの値の比較であり、本項目が
   加える候補どうしの比較とは矛盾しない。

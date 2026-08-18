@@ -17,7 +17,7 @@
 
 Add a Claude Code skill that lists roadmap (BE) items filtered by `Status`, so an AI
 session can survey "everything that is a `Proposal`" (or `In progress`, `Implemented`,
-`Proposal (deferred)`) without reading the full `roadmaps/README.md`. The skill takes a
+`Deferred`, `Rejected`) without reading the full `roadmaps/README.md`. The skill takes a
 status argument and prints one table — `ID`, title, `Topic`, and the item's file path — so
 Claude can then open only the items it actually needs.
 
@@ -60,8 +60,8 @@ can call — either:
 
 The query:
 
-- Takes one `Status` value — `Proposal` / `In progress` / `Implemented` /
-  `Proposal (deferred)` — matched case-insensitively, and validates it against the known set
+- Takes one `Status` value — `Proposal` / `In progress` / `Implemented` / `Deferred` /
+  `Rejected` — matched case-insensitively, and validates it against the known set
   (an unknown status prints the valid values and exits non-zero, rather than an empty table).
 - Emits a Markdown table with columns `ID`, `Item` (title), `Topic`, and `Path` (the
   relative path to the item's English `.md` file), sorted by `Topic` then `ID` for stable

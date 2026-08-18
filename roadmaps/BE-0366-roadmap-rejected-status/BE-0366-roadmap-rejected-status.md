@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0366](BE-0366-roadmap-rejected-status.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0366") |
+| Implementing PR | [#1647](https://github.com/bajutsu-e2e/bajutsu/pull/1647) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -125,10 +126,11 @@ what happened.
   topic's progress bar. Exclude `Rejected` from the denominator: a rejected item is by this item's own
   definition never coming back, so it is not work a topic still owes. `Deferred` stays in it, since a
   deferred item remains a live question the topic has yet to answer.
-- [`scripts/new_roadmap_item.py`](../../scripts/new_roadmap_item.py) — `STATUS_JA`: rename the
-  `"Proposal (deferred)": "提案（保留）"` entry to `"Deferred": "保留"`; add
-  `"Rejected": "却下"`, so `make new-roadmap-item STATUS=…` keeps accepting every value
-  `check_roadmap_format.py` recognizes.
+- [`scripts/new_roadmap_item.py`](../../scripts/new_roadmap_item.py) — its own `STATUS_JA` copy of
+  the same table is retired in favour of a `_status_ja()` helper that imports `STATUS_PAIR`, joining
+  the sibling-import helpers the file already uses for topics and the tracking-issue URL. Deriving
+  rather than duplicating is what keeps `make new-roadmap-item STATUS=…` accepting exactly the values
+  `check_roadmap_format.py` recognizes, for this addition and every later one.
 - [`scripts/sync_roadmap_tracking_issues.py`](../../scripts/sync_roadmap_tracking_issues.py) — no
   logic change: `OPEN_STATUSES = frozenset({"Proposal", "In progress"})` already treats anything else,
   `Rejected` included, as not open, and closes its tracking issue exactly as it already does for
@@ -175,7 +177,7 @@ what happened.
 
 ### Migrating today's roadmap
 
-The schema change above is inert until the six currently `Proposal (deferred)` items are reclassified
+The schema change above is inert until the currently `Proposal (deferred)` items are reclassified
 under it, in the same implementing PR:
 
 - BE-0154 moves to `Rejected`. Its `Superseded by` field already names BE-0159 as the successor;
@@ -187,6 +189,13 @@ under it, in the same implementing PR:
   that outgrows the in-protocol stub language) and carries no filled `Superseded by` field. This item
   recommends leaving BE-0027 `Deferred` by default and flagging it for a maintainer's judgment call at
   implementation time, rather than letting the schema change silently decide a borderline case.
+- [BE-0357](../BE-0357-xcuitest-duplicate-node-hittable-tiebreak/BE-0357-xcuitest-duplicate-node-hittable-tiebreak.md)
+  is a seventh item, deferred after this proposal was authored and so absent from the six listed
+  under *Motivation*. It keeps `Deferred`. Its premise — that exactly one member of a duplicate
+  accessibility-node pair reports itself hittable — was measured and disproved, which is what parked
+  it, but its own `Progress` log names the condition that would revive it: a duplicate pair whose
+  members a live probe can genuinely tell apart. A named condition is the dividing line above, so
+  `Rejected` does not apply.
 
 ### Relationship to "Not adopting"
 
@@ -239,20 +248,50 @@ same PR is what closes the actual gap.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Rename `Proposal (deferred)` to `Deferred` and add `Rejected` in `check_roadmap_format.py`
-      (`STATUS_PAIR`) and `new_roadmap_item.py` (`STATUS_JA`).
-- [ ] Add the `Rejected` bucket to `build_roadmap_index.py` (`STATUS_TO_BUCKET`, `BUCKETS`) and
+- [x] Rename `Proposal (deferred)` to `Deferred` and add `Rejected` in `check_roadmap_format.py`
+      (`STATUS_PAIR`), and retire `new_roadmap_item.py`'s duplicate table in favour of deriving it.
+- [x] Add the `Rejected` bucket to `build_roadmap_index.py` (`STATUS_TO_BUCKET`, `BUCKETS`) and
       `build_roadmap_dashboard.py` (`BUCKET_COLOR`, `BUCKET_LABEL`, module docstring), and exclude
       `Rejected` from `_topic_progress`'s denominator.
-- [ ] Update the docstrings and comments naming the old value, and the bucket counts that go stale
+- [x] Update the docstrings and comments naming the old value, and the bucket counts that go stale
       with it, in `sync_roadmap_tracking_issues.py`, `sync_roadmap_topic_labels.py`, and
       `roadmap_query.py`.
-- [ ] Rename the literal across `implement-be`, `.github/roadmap-refresh-prompt.md`,
+- [x] Rename the literal across `implement-be`, `.github/roadmap-refresh-prompt.md`,
       `roadmap-filter`, `docs/roadmap-workflow.md` (+ ja), the `Makefile` comment, `CLAUDE.md`,
       `docs/ai-development.md` (+ ja), and `roadmaps/README.md` (+ ja), adding `Rejected` to every
       valid-value list.
-- [ ] Update the gate tests that pin the literal, and cover the new value.
-- [ ] Migrate today's six deferred items: BE-0154 to `Rejected`, the other five to `Deferred`.
+- [x] Update the gate tests that pin the literal, and cover the new value.
+- [x] Migrate today's deferred items: BE-0154 to `Rejected`, the other six to `Deferred`.
+
+Log:
+
+- The implementing PR landed all six units at once, with two decisions the proposal left open:
+  - **The stacked bar shares the progress denominator.** Excluding `Rejected` from
+    `_topic_progress`'s denominator alone would have left `_progress_bar`'s segments summing past
+    100%, since the bar divides each bucket's count by that same total. The bar therefore skips the
+    `Rejected` bucket too: a rejected item still renders its own card, but contributes to neither the
+    percentage nor the bar. A topic with nothing but rejected items reads 100% rather than dividing
+    by zero, which also lands it in the dashboard's *Completed* group — correct, since it has no
+    outstanding work.
+  - **The literal was renamed in three shipped items' prose**, beyond the surfaces *Detailed design*
+    enumerates. Five shipped items named `Proposal (deferred)`; the three that describe a
+    still-operating mechanism — BE-0109's tracking-issue lifecycle, BE-0162's status filter, and
+    BE-0368's account of where it left BE-0357 — were renamed, so a grep for the retired value comes
+    back empty everywhere the value is still live. BE-0074 and BE-0078 were left verbatim: both
+    specify the vocabulary *as it stood at the time*, alongside the equally retired
+    `Accepted, in progress` and `Track` field, so modernizing one name and not its neighbour would
+    misstate the record rather than tidy it.
+- BE-0027 took the default `Deferred`. The maintainer's judgment call *Migrating today's roadmap*
+  asks for is still open — the migration did not decide the borderline case, only declined to let
+  the schema change settle it.
+- A follow-up review pass found the rename of BE-0109 and BE-0162 above stopped one value short:
+  both renamed `Proposal (deferred)` to `Deferred` but never added `Rejected` to their own
+  enumerated value lists, so each still understated the vocabulary of the "still-operating
+  mechanism" it describes. Both items (and their `-ja.md` mirrors) now list all five values.
+  `new_roadmap_item.py`'s `STATUS_JA` — a second literal copy of `check_roadmap_format.STATUS_PAIR`
+  — was retired in the same pass in favour of a `_status_ja()` helper that imports it, joining the
+  sibling-import pattern the file already uses for topics and the tracking-issue URL, so the two
+  tables can no longer drift apart.
 
 ## References
 

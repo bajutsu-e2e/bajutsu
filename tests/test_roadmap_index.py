@@ -106,7 +106,8 @@ def test_bucket_derives_classification_from_status() -> None:
     assert bri.bucket("Implemented") == "Implemented"
     assert bri.bucket("In progress") == "In progress"
     assert bri.bucket("Proposal") == "Proposals"
-    assert bri.bucket("Proposal (deferred)") == "Deferred"
+    assert bri.bucket("Deferred") == "Deferred"
+    assert bri.bucket("Rejected") == "Rejected"
 
 
 def test_bucket_rejects_unknown_status() -> None:

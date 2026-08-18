@@ -53,17 +53,22 @@ def _tracking_issue_url(be_id: str) -> str:
     return tracking_issue_url(be_id)
 
 
+def _status_ja() -> dict[str, str]:
+    """Status -> the word shown in the Japanese metadata block.
+
+    Imports ``check_roadmap_format.STATUS_PAIR`` rather than keeping a second literal copy, so the
+    gate's format check and this scaffolder can never drift apart on the valid `Status` vocabulary
+    or its Japanese pairing.
+    """
+    _put_scripts_on_path()
+    from check_roadmap_format import STATUS_PAIR
+
+    return STATUS_PAIR
+
+
 ROADMAP = Path(__file__).resolve().parent.parent / "roadmaps"
 PLACEHOLDER = "BE-XXXX"
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-
-# Status -> the word shown in each language's metadata block (the pairing test_roadmap_format pins).
-STATUS_JA = {
-    "Proposal": "提案",
-    "In progress": "実装中",
-    "Implemented": "実装済み",
-    "Proposal (deferred)": "提案（保留）",
-}
 
 _SECTIONS_EN = [
     "Introduction",
@@ -149,7 +154,7 @@ def _ja_body(slug: str, title: str, status: str, topic: str, handle: str) -> str
             "|---|---|",
             f"| 提案 | [{PLACEHOLDER}]({PLACEHOLDER}-{slug}-ja.md) |",
             f"| 提案者 | [@{handle}](https://github.com/{handle}) |",
-            f"| 状態 | **{STATUS_JA[status]}** |",
+            f"| 状態 | **{_status_ja()[status]}** |",
             f"| トラッキング Issue | [検索]({_tracking_issue_url(PLACEHOLDER)}) |",
             f"| トピック | {topic} |",
             "<!-- /BE-METADATA -->",
@@ -172,8 +177,9 @@ def scaffold(roadmap: Path, slug: str, title: str, *, topic: str, status: str, h
     if topic not in known_topics:
         topics = "\n  ".join(sorted(known_topics))
         raise SystemExit(f"unknown TOPIC {topic!r}. Known topics:\n  {topics}")
-    if status not in STATUS_JA:
-        raise SystemExit(f"unknown STATUS {status!r}. One of: {', '.join(STATUS_JA)}")
+    status_ja = _status_ja()
+    if status not in status_ja:
+        raise SystemExit(f"unknown STATUS {status!r}. One of: {', '.join(status_ja)}")
     handle = handle.lstrip("@")  # accept either "octocat" or "@octocat"
 
     # Scaffold directly under roadmaps/ — the flat layout BE-0159 is migrating to. Status decides the
