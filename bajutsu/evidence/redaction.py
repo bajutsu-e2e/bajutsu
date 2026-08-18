@@ -261,7 +261,11 @@ class Redactor:
                 else self.redact_structure(v)
                 for k, v in data.items()
             }
-        if isinstance(data, list):
+        # A tuple serializes as an array just like a list, so skipping it here would let a keyed
+        # value inside one reach the artifact unmasked with nothing raised — and a document built
+        # from `dataclasses.asdict` keeps its tuples. The masked copy is a list; the next stop is
+        # `json.dumps`, which cannot tell the two apart.
+        if isinstance(data, list | tuple):
             return [self.redact_structure(v) for v in data]
         if isinstance(data, str):
             return self.redact_text(data)

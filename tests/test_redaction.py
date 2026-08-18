@@ -487,6 +487,17 @@ def test_sink_json_survives_a_key_pattern_that_would_eat_the_document(tmp_path: 
     assert doc["target"] == {"id": "auth.submit"}  # nothing configured names it, so it is untouched
 
 
+def test_write_json_masks_a_keyed_value_nested_in_a_tuple(tmp_path: Path) -> None:
+    # `json.dumps` serializes a tuple as an array without complaint, so a structure pass that walked
+    # only lists would write the keyed value in plaintext and raise nothing — the silent class this
+    # boundary exists to close. A document built from `dataclasses.asdict` keeps its tuples.
+    writer = RunArtifactWriter(tmp_path / "runs" / "r1", Redactor(Redact(fields=["token"])))
+    path = writer.write_json("d.json", {"path": ("step-a", {"token": "abc123"})})
+    text = path.read_text(encoding="utf-8")
+    assert "abc123" not in text
+    assert json.loads(text)["path"] == ["step-a", {"token": PLACEHOLDER}]
+
+
 def test_redact_screen_map_leaves_the_artifact_shape_unchanged() -> None:
     # The map is read back by a resume and by the web UI, so masking must rewrite values and nothing
     # else — a key invented here (a `secure` flag on an action that carried none) would change what
