@@ -105,10 +105,12 @@ already paid that cost: GitHub cancelled `conformance (playwright)` and `codegen
 almost four hours apiece, against the two to seven minutes each one takes when it passes.
 
 A job whose bound follows from its own arithmetic sets its own value and gives the reasoning in a
-comment beside it: 60 minutes for the iOS scenario jobs, 25 for the Android ones, and 15 for the
-single live Anthropic call in `ai-smoke`. Every other job takes the repository default of **30
-minutes**. That default clears the slowest successful job we have measured, CodeQL's Swift analysis
-at about 20 minutes, and still turns a stall into a red check inside the half hour.
+comment beside it: 180 minutes for the AWS Device Farm submission, 60 for the iOS scenario jobs, 30
+for the Android `smoke` job and 25 for the other Android scenario jobs, 20 for `claude-review`, 15
+for the Android Gradle-cache warm-up and for the single live Anthropic call in `ai-smoke`, and 10 for
+`mcp-wire` and the prose companion. Every job carrying no such reasoning takes the repository default
+of **30 minutes**. That default clears the slowest successful job we have measured, CodeQL's Swift
+analysis at about 20 minutes, and still turns a stall into a red check inside the half hour.
 
 Two jobs carry no `timeout-minutes` of their own: the ones in
 [`docs-refresh.yml`](../.github/workflows/docs-refresh.yml) and

@@ -97,10 +97,12 @@ GitHub が代わりに当てるデフォルトは 360 分だからです。そ�
 それにもかかわらず、どちらも 4 時間近くでキャンセルされました。
 
 上限がそのジョブ自身の見積もりから決まる場合は、独自の値を設定し、根拠を隣のコメントに書きます。
-iOS のシナリオジョブは 60 分、Android のジョブは 25 分、`ai-smoke` の Anthropic API 呼び出し 1 回は
-15 分です。それ以外のジョブは、リポジトリのデフォルトである **30 分**を取ります。計測できた成功ジョブの
-うちもっとも長いのは CodeQL の Swift 解析の約 20 分なので、30 分なら余裕をもって収まります。それでいて、
-止まったジョブは 30 分以内に明確な失敗として現れます。
+AWS Device Farm への投入は 180 分、iOS のシナリオジョブは 60 分、Android の `smoke` は 30 分、
+Android のその他のシナリオジョブは 25 分、`claude-review` は 20 分、Android の Gradle キャッシュを
+温めるジョブと `ai-smoke` の Anthropic API 呼び出し 1 回は 15 分、`mcp-wire` と prose companion は
+10 分です。そうした根拠を持たないジョブは、リポジトリのデフォルトである **30 分**を取ります。計測できた
+成功ジョブのうちもっとも長いのは CodeQL の Swift 解析の約 20 分なので、30 分なら余裕をもって収まります。
+それでいて、止まったジョブは 30 分以内に明確な失敗として現れます。
 
 `timeout-minutes` を持たないジョブが 2 つだけあります。[`docs-refresh.yml`](../../.github/workflows/docs-refresh.yml)
 と [`roadmap-refresh.yml`](../../.github/workflows/roadmap-refresh.yml) にある、再利用可能ワークフロー
