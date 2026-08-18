@@ -17,7 +17,7 @@
 
 ロードマップ（BE）項目を `Status` で絞り込んで一覧する Claude Code スキルを追加します。これにより、
 AI セッションは `roadmaps/README.md` を全文読まなくても、「`Proposal` の項目すべて」（あるいは
-`In progress`、`Implemented`、`Deferred`）を見渡せます。スキルは状態を引数に取り、`ID`、
+`In progress`、`Implemented`、`Deferred`、`Rejected`）を見渡せます。スキルは状態を引数に取り、`ID`、
 タイトル、`Topic`、項目ファイルのパスを 1 つの表で出力します。Claude はその表を見て、実際に必要な項目
 だけを開けます。
 
@@ -59,7 +59,7 @@ AI セッションは `roadmaps/README.md` を全文読まなくても、「`Pro
 
 クエリの仕様は次のとおりです。
 
-- `Status` の値を 1 つ取ります（`Proposal`、`In progress`、`Implemented`、`Deferred`）。
+- `Status` の値を 1 つ取ります（`Proposal`、`In progress`、`Implemented`、`Deferred`、`Rejected`）。
   大文字小文字を区別せずに照合し、既知の集合に対して検証します（未知の状態のときは空の表ではなく、有効な
   値を表示して非ゼロで終了します）。
 - `ID`、`Item`（タイトル）、`Topic`、`Path`（項目の英語版 `.md` ファイルへの相対パス）を列に持つ

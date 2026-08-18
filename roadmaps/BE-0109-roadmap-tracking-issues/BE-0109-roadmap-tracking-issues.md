@@ -61,8 +61,8 @@ write` on the default token.
 2. **Lifecycle rule — a pure function of an item's current `Status`.** For every numbered item:
    - `Status` is `Proposal` or `In progress` (an *open* item) and no matching open issue exists →
      create one.
-   - A matching open issue exists but the item's `Status` is `Implemented` or `Deferred`
-     (shipped, or shelved) → close it. Un-shelving (`Deferred` → `Proposal`) re-opens
+   - A matching open issue exists but the item's `Status` is `Implemented`, `Deferred`, or
+     `Rejected` (shipped, or shelved) → close it. Un-shelving (`Deferred` → `Proposal`) re-opens
      the item, so the next run re-creates the issue.
    Deriving existence from current `Status` alone — never from a PR diff — makes the sync
    self-healing and idempotent, matching the rest of the roadmap tooling (BE-0043, BE-0061):

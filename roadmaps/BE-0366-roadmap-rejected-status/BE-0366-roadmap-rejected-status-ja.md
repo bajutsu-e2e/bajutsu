@@ -129,10 +129,11 @@ LLM を持ち込みません。
   トピックの進捗バーを永久に押し下げてしまいます。`Rejected` は分母から除きます。却下された項目は、
   本項目自身の定義により二度と戻ってこないため、そのトピックに残された作業ではないからです。
   `Deferred` は分母に残します。保留の項目は、そのトピックがまだ答えを出していない生きた問いだからです。
-- [`scripts/new_roadmap_item.py`](../../scripts/new_roadmap_item.py)：`STATUS_JA` の
-  `"Proposal (deferred)": "提案（保留）"` を `"Deferred": "保留"` に改称し、`"Rejected": "却下"`
-  を追加します。これにより `make new-roadmap-item STATUS=…` は、`check_roadmap_format.py` が
-  認識するすべての値を引き続き受け付けます。
+- [`scripts/new_roadmap_item.py`](../../scripts/new_roadmap_item.py)：同じ表を二重に持っていた
+  `STATUS_JA` を廃止し、`STATUS_PAIR` を読み込む `_status_ja()` ヘルパーに置き換えます。トピックや
+  トラッキング Issue の URL について、このファイルがすでに使っている兄弟モジュールの読み込みと同じ
+  形です。複製ではなく導出にすることで、今回の追加でも以降の追加でも、`make new-roadmap-item
+  STATUS=…` が `check_roadmap_format.py` の認める値をそのまま受け付けます。
 - [`scripts/sync_roadmap_tracking_issues.py`](../../scripts/sync_roadmap_tracking_issues.py)：
   ロジックの変更はありません。`OPEN_STATUSES = frozenset({"Proposal", "In progress"})` は、
   `Rejected` を含めそれ以外のすべてをすでに「オープンではない」として扱い、`Deferred` に対して
@@ -261,8 +262,8 @@ LLM は入り込みません。`run` と CI は決定的なままであり、ア
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [x] `check_roadmap_format.py`（`STATUS_PAIR`）と `new_roadmap_item.py`（`STATUS_JA`）で
-      `Proposal (deferred)` を `Deferred` に改称し、`Rejected` を追加する。
+- [x] `check_roadmap_format.py`（`STATUS_PAIR`）で `Proposal (deferred)` を `Deferred` に改称し、
+      `Rejected` を追加する。`new_roadmap_item.py` の重複した表は廃止し、導出に置き換える。
 - [x] `build_roadmap_index.py`（`STATUS_TO_BUCKET`、`BUCKETS`）と `build_roadmap_dashboard.py`
       （`BUCKET_COLOR`、`BUCKET_LABEL`、モジュール docstring）に `Rejected` バケットを追加し、
       `_topic_progress` の分母から `Rejected` を除く。

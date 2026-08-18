@@ -126,10 +126,11 @@ what happened.
   topic's progress bar. Exclude `Rejected` from the denominator: a rejected item is by this item's own
   definition never coming back, so it is not work a topic still owes. `Deferred` stays in it, since a
   deferred item remains a live question the topic has yet to answer.
-- [`scripts/new_roadmap_item.py`](../../scripts/new_roadmap_item.py) — `STATUS_JA`: rename the
-  `"Proposal (deferred)": "提案（保留）"` entry to `"Deferred": "保留"`; add
-  `"Rejected": "却下"`, so `make new-roadmap-item STATUS=…` keeps accepting every value
-  `check_roadmap_format.py` recognizes.
+- [`scripts/new_roadmap_item.py`](../../scripts/new_roadmap_item.py) — its own `STATUS_JA` copy of
+  the same table is retired in favour of a `_status_ja()` helper that imports `STATUS_PAIR`, joining
+  the sibling-import helpers the file already uses for topics and the tracking-issue URL. Deriving
+  rather than duplicating is what keeps `make new-roadmap-item STATUS=…` accepting exactly the values
+  `check_roadmap_format.py` recognizes, for this addition and every later one.
 - [`scripts/sync_roadmap_tracking_issues.py`](../../scripts/sync_roadmap_tracking_issues.py) — no
   logic change: `OPEN_STATUSES = frozenset({"Proposal", "In progress"})` already treats anything else,
   `Rejected` included, as not open, and closes its tracking issue exactly as it already does for
@@ -248,7 +249,7 @@ same PR is what closes the actual gap.
 > (oldest first), linking the PRs.
 
 - [x] Rename `Proposal (deferred)` to `Deferred` and add `Rejected` in `check_roadmap_format.py`
-      (`STATUS_PAIR`) and `new_roadmap_item.py` (`STATUS_JA`).
+      (`STATUS_PAIR`), and retire `new_roadmap_item.py`'s duplicate table in favour of deriving it.
 - [x] Add the `Rejected` bucket to `build_roadmap_index.py` (`STATUS_TO_BUCKET`, `BUCKETS`) and
       `build_roadmap_dashboard.py` (`BUCKET_COLOR`, `BUCKET_LABEL`, module docstring), and exclude
       `Rejected` from `_topic_progress`'s denominator.
