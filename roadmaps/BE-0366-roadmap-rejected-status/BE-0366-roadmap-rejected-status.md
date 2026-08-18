@@ -284,6 +284,14 @@ Log:
 - BE-0027 took the default `Deferred`. The maintainer's judgment call *Migrating today's roadmap*
   asks for is still open — the migration did not decide the borderline case, only declined to let
   the schema change settle it.
+- A follow-up review pass found the rename of BE-0109 and BE-0162 above stopped one value short:
+  both renamed `Proposal (deferred)` to `Deferred` but never added `Rejected` to their own
+  enumerated value lists, so each still understated the vocabulary of the "still-operating
+  mechanism" it describes. Both items (and their `-ja.md` mirrors) now list all five values.
+  `new_roadmap_item.py`'s `STATUS_JA` — a second literal copy of `check_roadmap_format.STATUS_PAIR`
+  — was retired in the same pass in favour of a `_status_ja()` helper that imports it, joining the
+  sibling-import pattern the file already uses for topics and the tracking-issue URL, so the two
+  tables can no longer drift apart.
 
 ## References
 
