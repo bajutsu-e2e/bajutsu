@@ -73,6 +73,7 @@ _EXPECTED: frozenset[tuple[str, str]] = frozenset(
         ("POST", "/api/artifacts/config"),
         ("POST", "/api/artifacts/scenarios"),
         ("POST", "/api/artifacts/binary"),
+        ("POST", "/api/scenarios/upload"),
         # --- POST: login (off_loop, sets cookie) ---
         ("POST", "/api/login"),
         # --- POST: uniform JSON actions ---

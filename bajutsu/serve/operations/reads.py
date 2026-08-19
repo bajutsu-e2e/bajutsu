@@ -21,7 +21,7 @@ from bajutsu.scenario.models import STEP_ACTIONS, Scenario, Step
 from bajutsu.serve import flakiness as _flakiness
 from bajutsu.serve import jobs
 from bajutsu.serve.artifacts import Artifact, ArtifactStore
-from bajutsu.serve.authz import _target_forbidden
+from bajutsu.serve.authz import _record_audit, _target_forbidden
 from bajutsu.serve.helpers import (
     list_fs,
     list_simulators,
@@ -650,7 +650,17 @@ def job_view(state: ServeState, job_id: str) -> tuple[Any, int]:
 def save_scenario(
     state: ServeState, body: dict[str, Any], *, actor: str | None = None
 ) -> tuple[Any, int]:
-    """Save an edited scenario back to its ``*.yaml`` (bounded to the target's scenarios dir)."""
+    """Save an edited scenario back to its ``*.yaml`` (bounded to the target's scenarios dir).
+
+    The response's ``overwritten`` flag is accurate wherever a scope's ``read`` and ``save`` share
+    one backing store (the local filesystem scope, and a hosted scope backed purely by object
+    storage). It is **not** storage-accurate for a hosted config sourced from a Git/local-tree
+    checkout (`LocalTreeScenarioStorage`): BE-0324 deliberately splits that scope's `read` (the
+    extracted local tree) from its `save` (a separate object store), so the pre-write probe below
+    checks a different store than the one the write actually lands on, and can report either
+    direction wrong. Reporting a storage-accurate flag there needs the writer itself to report
+    whether it replaced something — a `ScenarioScope.save` contract change bigger than this
+    operation, tracked as a follow-up rather than attempted here."""
     target = str(body.get("target") or "") or None
     org = state.org_of(actor)
     # Deny saving into another org's target (BE-0015 multi-tenancy); single-tenant never forbids.
@@ -668,10 +678,26 @@ def save_scenario(
         load_scenario_file(text)
     except (ValueError, OSError, yaml.YAMLError) as e:
         return {"error": f"invalid scenario: {e}"}, 400
+    try:
+        # A file that exists but can't be decoded (bad encoding, a permission error mid-read)
+        # still proves *something* is there to overwrite — degrade to "overwritten" rather than
+        # letting the probe itself 500 a save that would otherwise succeed (mirrors
+        # LocalTreeScenarioStorage.read's own leniency, bajutsu/serve/server/scenarios.py).
+        overwritten = scope.read(ref) is not None
+    except (OSError, ValueError):
+        overwritten = True
     saved = scope.save(ref, text)
     if saved is None:
         return {"error": "path must be a *.yaml under the scenarios dir"}, 400
-    return {"ok": True, "path": saved}, 200
+    _record_audit(
+        state,
+        actor,
+        org,
+        "scenario.save",
+        target or "",
+        {"path": ref, "overwritten": overwritten},
+    )
+    return {"ok": True, "path": saved, "overwritten": overwritten}, 200
 
 
 def approve_baseline(

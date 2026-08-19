@@ -49,6 +49,47 @@ def test_http_scenario_save_validates_and_writes(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_http_scenario_save_reports_overwritten(tmp_path: Path) -> None:
+    # BE-0340: the response signals whether a save replaced an existing file, so the Author editor's
+    # Save button (and the Replay upload control) can tell a fresh add from an overwrite.
+    scn_dir, cfg, runs = project(tmp_path)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        target = scn_dir / "fresh.yaml"
+        text = "- name: alpha\n  steps:\n    - tap: { id: x }\n"
+        status, resp = _post(port, "/api/scenario", {"path": str(target), "yaml": text})
+        assert status == 200 and resp["overwritten"] is False
+
+        status, resp = _post(port, "/api/scenario", {"path": str(target), "yaml": text})
+        assert status == 200 and resp["overwritten"] is True
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_scenario_save_overwrites_a_non_utf8_file_without_500ing(tmp_path: Path) -> None:
+    # The overwritten probe reads the existing file to check whether it's there; a file that
+    # exists but can't be decoded (bad encoding, a stray binary) must still count as "there to
+    # overwrite" rather than letting the probe itself fail the save (mirrors
+    # LocalTreeScenarioStorage.read's own leniency for the same reason).
+    scn_dir, cfg, runs = project(tmp_path)
+    target = scn_dir / "corrupt.yaml"
+    target.write_bytes(b"\xff\xfe not valid utf-8")
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        text = "- name: alpha\n  steps:\n    - tap: { id: x }\n"
+        status, resp = _post(port, "/api/scenario", {"path": str(target), "yaml": text})
+        assert status == 200 and resp["overwritten"] is True
+        assert target.read_text(encoding="utf-8") == text
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_http_scenario_save_reports_bad_path_before_bad_yaml(tmp_path: Path) -> None:
     # When both the path and the YAML are invalid, the path error wins (a non-saveable ref is
     # reported before the scenario is parsed), so the client learns where to save first.

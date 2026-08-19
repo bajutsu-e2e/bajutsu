@@ -45,7 +45,12 @@ from bajutsu.serve.helpers import range_reply, valid_run_id
 from bajutsu.serve.routes import ROUTES, Handle, Route
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.upload_artifacts import ArtifactKind
-from bajutsu.serve.uploads import MAX_UPLOAD_BYTES, BoundedZipReceiver, UploadTooLarge
+from bajutsu.serve.uploads import (
+    MAX_SCENARIO_ZIP_TOTAL_BYTES,
+    MAX_UPLOAD_BYTES,
+    BoundedZipReceiver,
+    UploadTooLarge,
+)
 
 # How long an idle SSE stream waits before sending a `:keepalive` comment (and rechecking for a
 # client disconnect). Short enough to stay under a reverse proxy's idle timeout (BE-0015).
@@ -289,23 +294,30 @@ def make_app(state: ServeState) -> FastAPI:
     # --- raw-body uploads (off_loop) ---
 
     async def _stream_bounded_body(
-        request: Request,
+        request: Request, *, cap: int | None = None
     ) -> BoundedZipReceiver | tuple[Any, int]:
         """Stream a raw POST body into a bounded, sha256-hashing temp file (`BoundedZipReceiver`,
-        shared by `/api/upload` (BE-0073) and the `/api/artifacts/*` routes (BE-0268)) — the size cap
-        is enforced both up front (Content-Length) and while reading, so a lying length can't overrun
-        it. CSRF/Origin is already enforced unconditionally by the `gate` middleware above, so this
-        only needs the size cap and the streamed read. Returns the receiver on success, or an
-        `(error, status)` pair the caller passes straight to `_result` on any failure — a missing/
-        oversized Content-Length, a short read, or a mid-stream cap/disconnect/OS error — cleaning the
-        receiver up itself in that case; a caller only gets a receiver back on success, and owns its
-        `cleanup()` from there."""
+        shared by `/api/upload` (BE-0073), the `/api/artifacts/*` routes (BE-0268), and
+        `/api/scenarios/upload` (BE-0340, passing a smaller *cap* — a scenario zip has no reason to
+        approach the whole-bundle wire size)) — the size cap is enforced both up front
+        (Content-Length) and while reading, so a lying length can't overrun it. CSRF/Origin is
+        already enforced unconditionally by the `gate` middleware above, so this only needs the size
+        cap and the streamed read. Returns the receiver on success, or an `(error, status)` pair the
+        caller passes straight to `_result` on any failure — a missing/oversized Content-Length, a
+        short read, or a mid-stream cap/disconnect/OS error — cleaning the receiver up itself in that
+        case; a caller only gets a receiver back on success, and owns its `cleanup()` from there.
+        Leaving *cap* at its default constructs `BoundedZipReceiver` with none of its own, so it
+        falls back to reading the module's live `MAX_UPLOAD_BYTES` itself (the same monkeypatch-
+        friendly reasoning `BoundedZipReceiver.__init__` already documents for not binding that value
+        as a parameter default here either) — an explicit *cap* instead overrides it outright, for a
+        caller with its own, smaller bound."""
+        effective_cap = MAX_UPLOAD_BYTES if cap is None else cap
         length = int(request.headers.get("content-length") or 0)
         if length <= 0:
             return {"error": "empty upload"}, 400
-        if length > MAX_UPLOAD_BYTES:
-            return {"error": f"upload too large (max {MAX_UPLOAD_BYTES} bytes)"}, 413
-        receiver = BoundedZipReceiver()
+        if length > effective_cap:
+            return {"error": f"upload too large (max {effective_cap} bytes)"}, 413
+        receiver = BoundedZipReceiver() if cap is None else BoundedZipReceiver(cap=cap)
         try:
             async for chunk in request.stream():
                 # receiver.write does a blocking disk write + SHA-256 update; off the event loop like
@@ -317,7 +329,7 @@ def make_app(state: ServeState) -> FastAPI:
                 return {"error": "upload incomplete (body ended early)"}, 400
             return receiver
         except UploadTooLarge:
-            result = {"error": f"upload too large (max {MAX_UPLOAD_BYTES} bytes)"}, 413
+            result = {"error": f"upload too large (max {effective_cap} bytes)"}, 413
         except ClientDisconnect:
             # Starlette raises this from `request.stream()` on an early client disconnect — the ASGI
             # analogue of the stdlib handler's short read, so it gets the same graceful 400.
@@ -386,6 +398,35 @@ def make_app(state: ServeState) -> FastAPI:
     @app.post("/api/artifacts/binary")
     async def upload_binary_artifact(request: Request) -> JSONResponse:
         return await _artifact_upload("binary", request)
+
+    @app.post("/api/scenarios/upload")
+    async def scenarios_upload(request: Request) -> JSONResponse:
+        """Stream a raw-body `.zip` of scenario files to a temp file (bounded), then add them to the
+        target's scenario scope (BE-0340: `ops.upload_scenarios`) — the FastAPI mirror of the stdlib
+        handler's `_handle_scenarios_upload`. Raw body (`?target=` selects the scope), not the
+        content-addressed `/api/artifacts/scenarios` leg above, which caches by hash for a compose
+        bind rather than writing straight into an already-bound config's scope."""
+        # A compressed zip can't usefully exceed its own declared uncompressed-total bound, so the
+        # wire cap matches it — no reason to let a scenario zip approach the 1 GiB bundle cap.
+        received = await _stream_bounded_body(request, cap=MAX_SCENARIO_ZIP_TOTAL_BYTES)
+        if not isinstance(received, BoundedZipReceiver):
+            return _result(received)
+        target = request.query_params.get("target")
+        try:
+            # `digest()` closes the write handle — the hash itself is unused here, but the file must
+            # be flushed before `upload_scenarios` reads it back as a zip.
+            await run_in_threadpool(received.digest)
+            return _result(
+                await run_in_threadpool(
+                    ops.upload_scenarios,
+                    state,
+                    received.path,
+                    target=target,
+                    actor=_actor(request),
+                )
+            )
+        finally:
+            received.cleanup()
 
     # --- uniform (JSON / text) routes, generated from the shared registry (BE-0253 Part 3) ---
 

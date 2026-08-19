@@ -288,6 +288,9 @@ ROUTES: tuple[Route, ...] = (
     Route("POST", "/api/artifacts/config", off_loop=True),
     Route("POST", "/api/artifacts/scenarios", off_loop=True),
     Route("POST", "/api/artifacts/binary", off_loop=True),
+    # A `.zip` of scenario files added directly to the bound config's target scope (BE-0340) — not
+    # the content-addressed artifact leg above, which caches by hash for a compose bind.
+    Route("POST", "/api/scenarios/upload", off_loop=True),
     # --- POST: login (off_loop, sets the session cookie) ---
     Route("POST", "/api/login", off_loop=True),
     # --- POST: uniform JSON actions ---
