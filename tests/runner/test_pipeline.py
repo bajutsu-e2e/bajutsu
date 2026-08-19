@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from _runner import _eff, _el, _failing_lease, _fake_driver, _ios_eff, _lease
 
+from bajutsu.assertions import GoldenContext
 from bajutsu.config import Effective, XcuitestConfig
 from bajutsu.doctor import Score
 from bajutsu.drivers import base
@@ -1555,6 +1556,132 @@ def test_run_and_report_forwards_schemas_dir(tmp_path: Path) -> None:
     ev = results[0].expect_results[0]
     assert ev.kind == "responseSchema"
     assert "no schema context" not in ev.reason  # context was forwarded
+
+
+def _framed(identifier: str, frame: base.Frame) -> base.Element:
+    return {
+        "identifier": identifier,
+        "label": "OK",
+        "traits": ["button"],
+        "value": None,
+        "frame": frame,
+    }
+
+
+def _golden_dir(tmp_path: Path, identifier: str) -> Path:
+    """A goldens dir holding one file whose single entry matches `_framed(identifier, ...)` field
+    for field, so only the frame-sanity check can fail the golden."""
+    goldens = tmp_path / "goldens"
+    goldens.mkdir()
+    (goldens / "home.json").write_text(
+        json.dumps(
+            {
+                identifier: {
+                    "identifier": identifier,
+                    "label": "OK",
+                    "traits": ["button"],
+                    "value": None,
+                    "frame": [0.0, 0.0, 10.0, 10.0],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    return goldens
+
+
+def _probe_then_screen_lease(
+    probe: list[base.Element], screen: list[base.Element]
+) -> Callable[[Effective, Scenario], Lease]:
+    """A lease whose driver answers the pre-scenario screen-bounds probe with `probe` and every
+    later `query()` with `screen`.
+
+    The split is what the degenerate-probe bug needs: a tree that is empty (or collapsed) at probe
+    time but whole by the time the golden is evaluated.
+    """
+
+    class _ProbeThenScreen(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__(screen)
+            self._probed = False
+
+        def query(self) -> list[base.Element]:
+            if not self._probed:
+                self._probed = True
+                return list(probe)
+            return super().query()
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        return Lease(
+            driver=_ProbeThenScreen(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    return lease
+
+
+def _golden_scenario() -> Scenario:
+    return Scenario.model_validate(
+        {
+            "name": "g",
+            "steps": [{"tap": {"id": "ok"}}],
+            "expect": [{"golden": {"path": "home.json"}}],
+        }
+    )
+
+
+def test_degenerate_screen_probe_falls_back_to_element_derived_bounds(tmp_path: Path) -> None:
+    # A probe that succeeds but returns an empty tree sizes the screen 0x0, and every element then
+    # fails frame containment while every field still matches — a golden failure whose reason blames
+    # geometry for a probe fault (diagnosed on PR #1657's red `golden (adb)`). The degenerate size is
+    # discarded, so `_eval_golden` derives the bounds from the live elements and the golden passes.
+    results = run_all(
+        _eff(),
+        [_golden_scenario()],
+        _probe_then_screen_lease([], [_framed("ok", (0.0, 0.0, 100.0, 50.0))]),
+        golden_context=GoldenContext(goldens_dir=_golden_dir(tmp_path, "ok")),
+    )
+    ev = results[0].expect_results[0]
+    assert ev.kind == "golden"
+    assert ev.ok, ev.reason
+    assert results[0].ok
+
+
+def test_collapsed_probe_frames_fall_back_to_element_derived_bounds(tmp_path: Path) -> None:
+    # The same degenerate size from the other direction: a UI Automator dump whose `bounds` all
+    # collapsed returns elements, but every frame is zero-sized, so the max edge is still 0x0.
+    results = run_all(
+        _eff(),
+        [_golden_scenario()],
+        _probe_then_screen_lease(
+            [_framed("ok", (0.0, 0.0, 0.0, 0.0))], [_framed("ok", (0.0, 0.0, 100.0, 50.0))]
+        ),
+        golden_context=GoldenContext(goldens_dir=_golden_dir(tmp_path, "ok")),
+    )
+    ev = results[0].expect_results[0]
+    assert ev.ok, ev.reason
+
+
+def test_healthy_screen_probe_still_bounds_golden_frames(tmp_path: Path) -> None:
+    # The guard rejects only a degenerate probe: a healthy one still installs the authoritative
+    # bounds, which is the whole point of probing (element-derived bounds are tautological for
+    # overflow detection). Here the probe sees a 390x844 screen and the scenario's element overflows
+    # it, so the golden fails on frame containment with no field mismatch.
+    results = run_all(
+        _eff(),
+        [_golden_scenario()],
+        _probe_then_screen_lease(
+            [_framed("window", (0.0, 0.0, 390.0, 844.0))], [_framed("ok", (0.0, 0.0, 500.0, 50.0))]
+        ),
+        golden_context=GoldenContext(goldens_dir=_golden_dir(tmp_path, "ok")),
+    )
+    ev = results[0].expect_results[0]
+    assert not ev.ok
+    assert "frame failures: ok" in ev.reason
 
 
 def test_run_and_report_scrubs_secret_values_from_artifacts(tmp_path: Path) -> None:

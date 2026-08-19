@@ -578,9 +578,23 @@ class _ScenarioRunner:
                     from bajutsu.elements import screen_size_from_elements
 
                     sw, sh = screen_size_from_elements(lz.driver.query())
-                    gc_with_screen = GoldenContext(
-                        goldens_dir=self.golden_context.goldens_dir, screen=(0.0, 0.0, sw, sh)
-                    )
+                    if sw > 0 and sh > 0:
+                        gc_with_screen = GoldenContext(
+                            goldens_dir=self.golden_context.goldens_dir, screen=(0.0, 0.0, sw, sh)
+                        )
+                    else:
+                        # A probe that succeeds but yields nothing — an empty tree, or one whose
+                        # frames all collapsed — sizes the screen 0x0, which then fails frame
+                        # containment for every element while every field still matches. That
+                        # verdict blames geometry for a probe fault, so discard the degenerate
+                        # bounds and let `_eval_golden` derive them from the live elements, exactly
+                        # as the exception below does.
+                        _logger.warning(
+                            "screen-bounds probe for golden framing returned a degenerate size "
+                            "(%g x %g); falling back to element-derived bounds",
+                            sw,
+                            sh,
+                        )
                 except Exception as exc:  # best-effort; _eval_golden falls back
                     _logger.debug(
                         "screen-bounds probe for golden framing failed: %s", exc, exc_info=True
