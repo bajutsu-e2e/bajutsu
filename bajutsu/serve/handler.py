@@ -171,7 +171,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
 
         def _session_value(self) -> str | None:
             """This request's `bajutsu_session` cookie value, if any — the stdlib-side read behind
-            the shared `gate.is_authorized` / `gate.actor_for` policy (BE-0253)."""
+            the shared `gate.is_authorized` / `gate.caller_for` policy (BE-0253)."""
             morsel = SimpleCookie(self.headers.get("Cookie", "")).get(_SESSION_COOKIE)
             return morsel.value if morsel is not None else None
 

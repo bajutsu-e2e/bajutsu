@@ -132,8 +132,9 @@ def update_org_membership(
 
     The same granularity a configuration edit already had, rather than per-entry add/remove: an
     admin sees the whole roster and sends back the whole roster, so two concurrent edits can't
-    interleave into a membership neither of them asked for. Takes effect on the next sign-in, like
-    every other membership change (BE-0313 recomputes on every login).
+    interleave into a membership neither of them asked for. A login not signed in yet meets the new
+    roster at its next sign-in (BE-0313 recomputes on every login); a session already acting as this
+    org is ended here when the edit changes the org or the role it holds.
     """
     if state.repository is None:
         return _NO_ORG_STORE

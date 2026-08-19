@@ -14,8 +14,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from bajutsu.serve import gate
 from bajutsu.serve import operations as ops
+from bajutsu.serve.operations import session as session_ops
 from bajutsu.serve.server.oauth import Identity
 from bajutsu.serve.sessions import Caller, SessionIdentity
 from bajutsu.serve.state import ServeState, SessionManager
@@ -265,3 +268,39 @@ def test_a_session_that_recorded_no_selection_still_resolves_from_the_user_row(
     assert caller == Caller(login="bob", org=None, role=None)
     assert state.org_of(caller) == "globex"
     assert ops.candidate_orgs(state, sid, caller) == ["globex"]
+
+
+def test_a_deployment_without_a_database_offers_no_selection(tmp_path: Path) -> None:
+    # Without a database every request already resolves to the single `default` org, so a select box
+    # there would be a control that changes nothing — and a switch that answered 200 would claim one.
+    config = tmp_path / "serve.config.yaml"
+    config.write_text(_ORGS_YAML)
+    state = ServeState(
+        runs_dir=tmp_path / "runs",
+        config=config,
+        auth=SessionManager(oauth=FakeOAuthClient("bob", ["acme-gh"], [])),
+    )
+    sid = _sign_in(state)
+    caller = gate.caller_for(state.auth, sid)
+    assert ops.candidate_orgs(state, sid, caller) == []
+    payload, status = ops.switch_org(state, {"org": "acme"}, session_id=sid, caller=caller)
+    assert status == 400 and "database" in payload["error"]
+
+
+def test_an_org_retired_mid_switch_ends_the_session_rather_than_admitting_it(
+    serve_engine: Callable[..., Engine], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The one ordering an admin's revocation sweep cannot catch on its own: a switch validated
+    # against the roster before the retirement, writing its selection after the sweep has passed.
+    # The switch re-reads the roster after its own write, so the session ends here instead of
+    # acting as a retired tenant until it expires.
+    state = _state(serve_engine, tmp_path)
+    sid = _sign_in(state)
+    rosters = iter([session_ops.org_model(state), {}])
+    monkeypatch.setattr(session_ops, "org_model", lambda _state: next(rosters))
+
+    payload, status = ops.switch_org(
+        state, {"org": "acme"}, session_id=sid, caller=gate.caller_for(state.auth, sid)
+    )
+    assert status == 409 and "sign in again" in payload["error"]
+    assert not state.auth.sessions.valid(sid)

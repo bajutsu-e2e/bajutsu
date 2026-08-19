@@ -148,9 +148,3 @@ def caller_for(auth: SessionManager, session_value: str | None) -> Caller | None
     if record is None or record.login is None:
         return None
     return Caller(login=record.login, org=record.org, role=record.role)
-
-
-def actor_for(auth: SessionManager, session_value: str | None) -> str | None:
-    """The GitHub login bound to this request's session, if any — used to attribute audit entries
-    (BE-0015 7c). None for a token/Bearer request or no session."""
-    return auth.sessions.identity(session_value) if session_value else None

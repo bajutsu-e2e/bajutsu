@@ -8,6 +8,7 @@ transport, so a change to the policy shows up here rather than only in the two H
 from __future__ import annotations
 
 from bajutsu.serve import gate
+from bajutsu.serve.sessions import Caller, SessionIdentity
 from bajutsu.serve.state import SessionManager
 
 
@@ -137,11 +138,17 @@ def test_bearer_token_narrows_to_worker_paths_once_oauth_is_configured() -> None
     assert gate.is_authorized(auth, "Bearer s3cret", sid, path="/api/run") is True
 
 
-def test_actor_for_returns_the_session_identity() -> None:
+def test_caller_for_carries_the_sessions_identity_org_and_role() -> None:
     auth = SessionManager(token="s3cret")
-    sid = auth.issue_session("alice")
-    assert gate.actor_for(auth, sid) == "alice"
-    # A shared-token session (no identity) and an unknown / absent session have no actor.
-    assert gate.actor_for(auth, auth.issue_session()) is None
-    assert gate.actor_for(auth, "not-a-session") is None
-    assert gate.actor_for(auth, None) is None
+    sid = auth.issue_session(
+        "alice", context=SessionIdentity(login="alice", org="acme", role="editor")
+    )
+    assert gate.caller_for(auth, sid) == Caller(login="alice", org="acme", role="editor")
+    # A session that recorded no selection still names its login: the org falls back to the user row
+    # and the role to the stored one, which is what a pre-selection session did.
+    legacy = auth.issue_session("bob")
+    assert gate.caller_for(auth, legacy) == Caller(login="bob", org=None, role=None)
+    # A shared-token session (no identity) and an unknown / absent session have no caller at all.
+    assert gate.caller_for(auth, auth.issue_session()) is None
+    assert gate.caller_for(auth, "not-a-session") is None
+    assert gate.caller_for(auth, None) is None

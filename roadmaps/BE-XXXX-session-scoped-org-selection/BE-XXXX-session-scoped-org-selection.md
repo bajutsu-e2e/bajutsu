@@ -158,14 +158,18 @@ sessions whose answer it changes, so a user whose cached answer went stale signs
 recomputed. The alternative is an editor who keeps editing an org whose `editorTeam` no longer names
 them.
 
-Recomputing the answer is what identifies those sessions. The endpoint replaces `members`,
-`githubOrgs`, and `editorTeam` as one unit, and it reads the org's current row before the write, so
-the roster before and after are both in hand; each live session attached to the org carries the
-GitHub organizations and Teams its own sign-in observed. The server therefore recomputes both
-answers — may this session still act as this org, and with which role — for every session attached
-to it, and revokes the sessions whose answer moved. Dropping one `members` entry reaches that
-login's sessions and leaves the org's other members untouched; a pure grant moves nobody's answer,
-so it signs out nobody, including the admin performing the edit.
+Recomputing the answer is what identifies those sessions. Each live session acting as the org
+carries the GitHub organizations and Teams its own sign-in observed, so the server asks the edited
+roster both questions again — may this session still act as this org, and with which role — for
+every session acting as it, and revokes the ones whose answer moved. Dropping one `members` entry
+reaches that login's sessions and leaves the org's other members untouched; a pure grant moves
+nobody's answer, so it signs out nobody, including the admin performing the edit.
+
+One session is out of that reach, and only until it expires: one issued before this item shipped,
+which recorded no acting org, resolves its org from the user row and so appears in no per-org
+sweep. Such a session keeps the role its row holds for the remainder of its lifetime, which is the
+behavior every session had before this item and lasts at most one session lifetime past the
+upgrade.
 
 Revoking one user's sessions without editing membership is not part of this item. An admin whose
 GitHub-side Team change has to take effect before the session expires makes it take effect through
@@ -229,7 +233,7 @@ one.
 - [x] The role gate reads the `Caller`'s role, recomputed per switch from the recorded Teams, the target org's `editorTeam`, and the server-wide admin Teams.
 - [x] `GET /api/config` returns this session's candidate orgs; `POST /api/session/org` re-validates a switch against the current org model and records it in the audit log.
 - [x] The header org badge becomes a select box when the session has more than one candidate.
-- [x] Org deletion revokes the org's sessions; a membership edit revokes the sessions whose recomputed eligibility or role changed — by selected org as well as by the user row's org.
+- [x] Org deletion revokes the org's sessions, found by the user row's org and by selection alike; a membership edit revokes the sessions acting as the org whose recomputed eligibility or role changed.
 - [x] The role-cache window (seven days by default), and the revocations that bound it, are documented in `docs/` and `docs/ja/`.
 
 ## References

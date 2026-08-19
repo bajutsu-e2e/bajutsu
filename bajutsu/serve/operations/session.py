@@ -27,16 +27,20 @@ _STORE_UNAVAILABLE = ({"error": "the org store is unavailable"}, 503)
 # Not 401: the request is authenticated (the gate let it through). It simply carries no identity to
 # select an org for — a shared-token session belongs to no org.
 _NO_IDENTITY = ({"error": "no signed-in identity"}, 403)
+# Without a database there is no tenant boundary to select across: `ServeState.org_of` answers
+# `default` for everyone, so offering a choice would render a control that changes nothing.
+_NO_ORG_STORE = ({"error": "org selection needs a database"}, 400)
 
 
 def candidate_orgs(state: ServeState, session_id: str | None, caller: Caller | None) -> list[str]:
     """The orgs this session may act as, or an empty list when it may act as none.
 
-    Empty covers every deployment with nothing to choose between: no signed-in identity, a session
-    that recorded no GitHub facts (issued before the selection existed), and an unreadable roster —
-    all of which leave the acting org exactly as it is today.
+    Empty covers every deployment with nothing to choose between: no signed-in identity, no database
+    (where every request already resolves to the single `default` org), a session that recorded no
+    GitHub facts (issued before the selection existed), and an unreadable roster — all of which leave
+    the acting org exactly as it is today.
     """
-    if caller is None or session_id is None:
+    if caller is None or session_id is None or state.repository is None:
         return []
     record = state.auth.sessions.context(session_id)
     if record is None or record.login is None:
@@ -66,6 +70,8 @@ def switch_org(
     """
     if caller is None or session_id is None:
         return _NO_IDENTITY
+    if state.repository is None:
+        return _NO_ORG_STORE
     record = state.auth.sessions.context(session_id)
     if record is None or record.login is None:
         return _NO_IDENTITY
@@ -88,7 +94,27 @@ def switch_org(
     )
     if not state.auth.sessions.select_org(session_id, slug, role):
         return {"error": "session expired"}, 401
+    # Re-read the roster after the write, so an admin action that lands mid-switch cannot leave this
+    # session acting as an org it no longer qualifies for. Both revocation paths commit their change
+    # to the roster *before* sweeping the org's sessions, so either this read already sees that
+    # change — and ends the session here — or the sweep runs after the write above and finds it.
+    if slug not in orgs_for_identity(_roster(state), record.login, list(record.github_orgs)):
+        state.auth.sessions.revoke([session_id])
+        return {"error": f"{slug!r} changed while switching; sign in again"}, 409
     # Audited under the org being *entered*: an audit of a tenant's activity has to open with the
     # moment a session started acting as it.
     _record_audit(state, caller, slug, "session.org", slug, {"role": role})
     return {"org": slug, "role": role, "orgOptions": candidates}, 200
+
+
+def _roster(state: ServeState) -> dict[str, Any]:
+    """The current org roster, or an empty one when the store cannot be read.
+
+    Used only by the post-write re-check above, where an unreadable roster has to read as "this
+    session no longer qualifies": the alternative is leaving a selection standing on the strength of
+    an answer we could not obtain.
+    """
+    try:
+        return dict(org_model(state))
+    except Exception:
+        return {}
