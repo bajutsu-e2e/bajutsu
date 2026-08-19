@@ -44,6 +44,7 @@ jobs:
   require-two-approvals:
     name: require two approvals for BE proposals
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}

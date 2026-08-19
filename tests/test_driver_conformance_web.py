@@ -30,6 +30,7 @@ from driver_conformance import (
     SCROLL_ROW_COUNT,
     SCROLL_ROW_PREFIX,
     SCROLL_TALL_ID,
+    SECURE_FIELD_ID,
     ConformanceHarness,
     DriverConformanceContract,
 )
@@ -53,6 +54,11 @@ if importlib.util.find_spec("playwright") is None:
 _FIELD_HTML = (
     f'<input data-testid="{FIELD_ID}" '
     'style="position:absolute;left:8px;top:400px;width:200px;height:40px">'
+    # The always-present masked field (BE-0331). `type="password"` is the web's own source for the
+    # normalized secure trait, and it carries no ARIA role, so this is exactly the case that used to
+    # reach `_ROLE_MAP` as a bare `input` and normalize to `textField` like any other.
+    f'<input type="password" data-testid="{SECURE_FIELD_ID}" '
+    'style="position:absolute;left:8px;top:460px;width:200px;height:40px">'
 )
 
 

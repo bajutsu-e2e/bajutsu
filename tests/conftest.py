@@ -19,6 +19,7 @@ from bajutsu.ai.base import MessageRequest, MessageResponse, ToolUseBlock
 from bajutsu.analytics import ledger as usage_ledger
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
+from bajutsu.evidence.sink import RunArtifactWriter
 from scripts.build_roadmap_index import tracking_issue_url
 
 if TYPE_CHECKING:
@@ -327,3 +328,15 @@ def serve_engine(request: pytest.FixtureRequest) -> _EngineFactory:
 # crash-recovery plugin (inert for any test not marked `backend_crash_recovery`) and the on-device
 # evidence-capture plugin (inert for any test whose module never calls `ondevice_evidence.capture`).
 pytest_plugins = ["pytester", "backend_crash_recovery", "ondevice_evidence"]
+
+
+@pytest.fixture
+def run_sink(tmp_path: Path) -> RunArtifactWriter:
+    """A run-directory sink over `tmp_path` with an unconfigured redactor (BE-0331).
+
+    Unconfigured is the interesting default: the two element-level defaults and the pattern backstop
+    run anyway, so a test that seeds no `redact:` still exercises the masking a real `crawl` gets.
+    """
+    from bajutsu.evidence.redaction import Redactor
+
+    return RunArtifactWriter(tmp_path, Redactor(None))

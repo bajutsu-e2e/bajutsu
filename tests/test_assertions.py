@@ -309,6 +309,24 @@ def test_visual_match_none_compare_with_tolerances_ok():
 
 # --- visual assertion evaluation ---
 
+#: The scenario evidence dir a visual assertion writes under — the artifact-name prefix.
+SID = "00-s"
+
+
+def _sid_dir(tmp_path: Path) -> Path:
+    """The run dir's scenario evidence dir, where the captured screenshot lives."""
+    d = tmp_path / SID
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _run_writer(tmp_path: Path):
+    """A run sink over `tmp_path` with nothing configured to mask."""
+    from bajutsu.evidence.redaction import Redactor
+    from bajutsu.evidence.sink import RunArtifactWriter
+
+    return RunArtifactWriter(tmp_path, Redactor(None))
+
 
 def test_visual_assertion_pass(tmp_path):
     from PIL import Image
@@ -321,14 +339,14 @@ def test_visual_assertion_pass(tmp_path):
     img.save(baselines / "red.png")
 
     # Simulate a driver screenshot that matches
-    screenshot = tmp_path / "screenshot.png"
+    screenshot = _sid_dir(tmp_path) / "screenshot.png"
     img.save(screenshot)
 
     vc = VisualContext(
         screenshot_path=screenshot,
         baselines_dir=baselines,
-        diff_dir=tmp_path / "diffs",
-        run_dir=tmp_path,
+        writer=_run_writer(tmp_path),
+        prefix=SID,
     )
     result = evaluate_one(
         SCREEN, _a({"visual": {"baseline": "red.png"}}), ctx=EvalContext(visual=vc)
@@ -338,7 +356,7 @@ def test_visual_assertion_pass(tmp_path):
     assert result.visual is not None
     assert result.visual.diff_pct == 0.0
     assert result.visual.diff is None  # identical → no diff image
-    assert result.visual.actual == "screenshot.png"  # run-dir-relative
+    assert result.visual.actual == f"{SID}/screenshot.png"  # run-dir-relative
     assert result.visual.baseline is not None  # baseline copied into the run dir
     assert (tmp_path / result.visual.baseline).is_file()
 
@@ -352,14 +370,14 @@ def test_visual_assertion_fail(tmp_path):
     baselines.mkdir()
     Image.new("RGBA", (10, 10), (255, 0, 0, 255)).save(baselines / "red.png")
 
-    screenshot = tmp_path / "screenshot.png"
+    screenshot = _sid_dir(tmp_path) / "screenshot.png"
     Image.new("RGBA", (10, 10), (0, 0, 255, 255)).save(screenshot)
 
     vc = VisualContext(
         screenshot_path=screenshot,
         baselines_dir=baselines,
-        diff_dir=tmp_path / "diffs",
-        run_dir=tmp_path,
+        writer=_run_writer(tmp_path),
+        prefix=SID,
     )
     result = evaluate_one(
         SCREEN, _a({"visual": {"baseline": "red.png"}}), ctx=EvalContext(visual=vc)
@@ -378,8 +396,8 @@ def test_visual_assertion_missing_baseline(tmp_path):
     vc = VisualContext(
         screenshot_path=tmp_path / "00-home" / "visual-actual.png",
         baselines_dir=tmp_path / "baselines",
-        diff_dir=tmp_path / "00-home",
-        run_dir=tmp_path,
+        writer=_run_writer(tmp_path),
+        prefix="00-home",
     )
     result = evaluate_one(
         SCREEN, _a({"visual": {"baseline": "missing.png"}}), ctx=EvalContext(visual=vc)
@@ -409,14 +427,14 @@ def test_visual_pixelmatch_fields_with_resolved_exact_fails(tmp_path):
     baselines.mkdir()
     img = Image.new("RGBA", (10, 10), (255, 0, 0, 255))
     img.save(baselines / "red.png")
-    screenshot = tmp_path / "screenshot.png"
+    screenshot = _sid_dir(tmp_path) / "screenshot.png"
     img.save(screenshot)
 
     vc = VisualContext(
         screenshot_path=screenshot,
         baselines_dir=baselines,
-        diff_dir=tmp_path / "diffs",
-        run_dir=tmp_path,
+        writer=_run_writer(tmp_path),
+        prefix=SID,
         default_compare="exact",
     )
     result = evaluate_one(
@@ -438,14 +456,14 @@ def test_visual_evidence_records_engine(tmp_path):
     baselines.mkdir()
     img = Image.new("RGBA", (10, 10), (255, 0, 0, 255))
     img.save(baselines / "red.png")
-    screenshot = tmp_path / "screenshot.png"
+    screenshot = _sid_dir(tmp_path) / "screenshot.png"
     img.save(screenshot)
 
     vc = VisualContext(
         screenshot_path=screenshot,
         baselines_dir=baselines,
-        diff_dir=tmp_path / "diffs",
-        run_dir=tmp_path,
+        writer=_run_writer(tmp_path),
+        prefix=SID,
     )
     result = evaluate_one(
         SCREEN, _a({"visual": {"baseline": "red.png"}}), ctx=EvalContext(visual=vc)
@@ -464,14 +482,14 @@ def test_visual_evidence_records_pixelmatch(tmp_path):
     baselines.mkdir()
     img = Image.new("RGBA", (10, 10), (255, 0, 0, 255))
     img.save(baselines / "red.png")
-    screenshot = tmp_path / "screenshot.png"
+    screenshot = _sid_dir(tmp_path) / "screenshot.png"
     img.save(screenshot)
 
     vc = VisualContext(
         screenshot_path=screenshot,
         baselines_dir=baselines,
-        diff_dir=tmp_path / "diffs",
-        run_dir=tmp_path,
+        writer=_run_writer(tmp_path),
+        prefix=SID,
     )
     result = evaluate_one(
         SCREEN,
@@ -493,14 +511,14 @@ def test_visual_context_default_compare_fallback(tmp_path):
     baselines.mkdir()
     img = Image.new("RGBA", (10, 10), (255, 0, 0, 255))
     img.save(baselines / "red.png")
-    screenshot = tmp_path / "screenshot.png"
+    screenshot = _sid_dir(tmp_path) / "screenshot.png"
     img.save(screenshot)
 
     vc = VisualContext(
         screenshot_path=screenshot,
         baselines_dir=baselines,
-        diff_dir=tmp_path / "diffs",
-        run_dir=tmp_path,
+        writer=_run_writer(tmp_path),
+        prefix=SID,
         default_compare="pixelmatch",
     )
     result = evaluate_one(
@@ -537,8 +555,8 @@ def _vc(tmp_path: Path, screenshot: Path):
     return VisualContext(
         screenshot_path=screenshot,
         baselines_dir=tmp_path / "baselines",
-        diff_dir=tmp_path / "diffs",
-        run_dir=tmp_path,
+        writer=_run_writer(tmp_path),
+        prefix=SID,
     )
 
 
@@ -892,7 +910,7 @@ def test_prepare_visual_comparison_whole_screen_is_a_passthrough(tmp_path: Path)
     assert prepared.crop is None
     assert prepared.scale is None
     assert prepared.compare_actual == shot
-    assert prepared.actual_rel == "shot.png"
+    assert prepared.actual_rel == f"{SID}/shot.png"
 
 
 def test_prepare_visual_comparison_crops_to_the_element(tmp_path: Path) -> None:
@@ -912,11 +930,11 @@ def test_prepare_visual_comparison_crops_to_the_element(tmp_path: Path) -> None:
     assert isinstance(prepared, _Prepared)
     assert prepared.crop is not None
     assert prepared.scale == (1.0, 1.0)  # 100px screenshot over 100pt screen
-    # The crop is written to diff_dir/actual-card.png and is the 40x30 element region.
+    # The crop is written to <sid>/actual-card.png and is the 40x30 element region.
     with Image.open(prepared.compare_actual) as cropped:
         crop_size = cropped.size
     assert crop_size == (40, 30)
-    assert prepared.actual_rel == "diffs/actual-card.png"
+    assert prepared.actual_rel == f"{SID}/actual-card.png"
 
 
 def test_prepare_visual_comparison_element_not_found_returns_result(tmp_path: Path) -> None:
@@ -1016,12 +1034,16 @@ def test_resolve_baselines_copies_the_baseline_and_prepares_the_diff_path(tmp_pa
     Image.new("RGBA", (10, 10), (0, 255, 0, 255)).save(baselines / "home.png")
     ctx = _vc(tmp_path, tmp_path / "shot.png")
 
-    baseline_copy, diff_path = _resolve_baselines(ctx, baselines / "home.png", "home.png")
+    baseline_copy, diff_name, diff_path = _resolve_baselines(
+        ctx, baselines / "home.png", "home.png"
+    )
 
-    assert baseline_copy == tmp_path / "diffs" / "baseline-home.png"
-    assert baseline_copy.is_file()  # copied into the run dir so the report is self-contained
-    assert diff_path == tmp_path / "diffs" / "diff-home.png"
-    assert (tmp_path / "diffs").is_dir()  # diff dir was created
+    assert baseline_copy == f"{SID}/baseline-home.png"
+    # Copied into the run dir so the report is self-contained, through the sink so it is owner-only.
+    assert (tmp_path / baseline_copy).is_file()
+    assert diff_name == f"{SID}/diff-home.png"
+    assert diff_path == tmp_path / diff_name
+    assert diff_path.parent.is_dir()  # the diff's dir was reserved
 
 
 # --- golden element-tree assertion (BE-0006) ---

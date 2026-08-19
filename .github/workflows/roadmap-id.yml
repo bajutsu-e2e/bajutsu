@@ -32,6 +32,7 @@ jobs:
   allocate:
     name: allocate BE IDs
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Gate on the bypass App being configured
         id: gate

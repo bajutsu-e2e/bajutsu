@@ -11,8 +11,14 @@ import pytest
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import FileSink, capture, write_elements, write_raw_tree, write_screenshot
-from bajutsu.evidence.redaction import Redactor
+from bajutsu.evidence.redaction import PLACEHOLDER, Redactor
+from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.scenario import Redact
+
+
+def _writer(run_dir: Path, redactor: Redactor | None = None) -> RunArtifactWriter:
+    """The run's sink, defaulting to a redactor with nothing configured."""
+    return RunArtifactWriter(run_dir, redactor if redactor is not None else Redactor(None))
 
 
 class _StubInterval:
@@ -40,9 +46,9 @@ def _el(identifier: str, label: str) -> base.Element:
 
 def test_write_elements(tmp_path: Path) -> None:
     driver = FakeDriver([_el("a", "A"), _el("b", "B")])
-    path = write_elements(driver, tmp_path / "step0")
-    assert path.name == "elements.json"
-    data = json.loads(path.read_text(encoding="utf-8"))
+    name = write_elements(driver, _writer(tmp_path), "step0")
+    assert name == "step0/elements.json"
+    data = json.loads((tmp_path / name).read_text(encoding="utf-8"))
     assert [e["identifier"] for e in data] == ["a", "b"]
 
 
@@ -51,8 +57,8 @@ def test_write_elements_uses_provided_elements(tmp_path: Path) -> None:
     instead of calling driver.query()."""
     driver = FakeDriver([_el("from_driver", "D")])
     provided = [_el("provided", "P")]
-    path = write_elements(driver, tmp_path / "step0", elements=provided)
-    data = json.loads(path.read_text(encoding="utf-8"))
+    name = write_elements(driver, _writer(tmp_path), "step0", elements=provided)
+    data = json.loads((tmp_path / name).read_text(encoding="utf-8"))
     assert data[0]["identifier"] == "provided"
 
 
@@ -60,17 +66,17 @@ def test_capture_uses_provided_elements(tmp_path: Path) -> None:
     """capture() passes provided elements through to write_elements."""
     driver = FakeDriver([_el("from_driver", "D")])
     provided = [_el("provided", "P")]
-    capture(driver, tmp_path / "step0", ["elements"], elements=provided)
+    capture(driver, _writer(tmp_path), "step0", ["elements"], elements=provided)
     data = json.loads((tmp_path / "step0" / "elements.json").read_text(encoding="utf-8"))
     assert data[0]["identifier"] == "provided"
 
 
 def test_capture_elements_and_screenshot(tmp_path: Path) -> None:
     driver = FakeDriver([_el("a", "A")])
-    written = capture(driver, tmp_path / "step0", ["elements", "screenshot.after"])
+    written = capture(driver, _writer(tmp_path), "step0", ["elements", "screenshot.after"])
     assert [(a.name, a.kind, a.provider) for a in written] == [
-        ("elements.json", "elements", "driver"),
-        ("after.png", "screenshot", "driver"),
+        ("step0/elements.json", "elements", "driver"),
+        ("step0/after.png", "screenshot", "driver"),
     ]
     assert (tmp_path / "step0" / "elements.json").exists()
     # FakeDriver records the screenshot call with the path it was given.
@@ -90,20 +96,20 @@ class _RawSourceStub:
 
 def test_write_raw_tree_is_a_noop_for_a_backend_without_the_protocol(tmp_path: Path) -> None:
     driver = FakeDriver([_el("a", "A")])  # FakeDriver implements no RawSourceProvider
-    assert write_raw_tree(driver, tmp_path / "step0") == []
+    assert write_raw_tree(driver, _writer(tmp_path), "step0") == []
     assert not (tmp_path / "step0").exists()  # never even created the dir
 
 
-def test_write_raw_tree_is_a_noop_before_the_first_read() -> None:
+def test_write_raw_tree_is_a_noop_before_the_first_read(tmp_path: Path) -> None:
     driver = _RawSourceStub(None)
-    assert write_raw_tree(driver, Path("/nonexistent")) == []
+    assert write_raw_tree(driver, _writer(tmp_path), "step0") == []
 
 
 def test_write_raw_tree_writes_the_raw_dump(tmp_path: Path) -> None:
     driver = _RawSourceStub(base.RawSource(text="<hierarchy>raw</hierarchy>", suffix=".xml"))
-    paths = write_raw_tree(driver, tmp_path / "step0")
-    assert [p.name for p in paths] == ["hierarchy.raw.xml"]  # no parsed-input file: none given
-    assert paths[0].read_text(encoding="utf-8") == "<hierarchy>raw</hierarchy>"
+    names = write_raw_tree(driver, _writer(tmp_path), "step0")
+    assert names == ["step0/hierarchy.raw.xml"]  # no parsed-input file: none given
+    assert (tmp_path / names[0]).read_text(encoding="utf-8") == "<hierarchy>raw</hierarchy>"
 
 
 def test_write_raw_tree_writes_the_parsed_input_body_when_present(tmp_path: Path) -> None:
@@ -114,8 +120,8 @@ def test_write_raw_tree_writes_the_parsed_input_body_when_present(tmp_path: Path
             parsed_input="<hierarchy>narrowed</hierarchy>",
         )
     )
-    paths = write_raw_tree(driver, tmp_path / "step0")
-    assert {p.name for p in paths} == {"hierarchy.raw.xml", "hierarchy.parsed-input.xml"}
+    names = write_raw_tree(driver, _writer(tmp_path), "step0")
+    assert set(names) == {"step0/hierarchy.raw.xml", "step0/hierarchy.parsed-input.xml"}
     assert (tmp_path / "step0" / "hierarchy.raw.xml").read_text(
         encoding="utf-8"
     ) == "<hierarchy>wide</hierarchy>"
@@ -127,8 +133,8 @@ def test_write_raw_tree_writes_the_parsed_input_body_when_present(tmp_path: Path
 def test_write_raw_tree_redacts_a_configured_secret(tmp_path: Path) -> None:
     driver = _RawSourceStub(base.RawSource(text='<node text="s3kr3t" />', suffix=".xml"))
     redactor = Redactor(Redact(), values=["s3kr3t"])
-    paths = write_raw_tree(driver, tmp_path / "step0", redactor)
-    assert "s3kr3t" not in paths[0].read_text(encoding="utf-8")
+    names = write_raw_tree(driver, _writer(tmp_path, redactor), "step0")
+    assert "s3kr3t" not in (tmp_path / names[0]).read_text(encoding="utf-8")
 
 
 def test_write_raw_tree_redacts_the_parsed_input_body_too(tmp_path: Path) -> None:
@@ -142,9 +148,9 @@ def test_write_raw_tree_redacts_the_parsed_input_body_too(tmp_path: Path) -> Non
         )
     )
     redactor = Redactor(Redact(), values=["s3kr3t"])
-    paths = write_raw_tree(driver, tmp_path / "step0", redactor)
-    parsed_input = next(p for p in paths if p.name == "hierarchy.parsed-input.xml")
-    assert "s3kr3t" not in parsed_input.read_text(encoding="utf-8")
+    names = write_raw_tree(driver, _writer(tmp_path, redactor), "step0")
+    parsed_input = next(n for n in names if n.endswith("hierarchy.parsed-input.xml"))
+    assert "s3kr3t" not in (tmp_path / parsed_input).read_text(encoding="utf-8")
 
 
 def test_write_raw_tree_refuses_when_a_label_rule_is_configured(tmp_path: Path) -> None:
@@ -156,7 +162,7 @@ def test_write_raw_tree_refuses_when_a_label_rule_is_configured(tmp_path: Path) 
         base.RawSource(text='<node label="Password" text="hunter2" />', suffix=".xml")
     )
     redactor = Redactor(Redact(labels=["Password"]))
-    assert write_raw_tree(driver, tmp_path / "step0", redactor) == []
+    assert write_raw_tree(driver, _writer(tmp_path, redactor), "step0") == []
     assert not (tmp_path / "step0").exists()  # refused before ever creating the step dir
 
 
@@ -165,7 +171,7 @@ def test_write_raw_tree_still_writes_without_a_label_rule(tmp_path: Path) -> Non
     # (header/field patterns, literal secret values) still lets `rawTree` through.
     driver = _RawSourceStub(base.RawSource(text="<node/>", suffix=".xml"))
     redactor = Redactor(Redact(), values=["s3kr3t"])
-    assert write_raw_tree(driver, tmp_path / "step0", redactor) != []
+    assert write_raw_tree(driver, _writer(tmp_path, redactor), "step0") != []
 
 
 def test_capture_raw_tree_kind_produces_artifacts(tmp_path: Path) -> None:
@@ -176,16 +182,16 @@ def test_capture_raw_tree_kind_produces_artifacts(tmp_path: Path) -> None:
             parsed_input="<hierarchy>narrowed</hierarchy>",
         )
     )
-    written = capture(driver, tmp_path / "step0", ["rawTree"])
+    written = capture(driver, _writer(tmp_path), "step0", ["rawTree"])
     assert {(a.name, a.kind, a.provider) for a in written} == {
-        ("hierarchy.raw.xml", "rawTree", "driver"),
-        ("hierarchy.parsed-input.xml", "rawTree", "driver"),
+        ("step0/hierarchy.raw.xml", "rawTree", "driver"),
+        ("step0/hierarchy.parsed-input.xml", "rawTree", "driver"),
     }
 
 
 def test_capture_raw_tree_kind_on_an_unsupported_backend_produces_nothing(tmp_path: Path) -> None:
     driver = FakeDriver([_el("a", "A")])
-    assert capture(driver, tmp_path / "step0", ["rawTree"]) == []
+    assert capture(driver, _writer(tmp_path), "step0", ["rawTree"]) == []
     assert not (tmp_path / "step0").exists()  # write_raw_tree's own no-op never mkdirs either
 
 
@@ -212,7 +218,7 @@ def test_capture_pairs_raw_tree_with_the_read_elements_json_took_regardless_of_k
     # lists `capture: [rawTree, elements]` (rawTree first), `rawTree` must not run before that query
     # and capture a now-stale read — the two files must always describe the same one.
     driver = _RawSourceQueryStub()
-    capture(driver, tmp_path / "step0", ["rawTree", "elements"])
+    capture(driver, _writer(tmp_path), "step0", ["rawTree", "elements"])
     assert (tmp_path / "step0" / "hierarchy.raw.xml").read_text(encoding="utf-8") == "read-1"
     assert driver.reads == 1  # elements.json's own query() is the only read, and rawTree saw it
 
@@ -308,51 +314,35 @@ class _WritingDriver(FakeDriver):
 
 def test_write_screenshot_is_owner_only(tmp_path: Path) -> None:
     # A screenshot can capture on-screen secrets, so it must land owner-only (0600), not
-    # world-readable under the ambient umask (BE-0131).
-    path = write_screenshot(_WritingDriver([_el("a", "A")]), tmp_path / "step0")
-    assert path.exists()
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    # world-readable under the ambient umask (BE-0131) — even though the driver, not the sink,
+    # writes the bytes into the path the sink reserved.
+    name = write_screenshot(_WritingDriver([_el("a", "A")]), _writer(tmp_path), "step0")
+    assert name == "step0/after.png"
+    assert stat.S_IMODE((tmp_path / name).stat().st_mode) == 0o600
 
 
 def test_write_elements_is_owner_only(tmp_path: Path) -> None:
     # The element dump holds on-screen text (labels / values), redacted best-effort — owner-only,
     # like the other sensitive artifacts (BE-0131, issue #558's accessibility-dump scope).
-    path = write_elements(FakeDriver([_el("a", "A")]), tmp_path / "step0")
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    name = write_elements(FakeDriver([_el("a", "A")]), _writer(tmp_path), "step0")
+    assert stat.S_IMODE((tmp_path / name).stat().st_mode) == 0o600
 
 
 def test_capture_no_writing_kinds_leaves_dir_uncreated(tmp_path: Path) -> None:
     """capture() creates the step dir only when it actually writes a file; a kind it
     does not handle here (e.g. an interval kind) must leave the dir untouched, as before."""
     driver = FakeDriver([_el("a", "A")])
-    step_dir = tmp_path / "step0"
-    assert capture(driver, step_dir, ["video"]) == []
-    assert not step_dir.exists()
+    assert capture(driver, _writer(tmp_path), "step0", ["video"]) == []
+    assert not (tmp_path / "step0").exists()
 
 
-def test_capture_creates_dir_once_for_writing_kinds(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A capture of two writing kinds creates the step dir exactly once, not once per writer.
-
-    Counts `Path.mkdir` calls on the step dir: a regression to per-writer `mkdir()` would make it
-    fire two-plus times. Both files still land under the freshly created dir.
-    """
-    mkdirs: list[Path] = []
-    real_mkdir = Path.mkdir
-
-    def counting_mkdir(self: Path, *args: object, **kwargs: object) -> None:
-        mkdirs.append(self)
-        real_mkdir(self, *args, **kwargs)  # type: ignore[arg-type]
-
-    monkeypatch.setattr(Path, "mkdir", counting_mkdir)
-
+def test_capture_writes_every_writing_kind_into_the_step_dir(tmp_path: Path) -> None:
+    """Both writing kinds land under the step dir the sink creates on the way in."""
     driver = FakeDriver([_el("a", "A")])
     step_dir = tmp_path / "step0"
-    capture(driver, step_dir, ["elements", "screenshot.after"])
+    capture(driver, _writer(tmp_path), "step0", ["elements", "screenshot.after"])
     assert (step_dir / "elements.json").exists()
     assert ("screenshot", str(step_dir / "after.png")) in driver.actions
-    assert mkdirs.count(step_dir) == 1  # the step dir is created once, not per writing kind
 
 
 def test_filesink_dispatches_intervals_to_web_provider(tmp_path: Path) -> None:
@@ -545,10 +535,11 @@ def test_finish_scenario_intervals_drops_a_failed_stop_but_finishes_the_rest(
 
 def test_finish_scenario_intervals_redacts_then_emits_a_readable_file(tmp_path: Path) -> None:
     sink = FileSink(tmp_path, udid="u", secrets=["topsecret"])
-    f = tmp_path / "deviceLog.txt"
+    f = tmp_path / "s" / "deviceLog.txt"
+    f.parent.mkdir()
     f.write_text("auth token=topsecret here", encoding="utf-8")
     out = sink.finish_scenario_intervals("s", [_StubInterval(f)])
-    assert [a.name for a in out] == ["deviceLog.txt"]
+    assert [a.name for a in out] == ["s/deviceLog.txt"]
     assert "topsecret" not in f.read_text(encoding="utf-8")
 
 
@@ -559,25 +550,34 @@ def test_finish_scenario_intervals_drops_an_artifact_it_cannot_redact(
     # must not ship (fail closed) rather than reach the report unredacted. A directory at the file
     # path makes read_text raise IsADirectoryError (a real OSError) without mocking the filesystem.
     sink = FileSink(tmp_path, udid="u", secrets=["topsecret"])
-    unreadable = tmp_path / "deviceLog.txt"
-    unreadable.mkdir()
+    unreadable = tmp_path / "s" / "deviceLog.txt"
+    unreadable.mkdir(parents=True)
     with caplog.at_level("WARNING"):
         out = sink.finish_scenario_intervals("s", [_StubInterval(unreadable)])
     assert out == []
     assert any("redact" in r.message.lower() for r in caplog.records)
 
 
-def test_finish_scenario_intervals_emits_unreadable_file_when_redactor_inactive(
+def test_finish_scenario_intervals_drops_an_unreadable_file_with_no_secrets_configured(
     tmp_path: Path,
 ) -> None:
-    # With no secrets the redactor is inactive: _redact_file returns safe before any read, so even an
-    # unreadable file (a directory here) is emitted — the fail-closed guard is scoped to active
-    # redaction and must not drop evidence when there is nothing to scrub.
+    # The sink's pattern backstop needs no configuration (BE-0331 unit 7), so "nothing is
+    # configured" no longer means "nothing to scrub": a file the sink cannot read is a file the
+    # backstop could not run over, and it fails closed like any other unscrubbable evidence.
     sink = FileSink(tmp_path, udid="u")
-    unreadable = tmp_path / "deviceLog.txt"
-    unreadable.mkdir()
-    out = sink.finish_scenario_intervals("s", [_StubInterval(unreadable)])
-    assert [a.name for a in out] == ["deviceLog.txt"]
+    unreadable = tmp_path / "s" / "deviceLog.txt"
+    unreadable.mkdir(parents=True)
+    assert sink.finish_scenario_intervals("s", [_StubInterval(unreadable)]) == []
+
+
+def test_finish_scenario_intervals_emits_a_video_without_reading_it(tmp_path: Path) -> None:
+    # A video is opaque bytes the sink cannot inspect, so it ships recorded as unmasked rather than
+    # scrubbed — an unreadable one is still emitted, unlike the text evidence above (BE-0151).
+    sink = FileSink(tmp_path, udid="u", secrets=["topsecret"])
+    unreadable = tmp_path / "s" / "scenario.mp4"
+    unreadable.mkdir(parents=True)
+    out = sink.finish_scenario_intervals("s", [_StubInterval(unreadable, kind="video")])
+    assert [a.name for a in out] == ["s/scenario.mp4"]
 
 
 def test_finish_scenario_intervals_drops_apptrace_when_only_the_raw_is_unredactable(
@@ -586,10 +586,108 @@ def test_finish_scenario_intervals_drops_apptrace_when_only_the_raw_is_unredacta
     # appTrace ships with a raw stream beside it; if the raw can't be scrubbed the artifact must be
     # dropped too, and the warning must name the raw file (not the main appTrace path).
     sink = FileSink(tmp_path, udid="u", secrets=["topsecret"])
-    main = tmp_path / "appTrace.json"
+    main = tmp_path / "s" / "appTrace.json"
+    main.parent.mkdir()
     main.write_text("clean", encoding="utf-8")
-    (tmp_path / "appTrace.raw").mkdir()  # unreadable raw stream
+    (tmp_path / "s" / "appTrace.raw").mkdir()  # unreadable raw stream
     with caplog.at_level("WARNING"):
         out = sink.finish_scenario_intervals("s", [_StubInterval(main, kind="appTrace")])
     assert out == []
     assert any("appTrace.raw" in r.getMessage() for r in caplog.records)
+
+
+# --- BE-0331: the pattern backstop, run last over whatever the sink serializes ---------------
+
+# An Anthropic key shape, the one the motivating leak carried. Synthetic: the guide invented a
+# realistic value for a field asking for a key, which is precisely the class no rule keyed on a
+# configured name or a known literal can reach.
+_SHAPED_KEY = "sk-ant-notarealkey000000000000"
+
+
+def test_the_backstop_masks_a_shape_the_structural_rules_never_reach(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Nothing is configured and the element names nothing credential-like, so the two BE-0331
+    # defaults and every configured rule pass this value over — the backstop is the last thing
+    # between it and the artifact. It runs over the serialized bytes, so it reaches an element
+    # tree the structural pass just wrote out.
+    writer = _writer(tmp_path)
+    with caplog.at_level("WARNING"):
+        writer.write_elements("elements.json", [_el("note.body", f"jot {_SHAPED_KEY} down")])
+    written = (tmp_path / "elements.json").read_text(encoding="utf-8")
+    assert _SHAPED_KEY not in written
+    assert PLACEHOLDER in written
+    # Exactly one warning, naming the artifact and the shape: a value reaching the backstop means an
+    # earlier, more precise rule should have caught it, so it is worth surfacing rather than masking
+    # silently — and worth surfacing once, not once per pattern the sink tried.
+    (record,) = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert "elements.json" in record.getMessage()
+    assert "anthropicApiKey" in record.getMessage()
+
+
+def test_the_backstop_names_every_shape_in_one_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # One artifact, one warning: an operator reads it to decide whether the artifact is safe to
+    # share, so the shapes belong together in the line that names the file.
+    writer = _writer(tmp_path)
+    aws = "AKIAEXAMPLEKEYID1234"
+    with caplog.at_level("WARNING"):
+        writer.write_text("guide.log", f"{_SHAPED_KEY}\n{aws}\n")
+    (record,) = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert "anthropicApiKey" in record.getMessage() and "awsAccessKeyId" in record.getMessage()
+    written = (tmp_path / "guide.log").read_text(encoding="utf-8")
+    assert _SHAPED_KEY not in written and aws not in written
+
+
+def test_the_backstop_leaves_ordinary_evidence_alone(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A crawl writes an artifact per screen, so a backstop that cried wolf on ordinary text would
+    # bury the warning that means something.
+    writer = _writer(tmp_path)
+    text = "tap home.submit\ntype search.query\npinned=true\n"
+    with caplog.at_level("WARNING"):
+        writer.write_text("plan.log", text)
+    assert (tmp_path / "plan.log").read_text(encoding="utf-8") == text
+    assert [r for r in caplog.records if r.levelname == "WARNING"] == []
+
+
+# --- BE-0331: the bytes the sink cannot inspect ---------------------------------------------
+
+
+def test_write_bytes_records_the_artifact_as_unmasked(tmp_path: Path) -> None:
+    # Pixels cannot be masked, so the honest thing is to say so rather than let the artifact be
+    # described as scrubbed by rules that never ran (BE-0151, kept for every opaque shape).
+    writer = _writer(tmp_path)
+    writer.write_bytes("screens/abc.png", b"\x89PNG\r\n\x1a\n fake")
+    assert writer.unmasked == ["screens/abc.png"]
+    assert (tmp_path / "screens" / "abc.png").read_bytes().startswith(b"\x89PNG")
+
+
+def test_a_reserved_recording_counts_as_unmasked_only_once_the_caller_says_so(
+    tmp_path: Path,
+) -> None:
+    # `reserve` hands out a path because a subprocess cannot be handed bytes, and reserving alone
+    # settles nothing: the caller closes the loop, and only then is the artifact on the record as
+    # content the sink could not inspect.
+    writer = _writer(tmp_path)
+    path = writer.reserve("video/scenario.mp4")
+    assert writer.unmasked == []
+    path.write_bytes(b"not really a video")
+    writer.record_unmasked("video/scenario.mp4")
+    assert writer.unmasked == ["video/scenario.mp4"]
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600  # restricted like any other artifact
+
+
+def test_the_text_paths_are_never_recorded_as_unmasked(tmp_path: Path) -> None:
+    # The list is what tells a reader which artifacts the rules did not run over, so every shape the
+    # sink *can* inspect must stay off it — an over-broad list is as misleading as a missing one.
+    writer = _writer(tmp_path)
+    writer.write_text("device.log", "nothing here")
+    writer.write_json("manifest.json", {"run": "abc"})
+    writer.write_elements("elements.json", [_el("home.submit", "Submit")])
+    writer.write_exchanges("network.json", [{"url": "https://example.com/"}])
+    writer.write_screen_map("screenmap.json", {"stop_reason": "completed"})
+    assert writer.scrub_reserved("device.log") is True
+    assert writer.unmasked == []

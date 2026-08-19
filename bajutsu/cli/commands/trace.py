@@ -7,6 +7,7 @@ from pathlib import Path
 import typer
 
 from bajutsu import trace as _trace
+from bajutsu.run_files import DEFAULT_RUNS_DIR
 from bajutsu.scenario import load_expanded_scenarios
 
 
@@ -15,7 +16,7 @@ def trace(
         "", help="run directory (timeline); with --explain, a scenario file to preview"
     ),
     scenario: str = typer.Option("", "--scenario", help="only scenarios whose name contains this"),
-    runs: str = typer.Option("runs", help="runs root (used when run_dir is omitted)"),
+    runs: str = typer.Option(DEFAULT_RUNS_DIR, help="runs root (used when run_dir is omitted)"),
     explain: bool = typer.Option(
         False,
         "--explain",

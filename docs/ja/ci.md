@@ -88,6 +88,28 @@ dev ツールは `dev` 依存グループにあるため、Linux ジョブは `u
 段ごとにミラーしており、`actionlint`（CI が導入する単体バイナリ）以外は新規クローンでも `uv`
 だけで同一に走ります。これが「ローカルで緑」＝「CI で緑」を担保します。
 
+### すべてのジョブが宣言するタイムアウト
+
+[`.github/workflows/`](../../.github/workflows/) のジョブは、すべて `timeout-minutes` を設定します。
+GitHub が代わりに当てるデフォルトは 360 分だからです。そのまま止まったジョブは、赤いチェックが出るまで
+ランナーを占有し、Actions の実行時間を消費し続けます。実際に web レーンでそれが起きました。
+`conformance (playwright)` と `codegen (playwright)` は、成功するときには 2 分から 7 分で終わります。
+それにもかかわらず、どちらも 4 時間近くでキャンセルされました。
+
+上限がそのジョブ自身の見積もりから決まる場合は、独自の値を設定し、根拠を隣のコメントに書きます。
+AWS Device Farm への投入は 180 分、iOS のシナリオジョブは 60 分、Android の `smoke` は 30 分、
+Android のその他のシナリオジョブは 25 分、`claude-review` は 20 分、Android の Gradle キャッシュを
+温めるジョブと `ai-smoke` の Anthropic API 呼び出し 1 回は 15 分、`mcp-wire` と prose companion は
+10 分です。そうした根拠を持たないジョブは、リポジトリのデフォルトである **30 分**を取ります。計測できた
+成功ジョブのうちもっとも長いのは CodeQL の Swift 解析の約 20 分なので、30 分なら余裕をもって収まります。
+それでいて、止まったジョブは 30 分以内に明確な失敗として現れます。
+
+`timeout-minutes` を持たないジョブが 2 つだけあります。[`docs-refresh.yml`](../../.github/workflows/docs-refresh.yml)
+と [`roadmap-refresh.yml`](../../.github/workflows/roadmap-refresh.yml) にある、再利用可能ワークフロー
+[`refresh.yml`](../../.github/workflows/refresh.yml) を呼び出すジョブです。呼び出し側のジョブに
+`timeout-minutes` を書くと、GitHub が受け付けないためです。代わりに `refresh.yml` 自身のジョブが持つ
+30 分の上限が、両方の呼び出し側を覆います。
+
 ### E2E ジョブが失敗したときに集まる証跡（BE-0361、BE-0367）
 
 E2E でもっとも厄介な失敗は、何もクラッシュしない失敗です。iOS では常駐 XCUITest ランナーが

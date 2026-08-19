@@ -23,6 +23,7 @@ from bajutsu.cli._shared import (
     _warn_onscreen_secrets,
 )
 from bajutsu.config import Effective, IosConfig
+from bajutsu.run_files import DEFAULT_RUNS_DIR
 
 
 def triage(
@@ -40,7 +41,7 @@ def triage(
         "--history",
         help="with --flaky, a dir of past runs (each with a manifest.json) to contrast",
     ),
-    runs: str = typer.Option("runs", help="runs root (used when run_dir is omitted)"),
+    runs: str = typer.Option(DEFAULT_RUNS_DIR, help="runs root (used when run_dir is omitted)"),
     ai: bool = typer.Option(
         False,
         "--ai",

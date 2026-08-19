@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
 import time
@@ -17,7 +16,6 @@ if TYPE_CHECKING:
     from bajutsu.drivers import base
 
 from bajutsu import capability_preflight, device_errors
-from bajutsu.artifact_perms import make_run_dir, restrict_file
 from bajutsu.assertions import (
     AssertionResult,
     EvalContext,
@@ -36,6 +34,7 @@ from bajutsu.drivers.base import BackendCrashError
 from bajutsu.evidence import Artifact
 from bajutsu.evidence.network import NetworkExchange, _no_transitions
 from bajutsu.evidence.redaction import Redactor
+from bajutsu.evidence.sink import RunArtifactWriter, prepare_run_dir
 from bajutsu.orchestrator import (
     AlertGuardConfig,
     Clock,
@@ -82,9 +81,8 @@ def _resolve_now(clock: Clock | None) -> Callable[[], float]:
 
 def _write_network(
     timed: list[tuple[NetworkExchange, float]],
-    run_dir: Path,
+    writer: RunArtifactWriter,
     sid: str,
-    redactor: Redactor,
     *,
     wall_offset_s: float,
     provider: str = "collector",
@@ -98,6 +96,9 @@ def _write_network(
     `RunResult.video_anchor_s` at render time to place the exchange on the recording's timeline.
     `wall_offset_s` is keyword-only: it and `RunResult.video_anchor_s` are both floats of similar
     magnitude a caller could otherwise pass in the wrong slot with no type error.
+
+    Goes through the sink's exchange entry point so BE-0130's default header masking runs inside the
+    boundary rather than being left to this caller (BE-0331).
     """
     if not timed:
         return None
@@ -105,14 +106,10 @@ def _write_network(
     for ex, received in timed:
         d = ex.model_dump(by_alias=True, exclude_none=True)
         d["startedAt"] = round(received + wall_offset_s - (ex.duration_ms or 0.0) / 1000.0, 3)
-        data.append(redactor.redact_exchange(d))
-    text = json.dumps(data, ensure_ascii=False, indent=2)
-    out = run_dir / sid / "network.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(text, encoding="utf-8")
-    # network.json can carry request/response bodies and headers — owner-only, umask-independent (BE-0131).
-    restrict_file(out)
-    return Artifact(f"{sid}/network.json", "network", provider)
+        data.append(d)
+    name = f"{sid}/network.json"
+    writer.write_exchanges(name, data)
+    return Artifact(name, "network", provider)
 
 
 @dataclass(frozen=True)
@@ -234,6 +231,10 @@ class _ScenarioRunner:
             )
         except Exception as exc:  # diagnostic only — the run's verdict must not depend on it
             _logger.debug("entry-screen convention score failed: %s", exc, exc_info=True)
+
+    def _artifacts(self) -> RunArtifactWriter | None:
+        """The run's artifact sink, or None when this run keeps no run directory at all."""
+        return None if self.run_dir is None else RunArtifactWriter(self.run_dir, self.redactor)
 
     def _now(self) -> float:
         """Monotonic seconds from the injected clock, or the real clock when none is wired.
@@ -555,14 +556,17 @@ class _ScenarioRunner:
             self._maybe_emit_score(i, lz.driver)
             if lz.collector is not None:
                 lz.collector.clear()
+            writer = self._artifacts()
             # Build visual context for scenario-level visual assertions (expect).
             vc: VisualContext | None = None
-            if self.baselines_dir is not None and self.run_dir is not None:
+            if self.baselines_dir is not None and writer is not None:
                 vc = VisualContext(
-                    screenshot_path=self.run_dir / sid / "visual-actual.png",
+                    # The driver writes this screenshot itself, so the sink reserves its path and
+                    # `capture_actual` records the bytes as uninspected (BE-0331).
+                    screenshot_path=writer.reserve(f"{sid}/visual-actual.png"),
                     baselines_dir=self.baselines_dir,
-                    diff_dir=self.run_dir / sid,
-                    run_dir=self.run_dir,
+                    writer=writer,
+                    prefix=sid,
                     default_compare=self.eff.visual_compare,
                 )
             sc = (
@@ -622,12 +626,11 @@ class _ScenarioRunner:
             result.device_name = lz.device_name  # for the report's Environment tab
             result.device_runtime = lz.device_runtime
             result.skipped_captures = list(lz.skipped_captures)  # disclose evidence gaps (BE-0020)
-            if lz.collector is not None and self.run_dir is not None:
+            if lz.collector is not None and writer is not None:
                 art = _write_network(
                     lz.collector.snapshot_timed(),
-                    self.run_dir,
+                    writer,
                     sid,
-                    self.redactor,
                     wall_offset_s=result.wall_offset_s,
                     provider=lz.collector_provider,
                 )
@@ -856,9 +859,6 @@ def run_and_report(
         The per-scenario results and the path to the written `manifest.json`.
     """
     run_dir = runs_dir / run_id
-    # Create the run dir owner-only up front, before any scenario write creates it world-readable
-    # under the ambient umask; everything underneath then inherits a non-world-readable parent (BE-0131).
-    make_run_dir(run_dir)
     results = run_all(
         eff,
         scenarios,
@@ -922,9 +922,9 @@ def run_matrix_and_report(
         The concatenated per-engine results and the path to the written `manifest.json`.
     """
     run_dir = runs_dir / run_id
-    # Owner-only up front (BE-0131): each engine pass writes under run_dir/<engine>, so a 0700 top
-    # dir keeps every engine's evidence non-world-readable without per-subdir chmod.
-    make_run_dir(run_dir)
+    # Owner-only up front (BE-0131): each engine pass writes under run_dir/<engine>, and the sink
+    # that creates *that* directory would materialize this one above it at the ambient umask.
+    prepare_run_dir(runs_dir, run_id)
     results: list[RunResult] = []
     for engine in engines:
         passed = run_pass(engine, run_dir / engine)
@@ -994,22 +994,23 @@ def _assemble_report(
     """Write the run's report artifacts under `run_dir` from its (possibly engine-tagged) results.
 
     The shared report-writing tail of `run_and_report` and `run_matrix_and_report`: the executed
-    `scenario.yaml`, the provenance stamps, and `manifest.json` / `junit.xml` / `report.html`,
-    then the final secret-value scrub.
+    `scenario.yaml`, the provenance stamps, and `manifest.json` / `junit.xml` / `report.html`.
+
+    Every one of them goes through a sink carrying the run's bound secret values, so a literal that
+    reached a run-level artifact (an assertion's expected/actual text in the manifest or the HTML) is
+    masked on the way in rather than rewritten afterwards (BE-0331). The scenario definitions already
+    hold tokens, not values, so this only ever catches result text.
     """
     # Snapshot for evidence with literal `totp.secret` seeds masked (BE-0152) — a `${secrets.*}`
-    # reference is kept and its resolved value is scrubbed by the secret-value pass below.
+    # reference is kept and its resolved value is masked by the sink below.
     snapshot = [redact_totp_secrets(s) for s in scenarios]
     # The merged Result tab renders each scenario as a structured view (definitions) with a toggle
     # to the raw YAML (sources). The same helper feeds the offline re-render, so the two match.
     definitions, sources = scenario_render_inputs(snapshot)
-    make_run_dir(run_dir)  # owner-only; idempotent if run_and_report already created it (BE-0131)
+    writer = RunArtifactWriter(run_dir, Redactor(None, values=secret_values))
     # Keep the executed scenario alongside its results (re-runnable / reviewable).
     scenario_yaml = dump_scenario_file(snapshot, description)
-    scenario_path = run_dir / "scenario.yaml"
-    scenario_path.write_text(scenario_yaml, encoding="utf-8")
-    # The scenario copy can hold masked-but-sensitive text — owner-only, umask-independent (BE-0131).
-    restrict_file(scenario_path)
+    writer.write_text("scenario.yaml", scenario_yaml)
     # Stamp the run's identity (scenario fingerprint + tool/git version) so accumulated runs can be
     # grouped to tell true flakiness from an edited scenario (BE-0049); pure metadata, never a verdict.
     provenance = run_provenance(
@@ -1020,7 +1021,7 @@ def _assemble_report(
     # and what was suppressed?" stays answerable. None for an ungoverned (local/Git) run.
     if exec_provenance is not None:
         provenance["uploadExec"] = exec_provenance
-    manifest = write_report(
+    return write_report(
         run_dir,
         run_id,
         results,
@@ -1029,19 +1030,5 @@ def _assemble_report(
         source_name=source_name,
         description=description,
         provenance=provenance,
+        writer=writer,
     )
-    # Final safety net: scrub any literal secret value that reached a run-level artifact
-    # (e.g. an assertion's expected/actual text in the manifest / HTML). The scenario
-    # definitions already hold tokens, not values, so this only catches result text.
-    _scrub_secret_values(run_dir, secret_values)
-    return manifest
-
-
-def _scrub_secret_values(run_dir: Path, secret_values: list[str] | None) -> None:
-    if not secret_values:
-        return
-    scrub = Redactor(None, values=secret_values)
-    for name in ("manifest.json", "junit.xml", "ctrf.json", "report.html", "scenario.yaml"):
-        path = run_dir / name
-        if path.exists():
-            path.write_text(scrub.redact_text(path.read_text(encoding="utf-8")), encoding="utf-8")

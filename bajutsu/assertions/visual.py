@@ -7,12 +7,12 @@ is in device pixels, so everything here resolves selectors and scales frames int
 
 from __future__ import annotations
 
-import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from bajutsu.assertions._common import AssertionResult, _resolve_one, sel_str
 from bajutsu.drivers import base
+from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.scenario import (
     ExcludeRegion,
     Selector,
@@ -45,17 +45,33 @@ class VisualEvidence:
 
 @dataclass(frozen=True)
 class VisualContext:
-    """Paths a visual assertion needs.
+    """What a visual assertion reads, and where the images it produces go.
 
-    The current screenshot, the baselines directory, where to write diff images, and the run dir
-    root (so image paths can be expressed run-dir-relative for the report).
+    `screenshot_path` is the run's captured screenshot and `baselines_dir` the project's stored
+    baselines, which live outside the run directory and are only ever read. Everything written goes
+    through `writer` under `prefix` — the scenario's evidence dir — so this holds no writable handle
+    into the run directory (BE-0331).
     """
 
     screenshot_path: Path
     baselines_dir: Path
-    diff_dir: Path
-    run_dir: Path
+    writer: RunArtifactWriter
+    prefix: str
     default_compare: str = "exact"
+
+    @property
+    def actual_name(self) -> str:
+        """The captured screenshot's artifact name, relative to the run dir."""
+        return f"{self.prefix}/{self.screenshot_path.name}"
+
+    def capture_actual(self, driver: base.Driver) -> None:
+        """Capture the screenshot this scenario's `visual` assertions compare against.
+
+        The driver writes the image itself, so the sink reserves the path and records the bytes as
+        uninspected — pixels cannot be masked (BE-0151).
+        """
+        driver.screenshot(str(self.screenshot_path))
+        self.writer.record_unmasked(self.actual_name)
 
 
 def _visual_scale(
@@ -136,7 +152,7 @@ def _prepare_visual_comparison(
     no elements to resolve against, or an unresolvable / empty-frame element scope).
     """
     detail = f"visual ≈ {a.baseline}"
-    actual_rel = _rel(ctx.run_dir, ctx.screenshot_path)
+    actual_rel = ctx.actual_name
     needs_frames = a.element is not None or any(
         isinstance(r, SelectorRegion) for r in a.exclude or []
     )
@@ -173,12 +189,13 @@ def _prepare_visual_comparison(
             f"element has an empty frame: {sel_str(a.element)}",
             visual=ev,
         )
-    ctx.diff_dir.mkdir(parents=True, exist_ok=True)
-    cropped_path = ctx.diff_dir / f"actual-{name}"
+    cropped = f"{ctx.prefix}/actual-{name}"
+    cropped_path = ctx.writer.reserve(cropped)
     box = (int(crop.x), int(crop.y), int(crop.x + crop.w), int(crop.y + crop.h))
     with Image.open(ctx.screenshot_path) as img:
         img.crop(box).save(cropped_path)
-    return _Prepared(cropped_path, _rel(ctx.run_dir, cropped_path), crop=crop, scale=scale)
+    ctx.writer.record_unmasked(cropped)
+    return _Prepared(cropped_path, cropped, crop=crop, scale=scale)
 
 
 def _resolve_masks(
@@ -214,17 +231,17 @@ def _resolve_masks(
     return masks, masked_selectors
 
 
-def _resolve_baselines(ctx: VisualContext, baseline_path: Path, name: str) -> tuple[Path, Path]:
+def _resolve_baselines(ctx: VisualContext, baseline_path: Path, name: str) -> tuple[str, str, Path]:
     """Prepare the run-dir baseline copy and the diff path for a compare.
 
     Copies the baseline into the run dir (so the report and serve are self-contained) and returns
-    `(baseline_copy, diff_path)`. Called only once the baseline is known to exist.
+    `(baseline_copy_name, diff_name, diff_path)`. Called only once the baseline is known to exist.
+    Both are images, so they cross the sink as bytes it cannot inspect (BE-0151).
     """
-    ctx.diff_dir.mkdir(parents=True, exist_ok=True)
-    diff_path = ctx.diff_dir / f"diff-{name}"
-    baseline_copy = ctx.diff_dir / f"baseline-{name}"
-    shutil.copyfile(baseline_path, baseline_copy)
-    return baseline_copy, diff_path
+    baseline_copy = f"{ctx.prefix}/baseline-{name}"
+    ctx.writer.write_bytes(baseline_copy, baseline_path.read_bytes())
+    diff = f"{ctx.prefix}/diff-{name}"
+    return baseline_copy, diff, ctx.writer.reserve(diff)
 
 
 def _eval_visual(
@@ -278,7 +295,7 @@ def _eval_visual(
     masks, masked_selectors = masks_or_result
 
     # 3. Compare: copy the baseline into the run dir, prepare the diff path, run the engine.
-    baseline_copy, diff_path = _resolve_baselines(ctx, baseline_path, name)
+    baseline_copy, diff_name, diff_path = _resolve_baselines(ctx, baseline_path, name)
     result = compare_images(
         prepared.compare_actual,
         baseline_path,
@@ -291,22 +308,17 @@ def _eval_visual(
     )
 
     # 4. Build the result and its evidence.
+    wrote_diff = diff_path.is_file()
+    if wrote_diff:
+        ctx.writer.record_unmasked(diff_name)
     ev = VisualEvidence(
         baseline_name=a.baseline,
         actual=prepared.actual_rel,
-        baseline=_rel(ctx.run_dir, baseline_copy),
-        diff=_rel(ctx.run_dir, diff_path) if (not result.ok and diff_path.is_file()) else None,
+        baseline=baseline_copy,
+        diff=diff_name if (not result.ok and wrote_diff) else None,
         diff_pct=result.diff_pct,
         engine=engine,
         element_scoped=prepared.crop is not None,
         masked_selectors=masked_selectors,
     )
     return AssertionResult(result.ok, "visual", detail, result.reason, visual=ev)
-
-
-def _rel(run_dir: Path, p: Path) -> str:
-    """A run-dir-relative POSIX path for the report; falls back to the name if unrelated."""
-    try:
-        return p.relative_to(run_dir).as_posix()
-    except ValueError:
-        return p.name
