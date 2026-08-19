@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ondevice-wedge-timeout-not-a-verdict-ja.md)
+**English** · [日本語](BE-0378-ondevice-wedge-timeout-not-a-verdict-ja.md)
 
-# BE-XXXX — Stop a wedged-Simulator timeout from failing the on-device conformance suite as a verdict
+# BE-0378 — Stop a wedged-Simulator timeout from failing the on-device conformance suite as a verdict
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ondevice-wedge-timeout-not-a-verdict.md) |
+| Proposal | [BE-0378](BE-0378-ondevice-wedge-timeout-not-a-verdict.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0378") |
 | Topic | Platform support |
 | Related | [BE-0334](../BE-0334-conformance-suite-infra-fault-recovery/BE-0334-conformance-suite-infra-fault-recovery.md), [BE-0363](../BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout.md), [BE-0374](../BE-0374-device-timeout-crash-retry-policy/BE-0374-device-timeout-crash-retry-policy.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md), [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md) |
 <!-- /BE-METADATA -->
