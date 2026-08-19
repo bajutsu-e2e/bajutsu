@@ -140,7 +140,13 @@ async function chooseReplayUpload(file){
   }catch(e){setStatus(status,'upload failed','ng');return;}
   if(d.error){setStatus(status,d.error,'ng');return;}
   setStatus(status,d.summary,'ok');
+  // loadScenarios rebuilds #scn's options, which resets the select to its first entry — reselect
+  // what the user had picked, so an upload never silently repoints Run (or the grade badge) at a
+  // different scenario than the one on screen. An upload only adds/overwrites, never removes, so
+  // the previous pick is still a valid option unless it was the file just uploaded.
+  const prev=$('#scn').value;
   await loadScenarios();
+  if(prev&&scnFiles.some(s=>s.path===prev)){$('#scn').value=prev;showInfo();replayAudit();}
 }
 // Read-only scenario viewer (BE-0273): show the selected scenario's raw YAML and the runner's own
 // per-scenario step parse, so a user can confirm what a run does before spending one on it. Reuses

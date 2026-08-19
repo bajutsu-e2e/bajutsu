@@ -21,7 +21,7 @@ from bajutsu.scenario.models import STEP_ACTIONS, Scenario, Step
 from bajutsu.serve import flakiness as _flakiness
 from bajutsu.serve import jobs
 from bajutsu.serve.artifacts import Artifact, ArtifactStore
-from bajutsu.serve.authz import _target_forbidden
+from bajutsu.serve.authz import _record_audit, _target_forbidden
 from bajutsu.serve.helpers import (
     list_fs,
     list_simulators,
@@ -689,6 +689,14 @@ def save_scenario(
     saved = scope.save(ref, text)
     if saved is None:
         return {"error": "path must be a *.yaml under the scenarios dir"}, 400
+    _record_audit(
+        state,
+        actor,
+        org,
+        "scenario.save",
+        target or "",
+        {"path": ref, "overwritten": overwritten},
+    )
     return {"ok": True, "path": saved, "overwritten": overwritten}, 200
 
 

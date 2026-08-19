@@ -312,7 +312,9 @@ def read_scenario_zip(zip_path: Path) -> dict[str, str]:
                 # Two entries mapping to one scenario name: dropping the loser silently is the same
                 # "reported success, file never added" outcome the rejections above exist to prevent.
                 raise BundleError(f"duplicate scenario entry: {name!r}")
-            _check_ratio(info)
+            # No ratio pre-check (unlike `extract_bundle`): a scenario entry is text whose absolute
+            # size the streamed `MAX_SCENARIO_ENTRY_BYTES` / total checks below already bound, so the
+            # bundle-sized 200:1 bound would only turn a legitimately repetitive scenario away.
             try:
                 with archive.open(info) as src:
                     chunks = []
