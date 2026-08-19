@@ -544,6 +544,16 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
 - DSL device & system actions (iOS): `background`, `clearKeychain`, `clearClipboard`,
   `overrideStatusBar` / `clearStatusBar` (deterministic status bar), and the `http` action for
   test-data setup / webhooks
+- DSL `setPickerValue` (BE-0356): move a wheel-style picker (`UIPickerView`, or a `UIDatePicker`
+  switched to a wheel-only mode) to a named row by calling XCUITest's own
+  `adjust(toPickerWheelValue:)` on the resolved wheel — handle-based like `tap`, not
+  coordinate-based like `swipe`/`drag`/`scroll`, since a wheel's rows are not separately
+  addressable elements a coordinate drag could reliably stop on. A value the wheel does not carry
+  fails the step by name rather than leaving the wheel wherever it stopped. A multi-component
+  picker (a year wheel beside a month wheel) addresses each component through the selector's
+  existing `within`/`traits`/`index` fields, one step per component. Gated on the `PICKER_WHEEL`
+  capability, which only the resident-runner XCUITest backend and `FakeDriver` declare, so Android
+  and web are rejected at preflight before any device work
 - DSL `handleSystemAlert` (BE-0316): a deterministic, iOS-only step that taps a SpringBoard
   permission-prompt button by a native accessibility query (the runner's second, on-demand
   SpringBoard handle) — resolution stays Python-side in `resolve_unique`; only the XCUITest backend
@@ -623,6 +633,9 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
   ([BE-0281](../roadmaps/BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage.md)).
 - The `pinch`/`rotate` multi-touch gestures — confirmed on-device via the `ios-e2e.yml`
   `run (xcuitest)` job (`demos/showcase/scenarios/gestures_multitouch.yaml`, `--backend ios`).
+- `setPickerValue` on both a `UIPickerView` and a wheel-mode `UIDatePicker`, including its
+  multi-component `within`/`traits`/`index` addressing — confirmed on-device via the `ios-e2e.yml`
+  `run (xcuitest)` job (`demos/showcase/scenarios/picker_wheel.yaml`, BE-0356).
 - The scenario-authoring features — `extract`, `forEach` over a list whose tree mutates between
   iterations, data-driven rows, and `relaunch` — exercised on-device per PR by `ios-e2e.yml`'s
   `actuation (xcuitest)` job, so none of them rests on adb and Playwright alone
