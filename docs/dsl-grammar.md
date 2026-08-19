@@ -157,8 +157,8 @@ Action    ::=
   | { type:        { text: string, into?: <Selector>, submit?: boolean } }   # submit default false
   | { clear:       { into: <Selector> } }                  # focus the field and remove its entire current content (web-context raises)
   | { delete:      { into: <Selector>, count: integer } }  # focus the field and delete count characters from the end (count > 0; web-context raises)
-  | { select:      { into: <Selector>, mode?: "all" } }    # focus the field and select its content (mode default "all"; idb/web-context raise → codegen to XCUITest)
-  | { copy:        {} }                                    # copy the active selection to the clipboard (requires a prior select; idb/web-context raise)
+  | { select:      { into: <Selector>, mode?: "all" } }    # focus the field and select its content (mode default "all"; web-context raises → codegen to XCUITest)
+  | { copy:        {} }                                    # copy the active selection to the clipboard (requires a prior select; web-context raises)
   | { selectOption:{ sel: <Selector>, option: string } }   # set a web <select> to the option with this value (web only; iOS/Android raise)
   | { setPickerValue:{ sel: <Selector>, value: string } }  # move a wheel-style picker to the row with this value (iOS only; sel addresses one wheel)
   | { swipe:       <Swipe> }                          # directional form scrolls; coordinate form is a raw drag
