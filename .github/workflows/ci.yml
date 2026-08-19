@@ -22,6 +22,7 @@ jobs:
   check:
     name: check
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # Every gate step below calls a `make` target, so the commands and file/target lists live only
     # in the Makefile and CI mirrors `make check` by construction (no hand-copied list to drift).
     # uv's auto-sync is disabled — the env is already populated by the explicit `uv sync` step —

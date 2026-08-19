@@ -55,6 +55,7 @@ jobs:
   changes:
     name: detect relevant changes
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       relevant: ${{ steps.filter.outputs.relevant }}
     steps:
@@ -75,6 +76,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # The web smoke needs only the `web` extra, never the dev group (mypy / pytest / ruff + the
     # gate-only extras). UV_NO_DEV makes every uv call here skip it — both the explicit `uv sync`
     # below and the re-sync inside `make -C demos/web e2e` (web-deps) — so neither re-adds dev.
@@ -117,6 +119,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       UV_NO_DEV: "1"
     steps:
@@ -150,6 +153,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -197,6 +201,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       UV_NO_DEV: "1"
     steps:
@@ -242,6 +247,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       UV_NO_DEV: "1"
     steps:
@@ -284,6 +290,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       UV_NO_DEV: "1"
     steps:
@@ -342,6 +349,7 @@ jobs:
     needs: [changes, web-e2e, serve-ui-dogfood, web-conformance, web-network, web-codegen]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Check E2E results
         env:
