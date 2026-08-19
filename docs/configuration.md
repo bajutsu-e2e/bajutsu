@@ -353,6 +353,13 @@ a deployment relying on that recovery should avoid declaring a real org named `d
 recovering admin's user row, audit entries, and object-storage prefix land inside that tenant instead
 of a neutral catch-all.
 
+A login that qualifies for more than one org lands on one of them at sign-in — an explicit `members`
+entry first, then the first org whose `githubOrgs` matches — and can then choose which of its orgs
+the current browser session acts as, from a select box in the header. The role follows the chosen
+org, since `editorTeam` is declared per org. See
+[Self-hosting](self-hosting.md#2-add-github-oauth-optional) for what that selection caches and how an
+admin ends it.
+
 **A deployment with a database reads three of these four fields only once**
 ([BE-0375](../roadmaps/BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management.md)).
 On the one boot that finds the `orgs` table still empty, `serve` copies each org's `members`,
