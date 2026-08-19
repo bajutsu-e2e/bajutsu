@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0377](BE-0377-dynamic-value-generation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0377") |
+| Implementing PR | [#1649](https://github.com/bajutsu-e2e/bajutsu/pull/1649) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -112,12 +113,12 @@ Prime directives preserved:
 
 ## Progress
 
-- [ ] Add the `generate` step schema (`random` / `datetime` generator kinds) to the scenario
+- [x] Add the `generate` step schema (`random` / `datetime` generator kinds) to the scenario
   grammar and its validator.
-- [ ] Implement the runner action handler, writing the produced value into `vars.<var>`.
-- [ ] Record the generated value in evidence/report output.
-- [ ] Emit the labeled codegen `// TODO` for each backend.
-- [ ] Document `generate` in `scenarios.md` and `dsl-grammar.md` (English and Japanese).
+- [x] Implement the runner action handler, writing the produced value into `vars.<var>`.
+- [x] Record the generated value in evidence/report output.
+- [x] Emit the labeled codegen `// TODO` for each backend.
+- [x] Document `generate` in `scenarios.md` and `dsl-grammar.md` (English and Japanese).
 
 ## References
 

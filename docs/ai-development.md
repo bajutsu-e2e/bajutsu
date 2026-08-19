@@ -771,8 +771,8 @@ work up — exactly as on any other GitHub issue. Don't close a tracking issue b
 The issues are created and closed automatically by the `roadmap-tracking-issues` workflow
 (`scripts/sync_roadmap_tracking_issues.py`), which runs on `push: main` (paths `roadmaps/**`). The
 lifecycle is a pure function of each item's current `Status` — an open item with no matching open
-issue gets one; an issue whose item has since shipped (`Implemented`) or been shelved (`Proposal
-(deferred)`) is closed — so the sync is idempotent and self-healing (BE-0043 / BE-0061), never
+issue gets one; an issue whose item has since shipped (`Implemented`) or been shelved (`Deferred` or
+`Rejected`) is closed — so the sync is idempotent and self-healing (BE-0043 / BE-0061), never
 creating a second issue for an item on a re-run. GitHub is the source of truth for both facts —
 ownership (Assignees) and whether an issue already exists (an open `roadmap-tracking` issue with the
 item's `BE-NNNN` in its title) — so nothing is written back to the repo: the job needs only `issues:
@@ -813,7 +813,8 @@ on `Status` at all.
 | `Implemented` | Implemented — shipped |
 | `In progress` | In progress — accepted, actively being built |
 | `Proposal` | Proposals — under consideration |
-| `Proposal (deferred)` | Deferred — parked |
+| `Deferred` | Deferred — parked, with a named condition that would revive it |
+| `Rejected` | Rejected — decided against, with no condition expected to reopen it |
 
 Every item, in every bucket, is browsable, grouped by Topic with live progress bars, on the
 [roadmap dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html) — a page

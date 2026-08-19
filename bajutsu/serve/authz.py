@@ -392,6 +392,7 @@ _EDITOR_PATHS = frozenset(
         "/api/record",
         "/api/crawl",
         "/api/scenario",
+        "/api/scenarios/upload",
         "/api/approve",
         "/api/capture/start",
         "/api/capture/mark",

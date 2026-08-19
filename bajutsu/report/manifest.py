@@ -60,7 +60,10 @@ def _run_backend(results: list[RunResult]) -> str:
 # v7 (BE-XXXX): an actuation may carry "substitution" — why the element actuated is not the one the
 #   driver's default rule would have named. Absent on the ordinary path and on every older run, which
 #   is the same thing a reader sees either way: no substitution happened.
-SCHEMA_VERSION = 7
+# v8 (BE-0377): a step may carry "generated" — the value a `generate` step produced for `vars.*`.
+#   Absent on every other action and on every older run, so a reader shows no generated-value row
+#   for it rather than failing to load.
+SCHEMA_VERSION = 8
 
 
 def _matrix(results: list[RunResult]) -> dict[str, object] | None:

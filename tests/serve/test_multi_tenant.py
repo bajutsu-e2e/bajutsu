@@ -9,13 +9,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from sqlalchemy import Engine
+from sqlalchemy import Engine, select
 
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
 from bajutsu.serve.operations.config import seed_orgs_from_bound_config
 from bajutsu.serve.server.db import SqlRepository
-from bajutsu.serve.server.models import Base
+from bajutsu.serve.server.models import AuditLog, Base
 from bajutsu.serve.server.oauth import Identity
 from bajutsu.serve.server.object_store import org_prefix
 from bajutsu.serve.state import StoreBundle
@@ -89,6 +89,61 @@ def test_start_run_on_own_orgs_app_passes_the_org_check(
         state, {"target": "demo", "scenario": "smoke.yaml"}, actor="alice"
     )
     assert status != 403
+
+
+def test_upload_scenarios_to_another_orgs_app_is_forbidden(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # The same cross-org guard as start_run, checked before the zip is ever touched (BE-0340) — a
+    # bogus zip_path is fine here, since a forbidden target never reaches read_scenario_zip.
+    state = _state(serve_engine, tmp_path)
+    payload, status = ops.upload_scenarios(
+        state, tmp_path / "unused.zip", target="other", actor="alice"
+    )
+    assert status == 403
+    assert payload == {"error": "forbidden"}
+
+
+def test_upload_scenarios_to_own_orgs_app_passes_the_org_check(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # alice owns demo; the org check passes, so it fails later (no scenarios dir), not with 403 —
+    # the same shape as test_start_run_on_own_orgs_app_passes_the_org_check above.
+    state = _state(serve_engine, tmp_path)
+    _payload, status = ops.upload_scenarios(
+        state, tmp_path / "unused.zip", target="demo", actor="alice"
+    )
+    assert status != 403
+
+
+def test_save_scenario_records_an_audit_entry(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # The .yaml leg of the Replay-upload control (BE-0340) must leave the same audit trail
+    # upload_scenarios' .zip leg already does — "scenario.save" mirroring "scenarios.upload".
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        f"targets:\n  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",
+        encoding="utf-8",
+    )
+    engine = serve_engine()
+    Base.metadata.create_all(engine)
+    repo = SqlRepository(engine)
+    repo.ensure_org("default", slug="default", name="default")
+    repo.upsert_user("alice", org_id="default", github_login="alice", email="a@x")
+    state = srv.ServeState(runs_dir=tmp_path / "runs", config=cfg, cwd=tmp_path, repository=repo)
+    payload, status = ops.save_scenario(
+        state,
+        {"target": "demo", "path": "new.yaml", "yaml": "- name: s\n  steps: []\n"},
+        actor="alice",
+    )
+    assert status == 200
+    assert payload["overwritten"] is False
+    with repo._engine.connect() as conn:
+        rows = conn.execute(select(AuditLog.action, AuditLog.target)).all()
+    assert ("scenario.save", "demo") in [(str(a), str(t)) for a, t in rows]
 
 
 def test_read_scenario_in_another_orgs_app_is_not_found(

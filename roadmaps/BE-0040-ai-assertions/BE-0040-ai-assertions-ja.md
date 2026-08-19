@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0040](BE-0040-ai-assertions-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案（保留）** |
+| 状態 | **保留** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0040") |
 | トピック | 検証とカバレッジ |
 | 由来 | MagicPod |

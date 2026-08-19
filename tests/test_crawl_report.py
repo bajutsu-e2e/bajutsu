@@ -9,6 +9,9 @@ from __future__ import annotations
 
 from bajutsu.crawl import Alert, Crash, Edge, Node, ScreenMap
 from bajutsu.crawl.report import layout, render_html, write_html
+from bajutsu.evidence.redaction import Redactor
+from bajutsu.evidence.sink import RunArtifactWriter
+from bajutsu.run_files import RunArtifactReader
 
 
 def _node(fp: str, ids: tuple[str, ...] = (), actions: tuple[str, ...] = ()) -> Node:
@@ -132,10 +135,12 @@ def test_write_html_writes_report_next_to_screens(tmp_path) -> None:  # type: ig
     (out_dir / "screens").mkdir(parents=True)
     (out_dir / "screens" / "abc1234.png").write_bytes(b"\x89PNG")  # a captured screenshot
     sm = _map(nodes=[_node("abc1234")], edges=[])
+    writer = RunArtifactWriter(out_dir, Redactor(None))
+    reader = RunArtifactReader(out_dir)
 
-    report = write_html(out_dir, sm)
+    name = write_html(writer, reader, sm)
 
-    assert report == out_dir / "screenmap.html"
-    body = report.read_text(encoding="utf-8")
+    assert name == "screenmap.html"
+    body = (out_dir / name).read_text(encoding="utf-8")
     assert body.lstrip().startswith("<!DOCTYPE html>")
     assert 'src="screens/abc1234.png"' in body  # the on-disk screenshot is linked

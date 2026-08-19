@@ -177,6 +177,7 @@ Action    ::=
   | { http:        { method?: string, url: string, headers?: map(string,string), body?: string, status?: integer, saveBody?: string } }  # method default GET; saveBody → vars.<name>
   | { totp:        { secret: string, into: { var: string } } }  # RFC 6238 OTP → vars.<var> (secret is base32)
   | { email:       { match: { to?: string, subject?: string, subjectMatches?: string }, extract: { var: string, bodyMatches: string }, timeout: number } }  # poll mailbox → vars.<var>
+  | { generate:    <Generate> }                            # a random or current-datetime value computed at run time → vars.<var> (BE-0377)
   | { background:       {} }                               # Home button (backgrounds via SpringBoard, no terminate)
   | { foreground:       {} }                               # resume a backgrounded app (simctl launch, no terminate); the other half of background
   | { clearKeychain:    {} }                               # reset saved passwords / certificates
@@ -205,6 +206,18 @@ Scroll ::= { to: <Selector>, direction?: ("up"|"down"|"left"|"right"), within?: 
     # scroll until `to`'s frame center is on-screen, else fail (BE-0326). direction = scroll direction (default "down"), the inverse of Swipe's finger direction.
     # within: the scrollable container to gesture inside (default: the whole screen). maxScrolls: step bound before failing (default 15, > 0).
 Point ::= [ number, number ]
+
+Generate ::=
+    { random:   <Random>,   into: { var: string } }   # a fresh value the scenario did not already have ┐ XOR
+  | { datetime: <Datetime>, into: { var: string } }   # the current time, as text                       ┘
+Random ::=
+    { string: { length: integer, charset?: ("alnum"|"alpha"|"numeric"|"hex") } }  # length > 0; charset default "alnum" ┐
+  | { int:    { min: integer, max: integer } }                                    # inclusive range, min ≤ max          │ XOR
+  | { float:  { min: number,  max: number, precision?: integer } }                # min ≤ max; precision ≥ 0 decimals   │
+  | { uuid:   {} }                                                                # a version-4 UUID                    ┘
+Datetime ::= { format?: string, offsetSeconds?: integer, offsetMinutes?: integer, offsetHours?: integer, offsetDays?: integer, timezone?: string }
+    # format: a strftime pattern; omitted = ISO 8601 to the second. The four offsets are signed and additive.
+    # timezone: an IANA name (e.g. "America/Los_Angeles"); omitted = UTC. An unrenderable format or an unknown zone fails at load.
 
 # ── Selector (≥1 field; provided fields are AND-ed) ────────────────────
 Selector ::= {

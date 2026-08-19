@@ -35,6 +35,7 @@ from bajutsu.cli._shared import (
     read_manifests,
 )
 from bajutsu.platform_lifecycle import environment_for
+from bajutsu.run_files import runs_root
 from bajutsu.run_id import new_run_id
 from bajutsu.runner import device_pool, run_all
 from bajutsu.scenario import Scenario, load_expanded_scenarios
@@ -156,7 +157,7 @@ def _repeat_audit(
         raise typer.Exit(2) from None
 
     run_id = new_run_id("audit-")
-    lease, shutdown = device_pool(udids, backends, eff, Path("runs") / run_id)
+    lease, shutdown = device_pool(udids, backends, eff, runs_root() / run_id)
     # Bring up the target's `launchServer` (the web baseUrl host) if declared, like `run` does, so a
     # web target with a server-backed baseUrl can be audited; reused if already serving, torn down
     # in the finally below.

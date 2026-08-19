@@ -110,6 +110,9 @@ def test_required_role_maps_endpoints() -> None:
     assert ops.required_role("POST", "/api/artifacts/scenarios") == "admin"
     assert ops.required_role("POST", "/api/artifacts/binary") == "admin"
     assert ops.required_role("GET", "/api/artifacts/exists") == "admin"
+    # A scenario zip added straight to a bound config's scope (BE-0340) sits at the same tier as
+    # /api/scenario, not the content-addressed compose leg above.
+    assert ops.required_role("POST", "/api/scenarios/upload") == "editor"
     # Compose-picker resume seed: per-leg shas of the active composed bind — admin GET early case,
     # same reason as `/api/artifacts/exists`.
     assert ops.required_role("GET", "/api/compose/current") == "admin"

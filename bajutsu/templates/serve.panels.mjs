@@ -89,11 +89,64 @@ function recRunDone(j){
 function showInfo(){
   const f=scnFiles.find(s=>s.path===$('#scn').value),el=$('#names');
   $('#viewscn').disabled=!$('#scn').value;  // View scenario needs a selection, not a run (BE-0273)
+  // Upload scenario needs only a target picked, not a run or a prior selection (BE-0340) — the same
+  // precondition every other Replay affordance already applies (a config with at least one target).
+  $('#replay-upload-pick').disabled=!$('#target').value;
   if(!f){el.innerHTML='';return}
   let h='';
   if(f.description)h+=`<div class="finfo">${esc(f.description)}</div>`;
   if(f.scenarios&&f.scenarios.length)h+='<ul class="scnlist">'+f.scenarios.map(s=>`<li><b>${esc(s.name)}</b>${s.description?' &mdash; <span class="sd">'+esc(s.description)+'</span>':''}</li>`).join('')+'</ul>';
   el.innerHTML=h;
+}
+// ---- Add a scenario file, or a .zip of scenarios, straight into the open target's scope (BE-0340)
+// — no config rebind, unlike the bundle/compose uploads below. Dispatches on the picked file's
+// extension: a lone `.yaml` posts its text to the same POST /api/scenario the Author Save button
+// uses; a `.zip` posts its raw bytes to POST /api/scenarios/upload. Either way the response's
+// per-file `overwritten` flag drives the "added"/"overwrote" summary, then the scenario list
+// reloads so the file is selectable and runnable at once.
+async function chooseReplayUpload(file){
+  if(!file)return;
+  const status=$('#replay-upload-status'),target=$('#target').value;
+  if(!target){setStatus(status,'pick a target first','ng');return;}
+  setStatus(status,'Uploading '+file.name+'…','run');
+  let d;
+  try{
+    if(/\.zip$/i.test(file.name)){
+      const r=await fetch('/api/scenarios/upload?target='+encodeURIComponent(target),
+        {method:'POST',headers:{'Content-Type':'application/zip'},body:file});
+      d=await r.json();
+      if(!d.error){
+        const names=(d.scenarios||[]).map(s=>(s.overwritten?'overwrote ':'added ')+s.name);
+        d={ok:true,summary:names.length?names.join(', '):'zip contained no scenarios'};
+      }
+    }else{
+      // Unlike the .zip leg above (MAX_SCENARIO_ENTRY_BYTES/MAX_SCENARIO_ZIP_TOTAL_BYTES,
+      // uploads.py), this posts to the general-purpose /api/scenario route with no size cap of its
+      // own — deliberately: it's the same route the Author editor's Save button already uses, so a
+      // large single file was always postable this way, and a cap here would be new-only-to-upload
+      // policy on an existing, uncapped write path rather than a gap this feature introduced.
+      const buf=await file.arrayBuffer();
+      let text;
+      // Decode strictly, matching read_scenario_zip's UTF-8 check on the .zip leg: File.text()
+      // substitutes U+FFFD instead of failing, so a Shift-JIS scenario would be saved as mojibake
+      // and still reported as "added".
+      try{text=new TextDecoder('utf-8',{fatal:true}).decode(buf);}
+      catch(_){setStatus(status,file.name+' is not valid UTF-8 text','ng');return;}
+      const r=await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({target,path:file.name,yaml:text})});
+      d=await r.json();
+      if(!d.error)d={ok:true,summary:(d.overwritten?'overwrote ':'added ')+file.name};
+    }
+  }catch(e){setStatus(status,'upload failed','ng');return;}
+  if(d.error){setStatus(status,d.error,'ng');return;}
+  setStatus(status,d.summary,'ok');
+  // loadScenarios rebuilds #scn's options, which resets the select to its first entry — reselect
+  // what the user had picked, so an upload never silently repoints Run (or the grade badge) at a
+  // different scenario than the one on screen. An upload only adds/overwrites, never removes, so
+  // the previous pick is still a valid option unless it was the file just uploaded.
+  const prev=$('#scn').value;
+  await loadScenarios();
+  if(prev&&scnFiles.some(s=>s.path===prev)){$('#scn').value=prev;showInfo();replayAudit();}
 }
 // Read-only scenario viewer (BE-0273): show the selected scenario's raw YAML and the runner's own
 // per-scenario step parse, so a user can confirm what a run does before spending one on it. Reuses
@@ -675,6 +728,7 @@ function initPanels(){
   // Replay.
   $('#scn').addEventListener('change',()=>{showInfo();replayAudit();replayCodegen.reset();});
   $('#viewscn').addEventListener('click',openScnView);
+  wireFileZone($('#replay-upload-pick'),$('#replay-upload-file'),null,chooseReplayUpload);
   $('#scnviewclose').addEventListener('click',closeScnView);
   $('#scnview-structured').addEventListener('click',()=>scnViewMode(false));
   $('#scnview-raw').addEventListener('click',()=>scnViewMode(true));

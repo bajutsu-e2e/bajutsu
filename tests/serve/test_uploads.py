@@ -21,6 +21,7 @@ from bajutsu.serve.uploads import (
     extract_bundle,
     find_bundle_config,
     materialize_bundle,
+    read_scenario_zip,
 )
 
 
@@ -271,3 +272,181 @@ def test_materialize_bundle_a_genuine_rename_failure_still_raises(
         materialize_bundle(zip_path, uploads_dir, "abc123")
     # Neither a winner's entry nor a leftover temp dir exists — the raise propagated cleanly.
     assert list(uploads_dir.iterdir()) == []
+
+
+# ---- read_scenario_zip (BE-0340) -------------------------------------------------------------
+
+
+def test_read_scenario_zip_reads_flat_yaml_entries(tmp_path: Path) -> None:
+    blob = _zip(
+        {
+            "alpha.yaml": b"- name: a\n  steps: []\n",
+            "beta.yaml": b"- name: b\n  steps: []\n",
+        }
+    )
+    entries = read_scenario_zip(_written(tmp_path, blob))
+    assert entries == {
+        "alpha.yaml": "- name: a\n  steps: []\n",
+        "beta.yaml": "- name: b\n  steps: []\n",
+    }
+
+
+def test_read_scenario_zip_skips_cruft_and_non_yaml(tmp_path: Path) -> None:
+    # A scenario scope has no subdirectory concept, but known packaging cruft (`__MACOSX/`, a
+    # dot-file) and a non-`.yaml` top-level file are silently dropped rather than rejected.
+    blob = _zip(
+        {
+            "smoke.yaml": b"- name: a\n  steps: []\n",
+            "__MACOSX/._smoke.yaml": b"junk",
+            ".DS_Store": b"junk",
+            "README.md": b"not a scenario",
+        }
+    )
+    assert read_scenario_zip(_written(tmp_path, blob)) == {"smoke.yaml": "- name: a\n  steps: []\n"}
+
+
+def test_read_scenario_zip_rejects_absolute_path(tmp_path: Path) -> None:
+    with pytest.raises(BundleError, match="unsafe entry"):
+        read_scenario_zip(_written(tmp_path, _zip({"/etc/evil.yaml": b"x"})))
+
+
+def test_read_scenario_zip_rejects_parent_traversal(tmp_path: Path) -> None:
+    with pytest.raises(BundleError, match="unsafe entry"):
+        read_scenario_zip(_written(tmp_path, _zip({"../escape.yaml": b"x"})))
+
+
+def test_read_scenario_zip_rejects_symlink_entry(tmp_path: Path) -> None:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        info = zipfile.ZipInfo("link.yaml")
+        info.external_attr = (stat.S_IFLNK | 0o777) << 16
+        zf.writestr(info, b"/etc/passwd")
+    with pytest.raises(BundleError, match="symlink"):
+        read_scenario_zip(_written(tmp_path, buf.getvalue()))
+
+
+def test_read_scenario_zip_rejects_a_nested_yaml(tmp_path: Path) -> None:
+    # No subdirectory concept (BE-0340 Alternatives): a nested `*.yaml` is reported, not silently
+    # dropped — an upload that adds nothing should never look like a success.
+    with pytest.raises(BundleError, match="nested entry"):
+        read_scenario_zip(_written(tmp_path, _zip({"nested/deeper.yaml": b"- name: a\n"})))
+
+
+def test_read_scenario_zip_skips_a_nested_non_scenario_entry(tmp_path: Path) -> None:
+    # A nested entry that was never a scenario candidate (an asset, editor cache) is skipped
+    # like top-level cruft, so an otherwise-valid flat batch still lands; only a nested
+    # `*.yaml`/`*.yml` aborts (see the test above).
+    blob = _zip(
+        {
+            "smoke.yaml": b"- name: a\n  steps: []\n",
+            "fixtures/data.json": b"{}",
+        }
+    )
+    assert read_scenario_zip(_written(tmp_path, blob)) == {"smoke.yaml": "- name: a\n  steps: []\n"}
+
+
+def test_read_scenario_zip_rejects_duplicate_scenario_entries(tmp_path: Path) -> None:
+    # A zip may legally carry the same member name twice (an appending build script, or
+    # zipfile.writestr called twice); both entries pass _scenario_entry_name and would otherwise
+    # collapse via last-wins, reporting success while quietly dropping the file the caller meant
+    # to upload — the same failure mode the .yml / case-variant / nested-*.yaml rejections above
+    # exist to prevent.
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("alpha.yaml", b"- name: a\n  steps: []\n")
+        zf.writestr("alpha.yaml", b"- name: a-v2\n  steps: []\n")
+    with pytest.raises(BundleError, match="duplicate scenario entry"):
+        read_scenario_zip(_written(tmp_path, buf.getvalue()))
+
+
+def test_read_scenario_zip_rejects_a_top_level_yml_extension(tmp_path: Path) -> None:
+    # The scenario model only ever recognizes *.yaml (valid_scenario_ref, the runnable glob); a
+    # *.yml is reported loudly rather than silently skipped like unrelated cruft, so a mixed zip
+    # never reports success while quietly dropping the file the caller meant to upload.
+    with pytest.raises(BundleError, match=r"lowercase \.yaml extension"):
+        read_scenario_zip(_written(tmp_path, _zip({"smoke.yml": b"- name: a\n"})))
+
+
+def test_read_scenario_zip_rejects_a_case_variant_yaml_extension(tmp_path: Path) -> None:
+    # valid_scenario_ref requires the exact lowercase .yaml, so a case variant could never be
+    # saved even if it were let through — report it instead of silently dropping it like cruft.
+    with pytest.raises(BundleError, match=r"lowercase \.yaml extension"):
+        read_scenario_zip(_written(tmp_path, _zip({"Smoke.YAML": b"- name: a\n"})))
+
+
+def test_read_scenario_zip_rejects_too_many_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(uploads, "MAX_SCENARIO_ZIP_ENTRIES", 1)
+    blob = _zip({"a.yaml": b"- name: a\n", "b.yaml": b"- name: b\n"})
+    with pytest.raises(BundleError, match="too many entries"):
+        read_scenario_zip(_written(tmp_path, blob))
+
+
+def test_read_scenario_zip_rejects_oversized_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(uploads, "MAX_SCENARIO_ENTRY_BYTES", 4)
+    blob = _zip({"big.yaml": b"- name: alpha\n  steps: []\n"})
+    with pytest.raises(BundleError, match="too large"):
+        read_scenario_zip(_written(tmp_path, blob))
+
+
+def test_read_scenario_zip_rejects_oversized_total(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(uploads, "MAX_SCENARIO_ZIP_TOTAL_BYTES", 20)
+    blob = _zip({"a.yaml": b"- name: a\n  steps: []\n", "b.yaml": b"- name: b\n  steps: []\n"})
+    with pytest.raises(BundleError, match="uncompressed"):
+        read_scenario_zip(_written(tmp_path, blob))
+
+
+def test_read_scenario_zip_rejects_non_utf8_entry(tmp_path: Path) -> None:
+    blob = _zip({"bad.yaml": b"\xff\xfe not utf-8"})
+    with pytest.raises(BundleError, match="UTF-8"):
+        read_scenario_zip(_written(tmp_path, blob))
+
+
+def test_read_scenario_zip_rejects_a_zip_with_no_yaml(tmp_path: Path) -> None:
+    with pytest.raises(BundleError, match=r"no \*.yaml"):
+        read_scenario_zip(_written(tmp_path, _zip({"README.md": b"hi"})))
+
+
+def test_read_scenario_zip_rejects_a_non_zip(tmp_path: Path) -> None:
+    with pytest.raises(BundleError, match="valid zip"):
+        read_scenario_zip(_written(tmp_path, b"not a zip at all"))
+
+
+def test_read_scenario_zip_rejects_a_password_encrypted_entry(tmp_path: Path) -> None:
+    # ZipFile.open raises RuntimeError (not BadZipFile) for a password-encrypted entry, driven by
+    # the entry's general-purpose bit flag 0 — metadata a caller fully controls — so it must be
+    # caught alongside BadZipFile, else it escapes as an uncaught 500 instead of a 400. ZipFile
+    # itself can't write that flag (writestr always clears it), so it's set directly on the raw
+    # bytes, in both the local file header and the central directory record.
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("secret.yaml", b"- name: a\n  steps: []\n")
+    raw = bytearray(buf.getvalue())
+    raw[6] |= 0x1  # local file header's general-purpose bit flag (offset 6 from "PK\x03\x04")
+    cd_idx = raw.index(b"PK\x01\x02")
+    raw[cd_idx + 8] |= 0x1  # central directory record's copy of the same flag (offset 8)
+    with pytest.raises(BundleError, match="could not read"):
+        read_scenario_zip(_written(tmp_path, bytes(raw)))
+
+
+def test_read_scenario_zip_rejects_a_corrupted_deflate_stream(tmp_path: Path) -> None:
+    # A corrupted DEFLATE stream raises zlib.error *during decompression* (not BadZipFile, which
+    # only fires afterward on a CRC mismatch) — driven by bytes the client fully controls, so it
+    # must be caught alongside RuntimeError/BadZipFile. Only the stream's first byte reliably
+    # invalidates the DEFLATE header; flipping a later one merely fails the CRC.
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("bad.yaml", b"- name: alpha\n  steps: []\n" * 50)
+    raw = bytearray(buf.getvalue())
+    lfh_idx = raw.index(b"PK\x03\x04")
+    fname_len = int.from_bytes(raw[lfh_idx + 26 : lfh_idx + 28], "little")
+    extra_len = int.from_bytes(raw[lfh_idx + 28 : lfh_idx + 30], "little")
+    data_start = lfh_idx + 30 + fname_len + extra_len
+    raw[data_start] ^= 0xFF
+    with pytest.raises(BundleError, match="could not read"):
+        read_scenario_zip(_written(tmp_path, bytes(raw)))

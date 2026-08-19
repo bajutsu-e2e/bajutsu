@@ -25,6 +25,7 @@ from typing import Any
 
 from bajutsu.analytics.usage import TokenUsage, of
 from bajutsu.config import AiConfig
+from bajutsu.run_files import runs_root
 
 # Bump when the on-disk record shape changes incompatibly; readers key off it to stay
 # forward-compatible (an older line is still parseable — see `UsageEvent.from_record`).
@@ -303,7 +304,7 @@ def reset() -> None:
 
 # Default ledger location — under the gitignored `runs/` tree, so records accumulate but never land
 # in the repo. `ai.usageLedger` overrides the path; an empty string disables persistence.
-DEFAULT_LEDGER_PATH = Path("runs") / "usage.jsonl"
+DEFAULT_LEDGER_PATH = runs_root() / "usage.jsonl"
 
 
 def resolve_ledger_path(configured: str | None) -> Path | None:

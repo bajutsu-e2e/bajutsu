@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0331](BE-0331-artifact-redaction-boundary-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0331") |
+| 実装 PR | [#1657](https://github.com/bajutsu-e2e/bajutsu/pull/1657) |
 | トピック | Security hardening |
 | 関連 | [BE-0032](../BE-0032-secret-variables/BE-0032-secret-variables-ja.md), [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0097](../BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty-ja.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization-ja.md), [BE-0130](../BE-0130-default-network-secret-redaction/BE-0130-default-network-secret-redaction-ja.md), [BE-0151](../BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning-ja.md), [BE-0153](../BE-0153-encode-aware-secret-redaction/BE-0153-encode-aware-secret-redaction-ja.md) |
 <!-- /BE-METADATA -->
@@ -242,7 +243,7 @@ driver conformance suite
 
 ### 保証しないこと
 
-本項目は、秘匿値が成果物へ到達することを不可能にはしません。そう書けば偽になります。残る 3 つを、
+本項目は、秘匿値が成果物へ到達することを不可能にはしません。そう書けば偽になります。残る 4 つを、
 覆い隠さずに名指します。
 
 - **ピクセルは隠れません。** 入力済みのパスワード欄を写したスクリーンショットには、値が写ったまま
@@ -252,6 +253,13 @@ driver conformance suite
   一致しなければ、ふつうのテキストと区別できません。見分けるには意味の判断が必要で、プライムディレクティブ 1 が
   この経路から遠ざけています。
 - **網の語彙は有限です。** 誰も型を追加していない資格情報の書式は、網を通り抜けます。
+- **設定したキーは構造化された文字列を隠しすぎます。** 設定した名前は `name: value` の形でも照合し、
+  この形の値には区切りがないため、現れた文字列の末尾まで届きます。ログの 1 行に対してはこれでよく、
+  成果物が運ぶ境界のある文字列の内側では誤りです。`app` を挙げると、Android のリソース識別子
+  `com.example.app:id/login` は `com.example.app:[REDACTED]` に書き換わり、そのスクリーンマップを
+  読み戻した `crawl --continue` は何も解決しない枝をたどります。区切りのある形だけに限れば閉じますが、
+  設定したキーが存在する理由であるフリーテキストへの適用を失います。そこで遮蔽を可読性より優先し、
+  この限界は文書に載せます。
 
 本項目が保証するのは、もっと狭く、しかも検査できることです。書き出す側が遮蔽を迂回できないこと、
 秘匿性が取得の時点で判明する 2 つの場合が設定なしで隠れること、見分けのつく資格情報の書式がどこに
@@ -327,7 +335,7 @@ driver conformance suite
 
 9. **ドキュメント**
 
-   2 つの新しい既定、その解除、網、3 つの残余を [`docs/evidence.md`](../../docs/evidence.md) とその
+   2 つの新しい既定、その解除、網、4 つの残余を [`docs/evidence.md`](../../docs/evidence.md) とその
    日本語版に、BE-0130 のヘッダの既定の隣へ書きます。何を守り何を守らないのかを明確に述べます。
    運用者はその記述をもとにレポートを共有するかを決めるからです。
 
@@ -395,15 +403,15 @@ driver conformance suite
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] Unit 1 — redactor を適用する run ディレクトリの出口
-- [ ] Unit 2 — 既存の書き出しをすべて出口へ通す
-- [ ] Unit 3 — パスを返さない読み取りの窓口と書き込みの出口の分離、import の契約、直値の検査
-- [ ] Unit 4 — 全バックエンドで正規化されたマスク入力の trait と、その既定遮蔽
-- [ ] Unit 5 — 資格情報を名指す識別子またはラベルの既定遮蔽
-- [ ] Unit 6 — crawl のアクションの表示名から値を外す
-- [ ] Unit 7 — 資格情報の書式による網
-- [ ] Unit 8 — テスト
-- [ ] Unit 9 — 既定、解除、残余のドキュメント
+- [x] Unit 1 — redactor を適用する run ディレクトリの出口
+- [x] Unit 2 — 既存の書き出しをすべて出口へ通す
+- [x] Unit 3 — パスを返さない読み取りの窓口と書き込みの出口の分離、import の契約、直値の検査
+- [x] Unit 4 — 全バックエンドで正規化されたマスク入力の trait と、その既定遮蔽
+- [x] Unit 5 — 資格情報を名指す識別子またはラベルの既定遮蔽
+- [x] Unit 6 — crawl のアクションの表示名から値を外す
+- [x] Unit 7 — 資格情報の書式による網
+- [x] Unit 8 — テスト
+- [x] Unit 9 — 既定、解除、残余のドキュメント
 
 ## 参考
 

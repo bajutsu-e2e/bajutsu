@@ -211,7 +211,8 @@ lint-secrets:
 # session surveys just the rows it needs (e.g. every Proposal) without paging through the dashboard's
 # rendered HTML or opening each item file to check its `Status` (BE-0162). Pure and offline: reads
 # roadmaps/ metadata only. The `roadmap-filter` skill wraps this.
-#   make roadmap-status STATUS="Proposal"   # or "In progress" / "Implemented" / "Proposal (deferred)"
+#   make roadmap-status STATUS="Proposal"
+#   STATUS is one of: Proposal / In progress / Implemented / Deferred / Rejected
 roadmap-status:
 	uv run python scripts/roadmap_query.py --status "$(STATUS)"
 

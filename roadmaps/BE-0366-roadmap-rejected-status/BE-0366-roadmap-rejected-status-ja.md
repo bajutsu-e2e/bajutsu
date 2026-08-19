@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0366](BE-0366-roadmap-rejected-status-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0366") |
+| 実装 PR | [#1647](https://github.com/bajutsu-e2e/bajutsu/pull/1647) |
 | トピック | コントリビューターワークフロー |
 <!-- /BE-METADATA -->
 
@@ -128,10 +129,11 @@ LLM を持ち込みません。
   トピックの進捗バーを永久に押し下げてしまいます。`Rejected` は分母から除きます。却下された項目は、
   本項目自身の定義により二度と戻ってこないため、そのトピックに残された作業ではないからです。
   `Deferred` は分母に残します。保留の項目は、そのトピックがまだ答えを出していない生きた問いだからです。
-- [`scripts/new_roadmap_item.py`](../../scripts/new_roadmap_item.py)：`STATUS_JA` の
-  `"Proposal (deferred)": "提案（保留）"` を `"Deferred": "保留"` に改称し、`"Rejected": "却下"`
-  を追加します。これにより `make new-roadmap-item STATUS=…` は、`check_roadmap_format.py` が
-  認識するすべての値を引き続き受け付けます。
+- [`scripts/new_roadmap_item.py`](../../scripts/new_roadmap_item.py)：同じ表を二重に持っていた
+  `STATUS_JA` を廃止し、`STATUS_PAIR` を読み込む `_status_ja()` ヘルパーに置き換えます。トピックや
+  トラッキング Issue の URL について、このファイルがすでに使っている兄弟モジュールの読み込みと同じ
+  形です。複製ではなく導出にすることで、今回の追加でも以降の追加でも、`make new-roadmap-item
+  STATUS=…` が `check_roadmap_format.py` の認める値をそのまま受け付けます。
 - [`scripts/sync_roadmap_tracking_issues.py`](../../scripts/sync_roadmap_tracking_issues.py)：
   ロジックの変更はありません。`OPEN_STATUSES = frozenset({"Proposal", "In progress"})` は、
   `Rejected` を含めそれ以外のすべてをすでに「オープンではない」として扱い、`Deferred` に対して
@@ -183,7 +185,7 @@ LLM を持ち込みません。
 
 ### 今日のロードマップの移行
 
-上記のスキーマ変更は、現在 `Proposal (deferred)` である6件を、同じ実装 PR の中で再分類する
+上記のスキーマ変更は、現在 `Proposal (deferred)` である項目を、同じ実装 PR の中で再分類する
 まで効果を持ちません。
 
 - BE-0154 は `Rejected` に移します。`Superseded by` フィールドにはすでに後継として BE-0159 が
@@ -197,6 +199,13 @@ LLM を持ち込みません。
   フィールドは空のままです。本項目は、BE-0027 をひとまず `Deferred` のままとし、実装時に
   メンテナーの判断に委ねるよう明示することを推奨します。スキーマの変更がこの境界事例を
   黙って決めてしまわないようにするためです。
+- [BE-0357](../BE-0357-xcuitest-duplicate-node-hittable-tiebreak/BE-0357-xcuitest-duplicate-node-hittable-tiebreak-ja.md)
+  は7件目の項目です。本提案を書いたあとに保留となったため、「動機」に挙げた6件には含まれて
+  いません。BE-0357 は `Deferred` のままとします。重複したアクセシビリティノードの組のうち、ちょうど
+  1件が hittable を報告するという前提は計測によって否定され、それが棚上げの理由となりました。
+  しかし BE-0357 自身の「進捗」は、復活の条件として、ライブの検査で要素どうしを本当に区別できる
+  重複ペアが現れることを名指ししています。条件が名指しされている以上、上記の境界線に照らして
+  `Rejected` は当てはまりません。
 
 ### 「取り込まない」との関係
 
@@ -253,19 +262,49 @@ LLM は入り込みません。`run` と CI は決定的なままであり、ア
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `check_roadmap_format.py`（`STATUS_PAIR`）と `new_roadmap_item.py`（`STATUS_JA`）で
-      `Proposal (deferred)` を `Deferred` に改称し、`Rejected` を追加する。
-- [ ] `build_roadmap_index.py`（`STATUS_TO_BUCKET`、`BUCKETS`）と `build_roadmap_dashboard.py`
+- [x] `check_roadmap_format.py`（`STATUS_PAIR`）で `Proposal (deferred)` を `Deferred` に改称し、
+      `Rejected` を追加する。`new_roadmap_item.py` の重複した表は廃止し、導出に置き換える。
+- [x] `build_roadmap_index.py`（`STATUS_TO_BUCKET`、`BUCKETS`）と `build_roadmap_dashboard.py`
       （`BUCKET_COLOR`、`BUCKET_LABEL`、モジュール docstring）に `Rejected` バケットを追加し、
       `_topic_progress` の分母から `Rejected` を除く。
-- [ ] `sync_roadmap_tracking_issues.py`、`sync_roadmap_topic_labels.py`、`roadmap_query.py` の
+- [x] `sync_roadmap_tracking_issues.py`、`sync_roadmap_topic_labels.py`、`roadmap_query.py` の
       docstring とコメントについて、旧値の名指しと、あわせて古びるバケット数の記述を更新する。
-- [ ] `implement-be`、`.github/roadmap-refresh-prompt.md`、`roadmap-filter`、
+- [x] `implement-be`、`.github/roadmap-refresh-prompt.md`、`roadmap-filter`、
       `docs/roadmap-workflow.md`（+ ja）、`Makefile` のコメント、`CLAUDE.md`、
       `docs/ai-development.md`（+ ja）、`roadmaps/README.md`（+ ja）にわたって文字列を改称し、
       有効な値の一覧すべてに `Rejected` を加える。
-- [ ] 文字列を固定しているゲートテストを更新し、新しい値をカバーする。
-- [ ] 現在の保留6件を移行する。BE-0154 を `Rejected` に、残る5件を `Deferred` にする。
+- [x] 文字列を固定しているゲートテストを更新し、新しい値をカバーする。
+- [x] 現在の保留項目を移行する。BE-0154 を `Rejected` に、残る6件を `Deferred` にする。
+
+ログを次に記します。
+
+- 実装 PR は6つの作業単位をまとめて実施しました。その過程で、本提案が未決としていた判断が
+  2つあります。
+  - **積み上げ棒グラフは進捗と同じ分母を使います。** `_topic_progress` の分母からだけ `Rejected`
+    を外すと、`_progress_bar` の各区間の合計が100%を超えてしまいます。棒グラフも同じ合計値で
+    各バケットの件数を割っているためです。そこで棒グラフでも `Rejected` バケットを描きません。
+    却下された項目はカードとしては表示されますが、割合にも棒グラフにも寄与しません。項目が
+    すべて却下のトピックは、0で割る代わりに100%と表示します。その結果ダッシュボードの
+    「Completed」の組に入りますが、残された作業がない以上、それが正しい表示です。
+  - **出荷済み項目3件の散文でも文字列を改称しました。** 「詳細設計」が列挙した範囲を超えた変更です。
+    旧値を名指ししていた出荷済みの項目は5件あり、そのうち現在も動いている仕組みを説明する3件、
+    すなわち BE-0109 のトラッキング Issue のライフサイクル、BE-0162 の状態フィルタ、BE-0368 が
+    BE-0357 をどこへ置いたかの記述を改称しました。これにより、値が現役である箇所については、
+    リポジトリ全体を検索しても旧値は見つからなくなります。BE-0074 と BE-0078 は原文のままとしました。
+    どちらも当時の語彙そのものを規定しており、同じく廃止された `Accepted, in progress` や `Track`
+    フィールドと並んでいます。片方の名前だけを現在の語彙に直すと、記録を整えるどころか誤って
+    伝えることになります。
+- BE-0027 は既定どおり `Deferred` のままとしました。「今日のロードマップの移行」が求めるメンテナーの
+  判断は、引き続き開いたままです。今回の移行はこの境界事例を決めたのではなく、スキーマの変更に
+  決めさせなかっただけです。
+- 後続のレビューで、上記の BE-0109 と BE-0162 の改称が一歩足りていないと指摘されました。両項目とも
+  `Proposal (deferred)` を `Deferred` に改称した一方で、自身が列挙する値の一覧に `Rejected` を
+  加えておらず、「現在も動いている仕組み」を説明する項目でありながら語彙を過小に述べていました。
+  両項目（および `-ja.md` の対訳）を、5つの値すべてを挙げる形に直しました。
+  `new_roadmap_item.py` の `STATUS_JA` も同じ回で見直しました。`check_roadmap_format.STATUS_PAIR`
+  と同じ表を二重に持っていたため、それを読み込む `_status_ja()` ヘルパーに置き換え、トピックや
+  トラッキング Issue の URL でこのファイルがすでに使っている兄弟モジュールの読み込みと同じ形に
+  揃えました。これで、2つの表が食い違う余地はなくなります。
 
 ## 参考
 

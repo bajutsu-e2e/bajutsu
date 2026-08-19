@@ -6,7 +6,7 @@ so you can pick the items to open in full — it never authors, implements, or e
 ## What it does
 
 The [roadmap dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html) lists every item
-across four status buckets and many topics, as rendered HTML — more than a session that only needs
+across five status buckets and many topics, as rendered HTML — more than a session that only needs
 one status wants to page through. When you only need the items in one status, run the deterministic
 query instead:
 
@@ -19,7 +19,8 @@ make roadmap-status STATUS="Proposal"
 - `Proposal` — open, not yet started
 - `In progress` — being built
 - `Implemented` — shipped
-- `Proposal (deferred)` — deliberately parked
+- `Deferred` — deliberately parked
+- `Rejected` — decided against, with no condition expected to reopen it
 
 An unknown status prints the valid values and exits non-zero, rather than an empty table.
 

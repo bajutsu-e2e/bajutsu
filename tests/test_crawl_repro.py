@@ -11,6 +11,8 @@ from pathlib import Path
 
 from bajutsu.crawl import Action, Crash, ScreenMap, screenmap_dict, screenmap_from_dict
 from bajutsu.crawl.repro import crash_scenario, write_repros
+from bajutsu.evidence.redaction import PLACEHOLDER
+from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.scenario.load import load_scenarios
 
 
@@ -55,7 +57,10 @@ def test_fill_expands_to_one_type_step_per_field() -> None:
     assert first.type is not None and first.type.into is not None
     assert (first.type.into.id, first.type.text) == ("email", "a@b.com")
     assert second.type is not None and second.type.into is not None
-    assert (second.type.into.id, second.type.text) == ("password", "hunter2")
+    # `password` names a credential, so BE-0331's default masks what the crawl typed into it. The
+    # step carries the field's own deterministic dummy instead of the placeholder, so the emitted
+    # repro is still runnable — the value itself never reaches the file.
+    assert (second.type.into.id, second.type.text) == ("password", "test")
 
 
 def test_tap_point_path_is_unsupported() -> None:
@@ -75,9 +80,11 @@ def test_selectorless_action_is_unsupported() -> None:
     assert crash_scenario(crash, name="crash-1") is None
 
 
-def test_write_repros_skips_selectorless_crash_without_raising(tmp_path: Path) -> None:
+def test_write_repros_skips_selectorless_crash_without_raising(
+    tmp_path: Path, run_sink: RunArtifactWriter
+) -> None:
     sm = ScreenMap(crashes=[_crash(Action(kind="tap"))])
-    assert write_repros(tmp_path, sm) == []
+    assert write_repros(run_sink, sm) == []
 
 
 def test_emitted_yaml_round_trips_through_load() -> None:
@@ -95,7 +102,9 @@ def test_emitted_yaml_round_trips_through_load() -> None:
     assert reloaded[0].steps[1].type is not None and reloaded[0].steps[1].type.text == "a@b.com"
 
 
-def test_write_repros_writes_one_file_per_supported_crash(tmp_path: Path) -> None:
+def test_write_repros_writes_one_file_per_supported_crash(
+    tmp_path: Path, run_sink: RunArtifactWriter
+) -> None:
     sm = ScreenMap(
         crashes=[
             _crash(Action(kind="tap", target="a")),
@@ -103,17 +112,40 @@ def test_write_repros_writes_one_file_per_supported_crash(tmp_path: Path) -> Non
             _crash(Action(kind="tap", target="c")),
         ]
     )
-    written = write_repros(tmp_path, sm)
+    written = write_repros(run_sink, sm)
     # The middle crash hits an unsupported tap_point, so only two repros land.
     assert len(written) == 2
-    for path in written:
+    for name in written:
+        path = tmp_path / name
         assert path.exists()
         reloaded = load_scenarios(path.read_text(encoding="utf-8"))
         assert len(reloaded) == 1
 
 
-def test_write_repros_with_no_crashes_writes_nothing(tmp_path: Path) -> None:
-    assert write_repros(tmp_path, ScreenMap()) == []
+def test_write_repros_records_the_dummy_where_a_default_masks_the_typed_value(
+    tmp_path: Path, run_sink: RunArtifactWriter
+) -> None:
+    # BE-0331: the same default that masks the value in `screenmap.json` must reach the repro that
+    # records the same action, and it emits the field's own dummy so the repro still replays.
+    sm = ScreenMap(
+        crashes=[
+            _crash(
+                Action(kind="type", target="auth.password", value="MyR3alistic!Pass", secure=True),
+                Action(kind="tap", target="submit"),
+            )
+        ]
+    )
+    written = write_repros(run_sink, sm)
+    text = (tmp_path / written[0]).read_text(encoding="utf-8")
+    assert "MyR3alistic!Pass" not in text and PLACEHOLDER not in text
+    steps = load_scenarios(text)[0].steps
+    assert steps[0].type is not None and steps[0].type.text == "Test1234!"
+
+
+def test_write_repros_with_no_crashes_writes_nothing(
+    tmp_path: Path, run_sink: RunArtifactWriter
+) -> None:
+    assert write_repros(run_sink, ScreenMap()) == []
 
 
 def test_screenmap_json_round_trips_crash_actions() -> None:

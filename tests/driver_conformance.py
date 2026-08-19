@@ -79,6 +79,14 @@ SCROLL_MAX = 30
 #: the coordinate tap has a definite center to aim at.
 FIELD_ID = "conformance.field"
 
+#: The masked input present on every conformance screen (BE-0331), beside the plain one above. Its
+#: whole purpose is that `query()` reports `Trait.SECURE_TEXT_FIELD` for it on every backend: the
+#: default that masks such a field's value without configuration is only as portable as the trait
+#: underneath it, so a backend that stops deriving the trait from its own source (XCUITest's
+#: `secureTextField` type, the web `input[type=password]`, the Android node's `password` flag) fails
+#: the suite here rather than silently dropping the masking on that platform alone.
+SECURE_FIELD_ID = "conformance.secureField"
+
 #: The obstruction conformance screen: a target genuinely covered by another element at the same
 #: point, plus an unobstructed control on the same screen so `is_tappable` is exercised both ways
 #: in one place. `obstruction_screen` is optional on `ConformanceHarness` — a harness that cannot
@@ -319,6 +327,19 @@ class DriverConformanceContract:
         driver = harness.with_screen([element(identifier="a"), element(identifier="b")])
         identifiers = {el["identifier"] for el in driver.query()}
         assert {"a", "b"} <= identifiers
+
+    def test_a_masked_input_reports_the_secure_trait(self, harness: ConformanceHarness) -> None:
+        # Redaction masks such a field's value with no configuration (BE-0331), so the default is
+        # portable only if every backend derives the trait from its own platform source. Asserting it
+        # on `query()` output is what makes "the platform marked this field secret" a contract rather
+        # than an iOS-only accident — the plain field beside it must *not* carry the trait, or the
+        # default would mask ordinary text everywhere.
+        driver = harness.with_screen([])
+        elements = driver.query()
+        secure = base.resolve_unique(elements, {"id": SECURE_FIELD_ID})
+        assert base.Trait.SECURE_TEXT_FIELD in secure["traits"]
+        plain = base.resolve_unique(elements, {"id": FIELD_ID})
+        assert base.Trait.SECURE_TEXT_FIELD not in plain["traits"]
 
     def test_native_z_is_none_unless_the_backend_measures_it(
         self, harness: ConformanceHarness

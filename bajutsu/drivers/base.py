@@ -195,6 +195,11 @@ class Trait:
     NOT_ENABLED = "notEnabled"  # disabled state (enabled / disabled assertions)
     SELECTED = "selected"  # selected / toggled state (selected assertion)
     OTHER = "other"  # generic/unclassified element (e.g. iOS's catch-all XCUIElementTypeOther)
+    # A field the platform itself marks secret, so redaction masks its value with no configuration
+    # (BE-0331). The token is XCUITest's own type name because iOS already reported it; web and
+    # Android map their own source onto it (`input[type=password]`, the node's `password` flag), so
+    # one construct means the same thing on every backend. Pinned by the conformance suite.
+    SECURE_TEXT_FIELD = "secureTextField"
 
 
 class Selector(TypedDict, total=False):

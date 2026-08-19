@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0154](BE-0154-roadmap-promote-base-sha-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案（保留）** |
+| 状態 | **却下** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0154") |
 | トピック | セキュリティ強化 |
 | 無効化 | [BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders-ja.md) |

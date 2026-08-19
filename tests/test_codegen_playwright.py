@@ -460,6 +460,18 @@ def test_manual_step_is_a_labeled_todo() -> None:
     assert "no deterministic run-time equivalent" in code
 
 
+def test_generate_step_is_a_labeled_todo() -> None:
+    # A runner-computed value (BE-0377) with no Playwright form — labeled, not "unsupported step".
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - generate: { random: { int: { min: 1, max: 100 } }, into: { var: quantity } }\n"
+        "    - generate: { datetime: { timezone: UTC }, into: { var: now } }\n"
+    )
+    assert "// TODO: generate(random, into: quantity) — runner-computed value" in code
+    assert "// TODO: generate(datetime, into: now) — runner-computed value" in code
+    assert "unsupported step" not in code
+
+
 def test_handle_system_alert_is_todo() -> None:
     # BE-0316 is an iOS SpringBoard concept; the web has no OS-level prompt, so codegen emits a
     # labeled TODO rather than the catch-all "unsupported step".

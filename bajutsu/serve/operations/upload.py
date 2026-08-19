@@ -18,8 +18,9 @@ from typing import Any
 
 import yaml
 
-from bajutsu.serve.authz import _record_audit
-from bajutsu.serve.helpers import list_targets
+from bajutsu.scenario import load_scenario_file
+from bajutsu.serve.authz import _record_audit, _target_forbidden
+from bajutsu.serve.helpers import list_targets, valid_scenario_ref
 from bajutsu.serve.operations.composition import materialize_composition
 from bajutsu.serve.server.object_store import org_prefix, upload_prefix
 from bajutsu.serve.state import ServeState
@@ -31,9 +32,11 @@ from bajutsu.serve.upload_artifacts import (
     materialize_artifact,
 )
 from bajutsu.serve.uploads import (
+    BundleError,
     Upload,
     find_bundle_config,
     materialize_bundle,
+    read_scenario_zip,
     validate_bundle_config,
 )
 
@@ -177,6 +180,57 @@ def bind_upload_config(
         "targets": list_targets(config_path),
         "source": {"kind": "upload", "filename": upload.filename, "sha256": sha256, "size": size},
     }, 200
+
+
+def upload_scenarios(
+    state: ServeState, zip_path: Path, *, target: str | None, actor: str | None = None
+) -> tuple[Any, int]:
+    """Add a ``.zip`` of one or more scenario files to *target*'s scenario scope (BE-0340).
+
+    Resolves the same ``ScenarioScope`` seam `save_scenario` resolves, so BE-0051's path
+    confinement and BE-0015's org scoping apply unchanged; this adds a second way to *populate*
+    that scope, not a new way to bind a config. Every entry is read and parsed with
+    `load_scenario_file` before any is written — a zip where one entry fails to parse is rejected
+    whole, writing nothing, so a batch that can't fully parse never leaves a partial overwrite
+    behind (the same check-every-item-before-touching-any pattern `start_run_set` applies to a
+    scenario fan-out). A write failure partway through the loop that follows — the scope's own
+    store rejecting or erroring on a save — is not covered by that guarantee; each file is saved
+    through `scope.save` independently, reporting whether it was newly added or overwrote an
+    existing file of the same name — see `save_scenario`'s docstring for the one backend
+    (`LocalTreeScenarioStorage`, a hosted Git/local-tree-sourced config) where that flag is not
+    storage-accurate, since this loop's per-entry probe shares the same limitation."""
+    target = target or None
+    org = state.org_of(actor)
+    if target is not None and _target_forbidden(state, org, target):
+        return {"error": "forbidden"}, 403
+    scope = state.for_org(org).scenarios.scope(target)
+    if scope is None:
+        return {"error": "path must be a *.yaml under the scenarios dir"}, 400
+    try:
+        entries = read_scenario_zip(zip_path)
+    except BundleError as e:
+        return {"error": str(e)}, 400
+    for name, text in entries.items():
+        if not valid_scenario_ref(name):
+            return {"error": f"invalid scenario file name: {name!r}"}, 400
+        try:
+            load_scenario_file(text)
+        except (ValueError, OSError, yaml.YAMLError) as e:
+            return {"error": f"invalid scenario {name!r}: {e}"}, 400
+    scenarios: list[dict[str, Any]] = []
+    for name, text in entries.items():
+        try:
+            # See save_scenario's identical guard: an existing file that can't be decoded still
+            # proves something is there to overwrite.
+            overwritten = scope.read(name) is not None
+        except (OSError, ValueError):
+            overwritten = True
+        saved = scope.save(name, text)
+        if saved is None:
+            return {"error": f"path must be a *.yaml under the scenarios dir: {name!r}"}, 400
+        scenarios.append({"name": name, "overwritten": overwritten})
+    _record_audit(state, actor, org, "scenarios.upload", target or "", {"names": list(entries)})
+    return {"ok": True, "scenarios": scenarios}, 200
 
 
 def bind_artifact(
