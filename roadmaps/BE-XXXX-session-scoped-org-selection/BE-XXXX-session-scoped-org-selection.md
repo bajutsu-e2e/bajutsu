@@ -94,9 +94,11 @@ all three read from the session record, and the request carries that value forwa
 — the stdlib handler and the FastAPI application — already build a per-request context object with
 an `actor()` accessor, so the `Caller` travels the path the login already travels.
 
-An operation that scopes by org takes the `Caller`; an operation that only attributes an action to
-a person keeps taking the login string. `ServeState.org_of` remains for the two cases that have no
-selection to honor: a shared-token session, which carries no identity, and a session issued before
+Every operation takes the `Caller`, and the places that record *who* acted — a job, an upload, a
+secret's `updated_by`, an audit row — reduce it to the login at the point of the write. One type
+reaching every operation is what makes the typechecker enumerate the sites that scope by org, which
+is the whole reason the value is threaded rather than read from ambient state.
+`ServeState.org_of` remains for the two cases that have no selection to honor: a shared-token session, which carries no identity, and a session issued before
 this change, which recorded none. In both, the user row answers as it does today.
 
 We pass the value explicitly rather than binding it to an implicit per-request context, because the

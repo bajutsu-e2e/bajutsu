@@ -154,24 +154,6 @@ class SqlSessionStore:
             session.commit()
             return int(getattr(result, "rowcount", 0) or 0)
 
-    def revoke_identities(self, identities: Iterable[str]) -> int:
-        from sqlalchemy import delete
-        from sqlalchemy.orm import Session
-
-        from bajutsu.serve.server.models import SessionRecord
-
-        wanted = list(set(identities))
-        if not wanted:
-            return 0
-        # Rows are removed rather than expired in place: a revoked session must not come back if a
-        # clock moves, and `valid`/`identity` both read the row before checking its expiry.
-        with Session(self._engine) as session:
-            result = session.execute(
-                delete(SessionRecord).where(SessionRecord.identity.in_(wanted))
-            )
-            session.commit()
-            return int(getattr(result, "rowcount", 0) or 0)
-
 
 def _record(row: Any) -> SessionIdentity:
     """A `sessions` row as the store's own record type. A column left NULL by an older row reads as

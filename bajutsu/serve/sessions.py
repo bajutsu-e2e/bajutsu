@@ -99,22 +99,16 @@ class SessionStore(Protocol):
     ) -> list[tuple[str, SessionIdentity]]:
         """Every live session bound to one of *identities*, as `(sid, record)` pairs.
 
-        Retiring an org has to reach the sessions of its members that recorded no selection — the
-        ones issued before session-scoped org selection existed, whose org is still the user row's —
-        without touching the same login's sessions acting as another org.
+        Retiring an org has to reach the sessions its members already hold (BE-0375): a soft delete
+        turns away their *next* sign-in, but a cookie issued before it keeps acting as that tenant
+        until it expires. The ones this finds are the sessions that recorded no selection, whose org
+        is still their user row's; a session of the same login acting as another org is left to the
+        caller to filter out. Sessions carrying no identity (a shared-token login) never match — they
+        belong to no org.
         """
 
     def revoke(self, sids: Iterable[str]) -> int:
         """Drop the named sessions; returns how many were live."""
-
-    def revoke_identities(self, identities: Iterable[str]) -> int:
-        """Drop every live session bound to one of *identities*; returns how many were dropped.
-
-        Retiring an org has to reach the sessions its members already hold (BE-0375): a soft delete
-        turns away their *next* sign-in, but a cookie issued before it keeps acting as that tenant
-        until it expires. Sessions carrying no identity (a shared-token login) are never touched —
-        they belong to no org.
-        """
 
 
 @dataclass
@@ -167,16 +161,6 @@ class InMemorySessionStore:
     def revoke(self, sids: Iterable[str]) -> int:
         with self._lock:
             doomed = [sid for sid in set(sids) if sid in self._sessions]
-            for sid in doomed:
-                del self._sessions[sid]
-        return len(doomed)
-
-    def revoke_identities(self, identities: Iterable[str]) -> int:
-        wanted = set(identities)
-        if not wanted:
-            return 0
-        with self._lock:
-            doomed = [sid for sid, rec in self._sessions.items() if rec.login in wanted]
             for sid in doomed:
                 del self._sessions[sid]
         return len(doomed)

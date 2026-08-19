@@ -101,37 +101,35 @@ def test_sql_expired_session_is_invalid(serve_engine: Callable[..., Engine]) -> 
     assert store.identity(sid) is None
 
 
-# revoke_identities (BE-0375) — retiring an org has to reach the sessions its members already hold.
-# Every store implements it, since which one is wired is a deployment choice the operation cannot
-# see: a hole in any of them would be a retired tenant still acting through a live cookie.
+# Revocation (BE-0375, session-scoped org selection) — retiring an org, or narrowing its membership,
+# has to reach the sessions already held as it. Every store implements the lookups, since which one
+# is wired is a deployment choice the operation cannot see: a hole in any of them would be a retired
+# tenant still acting through a live cookie.
 
 
-def test_in_memory_revoke_drops_only_the_named_identities() -> None:
+def test_in_memory_finds_sessions_by_identity() -> None:
     store = InMemorySessionStore()
-    bob, alice = store.issue(identity="bob"), store.issue(identity="alice")
-    anonymous = store.issue()  # a shared-token login carries no identity, so it belongs to no org
-    assert store.revoke_identities(["bob", "never-signed-in"]) == 1
-    assert not store.valid(bob)
-    assert store.valid(alice) and store.valid(anonymous)
+    bob, _alice = store.issue(identity="bob"), store.issue(identity="alice")
+    store.issue()  # a shared-token login carries no identity, so it belongs to no org
+    assert [sid for sid, _ in store.sessions_for_identities(["bob", "never-signed-in"])] == [bob]
+    assert store.sessions_for_identities([]) == []
 
 
 def test_in_memory_revoke_of_nothing_is_a_no_op() -> None:
     # Retiring an org with no recorded user must not walk the whole session map, nor report a drop.
     store = InMemorySessionStore()
     live = store.issue(identity="bob")
-    assert store.revoke_identities([]) == 0
+    assert store.revoke([]) == 0
     assert store.valid(live)
 
 
-def test_sql_revoke_drops_only_the_named_identities(
-    serve_engine: Callable[..., Engine],
-) -> None:
+def test_sql_finds_sessions_by_identity(serve_engine: Callable[..., Engine]) -> None:
     store = _sql_store(serve_engine)
     bob, alice = store.issue(identity="bob"), store.issue(identity="alice")
-    anonymous = store.issue()
-    assert store.revoke_identities(["bob"]) == 1
-    assert not store.valid(bob)
-    assert store.valid(alice) and store.valid(anonymous)
+    store.issue()
+    assert [sid for sid, _ in store.sessions_for_identities(["bob"])] == [bob]
+    assert store.valid(alice)
+    assert store.sessions_for_identities([]) == []
 
 
 def test_sql_revoke_removes_the_row_rather_than_expiring_it(
@@ -145,8 +143,8 @@ def test_sql_revoke_removes_the_row_rather_than_expiring_it(
     from bajutsu.serve.server.models import SessionRecord
 
     store = _sql_store(serve_engine)
-    store.issue(identity="bob")
-    assert store.revoke_identities(["bob"]) == 1
+    sid = store.issue(identity="bob")
+    assert store.revoke([sid]) == 1
     with Session(store._engine) as session:
         assert list(session.scalars(select(SessionRecord))) == []
 
