@@ -13,11 +13,12 @@ from bajutsu.codegen import EMIT_TARGETS, CodegenError, generate_test
 from bajutsu.config import load_config, resolve
 from bajutsu.scenario import load_scenarios
 from bajutsu.serve.operations._common import _resolve_org_or_forbid
+from bajutsu.serve.sessions import Caller
 from bajutsu.serve.state import ServeState
 
 
 def generate_codegen(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Generate a native test from a scenario and return its source and derived filename.
 

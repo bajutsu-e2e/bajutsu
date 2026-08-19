@@ -14,6 +14,7 @@ from typing import Any
 
 from bajutsu.serve import themes
 from bajutsu.serve._paths import TEMPLATES_DIR
+from bajutsu.serve.sessions import Caller
 from bajutsu.serve.state import ServeState
 
 _log = logging.getLogger(__name__)
@@ -60,7 +61,7 @@ def get_theme_contract(_state: ServeState) -> tuple[dict[str, Any], int]:
 
 
 def upload_theme(
-    state: ServeState, body: dict[str, Any], actor: str | None
+    state: ServeState, body: dict[str, Any], actor: Caller | None
 ) -> tuple[dict[str, Any], int]:
     """Persist an edited theme into the ``--themes`` directory as a discoverable drop-in.
 

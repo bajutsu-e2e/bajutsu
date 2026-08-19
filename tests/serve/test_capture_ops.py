@@ -15,6 +15,7 @@ from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.scenario import Redact
 from bajutsu.serve import operations as ops
+from bajutsu.serve.sessions import Caller
 from bajutsu.serve.state import ServeState
 
 
@@ -485,10 +486,10 @@ def test_resolve_pick_rejects_another_users_session(tmp_path: Path) -> None:
     ops.start_capture(
         state,
         {"target": "demo"},
-        actor="alice",
+        actor=Caller("alice"),
         driver_factory=lambda _e, _b, _u: (driver, lambda: None),
     )
-    payload, status = ops.resolve_capture_pick(state, {"point": [0.5, 0.41]}, actor="bob")
+    payload, status = ops.resolve_capture_pick(state, {"point": [0.5, 0.41]}, actor=Caller("bob"))
     assert status == 403
     assert "another user" in payload["error"]
 
@@ -524,10 +525,10 @@ def test_close_capture_rejects_another_users_session(tmp_path: Path) -> None:
     ops.start_capture(
         state,
         {"target": "demo"},
-        actor="alice",
+        actor=Caller("alice"),
         driver_factory=lambda _e, _b, _u: (driver, lambda: None),
     )
-    payload, status = ops.close_capture(state, {}, actor="bob")
+    payload, status = ops.close_capture(state, {}, actor=Caller("bob"))
     assert status == 403
     assert "another user" in payload["error"]
     assert state.capture is not None  # ownership check keeps the other user's session intact

@@ -25,6 +25,7 @@ from bajutsu.serve import operations as ops
 from bajutsu.serve._paths import TEMPLATES_DIR as _TEMPLATE_DIR
 from bajutsu.serve.helpers import range_reply, valid_run_id
 from bajutsu.serve.routes import ROUTES, match_route
+from bajutsu.serve.sessions import Caller, login_of
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.upload_artifacts import ArtifactKind
 from bajutsu.serve.uploads import (
@@ -55,20 +56,22 @@ _OAUTH_STATE_COOKIE = (
 
 class _StdlibCtx:
     """Adapt one stdlib request to the backend-neutral `RequestCtx` the route registry expects
-    (BE-0253): path parameters from the matcher, the query and session actor via the handler's
-    own `_qs`/`_actor`, and the already-parsed JSON body ({} for a GET)."""
+    (BE-0253): path parameters from the matcher, the query and the request's caller via the
+    handler's own `_qs`/`_caller`, and the already-parsed JSON body ({} for a GET)."""
 
     def __init__(
         self,
         params: dict[str, str],
         body: dict[str, Any],
         qs: Callable[[str], str | None],
-        actor: Callable[[], str | None],
+        caller: Callable[[], Caller | None],
+        session_id: Callable[[], str | None],
     ) -> None:
         self._params = params
         self._body = body
         self._qs = qs
-        self._actor = actor
+        self._caller = caller
+        self._session_id = session_id
 
     def path_param(self, name: str) -> str:
         # The matcher runs on the raw (still percent-encoded) request path, so decode here to honor
@@ -83,8 +86,11 @@ class _StdlibCtx:
     def body(self) -> dict[str, Any]:
         return self._body
 
-    def actor(self) -> str | None:
-        return self._actor()
+    def caller(self) -> Caller | None:
+        return self._caller()
+
+    def session_id(self) -> str | None:
+        return self._session_id()
 
 
 def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
@@ -200,13 +206,13 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 return True
             if self._authorized():
                 # Authenticated. For an OAuth session (an identity) with a database wired, enforce
-                # the user's role on mutating endpoints (BE-0015 7c-2). A token/Bearer request has
-                # no identity and stays full-access (the operator credential).
-                login = self._actor()
+                # the role on mutating endpoints (BE-0015 7c-2). A token/Bearer request has no
+                # identity and stays full-access (the operator credential).
+                caller = self._caller()
                 if (
-                    login is not None
+                    caller is not None
                     and state.repository is not None
-                    and ops.forbidden_for_role(state, login, self.command, path)
+                    and ops.forbidden_for_role(state, caller, self.command, path)
                 ):
                     length = int(self.headers.get("Content-Length") or 0)
                     if length:
@@ -225,8 +231,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
         def _qs(self, key: str) -> str | None:
             return next(iter(parse_qs(urlparse(self.path).query).get(key) or []), None)
 
-        def _actor(self) -> str | None:
-            return gate.actor_for(state.auth, self._session_value())
+        def _caller(self) -> Caller | None:
+            return gate.caller_for(state.auth, self._session_value())
 
         def do_GET(self) -> None:
             oplog.bind_request(oplog.new_request_id())
@@ -272,7 +278,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if route.handle is None:
                 self._json({"error": "not found"}, 404)
                 return
-            ctx = _StdlibCtx(params, body, self._qs, self._actor)
+            ctx = _StdlibCtx(params, body, self._qs, self._caller, self._session_value)
             payload, code = route.handle(state, ctx)
             if route.content_type is not None:
                 self._text(payload, code, route.content_type)
@@ -461,7 +467,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                         receiver.path,
                         filename,
                         sha256=receiver.digest(),
-                        actor=self._actor(),
+                        actor=self._caller(),
                     )
                 )
             except Exception as exc:
@@ -487,7 +493,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                         kind,
                         receiver.path,
                         sha256=receiver.digest(),
-                        actor=self._actor(),
+                        actor=self._caller(),
                     )
                 )
             except Exception as exc:
@@ -513,7 +519,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 # must be flushed before `upload_scenarios` reads it back as a zip.
                 receiver.digest()
                 self._json(
-                    *ops.upload_scenarios(state, receiver.path, target=target, actor=self._actor())
+                    *ops.upload_scenarios(state, receiver.path, target=target, actor=self._caller())
                 )
             except Exception as exc:
                 self._respond_uncaught(exc)
@@ -571,9 +577,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
 
         def _artifacts(self) -> Any:
-            # The actor's org-scoped artifact store: a run in another org's prefix reads as
+            # The caller's org-scoped artifact store: a run in another org's prefix reads as
             # not-found (BE-0015 multi-tenancy).
-            return state.for_org(state.org_of(self._actor())).artifacts
+            return state.for_org(state.org_of(self._caller())).artifacts
 
         def _serve_artifact(self, art: Any, *, filename: str | None = None) -> None:
             """Emit an `Artifact` (404 if None): a 302 to its signed URL (server store) or its
@@ -611,7 +617,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if session is None or not session.screenshot_path.exists():
                 self._json({"error": "no active capture session"}, 404)
                 return
-            if session.actor is not None and self._actor() != session.actor:
+            if session.actor is not None and login_of(self._caller()) != session.actor:
                 self._json({"error": "capture session belongs to another user"}, 403)
                 return
             data = session.screenshot_path.read_bytes()

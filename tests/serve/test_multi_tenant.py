@@ -18,6 +18,7 @@ from bajutsu.serve.server.db import SqlRepository
 from bajutsu.serve.server.models import AuditLog, Base
 from bajutsu.serve.server.oauth import Identity
 from bajutsu.serve.server.object_store import org_prefix
+from bajutsu.serve.sessions import Caller
 from bajutsu.serve.state import StoreBundle
 
 CONFIG = """
@@ -60,11 +61,11 @@ def test_list_targets_is_scoped_to_the_actors_org(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
     state = _state(serve_engine, tmp_path)
-    assert [a["name"] for a in ops.list_targets_payload(state, actor="alice")[0]] == [
+    assert [a["name"] for a in ops.list_targets_payload(state, actor=Caller("alice"))[0]] == [
         "checkout",
         "demo",
     ]
-    assert [a["name"] for a in ops.list_targets_payload(state, actor="bob")[0]] == ["other"]
+    assert [a["name"] for a in ops.list_targets_payload(state, actor=Caller("bob"))[0]] == ["other"]
     # No identity → the default org, which owns the apps no org claims (none here).
     assert [a["name"] for a in ops.list_targets_payload(state, actor=None)[0]] == []
 
@@ -74,7 +75,7 @@ def test_start_run_on_another_orgs_app_is_forbidden(
 ) -> None:
     state = _state(serve_engine, tmp_path)
     payload, status = ops.start_run(
-        state, {"target": "other", "scenario": "smoke.yaml"}, actor="alice"
+        state, {"target": "other", "scenario": "smoke.yaml"}, actor=Caller("alice")
     )
     assert status == 403
     assert payload == {"error": "forbidden"}
@@ -86,7 +87,7 @@ def test_start_run_on_own_orgs_app_passes_the_org_check(
     # alice owns demo; the org check passes, so it fails later (no scenarios dir), not with 403.
     state = _state(serve_engine, tmp_path)
     _payload, status = ops.start_run(
-        state, {"target": "demo", "scenario": "smoke.yaml"}, actor="alice"
+        state, {"target": "demo", "scenario": "smoke.yaml"}, actor=Caller("alice")
     )
     assert status != 403
 
@@ -98,7 +99,7 @@ def test_upload_scenarios_to_another_orgs_app_is_forbidden(
     # bogus zip_path is fine here, since a forbidden target never reaches read_scenario_zip.
     state = _state(serve_engine, tmp_path)
     payload, status = ops.upload_scenarios(
-        state, tmp_path / "unused.zip", target="other", actor="alice"
+        state, tmp_path / "unused.zip", target="other", actor=Caller("alice")
     )
     assert status == 403
     assert payload == {"error": "forbidden"}
@@ -111,7 +112,7 @@ def test_upload_scenarios_to_own_orgs_app_passes_the_org_check(
     # the same shape as test_start_run_on_own_orgs_app_passes_the_org_check above.
     state = _state(serve_engine, tmp_path)
     _payload, status = ops.upload_scenarios(
-        state, tmp_path / "unused.zip", target="demo", actor="alice"
+        state, tmp_path / "unused.zip", target="demo", actor=Caller("alice")
     )
     assert status != 403
 
@@ -137,7 +138,7 @@ def test_save_scenario_records_an_audit_entry(
     payload, status = ops.save_scenario(
         state,
         {"target": "demo", "path": "new.yaml", "yaml": "- name: s\n  steps: []\n"},
-        actor="alice",
+        actor=Caller("alice"),
     )
     assert status == 200
     assert payload["overwritten"] is False
@@ -150,7 +151,7 @@ def test_read_scenario_in_another_orgs_app_is_not_found(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
     state = _state(serve_engine, tmp_path)
-    payload, status = ops.read_scenario(state, "other", "smoke.yaml", actor="alice")
+    payload, status = ops.read_scenario(state, "other", "smoke.yaml", actor=Caller("alice"))
     assert status == 404
     assert payload == {"error": "not found"}
 
@@ -173,12 +174,12 @@ def test_no_orgs_block_keeps_a_single_tenant(
     repo.upsert_user("alice", org_id="default", github_login="alice", email="a@x")
     state = srv.ServeState(runs_dir=tmp_path / "runs", config=cfg, repository=repo)
 
-    assert [a["name"] for a in ops.list_targets_payload(state, actor="alice")[0]] == [
+    assert [a["name"] for a in ops.list_targets_payload(state, actor=Caller("alice"))[0]] == [
         "demo",
         "other",
     ]
     _payload, status = ops.start_run(
-        state, {"target": "other", "scenario": "smoke.yaml"}, actor="alice"
+        state, {"target": "other", "scenario": "smoke.yaml"}, actor=Caller("alice")
     )
     assert status != 403
 
@@ -248,13 +249,13 @@ def test_local_serve_ignores_orgs_without_a_repository(tmp_path: Path) -> None:
     cfg.write_text(CONFIG, encoding="utf-8")
     state = srv.ServeState(runs_dir=tmp_path / "runs", config=cfg)  # repository defaults to None
     assert state.repository is None
-    assert [a["name"] for a in ops.list_targets_payload(state, actor="alice")[0]] == [
+    assert [a["name"] for a in ops.list_targets_payload(state, actor=Caller("alice"))[0]] == [
         "checkout",
         "demo",
         "other",
     ]
     _payload, status = ops.start_run(
-        state, {"target": "other", "scenario": "smoke.yaml"}, actor="alice"
+        state, {"target": "other", "scenario": "smoke.yaml"}, actor=Caller("alice")
     )
     assert status != 403
 
@@ -325,5 +326,5 @@ def test_request_resolves_the_org_once(serve_engine: Callable[..., Engine], tmp_
     cfg.write_text("targets:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
     state = srv.ServeState(runs_dir=tmp_path / "runs", config=cfg, repository=repo)  # type: ignore[arg-type]
 
-    ops.list_scenarios(state, "demo", actor="alice")
+    ops.list_scenarios(state, "demo", actor=Caller("alice"))
     assert repo.user_org_calls == 1

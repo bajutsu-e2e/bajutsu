@@ -16,6 +16,7 @@ from bajutsu.config_source import config_from_source, source_from_config
 from bajutsu.serve.operations.config import bind_config, bind_git_config, config_sources
 from bajutsu.serve.operations.dispatch import start_run
 from bajutsu.serve.operations.upload import activate_uploaded_project
+from bajutsu.serve.sessions import Caller
 from bajutsu.serve.state import ServeState
 
 # The registry stores a config-source `kind` (`git` / `upload` / `file`); the UI/allowlist names the
@@ -50,7 +51,7 @@ def _project_view(name: str, source: Any, *, active: bool) -> dict[str, Any]:
     return {"name": name, "source": source, "active": active}
 
 
-def list_projects_view(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+def list_projects_view(state: ServeState, *, actor: Caller | None = None) -> tuple[Any, int]:
     """The org's registered projects — each with its config source, whether it is active, and its
     latest run summary — for the switcher and projects list (unit 4 renders this)."""
     registry = state.project_registry
@@ -71,7 +72,7 @@ def list_projects_view(state: ServeState, *, actor: str | None = None) -> tuple[
 
 
 def register_project(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Register a project from a config source, or rebind an existing one by name (BE-0108-screened).
 
@@ -117,7 +118,7 @@ def register_project(
 
 
 def deregister_project(
-    state: ServeState, name: str, *, actor: str | None = None
+    state: ServeState, name: str, *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Deregister a project by name; its runs are retained on disk, only the binding is removed."""
     registry = state.project_registry
@@ -131,7 +132,7 @@ def deregister_project(
 
 
 def run_project(
-    state: ServeState, name: str, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, name: str, body: dict[str, Any], *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Enqueue a run for a project — the external-trigger target CI/cron addresses by name.
 
@@ -153,7 +154,9 @@ def run_project(
     return start_run(state, body, actor=actor)
 
 
-def activate_project(state: ServeState, name: str, *, actor: str | None = None) -> tuple[Any, int]:
+def activate_project(
+    state: ServeState, name: str, *, actor: Caller | None = None
+) -> tuple[Any, int]:
     """Make a project the live active binding — the switcher's action (BE-0225 unit 4).
 
     Rebinds `state.config` from the project's stored config source (git → the Git binder, file → the
@@ -205,7 +208,7 @@ def activate_project(state: ServeState, name: str, *, actor: str | None = None) 
     return {"ok": True, "name": name, "active": True, "config": result.get("config")}, 200
 
 
-def project_runs(state: ServeState, name: str, *, actor: str | None = None) -> tuple[Any, int]:
+def project_runs(state: ServeState, name: str, *, actor: Caller | None = None) -> tuple[Any, int]:
     """A project's run history (newest first) — the per-project slice the cross-project dashboard
     (BE-0226) aggregates. The `runs.project_id` column with a database, the project→run-ids index
     without one."""

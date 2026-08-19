@@ -180,6 +180,14 @@ class SessionRecord(Base):
     id: Mapped[str] = mapped_column(primary_key=True)
     identity: Mapped[str | None] = mapped_column(default=None)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # What this session's own sign-in observed on GitHub, and the org it currently acts as with the
+    # role that org grants (session-scoped org selection). All four are nullable: a row written
+    # before the selection existed reads as "nothing observed, nothing selected", which is the
+    # pre-selection behavior of resolving the org from the user row.
+    github_orgs: Mapped[list[str] | None] = mapped_column(_JSON, default=None)
+    teams: Mapped[list[str] | None] = mapped_column(_JSON, default=None)
+    org: Mapped[str | None] = mapped_column(default=None)
+    role: Mapped[str | None] = mapped_column(default=None)
 
 
 class Secret(Base):

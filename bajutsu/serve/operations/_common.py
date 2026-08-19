@@ -13,6 +13,7 @@ from bajutsu.serve.helpers import (
     valid_backend,
     valid_udid,
 )
+from bajutsu.serve.sessions import Caller
 from bajutsu.serve.state import ServeState
 
 # A live capture/enrich driver paired with the teardown that releases whatever backs it. Some
@@ -36,7 +37,7 @@ def _device_args(body: dict[str, Any]) -> tuple[str, str, tuple[Any, int] | None
 
 
 def _resolve_org_or_forbid(
-    state: ServeState, target: str, actor: str | None
+    state: ServeState, target: str, actor: Caller | None
 ) -> tuple[str, tuple[Any, int] | None]:
     """The org resolution + cross-org guard shared by every start_* endpoint: resolve the actor's
     org and deny a target that belongs to another org (BE-0015; single-tenant never forbids).

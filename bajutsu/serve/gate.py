@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
+from bajutsu.serve.sessions import Caller
 from bajutsu.serve.state import SessionManager
 
 # Standard hardening headers on every response (BE-0051): block MIME sniffing and cross-origin
@@ -130,6 +131,23 @@ def is_authorized(
     ):
         return True
     return session_value is not None and auth.valid_session(session_value)
+
+
+def caller_for(auth: SessionManager, session_value: str | None) -> Caller | None:
+    """Who this request is, resolved once from its session (session-scoped org selection).
+
+    The org and the role come from the same session record as the login, so a request acts as the
+    org its own session selected and is authorized with that org's role. None for a token/Bearer
+    request or no session, which leaves the org to `ServeState.org_of` and the role gate to the
+    stored one — the pre-selection behavior. A session that recorded no selection returns a `Caller`
+    whose `org` and `role` are None, which falls back the same way without losing the login.
+    """
+    if not session_value:
+        return None
+    record = auth.sessions.context(session_value)
+    if record is None or record.login is None:
+        return None
+    return Caller(login=record.login, org=record.org, role=record.role)
 
 
 def actor_for(auth: SessionManager, session_value: str | None) -> str | None:

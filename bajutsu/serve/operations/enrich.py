@@ -12,6 +12,7 @@ from bajutsu.serve.operations._common import (
     _resolve_org_or_forbid,
     _session_effective,
 )
+from bajutsu.serve.sessions import Caller
 from bajutsu.serve.state import ServeState
 
 
@@ -19,7 +20,7 @@ def start_enrich(
     state: ServeState,
     body: dict[str, Any],
     *,
-    actor: str | None = None,
+    actor: Caller | None = None,
     driver_factory: Any | None = None,
     agent_factory: Any | None = None,
 ) -> tuple[Any, int]:

@@ -21,6 +21,7 @@ from bajutsu.serve.helpers import (
 )
 from bajutsu.serve.operations._common import _device_args, _resolve_org_or_forbid
 from bajutsu.serve.operations.config import resolve_provider_env
+from bajutsu.serve.sessions import Caller, login_of
 from bajutsu.serve.state import Job, ServeState
 
 _logger = logging.getLogger("bajutsu.serve.operations")
@@ -158,7 +159,7 @@ def _register_and_dispatch(
 
 
 def start_run(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     cfg = state.config
     if cfg is None:
@@ -261,7 +262,7 @@ def start_run(
             materials=materials,
             materialize_baselines=on_worker,
             provenance=state.upload.provenance if state.upload is not None else None,
-            actor=actor,
+            actor=login_of(actor),
             org=org,
             evidence_prefix=evidence_prefix,
             capabilities=target_capabilities(cfg, target),
@@ -281,7 +282,7 @@ def start_run(
 
 
 def start_run_set(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Fan out a scenario-set request into one cloud-batch job per scenario (BE-0336 Unit 3).
 
@@ -391,7 +392,7 @@ def start_run_set(
     for request in requests:
         job, capped = _register_and_dispatch(
             state,
-            Job(batch=request, actor=actor, org=org, project_id=project_id),
+            Job(batch=request, actor=login_of(actor), org=org, project_id=project_id),
             device_budget=device_budget,
         )
         if capped:
@@ -410,7 +411,7 @@ def start_run_set(
 
 
 def start_record(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Author a scenario from a natural-language goal (the Record tab).  The authored file lands in
     the selected target's configured scenarios dir."""
@@ -464,7 +465,7 @@ def start_record(
             out_path=authored.out,
             materials=materials,
             record_save=authored.save,
-            actor=actor,
+            actor=login_of(actor),
             org=org,
             capabilities=target_capabilities(cfg, str(body["target"])),
         ),
@@ -478,7 +479,7 @@ def start_record(
 
 
 def start_crawl(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Explore a target breadth-first and build a screen map (the Crawl tab).  The screen map is
     streamed into ``runs/<runId>/screenmap.json``; the returned ``runId`` lets the UI poll it."""
@@ -545,7 +546,7 @@ def start_crawl(
             udids=_boot_targets(udid),
             app_path=app_path,
             build=build,
-            actor=actor,
+            actor=login_of(actor),
             org=org,
             capabilities=target_capabilities(cfg, target),
         ),

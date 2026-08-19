@@ -14,8 +14,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from bajutsu.serve.authz import _record_audit
+from bajutsu.serve.authz import _record_audit, role_for
 from bajutsu.serve.orgs import DEFAULT_ORG
+from bajutsu.serve.sessions import Caller
 from bajutsu.serve.state import ServeState
 
 # A database is what makes an org more than a name, so every operation here needs one. 400 rather
@@ -57,7 +58,7 @@ def _string_list(value: Any, field: str) -> tuple[list[str] | None, str | None]:
     return entries, None
 
 
-def list_orgs_view(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+def list_orgs_view(state: ServeState, *, actor: Caller | None = None) -> tuple[Any, int]:
     """Every live org with its membership — the Orgs page's list and the source its edit form fills.
 
     The rosters themselves, not just their sizes: the membership form replaces all three fields as
@@ -89,7 +90,7 @@ def list_orgs_view(state: ServeState, *, actor: str | None = None) -> tuple[Any,
 
 
 def create_org(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Create an org from ``{slug, name}``, with empty membership.
 
@@ -125,7 +126,7 @@ def create_org(
 
 
 def update_org_membership(
-    state: ServeState, slug: str, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, slug: str, body: dict[str, Any], *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Replace an org's ``{members, githubOrgs, editorTeam}`` as one unit.
 
@@ -162,6 +163,9 @@ def update_org_membership(
         slug, members=members, github_orgs=github_orgs, editor_team=editor_team
     ):
         return {"error": f"no org named {slug!r}"}, 404
+    revoked = _revoke_stale_selections(
+        state, slug, members=members, github_orgs=github_orgs, editor_team=editor_team
+    )
     _record_audit(
         state,
         actor,
@@ -170,17 +174,23 @@ def update_org_membership(
         slug,
         # The logins themselves are the point of the entry — "who could sign in as this tenant, from
         # when" is exactly what an audit of a membership change has to answer.
-        {"members": members, "githubOrgs": github_orgs, "editorTeam": editor_team},
+        {
+            "members": members,
+            "githubOrgs": github_orgs,
+            "editorTeam": editor_team,
+            "sessionsRevoked": revoked,
+        },
     )
     return {
         "slug": slug,
         "members": members,
         "githubOrgs": github_orgs,
         "editorTeam": editor_team,
+        "sessionsRevoked": revoked,
     }, 200
 
 
-def delete_org(state: ServeState, slug: str, *, actor: str | None = None) -> tuple[Any, int]:
+def delete_org(state: ServeState, slug: str, *, actor: Caller | None = None) -> tuple[Any, int]:
     """Retire an org: it stops admitting sign-ins and drops out of the list, but keeps its row.
 
     A soft delete, because `users`, `runs`, `secrets`, `provider_settings`, and `audit_log` all
@@ -216,8 +226,48 @@ def delete_org(state: ServeState, slug: str, *, actor: str | None = None) -> tup
     # reading its secrets until it expired. Retiring an org used to mean a config edit plus a
     # redeploy, and the restart dropped every session as a side effect; making it an in-process
     # admin action removes that incidental revocation, so this does it deliberately (BE-0375).
-    revoked = state.auth.sessions.revoke_identities(members)
+    # `users.org_id` finds only the members the org resolves at sign-in. A session that *selected*
+    # this org (session-scoped org selection) is not in that set — its user row may name another org
+    # entirely — so the retired org is reached from both directions, or the selection would outlive
+    # the tenant it points at.
+    revoked = state.auth.sessions.revoke_identities(members) + _revoke_selected(state, slug)
     _record_audit(
         state, actor, state.org_of(actor), "org.delete", slug, {"sessionsRevoked": revoked}
     )
     return {"ok": True, "slug": slug, "sessionsRevoked": revoked}, 200
+
+
+def _revoke_selected(state: ServeState, slug: str) -> int:
+    """Drop every session currently acting as *slug*; returns how many were live."""
+    sessions = state.auth.sessions
+    return sessions.revoke([sid for sid, _record in sessions.sessions_for_org(slug)])
+
+
+def _revoke_stale_selections(
+    state: ServeState,
+    slug: str,
+    *,
+    members: list[str],
+    github_orgs: list[str],
+    editor_team: str | None,
+) -> int:
+    """Drop the sessions acting as *slug* whose answer this membership edit changes.
+
+    A session carries the org it acts as and the role that org grants, both computed at sign-in from
+    the GitHub organizations and Teams it observed (session-scoped org selection). An edit that
+    leaves a session still qualified, with the same role, changes nothing it holds — so a pure grant
+    signs nobody out, not the org's existing members and not the admin making the edit. An edit that
+    drops a login, drops a GitHub organization, or moves `editorTeam` leaves some session holding an
+    answer this deployment no longer gives, and that session ends here rather than at its expiry.
+    """
+    sessions = state.auth.sessions
+    admin_teams = state.auth.oauth_admin_teams
+    doomed = []
+    for sid, record in sessions.sessions_for_org(slug):
+        if record.login is None:
+            continue
+        qualifies = record.login in members or set(record.github_orgs).intersection(github_orgs)
+        role = role_for(teams=list(record.teams), editor_team=editor_team, admin_teams=admin_teams)
+        if not qualifies or role != record.role:
+            doomed.append(sid)
+    return sessions.revoke(doomed)

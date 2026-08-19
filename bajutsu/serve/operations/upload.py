@@ -23,6 +23,7 @@ from bajutsu.serve.authz import _record_audit, _target_forbidden
 from bajutsu.serve.helpers import list_targets, valid_scenario_ref
 from bajutsu.serve.operations.composition import materialize_composition
 from bajutsu.serve.server.object_store import org_prefix, upload_prefix
+from bajutsu.serve.sessions import Caller, login_of
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.upload_artifacts import (
     ARTIFACT_KINDS,
@@ -123,7 +124,7 @@ def _locate_config_or_heal(dest: Path) -> tuple[Any, int]:
 
 
 def bind_upload_config(
-    state: ServeState, zip_path: Path, filename: str, *, sha256: str, actor: str | None = None
+    state: ServeState, zip_path: Path, filename: str, *, sha256: str, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Bind an uploaded zip bundle as the active config (BE-0073) — a third source in the "Open
     config" UI, alongside the file browser and the Git picker.
@@ -169,7 +170,7 @@ def bind_upload_config(
         sha256=sha256,
         size=size,
         org=org,
-        actor=actor,
+        actor=login_of(actor),
     )
     state.bind_upload(upload)
     state.config_org = upload.org  # the bundle is this org's; its `orgs:` owns nothing (BE-0375)
@@ -183,7 +184,7 @@ def bind_upload_config(
 
 
 def upload_scenarios(
-    state: ServeState, zip_path: Path, *, target: str | None, actor: str | None = None
+    state: ServeState, zip_path: Path, *, target: str | None, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Add a ``.zip`` of one or more scenario files to *target*'s scenario scope (BE-0340).
 
@@ -234,7 +235,12 @@ def upload_scenarios(
 
 
 def bind_artifact(
-    state: ServeState, kind: ArtifactKind, src_path: Path, *, sha256: str, actor: str | None = None
+    state: ServeState,
+    kind: ArtifactKind,
+    src_path: Path,
+    *,
+    sha256: str,
+    actor: Caller | None = None,
 ) -> tuple[Any, int]:
     """Store one independently-uploaded artifact (BE-0268): persist it to the object store when one
     is configured (mirrors `bind_upload_config`'s own store write) and cache it locally
@@ -262,7 +268,7 @@ def bind_artifact(
 
 
 def artifact_exists(
-    state: ServeState, kind: str | None, sha256: str | None, *, actor: str | None = None
+    state: ServeState, kind: str | None, sha256: str | None, *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Whether a *kind*/*sha256* artifact is already stored for this actor's org (BE-0268) — lets a
     client skip re-uploading bytes it already sent, whether or not an object store is configured.
@@ -399,7 +405,7 @@ def _compose_and_bind(
     filename: Any,
     size: int,
     org: str,
-    actor: str | None,
+    actor: Caller | None,
     scenarios_filename: str | None = None,
 ) -> tuple[Upload, int] | tuple[dict[str, Any], int]:
     """Resolve a validated triple's legs, materialize the composition, and bind it as the active
@@ -471,7 +477,7 @@ def _compose_and_bind(
         sha256=composition_id,
         size=size,
         org=org,
-        actor=actor,
+        actor=login_of(actor),
         artifact_shas=shas,
         artifact_names=_artifact_display_names(
             shas, filename=filename, scenarios_filename=scenarios_filename
@@ -488,7 +494,7 @@ def _activate_composed_project(
     artifacts: dict[str, Any],
     *,
     org: str,
-    actor: str | None = None,
+    actor: Caller | None = None,
 ) -> tuple[Any, int] | None:
     """Fetch-and-compose fallback for reactivating a triple-bound `upload`-kind project (BE-0268) —
     the composed-triple sibling of `activate_uploaded_project`'s legacy single-sha path.
@@ -526,7 +532,7 @@ def _activate_composed_project(
 
 
 def bind_composition(
-    state: ServeState, artifacts: dict[str, Any], *, actor: str | None = None
+    state: ServeState, artifacts: dict[str, Any], *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Compose a `(config, scenarios, binary)` artifact triple and bind it as the active config
     (BE-0268) — the compose-picker sibling of `bind_upload_config`, driven by `POST /api/compose`.
@@ -575,7 +581,7 @@ def bind_composition(
     }, 200
 
 
-def compose_current(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+def compose_current(state: ServeState, *, actor: Caller | None = None) -> tuple[Any, int]:
     """The active composed bind's per-leg shas and display names, for the compose picker's resume
     seed (`GET /api/compose/current`).
 
@@ -598,7 +604,7 @@ def compose_current(state: ServeState, *, actor: str | None = None) -> tuple[Any
 
 
 def activate_uploaded_project(
-    state: ServeState, source: dict[str, Any], *, org: str, actor: str | None = None
+    state: ServeState, source: dict[str, Any], *, org: str, actor: Caller | None = None
 ) -> tuple[Any, int] | None:
     """Fetch-and-extract fallback for reactivating an `upload`-kind project (BE-0243).
 
@@ -661,7 +667,7 @@ def activate_uploaded_project(
         sha256=sha256,
         size=size if isinstance(size, int) else 0,
         org=org,
-        actor=actor,
+        actor=login_of(actor),
     )
     state.bind_upload(upload)
     state.config_org = upload.org  # the bundle is this org's; its `orgs:` owns nothing (BE-0375)

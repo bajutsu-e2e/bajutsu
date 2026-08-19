@@ -24,6 +24,7 @@ from bajutsu.serve.orgs import (
     org_for_identity,
     orgs_from_db,
 )
+from bajutsu.serve.sessions import Caller, SessionIdentity, login_of
 from bajutsu.serve.state import ServeState
 
 if TYPE_CHECKING:  # keeps the default serve/CLI path free of `serve.server` (server/__init__.py)
@@ -108,6 +109,21 @@ class _OrgModel:
         if not identity.orgs:
             return "GitHub returned no orgs for this login", False
         return "no org membership matched this login", False
+
+
+def org_model(state: ServeState) -> dict[str, OrgConfig]:
+    """The org roster this deployment's sign-in resolves against — the database once one is wired,
+    the `orgs:` block otherwise (BE-0375).
+
+    Exposed for the endpoints that answer "which orgs may this session act as" and "may it switch to
+    this one" (session-scoped org selection): both have to ask the *current* roster, so an admin's
+    membership edit reaches a session that signed in before it.
+
+    Raises:
+        Exception: whatever the repository read failed with, so a caller answers with an error
+            naming the database rather than an empty roster that reads as "you belong nowhere".
+    """
+    return _resolve_org_model(state).orgs
 
 
 def _resolve_org_model(state: ServeState) -> _OrgModel:
@@ -248,6 +264,16 @@ def oauth_callback(
             actor=login,
         )
         return {"error": "user not allowed"}, 403, None
+    # The org this sign-in resolves to, and the role it grants, are computed before the database
+    # block because the session records them too (session-scoped org selection): a switch later in
+    # the session's life recomputes both from the same inputs, so they have to start from the same
+    # place a fresh sign-in lands.
+    org = org_for_identity(orgs, login, identity.orgs)
+    oc = orgs.get(org)
+    editor_team = oc.editor_team if oc is not None else None
+    # Recompute the role from GitHub Team membership on every login, so leaving a Team takes
+    # effect on next login without a data migration (BE-0015 7c-2, BE-0313).
+    role = role_for(teams=identity.teams, editor_team=editor_team, admin_teams=admin_teams)
     if state.repository is not None:
         # Persist the identity into the system of record, so audit entries and RBAC can reference
         # the user. The org comes from the org model resolved above — an explicit member listing or
@@ -260,22 +286,13 @@ def oauth_callback(
         # org placement, so no config load can misplace anyone. `orgs_from_db` raises rather than
         # presenting an empty roster, so there is no silent "everything is empty" state left to
         # mistake for a real one.
-        org = org_for_identity(orgs, login, identity.orgs)
-        oc = orgs.get(org)
-        editor_team = oc.editor_team if oc is not None else None
         state.repository.ensure_org(org, slug=org, name=org)
         state.repository.upsert_user(
             login,
             org_id=org,
             github_login=login,
             email=f"{login}@users.noreply.github.com",
-            # Recompute the role from GitHub Team membership on every login, so leaving a Team takes
-            # effect on next login without a data migration (BE-0015 7c-2, BE-0313).
-            role=role_for(
-                teams=identity.teams,
-                editor_team=editor_team,
-                admin_teams=admin_teams,
-            ),
+            role=role,
         )
     # Record every successful sign-in through oplog (not a bare logging call) so it carries the
     # registered `event` name, redaction, and correlation fields every other
@@ -311,7 +328,21 @@ def oauth_callback(
         bypass=not matched_org,
         actor=login,
     )
-    return {"ok": True, "user": login}, 200, state.auth.issue_session(identity=login)
+    # The session records what this sign-in saw on GitHub alongside the org it starts as: the orgs
+    # this login may switch to, and the role each grants, are derived from those facts long after
+    # the OAuth callback that observed them (session-scoped org selection).
+    context = SessionIdentity(
+        login=login,
+        github_orgs=tuple(identity.orgs),
+        teams=tuple(identity.teams),
+        org=org,
+        role=role,
+    )
+    return (
+        {"ok": True, "user": login},
+        200,
+        state.auth.issue_session(identity=login, context=context),
+    )
 
 
 def _target_forbidden(state: ServeState, org: str, target: str) -> bool:
@@ -338,16 +369,22 @@ def _target_forbidden(state: ServeState, org: str, target: str) -> bool:
 
 
 def _record_audit(
-    state: ServeState, actor: str | None, org: str, action: str, target: str, detail: dict[str, Any]
+    state: ServeState,
+    actor: Caller | None,
+    org: str,
+    action: str,
+    target: str,
+    detail: dict[str, Any],
 ) -> None:
     """Append an audit entry (who did what, when) when a database is wired and the actor is known.
     A no-op otherwise — local, no database, or a shared-token request with no identity (BE-0015 7c-1).
-    *org* is the actor's org, resolved once by the caller."""
-    if state.repository is None or not actor:
+    *org* is the org the request acted as, resolved once by the caller."""
+    login = login_of(actor)
+    if state.repository is None or not login:
         return
     state.repository.record_audit(
         org_id=org,
-        actor_id=actor,
+        actor_id=login,
         action=action,
         target=target,
         detail=detail,
@@ -503,6 +540,11 @@ def required_role(method: str, path: str) -> str | None:
         if method == "POST" and (path == "/api/runs/bulk-delete" or path.endswith("/restore")):
             return "editor"
         return None
+    # Selecting which of the orgs a login already qualifies for the session acts as grants nothing a
+    # fresh sign-in would not (session-scoped org selection), so it needs no role beyond being signed
+    # in — the operation itself re-checks the candidates.
+    if path == "/api/session/org":
+        return None
     if method != "POST":
         return None
     if path in _ADMIN_PATHS:
@@ -521,11 +563,18 @@ def role_allows(role: str, required: str) -> bool:
     return _ROLE_RANK.get(role, 0) >= _ROLE_RANK.get(required, 0)
 
 
-def forbidden_for_role(state: ServeState, login: str, method: str, path: str) -> bool:
-    """Whether *login* lacks the role for this request — the transport gate calls it for an
-    OAuth-authenticated session when a database is wired. A user with no row defaults to viewer."""
+def forbidden_for_role(state: ServeState, caller: Caller, method: str, path: str) -> bool:
+    """Whether *caller* lacks the role for this request — the transport gate calls it for an
+    OAuth-authenticated session when a database is wired.
+
+    The role comes from the session that made the request, because a role is granted per org
+    (`editorTeam`, BE-0313) and a session picks which org it acts as (session-scoped org selection):
+    reading the user row instead would authorize the request with another org's answer. A session
+    that recorded no role — one issued before the selection existed — falls back to the row, and a
+    user with no row at all defaults to viewer.
+    """
     required = required_role(method, path)
     if required is None or state.repository is None:
         return False  # reads, open endpoints, or no database wired (DB-less = full access)
-    role = state.repository.user_role(login) or "viewer"  # an unknown user defaults to viewer
+    role = caller.role or state.repository.user_role(caller.login) or "viewer"
     return not role_allows(role, required)

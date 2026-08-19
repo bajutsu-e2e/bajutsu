@@ -43,6 +43,7 @@ from bajutsu.serve.handler import (
 )
 from bajutsu.serve.helpers import range_reply, valid_run_id
 from bajutsu.serve.routes import ROUTES, Handle, Route
+from bajutsu.serve.sessions import Caller
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.upload_artifacts import ArtifactKind
 from bajutsu.serve.uploads import (
@@ -83,11 +84,11 @@ class _FastapiCtx:
         self,
         request: Request,
         body: dict[str, Any],
-        actor: Callable[[], str | None],
+        caller: Callable[[], Caller | None],
     ) -> None:
         self._request = request
         self._body = body
-        self._actor = actor
+        self._caller = caller
 
     def path_param(self, name: str) -> str:
         return str(self._request.path_params[name])
@@ -98,8 +99,11 @@ class _FastapiCtx:
     def body(self) -> dict[str, Any]:
         return self._body
 
-    def actor(self) -> str | None:
-        return self._actor()
+    def caller(self) -> Caller | None:
+        return self._caller()
+
+    def session_id(self) -> str | None:
+        return self._request.cookies.get(_SESSION_COOKIE)
 
 
 def _serve_artifact(art: Any, request: Request, *, filename: str | None = None) -> Response:
@@ -130,8 +134,8 @@ def make_app(state: ServeState) -> FastAPI:
             path=request.url.path,
         )
 
-    def _actor(request: Request) -> str | None:
-        return gate.actor_for(state.auth, request.cookies.get(_SESSION_COOKIE))
+    def _caller(request: Request) -> Caller | None:
+        return gate.caller_for(state.auth, request.cookies.get(_SESSION_COOKIE))
 
     @app.middleware("http")
     async def _security_gate(request: Request, call_next: Any) -> Response:
@@ -159,13 +163,13 @@ def make_app(state: ServeState) -> FastAPI:
             path, method = request.url.path, request.method
             if not gate.is_open(method, path) and not _authorized(request):
                 return _hardened(JSONResponse({"error": "unauthorized"}, status_code=401))
-            # Enforce the user's role on mutating endpoints for an OAuth session (an identity) when a
+            # Enforce the role on mutating endpoints for an OAuth session (an identity) when a
             # database is wired (BE-0015 7c-2); token/Bearer has no identity and stays full-access.
-            login = _actor(request)
+            caller = _caller(request)
             if (
-                login is not None
+                caller is not None
                 and state.repository is not None
-                and ops.forbidden_for_role(state, login, method, path)
+                and ops.forbidden_for_role(state, caller, method, path)
             ):
                 return _hardened(JSONResponse({"error": "forbidden"}, status_code=403))
         return _hardened(await call_next(request))
@@ -207,14 +211,14 @@ def make_app(state: ServeState) -> FastAPI:
         # route doesn't swallow it.
         if not valid_run_id(run_id):
             return _result(({"error": "not found"}, 404))
-        store = state.for_org(state.org_of(_actor(request))).artifacts
+        store = state.for_org(state.org_of(_caller(request))).artifacts
         return _serve_artifact(store.archive(run_id), request, filename=f"{run_id}.zip")
 
     @app.get("/runs/{rel:path}")
     async def run_file(rel: str, request: Request) -> Response:
-        # The actor's org-scoped artifact store: a run in another org's prefix reads as not-found
+        # The caller's org-scoped artifact store: a run in another org's prefix reads as not-found
         # (BE-0015 multi-tenancy). report.html renders on view from the stored model (BE-0068).
-        store = state.for_org(state.org_of(_actor(request))).artifacts
+        store = state.for_org(state.org_of(_caller(request))).artifacts
         return _serve_artifact(ops.run_file(store, rel), request)
 
     # --- SSE (off_loop) ---
@@ -360,7 +364,7 @@ def make_app(state: ServeState) -> FastAPI:
                     received.path,
                     filename,
                     sha256=received.digest(),
-                    actor=_actor(request),
+                    actor=_caller(request),
                 )
             )
         finally:
@@ -381,7 +385,7 @@ def make_app(state: ServeState) -> FastAPI:
                     kind,
                     received.path,
                     sha256=received.digest(),
-                    actor=_actor(request),
+                    actor=_caller(request),
                 )
             )
         finally:
@@ -422,7 +426,7 @@ def make_app(state: ServeState) -> FastAPI:
                     state,
                     received.path,
                     target=target,
-                    actor=_actor(request),
+                    actor=_caller(request),
                 )
             )
         finally:
@@ -452,7 +456,7 @@ def make_app(state: ServeState) -> FastAPI:
                 if not isinstance(parsed, dict):
                     return _result(({"error": "expected a JSON object"}, 400))
                 body = parsed
-            ctx = _FastapiCtx(request, body, lambda: _actor(request))
+            ctx = _FastapiCtx(request, body, lambda: _caller(request))
             # The `ops` call blocks (disk / network / subprocess), so run it off the event loop —
             # uniformly, so a route like the from-Git config bind or compose stays non-blocking
             # exactly as its hand-written predecessor did.

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-session-scoped-org-selection.md) |
 | Author | [@paihu](https://github.com/paihu) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Implementing PR | _filled in once the PR is open_ |
 | Topic | Hosting the web UI |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md), [BE-0375](../BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management.md), [BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) |
 <!-- /BE-METADATA -->
@@ -223,13 +224,13 @@ one.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Session record carries the sign-in's GitHub organizations and Teams, the selected org, and the role (in-memory store, `SqlSessionStore`, Alembic migration; `RedisSessionStore` retired).
-- [ ] `Caller` resolved at the authentication gate and passed explicitly to org-scoped operations, with `ServeState.org_of` as the fallback for a session that records no selection.
-- [ ] The role gate reads the `Caller`'s role, recomputed per switch from the recorded Teams, the target org's `editorTeam`, and the server-wide admin Teams.
-- [ ] `GET /api/config` returns this session's candidate orgs; `POST /api/session/org` re-validates a switch against the current org model and records it in the audit log.
-- [ ] The header org badge becomes a select box when the session has more than one candidate.
-- [ ] Org deletion revokes the org's sessions; a membership edit revokes the sessions whose recomputed eligibility or role changed — by selected org as well as by the user row's org.
-- [ ] The role-cache window (seven days by default), and the revocations that bound it, are documented in `docs/` and `docs/ja/`.
+- [x] Session record carries the sign-in's GitHub organizations and Teams, the selected org, and the role (in-memory store, `SqlSessionStore`, Alembic migration; `RedisSessionStore` retired).
+- [x] `Caller` resolved at the authentication gate and passed explicitly to org-scoped operations, with `ServeState.org_of` as the fallback for a session that records no selection.
+- [x] The role gate reads the `Caller`'s role, recomputed per switch from the recorded Teams, the target org's `editorTeam`, and the server-wide admin Teams.
+- [x] `GET /api/config` returns this session's candidate orgs; `POST /api/session/org` re-validates a switch against the current org model and records it in the audit log.
+- [x] The header org badge becomes a select box when the session has more than one candidate.
+- [x] Org deletion revokes the org's sessions; a membership edit revokes the sessions whose recomputed eligibility or role changed — by selected org as well as by the user row's org.
+- [x] The role-cache window (seven days by default), and the revocations that bound it, are documented in `docs/` and `docs/ja/`.
 
 ## References
 

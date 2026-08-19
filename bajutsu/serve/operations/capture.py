@@ -13,6 +13,7 @@ from bajutsu.serve.operations._common import (
     _resolve_org_or_forbid,
     _session_effective,
 )
+from bajutsu.serve.sessions import Caller, login_of
 from bajutsu.serve.state import CaptureSession, ServeState
 
 if TYPE_CHECKING:
@@ -25,7 +26,7 @@ def start_capture(
     state: ServeState,
     body: dict[str, Any],
     *,
-    actor: str | None = None,
+    actor: Caller | None = None,
     driver_factory: Any | None = None,
     redactor: Redactor | None = None,
 ) -> tuple[Any, int]:
@@ -88,7 +89,7 @@ def start_capture(
             screen_size=screen_size,
             namespaces=namespaces,
             redactor=redactor,
-            actor=actor,
+            actor=login_of(actor),
             screenshot_path=shot_path,
             teardown=teardown,
         )
@@ -99,7 +100,7 @@ def start_capture(
 
 
 def _active_session(
-    state: ServeState, actor: str | None
+    state: ServeState, actor: Caller | None
 ) -> tuple[CaptureSession | None, tuple[Any, int] | None]:
     """The active session if *actor* owns it, else an error response (BE-0262).
 
@@ -109,7 +110,7 @@ def _active_session(
     session = state.capture
     if session is None:
         return None, ({"error": "no active capture session"}, 400)
-    if session.actor is not None and actor != session.actor:
+    if session.actor is not None and login_of(actor) != session.actor:
         return None, ({"error": "capture session belongs to another user"}, 403)
     return session, None
 
@@ -153,7 +154,7 @@ def _feedback_payload(result: CaptureResult) -> tuple[Any, int] | None:
 
 
 def mark_capture(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Resolve a point, proxy-actuate, and append the step."""
     session, err = _active_session(state, actor)
@@ -202,7 +203,7 @@ def mark_capture(
 
 
 def finish_capture(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Save the captured scenario and close the session."""
     session = state.capture
@@ -238,7 +239,7 @@ def finish_capture(
 
 
 def resolve_capture_pick(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Resolve a screen click against the live session's tree and return the selector (BE-0262).
 
@@ -265,7 +266,7 @@ def resolve_capture_pick(
 
 
 def close_capture(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """End a live session without saving a scenario — the live Edit picker's teardown (BE-0262).
 

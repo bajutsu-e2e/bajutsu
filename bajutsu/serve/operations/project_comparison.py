@@ -18,6 +18,7 @@ from bajutsu.analysis.stats import ProjectMetrics, project_metrics
 from bajutsu.serve.artifacts import ArtifactStore
 from bajutsu.serve.operations.reads import _STATS_RUN_LIMIT, run_set_manifests
 from bajutsu.serve.project_registry import ProjectRegistry
+from bajutsu.serve.sessions import Caller
 from bajutsu.serve.state import ServeState
 
 
@@ -50,7 +51,7 @@ def compare_projects(
     return rows
 
 
-def project_metrics_view(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+def project_metrics_view(state: ServeState, *, actor: Caller | None = None) -> tuple[Any, int]:
     """`GET /api/metrics/projects`: the cross-project comparison model as JSON (BE-0226 unit 2).
 
     One row per registered project — the headline pass-rate, flaky-rate, and duration percentiles the

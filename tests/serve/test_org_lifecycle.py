@@ -23,6 +23,7 @@ from bajutsu.serve.authz import _target_forbidden
 from bajutsu.serve.operations.config import seed_orgs_from_bound_config
 from bajutsu.serve.orgs import identity_matches_org, org_for_identity, orgs_from_db, parse_orgs
 from bajutsu.serve.server.oauth import Identity
+from bajutsu.serve.sessions import Caller
 from bajutsu.serve.state import ServeState, SessionManager
 
 if TYPE_CHECKING:
@@ -112,7 +113,7 @@ def _sign_in(state: ServeState) -> tuple[Any, int, str | None]:
     return ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
 
 
-def _admin(state: ServeState) -> str:
+def _admin(state: ServeState) -> Caller:
     """The admin the audited operations below act as, holding the user row a sign-in leaves behind.
 
     An audit entry carries foreign keys on both its actor and that actor's org, and an actor with no
@@ -123,7 +124,7 @@ def _admin(state: ServeState) -> str:
     """
     assert state.repository is not None
     state.repository.upsert_user("root", org_id="acme", github_login="root", email="root@x")
-    return "root"
+    return Caller("root")
 
 
 # --- unit 1: the database is a second producer of the same org model -------------------------
@@ -270,7 +271,9 @@ def test_two_orgs_may_each_claim_a_target_of_the_same_name(
     for login, org in (("alice", "acme"), ("bob", "globex")):
         state.repository.upsert_user(login, org_id=org, github_login=login, email=f"{login}@x")
         assert _target_forbidden(state, org, "checkout") is False
-        assert [t["name"] for t in ops.list_targets_payload(state, actor=login)[0]] == ["checkout"]
+        assert [t["name"] for t in ops.list_targets_payload(state, actor=Caller(login))[0]] == [
+            "checkout"
+        ]
 
 
 def test_the_default_org_keeps_every_unclaimed_target(
@@ -336,13 +339,13 @@ def test_an_uploaded_bundle_belongs_to_the_org_that_bound_it(
     assert state.repository is not None
     state.repository.upsert_user("kazu", org_id="acme", github_login="kazu", email="k@x")
     _, status = ops.bind_upload_config(
-        state, zip_path, "bundle.zip", sha256=hashlib.sha256(blob).hexdigest(), actor="kazu"
+        state, zip_path, "bundle.zip", sha256=hashlib.sha256(blob).hexdigest(), actor=Caller("kazu")
     )
     assert status == 200
     # `acme` bound it, so `acme` owns its target — even though the file names `sansaninc`.
     assert state.config_org == "acme"
     assert state.targets_for("acme") == ["docs"]
-    assert [t["name"] for t in ops.list_targets_payload(state, actor="kazu")[0]] == ["docs"]
+    assert [t["name"] for t in ops.list_targets_payload(state, actor=Caller("kazu"))[0]] == ["docs"]
     # And nobody else does, including the org the file claims it for and the fallback.
     assert state.targets_for("sansaninc") == []
     assert state.targets_for("default") == []
@@ -375,7 +378,7 @@ def test_a_git_bound_config_belongs_to_the_org_that_bound_it(
         "bajutsu.serve.operations.config.materialize",
         lambda spec, **kw: Materialized(git_config, checkout, "sha"),
     )
-    assert ops.bind_git_config(state, "github:acme/repo@main", actor="kazu")[1] == 200
+    assert ops.bind_git_config(state, "github:acme/repo@main", actor=Caller("kazu"))[1] == 200
     assert state.config_org == "acme"
     assert state.targets_for("acme") == ["docs"]
     assert state.targets_for("someone-else") == []
@@ -506,12 +509,12 @@ def test_the_default_orgs_membership_is_not_editable(
     assert _sign_in(state)[1] == 200  # the bypass admits root and lands them in `default`
     assert state.repository.user_org("root") == "default"
     payload, status = ops.update_org_membership(
-        state, "default", {"members": ["mallory"]}, actor="root"
+        state, "default", {"members": ["mallory"]}, actor=Caller("root")
     )
     assert status == 409 and "fallback" in payload["error"]
     assert orgs_from_db(state.repository)["default"].members == []
     # Listed, not hidden: the admin is sitting in it, so the page marks it instead of concealing it.
-    listed = {o["slug"]: o for o in ops.list_orgs_view(state, actor="root")[0]}
+    listed = {o["slug"]: o for o in ops.list_orgs_view(state, actor=Caller("root"))[0]}
     assert listed["default"]["reserved"] is True
     assert listed["acme"]["reserved"] is False
 
@@ -520,9 +523,9 @@ def test_creating_an_org_rejects_a_taken_slug_and_a_slug_that_is_not_a_safe_id(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
     state = _state(serve_engine, tmp_path)
-    assert ops.create_org(state, {"slug": "acme"}, actor="root")[1] == 409  # seeded above
+    assert ops.create_org(state, {"slug": "acme"}, actor=Caller("root"))[1] == 409  # seeded above
     for bad in ("", "ACME", "a/b", "..", "a b", "x" * 65):
-        assert ops.create_org(state, {"slug": bad}, actor="root")[1] == 400, bad
+        assert ops.create_org(state, {"slug": bad}, actor=Caller("root"))[1] == 400, bad
 
 
 def test_deleting_an_org_retires_it_without_removing_its_row(
@@ -553,12 +556,12 @@ def test_deleting_an_org_is_refused_while_it_owns_a_project_or_is_the_default(
     state = _state(serve_engine, tmp_path)
     assert state.repository is not None
     state.repository.create_project(ProjectRecord(id="p1", org_id="acme", name="hub"))
-    assert ops.delete_org(state, "acme", actor="root")[1] == 409
+    assert ops.delete_org(state, "acme", actor=Caller("root"))[1] == 409
     # `default` is the fallback an unmatched bypass sign-in resolves to regardless of table state,
     # so retiring it would only leave a dead org users keep landing on.
     state.repository.ensure_org("default", slug="default", name="default")
-    assert ops.delete_org(state, "default", actor="root")[1] == 409
-    assert ops.delete_org(state, "nosuch", actor="root")[1] == 404
+    assert ops.delete_org(state, "default", actor=Caller("root"))[1] == 409
+    assert ops.delete_org(state, "nosuch", actor=Caller("root"))[1] == 404
 
 
 def test_the_org_endpoints_need_a_database(tmp_path: Path) -> None:
@@ -580,7 +583,7 @@ def test_the_config_read_reports_the_callers_own_org(
     # admin-only `GET /api/orgs`.
     state = _state(serve_engine, tmp_path, oauth=_FakeOAuth("bob"))
     assert _sign_in(state)[1] == 200  # bob belongs to globex
-    payload, status = ops.config_info(state, actor="bob")
+    payload, status = ops.config_info(state, actor=Caller("bob"))
     assert status == 200
     assert (payload["actor"], payload["org"]) == ("bob", "globex")
 
@@ -908,8 +911,8 @@ def test_the_admin_team_bypass_admits_a_sign_in_against_an_empty_table_and_creat
     assert _sign_in(state)[1] == 200
     assert state.repository.user_role("root") == "admin"
 
-    assert ops.create_org(state, {"slug": "initech"}, actor="root")[1] == 200
-    ops.update_org_membership(state, "initech", {"members": ["peter"]}, actor="root")
+    assert ops.create_org(state, {"slug": "initech"}, actor=Caller("root"))[1] == 200
+    ops.update_org_membership(state, "initech", {"members": ["peter"]}, actor=Caller("root"))
     state.auth.oauth = _FakeOAuth("peter")
     assert _sign_in(state)[1] == 200
     assert state.repository.user_org("peter") == "initech"

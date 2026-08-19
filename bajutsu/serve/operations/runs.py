@@ -22,6 +22,7 @@ from typing import Any
 from bajutsu.serve import oplog
 from bajutsu.serve.authz import _record_audit, role_allows
 from bajutsu.serve.helpers import valid_run_id
+from bajutsu.serve.sessions import Caller, login_of
 from bajutsu.serve.state import ServeState
 
 _logger = logging.getLogger("bajutsu.serve.operations")
@@ -29,18 +30,19 @@ _logger = logging.getLogger("bajutsu.serve.operations")
 _NOT_FOUND = ({"error": "no such run"}, 404)
 
 
-def _forbidden_purge(state: ServeState, actor: str | None) -> bool:
+def _forbidden_purge(state: ServeState, actor: Caller | None) -> bool:
     """Whether *actor* may not purge — the admin gate the path-based RBAC can't apply (`?purge=true`
     isn't in the path `required_role` sees). Mirrors `forbidden_for_role`: local (no repository) and
-    a token/operator request (no identity) are full-access; an OAuth user needs the admin role."""
+    a token/operator request (no identity) are full-access; an OAuth user needs the admin role, read
+    from the session's own selection first so this gate and the transport gate answer alike."""
     if state.repository is None or actor is None:
         return False
-    role = state.repository.user_role(actor) or "viewer"
+    role = actor.role or state.repository.user_role(actor.login) or "viewer"
     return not role_allows(role, "admin")
 
 
 def _apply_delete(
-    state: ServeState, org: str, run_id: str, *, purge: bool, actor: str | None, now: datetime
+    state: ServeState, org: str, run_id: str, *, purge: bool, actor: Caller | None, now: datetime
 ) -> bool:
     """Soft-delete or purge one run in *org*, recording audit + oplog when it acts. Returns whether
     anything was removed — False for a bad id or a run absent from both the store and the DB, which
@@ -56,7 +58,10 @@ def _apply_delete(
     else:
         acted = store.soft_delete_run(run_id)
         if repo is not None:
-            acted = repo.soft_delete_run(run_id, org_id=org, deleted_by=actor, at=now) or acted
+            acted = (
+                repo.soft_delete_run(run_id, org_id=org, deleted_by=login_of(actor), at=now)
+                or acted
+            )
         action, event, msg = "run.soft_delete", "run.soft_deleted", "run soft-deleted"
     if acted:
         _record_audit(state, actor, org, action, run_id, {})
@@ -65,7 +70,7 @@ def _apply_delete(
 
 
 def delete_run(
-    state: ServeState, run_id: str, *, purge: bool = False, actor: str | None = None
+    state: ServeState, run_id: str, *, purge: bool = False, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Soft-delete *run_id* (the trash window), or purge it immediately when *purge* (admin-only).
 
@@ -81,7 +86,7 @@ def delete_run(
     return {"ok": True, "purged": purge}, 200
 
 
-def restore_run(state: ServeState, run_id: str, *, actor: str | None = None) -> tuple[Any, int]:
+def restore_run(state: ServeState, run_id: str, *, actor: Caller | None = None) -> tuple[Any, int]:
     """Undo a soft-delete for *run_id*, returning it to the history lists (BE-0239). 404 when no
     trashed run holds the id (a bad id, never-deleted, already-purged, or already-restored run)."""
     if not valid_run_id(run_id):
@@ -100,7 +105,7 @@ def restore_run(state: ServeState, run_id: str, *, actor: str | None = None) -> 
 
 
 def bulk_delete_runs(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Soft-delete (or purge, admin-only) many runs at once — the bulk-delete case (BE-0239).
 
@@ -128,7 +133,7 @@ def bulk_delete_runs(
 
 
 def sweep_expired_trash(
-    state: ServeState, *, actor: str | None = None, now: datetime | None = None
+    state: ServeState, *, actor: Caller | None = None, now: datetime | None = None
 ) -> int:
     """Purge soft-deleted runs past the retention window for the actor's org, returning how many.
 

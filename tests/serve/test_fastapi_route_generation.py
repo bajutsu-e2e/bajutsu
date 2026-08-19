@@ -118,7 +118,7 @@ def test_backfilled_respond_human_route_delegates_to_ops(tmp_path: Path) -> None
 
 def test_stdlib_ctx_decodes_a_path_param_exactly_once() -> None:
     # The matcher binds the raw encoded segment "a%2520b"; the ctx unquotes it exactly once.
-    ctx = _StdlibCtx({"name": "a%2520b"}, {}, lambda _key: None, lambda: None)
+    ctx = _StdlibCtx({"name": "a%2520b"}, {}, lambda _key: None, lambda: None, lambda: None)
     assert ctx.path_param("name") == "a%20b"
 
 

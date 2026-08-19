@@ -116,6 +116,7 @@ from bajutsu.serve.operations.runs import (
     restore_run,
     sweep_expired_trash,
 )
+from bajutsu.serve.operations.session import candidate_orgs, switch_org
 from bajutsu.serve.operations.sse import (
     _job_event_pairs,
     _job_sse_frames,
@@ -184,6 +185,7 @@ __all__ = [
     "browse_fs",
     "bulk_delete_runs",
     "cancel_job",
+    "candidate_orgs",
     "claude_code_token_info",
     "close_capture",
     "compose_current",
@@ -254,6 +256,7 @@ __all__ = [
     "start_triage",
     "stats_html",
     "sweep_expired_trash",
+    "switch_org",
     "trashed_runs_payload",
     "update_org_membership",
     "upload_scenarios",

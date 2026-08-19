@@ -19,6 +19,7 @@ from bajutsu.config import (
 )
 from bajutsu.drivers import base
 from bajutsu.serve.operations._common import _device_args
+from bajutsu.serve.sessions import Caller
 from bajutsu.serve.state import ServeState
 
 # (actuator, udid, effective config) -> the current screen's elements. Injectable so the score
@@ -30,7 +31,7 @@ def doctor_check(
     state: ServeState,
     body: dict[str, Any],
     *,
-    actor: str | None = None,
+    actor: Caller | None = None,
     screen_query: ScreenQuery | None = None,
 ) -> tuple[Any, int]:
     """Run doctor for a target: config validation, tool runnability, and the screen's convention score.

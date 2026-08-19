@@ -21,6 +21,7 @@ from bajutsu import serve as srv
 from bajutsu.serve.operations import crawl_runs_payload, runs_payload
 from bajutsu.serve.server.db import RunRecord, SqlRepository
 from bajutsu.serve.server.models import Base
+from bajutsu.serve.sessions import Caller
 
 
 def _repo(serve_engine: Callable[..., Engine]) -> SqlRepository:
@@ -367,5 +368,5 @@ def test_crawl_runs_payload_is_scoped_to_the_actors_org(
         LocalArtifactStore(dirs[org]), state.scenarios, state.baselines, state.secrets
     )
 
-    assert [r["id"] for r in crawl_runs_payload(state, actor="al")[0]] == ["20260621-a"]
-    assert [r["id"] for r in crawl_runs_payload(state, actor="bo")[0]] == ["20260621-b"]
+    assert [r["id"] for r in crawl_runs_payload(state, actor=Caller("al"))[0]] == ["20260621-a"]
+    assert [r["id"] for r in crawl_runs_payload(state, actor=Caller("bo"))[0]] == ["20260621-b"]

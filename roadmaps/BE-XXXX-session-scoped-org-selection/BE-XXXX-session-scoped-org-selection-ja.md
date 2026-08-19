@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-XXXX](BE-XXXX-session-scoped-org-selection-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| 実装 PR | _PR を開いたら記入します_ |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md)、[BE-0375](../BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management-ja.md)、[BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass-ja.md)、[BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md) |
 <!-- /BE-METADATA -->
@@ -212,13 +213,13 @@ organization と GitHub Team を持っています。そこでサーバは、そ
 > 作業の進行にあわせて最新に保ってください。チェックリストは *詳細設計* の MECE な作業分解に対応し
 > （作業単位ごとに1つ）、ログは何がいつ変わったかを古い順に記録し、PR を結び付けます。
 
-- [ ] セッションがサインイン時の GitHub organization と Team、選択中の org、ロールを持つ（インメモリの実装、`SqlSessionStore`、Alembic のマイグレーション。`RedisSessionStore` は退役）。
-- [ ] 認証ゲートで `Caller` を解決し、org で範囲を区切る操作に明示的に渡す。選択を記録しないセッションのために `ServeState.org_of` を残す。
-- [ ] ロールのゲートが `Caller` のロールを読む。ロールは切り替えのたびに、記録した Team、切り替え先の org の `editorTeam`、サーバ全体の管理者 Team から再計算する。
-- [ ] `GET /api/config` がそのセッションの候補 org を返し、`POST /api/session/org` が切り替えを現在の org のモデルに照らして検証し、audit log に記録する。
-- [ ] 候補が2つ以上あるとき、ヘッダの org バッジをセレクトボックスにする。
-- [ ] org の削除がその org のセッションを失効させ、メンバーシップの編集は再計算した資格とロールが変わったセッションを失効させる。対象はユーザ行の org に加えて選択中の org でも探す。
-- [ ] ロールのキャッシュが既定で7日であることと、その期間を抑える2つの失効を `docs/` と `docs/ja/` に記載する。
+- [x] セッションがサインイン時の GitHub organization と Team、選択中の org、ロールを持つ（インメモリの実装、`SqlSessionStore`、Alembic のマイグレーション。`RedisSessionStore` は退役）。
+- [x] 認証ゲートで `Caller` を解決し、org で範囲を区切る操作に明示的に渡す。選択を記録しないセッションのために `ServeState.org_of` を残す。
+- [x] ロールのゲートが `Caller` のロールを読む。ロールは切り替えのたびに、記録した Team、切り替え先の org の `editorTeam`、サーバ全体の管理者 Team から再計算する。
+- [x] `GET /api/config` がそのセッションの候補 org を返し、`POST /api/session/org` が切り替えを現在の org のモデルに照らして検証し、audit log に記録する。
+- [x] 候補が2つ以上あるとき、ヘッダの org バッジをセレクトボックスにする。
+- [x] org の削除がその org のセッションを失効させ、メンバーシップの編集は再計算した資格とロールが変わったセッションを失効させる。対象はユーザ行の org に加えて選択中の org でも探す。
+- [x] ロールのキャッシュが既定で7日であることと、その期間を抑える2つの失効を `docs/` と `docs/ja/` に記載する。
 
 ## 参考
 

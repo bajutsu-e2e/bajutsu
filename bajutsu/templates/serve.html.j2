@@ -68,6 +68,11 @@
             which one their own work lands in. Hidden until the boot read names an identity: a local
             or shared-token session has none, and `default` shown to everyone would be noise. -#}
         <span class="orgbadge" id="orgbadge" data-testid="nav.org" hidden></span>
+        {#- The same tenant as a control, for a login that belongs to more than one org
+            (session-scoped org selection). Switching points *this session* at the chosen org, so a
+            second window can hold another tenant. Hidden whenever there is nothing to choose
+            between, which leaves the badge above exactly as it was for everyone else. -#}
+        <select class="projectsw" id="orgsw" data-testid="nav.org-switch" aria-label="acting org" hidden></select>
         <button class="cfgbtn" id="opencfg" data-testid="nav.open-config">Open config</button>
         <button class="cfgbtn" id="viewcfg" data-testid="nav.view-config" hidden>View</button>
         {#- Project hub switcher (BE-0225 unit 4): next to the config viewer. A native <select> lists the

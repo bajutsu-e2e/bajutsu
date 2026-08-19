@@ -1,11 +1,9 @@
 """Tests for the SessionStore seam (BE-0015 7b-1, BE-0106).
 
 `InMemorySessionStore` is the local default — sessions live in one process, so a restart drops them.
-`RedisSessionStore` is the legacy server implementation (kept for reference); `SqlSessionStore` is its
-replacement (BE-0106): sessions in the same Postgres the system of record already uses, so no Redis
-is needed. Both server stores survive a restart and span replicas. The redis client / SQL engine are
-injected, so in-memory fakes (a dict for Redis, SQLite for SQL) drive the contract — no live
-Redis or Postgres on the gate. The `SqlSessionStore` cases run against in-memory SQLite in the gate
+`SqlSessionStore` (BE-0106) keeps them in the same Postgres the system of record already uses, so
+they survive a restart and span replicas. The SQL engine is injected, so SQLite drives the contract —
+no live Postgres on the gate. The `SqlSessionStore` cases run against in-memory SQLite in the gate
 and, behind the `postgres` marker, against a real Postgres service in the serve-db.yml lane
 (BE-0309)."""
 
@@ -17,8 +15,8 @@ import pytest
 from sqlalchemy import Engine
 
 from bajutsu.serve.server.models import Base
-from bajutsu.serve.server.sessions import _DEFAULT_TTL, RedisSessionStore, SqlSessionStore
-from bajutsu.serve.sessions import InMemorySessionStore
+from bajutsu.serve.server.sessions import SqlSessionStore
+from bajutsu.serve.sessions import InMemorySessionStore, SessionIdentity
 
 
 def test_in_memory_issue_then_valid() -> None:
@@ -45,65 +43,6 @@ def test_in_memory_ids_are_unique_and_opaque() -> None:
     a, b = store.issue(), store.issue()
     assert a != b
     assert len(a) > 20  # secrets.token_urlsafe(32) is not a short, guessable id
-
-
-class FakeRedis:
-    """The slice of a redis client RedisSessionStore uses, in memory. Records TTLs so a test can
-    assert each session key self-expires."""
-
-    def __init__(self) -> None:
-        self._kv: dict[str, str] = {}
-        self.ttls: dict[str, int] = {}
-
-    def setex(self, key: str, seconds: int, value: str) -> object:
-        self._kv[key] = value
-        self.ttls[key] = seconds
-        return True
-
-    def exists(self, key: str) -> int:
-        return 1 if key in self._kv else 0
-
-    def get(self, key: str) -> bytes | None:
-        v = self._kv.get(key)
-        return v.encode() if v is not None else None
-
-    def scan_iter(self, match: str) -> list[bytes]:
-        prefix = match.rstrip("*")
-        return [k.encode() for k in self._kv if k.startswith(prefix)]
-
-    def delete(self, *keys: str) -> int:
-        gone = [k for k in keys if self._kv.pop(k, None) is not None]
-        return len(gone)
-
-
-def test_redis_issue_then_valid() -> None:
-    store = RedisSessionStore(FakeRedis())
-    sid = store.issue()
-    assert store.valid(sid)
-
-
-def test_redis_unknown_is_invalid() -> None:
-    assert not RedisSessionStore(FakeRedis()).valid("nope")
-
-
-def test_redis_binds_and_reads_identity() -> None:
-    store = RedisSessionStore(FakeRedis())
-    assert store.identity(store.issue("bob")) == "bob"
-    # a token login carries no identity; an unknown id has none
-    assert store.identity(store.issue()) is None
-    assert store.identity("nope") is None
-
-
-def test_redis_issue_sets_the_injected_ttl() -> None:
-    redis = FakeRedis()
-    RedisSessionStore(redis, ttl=123).issue()
-    assert list(redis.ttls.values()) == [123]
-
-
-def test_redis_issue_uses_the_default_ttl() -> None:
-    redis = FakeRedis()
-    RedisSessionStore(redis).issue()
-    assert list(redis.ttls.values()) == [_DEFAULT_TTL]
 
 
 def test_session_ttl_from_env_parses_and_validates() -> None:
@@ -184,16 +123,6 @@ def test_in_memory_revoke_of_nothing_is_a_no_op() -> None:
     assert store.valid(live)
 
 
-def test_redis_revoke_drops_only_the_named_identities() -> None:
-    # The identity is the key's value, not an index, so this store has to read every session key.
-    store = RedisSessionStore(FakeRedis())
-    bob, alice = store.issue(identity="bob"), store.issue(identity="alice")
-    anonymous = store.issue()
-    assert store.revoke_identities(["bob"]) == 1
-    assert not store.valid(bob)
-    assert store.valid(alice) and store.valid(anonymous)
-
-
 def test_sql_revoke_drops_only_the_named_identities(
     serve_engine: Callable[..., Engine],
 ) -> None:
@@ -220,3 +149,102 @@ def test_sql_revoke_removes_the_row_rather_than_expiring_it(
     assert store.revoke_identities(["bob"]) == 1
     with Session(store._engine) as session:
         assert list(session.scalars(select(SessionRecord))) == []
+
+
+# --- the org a session acts as (session-scoped org selection) ---------------------------------
+
+
+def _selected(store: object, sid: str) -> tuple[str | None, str | None]:
+    record = store.context(sid)  # type: ignore[attr-defined]
+    return (record.org, record.role) if record is not None else (None, None)
+
+
+def test_in_memory_carries_the_sign_ins_facts_and_selection() -> None:
+    store = InMemorySessionStore()
+    sid = store.issue(
+        "alice",
+        context=SessionIdentity(
+            login="alice",
+            github_orgs=("acme-gh",),
+            teams=("acme-gh/maintainers",),
+            org="acme",
+            role="editor",
+        ),
+    )
+    record = store.context(sid)
+    assert record is not None
+    assert record.github_orgs == ("acme-gh",) and record.teams == ("acme-gh/maintainers",)
+    assert (record.org, record.role) == ("acme", "editor")
+
+
+def test_a_context_naming_another_login_is_dropped() -> None:
+    # The facts a session acts on are the ones its own sign-in saw, so a mismatched record is not
+    # stored — the session simply carries its login and nothing else.
+    store = InMemorySessionStore()
+    sid = store.issue("alice", context=SessionIdentity(login="mallory", org="globex"))
+    record = store.context(sid)
+    assert record is not None
+    assert record.login == "alice" and record.org is None and record.github_orgs == ()
+
+
+def test_in_memory_select_org_moves_only_the_named_session() -> None:
+    store = InMemorySessionStore()
+    first = store.issue("alice", context=SessionIdentity(login="alice", org="acme", role="viewer"))
+    second = store.issue("alice", context=SessionIdentity(login="alice", org="acme", role="viewer"))
+    assert store.select_org(first, "globex", "editor")
+    assert _selected(store, first) == ("globex", "editor")
+    assert _selected(store, second) == ("acme", "viewer")  # the other window keeps its tenant
+    assert not store.select_org("nope", "globex", "editor")
+
+
+def test_in_memory_lists_and_revokes_by_selected_org() -> None:
+    store = InMemorySessionStore()
+    acme = store.issue("alice", context=SessionIdentity(login="alice", org="acme", role="viewer"))
+    globex = store.issue("bob", context=SessionIdentity(login="bob", org="globex", role="viewer"))
+    assert [sid for sid, _ in store.sessions_for_org("acme")] == [acme]
+    assert store.revoke([acme]) == 1
+    assert not store.valid(acme) and store.valid(globex)
+
+
+def test_sql_carries_the_selection_across_a_new_store(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    # The point of the database-backed store: a switch outlives the process that served it.
+    engine = serve_engine()
+    Base.metadata.create_all(engine)
+    sid = SqlSessionStore(engine).issue(
+        "alice",
+        context=SessionIdentity(login="alice", github_orgs=("acme-gh",), org="acme", role="viewer"),
+    )
+    assert SqlSessionStore(engine).select_org(sid, "globex", "editor")
+    record = SqlSessionStore(engine).context(sid)
+    assert record is not None
+    assert (record.org, record.role) == ("globex", "editor")
+    assert record.github_orgs == ("acme-gh",)
+
+
+def test_sql_lists_and_revokes_by_selected_org(serve_engine: Callable[..., Engine]) -> None:
+    engine = serve_engine()
+    Base.metadata.create_all(engine)
+    store = SqlSessionStore(engine)
+    acme = store.issue("alice", context=SessionIdentity(login="alice", org="acme"))
+    globex = store.issue("bob", context=SessionIdentity(login="bob", org="globex"))
+    assert [sid for sid, _ in store.sessions_for_org("globex")] == [globex]
+    assert store.revoke([globex]) == 1
+    assert not store.valid(globex) and store.valid(acme)
+
+
+def test_sql_reads_a_row_written_before_the_selection_existed(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    # The migration adds four nullable columns, so a session issued before it upgrades in place and
+    # reads as "nothing observed, nothing selected" — the pre-selection behavior.
+    engine = serve_engine()
+    Base.metadata.create_all(engine)
+    store = SqlSessionStore(engine)
+    sid = store.issue("alice")
+    record = store.context(sid)
+    assert record is not None
+    assert record.login == "alice"
+    assert record.github_orgs == () and record.teams == ()
+    assert record.org is None and record.role is None

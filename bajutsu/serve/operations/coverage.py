@@ -21,6 +21,7 @@ from bajutsu.scenario import load_scenarios_dir
 from bajutsu.serve.artifacts import ArtifactStore
 from bajutsu.serve.helpers import valid_run_id
 from bajutsu.serve.operations.reads import run_set_manifests
+from bajutsu.serve.sessions import Caller
 from bajutsu.serve.state import ServeState, _scenarios_dir_for
 
 
@@ -113,7 +114,7 @@ def read_observed_ids_via_store(store: ArtifactStore, manifests: list[dict[str, 
 
 
 def coverage_view(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Aggregate a target's E2E coverage map for the Web UI's Coverage view.
 

@@ -27,6 +27,7 @@ from bajutsu.serve.server.db import SqlRepository
 from bajutsu.serve.server.models import Base
 from bajutsu.serve.server.provider_store import DbProviderSettingsStore
 from bajutsu.serve.server.worker_job import job_spec
+from bajutsu.serve.sessions import Caller
 from bajutsu.serve.state import Job, OrgProviderSettings, ProviderSettings, StoreBundle
 
 _BEDROCK_MODEL = "global.anthropic.claude-opus-4-6-v1"
@@ -159,9 +160,11 @@ def test_two_orgs_resolve_independent_provider_selections(
     state = _multi_org_state(tmp_path, engine)
 
     ops.set_provider(
-        state, {"provider": "bedrock", "region": "us-east-1", "model": _BEDROCK_MODEL}, "alice"
+        state,
+        {"provider": "bedrock", "region": "us-east-1", "model": _BEDROCK_MODEL},
+        Caller("alice"),
     )
-    ops.set_provider(state, {"provider": "api-key", "aiModel": "claude-y"}, "bob")
+    ops.set_provider(state, {"provider": "api-key", "aiModel": "claude-y"}, Caller("bob"))
 
     acme = resolve_provider_env(state, "acme")
     globex = resolve_provider_env(state, "globex")

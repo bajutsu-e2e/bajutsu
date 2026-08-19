@@ -10,11 +10,12 @@ from bajutsu.serve.commands import triage_command
 from bajutsu.serve.helpers import valid_run_id
 from bajutsu.serve.operations._common import _resolve_org_or_forbid
 from bajutsu.serve.operations.dispatch import _register_and_dispatch
+from bajutsu.serve.sessions import Caller, login_of
 from bajutsu.serve.state import Job, ServeState
 
 
 def start_triage(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Diagnose a failed run as a serve job — the "why did this fail?" the Replay/History view asks.
 
@@ -83,7 +84,7 @@ def start_triage(
         json_out=str(run_dir / "triage.json"),
         config=str(cfg),
     )
-    job, capped = _register_and_dispatch(state, Job(cmd=cmd, actor=actor, org=org))
+    job, capped = _register_and_dispatch(state, Job(cmd=cmd, actor=login_of(actor), org=org))
     if capped:
         return capped
     assert job is not None

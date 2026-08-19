@@ -100,8 +100,22 @@ def test_header_carries_an_org_badge_fed_by_the_config_read(tmp_path: Path) -> N
     assert 'data-testid="nav.org"' in index
     assert 'id="orgbadge"' in index and "hidden>" in index.split('id="orgbadge"')[1][:80]
     body = core.split("function setOrgBadge")[1].split("\n}")[0]
-    assert "el.hidden=!show" in body  # hidden unless both fields came back
-    assert "setOrgBadge(c.actor,c.org)" in core  # fed by the /api/config boot read
+    assert "el.hidden=!show||choose" in body  # hidden unless both fields came back
+    assert "setOrgBadge(c.actor,c.org,c.orgOptions||[])" in core  # fed by the /api/config boot read
+
+
+def test_the_header_offers_a_switch_only_when_the_session_has_more_than_one_org(
+    tmp_path: Path,
+) -> None:
+    # A login in several orgs picks which one this session acts as; one candidate is not a choice,
+    # so a single-tenant login keeps the plain badge and sees no new control.
+    index, core = _fetch_many(tmp_path, "/", "/serve.core.mjs")
+    assert 'data-testid="nav.org-switch"' in index
+    assert 'id="orgsw"' in index and "hidden>" in index.split('id="orgsw"')[1][:120]
+    body = core.split("function setOrgBadge")[1].split("\n}")[0]
+    assert "options.length>1" in body  # the select appears only with something to switch to
+    assert "sw.hidden=!choose" in body
+    assert "'/api/session/org'" in core  # the change handler posts the switch
 
 
 def test_show_view_toggles_every_declared_view(tmp_path: Path) -> None:

@@ -90,6 +90,24 @@ def org_for_identity(orgs: dict[str, OrgConfig], login: str, github_orgs: list[s
     )
 
 
+def orgs_for_identity(orgs: dict[str, OrgConfig], login: str, github_orgs: list[str]) -> list[str]:
+    """Every org *login* may act as, in the model's own order (session-scoped org selection).
+
+    The list `org_for_identity` picks one entry out of: an explicit `members` listing or an
+    intersection with the login's GitHub organizations qualifies an org, and the org the login
+    resolves to at sign-in is always among them. A login qualified for nothing gets an empty list
+    rather than `default`, so the caller can tell "qualified for the org literally named default"
+    from "qualified for nothing" — the distinction `identity_matches_org` already draws for the
+    sign-in gate.
+    """
+    user_orgs = set(github_orgs)
+    return [
+        org
+        for org, oc in orgs.items()
+        if login in oc.members or user_orgs.intersection(oc.github_orgs)
+    ]
+
+
 def targets_for_org(
     orgs: dict[str, OrgConfig],
     targets: Iterable[str],

@@ -40,12 +40,14 @@ from bajutsu.serve.helpers import (
     list_targets,
     load_serve_config_file,
 )
+from bajutsu.serve.operations.session import candidate_orgs
 from bajutsu.serve.orgs import (
     DEFAULT_ORG,
     orgs_declaring_membership,
     seed_orgs_from_config,
 )
 from bajutsu.serve.provider_store import ProviderSettingsError
+from bajutsu.serve.sessions import Caller, login_of
 from bajutsu.serve.state import OrgProviderSettings, ProviderSettings, ServeState
 
 # The logical name of the Claude API key in the secret store (BE-0136). The store holds each named
@@ -133,7 +135,9 @@ def config_sources(state: ServeState) -> list[str]:
     return ["git", "upload"] if state.hosted else ["git", "upload", "fs"]
 
 
-def config_info(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+def config_info(
+    state: ServeState, *, actor: Caller | None = None, session_id: str | None = None
+) -> tuple[Any, int]:
     """The boot read every tab starts from: what config is bound, what this deployment offers, and
     who the caller is (BE-0375).
 
@@ -142,6 +146,11 @@ def config_info(state: ServeState, *, actor: str | None = None) -> tuple[Any, in
     `GET /api/orgs`. Both are None on a deployment with no signed-in identity (local serve, a
     shared-token session), where `org_of` would answer `default` for everyone and a header badge
     saying so would be noise rather than information.
+
+    *session_id* identifies the session whose org selection this read reports on, so the header can
+    offer the orgs this login may switch to (session-scoped org selection). Those candidates are the
+    caller's own — the roster stays behind `GET /api/orgs`, the same boundary the acting org above
+    already respects.
     """
     sources = config_sources(state)
     return {
@@ -162,8 +171,11 @@ def config_info(state: ServeState, *, actor: str | None = None) -> tuple[Any, in
         # Who this request is, and which tenant it acts as (BE-0375). The header shows the pair so an
         # admin managing several orgs can see which one their own runs, secrets, and evidence land
         # in — the one org whose scope every other tab silently applies.
-        "actor": actor,
+        "actor": login_of(actor),
         "org": state.org_of(actor) if actor else None,
+        # The orgs this session may act as. One entry (or none) means there is nothing to choose
+        # between, and the header renders the plain badge it always did.
+        "orgOptions": candidate_orgs(state, session_id, actor),
     }, 200
 
 
@@ -323,7 +335,7 @@ def server_settings(state: ServeState) -> tuple[Any, int]:
     return payload, 200
 
 
-def api_key_info(state: ServeState, actor: str | None) -> tuple[Any, int]:
+def api_key_info(state: ServeState, actor: Caller | None) -> tuple[Any, int]:
     """Whether the Claude API key is set, with a masked preview — never the plaintext (BE-0136).
 
     Write-once: there is no ``reveal`` and no ``value`` field, for any role. A masked preview is all
@@ -336,7 +348,7 @@ def api_key_info(state: ServeState, actor: str | None) -> tuple[Any, int]:
     return payload, 200
 
 
-def claude_code_token_info(state: ServeState, actor: str | None) -> tuple[Any, int]:
+def claude_code_token_info(state: ServeState, actor: Caller | None) -> tuple[Any, int]:
     """Whether the `claude-code` OAuth token is set, with a masked preview — never plaintext (BE-0215).
 
     The write-once counterpart to `api_key_info` for the second named secret: same shape, same store,
@@ -489,7 +501,7 @@ def resolve_provider_env(state: ServeState, org: str) -> dict[str, str]:
     return provider_env(_org_settings(state, org))
 
 
-def provider_info(state: ServeState, actor: str | None) -> tuple[Any, int]:
+def provider_info(state: ServeState, actor: Caller | None) -> tuple[Any, int]:
     """The AI provider spawned jobs will use for the actor's org, with the Bedrock region/model.
     Resolved from that org's saved selection (BE-0229) rather than the shared process env, so a
     hosted deployment reports each org its own choice — one of the registered providers (`api-key` /
@@ -660,7 +672,7 @@ def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
 
 
 def bind_git_config(
-    state: ServeState, spec_str: str, *, actor: str | None = None
+    state: ServeState, spec_str: str, *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Bind a config from a Git source chosen in the UI (the "from Git" picker, BE-0063).
 
@@ -716,7 +728,7 @@ def bind_git_config(
     }, 200
 
 
-def set_api_key(state: ServeState, value: str, actor: str | None) -> tuple[Any, int]:
+def set_api_key(state: ServeState, value: str, actor: Caller | None) -> tuple[Any, int]:
     """Set or replace the Claude API key (an empty *value* clears it), through the write-once secret
     store (BE-0136). The response redacts what was stored — never the plaintext. Local serve holds it
     in the process env for spawned jobs to inherit (honoring the config's ``ai.keyEnv``, BE-0097); a
@@ -725,14 +737,14 @@ def set_api_key(state: ServeState, value: str, actor: str | None) -> tuple[Any, 
     if value and any(c.isspace() for c in value):
         return {"error": "the API key must not contain whitespace"}, 400
     masked = state.for_org(state.org_of(actor)).secrets.set(
-        AI_API_KEY_SECRET, value, updated_by=actor
+        AI_API_KEY_SECRET, value, updated_by=login_of(actor)
     )
     if masked is not None:
         return {"ok": True, "set": True, "masked": masked}, 200
     return {"ok": True, "set": False}, 200
 
 
-def set_claude_code_token(state: ServeState, value: str, actor: str | None) -> tuple[Any, int]:
+def set_claude_code_token(state: ServeState, value: str, actor: Caller | None) -> tuple[Any, int]:
     """Set or replace the `claude-code` OAuth token (an empty *value* clears it), through the same
     write-once secret store (BE-0215). The response redacts what was stored — never the plaintext.
     Local serve holds it in ``CLAUDE_CODE_OAUTH_TOKEN`` for spawned jobs to inherit; a hosted
@@ -741,14 +753,14 @@ def set_claude_code_token(state: ServeState, value: str, actor: str | None) -> t
     if value and any(c.isspace() for c in value):
         return {"error": "the OAuth token must not contain whitespace"}, 400
     masked = state.for_org(state.org_of(actor)).secrets.set(
-        AI_CLAUDE_CODE_TOKEN_SECRET, value, updated_by=actor
+        AI_CLAUDE_CODE_TOKEN_SECRET, value, updated_by=login_of(actor)
     )
     if masked is not None:
         return {"ok": True, "set": True, "masked": masked}, 200
     return {"ok": True, "set": False}, 200
 
 
-def git_credential_info(state: ServeState, actor: str | None) -> tuple[Any, int]:
+def git_credential_info(state: ServeState, actor: Caller | None) -> tuple[Any, int]:
     """Whether a Git config-source credential is set, with a masked preview — never plaintext (BE-0224).
 
     The write-once counterpart to `api_key_info` for the Git credential: same shape, same store, read
@@ -760,7 +772,7 @@ def git_credential_info(state: ServeState, actor: str | None) -> tuple[Any, int]
     return payload, 200
 
 
-def set_git_credential(state: ServeState, value: str, actor: str | None) -> tuple[Any, int]:
+def set_git_credential(state: ServeState, value: str, actor: Caller | None) -> tuple[Any, int]:
     """Set or replace the Git config-source credential (an empty *value* clears it), through the same
     write-once secret store (BE-0224). The response redacts what was stored — never the plaintext.
     Local serve holds it in ``BAJUTSU_GIT_CONFIG_TOKEN`` for the in-process private-repo fetch (and
@@ -770,7 +782,7 @@ def set_git_credential(state: ServeState, value: str, actor: str | None) -> tupl
     if value and any(c.isspace() for c in value):
         return {"error": "the credential must not contain whitespace"}, 400
     masked = state.for_org(state.org_of(actor)).secrets.set(
-        GIT_CONFIG_TOKEN_SECRET, value, updated_by=actor
+        GIT_CONFIG_TOKEN_SECRET, value, updated_by=login_of(actor)
     )
     if masked is not None:
         return {"ok": True, "set": True, "masked": masked}, 200
@@ -806,7 +818,7 @@ def declared_secret_names(state: ServeState) -> list[str]:
         return []
 
 
-def scenario_secrets_info(state: ServeState, actor: str | None) -> tuple[Any, int]:
+def scenario_secrets_info(state: ServeState, actor: Caller | None) -> tuple[Any, int]:
     """The scenario secrets the bound config declares, each with whether it is set and a masked
     preview — never the plaintext (BE-0274).
 
@@ -822,7 +834,7 @@ def scenario_secrets_info(state: ServeState, actor: str | None) -> tuple[Any, in
 
 
 def set_scenario_secret(
-    state: ServeState, body: dict[str, Any], actor: str | None
+    state: ServeState, body: dict[str, Any], actor: Caller | None
 ) -> tuple[Any, int]:
     """Set or replace a scenario-declared secret (an empty *value* clears it), through the write-once
     secret store (BE-0274). The response redacts what was stored — never the plaintext.
@@ -841,13 +853,13 @@ def set_scenario_secret(
     if name not in declared_secret_names(state):
         return {"error": f"{name!r} is not a secret declared by the bound config"}, 400
     value = str(body.get("value", "") or "")
-    masked = state.for_org(state.org_of(actor)).secrets.set(name, value, updated_by=actor)
+    masked = state.for_org(state.org_of(actor)).secrets.set(name, value, updated_by=login_of(actor))
     if masked is not None:
         return {"ok": True, "set": True, "masked": masked}, 200
     return {"ok": True, "set": False}, 200
 
 
-def set_provider(state: ServeState, body: dict[str, Any], actor: str | None) -> tuple[Any, int]:
+def set_provider(state: ServeState, body: dict[str, Any], actor: Caller | None) -> tuple[Any, int]:
     """Select the AI provider for the actor's org's spawned record/crawl jobs: the Anthropic API
     (`api-key`), Amazon Bedrock, the Anthropic CLI (`ant`, a browser-based OAuth/SSO sign-in —
     BE-0163), or the Claude Code CLI (`claude-code`, the local `claude` on a Pro/Max/Console seat —

@@ -477,17 +477,35 @@ async function loadConfig(){
   fsSourceEnabled=!c.configSources||c.configSources.includes('fs');
   $('#fssrc').hidden=!fsSourceEnabled;
   setCfgName(c.hasConfig?c.config:'no config bound — open one →',c.hasConfig);
-  setOrgBadge(c.actor,c.org);
+  setOrgBadge(c.actor,c.org,c.orgOptions||[]);
   if(c.hasConfig){await loadShared()}else{openFs()}
 }
 // Show which org this session acts as, next to the config it acts on (BE-0375). Both come from the
 // same boot read; the badge stays hidden unless the server named an identity, so a local or
 // shared-token serve looks exactly as before rather than reporting a `default` nobody chose.
-function setOrgBadge(actor,org){
-  const el=$('#orgbadge');if(!el)return;
+// With more than one org to act as, the badge gives way to a select (session-scoped org selection):
+// one choice is not a choice, so a single-tenant login keeps the plain badge.
+function setOrgBadge(actor,org,options){
+  const el=$('#orgbadge'),sw=$('#orgsw');if(!el||!sw)return;
   const show=Boolean(actor&&org);
-  el.hidden=!show;
+  const choose=show&&options.length>1;
+  el.hidden=!show||choose;
+  sw.hidden=!choose;
   if(show){el.textContent=org;el.title=`signed in as ${actor} — acting as org "${org}"`}
+  if(choose){
+    sw.innerHTML=options.map(o=>`<option value="${esc(o)}"${o===org?' selected':''}>${esc(o)}</option>`).join('');
+    sw.title=`signed in as ${actor} — acting as org "${org}"`;
+  }
+}
+// Switch this session to another org, then re-read everything the org scopes. A refused switch
+// surfaces the server's reason and re-syncs from `/api/config`, so the select never claims an org
+// the session is not acting as.
+async function switchOrg(org){
+  const d=await postJSON('/api/session/org',{org},{error:'switch failed'});
+  if(d.error){alert(d.error);await loadConfig();return}
+  await loadConfig();
+  await loadProjects();
+  await loadShared();
 }
 // Set the nav's config-name label and reveal the "View" button only when a config is actually bound.
 function setCfgName(text,hasConfig){$('#cfgname').textContent=text;$('#viewcfg').hidden=!hasConfig}
@@ -574,6 +592,7 @@ async function switchProject(name,opts){
   if(opts&&opts.goStats)showView('stats');
 }
 $('#projectsw').addEventListener('change',e=>switchProject(e.target.value));
+$('#orgsw').addEventListener('change',e=>switchOrg(e.target.value));
 
 // ---- Git config-source credential (BE-0224): the write-once token for a private repo, stored via
 // the SecretStore seam. Masked-only, like the API key — the plaintext is never read back.

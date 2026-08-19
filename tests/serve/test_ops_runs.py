@@ -21,6 +21,7 @@ from bajutsu.serve import operations as ops
 from bajutsu.serve.artifacts import LocalArtifactStore
 from bajutsu.serve.server.db import RunRecord, SqlRepository
 from bajutsu.serve.server.models import AuditLog, Base
+from bajutsu.serve.sessions import Caller
 from bajutsu.serve.state import ServeState
 
 
@@ -169,9 +170,9 @@ def test_trashed_runs_payload_is_org_scoped(
     repo.record_run(RunRecord(id="r1", org_id="default", status="done", ok=True))
     (tmp_path / "default" / "runs" / "r1").mkdir(parents=True)
     (tmp_path / "default" / "runs" / "r1" / "manifest.json").write_text('{"ok": true}')
-    ops.delete_run(state, "r1", actor="editor")
-    assert [r["id"] for r in ops.trashed_runs_payload(state, actor="editor")[0]] == ["r1"]
-    assert ops.trashed_runs_payload(state, actor="ed2")[0] == []  # other org sees nothing
+    ops.delete_run(state, "r1", actor=Caller("editor"))
+    assert [r["id"] for r in ops.trashed_runs_payload(state, actor=Caller("editor"))[0]] == ["r1"]
+    assert ops.trashed_runs_payload(state, actor=Caller("ed2"))[0] == []  # other org sees nothing
 
 
 # --- scenario-scoped listing (BE-0262) ---
@@ -229,7 +230,7 @@ def test_runs_payload_scoped_surfaces_a_run_past_the_hosted_cap(
                 created_at=base + timedelta(minutes=i + 1),
             )
         )
-    scoped = ops.runs_payload(state, scenario="login", actor="admin")[0]
+    scoped = ops.runs_payload(state, scenario="login", actor=Caller("admin"))[0]
     assert [r["id"] for r in scoped] == ["login-run"]
 
 
@@ -253,7 +254,7 @@ def test_hosted_soft_delete_updates_store_and_db(
     state, repo = _hosted_state(serve_engine, tmp_path)
     repo.record_run(RunRecord(id="r1", org_id="default", status="done", ok=True))
     _run_dir(state, "r1")  # a regular run has both a DB row and store bytes
-    assert ops.delete_run(state, "r1", actor="editor")[1] == 200
+    assert ops.delete_run(state, "r1", actor=Caller("editor"))[1] == 200
     assert repo.list_runs(org_id="default") == []  # DB listing hides it
     assert ("run.soft_delete", "r1") in _audit_actions(repo)
 
@@ -263,8 +264,8 @@ def test_hosted_purge_requires_admin(serve_engine: Callable[..., Engine], tmp_pa
     repo.record_run(RunRecord(id="r1", org_id="default", status="done", ok=True))
     _run_dir(state, "r1")
     # An editor may soft-delete but not purge.
-    assert ops.delete_run(state, "r1", purge=True, actor="editor")[1] == 403
-    assert ops.delete_run(state, "r1", purge=True, actor="admin")[1] == 200
+    assert ops.delete_run(state, "r1", purge=True, actor=Caller("editor"))[1] == 403
+    assert ops.delete_run(state, "r1", purge=True, actor=Caller("admin"))[1] == 200
     assert repo.get_run("r1") is None
 
 
@@ -272,8 +273,8 @@ def test_hosted_bulk_purge_requires_admin(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
     state, _repo = _hosted_state(serve_engine, tmp_path)
-    assert ops.bulk_delete_runs(state, {"ids": [], "purge": True}, actor="editor")[1] == 403
-    assert ops.bulk_delete_runs(state, {"ids": [], "purge": True}, actor="admin")[1] == 200
+    assert ops.bulk_delete_runs(state, {"ids": [], "purge": True}, actor=Caller("editor"))[1] == 403
+    assert ops.bulk_delete_runs(state, {"ids": [], "purge": True}, actor=Caller("admin"))[1] == 200
 
 
 # --- retention sweep ---
@@ -365,12 +366,14 @@ def test_sweep_end_to_end_on_the_object_store_backend(
     state.org_stores = lambda _org: bundle
     state.run_retention_days = 30
 
-    assert ops.delete_run(state, "r1", actor="editor")[1] == 200
+    assert ops.delete_run(state, "r1", actor=Caller("editor"))[1] == 200
     assert art.list_runs() == []  # tombstoned in the object store
     assert repo.list_runs(org_id="default") == []  # hidden in the DB
     # 40 days on, the sweep purges via both the tombstone and the DB row.
     assert (
-        ops.sweep_expired_trash(state, actor="editor", now=datetime.now(UTC) + timedelta(days=40))
+        ops.sweep_expired_trash(
+            state, actor=Caller("editor"), now=datetime.now(UTC) + timedelta(days=40)
+        )
         == 1
     )
     assert repo.get_run("r1") is None
@@ -390,5 +393,5 @@ def test_sweep_purges_a_db_only_trashed_run(
     )
     state.run_retention_days = 30
     assert state.artifacts.list_trashed_runs() == []  # nothing in the store's trash
-    assert ops.sweep_expired_trash(state, actor="editor", now=datetime.now(UTC)) == 1
+    assert ops.sweep_expired_trash(state, actor=Caller("editor"), now=datetime.now(UTC)) == 1
     assert repo.get_run("r1") is None  # the DB-only-trashed run was purged

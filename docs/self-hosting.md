@@ -405,6 +405,25 @@ Membership is re-read on every login, so leaving a GitHub org or Team takes effe
 user's next sign-in — no server-side list to edit. Login always requests the `read:org` scope to read
 these memberships, so the consent screen mentions organization access.
 
+**Choosing which org a session acts as.** A login that belongs to more than one org picks which one
+the current browser session acts as, from a select box in the header, and switches without signing
+out. The choice lives on the session, so a second window can hold another tenant at the same time,
+and the role follows the chosen org — a user who is an editor in one org and a viewer in another is
+authorized as each in turn. The header shows a plain badge, as before, whenever there is only one
+org to act as. Switching posts `{"org": "<slug>"}` to `POST /api/session/org`, which re-derives the
+orgs the session qualifies for from the current membership before accepting the slug, and records
+the switch in the audit log.
+
+That selection is why a sign-in now records the GitHub organizations and Teams it observed on the
+session itself: a switch made hours later recomputes the candidates and the role from them. **Those
+Teams are therefore cached for the life of the session — seven days by default.** Leaving a GitHub
+Team still takes effect at the next sign-in, but a session already open keeps the role that Team
+granted until it expires. Two admin actions end it sooner, both of which revoke the affected
+sessions outright: retiring an org, and editing an org's membership in a way that changes what a
+live session holds — dropping a login or a GitHub organization from it, or moving its `editorTeam`.
+A membership edit that only grants revokes nothing, since it leaves every live session's answer as
+valid as it was.
+
 **Upgrading from the login lists.** Two things change beyond the role-source swap: sign-in now admits
 *everyone* in a configured `githubOrgs`/`members` entry, not just the logins that were on the old
 `BAJUTSU_OAUTH_ALLOWED_USERS` — if that allowlist was narrower than the org's full membership, tighten
@@ -670,7 +689,7 @@ An **Orgs** page appears in the web UI for admins, backed by four admin-only end
 |---|---|
 | `GET /api/orgs` | List every live org with its membership and its project count. |
 | `POST /api/orgs` | Create an org from `{"slug": "...", "name": "..."}`, with **no** members — so it admits nobody until you set its membership. |
-| `POST /api/orgs/<slug>/membership` | Replace `{"members": [...], "githubOrgs": [...], "editorTeam": "..."}` as one unit. |
+| `POST /api/orgs/<slug>/membership` | Replace `{"members": [...], "githubOrgs": [...], "editorTeam": "..."}` as one unit. Revokes the live sessions whose org or role the edit changes; `sessionsRevoked` reports how many. |
 | `DELETE /api/orgs/<slug>` | Retire an org. Refused while it still owns a project, and refused outright for `default`. |
 
 The audit log records every one of the four. `default` is reserved on all three mutations — created,
@@ -680,8 +699,9 @@ namespace an admin recovers through; giving it a roster would do that just as su
 since membership is what places a login in an org. It is still *listed*, marked as the fallback,
 because a bypassed admin is sitting in it and hiding that would hide where their own runs, secrets,
 and evidence land. Deleting an org is a soft delete: it stops admitting sign-ins
-and leaves the list, and every session its members already hold is revoked at the same moment, so
-nobody keeps acting as the retired tenant on a cookie issued before it. Its runs and audit entries
+and leaves the list, and every session its members already hold is revoked at the same moment — both
+the sessions the org resolves at sign-in and the ones that merely *selected* it — so nobody keeps
+acting as the retired tenant on a cookie issued before it. Its runs and audit entries
 stay queryable — an admin action removes a tenant's ability to act, not the record of what it
 already did — and its slug stays reserved, so it cannot be re-created under the same name.
 

@@ -35,6 +35,7 @@ from bajutsu.serve.operations.config import FS_DISABLED_ERROR
 from bajutsu.serve.operations.runs import sweep_expired_trash
 from bajutsu.serve.server.db import DEFAULT_RUN_LIMIT as _RUN_HISTORY_LIMIT
 from bajutsu.serve.server.db import RunRecord
+from bajutsu.serve.sessions import Caller
 from bajutsu.serve.state import ServeState
 
 _REPORT_SUFFIX = "/report.html"
@@ -57,7 +58,7 @@ def run_file(store: ArtifactStore, rel: str) -> Artifact | None:
 
 
 def list_scenarios(
-    state: ServeState, target: str | None, *, actor: str | None = None
+    state: ServeState, target: str | None, *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     # Hide a target that belongs to another org (non-leaky: an empty list, not a 403) — BE-0015
     # multi-tenancy. The scenarios come from the actor's org-scoped store.
@@ -77,7 +78,7 @@ def _primary_backend(config: Config, name: str) -> str:
     return backends[0] if backends else ""
 
 
-def list_targets_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+def list_targets_payload(state: ServeState, *, actor: Caller | None = None) -> tuple[Any, int]:
     # Each target carries its primary backend, so the UI shows only that platform's device controls
     # (iOS controls, or the web headed toggle) without the user typing the backend by hand.
     if state.config is None:
@@ -116,7 +117,7 @@ def simulators_payload(state: ServeState) -> tuple[Any, int]:
 
 
 def runs_payload(
-    state: ServeState, *, actor: str | None = None, scenario: str | None = None
+    state: ServeState, *, actor: Caller | None = None, scenario: str | None = None
 ) -> tuple[Any, int]:
     # Opportunistically purge trash past the retention window before listing (BE-0239) — the lazy
     # sweep, on the history read rather than a background daemon (SqlSessionStore's expiry-on-read
@@ -153,7 +154,7 @@ def runs_payload(
     return runs, 200
 
 
-def crawl_runs_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+def crawl_runs_payload(state: ServeState, *, actor: Caller | None = None) -> tuple[Any, int]:
     """Past crawl runs for the Crawl tab's history list, from the actor's org store (BE-0180/BE-0190).
 
     Keyed on screenmap.json (the artifact every crawl streams), separate from `runs_payload`'s
@@ -170,7 +171,7 @@ def crawl_runs_payload(state: ServeState, *, actor: str | None = None) -> tuple[
     return state.for_org(state.org_of(actor)).artifacts.list_crawl_runs(), 200
 
 
-def trashed_runs_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+def trashed_runs_payload(state: ServeState, *, actor: Caller | None = None) -> tuple[Any, int]:
     """Soft-deleted runs for the Web UI's Trash view (BE-0239), org-scoped like every history read.
 
     Each entry is ``{"id", "deletedAt"}`` from the actor's org store — the same trash the retention
@@ -190,7 +191,7 @@ def trashed_runs_payload(state: ServeState, *, actor: str | None = None) -> tupl
 _STATS_RUN_LIMIT = 200
 
 
-def stats_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int]:
+def stats_html(state: ServeState, *, actor: Caller | None = None) -> tuple[str, int]:
     """The aggregate run-stats dashboard (BE-0102) as a self-contained HTML page, org-scoped.
 
     Reuses the deterministic aggregator over the actor's org run history: read-only, no verdict, no
@@ -203,7 +204,7 @@ def stats_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int
     return _stats.render_html(_stats.aggregate_runs(_run_manifests(state, actor)), live=True), 200
 
 
-def flakiness_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int]:
+def flakiness_html(state: ServeState, *, actor: Caller | None = None) -> tuple[str, int]:
     """The ranked flaky-scenario panel (BE-0220, Half 1) as a self-contained HTML page, org-scoped.
 
     Ranks the actor's org run history by how much each scenario's verdict flips at a constant
@@ -215,7 +216,7 @@ def flakiness_html(state: ServeState, *, actor: str | None = None) -> tuple[str,
     return _flakiness.render_html(_flakiness_report(state, actor)), 200
 
 
-def _flakiness_report(state: ServeState, actor: str | None) -> _flakiness.FlakinessReport:
+def _flakiness_report(state: ServeState, actor: Caller | None) -> _flakiness.FlakinessReport:
     """Rank the actor's org run history — from the DB provenance stamp when wired, else manifests."""
     org = state.org_of(actor)
     if state.repository is not None:
@@ -260,7 +261,7 @@ def _fill_device_runtime(state: ServeState, org: str, records: list[RunRecord]) 
         record.device_runtime = run_os.label if run_os is not None else ""
 
 
-def _run_manifests(state: ServeState, actor: str | None) -> list[dict[str, Any]]:
+def _run_manifests(state: ServeState, actor: Caller | None) -> list[dict[str, Any]]:
     """The newest runs' parsed `manifest.json` for the actor's org; unreadable/malformed ones skipped.
 
     The ids come from the recorded runs when a repository is wired (org-scoped), else the artifact
@@ -310,7 +311,7 @@ def run_set_manifests(store: ArtifactStore, run_ids: Iterable[Any]) -> list[dict
     return manifests
 
 
-def usage_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int]:
+def usage_html(state: ServeState, *, actor: Caller | None = None) -> tuple[str, int]:
     """The AI usage/cost dashboard (BE-0195) as a self-contained HTML page.
 
     Reads the same attributed ledger the serve process's AI subprocesses append to and aggregates it
@@ -350,7 +351,7 @@ def read_scenario(
     target: str | None,
     path: str | None,
     *,
-    actor: str | None = None,
+    actor: Caller | None = None,
     run_id: str | None = None,
     scenario_name: str | None = None,
     structure: bool = False,
@@ -648,7 +649,7 @@ def job_view(state: ServeState, job_id: str) -> tuple[Any, int]:
 
 
 def save_scenario(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Save an edited scenario back to its ``*.yaml`` (bounded to the target's scenarios dir).
 
@@ -701,7 +702,7 @@ def save_scenario(
 
 
 def approve_baseline(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Promote a run's captured screenshot to a `visual` baseline.
 
@@ -771,7 +772,7 @@ def respond_human(state: ServeState, job_id: str, body: dict[str, Any]) -> tuple
 
 
 def resolve_scenario_pick(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: Caller | None = None
 ) -> tuple[Any, int]:
     """Resolve a point against a step's stored elements.json — no live driver."""
     cfg = state.config

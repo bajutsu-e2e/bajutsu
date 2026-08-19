@@ -13,6 +13,7 @@ from sqlalchemy import Engine
 from bajutsu.serve import operations as ops
 from bajutsu.serve.server.db import SqlRepository
 from bajutsu.serve.server.models import Base
+from bajutsu.serve.sessions import Caller
 from bajutsu.serve.state import ServeState
 
 
@@ -130,8 +131,9 @@ def test_role_allows_ranks_viewer_editor_admin() -> None:
 
 
 def test_forbidden_for_role_without_a_database_is_allowed(tmp_path: Path) -> None:
+    caller = Caller("alice")
     assert (
-        ops.forbidden_for_role(ServeState(runs_dir=tmp_path), "alice", "POST", "/api/run") is False
+        ops.forbidden_for_role(ServeState(runs_dir=tmp_path), caller, "POST", "/api/run") is False
     )
 
 
@@ -145,11 +147,15 @@ def test_forbidden_for_role_reads_the_stored_role(
     repo.upsert_user("v", org_id="default", github_login="v", email="v@x", role="viewer")
     repo.upsert_user("e", org_id="default", github_login="e", email="e@x", role="editor")
     state = ServeState(runs_dir=tmp_path, repository=repo)
-    assert ops.forbidden_for_role(state, "v", "POST", "/api/run") is True  # viewer can't run
-    assert ops.forbidden_for_role(state, "e", "POST", "/api/run") is False  # editor can
-    assert ops.forbidden_for_role(state, "e", "POST", "/api/apikey") is True  # editor isn't admin
-    assert ops.forbidden_for_role(state, "v", "GET", "/api/runs") is False  # reads are open
+    assert (
+        ops.forbidden_for_role(state, Caller("v"), "POST", "/api/run") is True
+    )  # viewer can't run
+    assert ops.forbidden_for_role(state, Caller("e"), "POST", "/api/run") is False  # editor can
+    assert (
+        ops.forbidden_for_role(state, Caller("e"), "POST", "/api/apikey") is True
+    )  # editor isn't admin
+    assert ops.forbidden_for_role(state, Caller("v"), "GET", "/api/runs") is False  # reads are open
     # BE-0272: version stays open to a viewer, the checkout detail is admin-only.
-    assert ops.forbidden_for_role(state, "v", "GET", "/api/version") is False
-    assert ops.forbidden_for_role(state, "e", "GET", "/api/version/checkout") is True
-    assert ops.forbidden_for_role(state, "v", "GET", "/api/version/checkout") is True
+    assert ops.forbidden_for_role(state, Caller("v"), "GET", "/api/version") is False
+    assert ops.forbidden_for_role(state, Caller("e"), "GET", "/api/version/checkout") is True
+    assert ops.forbidden_for_role(state, Caller("v"), "GET", "/api/version/checkout") is True

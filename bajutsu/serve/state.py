@@ -40,7 +40,12 @@ from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 from bajutsu.serve.orgs import DEFAULT_ORG, targets_for_org
 from bajutsu.serve.scenarios import LocalScenarioStore, ScenarioStore
 from bajutsu.serve.secrets import EnvSecretStore, SecretStore
-from bajutsu.serve.sessions import InMemorySessionStore, SessionStore
+from bajutsu.serve.sessions import (
+    Caller,
+    InMemorySessionStore,
+    SessionIdentity,
+    SessionStore,
+)
 from bajutsu.serve.uploads import Upload
 
 # The org an unassigned user/app falls into. Re-exported from serve.orgs (the org model's home) so
@@ -337,10 +342,13 @@ class SessionManager:
         """Constant-time compare of a presented token against the configured one."""
         return self.token is not None and secrets.compare_digest(candidate, self.token)
 
-    def issue_session(self, identity: str | None = None) -> str:
+    def issue_session(
+        self, identity: str | None = None, *, context: SessionIdentity | None = None
+    ) -> str:
         """Mint and remember a new opaque session id (returned to set as a cookie at login),
-        optionally bound to *identity* (the GitHub login from an OAuth login)."""
-        return self.sessions.issue(identity)
+        optionally bound to *identity* (the GitHub login from an OAuth login). *context* carries
+        what that sign-in observed on GitHub and the org the session starts as."""
+        return self.sessions.issue(identity, context=context)
 
     def valid_session(self, sid: str) -> bool:
         """Whether *sid* is a known, live session id."""
@@ -633,12 +641,19 @@ class ServeState:
         check run under the registry's lock — inserting here directly bypasses that enforcement."""
         return self.job_registry.jobs
 
-    def org_of(self, actor: str | None) -> str:
-        """The org of *actor*, read from their persisted user row (assigned at login). The single
-        `default` org without a database, without an identity, or for an unknown user (BE-0015)."""
-        if self.repository is None or not actor:
+    def org_of(self, caller: Caller | None) -> str:
+        """The org *caller* acts as. The single `default` org without a database, without an
+        identity, or for an unknown user (BE-0015).
+
+        A session that selected an org answers from that selection (session-scoped org selection);
+        one that recorded none — a session issued before the selection existed — falls back to the
+        login's persisted user row, which is where sign-in assigned it (BE-0015).
+        """
+        if self.repository is None or caller is None:
             return _DEFAULT_ORG
-        return self.repository.user_org(actor) or _DEFAULT_ORG
+        if caller.org is not None:
+            return caller.org
+        return self.repository.user_org(caller.login) or _DEFAULT_ORG
 
     def _env_var_for_secret(self, name: str) -> str:
         """The env var the local secret store reads/writes for logical secret *name* (BE-0136).
