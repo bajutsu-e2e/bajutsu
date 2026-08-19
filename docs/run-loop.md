@@ -185,7 +185,8 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > per scenario. The pool holds the warm runner keyed by `(udid, actuator)`; a lease that resolves to
 > a different actuator (BE-0240), or a scenario that `erase`s the device, tears it down and respawns,
 > and a runner that fails its bounded `/health` probe is treated as a cache miss (one extra cold
-> start, never a lost run). idb and the other backends spawn no such resident and are unchanged.
+> start, never a lost run). The other backends (adb, Playwright, fake) spawn no such resident and
+> are unchanged.
 >
 > The resident runner crashes after a handful of `app.launch()` cycles (an XCTest-session limit; see
 > `docs/architecture.md`), so warm reuse is **bounded** (BE-0287): after `BAJUTSU_XCUITEST_MAX_WARM_REUSES`
