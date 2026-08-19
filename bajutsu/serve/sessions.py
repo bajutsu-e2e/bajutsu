@@ -94,6 +94,16 @@ class SessionStore(Protocol):
         which no query over the users table can find (session-scoped org selection).
         """
 
+    def sessions_for_identities(
+        self, identities: Iterable[str]
+    ) -> list[tuple[str, SessionIdentity]]:
+        """Every live session bound to one of *identities*, as `(sid, record)` pairs.
+
+        Retiring an org has to reach the sessions of its members that recorded no selection — the
+        ones issued before session-scoped org selection existed, whose org is still the user row's —
+        without touching the same login's sessions acting as another org.
+        """
+
     def revoke(self, sids: Iterable[str]) -> int:
         """Drop the named sessions; returns how many were live."""
 
@@ -146,6 +156,13 @@ class InMemorySessionStore:
     def sessions_for_org(self, org: str) -> list[tuple[str, SessionIdentity]]:
         with self._lock:
             return [(sid, rec) for sid, rec in self._sessions.items() if rec.org == org]
+
+    def sessions_for_identities(
+        self, identities: Iterable[str]
+    ) -> list[tuple[str, SessionIdentity]]:
+        wanted = set(identities)
+        with self._lock:
+            return [(sid, rec) for sid, rec in self._sessions.items() if rec.login in wanted]
 
     def revoke(self, sids: Iterable[str]) -> int:
         with self._lock:

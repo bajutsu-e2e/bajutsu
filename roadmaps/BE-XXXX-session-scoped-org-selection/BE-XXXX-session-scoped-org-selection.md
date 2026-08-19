@@ -147,8 +147,10 @@ Deleting an org revokes the sessions of its members, and it finds them through `
 ([BE-0375](../BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management.md)).
 A selection the user row does not record would slip through that lookup: a user whose row names org
 A, acting as org B in the current session, would keep acting as B after B is deleted. The session
-store gains a revoke-by-selected-org query, and org deletion calls it alongside the existing
-revocation, so both ways of acting as the retired org end at the same moment.
+store gains two queries — the sessions acting as an org, and the sessions of a set of logins — and
+deletion revokes through both, so a selection and a user row are equally good ways of being found.
+It revokes no more widely than that: a session of the same login acting as *another* org survives,
+since retiring one tenant must not close a window someone has open on a different one.
 
 Editing an org's membership revokes nothing today, because nothing about a live session depended on
 membership: the role was recomputed at the next sign-in, and the acting org was read live from the

@@ -78,7 +78,8 @@ def org_for_identity(orgs: dict[str, OrgConfig], login: str, github_orgs: list[s
     `orgs_from_db` iterates slug order (`list_orgs` sorts by it). Both are stable — the same login
     resolves the same way on every sign-in — but a deployment holding such an overlap can see the
     tie-break move once, at the conversion to the database (BE-0375). A login that belongs to more
-    than one org has no way to say which it means today; letting them choose is a separate item.
+    than one org lands on this order's answer at sign-in and may then switch among the orgs it
+    qualifies for (`orgs_for_identity`).
     """
     explicit = org_for_user(orgs, login)
     if explicit != DEFAULT_ORG:

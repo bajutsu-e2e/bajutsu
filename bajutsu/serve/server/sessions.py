@@ -120,6 +120,26 @@ class SqlSessionStore:
                 (row.id, _record(row)) for row in rows if self._ensure_aware(row.expires_at) >= now
             ]
 
+    def sessions_for_identities(
+        self, identities: Iterable[str]
+    ) -> list[tuple[str, SessionIdentity]]:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import SessionRecord
+
+        wanted = list(set(identities))
+        if not wanted:
+            return []
+        now = self._now()
+        with Session(self._engine) as session:
+            rows = session.scalars(
+                select(SessionRecord).where(SessionRecord.identity.in_(wanted))
+            ).all()
+            return [
+                (row.id, _record(row)) for row in rows if self._ensure_aware(row.expires_at) >= now
+            ]
+
     def revoke(self, sids: Iterable[str]) -> int:
         from sqlalchemy import delete
         from sqlalchemy.orm import Session

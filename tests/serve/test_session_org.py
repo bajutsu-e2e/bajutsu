@@ -304,3 +304,40 @@ def test_an_org_retired_mid_switch_ends_the_session_rather_than_admitting_it(
     )
     assert status == 409 and "sign in again" in payload["error"]
     assert not state.auth.sessions.valid(sid)
+
+
+def test_retiring_an_org_leaves_the_same_logins_window_on_another_org_open(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # Two windows, two tenants — the reason the selection is per session. Retiring one of them must
+    # end the window on it and leave the other working, even though one user row names both people.
+    state = _state(serve_engine, tmp_path)
+    globex_sid = _sign_in(state)  # sign-in resolves bob to `globex`
+    acme_sid = _sign_in(state)
+    ops.switch_org(
+        state, {"org": "acme"}, session_id=acme_sid, caller=gate.caller_for(state.auth, acme_sid)
+    )
+    assert state.repository is not None
+    state.repository.upsert_user("root", org_id="globex", github_login="root", email="root@x")
+
+    payload, status = ops.delete_org(state, "acme", actor=Caller("root"))
+    assert status == 200 and payload["sessionsRevoked"] == 1
+    assert not state.auth.sessions.valid(acme_sid)
+    assert state.auth.sessions.valid(globex_sid)
+
+
+def test_retiring_an_org_still_reaches_a_session_that_recorded_no_selection(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # A session issued before the selection existed resolves its org from the user row, so it is in
+    # no per-org sweep — retiring the org has to reach it through the roster instead, or it would
+    # keep acting as the retired tenant until it expired.
+    state = _state(serve_engine, tmp_path)
+    _sign_in(state)  # leaves the user row naming `globex`
+    legacy = state.auth.sessions.issue("bob", context=SessionIdentity(login="bob"))
+    assert state.repository is not None
+    state.repository.upsert_user("root", org_id="acme", github_login="root", email="root@x")
+
+    payload, status = ops.delete_org(state, "globex", actor=Caller("root"))
+    assert status == 200 and payload["sessionsRevoked"] >= 1
+    assert not state.auth.sessions.valid(legacy)

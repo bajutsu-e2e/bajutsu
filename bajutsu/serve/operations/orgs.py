@@ -227,21 +227,31 @@ def delete_org(state: ServeState, slug: str, *, actor: Caller | None = None) -> 
     # reading its secrets until it expired. Retiring an org used to mean a config edit plus a
     # redeploy, and the restart dropped every session as a side effect; making it an in-process
     # admin action removes that incidental revocation, so this does it deliberately (BE-0375).
-    # `users.org_id` finds only the members the org resolves at sign-in. A session that *selected*
-    # this org (session-scoped org selection) is not in that set — its user row may name another org
-    # entirely — so the retired org is reached from both directions, or the selection would outlive
-    # the tenant it points at.
-    revoked = state.auth.sessions.revoke_identities(members) + _revoke_selected(state, slug)
+    revoked = _revoke_acting_as(state, slug, members)
     _record_audit(
         state, actor, state.org_of(actor), "org.delete", slug, {"sessionsRevoked": revoked}
     )
     return {"ok": True, "slug": slug, "sessionsRevoked": revoked}, 200
 
 
-def _revoke_selected(state: ServeState, slug: str) -> int:
-    """Drop every session currently acting as *slug*; returns how many were live."""
+def _revoke_acting_as(state: ServeState, slug: str, members: list[str]) -> int:
+    """Drop every session acting as *slug*, and no others; returns how many were live.
+
+    Two kinds of session act as a retired org, and `users.org_id` alone finds neither reliably. A
+    session that *selected* the org is found by its selection, whatever org its user row names. A
+    session issued before session-scoped org selection existed recorded none, so its org is still
+    its user row's — those are reached through *members*, the roster read before the delete.
+
+    The same login's session acting as a different org is left alone: retiring one tenant must not
+    close the window someone has open on another, which is the whole point of a per-session
+    selection.
+    """
     sessions = state.auth.sessions
-    return sessions.revoke([sid for sid, _record in sessions.sessions_for_org(slug)])
+    doomed = [sid for sid, _record in sessions.sessions_for_org(slug)]
+    doomed += [
+        sid for sid, record in sessions.sessions_for_identities(members) if record.org is None
+    ]
+    return sessions.revoke(doomed)
 
 
 def _revoke_stale_selections(
