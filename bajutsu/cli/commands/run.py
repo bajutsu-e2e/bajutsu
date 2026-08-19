@@ -18,7 +18,6 @@ import typer
 from bajutsu import device_errors
 from bajutsu.analytics import ledger as _usage_ledger
 from bajutsu.analytics import usage as _usage
-from bajutsu.artifact_perms import make_run_dir
 from bajutsu.assertions import GoldenContext
 from bajutsu.backends import select_actuator_for_scenario
 from bajutsu.cli._projects import config_from_source, open_registry
@@ -45,6 +44,7 @@ from bajutsu.orchestrator import (
 from bajutsu.platform_lifecycle import ProvisionProfile, environment_for
 from bajutsu.report.archive import archive_run_dir
 from bajutsu.report.manifest import _run_backend
+from bajutsu.run_files import DEFAULT_RUNS_DIR
 from bajutsu.run_id import new_run_id
 from bajutsu.runner import device_pool, run_all, run_and_report, run_matrix_and_report
 from bajutsu.runner.build import BuildError, build_if_missing
@@ -631,9 +631,6 @@ def _dispatch_single(
     exec_decision: dict[str, str | None] | None,
 ) -> tuple[list[RunResult], Path]:
     """The single-engine path — exactly today's flow: one pool, one `run_and_report`, no matrix."""
-    # Own the run dir owner-only before the pool can create anything under it (e.g. Playwright's
-    # `_video_tmp`), so no world-readable window exists before the pipeline's own chmod (BE-0131).
-    make_run_dir(plan.runs_dir / plan.run_id)
     lease, shutdown = device_pool(
         plan.udids,
         plan.backends,
@@ -690,9 +687,6 @@ def _dispatch_matrix(
     Evidence lands under run_dir/<engine>/<sid>; the pipeline assembles ONE report whose matrix
     aggregates the per-engine verdicts (all-must-pass, machine-only).
     """
-    # Own the top run dir owner-only before any engine pool can create a subdir under it, so every
-    # engine's evidence sits beneath a non-world-readable parent from the first write (BE-0131).
-    make_run_dir(plan.runs_dir / plan.run_id)
 
     def run_pass(engine: str, engine_run_dir: Path) -> list[RunResult]:
         if progress_fn is not None:
@@ -985,7 +979,7 @@ def run(
         "for CI upload or sharing; runs after the verdict, so it can't affect pass/fail",
     ),
     runs_dir: str = typer.Option(
-        "runs",
+        DEFAULT_RUNS_DIR,
         "--runs-dir",
         help="directory to write the run tree into (default: ./runs). Lets a caller run from one "
         "working directory but persist the run elsewhere — e.g. serve running an uploaded bundle "

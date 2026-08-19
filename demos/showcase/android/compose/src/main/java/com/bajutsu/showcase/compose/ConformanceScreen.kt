@@ -18,6 +18,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.password
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 
 // The marker present on every conformance screen, including the empty (zero-match) one — mirrors the
@@ -28,6 +31,12 @@ const val CONFORMANCE_READY_ID = "conformance.ready"
 // (BE-0280) — mirrors the iOS ConformanceView.fieldID and the web _render field. Present on every
 // conformance screen like the marker, with a fixed size so the coordinate tap has a known center.
 const val CONFORMANCE_FIELD_ID = "conformance.field"
+
+// The always-present masked field (BE-0331) — mirrors the iOS ConformanceView.secureFieldID and the
+// web type="password" input. `password()` is what puts `password="true"` on the accessibility node,
+// which is the Android source for the normalized secure trait; PasswordVisualTransformation alone
+// only hides the glyphs and would leave the node indistinguishable from a plain field.
+const val CONFORMANCE_SECURE_FIELD_ID = "conformance.secureField"
 
 // The sentinel the scroll conformance test seeds (BE-0326): when it is the whole seeded set, render
 // the fixed scrollable list below instead of the per-identifier buttons, so the `scroll` action's
@@ -81,6 +90,19 @@ fun ConformanceScreen(identifiers: List<String>) {
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .aid(CONFORMANCE_FIELD_ID)
                 .stateValue(fieldText),
+        )
+        // The masked field (BE-0331). Never typed into by the contract — it exists so query() can
+        // report its trait — so it stays empty and needs no stateValue mirroring.
+        var secureFieldText by remember { mutableStateOf("") }
+        BasicTextField(
+            value = secureFieldText,
+            onValueChange = { secureFieldText = it },
+            visualTransformation = PasswordVisualTransformation(),
+            modifier = Modifier
+                .size(width = 280.dp, height = 44.dp)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .aid(CONFORMANCE_SECURE_FIELD_ID)
+                .semantics { password() },
         )
         // Duplicates are the point (the ambiguous-selector case), so the children are keyed by
         // position (Column's default), never by identifier — keying by id would collapse repeats.

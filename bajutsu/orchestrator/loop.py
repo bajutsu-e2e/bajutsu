@@ -550,7 +550,7 @@ def run_scenario(
             expect = _interp_asserts(scenario.expect, live_bindings)
             clip = _clipboard_for(expect, control)
             if ctx.visual is not None:
-                driver.screenshot(str(ctx.visual.screenshot_path))
+                ctx.visual.capture_actual(driver)
             expect_results = _evaluate_expect(
                 driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
             )
@@ -560,7 +560,7 @@ def run_scenario(
                     expect_alerts.append(event)
                     expect_actuations.extend(drain_actuations(driver).records)
                     if ctx.visual is not None:
-                        driver.screenshot(str(ctx.visual.screenshot_path))
+                        ctx.visual.capture_actual(driver)
                     # Re-read the clipboard too: clearing the block may have let the app update the
                     # pasteboard, so the retry must compare against the fresh value, not the stale one.
                     clip = _clipboard_for(expect, control)

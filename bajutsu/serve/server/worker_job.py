@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from bajutsu import simctl as _simctl
+from bajutsu.run_files import DEFAULT_RUNS_DIR
 from bajutsu.serve import oplog
 from bajutsu.serve.jobs import run_job
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
@@ -174,7 +175,7 @@ def execute_job_spec(
     # A repository (worker BAJUTSU_DATABASE_URL) lets run_job's `_persist_run` record the finished
     # run under its org — the run executes here, so this is the only place it can be recorded.
     state = ServeState(
-        runs_dir=work / "runs",
+        runs_dir=work / DEFAULT_RUNS_DIR,
         cwd=work,
         popen=popen,
         simctl=simctl,

@@ -1387,6 +1387,30 @@ def test_run_matrix_and_report_writes_one_report_with_a_matrix(tmp_path: Path) -
     assert matrix["cells"]["login"]["chromium"]["sid"] == "chromium/00-login"
 
 
+def test_run_matrix_and_report_owns_the_top_run_dir_before_the_first_engine_pass(
+    tmp_path: Path,
+) -> None:
+    # BE-0131 by way of BE-0331: every write now goes through a sink, which creates the directory it
+    # writes into owner-only. A matrix run is the one case that does not cover the top run dir — the
+    # first sink creates `run_dir/<engine>`, and `mkdir(parents=True)` would leave the run dir above
+    # it at the ambient umask, so every engine's evidence would sit under a world-readable parent.
+    import stat
+
+    scenarios = [Scenario.model_validate({"name": "login", "steps": [{"tap": {"id": "ok"}}]})]
+    modes: list[int] = []
+
+    def run_pass(engine: str, run_dir: Path) -> list[RunResult]:
+        results = run_all(_eff(), scenarios, _lease, run_dir=run_dir)
+        modes.append(stat.S_IMODE((tmp_path / "runs" / "run1").stat().st_mode))
+        return results
+
+    run_matrix_and_report(
+        _eff(), scenarios, ["chromium", "webkit"], run_pass, tmp_path / "runs", "run1"
+    )
+    # Owner-only already during the first pass, not only once the report is assembled.
+    assert modes == [0o700, 0o700]
+
+
 def test_reroot_evidence_prefixes_paths_with_engine() -> None:
     # Each engine pass writes evidence under <engine>/<sid>/, but artifact/visual paths are recorded
     # relative to that pass's run_dir. The matrix assembles one report at the top run_dir, so the
@@ -1670,14 +1694,14 @@ def test_run_and_report_writes_owner_only_artifacts(tmp_path: Path) -> None:
 
 def test_write_network_stamps_the_given_provider(tmp_path: Path) -> None:
     from bajutsu.evidence.redaction import Redactor
+    from bajutsu.evidence.sink import RunArtifactWriter
     from bajutsu.runner.pipeline import _write_network
 
     ex = NetworkExchange(method="GET", path="/a", status=200)
     art = _write_network(
         [(ex, 1.0)],
-        tmp_path,
+        RunArtifactWriter(tmp_path, Redactor(None)),
         "00-s",
-        Redactor(None),
         wall_offset_s=0.0,
         provider="fake (fallback)",
     )
@@ -1690,11 +1714,15 @@ def test_write_network_started_at_is_an_absolute_wall_clock_instant(tmp_path: Pa
     # (received + offset - duration) rather than an already-relative number (BE-0348). No clamp: an
     # absolute epoch has no floor to clamp to, and the report applies its own at render time.
     from bajutsu.evidence.redaction import Redactor
+    from bajutsu.evidence.sink import RunArtifactWriter
     from bajutsu.runner.pipeline import _write_network
 
     ex = NetworkExchange(method="GET", path="/a", status=200, durationMs=250.0)
     art = _write_network(
-        [(ex, 1.0)], tmp_path, "00-s", Redactor(None), wall_offset_s=1_700_000_000.0
+        [(ex, 1.0)],
+        RunArtifactWriter(tmp_path, Redactor(None)),
+        "00-s",
+        wall_offset_s=1_700_000_000.0,
     )
     assert art is not None
     data = json.loads((tmp_path / "00-s" / "network.json").read_text(encoding="utf-8"))

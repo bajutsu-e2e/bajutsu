@@ -203,6 +203,29 @@ def test_parse_hierarchy_null_root_is_empty() -> None:
     assert parse_hierarchy("") == []
 
 
+def test_password_flag_derives_the_masked_input_trait() -> None:
+    # BE-0331: UI Automator reports a masked input as `password="true"` whatever widget class backs
+    # it — a Views EditText here, a Compose text field elsewhere — so the normalized trait comes off
+    # the flag rather than off `class`. Without it the default masking would protect iOS and leave
+    # Android silently unprotected, which one construct meaning the same thing on every backend
+    # (prime directive 3) does not allow.
+    xml = (
+        '<hierarchy><node resource-id="auth.password" class="android.widget.EditText" '
+        'password="true" bounds="[0,0][100,50]" />'
+        '<node resource-id="auth.user" class="android.widget.EditText" password="false" '
+        'bounds="[0,50][100,100]" /></hierarchy>'
+    )
+    els = parse_hierarchy(xml)
+    assert base.Trait.SECURE_TEXT_FIELD in _by_id(els, "auth.password")["traits"]
+    assert base.Trait.SECURE_TEXT_FIELD not in _by_id(els, "auth.user")["traits"]
+    # A node with no `password` attribute at all is a plain field, not an unknown one.
+    (plain,) = parse_hierarchy(
+        '<hierarchy><node resource-id="p" class="android.widget.EditText" bounds="[0,0][1,1]" />'
+        "</hierarchy>"
+    )
+    assert base.Trait.SECURE_TEXT_FIELD not in plain["traits"]
+
+
 def test_resource_id_with_no_local_name_is_none_not_empty() -> None:
     # A malformed resource-id ending in `/` must yield identifier None, not "" (which no selector
     # matches yet is falsy-but-present).

@@ -151,6 +151,26 @@ def test_searchbox_maps_to_searchfield() -> None:
     assert "searchField" in el["traits"]
 
 
+def test_password_input_carries_the_masked_input_trait_alongside_its_role() -> None:
+    """BE-0331: `input[type=password]` has no ARIA role of its own, so it reaches the role map as a
+    bare `input` and normalizes to textField indistinguishably from a plain one. The trait is what
+    lets the default masking mean the same thing here as on iOS — and it is added *beside* the role,
+    so the field stays a text input to selectors and to the crawl's INPUT_TRAITS."""
+    [secure] = parse_dom([_rec(role="input", secure=True)])
+    assert base.Trait.SECURE_TEXT_FIELD in secure["traits"]
+    assert "textField" in secure["traits"]
+    [plain] = parse_dom([_rec(role="input")])
+    assert base.Trait.SECURE_TEXT_FIELD not in plain["traits"]
+
+
+def test_query_js_reads_the_password_type_off_the_node() -> None:
+    """The trait is only as good as the record the browser produces, and QUERY_JS is the one place
+    the DOM is asked — a parser fed a `secure` key nothing ever sets would pass while every real
+    page reported a plain input."""
+    assert "el.type === 'password'" in QUERY_JS
+    assert "secure:" in QUERY_JS
+
+
 # --- fake page + driver actions ---
 
 

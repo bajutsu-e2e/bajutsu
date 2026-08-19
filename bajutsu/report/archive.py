@@ -19,6 +19,8 @@ import zipfile
 from collections.abc import Iterable
 from pathlib import Path
 
+from bajutsu.run_files import RunArtifactReader
+
 # A fixed timestamp for every entry so the same tree zips to identical bytes (zip stores mtimes,
 # which would otherwise vary run to run). The value is arbitrary; only its constancy matters.
 _PINNED_TIME = (1980, 1, 1, 0, 0, 0)
@@ -43,17 +45,10 @@ def zip_tree(files: Iterable[tuple[str, bytes]]) -> bytes:
 def archive_run_dir(run_dir: Path) -> bytes:
     """Zip a run directory's whole tree, rooted under its `<id>/` folder.
 
-    Walks strictly inside `run_dir` (never above it), so a sibling `.env` or another run is never
-    pulled in. Entry names are `<run_dir.name>/<path-relative-to-run_dir>`, preserving the layout
-    `report.html`'s relative links depend on.
+    Reads through the run's read accessor, which walks strictly inside `run_dir` (never above it,
+    and never through a symlink), so a sibling `.env` or another run is never pulled in. Entry names
+    are `<run id>/<artifact name>`, preserving the layout `report.html`'s relative links depend on.
     """
-    root = run_dir.name
-    # Skip symlinks: `is_file()` follows them, so a symlink in the run dir pointing outside would
-    # otherwise read its target into the zip — escaping the run dir. (rglob's `**` does not recurse
-    # symlinked directories.) A real run never contains symlinks, so this only ever drops an escape.
-    files = (
-        (f"{root}/{path.relative_to(run_dir).as_posix()}", path.read_bytes())
-        for path in run_dir.rglob("*")
-        if path.is_file() and not path.is_symlink()
-    )
-    return zip_tree(files)
+    reader = RunArtifactReader(run_dir)
+    root = reader.run_id
+    return zip_tree((f"{root}/{name}", reader.read_bytes(name)) for name in reader.names("**/*"))

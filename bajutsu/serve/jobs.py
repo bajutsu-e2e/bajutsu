@@ -27,7 +27,10 @@ from typing import TYPE_CHECKING, Any
 from bajutsu import device_os
 from bajutsu import simctl as _simctl
 from bajutsu.agents.ai_config import PROVIDER_MANAGED_ENV
+from bajutsu.evidence.redaction import Redactor
+from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.handoff import REQUEST_LINE_PREFIX as _HANDOFF_REQUEST_PREFIX
+from bajutsu.run_files import RunArtifactReader
 from bajutsu.serve.helpers import valid_run_id
 from bajutsu.serve.state import Job, ServeState
 
@@ -251,22 +254,24 @@ def _record_provenance(state: ServeState, job: Job) -> None:
     # The run wrote into the --runs-dir we passed (serve's store under base_cwd, since the run's cwd
     # is the bundle root); the run id is a single safe segment (checked above), so this can't escape
     # that tree. Resolve to match the absolute --runs-dir the subprocess was given.
-    manifest = (state.base_cwd / state.runs_dir / job.run_id / "manifest.json").resolve()
+    run_dir = (state.base_cwd / state.runs_dir / job.run_id).resolve()
     try:
-        data = json.loads(manifest.read_text(encoding="utf-8"))
+        # serve holds none of the run's bound secret values — the run happened in a subprocess, or on
+        # a remote worker — so the redactor is inert and only the sink's pattern backstop, which
+        # needs no configuration, reaches this text (BE-0331). The sink also writes atomically, which
+        # this rewrite already needed: the report viewer / list_runs may read the manifest
+        # concurrently, and a plain write truncates first.
+        reader = RunArtifactReader(run_dir)
+        data = json.loads(reader.read_text("manifest.json"))
         # Merge, don't overwrite: the run subprocess already wrote a `provenance` block (scenario
         # fingerprint, and BE-0090's `uploadExec` decision). serve adds the upload identity it alone
         # knows; clobbering would drop both of the subprocess's records.
         existing = data.get("provenance")
         existing = existing if isinstance(existing, dict) else {}
         data["provenance"] = {**existing, **job.provenance}
-        # Write atomically (temp + replace): the report viewer / list_runs may read the manifest
-        # concurrently, and a plain write_text truncates first — a reader could catch it empty.
-        tmp = manifest.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(manifest)
+        RunArtifactWriter(run_dir, Redactor(None)).write_json("manifest.json", data)
     except (OSError, ValueError):
-        logger.warning("failed to record bundle provenance into %s", manifest, exc_info=True)
+        logger.warning("failed to record bundle provenance into %s", run_dir, exc_info=True)
 
 
 def _persist_run(state: ServeState, job: Job) -> None:

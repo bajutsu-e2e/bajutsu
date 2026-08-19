@@ -346,3 +346,23 @@ forbidden_modules = [
 ignore_imports = [
     "bajutsu.drivers.base -> bajutsu.evidence.network",
 ]
+
+# The redaction boundary (BE-0331): `run_root` derives the writable filesystem path of a run
+# directory, and only the sink may reach it. A path into a run directory is writable, so a module
+# that can derive one can `write_text` into the run and reach it without crossing redaction.
+# A `protected` contract states this over the whole graph — every direct importer of the protected
+# module, minus the one allowed — which is what covers a writer nobody has written yet: a module
+# that does not exist is already forbidden the moment it does. A `forbidden` contract cannot say it:
+# with `source_modules = ["bajutsu"]` it silently passes (the forbidden module is a descendant of
+# the source package), and listing today's writers instead would reintroduce exactly the
+# on-its-honor gap this item removes. Reading (`bajutsu.run_files`, which returns content and never
+# a path) and the runs root's *name* stay unrestricted: neither confers a writable handle.
+[[tool.importlinter.contracts]]
+name = "Only the artifact sink can derive a writable run directory"
+type = "protected"
+protected_modules = [
+    "bajutsu.run_root",
+]
+allowed_importers = [
+    "bajutsu.evidence.sink",
+]
