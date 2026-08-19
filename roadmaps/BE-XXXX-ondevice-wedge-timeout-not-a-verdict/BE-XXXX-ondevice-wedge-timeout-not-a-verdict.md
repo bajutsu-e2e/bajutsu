@@ -94,16 +94,16 @@ spawn layer: the forced erase a crash retry gained in BE-0353, and the escalatio
 device the pool performs in BE-0354, both of which the run pipeline drives and the harness has no
 path to.
 
-The arithmetic finishes the argument. Each re-lease pays a cold spawn the iOS lane allows up to 300
-seconds, bounded by a 300-second crash-recovery budget, so the lane would spend up to five minutes
-rebooting and reinstalling to answer a stall that cleared in 41 seconds on its own.
+The arithmetic finishes the argument. Each re-lease pays a cold spawn for which the iOS lane allows
+up to 300 seconds, bounded by a 300-second crash-recovery budget, so the lane would spend up to five
+minutes rebooting and reinstalling to answer a stall that cleared in 41 seconds on its own.
 
 The risk of widening the predicate is worth naming precisely, because the obvious worry is the wrong
 one. The predicate's guarantee — a contract violation keeps failing at once — protects a run from
 retrying a genuine failure into a slow green, and `simctl.DeviceTimeout` cannot violate that
 guarantee: a timeout is raised by a subprocess deadline, never by an assertion, so it is never a
 verdict about the app. What disqualifies the widening is proportion rather than safety. A remedy that
-rebuilds the device answers a fault that outlives one deadline and not the next.
+rebuilds the device is far too heavy an answer to a fault that outlives one deadline and not the next.
 
 ## Detailed design
 
