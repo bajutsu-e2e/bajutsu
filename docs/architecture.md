@@ -560,8 +560,9 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
   declares the capability, so Android and web fail preflight. Its label is deterministic because the
   XCUITest lifecycle pins the *Simulator's own* system language to the run's `locale` on every cold
   spawn — a global-domain write plus one reboot, since SpringBoard is a separate process no app
-  launch argument reaches — and gates warm-runner reuse on that locale still matching; for the two
-  prompts `permissions` cannot pre-answer (notification authorization and ATT), the step also takes
+  launch argument reaches — and gates warm-runner reuse on that locale still matching; for the
+  prompts `permissions` cannot pre-answer (notification authorization, ATT, and the cross-process
+  paste consent — BE-0369), the step also takes
   `prompt` + `choice` in place of `sel` and the run resolves the label the pinned locale renders
   (BE-0320)
 - DSL `systemAlertHandling` (BE-0315), the reactive counterpart: an alert guard that fires only when

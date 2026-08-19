@@ -1093,6 +1093,19 @@ def test_real_ios_workflow_declares_the_scenario_keyed_jobs() -> None:
     }
 
 
+def test_ios_actuation_job_still_declares_the_paste_consent_scenario() -> None:
+    # The same coverage pin, for the same reason (BE-0369): `paste_system_alert.yaml` is the only
+    # place `prompt: paste` — and the cross-process paste consent itself — meets a real Simulator,
+    # and it sits on the non-gating `actuation` job, where a silent drop shows no red X.
+    text = lane_workflow_text("ios")
+    assert text is not None
+    declared = job_scenario_map(text)["actuation"]
+    assert "demos/showcase/scenarios/paste_system_alert.yaml" in declared, (
+        "the `actuation` job no longer declares paste_system_alert.yaml — BE-0369's only on-device "
+        "coverage of the paste-consent prompt"
+    )
+
+
 def test_ios_actuation_job_still_declares_the_authoring_scenarios() -> None:
     # A coverage pin, not a narrowing one (hence its own test): BE-0285 brought `extract`, `forEach`,
     # data-driven rows, and `relaunch` to iOS on the non-gating `actuation` job, which is the only

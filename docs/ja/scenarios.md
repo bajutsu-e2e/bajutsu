@@ -168,13 +168,13 @@ iOS バックエンドは **SpringBoard レベルのプロンプト**（通知�
 
 ### テキストではなく意図で指定する
 
-`permissions` では先回りできないプロンプトが 2 つあります。Transparency, Consent, and Control（TCC）のサービスではない通知の許可と、`simctl` の切り替え手段がまったくない App Tracking Transparency（ATT）です。この 2 つについては、`sel` の代わりに `prompt` と `choice` を指定できます。固定した `locale` が描画する label は run が解決します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。
+`permissions` では先回りできないプロンプトが 3 つあります。通知の許可、App Tracking Transparency（ATT）、そしてプロセスをまたぐペーストの同意です。通知の許可は Transparency, Consent, and Control（TCC）のサービスではなく、ATT には `simctl` の切り替え手段がまったくありません。ペーストの同意を iOS は TCC の `kTCCServicePasteboard` として記録しますが、このサービスにも `simctl` の切り替え手段はありません（[BE-0369](../../roadmaps/BE-0369-ios-paste-consent-prompt-choice/BE-0369-ios-paste-consent-prompt-choice-ja.md)）。この 3 つについては、`sel` の代わりに `prompt` と `choice` を指定できます。固定した `locale` が描画する label は run が解決します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。
 
 ```yaml
 - handleSystemAlert: { prompt: notifications, choice: grant, timeout: 5 }
 ```
 
-`prompt` は `notifications` か `tracking`、`choice` は `grant` か `deny` です。ボタンを意味で指定するため、同じファイルが `en_US` でも `ja_JP` でもプロンプトを許可します。どちらの言語のテキストも作者が書き写す必要はありません。これは英語だけを使う場合にも役立ちます。英語の拒否ボタンのアポストロフィは、手で打った label が持つ ASCII 文字ではなく、活字体のアポストロフィ（`Don’t Allow`）だからです。
+`prompt` は `notifications`、`tracking`、`paste` のいずれかで、`choice` は `grant` か `deny` です。ボタンを意味で指定するため、同じファイルが `en_US` でも `ja_JP` でもプロンプトを許可します。どちらの言語のテキストも作者が書き写す必要はありません。これは英語だけを使う場合にも役立ちます。英語の拒否ボタンのアポストロフィは、手で打った label が持つ ASCII 文字ではなく、活字体のアポストロフィ（`Don’t Allow`、`Don’t Allow Paste`）だからです。
 
 この対応表がまだ扱っていない言語（現時点では英語と日本語のみ）の locale を指定した場合、推測した label を tap するのではなく、扱える言語を名指ししてステップが明示的に失敗します。ほかのアラートは、これまでどおり `sel` でボタンを指定します。
 
@@ -183,7 +183,7 @@ iOS バックエンドは **SpringBoard レベルのプロンプト**（通知�
 - **Simulator 専用です。** 言語の固定は `simctl` の操作なので、`xcuitest.deviceType: device` の target は実機が持つシステム言語のまま動きます。この形では、画面に出ている保証のない label を解決してしまいます。実機ではボタンを `sel.label` で指定してください。
 - **リアクティブなガードが持つ拒否ラベルの初期値は英語のままです。** `systemAlertHandling` が組み込みで持つラベル（`Don't Allow`、`Not Now`、`Cancel` など）は英語の文字列そのものです。そのため英語以外の `locale` ではネイティブ経路が一致せず、AI 視覚のガードへフォールバックします。決定的に保つには、固定した言語のラベルを `instruction` のリストで明示してください。
 
-（[`demos/showcase/scenarios/permission_system_alert.yaml`](../../demos/showcase/scenarios/permission_system_alert.yaml) 実物）
+（実物は [`demos/showcase/scenarios/permission_system_alert.yaml`](../../demos/showcase/scenarios/permission_system_alert.yaml) と [`demos/showcase/scenarios/paste_system_alert.yaml`](../../demos/showcase/scenarios/paste_system_alert.yaml)）
 
 ## permissions（起動前の権限状態）
 
@@ -309,7 +309,7 @@ targets:
 | `back` | `back: {}` | 1 階層戻ります。各バックエンドがプラットフォームに合った手段（Android のシステム戻るキー、iOS の OS 提供の戻るボタン、web の履歴）を使います（[BE-0210](../../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md)） |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | 2 本指の拡縮。`scale > 0`（`>1` で拡大, `<1` で縮小） |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | 2 本指の回転。`>0` で時計回り |
-| `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | iOS SpringBoard の権限プロンプトのボタンを決定的に tap する（[下記](#handlesystemalert決定的なシステムアラートステップ)）。iOS（XCUITest）専用。`sel` は `label` / `labelMatches` / `index` のみ受け付け、run が Simulator を固定するシステム言語に対して解決する。`sel` の代わりに `prompt: notifications\|tracking` と `choice: grant\|deny` を指定すると、ボタンを意味で指定でき、run がその label を解決する（BE-0320） |
+| `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | iOS SpringBoard の権限プロンプトのボタンを決定的に tap する（[下記](#handlesystemalert決定的なシステムアラートステップ)）。iOS（XCUITest）専用。`sel` は `label` / `labelMatches` / `index` のみ受け付け、run が Simulator を固定するシステム言語に対して解決する。`sel` の代わりに `prompt: notifications\|tracking\|paste` と `choice: grant\|deny` を指定すると、ボタンを意味で指定でき、run がその label を解決する（BE-0320） |
 | `wait` | `wait: { for\|until: ..., timeout: <sec> }` | 条件待機（下記） |
 | `assert` | `assert: [ <Assertion>... ]` | ステップ途中の中間検証 |
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | アプリを terminate + 再起動し（launch env/args を再適用し、指定分で上書き）、ready まで待つ |

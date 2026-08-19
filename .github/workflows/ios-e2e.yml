@@ -567,6 +567,11 @@ jobs:
   #     with the copied text read back through the `clipboard` assertion — the four text-editing
   #     actuators no other scenario drove. It crosses to the Search tab, so once stable it can move up
   #     into the `run` job beside search.yaml.
+  #   - paste_system_alert.yaml (BE-0369): the lane's only genuine *cross-process* paste —
+  #     `setClipboard` writes the pasteboard from outside the app, so the app's read raises iOS's
+  #     paste-consent prompt, answered natively by `handleSystemAlert: { prompt: paste }`. It lands
+  #     here rather than beside permission_system_alert.yaml in `run` for this job's own reason: it
+  #     is new on-device coverage, so it earns its stability as a per-PR signal first.
   # Deliberately NOT in the `E2E` gate's `needs:` below (like `golden` / `visual`): the Simulator lane
   # has a flakiness history (BE-0218), so new coverage lands as a per-PR signal first and is promoted
   # to the gate only once it proves stable. It installs the prebuilt products from the `build` job and
@@ -580,16 +585,16 @@ jobs:
     name: actuation (xcuitest)
     needs: [changes, build]
     # BE-0322: runs on a shared-code change, or when one of its scenarios (navigation / extract /
-    # foreach / data_driven / relaunch / device / push / text_editing) changed.
+    # foreach / data_driven / relaunch / device / push / text_editing / paste_system_alert) changed.
     if: >-
       needs.changes.outputs.relevant == 'true' &&
       (needs.changes.outputs.shared == 'true' ||
       contains(fromJSON(needs.changes.outputs.affected), 'actuation'))
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the 6h
-    # default. Install (no build) + the ten scenario runs the eight files below produce (each file holds
-    # one scenario; data_driven.yaml's three `${row.*}` rows expand to three) is ~20min — the dominant
-    # term is five cold XCTest-host startups, one per two runs at this lane's warm-reuse cap — so 60
+    # default. Install (no build) + the eleven scenario runs the nine files below produce (each file
+    # holds one scenario; data_driven.yaml's three `${row.*}` rows expand to three) is ~20min — the
+    # dominant term is six cold XCTest-host startups, one per two runs at this lane's warm-reuse cap — so 60
     # catches a real hang with headroom rather than reddening a healthy run. Of those startups only the
     # first carries the 300s cold ceiling (the rest take the 90s respawn one), and only a *failing*
     # spawn adds a device recovery plus a second ceiling. The observed signature — an app-launch
@@ -647,6 +652,12 @@ jobs:
       #     equivalent, so it lives apart from the cross-backend device.yaml).
       #   - text_editing.yaml (iOS-only): `select` + `copy` round-trip the Search field's text, then
       #     `delete` + `clear` — the four editing actuators no other scenario drove (Search tab).
+      #   - paste_system_alert.yaml (BE-0369): `setClipboard` seeds the pasteboard from outside the
+      #     app, so the app's own read raises iOS's cross-process paste-consent prompt, which
+      #     `handleSystemAlert: { prompt: paste }` answers by a native query. Listed last, after the
+      #     other device-control scenarios, because it leaves the pasteboard holding its own string.
+      #     The gating `run` job does not name it: BE-0218's rule is that new on-device coverage
+      #     earns its stability here first, and this is the lane's first cross-process paste.
       # The listed order is deliberate — see the job header for why BE-0285's four come first.
       - name: Run the actuation + authoring scenarios (xcuitest)
         uses: ./.github/actions/bajutsu-e2e
@@ -660,6 +671,7 @@ jobs:
             demos/showcase/scenarios/device.yaml
             demos/showcase/scenarios/push.yaml
             demos/showcase/scenarios/text_editing.yaml
+            demos/showcase/scenarios/paste_system_alert.yaml
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml

@@ -59,7 +59,7 @@ def test_the_same_scenario_taps_the_english_label_under_en_us() -> None:
 
 
 def test_a_sel_form_is_unaffected_by_the_locale() -> None:
-    # Every alert outside the two covered prompts keeps naming its button literally, unchanged.
+    # Every alert outside the covered prompts keeps naming its button literally, unchanged.
     driver = _fake_with_alert("Allow")
     result = run_scenario(
         driver,
