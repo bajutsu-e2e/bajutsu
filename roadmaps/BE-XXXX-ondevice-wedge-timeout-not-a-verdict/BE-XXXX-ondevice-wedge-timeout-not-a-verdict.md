@@ -155,8 +155,15 @@ The work breaks into three units. Unit 2 depends on unit 1; unit 3 depends on ne
    contract already lives, with a docstring stating which question each one answers. The retry
    decision moves to a predicate whose name states it — `recovers_by_respawn`, holding today's exact
    `base.BackendCrashError` membership, so every existing call site keeps its behaviour byte for
-   byte. `is_infrastructure_fault` keeps its name, which already describes a diagnosis rather than a
-   remedy, and gains `simctl.DeviceTimeout`.
+   byte. The diagnosis becomes `is_host_fault`, holding `base.BackendCrashError` and
+   `simctl.DeviceTimeout`.
+
+   Retiring the name `is_infrastructure_fault` rather than reusing it for the diagnosis is what keeps
+   the module honest. That module's own docstring and the plugin's `RECOVER_MARKER` text both define
+   an infrastructure fault as the set that gets re-leased, so a diagnosis predicate wearing the name
+   would leave a later caller reaching for it on the strength of those sentences and silently
+   receiving the wider set — reintroducing the retry-onto-a-wedge this item rejects on proportion.
+   Rewrite both sentences in the same change.
 
    Which type the diagnosis predicate names depends on which of two items lands first, and neither
    blocks the other. `bajutsu/runner/recovery.py` already imports `simctl` and already catches
@@ -186,8 +193,11 @@ directly across an `invalidate()`, and the retry by a substituted runner that ra
 `simctl.DeviceTimeout` once and then answers, and by one that raises twice. What cannot be reproduced
 off macOS is the wedge itself; this item claims no coverage of it.
 
-This item changes the on-device pytest harnesses alone. How `bajutsu run` handles a device timeout
-raised while leasing is BE-0374's subject: that proposal makes the pipeline's forced-erase
+This item changes the behaviour of the on-device pytest harnesses alone. Unit 3 does edit
+`bajutsu/runner/recovery.py`, a shipped module rather than a harness, but no run-pipeline caller
+consumes either predicate: `is_infrastructure_fault`'s only caller outside the tests today is the
+recovery plugin's report hook. How `bajutsu run` handles a device timeout raised while leasing is
+BE-0374's subject: that proposal makes the pipeline's forced-erase
 degradation branch fail the scenario on a timeout rather than retry onto the wedged device, and
 latch the run. The two proposals meet only at the module they both touch, and they answer for
 different callers — the pipeline drives the erase-and-replace rungs above the spawn layer, and the
@@ -227,9 +237,11 @@ conformance harness leases one pinned device with none of them.
       lease's identity, so a cold respawn's `clean` reinstall drops the cached path.
 - [ ] Unit 2 — give that one remaining read a second attempt on a timeout, in the harness rather
       than in the shared `simctl` helper.
-- [ ] Unit 3 — split the retry decision from the host-fault diagnosis, admit
-      `simctl.DeviceTimeout` into the diagnosis alone, and report a non-retried host fault in
-      the job log and the recovery report.
+- [ ] Unit 3 — split `is_infrastructure_fault` in two. `recovers_by_respawn` takes the retry
+      decision with its membership unchanged, and `is_host_fault` takes the diagnosis and gains
+      `simctl.DeviceTimeout`. Rewrite the module docstring and the `RECOVER_MARKER` text the old
+      name leaves behind, and report a non-retried host fault in the job log and the recovery
+      report.
 
 ## References
 
