@@ -244,21 +244,27 @@ class Redactor:
             text = text.replace(value, PLACEHOLDER)
         return text
 
-    def redact_structure(self, data: Any) -> Any:
+    def redact_structure(self, data: Any, *, keys: bool = True) -> Any:
         """Mask secrets in a JSON-shaped structure, before anything serializes it.
 
         Keys are matched against the structure's own names and text rules against its string leaves,
         so a document whose shape carries no dedicated rule (`wait-timeout.json`, a manifest) is
         covered without a key pattern ever meeting a delimiter it would consume. Masking a keyed
         value with the placeholder *string* keeps the document valid whatever type it replaced.
+
+        `keys=False` keeps the string-leaf half and drops the key match, for a document whose names
+        are Bajutsu's own control schema rather than an app's data. `redact.fields` is a vocabulary
+        of app body field names, so a target that happens to call a body field `label`, `key` or
+        `path` would otherwise rewrite that control data — and the caller reading the artifact back
+        resolves nothing, or walks a masked string character by character (BE-0331).
         """
         if not self.active:
             return data
         if isinstance(data, dict):
             return {
                 k: PLACEHOLDER
-                if isinstance(k, str) and k.lower() in self._key_names
-                else self.redact_structure(v)
+                if keys and isinstance(k, str) and k.lower() in self._key_names
+                else self.redact_structure(v, keys=keys)
                 for k, v in data.items()
             }
         # A tuple serializes as an array just like a list, so skipping it here would let a keyed
@@ -266,7 +272,7 @@ class Redactor:
         # from `dataclasses.asdict` keeps its tuples. The masked copy is a list; the next stop is
         # `json.dumps`, which cannot tell the two apart.
         if isinstance(data, list | tuple):
-            return [self.redact_structure(v) for v in data]
+            return [self.redact_structure(v, keys=keys) for v in data]
         if isinstance(data, str):
             return self.redact_text(data)
         return data

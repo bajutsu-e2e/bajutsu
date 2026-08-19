@@ -187,8 +187,9 @@ def write_html(
     resolves when the report is opened straight from the run dir. Returns the artifact name.
 
     The report is a self-contained file meant to be shared, which is why it goes through the sink
-    rather than writing itself: the same redaction that reaches `screenmap.json` reaches the rendered
-    page built from the same map (BE-0331).
+    rather than writing itself. Only the sink's free-text pass reaches it, though: the structural
+    screen-map masking runs over `screenmap.json` alone, so this page must never render an action's
+    `value` or `fields` (BE-0331).
     """
     have = frozenset(PurePosixPath(n).stem for n in reader.names("screens/*.png"))
     name = "screenmap.html"

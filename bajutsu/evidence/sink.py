@@ -86,9 +86,18 @@ class RunArtifactWriter:
 
         The structural rule reaches an action's `value`/`fields` only; a node's ids, an edge's
         description, a stop reason and a crash path carry free text an app can echo a secret into,
-        so the key/known-value pass runs over the map's own keys and strings as well.
+        so the full key/known-value pass still runs over the map's strings. Only its *keys* are
+        exempt: those are the crawl's own control schema (`kind`, `label`, `key`, `path`,
+        `fingerprint`), which `screenmap_from_dict` reads back on `--continue`, so a target naming an
+        app body field after one of them would break the resume rather than protect anything
+        (BE-0331).
         """
-        return self._write_json(name, self._redactor.redact_screen_map(screen_map), scrub_text=True)
+        return self._write_json(
+            name,
+            self._redactor.redact_screen_map(screen_map),
+            scrub_text=True,
+            scrub_keys=False,
+        )
 
     def write_json(self, name: str, data: Any) -> Path:
         """Write structured content with no shape-specific rule — the key/known-value path."""
@@ -149,14 +158,17 @@ class RunArtifactWriter:
         restrict_file(path)
         return True
 
-    def _write_json(self, name: str, data: Any, *, scrub_text: bool = False) -> Path:
+    def _write_json(
+        self, name: str, data: Any, *, scrub_text: bool = False, scrub_keys: bool = True
+    ) -> Path:
         # A shape-specific rule already ran over the structure; `scrub_text` additionally runs the
         # key/known-value pass for content that had no such rule. It runs in two halves, on either
         # side of serialization, because a key pattern reaches to end of line: shown a serialized
         # document it consumes a string's closing quote and the artifact stops parsing — which the
-        # resume path and the web UI's live poll both read back (BE-0331).
+        # resume path and the web UI's live poll both read back (BE-0331). `scrub_keys=False` drops
+        # the key half for a document whose names are Bajutsu's schema, not the app's.
         if scrub_text:
-            data = self._redactor.redact_structure(data)
+            data = self._redactor.redact_structure(data, keys=scrub_keys)
         # `ensure_ascii=False`: a run's evidence is read by people, and an app under test in
         # Japanese would otherwise land as a wall of \uXXXX escapes.
         body = json.dumps(data, ensure_ascii=False, indent=2)

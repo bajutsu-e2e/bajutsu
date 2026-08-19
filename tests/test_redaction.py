@@ -487,6 +487,32 @@ def test_sink_json_survives_a_key_pattern_that_would_eat_the_document(tmp_path: 
     assert doc["target"] == {"id": "auth.submit"}  # nothing configured names it, so it is untouched
 
 
+def test_write_screen_map_leaves_the_crawls_own_schema_keys_alone(tmp_path: Path) -> None:
+    # `redact.fields` is a vocabulary of *app body* field names, so a target that happens to call one
+    # `label`, `key` or `path` must not have the crawl's control data rewritten under it: the map is
+    # read back by `--continue` / `--resume-key`, and a masked `path` is a bare string a resume would
+    # walk character by character. Free text and configured *values* still have to be caught.
+    writer = RunArtifactWriter(
+        tmp_path / "runs" / "r1",
+        Redactor(Redact(fields=["label", "key", "path"]), values=["hunter2"]),
+    )
+    path = writer.write_screen_map(
+        "screenmap.json",
+        {
+            "nodes": [{"fingerprint": "abc", "ids": ["greeting"], "label": "Hi, hunter2"}],
+            "edges": [{"src": "abc", "action": "tap greeting", "dst": "def"}],
+            "pruned": [{"key": "abc:tap:greeting", "path": ["tap greeting"]}],
+            "stop_reason": "completed",
+        },
+    )
+    text = path.read_text(encoding="utf-8")
+    assert "hunter2" not in text  # the known value is still masked, in a `label` the key rule skips
+    written = json.loads(text)
+    assert written["nodes"][0]["label"] == f"Hi, {PLACEHOLDER}"
+    assert written["pruned"][0]["key"] == "abc:tap:greeting"  # `--resume-key` can still match it
+    assert written["pruned"][0]["path"] == ["tap greeting"]  # still a list, not a masked string
+
+
 def test_write_json_masks_a_keyed_value_nested_in_a_tuple(tmp_path: Path) -> None:
     # `json.dumps` serializes a tuple as an array without complaint, so a structure pass that walked
     # only lists would write the keyed value in plaintext and raise nothing — the silent class this
