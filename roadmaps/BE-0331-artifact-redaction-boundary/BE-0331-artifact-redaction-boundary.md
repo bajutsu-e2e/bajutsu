@@ -261,6 +261,14 @@ be false. Three residues remain, and each is named rather than papered over.
   ordinary text. Detecting it would need semantic judgment, which prime directive 1 keeps off this
   path.
 - **The backstop's vocabulary is finite.** A credential format nobody added a pattern for passes it.
+- **A configured key can over-mask a structured string.** A configured name is also matched in the
+  `name: value` form, whose value has no delimiter and so runs to the end of the string it appears in.
+  That is right for a log line and wrong inside a bounded string an artifact carries: naming `app`
+  rewrites an Android resource id like `com.example.app:id/login` to `com.example.app:[REDACTED]`,
+  and a `crawl --continue` reading such a screen map back replays a branch that resolves nothing.
+  Restricting the rule to the delimited forms would close it at the cost of the free-text coverage a
+  configured key exists for, so masking keeps precedence over legibility and the limit is documented
+  instead.
 
 What the item does guarantee is narrower and checkable: no writer can bypass redaction, the two cases
 whose secrecy is knowable at capture time are masked without configuration, and a recognizable

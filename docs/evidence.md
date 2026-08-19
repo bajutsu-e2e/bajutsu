@@ -485,6 +485,14 @@ remain, and an operator deciding whether to share a report should weigh them.
   through `${secrets.X}`, and whose shape matches no backstop pattern, is indistinguishable from
   ordinary text. Telling the two apart would need semantic judgment, which never sits on this path.
 - **The backstop's vocabulary is finite.** A credential format nobody added a pattern for passes it.
+- **A configured key can over-mask a structured string.** A `redact.headers` / `redact.fields` name is
+  also matched in the `name: value` form. That form's value has no delimiter, so it runs to the end of
+  the string. In a log line that is right. Inside a bounded string an artifact carries, it consumes the
+  rest of that string: naming `app` rewrites an Android resource id like `com.example.app:id/login` to
+  `com.example.app:[REDACTED]`, and a `crawl --continue` reading such a screen map back replays a
+  branch that resolves nothing. Masking wins over legibility here deliberately — a key an author named
+  is one they meant. Keep `redact.fields` to app body-field names rather than words that also appear
+  inside a control's own identifier.
 
 > **Sensitive headers are masked by default** (a scenario needs no `redact:` for this): the
 > built-in set is `authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`,
