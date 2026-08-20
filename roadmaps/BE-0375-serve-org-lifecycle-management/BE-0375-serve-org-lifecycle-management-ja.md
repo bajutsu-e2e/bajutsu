@@ -462,6 +462,52 @@ admin がユニット5の API で作ったものです。
 を作成します。鶏と卵の問題は起きません。この項目が意図的にデータベースの外に残したテナンシーの
 データこそが、`orgs` テーブルが空の状態を回復可能にしているからです。
 
+### 8. GitHub Team それ自体をメンバーシップの軸にする（追加修正）
+
+この項目の実装後に追加しました。ユニット1、5、6 がデータベースへ移すメンバーシップの4フィールドを
+変える変更であり、別に扱えば2つの生成元でフィールドの集合が食い違うからです。
+
+org に `githubTeams` を加えます。値は `"<github-org>/<team-slug>"` の形で書くフラットな GitHub Team
+のリストで、その直接メンバーは **viewer** としてこの org に所属します。これまで org が login を受け
+入れる手段は2つでした。`members` に login を挙げるか、`githubOrgs` に GitHub organization 全体を
+挙げるかです。その中間はありません。そのため、共有 organization のうち1つのチームだけを受け入れる
+手段は2つに限られていました。参加や離脱で古くなる名簿を手で保守するか、その organization の他の
+チーム全員にデプロイを開くかです。デプロイが欲しい単位は、GitHub 自身がすでに Team としてモデル化しています。
+しかも `serve` は editor と admin のロールのために、サインインのたびに login の Team を読んでいます。
+つまりメンバーシップは手元にあり、ゲートだけがそれを見ないでいました。
+
+`editorTeam` は、昇格させるだけでなく受け入れるようになります。このフィールドが指すのは、run、
+record、scenario の編集を許す Team です。つまり org 単位で与えられるもっとも強い権限ですが、誰の
+サインインも許していませんでした。ここだけに書かれた Team は「書き込めるがログインできない」に
+解決され、メンバー全員が、ロールの計算より前に走るゲートで拒否されていました。
+和集合は `OrgConfig.admitting_teams()` が返します。ゲートと「この org はメンバーシップを宣言して
+いるか」の判定（ユニット6の移行警告も含む）は、どちらもこの1つのアクセサを読みます。そのため、`editorTeam` だけで誰かを受け入れるかどうかで食い違いません。
+
+ゲートだけに軸を足せば、ある org の Team で受け入れた login を別の org に置いてしまいます。その
+login には別のテナントの targets とオブジェクトストレージの prefix（ユニット4）が渡ります。ロールの
+計算では違う org の `editorTeam` を読むので、editor Team で受け入れられた login が viewer になり
+ます。そこで `identity_matches_org` と `org_for_identity` を、1つの private な `_match_org` に
+委譲します。`_match_org` は `members`、`githubOrgs`、org の受け入れ Team の順に見て、一致した org
+か None を返します。Team を最後に置くので、Team を宣言しても、既存のエントリがすでに置いた login の
+所属先は動きません。ゲート、editor のロール、admin Team の3つが使う Team の比較は `orgs.in_teams`
+の1つにまとめます。両側は、GitHub 自身が org login と Team slug を解決するのと同じように case-fold
+します。
+BE-0313 は、綴りの大小が食い違って失うのが editor のロールだけだったあいだ、`editorTeam` の判定を
+完全一致に留めていました。このフィールドが受け入れるようになると、同じ食い違いはサインインを失わせ
+ます。case-fold してもネストした Team を一致させない保証は保たれます。この保証は
+`"<github-org>/<team-slug>"` 全体の完全一致に依るからです。
+
+データベース側はユニット1と5をそのまま踏襲します。nullable な `orgs.github_teams` の JSON 列を
+加えます（マイグレーション `0016`。`0015` と同じく列の追加だけで、引き込みは行いません）。この列は
+`OrgRecord`、`set_org_membership`、`seed_org_membership`、`orgs_from_db` が運びます。置き換えは、
+`POST /api/orgs/<slug>/membership` と Orgs ページのフォームで、他の3つと1つの単位で行います。
+`editor_team` は自分の列を持ち続けます。受け入れるだけでなくロールも決めるからです。ユニット3の
+拒否理由は、Team のリストが**同時に**空のときにだけ、そのリストも名指しします
+（"GitHub returned no orgs or teams for this login"）。org のリストだけを挙げれば、Team を宣言した
+org が参照しない軸を operator に調べさせてしまいます。`/user/teams` は fail closed なので、GitHub の
+Teams API がエラーを返している間は、所属が Team だけの login は拒否されます。ゲートが倒れるべき向き
+はこちらで、ユニット7の迂回がすでに受け入れた引き換えと同じです。
+
 ## 検討した代替案
 
 - **org のメンバーシップを設定ファイルに残し、外部で編集した後 `POST /api/config` の再バインドを
@@ -552,7 +598,7 @@ admin がユニット5の API で作ったものです。
       メンバーシップ列が空かどうかから推測しない。`targets:` だけのエントリは、空の名簿として書き込む
       のではなく引き込みの対象から外す。Alembic のマイグレーションはメンバーシップ列、マーカー列、
       ソフトデリート列の追加だけを行い、自身では引き込みを行わない。`orgs:` エントリが
-      `members`/`githubOrgs`/`editorTeam` をまだ宣言しているときの起動時の警告も含む（`targets` だけを
+      `members`/`githubOrgs`/`githubTeams`/`editorTeam` をまだ宣言しているときの起動時の警告も含む（`targets` だけを
       持つエントリは期待される姿であり、警告しない）。
 - [x] 7 — ゲートの判断が設定ファイルからテーブルへ移ったうえで、admin Team の迂回を確認する。
       `orgs` テーブルが空、あるいはどの行にもマッチしない状態でも、サインインを許可すること。
@@ -567,6 +613,17 @@ admin がユニット5の API で作ったものです。
       の迂回（[BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass-ja.md)）が、
       `orgs` テーブルが空の状態でもサインインを許可すること。その admin が、デプロイの最初の org を
       作成できること。
+- [x] 9 — 追加修正：org の3つ目のメンバーシップの軸として `githubTeams` を加え、`editorTeam` にも
+      昇格だけでなく受け入れをさせる。3つの軸の順位付けは `orgs._match_org` に一度だけ書く。これで
+      サインインのゲートと org の配置は、ある org で受け入れた login を別の org へ置けなくなる。
+      ゲート、editor のロール、admin Team が共有する Team の比較（`orgs.in_teams`）を大文字小文字の
+      区別なしにする。このフィールドを、マイグレーション `0016`、リポジトリの seam、
+      `orgs_declaring_membership`、メンバーシップの API、Orgs ページに通す。GitHub がどちらの軸も
+      返さなかったとき、ユニット3の拒否理由で Team のリストも名指しする。テスト：Team だけの login が
+      受け入れられ、**その Team の org に置かれる**こと。`editorTeam` だけの login が editor として
+      受け入れられること。綴りの大小が食い違う Team。ネストした Team が拒否されること。
+      `/user/teams` が何も返さないあいだ、Team だけの login が拒否されること。ユニット8の
+      config とデータベースの解決一致を Team の軸にも広げること。
 
 ## 参考
 
@@ -589,11 +646,16 @@ admin がユニット5の API で作ったものです。
   です。
 - [`bajutsu/serve/orgs.py`](../../bajutsu/serve/orgs.py) — `OrgConfig` と `parse_orgs`。この項目は
   その隣に2つ目の生成元（`orgs_from_db`）を置きます。`identity_matches_org` と `org_for_identity`
-  は振る舞いを変えず出どころだけが変わり、`org_for_target` は唯一の呼び出し元を失います。
+  は、ユニット1から7では出どころだけが変わり、ユニット8からはユニット8の `_match_org` を共有します。
+  その隣の `in_teams` が Team の比較を1箇所で持ちます。`org_for_target` は唯一の呼び出し元を失います。
 - [`bajutsu/serve/project_registry.py`](../../bajutsu/serve/project_registry.py) — project がすでに
   持つ `(org_id, name)` という鍵。この項目の target の同一性はこれに倣います。
 - [`bajutsu/serve/server/models.py`](../../bajutsu/serve/server/models.py) — この項目がメンバー
-  シップ用のカラムを追加する `Org` テーブル。
+  シップ用のカラムを追加する `Org` テーブル。`github_teams` も含みます（ユニット8の
+  マイグレーション [`0016`](../../bajutsu/serve/server/migrations/versions/0016_org_github_teams.py)）。
+- [`bajutsu/serve/server/oauth.py`](../../bajutsu/serve/server/oauth.py) — `_fetch_teams`。その
+  fail closed の挙動は、ユニット8以降、ユニット7の admin 迂回だけでなく Team を宣言した org の
+  サインインも決めます。
 - [`bajutsu/serve/server/db.py`](../../bajutsu/serve/server/db.py) — `Repository.ensure_org`。
   この項目はこれを冪等な作成のまま残し、その隣に専用の引き込みメソッドを置きます。および、この
   項目の `OrgRecord` とその作成・削除・メンバーシップ更新の各操作が手本にする
