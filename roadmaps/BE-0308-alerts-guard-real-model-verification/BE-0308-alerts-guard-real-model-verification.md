@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0308") |
-| Implementing PR | [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) |
+| Implementing PR | [#1668](https://github.com/bajutsu-e2e/bajutsu/pull/1668) |
 | Topic | Verification & coverage |
 | Related | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md), [BE-0295](../BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification.md) |
 <!-- /BE-METADATA -->
