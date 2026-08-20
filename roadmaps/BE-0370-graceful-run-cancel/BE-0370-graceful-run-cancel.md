@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0370") |
+| Implementing PR | [#1667](https://github.com/bajutsu-e2e/bajutsu/pull/1667) |
 | Topic | Verification & coverage |
 | Related | [BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md), [BE-0147](../BE-0147-serve-triage/BE-0147-serve-triage.md), [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) |
 <!-- /BE-METADATA -->
