@@ -346,17 +346,17 @@ Once GitHub OAuth is configured, org membership also decides access
 requires membership in a configured org — through `members`, `githubOrgs`, `githubTeams`, or
 `editorTeams` — which grants the **viewer** role; a member of a configured admin Team signs in
 regardless (below). A direct member of any of the org's `editorTeams` is promoted to **editor**; a
-member of
-one of the server-wide admin Teams (`BAJUTSU_OAUTH_ADMIN_TEAMS`, see
+member of one of the server-wide admin Teams (`BAJUTSU_OAUTH_ADMIN_TEAMS`, see
 [Self-hosting](self-hosting.md#2-add-github-oauth-optional)) is **admin**. `editorTeams` admits as
 well as promotes, so a Team that may write never has to be repeated under `githubTeams` to be able to
-sign in. `editorTeams` is a list because one org may span more than one GitHub organization. A single
-slot could not then name the writing Team of each. A configuration still on the older singular
-`editorTeam` keeps working: `serve` folds that key into `editorTeams`. It folds in both keys when a
-partial rename leaves the singular one behind. Rename it anyway; the plural name is the documented
-one. Each `githubTeams` entry, each
-`editorTeams` entry, and each `BAJUTSU_OAUTH_ADMIN_TEAMS` entry is one flat Team, written as `"<github-org>/<team-slug>"`; a nested Team beneath any of them does not match,
-and all three are compared case-insensitively, as GitHub itself resolves an org login and a Team
+sign in. `editorTeams` is a list because one org may span more than one GitHub organization, and a
+single slot could not then name the writing Team of each. A configuration still on the older
+singular `editorTeam` keeps working: `serve` folds that key into `editorTeams`, and folds both in
+when a partial rename leaves the singular name behind. Rename it anyway; the plural name is the
+documented one. Each `githubTeams` entry, each `editorTeams` entry, and each
+`BAJUTSU_OAUTH_ADMIN_TEAMS` entry is one flat Team, written as `"<github-org>/<team-slug>"`; a nested
+Team beneath any of them does not match, and all three are compared case-insensitively, as GitHub
+itself resolves an org login and a Team
 slug. A Team-declared org depends on GitHub's Teams API answering: that API fails closed — it never
 invents a Team — so while it errors, a login whose only membership is a Team is turned away rather
 than admitted. An OAuth deployment
