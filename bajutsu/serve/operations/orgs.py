@@ -160,6 +160,14 @@ def update_org_membership(
     editor_teams, invalid = _string_list(body.get("editorTeams"), "editorTeams")
     if invalid is not None:
         return {"error": invalid}, 400
+    if "editorTeam" in body:
+        # The retired singular field is refused here, not folded in the way the `orgs:` block's own
+        # key is (`OrgConfig._fold_retired_editor_team`). `_string_list` reads a missing `editorTeams`
+        # as an empty list, so a caller still on the old name would replace this org's roster with one
+        # granting nobody write access — and get a 200 back saying so. The two surfaces differ in what
+        # refusing costs: one request an operator can fix here, every login of the deployment there.
+        # Loud rather than normalized, like `_validate_slug` above (determinism first).
+        return {"error": "editorTeam is retired; send editorTeams as a list of Teams instead"}, 400
     # Narrowed by the four error returns above.
     assert members is not None and github_orgs is not None
     assert github_teams is not None and editor_teams is not None

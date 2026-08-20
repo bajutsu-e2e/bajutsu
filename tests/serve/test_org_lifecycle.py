@@ -471,6 +471,18 @@ def test_create_then_re_member_an_org_and_audit_both(
 
     assert _audit_actions(state.repository) == ["org.create", "org.membership.update"]
 
+    # A caller still on the retired singular field is refused, not quietly obeyed: `editorTeams` is
+    # absent from that body, which the shared list validator reads as an empty list, so obeying it
+    # would strip this org's write access and answer 200. The roster is left as it was.
+    payload, status = ops.update_org_membership(
+        state,
+        "initech",
+        {"members": ["peter"], "editorTeam": "initech-gh/leads"},
+        actor=admin,
+    )
+    assert status == 400 and "editorTeam is retired" in payload["error"]
+    assert orgs_from_db(state.repository)["initech"].editor_teams == ["initech-gh/leads"]
+
 
 def test_creating_the_default_org_is_refused(
     serve_engine: Callable[..., Engine], tmp_path: Path

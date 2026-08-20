@@ -524,7 +524,12 @@ The list simplifies the two places that special-cased the single slot. `admittin
 plain concatenation of `github_teams` and `editor_teams`, and `role_for` drops its `is not None`
 guard, since `in_teams` on an empty list is already False. `POST /api/orgs/<slug>/membership` drops
 its bespoke "must be a string" check for the shared `_string_list` validator the other three fields
-use, so the endpoint now validates four uniform lists.
+use, so the endpoint now validates four uniform lists. That endpoint refuses a retired `editorTeam`
+field with a 400 rather than folding it, which is the opposite choice from the configuration surface
+and rests on what refusing costs: `_string_list` reads a missing `editorTeams` as an empty list, so
+obeying such a body would strip the org's write access and answer 200, while refusing costs one
+request an operator can fix. Refusing a configuration key would instead cost every login of the
+deployment.
 
 Migration `0017` is the first in this series to carry data rather than only add columns. Migrations
 `0015` and `0016` seeded nothing because every column they added is reconstructible from the `orgs:`
