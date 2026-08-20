@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0298") |
-| Implementing PR | [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) |
+| Implementing PR | [#1666](https://github.com/bajutsu-e2e/bajutsu/pull/1666) |
 | Topic | Verification & coverage |
 | Related | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) |
 <!-- /BE-METADATA -->
@@ -78,7 +78,7 @@ Proposal altitude. The work is MECE along the units below.
 
 Log:
 
-- [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) — landed both lanes as non-gating
+- [#1666](https://github.com/bajutsu-e2e/bajutsu/pull/1666) — landed both lanes as non-gating
   signals, plus the assertion they gate on. **The assertion:**
   `scripts/assert_pool_isolation.py` reads the finished run's `manifest.json` and the run directory's
   own subdirectory listing and fails on five distinct violations — an artifact recorded under another

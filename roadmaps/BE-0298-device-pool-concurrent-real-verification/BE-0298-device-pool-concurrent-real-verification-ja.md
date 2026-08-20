@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0298") |
-| 実装 PR | [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) |
+| 実装 PR | [#1666](https://github.com/bajutsu-e2e/bajutsu/pull/1666) |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md) |
 <!-- /BE-METADATA -->
@@ -81,7 +81,7 @@ monkeypatch して、`"UDID-A"`/`"UDID-B"` のような架空の udid に対す�
 
 ログ:
 
-- [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) — 両レーンをゲート対象外の
+- [#1666](https://github.com/bajutsu-e2e/bajutsu/pull/1666) — 両レーンをゲート対象外の
   シグナルとして着地させ、あわせて判定に使うアサーションを追加しました。**アサーション**：
   `scripts/assert_pool_isolation.py` は、終了した run の `manifest.json` と run ディレクトリの
   サブディレクトリ一覧を読み、5 種類の違反で失敗します。ほかのワーカーの slug の下に記録された
