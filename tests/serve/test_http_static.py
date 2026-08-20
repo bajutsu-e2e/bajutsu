@@ -309,11 +309,11 @@ def test_a_cancelled_run_reaches_the_report_in_the_web_ui() -> None:
     # `j.cancelled` — otherwise the artifact is invisible on the very surface the Cancel button lives
     # on. `make lint-js` only runs `node --check` over these modules, so a behavioral regression here
     # has no other net; this pins it by reading the module, in the tolerant style used above.
-    import bajutsu
+    # Read the module from the directory the server itself serves it out of, so the test cannot drift
+    # from where it actually lives.
+    from bajutsu.serve._paths import TEMPLATES_DIR
 
-    text = (Path(bajutsu.__file__).parent / "templates" / "serve.panels.mjs").read_text(
-        encoding="utf-8"
-    )
+    text = (TEMPLATES_DIR / "serve.panels.mjs").read_text(encoding="utf-8")
     for name in ("runDone", "recRunDone"):
         body = re.search(rf"function {name}\(j\)\{{(.*?)\n\}}", text, re.DOTALL)
         assert body is not None, name
