@@ -143,9 +143,11 @@ Log:
   caller is unchanged, and the pool job passes `false` to drop the per-touch CALayer drawn into each
   screenshot. The scenario set halves from four files to two, `smoke.yaml` and `notices.yaml`: they
   hold four scenario documents rather than seven, so the pool still has work for both workers at once
-  and the cross-device overlap the verdict requires is untouched, at three fewer app launches and a shorter
-  window to wedge in. `notices` is kept as the longer file so the pair genuinely overlaps. Promotion
-  stays unchecked until a run measures this configuration stable.
+  and the cross-device overlap the verdict requires is untouched, at three fewer app launches, a
+  shorter window to wedge in, and half the cold XCTest-host spawns — the lane caps warm reuse at 1
+  workflow-wide, so a spawn covers two documents and seven of them cost four where four cost two.
+  `notices` is kept as the longer file so the pair genuinely overlaps. Promotion stays unchecked
+  until a run measures this configuration stable.
 
 ## References
 

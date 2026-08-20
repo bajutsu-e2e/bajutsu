@@ -1323,12 +1323,14 @@ jobs:
 
       # Two state-neutral scenario files over two devices, down from four: they hold four scenario
       # documents rather than seven, so the pool still has to hand work to both workers at once — the
-      # one concurrent pair `assert_pool_isolation.py`'s cross-device overlap check needs, kept intact. `notices` is the longer of the two files (three documents to `smoke`'s
-      # one), so the pair genuinely overlaps rather than one worker draining first. What the halving
-      # buys is the queue load the two measured collapses ran out of host for: three fewer app
-      # launches and their step screenshots, and a shorter wall-clock window to wedge in. The cold
-      # XCTest-host spawns stay at two — the default cap of three warm reuses already covered the old
-      # split. They are the shared showcase files, unchanged (BE-0221), and neither grants a permission
+      # one concurrent pair `assert_pool_isolation.py`'s cross-device overlap check needs, kept
+      # intact. `notices` is the longer of the two files (three documents to `smoke`'s one), so the
+      # pair genuinely overlaps rather than one worker draining first. What the halving buys is the
+      # queue load the two measured collapses ran out of host for: three fewer app launches and their
+      # step screenshots, a shorter wall-clock window to wedge in, and half the cold XCTest-host
+      # spawns — this lane caps warm reuse at 1 workflow-wide (BAJUTSU_XCUITEST_MAX_WARM_REUSES,
+      # above), so a spawn covers two documents and seven of them cost four where four cost two.
+      # They are the shared showcase files, unchanged (BE-0221), and neither grants a permission
       # nor reseeds device state, so neither worker's device can influence the other's through
       # anything but the pool.
       #
