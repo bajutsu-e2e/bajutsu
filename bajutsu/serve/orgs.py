@@ -61,23 +61,22 @@ class OrgConfig(_Model):
 DEFAULT_ORG = "default"
 
 
-def org_for_user(orgs: dict[str, OrgConfig], login: str) -> str:
-    """The org whose members list *login*, or `default` if none do."""
-    return next((org for org, oc in orgs.items() if login in oc.members), DEFAULT_ORG)
-
-
 def in_teams(teams: Sequence[str], wanted: Iterable[str]) -> bool:
     """Whether any of *teams* is one of *wanted*, the single Team-membership test behind the sign-in
     gate, the editor role, and the server-wide admin Team — so a Team that admits a login and the
     role that login resolves to can never drift apart.
 
-    Case-folded on both sides, since GitHub resolves an org login and a Team slug case-insensitively
-    and `identity.teams` reports GitHub's own casing either way. Folding never turns an empty Team
-    name into a match, and preserves the nested-Team guarantee, which rests on exact string equality
-    of the full `"<github-org>/<team-slug>"` (BE-0352).
+    Lowercased on both sides, since GitHub resolves an org login and a Team slug
+    case-insensitively and `identity.teams` reports GitHub's own casing either way. `str.lower`
+    rather than `str.casefold`: full case folding equates names GitHub keeps distinct (`gruß` and
+    `gruss` can be two Teams of one organization), and since BE-0375 unit 8 a match buys sign-in, so
+    anyone able to create the folded-equal Team would clear the gate. Lowercasing equates nothing
+    beyond ASCII case, which is what GitHub's own slug lowercasing implies; it never turns an empty
+    Team name into a match, and preserves the nested-Team guarantee, which rests on exact string
+    equality of the full `"<github-org>/<team-slug>"` (BE-0352).
     """
-    folded = {t.casefold() for t in wanted}
-    return any(team.casefold() in folded for team in teams)
+    lowered = {t.lower() for t in wanted}
+    return any(team.lower() in lowered for team in teams)
 
 
 def _match_org(
@@ -93,8 +92,8 @@ def _match_org(
 
     "First" within an axis is deterministic but source-dependent; see `org_for_identity`.
 
-    Scans `members` itself rather than through `org_for_user`, whose `default` return cannot tell a
-    login no entry lists from one an org literally named `default` lists as a member.
+    Returns None rather than `DEFAULT_ORG` for "matched nothing", so a login no entry lists stays
+    distinguishable from one an org literally named `default` lists as a member.
     """
     for org, oc in orgs.items():
         if login in oc.members:
@@ -110,7 +109,7 @@ def _match_org(
 
 
 def identity_matches_org(
-    orgs: dict[str, OrgConfig], login: str, github_orgs: list[str], teams: Sequence[str] = ()
+    orgs: dict[str, OrgConfig], login: str, github_orgs: list[str], teams: Sequence[str]
 ) -> bool:
     """Whether *login* (with GitHub memberships *github_orgs* and *teams*) belongs to any declared
     org (BE-0313).
@@ -122,12 +121,16 @@ def identity_matches_org(
     An empty `orgs` mapping — no `orgs:` block, or a config that failed to load — matches nobody, so
     this gate alone admits no login; `oauth_callback` admits a configured admin Team's members
     alongside it, so a deployment can still recover from a missing or broken block.
+
+    *teams* has no default, and neither does `org_for_identity`'s: a caller that could omit the
+    Team axis is exactly how the gate and the placement would come to consult different axes again,
+    and it would type-check clean while silently denying or misplacing a Team-admitted login.
     """
     return _match_org(orgs, login, github_orgs, teams) is not None
 
 
 def org_for_identity(
-    orgs: dict[str, OrgConfig], login: str, github_orgs: list[str], teams: Sequence[str] = ()
+    orgs: dict[str, OrgConfig], login: str, github_orgs: list[str], teams: Sequence[str]
 ) -> str:
     """The org for a user logging in as *login* with the given GitHub *github_orgs* and *teams*
     memberships (BE-0015).

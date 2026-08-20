@@ -470,10 +470,17 @@ as viewer. `identity_matches_org` and `org_for_identity` therefore delegate to o
 `_match_org`, which ranks `members`, then `githubOrgs`, then an org's admitting Teams, and returns
 the matching org or None. Teams rank last, so declaring one never relocates a login an existing
 entry already placed. The one Team comparison behind the gate, the editor role, and the admin Team
-is now `orgs.in_teams`, case-folded on both sides as GitHub itself resolves an org login and a Team
+is now `orgs.in_teams`, lowercased on both sides as GitHub itself resolves an org login and a Team
 slug: BE-0313 left the `editorTeam` check exact while a mismatch cost only the editor role, and once
-that field admits, the same mismatch costs sign-in. Folding preserves the nested-Team guarantee,
-which rests on exact equality of the whole `"<github-org>/<team-slug>"`.
+that field admits, the same mismatch costs sign-in. `str.lower` rather than `str.casefold`, because
+full folding equates names GitHub keeps distinct (`gruß` and `gruss` can be two Teams of one
+organization) and a match now buys sign-in, so anyone able to create the folded-equal Team would
+clear the gate. Lowercasing preserves the nested-Team guarantee, which rests on exact equality of the
+whole `"<github-org>/<team-slug>"`. The Team axis is a required parameter on both resolvers, not a
+defaulted one: a call site able to omit it is how the gate and the placement would come to consult
+different axes again, and it would type-check clean while denying or misplacing a Team-admitted
+login. `org_for_user` is retired here for the reason unit 1 retired `org_for_target` — `_match_org`
+scans `members` itself, so the helper kept only its pre-BE-0313 semantics and no caller.
 
 The database side follows units 1 and 5 unchanged: a nullable `orgs.github_teams` JSON column
 (migration `0016`, adding a column and seeding nothing, like `0015`), carried through `OrgRecord`,
@@ -592,8 +599,10 @@ accepted.
       `orgs` table.
 - [x] 9 — Follow-up: add `githubTeams` as an org's third membership axis and let `editorTeam` admit
       as well as promote, ranking all three axes once in `orgs._match_org` so the sign-in gate and
-      the org placement cannot admit a login through one org and file it under another; case-fold the
-      one Team comparison (`orgs.in_teams`) shared by the gate, the editor role, and the admin Team;
+      the org placement cannot admit a login through one org and file it under another, with the
+      Team axis required rather than defaulted on both resolvers and `org_for_user` retired; lowercase
+      the one Team comparison (`orgs.in_teams`) shared by the gate, the editor role, and the admin
+      Team;
       carry the field through migration `0016`, the repository seam, `orgs_declaring_membership`,
       the membership API, and the Orgs page; and name the Team list in unit 3's denial cause when
       GitHub returned neither axis. Tests: a Team-only login admitted *and placed in its Team's org*,
@@ -625,7 +634,8 @@ accepted.
 - [`bajutsu/serve/orgs.py`](../../bajutsu/serve/orgs.py) — `OrgConfig` and `parse_orgs`, which this
   item adds a second producer beside (`orgs_from_db`); `identity_matches_org` and `org_for_identity`
   changed only their source in units 1–7 and now share unit 8's `_match_org`, beside which
-  `in_teams` holds the one Team comparison; `org_for_target` loses its only caller.
+  `in_teams` holds the one Team comparison; `org_for_target` loses its only caller here, and
+  `org_for_user` in unit 8.
 - [`bajutsu/serve/project_registry.py`](../../bajutsu/serve/project_registry.py) — the `(org_id,
   name)` key a project already carries, which this item's target identity follows.
 - [`bajutsu/serve/server/models.py`](../../bajutsu/serve/server/models.py) — the `Org` table this

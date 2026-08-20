@@ -490,12 +490,19 @@ login には別のテナントの targets とオブジェクトストレージ�
 委譲します。`_match_org` は `members`、`githubOrgs`、org の受け入れ Team の順に見て、一致した org
 か None を返します。Team を最後に置くので、Team を宣言しても、既存のエントリがすでに置いた login の
 所属先は動きません。ゲート、editor のロール、admin Team の3つが使う Team の比較は `orgs.in_teams`
-の1つにまとめます。両側は、GitHub 自身が org login と Team slug を解決するのと同じように case-fold
-します。
-BE-0313 は、綴りの大小が食い違って失うのが editor のロールだけだったあいだ、`editorTeam` の判定を
-完全一致に留めていました。このフィールドが受け入れるようになると、同じ食い違いはサインインを失わせ
-ます。case-fold してもネストした Team を一致させない保証は保たれます。この保証は
-`"<github-org>/<team-slug>"` 全体の完全一致に依るからです。
+の1つにまとめます。両側は、GitHub 自身が org login と Team slug を解決するのと同じように小文字化
+します。BE-0313 は、綴りの大小が食い違って失うのが editor のロールだけだったあいだ、`editorTeam` の
+判定を完全一致に留めていました。このフィールドが受け入れるようになると、同じ食い違いはサインインを
+失わせます。使うのは `str.casefold` ではなく `str.lower` です。完全な case folding は GitHub が
+別物として扱う名前を同一視します（`gruß` と `gruss` は1つの organization の2つの Team になれます）。
+そして一致はサインインを買うので、folding で等しくなる Team を作れる人はゲートを通れてしまいます。
+小文字化してもネストした Team を一致させない保証は保たれます。この保証は
+`"<github-org>/<team-slug>"` 全体の完全一致に依るからです。Team の軸は、どちらの resolver でも
+デフォルト値のない必須の引数です。省略できる呼び出し口があれば、ゲートと配置がまた別の軸を見る道が
+開きます。しかも型検査は通ったまま、Team で受け入れた login を拒否したり置き間違えたりします。`org_for_user`
+はここで廃止します。理由はユニット1が `org_for_target` を廃止したのと同じです。`_match_org` が
+`members` を自分で走査する以上、この helper に残るのは BE-0313 以前の意味だけで、呼び出し元も
+いなくなります。
 
 データベース側はユニット1と5をそのまま踏襲します。nullable な `orgs.github_teams` の JSON 列を
 加えます（マイグレーション `0016`。`0015` と同じく列の追加だけで、引き込みは行いません）。この列は
@@ -616,8 +623,8 @@ Teams API がエラーを返している間は、所属が Team だけの login 
 - [x] 9 — 追加修正：org の3つ目のメンバーシップの軸として `githubTeams` を加え、`editorTeam` にも
       昇格だけでなく受け入れをさせる。3つの軸の順位付けは `orgs._match_org` に一度だけ書く。これで
       サインインのゲートと org の配置は、ある org で受け入れた login を別の org へ置けなくなる。
-      ゲート、editor のロール、admin Team が共有する Team の比較（`orgs.in_teams`）を大文字小文字の
-      区別なしにする。このフィールドを、マイグレーション `0016`、リポジトリの seam、
+      Team の軸はどちらの resolver でも必須の引数とし、`org_for_user` は廃止する。ゲート、editor の
+      ロール、admin Team が共有する Team の比較（`orgs.in_teams`）は小文字化して比べる。このフィールドを、マイグレーション `0016`、リポジトリの seam、
       `orgs_declaring_membership`、メンバーシップの API、Orgs ページに通す。GitHub がどちらの軸も
       返さなかったとき、ユニット3の拒否理由で Team のリストも名指しする。テスト：Team だけの login が
       受け入れられ、**その Team の org に置かれる**こと。`editorTeam` だけの login が editor として
@@ -647,7 +654,8 @@ Teams API がエラーを返している間は、所属が Team だけの login 
 - [`bajutsu/serve/orgs.py`](../../bajutsu/serve/orgs.py) — `OrgConfig` と `parse_orgs`。この項目は
   その隣に2つ目の生成元（`orgs_from_db`）を置きます。`identity_matches_org` と `org_for_identity`
   は、ユニット1から7では出どころだけが変わり、ユニット8からはユニット8の `_match_org` を共有します。
-  その隣の `in_teams` が Team の比較を1箇所で持ちます。`org_for_target` は唯一の呼び出し元を失います。
+  その隣の `in_teams` が Team の比較を1箇所で持ちます。`org_for_target` はここで、`org_for_user` は
+  ユニット8で、唯一の呼び出し元を失います。
 - [`bajutsu/serve/project_registry.py`](../../bajutsu/serve/project_registry.py) — project がすでに
   持つ `(org_id, name)` という鍵。この項目の target の同一性はこれに倣います。
 - [`bajutsu/serve/server/models.py`](../../bajutsu/serve/server/models.py) — この項目がメンバー

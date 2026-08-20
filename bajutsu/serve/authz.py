@@ -419,8 +419,8 @@ _EDITOR_PATHS = frozenset(
 # ("<github-org>/<team-slug>", no empty half or internal whitespace) -- shared between
 # `_build_server_state`'s `admin_teams_malformed` startup check and `admin_teams_unusable` below, so
 # the two copies can't drift the way `in_admin_team` and `_unmatched_org_cause` were already factored
-# out to prevent. Does not reject an uppercase character in either half; see `in_admin_team`'s own
-# case-folding for why (BE-0352).
+# out to prevent. Does not reject an uppercase character in either half; see `in_teams`'s own
+# lowercasing for why (BE-0352).
 ADMIN_TEAM_ENTRY_RE = re.compile(r"[^\s/]+/[^\s/]+")
 
 
@@ -446,9 +446,9 @@ def role_for(*, teams: Sequence[str], editor_team: str | None, admin_teams: tupl
     the server-wide *admin_teams*, editor if a member of the resolved org's *editor_team*, else viewer
     (the base role every signed-in user gets). *teams* are `"<github-org>/<team-slug>"` direct
     memberships; an unset *editor_team* or empty *admin_teams* never matches. Both checks go through
-    `in_teams`, so both are case-insensitive: once `editorTeam` also admits a login at the sign-in
-    gate, a case-mismatched entry that used to cost only the editor role would cost sign-in itself,
-    and matching one way but not the other would admit a login and then hand it viewer. Recomputed on
+    `in_teams`, so both are ASCII-case-insensitive: once `editorTeam` also admits a login at the
+    sign-in gate, a case-mismatched entry that used to cost only the editor role would cost sign-in
+    itself, and matching one way but not the other would admit a login and then hand it viewer. Recomputed on
     every login (BE-0015 7c-2)."""
     if in_admin_team(teams, admin_teams):
         return "admin"

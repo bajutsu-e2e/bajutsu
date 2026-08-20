@@ -1,4 +1,4 @@
-"""add the org's admitting GitHub Teams to orgs (BE-XXXX)
+"""add the org's admitting GitHub Teams to orgs (BE-0375)
 
 Revision ID: 0016
 Revises: 0015
