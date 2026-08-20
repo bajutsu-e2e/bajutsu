@@ -9,6 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from bajutsu import assertions
+from bajutsu.cancellation import CancelSource, RunCancelled, not_cancelled
 from bajutsu.drivers import base
 from bajutsu.elements import shows_app_ui
 from bajutsu.evidence.network import TransitionSource, _no_transitions
@@ -384,6 +385,7 @@ def _wait(
     on_tick: WaitTick | None = None,
     transitions: TransitionSource = _no_transitions,
     on_interrupt_poll: Callable[[list[base.Element]], bool] | None = None,
+    cancelled: CancelSource = not_cancelled,
 ) -> tuple[bool, str, list[base.Element] | None]:
     """Condition wait. Polls query() (or the observed network) until satisfied instead
     of a fixed sleep.
@@ -421,6 +423,12 @@ def _wait(
     `transitions` (BE-0310) is the `settled` branch's read-only screen-transition signal; the
     default reports none, so `settled` keeps its unchanged tree-diff behavior unless a caller passes
     a real source.
+
+    `cancelled` (BE-0370) is consulted once per poll, right where the deadline is, so a wait blocked
+    on a condition notices a cancelled run within one polling tick instead of burning the rest of
+    its timeout. It raises `RunCancelled` rather than returning a verdict: the condition is neither
+    satisfied nor timed out, and the scenario is over either way. The condition check comes first, so
+    a wait already satisfied on that poll still passes.
 
     Returns `(ok, reason, tree)` where `tree` is the last screen the wait queried — the settled
     device state, since nothing actuates in a wait. The caller reuses it as the step's `after`
@@ -466,6 +474,8 @@ def _wait(
                 gate.observe(elements)
             if on_interrupt_poll is not None and on_interrupt_poll(elements):
                 return False, "interrupt recovery failed", elements
+            if cancelled():
+                raise RunCancelled
             if clock.now() >= deadline:
                 if trace is not None:
                     trace.elements_at_timeout = len(elements)
@@ -482,6 +492,8 @@ def _wait(
             elements = driver.query()
             if not _exists(elements, target):
                 return True, "", elements
+            if cancelled():
+                raise RunCancelled
             if clock.now() >= deadline:
                 return False, f"wait timeout: gone {target} ({timeout}s)", elements
             if hb is not None:
@@ -494,6 +506,8 @@ def _wait(
             t0 = clock.now()
             if assertions.count_matching(network(), req) >= need:
                 return True, "", None
+            if cancelled():
+                raise RunCancelled
             if clock.now() >= deadline:
                 label = assertions.request_label(req)
                 return False, f"wait timeout: request {label} ({timeout}s)", None
@@ -502,7 +516,7 @@ def _wait(
             _adaptive_sleep(clock, t0)
     if w.until == "settled":
         return _wait_settled(
-            driver, deadline, clock, gate, hb, transitions, on_interrupt_poll, start
+            driver, deadline, clock, gate, hb, transitions, on_interrupt_poll, start, cancelled
         )
     # until == "screenChanged"
     before = driver.query()
@@ -517,6 +531,8 @@ def _wait(
             gate.observe(current)
         if on_interrupt_poll is not None and on_interrupt_poll(current):
             return False, "interrupt recovery failed", current
+        if cancelled():
+            raise RunCancelled
         if clock.now() >= deadline:
             return False, f"wait timeout: screenChanged ({timeout}s)", current
         if hb is not None:
@@ -533,6 +549,7 @@ def _wait_settled(
     transitions: TransitionSource = _no_transitions,
     on_interrupt_poll: Callable[[list[base.Element]], bool] | None = None,
     start: float = 0.0,
+    cancelled: CancelSource = not_cancelled,
 ) -> tuple[bool, str, list[base.Element]]:
     """Wait until a non-empty screen stops changing (transition/animation finished).
 
@@ -559,7 +576,9 @@ def _wait_settled(
 
     A `True` from `on_interrupt_poll` ends the settle immediately (BE-0314) — a failed interrupt
     recovery is a decided outcome the caller (the run loop) fails the step on, so polling toward
-    settled would only delay a failure that best-effort settling would otherwise mask.
+    settled would only delay a failure that best-effort settling would otherwise mask. `cancelled`
+    raises `RunCancelled` out of the settle the same way it does out of every other wait branch
+    (BE-0370): settling is best-effort, but a cancelled run has nothing left to settle *for*.
     """
     previous = driver.query()
     if gate is not None:
@@ -575,8 +594,18 @@ def _wait_settled(
         events = transitions()
         if events and events[-1][1] >= start:
             return _wait_settled_by_signal(
-                driver, deadline, clock, gate, hb, transitions, events[-1][1], on_interrupt_poll
+                driver,
+                deadline,
+                clock,
+                gate,
+                hb,
+                transitions,
+                events[-1][1],
+                on_interrupt_poll,
+                cancelled,
             )
+        if cancelled():
+            raise RunCancelled
         if clock.now() >= deadline:
             return True, "", previous
         t0 = clock.now()
@@ -604,6 +633,7 @@ def _wait_settled_by_signal(
     transitions: TransitionSource,
     last: float,
     on_interrupt_poll: Callable[[list[base.Element]], bool] | None = None,
+    cancelled: CancelSource = not_cancelled,
 ) -> tuple[bool, str, list[base.Element]]:
     """The signal-based settle path (BE-0310): quiescence since the last observed transition.
 
@@ -628,6 +658,8 @@ def _wait_settled_by_signal(
     if gate is not None:
         gate.observe(current)
     while clock.now() - last < _TRANSITION_QUIESCENCE:
+        if cancelled():
+            raise RunCancelled
         if clock.now() >= deadline:
             return True, "", current
         if on_interrupt_poll is not None and on_interrupt_poll(current):

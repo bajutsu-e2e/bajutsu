@@ -7,6 +7,7 @@ an unknown backend explicitly rather than leaning on the host's toolchain.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -1680,3 +1681,38 @@ def test_run_declares_the_touch_markers_flag() -> None:
     has nothing to do with the flag.
     """
     assert "touch_markers" in set(cli_flags.option_names("run"))
+
+
+def test_run_hands_the_pipeline_a_live_cancellation_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `run` installs the SIGTERM handler and must hand *that* handler's source down to the pipeline
+    # (BE-0370). Without the wiring the command would answer the signal and no scenario would ever
+    # notice, so this raises a real SIGTERM from inside the stubbed pipeline and checks the source the
+    # pipeline was given reports it.
+    import signal
+
+    from bajutsu.orchestrator import RunResult
+
+    manifest = _manifest_at(tmp_path)
+    seen: list[bool] = []
+
+    def _pipeline(*_a: object, cancelled: Callable[[], bool], **_k: object) -> object:
+        seen.append(cancelled())
+        signal.raise_signal(signal.SIGTERM)  # the operator clicks Cancel mid-run
+        seen.append(cancelled())
+        return [RunResult("demo", False, [], failure="cancelled")], manifest
+
+    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID")
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    monkeypatch.setattr(
+        "bajutsu.cli.commands.run.device_pool", lambda *a, **k: (object(), lambda: None)
+    )
+    monkeypatch.setattr("bajutsu.cli.commands.run.run_and_report", _pipeline)
+    cfg, scn = _fake_run(tmp_path)
+
+    r = runner.invoke(app, _run_argv(cfg, scn, tmp_path, "--no-system-alert-handling"))
+
+    assert seen == [False, True]
+    assert r.exit_code == 1  # a cancelled run is a failed run
+    assert r.output.startswith(f"FAIL  {manifest}")

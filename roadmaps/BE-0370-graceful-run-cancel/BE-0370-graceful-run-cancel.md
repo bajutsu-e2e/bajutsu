@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0370](BE-0370-graceful-run-cancel.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0370") |
 | Topic | Verification & coverage |
 | Related | [BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md), [BE-0147](../BE-0147-serve-triage/BE-0147-serve-triage.md), [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) |
@@ -201,34 +201,89 @@ handling and the `RunResult` shape are the same for every target.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Install a `SIGTERM` handler in `bajutsu run`'s entry point that sets a `threading.Event`
-  instead of letting the process die immediately.
-- [ ] Add the discriminator `Job` is missing today (a job-kind field, or an equivalent signal),
-  so a `run` job's cancel path can tell whether `job.proc` is the on-demand build subprocess or the
-  spawned run itself.
-- [ ] Change a `run` job's cancel path to signal the run process alone first (not its process
-  group) only while that discriminator says `job.proc` is the run itself, then sweep the group with
-  `killpg` once the leader has exited — cleanly or via the grace-period escalation — so a surviving
-  driver child is reaped rather than orphaned. Leave the build phase on today's group-wide kill.
-- [ ] Check that event at the top of each scenario in `run_all`'s dispatch loop, between steps
-  within a scenario, and inside the existing condition-wait poll loops.
-- [ ] Synthesize `RunResult(ok=False, failure="cancelled")` for a scenario interrupted this way or
-  one that never started.
-- [ ] Add a bounded grace period to `serve/jobs.py`'s `cancel_job`, running off the request thread
-  (on its own timer, alongside the job thread's `proc.wait()`) so the `POST
-  /api/jobs/{job_id}/cancel` response is not held open for it, and escalating to today's
-  unconditional kill only past the deadline.
-- [ ] Give the `SIGTERM` handler its own internally-enforced shutdown deadline, independent of
-  `serve`, so a `run` invoked outside `serve` (`docker stop`, systemd, a CI job cancellation) stays
-  bounded with no external escalator watching it. Pass `cancel_job`'s own grace window down to the
-  spawned run (an environment value on the job spec) and bind the handler's internal deadline
-  strictly beyond the value it receives, so the two never race each other; fall back to a fixed
-  default when no value is passed (a `run` invoked outside `serve`).
-- [ ] Check the cancellation event in `run_matrix_and_report`'s engine loop before starting the next
-  pass, so a cancel during one engine's `device_pool` bring-up doesn't have to pay every remaining
-  engine's bring-up and teardown before the run can finish.
-- [ ] Confirm `_persist_run` and the run-history summary read the resulting `manifest.json`
-  correctly with no further changes.
+- [x] `bajutsu/cancellation.py` — the whole cancellation vocabulary in one module that imports
+  nothing from Bajutsu, so the deterministic core, the command line, and `serve` can all reach it.
+  It holds the `CancelSource` the runner polls, the `RunCancelled` exception a poll loop raises, the
+  `"cancelled"` failure spelling, and the `graceful_sigterm()` context manager `bajutsu run`'s entry
+  point installs. The handler answers every sender, and it absorbs a second `SIGTERM` during the
+  window rather than escalating on it, so an operator clicking Cancel twice does not lose the
+  manifest.
+- [x] Two fields on `Job` rather than one job-kind field, the second option the design allowed by
+  asking for a job-kind field or any signal that answers the same question. `graceful_cancel` carries the dispatcher's declaration that this job's spawn answers a cancel
+  cooperatively (it travels in the job spec, so a worker registers its spawn the same way), while
+  `proc_graceful` carries the live fact of whether the subprocess registered right now is that spawn.
+  The pair is what separates a `run` job's own on-demand build phase, which keeps today's kill, from
+  the run itself.
+- [x] `cancel_job` signals the leading process alone through `_request_graceful_stop` while
+  `proc_graceful` holds, and `_run_job` sweeps the process group with `killpg` once the leader has
+  exited. `_pgid_of` reads that group while the leader is still alive, since a reaped pid can find a
+  new owner before the sweep runs. `record` / `crawl` / triage jobs and the build phase keep
+  `_terminate`'s group-wide kill unchanged.
+- [x] The pipeline reads the event at the top of `_ScenarioRunner.run_one`, at each step boundary
+  in
+  `_StepRunner.exec_steps`, in all six of `waits.py`'s poll loops (`for`, `gone`, `request`,
+  `screenChanged`, and both settle paths), in `_poll_asserts`, which a step-level `assert` polls on,
+  and in `_do_email`'s mailbox poll — a third polling step kind, and the one whose budget the scenario
+  sets itself, so a wait for a one-time password can run well past the grace window. Every check sits *after* its own condition check, so a wait already satisfied on that poll still
+  passes. `_settle_extract_read` stays out of that list by choice: it settles a read rather than
+  deciding a condition, and the same wait floor already bounds it.
+- [x] `RunCancelled` unwinds to `run_scenario`, which records `failure: "cancelled"` — one exit line
+  per poll loop instead of a new return shape, and the sink teardown the unwind passes through still
+  finalizes the scenario's intervals. `run_one` fails a scenario that never started before ever
+  attempting its first lease. The trailing scenario-level `expect` runs to completion by choice, so a
+  scenario whose every step passed keeps its real verdict rather than a cancellation label.
+- [x] `_request_graceful_stop` starts a daemon `threading.Timer` for the grace window, and `POST
+  /api/jobs/{job_id}/cancel` still returns the moment the signal goes out. Past the deadline
+  `_escalate` sends the group-wide SIGTERM, gives the group a brief window to unwind on it, and then
+  ends the run with SIGKILL. The design called that escalation "today's unconditional, group-wide
+  `killpg`", and the SIGKILL is what keeps it unconditional now that the run answers SIGTERM
+  cooperatively: the handler absorbs a second signal by design, and a run wedged past executing
+  Python never runs the handler at all, so it would answer neither SIGTERM — leaving the operator
+  with a job that the Web UI cannot end, which is worse than today. The group-wide SIGTERM keeps its
+  place ahead of the SIGKILL because the leader never reached its own teardown, so the driver
+  children it would have stopped are still live, and a driver killed outright can leave a Simulator
+  wedged for the next run. The escalation first checks that the process is still running, so a run
+  that closed itself out inside the window survives the timer's late tick.
+- [x] The handler's internal deadline is `handler_deadline(grace_seconds())` — the received window
+  plus a fixed margin. Setting the event arms it with `signal.setitimer`, and a `SIGALRM` handler
+  enforces it by restoring `SIGTERM`'s default disposition and re-raising it. An interval timer
+  rather than a second thread, because restoring a disposition is legal on the main thread alone,
+  which is where a Python signal handler runs. `_spawn_env` passes `BAJUTSU_CANCEL_GRACE` down to a
+  `graceful_cancel` job's spawn; a `run` invoked outside `serve` receives no value and falls back to
+  the 60-second default, wide enough to clear the longest single driver call (the XCUITest channel's
+  30-second actuation timeout, or a read riding the BE-0207 retry inside its 60-second recovery
+  timeout).
+- [x] `run_matrix_and_report` reads the event between engine passes and fails every scenario of the
+  engines that never ran, rather than leaving those engines out of the report. Leaving them out is a
+  hazard the design did not foresee: an engine missing from the results takes its scenarios' verdicts
+  with it, so the manifest's all-must-pass `ok` aggregates the passes that ran and nothing more — and
+  a cancel landing once a green first engine has finished would then record a `PASS` for a run that
+  never executed most of the matrix, this item's own silent-gap failure inverted. Synthesizing one
+  cancelled result per skipped engine x scenario keeps the aggregation pure and the matrix complete: a
+  cell reading `cancelled` states plainly that the run named that axis and never executed it. The loop
+  logs which engines it failed that way.
+- [x] Confirmed by test: a cooperatively cancelled run still prints its `FAIL
+  runs/<id>/manifest.json` line, so `run_job` parses `job.run_id` from it and `_persist_run` records
+  the run with `ok=False`. No change to the database write path.
+
+### What the implementation settled
+
+- **A cancel that lands during a lease bring-up is noticed only once that lease returns.** The
+  cancellation event reaches the step loop and its condition waits, not the device bring-up beneath
+  them, so a cancel arriving during an XCUITest cold spawn waits that spawn out before the scenario's
+  first boundary fails it. The bound is the lease's own readiness ceiling, and past the grace window
+  `serve`'s escalation applies regardless — the same residual the design already accepts for a cancel
+  arriving before the pipeline starts a scenario at all.
+- **The backend-crash retry loop reads the event too.** A retry leases afresh, and on XCUITest that
+  bring-up is a cold respawn with a forced erase on top — long enough to outlive the grace window a
+  canceller is waiting out, so the escalation would end the run before it wrote its manifest. So a
+  cancelled run stops recovering and fails the crashed scenario at once, keeping every verdict it had
+  already reached, and the failure names the cancel rather than a budget that was nowhere near spent.
+  The design's own boundary list does not mention the crash path, which reaches `lease()` from inside
+  `run_one` rather than from the dispatch loop the list names.
+- **A cancelled scenario records only the steps it completed.** The interrupted step raises before
+  the step loop appends its outcome, so the report shows the steps that finished rather than one it
+  would otherwise have to render as attempted-but-unknown.
 
 ## References
 

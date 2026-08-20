@@ -1204,12 +1204,14 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 # Python's own exception handling (`_spawn_cold_with_retry`'s and `lease()`'s
                 # `except BaseException`, `run.py`'s `finally: shutdown()`), which still runs
                 # `_discard_runner`'s sweep on a single interrupt or any other exception, covering the
-                # common case. It does not cover a second interrupt landing mid-teardown, or a bare
-                # SIGTERM/SIGKILL bypassing Python's cleanup entirely (`bajutsu/` installs no signal
-                # handler) — either would orphan `xcodebuild` and its children in their own session, a
-                # narrower version of the wedged-Simulator failure this unit exists to clear, left as a
-                # known gap rather than closed with signal-handling machinery this module does not
-                # otherwise need.
+                # common case. A bare `SIGTERM` is covered as of BE-0370: `bajutsu run` answers it
+                # by asking the run to stop at its next safe boundary, so the same Python cleanup
+                # runs and this teardown happens. What remains uncovered is a second interrupt
+                # landing mid-teardown, a `SIGKILL`, and a `SIGTERM` that outlives the grace period
+                # BE-0370's handler enforces — each would orphan `xcodebuild` and its children in
+                # their own session, a narrower version of the wedged-Simulator failure this unit
+                # exists to clear, left as a known gap rather than closed with signal-handling
+                # machinery this module does not otherwise need.
                 start_new_session=True,
             )
         except OSError as exc:
