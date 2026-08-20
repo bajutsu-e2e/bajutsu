@@ -1248,6 +1248,13 @@ jobs:
   # signal-then-required path BE-0282 established and `fault-injection` / `visual` follow. A red run
   # here that turns out to be host exhaustion rather than a pool defect is a measurement, not a
   # regression — the uploaded diagnostics are what tells the two apart.
+  #
+  # Two such runs have been measured, and both collapsed exactly there rather than on any pool check:
+  # both Simulators booted with distinct udids and every scenario started, then `recordVideo produced
+  # no new bytes … within 20.0s` on four scenarios, `simctl terminate` and `uninstall` timed out, and
+  # the runner channel went unreachable mid-run. So the load this job carries on the capture-service
+  # queue is cut three ways below — no video (its own config), no touch markers, and half the scenario
+  # files — and the next run measures whether that is enough.
   pool:
     name: pool (xcuitest)
     needs: [changes, build]
@@ -1256,10 +1263,10 @@ jobs:
       needs.changes.outputs.pool == 'true'
     runs-on: macos-latest
     # Same 60-minute cap as the other consumer jobs, for the same reason: no build here (the `build`
-    # job staged the products), so two boots + two installs + four scenario runs across two cold
-    # XCTest-host startups (one per device at this lane's warm-reuse cap) is ~15min when healthy, and
-    # the cap backs a genuine hang. Under this job's own contention a wedged capture service is the
-    # likeliest hang, and it is exactly what the cap exists to bound.
+    # job staged the products), so two boots + two installs + four scenario documents across two cold
+    # XCTest-host startups is well under 15min when healthy, and the cap backs a genuine hang.
+    # Under this job's own contention a wedged capture service is the likeliest hang, and it is exactly
+    # what the cap exists to bound — both measured failures spent most of their ~34min wall-clock there.
     timeout-minutes: 60
     env:
       # The `run` job raises this floor to 20s for a cold-boot Simulator rendering its first Stable
@@ -1314,25 +1321,32 @@ jobs:
           xcrun simctl install "$UDID_A" "$APP"
           xcrun simctl install "$UDID_B" "$APP"
 
-      # Four state-neutral scenarios over two devices, so each worker runs two and the pool has to
-      # keep both busy at once — the contention this job exists to produce. They are the shared
-      # showcase files, unchanged (BE-0221), and none of them grants a permission or reseeds device
-      # state, so neither worker's device can influence the other's through anything but the pool.
-      # Two per device is also one cold XCTest-host startup and one warm reuse each, this lane's
-      # warm-reuse cap, so the run pays the cold startup twice rather than four times.
-      - name: Run four scenarios across both devices (--workers 2)
+      # Two state-neutral scenario files over two devices, down from four: they hold four scenario
+      # documents rather than seven, so the pool still has to hand work to both workers at once — the
+      # one concurrent pair `assert_pool_isolation.py`'s cross-device overlap check needs, kept intact. `notices` is the longer of the two files (three documents to `smoke`'s
+      # one), so the pair genuinely overlaps rather than one worker draining first. What the halving
+      # buys is the queue load the two measured collapses ran out of host for: three fewer app
+      # launches and their step screenshots, and a shorter wall-clock window to wedge in. The cold
+      # XCTest-host spawns stay at two — the default cap of three warm reuses already covered the old
+      # split. They are the shared showcase files, unchanged (BE-0221), and neither grants a permission
+      # nor reseeds device state, so neither worker's device can influence the other's through
+      # anything but the pool.
+      #
+      # Its own config, not the lane's: showcase.pool.config.yaml omits `capture:` so the run takes
+      # the schema baseline and records no video, and `touch-markers: false` drops the per-touch
+      # CALayer. Both write through the capture-service queue this job's failures wedged.
+      - name: Run two scenarios across both devices (--workers 2)
         uses: ./.github/actions/bajutsu-e2e
         with:
           scenarios: >-
             demos/showcase/scenarios/smoke.yaml
-            demos/showcase/scenarios/search.yaml
             demos/showcase/scenarios/notices.yaml
-            demos/showcase/scenarios/navigation.yaml
           target: showcase-swiftui
           backend: xcuitest
-          config: demos/showcase/showcase.config.yaml
+          config: demos/showcase/showcase.pool.config.yaml
           udid: ${{ steps.toolchain.outputs.udid }},${{ steps.second-device.outputs.udid }}
           workers: "2"
+          touch-markers: "false"
           # The collector is keyed on one device (it resolves a CoreSimulator log directory and a
           # `simctl diagnose` target by UDID); the host telemetry it samples is per-host either way.
           diagnostics-udid: ${{ steps.toolchain.outputs.udid }}

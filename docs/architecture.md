@@ -347,15 +347,22 @@ lock, a host port allocated per device, an artifact path computed before a worke
 exists.
 
 The **concurrent-device lanes** boot two real devices instead. `pool (xcuitest)` (`ios-e2e.yml`)
-boots two Simulators and `pool (adb)` (`android-e2e.yml`) two emulators, each running four
-state-neutral showcase scenarios through one `bajutsu run --workers 2`, so the pool has to share the
-work out and keep both workers busy at once. `scripts/assert_pool_isolation.py` is what turns the
-outcome into a verdict, read from the finished run's `manifest.json` and the run directory's own
-subdirectory listing: it fails on an artifact recorded under another worker's slug, two results
-sharing one slug, a subdirectory no result claims, a recorded evidence directory the run never wrote,
-one device having quietly taken every scenario, or no two scenarios on different devices having
-overlapped in wall-clock. The check is a file read
-and a set comparison, and it runs after `bajutsu run` has returned its own verdict, so it observes
+boots two Simulators and `pool (adb)` (`android-e2e.yml`) two emulators, each running state-neutral
+showcase scenarios through one `bajutsu run --workers 2`, so the pool has to share the work out and
+keep both workers busy at once. The Android job runs four scenario files; the iOS job runs two,
+`smoke.yaml` and `notices.yaml`, under its own capture-light
+[`showcase.pool.config.yaml`](../demos/showcase/showcase.pool.config.yaml) and with the touch markers
+off, because two Simulators plus a video recording per device exhausted the macOS runner's
+capture-service queue before the run finished (BE-0361's signature). Two files still hold four
+scenario documents between them, so the pool still has work for both workers at once and the
+concurrent pair the verdict below needs survives the cut.
+
+`scripts/assert_pool_isolation.py` is what turns the outcome into a verdict, read from the finished
+run's `manifest.json` and the run directory's own subdirectory listing: it fails on an artifact
+recorded under another worker's slug, two results sharing one slug, a subdirectory no result claims, a
+recorded evidence directory the run never wrote, one device having quietly taken every scenario, or no
+two scenarios on different devices having overlapped in wall-clock. The check is a file read and a set
+comparison, and it runs after `bajutsu run` has returned its own verdict, so it observes
 the run's artifacts and never feeds any scenario's pass/fail.
 
 Both lanes are keyed on a change filter of their own — `touches_pool` in `scripts/e2e_changes.py`,

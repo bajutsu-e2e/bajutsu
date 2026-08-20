@@ -97,9 +97,8 @@ monkeypatch して、`"UDID-A"`/`"UDID-B"` のような架空の udid に対す�
   （BE-0344。`--udid` でデバイスを固定した run でも起こります）。この代替デバイスはプールに
   渡されていないので、異なる udid の数がプールの台数を超えます。台数が増えても、ワーカーは
   より分かれるだけなので、渡された台数より*少ない*デバイスで走った run だけを失敗させます。
-  **iOS**：`pool (xcuitest)` は Simulator を 2 台起動し、smoke / search / notices / navigation を
-  1 回の `bajutsu run --workers 2` で
-  走らせます。2 台目を別のデバイスにするのは `boot-simulator` action に追加した `exclude-udid`
+  **iOS**：`pool (xcuitest)` は Simulator を 2 台起動し、showcase のシナリオを
+  1 回の `bajutsu run --workers 2` で走らせます。2 台目を別のデバイスにするのは `boot-simulator` action に追加した `exclude-udid`
   入力です。これがないと action の再利用分岐が 1 台目を返し、`--udid "$A,$A"` が誤った理由で
   すべての検査を通ってしまいます。**Android**：`pool (adb)` は、キャッシュ済み AVD の 2 つ目の
   インスタンスを `-read-only` で起動します。起動は emulator-runner のステップの内側で行います。
@@ -130,6 +129,35 @@ monkeypatch して、`"UDID-A"`/`"UDID-B"` のような架空の udid に対す�
   合わせました（BE-0113）。「ワーカーごとに固有の `runs/<runId>`」という記述は、本項目の
   はじめに自身が述べる共有 run ディレクトリより前の記述でしたし、「`--udid` 明示時は単一デバイス
   に固定する」という記述は、本レーンが依拠するカンマ区切りリストと矛盾していました。
+- [#1666](https://github.com/bajutsu-e2e/bajutsu/pull/1666) — その後 CI が実測した内容と、次の
+  実測にかける構成です。**`pool (adb)` は緑になりました。** エミュレータ 2 台が起動し、run は
+  完走し、`assert_pool_isolation.py` は判定を返しました。本項目の Android 側は、実際の並行デバイス
+  上で検証できたことになります。**`pool (xcuitest)` は 2 回失敗しました。** どちらもプールの検査
+  ではなく、キャプチャのパイプラインで止まりました。Simulator は 2 台とも相異なる udid で起動して
+  います（`Booting simulator 2A6DC5A9…`、`Booting simulator CB2B1AD7…`）。どのシナリオも
+  開始しているので、レーンの配線そのものに問題はありません。そこから、4 本のシナリオで
+  `recordVideo produced no new bytes … within 20.0s` が出て、`xcrun simctl terminate … timed out
+  after 60s` となり、ランナーのチャネルは `GET /screenshot: the runner became unreachable past the
+  retry budget — a mid-run crash` を報告し、`xcrun simctl uninstall … timed out (this host's
+  CoreSimulator may be wedged)` に至り、クラッシュレポートが 11 件集まりました。10 倍課金の
+  ランナーを約 34 分使っています。これは BE-0361 が記述したホスト枯渇の兆候そのものです。BE-0361 が
+  名指しした `SimRenderServer` のキャプチャサービスのキューは、`simctl` の動画、ステップの
+  スクリーンショット、XCUITest の `/screenshot` をどれも 1 本で受けるキューです。つまりこのジョブは
+  プールの欠陥ではなく、ホストの枯渇に巻き込まれています。**負荷を軽くした構成**：そのキューへの
+  負荷を 3 つの方向から削り、分離の検査と `--expect-devices 2` には手を付けていません。新しい
+  `demos/showcase/showcase.pool.config.yaml`（ジョブ専用の小さな config という
+  `showcase.bundled-runner.config.yaml` の前例にならいました）は `capture:` をまったく持ちません。
+  そのため run はスキーマのデフォルト（`screenshot.after`、`elements`、`actionLog`）に落ちます。
+  メインの config が `video` を上乗せしたリストは使わないので、どちらのデバイスでも動画は記録され
+  ません。`bajutsu-e2e` アクションには `touch-markers` 入力を追加しました。デフォルトは `true` な
+  ので
+  既存の呼び出し側は変わらず、pool ジョブだけが `false` を渡して、スクリーンショットごとに描かれる
+  タッチの CALayer を落とします。シナリオの集合は、ファイル 4 本から `smoke.yaml` と
+  `notices.yaml` の 2 本へ半分にしました。この 2 本が持つシナリオドキュメントは 7 本ではなく 4 本
+  なので、プールは 2 つのワーカーに同時に仕事を渡すことになり、判定が要求するデバイスをまたぐ
+  重なりはそのまま残ります。アプリの起動は 3 回減り、行き詰まりうる時間帯も短くなります。`notices` を残したのは、
+  2 本のうち長いほうで、組み合わせが実際に重なるからです。この構成が安定していると実測できるまで、
+  必須化のチェックは付けません。
 
 ## 参考
 

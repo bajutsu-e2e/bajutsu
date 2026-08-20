@@ -56,6 +56,15 @@ inputs:
     description: Path to bajutsu.config.yaml.
     required: false
     default: bajutsu.config.yaml
+  touch-markers:
+    description: >-
+      Draw a marker at each touch the app receives (`run --touch-markers`). `true` (the default)
+      is what every lane here wants: it costs a CALayer per touch and buys a failure screenshot
+      that shows where the gesture landed. `false` passes `--no-touch-markers`, for a job that
+      cannot afford the extra compositing — the two-device pool job (BE-0298), whose measured stall
+      is in the capture pipeline the marker draws into.
+    required: false
+    default: "true"
   artifact-name:
     description: Name for the uploaded run artifacts.
     required: false
@@ -102,6 +111,7 @@ runs:
         WORKERS: ${{ inputs.workers }}
         BACKEND: ${{ inputs.backend }}
         CONFIG: ${{ inputs.config }}
+        TOUCH_MARKERS: ${{ inputs.touch-markers }}
       run: |
         # Expand the whitespace-separated SCENARIOS into one --scenario per file, so several run in
         # one process and reuse a single warm runner (scenario paths never contain spaces, so plain
@@ -124,10 +134,13 @@ runs:
         # pixels, and `run` skips any scenario carrying one (naming it on stderr), while every other
         # kind reads the accessibility tree, the network exchanges, or the clipboard. The marker is a
         # CALayer, which has no accessibility representation — `golden_xcuitest.yaml` asserts the same
-        # tree golden with the markers on and off to keep that true.
+        # tree golden with the markers on and off to keep that true. `touch-markers: false` opts a job
+        # out of that extra compositing; on by default, so every existing caller is unchanged.
+        markers_flag=--touch-markers
+        [ "$TOUCH_MARKERS" = "true" ] || markers_flag=--no-touch-markers
         uv run --no-sync bajutsu run "${scenario_args[@]}" --exclude "$EXCLUDE" --target "$TARGET" \
           --udid "$UDID" --workers "$WORKERS" --backend "$BACKEND" --config "$CONFIG" \
-          --score --touch-markers
+          --score "$markers_flag"
 
     # Replaces the crash-report copy this step used to be (BE-0361). That sweep read only `.ips` /
     # `.crash` under ~/Library/Logs/DiagnosticReports, and collected zero files on every run of the

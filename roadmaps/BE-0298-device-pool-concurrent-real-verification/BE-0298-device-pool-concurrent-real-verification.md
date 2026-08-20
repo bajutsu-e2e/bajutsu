@@ -96,7 +96,7 @@ Log:
   **iOS:** `pool (xcuitest)` boots two Simulators (a new `exclude-udid` input on the
   `boot-simulator` action is what makes the second one a different device — without it the action's
   reuse branch returns the first, and `--udid "$A,$A"` would pass every check for the wrong reason)
-  and runs smoke / search / notices / navigation through one `bajutsu run --workers 2`. **Android:**
+  and runs the showcase scenarios through one `bajutsu run --workers 2`. **Android:**
   `pool (adb)` boots a second instance of its cached AVD with `-read-only`, from inside the
   emulator-runner's own step, since that action has no two-emulator mode and its emulator lives only
   for that step's length (`scripts/android_pool_e2e.sh`, `make -C demos/showcase/android e2e-pool`);
@@ -121,6 +121,31 @@ Log:
   demand. **DESIGN.md §3.3** was realigned in the same change (BE-0113): its "a `runs/<runId>` per
   worker" wording predated the shared run directory this item's own Introduction describes, and its
   "`--udid` pins a single device" line contradicted the comma list this lane depends on.
+- [#1666](https://github.com/bajutsu-e2e/bajutsu/pull/1666) — what CI then measured, and the
+  configuration the next run measures. **`pool (adb)` is green:** two emulators booted, the run
+  completed, and `assert_pool_isolation.py` returned its verdict, so the Android half of this item is
+  verified on real concurrent devices. **`pool (xcuitest)` failed twice**, both times in the capture
+  pipeline rather than on any pool check. Both Simulators booted with distinct udids
+  (`Booting simulator 2A6DC5A9…` then `Booting simulator CB2B1AD7…`) and every scenario started, so
+  the lane's wiring is right; then `recordVideo produced no new bytes … within 20.0s` on four
+  scenarios, `xcrun simctl terminate … timed out after 60s`, the runner channel reported
+  `GET /screenshot: the runner became unreachable past the retry budget — a mid-run crash`,
+  `xcrun simctl uninstall … timed out (this host's CoreSimulator may be wedged)`, and 11 crash reports
+  were collected, over ~34min of a 10x-billed runner. That is BE-0361's host-exhaustion signature, and
+  the `SimRenderServer` capture-service queue it names is the one queue serving `simctl` video, step
+  screenshots, and the XCUITest `/screenshot` alike — so the job is the host's victim, not the pool's.
+  **The lightened configuration:** three cuts to that queue's load, and nothing to the isolation
+  checks or to `--expect-devices 2`. A new `demos/showcase/showcase.pool.config.yaml` (following
+  `showcase.bundled-runner.config.yaml`'s precedent of a small per-job config) omits `capture:`
+  entirely, so the run falls through to the schema baseline — `screenshot.after`, `elements`,
+  `actionLog` — instead of the main config's `video`-on-top list, and records no video on either
+  device. The `bajutsu-e2e` action gains a `touch-markers` input, `true` by default so every existing
+  caller is unchanged, and the pool job passes `false` to drop the per-touch CALayer drawn into each
+  screenshot. The scenario set halves from four files to two, `smoke.yaml` and `notices.yaml`: they
+  hold four scenario documents rather than seven, so the pool still has work for both workers at once
+  and the cross-device overlap the verdict requires is untouched, at three fewer app launches and a shorter
+  window to wedge in. `notices` is kept as the longer file so the pair genuinely overlaps. Promotion
+  stays unchecked until a run measures this configuration stable.
 
 ## References
 

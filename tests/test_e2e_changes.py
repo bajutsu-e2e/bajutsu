@@ -872,6 +872,8 @@ def test_pool_fires_on_the_parallel_run_surface() -> None:
         "bajutsu/runner/pool.py",
         "bajutsu/runner/pipeline.py",
         "bajutsu/platform_lifecycle/environments/xcuitest.py",
+        # `_resolve_lanes` — the comma `--udid` list turned into the pool, and the `--workers` cap.
+        "bajutsu/cli/commands/run.py",
         "bajutsu/evidence/core.py",
         "bajutsu/evidence/sink.py",
         "scripts/assert_pool_isolation.py",
@@ -905,6 +907,11 @@ def test_pool_is_conjoined_with_the_lanes_own_relevance() -> None:
     assert touches_pool(["scripts/android_pool_e2e.sh"], "ios") is False
     assert touches_pool(["demos/showcase/android/Makefile"], "android") is True
     assert touches_pool(["demos/showcase/android/Makefile"], "ios") is False
+    # The iOS job's capture-light config: relevant to the iOS lane through its own
+    # `showcase(?:\.[^/]+)?\.config\.yaml` fragment, but not to the Android lane, which claims only
+    # the main config by name.
+    assert touches_pool(["demos/showcase/showcase.pool.config.yaml"], "ios") is True
+    assert touches_pool(["demos/showcase/showcase.pool.config.yaml"], "android") is False
 
 
 def test_a_pool_keyed_job_is_not_in_the_scenario_map() -> None:

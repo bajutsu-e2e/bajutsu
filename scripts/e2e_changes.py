@@ -361,11 +361,16 @@ _LANE_PATHS: dict[str, str] = {
 # contend over), the two evidence modules that name a scenario's own directory, this module and the
 # assertion the jobs gate on, each lane's own two-device job definition, the Android job's own
 # two-emulator script, the `bajutsu-e2e` action whose `workers` / `diagnostics-udid` inputs only
-# these jobs pass, and the showcase Android Makefile holding the `e2e-pool` target that job runs.
+# these jobs pass, the showcase Android Makefile holding the `e2e-pool` target that job runs, and the
+# iOS job's own capture-light config.
 # Over-selects by directory, the same safe direction the sweep above takes.
 _POOL_PATHS = (
     r"bajutsu/runner/"
     r"|bajutsu/platform_lifecycle/"
+    # `_resolve_lanes`: the `--udid` comma list resolved into the pool and `--workers` capped to its
+    # size. The split itself lives here, so a change to it belongs on this surface even though the
+    # shared `bajutsu/` sweep above already makes the module lane-relevant.
+    r"|bajutsu/cli/commands/run\.py$"
     r"|bajutsu/evidence/core\.py$"
     r"|bajutsu/evidence/sink\.py$"
     r"|scripts/assert_pool_isolation\.py$"
@@ -377,6 +382,10 @@ _POOL_PATHS = (
     r"|\.github/actions/boot-simulator/"
     r"|\.github/actions/setup-android-toolchain/"
     r"|demos/showcase/android/Makefile$"
+    # The capture-light config only `pool (xcuitest)` runs: it omits `capture:` so the run falls
+    # through to the schema baseline and records no video. Nothing else reads it, so a change to it is
+    # observable on that job alone.
+    r"|demos/showcase/showcase\.pool\.config\.yaml$"
 )
 
 _POOL_RE = re.compile(r"^(?:" + _POOL_PATHS + r")")

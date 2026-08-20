@@ -39,14 +39,14 @@
 #     driver / AI at test time. The Android twin of ios-e2e.yml's `codegen (xcuitest)`; a non-gating
 #     signal first (the signal-then-required precedent of BE-0282), promoted to the gate once stable.
 #   - warm gradle cache (adb): builds the Compose + resident UI Automator server APKs that `smoke`,
-#     `golden`, `conformance`, and `fault-injection` all build, with no AVD, purely so those four
-#     jobs' own unchanged `make ... build` invocations restore a warm Gradle dependency + build cache
-#     instead of resolving/compiling cold four times over. It does NOT build Views: `smoke` alone
-#     needs Views, and warming it here would make `golden`/`conformance`/`fault-injection` wait
-#     (`needs:` is a job-level gate) on a Views compile none of the three ever uses — `smoke`'s own
+#     `golden`, `conformance`, `fault-injection`, and `pool` all build, with no AVD, purely so those
+#     five jobs' own unchanged `make ... build` invocations restore a warm Gradle dependency + build
+#     cache instead of resolving/compiling cold five times over. It does NOT build Views: `smoke`
+#     alone needs Views, and warming it here would make `golden`/`conformance`/`fault-injection`/`pool`
+#     wait (`needs:` is a job-level gate) on a Views compile none of the four ever uses — `smoke`'s own
 #     Views build stays cold, unwarmed, exactly as it was before this job existed. `actions/cache`
 #     cannot share a still-unsaved cache between jobs running concurrently in the same run, so this
-#     runs first and the four dependent jobs declare `needs: warm-gradle-cache`; none of them passes
+#     runs first and the five dependent jobs declare `needs: warm-gradle-cache`; none of them passes
 #     `cache-read-only` explicitly — they rely on the composite action's own safe default ('true',
 #     read-only) — the multi-job cache-sharing pattern gradle/actions documents. It does not replace
 #     each job's own build step or bundle APKs into a shared artifact. `network`, `visual`, and
@@ -151,10 +151,10 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: python3 scripts/e2e_changes.py
 
-  # Warm the shared Gradle cache once, ahead of the four KVM jobs below that depend on it (see the
+  # Warm the shared Gradle cache once, ahead of the five KVM jobs below that depend on it (see the
   # header comment for why this exists, why `network`/`visual`/`codegen` are excluded, and why it
   # stays a soft, best-effort dependency rather than a shared build). No AVD here — building the same
-  # APKs those four jobs build, without booting anything, is a few minutes.
+  # APKs those five jobs build, without booting anything, is a few minutes.
   warm-gradle-cache:
     name: warm gradle cache (adb)
     needs: changes
@@ -199,6 +199,8 @@ jobs:
     # stands down there instead. `changes` itself must still have succeeded and reported a relevant
     # change. Anchored here and aliased by golden/conformance/fault-injection below, so editing this
     # one `if:` keeps all four in sync instead of relying on a hand-kept "keep these together" rule.
+    # `pool` aliases the `needs:` anchor but not this one: its own `if:` adds the `pool` output
+    # conjunct, so it restates the three conditions rather than aliasing them.
     if: &warm-cache-consumer-if "!cancelled() && needs.changes.result == 'success' && needs.changes.outputs.relevant == 'true'"
     runs-on: ubuntu-latest
     # A cold AVD boot + APK builds + the Compose full set and Views subset is ~18min; 30 catches a
@@ -1018,7 +1020,8 @@ jobs:
   # typed input, which no condition-wait ceiling can recover. The 30s floor `e2e-pool` sets covers the
   # other half — a first row two 1-core emulators draw slowly.
   #
-  # It keeps its own AVD cache key because the entry has to hold an AVD *named* `bajutsu-pool`, which
+  # It keeps its own AVD cache key because the entry has to hold an AVD named by this job's own
+  # `POOL_AVD` — the one place that name is chosen, read by all three sites that need it — which
   # `smoke`'s does not; the `mem3072-cores1` suffix is now only a record of the options this job runs,
   # since with snapshot load disabled nothing about the cached entry depends on them.
   #
@@ -1030,7 +1033,10 @@ jobs:
   # and is promoted only once stable, the signal-then-required path BE-0282 established.
   pool:
     name: pool (adb)
-    needs: [changes, warm-gradle-cache]
+    # The fifth warm-cache consumer, so it takes the anchor rather than restating it: a dependency
+    # added there has to reach this job too. The `if:` below cannot alias its counterpart, which
+    # carries no `pool` conjunct.
+    needs: *warm-cache-consumer-needs
     if: >-
       !cancelled() && needs.changes.result == 'success' &&
       needs.changes.outputs.relevant == 'true' && needs.changes.outputs.pool == 'true'
@@ -1044,6 +1050,11 @@ jobs:
     timeout-minutes: 60
     env:
       UV_NO_DEV: "1"
+      # The one place the AVD name is chosen. Three sites need it — the create step, the run step, and
+      # the script argument — and the cache entry has to hold an AVD under exactly this name, so a
+      # rename that reached only some of them would silently cold-create the AVD (or hang the boot
+      # wait) with nothing red to say so.
+      POOL_AVD: bajutsu-pool
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -1085,7 +1096,7 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_6  # match the local validation geometry (see `smoke`'s own create step)
-          avd-name: bajutsu-pool
+          avd-name: ${{ env.POOL_AVD }}
           force-avd-creation: false
           emulator-options: -memory 3072 -cores 1 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: false
@@ -1108,7 +1119,7 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_6
-          avd-name: bajutsu-pool
+          avd-name: ${{ env.POOL_AVD }}
           force-avd-creation: false
           # `-read-only` on *this* instance too, not only on the second one the script boots: an
           # emulator holding the AVD read-write locks it, and a second process is refused with
@@ -1120,9 +1131,9 @@ jobs:
           disable-animations: true
           # One line, since the emulator-runner runs each script line as its own `/usr/bin/sh -c`:
           # the script owns the second boot, the run, the isolation assertion, the diagnostics sweep,
-          # and re-raising the run's exit code. The AVD name is passed in rather than assumed, so the
-          # `avd-name` above is the single place it is chosen.
-          script: scripts/android_pool_e2e.sh bajutsu-pool
+          # and re-raising the run's exit code. The AVD name is passed in rather than assumed, and
+          # comes from the job-level `POOL_AVD` every site here reads, so it is chosen once.
+          script: scripts/android_pool_e2e.sh ${{ env.POOL_AVD }}
 
       - name: Collect host telemetry
         if: always()
