@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0308](BE-0308-alerts-guard-real-model-verification.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0308") |
+| Implementing PR | [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) |
 | Topic | Verification & coverage |
 | Related | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md), [BE-0295](../BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification.md) |
 <!-- /BE-METADATA -->
@@ -68,12 +69,64 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Capture a real-alert fixture set from the showcase app, including a destructive-control case.
-- [ ] Add a key-gated live test asserting the guard locates the correct dismiss control.
-- [ ] Wire it into CI as a non-gating signal.
+- [x] Capture a real-alert fixture set from the showcase app, including a destructive-control case.
+- [x] Add a key-gated live test asserting the guard locates the correct dismiss control.
+- [x] Wire it into CI as a non-gating signal.
+
+**Log**
+
+- Captured all four fixtures from the showcase SwiftUI app on a booted iPhone 17 Simulator (iOS 26.5)
+  and committed them under `tests/fixtures/be0308/`: the notification prompt, the location prompt
+  (three stacked choices, only the bottom one refusing), iOS's cross-process paste consent, and the
+  app's own delete confirmation, whose red `Delete` sits between `Archive` and `Cancel`. That last
+  one is the destructive-control case, and it is the sharper form of the requirement: the guard must
+  report no prompt at all, because the button it would reach for deletes. `tests/test_alert_fixtures_ondevice.py`
+  captures them, reading each button's frame from the device rather than measuring pixels by eye —
+  the three OS prompts from the same accessibility query `handleSystemAlert` resolves against
+  (BE-0316), the app-owned dialog from the app's own element tree — and refusing to write a fixture
+  whose expected button the device did not report — so an OS or locale change fails the capture
+  instead of quietly relabelling the ground truth. It is a manual, local step that no CI job runs.
+- Added the key-gated live test (`tests/test_real_model_alerts.py`) and wired it into
+  [`ai-smoke.yml`](../../.github/workflows/ai-smoke.yml) as a second non-gating job, `accuracy
+  (system-alert guard)` — the BE-0282 precedent, and the same `workflow_dispatch`-only,
+  `ai-smoke`-Environment boundary the existing job draws, so a fork-triggered run never sees the
+  credential. The live test needs no Simulator: the dialogs are committed captures, so only the
+  model call is live. Three deterministic layers keep it honest on every gate, with no credential.
+  Over synthetic dialogs, stub locators prove the assertion accepts an answer on a dismiss control
+  and rejects one on the granting button beside it, on the destructive button of a dialog the app
+  owns, and on nothing at all. Over each committed capture, an answer on every recorded *wrong*
+  button must be rejected — aiming at the recorded dismiss control instead would prove nothing,
+  since a frame always contains its own centre. And one test pins the fixture's own
+  normalized-to-point mapping against `SystemAlertGuard.dismiss`'s own arithmetic, so the
+  verification measures the product rather than itself. What no credential-free layer can catch is a
+  capture whose recorded dismiss control names the wrong button: only looking at the screenshot
+  settles that, which is the live layer's job.
+- Scoped the assertion to the locator's answer, not to the guard's on-device tap. Two defects
+  surfaced while capturing, both in the guard's *actuation* path rather than its vision, and both
+  outside this item's subject; each is recorded here and left for its own item rather than fixed
+  under this one. First, `SystemAlertGuard.dismiss` maps the model's normalized answer through
+  `screen_size_from_elements(driver.query())`, which BE-0326 already established overshoots the
+  screen whenever a lazy list keeps buffered off-screen rows in the tree: measured against the
+  showcase app it reports (418, 2456) where the real screen is (402, 874), which moves a perfectly
+  correct answer for the notification prompt's `Don’t Allow` button from (127, 518) to (132, 1456),
+  off the bottom of the screen. `Driver.viewport()` is the source BE-0326 introduced for exactly
+  this, and the guard does not use it. Second, and independently, an app-scoped XCUITest coordinate
+  tap cannot press a SpringBoard prompt's button at all: a tap at (5, 5), nowhere near either
+  button, cleared the notification prompt and left the app reporting `authorized` — the prompt's
+  granting default — while an untouched prompt stayed up through fifteen polls, so the interaction
+  itself, not the coordinate, resolves the prompt. Whenever the vision guard fires against a
+  SpringBoard prompt on this toolchain the outcome is therefore the prompt's default button, the
+  opposite of the guard's documented least-destructive default, and the report still records the
+  button the model chose. The deterministic native path (BE-0315 / BE-0316) is unaffected.
 
 ## References
 
 - [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
 - [BE-0295 — Real-model verification of the record and crawl propose loops](../BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification.md)
+- [BE-0316 — Explicit mid-flow step for iOS permission-prompt alerts](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md)
+  — its SpringBoard accessibility query supplies the captured fixtures' ground-truth frames
+- [BE-0326 — The `scroll` action: scroll until an element appears](../BE-0326-scroll-to-element/BE-0326-scroll-to-element.md)
+  — it introduced `Driver.viewport()`, the true screen bounds a scrollable element tree cannot supply
 - `bajutsu/agents/alerts.py`, `tests/test_alerts.py` (`StubLocator`, `FakeBackend`/`FakeBlock`)
+- `tests/test_alert_fixtures_ondevice.py`, `tests/test_real_model_alerts.py`,
+  `tests/alert_fixture_support.py`, `tests/fixtures/be0308/`
