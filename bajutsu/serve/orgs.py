@@ -14,9 +14,9 @@ differs, since target ownership stays in configuration either way.
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from bajutsu import _yaml
 from bajutsu.config import Config, _Model, parse_config_dict
@@ -31,30 +31,67 @@ class OrgConfig(_Model):
     Holds the GitHub logins that belong to it (`members`), the GitHub orgs whose members belong to
     it (`github_orgs`), and/or the GitHub Teams whose direct members belong to it (`github_teams`),
     plus the targets it owns. A target named in no org falls back to the single `default` org.
-    `editor_team` (BE-0313) names one flat GitHub Team, as `"<github-org>/<team-slug>"`, whose direct
-    members are promoted to editor within this org; None leaves every member of the org at viewer.
+    `editor_teams` (BE-0313) names the flat GitHub Teams, each as `"<github-org>/<team-slug>"`, whose
+    direct members are promoted to editor within this org; an empty list leaves every member of the
+    org at viewer.
 
     Each `github_teams` entry has that same `"<github-org>/<team-slug>"` shape and admits its direct
     members to this org at viewer, so a deployment can grant a single Team access without granting
     its whole GitHub organization — the narrower unit a GitHub organization's own structure already
-    models. `editor_team` admits as well as promotes: a Team whose members may write is a Team whose
+    models. `editor_teams` admits as well as promotes: a Team whose members may write is a Team whose
     members may sign in, and requiring it to be repeated under `github_teams` would make "may write
     but cannot log in" a configuration an operator can write by accident.
+
+    A list rather than the single Team it started as (BE-0375 unit 9), for the reason
+    `BAJUTSU_OAUTH_ADMIN_TEAMS` is one: `github_orgs` and `github_teams` are lists because one org
+    may span several GitHub organizations, and a single `editor_teams` slot cannot then name a
+    writing Team per organization — the only ways out being to merge Teams on GitHub's side or to
+    keep one roster by hand, which is the manual maintenance BE-0313 removed.
     """
 
     members: list[str] = Field(default_factory=list)
     github_orgs: list[str] = Field(default_factory=list, alias="githubOrgs")
     github_teams: list[str] = Field(default_factory=list, alias="githubTeams")
-    editor_team: str | None = Field(default=None, alias="editorTeam")
+    editor_teams: list[str] = Field(default_factory=list, alias="editorTeams")
     targets: list[str] = Field(default_factory=list)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _fold_retired_editor_team(cls, data: Any) -> Any:
+        """Fold the retired singular `editorTeam` key into `editor_teams` (BE-0375 unit 9).
+
+        Accepted rather than rejected, and folded in rather than preferred one way or the other: this
+        model is `extra="forbid"`, so an un-renamed key would raise out of `parse_orgs`, and
+        `load_serve_config_file` answers a parse failure with *no* org model — every login of a
+        deployment that missed one key would be turned away under "user not allowed", the silent
+        lockout BE-0352's retired-name warning exists to prevent. `BAJUTSU_OAUTH_ADMIN_TEAM` could
+        take that route because an unread environment variable still leaves a config that loads.
+
+        A deployment that sets both keys (the likelier partial rename — an operator adds the plural
+        name and leaves the singular one behind) keeps both Teams, so neither spelling silently
+        loses the role it was written to grant.
+        """
+        if not isinstance(data, dict) or "editorTeam" not in data:
+            return data
+        data = dict(data)
+        retired = data.pop("editorTeam")
+        existing = data.get("editorTeams")
+        # `editorTeam: ""` and a missing key both meant "no editor Team" before the rename, so an
+        # empty value folds to nothing rather than to an entry that matches no Team but does make
+        # `orgs_declaring_membership` count this org as having a roster.
+        if retired is None or (isinstance(retired, str) and not retired.strip()):
+            return data
+        if existing is None or isinstance(existing, list):
+            data["editorTeams"] = [*(existing or []), retired]
+        return data
+
     def admitting_teams(self) -> list[str]:
-        """Every Team whose direct members this org admits — `github_teams` plus `editor_team`.
+        """Every Team whose direct members this org admits — `github_teams` plus `editor_teams`.
 
         One accessor, so the sign-in gate and every "does this org declare a membership" check read
-        the same union and cannot disagree about whether `editor_team` alone admits anyone.
+        the same union and cannot disagree about whether `editor_teams` alone admits anyone.
         """
-        return [*self.github_teams, *([self.editor_team] if self.editor_team else [])]
+        return [*self.github_teams, *self.editor_teams]
 
 
 # The single tenant every unassigned user and target falls into.
@@ -87,7 +124,7 @@ def _match_org(
     The one place the three membership axes are ranked, so the sign-in gate and the placement below
     can never admit a login into one org while resolving it to another. An explicit `members` entry
     wins, then an intersection with some org's `github_orgs`, then direct membership in one of an
-    org's admitting Teams (`githubTeams` or its `editorTeam`). Teams rank last so that adding one to
+    org's admitting Teams (`githubTeams` or its `editorTeams`). Teams rank last so that adding one to
     an org never relocates a login an existing `members`/`githubOrgs` entry already placed.
 
     "First" within an axis is deterministic but source-dependent; see `org_for_identity`.
@@ -214,14 +251,14 @@ def orgs_from_db(repository: Repository) -> dict[str, OrgConfig]:
             members=list(row.members),
             githubOrgs=list(row.github_orgs),
             githubTeams=list(row.github_teams),
-            editorTeam=row.editor_team,
+            editorTeams=list(row.editor_teams),
         )
         for row in repository.list_orgs()
     }
 
 
 def orgs_declaring_membership(orgs: dict[str, OrgConfig]) -> list[str]:
-    """The entries that declare `members` / `githubOrgs` / `githubTeams` / `editorTeam` (BE-0375).
+    """The entries that declare `members` / `githubOrgs` / `githubTeams` / `editorTeams` (BE-0375).
 
     An entry carrying only `targets` is the end state a database-backed deployment is meant to
     reach, since target ownership stays in configuration, so it is never one of these — which is
@@ -260,7 +297,7 @@ def seed_orgs_from_config(repository: Repository, orgs: dict[str, OrgConfig]) ->
             members=list(oc.members),
             github_orgs=list(oc.github_orgs),
             github_teams=list(oc.github_teams),
-            editor_team=oc.editor_team,
+            editor_teams=list(oc.editor_teams),
         )
         if not seeded:
             stale.append(name)

@@ -77,7 +77,7 @@ def list_orgs_view(state: ServeState, *, actor: str | None = None) -> tuple[Any,
             "members": org.members,
             "githubOrgs": org.github_orgs,
             "githubTeams": org.github_teams,
-            "editorTeam": org.editor_team,
+            "editorTeams": org.editor_teams,
             "projectCount": len(repository.list_projects(org_id=org.id)),
             # The fallback an unmatched sign-in resolves to is listed (an admin admitted by the
             # bypass is sitting in it, and hiding that would hide where their own work lands) but is
@@ -128,7 +128,7 @@ def create_org(
 def update_org_membership(
     state: ServeState, slug: str, body: dict[str, Any], *, actor: str | None = None
 ) -> tuple[Any, int]:
-    """Replace an org's ``{members, githubOrgs, githubTeams, editorTeam}`` as one unit.
+    """Replace an org's ``{members, githubOrgs, githubTeams, editorTeams}`` as one unit.
 
     The same granularity a configuration edit already had, rather than per-entry add/remove: an
     admin sees the whole roster and sends back the whole roster, so two concurrent edits can't
@@ -157,18 +157,18 @@ def update_org_membership(
     github_teams, invalid = _string_list(body.get("githubTeams"), "githubTeams")
     if invalid is not None:
         return {"error": invalid}, 400
-    raw_team = body.get("editorTeam")
-    if raw_team is not None and not isinstance(raw_team, str):
-        return {"error": "editorTeam must be a string"}, 400
-    editor_team = (raw_team or "").strip() or None
-    # Narrowed by the three error returns above.
-    assert members is not None and github_orgs is not None and github_teams is not None
+    editor_teams, invalid = _string_list(body.get("editorTeams"), "editorTeams")
+    if invalid is not None:
+        return {"error": invalid}, 400
+    # Narrowed by the four error returns above.
+    assert members is not None and github_orgs is not None
+    assert github_teams is not None and editor_teams is not None
     if not state.repository.set_org_membership(
         slug,
         members=members,
         github_orgs=github_orgs,
         github_teams=github_teams,
-        editor_team=editor_team,
+        editor_teams=editor_teams,
     ):
         return {"error": f"no org named {slug!r}"}, 404
     _record_audit(
@@ -183,7 +183,7 @@ def update_org_membership(
             "members": members,
             "githubOrgs": github_orgs,
             "githubTeams": github_teams,
-            "editorTeam": editor_team,
+            "editorTeams": editor_teams,
         },
     )
     return {
@@ -191,7 +191,7 @@ def update_org_membership(
         "members": members,
         "githubOrgs": github_orgs,
         "githubTeams": github_teams,
-        "editorTeam": editor_team,
+        "editorTeams": editor_teams,
     }, 200
 
 

@@ -493,6 +493,48 @@ blaming the org list alone would send an operator to an axis a Team-declared org
 Team is turned away — the direction a gate has to fail in, and the trade unit 7's bypass already
 accepted.
 
+### 9. The writing Team becomes a list (follow-up)
+
+`editorTeam` becomes `editorTeams`, a list of flat GitHub Teams. Unit 8 gave an org a list of
+admitting Teams and left the writing Team a single slot, which is a shape the other two membership
+axes had already outgrown: `githubOrgs` and `githubTeams` are lists because one org may span more
+than one GitHub organization, and an org shaped that way cannot then name a writing Team in each.
+The ways out were to merge the Teams on GitHub's side or to keep one roster by hand, and the second
+is the manual maintenance
+[BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md) removed. Naming both
+Teams under `githubTeams` is not a third way out, since that field admits at viewer and grants
+nobody write access.
+[BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass.md) reached the
+same conclusion for the server-wide admin Team, widening `BAJUTSU_OAUTH_ADMIN_TEAM` into
+`BAJUTSU_OAUTH_ADMIN_TEAMS` so one deployment could name an admin Team per GitHub organization.
+
+`OrgConfig` folds a retired singular `editorTeam` key into `editor_teams` rather than refusing it,
+which is where this rename departs from BE-0352's. That item could retire an environment variable
+outright, because an unread variable still leaves a configuration that loads. `OrgConfig` is
+`extra="forbid"`, so an un-renamed key raises out of `parse_orgs` — and `load_serve_config_file`
+answers a parse failure with no org model at all, which turns away every login under "user not
+allowed". A deployment that missed one key would lock itself out silently, the failure BE-0352's
+retired-name warning exists to prevent. A configuration carrying both spellings keeps both Teams: an
+operator who adds the plural name and leaves the singular one behind is the likelier partial rename,
+and neither spelling should lose the role it was written to grant. An `editorTeam: ""` folds to
+nothing, since an empty value meant "no editor Team" before the rename and an entry matching no Team
+would still make `orgs_declaring_membership` report a roster.
+
+The list simplifies the two places that special-cased the single slot. `admitting_teams()` becomes a
+plain concatenation of `github_teams` and `editor_teams`, and `role_for` drops its `is not None`
+guard, since `in_teams` on an empty list is already False. `POST /api/orgs/<slug>/membership` drops
+its bespoke "must be a string" check for the shared `_string_list` validator the other three fields
+use, so the endpoint now validates four uniform lists.
+
+Migration `0017` is the first in this series to carry data rather than only add columns. Migrations
+`0015` and `0016` seeded nothing because every column they added is reconstructible from the `orgs:`
+block, and an `editor_team` is not: a write through `POST /api/orgs/<slug>/membership` stamps
+`membership_seeded_at`, after which `seed_org_membership` is a no-op forever, so that value lives in
+its row and nowhere else. Dropping the column without the copy would demote every editor of such an
+org to viewer, and say nothing. The downgrade copies back the first entry only, which is the one
+direction a widening is lossy in; refusing to downgrade a row holding two Teams would instead leave
+an operator no way back from the state this unit makes reachable.
+
 ## Alternatives considered
 
 - **Keep org membership in the configuration file, and let an admin trigger a `POST
@@ -609,6 +651,17 @@ accepted.
       an `editorTeam`-only login admitted as editor, a case-mismatched Team, a nested Team refused,
       a Team-only login denied while `/user/teams` returns nothing, and the config/database
       resolution parity of unit 8 extended to the Team axis.
+
+- [x] 10 — Follow-up: widen `editorTeam` into `editorTeams`, a list, so an org spanning more than one
+      GitHub organization can name a writing Team in each; fold a retired singular `editorTeam` key
+      into the list rather than refusing it, since `OrgConfig` is `extra="forbid"` and a parse
+      failure leaves `serve` with no org model and every login denied; carry the field through
+      migration `0017` — the first here to copy data, since an `editor_team` set through the API is
+      reconstructible from nothing — the repository seam, `role_for`, the membership API's shared
+      `_string_list` validation, and the Orgs page. Tests: a second `editorTeams` entry both admits
+      and promotes, the retired key folds (alone, beside the plural one, and as an empty value), and
+      migration `0017` carries a pre-rename row's single Team into a one-element list while leaving a
+      row that never had one untouched.
 
 ## References
 

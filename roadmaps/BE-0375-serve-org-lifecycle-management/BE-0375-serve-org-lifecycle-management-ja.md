@@ -515,6 +515,49 @@ org が参照しない軸を operator に調べさせてしまいます。`/user
 Teams API がエラーを返している間は、所属が Team だけの login は拒否されます。ゲートが倒れるべき向き
 はこちらで、ユニット7の迂回がすでに受け入れた引き換えと同じです。
 
+### 9. 書き込みを許す Team をリストにする（追加修正）
+
+`editorTeam` を `editorTeams` に変え、フラットな GitHub Team のリストにします。ユニット8は org に
+受け入れ Team のリストを与えましたが、書き込みを許す Team は1つの枠のまま残しました。他の2つの
+メンバーシップの軸は、すでにその形から抜け出しています。`githubOrgs` と `githubTeams` がリストなのは、
+1つの org が複数の GitHub organization にまたがることがあるからです。そうした形の org は、
+organization ごとの書き込み Team を挙げられません。逃げ道は2つに限られていました。GitHub 側で Team を
+統合するか、名簿を1つ手で保守するかです。後者は
+[BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md) が取り除いた手作業その
+ものです。両方の Team を `githubTeams` に挙げるのは3つ目の逃げ道になりません。このフィールドが受け
+入れるのは viewer としてであり、書き込みは誰にも与えないからです。
+サーバ全体の admin Team についても、同じ結論に達した先例があります。
+[BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass-ja.md) が
+`BAJUTSU_OAUTH_ADMIN_TEAM` を `BAJUTSU_OAUTH_ADMIN_TEAMS` へ広げました。1つのデプロイが GitHub
+organization ごとの admin Team を挙げられるようにするためです。
+
+`OrgConfig` は、旧来の単数形 `editorTeam` のキーを拒否するのではなく `editor_teams` に畳み込みます。
+この名前の変更が BE-0352 の名前の変更と分かれるのはここです。BE-0352 は環境変数をそのまま廃止でき
+ました。読まれない環境変数が残っていても、config は読み込めるからです。`OrgConfig` は
+`extra="forbid"` なので、変更し忘れたキーは `parse_orgs` で例外になります。そして
+`load_serve_config_file` は、パースの失敗に対して org モデルを何も返しません。その結果、すべての
+login が "user not allowed" で拒否されます。キーを1つ変え忘れたデプロイは、自分を静かに締め出すこと
+になります。BE-0352 が廃止した名前の警告で防いでいる失敗と同じです。両方の綴りを書いた config は、
+両方の Team を保ちます。複数形の名前を足して単数形を残す中途半端な名前の変更のほうが起こりやすく、
+どちらの綴りも、与えるために書かれたロールを失うべきではありません。`editorTeam: ""` は何にも畳み
+込みません。空の値は名前の変更の前から「書き込みを許す Team はない」を意味していましたし、どの Team
+にも一致しないエントリを作れば、`orgs_declaring_membership` が名簿があると報告してしまいます。
+
+リストにしたことで、1つの枠を特別扱いしていた2箇所が単純になります。`admitting_teams()` は
+`github_teams` と `editor_teams` を素につないだだけになり、`role_for` は `is not None` の番を落とし
+ます。空のリストに対する `in_teams` はすでに False だからです。`POST /api/orgs/<slug>/membership` は、
+「文字列であること」の専用の判定をやめ、他の3フィールドが使う共通の `_string_list` に渡します。
+これでこのエンドポイントが検証するのは、同じ形のリスト4つになります。
+
+マイグレーション `0017` は、この一連のなかで列の追加だけでなくデータを運ぶ最初のものです。`0015` と
+`0016` が何も引き込まなかったのは、加えた列がどれも `orgs:` ブロックから作り直せるからでした。
+`editor_team` は作り直せません。`POST /api/orgs/<slug>/membership` の書き込みは
+`membership_seeded_at` を刻み、それ以後 `seed_org_membership` は永久に何もしないので、その値はその行
+だけにあります。書き写さずに列を落とせば、そうした org の editor 全員が viewer に降格し、しかも何も
+告げられません。ダウングレードが書き戻すのは先頭のエントリだけです。リストへの拡張が失うのはこの向き
+だけであり、2つの Team を持つ行のダウングレードを拒否すれば、このユニットが到達可能にした状態から
+operator が戻る道がなくなります。
+
 ## 検討した代替案
 
 - **org のメンバーシップを設定ファイルに残し、外部で編集した後 `POST /api/config` の再バインドを
@@ -631,6 +674,17 @@ Teams API がエラーを返している間は、所属が Team だけの login 
       受け入れられること。綴りの大小が食い違う Team。ネストした Team が拒否されること。
       `/user/teams` が何も返さないあいだ、Team だけの login が拒否されること。ユニット8の
       config とデータベースの解決一致を Team の軸にも広げること。
+
+- [x] 10 — 追加修正：`editorTeam` を `editorTeams` に広げてリストにし、複数の GitHub organization に
+      またがる org が organization ごとの書き込み Team を挙げられるようにする。旧来の単数形
+      `editorTeam` のキーは拒否せずリストに畳み込む。`OrgConfig` は `extra="forbid"` であり、パースの
+      失敗は `serve` に org モデルを残さず、すべての login を拒否するからである。このフィールドを、
+      マイグレーション `0017`（API で設定した `editor_team` は作り直せないため、この一連で初めて
+      データを書き写す）、リポジトリの seam、`role_for`、メンバーシップの API の共通の `_string_list`
+      による検証、Orgs ページに通す。テスト：`editorTeams` の2つ目のエントリが受け入れと昇格の両方を
+      すること。旧来のキーが畳み込まれること（単独のとき、複数形の隣にあるとき、空の値のとき）。
+      マイグレーション `0017` が、名前の変更前の行の Team 1つを1要素のリストに運ぶこと。Team を
+      持たなかった行には触れないこと。
 
 ## 参考
 

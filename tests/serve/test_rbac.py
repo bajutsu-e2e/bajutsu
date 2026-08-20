@@ -17,34 +17,36 @@ from bajutsu.serve.state import ServeState
 
 
 def test_role_for_derives_the_role_from_team_membership() -> None:
-    # BE-0313: admin follows the server-wide admin Teams, editor the org's editor Team, else viewer.
+    # BE-0313: admin follows the server-wide admin Teams, editor the org's editor Teams, else viewer.
     teams = ["acme-gh/scenario-maintainers", "acme-gh/ops"]
     assert (
         ops.role_for(
-            teams=teams, editor_team="acme-gh/scenario-maintainers", admin_teams=("acme-gh/ops",)
+            teams=teams, editor_teams=["acme-gh/scenario-maintainers"], admin_teams=("acme-gh/ops",)
         )
         == "admin"
     )
     assert (
         ops.role_for(
-            teams=teams, editor_team="acme-gh/scenario-maintainers", admin_teams=("acme-gh/absent",)
+            teams=teams,
+            editor_teams=["acme-gh/scenario-maintainers"],
+            admin_teams=("acme-gh/absent",),
         )
         == "editor"
     )
     # The base role: signed in, but a member of neither Team.
     assert (
-        ops.role_for(teams=teams, editor_team="acme-gh/absent", admin_teams=("acme-gh/none",))
+        ops.role_for(teams=teams, editor_teams=["acme-gh/absent"], admin_teams=("acme-gh/none",))
         == "viewer"
     )
-    # An unset Team never matches, even against an empty-string team name in the list.
-    assert ops.role_for(teams=[""], editor_team=None, admin_teams=()) == "viewer"
-    # The editor Team is matched case-insensitively, like the admin list: `editorTeam` now admits at
+    # An empty editor list never matches, even against an empty-string team name in the list.
+    assert ops.role_for(teams=[""], editor_teams=[], admin_teams=()) == "viewer"
+    # The editor Team is matched case-insensitively, like the admin list: `editorTeams` now admits at
     # the sign-in gate too, so a case-mismatched entry that once cost only the editor role would
     # cost sign-in — and matching one way but not the other would admit a login and hand it viewer.
     assert (
         ops.role_for(
             teams=["Acme-GH/Scenario-Maintainers"],
-            editor_team="acme-gh/scenario-maintainers",
+            editor_teams=["acme-gh/scenario-maintainers"],
             admin_teams=(),
         )
         == "editor"
@@ -52,19 +54,21 @@ def test_role_for_derives_the_role_from_team_membership() -> None:
     # Nested-Team names don't match the configured flat Team (exact match only) — for the admin
     # list too, where a false match now clears the sign-in gate and not only the role.
     assert (
-        ops.role_for(teams=["acme-gh/parent/child"], editor_team="acme-gh/parent", admin_teams=())
+        ops.role_for(
+            teams=["acme-gh/parent/child"], editor_teams=["acme-gh/parent"], admin_teams=()
+        )
         == "viewer"
     )
     assert (
         ops.role_for(
-            teams=["acme-gh/parent/child"], editor_team=None, admin_teams=("acme-gh/parent",)
+            teams=["acme-gh/parent/child"], editor_teams=[], admin_teams=("acme-gh/parent",)
         )
         == "viewer"
     )
     # A login matching any of several configured admin Teams resolves to admin.
     assert (
         ops.role_for(
-            teams=["acme-gh/ops"], editor_team=None, admin_teams=("other-gh/root", "acme-gh/ops")
+            teams=["acme-gh/ops"], editor_teams=[], admin_teams=("other-gh/root", "acme-gh/ops")
         )
         == "admin"
     )
@@ -74,14 +78,14 @@ def test_role_for_admin_match_is_case_insensitive() -> None:
     # GitHub resolves an org login and a Team slug case-insensitively, and a real org login can be
     # stored mixed-case -- an `admin_teams` entry and a login's reported Team must still match
     # regardless of which side carries the different case.
-    assert ops.role_for(teams=["Acme-GH/ops"], editor_team=None, admin_teams=("acme-gh/ops",)) == (
+    assert ops.role_for(teams=["Acme-GH/ops"], editor_teams=[], admin_teams=("acme-gh/ops",)) == (
         "admin"
     )
-    assert ops.role_for(teams=["acme-gh/ops"], editor_team=None, admin_teams=("Acme-GH/OPS",)) == (
+    assert ops.role_for(teams=["acme-gh/ops"], editor_teams=[], admin_teams=("Acme-GH/OPS",)) == (
         "admin"
     )
     # Folding case never turns an empty team name into a spurious match.
-    assert ops.role_for(teams=[""], editor_team=None, admin_teams=("acme-gh/ops",)) == "viewer"
+    assert ops.role_for(teams=[""], editor_teams=[], admin_teams=("acme-gh/ops",)) == "viewer"
 
 
 def test_required_role_maps_endpoints() -> None:

@@ -85,9 +85,9 @@ class ProjectRecord:
 class OrgRecord:
     """An org as the seam exchanges it — its identity plus the membership that decides sign-in.
 
-    `members` / `github_orgs` / `github_teams` / `editor_team` mirror `OrgConfig`'s own fields
+    `members` / `github_orgs` / `github_teams` / `editor_teams` mirror `OrgConfig`'s own fields
     (BE-0375); a row that predates the move, or one `ensure_org` created at sign-in, carries empty
-    lists and no Team.
+    lists throughout.
     `membership_seeded_at` is the per-row cutover marker (set = the database owns this org's
     membership), `deleted_at` the soft-delete marker.
     """
@@ -98,7 +98,7 @@ class OrgRecord:
     members: list[str] = field(default_factory=list)
     github_orgs: list[str] = field(default_factory=list)
     github_teams: list[str] = field(default_factory=list)
-    editor_team: str | None = None
+    editor_teams: list[str] = field(default_factory=list)
     membership_seeded_at: datetime | None = None
     deleted_at: datetime | None = None
     created_at: datetime | None = None
@@ -226,7 +226,7 @@ class Repository(Protocol):
         members: list[str],
         github_orgs: list[str],
         github_teams: list[str],
-        editor_team: str | None,
+        editor_teams: list[str],
     ) -> bool:
         """Replace a live org's membership as one unit (BE-0375). False when there is no such org.
 
@@ -243,7 +243,7 @@ class Repository(Protocol):
         members: list[str],
         github_orgs: list[str],
         github_teams: list[str],
-        editor_team: str | None,
+        editor_teams: list[str],
     ) -> bool:
         """Seed an org's membership from a bound config's `orgs:` entry, once (BE-0375).
 
@@ -390,7 +390,7 @@ def _to_org(row: Org) -> OrgRecord:
         members=list(row.members or []),
         github_orgs=list(row.github_orgs or []),
         github_teams=list(row.github_teams or []),
-        editor_team=row.editor_team,
+        editor_teams=list(row.editor_teams or []),
         membership_seeded_at=row.membership_seeded_at,
         deleted_at=row.deleted_at,
         created_at=row.created_at,
@@ -683,7 +683,7 @@ class SqlRepository:
         members: list[str],
         github_orgs: list[str],
         github_teams: list[str],
-        editor_team: str | None,
+        editor_teams: list[str],
     ) -> bool:
         from sqlalchemy.orm import Session
 
@@ -694,7 +694,7 @@ class SqlRepository:
             if row is None or row.deleted_at is not None:
                 return False
             row.members, row.github_orgs = members, github_orgs
-            row.github_teams, row.editor_team = github_teams, editor_team
+            row.github_teams, row.editor_teams = github_teams, editor_teams
             if row.membership_seeded_at is None:
                 # An admin can reach a row the backfill never marked — one `ensure_org` created at
                 # sign-in, one predating the migration, or one left unseeded because the config
@@ -714,7 +714,7 @@ class SqlRepository:
         members: list[str],
         github_orgs: list[str],
         github_teams: list[str],
-        editor_team: str | None,
+        editor_teams: list[str],
     ) -> bool:
         from sqlalchemy.exc import IntegrityError
         from sqlalchemy.orm import Session
@@ -737,7 +737,7 @@ class SqlRepository:
                         members=members,
                         github_orgs=github_orgs,
                         github_teams=github_teams,
-                        editor_team=editor_team,
+                        editor_teams=editor_teams,
                         membership_seeded_at=seeded_at,
                     )
                 )
@@ -757,7 +757,7 @@ class SqlRepository:
                     ):
                         return False
             row.members, row.github_orgs = members, github_orgs
-            row.github_teams, row.editor_team = github_teams, editor_team
+            row.github_teams, row.editor_teams = github_teams, editor_teams
             row.membership_seeded_at = seeded_at
             session.commit()
             return True

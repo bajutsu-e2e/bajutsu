@@ -421,7 +421,7 @@ def _with_orgs(cfg: Path, members: list[str]) -> None:
     roster = ", ".join(members)
     cfg.write_text(
         cfg.read_text(encoding="utf-8")
-        + f"orgs:\n  acme:\n    members: [{roster}]\n    editorTeam: {_EDITOR_TEAM}\n"
+        + f"orgs:\n  acme:\n    members: [{roster}]\n    editorTeams: [{_EDITOR_TEAM}]\n"
         "    targets: [demo, other]\n",
         encoding="utf-8",
     )

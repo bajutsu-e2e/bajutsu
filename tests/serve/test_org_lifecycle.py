@@ -44,7 +44,7 @@ orgs:
     members: [alice]
     githubOrgs: [acme-gh]
     githubTeams: [acme-gh/qa]
-    editorTeam: acme-gh/scenario-maintainers
+    editorTeams: [acme-gh/scenario-maintainers]
     targets: [checkout]
   globex:
     members: [bob]
@@ -144,7 +144,7 @@ def test_orgs_from_db_resolves_exactly_as_the_equivalent_orgs_block(
                 "members": ["alice"],
                 "githubOrgs": ["acme-gh"],
                 "githubTeams": ["acme-gh/qa"],
-                "editorTeam": "acme-gh/scenario-maintainers",
+                "editorTeams": ["acme-gh/scenario-maintainers"],
             },
             "globex": {"members": ["bob"]},
         }
@@ -443,7 +443,7 @@ def test_create_then_re_member_an_org_and_audit_both(
         "members": [],
         "githubOrgs": [],
         "githubTeams": [],
-        "editorTeam": None,
+        "editorTeams": [],
         "projectCount": 0,
         "reserved": False,
     }
@@ -455,7 +455,7 @@ def test_create_then_re_member_an_org_and_audit_both(
             "members": ["peter"],
             "githubOrgs": ["initech-gh"],
             "githubTeams": ["initech-gh/qa"],
-            "editorTeam": "initech-gh/leads",
+            "editorTeams": ["initech-gh/leads"],
         },
         actor=admin,
     )
@@ -463,7 +463,7 @@ def test_create_then_re_member_an_org_and_audit_both(
     orgs = orgs_from_db(state.repository)
     assert orgs["initech"].members == ["peter"]
     assert orgs["initech"].github_teams == ["initech-gh/qa"]
-    assert orgs["initech"].editor_team == "initech-gh/leads"
+    assert orgs["initech"].editor_teams == ["initech-gh/leads"]
     # The roster an admin sets is a sign-in roster: a member of either Team belongs to `initech`
     # from the next sign-in, without a redeploy — the point of moving membership into the database.
     assert org_for_identity(orgs, "milton", [], ["initech-gh/qa"]) == "initech"

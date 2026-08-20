@@ -32,10 +32,10 @@ function orgRow(o) {
       : 'retire this org — it stops admitting sign-ins; its history is kept';
   const editTitle = o.reserved
     ? 'the sign-in fallback has no membership to edit — giving it one would make it a tenant'
-    : 'replace this org\'s members, GitHub organizations, GitHub Teams, and editor Team';
+    : 'replace this org\'s members, GitHub organizations, GitHub Teams, and editor Teams';
   return `<li class="prjrow orgrow" data-testid="orgs.row" data-slug="${esc(o.slug)}"${o.reserved ? ' data-reserved="1"' : ''}>
     <span class="prjname" data-testid="orgs.slug">${esc(o.slug)}</span>
-    <span class="prjsrc" data-testid="orgs.summary">${o.reserved ? 'sign-in fallback · ' : ''}${o.name && o.name !== o.slug ? esc(o.name) + ' · ' : ''}${o.members.length} member(s) · ${o.githubOrgs.length} GitHub org(s) · ${o.githubTeams.length} Team(s) · ${o.editorTeam ? esc(o.editorTeam) : 'no editor Team'} · ${o.projectCount} project(s)</span>
+    <span class="prjsrc" data-testid="orgs.summary">${o.reserved ? 'sign-in fallback · ' : ''}${o.name && o.name !== o.slug ? esc(o.name) + ' · ' : ''}${o.members.length} member(s) · ${o.githubOrgs.length} GitHub org(s) · ${o.githubTeams.length} Team(s) · ${o.editorTeams.length} editor Team(s) · ${o.projectCount} project(s)</span>
     <button class="cfgbtn" data-act="edit" data-testid="orgs.edit" title="${esc(editTitle)}"${o.reserved ? ' disabled' : ''}>Membership</button>
     <button class="cfgbtn prjremove" data-act="remove" data-testid="orgs.remove" title="${esc(removeTitle)}"${disabled ? ' disabled' : ''}>Delete</button>
   </li>`;
@@ -50,7 +50,7 @@ function membershipForm(o) {
     <input type="text" id="orgs-members" data-testid="orgs.members" placeholder="member GitHub logins (comma-separated)" value="${esc(o.members.join(', '))}">
     <input type="text" id="orgs-github-orgs" data-testid="orgs.github-orgs" placeholder="GitHub organizations (comma-separated)" value="${esc(o.githubOrgs.join(', '))}">
     <input type="text" id="orgs-github-teams" data-testid="orgs.github-teams" placeholder="GitHub Teams that may sign in, e.g. acme-gh/qa (comma-separated)" value="${esc(o.githubTeams.join(', '))}">
-    <input type="text" id="orgs-editor-team" data-testid="orgs.editor-team" placeholder="editor Team, e.g. acme-gh/scenario-maintainers — its members may sign in too" value="${esc(o.editorTeam || '')}">
+    <input type="text" id="orgs-editor-teams" data-testid="orgs.editor-teams" placeholder="editor Teams, e.g. acme-gh/scenario-maintainers (comma-separated) — their members may sign in too" value="${esc(o.editorTeams.join(', '))}">
     <button class="cfgbtn" data-act="save" data-testid="orgs.save">Save</button>
     <button class="cfgbtn" data-act="cancel" data-testid="orgs.cancel">Cancel</button>
   </div>`;
@@ -119,7 +119,7 @@ async function saveMembership(slug) {
     members: parseList($('#orgs-members').value),
     githubOrgs: parseList($('#orgs-github-orgs').value),
     githubTeams: parseList($('#orgs-github-teams').value),
-    editorTeam: $('#orgs-editor-team').value.trim(),
+    editorTeams: parseList($('#orgs-editor-teams').value),
   };
   const d = await postJSON('/api/orgs/' + encodeURIComponent(slug) + '/membership', body, {error: 'request failed'});
   if (d && d.error) { err.textContent = d.error; err.hidden = false; return; }

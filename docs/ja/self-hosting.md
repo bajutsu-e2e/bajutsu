@@ -363,7 +363,8 @@ OAuth を構成すると、アクセスは手作業の login リストではな�
 従います（[BE-0313](../../roadmaps/BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md)）。
 
 - **サインインと viewer ロール**は org メンバーシップに従います。構成済みの org のメンバー（明示の
-  `members`、`githubOrgs` に挙げた GitHub org の一員、または `githubTeams` に挙げた Team か `editorTeam` の
+  `members`、`githubOrgs` に挙げた GitHub org の一員、または `githubTeams` に挙げた Team か `editorTeams` に
+  挙げた Team の
   直接メンバー。[`orgs:`](configuration.md#orgorgsマルチテナントのサーバ-backend)
   を参照）だけがサインインでき、成功すると **viewer**（閲覧のみ）が付きます。`githubTeams` は粒度の細かい
   指定で、GitHub org 全体を通さずに 1 つの Team だけを通します。複数チームで共有している organization の
@@ -375,17 +376,20 @@ OAuth を構成すると、アクセスは手作業の login リストではな�
   このメンバーシップを config ファイルではなくデータベースが持ちます。最初の一度だけ同じ `orgs:` ブロック
   から書き写し、以後は Web UI から管理します（下の[複数 org](#複数-org)を参照）。どちらの構成でも、どの org
   がどの target を持つかは引き続き `orgs:` ブロックが決めます。
-- **editor** は org の `editorTeam` に従います。その 1 つのフラットな GitHub Team の直接メンバーが、run、record、
-  scenario の編集をできます。`editorTeam` は昇格させるだけでなくサインインも許すので、ここに挙げた Team を
-  `githubTeams` に重ねて書く必要はありません。
+- **editor** は org の `editorTeams` に従います。挙げたフラットな GitHub Team のいずれかの直接メンバーが、run、
+  record、scenario の編集をできます。`editorTeams` は昇格させるだけでなくサインインも許すので、ここに挙げた
+  Team を `githubTeams` に重ねて書く必要はありません。1つの Team ではなくリストを持つのは、複数の GitHub
+  organization にまたがる org が organization ごとの書き込み Team を挙げられるようにするためです。旧来の
+  単数形 `editorTeam` を書いた config もそのまま動きます。`serve` がそのキーを `editorTeams` に畳み込む
+  からです。ただし、文書に載るのは複数形だけなので、名前は変更してください。
 - **admin** はサーバ全体で 1 つ以上の GitHub Team、`BAJUTSU_OAUTH_ADMIN_TEAMS`（カンマ区切りのリスト。各要素は
   `"<github-org>/<team-slug>"` の形で、`<team-slug>` は GitHub 自身が小文字化した slug であり、Team の
-  表示名ではありません。`githubTeams` や `editorTeam` と同様、各エントリは 1 つのフラットな Team を指し、
+  表示名ではありません。`githubTeams` や `editorTeams` と同様、各エントリは 1 つのフラットな Team を指し、
   その下にネストした Team は一致しません。また、GitHub が org login と Team slug を大文字小文字の区別なく
   解決するのに合わせて、大文字小文字を区別せずに比較します）に従います。そのメンバーはサーバ設定（config、API キー、provider）も変更
   できます。admin はデプロイ全体で 1 段のロールなので、どの org を越えても信頼できるメンバーの Team だけを
   指定します。上の viewer と editor の場合とは異なり、構成済みの admin Team のいずれかのメンバーは、サインインのゲートを
-  直接通過します。admin Team を、どこかの org の `githubTeams` や `editorTeam` に挙げる必要も、その
+  直接通過します。admin Team を、どこかの org の `githubTeams` や `editorTeams` に挙げる必要も、その
   organization を `githubOrgs` に含める必要も、そのメンバーを `members` に列挙する必要もありません。そのため、`orgs:` ブロックが壊れている、あるいは
   存在しない状態でも、admin はサインインして、サーバの向き先を修正済みの config へ張り替えられます。
   ただし、この経路も GitHub の Teams API の障害までは越えられません。`/user/teams` は fail closed
@@ -400,11 +404,11 @@ OAuth を構成すると、アクセスは手作業の login リストではな�
 `read:org` scope を要求するので、同意画面には organization へのアクセスが表示されます。
 
 **ログインリストからの移行にあたって。** ロールの由来が変わること以外にも、2 点変わります。1 つ目は、サインインが
-今後は構成済みの `members`／`githubOrgs`／`githubTeams`／`editorTeam` の**全員**を通すようになることです。旧来の `BAJUTSU_OAUTH_ALLOWED_USERS`
+今後は構成済みの `members`／`githubOrgs`／`githubTeams`／`editorTeams` の**全員**を通すようになることです。旧来の `BAJUTSU_OAUTH_ALLOWED_USERS`
 がその org の全メンバーより狭い範囲を許可していたなら、切り替え前に `orgs:` を絞ってください。org のゲートだけに
 なると、その分アクセスが広がります。2 つ目は、`BAJUTSU_OAUTH_ALLOWED_USERS`／`_ADMINS`／`_VIEWERS` が単純に無視さ
 れるようになることです。切り替える前に、admin と editor のそれぞれを Team メンバーシップとして宣言し直してくだ
-さい。`editorTeam` や `BAJUTSU_OAUTH_ADMIN_TEAMS` でまだカバーされていない login は、次のログインで viewer に
+さい。`editorTeams` や `BAJUTSU_OAUTH_ADMIN_TEAMS` でまだカバーされていない login は、次のログインで viewer に
 落ちます。すでに旧来の単数形 `BAJUTSU_OAUTH_ADMIN_TEAM` を設定していたデプロイは、同じタイミングで
 `BAJUTSU_OAUTH_ADMIN_TEAMS` に改名してください。旧名はもう読まれません。`serve` は、次の 4 つの
 いずれかに当てはまるとき、起動時に stderr へ警告を出します。廃止名がまだ設定されているとき、
@@ -651,13 +655,13 @@ orgs:
 GitHub 許可リストがアクセス境界です。フルマネージドの公開クラウド提供（ホスト型の Mac ワーカープール＋IaC）は
 BE-0015 で今後の作業です。
 
-**データベースを繋いだら、org を Web UI から管理する。** `BAJUTSU_DATABASE_URL` を設定した backend は、各 org のメンバーシップをそのデータベースに持ちます。config ファイルが持つのをやめる対象は `members`、`githubOrgs`、`githubTeams`、`editorTeam` の4つです。これにより、テナントを1つ増やす作業にも、チームの書き込み権限を別の GitHub Team へ移す作業にも、config の編集と再デプロイが要らなくなります（[BE-0375](../../roadmaps/BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management-ja.md)）。admin には Web UI に **Orgs** ページが現れ、その裏では admin 専用の4つのエンドポイントが動きます。
+**データベースを繋いだら、org を Web UI から管理する。** `BAJUTSU_DATABASE_URL` を設定した backend は、各 org のメンバーシップをそのデータベースに持ちます。config ファイルが持つのをやめる対象は `members`、`githubOrgs`、`githubTeams`、`editorTeams` の4つです。これにより、テナントを1つ増やす作業にも、チームの書き込み権限を別の GitHub Team へ移す作業にも、config の編集と再デプロイが要らなくなります（[BE-0375](../../roadmaps/BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management-ja.md)）。admin には Web UI に **Orgs** ページが現れ、その裏では admin 専用の4つのエンドポイントが動きます。
 
 | リクエスト | 動作 |
 |---|---|
 | `GET /api/orgs` | 生存している org を、そのメンバーシップと project 数とともに一覧します。 |
 | `POST /api/orgs` | `{"slug": "...", "name": "..."}` から org を作ります。メンバーは**空**なので、メンバーシップを設定するまで誰もサインインできません。 |
-| `POST /api/orgs/<slug>/membership` | `{"members": [...], "githubOrgs": [...], "githubTeams": [...], "editorTeam": "..."}` を1つの単位として置き換えます。 |
+| `POST /api/orgs/<slug>/membership` | `{"members": [...], "githubOrgs": [...], "githubTeams": [...], "editorTeams": [...]}` を1つの単位として置き換えます。 |
 | `DELETE /api/orgs/<slug>` | org を廃止し、その org としてセッションを持っている全員をサインアウトさせます。project を持っている間は拒否し、`default` は常に拒否します。 |
 
 4つとも監査ログに記録します。`default` は3つの変更操作すべてで予約されています。作成も、メンバーシップの置き換えも、廃止も、この slug に対しては拒否します。未一致のサインインが落ちる先の org であり、admin Team の迂回で入った admin も全員ここに入るからです。ここに実在のテナントを置けば、admin が復旧に使う名前空間を奪います。名簿を与える操作も同じことです。login をある org に置くのはメンバーシップだからです。ただし一覧には、フォールバックである旨を添えて**表示します**。迂回で入った admin 自身がここにいるので、隠すとその admin の run や secret や証跡がどこに落ちるかも見えなくなります。org の削除は soft delete です。サインインを受け付けなくなり一覧からも消え、同時に、そのメンバーがすでに持っているセッションもすべて失効します。廃止前に発行された cookie で、そのテナントとして振る舞い続ける人が残らないようにするためです。その org の run と監査記録は引き続き参照できます。admin の操作が取り上げるのはテナントの行動能力であって、そのテナントがすでに行ったことの記録ではないからです。slug も予約されたままなので、同じ名前で作り直すことはできません。
@@ -672,7 +676,7 @@ BE-0015 で今後の作業です。
 
 移行に伴って意図的に変わる点が2つあります。1つは、config が読めない状態でも、bind されていない状態でも、誰も拒否しなくなることです。サインインを決めるのがデータベースだけになるからです。もう1つは、`serve` がデータベースを読めないときの答え方です。ユーザの GitHub メンバーシップのせいにする 403 ではなく、ストアを名指しする HTTP 503 でサインインに答えます。この 503 は `oauth.denied` ではなく、専用の `event=oauth.store_unavailable` として `WARNING` で記録します。誰も拒否されていませんし、拒否を対象にしたアラートが指すべきなのは GitHub 側の構成であって、ストアの障害ではないからです。
 
-3つ目の変化は、2つの org が同じ相手を挙げている場合にだけ現れます。`githubOrgs` に同じ GitHub organization を挙げているか、`githubTeams` や `editorTeam` に同じ Team を挙げている場合です。明示の `members` に載っていない login は、その条件を満たす最初の org に解決されますが、この「最初」が `orgs:` ブロックでは宣言順、データベースでは slug 順です。どちらも安定しているので、同じ login は毎回同じ org に入りますが、この重なりを持つデプロイでは、移行のときに一度だけ解決先が動くことがあります。複数の org に属する login が、そのどれとして振る舞うかを選ぶ手段は、現時点ではありません。
+3つ目の変化は、2つの org が同じ相手を挙げている場合にだけ現れます。`githubOrgs` に同じ GitHub organization を挙げているか、`githubTeams` や `editorTeams` に同じ Team を挙げている場合です。明示の `members` に載っていない login は、その条件を満たす最初の org に解決されますが、この「最初」が `orgs:` ブロックでは宣言順、データベースでは slug 順です。どちらも安定しているので、同じ login は毎回同じ org に入りますが、この重なりを持つデプロイでは、移行のときに一度だけ解決先が動くことがあります。複数の org に属する login が、そのどれとして振る舞うかを選ぶ手段は、現時点ではありません。
 
 **最初の org をどう作るか。** 新品のデータベースには org が1つもないので、サインインのゲートには誰も一致しません。構成済みの `BAJUTSU_OAUTH_ADMIN_TEAMS` の Team のメンバーは、org がいくつあるかにかかわらずこのゲートを通過します（上の [GitHub OAuth を足す](#2-github-oauth-を足す任意)を参照）。そのメンバーが admin としてサインインし、Orgs ページから最初の1つを作ります。
 

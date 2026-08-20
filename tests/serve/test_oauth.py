@@ -32,7 +32,7 @@ orgs:
   acme:
     members: [alice]
     githubOrgs: [acme-gh]
-    editorTeam: acme-gh/scenario-maintainers
+    editorTeams: [acme-gh/scenario-maintainers]
     targets: [demo]
 """
 
@@ -292,7 +292,7 @@ def test_oauth_callback_editor_team_membership_promotes_to_editor(
 
 
 # An `orgs:` block whose only roster is a Team: `qa` admits a Team directly, `writers` admits
-# through its `editorTeam` alone. Neither declares a member or a GitHub org, so a login reaching
+# through its `editorTeams` alone. Neither declares a member or a GitHub org, so a login reaching
 # either one got there on Team membership and nothing else.
 _TEAM_ORGS_YAML = """
 targets:
@@ -303,7 +303,7 @@ orgs:
     githubTeams: [acme-gh/qa]
     targets: [demo]
   writers:
-    editorTeam: acme-gh/scenario-maintainers
+    editorTeams: [acme-gh/scenario-maintainers]
 """
 
 
@@ -330,7 +330,7 @@ def test_oauth_callback_admits_a_team_only_login_into_its_team_s_org(
 def test_oauth_callback_admits_a_login_through_the_editor_team_alone(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
-    # `writers` declares nothing but an `editorTeam`, so that Team is its whole roster: frank signs
+    # `writers` declares nothing but `editorTeams`, so that Team is its whole roster: frank signs
     # in on it and lands in `writers` as an editor -- "may write but cannot log in" is not a state
     # this configuration can express.
     state, _ = _db_state(
