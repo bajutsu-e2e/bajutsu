@@ -280,6 +280,9 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > writes `manifest.json`, `report.html`, and the JUnit XML the way it does for any other failing run.
 > An operator who cancels early in a long suite therefore sees every scenario that never got to run
 > counted as a failure too, the accepted consequence of treating a cancelled run as failed at all.
+> The event is read at one boundary beyond those three: where a backend crash would otherwise trigger
+> a fresh cold respawn (the retry above), because that bring-up can outlive the grace window below and
+> so leave the run killed before it wrote anything.
 >
 > The shutdown stays bounded, with or without a canceller watching. A scenario blocked inside a
 > single driver call notices the request only once that call returns — an XCUITest HTTP request, an
