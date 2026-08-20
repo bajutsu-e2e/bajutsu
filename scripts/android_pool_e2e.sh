@@ -114,11 +114,14 @@ echo "Second emulator ready: $SECOND_SERIAL (first: $first_serial)"
 make -C demos/showcase/android e2e-pool SERIALS="${first_serial},${SECOND_SERIAL}"
 rc=$?
 
-# The isolation verdict, only over a run that produced a manifest — a run that died earlier has
-# already failed the job, and asserting over a directory it never wrote would bury that failure under
-# a parse error. Every run id is a zero-padded UTC timestamp (BE-0200) and this script runs `bajutsu
-# run` exactly once, so the shape resolves to exactly one directory; `runs/` also holds the
-# diagnostics directory, which the shape excludes by construction.
+# The isolation verdict, only over a run that finished green — a run that died earlier has already
+# failed the job, and asserting over it would stack a second, false verdict on the first: scenarios
+# that never ran leave the device count legitimately short, which this check would report as the pool
+# failing to share the work out. So a scenario-level failure here yields *no* isolation verdict, and a
+# red job is only a measurement of the pool when the error line comes from this script. Every run id is
+# a zero-padded UTC timestamp (BE-0200) and this script runs `bajutsu run` exactly once, so the shape
+# resolves to exactly one directory; `runs/` also holds the diagnostics directory, which the shape
+# excludes by construction.
 if [ "$rc" -eq 0 ]; then
   shopt -s nullglob
   dirs=(runs/[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9])
