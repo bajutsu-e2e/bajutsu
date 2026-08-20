@@ -291,6 +291,81 @@ def test_oauth_callback_editor_team_membership_promotes_to_editor(
     assert _role_after_login(state, "alice") == "editor"
 
 
+# An `orgs:` block whose only roster is a Team: `qa` admits a Team directly, `writers` admits
+# through its `editorTeam` alone. Neither declares a member or a GitHub org, so a login reaching
+# either one got there on Team membership and nothing else.
+_TEAM_ORGS_YAML = """
+targets:
+  demo: { bundleId: com.example.demo }
+
+orgs:
+  qa:
+    githubTeams: [acme-gh/qa]
+    targets: [demo]
+  writers:
+    editorTeam: acme-gh/scenario-maintainers
+"""
+
+
+def test_oauth_callback_admits_a_team_only_login_into_its_team_s_org(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # A `githubTeams` entry is a sign-in axis of its own: erin is in nobody's `members` and no
+    # `githubOrgs` list, and GitHub reports no org for her at all, yet her Team places her in `qa`.
+    state, _ = _db_state(
+        serve_engine,
+        tmp_path,
+        FakeOAuthClient(login="erin", orgs=[], teams=["acme-gh/qa"]),
+        config=_config_file(tmp_path, _TEAM_ORGS_YAML),
+    )
+    _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
+    assert status == 200 and sid is not None
+    assert state.repository is not None
+    # Placed in the org that admitted her, not the `default` fallback -- being admitted by one org
+    # and filed under another would give her another tenant's targets and object-storage prefix.
+    assert state.repository.user_org("erin") == "qa"
+    assert state.repository.user_role("erin") == "viewer"
+
+
+def test_oauth_callback_admits_a_login_through_the_editor_team_alone(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # `writers` declares nothing but an `editorTeam`, so that Team is its whole roster: frank signs
+    # in on it and lands in `writers` as an editor -- "may write but cannot log in" is not a state
+    # this configuration can express.
+    state, _ = _db_state(
+        serve_engine,
+        tmp_path,
+        FakeOAuthClient(login="frank", orgs=[], teams=["acme-gh/scenario-maintainers"]),
+        config=_config_file(tmp_path, _TEAM_ORGS_YAML),
+    )
+    assert _role_after_login(state, "frank") == "editor"
+    assert state.repository is not None
+    assert state.repository.user_org("frank") == "writers"
+
+
+def test_oauth_callback_denies_a_team_only_login_whose_teams_github_withheld(
+    serve_engine: Callable[..., Engine], tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # `_fetch_teams` fails closed -- it never invents a Team -- so a login whose only roster is a
+    # Team is denied while `/user/teams` is down. Fail-closed is the right direction for a gate, but
+    # the denial must name what GitHub withheld, or an operator edits a roster that was never wrong.
+    state, _ = _db_state(
+        serve_engine,
+        tmp_path,
+        FakeOAuthClient(login="erin", orgs=[], teams=[]),
+        config=_config_file(tmp_path, _TEAM_ORGS_YAML),
+    )
+    with caplog.at_level(logging.INFO):
+        _payload, status, sid = ops.oauth_callback(
+            state, code="ok", state_param="s", state_cookie="s"
+        )
+    assert status == 403
+    assert sid is None
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
+    assert "GitHub returned no orgs or teams for this login" in record.getMessage()
+
+
 def test_oauth_callback_admin_team_membership_promotes_to_admin(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:

@@ -133,6 +133,74 @@ def test_editor_team_parses_from_editor_team_alias() -> None:
     assert plain["acme"].editor_team is None
 
 
+TEAM_YAML = """
+targets:
+  demo: { bundleId: com.example.demo }
+
+orgs:
+  acme:
+    githubOrgs: [acme-gh]
+    targets: [demo]
+  globex:
+    githubTeams: [globex-gh/qa, globex-gh/ops]
+  initech:
+    editorTeam: initech-gh/scenario-maintainers
+"""
+
+
+def test_github_teams_admit_and_place_a_login() -> None:
+    # A Team membership is a sign-in axis of its own: nobody in globex's `githubOrgs` (it declares
+    # none) and no explicit member, yet a direct member of one of its Teams belongs to it.
+    _, orgs = load_serve_config(TEAM_YAML)
+    assert identity_matches_org(orgs, "erin", [], ["globex-gh/ops"]) is True
+    # Admitted *into globex*, not the default fallback — the gate and the placement read one ranking,
+    # so a login admitted through a Team is never filed somewhere its Team does not appear.
+    assert org_for_identity(orgs, "erin", [], ["globex-gh/ops"]) == "globex"
+    # An unlisted Team is no membership at all.
+    assert identity_matches_org(orgs, "erin", [], ["globex-gh/interns"]) is False
+    assert org_for_identity(orgs, "erin", [], ["globex-gh/interns"]) == "default"
+
+
+def test_editor_team_also_admits_a_login() -> None:
+    # initech declares no members and no githubOrgs, so its editorTeam is its whole roster: a Team
+    # whose members may write is a Team whose members may sign in.
+    _, orgs = load_serve_config(TEAM_YAML)
+    teams = ["initech-gh/scenario-maintainers"]
+    assert identity_matches_org(orgs, "frank", [], teams) is True
+    assert org_for_identity(orgs, "frank", [], teams) == "initech"
+
+
+def test_team_matching_is_case_insensitive() -> None:
+    # GitHub resolves an org login and a Team slug case-insensitively, and `identity.teams` reports
+    # GitHub's own casing — so a config written in another case must not lock its Team out.
+    _, orgs = load_serve_config(TEAM_YAML)
+    assert identity_matches_org(orgs, "erin", [], ["Globex-GH/QA"]) is True
+    assert org_for_identity(orgs, "erin", [], ["Globex-GH/QA"]) == "globex"
+
+
+def test_a_nested_team_does_not_match_its_parent() -> None:
+    # `/user/teams` lists a child Team distinct from its parent, and matching is exact on the whole
+    # `"<github-org>/<team-slug>"`, so a Team nested under a listed one is not admitted by it.
+    _, orgs = load_serve_config(TEAM_YAML)
+    assert identity_matches_org(orgs, "erin", [], ["globex-gh/qa/nested"]) is False
+
+
+def test_teams_never_relocate_a_login_an_org_axis_already_placed() -> None:
+    # Teams rank last, so declaring one cannot move a login some `members`/`githubOrgs` entry
+    # already claimed — adding an axis must not silently re-file existing users.
+    _, orgs = load_serve_config(TEAM_YAML)
+    assert org_for_identity(orgs, "dave", ["acme-gh"], ["globex-gh/qa"]) == "acme"
+
+
+def test_github_teams_parse_from_the_github_teams_alias() -> None:
+    _, orgs = load_serve_config(TEAM_YAML)
+    assert orgs["globex"].github_teams == ["globex-gh/qa", "globex-gh/ops"]
+    # Absent by default, and `admitting_teams` unions the two Team fields.
+    assert orgs["acme"].github_teams == []
+    assert orgs["acme"].admitting_teams() == []
+    assert orgs["initech"].admitting_teams() == ["initech-gh/scenario-maintainers"]
+
+
 def test_malformed_orgs_block_fails_loudly() -> None:
     # An `orgs:` that isn't a mapping (org name -> config) is a config error, not silently ignored.
     with pytest.raises(ValueError, match="orgs: must be a mapping"):
