@@ -604,7 +604,8 @@ def seed_orgs_from_bound_config(state: ServeState) -> None:
         oplog.log_event(
             logging.getLogger(__name__),
             "org.membership.ignored",
-            "these orgs: entries still declare members/githubOrgs/editorTeam, which the database "
+            "these orgs: entries still declare members/githubOrgs/githubTeams/editorTeam, which "
+            "the database "
             f"now owns and this deployment no longer reads: {sorted(ignored)} — pare each entry "
             "down to targets: only, and edit membership on the Orgs page instead (an org already "
             "retired there is gone from the page, so paring its entry is all that is left to do)",
