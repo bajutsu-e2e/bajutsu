@@ -23,6 +23,7 @@ from scripts.e2e_changes import (
     _LANE_SCENARIO_PATHS,
     _MAKEFILE_JOB_TARGETS,
     _PERIPHERY_EXCLUSIONS,
+    _POOL_PATHS,
     _RUN_PATH,
     _makefile_target_scenarios,
     affected_jobs,
@@ -35,6 +36,7 @@ from scripts.e2e_changes import (
     main,
     makefile_job_scenarios,
     showcase_makefile_text,
+    touches_pool,
 )
 
 
@@ -701,7 +703,7 @@ def test_every_plain_literal_path_in_the_filter_exists() -> None:
     # route. Checking the patterns against the real tree turns that into a `make check` failure on the
     # PR doing the rename.
     checked = 0
-    for label, pattern in [("shared", _RUN_PATH), *_LANE_PATHS.items()]:
+    for label, pattern in [("shared", _RUN_PATH), ("pool", _POOL_PATHS), *_LANE_PATHS.items()]:
         for candidate in _plain_literal_paths(pattern.removeprefix("|")):
             target = _REPO_ROOT / candidate
             if candidate.endswith("/"):
@@ -735,8 +737,8 @@ def test_main_respects_the_e2e_lane_env(tmp_path: Path, monkeypatch: pytest.Monk
     pr_tip = _commit(tmp_path, "BajutsuAndroid/src/Clipboard.kt", "android app SDK only")
 
     for lane, expected in (
-        ("android", "relevant=true\nshared=true\naffected=[]\n"),
-        ("web", "relevant=false\nshared=false\naffected=[]\n"),
+        ("android", "relevant=true\nshared=true\naffected=[]\npool=false\n"),
+        ("web", "relevant=false\nshared=false\naffected=[]\npool=false\n"),
     ):
         output = tmp_path / f"github_output_{lane}"
         monkeypatch.setenv("E2E_LANE", lane)
@@ -831,7 +833,9 @@ def test_main_workflow_dispatch_is_always_relevant(
     output = tmp_path / "github_output"
     monkeypatch.setenv("GITHUB_OUTPUT", str(output))
     assert main() == 0
-    assert output.read_text(encoding="utf-8") == "relevant=true\nshared=true\naffected=[]\n"
+    assert (
+        output.read_text(encoding="utf-8") == "relevant=true\nshared=true\naffected=[]\npool=true\n"
+    )
 
 
 def test_main_emits_false_for_a_roadmap_only_pr(
@@ -851,7 +855,100 @@ def test_main_emits_false_for_a_roadmap_only_pr(
     monkeypatch.setenv("HEAD_SHA", pr_tip)
     monkeypatch.setenv("GITHUB_OUTPUT", str(output))
     assert main() == 0
-    assert output.read_text(encoding="utf-8") == "relevant=false\nshared=false\naffected=[]\n"
+    assert (
+        output.read_text(encoding="utf-8")
+        == "relevant=false\nshared=false\naffected=[]\npool=false\n"
+    )
+
+
+# --- The concurrent-device pool filter (BE-0298) --------------------------------------------------
+# The two-device jobs boot twice what every other job on a lane boots, on the metered macOS runner,
+# and nothing else on any lane can observe what they check. So they are keyed on a narrower surface
+# than `shared`: `touches_pool` is that surface, conjoined with the lane's own relevance.
+
+
+def test_pool_fires_on_the_parallel_run_surface() -> None:
+    for path in (
+        "bajutsu/runner/pool.py",
+        "bajutsu/runner/pipeline.py",
+        "bajutsu/platform_lifecycle/environments/xcuitest.py",
+        "bajutsu/evidence/core.py",
+        "bajutsu/evidence/sink.py",
+        "scripts/assert_pool_isolation.py",
+        ".github/actions/boot-simulator/action.yml",
+        ".github/actions/bajutsu-e2e/action.yml",
+    ):
+        assert touches_pool([path]) is True, path
+
+
+def test_pool_does_not_fire_on_a_relevant_change_off_that_surface() -> None:
+    # The whole point of the narrower key: an ordinary driver or scenario change fires the lane's
+    # single-device jobs (`is_relevant` stays true) without paying for two booted Simulators.
+    for path in (
+        "bajutsu/drivers/xcuitest.py",
+        "demos/showcase/scenarios/smoke.yaml",
+        "demos/showcase/ios/swiftui/project.yml",
+    ):
+        assert is_relevant([path]) is True, path
+        assert touches_pool([path]) is False, path
+
+
+def test_pool_is_conjoined_with_the_lanes_own_relevance() -> None:
+    # `_POOL_PATHS` names both lanes' workflow files — and both lanes' two-device machinery — without
+    # distinguishing them, so the conjunction with `is_relevant` is what stops one lane's two-device
+    # job firing on the other lane's file.
+    assert touches_pool([".github/workflows/android-e2e.yml"], "android") is True
+    assert touches_pool([".github/workflows/android-e2e.yml"], "ios") is False
+    assert touches_pool([".github/workflows/ios-e2e.yml"], "ios") is True
+    assert touches_pool([".github/workflows/ios-e2e.yml"], "android") is False
+    assert touches_pool(["scripts/android_pool_e2e.sh"], "android") is True
+    assert touches_pool(["scripts/android_pool_e2e.sh"], "ios") is False
+    assert touches_pool(["demos/showcase/android/Makefile"], "android") is True
+    assert touches_pool(["demos/showcase/android/Makefile"], "ios") is False
+
+
+def test_a_pool_keyed_job_is_not_in_the_scenario_map() -> None:
+    # The two-device job names the scenarios it runs, but its `if:` reads `pool`, not `affected`.
+    # Leaving it in the map would attribute a scenario-only change to a job that boots two devices —
+    # and would credit it with an `affected` entry no guard consults, which the guard/map equality
+    # test below would read as a rename that lost its guard.
+    text = lane_workflow_text("ios")
+    assert text is not None
+    assert "demos/showcase/scenarios/smoke.yaml" in text
+    assert "pool" not in job_scenario_map(text)
+
+
+def test_a_pool_keyed_job_is_dropped_even_where_it_declares_scenarios() -> None:
+    workflow = """\
+jobs:
+  run:
+    if: needs.changes.outputs.relevant == 'true'
+    steps:
+      - uses: ./.github/actions/bajutsu-e2e
+        with:
+          scenarios: demos/showcase/scenarios/smoke.yaml
+  pool:
+    if: >-
+      needs.changes.outputs.relevant == 'true' &&
+      needs.changes.outputs.pool == 'true'
+    steps:
+      - uses: ./.github/actions/bajutsu-e2e
+        with:
+          scenarios: demos/showcase/scenarios/smoke.yaml
+"""
+    assert job_scenario_map(workflow) == {"run": {"demos/showcase/scenarios/smoke.yaml"}}
+
+
+def test_pool_does_not_fire_on_an_irrelevant_change() -> None:
+    assert touches_pool(["roadmaps/README.md", "docs/architecture.md"]) is False
+    assert touches_pool([]) is False
+
+
+def test_pool_raises_on_an_unknown_lane() -> None:
+    # Same reasoning as `is_relevant`: E2E_LANE is a hard-coded literal, so a typo must fail the
+    # `changes` job rather than silently substitute another lane's filter.
+    with pytest.raises(ValueError, match="Unknown E2E lane"):
+        touches_pool(["bajutsu/runner/pool.py"], "andorid")
 
 
 # --- Change classification (BE-0322) -------------------------------------------------------------
@@ -1374,7 +1471,7 @@ def test_main_narrows_a_scenario_only_ios_change_to_the_affected_jobs(
     monkeypatch.setenv("GITHUB_OUTPUT", str(output))
     assert main() == 0
     assert output.read_text(encoding="utf-8") == (
-        'relevant=true\nshared=false\naffected=["codegen", "run"]\n'
+        'relevant=true\nshared=false\naffected=["codegen", "run"]\npool=false\n'
     )
 
 
@@ -1396,7 +1493,7 @@ def test_main_narrows_a_shared_scenario_to_every_job_that_declares_it(
     monkeypatch.setenv("GITHUB_OUTPUT", str(output))
     assert main() == 0
     assert output.read_text(encoding="utf-8") == (
-        'relevant=true\nshared=false\naffected=["bundled-runner", "run"]\n'
+        'relevant=true\nshared=false\naffected=["bundled-runner", "run"]\npool=false\n'
     )
 
 
@@ -1418,7 +1515,10 @@ def test_main_falls_back_to_the_whole_fleet_for_an_unattributable_scenario(
     monkeypatch.setenv("HEAD_SHA", pr_tip)
     monkeypatch.setenv("GITHUB_OUTPUT", str(output))
     assert main() == 0
-    assert output.read_text(encoding="utf-8") == "relevant=true\nshared=true\naffected=[]\n"
+    assert (
+        output.read_text(encoding="utf-8")
+        == "relevant=true\nshared=true\naffected=[]\npool=false\n"
+    )
 
 
 def test_main_keeps_the_android_lane_whole_fleet_on_a_scenario_change(
@@ -1440,7 +1540,10 @@ def test_main_keeps_the_android_lane_whole_fleet_on_a_scenario_change(
     monkeypatch.setenv("HEAD_SHA", pr_tip)
     monkeypatch.setenv("GITHUB_OUTPUT", str(output))
     assert main() == 0
-    assert output.read_text(encoding="utf-8") == "relevant=true\nshared=true\naffected=[]\n"
+    assert (
+        output.read_text(encoding="utf-8")
+        == "relevant=true\nshared=true\naffected=[]\npool=false\n"
+    )
 
 
 def test_main_narrows_a_codegen_scenario_change_to_the_codegen_job(
@@ -1463,7 +1566,8 @@ def test_main_narrows_a_codegen_scenario_change_to_the_codegen_job(
     monkeypatch.setenv("GITHUB_OUTPUT", str(output))
     assert main() == 0
     assert (
-        output.read_text(encoding="utf-8") == 'relevant=true\nshared=false\naffected=["codegen"]\n'
+        output.read_text(encoding="utf-8")
+        == 'relevant=true\nshared=false\naffected=["codegen"]\npool=false\n'
     )
 
 
@@ -1485,5 +1589,6 @@ def test_main_narrows_a_visual_scenario_change_to_the_visual_job(
     monkeypatch.setenv("GITHUB_OUTPUT", str(output))
     assert main() == 0
     assert (
-        output.read_text(encoding="utf-8") == 'relevant=true\nshared=false\naffected=["visual"]\n'
+        output.read_text(encoding="utf-8")
+        == 'relevant=true\nshared=false\naffected=["visual"]\npool=false\n'
     )

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0298](BE-0298-device-pool-concurrent-real-verification.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0298") |
+| Implementing PR | [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) |
 | Topic | Verification & coverage |
 | Related | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) |
 <!-- /BE-METADATA -->
@@ -69,10 +70,40 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Boot two real devices concurrently — Simulators in `ios-e2e.yml`, emulators in
+- [x] Boot two real devices concurrently — Simulators in `ios-e2e.yml`, emulators in
   `android-e2e.yml` (resources permitting) — and run `--workers 2` against both.
-- [ ] Assert per-worker isolation of `udid` and the `run_dir/<scenario_id>` subdirectory.
-- [ ] Land non-gating first, promote once stable.
+- [x] Assert per-worker isolation of `udid` and the `run_dir/<scenario_id>` subdirectory.
+- [x] Land non-gating first.
+- [ ] Promote each lane to required once stable.
+
+Log:
+
+- [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) — landed both lanes as non-gating
+  signals, plus the assertion they gate on. **The assertion:**
+  `scripts/assert_pool_isolation.py` reads the finished run's `manifest.json` and the run directory's
+  own subdirectory listing and fails on five distinct violations — an artifact recorded under another
+  worker's slug, two results sharing one slug, a subdirectory no result claims, one device having
+  taken every scenario, and no two scenarios on different devices having overlapped in wall-clock.
+  The last one is what stops a lane passing without ever having produced contention: two devices and
+  four scenarios yield two distinct udids even if the pool alternated them serially, so the check
+  derives each scenario's window from its steps' own absolute `started_at` (manifest v6) and requires
+  a genuine cross-device overlap. Every violation has a unit test
+  (`tests/test_assert_pool_isolation.py`), including the case a same-device overlap must *not*
+  satisfy. **iOS:** `pool (xcuitest)` boots two Simulators (a new `exclude-udid` input on the
+  `boot-simulator` action is what makes the second one a different device — without it the action's
+  reuse branch returns the first, and `--udid "$A,$A"` would pass every check for the wrong reason)
+  and runs smoke / search / notices / navigation through one `bajutsu run --workers 2`. **Android:**
+  `pool (adb)` boots a second instance of its cached AVD with `-read-only`, from inside the
+  emulator-runner's own step, since that action has no two-emulator mode and its emulator lives only
+  for that step's length (`scripts/android_pool_e2e.sh`, `make -C demos/showcase/android e2e-pool`);
+  both instances run at `-memory 3072 -cores 1`, which is why the job keeps its own AVD cache key — a
+  resumed snapshot's machine config must match the one it was saved with. **The change filter:** both
+  jobs are keyed on a new `pool` output from `scripts/e2e_changes.py` (`touches_pool`), narrower than
+  the lane-wide signal every other job reads, so an ordinary `bajutsu/` change does not pay
+  for two booted devices; a `workflow_dispatch` fires them too, which is how they are exercised on
+  demand. **DESIGN.md §3.3** was realigned in the same change (BE-0113): its "a `runs/<runId>` per
+  worker" wording predated the shared run directory this item's own Introduction describes, and its
+  "`--udid` pins a single device" line contradicted the comma list this lane depends on.
 
 ## References
 

@@ -37,6 +37,14 @@ the lane (``ios`` — the default — / ``android`` / ``web``); it writes ``rele
 ``GITHUB_OUTPUT``. An empty ``BASE_SHA`` (a manual ``workflow_dispatch`` with no PR context) always
 counts as relevant.
 
+A fourth output, ``pool``, keys the concurrent-device jobs BE-0298 adds. Those jobs boot **two** real
+devices, which on the metered macOS runner is the lane's most expensive and most environment-sensitive
+work, and no other job on any lane can observe what they check — every other job boots one device, so
+the pool's cross-worker isolation is invisible to it. So they are keyed on a surface narrower than
+``shared``: the code deciding how a run splits across devices and where each worker's evidence lands
+(``touches_pool``). It over-selects the same way every filter here does, and it is a conjunction with
+``relevant``, so a change to the *other* lane's workflow never fires this lane's pool job.
+
 BE-0322 narrows the fan-out for the one case it can prove safe: a change confined to a lane's
 scenario files fires only the jobs that declare a changed scenario, rather than the whole lane.
 Alongside ``relevant`` the module emits two more outputs the lane's jobs read: ``shared=true|false``
@@ -271,6 +279,10 @@ _LANE_PATHS: dict[str, str] = {
         r"|bajutsu/cli/commands/record\.py$"
         r"|tests/test_driver_conformance_ondevice\.py$"
         r"|tests/test_fault_injection_ondevice\.py$"
+        # The pool-isolation assertion the lane's two-device job gates on (BE-0298). Claimed per lane
+        # rather than swept into the shared core: only the iOS and Android lanes boot real devices, so
+        # the web lane never invokes it and must not re-run its whole fleet when it changes.
+        r"|scripts/assert_pool_isolation\.py$"
         r"|BajutsuKit/"
         r"|demos/showcase/ios/swiftui/"
         r"|demos/showcase/ios/uikit/"
@@ -306,6 +318,8 @@ _LANE_PATHS: dict[str, str] = {
         r"|BajutsuAndroidUIAutomatorServer/"  # the resident server this lane builds + exercises (BE-0245)
         r"|tests/test_driver_conformance_ondevice_android\.py$"
         r"|tests/test_fault_injection_ondevice_android\.py$"
+        # The pool-isolation assertion this lane's two-device job gates on — see the iOS fragment.
+        r"|scripts/assert_pool_isolation\.py$"
         r"|\.github/workflows/android-e2e\.yml$"
         r"|\.github/actions/setup-android-toolchain/"
         # The lane's own diagnostics collection (BE-0367): the host-telemetry action every job
@@ -313,6 +327,9 @@ _LANE_PATHS: dict[str, str] = {
         # Both run in every KVM job, so a break in either is only visible on this lane.
         r"|\.github/actions/collect-android-diagnostics/"
         r"|scripts/collect_android_diagnostics\.sh$"
+        # The script the lane's two-emulator job runs (BE-0298): it boots the second emulator and
+        # invokes the isolation assertion, so only this lane can exercise a change to it.
+        r"|scripts/android_pool_e2e\.sh$"
     ),
     "web": (
         r"|bajutsu/drivers/playwright\.py$"
@@ -335,6 +352,34 @@ _LANE_PATHS: dict[str, str] = {
         r"|\.github/workflows/web-e2e\.yml$"
     ),
 }
+
+# The parallel-run surface the concurrent-device `pool` jobs guard (BE-0298) — narrower than any
+# lane's own fragment above, because those jobs boot two devices where every other job boots one. It
+# holds the code that decides how a run splits across devices and where each worker's evidence lands:
+# the runner package (the pool itself, the pipeline that fans scenarios out to it), the whole
+# lifecycle package (a change to any device's bring-up or teardown changes what two concurrent leases
+# contend over), the two evidence modules that name a scenario's own directory, this module and the
+# assertion the jobs gate on, each lane's own two-device job definition, the Android job's own
+# two-emulator script, the `bajutsu-e2e` action whose `workers` / `diagnostics-udid` inputs only
+# these jobs pass, and the showcase Android Makefile holding the `e2e-pool` target that job runs.
+# Over-selects by directory, the same safe direction the sweep above takes.
+_POOL_PATHS = (
+    r"bajutsu/runner/"
+    r"|bajutsu/platform_lifecycle/"
+    r"|bajutsu/evidence/core\.py$"
+    r"|bajutsu/evidence/sink\.py$"
+    r"|scripts/assert_pool_isolation\.py$"
+    r"|scripts/e2e_changes\.py$"
+    r"|scripts/android_pool_e2e\.sh$"
+    r"|\.github/workflows/ios-e2e\.yml$"
+    r"|\.github/workflows/android-e2e\.yml$"
+    r"|\.github/actions/bajutsu-e2e/"
+    r"|\.github/actions/boot-simulator/"
+    r"|\.github/actions/setup-android-toolchain/"
+    r"|demos/showcase/android/Makefile$"
+)
+
+_POOL_RE = re.compile(r"^(?:" + _POOL_PATHS + r")")
 
 # One path is enough to trigger; anchored at the start of each path. Compiled once per lane so the
 # positive-list reads as a single source of truth.
@@ -373,6 +418,10 @@ _JOBS_HEADER_RE = re.compile(r"^jobs:\s*(?:#.*)?$")
 _TOP_LEVEL_KEY_RE = re.compile(r"^[^\s#]")
 _JOB_ID_RE = re.compile(r"^  ([A-Za-z0-9_-]+):\s*(?:#.*)?$")
 _SCENARIOS_INPUT_RE = re.compile(r"^\s+scenarios:\s*(.*?)\s*(?:#.*)?$")
+# A job's `if:` reading the `pool` output — the mark of a two-device job, which names its scenarios
+# without being keyed on them (BE-0298). Matched anywhere in the job's block, since the guard is a
+# folded scalar spanning lines.
+_POOL_GUARD_RE = re.compile(r"needs\.changes\.outputs\.pool")
 # A single unquoted scenario path — the only form these workflows use. A `scenarios:` value that is
 # quoted, a block scalar (`|` / `>`), or a multi-item list matches neither and is rejected below, so
 # the scanner fails loud into the caller's whole-fleet fallback rather than mis-parsing it silently.
@@ -402,6 +451,21 @@ def is_relevant(paths: Iterable[str], lane: str = DEFAULT_LANE) -> bool:
     """
     pattern = _lane_re(lane)
     return any(pattern.match(p) for p in paths)
+
+
+def touches_pool(paths: Iterable[str], lane: str = DEFAULT_LANE) -> bool:
+    """Whether ``lane``'s concurrent-device job should run for this change (BE-0298).
+
+    A conjunction: the change must be relevant to the lane at all *and* touch the parallel-run
+    surface. The conjunction is what keeps one lane's two-device job from firing on the other lane's
+    workflow file, which ``_POOL_PATHS`` names without distinguishing. Only the iOS and Android lanes
+    have a two-device job — a web lane's parallel workers are ``BrowserContext`` lanes with no device
+    to contend over (BE-0054) — so the web lane's ``pool`` output is emitted and simply unread.
+
+    Raises:
+        ValueError: ``lane`` is unknown — see ``_lane_re``.
+    """
+    return is_relevant(paths, lane) and any(_POOL_RE.match(path) for path in paths)
 
 
 def classify_change(paths: Iterable[str], lane: str = DEFAULT_LANE) -> str:
@@ -435,6 +499,13 @@ def job_scenario_map(workflow_text: str) -> dict[str, set[str]]:
     valid. A line scan keeps the caller on the standard library (the ``changes`` job runs a bare
     ``python3`` with no PyYAML); the format is regular block YAML pinned by the tests.
 
+    A job guarded on ``needs.changes.outputs.pool`` is dropped even when it declares scenarios
+    (BE-0298). The two-device jobs name the scenarios they run, but they are not *keyed* on them:
+    editing one of those files must not fire a job that boots two devices, and the job's own ``if:``
+    reads ``pool`` rather than ``affected``, so leaving it in the map would credit it with an
+    ``affected`` entry no guard ever consults — which the guard/map equality test would then read as
+    a rename that lost its guard.
+
     Raises:
         ValueError: the text has no ``jobs`` block; a ``scenarios:`` value is a quoted path, a list,
             or a literal block scalar (``|``); or a path in a folded block scalar (``>``/``>-``) is
@@ -442,6 +513,7 @@ def job_scenario_map(workflow_text: str) -> dict[str, set[str]]:
             trusting a mis-parsed map that would narrow the lane wrongly.
     """
     result: dict[str, set[str]] = {}
+    pool_keyed: set[str] = set()
     in_jobs = False
     current_job: str | None = None
     # When non-None, we're collecting path lines from a folded block scalar (`>-`/`>`).
@@ -472,6 +544,8 @@ def job_scenario_map(workflow_text: str) -> dict[str, set[str]]:
             break  # a new column-0 key ends the jobs block
         if job_match := _JOB_ID_RE.match(line):
             current_job = job_match.group(1)
+        elif current_job is not None and _POOL_GUARD_RE.search(line):
+            pool_keyed.add(current_job)
         elif current_job is not None and (scenario_match := _SCENARIOS_INPUT_RE.match(line)):
             value = scenario_match.group(1)
             if value in (">-", ">"):
@@ -483,6 +557,8 @@ def job_scenario_map(workflow_text: str) -> dict[str, set[str]]:
                 raise ValueError(f"unparseable `scenarios:` value {value!r} in job {current_job!r}")
     if not in_jobs:
         raise ValueError("workflow YAML has no `jobs` mapping")
+    for job in pool_keyed:
+        result.pop(job, None)
     return result
 
 
@@ -645,17 +721,19 @@ def changed_files(base: str, head: str) -> list[str]:
     return [line for line in out.stdout.splitlines() if line]
 
 
-def _emit(relevant: bool, shared: bool, affected: list[str]) -> None:
+def _emit(relevant: bool, shared: bool, affected: list[str], pool: bool) -> None:
     """Print the verdict and append it to ``GITHUB_OUTPUT`` when the workflow provides one.
 
     Emits the three outputs the lane's jobs read (BE-0322): ``relevant`` (run any metered job at
     all), ``shared`` (a shared-code change — fire the whole lane), and ``affected`` (a JSON array of
-    the scenario-keyed jobs a scenario-only change reached; empty unless the change was narrowed).
+    the scenario-keyed jobs a scenario-only change reached; empty unless the change was narrowed),
+    plus ``pool`` (the change reached the parallel-run surface, so the two-device job runs — BE-0298).
     """
     lines = [
         f"relevant={str(relevant).lower()}",
         f"shared={str(shared).lower()}",
         f"affected={json.dumps(affected)}",
+        f"pool={str(pool).lower()}",
     ]
     for line in lines:
         print(line)
@@ -669,8 +747,9 @@ def main() -> int:
     base = os.environ.get("BASE_SHA", "")
     head = os.environ.get("HEAD_SHA", "")
     if not base:
-        # workflow_dispatch: no PR context, so nothing to path-gate against — run the whole lane.
-        _emit(relevant=True, shared=True, affected=[])
+        # workflow_dispatch: no PR context, so nothing to path-gate against — run the whole lane,
+        # the two-device job included (a manual dispatch is how that job is exercised on demand).
+        _emit(relevant=True, shared=True, affected=[], pool=True)
         return 0
 
     changed = changed_files(base, head)
@@ -681,14 +760,19 @@ def main() -> int:
 
     kind = classify_change(changed, lane)
     if kind == "none":
-        _emit(relevant=False, shared=False, affected=[])
+        _emit(relevant=False, shared=False, affected=[], pool=False)
         return 0
 
     # A scenario-only change narrows to the jobs that declare a changed scenario; anything else — a
     # shared-code change, or a scenario-only change the workflow can't attribute (`None`) — fires the
     # whole lane, the safe over-selection.
     affected = _affected_or_fallback(changed, lane) if kind == "scenario-only" else None
-    _emit(relevant=True, shared=affected is None, affected=affected or [])
+    _emit(
+        relevant=True,
+        shared=affected is None,
+        affected=affected or [],
+        pool=touches_pool(changed, lane),
+    )
     return 0
 
 

@@ -106,10 +106,10 @@ Reporter (manifest.json + JUnit/CTRF/HTML + スクショ/録画)
 
 スループットは **Simulator を複数 boot して水平分割**することで稼ぎます。決定性は崩しません（各テストはクリーン環境と機械アサーションで完結し、状態を共有しないためです）。
 
-- **アイソレーション単位 = ワーカー**：各ワーカーは固有の `udid`（`simctl clone` 等）と固有の `runs/<runId>` を持ちます。これにより成果物の混線を避けます。`mocks` は in-protocol でアプリ内に閉じるため（§3.2）、ワーカー間で共有ポートを取り合いません
+- **アイソレーション単位 = ワーカー**：各ワーカーは固有の `udid`（`simctl clone` 等）を借り受けます。証跡の書き込み先は、run 全体で 1 つの `runs/<runId>` の下にある固有のサブディレクトリ `runs/<runId>/<scenarioId>` です。run ディレクトリは run に 1 つ、書き込み先はワーカーごとに別、という組み合わせが成果物の混線を防ぎます。`mocks` は in-protocol でアプリ内に閉じるため（§3.2）、ワーカー間で共有ポートを取り合いません
 - **ヘッドレス前提**：iOS Simulator はヘッドレスで動くため、N 台へ水平スケールできます（CI 向き）
-- **CLI**：`bajutsu run ... --workers N` です。既定は 1 です。`--udid` 明示時は単一デバイスに固定します
-- **不変条件**：並列でもシナリオ間で simulator / 索引 / モック状態を共有しません。共有が要る前提は `preconditions` で各テストが自前で構築します（§2）
+- **CLI**：`bajutsu run ... --workers N` です。既定は 1 です。`--udid` はデバイスのカンマ区切りリストを受け取り、`--workers` はそのリストの台数を上限として丸められます
+- **不変条件**：並列でもシナリオ間で simulator / 索引 / モック状態を共有しません。共有が要る前提は `preconditions` で各テストが自前で構築します（§2）。この不変条件は、デバイスを実際に 2 台同時に起動する CI レーンが検証します（[BE-0298](roadmaps/BE-0298-device-pool-concurrent-real-verification/BE-0298-device-pool-concurrent-real-verification-ja.md)）。fake driver に架空の udid を渡すユニットテストが示せるのは、プール自身の記帳の整合性までです。OS レベルの競合は、実際に 2 台のデバイスを同時に動かしたときにしか表面化しません
 
 ---
 

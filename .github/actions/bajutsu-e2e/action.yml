@@ -24,9 +24,30 @@ inputs:
     description: Target key in bajutsu.config.yaml.
     required: true
   udid:
-    description: Simulator UDID (or "booted" for the current one).
+    description: >-
+      Simulator UDID (or "booted" for the current one). A comma list drives a multi-device pool —
+      `bajutsu run` resolves each entry as its own lane and caps `workers` to the pool size — which
+      the concurrent-device job uses (BE-0298); pass `diagnostics-udid` alongside it, since the
+      diagnostics collector below is keyed on one device.
     required: false
     default: booted
+  workers:
+    description: >-
+      Concurrent scenarios, passed as `run --workers`. 1 (the default) is `bajutsu run`'s own
+      default, so every single-device caller is unaffected; >1 needs as many devices in `udid`,
+      which is what the two-device pool job supplies.
+    required: false
+    default: "1"
+  diagnostics-udid:
+    description: >-
+      The single device the BE-0361 diagnostics collector is keyed on. Empty (default) uses `udid`,
+      which is right whenever that is one device. A multi-device `udid` must name one here instead:
+      the collector resolves a device's own CoreSimulator log directory and `simctl diagnose` target
+      by UDID, and a comma list resolves to neither — it would collect nothing for either device and
+      say so in warnings rather than failing, which is the worst outcome for a lane that exists to be
+      diagnosable.
+    required: false
+    default: ""
   backend:
     description: Actuator backend.
     required: false
@@ -61,7 +82,7 @@ runs:
       uses: ./.github/actions/collect-ios-diagnostics
       with:
         phase: start
-        udid: ${{ inputs.udid }}
+        udid: ${{ inputs.diagnostics-udid || inputs.udid }}
 
     # Inputs go through env: so the shell sees them as data, not as script text spliced in
     # before parsing (the GitHub Actions ${{ }} injection pattern). See BE-0123.
@@ -78,6 +99,7 @@ runs:
         EXCLUDE: ${{ inputs.exclude }}
         TARGET: ${{ inputs.target }}
         UDID: ${{ inputs.udid }}
+        WORKERS: ${{ inputs.workers }}
         BACKEND: ${{ inputs.backend }}
         CONFIG: ${{ inputs.config }}
       run: |
@@ -104,7 +126,8 @@ runs:
         # CALayer, which has no accessibility representation — `golden_xcuitest.yaml` asserts the same
         # tree golden with the markers on and off to keep that true.
         uv run --no-sync bajutsu run "${scenario_args[@]}" --exclude "$EXCLUDE" --target "$TARGET" \
-          --udid "$UDID" --backend "$BACKEND" --config "$CONFIG" --score --touch-markers
+          --udid "$UDID" --workers "$WORKERS" --backend "$BACKEND" --config "$CONFIG" \
+          --score --touch-markers
 
     # Replaces the crash-report copy this step used to be (BE-0361). That sweep read only `.ips` /
     # `.crash` under ~/Library/Logs/DiagnosticReports, and collected zero files on every run of the
@@ -118,7 +141,7 @@ runs:
       uses: ./.github/actions/collect-ios-diagnostics
       with:
         phase: collect
-        udid: ${{ inputs.udid }}
+        udid: ${{ inputs.diagnostics-udid || inputs.udid }}
         failed: ${{ steps.run.outcome != 'success' }}
 
     # artifact-name is a `with:` value on a `uses:` step, not a shell `run:` block, so the

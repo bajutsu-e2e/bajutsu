@@ -27,6 +27,13 @@
 #     `CoordinateTreeDriver`'s transient-empty retry exists for. This one puts the display to sleep, so
 #     the real read really is empty, and checks the retry rides over it instead of raising a false
 #     "element not found". A non-gating signal first, like `codegen` below.
+#   - pool (adb): the concurrent-device job (BE-0298) — the only one here that boots TWO emulators
+#     and runs `bajutsu run --workers 2` across them, then asserts the device pool's isolation claim
+#     (per-worker serial, per-worker `run_dir/<sid>` evidence dir) from what the run left on disk.
+#     Every other job boots one emulator, so none of them can observe it; the fast suite proves it
+#     only of the pool's own bookkeeping against fabricated udids. Uniquely keyed on
+#     `changes.outputs.pool`, and non-gating: two emulators on this host is the lane's most
+#     resource-sensitive work, so it lands as a signal first like `codegen` and `fault-injection`.
 #   - uiautomator (codegen) (adb): the codegen output path (BE-0294) — generate a native UI Automator
 #     (Kotlin) test from a scenario and run it with Gradle's connectedAndroidTest, no bajutsu / adb
 #     driver / AI at test time. The Android twin of ios-e2e.yml's `codegen (xcuitest)`; a non-gating
@@ -126,6 +133,11 @@ jobs:
     timeout-minutes: 30
     outputs:
       relevant: ${{ steps.filter.outputs.relevant }}
+      # BE-0298: `pool` is a change to the parallel-run surface — the only thing the two-emulator
+      # `pool (adb)` job below can observe, and the reason that job is keyed on it rather than on the
+      # lane-wide `relevant` signal every other job here uses (it boots two emulators against a host
+      # sized for one). See `touches_pool` in scripts/e2e_changes.py.
+      pool: ${{ steps.filter.outputs.pool }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -982,17 +994,142 @@ jobs:
             runs/
           if-no-files-found: ignore
 
+  # The concurrent-device lane (BE-0298): the one job here that boots **two** emulators and runs
+  # `bajutsu run --workers 2` across them. Every other job on this lane boots exactly one, so none of
+  # them can observe what the device pool claims for a parallel run — that each worker leases its own
+  # serial and writes evidence only under its own `run_dir/<sid>` subdirectory of the one shared run
+  # directory, sharing no mock port or index with any other worker's scenario (DESIGN.md §3.3).
+  # `tests/runner/test_pool.py` proves that of the pool's own bookkeeping and nothing more: it hands
+  # `FakeDriver` instances fabricated udids, so OS-level contention outside those data structures —
+  # two real `adb` invocations racing, the resident channel's `adb forward tcp:0` host port allocated
+  # per device, an artifact path computed before a worker's subdirectory exists — stays invisible to
+  # it. `scripts/assert_pool_isolation.py` turns the claim into a verdict, read from the finished
+  # run's manifest and the run directory's own listing.
+  #
+  # Keyed on `changes.outputs.pool`, not the lane-wide `relevant` signal every other job here uses —
+  # the surface it guards is narrow and rarely touched (see `touches_pool` in
+  # scripts/e2e_changes.py), and this job boots two emulators against a host that sizes the single-
+  # emulator jobs at `-memory 8192 -cores 2`. Both instances therefore run at `-memory 3072 -cores 1`,
+  # which is why this job keeps its own AVD cache key: a resumed snapshot's machine config must match
+  # the one it was saved with, so sharing `smoke`'s `mem8192-cores2` entry would fail the snapshot
+  # load and cold-boot into exactly the settling window that lane's own comment documents as a flake
+  # source.
+  #
+  # The second emulator is booted from inside the emulator-runner's own step
+  # (scripts/android_pool_e2e.sh) because that action has no two-emulator mode and its emulator lives
+  # only for the length of that step — the same constraint scripts/collect_android_diagnostics.sh
+  # already works within. Deliberately NOT in the `E2E (android)` gate's `needs:` below: two
+  # emulators on this host is the most resource-sensitive work on the lane, so it lands as a signal
+  # and is promoted only once stable, the signal-then-required path BE-0282 established.
+  pool:
+    name: pool (adb)
+    needs: [changes, warm-gradle-cache]
+    if: >-
+      !cancelled() && needs.changes.result == 'success' &&
+      needs.changes.outputs.relevant == 'true' && needs.changes.outputs.pool == 'true'
+    runs-on: ubuntu-latest
+    # Two warm snapshot resumes + one Compose APK install per device + four scenarios in one
+    # `bajutsu run` is ~20min when healthy; 45 catches a real hang (a wedged second boot, a stuck adb
+    # with two devices attached) with headroom. The script's own boot ceiling fails the second
+    # emulator loudly well inside this.
+    timeout-minutes: 45
+    env:
+      UV_NO_DEV: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up the Android toolchain
+        uses: ./.github/actions/setup-android-toolchain
+
+      - name: Install the base package (no dev)
+        run: uv sync --no-dev
+
+      # Compose only: one toolkit is enough to keep two workers busy, and the Views APK would add a
+      # compile this job never installs.
+      - name: Build the Compose showcase APK
+        run: make -C demos/showcase/android compose-build
+
+      - name: Build the resident UI Automator server APKs
+        run: make -C BajutsuAndroidUIAutomatorServer build
+
+      # This job's own cache entry — see the header for why it cannot share `smoke`'s. Bump the
+      # suffix in lockstep with the `-memory`/`-cores` below and with the second instance's own
+      # options in scripts/android_pool_e2e.sh, which resumes this same snapshot.
+      - name: Cache AVD
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-api34-x86_64-pixel6-mem3072-cores1
+
+      - name: Create AVD and generate snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6  # match the local validation geometry (see `smoke`'s own create step)
+          avd-name: bajutsu-pool
+          force-avd-creation: false
+          emulator-options: -memory 3072 -cores 1 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
+
+      # Brackets the emulator step from outside, so it still covers a step whose emulators die
+      # outright — the same reason `smoke` places it here (BE-0367 Layer 3). It samples the host, and
+      # the host is what two emulators contend over, so it is the telemetry this job most needs.
+      - name: Start host telemetry
+        uses: ./.github/actions/collect-android-diagnostics
+        with:
+          phase: start
+
+      - name: Run four scenarios across two emulators (--workers 2)
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        env:
+          BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          avd-name: bajutsu-pool
+          force-avd-creation: false
+          emulator-options: -memory 3072 -cores 1 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
+          # One line, since the emulator-runner runs each script line as its own `/usr/bin/sh -c`:
+          # the script owns the second boot, the run, the isolation assertion, the diagnostics sweep,
+          # and re-raising the run's exit code. The AVD name is passed in rather than assumed, so the
+          # `avd-name` above is the single place it is chosen.
+          script: scripts/android_pool_e2e.sh bajutsu-pool
+
+      - name: Collect host telemetry
+        if: always()
+        uses: ./.github/actions/collect-android-diagnostics
+        with:
+          phase: collect
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: android-e2e-pool-run
+          path: runs/
+          if-no-files-found: ignore
+
   # Single required status check for the Android lane — the Android twin of ios-e2e.yml's `E2E`.
   # Always runs so it reports even when the KVM jobs are skipped (a PR that can't affect the adb
   # path) — a skipped dependency is a pass; only a real failure or cancellation fails the gate.
   # `network` joins `smoke`/`conformance` in `needs:`: its pass/fail is a deterministic,
   # host-independent fact (was the exchange observed?), so a regression there must fail the required
   # check like the other two — it is path-gated the same way, so a skip is still a pass. `golden`,
-  # `visual`, `codegen`, and `fault-injection` remain deliberately excluded (see the header): the
-  # element-tree golden can drift with an upstream dependency, a pixel baseline is host-specific, and the
-  # codegen (BE-0294) and fault-injection (BE-0305) lanes land as per-PR signals first (the
-  # signal-then-required precedent of BE-0282) — each is promoted into `needs:` only once stable. Make `E2E (android)` the
-  # required check, not the path-gated KVM jobs.
+  # `visual`, `codegen`, `fault-injection`, and `pool` remain deliberately excluded (see the header):
+  # the element-tree golden can drift with an upstream dependency, a pixel baseline is host-specific,
+  # and the codegen (BE-0294), fault-injection (BE-0305), and two-emulator pool (BE-0298) lanes land
+  # as per-PR signals first (the signal-then-required precedent of BE-0282) — each is promoted into
+  # `needs:` only once stable. Make `E2E (android)` the required check, not the path-gated KVM jobs.
   #
   # `changes`'s own result is checked too, not just the KVM jobs': `changes` has no `if:`, so it
   # always runs and never reports `skipped` — but if it *fails* (e.g. a misconfigured `E2E_LANE`,

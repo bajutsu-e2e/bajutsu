@@ -4,8 +4,8 @@
 #
 # `run` / `doctor` land with the BE-0007 adb backend; until then these targets only build.
 .PHONY: build-all wrapper \
-	compose-build compose-noax-build views-build views-noax-build e2e e2e-network e2e-golden e2e-fallback \
-	e2e-visual e2e-conformance e2e-fault-injection e2e-codegen clean
+	compose-build compose-noax-build views-build views-noax-build e2e e2e-pool e2e-network e2e-golden \
+	e2e-fallback e2e-visual e2e-conformance e2e-fault-injection e2e-codegen clean
 
 HERE := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 GRADLEW := $(HERE)/gradlew
@@ -237,6 +237,49 @@ e2e: compose-build views-build
 # Backgrounded and trap-killed so the port never leaks past the run. Not part of `make check` (needs a
 # booted AVD); android-e2e.yml drives it in its own job. Compose only — one toolkit proves the wire.
 # must match SHOWCASE_API_URL in demos/showcase/scenarios/network_android.yaml — not override-safe.
+# The concurrent-device pool run (BE-0298): four scenarios through ONE `bajutsu run --workers 2`
+# over two booted emulators, so the device pool has to keep both workers busy at once and its
+# isolation claim — a per-worker serial and a per-worker `run_dir/<sid>` evidence dir, no shared mock
+# port or index — is exercised against real `adb` contention rather than the fabricated udids
+# `tests/runner/test_pool.py` drives. `SERIALS` is the comma list `bajutsu run --udid` resolves into
+# the pool (`--workers` is capped to its size), which is why this target takes it rather than the
+# single `SERIAL` every other target here uses. One invocation, not the per-file loop `e2e` runs: the
+# workers must share one pool, and four scenarios over two devices is one cold resident startup and
+# one reuse per device.
+#
+# The three per-device preludes below are the same ones `e2e` applies, but addressed with `adb -s`:
+# `e2e` can use bare `adb` because that lane only ever has one device attached, and this one has two.
+# `hide_error_dialogs` matters more here, not less — two emulators on the CI host's four cores make a
+# missed ANR deadline likelier than the single-device lane's, and a dialog taking the foreground on
+# either device would fail the run for a reason that is not the pool's. The animation scales are this
+# lane's own: android-emulator-runner's `disable-animations` reaches only the emulator it booted, and
+# this lane boots its second one itself, so both devices must be brought to the same configuration
+# here or the pair is asymmetric.
+#
+# The scenarios are the state-neutral head of E2E_SCENARIOS: each drives only the app's own UI on its
+# own device, so neither worker can influence the other through anything but the pool itself.
+E2E_POOL_SCENARIOS := smoke firstlook navigation search
+# Two 1-core emulators draw the first row slower than the single 2-core one the 15s floor was sized
+# for, so this lane needs the same headroom the iOS twin's `pool` job gives itself; a condition wait
+# returns the instant it is satisfied, so a fast render pays nothing. `E2E_WAIT_FLOOR=…` still wins.
+e2e-pool: E2E_WAIT_FLOOR = 30
+e2e-pool: compose-build
+	@[ -n "$(SERIALS)" ] || { echo "SERIALS is empty: pass the comma list of booted device serials" >&2; exit 1; }
+	for d in $$(echo "$(SERIALS)" | tr ',' ' '); do \
+		adb -s $$d root && adb -s $$d wait-for-device && \
+		adb -s $$d shell settings put global hide_error_dialogs 1 && \
+		adb -s $$d shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null && \
+		adb -s $$d shell settings put global window_animation_scale 0 && \
+		adb -s $$d shell settings put global transition_animation_scale 0 && \
+		adb -s $$d shell settings put global animator_duration_scale 0 && \
+		adb -s $$d shell settings put system show_touches 1 && \
+		adb -s $$d shell settings put system pointer_location 1 || exit 1; \
+	done
+	cd $(ROOT) && $(E2E_ENV) uv run bajutsu run \
+		$(foreach s,$(E2E_POOL_SCENARIOS),--scenario demos/showcase/scenarios/$(s).yaml) \
+		--workers 2 \
+		--target showcase-compose --udid $(SERIALS) --backend android --config $(CONFIG)
+
 # Keep the comment on its own line: an inline `# …` after a `:=` value leaves the whitespace before
 # the `#` in the variable, so the port would carry trailing spaces into the curl URL and net_stub arg.
 E2E_NET_STUB_PORT := 8770

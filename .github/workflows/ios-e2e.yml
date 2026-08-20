@@ -2,11 +2,11 @@
 # (adb) and web-e2e.yml (Playwright) in scope, but unlike them this lane carries the platform's
 # REQUIRED status check: the `E2E` job below always reports (even when the macOS jobs are
 # path-gated skipped), so it — not this file's name — is what `main`'s branch-protection ruleset
-# pins. Eight macOS jobs, all on the XCUITest backend (the resident BajutsuRunner), against the
+# pins. Ten macOS jobs, all on the XCUITest backend (the resident BajutsuRunner), against the
 # showcase suite (BE-0079, the single iOS fixture). One `build` job compiles the apps + runner once
 # and uploads them as an artifact; the consumer jobs (run / actuation / golden / bundled-runner /
-# conformance) download + install rather than build, so the cold Swift build is paid once, not once
-# per job. Each macOS job starts with the same bootstrap (select Xcode, install uv, install
+# conformance / pool) download + install rather than build, so the cold Swift build is paid once, not
+# once per job. Each macOS job starts with the same bootstrap (select Xcode, install uv, install
 # xcodegen, boot a Simulator — the `build` job skips the boot — resolve the Xcode version for a
 # cache key) via the `setup-ios-toolchain` composite action. `codegen` and `visual` are not
 # consumers (they compile a different product) and stay self-contained:
@@ -54,6 +54,15 @@
 #     process — frozen briefly, frozen past the retry budget, killed — and checks each layer behaves.
 #     Deliberately NOT part of the `E2E` gate's `needs:` (see that job below): a lane that breaks the
 #     runner on purpose lands as a signal first and is promoted once stable (BE-0282's precedent).
+#   - pool (xcuitest): the concurrent-device job (BE-0298) — the only one here that boots TWO
+#     Simulators and runs `bajutsu run --workers 2` across them, then asserts the device pool's
+#     isolation claim (per-worker udid, per-worker `run_dir/<sid>` evidence dir) from what the run
+#     left on disk. Every other job boots one device, so none of them can observe it; the fast suite
+#     proves it only of the pool's own bookkeeping against fabricated udids. Uniquely keyed on
+#     `changes.outputs.pool` rather than the lane-wide `shared` signal, so an ordinary `bajutsu/`
+#     change does not pay for two booted Simulators. Deliberately NOT part of the `E2E` gate's
+#     `needs:` and the lane's most environment-sensitive job — see its own header for BE-0361's
+#     measured host budget.
 #   - visual (xcuitest): the iOS twin of android-e2e.yml's `visual` — a pixel VRT of the Stable
 #     catalog against the committed `baselines_ios/` baseline. Deliberately NOT part of the `E2E`
 #     gate's `needs:` (see that job below) — a pixel baseline is host-specific (the Simulator
@@ -290,6 +299,11 @@ jobs:
       # `relevant` and (`shared` or the job is in `affected`); a dimension job runs on any `relevant`.
       shared: ${{ steps.filter.outputs.shared }}
       affected: ${{ steps.filter.outputs.affected }}
+      # BE-0298: `pool` is a change to the parallel-run surface — the only thing the two-device
+      # `pool (xcuitest)` job below can observe, and the reason that job is keyed on it rather than
+      # on the lane-wide `shared` signal (it boots twice what every other job boots, on a 10x-billed
+      # runner). See `touches_pool` in scripts/e2e_changes.py.
+      pool: ${{ steps.filter.outputs.pool }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -1200,12 +1214,155 @@ jobs:
           path: runs/
           if-no-files-found: ignore
 
+  # The concurrent-device lane (BE-0298): the one job here that boots **two** Simulators and runs
+  # `bajutsu run --workers 2` across them. Every other job on this lane boots exactly one device, so
+  # none of them can observe what the device pool actually claims for a parallel run — that each
+  # worker leases its own `udid` and writes evidence only under its own `run_dir/<sid>` subdirectory
+  # of the one shared run directory, sharing no mock port or index with any other worker's scenario
+  # (DESIGN.md §3.3). `tests/runner/test_pool.py` proves that claim of the pool's own bookkeeping and
+  # nothing more: it hands `FakeDriver` instances fabricated udids, so it can show worker A's
+  # resources are separate from worker B's in the data structures the pool manages, while OS-level
+  # contention outside them — two real `simctl` invocations racing on a boot lock, a port collision,
+  # an artifact path computed before a worker's subdirectory exists — stays invisible to it. Two real
+  # concurrently-booted devices are what surface that, and `scripts/assert_pool_isolation.py` is what
+  # turns the claim into a verdict: it reads the finished run's manifest and the run directory's own
+  # listing and fails on a shared evidence dir, an artifact written under another worker's slug, a
+  # directory no result claims, one device having quietly done all the work, or two workers never
+  # having been busy at once.
+  #
+  # Keyed on `changes.outputs.pool`, NOT the lane-wide `shared` signal — the only job here that is.
+  # It boots twice what every other job boots on a runner billed at 10x, and the surface it guards is
+  # narrow and rarely touched (the runner package, the lifecycle package, the two evidence modules
+  # that name a scenario's directory, this workflow, the boot action), so firing it on every
+  # `bajutsu/` change would pay that price on PRs that could not possibly have broken it. A manual
+  # `workflow_dispatch` also fires it, which is how it is exercised on demand.
+  # See `touches_pool` in scripts/e2e_changes.py.
+  #
+  # Deliberately NOT in the `E2E` gate's `needs:` below, and expected to be the most
+  # environment-sensitive job on the lane. BE-0361's diagnostics measured this runner as
+  # `hw.ncpu: 3` / `hw.memsize: 7.0 GiB`, with a *single* booted Simulator bringing up 257 guest
+  # processes and leaving `PhysMem: 6962M used / 189M unused` under 2471M of compression — the
+  # pressure that trips `SimRenderServer` on the capture-service queue every screenshot, video, and
+  # XCUITest `/screenshot` is served from. A second device doubles the guest population against the
+  # same ceiling, so this job lands as a signal and is promoted only if it proves stable, the
+  # signal-then-required path BE-0282 established and `fault-injection` / `visual` follow. A red run
+  # here that turns out to be host exhaustion rather than a pool defect is a measurement, not a
+  # regression — the uploaded diagnostics are what tells the two apart.
+  pool:
+    name: pool (xcuitest)
+    needs: [changes, build]
+    if: >-
+      needs.changes.outputs.relevant == 'true' &&
+      needs.changes.outputs.pool == 'true'
+    runs-on: macos-latest
+    # Same 60-minute cap as the other consumer jobs, for the same reason: no build here (the `build`
+    # job staged the products), so two boots + two installs + four scenario runs across two cold
+    # XCTest-host startups (one per device at this lane's warm-reuse cap) is ~15min when healthy, and
+    # the cap backs a genuine hang. Under this job's own contention a wedged capture service is the
+    # likeliest hang, and it is exactly what the cap exists to bound.
+    timeout-minutes: 60
+    env:
+      # The `run` job raises this floor to 20s for a cold-boot Simulator rendering its first Stable
+      # row later than a scenario's 10s first-wait allows. Two devices contend for the same 3 cores,
+      # so the first render here is slower still — 30s gives the condition wait the budget to see it.
+      # A condition wait returns the instant the row appears, so a fast render pays nothing (prime
+      # directive 2: no fixed sleep), and only a genuine no-show spends the full budget.
+      BAJUTSU_MIN_WAIT_TIMEOUT: "30"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # Boots the first Simulator asynchronously (`wait: false`), so both boots overlap the artifact
+      # download below rather than running after it.
+      - name: Set up the iOS toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-ios-toolchain
+
+      # The second device. `exclude-udid` is what makes it a *different* one: without it the action's
+      # reuse branch would hand back the device the step above just booted, and `--udid "$A,$A"` would
+      # resolve to a one-device pool that passes every check below for the wrong reason.
+      - name: Boot a second Simulator
+        id: second-device
+        uses: ./.github/actions/boot-simulator
+        with:
+          wait: "false"
+          exclude-udid: ${{ steps.toolchain.outputs.udid }}
+
+      - name: Download the prebuilt app + runner
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: ios-build
+
+      - name: Unpack the build products
+        run: tar -xpf ios-build.tar
+
+      - name: Wait for both Simulators
+        env:
+          UDID_A: ${{ steps.toolchain.outputs.udid }}
+          UDID_B: ${{ steps.second-device.outputs.udid }}
+        run: |
+          set -euo pipefail
+          xcrun simctl bootstatus "$UDID_A" -b
+          xcrun simctl bootstatus "$UDID_B" -b
+
+      - name: Install the app on both Simulators
+        env:
+          UDID_A: ${{ steps.toolchain.outputs.udid }}
+          UDID_B: ${{ steps.second-device.outputs.udid }}
+          APP: demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
+        run: |
+          set -euo pipefail
+          xcrun simctl install "$UDID_A" "$APP"
+          xcrun simctl install "$UDID_B" "$APP"
+
+      # Four state-neutral scenarios over two devices, so each worker runs two and the pool has to
+      # keep both busy at once — the contention this job exists to produce. They are the shared
+      # showcase files, unchanged (BE-0221), and none of them grants a permission or reseeds device
+      # state, so neither worker's device can influence the other's through anything but the pool.
+      # Two per device is also one cold XCTest-host startup and one warm reuse each, this lane's
+      # warm-reuse cap, so the run pays the cold startup twice rather than four times.
+      - name: Run four scenarios across both devices (--workers 2)
+        uses: ./.github/actions/bajutsu-e2e
+        with:
+          scenarios: >-
+            demos/showcase/scenarios/smoke.yaml
+            demos/showcase/scenarios/search.yaml
+            demos/showcase/scenarios/notices.yaml
+            demos/showcase/scenarios/navigation.yaml
+          target: showcase-swiftui
+          backend: xcuitest
+          config: demos/showcase/showcase.config.yaml
+          udid: ${{ steps.toolchain.outputs.udid }},${{ steps.second-device.outputs.udid }}
+          workers: "2"
+          # The collector is keyed on one device (it resolves a CoreSimulator log directory and a
+          # `simctl diagnose` target by UDID); the host telemetry it samples is per-host either way.
+          diagnostics-udid: ${{ steps.toolchain.outputs.udid }}
+          artifact-name: pool
+
+      # The isolation verdict. Runs only when the run above passed: a failed run has already reddened
+      # the job, and asserting over a manifest it may never have written would bury the real failure
+      # under a parse error. Every run id is a zero-padded UTC timestamp (BE-0200), and this job runs
+      # `bajutsu run` exactly once, so the glob resolves to exactly one directory — anything else is a
+      # wiring change this step must fail on rather than guess through. `runs/` also holds the
+      # diagnostics and runner-log directories, which the shape excludes by construction.
+      - name: Assert the pool's isolation invariant
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dirs=(runs/[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9])
+          if [ "${#dirs[@]}" -ne 1 ]; then
+            echo "::error::expected exactly one run directory under runs/, found ${#dirs[@]}: ${dirs[*]-}"
+            exit 1
+          fi
+          uv run --no-sync python scripts/assert_pool_isolation.py \
+            --run-dir "${dirs[0]}" --expect-devices 2
+
   # Single required status check for E2E. Always runs so it reports even when the macOS
   # jobs are skipped (docs-only PRs) — a skipped dependency is a pass; only a real
-  # failure or cancellation fails the gate. `actuation`, `golden`, `visual`, and `fault-injection` are
-  # deliberately excluded from `needs:` (see each job's comment) so newly-wired actuation (BE-0281), a
-  # host-specific pixel drift, or the deliberately-hostile fault-injection lane (BE-0305) never blocks a
-  # merge. Make `E2E` the required check, not the path-gated macOS jobs.
+  # failure or cancellation fails the gate. `actuation`, `golden`, `visual`, `fault-injection`, and
+  # `pool` are deliberately excluded from `needs:` (see each job's comment) so newly-wired actuation
+  # (BE-0281), a host-specific pixel drift, the deliberately-hostile fault-injection lane (BE-0305),
+  # or the two-device pool lane (BE-0298) never blocks a merge. Make `E2E` the required check, not
+  # the path-gated macOS jobs.
   e2e:
     name: E2E (iOS)
     needs: [changes, build, run, codegen, bundled-runner, conformance]
