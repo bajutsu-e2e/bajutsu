@@ -178,24 +178,25 @@ notify:
 
 ### org（`orgs:`、マルチテナントのサーバ backend）
 
-`orgs:` は、ホスト型サーバ backend のテナントを宣言します（[BE-0015](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。各 org は、所属メンバー（明示の GitHub login＝`members`、および／または GitHub org 全体＝`githubOrgs`）と、書き込みを許す GitHub Team（`editorTeam`）、その org が持つ targets を列挙します。
+`orgs:` は、ホスト型サーバ backend のテナントを宣言します（[BE-0015](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。各 org は、所属メンバーと、書き込みを許す GitHub Team（`editorTeam`）、その org が持つ targets を列挙します。所属メンバーの指定は3通りで、明示の GitHub login（`members`）、GitHub org 全体（`githubOrgs`）、単一の GitHub Team（`githubTeams`）です。
 
 ```yaml
 orgs:
   acme:
     members: [alice, bob]                   # 明示の GitHub login
     githubOrgs: [acme-gh]                    # この GitHub org の全員（read:org の OAuth scope が必要）
-    editorTeam: acme-gh/scenario-maintainers # この Team の直接メンバーは editor になる
+    githubTeams: [acme-gh/qa]                # この Team の直接メンバー（GitHub org 全体は含めない）
+    editorTeam: acme-gh/scenario-maintainers # この Team の直接メンバーは editor になり、サインインもできる
     targets: [demo, checkout]
 ```
 
-OAuth ログイン時にユーザは自分の org に割り当てられます（まず明示の `members`、無ければ GitHub org メンバーシップからの `githubOrgs` 一致）。以後はその org の targets だけが見え、run の artifacts／scenarios／baselines はその org 専用のオブジェクトストレージ prefix の下に置かれます。どの org にも挙げられていない target は単一の `default` org に入るので、`orgs:` ブロックの**無い** config はシングルテナントです。CLI とローカルの `serve` は `orgs:` を一切参照しません。
+OAuth ログイン時にユーザは自分の org に割り当てられます。順に、明示の `members`、GitHub org メンバーシップからの `githubOrgs` 一致、直接の Team メンバーシップからの `githubTeams` または `editorTeam` 一致を見ます。Team を最後に見るのは、org に Team を足したときに既存の login の所属先を動かさないためです。以後はその org の targets だけが見え、run の artifacts／scenarios／baselines はその org 専用のオブジェクトストレージ prefix の下に置かれます。どの org にも挙げられていない target は単一の `default` org に入るので、`orgs:` ブロックの**無い** config はシングルテナントです。CLI とローカルの `serve` は `orgs:` を一切参照しません。
 
-GitHub OAuth を構成すると、org メンバーシップがアクセスも決めます（[BE-0313](../../roadmaps/BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md)）。サインインには構成済みの org への所属（`members` または `githubOrgs`）が必要で、成功すると **viewer** ロールが付きます。org の `editorTeam` の直接メンバーは **editor** に昇格し、サーバ全体で 1 つ以上の admin Team（`BAJUTSU_OAUTH_ADMIN_TEAMS`。[セルフホスティング](self-hosting.md#2-github-oauth-を足す任意)を参照）のいずれかのメンバーは **admin** になります。`editorTeam` と `BAJUTSU_OAUTH_ADMIN_TEAMS` の各エントリは、どちらも 1 つのフラットな Team で、`"<github-org>/<team-slug>"` の形で書きます。どちらも、その下にネストした Team は一致しません。したがって OAuth を使う構成では `orgs:` ブロックの宣言が必須です。ただし、構成済みの admin Team のメンバーだけは、この所属がなくてもサインインできます。GitHub の Teams API 自体がエラーを返している間を除きます。そのため、`orgs:` ブロックが壊れている、あるいは存在しない状態だけでは、admin 全員が締め出されることはありません。Team だけで許可された admin は、`orgs:` のどのエントリにも属さないため `default` org に置かれます。そのためこの復旧経路に頼るデプロイは、`default` という名前の実際の org を宣言しないでください。宣言すると、復旧した admin のユーザ行、audit の記録、オブジェクトストレージの prefix が、中立な catch-all ではなくそのテナントの中に入ってしまいます。
+GitHub OAuth を構成すると、org メンバーシップがアクセスも決めます（[BE-0313](../../roadmaps/BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md)）。サインインには構成済みの org への所属が必要です。`members`、`githubOrgs`、`githubTeams`、`editorTeam` のいずれかで、成功すると **viewer** ロールが付きます。org の `editorTeam` の直接メンバーは **editor** に昇格し、サーバ全体で 1 つ以上の admin Team（`BAJUTSU_OAUTH_ADMIN_TEAMS`。[セルフホスティング](self-hosting.md#2-github-oauth-を足す任意)を参照）のいずれかのメンバーは **admin** になります。`editorTeam` は昇格させるだけでなくサインインも許します。書き込みを許した Team を `githubTeams` に重ねて書く必要はありません。`githubTeams` の各エントリ、`editorTeam`、`BAJUTSU_OAUTH_ADMIN_TEAMS` の各エントリは、いずれも 1 つのフラットな Team で、`"<github-org>/<team-slug>"` の形で書きます。どれについても、その下にネストした Team は一致しません。比較は3つとも大文字小文字を区別しません。GitHub 自身が org login と Team slug をそう解決するからです。したがって OAuth を使う構成では `orgs:` ブロックの宣言が必須です。ただし、構成済みの admin Team のメンバーだけは、この所属がなくてもサインインできます。GitHub の Teams API 自体がエラーを返している間を除きます。そのため、`orgs:` ブロックが壊れている、あるいは存在しない状態だけでは、admin 全員が締め出されることはありません。Team だけで許可された admin は、`orgs:` のどのエントリにも属さないため `default` org に置かれます。そのためこの復旧経路に頼るデプロイは、`default` という名前の実際の org を宣言しないでください。宣言すると、復旧した admin のユーザ行、audit の記録、オブジェクトストレージの prefix が、中立な catch-all ではなくそのテナントの中に入ってしまいます。なお、Team だけを名簿とする org は、GitHub の Teams API が答えることに依存します。`/user/teams` は fail closed で、Team を勝手に作り出しません。そのため API がエラーを返している間は、所属が Team だけの login は受け入れられるのではなく拒否されます。
 
-**データベースを繋いだデプロイでは、この4つのフィールドのうち3つを読むのは一度きりです**（[BE-0375](../../roadmaps/BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management-ja.md)）。`orgs` テーブルがまだ空だった1回の起動時に、`serve` は各 org の `members`、`githubOrgs`、`editorTeam` を、この serve を**起動したときの** config からデータベースへ写します。以後のサインインはデータベースだけを見て解決します。この書き写しはデプロイの一生に一度だけです。org が1つでも入っている状態で起動すれば、廃止済みのものが1つあるだけでも何も写さないので、後から config を書き換えても、その config を積んだまま再起動しても、admin の与り知らないところでテナントが増えたり形を変えたりすることはありません。起動後に Web UI や `POST /api/config` で bind した config は、`orgs:` に何が書かれていても、そもそも一切書き写しません。
+**データベースを繋いだデプロイでは、この5つのフィールドのうち4つを読むのは一度きりです**（[BE-0375](../../roadmaps/BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management-ja.md)）。`orgs` テーブルがまだ空だった1回の起動時に、`serve` は各 org のメンバーシップを、この serve を**起動したときの** config からデータベースへ写します。対象は `members`、`githubOrgs`、`githubTeams`、`editorTeam` です。以後のサインインはデータベースだけを見て解決します。この書き写しはデプロイの一生に一度だけです。org が1つでも入っている状態で起動すれば、廃止済みのものが1つあるだけでも何も写さないので、後から config を書き換えても、その config を積んだまま再起動しても、admin の与り知らないところでテナントが増えたり形を変えたりすることはありません。起動後に Web UI や `POST /api/config` で bind した config は、`orgs:` に何が書かれていても、そもそも一切書き写しません。
 
-メンバーシップの編集は、以後この config ファイルではなく Orgs ページから行います。この3つのフィールドをここで書き換えても効果はありません。`serve` は、まだこの3つを宣言しているエントリの org 名を挙げて警告を記録するので、operator は編集が消えたと戸惑う代わりに、ファイルが決定権を持たなくなったことに気付けます。ここで引き続き効くのは `targets` です。したがって、そうしたデプロイでは `targets:` だけに削ぎ落としたエントリが本来の姿になります。書き写しの起きる起動より前に削ぎ落としても安全なので、順序を誤る余地はありません。`targets` だけを宣言したエントリは書き写しの対象から外れるため、その org が「誰も受け入れない」状態で固定されることはありません。
+メンバーシップの編集は、以後この config ファイルではなく Orgs ページから行います。この4つのフィールドをここで書き換えても効果はありません。`serve` は、まだこの4つを宣言しているエントリの org 名を挙げて警告を記録するので、operator は編集が消えたと戸惑う代わりに、ファイルが決定権を持たなくなったことに気付けます。ここで引き続き効くのは `targets` です。したがって、そうしたデプロイでは `targets:` だけに削ぎ落としたエントリが本来の姿になります。書き写しの起きる起動より前に削ぎ落としても安全なので、順序を誤る余地はありません。`targets` だけを宣言したエントリは書き写しの対象から外れるため、その org が「誰も受け入れない」状態で固定されることはありません。
 
 同じ名前の target を2つの org がそれぞれ要求してもよく、どちらの org もその target に対して認可されます。bind している config が1つである以上、その名前が解決する `targets:` の定義は両者で共有されます。
 

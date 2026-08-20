@@ -10,7 +10,6 @@ from bajutsu.serve.orgs import (
     identity_matches_org,
     load_serve_config,
     org_for_identity,
-    org_for_user,
     targets_for_org,
 )
 
@@ -30,12 +29,12 @@ orgs:
 """
 
 
-def test_org_for_user_resolves_membership() -> None:
+def test_an_explicit_member_resolves_to_its_org() -> None:
     _, orgs = load_serve_config(CONFIG_YAML)
-    assert org_for_user(orgs, "alice") == "acme"
-    assert org_for_user(orgs, "carol") == "globex"
+    assert org_for_identity(orgs, "alice", [], []) == "acme"
+    assert org_for_identity(orgs, "carol", [], []) == "globex"
     # A login in no org's members falls back to the default org.
-    assert org_for_user(orgs, "stranger") == "default"
+    assert org_for_identity(orgs, "stranger", [], []) == "default"
 
 
 def test_targets_for_org_lists_its_targets() -> None:
@@ -76,36 +75,36 @@ orgs:
 def test_org_for_identity_prefers_an_explicit_member() -> None:
     _, orgs = load_serve_config(IDENTITY_YAML)
     # alice is an explicit acme member, so her GitHub orgs don't override that.
-    assert org_for_identity(orgs, "alice", ["globex-gh"]) == "acme"
+    assert org_for_identity(orgs, "alice", ["globex-gh"], []) == "acme"
 
 
 def test_org_for_identity_maps_from_github_org_membership() -> None:
     _, orgs = load_serve_config(IDENTITY_YAML)
-    assert org_for_identity(orgs, "carol", ["globex-gh"]) == "globex"
-    assert org_for_identity(orgs, "dave", ["acme-gh"]) == "acme"
+    assert org_for_identity(orgs, "carol", ["globex-gh"], []) == "globex"
+    assert org_for_identity(orgs, "dave", ["acme-gh"], []) == "acme"
 
 
 def test_org_for_identity_falls_back_to_default() -> None:
     _, orgs = load_serve_config(IDENTITY_YAML)
     # No explicit membership and no matching GitHub org → the default org.
-    assert org_for_identity(orgs, "stranger", ["unrelated-gh"]) == "default"
-    assert org_for_identity(orgs, "stranger", []) == "default"
+    assert org_for_identity(orgs, "stranger", ["unrelated-gh"], []) == "default"
+    assert org_for_identity(orgs, "stranger", [], []) == "default"
 
 
 def test_identity_matches_org_gates_sign_in() -> None:
     # BE-0313: the sign-in gate — an explicit member or a `githubOrgs` match belongs; anyone else
     # is turned away. Unlike org_for_identity, this can't confuse "matched nothing" with "default".
     _, orgs = load_serve_config(IDENTITY_YAML)
-    assert identity_matches_org(orgs, "alice", []) is True  # explicit member
-    assert identity_matches_org(orgs, "dave", ["acme-gh"]) is True  # githubOrgs match
-    assert identity_matches_org(orgs, "stranger", ["unrelated-gh"]) is False
-    assert identity_matches_org(orgs, "stranger", []) is False
+    assert identity_matches_org(orgs, "alice", [], []) is True  # explicit member
+    assert identity_matches_org(orgs, "dave", ["acme-gh"], []) is True  # githubOrgs match
+    assert identity_matches_org(orgs, "stranger", ["unrelated-gh"], []) is False
+    assert identity_matches_org(orgs, "stranger", [], []) is False
 
 
 def test_identity_matches_org_rejects_everyone_without_an_orgs_block() -> None:
     # No `orgs:` block → an empty mapping → nobody matches, so an OAuth deployment must declare one.
     _, orgs = load_serve_config("targets:\n  demo: { bundleId: com.x }\n")
-    assert identity_matches_org(orgs, "alice", ["any-gh"]) is False
+    assert identity_matches_org(orgs, "alice", ["any-gh"], []) is False
 
 
 def test_identity_matches_org_handles_an_org_literally_named_default() -> None:
@@ -115,8 +114,8 @@ def test_identity_matches_org_handles_an_org_literally_named_default() -> None:
     _, orgs = load_serve_config(
         "targets:\n  demo: { bundleId: com.x }\norgs:\n  default:\n    members: [alice]\n"
     )
-    assert identity_matches_org(orgs, "alice", []) is True
-    assert identity_matches_org(orgs, "stranger", []) is False
+    assert identity_matches_org(orgs, "alice", [], []) is True
+    assert identity_matches_org(orgs, "stranger", [], []) is False
 
 
 def test_editor_team_parses_from_editor_team_alias() -> None:
@@ -131,6 +130,85 @@ def test_editor_team_parses_from_editor_team_alias() -> None:
         "targets:\n  demo: { bundleId: com.x }\norgs:\n  acme:\n    githubOrgs: [acme-gh]\n"
     )
     assert plain["acme"].editor_team is None
+
+
+TEAM_YAML = """
+targets:
+  demo: { bundleId: com.example.demo }
+
+orgs:
+  acme:
+    githubOrgs: [acme-gh]
+    targets: [demo]
+  globex:
+    githubTeams: [globex-gh/qa, globex-gh/ops]
+  initech:
+    editorTeam: initech-gh/scenario-maintainers
+"""
+
+
+def test_github_teams_admit_and_place_a_login() -> None:
+    # A Team membership is a sign-in axis of its own: nobody in globex's `githubOrgs` (it declares
+    # none) and no explicit member, yet a direct member of one of its Teams belongs to it.
+    _, orgs = load_serve_config(TEAM_YAML)
+    assert identity_matches_org(orgs, "erin", [], ["globex-gh/ops"]) is True
+    # Admitted *into globex*, not the default fallback — the gate and the placement read one ranking,
+    # so a login admitted through a Team is never filed somewhere its Team does not appear.
+    assert org_for_identity(orgs, "erin", [], ["globex-gh/ops"]) == "globex"
+    # An unlisted Team is no membership at all.
+    assert identity_matches_org(orgs, "erin", [], ["globex-gh/interns"]) is False
+    assert org_for_identity(orgs, "erin", [], ["globex-gh/interns"]) == "default"
+
+
+def test_editor_team_also_admits_a_login() -> None:
+    # initech declares no members and no githubOrgs, so its editorTeam is its whole roster: a Team
+    # whose members may write is a Team whose members may sign in.
+    _, orgs = load_serve_config(TEAM_YAML)
+    teams = ["initech-gh/scenario-maintainers"]
+    assert identity_matches_org(orgs, "frank", [], teams) is True
+    assert org_for_identity(orgs, "frank", [], teams) == "initech"
+
+
+def test_team_matching_is_case_insensitive() -> None:
+    # GitHub resolves an org login and a Team slug case-insensitively, and `identity.teams` reports
+    # GitHub's own casing — so a config written in another case must not lock its Team out.
+    _, orgs = load_serve_config(TEAM_YAML)
+    assert identity_matches_org(orgs, "erin", [], ["Globex-GH/QA"]) is True
+    assert org_for_identity(orgs, "erin", [], ["Globex-GH/QA"]) == "globex"
+
+
+def test_team_matching_stops_at_ascii_case() -> None:
+    # `str.lower`, not `str.casefold`: full folding equates `gruß` with `gruss`, which GitHub keeps
+    # distinct, so a Team anyone in that organization can create would clear the sign-in gate.
+    _, orgs = load_serve_config(
+        "targets:\n  demo: { bundleId: com.x }\n"
+        "orgs:\n  acme:\n    githubTeams: [acme-gh/gru\u00df]\n"
+    )
+    assert identity_matches_org(orgs, "mallory", [], ["acme-gh/gruss"]) is False
+    assert identity_matches_org(orgs, "erin", [], ["ACME-GH/GRU\u00df"]) is True
+
+
+def test_a_nested_team_does_not_match_its_parent() -> None:
+    # `/user/teams` lists a child Team distinct from its parent, and matching is exact on the whole
+    # `"<github-org>/<team-slug>"`, so a Team nested under a listed one is not admitted by it.
+    _, orgs = load_serve_config(TEAM_YAML)
+    assert identity_matches_org(orgs, "erin", [], ["globex-gh/qa/nested"]) is False
+
+
+def test_teams_never_relocate_a_login_an_org_axis_already_placed() -> None:
+    # Teams rank last, so declaring one cannot move a login some `members`/`githubOrgs` entry
+    # already claimed — adding an axis must not silently re-file existing users.
+    _, orgs = load_serve_config(TEAM_YAML)
+    assert org_for_identity(orgs, "dave", ["acme-gh"], ["globex-gh/qa"]) == "acme"
+
+
+def test_github_teams_parse_from_the_github_teams_alias() -> None:
+    _, orgs = load_serve_config(TEAM_YAML)
+    assert orgs["globex"].github_teams == ["globex-gh/qa", "globex-gh/ops"]
+    # Absent by default, and `admitting_teams` unions the two Team fields.
+    assert orgs["acme"].github_teams == []
+    assert orgs["acme"].admitting_teams() == []
+    assert orgs["initech"].admitting_teams() == ["initech-gh/scenario-maintainers"]
 
 
 def test_malformed_orgs_block_fails_loudly() -> None:
@@ -156,6 +234,6 @@ def test_empty_orgs_mapping_is_single_tenant() -> None:
 def test_no_orgs_block_is_single_tenant() -> None:
     cfg, orgs = load_serve_config("targets:\n  demo: { bundleId: com.example.demo }\n")
     assert orgs == {}
-    assert org_for_user(orgs, "alice") == "default"
+    assert org_for_identity(orgs, "alice", [], []) == "default"
     # With no orgs declared, the default org owns every target.
     assert targets_for_org(orgs, cfg.targets, "default") == ["demo"]

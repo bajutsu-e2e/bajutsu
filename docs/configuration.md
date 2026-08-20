@@ -318,33 +318,42 @@ notify:
 ### Orgs (`orgs:`, the multi-tenant server backend)
 
 `orgs:` declares tenants for the hosted server backend ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
-Each org lists its members — explicit GitHub logins (`members`) and/or whole GitHub orgs
-(`githubOrgs`) — the GitHub Team whose members may write (`editorTeam`), and the targets it owns:
+Each org lists its members — explicit GitHub logins (`members`), whole GitHub orgs (`githubOrgs`),
+and/or single GitHub Teams (`githubTeams`) — the GitHub Team whose members may write (`editorTeam`),
+and the targets it owns:
 
 ```yaml
 orgs:
   acme:
     members: [alice, bob]                   # explicit GitHub logins
     githubOrgs: [acme-gh]                    # everyone in this GitHub org (needs the read:org OAuth scope)
-    editorTeam: acme-gh/scenario-maintainers # direct members of this Team become editors
+    githubTeams: [acme-gh/qa]                # direct members of these Teams, without the whole GitHub org
+    editorTeam: acme-gh/scenario-maintainers # direct members of this Team become editors — and may sign in
     targets: [demo, checkout]
 ```
 
-At OAuth login users are assigned their org — an explicit `members` entry first, else a `githubOrgs`
-match from their GitHub org memberships. Afterward they see only that org's targets, and a run's
+At OAuth login users are assigned their org — an explicit `members` entry first, then a `githubOrgs`
+match from their GitHub org memberships, then a `githubTeams` or `editorTeam` match from their direct
+Team memberships. Teams rank last, so adding one to an org never moves a login that a `members` or
+`githubOrgs` entry already placed. Afterward they see only that org's targets, and a run's
 artifacts/scenarios/baselines live under the org's own object-store prefix. A target named in no org
 falls into the single `default` org, so a config **without** an `orgs:` block is single-tenant — the
 CLI and local `serve` ignore `orgs:` entirely.
 
 Once GitHub OAuth is configured, org membership also decides access
 ([BE-0313](../roadmaps/BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)). Signing in
-requires membership in a configured org — through `members` or `githubOrgs` — which grants the
-**viewer** role; a member of a configured admin Team signs in regardless (below). A direct member of
-the org's `editorTeam` is promoted to **editor**; a member of one
-of the server-wide admin Teams (`BAJUTSU_OAUTH_ADMIN_TEAMS`, see
-[Self-hosting](self-hosting.md#2-add-github-oauth-optional)) is **admin**. `editorTeam` and each
-`BAJUTSU_OAUTH_ADMIN_TEAMS` entry are each one flat Team, written as
-`"<github-org>/<team-slug>"`; a nested Team beneath either does not match. An OAuth deployment
+requires membership in a configured org — through `members`, `githubOrgs`, `githubTeams`, or
+`editorTeam` — which grants the **viewer** role; a member of a configured admin Team signs in
+regardless (below). A direct member of the org's `editorTeam` is promoted to **editor**; a member of
+one of the server-wide admin Teams (`BAJUTSU_OAUTH_ADMIN_TEAMS`, see
+[Self-hosting](self-hosting.md#2-add-github-oauth-optional)) is **admin**. `editorTeam` admits as
+well as promotes, so a Team that may write never has to be repeated under `githubTeams` to be able to
+sign in. Each `githubTeams` entry, `editorTeam`, and each `BAJUTSU_OAUTH_ADMIN_TEAMS` entry is one
+flat Team, written as `"<github-org>/<team-slug>"`; a nested Team beneath any of them does not match,
+and all three are compared case-insensitively, as GitHub itself resolves an org login and a Team
+slug. A Team-declared org depends on GitHub's Teams API answering: that API fails closed — it never
+invents a Team — so while it errors, a login whose only membership is a Team is turned away rather
+than admitted. An OAuth deployment
 therefore must declare an `orgs:` block, or every login other than an admin Team member is turned
 away — a member of a configured admin Team can still sign in unless GitHub's Teams API is itself
 erroring, so a broken or missing `orgs:` block never locks every admin out on its own. An admin
@@ -353,16 +362,17 @@ a deployment relying on that recovery should avoid declaring a real org named `d
 recovering admin's user row, audit entries, and object-storage prefix land inside that tenant instead
 of a neutral catch-all.
 
-**A deployment with a database reads three of these four fields only once**
+**A deployment with a database reads four of these five fields only once**
 ([BE-0375](../roadmaps/BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management.md)).
 On the one boot that finds the `orgs` table still empty, `serve` copies each org's `members`,
-`githubOrgs`, and `editorTeam` into it from the configuration this server was **launched** with;
+`githubOrgs`, `githubTeams`, and `editorTeam` into it from the configuration this server was
+**launched** with;
 every sign-in after that resolves against the database alone. That copy happens once for the life of
 the deployment: a boot that finds any org already there — a retired one included — copies nothing,
 so no later configuration edit, and no restart carrying one, can add or reshape a tenant behind an
 admin's back. A configuration bound afterwards through the web UI or `POST /api/config` never
 copies at all, whatever its `orgs:` block says.
-An admin edits the membership from the Orgs page from then on, and an edit to those three fields
+An admin edits the membership from the Orgs page from then on, and an edit to those four fields
 here has no effect: `serve` records a warning naming the org whose entry still declares them, so an
 operator learns the file stopped deciding rather than watching an edit vanish. `targets` is the
 field that keeps working, so an entry pared down to `targets:` alone is the expected end state on

@@ -38,6 +38,17 @@ def test_role_for_derives_the_role_from_team_membership() -> None:
     )
     # An unset Team never matches, even against an empty-string team name in the list.
     assert ops.role_for(teams=[""], editor_team=None, admin_teams=()) == "viewer"
+    # The editor Team is matched case-insensitively, like the admin list: `editorTeam` now admits at
+    # the sign-in gate too, so a case-mismatched entry that once cost only the editor role would
+    # cost sign-in — and matching one way but not the other would admit a login and hand it viewer.
+    assert (
+        ops.role_for(
+            teams=["Acme-GH/Scenario-Maintainers"],
+            editor_team="acme-gh/scenario-maintainers",
+            admin_teams=(),
+        )
+        == "editor"
+    )
     # Nested-Team names don't match the configured flat Team (exact match only) — for the admin
     # list too, where a false match now clears the sign-in gate and not only the role.
     assert (

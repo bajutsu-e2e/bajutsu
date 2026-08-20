@@ -188,15 +188,16 @@ a config — the server enforces that restriction, and a refused action shows in
 
 ### Managing orgs
 
-An **org** is a tenant of a hosted deployment, and its membership decides which GitHub logins and
-GitHub organizations may sign in as it, and which GitHub Team among them may write. A deployment that
+An **org** is a tenant of a hosted deployment, and its membership decides which GitHub logins,
+GitHub organizations, and GitHub Teams may sign in as it, and which Team among them may write. The
+Team that may write is admitted too, so it needs no second entry to be able to sign in. A deployment that
 runs against a database keeps that membership in the database rather than in the config file, and the
 **Orgs** tab is where an admin edits it (BE-0375). The tab appears for an admin on such a
 deployment, and nowhere else: on any other deployment the server declines to list orgs, which is
 what keeps the tab hidden.
 
-Each row shows an org's slug, how many members and GitHub organizations it holds, its editor Team,
-and how many projects it owns — plus its display name, when that differs from the slug the row
+Each row shows an org's slug, how many members, GitHub organizations, and GitHub Teams it holds,
+its editor Team, and how many projects it owns — plus its display name, when that differs from the slug the row
 already leads with. **Create** takes a slug and an optional display name, and the new org
 starts with no members at all — nobody can sign in as it until you fill in its membership, which the
 page says inline so an empty tenant does not read as a bug. The slug `default` is refused: it is
@@ -204,7 +205,7 @@ where a sign-in matching no org lands — including every admin admitted by the 
 a real tenant there would take the namespace an admin recovers through. That row still appears in
 the list, marked as the fallback and with both its controls disabled, since an admin who arrived
 that way is sitting in it. **Membership** opens a form that replaces
-all three fields at once, prefilled from what the server holds right now; a change takes effect on
+all four fields at once, prefilled from what the server holds right now; a change takes effect on
 each member's next sign-in. **Delete** retires an org, and stays greyed out while the org still owns
 a project (deregister those first). Retiring signs out everyone holding a session as that org at the
 same moment, so nobody keeps acting as it on a cookie issued beforehand; it keeps the org's runs and

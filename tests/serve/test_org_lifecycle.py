@@ -43,6 +43,7 @@ orgs:
   acme:
     members: [alice]
     githubOrgs: [acme-gh]
+    githubTeams: [acme-gh/qa]
     editorTeam: acme-gh/scenario-maintainers
     targets: [checkout]
   globex:
@@ -142,6 +143,7 @@ def test_orgs_from_db_resolves_exactly_as_the_equivalent_orgs_block(
             "acme": {
                 "members": ["alice"],
                 "githubOrgs": ["acme-gh"],
+                "githubTeams": ["acme-gh/qa"],
                 "editorTeam": "acme-gh/scenario-maintainers",
             },
             "globex": {"members": ["bob"]},
@@ -149,12 +151,18 @@ def test_orgs_from_db_resolves_exactly_as_the_equivalent_orgs_block(
     )
     from_db = orgs_from_db(state.repository)
     assert from_db == from_config
-    for login, github_orgs in (("alice", []), ("dave", ["acme-gh"]), ("stranger", ["other-gh"])):
-        assert identity_matches_org(from_db, login, github_orgs) == identity_matches_org(
-            from_config, login, github_orgs
+    for login, github_orgs, teams in (
+        ("alice", [], []),
+        ("dave", ["acme-gh"], []),
+        ("erin", [], ["acme-gh/qa"]),
+        ("frank", [], ["acme-gh/scenario-maintainers"]),
+        ("stranger", ["other-gh"], ["other-gh/team"]),
+    ):
+        assert identity_matches_org(from_db, login, github_orgs, teams) == identity_matches_org(
+            from_config, login, github_orgs, teams
         )
-        assert org_for_identity(from_db, login, github_orgs) == org_for_identity(
-            from_config, login, github_orgs
+        assert org_for_identity(from_db, login, github_orgs, teams) == org_for_identity(
+            from_config, login, github_orgs, teams
         )
 
 
@@ -434,6 +442,7 @@ def test_create_then_re_member_an_org_and_audit_both(
         "name": "Initech",
         "members": [],
         "githubOrgs": [],
+        "githubTeams": [],
         "editorTeam": None,
         "projectCount": 0,
         "reserved": False,
@@ -442,13 +451,23 @@ def test_create_then_re_member_an_org_and_audit_both(
     _payload, status = ops.update_org_membership(
         state,
         "initech",
-        {"members": ["peter"], "githubOrgs": ["initech-gh"], "editorTeam": "initech-gh/leads"},
+        {
+            "members": ["peter"],
+            "githubOrgs": ["initech-gh"],
+            "githubTeams": ["initech-gh/qa"],
+            "editorTeam": "initech-gh/leads",
+        },
         actor=admin,
     )
     assert status == 200
     orgs = orgs_from_db(state.repository)
     assert orgs["initech"].members == ["peter"]
+    assert orgs["initech"].github_teams == ["initech-gh/qa"]
     assert orgs["initech"].editor_team == "initech-gh/leads"
+    # The roster an admin sets is a sign-in roster: a member of either Team belongs to `initech`
+    # from the next sign-in, without a redeploy — the point of moving membership into the database.
+    assert org_for_identity(orgs, "milton", [], ["initech-gh/qa"]) == "initech"
+    assert org_for_identity(orgs, "bill", [], ["initech-gh/leads"]) == "initech"
 
     assert _audit_actions(state.repository) == ["org.create", "org.membership.update"]
 
