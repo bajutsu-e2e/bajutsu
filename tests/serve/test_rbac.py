@@ -33,6 +33,17 @@ def test_role_for_derives_the_role_from_team_membership() -> None:
         )
         == "editor"
     )
+    # Every entry promotes, not only the first — the half of BE-0375 unit 9's widening that grants
+    # the role. Without this, an implementation reading `editor_teams[0]` alone still passes: the
+    # admission side is checked through `identity_matches_org`, which never calls `role_for`.
+    assert (
+        ops.role_for(
+            teams=["acme-gh/leads"],
+            editor_teams=["acme-gh/scenario-maintainers", "acme-gh/leads"],
+            admin_teams=("acme-gh/absent",),
+        )
+        == "editor"
+    )
     # The base role: signed in, but a member of neither Team.
     assert (
         ops.role_for(teams=teams, editor_teams=["acme-gh/absent"], admin_teams=("acme-gh/none",))
