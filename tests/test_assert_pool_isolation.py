@@ -91,7 +91,20 @@ def test_one_worker_doing_every_scenario_fails_the_device_count() -> None:
     for s in scenarios:
         s["device"] = "UDID-A"
     violations = isolation_violations(scenarios, _dirs(scenarios), expect_devices=2)
-    assert any("expected 2 distinct leased device(s), saw 1" in v for v in violations)
+    assert any("expected at least 2 distinct leased device(s), saw 1" in v for v in violations)
+
+
+def test_a_device_replaced_mid_run_is_not_read_as_a_pool_violation() -> None:
+    # A run that lost a Simulator mid-flight and continued on the replacement the pool adopted
+    # (BE-0344) names three devices for a pool of two. Isolation held — more devices is more
+    # separation — so the device count must not report it as the pool failing to share the work out.
+    scenarios = [
+        _scenario("smoke", "00-smoke", "UDID-A", started_at=1_000.0),
+        _scenario("search", "01-search", "UDID-B", started_at=1_002.0),
+        _scenario("notices", "02-notices", "UDID-C", started_at=1_012.0),
+        _scenario("navigation", "03-navigation", "UDID-B", started_at=1_014.0),
+    ]
+    assert isolation_violations(scenarios, _dirs(scenarios), expect_devices=2) == []
 
 
 def test_a_blank_device_is_reported_rather_than_silently_skipped() -> None:

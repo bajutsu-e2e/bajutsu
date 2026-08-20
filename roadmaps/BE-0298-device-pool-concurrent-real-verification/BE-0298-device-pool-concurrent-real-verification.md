@@ -89,7 +89,11 @@ Log:
   derives each scenario's window from its steps' own absolute `started_at` (manifest v6) and requires
   a genuine cross-device overlap. Every violation has a unit test
   (`tests/test_assert_pool_isolation.py`), including the case a same-device overlap must *not*
-  satisfy. **iOS:** `pool (xcuitest)` boots two Simulators (a new `exclude-udid` input on the
+  satisfy. The device count is a lower bound rather than an equality: a run that loses a Simulator
+  mid-flight continues on the replacement the pool adopts (BE-0344, reachable on a `--udid`-pinned run
+  too), which names a device the pool was never handed, and exceeding the pool size is strictly more
+  separation between workers — so only a run that used *fewer* devices than it was given fails.
+  **iOS:** `pool (xcuitest)` boots two Simulators (a new `exclude-udid` input on the
   `boot-simulator` action is what makes the second one a different device — without it the action's
   reuse branch returns the first, and `--udid "$A,$A"` would pass every check for the wrong reason)
   and runs smoke / search / notices / navigation through one `bajutsu run --workers 2`. **Android:**
@@ -97,7 +101,12 @@ Log:
   emulator-runner's own step, since that action has no two-emulator mode and its emulator lives only
   for that step's length (`scripts/android_pool_e2e.sh`, `make -C demos/showcase/android e2e-pool`);
   both instances run at `-memory 3072 -cores 1`, which is why the job keeps its own AVD cache key — a
-  resumed snapshot's machine config must match the one it was saved with. **The change filter:** both
+  resumed snapshot's machine config must match the one it was saved with. The Android side buys that
+  same distinctness with a check rather than an input: the second instance's console port is fixed at
+  5556 while the action's own emulator takes only the first *free* even port, so the script fails before
+  booting anything if any attached emulator already holds that serial — otherwise the second `emulator`
+  would fail to bind, both boot waits would answer from an emulator it never booted, and the run would
+  get either the same serial twice or a device nothing verified. **The change filter:** both
   jobs are keyed on a new `pool` output from `scripts/e2e_changes.py` (`touches_pool`), narrower than
   the lane-wide signal every other job reads, so an ordinary `bajutsu/` change does not pay
   for two booted devices; a `workflow_dispatch` fires them too, which is how they are exercised on

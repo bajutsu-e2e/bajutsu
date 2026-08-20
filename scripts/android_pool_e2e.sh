@@ -24,8 +24,9 @@ cd "$(dirname "$0")/.." || exit 1
 avd="${1:?usage: android_pool_e2e.sh <avd-name>}"
 
 # The emulator console port of the instance this script boots. Console ports are even and the action's
-# own emulator already holds 5554, so the second instance takes the next one; adb names it after its
-# console port.
+# own emulator normally holds 5554 — the first *free* even port rather than a guarantee — so the second
+# instance takes the next one; adb names it after its console port. The distinctness check below is
+# what keeps that "normally" from silently running against an emulator this script never booted.
 readonly SECOND_PORT=5556
 readonly SECOND_SERIAL="emulator-${SECOND_PORT}"
 # How long the second emulator may take to report `sys.boot_completed`. A resumed snapshot is fast,
@@ -39,11 +40,29 @@ if [ ! -x "$emulator_bin" ]; then
   exit 1
 fi
 
-first_serial=$(adb devices | awk '/^emulator-/ {print $1; exit}')
+# The whole attached list, space-delimited, rather than only its first entry: the emulator the run
+# leases is the first one, but the emulator that could already hold the second instance's port is any
+# of them.
+attached=$(adb devices | awk '/^emulator-/ {print $1}' | tr '\n' ' ')
+first_serial=${attached%% *}
 if [ -z "$first_serial" ]; then
   echo "::error::no emulator attached; this script runs inside the emulator-runner's own step" >&2
   exit 1
 fi
+# Nothing attached may already hold the port the second instance takes. `SECOND_SERIAL` is fixed while
+# the action's own emulator takes only the first *free* even port, so on a collision the second
+# `emulator` process fails to bind, both waits below answer from an emulator this script never booted,
+# and `bajutsu run` gets either the same serial twice or a device nothing here verified — which the
+# isolation assertion would then read as the pool's doing rather than as a second emulator that never
+# came up. Matched with `case` rather than a `grep -q` pipeline, whose SIGPIPE exit under `pipefail`
+# would read as "no match" and skip the very check this is. Checked before the trap is installed, since
+# `emu kill "$SECOND_SERIAL"` would otherwise reap that other emulator on the way out.
+case " $attached" in
+  *" $SECOND_SERIAL "*)
+    echo "::error::$SECOND_SERIAL is already attached, so the second instance cannot take port $SECOND_PORT" >&2
+    exit 1
+    ;;
+esac
 
 # Kill the second emulator on every exit path, pass or fail: leaving it behind would outlive this
 # step and could be picked up by anything else on the runner. Best-effort — a teardown failure must

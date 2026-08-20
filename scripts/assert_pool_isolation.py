@@ -17,8 +17,10 @@ directory's own subdirectory listing, and checks five things:
 
 - **Every result names its device and its evidence dir.** A blank `device` would make every check
   below vacuous rather than failing.
-- **The devices really were shared out.** The distinct `device` count must equal `--expect-devices`,
-  so a run where one worker quietly did all the work fails instead of passing as "isolated".
+- **The devices really were shared out.** The distinct `device` count must be at least
+  `--expect-devices`, so a run where one worker quietly did all the work fails instead of passing as
+  "isolated". A lower bound rather than an equality, because a device replaced mid-run legitimately
+  makes a result name a device the pool was never handed (see `_device_violations`).
 - **Two workers really were busy at once.** With more than one device expected, some pair of
   scenarios on *different* devices must overlap in wall-clock — the concurrency the lane exists to
   produce, rather than a pool that alternated devices serially.
@@ -113,9 +115,15 @@ def _device_violations(scenarios: Sequence[Mapping[str, object]], expect_devices
     """The devices-were-shared-out and workers-were-concurrent halves of the invariant."""
     violations: list[str] = []
     devices = sorted({str(s.get("device") or "") for s in scenarios if s.get("device")})
-    if len(devices) != expect_devices:
+    # A lower bound, not an equality: `pool.py`'s `adopt_replacement` re-keys a lease onto the device
+    # `XcuitestEnvironment` mints when CoreSimulator has stopped listing the leased one — which happens
+    # on a `--udid`-pinned run too (BE-0344) — and `pipeline.py` stamps that replacement on the result,
+    # so an isolated run can name more devices than its pool held. Exceeding the pool size is strictly
+    # *more* separation between workers, and it is indistinguishable in the manifest from a legitimate
+    # replacement; using fewer devices than the run was handed is the violation, and it still fails.
+    if len(devices) < expect_devices:
         violations.append(
-            f"expected {expect_devices} distinct leased device(s), saw {len(devices)}: "
+            f"expected at least {expect_devices} distinct leased device(s), saw {len(devices)}: "
             f"{devices or '[]'} — the pool did not share the work out across the devices it was given"
         )
     if expect_devices < 2:
@@ -216,7 +224,7 @@ def main() -> int:
         "--expect-devices",
         required=True,
         type=int,
-        help="how many distinct devices the run's workers must have leased",
+        help="the fewest distinct devices the run's workers must have leased",
     )
     args = parser.parse_args()
 
