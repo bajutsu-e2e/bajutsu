@@ -54,12 +54,17 @@ def not_cancelled() -> bool:
 
 
 # The grace window `serve` gives a cancelled run to close itself out, and the fallback for a `run`
-# invoked with no window passed to it. It has to exceed the longest single driver call, since a
-# scenario blocked inside one notices cancellation only once that call returns: the XCUITest
-# channel's actuation timeout is 30s, and a read that rides the BE-0207 transient retry is bounded
-# by its own 60s recovery timeout. Overridable per deployment without a code change.
+# invoked with no window passed to it. Two spans have to fit inside it, not one. First the longest
+# single driver call, since a scenario blocked inside one notices cancellation only once that call
+# returns: the XCUITest channel's actuation timeout is 30s, and a read that rides the BE-0207
+# transient retry is bounded by its own 60s recovery timeout. Then the shutdown tail that follows —
+# failing the remaining scenarios, `_assemble_report` writing the manifest, the report, and the JUnit
+# XML, and printing the `FAIL <manifest>` line `serve` reads the run id from. A window equal to the
+# call alone would leave that tail nothing, so the run could be killed with its manifest unwritten:
+# the silent gap this item removes. 90s is that 60s worst case plus 30s for the tail. Overridable per
+# deployment without a code change.
 GRACE_ENV = "BAJUTSU_CANCEL_GRACE"
-DEFAULT_GRACE_SECONDS = 60.0
+DEFAULT_GRACE_SECONDS = 90.0
 
 # How far beyond the grace window it receives the handler's own deadline sits. The two must not be
 # picked independently: were the internal one shorter, the run would kill itself before the manifest

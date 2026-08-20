@@ -231,3 +231,33 @@ def test_cancel_inside_a_signal_settled_wait_ends_the_settle() -> None:
     )
     assert result.failure == CANCELLED_FAILURE
     assert clock.now() < 1.0
+
+
+def test_a_settle_that_reached_its_deadline_still_passes_under_a_cancel() -> None:
+    # A settle never fails a step: reaching its deadline is a *pass*. So the cancel check sits below
+    # that return, or a settle which had already finished would be turned into a cancelled failure —
+    # and a scenario whose every step passed must keep its real verdict.
+    driver = FakeDriver([el("a", "A", ["button"])])
+    # A zero budget puts the settle at its deadline on its very first poll, which is the moment the
+    # ordering decides: the deadline return is a pass, so it has to win over the cancel check.
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"wait": {"until": "settled", "timeout": 0.0}}]}),
+        clock=FakeClock(),
+        cancelled=_CancelAfter(1),
+    )
+    assert result.ok
+    assert result.failure is None
+
+
+def test_a_signal_settle_that_reached_its_deadline_still_passes_under_a_cancel() -> None:
+    driver = FakeDriver([el("a", "A", ["button"])])
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"wait": {"until": "settled", "timeout": 0.0}}]}),
+        clock=FakeClock(),
+        transitions=lambda: [(ScreenTransition(name="detail"), 0.0)],
+        cancelled=_CancelAfter(1),
+    )
+    assert result.ok
+    assert result.failure is None

@@ -604,10 +604,13 @@ def _wait_settled(
                 on_interrupt_poll,
                 cancelled,
             )
-        if cancelled():
-            raise RunCancelled
         if clock.now() >= deadline:
             return True, "", previous
+        # After the deadline return, not before it: a settle never fails a step, so that return is a
+        # *pass*, and checking first would turn a settle that had already finished into a cancelled
+        # failure — the retroactive verdict change every other branch's ordering rules out.
+        if cancelled():
+            raise RunCancelled
         t0 = clock.now()
         current = driver.query()
         if gate is not None:
@@ -658,10 +661,12 @@ def _wait_settled_by_signal(
     if gate is not None:
         gate.observe(current)
     while clock.now() - last < _TRANSITION_QUIESCENCE:
-        if cancelled():
-            raise RunCancelled
         if clock.now() >= deadline:
             return True, "", current
+        # Below the deadline return for the same reason as the tree-diff path above: that return is a
+        # pass, and a settle already finished must not become a cancelled failure.
+        if cancelled():
+            raise RunCancelled
         if on_interrupt_poll is not None and on_interrupt_poll(current):
             return False, "interrupt recovery failed", current
         t0 = clock.now()

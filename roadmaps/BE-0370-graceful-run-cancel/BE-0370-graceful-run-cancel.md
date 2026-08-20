@@ -251,9 +251,12 @@ handling and the `RunResult` shape are the same for every target.
   rather than a second thread, because restoring a disposition is legal on the main thread alone,
   which is where a Python signal handler runs. `_spawn_env` passes `BAJUTSU_CANCEL_GRACE` down to a
   `graceful_cancel` job's spawn; a `run` invoked outside `serve` receives no value and falls back to
-  the 60-second default, wide enough to clear the longest single driver call (the XCUITest channel's
-  30-second actuation timeout, or a read riding the BE-0207 retry inside its 60-second recovery
-  timeout).
+  the 90-second default. Two spans have to fit inside that window, not one: the longest single driver
+  call (the XCUITest channel's 30-second actuation timeout, or a read riding the BE-0207 retry inside
+  its 60-second recovery timeout), and then the shutdown tail behind it — failing the remaining
+  scenarios, assembling the report, and printing the verdict line `serve` reads the run id from. A
+  window equal to the call alone would leave that tail nothing, so the escalation would end a run
+  blocked in a 60-second read with its manifest still unwritten.
 - [x] `run_matrix_and_report` reads the event between engine passes and fails every scenario of the
   engines that never ran, rather than leaving those engines out of the report. Leaving them out is a
   hazard the design did not foresee: an engine missing from the results takes its scenarios' verdicts
@@ -275,6 +278,13 @@ handling and the `RunResult` shape are the same for every target.
   first boundary fails it. The bound is the lease's own readiness ceiling, and past the grace window
   `serve`'s escalation applies regardless — the same residual the design already accepts for a cancel
   arriving before the pipeline starts a scenario at all.
+- **The Web UI needed wiring the design did not list.** `serve.panels.mjs` short-circuited on
+  `j.cancelled` before it reached `setReport`, in both the Replay tab's run pane and the Record tab's
+  in-place run, so the report a cancelled run now writes would have stayed invisible on the one
+  surface the Cancel button lives on. Both handlers fall through instead: the run keeps its
+  `cancelled` label and gets its report, its `open full report` link, and the triage bar. The design
+  read `_persist_run` and the history summary needing "no further changes" as meaning nothing
+  downstream had to move, which held for the run record but not for the pane beside the log.
 - **The backend-crash retry loop reads the event too.** A retry leases afresh, and on XCUITest that
   bring-up is a cold respawn with a forced erase on top — long enough to outlive the grace window a
   canceller is waiting out, so the escalation would end the run before it wrote its manifest. So a

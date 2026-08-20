@@ -287,8 +287,10 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > The shutdown stays bounded, with or without a canceller watching. A scenario blocked inside a
 > single driver call notices the request only once that call returns — an XCUITest HTTP request, an
 > `adb` subprocess or a Playwright call all hold it that long — so the graceful path gets a grace
-> window. `BAJUTSU_CANCEL_GRACE` sets that window, 60 seconds by default, wide enough to clear the
-> longest such call. Past its own deadline beyond that window, the handler restores `SIGTERM`'s
+> window. `BAJUTSU_CANCEL_GRACE` sets that window, 90 seconds by default: the 60 seconds a read
+> riding the transient retry can hold, plus 30 for the shutdown tail behind it — failing the
+> remaining scenarios, writing the report, and printing the verdict line. A window equal to the call
+> alone would leave that tail nothing. Past its own deadline beyond that window, the handler restores `SIGTERM`'s
 > default disposition and re-raises it, so a genuinely wedged runner dies exactly as it would have
 > without the handler installed. The handler answers every sender, not only the `serve` Web UI's Cancel button: a
 > `docker stop`, a systemd unit stop, and a CI job cancellation all reach it. `serve` waits out the
