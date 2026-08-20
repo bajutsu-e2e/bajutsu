@@ -294,6 +294,11 @@ _LANE_PATHS: dict[str, str] = {
         # anchored to the repo root and doesn't reach this one, but the `visual` job depends on it.
         r"|demos/showcase/Makefile$"
         r"|\.github/workflows/ios-e2e\.yml$"
+        # The bootstrap every macOS job on this lane starts with — select Xcode, install uv and
+        # xcodegen, start the Simulator boot, resolve the Xcode version for the cache key. Break it
+        # and the whole lane breaks, so a change to it has to fire the lane; without this entry it
+        # fired nothing and the required aggregator reported green having run none of it.
+        r"|\.github/actions/setup-ios-toolchain/"
         r"|\.github/actions/bajutsu-e2e/"
         r"|\.github/actions/boot-simulator/"
         # The BE-0361 diagnostics collector every Simulator-driving job now calls. It runs on the
@@ -361,8 +366,9 @@ _LANE_PATHS: dict[str, str] = {
 # contend over), the two evidence modules that name a scenario's own directory, this module and the
 # assertion the jobs gate on, each lane's own two-device job definition, the Android job's own
 # two-emulator script, the `bajutsu-e2e` action whose `workers` / `diagnostics-udid` inputs only
-# these jobs pass, the showcase Android Makefile holding the `e2e-pool` target that job runs, and the
-# iOS job's own capture-light config.
+# these jobs pass, the showcase Android Makefile holding the `e2e-pool` target that job runs, the iOS
+# job's own capture-light config, and each lane's device-bring-up actions — both toolchain composites
+# and `boot-simulator`, since between them they mint every device a two-device job leases.
 # Over-selects by directory, the same safe direction the sweep above takes.
 _POOL_PATHS = (
     r"bajutsu/runner/"
@@ -379,7 +385,12 @@ _POOL_PATHS = (
     r"|\.github/workflows/ios-e2e\.yml$"
     r"|\.github/workflows/android-e2e\.yml$"
     r"|\.github/actions/bajutsu-e2e/"
+    # Both lanes' bring-up: `boot-simulator` mints iOS device B (its `exclude-udid` input exists for
+    # this job alone), and each toolchain composite mints device A — `setup-ios-toolchain` forwards
+    # the udid the iOS job then passes as the left half of `--udid "$A,$B"`, so breaking that
+    # forwarding yields a malformed list only a two-device job ever resolves.
     r"|\.github/actions/boot-simulator/"
+    r"|\.github/actions/setup-ios-toolchain/"
     r"|\.github/actions/setup-android-toolchain/"
     r"|demos/showcase/android/Makefile$"
     # The capture-light config only `pool (xcuitest)` runs: it omits `capture:` so the run falls

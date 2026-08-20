@@ -18,8 +18,8 @@
 # ceiling below is sized for. Then it runs `make -C demos/showcase/android
 # e2e-pool` with both serials in one `bajutsu run --workers 2`, asserts the pool's isolation
 # invariant over what that run left on disk, sweeps the device diagnostics, and re-raises the run's
-# own exit code. The second emulator is killed on every exit path, so the action's own teardown never
-# has to reap it.
+# own exit code. The second emulator is killed on every exit path — by adb where adb can reach it and
+# by pid where it cannot — so the action's own teardown never has to reap it.
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
@@ -72,9 +72,15 @@ case " $attached" in
 esac
 
 # Kill the second emulator on every exit path, pass or fail: leaving it behind would outlive this
-# step and could be picked up by anything else on the runner. Best-effort — a teardown failure must
-# not replace the run's own verdict.
-trap 'adb -s "$SECOND_SERIAL" emu kill >/dev/null 2>&1 || true' EXIT
+# step and could be picked up by anything else on the runner. Two ways, because the exits this script
+# exists to handle are exactly the ones the first way cannot reach: `emu kill` travels over adb, so an
+# emulator that came up while its adbd never answered — the "never attached" and "never reported
+# sys.boot_completed" exits below — survives it, and the launch's own pid is what reaches that one. An
+# orphan matters beyond the leak: `Collect host telemetry` samples the host *after* this step, so a
+# resident second emulator would skew the reading that separates host exhaustion from a pool defect.
+# The pid is unset until the launch below, so the guard covers the exits above it. Best-effort
+# throughout — a teardown failure must not replace the run's own verdict.
+trap 'adb -s "$SECOND_SERIAL" emu kill >/dev/null 2>&1 || true; if [ -n "${emulator_pid:-}" ]; then kill "$emulator_pid" >/dev/null 2>&1 || true; fi' EXIT
 
 echo "Booting a second instance of AVD '$avd' on port $SECOND_PORT (read-only)"
 # Detached with its output kept: a second emulator that fails to come up is diagnosable only from its
@@ -84,6 +90,7 @@ mkdir -p runs/diagnostics
   -memory 3072 -cores 1 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim \
   -no-snapshot-save -camera-back none -camera-front none \
   >runs/diagnostics/emulator-second.log 2>&1 &
+emulator_pid=$!
 
 # Wait for the device to attach, then for the framework to finish booting. `wait-for-device` returns
 # as soon as adbd answers, which is well before the system is usable, so the property poll is what

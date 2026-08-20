@@ -192,6 +192,19 @@ def test_conformance_suite_is_relevant_but_other_tests_are_not() -> None:
     assert is_relevant(["tests/test_e2e_changes.py"]) is False
 
 
+def test_the_ios_toolchain_composite_fires_its_own_lane() -> None:
+    # Every macOS job on the iOS lane starts with this composite (Xcode, uv, xcodegen, the Simulator
+    # boot), so breaking it breaks the lane — yet it matched no fragment until BE-0298, which meant a
+    # change to it fired nothing and the required `E2E (iOS)` aggregator reported green having run
+    # none of it. Its Android counterpart was always claimed; this pins the symmetry.
+    ios = ".github/actions/setup-ios-toolchain/action.yml"
+    android = ".github/actions/setup-android-toolchain/action.yml"
+    assert is_relevant([ios], "ios") is True
+    assert is_relevant([ios], "android") is False
+    assert is_relevant([android], "android") is True
+    assert is_relevant([android], "ios") is False
+
+
 def test_only_e2e_workflow_is_relevant() -> None:
     assert is_relevant([".github/workflows/ios-e2e.yml"]) is True
     assert is_relevant([".github/workflows/ci.yml"]) is False
@@ -879,6 +892,8 @@ def test_pool_fires_on_the_parallel_run_surface() -> None:
         "scripts/assert_pool_isolation.py",
         ".github/actions/boot-simulator/action.yml",
         ".github/actions/bajutsu-e2e/action.yml",
+        # Mints device A, whose udid the job feeds to `exclude-udid` and then to `--udid "$A,$B"`.
+        ".github/actions/setup-ios-toolchain/action.yml",
     ):
         assert touches_pool([path]) is True, path
 
