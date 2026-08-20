@@ -196,7 +196,15 @@ views-noax-build:
 # lane that fails downstream on an ANR dialog anyway (`adb`'s own failure, a wrong scope, a device
 # that dropped the setting) should say so in its own log line, not leave that ambiguity for whoever
 # investigates the failure to resolve by re-running and guessing.
-ANR_QUIET = adb shell settings put global hide_error_dialogs 1 && adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null && echo "ANR_QUIET: hide_error_dialogs=$$(adb shell settings get global hide_error_dialogs | tr -d '\r')"
+#
+# `$(ADB)` rather than a bare `adb` so a lane with more than one device attached can address each in
+# turn without a second copy of these bodies: `e2e-pool` overrides it per device, and every
+# single-device lane leaves the default, expanding to exactly what it did before. `ADB_LABEL` names
+# the device in the read-back on the lanes that need it, which is the whole point of the read-back
+# when two devices could be the one that dropped the setting.
+ADB ?= adb
+ADB_LABEL ?=
+ANR_QUIET = $(ADB) shell settings put global hide_error_dialogs 1 && $(ADB) shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null && echo "ANR_QUIET$(ADB_LABEL): hide_error_dialogs=$$($(ADB) shell settings get global hide_error_dialogs | tr -d '\r')"
 
 # Draw every touch on screen, so the captured video answers "where did it actually land" directly
 # rather than by inference from the log. `show_touches` is a surface-level effect the input system
@@ -208,8 +216,8 @@ ANR_QUIET = adb shell settings put global hide_error_dialogs 1 && adb shell am b
 # compares pixels against a committed baseline, so an overlay there is a false diff waiting to
 # happen — those targets turn the pair off explicitly rather than trusting a fresh AVD's defaults,
 # which also keeps a local run honest after someone has been debugging by hand.
-TOUCH_DEBUG_ON = adb shell settings put system show_touches 1 && adb shell settings put system pointer_location 1
-TOUCH_DEBUG_OFF = adb shell settings put system show_touches 0 && adb shell settings put system pointer_location 0
+TOUCH_DEBUG_ON = $(ADB) shell settings put system show_touches 1 && $(ADB) shell settings put system pointer_location 1
+TOUCH_DEBUG_OFF = $(ADB) shell settings put system show_touches 0 && $(ADB) shell settings put system pointer_location 0
 
 e2e: compose-build views-build
 	adb root && adb wait-for-device
@@ -247,8 +255,11 @@ e2e: compose-build views-build
 # workers must share one pool, and four scenarios over two devices is one cold resident startup and
 # one reuse per device.
 #
-# The three per-device preludes below are the same ones `e2e` applies, but addressed with `adb -s`:
-# `e2e` can use bare `adb` because that lane only ever has one device attached, and this one has two.
+# The per-device prelude below is the same one `e2e` applies, reached by overriding `ADB` to address
+# each device: `e2e` can use the bare default because that lane only ever has one device attached, and
+# this one has two. `$$d` is the loop's own variable, so the override expands per iteration — which is
+# why `ANR_QUIET` and `TOUCH_DEBUG_ON` are called here rather than copied, and why `ADB_LABEL` puts the
+# serial in the read-back: on a red two-device run, "which device dropped the setting" is the question.
 # `hide_error_dialogs` matters more here, not less — two emulators on the CI host's four cores make a
 # missed ANR deadline likelier than the single-device lane's, and a dialog taking the foreground on
 # either device would fail the run for a reason that is not the pool's. The animation scales are this
@@ -257,23 +268,29 @@ e2e: compose-build views-build
 # here or the pair is asymmetric.
 #
 # The scenarios are the state-neutral head of E2E_SCENARIOS: each drives only the app's own UI on its
-# own device, so neither worker can influence the other through anything but the pool itself.
-E2E_POOL_SCENARIOS := smoke firstlook navigation search
+# own device, so neither worker can influence the other through anything but the pool itself. `search`
+# is deliberately not among them, unlike the iOS twin's set: this lane's emulators always cold-boot
+# (both carry `-read-only`, see the workflow), so the run starts in the settling window that `smoke`'s
+# own AVD-cache comment records killing `search`'s app process mid-run at `-cores 1` — and a killed
+# process loses the typed query, which no condition wait can recover. `interrupts` takes its place: it
+# keeps a worker busy for a comparable stretch over `firstlook`'s own flow, and what it adds is a
+# bounded guard read per act (BE-0314), which is contention rather than state.
+E2E_POOL_SCENARIOS := smoke firstlook navigation interrupts
 # Two 1-core emulators draw the first row slower than the single 2-core one the 15s floor was sized
 # for, so this lane needs the same headroom the iOS twin's `pool` job gives itself; a condition wait
 # returns the instant it is satisfied, so a fast render pays nothing. `E2E_WAIT_FLOOR=…` still wins.
 e2e-pool: E2E_WAIT_FLOOR = 30
+e2e-pool: ADB = adb -s $$d
+e2e-pool: ADB_LABEL = [$$d]
 e2e-pool: compose-build
 	@[ -n "$(SERIALS)" ] || { echo "SERIALS is empty: pass the comma list of booted device serials" >&2; exit 1; }
 	for d in $$(echo "$(SERIALS)" | tr ',' ' '); do \
 		adb -s $$d root && adb -s $$d wait-for-device && \
-		adb -s $$d shell settings put global hide_error_dialogs 1 && \
-		adb -s $$d shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null && \
+		$(ANR_QUIET) && \
 		adb -s $$d shell settings put global window_animation_scale 0 && \
 		adb -s $$d shell settings put global transition_animation_scale 0 && \
 		adb -s $$d shell settings put global animator_duration_scale 0 && \
-		adb -s $$d shell settings put system show_touches 1 && \
-		adb -s $$d shell settings put system pointer_location 1 || exit 1; \
+		$(TOUCH_DEBUG_ON) || exit 1; \
 	done
 	cd $(ROOT) && $(E2E_ENV) uv run bajutsu run \
 		$(foreach s,$(E2E_POOL_SCENARIOS),--scenario demos/showcase/scenarios/$(s).yaml) \

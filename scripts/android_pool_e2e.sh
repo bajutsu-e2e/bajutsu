@@ -11,8 +11,11 @@
 #   scripts/android_pool_e2e.sh <avd-name>
 #
 # It boots a second instance of the SAME cached AVD with `-read-only` — the flag that lets a second
-# emulator process share the AVD's images through its own overlay — so the boot resumes the job's
-# cached snapshot instead of paying a cold create. Then it runs `make -C demos/showcase/android
+# emulator process share the AVD's images through its own overlay. The job's own emulator carries the
+# flag too, because an instance holding the AVD read-write locks it and refuses the second one
+# outright ("run all emulators with -read-only flag"); `-read-only` also disables snapshot load, so
+# this instance cold-boots rather than resuming the job's cached snapshot, which is what the generous
+# ceiling below is sized for. Then it runs `make -C demos/showcase/android
 # e2e-pool` with both serials in one `bajutsu run --workers 2`, asserts the pool's isolation
 # invariant over what that run left on disk, sweeps the device diagnostics, and re-raises the run's
 # own exit code. The second emulator is killed on every exit path, so the action's own teardown never
@@ -29,10 +32,14 @@ avd="${1:?usage: android_pool_e2e.sh <avd-name>}"
 # what keeps that "normally" from silently running against an emulator this script never booted.
 readonly SECOND_PORT=5556
 readonly SECOND_SERIAL="emulator-${SECOND_PORT}"
-# How long the second emulator may take to report `sys.boot_completed`. A resumed snapshot is fast,
-# but this one resumes onto a host already running the first emulator, so the ceiling is generous. It
-# is a bound on a condition poll, not a delay: the loop returns the moment the property flips.
-readonly BOOT_TIMEOUT=420
+# How long the second emulator may take to report `sys.boot_completed`, counted from the moment it is
+# launched. `-read-only` rules out a snapshot resume, so this is a full cold boot at one core beside a
+# first emulator already up and contending for the host — hence a ceiling well above what a resume
+# would need. It is one bound over both waits below, not one each: the job's own `timeout-minutes` has
+# to stay above it, and a job GitHub cancels at that ceiling prints none of the diagnostics these
+# waits exist to print. It bounds a condition poll, not a delay — each wait returns the moment its
+# condition holds.
+readonly BOOT_TIMEOUT=600
 
 emulator_bin="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}/emulator/emulator"
 if [ ! -x "$emulator_bin" ]; then
@@ -80,14 +87,16 @@ mkdir -p runs/diagnostics
 
 # Wait for the device to attach, then for the framework to finish booting. `wait-for-device` returns
 # as soon as adbd answers, which is well before the system is usable, so the property poll is what
-# actually gates the run.
+# actually gates the run. Both waits share one deadline taken here, so `BOOT_TIMEOUT` is the ceiling
+# for the whole bring-up rather than for each half of it — the difference decides whether the script
+# fails loudly or the job is cancelled out from under it.
+deadline=$((SECONDS + BOOT_TIMEOUT))
 if ! timeout "$BOOT_TIMEOUT" adb -s "$SECOND_SERIAL" wait-for-device; then
   echo "::error::$SECOND_SERIAL never attached within ${BOOT_TIMEOUT}s" >&2
   tail -n 40 runs/diagnostics/emulator-second.log >&2 || true
   exit 1
 fi
 booted=0
-deadline=$((SECONDS + BOOT_TIMEOUT))
 while [ "$SECONDS" -lt "$deadline" ]; do
   if [ "$(adb -s "$SECOND_SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
     booted=1
@@ -96,7 +105,7 @@ while [ "$SECONDS" -lt "$deadline" ]; do
   sleep 2
 done
 if [ "$booted" -ne 1 ]; then
-  echo "::error::$SECOND_SERIAL did not report sys.boot_completed within ${BOOT_TIMEOUT}s" >&2
+  echo "::error::$SECOND_SERIAL did not report sys.boot_completed within ${BOOT_TIMEOUT}s of launch" >&2
   tail -n 40 runs/diagnostics/emulator-second.log >&2 || true
   exit 1
 fi

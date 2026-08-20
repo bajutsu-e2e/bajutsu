@@ -352,8 +352,9 @@ state-neutral showcase scenarios through one `bajutsu run --workers 2`, so the p
 work out and keep both workers busy at once. `scripts/assert_pool_isolation.py` is what turns the
 outcome into a verdict, read from the finished run's `manifest.json` and the run directory's own
 subdirectory listing: it fails on an artifact recorded under another worker's slug, two results
-sharing one slug, a subdirectory no result claims, one device having quietly taken every scenario,
-or no two scenarios on different devices having overlapped in wall-clock. The check is a file read
+sharing one slug, a subdirectory no result claims, a recorded evidence directory the run never wrote,
+one device having quietly taken every scenario, or no two scenarios on different devices having
+overlapped in wall-clock. The check is a file read
 and a set comparison, and it runs after `bajutsu run` has returned its own verdict, so it observes
 the run's artifacts and never feeds any scenario's pass/fail.
 

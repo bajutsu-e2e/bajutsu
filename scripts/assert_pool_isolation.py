@@ -26,9 +26,10 @@ directory's own subdirectory listing, and checks five things:
   produce, rather than a pool that alternated devices serially.
 - **No scenario wrote outside its own evidence dir.** Every artifact name a result recorded must sit
   under that result's own `sid/`, and no two results may share a `sid`.
-- **The directory holds nothing unaccounted for.** Every subdirectory of the run directory must
-  belong to exactly one result, so evidence cross-written under a name no result claims fails rather
-  than going unnoticed.
+- **The directory and the results account for each other.** Every subdirectory of the run directory
+  must belong to exactly one result, so evidence cross-written under a name no result claims fails
+  rather than going unnoticed — and every directory a result recorded evidence under must exist, so a
+  manifest entry pointing at evidence the run never wrote fails too.
 
 The decision is a file read and a set comparison: no model touches it, and it runs after `bajutsu
 run` has already returned its own verdict, so it is an observer of the run's artifacts and never an
@@ -163,6 +164,7 @@ def isolation_violations(
         return ["the manifest recorded no scenario results"]
     violations: list[str] = []
     slug_owners: dict[str, list[str]] = {}
+    recorded_evidence: set[str] = set()
     for index, scenario in enumerate(scenarios):
         name = str(scenario.get("scenario") or f"#{index}")
         sid = str(scenario.get("sid") or "")
@@ -172,10 +174,13 @@ def isolation_violations(
         if not scenario.get("device"):
             violations.append(f"scenario {name!r} ({sid}) recorded no leased device (udid)")
         slug_owners.setdefault(sid, []).append(name)
+        names = artifact_names(scenario)
+        if names:
+            recorded_evidence.add(sid)
         violations.extend(
             f"scenario {name!r} recorded artifact {artifact!r} outside its own "
             f"evidence dir {sid!r} — evidence crossed between workers"
-            for artifact in artifact_names(scenario)
+            for artifact in names
             if artifact != sid and not artifact.startswith(f"{sid}/")
         )
     for sid, owners in slug_owners.items():
@@ -189,6 +194,19 @@ def isolation_violations(
         "— evidence was written outside every worker's own dir"
         for dir_name in dir_names
         if dir_name not in slug_owners
+    )
+    # The mirror direction: a result naming an artifact under a directory the run never wrote. That is
+    # the "artifact path computed before a worker's subdirectory exists" hazard this module's header
+    # names — a manifest entry pointing at evidence a reader cannot open. Gated on the result having
+    # recorded a name at all, so the claim stays "it recorded evidence and the evidence is not there"
+    # rather than demanding a directory from a result that captured nothing (a dropped recording is
+    # never recorded: `evidence/core.py` skips the artifact entry along with the file).
+    held = set(dir_names)
+    violations.extend(
+        f"scenario {owners[0]!r} recorded evidence under {sid!r}, which the run directory does not "
+        "hold — the worker's evidence never landed"
+        for sid, owners in slug_owners.items()
+        if sid in recorded_evidence and sid not in held
     )
     violations.extend(_device_violations(scenarios, expect_devices))
     return violations

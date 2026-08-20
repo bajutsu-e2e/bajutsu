@@ -5,7 +5,8 @@ drives `FakeDriver` instances against fabricated udids), so the E2E lane that bo
 asserts it from what the run actually left on disk. These tests pin the decision that lane gates on:
 each way a run can contradict the claim — one worker doing all the work, two workers never
 overlapping, evidence written under another worker's slug, two results sharing one slug, a directory
-no result claims — must be reported, and a genuinely isolated run must report nothing.
+no result claims, a recorded evidence dir that never landed — must be reported, and a genuinely
+isolated run must report nothing.
 
 `isolation_violations` is pure (parsed manifest scenarios + the run directory's subdirectory names),
 so every case here is a synthesized manifest rather than a recorded run.
@@ -180,6 +181,28 @@ def test_a_directory_no_result_claims_is_reported() -> None:
     dirs = [*_dirs(scenarios), "04-orphan"]
     violations = isolation_violations(scenarios, dirs, expect_devices=2)
     assert any("'04-orphan/'" in v for v in violations)
+
+
+def test_a_result_whose_evidence_dir_never_landed_is_reported() -> None:
+    # The mirror of the orphan case: the result names artifacts under `01-search/`, but the run
+    # directory has no such dir — a worker whose evidence was dropped on a contended host.
+    scenarios = _isolated_run()
+    dirs = [d for d in _dirs(scenarios) if d != "01-search"]
+    violations = isolation_violations(scenarios, dirs, expect_devices=2)
+    assert any(
+        "recorded evidence under '01-search', which the run directory does not hold" in v
+        for v in violations
+    )
+
+
+def test_a_result_that_recorded_no_evidence_is_not_asked_for_a_directory() -> None:
+    # Nothing was captured, so no directory is expected: the check must claim only that recorded
+    # evidence landed, not that every result captured something.
+    scenarios = _isolated_run()
+    scenarios[1]["artifacts"] = []
+    scenarios[1]["steps"][0]["artifacts"] = []  # type: ignore[index]
+    dirs = [d for d in _dirs(scenarios) if d != "01-search"]
+    assert isolation_violations(scenarios, dirs, expect_devices=2) == []
 
 
 def test_artifact_names_collects_the_scenario_and_its_steps() -> None:

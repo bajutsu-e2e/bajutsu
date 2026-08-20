@@ -1010,10 +1010,17 @@ jobs:
   # the surface it guards is narrow and rarely touched (see `touches_pool` in
   # scripts/e2e_changes.py), and this job boots two emulators against a host that sizes the single-
   # emulator jobs at `-memory 8192 -cores 2`. Both instances therefore run at `-memory 3072 -cores 1`,
-  # which is why this job keeps its own AVD cache key: a resumed snapshot's machine config must match
-  # the one it was saved with, so sharing `smoke`'s `mem8192-cores2` entry would fail the snapshot
-  # load and cold-boot into exactly the settling window that lane's own comment documents as a flake
-  # source.
+  # and with `-read-only`, which is what lets two processes share one AVD at all. That flag also
+  # disables snapshot load, so unlike every other job here this one always cold-boots both devices,
+  # and it starts its run inside exactly the settling window `smoke`'s own cache comment documents as
+  # a flake source. `E2E_POOL_SCENARIOS` therefore leaves `search` out: that comment names it as the
+  # scenario whose app process was seen killed mid-run in this window, and a killed process loses
+  # typed input, which no condition-wait ceiling can recover. The 30s floor `e2e-pool` sets covers the
+  # other half — a first row two 1-core emulators draw slowly.
+  #
+  # It keeps its own AVD cache key because the entry has to hold an AVD *named* `bajutsu-pool`, which
+  # `smoke`'s does not; the `mem3072-cores1` suffix is now only a record of the options this job runs,
+  # since with snapshot load disabled nothing about the cached entry depends on them.
   #
   # The second emulator is booted from inside the emulator-runner's own step
   # (scripts/android_pool_e2e.sh) because that action has no two-emulator mode and its emulator lives
@@ -1028,11 +1035,13 @@ jobs:
       !cancelled() && needs.changes.result == 'success' &&
       needs.changes.outputs.relevant == 'true' && needs.changes.outputs.pool == 'true'
     runs-on: ubuntu-latest
-    # Two warm snapshot resumes + one Compose APK install per device + four scenarios in one
-    # `bajutsu run` is ~20min when healthy; 45 catches a real hang (a wedged second boot, a stuck adb
-    # with two devices attached) with headroom. The script's own boot ceiling fails the second
-    # emulator loudly well inside this.
-    timeout-minutes: 45
+    # Two cold boots (both instances are `-read-only`, see the run step) + one Compose APK install per
+    # device + four scenarios in one `bajutsu run` is ~25min when healthy; 60 catches a real hang (a
+    # wedged second boot, a stuck adb with two devices attached) while staying clear of the script's
+    # own 10min boot ceiling, which has to trip *first* — a job cancelled at this ceiling prints none
+    # of the diagnostics that ceiling exists to print, and `gh run rerun --failed` skips a cancelled
+    # job.
+    timeout-minutes: 60
     env:
       UV_NO_DEV: "1"
     steps:
@@ -1052,9 +1061,13 @@ jobs:
       - name: Build the resident UI Automator server APKs
         run: make -C BajutsuAndroidUIAutomatorServer build
 
-      # This job's own cache entry — see the header for why it cannot share `smoke`'s. Bump the
-      # suffix in lockstep with the `-memory`/`-cores` below and with the second instance's own
-      # options in scripts/android_pool_e2e.sh, which resumes this same snapshot.
+      # This job's own cache entry — see the header for why it cannot share `smoke`'s. What it buys
+      # here is the AVD *creation*, not a snapshot resume: both instances run `-read-only` (they have
+      # to, see the run step below) and that flag disables snapshot load, so neither resumes the
+      # `default_boot` this cache carries. The suffix records the options below, so bump it whenever
+      # they change — that keeps the entry's name honest even though nothing in it depends on them any
+      # more. What must move in lockstep is the *other* option list: scripts/android_pool_e2e.sh boots
+      # the second instance, and the two devices the run leases have to be configured alike.
       - name: Cache AVD
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         id: avd-cache
@@ -1097,7 +1110,13 @@ jobs:
           profile: pixel_6
           avd-name: bajutsu-pool
           force-avd-creation: false
-          emulator-options: -memory 3072 -cores 1 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          # `-read-only` on *this* instance too, not only on the second one the script boots: an
+          # emulator holding the AVD read-write locks it, and a second process is refused with
+          # "Another emulator instance is running. Please close it or run all emulators with
+          # -read-only flag" — measured on this job's first real run, where the second instance never
+          # attached. The flag also disables snapshot load, so both instances cold-boot; see the
+          # `Cache AVD` note above for what the cache still buys and why this lane accepts that.
+          emulator-options: -memory 3072 -cores 1 -read-only -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
           # One line, since the emulator-runner runs each script line as its own `/usr/bin/sh -c`:
           # the script owns the second boot, the run, the isolation assertion, the diagnostics sweep,

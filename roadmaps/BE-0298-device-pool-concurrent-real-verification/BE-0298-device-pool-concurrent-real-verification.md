@@ -81,10 +81,10 @@ Log:
 - [#1666](https://github.com/bajutsu-e2e/bajutsu/pull/1666) — landed both lanes as non-gating
   signals, plus the assertion they gate on. **The assertion:**
   `scripts/assert_pool_isolation.py` reads the finished run's `manifest.json` and the run directory's
-  own subdirectory listing and fails on five distinct violations — an artifact recorded under another
-  worker's slug, two results sharing one slug, a subdirectory no result claims, one device having
-  taken every scenario, and no two scenarios on different devices having overlapped in wall-clock.
-  The last one is what stops a lane passing without ever having produced contention: two devices and
+  own subdirectory listing and fails on six distinct violations — an artifact recorded under another
+  worker's slug, two results sharing one slug, a subdirectory no result claims, a recorded evidence dir
+  the run directory does not hold, one device having taken every scenario, and no two scenarios on
+  different devices having overlapped in wall-clock. The last one is what stops a lane passing without ever having produced contention: two devices and
   four scenarios yield two distinct udids even if the pool alternated them serially, so the check
   derives each scenario's window from its steps' own absolute `started_at` (manifest v6) and requires
   a genuine cross-device overlap. Every violation has a unit test
@@ -100,9 +100,17 @@ Log:
   `pool (adb)` boots a second instance of its cached AVD with `-read-only`, from inside the
   emulator-runner's own step, since that action has no two-emulator mode and its emulator lives only
   for that step's length (`scripts/android_pool_e2e.sh`, `make -C demos/showcase/android e2e-pool`);
-  both instances run at `-memory 3072 -cores 1`, which is why the job keeps its own AVD cache key — a
-  resumed snapshot's machine config must match the one it was saved with. The Android side buys that
-  same distinctness with a check rather than an input: the second instance's console port is fixed at
+  both instances run at `-memory 3072 -cores 1`, and the job keeps its own AVD cache key because that
+  entry has to hold an AVD named `bajutsu-pool`. Both also run `-read-only`: the lane's first real run
+  measured the second instance being refused outright ("Another emulator instance is running. Please
+  close it or run all emulators with -read-only flag") because the emulator-runner's own emulator held
+  the AVD read-write, so the flag had to move onto the action's options as well. It disables snapshot
+  load, so this job always cold-boots both devices and starts its run inside the settling window
+  `smoke`'s cache comment documents as a flake source. `search` therefore left this lane's scenario set
+  for `interrupts` — that comment names `search` as the scenario whose app process was seen killed in
+  that window, and a killed process loses the typed query no condition wait can recover; a second,
+  cloned AVD is the remaining option if the cold boot proves flaky beyond that. The Android side buys
+  that same distinctness with a check rather than an input: the second instance's console port is fixed at
   5556 while the action's own emulator takes only the first *free* even port, so the script fails before
   booting anything if any attached emulator already holds that serial — otherwise the second `emulator`
   would fail to bind, both boot waits would answer from an emulator it never booted, and the run would
