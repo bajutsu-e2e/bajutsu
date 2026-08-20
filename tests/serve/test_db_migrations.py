@@ -14,6 +14,7 @@ data via the `DROP SCHEMA public CASCADE` reset)."""
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 from typing import Any
 
@@ -150,6 +151,63 @@ def test_initial_migration_matches_the_orm_schema(migration_db_url) -> None:
         assert migrated == _schema_signature(fresh)
     finally:
         fresh.dispose()
+
+
+@pytest.mark.parametrize("migration_db_url", _DIALECTS, indirect=True)
+def test_0017_carries_a_single_editor_team_into_the_list(migration_db_url) -> None:
+    # The one migration in this series that moves data, not just columns (BE-0375 unit 9): an
+    # `editor_team` an admin set through the API lives nowhere but this row, since the write stamps
+    # `membership_seeded_at` and no later startup reseeds it from the `orgs:` block. Dropping the
+    # column without the copy would demote every editor of such an org to viewer, silently.
+    from alembic import command
+
+    cfg = _alembic_config()
+    command.upgrade(cfg, "0016")
+    engine = create_engine(migration_db_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO orgs (id, slug, name, editor_team) "
+                    "VALUES ('acme', 'acme', 'Acme', 'acme-gh/scenario-maintainers')"
+                )
+            )
+            # A row that never had one must not gain an entry the copy invented.
+            conn.execute(
+                text("INSERT INTO orgs (id, slug, name) VALUES ('globex', 'globex', 'Globex')")
+            )
+    finally:
+        engine.dispose()
+
+    command.upgrade(cfg, "0017")
+    engine = create_engine(migration_db_url)
+    try:
+        with engine.connect() as conn:
+            rows = dict(
+                conn.execute(text("SELECT id, editor_teams FROM orgs")).all()  # type: ignore[arg-type]
+            )
+        # SQLite hands back the stored JSON text; Postgres decodes JSONB into Python. Compare
+        # through `json.loads` on the string form so one assertion covers both dialects.
+        acme = rows["acme"]
+        assert (json.loads(acme) if isinstance(acme, str) else acme) == [
+            "acme-gh/scenario-maintainers"
+        ]
+        assert rows["globex"] is None
+    finally:
+        engine.dispose()
+
+    # The way back carries the first entry, so downgrading an org that never gained a second Team is
+    # lossless — the only direction an operator can reverse this migration in without losing a role.
+    command.downgrade(cfg, "0016")
+    engine = create_engine(migration_db_url)
+    try:
+        with engine.connect() as conn:
+            back = dict(
+                conn.execute(text("SELECT id, editor_team FROM orgs")).all()  # type: ignore[arg-type]
+            )
+        assert back == {"acme": "acme-gh/scenario-maintainers", "globex": None}
+    finally:
+        engine.dispose()
 
 
 @pytest.mark.parametrize("migration_db_url", _DIALECTS, indirect=True)

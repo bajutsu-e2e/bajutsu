@@ -10,6 +10,7 @@ from bajutsu.serve.orgs import (
     identity_matches_org,
     load_serve_config,
     org_for_identity,
+    orgs_declaring_membership,
     targets_for_org,
 )
 
@@ -118,18 +119,45 @@ def test_identity_matches_org_handles_an_org_literally_named_default() -> None:
     assert identity_matches_org(orgs, "stranger", [], []) is False
 
 
-def test_editor_team_parses_from_editor_team_alias() -> None:
-    # BE-0313: `editorTeam` on an org names the flat Team whose members are editors.
+def test_editor_teams_parse_from_the_editor_teams_alias() -> None:
+    # BE-0313: `editorTeams` on an org names the flat Teams whose members are editors — a list since
+    # BE-0375 unit 9, so an org spanning several GitHub organizations can name one Team in each.
     _, orgs = load_serve_config(
         "targets:\n  demo: { bundleId: com.x }\n"
-        "orgs:\n  acme:\n    githubOrgs: [acme-gh]\n    editorTeam: acme-gh/scenario-maintainers\n"
+        "orgs:\n  acme:\n    githubOrgs: [acme-gh]\n"
+        "    editorTeams: [acme-gh/scenario-maintainers, other-gh/leads]\n"
     )
-    assert orgs["acme"].editor_team == "acme-gh/scenario-maintainers"
-    # Absent by default.
+    assert orgs["acme"].editor_teams == ["acme-gh/scenario-maintainers", "other-gh/leads"]
+    # Empty by default.
     _, plain = load_serve_config(
         "targets:\n  demo: { bundleId: com.x }\norgs:\n  acme:\n    githubOrgs: [acme-gh]\n"
     )
-    assert plain["acme"].editor_team is None
+    assert plain["acme"].editor_teams == []
+
+
+def test_the_retired_singular_editor_team_key_folds_into_editor_teams() -> None:
+    # A config still on the pre-rename key keeps working. `OrgConfig` is `extra="forbid"`, so
+    # rejecting the key would fail the whole parse, and `load_serve_config_file` answers a parse
+    # failure with no org model at all — every login of a deployment that missed one key would be
+    # turned away, the silent lockout BE-0352's retired-name warning exists to prevent.
+    _, orgs = load_serve_config(
+        "targets:\n  demo: { bundleId: com.x }\n"
+        "orgs:\n  acme:\n    editorTeam: acme-gh/scenario-maintainers\n"
+    )
+    assert orgs["acme"].editor_teams == ["acme-gh/scenario-maintainers"]
+    # Both spellings set is the likelier partial rename; neither Team loses its role to the other.
+    _, both = load_serve_config(
+        "targets:\n  demo: { bundleId: com.x }\n"
+        "orgs:\n  acme:\n    editorTeams: [acme-gh/new]\n    editorTeam: acme-gh/old\n"
+    )
+    assert both["acme"].editor_teams == ["acme-gh/new", "acme-gh/old"]
+    # `editorTeam: ""` meant "no editor Team" before the rename and still does: folding it in would
+    # leave an entry matching no Team that nonetheless makes this org look like it declares a roster.
+    _, empty = load_serve_config(
+        'targets:\n  demo: { bundleId: com.x }\norgs:\n  acme:\n    editorTeam: ""\n'
+    )
+    assert empty["acme"].editor_teams == []
+    assert orgs_declaring_membership(empty) == []
 
 
 TEAM_YAML = """
@@ -143,7 +171,7 @@ orgs:
   globex:
     githubTeams: [globex-gh/qa, globex-gh/ops]
   initech:
-    editorTeam: initech-gh/scenario-maintainers
+    editorTeams: [initech-gh/scenario-maintainers, initech-gh/leads]
 """
 
 
@@ -160,13 +188,17 @@ def test_github_teams_admit_and_place_a_login() -> None:
     assert org_for_identity(orgs, "erin", [], ["globex-gh/interns"]) == "default"
 
 
-def test_editor_team_also_admits_a_login() -> None:
-    # initech declares no members and no githubOrgs, so its editorTeam is its whole roster: a Team
+def test_editor_teams_also_admit_a_login() -> None:
+    # initech declares no members and no githubOrgs, so its editorTeams are its whole roster: a Team
     # whose members may write is a Team whose members may sign in.
     _, orgs = load_serve_config(TEAM_YAML)
     teams = ["initech-gh/scenario-maintainers"]
     assert identity_matches_org(orgs, "frank", [], teams) is True
     assert org_for_identity(orgs, "frank", [], teams) == "initech"
+    # Every entry admits, not only the first — the point of widening the field to a list.
+    second = ["initech-gh/leads"]
+    assert identity_matches_org(orgs, "gwen", [], second) is True
+    assert org_for_identity(orgs, "gwen", [], second) == "initech"
 
 
 def test_team_matching_is_case_insensitive() -> None:
@@ -208,7 +240,10 @@ def test_github_teams_parse_from_the_github_teams_alias() -> None:
     # Absent by default, and `admitting_teams` unions the two Team fields.
     assert orgs["acme"].github_teams == []
     assert orgs["acme"].admitting_teams() == []
-    assert orgs["initech"].admitting_teams() == ["initech-gh/scenario-maintainers"]
+    assert orgs["initech"].admitting_teams() == [
+        "initech-gh/scenario-maintainers",
+        "initech-gh/leads",
+    ]
 
 
 def test_malformed_orgs_block_fails_loudly() -> None:

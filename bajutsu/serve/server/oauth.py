@@ -121,7 +121,7 @@ def _fetch_orgs(client: object, headers: dict[str, str]) -> list[str]:
     sign-in gate (`identity_matches_org` reads this same list), so a failure here has effects that
     depend on how the login was admitted: an explicit `members` login is unaffected — its org comes
     from that `members` entry, which never consults this list — and so is a login admitted by an
-    org's `githubTeams` or `editorTeam`, which reads the Team list below instead. A login relying
+    org's `githubTeams` or `editorTeams`, which reads the Team list below instead. A login relying
     only on `githubOrgs` is turned away at sign-in, since the gate sees no matching org to admit it
     through, *unless* the login is also a member of a configured admin Team, in which case the
     admin-Team bypass admits it into `default` regardless of this failure."""
@@ -135,7 +135,7 @@ def _fetch_orgs(client: object, headers: dict[str, str]) -> list[str]:
 def _fetch_teams(client: object, headers: dict[str, str]) -> list[str]:
     """Every GitHub Team the user is a *direct* member of, as `"<github-org>/<team-slug>"`, following
     pagination. Team membership grants the editor/admin role (BE-0313) and decides the sign-in gate
-    for an org declaring `githubTeams` or an `editorTeam`, as well as for a configured admin Team, so
+    for an org declaring `githubTeams` or `editorTeams`, as well as for a configured admin Team, so
     a failure never *invents* a team: a failure on the first page yields no teams, and a failure
     partway through pagination keeps only the teams already confirmed from earlier pages, never
     granting one that wasn't actually returned by GitHub. For the editor role, and for a login some

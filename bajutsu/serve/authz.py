@@ -110,7 +110,7 @@ class _OrgModel:
         if not identity.orgs:
             # An empty org list stays the primary signal, since a `/user/orgs` outage looks exactly
             # like it. Naming the Team list too, and only when it is *also* empty, keeps that reading
-            # intact while covering the deployment whose gate is a `githubTeams`/`editorTeam` entry:
+            # intact while covering the deployment whose gate is a `githubTeams`/`editorTeams` entry:
             # there the org list is beside the point, and blaming it alone would send an operator to
             # an `orgs:` axis that entry never consults. A login carrying Teams but no orgs is
             # unchanged -- one fetch came back, so only the other is worth naming.
@@ -200,7 +200,7 @@ def oauth_callback(
     login = identity.login
     # Read the org model once, for both the sign-in gate and the org/role resolution below
     # (BE-0313). Sign-in is gated on an org's declared membership: a login matching no
-    # `members`/`githubOrgs`/`githubTeams`/`editorTeam` entry is turned away — unless it also matches
+    # `members`/`githubOrgs`/`githubTeams`/`editorTeams` entry is turned away — unless it also matches
     # a configured admin Team, in which case the admin-Team check below admits it regardless. The
     # gate and the placement below read the one ranking in `orgs._match_org`, so a login admitted
     # through one org's Team is never filed under another. This runs at the top level,
@@ -276,7 +276,7 @@ def oauth_callback(
         # mistake for a real one.
         org = org_for_identity(orgs, login, identity.orgs, identity.teams)
         oc = orgs.get(org)
-        editor_team = oc.editor_team if oc is not None else None
+        editor_teams = oc.editor_teams if oc is not None else []
         state.repository.ensure_org(org, slug=org, name=org)
         state.repository.upsert_user(
             login,
@@ -287,7 +287,7 @@ def oauth_callback(
             # effect on next login without a data migration (BE-0015 7c-2, BE-0313).
             role=role_for(
                 teams=identity.teams,
-                editor_team=editor_team,
+                editor_teams=editor_teams,
                 admin_teams=admin_teams,
             ),
         )
@@ -441,18 +441,20 @@ def in_admin_team(teams: Sequence[str], admin_teams: tuple[str, ...]) -> bool:
     return in_teams(teams, admin_teams)
 
 
-def role_for(*, teams: Sequence[str], editor_team: str | None, admin_teams: tuple[str, ...]) -> str:
+def role_for(
+    *, teams: Sequence[str], editor_teams: Sequence[str], admin_teams: tuple[str, ...]
+) -> str:
     """The role for a login from its GitHub Team memberships (BE-0313): admin if a member of any of
-    the server-wide *admin_teams*, editor if a member of the resolved org's *editor_team*, else viewer
-    (the base role every signed-in user gets). *teams* are `"<github-org>/<team-slug>"` direct
-    memberships; an unset *editor_team* or empty *admin_teams* never matches. Both checks go through
-    `in_teams`, so both are ASCII-case-insensitive: once `editorTeam` also admits a login at the
-    sign-in gate, a case-mismatched entry that used to cost only the editor role would cost sign-in
-    itself, and matching one way but not the other would admit a login and then hand it viewer. Recomputed on
-    every login (BE-0015 7c-2)."""
+    the server-wide *admin_teams*, editor if a member of any of the resolved org's *editor_teams*,
+    else viewer (the base role every signed-in user gets). *teams* are `"<github-org>/<team-slug>"`
+    direct memberships; empty *editor_teams* or empty *admin_teams* never matches. Both checks go
+    through `in_teams`, so both are ASCII-case-insensitive: once `editorTeams` also admits a login at
+    the sign-in gate, a case-mismatched entry that used to cost only the editor role would cost
+    sign-in itself, and matching one way but not the other would admit a login and then hand it
+    viewer. Recomputed on every login (BE-0015 7c-2)."""
     if in_admin_team(teams, admin_teams):
         return "admin"
-    if editor_team is not None and in_teams(teams, [editor_team]):
+    if in_teams(teams, editor_teams):
         return "editor"
     return "viewer"
 

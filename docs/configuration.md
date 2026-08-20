@@ -319,7 +319,8 @@ notify:
 
 `orgs:` declares tenants for the hosted server backend ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
 Each org lists its members — explicit GitHub logins (`members`), whole GitHub orgs (`githubOrgs`),
-and/or single GitHub Teams (`githubTeams`) — the GitHub Team whose members may write (`editorTeam`),
+and/or single GitHub Teams (`githubTeams`) — the GitHub Teams whose members may write
+(`editorTeams`),
 and the targets it owns:
 
 ```yaml
@@ -328,12 +329,12 @@ orgs:
     members: [alice, bob]                   # explicit GitHub logins
     githubOrgs: [acme-gh]                    # everyone in this GitHub org (needs the read:org OAuth scope)
     githubTeams: [acme-gh/qa]                # direct members of these Teams, without the whole GitHub org
-    editorTeam: acme-gh/scenario-maintainers # direct members of this Team become editors — and may sign in
+    editorTeams: [acme-gh/scenario-maintainers] # direct members of these Teams become editors — and may sign in
     targets: [demo, checkout]
 ```
 
 At OAuth login users are assigned their org — an explicit `members` entry first, then a `githubOrgs`
-match from their GitHub org memberships, then a `githubTeams` or `editorTeam` match from their direct
+match from their GitHub org memberships, then a `githubTeams` or `editorTeams` match from their direct
 Team memberships. Teams rank last, so adding one to an org never moves a login that a `members` or
 `githubOrgs` entry already placed. Afterward they see only that org's targets, and a run's
 artifacts/scenarios/baselines live under the org's own object-store prefix. A target named in no org
@@ -343,14 +344,19 @@ CLI and local `serve` ignore `orgs:` entirely.
 Once GitHub OAuth is configured, org membership also decides access
 ([BE-0313](../roadmaps/BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)). Signing in
 requires membership in a configured org — through `members`, `githubOrgs`, `githubTeams`, or
-`editorTeam` — which grants the **viewer** role; a member of a configured admin Team signs in
-regardless (below). A direct member of the org's `editorTeam` is promoted to **editor**; a member of
-one of the server-wide admin Teams (`BAJUTSU_OAUTH_ADMIN_TEAMS`, see
-[Self-hosting](self-hosting.md#2-add-github-oauth-optional)) is **admin**. `editorTeam` admits as
+`editorTeams` — which grants the **viewer** role; a member of a configured admin Team signs in
+regardless (below). A direct member of any of the org's `editorTeams` is promoted to **editor**; a
+member of one of the server-wide admin Teams (`BAJUTSU_OAUTH_ADMIN_TEAMS`, see
+[Self-hosting](self-hosting.md#2-add-github-oauth-optional)) is **admin**. `editorTeams` admits as
 well as promotes, so a Team that may write never has to be repeated under `githubTeams` to be able to
-sign in. Each `githubTeams` entry, `editorTeam`, and each `BAJUTSU_OAUTH_ADMIN_TEAMS` entry is one
-flat Team, written as `"<github-org>/<team-slug>"`; a nested Team beneath any of them does not match,
-and all three are compared case-insensitively, as GitHub itself resolves an org login and a Team
+sign in. `editorTeams` is a list because one org may span more than one GitHub organization, and a
+single slot could not then name the writing Team of each. A configuration still on the older
+singular `editorTeam` keeps working: `serve` folds that key into `editorTeams`, and folds both in
+when a partial rename leaves the singular name behind. Rename it anyway; the plural name is the
+documented one. Each `githubTeams` entry, each `editorTeams` entry, and each
+`BAJUTSU_OAUTH_ADMIN_TEAMS` entry is one flat Team, written as `"<github-org>/<team-slug>"`; a nested
+Team beneath any of them does not match, and all three are compared case-insensitively, as GitHub
+itself resolves an org login and a Team
 slug. A Team-declared org depends on GitHub's Teams API answering: that API fails closed — it never
 invents a Team — so while it errors, a login whose only membership is a Team is turned away rather
 than admitted. An OAuth deployment
@@ -365,7 +371,7 @@ of a neutral catch-all.
 **A deployment with a database reads four of these five fields only once**
 ([BE-0375](../roadmaps/BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management.md)).
 On the one boot that finds the `orgs` table still empty, `serve` copies each org's `members`,
-`githubOrgs`, `githubTeams`, and `editorTeam` into it from the configuration this server was
+`githubOrgs`, `githubTeams`, and `editorTeams` into it from the configuration this server was
 **launched** with;
 every sign-in after that resolves against the database alone. That copy happens once for the life of
 the deployment: a boot that finds any org already there — a retired one included — copies nothing,
