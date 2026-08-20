@@ -9,7 +9,7 @@
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0375") |
-| Implementing PR | [#1636](https://github.com/bajutsu-e2e/bajutsu/pull/1636), [#1663](https://github.com/bajutsu-e2e/bajutsu/pull/1663) |
+| Implementing PR | [#1636](https://github.com/bajutsu-e2e/bajutsu/pull/1636), [#1663](https://github.com/bajutsu-e2e/bajutsu/pull/1663), [#1664](https://github.com/bajutsu-e2e/bajutsu/pull/1664) |
 | Topic | Hosting the web UI |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md), [BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass.md), [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md), [BE-0170](../BE-0170-weighted-fair-org-dispatch/BE-0170-weighted-fair-org-dispatch.md) |
 <!-- /BE-METADATA -->
