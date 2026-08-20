@@ -81,11 +81,12 @@ Proposal altitude. The work is MECE along the units below.
   app's own delete confirmation, whose red `Delete` sits between `Archive` and `Cancel`. That last
   one is the destructive-control case, and it is the sharper form of the requirement: the guard must
   report no prompt at all, because the button it would reach for deletes. `tests/test_alert_fixtures_ondevice.py`
-  captures them, reading each button's frame from the device rather than measuring pixels by eye —
+  captures them, reading each button's frame from the device rather than measuring pixels by eye:
   the three OS prompts from the same accessibility query `handleSystemAlert` resolves against
-  (BE-0316), the app-owned dialog from the app's own element tree — and refusing to write a fixture
-  whose expected button the device did not report — so an OS or locale change fails the capture
-  instead of quietly relabelling the ground truth. It is a manual, local step that no CI job runs.
+  (BE-0316), the app-owned dialog from the app's own element tree. It also refuses to write a
+  fixture whose expected button the device did not report, so an OS or locale change fails the
+  capture instead of quietly relabelling the ground truth. It is a manual, local step that no CI
+  job runs.
 - Added the key-gated live test (`tests/test_real_model_alerts.py`) and wired it into
   [`ai-smoke.yml`](../../.github/workflows/ai-smoke.yml) as a second non-gating job, `accuracy
   (system-alert guard)` — the BE-0282 precedent, and the same `workflow_dispatch`-only,

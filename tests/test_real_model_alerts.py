@@ -34,6 +34,7 @@ from __future__ import annotations
 import json
 import re
 import struct
+import zlib
 from pathlib import Path
 
 import pytest
@@ -61,16 +62,40 @@ _DELETE = Control(label="Delete", frame=(100.0, 460.0, 200.0, 44.0))
 _CANCEL = Control(label="Cancel", frame=(100.0, 520.0, 200.0, 44.0))
 
 
+def _chunk(kind: bytes, payload: bytes) -> bytes:
+    return (
+        struct.pack(">I", len(payload))
+        + kind
+        + payload
+        + struct.pack(">I", zlib.crc32(kind + payload))
+    )
+
+
 def _png(width: int, height: int) -> bytes:
-    """A minimal PNG whose IHDR advertises the given pixel size (enough for `png_size`)."""
-    ihdr = struct.pack(">II", width, height) + b"\x08\x06\x00\x00\x00"
-    return b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + ihdr
+    """A blank but genuinely decodable 8-bit grayscale PNG of the given pixel size.
+
+    Decodable, not just a plausible IHDR: `screenshot_bytes` runs every capture through
+    `downscale_png`, which opens the image before it compares the long edge against the cap. A
+    header-only PNG would make that call raise and fall back to the input bytes, so a test asserting
+    the bytes came through unchanged would be passing on the fallback rather than on the
+    already-within-the-cap path it means to exercise.
+    """
+    ihdr = struct.pack(">II", width, height) + bytes((8, 0, 0, 0, 0))
+    raw = b"".join(b"\x00" + b"\x80" * width for _ in range(height))
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + _chunk(b"IHDR", ihdr)
+        + _chunk(b"IDAT", zlib.compress(raw, 1))
+        + _chunk(b"IEND", b"")
+    )
 
 
-# A screenshot whose pixel aspect ratio is `_SCREEN`'s, as a real capture's is: the iPhone 17's
-# 402x874 points at @3x. `AlertFixture` refuses a pair that disagrees, so the synthetic fixtures
-# below must agree too.
-_SCREEN_PNG = _png(1206, 2622)
+# A screenshot the size a committed capture really is: the iPhone 17's 402x874 points at @3x, then
+# downscaled by `screenshot_bytes` to a 1568 long edge (BE-0193). Sized under that cap on purpose —
+# `downscale_png` returns an image already within it byte for byte, which is what lets the replay
+# assert the guard handed the model exactly these bytes. `AlertFixture` refuses a screenshot whose
+# aspect ratio is not the recorded screen's, so the synthetic fixtures must agree too (0.03% here).
+_SCREEN_PNG = _png(721, 1568)
 
 
 def _prompt_fixture() -> AlertFixture:
@@ -297,7 +322,7 @@ def test_save_rejects_a_screenshot_that_is_not_the_recorded_screen(tmp_path: Pat
     # screen's points, so the two must describe one rectangle. A landscape capture beside a portrait
     # screen — an orientation change, or a JSON updated without its PNG — maps every answer wrong.
     with pytest.raises(ValueError, match="not the same screen"):
-        _save(tmp_path, png=_png(2622, 1206))
+        _save(tmp_path, png=_png(1568, 721))
 
 
 @pytest.mark.parametrize(
