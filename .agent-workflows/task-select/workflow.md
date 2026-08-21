@@ -35,7 +35,11 @@ This is a **read-only, advisory** skill — it never implements features or crea
 5. **Wait for the user's choice** before suggesting next steps. When the user
    picks a task, recommend:
    - prepare a topic worktree with the git-sync workflow
-   - `implement-be BE-NNNN` to start implementation
+   - the skill that ships the chosen candidate, which depends on what it is:
+     - a numbered roadmap item → `implement-be BE-NNNN`
+     - a bare GitHub issue with no BE id → `fix-issue #<N>`, the sibling skill that ships a
+       plain issue through the same implementation, review, and gate steps
+       ([`fix-issue`](../fix-issue/workflow.md))
 
 ## What this skill does NOT do
 

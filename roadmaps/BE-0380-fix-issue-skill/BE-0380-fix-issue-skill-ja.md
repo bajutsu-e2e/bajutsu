@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0380](BE-0380-fix-issue-skill-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0380") |
 | トピック | コントリビューターワークフロー |
 <!-- /BE-METADATA -->
@@ -138,17 +138,17 @@ Issueにこのラベルを付ける、という形です。本項目はこのラ
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 1. ラベルの代わりとなるスコープ適合の判断、`ideation`/`propose-and-build`へのエスカレー
+- [x] 1. ラベルの代わりとなるスコープ適合の判断、`ideation`/`propose-and-build`へのエスカレー
   ション、および委ねたIssueが作業中と見えないようにする担当の解除。
-- [ ] 2. Issue自身の`state`とAssignee欄によるオープン状態および担当の確認と、担当の確保。
-- [ ] 3. `implement-be`から再利用するコード仕上げの手順(ブランチ、計画の確認、実装、2役割による
+- [x] 2. Issue自身の`state`とAssignee欄によるオープン状態および担当の確認と、担当の確保。
+- [x] 3. `implement-be`から再利用するコード仕上げの手順(ブランチ、計画の確認、実装、2役割による
   自己レビュー、ゲート)。
-- [ ] 4. BE項目のPRとの違い:`Status`を切り替えない、`[BE-NNNN]`接頭辞を付けない、本文に
+- [x] 4. BE項目のPRとの違い:`Status`を切り替えない、`[BE-NNNN]`接頭辞を付けない、本文に
   `Closes #<N>`を書く、同じDraft PRの自動オープン(`implement-be`のドキュメントのみの変更を
   Ready for reviewで開く例外を引き継ぐ)と`pr-followup`ループ。
-- [ ] 5. 新設するスキルのファイル:ホストに依存しないワークフロー、Claude Codeアダプター、Codex
+- [x] 5. 新設するスキルのファイル:ホストに依存しないワークフロー、Claude Codeアダプター、Codex
   アダプター。
-- [ ] 6. ドキュメントの整備:`docs/ai-development.md`(および対訳)、`CLAUDE.md`、`task-select`。
+- [x] 6. ドキュメントの整備:`docs/ai-development.md`(および対訳)、`CLAUDE.md`、`task-select`。
 
 ## 参考
 

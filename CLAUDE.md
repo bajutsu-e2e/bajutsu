@@ -123,12 +123,14 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
     auto-create it.** Push to your branch and let the human open the PR. A proposal is a human
     checkpoint, and its BE id is allocated only when a human merges it (BE-0089) — auto-opening
     would erode that checkpoint.
-  - **Implementation work** — [`implement-be`](.agent-workflows/implement-be/workflow.md), whose output
+  - **Implementation work** — [`implement-be`](.agent-workflows/implement-be/workflow.md) and
+    [`fix-issue`](.agent-workflows/fix-issue/workflow.md) (BE-0380), whose output
     is always a self-contained, gate-green change: **auto-open the Draft PR after the gate, then run
     a paced `/loop`** that drives the mechanical tail (CI fixes, review replies) to quiet-and-green,
     delegating each iteration's `pr-followup` work to a fresh subagent so the heavy implement
     transcript stays out of it. The loop escalates to the human on a design-change comment or a
-    merge conflict, and never marks the PR ready itself. See `implement-be` steps 10–12.
+    merge conflict, and never marks the PR ready itself. See `implement-be` steps 10–12, which
+    `fix-issue` runs unmodified for a plain GitHub issue that carries no BE id.
   - For any other request, the default is still: push and let the human open the PR unless they ask.
 - **PRs created by Claude Code always start as Draft.** When asked to open a PR, create it with
   `gh pr create --draft`, then keep pushing fixes until `make check` and CI are both green before
