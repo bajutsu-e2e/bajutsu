@@ -86,6 +86,7 @@ from bajutsu.scenario.models.scenario import (
     Scenario,
     ScenarioFile,
     SystemAlertHandling,
+    SystemAlertRule,
 )
 from bajutsu.scenario.models.selector import Selector
 from bajutsu.scenario.models.steps import _STEP_ACTIONS as STEP_ACTIONS
@@ -151,6 +152,7 @@ __all__ = [
     "Step",
     "Swipe",
     "SystemAlertHandling",
+    "SystemAlertRule",
     "TapPoint",
     "TextMatch",
     "Totp",

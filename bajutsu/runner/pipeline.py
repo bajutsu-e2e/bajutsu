@@ -56,7 +56,12 @@ from bajutsu.runner.recovery import (
     _default_run_crash_recovery_budget,
 )
 from bajutsu.runner.types import AlertGuardFor, Lease, LeaseFn
-from bajutsu.scenario import Scenario, dump_scenario_file, redact_totp_secrets
+from bajutsu.scenario import (
+    Scenario,
+    UncoveredSystemAlertLocale,
+    dump_scenario_file,
+    redact_totp_secrets,
+)
 
 # Re-exported from `recovery` (BE-0334): the crash-retry count/budget bookkeeping now lives there so
 # the on-device conformance harness drives the same recovery and the two cannot drift. Kept importable
@@ -346,7 +351,25 @@ class _ScenarioRunner:
         # backend infrastructure, not a verdict — discard the dead lease, lease a fresh device (a
         # cold respawn), and re-run the whole scenario from the start, bounded by `crash_retries`.
         # A scenario that crashes every attempt exhausts the budget and fails loudly (BE-0049).
-        handler = self.alert_guard_for(s) if self.alert_guard_for is not None else self.alert_guard
+        try:
+            handler = (
+                self.alert_guard_for(s) if self.alert_guard_for is not None else self.alert_guard
+            )
+        except UncoveredSystemAlertLocale as exc:
+            # A `systemAlertHandling.rules` entry names a prompt this scenario's locale has no known
+            # labels for — the same fail-loudly-before-any-device-work choice `handleSystemAlert`'s
+            # own `prompt`/`choice` resolution makes, surfaced here as a clean per-scenario failure
+            # rather than an uncaught exception that would abort the whole run.
+            if self.progress is not None:
+                self.progress(f"✘ scenario {i + 1}/{self.total}: {s.name} ({exc})")
+            return RunResult(
+                scenario=s.name,
+                ok=False,
+                steps=[],
+                backend=actuator or "",
+                sid=sid,
+                failure=str(exc),
+            )
         last_crash: BackendCrashError | None = None
         # The count + wall-clock retry decision; Unit 2 of BE-0334 wires the conformance harness onto
         # the same helper so the two recovery paths cannot drift. The wall-clock deadline it holds is set at the
