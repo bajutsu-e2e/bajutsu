@@ -134,6 +134,15 @@ no screenshot, no model round trip, and no second query. The AI-vision guard sta
 left it — a fallback for what the native path cannot name — so prime directive 1 is untouched, and
 the rules path runs without an `ANTHROPIC_API_KEY`.
 
+A rule contributes nothing to what that fallback is told, which is deliberate rather than an omission.
+Every path reaching the vision guard is one where no rule identified the alert: a backend without the
+capability, a surface `springboard.alerts` cannot enumerate, or an alert whose prompt no rule matched.
+A rule's tap label is therefore, by construction, some *other* prompt's answer, and the locator's own
+policy is to follow an instruction when given one and fall back to the least-destructive button
+otherwise. Passing rule labels down would steer it to accept a prompt the scenario never named — the
+silent inversion this proposal removes, re-created one layer lower. A scenario carrying only `rules`
+leaves the locator on its least-destructive default, exactly as it did before `rules` existed.
+
 ### Resolving a rule's labels, and failing loudly
 
 A rule's two labels come from `system_alert_label(prompt, choice, locale)`
@@ -180,8 +189,8 @@ has against the target configuration.
    tap, a pure matching function beside `pick_alert_label`, and `AlertGuardConfig.probe_native`
    consulting the rules ahead of its candidate labels (`bajutsu/orchestrator/types.py`).
 3. **Wiring.** `_alert_guard_factory` (`bajutsu/cli/commands/run.py`) resolving each rule's labels
-   against the scenario's locale, layering the scenario's rules ahead of the target
-   configuration's, and folding the rules' tap labels into the hint the AI-vision fallback receives;
+   against the scenario's locale and layering the scenario's rules ahead of the target
+   configuration's, while leaving the AI-vision fallback's instruction untouched by `rules`;
    `_apply_system_alert_handling` preserving `rules` alongside the existing button policy when the
    `--system-alert-handling` flag rewrites a scenario's setting.
 4. **Documentation.** The `systemAlertHandling` section of `docs/scenarios.md` and its `docs/ja/`
@@ -243,7 +252,7 @@ back on, so a later prompt whose label pair overlapped another's would leave the
 
 - [x] Schema — `SystemAlertRule`, the `rules` field, and the duplicate-`prompt` validator.
 - [x] Matching — the resolved-rule type, the matching function, and `probe_native` consulting rules.
-- [x] Wiring — locale resolution, scenario-over-configuration layering, and the vision-fallback hint.
+- [x] Wiring — locale resolution and scenario-over-configuration layering, leaving the vision fallback's own instruction untouched.
 - [x] Documentation — `docs/scenarios.md` and its Japanese mirror, plus the field references.
 - [x] Tests — the deterministic suite covering each unit above.
 

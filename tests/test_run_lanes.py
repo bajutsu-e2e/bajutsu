@@ -375,24 +375,16 @@ def test_vision_instruction_renders_a_label_list_and_passes_a_string_through() -
     assert _vision_instruction(None) is None
 
 
-def test_vision_instruction_leads_with_rule_labels() -> None:
-    # Rule tap labels lead the hint, since the native path checks them first too; a list
-    # instruction joins the same ordered hint.
-    assert (
-        _vision_instruction(["Allow"], ["Ask App Not to Track"])
-        == "Tap the button labeled one of, in order: Ask App Not to Track, Allow"
-    )
-    # A free-text instruction is appended after the rule-label hint, not dropped: the vision
-    # fallback fires precisely when neither the rules nor the native path could act, which is the
-    # surface the free text was written to cover.
-    assert (
-        _vision_instruction("tap Allow", ["Ask App Not to Track"])
-        == "Tap the button labeled one of, in order: Ask App Not to Track. tap Allow"
-    )
-    assert _vision_instruction(None, ["Ask App Not to Track"]) == (
-        "Tap the button labeled one of, in order: Ask App Not to Track"
-    )
-    assert _vision_instruction(None, []) is None
+def test_vision_instruction_ignores_rules() -> None:
+    # `rules` must not steer the vision locator: every path reaching it is one where no rule
+    # identified the alert, so a rule's tap label is some *other* prompt's answer and would push the
+    # locator to accept a prompt the scenario never named. A rules-only scenario leaves the locator
+    # on its least-destructive default, exactly as before `rules` existed.
+    s = _tap_scenario("a", {"rules": [{"prompt": "tracking", "choice": "deny"}]})
+    guard = _alert_guard_factory([s], _eff(), "")(s)  # type: ignore[misc]
+    assert guard is not None
+    assert [r.tap_label for r in guard.rules] == ["Ask App Not to Track"]  # native path still armed
+    assert guard.labels == []  # ...but no candidate label, so the locator keeps its own default
 
 
 def test_apply_system_alert_handling_preserves_the_button_policy_and_interval() -> None:

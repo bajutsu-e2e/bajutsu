@@ -177,6 +177,13 @@ appear in; two rules naming the same prompt fail at parse time. `rules` is check
 `instruction`, which stays the catch-all for whatever prompt no rule names, so the two fields
 compose rather than exclude each other.
 
+`rules` steers the **deterministic native path only**. An alert no rule identifies — one outside the
+label table, a surface the SpringBoard query cannot enumerate, or any alert at all on a backend
+without the native path — reaches the AI-vision fallback, and the rules tell that fallback nothing:
+a rule's label is another prompt's answer, so handing it over would push the model to accept a prompt
+the scenario never named. Give the guard an `instruction` for anything you want the fallback to act
+on; with rules alone it keeps its own least-destructive default.
+
 This reactive guard and the proactive `handleSystemAlert` step below now share the *same* native
 SpringBoard mechanism (BE-0316's query + tap); they differ only in *when* they fire — the guard
 automatically wherever a prompt surfaces, the step at the one point an author places it.

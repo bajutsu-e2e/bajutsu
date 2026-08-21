@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
@@ -388,25 +388,24 @@ def _resolve_rules(rules: list[SystemAlertRule], locale: str) -> list[ResolvedAl
     return resolved
 
 
-def _vision_instruction(
-    instruction: str | list[str] | None, rule_labels: Sequence[str] = ()
-) -> str | None:
+def _vision_instruction(instruction: str | list[str] | None) -> str | None:
     """The vision locator's free-text instruction from a resolved `systemAlertHandling` policy.
 
-    `rule_labels` — the tap labels `systemAlertHandling.rules` resolved to — lead the hint when
-    present, since the native path checks them first too. A candidate-label `instruction` list joins
-    the same ordered hint; a free-text `instruction` string is appended after it rather than dropped,
-    since the vision fallback fires precisely when neither the rules nor the native path could name a
-    button, which is exactly the surface the free text was written to cover. With no rule labels, a
-    string passes through unchanged (the legacy form) and a candidate-label list alone still renders
-    the hint ("Tap the button labeled one of, in order: Allow, OK").
+    A free-text string passes through unchanged (the legacy form). A candidate-label list — the
+    deterministic native form — becomes a hint the vision fallback can still act on when the native
+    path could not name a button ("Tap the button labeled one of, in order: Allow, OK").
+
+    `systemAlertHandling.rules` deliberately contributes nothing here. Every path that reaches the
+    vision guard is one where no rule identified the alert — an incapable backend, a surface
+    `springboard.alerts` cannot enumerate, or an alert whose prompt no rule matched — so a rule's tap
+    label is by construction some *other* prompt's answer. Handing it to the locator, whose policy is
+    "follow the instruction if given, else the least-destructive button" (`agents/alerts.py`), would
+    steer it to accept a prompt the scenario never named: the silent inversion the `rules` form exists
+    to remove, re-created one layer down. A rules-only scenario therefore leaves the locator on its
+    least-destructive default, exactly as it did before `rules` existed.
     """
     if isinstance(instruction, list):
-        labels = [*rule_labels, *instruction]
-        return "Tap the button labeled one of, in order: " + ", ".join(labels) if labels else None
-    if rule_labels:
-        hint = "Tap the button labeled one of, in order: " + ", ".join(rule_labels)
-        return f"{hint}. {instruction}" if instruction else hint
+        return "Tap the button labeled one of, in order: " + ", ".join(instruction)
     return instruction
 
 
@@ -497,9 +496,11 @@ def _alert_guard_factory(
         rules = _resolve_rules([*scenario_rules, *target_rules_for_scenario], locale)
 
         # None when the credential is missing: the vision fallback then no-ops (never a hosted default).
-        vision_instruction = _vision_instruction(instruction, [r.tap_label for r in rules])
+        # `rules` deliberately does not steer the locator — see `_vision_instruction`.
         handler = (
-            SystemAlertGuard(locator, vision_instruction).dismiss if locator is not None else None
+            SystemAlertGuard(locator, _vision_instruction(instruction)).dismiss
+            if locator is not None
+            else None
         )
 
         def vision(driver: base.Driver) -> AlertEvent | None:
