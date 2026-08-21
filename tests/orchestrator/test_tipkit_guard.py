@@ -18,6 +18,7 @@ from conftest import el
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
+from bajutsu.orchestrator.types import AlertEvent
 
 # Stands in for TipKit's dismiss region. The real identifier lives in the XCUITest driver; this is
 # only what the fake was seeded with, so no iOS-specific name leaks into an orchestrator test.
@@ -88,6 +89,41 @@ def test_the_guard_is_off_unless_the_scenario_asks_for_it() -> None:
     )
     assert not result.ok
     assert ("tap", {"id": _SCRIM}) not in driver.actions
+
+
+def test_a_tip_and_a_system_alert_are_both_recovered_in_one_step() -> None:
+    # The two end-of-step guards are checked in sequence, not as an `elif` ladder: dismissing the tip
+    # must not consume the failure and leave the alert — the case the alert guard exists for — unhandled.
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and getattr(arg, "get", lambda _k: None)("id") == _SCRIM:
+            # The tip goes, but the target is still behind the alert until the alert guard fires.
+            d.screen = [el("sys.alert", "Allow")]
+
+    driver = FakeDriver([el(_SCRIM, "dismiss popup")], react=react)
+    driver.tipkit_dismiss_id = _SCRIM
+    dismissed: list[str] = []
+
+    def alert_guard(d: base.Driver) -> AlertEvent | None:
+        # Stands in for the SpringBoard dismiss: clears the alert so the retry can find the target.
+        assert isinstance(d, FakeDriver)
+        if any(e["identifier"] == "sys.alert" for e in d.screen):
+            dismissed.append("sys.alert")
+            d.screen = [el("stable.refresh", "Refresh", ["button"])]
+            return AlertEvent(label="Allow")
+        return None
+
+    result = run_scenario(
+        driver,
+        _scenario(
+            {"name": "e", "tipKitHandling": True, "steps": [{"tap": {"id": "stable.refresh"}}]}
+        ),
+        clock=FakeClock(),
+        alert_guard=alert_guard,
+    )
+    assert result.ok, result.failure
+    assert dismissed == ["sys.alert"], (
+        "the tip dismiss swallowed the failure and starved the alert guard"
+    )
 
 
 def test_a_step_failing_with_no_tip_present_is_not_retried() -> None:

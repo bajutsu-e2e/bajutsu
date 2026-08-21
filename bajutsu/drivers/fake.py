@@ -262,12 +262,16 @@ class FakeDriver:
     def system_alert_labels(self) -> list[str]:
         return [label for b in self.system_alert_buttons if (label := b["label"])]
 
-    def dismiss_blocking_tip(self) -> bool:
+    def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:
         # Mirrors the real driver: absence is False, an ambiguous match still raises, and the
         # dismiss goes through `tap` so a `react` callback can script the tip leaving the tree.
+        # `tree` rules a tip out without consulting `screen`, the same short-circuit the real driver
+        # uses to keep a guarded wait's query count unchanged.
         if self.tipkit_dismiss_id is None:
             return False
         sel: base.Selector = {"id": self.tipkit_dismiss_id}
+        if tree is not None and not base.find_all(tree, sel):
+            return False
         if not base.find_all(self.screen, sel):
             return False
         base.resolve_unique(self.screen, sel)

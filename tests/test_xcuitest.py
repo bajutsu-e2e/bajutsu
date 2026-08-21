@@ -1544,6 +1544,54 @@ def test_dismiss_blocking_tip_fails_loudly_on_two_dismiss_regions() -> None:
         _driver(transport).dismiss_blocking_tip()
 
 
+def test_dismiss_blocking_tip_rules_a_tip_out_from_the_callers_tree_without_querying() -> None:
+    # The mid-wait gate asks on every poll tick, so the common "no tip" answer must cost no query —
+    # otherwise a guarded wait polls at half its usual rate and a tight timeout starts to flake.
+    calls: list[str] = []
+
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        calls.append(path)
+        return _elements()
+
+    tree = [
+        base.Element(
+            identifier="stable.refresh",
+            label="Refresh",
+            value=None,
+            traits=["button"],
+            frame=(0.0, 0.0, 10.0, 10.0),
+            nativeZ=None,
+        )
+    ]
+    assert _driver(transport).dismiss_blocking_tip(tree) is False
+    assert calls == []
+
+
+def test_dismiss_blocking_tip_still_queries_when_the_hint_shows_a_tip() -> None:
+    # A handle is only valid from the snapshot that minted it, so a tip seen in the caller's tree is
+    # re-resolved against this driver's own fresh query before the tap.
+    sent: list[tuple[str, dict[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_tip_wire("h-scrim", "PopoverDismissRegion"))
+        sent.append((path, body))
+        return _Reply(status="ok")
+
+    hint = [
+        base.Element(
+            identifier="PopoverDismissRegion",
+            label="dismiss popup",
+            value=None,
+            traits=["other"],
+            frame=(0.0, 0.0, 402.0, 874.0),
+            nativeZ=None,
+        )
+    ]
+    assert _driver(transport).dismiss_blocking_tip(hint) is True
+    assert sent == [("/tap", {"handle": "h-scrim"})]
+
+
 def test_xcuitest_advertises_the_tipkit_capability() -> None:
     assert base.Capability.HANDLE_TIPKIT_TIP in XcuitestDriver.CAPABILITIES
 

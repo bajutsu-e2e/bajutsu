@@ -315,9 +315,11 @@ class Driver(Protocol):
     # showing. Which node identifies a tip is the driver's business — the caller gets a boolean, so
     # the orchestrator's guard stays free of any iOS-specific identifier. Gated on
     # HANDLE_TIPKIT_TIP: a backend without it returns False rather than raising, since both callers
-    # (the tap-time recovery and the mid-wait gate) run opportunistically, where "no tip here" and
-    # "this backend has no tips" call for the same no-op.
-    def dismiss_blocking_tip(self) -> bool: ...
+    # (the post-failure retry and the mid-wait gate) run opportunistically, where "no tip here" and
+    # "this backend has no tips" call for the same no-op. `tree`, when given, is a snapshot the
+    # caller already holds: the mid-wait gate asks on every poll tick, so letting it answer "no tip"
+    # off the poll's own tree keeps the common case free instead of doubling the wait's query load.
+    def dismiss_blocking_tip(self, tree: list[Element] | None = None) -> bool: ...
     # Single-shot by contract (BE-0118): whether `sel` matches the *current* screen,
     # checked once. A backend never loops here — the shared `wait_until` owns the
     # deadline poll, so a caller's timeout means the same real seconds on every backend.

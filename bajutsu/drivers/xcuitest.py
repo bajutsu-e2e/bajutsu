@@ -1096,8 +1096,15 @@ class XcuitestDriver:
         buttons, _ = self._parse_elements(self._transport("POST", "/systemAlert/query", {}))
         return [label for b in buttons if (label := b["label"])]
 
-    def dismiss_blocking_tip(self) -> bool:
+    def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:
         """Dismiss a showing TipKit tip via its dismiss region; False when no tip is up.
+
+        Args:
+            tree: A snapshot the caller already holds, used only to rule a tip out. Absence is the
+                overwhelmingly common case and this is asked on every wait poll, so answering it off
+                the caller's tree keeps a guarded wait's query count unchanged. A tip found there is
+                still re-queried before acting: a handle is only valid from the snapshot that minted
+                it, and *this* driver's `_query_with_handles` is what mints one.
 
         Returns:
             Whether a tip was found and dismissed.
@@ -1106,10 +1113,12 @@ class XcuitestDriver:
             AmbiguousSelector: Several nodes claimed the dismiss region — a shape TipKit should never
                 produce, so it fails loudly rather than picking one (prime directive 2).
         """
-        elements, handles = self._query_with_handles()
         sel: base.Selector = {"id": _TIPKIT_DISMISS_REGION}
-        # Absence is the common case — the caller asks on every poll — so it is a plain False, not
-        # an exception. Only a genuinely ambiguous match propagates, via `resolve_unique`.
+        if tree is not None and not base.find_all(tree, sel):
+            return False
+        elements, handles = self._query_with_handles()
+        # Re-checked against the fresh tree either way: with no hint this is the only check, and with
+        # one the tip may have closed itself in between (a plain False, not an error).
         if not base.find_all(elements, sel):
             return False
         el = base.resolve_unique(elements, sel)

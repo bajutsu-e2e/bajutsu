@@ -578,7 +578,7 @@ class XcuitestLiveDriver:
         # this backend does not advertise HANDLE_SYSTEM_ALERT, so the reactive native path never runs.
         return []
 
-    def dismiss_blocking_tip(self) -> bool:
+    def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:
         # This backend does not advertise HANDLE_TIPKIT_TIP, so neither guard calls it.
         return False
 

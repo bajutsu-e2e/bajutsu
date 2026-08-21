@@ -102,12 +102,11 @@ opt-in configuration, and on-device verification.
    of it. A tap on that target therefore fails as `ElementNotFound`, not `ElementNotTappable` — unit 3
    below accounts for both. Finally, a plain, already-existing `tap: { id: "PopoverDismissRegion" }`
    step, with no new code at all, dismissed the tip and made `stable.refresh` queryable again
-   immediately — the empirical basis for the simplification the rest of this design rests on: no new
-   `Driver` method and no new `Capability` token, because `PopoverDismissRegion` is an ordinary node in
-   the tree every wait poll and every tap resolution already fetches, and dismissing it is an ordinary
-   `driver.tap()` every scenario already has access to. What the spike removes is the Swift runner work
-   BE-0315 needed, not the driver layer itself — see unit 2 and the Alternatives entry on where the
-   identifier lives.
+   immediately — the empirical basis for the simplification the rest of this design rests on: **no Swift
+   runner route**, because `PopoverDismissRegion` is an ordinary node in the tree every wait poll and
+   every tap resolution already fetches, reachable by the driver's existing tap. What the spike removes
+   is the runner work BE-0315 needed, not the driver layer itself — unit 2 keeps the method and the
+   capability token, and the Alternatives entry below explains why the identifier stays there.
 
 2. **A driver-side dismiss method behind a capability token.** Add one backend-agnostic `Driver`
    method — `dismiss_blocking_tip() -> bool`, returning whether a tip was found and dismissed — behind
@@ -123,7 +122,7 @@ opt-in configuration, and on-device verification.
    deciding pass/fail, so it stays clear of prime directive 1. Unit 1's finding is what keeps this unit
    small: it needs no Swift runner route, only the driver's existing query and tap primitives.
 
-3. **A post-failure dismiss-and-retry, in the step loop.** Unit 1 showed a tip-covered target does not
+3. **A post-failure dismiss-and-retry, in the step loop, checked in sequence with the alert guard.** Unit 1 showed a tip-covered target does not
    merely lose `isHittable` — it leaves the tree, so the step it blocked fails as `ElementNotFound` as
    readily as `ElementNotTappable`. That rules out
    [BE-0349](../BE-0349-tap-target-hittability-check/BE-0349-tap-target-hittability-check.md)'s
@@ -137,7 +136,10 @@ opt-in configuration, and on-device verification.
    tip actually dismissed does the step get one retry. A failure with no tip present is left to fail
    unchanged — retrying a generic "not found" with no confirmed cause would quietly mask a genuine
    selector bug, the same fail-loud discipline prime directive 2 already holds `resolve_unique` to.
-   Because the dismiss is what gates the retry, a passing run never pays a query for this at all.
+   Because the dismiss is what gates the retry, a passing run never pays a query for this at all. The
+   two end-of-step guards are checked in sequence rather than as one `elif` ladder: a tip and a system
+   alert can both be up, and a tip dismissed first must not consume the failure and leave the alert —
+   the case the alert guard exists for — unhandled. Each still fires at most once per step.
 
 4. **A mid-wait gate, riding the poll hook BE-0314 already installs.** A wait blocked behind a tip
    should not burn its whole timeout before unit 3 rescues it, so the dismiss also runs while the wait

@@ -239,7 +239,7 @@ class WebContextDriver:
         # A WebView DOM context sees no SpringBoard alert layer; the reactive native path never runs.
         return []
 
-    def dismiss_blocking_tip(self) -> bool:
+    def dismiss_blocking_tip(self, tree: list[Element] | None = None) -> bool:
         # A TipKit tip is native UIKit, outside the DOM this context sees; nothing to dismiss here.
         return False
 
