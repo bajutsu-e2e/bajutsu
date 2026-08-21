@@ -18,10 +18,10 @@ This item extends [`document-writing`][document-writing]'s contribution-first pr
 item's Motivation names not only what should change but how a reader would later judge whether the
 change delivered. Today the norm requires stating the contribution up front; it does not require
 stating a way to check it. GitHub's [Spec Kit][spec-kit] closes exactly this gap for its own
-specifications by requiring a measurable success criterion, and this item imports that one piece of
-its practice — a verifiable-outcome sentence in Motivation — without importing the rest of Spec Kit,
-which this item's *Alternatives considered* section explains does not fit Bajutsu's roadmap format
-or its review contract.
+specifications by requiring a measurable success criterion, and this item imports one piece of that
+practice: a verifiable-outcome sentence in Motivation. It imports nothing else — *Alternatives
+considered* records why the rest of Spec Kit does not fit Bajutsu's roadmap format or its review
+contract.
 
 ## Motivation
 
