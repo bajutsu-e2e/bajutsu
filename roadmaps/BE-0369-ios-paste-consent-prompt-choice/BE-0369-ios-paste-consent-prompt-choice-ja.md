@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0369") |
-| 実装 PR | [#1652](https://github.com/bajutsu-e2e/bajutsu/pull/1652) |
+| 実装 PR | [#1652](https://github.com/bajutsu-e2e/bajutsu/pull/1652), [#1670](https://github.com/bajutsu-e2e/bajutsu/pull/1670) |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)、[BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md)、[BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md)、[BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)、[BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md) |
 <!-- /BE-METADATA -->
@@ -211,6 +211,11 @@ Permissions タブは今のところ、まさにこのケースを避けて通�
       昇格は意図的に後続の作業へ回しました。このレーンで初めてプロセスをまたぐペーストなので、必須チェックが
       これに依存する前に、CI 自身のホストで安定性を確かめるためです(BE-0218)。フィクスチャには設計が見通して
       いなかった変更が1つ必要でした。ユニット3を参照してください。
+      その後の作業でフィクスチャを4本に広げました。対象の locale のもとでの `grant` と `deny`、続けて
+      `locale: ja_JP` のもとでの同じ2本です。許可する1本だけでは、英語の拒否側のラベルと、日本語の
+      2つのラベルを、ユニット5の表だけで確かめている状態が残るからです。拒否側には showcase の
+      変更がもう1つ必要でした。拒否された読み取りは nil を返すため、アプリは `""` ではなく `(none)` を
+      公開します。`(none)` の公開により、拒否された読み取りが、待って確かめられる条件になります。
 - [x] ユニット3 — 起動中の Simulator(iPhone 17、iOS 26.5)で、SwiftUI と UIKit の両方の showcase アプリに対し、
       `en_US` と `ja_JP` の両方で検証しました。
 - [x] ユニット4 — ドキュメント: `docs/scenarios.md` の「テキストではなく意図で指定する」節、

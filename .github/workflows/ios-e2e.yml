@@ -569,7 +569,8 @@ jobs:
   #     into the `run` job beside search.yaml.
   #   - paste_system_alert.yaml (BE-0369): the lane's only genuine *cross-process* paste —
   #     `setClipboard` writes the pasteboard from outside the app, so the app's read raises iOS's
-  #     paste-consent prompt, answered natively by `handleSystemAlert: { prompt: paste }`. It lands
+  #     paste-consent prompt, answered natively by `handleSystemAlert: { prompt: paste }` — granted
+  #     and denied, each under the target's locale and again under `locale: ja_JP`. It lands
   #     here rather than beside permission_system_alert.yaml in `run` for this job's own reason: it
   #     is new on-device coverage, so it earns its stability as a per-PR signal first.
   # Deliberately NOT in the `E2E` gate's `needs:` below (like `golden` / `visual`): the Simulator lane
@@ -592,16 +593,19 @@ jobs:
       contains(fromJSON(needs.changes.outputs.affected), 'actuation'))
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the 6h
-    # default. Install (no build) + the eleven scenario runs the nine files below produce (each file
-    # holds one scenario; data_driven.yaml's three `${row.*}` rows expand to three) is ~20min — the
-    # dominant term is six cold XCTest-host startups, one per two runs at this lane's warm-reuse cap — so 60
-    # catches a real hang with headroom rather than reddening a healthy run. Of those startups only the
-    # first carries the 300s cold ceiling (the rest take the 90s respawn one), and only a *failing*
+    # default. Install (no build) + the fourteen scenario runs the nine files below produce (each file
+    # holds one scenario; data_driven.yaml's three `${row.*}` rows expand to three, and
+    # paste_system_alert.yaml holds four) is ~25min — the dominant term is seven cold XCTest-host
+    # startups, one per two runs at this lane's warm-reuse cap — so 60 catches a real hang with
+    # headroom rather than reddening a healthy run. Of those startups only the first carries the 300s
+    # cold ceiling (the rest take the 90s respawn one), and one pays a shutdown-and-boot cycle on top:
+    # the first of paste_system_alert.yaml's two Japanese scenarios re-pins the device's system
+    # language, which only a reboot makes SpringBoard read (BE-0320). Only a *failing*
     # spawn adds a device recovery plus a second ceiling. The observed signature — an app-launch
     # timeout ending attempt 1 in ~40s, repaired by a reboot whose re-prep is cheap enough to leave
     # uncounted — costs ~40s + 180s + 300s ≈ 9min and fits; the worst case the arithmetic block allows
     # (a first bring-up that burns the full 300s, repaired by a replacement and its re-prep: ~15min)
-    # puts this job at ~35min, which 60 also clears with room to spare — the cap now backs a genuine
+    # puts this job at ~40min, which 60 also clears with room to spare — the cap now backs a genuine
     # hang rather than bounding the recovery arithmetic itself.
     timeout-minutes: 60
     # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
@@ -654,8 +658,12 @@ jobs:
       #     `delete` + `clear` — the four editing actuators no other scenario drove (Search tab).
       #   - paste_system_alert.yaml (BE-0369): `setClipboard` seeds the pasteboard from outside the
       #     app, so the app's own read raises iOS's cross-process paste-consent prompt, which
-      #     `handleSystemAlert: { prompt: paste }` answers by a native query. Listed last, after the
-      #     other device-control scenarios, because it leaves the pasteboard holding its own string.
+      #     `handleSystemAlert: { prompt: paste }` answers by a native query. Four scenarios: `grant`
+      #     and `deny` under the target's locale, then the same pair under `locale: ja_JP`, which is
+      #     what proves the lookup against a SpringBoard rendering a language the run is not written
+      #     in. Listed last, after the other device-control scenarios, because it leaves the
+      #     pasteboard holding its own string — and because its Japanese pair leaves the device pinned
+      #     to another system language, which only a cold respawn and a reboot change back (BE-0320).
       #     The gating `run` job does not name it: BE-0218's rule is that new on-device coverage
       #     earns its stability here first, and this is the lane's first cross-process paste.
       # The listed order is deliberate — see the job header for why BE-0285's four come first.
