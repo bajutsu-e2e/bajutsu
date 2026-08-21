@@ -95,9 +95,9 @@ call mid-investigation, and the skill can. Hold the fix against a short bar:
    gh issue edit <N> --remove-assignee @me
    ```
 
-This valve stays live through step 4's planning stage, not just here: a fix's true shape does not
-always show in the issue body alone, and the honest moment to escalate is whenever the shape becomes
-clear.
+This valve stays live past this step: a fix's true shape does not always show in the issue body
+alone, and the honest moment to escalate is whenever the shape becomes clear — through step 4's
+planning stage, and again at step 5 when the self-review surfaces a design change.
 
 ### 4. Ground yourself, branch, and confirm a plan
 
@@ -123,7 +123,10 @@ instructions
 ([BE-0347](../../roadmaps/BE-0347-bounded-ci-review-cycle/BE-0347-bounded-ci-review-cycle.md)).
 One input differs from `implement-be`'s: there is no roadmap `Status` flip pending here, so the
 review/plan pass needs no note about one. Keep fixing and re-running a fresh review/plan pass until
-it comes back empty, and don't open the PR while a real finding still stands.
+it comes back empty, under that step's 3-round cap, and don't open the PR while a real finding still
+stands. A finding that calls for a genuine design change means the fix no longer fits this skill:
+take step 3's escalation instead — name what the fix now needs, point at `ideation` or
+`propose-and-build`, and release the claim — rather than opening the PR.
 
 ### 6. Verify — the gate
 
