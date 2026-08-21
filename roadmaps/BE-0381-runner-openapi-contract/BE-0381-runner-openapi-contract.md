@@ -357,16 +357,30 @@ held for the whole life of a request under the synchronous `Router`. That `/heal
 while an operation holds the main thread is now pinned by a live-server test, rather than left to
 `APIHandler`'s and the transport's separate reasoning about the same invariant.
 
-**BE-0323's serialization is pinned at the queue, not through a provider.** `APIHandler.operations` is
-the sole holder of the invariant once Unit 4 takes `Router` out of production, so
-`APIHandlerConcurrencyTests` asserts what holds it: the queue admits one operation at a time, an
-assertion that fails when the queue is made `attributes: .concurrent`. The provider-side probe shape
-`RouterConcurrencyTests` uses cannot substitute for it — measured on this stack, that probe still
-reports no overlap while the concurrent queue genuinely runs two operations at once, because
-libdispatch's main-queue drain is not re-entrant, so the second operation's `DispatchQueue.main.sync`
-waits for the first's main block regardless. This is why the abort BE-0323 was filed for surfaced only
-under XCUITest's own run loop. Unit 5 therefore has to re-establish the queue assertion against
-whatever serializes on Hummingbird, rather than delete it with the `Router` comparisons.
+**BE-0323's serialization is pinned by occupancy, not by a provider's overlap count.**
+`APIHandler.operations` is the sole holder of the invariant once Unit 4 takes `Router` out of
+production, and the regression worth catching is an operation that stops routing through that queue —
+not a queue someone declares concurrent. So `APIHandlerConcurrencyTests` holds one operation on the
+main thread, dispatches a probe onto the queue, and requires the probe *not* to run until the
+operation returns: true only while the operation occupies the queue. It fails against both
+regressions, measured — a read that calls the provider inline leaves that read's case red and the
+other families green, and a concurrent queue turns all three red.
+
+The provider-side probe shape `RouterConcurrencyTests` uses cannot substitute for it. Measured on this
+stack, that probe reports no overlap while a concurrent queue genuinely runs two operations at once,
+because libdispatch does not run a second main-queue block while the first is executing, so the second
+operation's `DispatchQueue.main.sync` waits for the first's main block regardless of what serialized
+it. This is why the abort BE-0323 was filed for surfaced only under XCUITest's own run loop, and why
+`RouterConcurrencyTests`' counterpart assertion passes with `Router.actuationLock` removed outright.
+Unit 5 therefore has to re-point these assertions at whatever serializes on Hummingbird, rather than
+delete them with the `Router` comparisons.
+
+**BE-0362's declaration reaches the one hop this transport adds.** The task that carries each reply
+declares `.userInitiated` rather than inheriting it, because the work inside it — the generated decode
+of the request and the encode of the reply, a screenshot's PNG included — never passes through
+`operations` and its `qos:`. A test drives that hop from a `.utility` caller, since inheriting looks
+identical while `HTTPServer`'s own `.userInitiated` queue is the caller and stops looking identical the
+moment Unit 5's event loop is.
 
 **The deliberate wire differences.** The generated serializer sends `application/json; charset=utf-8`
 where `Router` sent a bare `application/json`. The driver never reads the header — `_decode` in
@@ -488,7 +502,8 @@ Python driver needs no change at any stage.
       allowlist would have been machinery built only to be deleted. **BE-0287's bound survives by
       construction** — nothing new accepts connections — and `TransportParityTests` compares every
       endpoint against the legacy `Router` over a live socket. `APIHandlerConcurrencyTests` pins
-      BE-0323 where it is observable, on the serialness of `APIHandler.operations`. Three recorded wire differences, none
+      BE-0323 by occupancy — a held operation must keep a probe off `APIHandler.operations` — and the
+      reply task's declared `.userInitiated` (BE-0362) is pinned from a lower-QoS caller. Three recorded wire differences, none
       observable to the driver: JSON replies carry `charset=utf-8`, a 400 the generated decoder raises
       carries the generic reason phrase where the handler's own 400s keep `Router`'s per-route text,
       and that decoder rejects a few malformed-body shapes `Router` used to tolerate.
