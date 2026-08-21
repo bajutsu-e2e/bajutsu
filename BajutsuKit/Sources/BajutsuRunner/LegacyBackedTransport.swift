@@ -132,8 +132,12 @@ final class LegacyBackedTransport: ServerTransport {
             )
             return .error(error.httpStatus.code, error.httpStatus.reasonPhrase)
         } catch {
-            // Unreachable: `UniversalServer` wraps every failure as a `ServerError`. Swift still
-            // needs the clause, since this function does not throw.
+            // `UniversalServer` wraps every handler-side failure as a `ServerError`, caught above, so
+            // only this function's own `Data(collecting:)` reaches here. Logged for the same reason
+            // as above: without it a 500 the driver reports leaves nothing in the runner log.
+            FileHandle.standardError.write(
+                Data("bajutsu runner: \(request.method.rawValue) \(request.path ?? "") failed: \(error)\n".utf8)
+            )
             return .error(500, "internal error")
         }
     }
