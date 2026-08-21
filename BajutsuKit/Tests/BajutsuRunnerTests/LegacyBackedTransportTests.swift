@@ -35,6 +35,36 @@ final class LegacyBackedTransportTests: XCTestCase {
         )
     }
 
+    /// BE-0362's invariant on the one hop this transport adds: the task that produces every reply
+    /// runs at `.userInitiated` because it *declares* it, not because of who called.
+    ///
+    /// The declaration is what a test has to check rather than assume. On this stack the caller is
+    /// `HTTPServer`'s `connections` queue, which declares `.userInitiated` itself, so deleting the
+    /// declaration changes nothing observable — and from Unit 5 the caller is a NIO event-loop thread
+    /// at the default QoS, where deleting it silently drops the decode of the request and the encode
+    /// of the reply to a lower band, the "scheduling delay indistinguishable from a dead runner"
+    /// BE-0362 exists for. Driving `blocking` from a `.utility` queue is what tells the two apart.
+    func testTheReplyTaskDeclaresUserInitiatedRatherThanInheriting() {
+        let transport = LegacyBackedTransport()
+        final class Box: @unchecked Sendable { var priority: TaskPriority? }
+        let box = Box()
+        let replied = XCTestExpectation(description: "the reply task ran")
+
+        DispatchQueue.global(qos: .utility).async {
+            _ = transport.blocking {
+                box.priority = Task.currentPriority
+                return .error(200, "probe")
+            }
+            replied.fulfill()
+        }
+        wait(for: [replied], timeout: 10)
+
+        XCTAssertEqual(
+            box.priority, .userInitiated,
+            "the reply task must declare its priority, not inherit the caller's (BE-0362)"
+        )
+    }
+
     /// BE-0287's invariant, restated on the stack Unit 4 builds: `/health` reports whether the
     /// runner is serving, so it has to stay answerable while a long operation holds the main thread
     /// — that is what lets the driver tell "runner busy" from "runner dead".

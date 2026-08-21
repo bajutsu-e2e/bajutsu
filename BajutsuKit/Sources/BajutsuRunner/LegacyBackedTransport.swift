@@ -82,11 +82,20 @@ final class LegacyBackedTransport: ServerTransport {
     /// of its request under the synchronous `Router`. Nor can it wedge the concurrency pool —
     /// `APIHandler` suspends on its own serial queue rather than blocking a cooperative thread, so
     /// the task this waits on always has somewhere to run.
-    private func blocking(_ work: @escaping @Sendable () async -> HTTPResponse) -> HTTPResponse {
+    ///
+    /// Internal rather than `private` so `LegacyBackedTransportTests` can pin the declared priority
+    /// below from a lower-QoS caller — the check BE-0362 asks for, since an inherited priority looks
+    /// identical on this stack and stops being identical once a NIO event loop is the caller.
+    func blocking(_ work: @escaping @Sendable () async -> HTTPResponse) -> HTTPResponse {
         let outcome = Outcome()
         let finished = DispatchSemaphore(value: 0)
         // Declared, not inherited, for the reason BE-0362 gives for the server's own queues: the
-        // driver is blocked on every reply this task produces.
+        // driver is blocked on every reply this task produces. Today the caller is `HTTPServer`'s
+        // `connections` queue, which declares `.userInitiated` itself, so inheriting would look the
+        // same — but the work inside this task is the generated decode of the request and the encode
+        // of the reply (a screenshot's PNG included), which never touches `operations` and its `qos:`.
+        // From Unit 5 the caller is a NIO event-loop thread at the default QoS, where inheriting is a
+        // silent drop. `LegacyBackedTransportTests` pins it from a `.utility` caller for that reason.
         Task(priority: .userInitiated) {
             outcome.response = await work()
             finished.signal()
