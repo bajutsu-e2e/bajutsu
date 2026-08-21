@@ -396,8 +396,17 @@ require none, answering 400 without actuating where `Router` coerced the value o
 The driver sends none of these shapes, and `_decode` reads only `status`.
 
 `Router` outlives Unit 4 unused by production, because it is what the migration is checked *against*:
-the parity and conformance suites read the shipped behavior off it and compare. Its deletion and
-theirs are the same change, and belong to Unit 5.
+the parity suites, and the reply-side half of `ContractConformanceTests`, read the shipped behavior
+off it and compare. Its deletion and theirs are the same change, and belong to Unit 5 — with one
+exception that must survive them. `ContractConformanceTests`'
+`testGeneratedRequestTypesDecodeTheDriversBodies` constructs no `Router` at all: it decodes the
+literal bodies `bajutsu/drivers/xcuitest.py` sends into the generated request types, which is the only
+fast-suite guard that the *request* half of the contract still accepts what the shipping driver
+builds. Unit 4 is what makes that half load-bearing, since the generated decoder is now what answers
+the driver, so a regenerated schema that tightened `taps` or renamed `from`/`to` would otherwise reach
+a device rather than fail `swift test`. `TransportParityTests` has two assertions of the same
+kind — `testMalformedBodyIsRejectedAsAJSONError` and `testScreenshotServesRawPNGOverTheWire` assert
+absolutely rather than against `Router`.
 
 ### Unit 5 — Cut over and remove the legacy transport
 
@@ -509,7 +518,9 @@ Python driver needs no change at any stage.
       and that decoder rejects a few malformed-body shapes `Router` used to tolerate.
 - [ ] Unit 5 — swap the listener onto Hummingbird, declaring the dependency and raising the floor to
       iOS 17 there, and remove `LegacyBackedTransport`, `HTTPServer.swift`, and `Router.swift`
-      together with the parity suites that compare against them.
+      together with the parity suites that compare against them — keeping
+      `ContractConformanceTests`' `testGeneratedRequestTypesDecodeTheDriversBodies` and
+      `TransportParityTests`' two absolute assertions, which pin the contract rather than `Router`.
 
 ## References
 

@@ -417,9 +417,17 @@ BE-0323が報告された異常終了が、XCUITest自身の実行ループの�
 `_decode`が読むのは`status`だけです。
 
 `Router`は、本番の経路から外れたまま単位4を越えて残ります。移行を突き合わせる相手が`Router`だから
-です。パリティを確かめる2つのテストと、契約適合を確かめる`ContractConformanceTests`が、出荷済みの
-挙動を`Router`から読み取って比較します。`Router`の削除と3つのテストの削除は同じ変更であり、
-単位5に属します。
+です。パリティを確かめる2つのテストと、`ContractConformanceTests`の応答側の半分が、出荷済みの挙動を
+`Router`から読み取って比較します。`Router`の削除とこれらの削除は同じ変更であり、単位5に属します。
+ただし、これらと一緒に消してはいけないものが1つあります。`ContractConformanceTests`の
+`testGeneratedRequestTypesDecodeTheDriversBodies`は、`Router`を作りません。
+`bajutsu/drivers/xcuitest.py`が送る本文をそのまま生成されたリクエストの型へ復号するテストであり、
+出荷中のドライバーが組み立てる本文を契約のリクエスト側がいまも受け入れることを、速いテスト群の中で
+確かめる唯一の場所です。生成されたデコーダーがドライバーに応答するようになった単位4が、この半分を
+効かせる側に変えました。したがって、再生成した定義が`taps`を必須にしたり`from`と`to`を改名したり
+すれば、`swift test`で落ちる代わりに実機まで届いてしまいます。`TransportParityTests`にも同じ性質の
+アサーションが2つあります。`testMalformedBodyIsRejectedAsAJSONError`と
+`testScreenshotServesRawPNGOverTheWire`は、`Router`と突き合わせるのではなく絶対値で確かめます。
 
 ### 単位5 — 切り替えて旧トランスポートを取り除く
 
@@ -535,7 +543,10 @@ BE-0323が報告された異常終了が、XCUITest自身の実行ループの�
       ことである。
 - [ ] 単位5 — リスナーをHummingbirdへ切り替える。依存の宣言とプラットフォーム下限のiOS 17への
       引き上げは、この段階で行う。`LegacyBackedTransport`、`HTTPServer.swift`、`Router.swift`を、
-      これらと突き合わせるパリティのテスト群とともに削除する。
+      これらと突き合わせるパリティのテスト群とともに削除する。ただし
+      `ContractConformanceTests`の`testGeneratedRequestTypesDecodeTheDriversBodies`と、
+      `TransportParityTests`の絶対値で確かめる2つのアサーションは残す。`Router`ではなく契約そのものを
+      固定しているためである。
 
 ## 参考
 
