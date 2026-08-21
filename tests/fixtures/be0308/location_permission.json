@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "screen": [
+    402.0,
+    874.0
+  ],
+  "dismiss": {
+    "label": "Don’t Allow",
+    "frame": [
+      57.0,
+      550.0,
+      288.0,
+      48.0
+    ]
+  },
+  "others": [
+    {
+      "label": "Allow Once",
+      "frame": [
+        57.0,
+        438.0,
+        288.0,
+        48.0
+      ]
+    },
+    {
+      "label": "Allow While Using App",
+      "frame": [
+        57.0,
+        494.0,
+        288.0,
+        48.0
+      ]
+    }
+  ],
+  "note": "the OS location prompt: three stacked choices, of which only the bottom one refuses — the sharpest test of whether a real answer lands on the correct button or merely a button"
+}

@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "screen": [
+    402.0,
+    874.0
+  ],
+  "dismiss": null,
+  "others": [
+    {
+      "label": "Archive",
+      "frame": [
+        172.66666666666666,
+        398.3333333333333,
+        57.0,
+        20.333333333333314
+      ]
+    },
+    {
+      "label": "Delete",
+      "frame": [
+        176.33333333333331,
+        434.66666666666663,
+        49.333333333333314,
+        20.333333333333314
+      ]
+    },
+    {
+      "label": "Cancel",
+      "frame": [
+        174.66666666666666,
+        471.0,
+        52.66666666666666,
+        20.33333333333337
+      ]
+    }
+  ],
+  "note": "the app's own delete-confirmation dialog, not an OS prompt: the guard must report it absent and leave it alone, because the button it would reach for deletes"
+}
