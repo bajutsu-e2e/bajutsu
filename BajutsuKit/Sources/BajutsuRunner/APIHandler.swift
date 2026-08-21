@@ -39,7 +39,12 @@ final class APIHandler: APIProtocol {
     /// concurrent server existed to keep. Suspending the caller instead, and blocking only this
     /// queue's own thread, keeps `/health` answerable during a long gesture: `health` below is the
     /// one operation that never touches this queue.
-    private let operations = DispatchQueue(label: "bajutsu.runner.operations", qos: .userInitiated)
+    ///
+    /// Internal rather than `private` so `APIHandlerConcurrencyTests` can assert the one property of
+    /// this invariant that is observable in-process — that the queue admits a single operation at a
+    /// time. A probe on the provider side cannot see it: the work runs inside
+    /// `DispatchQueue.main.sync`, which serializes whether or not this queue does.
+    let operations = DispatchQueue(label: "bajutsu.runner.operations", qos: .userInitiated)
 
     init(provider: ElementProviding) {
         self.provider = provider
