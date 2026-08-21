@@ -19,6 +19,10 @@ final class LegacyBackedTransport: ServerTransport {
         let path: String
     }
 
+    private struct TemplatedPathUnsupported: Error {
+        let path: String
+    }
+
     private typealias Handler = @Sendable (
         HTTPTypes.HTTPRequest, HTTPBody?, ServerRequestMetadata
     ) async throws -> (HTTPTypes.HTTPResponse, HTTPBody?)
@@ -33,6 +37,10 @@ final class LegacyBackedTransport: ServerTransport {
         method: HTTPTypes.HTTPRequest.Method,
         path: String
     ) throws {
+        // The route table matches paths literally, so a templated path would register cleanly and
+        // then 404 every request; no operation in openapi.yaml uses one, and failing here puts the
+        // discovery in the registration test rather than on a device.
+        guard !path.contains("{") else { throw TemplatedPathUnsupported(path: path) }
         lock.withLock { routes[Route(method: method, path: path)] = handler }
     }
 

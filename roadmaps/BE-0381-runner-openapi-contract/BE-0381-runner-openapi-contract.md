@@ -357,11 +357,17 @@ held for the whole life of a request under the synchronous `Router`. That `/heal
 while an operation holds the main thread is now pinned by a live-server test, rather than left to
 `APIHandler`'s and the transport's separate reasoning about the same invariant.
 
-**One deliberate wire difference.** The generated serializer sends `application/json; charset=utf-8`
+**The deliberate wire differences.** The generated serializer sends `application/json; charset=utf-8`
 where `Router` sent a bare `application/json`. The driver never reads the header — `_decode` in
 `bajutsu/drivers/xcuitest.py` takes only the status code and the body — and `/screenshot`, the one
 reply it branches on by path rather than by header, is unaffected. A test pins the difference so it
-stays a recorded decision rather than a surprise.
+stays a recorded decision rather than a surprise. Two smaller differences ride along, recorded here
+because the tests that pin them are deleted with the harness in Unit 5: a 400 reply's `message` is now
+the status's generic reason phrase rather than `Router`'s per-route text, and the generated decoder
+rejects bodies `Router` tolerated — a non-integer `taps` or `count`, a malformed `point` beside a valid
+`handle`, or a non-conforming body on the three operations that require none — answering 400 without
+actuating where `Router` coerced the value or ignored the body. The driver sends none of these shapes,
+and `_decode` reads only `status`.
 
 `Router` outlives Unit 4 unused by production, because it is what the migration is checked *against*:
 the parity and conformance suites read the shipped behavior off it and compare. Its deletion and
@@ -467,8 +473,10 @@ Python driver needs no change at any stage.
       untouched. All sixteen migrate at once: registration is one generated call, and a per-path
       allowlist would have been machinery built only to be deleted. **BE-0287's bound survives by
       construction** — nothing new accepts connections — and `TransportParityTests` compares every
-      endpoint against the legacy `Router` over a live socket. One recorded wire difference: JSON
-      replies now carry `charset=utf-8`, which the driver never reads.
+      endpoint against the legacy `Router` over a live socket. Three recorded wire differences, none
+      observable to the driver: JSON replies carry `charset=utf-8`, a 400's `message` is the generic
+      reason phrase, and the generated decoder rejects a few malformed-body shapes `Router` used to
+      tolerate.
 - [ ] Unit 5 — swap the listener onto Hummingbird, declaring the dependency and raising the floor to
       iOS 17 there, and remove `LegacyBackedTransport`, `HTTPServer.swift`, and `Router.swift`
       together with the parity suites that compare against them.
