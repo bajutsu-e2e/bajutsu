@@ -45,9 +45,10 @@ an author to name one observable difference the change is meant to produce costs
 authoring time, when the author already knows why the change matters, and gives every later reader
 — a reviewer, a future contributor revisiting the item, or the author checking their own prediction
 after the implementing PR lands — a concrete fact to check the claim against, instead of only the
-prose's own say-so. This item's own verifiable outcome, stated to meet the norm it proposes: once
-these skill changes land, every subsequently drafted BE item names, in its Motivation, an outcome a
-later reader could check — confirmable by reading any later-merged item's Motivation.
+prose's own say-so. This item's own verifiable outcome, stated to meet the norm it proposes: a
+reader of any later-merged item can hold that item's Motivation against the shipped change and say
+whether the predicted effect arrived — where BE-0347's two predictions above leave nothing to hold
+them against.
 
 ## Detailed design
 
@@ -62,9 +63,10 @@ later reader could check — confirmable by reading any later-merged item's Moti
    not a new, separate principle — the existing "State the contribution up front" bullet already
    carries a BE-specific clause ("A BE item's Introduction and Motivation state the problem..."), so
    BE-specific guidance is already at home there.
-2. **[`ideation`][ideation] step 2 — ask for the outcome during the conversation.** The step already
-   asks "what's the machine-checkable outcome" when sharpening scope for the `run`/CI gate. Add one
-   clause: also ask what the author would point to, after the change ships, to say it worked — the
+2. **[`ideation`][ideation] step 2 — ask for the verifiable outcome during the conversation.** The
+   step already asks "what's the machine-checkable outcome" — the deterministic assertion a feature
+   is gated on, which is a different question from this one. Add one clause, worded so the two do not
+   collide: also ask what the author would point to, after the change ships, to say it worked — the
    same question step 4 then expects Motivation to answer in prose. This keeps the question inside the
    existing back-and-forth rather than adding a new step; unit 1's norm is what makes the answer
    mandatory in the drafted prose, not this step.
@@ -114,7 +116,7 @@ rather than close a gap.
 > (oldest first), linking the PRs.
 
 - [ ] Unit 1 — add the verifiable-outcome bullet to `document-writing`.
-- [ ] Unit 2 — `ideation` step 2 asks for the outcome during the conversation.
+- [ ] Unit 2 — `ideation` step 2 asks for the verifiable outcome during the conversation.
 - [ ] Unit 3 — `ideation` step 4 carries the answer into the drafted Motivation.
 
 ## References
