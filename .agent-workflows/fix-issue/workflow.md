@@ -12,7 +12,9 @@ auto-opened Draft PR, driven to quiet-and-green by the same bounded follow-up lo
 only two places — how the skill claims ownership, and what closes the loop once the fix merges —
 because a plain issue has no BE file to read a `Status` from, no bot-managed tracking issue, and no
 `Status` to flip on merge. Everything in between is `implement-be`'s procedure, invoked by
-reference rather than restated, so the two skills cannot drift apart.
+reference rather than restated, so the two skills cannot drift apart. One instruction there has no
+counterpart: `implement-be`'s `be-progress-tracker` checkpoints are keyed to a BE id, which a plain
+issue has none of — skip them.
 
 ## Prime directives (these bound every line you write)
 
@@ -32,8 +34,9 @@ The fix must honor all three directives, and a fix that brushes any of them is a
 
 ### 1. Resolve the issue
 
-Accept any of: `#123`, a bare `123`, or the issue's full URL. Read the issue itself before anything
-else — its state, its assignees, and its body:
+Accept any of: `#123`, a bare `123`, or the issue's full URL, and normalize it to the bare number
+before substituting it for `<N>` — an unstripped `#` turns the rest of the command line into a shell
+comment. Read the issue itself before anything else — its state, its assignees, and its body:
 
 ```bash
 gh issue view <N> --json number,title,state,assignees,labels,body
