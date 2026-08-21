@@ -301,3 +301,22 @@ def test_http_simulators(tmp_path: Path) -> None:
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_a_cancelled_run_reaches_the_report_in_the_web_ui() -> None:
+    # A cancelled run now writes a manifest and a report like any other failed run (BE-0370), so the
+    # two run-completion handlers must fall through to `setReport` instead of returning early on
+    # `j.cancelled` — otherwise the artifact is invisible on the very surface the Cancel button lives
+    # on. `make lint-js` only runs `node --check` over these modules, so a behavioral regression here
+    # has no other net; this pins it by reading the module, in the tolerant style used above.
+    # Read the module from the directory the server itself serves it out of, so the test cannot drift
+    # from where it actually lives.
+    from bajutsu.serve._paths import TEMPLATES_DIR
+
+    text = (TEMPLATES_DIR / "serve.panels.mjs").read_text(encoding="utf-8")
+    for name in ("runDone", "recRunDone"):
+        body = re.search(rf"function {name}\(j\)\{{(.*?)\n\}}", text, re.DOTALL)
+        assert body is not None, name
+        assert "setReport" in body.group(1), name
+        # No `return` on a cancelled branch ahead of it — that is the short-circuit being ruled out.
+        assert re.search(r"j\.cancelled[^\n]*\breturn\b", body.group(1)) is None, name

@@ -328,7 +328,7 @@ scenario is written under the target's scenarios directory, so it appears in the
 **Run it in place.** The **▶ Run** button beside Save (also disabled until there is YAML) runs the
 panel's current content — the just-authored scenario, or YAML you pasted or edited by hand — without
 switching tabs. A run-result pane opens with the live log and the finished report, with **Stop** to
-abort and a close button to dismiss the pane. The verdict is the deterministic runner's, exactly as
+cancel the run and a close button to dismiss the pane. The verdict is the deterministic runner's, exactly as
 on the Replay tab.
 
 **Readiness (doctor).** A **Readiness** panel with a **Check** button sits in the form — the
@@ -351,9 +351,18 @@ browser. Two sub-tabs: **Run** and **History**.
    run scenarios in parallel across them, and **Workers** tracks the count). **erase device first**
    and **disable alert-dismiss** apply as in Record. On web: tick **show browser (headed)** to watch
    the run in a visible Chromium window.
-3. Click **Run** (**Stop** aborts). The output streams live in the log, and the run's `report.html`
+3. Click **Run** (**Stop** cancels). The output streams live in the log, and the run's `report.html`
    embeds beside it on completion. Before a run, the same **Readiness** panel as on Record (see
    above) answers "is my environment ready, and is my app addressable?" on a click — advisory only.
+
+**Cancelling a run does not discard it.** **Stop** asks the runner to finish on its own terms. The
+runner fails every scenario it did not complete, with the reason `cancelled`, then writes the report
+an ordinary failing run writes. The cancelled attempt then appears under **History** like any
+other failure. "This scenario was never run" and "this scenario was started, then cancelled"
+stay distinguishable there. A run cancelled before its first scenario started — while a Simulator
+boots or the app builds — still stops outright and leaves no report, having reached no verdict yet to
+preserve. **Stop** on the Record and Crawl tabs is unchanged for the same reason: neither reaches a
+verdict of its own.
 
 Under the log panel, a **Generate code** bar exports the selected scenario as a native test — the
 same codegen as on the [Author](#author--capture-edit-and-enrich-one-scenario) tab, placed where a

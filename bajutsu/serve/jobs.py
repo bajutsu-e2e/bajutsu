@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 from bajutsu import device_os
 from bajutsu import simctl as _simctl
 from bajutsu.agents.ai_config import PROVIDER_MANAGED_ENV
+from bajutsu.cancellation import GRACE_ENV, grace_seconds
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.handoff import REQUEST_LINE_PREFIX as _HANDOFF_REQUEST_PREFIX
@@ -62,6 +63,13 @@ def _spawn_env(job: Job) -> dict[str, str]:
         e.update(job.env_overlay)
     bindir = str(Path(sys.executable).parent)
     e["PATH"] = bindir + os.pathsep + e.get("PATH", "")
+    if job.graceful_cancel:
+        # Tell the spawned run how long it has to close itself out, so the deadline its own SIGTERM
+        # handler enforces is bound to *this* grace window (BE-0370). An independently chosen constant
+        # could be the shorter of the two and kill the run before `_assemble_report` wrote a manifest,
+        # reproducing the silent gap for every ordinary cancel — `serve`'s longer window could never
+        # rescue a run that already killed itself.
+        e[GRACE_ENV] = f"{grace_seconds():g}"
     return e
 
 
@@ -86,14 +94,149 @@ def _terminate(proc: Any) -> None:
         proc.terminate()
 
 
-def _register_proc(job: Job, proc: Any) -> bool:
+def _pgid_of(proc: Any) -> int | None:
+    """The process group of a live spawned job, or None when it can't be read (a proc double).
+
+    Read while the leader is still alive: once it has exited and been reaped its pid — which is also
+    its pgid, since every job is spawned with `start_new_session` — can be reused, so the post-exit
+    sweep below must never re-derive the group it is about to signal.
+    """
+    try:
+        return os.getpgid(proc.pid)
+    except (OSError, AttributeError):
+        return None
+
+
+def _sweep_group(pgid: int | None) -> None:
+    """Reap whatever is left of a cooperatively-cancelled run's process group (BE-0370).
+
+    The leader has exited — cleanly, or via the grace-period escalation — so its own end-of-scenario
+    teardown has already had its chance to stop the backend driver it was actuating through. A driver
+    child that outlived it would otherwise be left orphaned on the serve host, which is why the
+    leader-only signal is still followed by the group-wide sweep it replaced. Best-effort: an already
+    empty group is the normal case.
+    """
+    if pgid is None:
+        return
+    with contextlib.suppress(OSError, ProcessLookupError):
+        os.killpg(pgid, signal.SIGTERM)
+
+
+def _still_running(proc: Any) -> bool:
+    """Whether *proc* has yet to exit; True for a proc double that cannot answer (never assume gone)."""
+    poll = getattr(proc, "poll", None)
+    return poll is None or poll() is None
+
+
+def _kill(proc: Any) -> None:
+    """SIGKILL a process and its group; never raises, and ignores an already-exited / fake proc.
+
+    The unconditional end of the cancel escalation below. `_terminate`'s SIGTERM is what a driver
+    child answers; only SIGKILL is what nothing can absorb.
+    """
+    with contextlib.suppress(OSError, ProcessLookupError, AttributeError):
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        return
+    with contextlib.suppress(OSError, ProcessLookupError, AttributeError):
+        proc.kill()
+
+
+# How long the escalation gives a job's process group to unwind on the group-wide SIGTERM before it
+# resorts to SIGKILL — the same window, for the same reason, that the XCUITest runner's own teardown
+# gives its group (`_terminate_process_group` in `platform_lifecycle/environments/xcuitest.py`): a
+# child of `xcodebuild` can ignore a SIGTERM and keep holding the device.
+_ESCALATION_UNWIND_SECONDS = 5.0
+
+
+def _escalate(proc: Any) -> None:
+    """End a cooperatively-cancelled run that outlived its grace window, and say so (BE-0370).
+
+    A group-wide SIGTERM alone can no longer be relied on to end the leader: a cancelled `bajutsu
+    run` has a SIGTERM handler installed and absorbs a second signal rather than dying on it, so that
+    an operator who clicks Cancel twice does not lose the manifest — and a run whose main thread is
+    wedged past executing Python never runs that handler at all, which leaves it answering neither
+    signal. So the escalation ends on SIGKILL, the one signal nothing can absorb, and the grace window
+    stays the whole of the delay this item adds to a cancel.
+
+    The group-wide SIGTERM still comes first, and the group still gets a brief window to unwind on it:
+    the leader never reached its own end-of-scenario teardown, so the backend driver children it would
+    have stopped are still live, and a driver killed outright can leave a Simulator wedged for the
+    next run.
+    """
+    if not _still_running(proc):
+        return
+    logger.warning(
+        "a cancelled run did not finish within its %gs grace window; ending it",
+        grace_seconds(),
+    )
+    _terminate(proc)
+    with contextlib.suppress(subprocess.TimeoutExpired, OSError, ValueError):
+        proc.wait(timeout=_ESCALATION_UNWIND_SECONDS)
+    if not _still_running(proc):
+        return
+    logger.warning(
+        "the cancelled run's process group ignored SIGTERM for %gs; sending SIGKILL",
+        _ESCALATION_UNWIND_SECONDS,
+    )
+    _kill(proc)
+    # `kill` only queues the signal, so the exit has to be waited for like the SIGTERM above it —
+    # concluding anything from an immediate `poll()` would report a fault on every escalation that
+    # worked. A process that really does outlive SIGKILL is stuck in the kernel (an uninterruptible
+    # wait on a wedged device), which leaves `_run_job` blocked in `proc.wait()` and the job "running"
+    # with no way for the Web UI to end it. Nothing here can fix that, so what was observed is stated
+    # rather than the conclusion drawn: without this line the only trace is a job that never finishes.
+    with contextlib.suppress(subprocess.TimeoutExpired, OSError, ValueError):
+        proc.wait(timeout=_ESCALATION_UNWIND_SECONDS)
+    if _still_running(proc):
+        logger.warning(
+            "the cancelled run has not exited %gs after SIGKILL; if its job never finishes, its "
+            "process is stuck in the kernel and serve cannot end it",
+            _ESCALATION_UNWIND_SECONDS,
+        )
+
+
+def _request_graceful_stop(proc: Any) -> None:
+    """Ask a `run` job's process to close the run out itself, escalating past a grace window (BE-0370).
+
+    Signals the leading process alone, not its group: for a `run` job the group also holds the backend
+    driver the in-flight scenario is actuating through — a Playwright-launched browser, an
+    `xcodebuild test` process — so a group-wide kill would tear that driver out from under the scenario
+    and crash it before the next safe boundary, exactly the abrupt failure this path removes. The
+    driver keeps running until the runner, noticing the request at its next boundary, tears it down
+    through its own ordinary end-of-scenario teardown.
+
+    The bound runs on its own timer rather than here, because `POST /api/jobs/{job_id}/cancel` calls
+    `cancel_job` synchronously and the window has to exceed the longest single driver call (tens of
+    seconds): holding the response open for it would leave the Cancel button unacknowledged long
+    enough that an operator clicks it again. Past the deadline `_escalate` ends the run
+    unconditionally, so a cancel is delayed by at most one grace period.
+    """
+    try:
+        proc.send_signal(signal.SIGTERM)
+    except (OSError, AttributeError, ValueError):
+        # The leader could not be reached at all (already gone, or a proc double with no signal
+        # channel), so there is nobody to answer the grace window: fall back to today's kill rather
+        # than wait one out.
+        _terminate(proc)
+        return
+    timer = threading.Timer(grace_seconds(), _escalate, args=(proc,))
+    timer.daemon = True  # a serve shutdown must not block on a window nobody is waiting for
+    timer.start()
+
+
+def _register_proc(job: Job, proc: Any, *, graceful: bool = False) -> bool:
     """Attach *proc* as the job's live subprocess so a cancel request can reach it.  If a cancel
-    already arrived, kill *proc* at once and return False so the caller stops before streaming."""
+    already arrived, kill *proc* at once and return False so the caller stops before streaming.
+
+    `graceful` records that *proc* answers a cancel cooperatively (BE-0370), so `cancel_job` can tell
+    a `run` job's spawned run from its own build phase, which keeps today's kill.
+    """
     with job.lock:
         if job.cancelled:
             kill = True
         else:
             job.proc = proc
+            job.proc_graceful = graceful
             kill = False
     if kill:
         _terminate(proc)
@@ -101,21 +244,30 @@ def _register_proc(job: Job, proc: Any) -> bool:
 
 
 def cancel_job(job: Job) -> bool:
-    """Request cancellation of a running job: flag it and terminate its current subprocess (the
+    """Request cancellation of a running job: flag it and stop its current subprocess (the
     streamed output then ends and run_job marks the job done).  Returns False if already
-    finished."""
+    finished.
+
+    A `run` job's spawned run is asked to stop cooperatively so it still writes its manifest, report,
+    and history row (BE-0370); every other live subprocess — a `record` / `crawl` / triage spawn, and
+    a `run` job's own build phase — is terminated outright, as it is today.
+    """
     with job.lock:
         if job.status == "done":
             return False
         job.cancelled = True
         proc = job.proc
+        graceful = job.proc_graceful
         noted = not job.lines or job.lines[-1] != "cancelled"
         if noted:
             job.lines.append("cancelled")
     if noted and job.bus is not None:
         job.bus.publish(job.id, "cancelled")
     if proc is not None:
-        _terminate(proc)
+        if graceful:
+            _request_graceful_stop(proc)
+        else:
+            _terminate(proc)
     return True
 
 
@@ -203,6 +355,7 @@ def _build_app(state: ServeState, job: Job) -> bool:
             proc.wait()
             with job.lock:
                 job.exit_code, job.status, job.proc = proc.returncode or 1, "done", None
+                job.proc_graceful = False
             return False
         try:
             for raw in proc.stdout or []:
@@ -439,11 +592,14 @@ def _run_job(state: ServeState, job: Job) -> None:
         bufsize=1,
         start_new_session=True,  # own process group, so a cancel stops its children (e.g. `claude -p`)
     )
-    if not _register_proc(job, proc):
+    if not _register_proc(job, proc, graceful=job.graceful_cancel):
         proc.wait()
         with job.lock:
             job.exit_code, job.status, job.proc = proc.returncode or 1, "done", None
+            job.proc_graceful = False
         return
+    # Read while the leader is alive, for the post-exit sweep below (see `_pgid_of`).
+    pgid = _pgid_of(proc)
     try:
         for raw in proc.stdout or []:
             line = raw.rstrip("\n")
@@ -467,13 +623,17 @@ def _run_job(state: ServeState, job: Job) -> None:
         _terminate(proc)
     proc.wait()
     with job.lock:
+        swept = job.cancelled and job.proc_graceful
         job.proc = None
+        job.proc_graceful = False
         job.exit_code = proc.returncode
         job.status = "done"
         # A record that paused for a human but ended without a response (a StreamHandoff timeout →
         # cancel, or a killed job) must not report awaiting-human on its terminal view — the process
         # is gone and cannot be resumed (BE-0179).
         job.awaiting_human = False
+    if swept:
+        _sweep_group(pgid)
 
 
 @dataclass

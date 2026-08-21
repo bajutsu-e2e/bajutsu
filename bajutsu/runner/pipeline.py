@@ -29,6 +29,7 @@ from bajutsu.backends import (
     device_replacement_supported,
     erase_precondition_supported,
 )
+from bajutsu.cancellation import CANCELLED_FAILURE, CancelSource, not_cancelled
 from bajutsu.config import Effective
 from bajutsu.drivers.base import BackendCrashError
 from bajutsu.evidence import Artifact
@@ -194,6 +195,10 @@ class _ScenarioRunner:
     # anything" — this flag carries the pre-resolution CLI signal (`erase is not False`) instead, so
     # `--no-erase` still means what it says even on a crash-triggered retry.
     force_erase_on_retry: bool = True
+    # Whether this run has been asked to stop (BE-0370). Read once per scenario below, before the
+    # first lease is attempted, and handed down to `run_scenario` so the step loop and its condition
+    # waits notice a cancel at their own safe boundaries.
+    cancelled: CancelSource = not_cancelled
     # Latches once `_maybe_emit_score` has fired, so a backend-crash retry of scenario 0 (which
     # re-enters `_run_on_lease` on a respawned app — BE-0049) does not re-score and emit a second
     # grade: the score is a once-per-run tell, not a per-attempt one. A mutable field on a frozen
@@ -252,6 +257,22 @@ class _ScenarioRunner:
             s: The scenario to run.
         """
         sid = f"{i:02d}-{scenario_slug(s.name)}"
+        # A cancel that landed before this scenario started (BE-0370). It is failed rather than
+        # dropped, so `run_all` still returns exactly one result per scenario in declaration order
+        # and nothing downstream needs to know cancellation happened at all — an operator who
+        # cancels early in a long suite sees every scenario that never ran counted as a failure too,
+        # the accepted consequence of treating a cancelled run as failed at all.
+        if self.cancelled():
+            if self.progress is not None:
+                self.progress(f"✘ scenario {i + 1}/{self.total}: {s.name} (cancelled)")
+            return RunResult(
+                scenario=s.name,
+                ok=False,
+                steps=[],
+                backend=self.actuator or "",
+                sid=sid,
+                failure=CANCELLED_FAILURE,
+            )
         if self.progress is not None:
             self.progress(f"▶ scenario {i + 1}/{self.total}: {s.name}")
         # Resolve this scenario's actuator and capability set. With a per-scenario resolver (BE-0240)
@@ -335,6 +356,9 @@ class _ScenarioRunner:
         budget = CrashRecoveryBudget(self.crash_retries, self.crash_recovery_budget, self._now)
         budget_spent = False
         run_budget_spent = False
+        # Whether a cancel request is what stopped this scenario's crash recovery (BE-0370), reported
+        # in the failure below so the report says why recovery ended rather than blaming a budget.
+        cancelled_recovery = False
         # Local to this call, never shared: `run_crash_budget` bills only the seconds *this*
         # scenario's own loop actually spends recovering (started at its first crash, in the
         # `finally` below), not wall-clock elapsed since some earlier scenario's crash — see
@@ -456,6 +480,14 @@ class _ScenarioRunner:
                     budget_spent = decision.budget_spent
                     run_budget_spent = run_exhausted and decision.will_retry
                     will_retry = decision.will_retry and not run_exhausted
+                    if will_retry and self.cancelled():
+                        # A retry leases afresh — on XCUITest a cold respawn, and a forced erase on top
+                        # — and that bring-up can outlive the grace window the canceller is waiting
+                        # out, which would let the run be killed before `_assemble_report` wrote a
+                        # manifest: exactly the silent gap BE-0370 removes, reintroduced on the crash
+                        # path. So a cancelled run stops recovering and fails this scenario now,
+                        # keeping every verdict it has already reached.
+                        will_retry, cancelled_recovery = False, True
                     if will_retry and can_replace and not replaced and lz is not None:
                         # The two signals that say the device itself is degraded past what an erase
                         # clears. A crash whose attempt already ran on an erased device has spent that
@@ -510,7 +542,15 @@ class _ScenarioRunner:
         # an honest failure — distinguishing "ran out of attempts" from either budget running out.
         if self.progress is not None:
             self.progress(f"✘ scenario {i + 1}/{self.total}: {s.name} (backend crashed mid-run)")
-        if run_budget_spent:
+        if cancelled_recovery:
+            # Led by the exact `CANCELLED_FAILURE` spelling, so a consumer that groups cancelled
+            # scenarios still recognizes this one, and followed by the crash that was being recovered
+            # from, which is evidence no other exit path can supply.
+            failure = (
+                f"{CANCELLED_FAILURE}: the backend crashed mid-run and the run was cancelled before "
+                f"it could recover ({attempt} attempt(s) into this scenario): {last_crash}"
+            )
+        elif run_budget_spent:
             # This scenario failed *because* the run-level budget was the binding constraint — the
             # real evidence (unlike bare `exhausted()`) that the device is not recovering, so every
             # later scenario's own pre-lease check above now fails fast instead of each paying its
@@ -620,6 +660,9 @@ class _ScenarioRunner:
                 # The config's baseline capture guarantee (`defaults.capture`), applied on top of
                 # every step alongside capturePolicy rules and inline `capture:` tokens.
                 capture=self.eff.capture,
+                # A cancel request reaches the step loop and its condition waits (BE-0370), so this
+                # scenario stops at its next safe boundary and comes back as an ordinary failure.
+                cancelled=self.cancelled,
             )
             result.sid = sid  # the evidence-dir slug, so the matrix links to the real dir (BE-0076)
             result.device = lz.udid  # attribute the scenario to the device that ran it
@@ -669,6 +712,7 @@ def run_all(
     crash_recovery_budget: float | None = None,
     run_crash_recovery_budget: float | None = None,
     force_erase_on_retry: bool = True,
+    cancelled: CancelSource = not_cancelled,
 ) -> list[RunResult]:
     """Run every scenario, each on a freshly leased device, and return one result per scenario.
 
@@ -747,6 +791,11 @@ def run_all(
             resolves every scenario's `preconditions.erase` to a concrete bool before `run_all` ever
             sees it, so that field alone cannot distinguish "the operator asked to keep the device"
             from "nobody said anything" by the time a retry decides whether to force it.
+        cancelled: Reports whether this run has been asked to stop (BE-0370). A scenario the request
+            reaches — at a step boundary, inside a condition wait's poll, or before it was leased at
+            all — comes back as `RunResult(ok=False, failure="cancelled")`, so the caller still
+            receives one result per scenario and writes an ordinary failed run's report. The default
+            never cancels, leaving every existing caller unchanged.
 
     Returns:
         One result per scenario, in the same order as `scenarios`.
@@ -809,6 +858,7 @@ def run_all(
         ),
         run_crash_budget=RunCrashRecoveryBudget(resolved_run_crash_recovery_budget),
         force_erase_on_retry=force_erase_on_retry,
+        cancelled=cancelled,
     )
     if workers > 1:
         # >1 hands each worker its own device + per-device resources; the runner is frozen and
@@ -843,14 +893,16 @@ def run_and_report(
     lease_udid_spec: str = "booted",
     on_score: Callable[[Score], None] | None = None,
     force_erase_on_retry: bool = True,
+    cancelled: CancelSource = not_cancelled,
 ) -> tuple[list[RunResult], Path]:
     """Run the scenarios, then write the run's artifacts under `runs_dir/run_id`.
 
     Wraps `run_all` and persists the report: `manifest.json`, JUnit XML, and the executed
     `scenario.yaml` (so a run is re-runnable / reviewable).
 
-    Beyond `run_all`'s arguments (`force_erase_on_retry` passes straight through — see its docstring
-    there), `runs_dir` + `run_id` locate this run's artifact directory (`runs_dir/run_id`),
+    Beyond `run_all`'s arguments (`force_erase_on_retry` and `cancelled` pass straight through — see
+    their docstrings there), `runs_dir` + `run_id` locate this run's artifact directory
+    (`runs_dir/run_id`),
     `source_name` / `description` are recorded in the report, and `config_source` — the Git source
     the config came from (BE-0063), or None for a local config — is stamped into the manifest's
     provenance so a branch-based run states the exact commit it executed.
@@ -879,6 +931,7 @@ def run_and_report(
         lease_udid_spec=lease_udid_spec,
         on_score=on_score,
         force_erase_on_retry=force_erase_on_retry,
+        cancelled=cancelled,
     )
     manifest = _assemble_report(
         scenarios,
@@ -907,6 +960,7 @@ def run_matrix_and_report(
     secret_values: list[str] | None = None,
     config_source: dict[str, str] | None = None,
     exec_provenance: dict[str, str | None] | None = None,
+    cancelled: CancelSource = not_cancelled,
 ) -> tuple[list[RunResult], Path]:
     """Run the scenarios once per engine, then assemble ONE report at `runs_dir/run_id` (BE-0076).
 
@@ -918,6 +972,14 @@ def run_matrix_and_report(
     report — the manifest's `matrix` block aggregates the per-engine verdicts, and `ok` is
     all-must-pass across every engine x scenario (pure aggregation, no LLM).
 
+    `cancelled` (BE-0370) is read between passes: each one first builds a whole `device_pool`, so a
+    cancel during the first engine would otherwise still pay every remaining engine's bring-up and
+    teardown before the run could finish, overrunning the grace period. Every scenario of an engine
+    that never ran is failed as cancelled rather than left out, so the matrix still names every
+    requested engine and `ok` aggregates a cancelled run to False — dropping those engines instead
+    would let a first pass that happened to be green aggregate to a `PASS` for a run that never
+    finished.
+
     Returns:
         The concatenated per-engine results and the path to the written `manifest.json`.
     """
@@ -926,7 +988,22 @@ def run_matrix_and_report(
     # that creates *that* directory would materialize this one above it at the ambient umask.
     prepare_run_dir(runs_dir, run_id)
     results: list[RunResult] = []
-    for engine in engines:
+    for index, engine in enumerate(engines):
+        if cancelled():
+            # The scenarios of every engine left are failed as cancelled, not dropped. An engine
+            # missing from `results` takes its scenarios' verdicts with it, and the manifest's
+            # all-must-pass `ok` then aggregates only the engines that did run — so a cancel landing
+            # after a green first pass would record a `PASS` for a run that never finished, the
+            # silent-gap failure this item removes, inverted. Synthesizing them keeps the aggregation
+            # pure and the matrix complete: a cell that says `cancelled` states plainly that the axis
+            # was requested and never executed.
+            _logger.info(
+                "run cancelled: failing the remaining engine pass(es) %s as cancelled",
+                ", ".join(engines[index:]),
+            )
+            for skipped in engines[index:]:
+                results.extend(_cancelled_pass(scenarios, skipped))
+            break
         passed = run_pass(engine, run_dir / engine)
         for r in passed:
             r.engine = engine  # tag each verdict with its rendering engine for the matrix
@@ -944,6 +1021,27 @@ def run_matrix_and_report(
         exec_provenance=exec_provenance,
     )
     return results, manifest
+
+
+def _cancelled_pass(scenarios: list[Scenario], engine: str) -> list[RunResult]:
+    """One cancelled result per scenario for an engine pass a cancel stopped from ever starting.
+
+    The same shape `_ScenarioRunner.run_one` gives a scenario the cancel reached before its first
+    lease (BE-0370), so the report needs no notion of an engine that was skipped: it sees one verdict
+    per requested engine x scenario, as it does for a run that finished.
+    """
+    return [
+        RunResult(
+            scenario=s.name,
+            ok=False,
+            steps=[],
+            backend="",
+            engine=engine,
+            sid=f"{i:02d}-{scenario_slug(s.name)}",
+            failure=CANCELLED_FAILURE,
+        )
+        for i, s in enumerate(scenarios)
+    ]
 
 
 def _reroot_evidence(r: RunResult, engine: str) -> None:

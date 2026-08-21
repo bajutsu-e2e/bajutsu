@@ -62,6 +62,9 @@ def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
         "out_path": None,  # not a record job
         "record_save": None,
         "materialize_baselines": False,
+        # This spec was built with a bare `Job`, not through `start_run`, so nothing declared the
+        # cooperative cancel a real `run` job carries (BE-0370).
+        "graceful_cancel": False,
         "org": "default",  # single-tenant default org (BE-0015 multi-tenancy)
         "actor": None,  # no OAuth identity for this locally-built job
         "evidence_prefix": "",  # no per-run evidence prefix requested (BE-0110)
