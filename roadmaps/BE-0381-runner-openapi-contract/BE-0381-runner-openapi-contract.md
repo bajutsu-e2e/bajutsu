@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-runner-openapi-contract-ja.md)
+**English** · [日本語](BE-0381-runner-openapi-contract-ja.md)
 
-# BE-XXXX — Generate the XCUITest runner's HTTP server from an OpenAPI contract instead of hand-rolling it
+# BE-0381 — Generate the XCUITest runner's HTTP server from an OpenAPI contract instead of hand-rolling it
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-runner-openapi-contract.md) |
+| Proposal | [BE-0381](BE-0381-runner-openapi-contract.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0381") |
 | Implementing PR | [#1606](https://github.com/bajutsu-e2e/bajutsu/pull/1606) |
 | Topic | Platform support |
 | Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md), [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn.md), [BE-0362](../BE-0362-runner-http-queue-qos/BE-0362-runner-http-queue-qos.md) |
