@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-be-progress-tracker-ja.md)
+**English** · [日本語](BE-0379-be-progress-tracker-ja.md)
 
-# BE-XXXX — Track BE work in a live progress Artifact via a dedicated low-cost skill
+# BE-0379 — Track BE work in a live progress Artifact via a dedicated low-cost skill
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-be-progress-tracker.md) |
+| Proposal | [BE-0379](BE-0379-be-progress-tracker.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0379") |
 | Implementing PR | [#1673](https://github.com/bajutsu-e2e/bajutsu/pull/1673) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
@@ -67,7 +67,7 @@ The work breaks down into five independent pieces:
    `ideation/workflow.md` each gain one short paragraph naming which of their own numbered steps
    warrant a checkpoint. `propose-and-build/workflow.md` defines none of its own: it notes that it
    inherits the checkpoints of the `ideation` and `implement-be` phases it delegates to, keyed on
-   the same `BE-XXXX` placeholder it already carries through both phases.
+   the same `BE-0379` placeholder it already carries through both phases.
 5. **Claude-adapter dispatch instructions** — `implement-be`'s, `ideation`'s, and
    `propose-and-build`'s `SKILL.md` each gain one line telling the host to dispatch the checkpoint
    through the Agent tool with `model: "haiku"` passed explicitly, since a subagent call does not

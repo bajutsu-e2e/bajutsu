@@ -1,14 +1,14 @@
-[English](BE-XXXX-be-progress-tracker.md) · **日本語**
+[English](BE-0379-be-progress-tracker.md) · **日本語**
 
-# BE-XXXX — 専用の低コストスキルでBE作業の進捗をArtifactに記録する
+# BE-0379 — 専用の低コストスキルでBE作業の進捗をArtifactに記録する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-be-progress-tracker-ja.md) |
+| 提案 | [BE-0379](BE-0379-be-progress-tracker-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0379") |
 | 実装 PR | [#1673](https://github.com/bajutsu-e2e/bajutsu/pull/1673) |
 | トピック | Contributor workflow |
 <!-- /BE-METADATA -->
@@ -73,7 +73,7 @@
    ステップでチェックポイントを呼ぶべきかを述べる短い段落を追加します。
    `propose-and-build/workflow.md`は独自のチェックポイントを定めません。代わりに、委任先の
    `ideation`と`implement-be`の各フェーズが持つチェックポイントをそのまま引き継ぐこと、
-   両フェーズを通じてすでに使っている`BE-XXXX`の仮番号をキーに使うことを述べるにとどめます。
+   両フェーズを通じてすでに使っている`BE-0379`の仮番号をキーに使うことを述べるにとどめます。
 5. **Claudeアダプターの呼び出し指示**
    `implement-be`、`ideation`、`propose-and-build`の各`SKILL.md`には、Agentツールを通じて
    チェックポイントを呼び出す際に`model: "haiku"`を明示的に渡す、という1行をそれぞれ追加します。
