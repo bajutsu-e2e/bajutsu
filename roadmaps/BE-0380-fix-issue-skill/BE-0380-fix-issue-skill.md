@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-fix-issue-skill-ja.md)
+**English** · [日本語](BE-0380-fix-issue-skill-ja.md)
 
-# BE-XXXX — A fix-issue skill ships small GitHub issues without a roadmap item
+# BE-0380 — A fix-issue skill ships small GitHub issues without a roadmap item
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-fix-issue-skill.md) |
+| Proposal | [BE-0380](BE-0380-fix-issue-skill.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0380") |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
