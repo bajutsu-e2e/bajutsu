@@ -80,11 +80,16 @@ stop and point the invoker to `ideation` (or, for a small item whose design is a
 (something behaves other than intended) or a lightweight **enhancement** (a small, bounded
 improvement).
 
-**Step 2 — search for a duplicate.** Run `gh issue list --search "<keywords>" --state all --limit
-10` with keywords drawn from the finding, and show the invoker any candidate matches (number,
-title, state). When a match looks like the same issue, ask whether to comment on the existing issue
-instead of filing a new one, or to proceed anyway — the invoker decides, since only they can judge
-whether the match is close enough.
+**Step 2 — search for a duplicate.** Run `gh issue list --search "<keywords>
+-label:roadmap-tracking" --state all --limit 10` with keywords drawn from the finding, and show the
+invoker any candidate matches (number, title, state). The search excludes the `roadmap-tracking`
+issues the workflow of
+[BE-0109](../BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) creates and closes
+on its own: those are bot-owned, so a finding an existing BE item already covers belongs on that
+item through step 1's `ideation` landing rather than as a comment on one of them. When a match
+looks like the same issue, ask whether to comment on the existing issue instead of filing a new
+one, or to proceed anyway — the invoker decides, since only they can judge whether the match is
+close enough.
 
 **Step 3 — draft.** Read the matching template — `bug_report.yml` for a bug,
 `feature_request.yml` for an enhancement — and synthesize a markdown body whose sections mirror
