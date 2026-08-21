@@ -93,8 +93,11 @@ already existed; the three gaps above are why it does not, and the units below b
 
 Nothing here touches the deterministic `run` path or adds an AI call anywhere: a binding is data, and
 restoring one is a lookup and a materialization, both machine-checkable (prime directive 1). Units 1
-and 2 are a refactor with no behavior change on a single-tenant deployment, and each later unit is
-independently useful, so the safe ones can land alone.
+and 2 are a refactor with no behavior change on a single-tenant deployment. Units 3 to 5 do not
+depend on them: recording each bind, persisting the active project, and restoring a bundle from the
+local cache are additive to the single binding as it stands, and together they already remove the
+re-upload for a member willing to switch projects by hand. Units 1, 2, 6, and 7 are what turn that
+into the configuration simply being there.
 
 ### 1. One binding value instead of six scattered fields
 
@@ -112,7 +115,10 @@ gives unit 2 one thing to key by session instead of six. Behavior is unchanged; 
 Replace the single binding field with a mapping from login session **and acting org** to
 `ConfigBinding`. A session is the scope a member's own work happens in, so a bind made in one
 session is visible to that session alone, and every other session — a colleague's, or the same
-member's on another machine — keeps what it had. The acting org joins the key because a session may
+member's on another machine — keeps what it had. A session's slots are dropped when the session ends — on the revocation the session store
+already performs, and on a bound the mapping enforces itself, so a process that accumulates quiet
+sessions evicts the oldest binding rather than growing without limit. The acting org joins the key
+because a session may
 change which org it acts as, and a binding made as one org must not answer as another: target
 ownership rides on the org, so a binding that outlived an org change would hand one org's targets to
 a request acting as a different one. A session's binding is dropped with the session; what survives is the org's remembered
@@ -129,8 +135,12 @@ Not every reader of the binding is inside a request with a session. `config_cont
 `_scenarios_dir_for` take no actor at all, and the deployment-wide answer is what two of them
 actually want. Each of the five is therefore settled explicitly rather than by an ambient default.
 Three report what a member is working against — the configuration view, the server-settings tab's
-`hasConfig` / `configSource` / configuration path, and the scenario directory — and take the session
-from their handler. Two describe the deployment — the active key environment variable and the usage
+`hasConfig` / `configSource` / configuration path, and the scenario directory — and resolve the
+session's binding rather than the ambient one. Two of the three take the session from their handler.
+The scenario directory cannot: `_scenarios_dir_for` is reached through a closure `ServeState`
+constructs once, over `self`, and hands to every org through `for_org`, so no handler is in scope
+when the closure fires. The seam that becomes session-aware there is the scenario store's own
+resolution, which the request already reaches with a session in hand. Two describe the deployment — the active key environment variable and the usage
 ledger — and read the fallback binding, which the item states rather than leaves implied. An ambient
 default is what this unit removes, so leaving one for the readers that are inconvenient would leave
 the bug in place.
@@ -282,4 +292,9 @@ does not need, and a trigger written against sign-in misses an org change within
 - [BE-0375](../BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management.md) —
   target ownership for an API-bound configuration, which unit 2 expresses through the org recorded on
   the binding.
+- The `session-scoped-org-selection` proposal, in flight on its own branch and not yet numbered —
+  the item that lets one session choose which of a login's orgs it acts as. This item's key is the
+  pair of a session and its acting org, so the two meet there: without a session-level org choice
+  the acting org is the login's single org and the pair collapses to the session, and with one the
+  pair is what keeps a binding made as one org from answering as another.
 - [`docs/architecture.md`](../../docs/architecture.md) — what `serve` holds today.
