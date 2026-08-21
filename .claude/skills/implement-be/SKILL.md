@@ -14,4 +14,7 @@ Use Claude Code facilities for host-specific steps:
 - Run step 7's two roles on different models (BE-0347): `fable` for the review/plan pass, and for the implement pass `sonnet` when the fix stays within `roadmaps/` or `docs/`, `opus` when it touches product code.
 - Use the installed `pr-review-toolkit` for the specialized review pass.
 - Use `/loop` for the paced post-PR follow-up described by the workflow.
+- At the checkpoints the workflow names, invoke `be-progress-tracker` (Agent tool, `model:
+  "haiku"`) — a subagent call doesn't inherit that skill's own frontmatter model, so pass it
+  explicitly. Treat a failed or skipped checkpoint as advisory only, never a blocker.
 - Treat `.claude/settings.json` and `.claude/hooks/session-start.sh` as Claude-only configuration.

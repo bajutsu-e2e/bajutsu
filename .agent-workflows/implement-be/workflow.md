@@ -28,6 +28,14 @@ and you must stop and flag — not silently work around — anything that brushe
 
 ## Workflow
 
+Alongside the steps below, keep [`be-progress-tracker`](../be-progress-tracker/workflow.md)
+current when the host makes an easy way to call it: at minimum after step 1 (the item's overview
+is now known), step 5 (the plan is confirmed), step 6 (code is written), step 7 (the review pass
+comes back clean), step 9 (the gate is green), step 10 (the PR is open), and each step 12
+follow-up iteration. It only turns decisions this workflow already made into a glanceable status
+page for the human watching the session — never let it gate or slow this workflow down; skip a
+checkpoint rather than block on it.
+
 ### 1. Resolve the item
 
 Accept any of: a full ID (`BE-0066`), a bare number (`66` / `0066`), or a slug fragment.

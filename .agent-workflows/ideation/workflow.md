@@ -38,6 +38,12 @@ silently drop it — surface the conflict, then reshape it into something that f
 
 ## Workflow
 
+Alongside the steps below, keep [`be-progress-tracker`](../be-progress-tracker/workflow.md)
+current when the host makes an easy way to call it: at minimum after step 4 (the item exists, even
+still as `BE-XXXX`), step 5 (the self-review pass comes back clean), and step 6 (`make check` is
+green). It only turns decisions this workflow already made into a glanceable status page — never
+let it gate or slow this workflow down; skip a checkpoint rather than block on it.
+
 ### 1. Ground yourself in the existing roadmap
 
 Before ideating, read:
