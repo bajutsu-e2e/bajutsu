@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Implementing PR | TBD |
+| Implementing PR | [#1673](https://github.com/bajutsu-e2e/bajutsu/pull/1673) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
