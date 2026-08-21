@@ -248,10 +248,10 @@ BE-0315 が、アプリごとの設定を求める代わりに、ケイパビリ
 
 - [x] 作業単位 1 — 実現可能性の検証、確認済み。`PopoverDismissRegion` が唯一のシグナルであり閉じる
       対象であること、tip に覆われた対象が `ElementNotTappable` だけでなく `ElementNotFound` として
-      も失敗しうることを実機で確認した。
+      も失敗しうることの、実機での確認。
 - [x] 作業単位 2 — `Capability.HANDLE_TIPKIT_TIP` の背後に置く `Driver.dismiss_blocking_tip()`。
-      TipKit の識別子は `bajutsu/drivers/xcuitest.py` の中だけに閉じ込める。
-- [x] 作業単位 3 — ステップループに置く、失敗後の閉じる操作と再試行。アラートガードの分岐の隣に並べる。
+      TipKit の識別子は `bajutsu/drivers/xcuitest.py` の中だけに限定。
+- [x] 作業単位 3 — ステップループに置く、失敗後の閉じる操作と再試行。アラートガードの分岐の隣に配置。
 - [x] 作業単位 4 — BE-0314 の `on_interrupt_poll` フックに合成した、待機中の閉じる操作。
 - [x] 作業単位 5 — 既定でオフの `iosTipKitHandling` 設定(`--ios-tipkit-handling`/`--no-ios-tipkit-handling`、
       BE-0177 の優先順位に従う)。
