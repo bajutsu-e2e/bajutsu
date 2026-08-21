@@ -54,13 +54,16 @@ draw that line.
 
 1. **No new label; the skill judges scope-fit and escalates when a fix does not fit.** Before
    planning a fix, `fix-issue` checks the issue's scope against a short bar: one clear cause, a
-   localized change, no new user-facing behavior or configuration surface, and no tension with the
+   localized change, no user-facing behavior or configuration surface beyond what the issue itself
+   already specifies, and no tension with the
    [three prime directives](../../CLAUDE.md#prime-directives-do-not-violate). When a fix turns out
    to need a design decision, a cross-cutting change, or a reshaping of an idea that brushes a
    directive, the skill stops. It tells the user why, and points at
    [`ideation`](../../.agent-workflows/ideation/workflow.md) or
    [`propose-and-build`](../../.agent-workflows/propose-and-build/workflow.md) rather than
-   continuing. This valve can trigger at any point through step 3's planning stage, because a fix's
+   continuing — and it releases the claim design point 2 made
+   (`gh issue edit <N> --remove-assignee @me`), so an escalated issue does not stay marked as in
+   flight. This valve can trigger at any point through step 3's planning stage, because a fix's
    true shape does not always show in the issue body alone.
 2. **Ownership through the issue's own assignee field, not a bot-managed tracking issue.** BE-0109
    never syncs a plain issue, so `fix-issue` checks and claims ownership on the issue directly:
@@ -84,9 +87,11 @@ draw that line.
    [`docs/ai-development.md`](../../docs/ai-development.md) already documents for a PR with no
    roadmap item. Its body adds `Closes #<N>`, so merging the PR closes the source issue on its own.
    The Draft PR still opens on its own once the self-review and the gate both come back clean
-   ([BE-0230](../BE-0230-hands-free-implement-review-loop/BE-0230-hands-free-implement-review-loop.md)).
-   The same bounded `pr-followup` loop then drives it to quiet-and-green, using the same stop
-   conditions, escalation rules, and iteration caps `implement-be` already uses.
+   ([BE-0230](../BE-0230-hands-free-implement-review-loop/BE-0230-hands-free-implement-review-loop.md)),
+   and `implement-be` step 10's exception carries over unchanged: a fix whose diff is
+   documentation-only opens **Ready for review** with `--reviewer bajutsu-e2e/steering-committee`
+   rather than as a Draft. The same bounded `pr-followup` loop then drives it to quiet-and-green,
+   using the same stop conditions, escalation rules, and iteration caps `implement-be` already uses.
 5. **New skill files.** A host-neutral `.agent-workflows/fix-issue/workflow.md` carries the steps
    above. A Claude Code adapter, `.claude/skills/fix-issue/SKILL.md`, declares `model: opus` in its
    frontmatter — the same Heavy tier as `implement-be`, since both ship product code. A Codex
@@ -134,13 +139,14 @@ draw that line.
 > (oldest first), linking the PRs.
 
 - [ ] 1. Scope-fit judgment in place of a label, including the escalation valve to `ideation` /
-  `propose-and-build`.
+  `propose-and-build` and the claim release that keeps an escalated issue from reading as in flight.
 - [ ] 2. Open-state and ownership check, and the claim, through the issue's native `state` and
   assignee fields.
 - [ ] 3. Ship-the-code steps reused from `implement-be` (branch, plan confirmation, implementation,
   two-role self-review, the gate).
 - [ ] 4. The differences from a BE-item PR: no `Status` flip, no `[BE-NNNN]` prefix, `Closes #<N>`
-  in the body, the same auto-opened Draft PR and bounded `pr-followup` loop.
+  in the body, the same auto-opened Draft PR (with `implement-be`'s documentation-only Ready-for-review
+  exception carried over) and bounded `pr-followup` loop.
 - [ ] 5. New skill files: the host-neutral workflow, the Claude Code adapter, and the Codex adapter.
 - [ ] 6. Documentation wiring: `docs/ai-development.md` (+ ja), `CLAUDE.md`, and `task-select`.
 

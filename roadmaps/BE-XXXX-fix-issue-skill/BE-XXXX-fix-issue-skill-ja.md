@@ -52,14 +52,16 @@ Issueにこのラベルを付ける、という形です。本項目はこのラ
 
 1. **新しいラベルは置かず、スキル自身がスコープの適合を判断し、適合しないときは委ねます。** 修正を
    計画する前に、`fix-issue`はIssueのスコープを短い基準に当てます。原因が1つに絞れること、変更が
-   局所的であること、新しいユーザー向けの振る舞いや設定面を追加しないこと、そして
+   局所的であること、Issue自身が示している範囲を超えてユーザー向けの振る舞いや設定面を広げない
+   こと、そして
    [3つの基本原則](../../CLAUDE.md#prime-directives-do-not-violate)と衝突しないことです。修正が
    設計判断や横断的な変更、あるいは基本原則に触れるアイデアの再構成を要すると判明した場合、スキル
    は止まります。理由をユーザーに伝え、続行せずに
    [`ideation`](../../.agent-workflows/ideation/workflow.md)や
    [`propose-and-build`](../../.agent-workflows/propose-and-build/workflow.md)を指し示します。
-   修正の本当の形はIssue本文だけでは見えないことがあるため、このエスカレーションは、手順3の計画
-   段階までのどの時点でも起こりえます。
+   このとき、詳細設計の2で確保した担当も解除します(`gh issue edit <N> --remove-assignee @me`)。
+   委ねたIssueが作業中のまま残らないようにするためです。修正の本当の形はIssue本文だけでは見えない
+   ことがあるため、このエスカレーションは、手順3の計画段階までのどの時点でも起こりえます。
 2. **担当の確保は、ボットが管理するトラッキングIssueではなく、Issue自身のAssignee欄で行います。**
    BE-0109は素のIssueを同期しないため、`fix-issue`はIssue自身で担当を確認し確保します。まず
    `gh issue view <N> --json state,assignees`で確認し、Issueがオープンであり、かつ担当者がいないか
@@ -83,10 +85,13 @@ Issueにこのラベルを付ける、という形です。本項目はこのラ
    付けず、スコープ付きの通常のタイトルのままにします。これは
    [`docs/ai-development.md`](../../docs/ai-development.md)がロードマップ項目を持たないPRについて
    すでに定めている形と同じです。本文には`Closes #<N>`を加えるため、PRがマージされれば元のIssueは
-   自動で閉じます。自己レビューとゲートの両方が問題なしとなった時点で、Draft PRは
-   ([BE-0230](../BE-0230-hands-free-implement-review-loop/BE-0230-hands-free-implement-review-loop.md))
-   これまでと同様に自動で開きます。その後は同じ停止条件、エスカレーション規則、繰り返し回数の上限
-   を使う、`implement-be`と共通の`pr-followup`ループが、静かで緑の状態までPRを進めます。
+   自動で閉じます。自己レビューとゲートの両方が問題なしとなった時点で、Draft PRはこれまでと同様に
+   自動で開きます
+   ([BE-0230](../BE-0230-hands-free-implement-review-loop/BE-0230-hands-free-implement-review-loop.md))。
+   `implement-be`の手順10にある例外もそのまま引き継ぎます。差分がドキュメントのみである修正は、
+   Draftではなく`--reviewer bajutsu-e2e/steering-committee`を付けてReady for reviewで開きます。
+   その後は同じ停止条件、エスカレーション規則、繰り返し回数の上限を使う、`implement-be`と共通の
+   `pr-followup`ループが、静かで緑の状態までPRを進めます。
 5. **新設するスキルのファイルです。** ホストに依存しない
    `.agent-workflows/fix-issue/workflow.md`が上記の手順を記述します。Claude Codeアダプター
    `.claude/skills/fix-issue/SKILL.md`は、フロントマターで`model: opus`を宣言します。これは
@@ -133,13 +138,14 @@ Issueにこのラベルを付ける、という形です。本項目はこのラ
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 1. ラベルの代わりとなるスコープ適合の判断、および`ideation`/`propose-and-build`へのエスカレー
-  ション。
+- [ ] 1. ラベルの代わりとなるスコープ適合の判断、`ideation`/`propose-and-build`へのエスカレー
+  ション、および委ねたIssueが作業中と見えないようにする担当の解除。
 - [ ] 2. Issue自身の`state`とAssignee欄によるオープン状態および担当の確認と、担当の確保。
 - [ ] 3. `implement-be`から再利用するコード仕上げの手順(ブランチ、計画の確認、実装、2役割による
   自己レビュー、ゲート)。
 - [ ] 4. BE項目のPRとの違い:`Status`を切り替えない、`[BE-NNNN]`接頭辞を付けない、本文に
-  `Closes #<N>`を書く、同じDraft PRの自動オープンと`pr-followup`ループ。
+  `Closes #<N>`を書く、同じDraft PRの自動オープン(`implement-be`のドキュメントのみの変更を
+  Ready for reviewで開く例外を引き継ぐ)と`pr-followup`ループ。
 - [ ] 5. 新設するスキルのファイル:ホストに依存しないワークフロー、Claude Codeアダプター、Codex
   アダプター。
 - [ ] 6. ドキュメントの整備:`docs/ai-development.md`(および対訳)、`CLAUDE.md`、`task-select`。
