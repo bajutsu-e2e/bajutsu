@@ -50,10 +50,15 @@ uikit-noax-build:
 # built name carries the SDK version, so copy it to a stable name in the same dir (its __TESTROOT__
 # must stay beside the built products). This is the `xcuitest.build` fallback in showcase.config.yaml.
 RUNNER_PRODUCTS := $(RUNNER)/build/dd/Build/Products
+# `-skipPackagePluginValidation` is required, not tidiness: BajutsuRunner applies the Swift OpenAPI
+# Generator build-tool plugin, and Xcode gates an unapproved package plugin behind an interactive
+# trust prompt it cannot show under `xcodebuild`, failing the build outright with
+# `Validate plug-in "OpenAPIGenerator"`. Accepting it is bounded by the manifest's `exact:` pins.
 runner-build:
 	cd $(RUNNER) && xcodegen generate
 	cd $(RUNNER) && xcodebuild build-for-testing -project BajutsuRunner.xcodeproj -scheme BajutsuRunner \
-		-destination 'generic/platform=iOS Simulator' -derivedDataPath build/dd
+		-destination 'generic/platform=iOS Simulator' -derivedDataPath build/dd \
+		-skipPackagePluginValidation
 	cp $(RUNNER_PRODUCTS)/BajutsuRunner_*.xctestrun $(RUNNER_PRODUCTS)/BajutsuRunner.xctestrun
 
 # ---- Device builds for a device cloud (BE-0238 batch route) ---------------------------------------
@@ -103,7 +108,7 @@ runner-build-device:
 	$(require_team)
 	cd $(RUNNER) && xcodegen generate
 	cd $(RUNNER) && xcodebuild build-for-testing -project BajutsuRunner.xcodeproj -scheme BajutsuRunner \
-		-destination 'generic/platform=iOS' -derivedDataPath build/dd-device \
+		-destination 'generic/platform=iOS' -derivedDataPath build/dd-device -skipPackagePluginValidation \
 		-allowProvisioningUpdates CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=$(DEVELOPMENT_TEAM)
 	cp $(RUNNER_DEVICE_PRODUCTS)/BajutsuRunner_*.xctestrun $(RUNNER_DEVICE_PRODUCTS)/BajutsuRunner.xctestrun
 	@echo "device .xctestrun: $(RUNNER_DEVICE_PRODUCTS)/BajutsuRunner.xctestrun (package its Products dir alongside)"

@@ -359,13 +359,18 @@ jobs:
           restore-keys: |
             xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
 
-      # The resident XCUITest runner builds into its own DerivedData dir; cache it separately
-      # (keyed on the runner's Swift sources + project spec) so `runner-build` is incremental too.
+      # The resident XCUITest runner builds into its own DerivedData dir; cache it separately so
+      # `runner-build` is incremental too. The key covers the runner's Swift sources and project
+      # spec, plus two inputs that are not Swift and so would otherwise restore a stale build:
+      # Package.resolved (the resolved dependency versions, which now include Hummingbird and
+      # SwiftNIO) and openapi.yaml with its generator config (the build-tool plugin's input, from
+      # which the server types are generated). Package.swift needs no separate entry — the
+      # BajutsuKit/**/*.swift glob already covers the manifest.
       - name: Cache DerivedData (runner)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: BajutsuKit/Runner/build/dd
-          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
+          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml', 'BajutsuKit/Package.resolved', 'BajutsuKit/Sources/BajutsuRunner/openapi.yaml', 'BajutsuKit/Sources/BajutsuRunner/openapi-generator-config.yaml') }}
           restore-keys: |
             xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
 
@@ -1159,13 +1164,18 @@ jobs:
           restore-keys: |
             xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
 
-      # The resident XCUITest runner builds into its own DerivedData dir; cache it separately
-      # (keyed on the runner's Swift sources + project spec) so `runner-build` is incremental too.
+      # The resident XCUITest runner builds into its own DerivedData dir; cache it separately so
+      # `runner-build` is incremental too. The key covers the runner's Swift sources and project
+      # spec, plus two inputs that are not Swift and so would otherwise restore a stale build:
+      # Package.resolved (the resolved dependency versions, which now include Hummingbird and
+      # SwiftNIO) and openapi.yaml with its generator config (the build-tool plugin's input, from
+      # which the server types are generated). Package.swift needs no separate entry — the
+      # BajutsuKit/**/*.swift glob already covers the manifest.
       - name: Cache DerivedData (runner)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: BajutsuKit/Runner/build/dd
-          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
+          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml', 'BajutsuKit/Package.resolved', 'BajutsuKit/Sources/BajutsuRunner/openapi.yaml', 'BajutsuKit/Sources/BajutsuRunner/openapi-generator-config.yaml') }}
           restore-keys: |
             xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
 
