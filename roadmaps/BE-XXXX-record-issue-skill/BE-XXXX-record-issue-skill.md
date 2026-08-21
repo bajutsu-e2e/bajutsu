@@ -19,7 +19,7 @@ improvement noticed during work into a GitHub Issue. It classifies the finding, 
 duplicate, drafts a title and body from this repository's own issue templates, and — only after
 the invoker gives explicit approval — files the issue with `gh issue create`. The shared procedure
 lives in one workflow document so it works two ways: as a standalone skill a person invokes
-directly, and as a sub-step another skill (for example `code-review` or `pr-followup`) calls when
+directly, and as a sub-step another skill (for example `claude-review` or `pr-followup`) calls when
 it notices something worth flagging but out of the current change's scope.
 
 ## Motivation
@@ -47,22 +47,29 @@ Issues as one of its two candidate sources alongside the roadmap — cannot pick
 is the durable, repository-level counterpart: filing a persistent, team-visible issue that
 `task-select` can surface to anyone, in a later session, on a different machine.
 
+`record-issue` only ever files an issue; it never ships a fix.
+[`fix-issue`](../BE-0380-fix-issue-skill/BE-0380-fix-issue-skill.md) is the consuming counterpart
+that ships an implementation for an already-filed issue — typically after `task-select` surfaces it
+as a candidate — so the two items never overlap in scope.
+
 ## Detailed design
 
 **Skill layout.** Following the three-layer convention in
 [`CLAUDE.md`](../../CLAUDE.md#agent-skill-layout), the shared procedure lives in
 `.agent-workflows/record-issue/workflow.md`; a Claude adapter at
 `.claude/skills/record-issue/SKILL.md` and a Codex adapter at
-`.agent-hosts/codex/skills/record-issue/SKILL.md` each load that shared procedure and add only
-their host-specific invocation.
+`.agent-hosts/codex/skills/record-issue/SKILL.md` (with its `agents/openai.yaml` interface metadata,
+which every existing Codex adapter carries) each load that shared procedure and add only their
+host-specific invocation.
 
 **Inputs.** A description of the finding — either typed directly by the invoker, or handed over by
 a calling skill that spotted something out of its own scope — plus whatever supporting context is
 available: a file and line, a command that reproduces it, or the environment it showed up in.
 
-**Step 1 — classify.** Decide among three landings, using the same criterion
-`feature_request.yml` already states for a well-formed idea: does this need a Detailed design, a
-discussion of trade-offs, or changes across multiple modules? If so, this is not a minor finding —
+**Step 1 — classify.** Decide among three landings. `feature_request.yml` only points anything short
+of a well-formed design away from the roadmap, so this skill states the concrete bar itself: does
+this need a Detailed design, a discussion of trade-offs, or changes across multiple modules? If so,
+this is not a minor finding —
 stop and point the invoker to `ideation` (or, for a small item whose design is already settled,
 `propose-and-build`) instead of filing an issue. Otherwise, classify the finding as a **bug**
 (something behaves other than intended) or a lightweight **enhancement** (a small, bounded
@@ -85,13 +92,21 @@ explicit approval before creating anything. Filing a GitHub Issue publishes cont
 sees, so this step runs every time, not only the first time a session uses the skill.
 
 **Step 5 — create and report.** On approval, run `gh issue create --title <title> --body-file
-<file> --label <label>` and report the resulting issue URL back to the invoker — or, when called as
-a sub-step, back into the calling skill's own output, so a review or follow-up pass can list what it
+<file> --label <label>` — or, when step 2 picked an existing issue, `gh issue comment <number>
+--body-file <file>`, under the same confirmation gate, since a comment publishes to the team just as
+a new issue does — and report the resulting issue URL back to the invoker, or, when called as a
+sub-step, back into the calling skill's own output, so a review or follow-up pass can list what it
 filed alongside what it fixed inline.
 
 Because the workflow document describes one procedure regardless of caller, a standalone
 invocation and a call from another skill follow identical steps — including the confirmation
 gate, which no calling skill may skip on the invoker's behalf.
+
+**Caller and documentation wiring.** A calling skill only runs a sub-step its own workflow names —
+`be-progress-tracker` runs because `ideation` and `implement-be` each name it — so `pr-followup`
+(and any other calling skill) gains an explicit `record-issue` sub-step. The same change wires the
+documentation: `docs/ai-development.md` (and its `docs/ja/` mirror) and `CLAUDE.md`, including the
+Claude adapter's default `model:` tier (BE-0103).
 
 ## Alternatives considered
 
@@ -124,6 +139,10 @@ would add process without adding information.
       confirm → create).
 - [ ] Add the Claude adapter `.claude/skills/record-issue/SKILL.md`.
 - [ ] Add the Codex adapter `.agent-hosts/codex/skills/record-issue/SKILL.md`.
+- [ ] Wire the callers: name the `record-issue` sub-step in `pr-followup` (and any other calling
+      skill) the way `ideation` / `implement-be` name `be-progress-tracker`.
+- [ ] Documentation wiring: `docs/ai-development.md` (+ ja) and `CLAUDE.md`, including the Claude
+      adapter's default `model:` tier (BE-0103).
 - [ ] Verify the standalone path and at least one calling-skill path (for example `pr-followup`
       flagging an out-of-scope finding) both exercise the confirmation gate.
 
@@ -137,5 +156,7 @@ would add process without adding information.
   for an idea substantial enough to need a Detailed design.
 - [`task-select`](../../.agent-workflows/task-select/workflow.md) — already surveys open GitHub
   Issues as a candidate source; the intended consumer of what this skill files.
+- [BE-0380](../BE-0380-fix-issue-skill/BE-0380-fix-issue-skill.md) — the consuming counterpart that
+  ships a fix for an issue this skill filed.
 - [`CLAUDE.md`](../../CLAUDE.md#agent-skill-layout) — the three-layer skill-authoring convention
   this item's layout follows.
