@@ -1246,17 +1246,19 @@ class _StepRunner:
                 # unhandled. Each still fires at most once per step, so a step's retries stay bounded
                 # at one per guard, and each is skipped once the step passes.
                 guard_done = False
-                # The dismiss can refuse loudly (`AmbiguousSelector` on two dismiss regions). Unlike
-                # the mid-wait call, which raises inside `_run_step_body`'s own `SelectorError`
-                # handler, this one sits outside every `try` — so an escape would unwind past
-                # `run_scenario` and abort the *whole run*, discarding the verdicts of every scenario
-                # that already passed. Convert it to this step's failure, which is what a refused
-                # actuation means everywhere else.
+                # The dismiss can refuse loudly: `AmbiguousSelector` on two dismiss regions, or
+                # `ElementNotTappable` when something covers the scrim itself — which is exactly the
+                # tip-plus-system-alert case below. `ElementNotTappable` is not a `SelectorError`
+                # (`_run_step_body`'s own net lists it separately), so both must be named here.
+                # Unlike the mid-wait call, which raises inside that net, this one sits outside every
+                # `try`: an escape would unwind past `run_scenario` and abort the *whole run*,
+                # discarding the verdicts of every scenario that already passed. Convert it to this
+                # step's failure, which is what a refused actuation means everywhere else.
                 tip_cleared = False
                 if not ok:
                     try:
                         tip_cleared = _dismiss_blocking_tip(active_driver, self.cfg.scenario)
-                    except base.SelectorError as exc:
+                    except (base.SelectorError, base.ElementNotTappable) as exc:
                         ok, reason = False, str(exc)
                         # Skip the alert guard too: the driver refused to act on this screen, so
                         # poking it again would be reacting to a state nothing has resolved.

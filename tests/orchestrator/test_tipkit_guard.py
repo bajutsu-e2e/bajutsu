@@ -147,6 +147,31 @@ def test_two_dismiss_regions_fail_the_step_rather_than_aborting_the_run() -> Non
     assert not result.ok  # a failed step, not a raised exception
 
 
+def test_a_refused_dismiss_tap_fails_the_step_rather_than_aborting_the_run() -> None:
+    # The other way the dismiss refuses: the scrim resolves but its own point is not reachable, so
+    # the tap raises `ElementNotTappable`. That is *not* a `SelectorError` (`_run_step_body`'s own
+    # net lists the two separately), so it needs naming separately from the ambiguous case above —
+    # miss it and the same whole-run abort returns through this path. Raised from the driver rather
+    # than staged geometrically: a real scrim is full-screen, and the fake's document-order proxy
+    # reads anything covering a full-screen frame's center as its descendant, so no seeded tree can
+    # produce this refusal.
+    class _RefusingDriver(FakeDriver):
+        def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:
+            raise base.ElementNotTappable("element resolved but covered by another element")
+
+    driver = _RefusingDriver([el(_SCRIM, "dismiss popup", frame=(0.0, 0.0, 402.0, 874.0))])
+    driver.tipkit_dismiss_id = _SCRIM
+    result = run_scenario(
+        driver,
+        _scenario(
+            {"name": "g", "tipKitHandling": True, "steps": [{"tap": {"id": "stable.refresh"}}]}
+        ),
+        clock=FakeClock(),
+    )
+    assert not result.ok  # a failed step, not a raised exception
+    assert "covered by another element" in (result.failure or "")
+
+
 def test_a_step_failing_with_no_tip_present_is_not_retried() -> None:
     # Nothing to dismiss, so the guard must not hand a genuine selector error a second attempt —
     # that is what would let a real failure look flaky instead of loud. A failed tap actuates
