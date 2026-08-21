@@ -126,6 +126,27 @@ def test_a_tip_and_a_system_alert_are_both_recovered_in_one_step() -> None:
     )
 
 
+def test_two_dismiss_regions_fail_the_step_rather_than_aborting_the_run() -> None:
+    # The driver refuses to guess between two dismiss regions (prime directive 2). That refusal is
+    # raised outside `_run_step_body`'s own handler here, so unconverted it would unwind past
+    # `run_scenario` and discard the verdicts of every scenario that already passed.
+    driver = FakeDriver(
+        [
+            el(_SCRIM, "dismiss popup", frame=(0.0, 0.0, 402.0, 874.0)),
+            el(_SCRIM, "dismiss popup", frame=(0.0, 0.0, 100.0, 100.0)),
+        ]
+    )
+    driver.tipkit_dismiss_id = _SCRIM
+    result = run_scenario(
+        driver,
+        _scenario(
+            {"name": "f", "tipKitHandling": True, "steps": [{"tap": {"id": "stable.refresh"}}]}
+        ),
+        clock=FakeClock(),
+    )
+    assert not result.ok  # a failed step, not a raised exception
+
+
 def test_a_step_failing_with_no_tip_present_is_not_retried() -> None:
     # Nothing to dismiss, so the guard must not hand a genuine selector error a second attempt —
     # that is what would let a real failure look flaky instead of loud. A failed tap actuates

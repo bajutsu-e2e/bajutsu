@@ -92,9 +92,16 @@ opt-in configuration, and on-device verification.
    [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)
    raised for SpringBoard's alert-button strings — but it is rejected as the dismiss target anyway: an
    SF Symbol name is a plausible accessibility identifier for an unrelated, app-authored button
-   elsewhere in the same app, so matching on it risks `AmbiguousSelector` in some app, unlike
-   `PopoverDismissRegion`, a TipKit-internal name no app-authored view would coincidentally reuse.
-   `PopoverDismissRegion` is therefore the sole signal and the sole dismiss target this design uses.
+   elsewhere in the same app, so matching on it risks `AmbiguousSelector`. `PopoverDismissRegion` is
+   therefore the sole signal and the sole dismiss target this design uses. One limit the spike did
+   **not** settle: whether that name is TipKit-exclusive. Both the name and the full-screen frame point
+   at `UIPopoverPresentationController`, so a genuinely popover-presented view of the app's own (a
+   SwiftUI `.popover` forced past its compact sheet adaptation) plausibly installs the same scrim —
+   an attempt to reproduce that on-device could not get such a popover to present, so it stands as
+   unverified rather than disproved. The opt-in default bounds the consequence: the guard fires only
+   on a scenario that asked for it, and only after a step already failed, so an author whose app
+   presents its own popovers and wants them untouched leaves `tipKitHandling` off. Narrowing the match
+   (pairing the region with `TipView`'s presence) is the follow-up if a real collision turns up.
    The same run also surfaced a fact the original design missed: while the tip is up, an ordinary
    toolbar button behind it (`stable.refresh`) does not merely fail `isHittable` — it disappears from
    the tree outright (0 of 188 polls over 10 seconds found it), because TipKit's presentation, like a

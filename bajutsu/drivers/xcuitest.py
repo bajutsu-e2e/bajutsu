@@ -169,11 +169,17 @@ _SYSTEM_ALERT_POLL_SECONDS = 0.2
 # actuation records.
 _UNIT = "point"
 
-# TipKit's own dismiss scrim, the full-screen "tap outside to close" region a popover tip installs.
-# Measured on-device: it is the only one of the tip's three nodes safe to key on. `TipView` (the
-# container) carries no dismiss behavior, and the close button's identifier is the SF Symbol name
-# `xmark.circle.fill`, which an unrelated app-authored button could plausibly reuse and turn into an
-# `AmbiguousSelector`. This name is TipKit-internal, so no app-authored view collides with it.
+# The full-screen "tap outside to close" scrim a popover tip installs — measured on-device as the
+# only one of a tip's three nodes safe to key on. `TipView` (the container) carries no dismiss
+# behavior, and the close button's identifier is the SF Symbol name `xmark.circle.fill`, which an
+# unrelated app-authored button could plausibly reuse and turn into an `AmbiguousSelector`.
+#
+# Not verified as TipKit-exclusive: the name and the full-screen frame both point at
+# `UIPopoverPresentationController`, so a genuinely popover-presented view of the app's own (a
+# SwiftUI `.popover` forced past its compact sheet adaptation) plausibly installs the same scrim. The
+# guard is opt-in per scenario, which bounds that: it only ever fires on a scenario that asked, and
+# only after a step already failed. An author whose app presents its own popovers, and who wants
+# them left alone, leaves `tipKitHandling` off.
 _TIPKIT_DISMISS_REGION = "PopoverDismissRegion"
 
 

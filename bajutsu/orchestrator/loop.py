@@ -1245,7 +1245,23 @@ class _StepRunner:
                 # consume the failure and leave the alert — the case the alert guard exists for —
                 # unhandled. Each still fires at most once per step, so a step's retries stay bounded
                 # at one per guard, and each is skipped once the step passes.
-                if not ok and _dismiss_blocking_tip(active_driver, self.cfg.scenario):
+                guard_done = False
+                # The dismiss can refuse loudly (`AmbiguousSelector` on two dismiss regions). Unlike
+                # the mid-wait call, which raises inside `_run_step_body`'s own `SelectorError`
+                # handler, this one sits outside every `try` — so an escape would unwind past
+                # `run_scenario` and abort the *whole run*, discarding the verdicts of every scenario
+                # that already passed. Convert it to this step's failure, which is what a refused
+                # actuation means everywhere else.
+                tip_cleared = False
+                if not ok:
+                    try:
+                        tip_cleared = _dismiss_blocking_tip(active_driver, self.cfg.scenario)
+                    except base.SelectorError as exc:
+                        ok, reason = False, str(exc)
+                        # Skip the alert guard too: the driver refused to act on this screen, so
+                        # poking it again would be reacting to a state nothing has resolved.
+                        guard_done = True
+                if tip_cleared:
                     # A TipKit tip hides what it covers from the tree, so the step it blocked failed
                     # as `ElementNotFound` as readily as `ElementNotTappable` — either way the target
                     # was unreachable for a reason this one dismiss just cleared, so it gets one more
@@ -1275,7 +1291,7 @@ class _StepRunner:
                 # must not be followed by an alert dismiss against the screen it left.
                 if guard is not None and guard.failure is not None:
                     ok, reason = False, guard.failure
-                elif not ok and self.cfg.alert_guard is not None:
+                elif not ok and not guard_done and self.cfg.alert_guard is not None:
                     event = self.cfg.alert_guard(active_driver)
                     if event is not None:
                         outcome.alerts.append(event)
