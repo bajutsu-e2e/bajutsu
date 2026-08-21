@@ -66,7 +66,10 @@ host-specific invocation.
 
 **Inputs.** A description of the finding — either typed directly by the invoker, or handed over by
 a calling skill that spotted something out of its own scope — plus whatever supporting context is
-available: a file and line, a command that reproduces it, or the environment it showed up in.
+available: a file and line, a command that reproduces it, or the environment it showed up in. A
+calling skill also states whether a human is in the turn, because the skill cannot observe that
+itself: the sub-step invocation carries the flag (`pr-followup` sets it when it runs inside
+`implement-be`'s hands-free loop), and its absence means attended.
 
 **Step 1 — classify.** Decide among three landings. `feature_request.yml` only points anything short
 of a well-formed design away from the roadmap, so this skill states the concrete bar itself: does
@@ -104,9 +107,12 @@ Because the workflow document describes one procedure regardless of caller, a st
 invocation and a call from another skill follow identical steps — including the confirmation
 gate, which no calling skill may skip on the invoker's behalf. When no human is in the turn —
 `pr-followup` running as one iteration of `implement-be`'s hands-free loop (BE-0230) is the case
-that matters — the skill files nothing and stalls nothing: it hands the finished draft back
-through the caller's own escalation path, so the human approves it on the next turn and an
-unattended run can never publish to the team.
+that matters — the skill files nothing and stalls nothing: it returns the finished draft in the
+iteration's structured summary, the channel `implement-be` step 12 already reads and
+`pr-followup` step 4 already uses for a self-review-only finding, so the human sees it when the
+loop reports and approves it on a later turn. A pending draft is deliberately not an escalation:
+every entry in BE-0230's escalation list stops the loop and hands the PR to the human, which an
+incidental out-of-scope note should never do to an otherwise-healthy follow-up loop.
 
 **Caller and documentation wiring.** A calling skill only runs a sub-step its own workflow names —
 `be-progress-tracker` runs because `ideation` and `implement-be` each name it — so `pr-followup`
@@ -151,8 +157,8 @@ would add process without adding information.
       adapter's default `model:` tier (BE-0103).
 - [ ] Verify the standalone path and at least one calling-skill path (for example `pr-followup`
       flagging an out-of-scope finding) both exercise the confirmation gate, and that an
-      unattended run (`pr-followup` inside `implement-be`'s hands-free loop) hands the draft
-      back through escalation instead of filing.
+      unattended run (`pr-followup` inside `implement-be`'s hands-free loop) returns its draft
+      in the iteration's structured summary instead of filing or escalating.
 
 ## References
 
