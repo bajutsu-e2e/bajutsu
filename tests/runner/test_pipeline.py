@@ -1290,6 +1290,29 @@ def test_run_all_alert_guard_for_selects_per_scenario() -> None:
     assert [r.ok for r in results] == [True, False]
 
 
+def test_run_all_alert_guard_for_uncovered_locale_fails_the_scenario_not_the_run() -> None:
+    # A `systemAlertHandling.rules` entry naming a prompt this scenario's locale has no known labels
+    # for raises while the guard is still under construction (before any lease is even taken) — the
+    # run must turn that into one clean failed RunResult per scenario, not an uncaught exception that
+    # would abort every remaining scenario too.
+    from bajutsu.orchestrator import AlertGuardConfig
+    from bajutsu.scenario.system_alerts import UncoveredSystemAlertLocale
+
+    scenarios = [
+        Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]}),
+        Scenario.model_validate({"name": "b", "steps": [{"tap": {"id": "ok"}}]}),
+    ]
+
+    def alert_guard_for(s: Scenario) -> AlertGuardConfig | None:
+        if s.name == "a":
+            raise UncoveredSystemAlertLocale("no labels for language 'fr'")
+        return None
+
+    results = run_all(_eff(), scenarios, _lease, alert_guard_for=alert_guard_for)
+    assert [r.ok for r in results] == [False, True]  # "a" fails cleanly; "b" still runs
+    assert "no labels for language 'fr'" in (results[0].failure or "")
+
+
 def test_run_all_attributes_each_scenario_to_its_device() -> None:
     scenarios = [
         Scenario.model_validate({"name": n, "steps": [{"tap": {"id": "ok"}}]}) for n in ("a", "b")

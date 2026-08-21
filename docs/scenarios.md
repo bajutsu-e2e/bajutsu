@@ -127,6 +127,7 @@ It is **on by default** and fires **only when a step (or `expect`) is blocked, o
 |---|---|
 | (omitted) | on; tap the **least-destructive** button ("Not Now" / "Don't Allow" / "Cancel") |
 | `systemAlertHandling: false` | off for this scenario |
+| `systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` | on; answer a **named, covered prompt** by its own choice, regardless of which label it shares with another prompt |
 | `systemAlertHandling: { instruction: ["Allow", "OK"] }` | on; the native path taps the first of these labels present on the alert — e.g. to **grant** a permission |
 | `systemAlertHandling: { instruction: "tap Allow" }` | on; free-text the **vision** guard interprets (the native path, which needs an exact label, falls back to its default dismissive labels) |
 | `systemAlertHandling: { pollInterval: 2 }` | on; poll the native presence query every 2 s instead of the one-second default |
@@ -147,6 +148,34 @@ the legacy free-text form the vision guard interprets. The CLI `--system-alert-h
 applies); `--alert-instruction` sets a default button instruction that a scenario's own `instruction`
 overrides.
 (real file: [`demos/showcase/scenarios/permission.yaml`](../demos/showcase/scenarios/permission.yaml))
+
+### Answering more than one prompt differently: `rules`
+
+An ordered `instruction` list can already reach every combination of grant and deny across the
+prompts the label table covers, but only through an ordering an author derives from which labels two
+prompts happen to share — and the ordering that reads naturally can grant the very prompt a scenario
+meant to refuse, silently. `rules` answers a specific covered prompt by name instead, reusing
+`handleSystemAlert`'s own `prompt`/`choice` vocabulary:
+
+```yaml
+- name: onboarding — accept notifications, refuse tracking
+  systemAlertHandling:
+    rules:
+      - prompt: notifications
+        choice: grant
+      - prompt: tracking
+        choice: deny
+    instruction: ["Not Now"]          # every alert no rule identifies
+  steps:
+    - tap:  { id: onboarding.start }
+    - wait: { for: { id: home.title }, timeout: 10 }
+```
+
+The guard identifies which alert is on screen from a rule's prompt — both its accepting and refusing
+labels, resolved for the run's locale, must be present on the alert — not from the order rules
+appear in; two rules naming the same prompt fail at parse time. `rules` is checked before
+`instruction`, which stays the catch-all for whatever prompt no rule names, so the two fields
+compose rather than exclude each other.
 
 This reactive guard and the proactive `handleSystemAlert` step below now share the *same* native
 SpringBoard mechanism (BE-0316's query + tap); they differ only in *when* they fire — the guard
@@ -241,8 +270,10 @@ Two limits are worth knowing before reaching for it:
   resolve a label nothing guarantees is on screen. Name the button with `sel.label` there.
 - **The reactive guard's default labels are still English.** `systemAlertHandling`'s built-in
   dismissive labels (`Don't Allow`, `Not Now`, `Cancel`, …) are literal English text, so under a
-  non-English `locale` the native path finds no match and falls back to the AI-vision guard. Give
-  the guard an explicit `instruction` list in the pinned language to keep it deterministic.
+  non-English `locale` the native path finds no match and falls back to the AI-vision guard. For the
+  prompts the label table covers, a `rules` entry (above) resolves its labels for the pinned
+  language and keeps the guard deterministic; give it an explicit `instruction` list for any other
+  prompt.
 
 (real files:
 [`demos/showcase/scenarios/permission_system_alert.yaml`](../demos/showcase/scenarios/permission_system_alert.yaml),

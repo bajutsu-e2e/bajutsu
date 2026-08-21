@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-system-alert-per-prompt-rules.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Implementing PR | TBD |
 | Topic | Scenario authoring features |
 | Related | [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md), [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md), [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md), [BE-0369](../BE-0369-ios-paste-consent-prompt-choice/BE-0369-ios-paste-consent-prompt-choice.md) |
 <!-- /BE-METADATA -->
@@ -19,7 +20,7 @@ A scenario's `systemAlertHandling` setting clears an operating-system prompt tha
 own accessibility tree cannot see — the "Allow Notifications" permission request, App Tracking
 Transparency (ATT), the cross-process paste consent — by tapping one of the prompt's buttons
 reactively, wherever the prompt interrupts a run. The setting carries one button policy for the whole
-scenario, so every prompt a run meets gets the same answer. This proposal adds an ordered `rules`
+scenario, applied unchanged to whichever prompt interrupts the run. This proposal adds an ordered `rules`
 list to the setting: each entry names one prompt and the choice to make on it, so a single scenario
 can grant the notification request and refuse tracking. Each rule identifies the prompt on screen
 from the button labels the operating system already reports, and resolves its own label through the
@@ -35,10 +36,11 @@ and makes the inverted answer unreachable.
 
 The guard's button policy is one ordered list of candidate labels, applied to whatever prompt
 appears. `AlertGuardConfig.probe_native` (`bajutsu/orchestrator/types.py`) reads the alert's buttons
-through the SpringBoard query that
+through the `system_alert_labels()` read that
 [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)
-added, and `pick_alert_label` returns the first candidate present on the alert exactly once, which
-the guard then taps. One list, one pass, and no notion of which prompt is showing.
+added over BE-0316's SpringBoard query, and `pick_alert_label` returns the first candidate present
+on the alert exactly once, which the guard then taps. One list, one pass, and no notion of which
+prompt is showing.
 
 That list can nonetheless express two different answers, because it is ordered and its labels are
 compared exactly. To grant the notification request and refuse tracking, an author writes
@@ -122,7 +124,7 @@ the same label resolves to nothing rather than to whichever matched first.
 
 The guard walks the rules in the order the file gives and taps the first match's `choice` label. For
 the three prompts the table covers today the order cannot change the outcome, since their label pairs
-are pairwise distinct and at most one rule can match any alert. The order is defined all the same, so
+are pairwise distinct, so at most one rule can match any of those prompts' alerts. The order is defined all the same, so
 that adding a prompt whose pair overlaps another's cannot leave the behavior undefined.
 
 Identification costs no extra device work. The guard already holds the alert's button labels from the
@@ -145,8 +147,9 @@ language to — rather than at each match, so a rule compares plain strings on t
 
 Resolving early is also what lets a rule fail loudly. A locale whose language the table does not
 cover raises `UncoveredSystemAlertLocale`, and raising it while the guard is under construction
-surfaces the mistake before the run performs any device work — the same choice the proactive step
-makes, for the same reason: a guessed label would tap nothing, or tap the other button.
+surfaces the mistake before the run performs any device work — the raise-rather-than-guess choice
+the proactive step also makes, for the same reason: a guessed label would tap nothing, or tap the
+other button.
 
 ### Layering over the target configuration
 
@@ -158,6 +161,15 @@ prompt while the project's answers for every other prompt still apply. Ordering 
 keeps this setting consistent with every other layered setting, where the scenario wins; a duplicate
 `prompt` across the two layers is therefore an override, not the parse error a duplicate within one
 list is.
+
+The target configuration's rules apply only when neither the scenario nor `--alert-instruction`
+already sets its own `instruction`. `instruction` and `rules` are two vocabularies for the same
+button policy, resolved independently, so without this a project-wide rule added later could
+silently invert what a scenario's `instruction` already decided for an unrelated prompt — precisely
+the failure mode this proposal exists to remove, reappearing one layer up. Requiring an explicit
+`instruction` at the scenario or flag tier to opt out of every target rule, rather than only the one
+answering the same prompt, matches the coarse, all-or-nothing precedence `instruction` itself already
+has against the target configuration.
 
 ### Work breakdown
 
@@ -213,12 +225,15 @@ step is proactive: it taps at the one point an author places it, so it requires 
 flow each prompt fires. The reactive guard exists for prompts whose timing a scenario cannot predict,
 which is exactly when a step cannot be placed.
 
-**Widen `instruction` into a mapping keyed by prompt.** A mapping would read compactly, but
-`instruction` already carries two forms, and adding a third to one field is what
+**Widen `instruction` into a mapping keyed by prompt.** A mapping would read compactly, and
 [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)
-avoided when it made the field a union rather than adding a second field beside it. A mapping also
-has no order to fall back on, so a later prompt whose label pair overlapped another's would leave the
-match undefined.
+did widen this very field rather than add one beside it — but what that item warned against was a
+second field of *button labels*, duplicating the vocabulary `instruction` already carried, and it
+asked an implementer to converge on one grammar instead of growing another. A prompt-named rule is
+neither: it reuses the `prompt` and `choice` grammar the proactive step already defines, while both
+of `instruction`'s existing forms are label policies. Folding a third, differently-shaped vocabulary
+into that one field would mix the two rather than converge them. A mapping also has no order to fall
+back on, so a later prompt whose label pair overlapped another's would leave the match undefined.
 
 ## Progress
 
@@ -226,16 +241,16 @@ match undefined.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Schema — `SystemAlertRule`, the `rules` field, and the duplicate-`prompt` validator.
-- [ ] Matching — the resolved-rule type, the matching function, and `probe_native` consulting rules.
-- [ ] Wiring — locale resolution, scenario-over-configuration layering, and the vision-fallback hint.
-- [ ] Documentation — `docs/scenarios.md` and its Japanese mirror, plus the field references.
-- [ ] Tests — the deterministic suite covering each unit above.
+- [x] Schema — `SystemAlertRule`, the `rules` field, and the duplicate-`prompt` validator.
+- [x] Matching — the resolved-rule type, the matching function, and `probe_native` consulting rules.
+- [x] Wiring — locale resolution, scenario-over-configuration layering, and the vision-fallback hint.
+- [x] Documentation — `docs/scenarios.md` and its Japanese mirror, plus the field references.
+- [x] Tests — the deterministic suite covering each unit above.
 
 ## References
 
 - [BE-0315 — Make the reactive alert guard deterministic and native, reusing BE-0316's SpringBoard path](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)
-  — the native path this proposal branches, and the `instruction` label list it extends.
+  — the native path this proposal branches, and the `instruction` label list the rules fall back to.
 - [BE-0316 — Explicit mid-flow step for iOS permission-prompt alerts](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md)
   — the proactive step whose `prompt` / `choice` vocabulary the rules reuse, and the SpringBoard
   query and tap the guard already calls.
@@ -247,7 +262,7 @@ match undefined.
 - [BE-0314 — Deterministic interrupt handlers for unpredictable interstitial screens](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers.md)
   — the ordered list of conditional handlers this schema follows, for interstitial screens the
   application's own tree can see.
-- [BE-0276 — Declarative per-scenario permission state](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md)
+- [BE-0276 — Declarative per-scenario permission state (simctl privacy / pm grant)](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md)
   — the pre-launch permission state that avoids a prompt outright, and the reason these three
   prompts remain: no `simctl` command pre-answers them.
 - [BE-0177 — Per-target config defaults for run-behavior settings](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)

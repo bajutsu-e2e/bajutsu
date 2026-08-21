@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
@@ -42,6 +42,7 @@ from bajutsu.orchestrator import (
     AlertGuardConfig,
     RunResult,
 )
+from bajutsu.orchestrator.types import ResolvedAlertRule
 from bajutsu.platform_lifecycle import ProvisionProfile, environment_for
 from bajutsu.report.archive import archive_run_dir
 from bajutsu.report.manifest import _run_backend
@@ -54,6 +55,7 @@ from bajutsu.runner.types import AlertGuardFor
 from bajutsu.scenario import (
     Scenario,
     SystemAlertHandling,
+    SystemAlertRule,
     apply_setups,
     contained_ref,
     dump_mocks,
@@ -64,6 +66,11 @@ from bajutsu.scenario import (
     load_scenarios,
     read_csv,
     select_scenarios,
+)
+from bajutsu.scenario.system_alerts import (
+    UncoveredSystemAlertLocale,
+    covered_languages,
+    system_alert_label,
 )
 
 
@@ -333,8 +340,9 @@ def _apply_system_alert_handling(
 ) -> None:
     """Apply the `--system-alert-handling` / `--no-system-alert-handling` override to every scenario.
 
-    Preserves any per-scenario button policy and poll interval; a no-op when the flag is unset (each
-    scenario's own `systemAlertHandling`, default on, decides). Mirrors the `--erase` override.
+    Preserves any per-scenario button policy, rules, and poll interval; a no-op when the flag is
+    unset (each scenario's own `systemAlertHandling`, default on, decides). Mirrors the `--erase`
+    override.
     """
     if system_alert_handling is None:
         return
@@ -343,19 +351,62 @@ def _apply_system_alert_handling(
         s.system_alert_handling = SystemAlertHandling(
             enabled=system_alert_handling,
             instruction=prev.instruction if prev else None,
+            rules=prev.rules if prev else [],
             pollInterval=prev.poll_interval if prev else None,
         )
 
 
-def _vision_instruction(instruction: str | list[str] | None) -> str | None:
+def _resolve_rules(rules: list[SystemAlertRule], locale: str) -> list[ResolvedAlertRule]:
+    """Each rule's prompt resolved to its identifying label pair and tap label, for `locale`.
+
+    Raises:
+        UncoveredSystemAlertLocale: a rule names a prompt the label table has no entry for under
+            `locale`'s language — the same fail-loudly choice `handleSystemAlert`'s own
+            `prompt`/`choice` resolution makes, rather than guessing at a label. Re-raised naming
+            *this* surface, since the lookup's own message is phrased for that step.
+    """
+    resolved = []
+    for rule in rules:
+        try:
+            grant = system_alert_label(rule.prompt, "grant", locale)
+            deny = system_alert_label(rule.prompt, "deny", locale)
+        except UncoveredSystemAlertLocale as exc:
+            # The lookup's message names `handleSystemAlert` and offers its `sel.label` remedy —
+            # neither of which a scenario reaching here need have written. Re-scope it to the guard
+            # and to the guard's own in-kind remedy (an `instruction` label list), so a loud failure
+            # names the surface that actually failed.
+            covered = ", ".join(covered_languages(rule.prompt))
+            raise UncoveredSystemAlertLocale(
+                f"systemAlertHandling.rules prompt: {rule.prompt} has no known button labels for "
+                f"locale {locale!r}; covered: {covered}. Give the guard an explicit `instruction` "
+                "label list instead, or add the language to bajutsu/scenario/system_alerts.py"
+            ) from exc
+        tap_label = grant if rule.choice == "grant" else deny
+        resolved.append(
+            ResolvedAlertRule(identifying_labels=frozenset({grant, deny}), tap_label=tap_label)
+        )
+    return resolved
+
+
+def _vision_instruction(
+    instruction: str | list[str] | None, rule_labels: Sequence[str] = ()
+) -> str | None:
     """The vision locator's free-text instruction from a resolved `systemAlertHandling` policy.
 
-    A free-text string passes through unchanged (the legacy form). A candidate-label list — the
-    deterministic native form — becomes a hint the vision fallback can still act on when the native
-    path could not name a button ("Tap the button labeled one of, in order: Allow, OK").
+    `rule_labels` — the tap labels `systemAlertHandling.rules` resolved to — lead the hint when
+    present, since the native path checks them first too. A candidate-label `instruction` list joins
+    the same ordered hint; a free-text `instruction` string is appended after it rather than dropped,
+    since the vision fallback fires precisely when neither the rules nor the native path could name a
+    button, which is exactly the surface the free text was written to cover. With no rule labels, a
+    string passes through unchanged (the legacy form) and a candidate-label list alone still renders
+    the hint ("Tap the button labeled one of, in order: Allow, OK").
     """
     if isinstance(instruction, list):
-        return "Tap the button labeled one of, in order: " + ", ".join(instruction)
+        labels = [*rule_labels, *instruction]
+        return "Tap the button labeled one of, in order: " + ", ".join(labels) if labels else None
+    if rule_labels:
+        hint = "Tap the button labeled one of, in order: " + ", ".join(rule_labels)
+        return f"{hint}. {instruction}" if instruction else hint
     return instruction
 
 
@@ -401,6 +452,11 @@ def _alert_guard_factory(
     target_da = eff.run_defaults.system_alert_handling
     target_instruction = target_da.instruction if target_da else None
     target_interval = target_da.poll_interval if target_da else None
+    # Ordered rules answering specific covered prompts by name, config-level default only — the
+    # scenario's own rules are read per scenario below. A scenario's answer for a prompt shadows the
+    # target's for that prompt (first match wins); `_guard_for` also drops these entirely for a
+    # scenario that already has its own button-policy override (see there).
+    target_rules = target_da.rules if target_da else []
 
     def _guard_for(s: Scenario) -> AlertGuardConfig | None:
         if not _enabled(s):
@@ -421,11 +477,29 @@ def _alert_guard_factory(
             else DEFAULT_ALERT_POLL_INTERVAL
         )
 
+        # The scenario's own rules ahead of the target's: a rule for the same prompt in
+        # both layers is an override, not the parse-time error a duplicate within one list is, since
+        # matching returns on the first rule whose prompt is identified. The target's rules apply
+        # only when neither the scenario nor `--alert-instruction` already supplies its own button
+        # policy: either one is a deliberate override for this run, at a tier the button-policy
+        # ladder above already places ahead of the target config, and must outrank a mere
+        # target-level rule too — otherwise a project-wide rule added later could silently invert a
+        # scenario's own `instruction`, the exact failure this feature exists to remove. Resolved
+        # against this scenario's own locale — the same value the run pins the Simulator's system
+        # language to — so a rule's labels are the ones actually on screen; an uncovered language
+        # raises here, before this scenario's device work (caught by the runner as a scenario
+        # failure).
+        scenario_rules = scenario_da.rules if scenario_da else []
+        target_rules_for_scenario = (
+            [] if (scenario_instruction or default_instruction) else target_rules
+        )
+        locale = s.preconditions.resolved_locale(eff.locale)
+        rules = _resolve_rules([*scenario_rules, *target_rules_for_scenario], locale)
+
         # None when the credential is missing: the vision fallback then no-ops (never a hosted default).
+        vision_instruction = _vision_instruction(instruction, [r.tap_label for r in rules])
         handler = (
-            SystemAlertGuard(locator, _vision_instruction(instruction)).dismiss
-            if locator is not None
-            else None
+            SystemAlertGuard(locator, vision_instruction).dismiss if locator is not None else None
         )
 
         def vision(driver: base.Driver) -> AlertEvent | None:
@@ -437,7 +511,9 @@ def _alert_guard_factory(
             with _usage_ledger.attributed(command="run", scenario=s.name):
                 return handler(driver)
 
-        return AlertGuardConfig(vision=vision, labels=labels, poll_interval=poll_interval)
+        return AlertGuardConfig(
+            vision=vision, labels=labels, rules=rules, poll_interval=poll_interval
+        )
 
     return _guard_for
 

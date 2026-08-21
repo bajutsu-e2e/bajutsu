@@ -132,8 +132,10 @@ Preconditions ::= {
 # XCUITest ではネイティブの SpringBoard 照会 + tap（モデルなし、BE-0316 を再利用）。AI 視覚はフォールバック（BE-0315）。
 SystemAlertHandling ::= boolean                              # { enabled: <bool> } の短縮形
                | { enabled?: boolean,                       # 既定 true
+                   rules?: [<SystemAlertRule>],              # 名指ししたプロンプトに choice で答える。instruction より先に参照
                    instruction?: string | [string],         # [labels]=ネイティブ; "text"=視覚（無指定なら dismiss）
                    pollInterval?: number }                   # ネイティブのポーリング間隔・秒（既定 1）
+SystemAlertRule ::= { prompt: notifications|tracking|paste, choice: grant|deny }  # 1リストにつきプロンプトは一意
 
 Permissions ::= map(PermissionService, PermissionAction)    # アプリの起動前に適用する
 PermissionService ::= "location" | "camera" | "microphone" | "contacts"
@@ -372,6 +374,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Preconditions.launchArgs` | `[]` |
 | `Preconditions.launchEnv` | `{}` |
 | `SystemAlertHandling.enabled` | `true` |
+| `SystemAlertHandling.rules` | `[]`（名指しした規則なし。`instruction`／組み込みの否定的ラベルがすべてのプロンプトに答える） |
 | `TypeText.submit` | `false` |
 | `Exists.negate` | `false` |
 | `MockResponse.status` | `200` |

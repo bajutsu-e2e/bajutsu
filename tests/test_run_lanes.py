@@ -18,12 +18,15 @@ from bajutsu.cli.commands.run import (
     _resolve_evidence_dirs,
     _resolve_lanes,
     _resolve_network,
+    _resolve_rules,
     _resolve_secrets,
     _vision_instruction,
 )
 from bajutsu.config import Effective, load_config, resolve
 from bajutsu.orchestrator import DEFAULT_ALERT_POLL_INTERVAL
-from bajutsu.scenario import Scenario, load_scenarios
+from bajutsu.orchestrator.types import match_alert_rule
+from bajutsu.scenario import Scenario, SystemAlertRule, load_scenarios
+from bajutsu.scenario.system_alerts import UncoveredSystemAlertLocale, covered_languages
 
 
 def _resolve(udid: str) -> str:
@@ -372,6 +375,26 @@ def test_vision_instruction_renders_a_label_list_and_passes_a_string_through() -
     assert _vision_instruction(None) is None
 
 
+def test_vision_instruction_leads_with_rule_labels() -> None:
+    # Rule tap labels lead the hint, since the native path checks them first too; a list
+    # instruction joins the same ordered hint.
+    assert (
+        _vision_instruction(["Allow"], ["Ask App Not to Track"])
+        == "Tap the button labeled one of, in order: Ask App Not to Track, Allow"
+    )
+    # A free-text instruction is appended after the rule-label hint, not dropped: the vision
+    # fallback fires precisely when neither the rules nor the native path could act, which is the
+    # surface the free text was written to cover.
+    assert (
+        _vision_instruction("tap Allow", ["Ask App Not to Track"])
+        == "Tap the button labeled one of, in order: Ask App Not to Track. tap Allow"
+    )
+    assert _vision_instruction(None, ["Ask App Not to Track"]) == (
+        "Tap the button labeled one of, in order: Ask App Not to Track"
+    )
+    assert _vision_instruction(None, []) is None
+
+
 def test_apply_system_alert_handling_preserves_the_button_policy_and_interval() -> None:
     # The --no-system-alert-handling flip must keep both the label policy and the poll interval
     # (BE-0315).
@@ -381,6 +404,110 @@ def test_apply_system_alert_handling_preserves_the_button_policy_and_interval() 
     assert s.system_alert_handling.enabled is False
     assert s.system_alert_handling.instruction == ["Allow"]
     assert s.system_alert_handling.poll_interval == 2.0
+
+
+def test_apply_system_alert_handling_preserves_rules() -> None:
+    s = _tap_scenario("a", {"rules": [{"prompt": "notifications", "choice": "grant"}]})
+    _apply_system_alert_handling([s], False)
+    assert s.system_alert_handling is not None
+    assert s.system_alert_handling.enabled is False
+    assert [(r.prompt, r.choice) for r in s.system_alert_handling.rules] == [
+        ("notifications", "grant")
+    ]
+
+
+# --- _resolve_rules: a scenario's `rules` resolved to identifying/tap labels for its locale
+
+
+def test_resolve_rules_resolves_labels_for_locale() -> None:
+    rules = [SystemAlertRule(prompt="notifications", choice="grant")]
+    resolved = _resolve_rules(rules, "en")
+    assert len(resolved) == 1
+    assert resolved[0].identifying_labels == {"Allow", "Don’t Allow"}
+    assert resolved[0].tap_label == "Allow"
+
+
+def test_resolve_rules_resolves_the_deny_choice() -> None:
+    rules = [SystemAlertRule(prompt="tracking", choice="deny")]
+    resolved = _resolve_rules(rules, "en")
+    assert resolved[0].tap_label == "Ask App Not to Track"
+
+
+def test_resolve_rules_raises_on_an_uncovered_locale() -> None:
+    rules = [SystemAlertRule(prompt="notifications", choice="grant")]
+    with pytest.raises(UncoveredSystemAlertLocale) as exc:
+        _resolve_rules(rules, "fr")
+    # The message must name the surface that actually failed — the guard's `rules` — and offer the
+    # guard's own remedy, not `handleSystemAlert`'s `sel.label`, which the scenario need not use.
+    message = str(exc.value)
+    assert "systemAlertHandling.rules" in message
+    assert "instruction" in message
+    assert "sel.label" not in message
+    # The covered languages, like the step's own message reports.
+    for language in covered_languages("notifications"):
+        assert language in message
+
+
+def test_resolve_rules_empty_list_stays_empty() -> None:
+    assert _resolve_rules([], "en") == []
+
+
+# --- _alert_guard_factory: rules resolve and layer scenario-over-target
+
+
+def test_alert_guard_factory_resolves_scenario_rules() -> None:
+    s = _tap_scenario(
+        "a",
+        {
+            "rules": [
+                {"prompt": "notifications", "choice": "grant"},
+                {"prompt": "tracking", "choice": "deny"},
+            ]
+        },
+    )
+    guard = _alert_guard_factory([s], _eff(), "")(s)  # type: ignore[misc]
+    assert guard is not None
+    assert [r.tap_label for r in guard.rules] == ["Allow", "Ask App Not to Track"]
+
+
+def test_alert_guard_factory_scenario_rule_shadows_target_rule_for_the_same_prompt() -> None:
+    eff = _eff(systemAlertHandling="{ rules: [{ prompt: notifications, choice: deny }] }")
+    s = _tap_scenario("a", {"rules": [{"prompt": "notifications", "choice": "grant"}]})
+    guard = _alert_guard_factory([s], eff, "")(s)  # type: ignore[misc]
+    assert guard is not None
+    # The scenario's rule for `notifications` comes first, so it wins the first-match.
+    assert [r.tap_label for r in guard.rules] == ["Allow", "Don’t Allow"]
+    assert match_alert_rule(guard.rules, ["Allow", "Don’t Allow"]) == "Allow"
+
+
+def test_alert_guard_factory_target_rule_applies_when_scenario_has_none() -> None:
+    eff = _eff(systemAlertHandling="{ rules: [{ prompt: tracking, choice: deny }] }")
+    s = _tap_scenario("a")
+    guard = _alert_guard_factory([s], eff, "")(s)  # type: ignore[misc]
+    assert guard is not None
+    assert [r.tap_label for r in guard.rules] == ["Ask App Not to Track"]
+
+
+def test_alert_guard_factory_scenario_instruction_drops_target_rules() -> None:
+    # A scenario's own `instruction` is a deliberate button-policy override, and must outrank a
+    # mere target-level rule for a *different* prompt too — otherwise a project-wide rule added
+    # later could silently invert what the scenario's instruction already decided.
+    eff = _eff(systemAlertHandling="{ rules: [{ prompt: tracking, choice: deny }] }")
+    s = _tap_scenario("a", {"instruction": ["Allow"]})
+    guard = _alert_guard_factory([s], eff, "")(s)  # type: ignore[misc]
+    assert guard is not None
+    assert guard.rules == []
+    assert guard.labels == ["Allow"]
+
+
+def test_alert_guard_factory_cli_instruction_flag_drops_target_rules() -> None:
+    # The same for `--alert-instruction`: it sits above target config in the button-policy ladder,
+    # so it must outrank a target rule too.
+    eff = _eff(systemAlertHandling="{ rules: [{ prompt: tracking, choice: deny }] }")
+    s = _tap_scenario("a")
+    guard = _alert_guard_factory([s], eff, "Not Now")(s)  # type: ignore[misc]
+    assert guard is not None
+    assert guard.rules == []
 
 
 # --- _resolve_evidence_dirs: baselines/schemas dirs plus the golden context (only when it exists)
