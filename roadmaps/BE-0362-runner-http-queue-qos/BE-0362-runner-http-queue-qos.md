@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0362") |
-| Implementing PR | [#1594](https://github.com/bajutsu-e2e/bajutsu/pull/1594) |
+| Implementing PR | [#1594](https://github.com/bajutsu-e2e/bajutsu/pull/1594), [#1688](https://github.com/bajutsu-e2e/bajutsu/pull/1688) |
 | Topic | Platform support |
 | Related | [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn.md), [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md) |
 <!-- /BE-METADATA -->
