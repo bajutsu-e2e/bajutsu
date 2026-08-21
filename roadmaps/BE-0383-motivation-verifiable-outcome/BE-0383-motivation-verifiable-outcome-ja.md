@@ -1,14 +1,14 @@
-[English](BE-XXXX-motivation-verifiable-outcome.md) · **日本語**
+[English](BE-0383-motivation-verifiable-outcome.md) · **日本語**
 
-# BE-XXXX — BE項目の「動機」に検証可能な結果を求める
+# BE-0383 — BE項目の「動機」に検証可能な結果を求める
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-motivation-verifiable-outcome-ja.md) |
+| 提案 | [BE-0383](BE-0383-motivation-verifiable-outcome-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0383") |
 | トピック | Contributor workflow |
 <!-- /BE-METADATA -->
 

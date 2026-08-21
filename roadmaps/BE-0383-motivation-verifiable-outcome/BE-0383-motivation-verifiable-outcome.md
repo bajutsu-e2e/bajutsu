@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-motivation-verifiable-outcome-ja.md)
+**English** · [日本語](BE-0383-motivation-verifiable-outcome-ja.md)
 
-# BE-XXXX — Require a verifiable outcome in every BE item's Motivation
+# BE-0383 — Require a verifiable outcome in every BE item's Motivation
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-motivation-verifiable-outcome.md) |
+| Proposal | [BE-0383](BE-0383-motivation-verifiable-outcome.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0383") |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
