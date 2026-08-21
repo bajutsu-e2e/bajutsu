@@ -302,7 +302,7 @@ final class XcuitestElementProvider: ElementProviding {
     /// built without it reports `value` as `nil` throughout, which reads to `resolvableMatchingIndex`
     /// as every candidate agreeing, collapsing the ambiguity the field was added to preserve. Unlike
     /// `identifier` and `label`, `value` is read straight off the optional rather than through
-    /// `nonEmpty`: the host's key keeps an absent value and an empty one apart (`Router` drops the key
+    /// `nonEmpty`: the host's key keeps an absent value and an empty one apart (the reply omits the key
     /// entirely for `nil`, so Python sees `None` against `""`), and `flattenSnapshot` records it
     /// unnormalized as well. Normalizing here alone would collapse a pair those two keep apart.
     private func recordedAttributes(

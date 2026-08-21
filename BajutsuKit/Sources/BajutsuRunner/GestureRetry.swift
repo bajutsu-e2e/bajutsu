@@ -82,7 +82,7 @@ public func actuateUntilStateChanges(
 /// deciding early. It also breaks a run of matches, since a value that could not be read has not
 /// been shown to be holding. Both a `nil` return and a raised `NSException` count as unreadable:
 /// reading an `XCUIElement` property raises while the UI is in flux, and a wheel mid-deceleration is
-/// UI in flux by definition, so the raise is caught here rather than left to `Router`'s handler-wide
+/// UI in flux by definition, so the raise is caught here rather than left to `APIHandler`'s handler-wide
 /// shield. Left to the shield it would resolve the whole request to `.stale`, and the driver would
 /// fail the step with "element vanished (stale handle)" for a wheel that never went anywhere —
 /// while this function's own unreadable-sample path, the one its tests cover, could never run.

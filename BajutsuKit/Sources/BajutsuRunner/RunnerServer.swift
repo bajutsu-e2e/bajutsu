@@ -6,20 +6,30 @@ import Foundation
 /// the real XCUITest-backed `ElementProviding` implementation. The server
 /// binds to `127.0.0.1` and serves requests from the Python driver until
 /// stopped.
+///
+/// Every route is answered by a handler generated from `openapi.yaml` (BE-0381): `APIHandler`
+/// holds the logic and `LegacyBackedTransport` carries it over `HTTPServer`'s socket layer, which
+/// Unit 5 replaces. The public interface here is what the migration deliberately holds still.
 public final class RunnerServer {
     private let httpServer: HTTPServer
-    private let router: Router
+    private let handler: APIHandler
+    private let transport: LegacyBackedTransport
 
     public init(provider: ElementProviding) {
-        router = Router(provider: provider)
-        httpServer = HTTPServer { [router] request in router.handle(request) }
+        handler = APIHandler(provider: provider)
+        transport = LegacyBackedTransport()
+        httpServer = HTTPServer { [transport] request in transport.respond(to: request) }
     }
 
     /// Start the server. Returns the port it is listening on.
     /// Pass port 0 to let the OS pick an ephemeral port.
     @discardableResult
     public func start(port: UInt16 = 0) throws -> UInt16 {
-        try httpServer.start(port: port)
+        // Registration lands here rather than in `init` because the generated call throws and this
+        // type's initializer is part of the public surface BE-0381 keeps unchanged. It runs before
+        // the socket binds, so no connection can arrive at an empty route table.
+        try handler.registerHandlers(on: transport)
+        return try httpServer.start(port: port)
     }
 
     /// Start the server on the port from `BAJUTSU_RUNNER_PORT`, or an ephemeral port if unset.
