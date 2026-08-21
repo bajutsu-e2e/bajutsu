@@ -109,27 +109,31 @@ gives unit 2 one thing to key by session instead of six. Behavior is unchanged; 
 
 ### 2. A binding per session, resolved through the session's org
 
-Replace the single binding field with a mapping from login session to `ConfigBinding`. A session is
-the scope a member's own work happens in, so a bind made in one session is visible to that session
-alone, and every other session — a colleague's, or the same member's on another machine — keeps what
-it had. A session's binding is dropped with the session; what survives is the org's remembered
+Replace the single binding field with a mapping from login session **and acting org** to
+`ConfigBinding`. A session is the scope a member's own work happens in, so a bind made in one
+session is visible to that session alone, and every other session — a colleague's, or the same
+member's on another machine — keeps what it had. The acting org joins the key because a session may
+change which org it acts as, and a binding made as one org must not answer as another: target
+ownership rides on the org, so a binding that outlived an org change would hand one org's targets to
+a request acting as a different one. A session's binding is dropped with the session; what survives is the org's remembered
 configuration (unit 4), which the next session inherits (unit 6).
 
 Each binding still records the org that made it, because target ownership is an org question, not a
-session one: a configuration bound through the application programming interface (API) belongs to
-the org that bound it, so `targets_for` reads that org off the binding rather than off a tag on a
-global. The launch configuration keeps its current meaning as the **fallback binding**: a session
+session one: a configuration bound through the API belongs to the org that bound it, so
+`targets_for` reads that org off the binding rather than off a tag on a global. The launch configuration keeps its current meaning as the **fallback binding**: a session
 with no binding of its own and no configuration to inherit reads the configuration `serve` started
 with, whose `orgs:` block partitions its targets between orgs exactly as today.
 
 Not every reader of the binding is inside a request with a session. `config_content`,
 `server_settings`, `active_key_env`, the usage-ledger path, and the scenario-directory closure
 `_scenarios_dir_for` take no actor at all, and the deployment-wide answer is what two of them
-actually want. Each such reader is therefore settled explicitly rather than by an ambient default:
-the ones a member's view depends on (the configuration view, the scenario directory) take the
-session from their handler, and the ones describing the deployment (the active key environment
-variable, the usage ledger) read the fallback binding and say so. An ambient default is what this
-unit removes, so leaving one for the readers that are inconvenient would leave the bug in place.
+actually want. Each of the five is therefore settled explicitly rather than by an ambient default.
+Three report what a member is working against — the configuration view, the server-settings tab's
+`hasConfig` / `configSource` / configuration path, and the scenario directory — and take the session
+from their handler. Two describe the deployment — the active key environment variable and the usage
+ledger — and read the fallback binding, which the item states rather than leaves implied. An ambient
+default is what this unit removes, so leaving one for the readers that are inconvenient would leave
+the bug in place.
 
 A run must not follow a later rebind, and today it partly can. A job's command line carries
 `--config`, so the configuration file a run parses is frozen at dispatch, and a worker run carries
@@ -148,9 +152,9 @@ idempotent by name and rebinds an existing name's source, so re-binding the same
 neither duplicates nor collides. This is the unit that creates the durable memory at all; without it
 the mapping in unit 2 is empty at every start.
 
-Naming: reuse the identity the launch configuration already derives from a configuration path and its
-provenance (`launch_project_identity`), so a Git source names itself by repository and path and an
-upload by its file name, and a member who never opens the projects page still gets a legible entry.
+Naming: extend the identity the launch configuration already derives from a configuration path and
+its provenance (`launch_project_identity`), so a Git source names itself by repository and path and
+an upload by its file name, and a member who never opens the projects page still gets a legible entry.
 
 ### 4. The active project persists per org
 
@@ -193,7 +197,7 @@ every request.
 ### 7. What a member sees
 
 Show which configuration the session is bound to, and where it came from, in the header the org
-selection already lives in. Distinguish the three origins a member needs to tell apart: the
+badge already lives in. Distinguish the three origins a member needs to tell apart: the
 configuration they bound in this session, the one inherited as the org's remembered configuration,
 and the deployment's launch configuration. A member who binds something else is changing what
 colleagues' next sessions inherit, so say that where they bind it. Record a restore in the audit log
@@ -276,5 +280,6 @@ does not need, and a trigger written against sign-in misses an org change within
 - [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md) — the
   composed-artifact locator, the fourth bind unit 3 covers.
 - [BE-0375](../BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management.md) —
-  target ownership for an API-bound configuration, which unit 2 expresses through the binding's key.
+  target ownership for an API-bound configuration, which unit 2 expresses through the org recorded on
+  the binding.
 - [`docs/architecture.md`](../../docs/architecture.md) — what `serve` holds today.
