@@ -165,7 +165,6 @@ def test_eval_context_delivers_each_field_to_its_kind(tmp_path: Path) -> None:
         "traits": ["switch"],
         "value": "1",
         "frame": [10.0, 20.0, 50.0, 30.0],
-        "nativeZ": None,
     }
     (golden_dir / "controls.json").write_text(json.dumps({"c.toggle": entry}), encoding="utf-8")
     from bajutsu.assertions import GoldenContext

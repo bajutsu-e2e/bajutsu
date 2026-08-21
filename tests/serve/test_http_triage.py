@@ -61,6 +61,7 @@ def _write_failed_run(runs: Path, run_id: str) -> Path:
                     "traits": ["button"],
                     "value": None,
                     "frame": [0, 0, 10, 10],
+                    "nativeZ": None,
                 }
             ]
         ),
