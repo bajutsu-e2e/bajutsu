@@ -332,6 +332,49 @@ deliberately outside their lanes' required aggregate checks, and are promoted on
 signal-then-required path BE-0282 established, applied here to lanes that break the device on
 purpose and so carry more inherent flakiness risk than the ones driving a healthy one.
 
+### Concurrent-device lanes (BE-0298)
+
+Every job described above boots exactly one device, so none of them can observe what
+`runner/pool.py`'s `device_pool` claims for a parallel run: that under `--workers N` each worker
+leases its own device and writes evidence only under its own `run_dir/<sid>` subdirectory of the one
+shared run directory, sharing no mock port or index with any other worker's scenario (the
+no-shared-state invariant [`DESIGN.md`](../DESIGN.md) §3.3 states). The fast suite proves that claim
+of the pool's own bookkeeping alone: `tests/runner/test_pool.py` monkeypatches `make_driver` to hand
+`FakeDriver` instances fabricated udids like `"UDID-A"`, which shows worker A's resources really are
+separate from worker B's *in the data structures the pool manages* and says nothing about contention
+at the OS and subprocess level outside them — two real `simctl` or `adb` invocations racing on a boot
+lock, a host port allocated per device, an artifact path computed before a worker's subdirectory
+exists.
+
+The **concurrent-device lanes** boot two real devices instead. `pool (xcuitest)` (`ios-e2e.yml`)
+boots two Simulators and `pool (adb)` (`android-e2e.yml`) two emulators, each running state-neutral
+showcase scenarios through one `bajutsu run --workers 2`, so the pool has to share the work out and
+keep both workers busy at once. The Android job runs four scenario files; the iOS job runs two,
+`smoke.yaml` and `notices.yaml`, under its own capture-light
+[`showcase.pool.config.yaml`](../demos/showcase/showcase.pool.config.yaml) and with the touch markers
+off, because two Simulators plus a video recording per device exhausted the macOS runner's
+capture-service queue before the run finished (BE-0361's signature). Two files still hold four
+scenario documents between them, so the pool still has work for both workers at once and the
+concurrent pair the verdict below needs survives the cut.
+
+`scripts/assert_pool_isolation.py` is what turns the outcome into a verdict, read from the finished
+run's `manifest.json` and the run directory's own subdirectory listing: it fails on an artifact
+recorded under another worker's slug, two results sharing one slug, a subdirectory no result claims, a
+recorded evidence directory the run never wrote, one device having quietly taken every scenario, or no
+two scenarios on different devices having overlapped in wall-clock. The check is a file read and a set
+comparison, and it runs after `bajutsu run` has returned its own verdict, so it observes
+the run's artifacts and never feeds any scenario's pass/fail.
+
+Both lanes are keyed on a change filter of their own — `touches_pool` in `scripts/e2e_changes.py`,
+narrower than the lane-wide signal every other job reads — because each boots twice what
+its lane's other jobs boot, on the iOS side against a runner billed at 10x. Both are per-PR signals
+outside their lanes' required aggregate checks, on BE-0282's signal-then-required path and for a
+sharper version of the fault-injection lanes' reason: BE-0361 measured the macOS runner as 3 cores
+and 7 GiB, with a *single* booted Simulator bringing up 257 guest processes and leaving 189 MB of
+physical memory unused, so a second device doubles the guest population against an already-saturated
+ceiling. A red run there that turns out to be host exhaustion rather than a pool defect is a
+measurement, and the diagnostics both jobs upload are what tell the two apart.
+
 ---
 
 ## Implementation status

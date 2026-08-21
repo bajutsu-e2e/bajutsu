@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0298](BE-0298-device-pool-concurrent-real-verification-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0298") |
+| 実装 PR | [#1666](https://github.com/bajutsu-e2e/bajutsu/pull/1666) |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md) |
 <!-- /BE-METADATA -->
@@ -72,10 +73,105 @@ monkeypatch して、`"UDID-A"`/`"UDID-B"` のような架空の udid に対す�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 実際のデバイスを2台同時に起動する（`ios-e2e.yml` の Simulator、`android-e2e.yml` のエミュレータを
+- [x] 実際のデバイスを2台同時に起動する（`ios-e2e.yml` の Simulator、`android-e2e.yml` のエミュレータを
   リソースが許せば）、両方に対して `--workers 2` を実行する。
-- [ ] `udid` と `run_dir/<scenario_id>` サブディレクトリのワーカーごとの分離を検証する。
-- [ ] まずゲート対象外として着地させ、安定後に必須化する。
+- [x] `udid` と `run_dir/<scenario_id>` サブディレクトリのワーカーごとの分離を検証する。
+- [x] まずゲート対象外として着地させる。
+- [ ] 安定を確認してから各レーンを必須化する。
+
+ログ:
+
+- [#1666](https://github.com/bajutsu-e2e/bajutsu/pull/1666) — 両レーンをゲート対象外の
+  シグナルとして着地させ、あわせて判定に使うアサーションを追加しました。**アサーション**：
+  `scripts/assert_pool_isolation.py` は、終了した run の `manifest.json` と run ディレクトリの
+  サブディレクトリ一覧を読み、6 種類の違反で失敗します。ほかのワーカーの slug の下に記録された
+  成果物、1 つの slug を共有する 2 つの結果、どの結果にも属さないサブディレクトリ、結果が記録した
+  のに run ディレクトリに存在しない証跡ディレクトリ、片方のデバイスがすべてのシナリオを引き受けた
+  状態、異なるデバイス上の 2 本のシナリオが実時間で重ならなかった状態です。最後の 1 つは、競合を
+  一度も起こしていないレーンが通ってしまうのを防ぎます。デバイス 2 台とシナリオ 4 本なら、
+  プールが逐次的に 2 台を交互に使っただけでも相異なる udid は 2 つになるからです。そこで各シナリオの実行区間を、ステップ自身が持つ絶対時刻 `started_at`
+  （manifest v6）から求め、デバイスをまたぐ重なりを実際に要求します。違反はいずれもユニット
+  テストで固定してあり（`tests/test_assert_pool_isolation.py`）、同一デバイス上の重なりが
+  この検査を満たしては*ならない*ケースも含みます。デバイスの台数は等値ではなく下限で見ます。
+  実行の途中で Simulator を失った run は、プールが引き受けた代替デバイスの上で続きます
+  （BE-0344。`--udid` でデバイスを固定した run でも起こります）。この代替デバイスはプールに
+  渡されていないので、異なる udid の数がプールの台数を超えます。台数が増えても、ワーカーは
+  より分かれるだけなので、渡された台数より*少ない*デバイスで走った run だけを失敗させます。
+  **iOS**：`pool (xcuitest)` は Simulator を 2 台起動し、showcase のシナリオを
+  1 回の `bajutsu run --workers 2` で走らせます。2 台目を別のデバイスにするのは `boot-simulator` action に追加した `exclude-udid`
+  入力です。これがないと action の再利用分岐が 1 台目を返し、`--udid "$A,$A"` が誤った理由で
+  すべての検査を通ってしまいます。**Android**：`pool (adb)` は、キャッシュ済み AVD の 2 つ目の
+  インスタンスを `-read-only` で起動します。起動は emulator-runner のステップの内側で行います。
+  この action には 2 台起動のモードがなく、エミュレータはそのステップの長さしか生きないためです
+  （`scripts/android_pool_e2e.sh`、`make -C demos/showcase/android e2e-pool`）。両インスタンスは
+  `-memory 3072 -cores 1` で動きます。このジョブが専用の AVD キャッシュキーを持つのは、その
+  エントリが `bajutsu-pool` という名前の AVD を収めていなければならないからです。さらに、どちらにも
+  `-read-only` を付けています。このレーンの最初の実測で、2 台目の起動そのものが拒まれました
+  （"Another emulator instance is running. Please close it or run all emulators with -read-only
+  flag"）。emulator-runner 自身のエミュレータが AVD を読み書きで握っていたからで、フラグは
+  アクション側のオプションにも移す必要がありました。`-read-only` はスナップショットの読み込みを
+  止めるため、このジョブは毎回 2 台ともコールドブートし、`smoke` のキャッシュのコメントが flake の
+  原因として挙げている「システムが落ち着くまでの時間帯」で run を始めます。そこで、このレーンの
+  シナリオ集合からは `search` を外し、`interrupts` を入れました。そのコメントが、この時間帯に
+  アプリのプロセスが落とされたシナリオとして挙げているのが `search` で、プロセスが落とされれば
+  入力した文字列は失われ、条件待ちでは取り戻せないからです。それでもコールドブートが不安定なら、
+  AVD を複製して 2 つ目を用意する手が残っています。iOS 側が入力で
+  得ている「2 台目が別のデバイスである」という保証は、Android 側では検査で得ます。2 つ目の
+  インスタンスのコンソールポートは 5556 に固定してある一方、action 自身のエミュレータが取るのは
+  空いている最初の偶数ポートにすぎません。そこで、接続済みのどれかがすでにそのシリアルを
+  持っていれば、スクリプトは何も起動しないうちに失敗します。そうしなければ 2 つ目の `emulator`
+  はポートを確保できず、その後の起動待ちはどちらも自分で起動していないエミュレータが答えます。
+  そして run には、同じシリアルが 2 つ、あるいは何も確かめていないデバイスが渡ってしまいます。
+  **変更フィルタ**：両ジョブは `scripts/e2e_changes.py` の新しい `pool` 出力（`touches_pool`）で
+  発火します。ほかのすべてのジョブが読むレーン全体のシグナルより狭いので、通常の
+  `bajutsu/` の変更でデバイス 2 台ぶんのコストを払いません。`workflow_dispatch` でも発火し、
+  それが任意のタイミングで動かす手段になります。**DESIGN.md §3.3** は同じ変更で現状に
+  合わせました（BE-0113）。「ワーカーごとに固有の `runs/<runId>`」という記述は、本項目の
+  はじめに自身が述べる共有 run ディレクトリより前の記述でしたし、「`--udid` 明示時は単一デバイス
+  に固定する」という記述は、本レーンが依拠するカンマ区切りリストと矛盾していました。
+- [#1666](https://github.com/bajutsu-e2e/bajutsu/pull/1666) — その後 CI が実測した内容と、次の
+  実測にかける構成です。**`pool (adb)` は緑になりました。** エミュレータ 2 台が起動し、run は
+  完走し、`assert_pool_isolation.py` は判定を返しました。本項目の Android 側は、実際の並行デバイス
+  上で検証できたことになります。**`pool (xcuitest)` は 2 回失敗しました。** どちらもプールの検査
+  ではなく、キャプチャのパイプラインで止まりました。Simulator は 2 台とも相異なる udid で起動して
+  います（`Booting simulator 2A6DC5A9…`、`Booting simulator CB2B1AD7…`）。どのシナリオも
+  開始しているので、レーンの配線そのものに問題はありません。そこから、4 本のシナリオで
+  `recordVideo produced no new bytes … within 20.0s` が出て、`xcrun simctl terminate … timed out
+  after 60s` となり、ランナーのチャネルは `GET /screenshot: the runner became unreachable past the
+  retry budget — a mid-run crash` を報告し、`xcrun simctl uninstall … timed out (this host's
+  CoreSimulator may be wedged)` に至り、クラッシュレポートが 11 件集まりました。10 倍課金の
+  ランナーを約 34 分使っています。これは BE-0361 が記述したホスト枯渇の兆候そのものです。BE-0361 が
+  名指しした `SimRenderServer` のキャプチャサービスのキューは、`simctl` の動画、ステップの
+  スクリーンショット、XCUITest の `/screenshot` をどれも 1 本で受けるキューです。つまりこのジョブは
+  プールの欠陥ではなく、ホストの枯渇に巻き込まれています。**負荷を軽くした構成**：そのキューへの
+  負荷を 3 つの方向から削り、分離の検査と `--expect-devices 2` には手を付けていません。新しい
+  `demos/showcase/showcase.pool.config.yaml`（ジョブ専用の小さな config という
+  `showcase.bundled-runner.config.yaml` の前例にならいました）は `capture:` をまったく持ちません。
+  そのため run はスキーマのデフォルト（`screenshot.after`、`elements`、`actionLog`）に落ちます。
+  メインの config が `video` を上乗せしたリストは使わないので、どちらのデバイスでも動画は記録され
+  ません。`bajutsu-e2e` アクションには `touch-markers` 入力を追加しました。デフォルトは `true` な
+  ので
+  既存の呼び出し側は変わらず、pool ジョブだけが `false` を渡して、スクリーンショットごとに描かれる
+  タッチの CALayer を落とします。シナリオの集合は、ファイル 4 本から `smoke.yaml` と
+  `notices.yaml` の 2 本へ半分にしました。この 2 本が持つシナリオドキュメントは 7 本ではなく 4 本
+  なので、プールは 2 つのワーカーに同時に仕事を渡すことになり、判定が要求するデバイスをまたぐ
+  重なりはそのまま残ります。アプリの起動は 3 回減り、行き詰まりうる時間帯も短くなります。コールドの
+  XCTest ホスト起動も半分になります。このレーンは warm 再利用の上限をワークフロー全体で 1 に
+  しているので、1 回の起動がシナリオドキュメント 2 本をカバーし、7 本なら 4 回、4 本なら 2 回で
+  済むからです。`notices` を残したのは、2 本のうち長いほうで、組み合わせが実際に重なるからです。
+  この構成が安定していると実測できるまで、必須化のチェックは付けません。
+- 軽量化した構成でも赤になりました。失敗がなくなったのではなく、前へ移ったということです（実行 32428315916）。
+  キャプチャサービス由来の症状は消えています。`recordVideo produced no new bytes` も、ランナー
+  チャネルが到達不能になる事象も出ていません。動画とタッチマーカー、シナリオ半減は意図どおりに
+  効きました。残ったのはより早く、より素朴な失敗です。Simulator は 2 台とも起動しました。run は
+  23:48:21 に始まったあと、11 分 17 秒にわたって何も出力しません。そして `device operation timed
+  out after 60s: xcrun simctl uninstall …（this host's CoreSimulator may be wedged）` で終わりました。
+  クラッシュレポートは 11 件です。シナリオには到達していないので分離のアサーションは skip され、
+  この実行からは分離の判定が出ていません。読み取れるのは、ゲストが 2 台起動した状態ではこの
+  runner の CoreSimulator 自体が行き詰まるということです。これはレーンが手放せるどのキャプチャ
+  よりも上流にあるので、run が記録する内容をこれ以上削っても結果は変わらないと見込まれます。
+  iOS 側の成立可否は、レーンではなく runner についての問題です。同じ push の間、`pool (adb)`
+  は緑のままでした。Android 側にこの手当ては要りません。
 
 ## 参考
 

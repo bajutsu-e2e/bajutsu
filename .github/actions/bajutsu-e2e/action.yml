@@ -24,9 +24,30 @@ inputs:
     description: Target key in bajutsu.config.yaml.
     required: true
   udid:
-    description: Simulator UDID (or "booted" for the current one).
+    description: >-
+      Simulator UDID (or "booted" for the current one). A comma list drives a multi-device pool —
+      `bajutsu run` resolves each entry as its own lane and caps `workers` to the pool size — which
+      the concurrent-device job uses (BE-0298); pass `diagnostics-udid` alongside it, since the
+      diagnostics collector below is keyed on one device.
     required: false
     default: booted
+  workers:
+    description: >-
+      Concurrent scenarios, passed as `run --workers`. 1 (the default) is `bajutsu run`'s own
+      default, so every single-device caller is unaffected; >1 needs as many devices in `udid`,
+      which is what the two-device pool job supplies.
+    required: false
+    default: "1"
+  diagnostics-udid:
+    description: >-
+      The single device the BE-0361 diagnostics collector is keyed on. Empty (default) uses `udid`,
+      which is right whenever that is one device. A multi-device `udid` must name one here instead:
+      the collector resolves a device's own CoreSimulator log directory and `simctl diagnose` target
+      by UDID, and a comma list resolves to neither — it would collect nothing for either device and
+      say so in warnings rather than failing, which is the worst outcome for a lane that exists to be
+      diagnosable.
+    required: false
+    default: ""
   backend:
     description: Actuator backend.
     required: false
@@ -35,6 +56,15 @@ inputs:
     description: Path to bajutsu.config.yaml.
     required: false
     default: bajutsu.config.yaml
+  touch-markers:
+    description: >-
+      Draw a marker at each touch the app receives (`run --touch-markers`). `true` (the default)
+      is what every lane here wants: it costs a CALayer per touch and buys a failure screenshot
+      that shows where the gesture landed. `false` passes `--no-touch-markers`, for a job that
+      cannot afford the extra compositing — the two-device pool job (BE-0298), whose measured stall
+      is in the capture pipeline the marker draws into.
+    required: false
+    default: "true"
   artifact-name:
     description: Name for the uploaded run artifacts.
     required: false
@@ -61,7 +91,7 @@ runs:
       uses: ./.github/actions/collect-ios-diagnostics
       with:
         phase: start
-        udid: ${{ inputs.udid }}
+        udid: ${{ inputs.diagnostics-udid || inputs.udid }}
 
     # Inputs go through env: so the shell sees them as data, not as script text spliced in
     # before parsing (the GitHub Actions ${{ }} injection pattern). See BE-0123.
@@ -78,8 +108,10 @@ runs:
         EXCLUDE: ${{ inputs.exclude }}
         TARGET: ${{ inputs.target }}
         UDID: ${{ inputs.udid }}
+        WORKERS: ${{ inputs.workers }}
         BACKEND: ${{ inputs.backend }}
         CONFIG: ${{ inputs.config }}
+        TOUCH_MARKERS: ${{ inputs.touch-markers }}
       run: |
         # Expand the whitespace-separated SCENARIOS into one --scenario per file, so several run in
         # one process and reuse a single warm runner (scenario paths never contain spaces, so plain
@@ -102,9 +134,13 @@ runs:
         # pixels, and `run` skips any scenario carrying one (naming it on stderr), while every other
         # kind reads the accessibility tree, the network exchanges, or the clipboard. The marker is a
         # CALayer, which has no accessibility representation — `golden_xcuitest.yaml` asserts the same
-        # tree golden with the markers on and off to keep that true.
+        # tree golden with the markers on and off to keep that true. `touch-markers: false` opts a job
+        # out of that extra compositing; on by default, so every existing caller is unchanged.
+        markers_flag=--touch-markers
+        [ "$TOUCH_MARKERS" = "true" ] || markers_flag=--no-touch-markers
         uv run --no-sync bajutsu run "${scenario_args[@]}" --exclude "$EXCLUDE" --target "$TARGET" \
-          --udid "$UDID" --backend "$BACKEND" --config "$CONFIG" --score --touch-markers
+          --udid "$UDID" --workers "$WORKERS" --backend "$BACKEND" --config "$CONFIG" \
+          --score "$markers_flag"
 
     # Replaces the crash-report copy this step used to be (BE-0361). That sweep read only `.ips` /
     # `.crash` under ~/Library/Logs/DiagnosticReports, and collected zero files on every run of the
@@ -118,7 +154,7 @@ runs:
       uses: ./.github/actions/collect-ios-diagnostics
       with:
         phase: collect
-        udid: ${{ inputs.udid }}
+        udid: ${{ inputs.diagnostics-udid || inputs.udid }}
         failed: ${{ steps.run.outcome != 'success' }}
 
     # artifact-name is a `with:` value on a `uses:` step, not a shell `run:` block, so the
