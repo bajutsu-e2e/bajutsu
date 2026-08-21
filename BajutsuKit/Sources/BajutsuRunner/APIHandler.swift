@@ -11,10 +11,12 @@ import OpenAPIRuntime
 /// first — XCUITest operations never run concurrently (BE-0323) — now that handlers are `async`.
 ///
 /// The second, BE-0287's cap of eight concurrently-handled connections, is **not** reimplemented
-/// here, because nothing in this type accepts a connection: it is the transport's to enforce, and
-/// the transport is still `HTTPServer`, whose `DispatchSemaphore(value: 8)` continues to apply.
-/// Unit 4, which points the driver at a server built on this handler, has to carry that cap over
-/// explicitly — a router that serves these operations with no bound would drop it silently.
+/// here, because nothing in this type accepts a connection: it is the transport's to enforce. Unit 4
+/// discharged that obligation by construction rather than by carrying anything over — `RunnerServer`
+/// serves these operations through `LegacyBackedTransport`, which accepts nothing of its own, so
+/// `HTTPServer`'s `DispatchSemaphore(value: 8)` still bounds exactly what it always bounded. Unit 5
+/// is where the bound has to be re-established deliberately, because its listener accepts its own
+/// connections.
 final class APIHandler: APIProtocol {
     private let provider: ElementProviding
     private let store = SnapshotStore()
@@ -32,13 +34,15 @@ final class APIHandler: APIProtocol {
     /// re-entrant, so the XCTest host aborts (BE-0323). Being serial, the queue means a second
     /// operation never even enqueues onto main while the first is in flight.
     ///
-    /// It is a dedicated queue rather than a lock taken inline because the handlers are now `async`
-    /// and run on Hummingbird's event loops. Blocking an event loop in `DispatchQueue.main.sync`
-    /// would stall every other connection sharing it — including the `GET /health` poll the driver
-    /// uses to tell "runner busy" from "runner dead", which is exactly the distinction BE-0287's
-    /// concurrent server existed to keep. Suspending the caller instead, and blocking only this
-    /// queue's own thread, keeps `/health` answerable during a long gesture: `health` below is the
-    /// one operation that never touches this queue.
+    /// It is a dedicated queue rather than a lock taken inline so that the `async` caller suspends
+    /// instead of blocking. Under Unit 4's transport that caller is one of `HTTPServer`'s eight
+    /// connection threads, which `LegacyBackedTransport` blocks for the life of the request either
+    /// way — so the choice costs nothing on this stack, and it is what Unit 5 needs: once the
+    /// listener is Hummingbird the caller is a shared event loop, and blocking that in
+    /// `DispatchQueue.main.sync` would stall every other connection on it, including the
+    /// `GET /health` poll the driver uses to tell "runner busy" from "runner dead" — exactly the
+    /// distinction BE-0287's concurrent server exists to keep. `health` below never touches this
+    /// queue, so it answers during a long gesture on either stack.
     ///
     /// Internal rather than `private` so `APIHandlerConcurrencyTests` can assert the one property of
     /// this invariant that is observable in-process — that the queue admits a single operation at a
