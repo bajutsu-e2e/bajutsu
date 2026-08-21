@@ -62,9 +62,12 @@ struct PermissionsView: View {
     // iOS's cross-process paste-consent prompt is up, and a blocked main thread never lets
     // XCUITest's tap return — so the very step that would answer that prompt could never run
     // (BE-0369). The value publishes when the read returns, which is what the scenario waits for.
+    // A read that comes back with no string — a denied consent, or an empty pasteboard — publishes
+    // "(none)" rather than "", so a `choice: deny` step leaves a positive condition to wait for
+    // instead of a field indistinguishable from one never read.
     private func readPasteboard() {
         DispatchQueue.global(qos: .userInitiated).async {
-            let text = UIPasteboard.general.string ?? ""
+            let text = UIPasteboard.general.string ?? "(none)"
             DispatchQueue.main.async { pasted = text }
         }
     }

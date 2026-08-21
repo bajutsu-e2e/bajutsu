@@ -235,7 +235,9 @@ the tap that triggered it return:
 - `sys.copy` — button that writes a known string (`bajutsu-clip`) to the pasteboard
 - `sys.paste` — button that reads the pasteboard back into `sys.paste.value`
 - `sys.paste.value` — the pasted text; a scenario taps `sys.copy` then `sys.paste`, waits for the
-  value, and asserts it
+  value, and asserts it. A read that comes back with no string — the paste consent refused, or an
+  empty pasteboard — publishes `(none)`, so a scenario answering that prompt with `choice: deny` has
+  a value to wait for rather than a field it cannot tell from one never read
 
 ### 5.5 Tab: Notices — `notice` namespace (long list → detail, scroll-to-element)
 
