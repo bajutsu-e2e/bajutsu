@@ -131,6 +131,7 @@ def el(
         "traits": traits or [],
         "value": value,
         "frame": frame,
+        "nativeZ": None,
     }
 
 

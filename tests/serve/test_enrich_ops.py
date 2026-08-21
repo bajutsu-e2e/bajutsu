@@ -41,6 +41,7 @@ def _screen() -> list[base.Element]:
             "traits": ["staticText"],
             "value": None,
             "frame": (0.0, 0.0, 320.0, 44.0),
+            "nativeZ": None,
         },
     ]
 

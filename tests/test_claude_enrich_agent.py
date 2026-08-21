@@ -19,6 +19,7 @@ def _el(identifier: str, label: str, traits: list[str] | None = None) -> base.El
         "traits": traits or ["button"],
         "value": None,
         "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
     }
 
 
@@ -276,6 +277,7 @@ def test_secret_in_elements_is_masked() -> None:
             "traits": ["textField"],
             "value": "s3cret",
             "frame": (0.0, 0.0, 10.0, 10.0),
+            "nativeZ": None,
         }
     ]
     contexts = [StepContext(step=steps[0], screen=screen)]

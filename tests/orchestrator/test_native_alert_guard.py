@@ -50,6 +50,7 @@ def _button(label: str) -> base.Element:
         "traits": ["button"],
         "value": None,
         "frame": (0, 0, 10, 10),
+        "nativeZ": None,
     }
 
 

@@ -39,6 +39,7 @@ def test_web_step_taps_dom_element() -> None:
             "traits": ["button"],
             "value": None,
             "frame": (50.0, 100.0, 200.0, 40.0),
+            "nativeZ": None,
         },
     ]
     bridge = FakeBridge(dom_elements)
@@ -76,6 +77,7 @@ def test_web_step_assert_inside_web_context() -> None:
             "traits": [],
             "value": None,
             "frame": (10.0, 10.0, 100.0, 20.0),
+            "nativeZ": None,
         },
     ]
     bridge = FakeBridge(dom_elements)
@@ -116,6 +118,7 @@ def test_native_step_after_web_step_runs_on_native_driver() -> None:
             "traits": ["button"],
             "value": None,
             "frame": (50.0, 100.0, 200.0, 40.0),
+            "nativeZ": None,
         },
     ]
     bridge = FakeBridge(dom_elements)

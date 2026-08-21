@@ -214,6 +214,7 @@ def test_tool_use_loop_drives_the_neutral_interface(fake_provider: RecordingBack
         "traits": ["button"],
         "value": None,
         "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
     }
     proposal = agent.next_action(Observation(goal="g", screen=[el], history=[]))
     assert proposal.step is not None and proposal.step.tap is not None
@@ -284,6 +285,7 @@ def test_redaction_happens_before_the_adapter(fake_provider: RecordingBackend) -
         "traits": ["staticText"],
         "value": "sk-secret-token",
         "frame": (0.0, 0.0, 1.0, 1.0),
+        "nativeZ": None,
     }
     agent.next_action(Observation(goal="g", screen=[el], history=[]))
     text = next(

@@ -35,6 +35,7 @@ def _el(
         "traits": traits,
         "value": value,
         "frame": frame,
+        "nativeZ": None,
     }
 
 

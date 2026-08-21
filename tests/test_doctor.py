@@ -18,6 +18,7 @@ def _el(identifier: str | None, traits: list[str], label: str = "x") -> base.Ele
         "traits": traits,
         "value": None,
         "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
     }
 
 

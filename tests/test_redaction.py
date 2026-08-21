@@ -216,6 +216,7 @@ def _el(identifier: str, label: str, value: str) -> base.Element:
         "value": value,
         "traits": [],
         "frame": (0, 0, 1, 1),
+        "nativeZ": None,
     }
 
 
