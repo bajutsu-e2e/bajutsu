@@ -59,6 +59,7 @@ resolution, and the **preflight capability check** (below).
 | `selectOption` | set a native `<select>` by value (web only) | — | — | ✅ | ✅ |
 | `handleSystemAlert` | tap an iOS SpringBoard permission-prompt button natively | ✅ | — | — | ✅ |
 | `pickerWheel` | set a wheel-style picker to a named row (iOS only) | ✅ | — | — | ✅ |
+| `handleTipkitTip` | dismiss a blocking Apple TipKit tip (iOS only) | ✅ | — | — | ✅ |
 | `deviceControl.setLocation` | set the simulated GPS location | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | read / write / clear the clipboard | ✅ | ✅ | — | — |
 | `deviceControl.push` | deliver a push notification | ✅ | — | — | — |

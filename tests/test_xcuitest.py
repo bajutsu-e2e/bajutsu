@@ -1530,6 +1530,21 @@ def test_dismiss_blocking_tip_reports_false_and_taps_nothing_when_no_tip_is_up()
     assert sent == []
 
 
+def test_dismiss_blocking_tip_reports_false_when_the_tip_closes_itself_mid_dismiss() -> None:
+    # TipKit dismisses on its own rules, so the window between the snapshot that minted the handle and
+    # the tap is a live race, not a defect. The runner answers `not-found` (or exhausts `stale`), which
+    # `_actuate` raises as `ElementNotFound` — a `SelectorError`. Left to propagate it would surface
+    # `PopoverDismissRegion`, an identifier no author wrote, as a wait's failure reason, and would
+    # overwrite the real reason on the post-failure path. "The tip is gone" is what the caller asked
+    # about, so it reads as no dismissal.
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_tip_wire("h-scrim", "PopoverDismissRegion"))
+        return _Reply(status="not-found")  # the scrim went between the query and the tap
+
+    assert _driver(transport).dismiss_blocking_tip() is False
+
+
 def test_dismiss_blocking_tip_fails_loudly_on_two_dismiss_regions() -> None:
     # A shape TipKit should never produce. Distinct frames so `resolve_unique` cannot collapse them
     # as a content-identical duplicate: with a real choice to make, it must refuse to guess.

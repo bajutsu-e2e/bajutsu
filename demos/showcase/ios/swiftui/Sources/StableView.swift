@@ -38,13 +38,18 @@ struct StableView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
+                    // The button and its id are declared once, then optionally decorated:
+                    // `stable.refresh` is the id every Stable-tab scenario resolves against, and no
+                    // part of `make check` builds this app, so a second copy would only reveal its
+                    // drift as a puzzling on-device `no match`. Passing an optional tip to
+                    // `popoverTip` would read better still, but that overload is iOS 26+ and this
+                    // target is iOS 17 (project.yml), so the branch stays — over one shared button.
+                    let button = Button("Refresh") { refresh() }
+                        .accessibilityID("stable.refresh")
                     if model.tipKitMode {
-                        Button("Refresh") { refresh() }
-                            .accessibilityID("stable.refresh")
-                            .popoverTip(refreshTip)
+                        button.popoverTip(refreshTip)
                     } else {
-                        Button("Refresh") { refresh() }
-                            .accessibilityID("stable.refresh")
+                        button
                     }
                 }
             }

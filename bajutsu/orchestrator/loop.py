@@ -659,6 +659,17 @@ class _StepCounter:
 # step failure/timeout rather than an infinite loop.
 _INTERRUPT_MAX_FIRES = 3
 
+# Mid-wait TipKit dismisses allowed within one step, for the same reason as the two ceilings above.
+# The dismiss region is TipKit's own scrim identifier, but nothing proves it is TipKit's *alone* — an
+# app-authored `.popover` installs one too, and with `interactiveDismissDisabled()` it does not close
+# on a scrim tap. Unbounded, a guarded wait would then synthesize a tap every tick for its whole
+# timeout, each recorded as an actuation, and land one on whatever is underneath the moment the
+# popover finally closes on its own. Bounded, "the dismiss didn't take" degrades to the step's
+# ordinary failure or timeout, exactly as a mis-set `interrupts` entry does. One hook is built per
+# step and shared by both retries, so the total per step is this plus the end-of-step dismiss's own
+# single attempt — the same composition the alert guard already documents for _GUARD_MAX_ATTEMPTS.
+_TIP_MAX_DISMISSES = 2
+
 
 @dataclass
 class _InterruptGuard:
@@ -776,10 +787,14 @@ def _tip_poll_hook(
     if base.Capability.HANDLE_TIPKIT_TIP not in driver.capabilities():
         return interrupt_poll
 
+    dismissed = 0
+
     def poll(elements: list[base.Element]) -> bool:
+        nonlocal dismissed
         # The poll's own tree is handed to the driver, so ruling a tip out — the case on nearly every
         # tick — costs no query and a guarded wait polls at its usual rate.
-        driver.dismiss_blocking_tip(elements)
+        if dismissed < _TIP_MAX_DISMISSES and driver.dismiss_blocking_tip(elements):
+            dismissed += 1
         return interrupt_poll(elements) if interrupt_poll is not None else False
 
     return poll
@@ -1317,6 +1332,7 @@ class _StepRunner:
                             on_wait_tick=wait_tick,
                             transitions=self.cfg.transitions,
                             on_interrupt_poll=tip_poll,
+                            cancelled=self.cfg.cancelled,
                         )
             # A failure inside an interrupt's own recovery `steps` fails the step loudly, rather
             # than being swallowed while the run continues against a screen the recovery left

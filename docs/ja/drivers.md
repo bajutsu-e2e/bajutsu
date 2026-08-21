@@ -53,6 +53,7 @@ class Driver(Protocol):
 | `selectOption` | ネイティブ `<select>` を値で設定（web のみ） | — | — | ✅ | ✅ |
 | `handleSystemAlert` | iOS SpringBoard の許可プロンプトのボタンをネイティブにタップ | ✅ | — | — | ✅ |
 | `pickerWheel` | ホイール型のピッカーを指定した行へ設定（iOS のみ） | ✅ | — | — | ✅ |
+| `handleTipkitTip` | 操作をブロックしている Apple TipKit の tip を閉じる（iOS のみ） | ✅ | — | — | ✅ |
 | `deviceControl.setLocation` | 疑似 GPS 位置の設定 | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | クリップボードの読み取り / 書き込み / クリア | ✅ | ✅ | — | — |
 | `deviceControl.push` | プッシュ通知の配信 | ✅ | — | — | — |

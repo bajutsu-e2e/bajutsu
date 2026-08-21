@@ -195,3 +195,61 @@ def test_a_step_failing_with_no_tip_present_is_not_retried() -> None:
     )
     assert not result.ok
     assert attempts == 1, f"a failure with no tip present was retried ({attempts} attempts)"
+
+
+def test_a_scrim_that_never_closes_is_tapped_a_bounded_number_of_times() -> None:
+    # The dismiss region is TipKit's scrim identifier, but not provably TipKit's alone: an
+    # app-authored `.popover` with `interactiveDismissDisabled()` installs one and does NOT close on
+    # a scrim tap. Unbounded, the mid-wait hook would tap on every tick for the whole timeout and
+    # then land one on whatever the popover was covering. `_TIP_MAX_DISMISSES` caps it and the wait
+    # degrades to its ordinary timeout, the same way a mis-set `interrupts` entry goes inert.
+    #
+    # The bound is composed the way the alert guard's already is (`_GUARD_MAX_ATTEMPTS` + 1): the
+    # mid-wait hook is capped, and the end-of-step dismiss adds its own single attempt. One hook is
+    # built per step and shared by both retries, so neither re-arms the mid-wait counter.
+    driver = FakeDriver([el(_SCRIM, "dismiss popup")])  # no `react`: the scrim outlives every tap
+    driver.tipkit_dismiss_id = _SCRIM
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "h",
+                "iosTipKitHandling": True,
+                "steps": [{"wait": {"for": {"id": "never.appears"}, "timeout": 10}}],
+            }
+        ),
+        clock=FakeClock(),
+    )
+    assert not result.ok  # a clean timeout, not a hang
+    scrim_taps = [a for k, a in driver.actions if k == "tap" and a.get("id") == _SCRIM]
+    # A literal, deliberately not `_TIP_MAX_DISMISSES + 1`: deriving the bound from the constant the
+    # code under test reads makes the assertion move with a regression instead of catching it —
+    # raising the ceiling would then still pass. This number is the contract, so it is spelled out.
+    assert len(scrim_taps) <= 3, (
+        f"the unclosable scrim was tapped {len(scrim_taps)}× — the ceiling did not hold"
+    )
+
+
+def test_a_tip_that_closes_itself_mid_dismiss_is_not_an_error() -> None:
+    # TipKit dismisses on its own rules, so the window between the driver's snapshot and its tap is a
+    # live race, not a defect. The driver reports "no tip" for it; were it to raise instead, a wait
+    # whose target had just become reachable would fail carrying an identifier no author ever wrote.
+    class _SelfClosingDriver(FakeDriver):
+        def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:
+            self.screen = [el("home.title", "Home")]  # the tip went on its own
+            return False  # ... so nothing was dismissed by us
+
+    driver = _SelfClosingDriver([el(_SCRIM, "dismiss popup")])
+    driver.tipkit_dismiss_id = _SCRIM
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "i",
+                "iosTipKitHandling": True,
+                "steps": [{"wait": {"for": {"id": "home.title"}, "timeout": 10}}],
+            }
+        ),
+        clock=FakeClock(),
+    )
+    assert result.ok, result.failure

@@ -1128,7 +1128,16 @@ class XcuitestDriver:
         if not base.find_all(elements, sel):
             return False
         el = base.resolve_unique(elements, sel)
-        self._actuate("/tap", {"handle": handles[id(el)]}, sel, gesture="tap", element=el)
+        try:
+            self._actuate("/tap", {"handle": handles[id(el)]}, sel, gesture="tap", element=el)
+        except base.ElementNotFound:
+            # The tip closed itself between that snapshot and this tap — TipKit dismisses on its own
+            # rules, so the window is a live race rather than a defect. "The tip is gone" is what a
+            # caller asked about, so it reads as no dismissal, not as an error: raising here would
+            # surface `PopoverDismissRegion` — an identifier no author wrote — as a wait's failure
+            # reason, and would overwrite the real reason on the post-failure path. An
+            # `AmbiguousSelector` from `resolve_unique` above still propagates.
+            return False
         return True
 
     def back(self) -> None:
