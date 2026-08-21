@@ -84,8 +84,9 @@ def test_tiered_skills_declare_a_model() -> None:
     default is a visible regression rather than a silent drift back to running everything at
     always-max.
 
-    The set is the pinned subset those two items wired, not every skill docs/ai-development.md
-    lists a tier for; a skill joins it when an item puts its model choice on the record.
+    The set is only the subset BE-0103 and BE-0380 chose to pin here — not every skill that declares
+    a ``model:``, nor every skill docs/ai-development.md lists a tier for. Extend it from a later
+    item that wants its own skill's tier guarded the same way.
     """
     tiered = {"fix-issue", "implement-be", "ideation", "japanese-document-writing"}
     declared = {
