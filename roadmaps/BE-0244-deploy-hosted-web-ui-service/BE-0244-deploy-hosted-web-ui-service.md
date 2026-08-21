@@ -7,13 +7,17 @@
 |---|---|
 | Proposal | [BE-0244](BE-0244-deploy-hosted-web-ui-service.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Rejected** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0244") |
 | Topic | Hosting the web UI |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
+
+> **Rejected — the service is already live.** A hosted, shared web UI service now runs through a
+> path outside the phased plan below, so the provisioning work this item tracked is no longer
+> needed. Kept for the historical record.
 
 [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) selected the stack
 for a publicly hosted web UI and shipped **all of the enabling software**: the five swap-in
