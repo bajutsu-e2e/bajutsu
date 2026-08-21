@@ -129,8 +129,9 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
     a paced `/loop`** that drives the mechanical tail (CI fixes, review replies) to quiet-and-green,
     delegating each iteration's `pr-followup` work to a fresh subagent so the heavy implement
     transcript stays out of it. The loop escalates to the human on a design-change comment or a
-    merge conflict, and never marks the PR ready itself. See `implement-be` steps 10–12, which
-    `fix-issue` runs unmodified for a plain GitHub issue that carries no BE id.
+    merge conflict, and never marks the PR ready itself. See `implement-be` steps 10–12 —
+    `fix-issue` runs the follow-up steps 11–12 unmodified, and its own step 7 adapts step 10 for a
+    plain GitHub issue that carries no BE id.
   - For any other request, the default is still: push and let the human open the PR unless they ask.
 - **PRs created by Claude Code always start as Draft.** When asked to open a PR, create it with
   `gh pr create --draft`, then keep pushing fixes until `make check` and CI are both green before
