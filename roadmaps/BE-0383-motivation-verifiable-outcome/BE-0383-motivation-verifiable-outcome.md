@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0383](BE-0383-motivation-verifiable-outcome.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0383") |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
@@ -115,9 +115,9 @@ rather than close a gap.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — add the verifiable-outcome bullet to `document-writing`.
-- [ ] Unit 2 — `ideation` step 2 asks for the verifiable outcome during the conversation.
-- [ ] Unit 3 — `ideation` step 4 carries the answer into the drafted Motivation.
+- [x] Unit 1 — add the verifiable-outcome bullet to `document-writing`.
+- [x] Unit 2 — `ideation` step 2 asks for the verifiable outcome during the conversation.
+- [x] Unit 3 — `ideation` step 4 carries the answer into the drafted Motivation.
 
 ## References
 

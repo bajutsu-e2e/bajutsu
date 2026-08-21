@@ -40,6 +40,14 @@ pass.
 - **State the contribution up front.** A BE item's Introduction and Motivation state the problem,
   the background, the contribution, and why it matters — before the detail. A reader who stops after
   the first two paragraphs should still come away with the point.
+- **Say how a later reader could tell the contribution arrived.** The same principle applied to a
+  BE item: alongside the contribution, Motivation names one observable difference the change is meant
+  to produce — a change in behavior, in output, or in a quantity a reader could later check against
+  the shipped result. That outcome is not the item's *Progress* checklist, which tracks whether the
+  work landed rather than whether the predicted effect followed. A number is optional; "the local
+  self-review pass converges before a push, instead of the live bot's cycle restarting on unrelated
+  findings" serves as well as one, because a reader can still tell whether it held
+  ([BE-0383](../../roadmaps/BE-0383-motivation-verifiable-outcome/BE-0383-motivation-verifiable-outcome.md)).
 - **The two stress points of a sentence are its beginning and its end.** The end carries the most
   emphasis, so reserve it for the most important element. Move from the known to the unknown, from
   the given to the new, from background to result. Put transitional and background words
