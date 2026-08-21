@@ -36,7 +36,10 @@ final class APIHandlerConcurrencyTests: XCTestCase {
 
         private func hold() {
             entered.signal()
-            release.wait()
+            // Bounded: this runs on the main thread inside `APIHandler.serialized`'s
+            // `DispatchQueue.main.sync`, so an unbounded wait would stop the run loop the test's own
+            // `wait(for:)` needs to time out — a hang with no diagnostic instead of a failure.
+            _ = release.wait(timeout: .now() + 10)
         }
 
         func queryElements() -> [ElementSnapshot] {
@@ -108,7 +111,9 @@ final class APIHandlerConcurrencyTests: XCTestCase {
         // Off the main thread throughout: the main thread's job is to spin the run loop that services
         // the operation's `DispatchQueue.main.sync`, exactly as the live-server tests do.
         DispatchQueue.global().async {
-            provider.entered.wait()
+            // Bounded off-main too: a missed signal should fail the assertion below rather than leave
+            // this thread blocked for the rest of the run.
+            _ = provider.entered.wait(timeout: .now() + 10)
             handler.operations.async { probeRan.signal() }
             // Bounded: a queue the held operation occupies cannot run this, so the wait is expected to
             // time out. A bypassed or concurrent queue runs it immediately.

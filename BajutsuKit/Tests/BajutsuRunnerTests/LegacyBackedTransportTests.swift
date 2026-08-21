@@ -83,7 +83,10 @@ final class LegacyBackedTransportTests: XCTestCase {
         let releaseMainThread = DispatchSemaphore(value: 0)
         provider.beforeQueryElements = {
             mainThreadHeld.signal()
-            releaseMainThread.wait()
+            // Bounded so a broken assumption fails this test instead of hanging the run: the main
+            // thread is parked here inside `DispatchQueue.main.sync`, so `wait(for:)` below cannot
+            // fire its own timeout while this waits.
+            _ = releaseMainThread.wait(timeout: .now() + 10)
         }
 
         // Both requests run off the main thread, because the main thread's job here is to spin the
@@ -92,7 +95,9 @@ final class LegacyBackedTransportTests: XCTestCase {
         var healthStatus: Int?
         DispatchQueue.global().async { _ = HTTPTestClient.get(port: port, path: "/elements") }
         DispatchQueue.global().async {
-            mainThreadHeld.wait()
+            // Bounded for the same reason, milder here: off-main, an unbounded wait would leave this
+            // thread blocked for the rest of the run rather than stall the suite.
+            _ = mainThreadHeld.wait(timeout: .now() + 10)
             healthStatus = HTTPTestClient.get(port: port, path: "/health").status
             releaseMainThread.signal()
             probed.fulfill()
