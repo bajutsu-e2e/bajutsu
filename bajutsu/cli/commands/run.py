@@ -20,6 +20,7 @@ from bajutsu.analytics import ledger as _usage_ledger
 from bajutsu.analytics import usage as _usage
 from bajutsu.assertions import GoldenContext
 from bajutsu.backends import select_actuator_for_scenario
+from bajutsu.cancellation import CancelSource, graceful_sigterm
 from bajutsu.cli._projects import config_from_source, open_registry
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
@@ -563,6 +564,10 @@ class _RunPlan:
     # `--score`: emit the app's entry-screen convention score once (doctor's grade, inline) so CI needs
     # no separate `doctor` cold-spawn. Diagnostic only — never on the verdict path.
     score: bool
+    # Reports whether a `SIGTERM` has asked this run to stop (BE-0370). The pipeline reads it at
+    # each scenario, step, and condition-wait boundary and fails whatever it did not finish, so a
+    # cancelled run still writes its manifest and report instead of vanishing from the history.
+    cancelled: CancelSource
     # Whether a backend-crash-triggered retry may force `preconditions.erase=True`
     # (`bajutsu/runner/pipeline.py`'s forced-erase retry). `erase is not False` — True for the default
     # (unset) and explicit `--erase`, False only for an explicit `--no-erase` — captured here, ahead of
@@ -672,6 +677,7 @@ def _dispatch_single(
             # XCUITest runner. Off by default, so an ordinary run is unchanged.
             on_score=_print_score if plan.score else None,
             force_erase_on_retry=plan.force_erase_on_retry,
+            cancelled=plan.cancelled,
         )
     finally:
         shutdown()
@@ -721,6 +727,7 @@ def _dispatch_matrix(
                 # Each engine pass scores its own entry screen once (`--score`); off by default.
                 on_score=_print_score if plan.score else None,
                 force_erase_on_retry=plan.force_erase_on_retry,
+                cancelled=plan.cancelled,
             )
         finally:
             shutdown()
@@ -737,6 +744,7 @@ def _dispatch_matrix(
         secret_values=plan.secret_values,
         config_source=plan.config_source,
         exec_provenance=exec_decision,
+        cancelled=plan.cancelled,
     )
 
 
@@ -1082,50 +1090,56 @@ def run(
         baselines_dir, schemas_dir, gc = _resolve_evidence_dirs(
             baselines, schemas, goldens, eff, files[0]
         )
-        plan = _RunPlan(
-            eff=eff,
-            config_source=config_source,
-            target_name=target_name,
-            scenarios=scenarios,
-            description=description,
-            source_name=source_name,
-            engines=engines,
-            actuator=actuator,
-            backends=backends,
-            udids=udids,
-            udid_spec=lease.udid_spec,
-            workers=workers,
-            provision=lease.provision,
-            alert_guard_for=alert_guard_for,
-            baselines_dir=baselines_dir,
-            schemas_dir=schemas_dir,
-            golden_context=gc,
-            secret_bindings=secret_bindings,
-            secret_values=secret_values,
-            run_id=new_run_id(),
-            runs_dir=Path(runs_dir),
-            network=network,
-            log_predicate=log_predicate,
-            log_subsystem=log_subsystem,
-            progress=progress,
-            zip_run=zip_run,
-            evidence_store=evidence_store,
-            upload_exec=upload_exec,
-            score=score,
-            # `erase` is the pre-`_filter_scenarios` CLI flag: None (unset) and explicit `--erase` both
-            # mean "no operator opt-out", only `--no-erase` (False) does.
-            force_erase_on_retry=erase is not False,
-        )
-        # Install the usage/cost ledger before dispatch (BE-0196). Reporting only — emission is
-        # best-effort and off the deterministic verdict path (prime directive 1). Per-scenario
-        # `command` / `scenario` attribution is bound at the alert guard (`_alert_guard_factory`),
-        # which fires inside the runner's worker threads, so it reaches the worker under `--workers N`.
-        _usage_ledger.configure_from_ai_config(eff.ai)
-        # Snapshot AI usage before dispatch — the alert guard is the only thing that can spend tokens,
-        # and it fires during dispatch, so `_finish` reports exactly what this run used.
-        before = _usage.snapshot()
-        results, manifest = _dispatch(plan)
-        _finish(plan, results, manifest, before)
+        # Answer a `SIGTERM` by asking the run to stop at its next safe boundary instead of dying
+        # where it stands, leaving no manifest, no report, and no history row (BE-0370). The window
+        # covers `_finish` too: the `FAIL <manifest>` line it prints is what `serve` reads this run's
+        # id from, so a hard kill between the report and that line would still lose the run.
+        with graceful_sigterm() as cancelled:
+            plan = _RunPlan(
+                eff=eff,
+                config_source=config_source,
+                target_name=target_name,
+                scenarios=scenarios,
+                description=description,
+                source_name=source_name,
+                engines=engines,
+                actuator=actuator,
+                backends=backends,
+                udids=udids,
+                udid_spec=lease.udid_spec,
+                workers=workers,
+                provision=lease.provision,
+                alert_guard_for=alert_guard_for,
+                baselines_dir=baselines_dir,
+                schemas_dir=schemas_dir,
+                golden_context=gc,
+                secret_bindings=secret_bindings,
+                secret_values=secret_values,
+                run_id=new_run_id(),
+                runs_dir=Path(runs_dir),
+                network=network,
+                log_predicate=log_predicate,
+                log_subsystem=log_subsystem,
+                progress=progress,
+                zip_run=zip_run,
+                evidence_store=evidence_store,
+                upload_exec=upload_exec,
+                score=score,
+                # `erase` is the pre-`_filter_scenarios` CLI flag: None (unset) and explicit `--erase` both
+                # mean "no operator opt-out", only `--no-erase` (False) does.
+                force_erase_on_retry=erase is not False,
+                cancelled=cancelled,
+            )
+            # Install the usage/cost ledger before dispatch (BE-0196). Reporting only — emission is
+            # best-effort and off the deterministic verdict path (prime directive 1). Per-scenario
+            # `command` / `scenario` attribution is bound at the alert guard (`_alert_guard_factory`),
+            # which fires inside the runner's worker threads, so it reaches the worker under `--workers N`.
+            _usage_ledger.configure_from_ai_config(eff.ai)
+            # Snapshot AI usage before dispatch — the alert guard is the only thing that can spend tokens,
+            # and it fires during dispatch, so `_finish` reports exactly what this run used.
+            before = _usage.snapshot()
+            results, manifest = _dispatch(plan)
+            _finish(plan, results, manifest, before)
     finally:
         # Hand the device back to its provider (a no-op for the local one), even on failure so a
         # reserved cloud device is never leaked (BE-0236). Warn-only, never propagate: a provider's

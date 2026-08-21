@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0369") |
-| Implementing PR | [#1652](https://github.com/bajutsu-e2e/bajutsu/pull/1652) |
+| Implementing PR | [#1652](https://github.com/bajutsu-e2e/bajutsu/pull/1652), [#1670](https://github.com/bajutsu-e2e/bajutsu/pull/1670) |
 | Topic | Platform support |
 | Related | [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md), [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md) |
 <!-- /BE-METADATA -->
@@ -221,6 +221,12 @@ actually triggers the alert the way a genuine cross-app paste does.
       the gating `run` list is deliberately left to a follow-up, so the lane's first cross-process
       paste earns its stability on CI's own hosts before a required check rests on it (BE-0218).
       The fixture needed one change the design did not foresee — see unit 3.
+      A follow-up widened the fixture to four scenarios — `grant` and `deny` under the target's
+      locale, then the same pair under `locale: ja_JP` — since one granting scenario left the deny
+      label of either language, and both Japanese labels, checked by unit 5's table alone. The deny
+      half took one more showcase change: a refused read returns nil, so the apps publish `(none)`
+      rather than `""`, which is what gives that half a positive condition to wait for instead of a
+      field indistinguishable from one never read.
 - [x] Unit 3 — verified on a booted Simulator (iPhone 17, iOS 26.5), against both the SwiftUI and the
       UIKit showcase app, under `en_US` and `ja_JP`.
 - [x] Unit 4 — docs: `paste` added to `docs/scenarios.md`'s "Naming the intent instead of the text"

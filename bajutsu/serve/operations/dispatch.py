@@ -269,6 +269,10 @@ def start_run(
             # this fixes the finish-time race and lets a remote worker's `_persist_run` stamp the run
             # without a registry. None when no hub is wired, leaving the run unlabeled as before.
             project_id=_active_project_id(state, org),
+            # A cancelled `run` is finished cooperatively so it still lands in the history as a failed
+            # run (BE-0370). Only a `run` job declares this: it is the only kind with a pass/fail
+            # verdict and a manifest to preserve.
+            graceful_cancel=True,
         ),
     )
     if capped:

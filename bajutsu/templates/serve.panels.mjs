@@ -80,8 +80,9 @@ function recRunDone(j){
   state.recRunPoll=null;state.recRunJobId=null;setBusy($('#rec-run'),$('#rec-runstop'),false);
   showReportPanel();  // re-show the pane (the user may have closed it mid-run) so the result lands
   const rs=$('#rec-runstatus');
-  if(j.cancelled){if(rs)setStatus(rs,'cancelled','ng');return}
-  if(rs)setStatus(rs,j.ok?'PASS':'FAIL', j.ok?'ok':'ng');
+  // Same as the Replay tab's runDone: a cancelled run has a report to show (BE-0370).
+  if(j.cancelled&&rs)setStatus(rs,'cancelled','ng');
+  else if(rs)setStatus(rs,j.ok?'PASS':'FAIL', j.ok?'ok':'ng');
   if(j.runId)setReport(j.runId,j.ok,'#rec-report');
 }
 
@@ -211,8 +212,10 @@ function pickedUdids(){return [...$('#sims').querySelectorAll('.simck:checked')]
 function onSimChange(){const n=pickedUdids().length;if(n>0)$('#workers').value=n}
 function runDone(j){
   state.poll=null;state.runJobId=null;setBusy($('#go'),$('#stop'),false);
-  if(j.cancelled){setStatus($('#status'),'cancelled','ng');loadHistory();return}
-  setStatus($('#status'),j.ok?'PASS':'FAIL', j.ok?'ok':'ng');
+  // A cancelled run keeps its own label but is no longer a dead end: it writes a manifest and a
+  // report like any other failed run (BE-0370), so fall through to embed them.
+  if(j.cancelled)setStatus($('#status'),'cancelled','ng');
+  else setStatus($('#status'),j.ok?'PASS':'FAIL', j.ok?'ok':'ng');
   if(j.runId)setReport(j.runId,j.ok);
   loadHistory();
 }
