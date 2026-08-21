@@ -102,6 +102,10 @@ If in doubt, prefer the serial path — it is the default for a reason.
 Everything happens on **one branch**, `claude/<topic>`, cut off the latest `origin/main`
 (`git fetch origin && git switch -c claude/<topic> origin/main`).
 
+This skill defines no [`be-progress-tracker`](../be-progress-tracker/workflow.md) checkpoints of
+its own — it inherits the ones `ideation` and `implement-be` already define at the steps Phase A
+and Phase B delegate to, keyed on the same `BE-XXXX` placeholder throughout.
+
 ### Phase A — author the proposal (delegates to `ideation`)
 
 Author the BE proposal exactly as [`ideation`](../ideation/workflow.md) prescribes — this skill
