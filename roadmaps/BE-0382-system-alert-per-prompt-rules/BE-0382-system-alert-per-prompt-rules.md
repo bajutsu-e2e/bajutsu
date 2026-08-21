@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-system-alert-per-prompt-rules-ja.md)
+**English** · [日本語](BE-0382-system-alert-per-prompt-rules-ja.md)
 
-# BE-XXXX — Let the reactive system-alert guard answer each covered prompt by its own rule
+# BE-0382 — Let the reactive system-alert guard answer each covered prompt by its own rule
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-system-alert-per-prompt-rules.md) |
+| Proposal | [BE-0382](BE-0382-system-alert-per-prompt-rules.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0382") |
 | Implementing PR | [#1672](https://github.com/bajutsu-e2e/bajutsu/pull/1672) |
 | Topic | Scenario authoring features |
 | Related | [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md), [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md), [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md), [BE-0369](../BE-0369-ios-paste-consent-prompt-choice/BE-0369-ios-paste-consent-prompt-choice.md) |
