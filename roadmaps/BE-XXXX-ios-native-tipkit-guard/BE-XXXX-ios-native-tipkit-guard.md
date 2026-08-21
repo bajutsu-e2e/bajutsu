@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-ios-native-tipkit-guard.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Implementing PR | _filled in once the PR is opened_ |
 | Topic | Platform support |
 | Related | [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md), [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0349](../BE-0349-tap-target-hittability-check/BE-0349-tap-target-hittability-check.md), [BE-0357](../BE-0357-xcuitest-duplicate-node-hittable-tiebreak/BE-0357-xcuitest-duplicate-node-hittable-tiebreak.md) |
 <!-- /BE-METADATA -->
@@ -78,8 +79,8 @@ which is what makes this a small item rather than a runner-protocol change.
 ## Detailed design
 
 The work divides into a feasibility spike (confirmed on-device before this proposal was written up),
-the driver-side dismiss method behind a capability token, the tap-time recovery hook, the wait-loop
-gate, opt-in configuration, and on-device verification.
+the driver-side dismiss method behind a capability token, the post-failure retry, the mid-wait gate,
+opt-in configuration, and on-device verification.
 
 1. **On-device feasibility spike — confirmed.** A real Simulator run captured a live TipKit tip's
    accessibility tree (`elements.json` for the step, from the showcase app's Stable tab) and found
@@ -122,32 +123,33 @@ gate, opt-in configuration, and on-device verification.
    deciding pass/fail, so it stays clear of prime directive 1. Unit 1's finding is what keeps this unit
    small: it needs no Swift runner route, only the driver's existing query and tap primitives.
 
-3. **Extend the tap-time recovery path, gated on the tip's confirmed presence.**
+3. **A post-failure dismiss-and-retry, in the step loop.** Unit 1 showed a tip-covered target does not
+   merely lose `isHittable` — it leaves the tree, so the step it blocked fails as `ElementNotFound` as
+   readily as `ElementNotTappable`. That rules out
    [BE-0349](../BE-0349-tap-target-hittability-check/BE-0349-tap-target-hittability-check.md)'s
-   `_tap_with_recovery` (`bajutsu/orchestrator/actions/handlers/gestures.py`) already catches a tap's
-   `ElementNotTappable` and retries after a bounded scroll — but unit 1 showed a tip-covered target can
-   also fail as `ElementNotFound`, entirely outside that catch, since the target vanishes from the tree
-   rather than merely losing `isHittable`. Extend the recovery to catch both exceptions and, before
-   running any existing recovery, call unit 2's `dismiss_blocking_tip()`. Like the wait-loop gate in
-   unit 4, this hook runs only when the backend advertises `HANDLE_TIPKIT_TIP` and `tipKitHandling`
-   (unit 5) is enabled, so a scenario asserting on a tip keeps today's behavior on both paths. Only when
-   the call reports a tip actually dismissed does the hook retry the
-   tap once: an `ElementNotFound` with no tip present is left to raise unchanged, since retrying on a
-   generic "not found" with no confirmed cause would quietly mask a genuine selector bug — the same
-   fail-loud discipline prime directive 2 already holds `resolve_unique` to. When a tip is confirmed and
-   the retry still fails, `ElementNotTappable`'s existing bounded-scroll recovery still runs as today's
-   fallback; scrolling never runs first, since a popover anchored to the target sits in front of it
-   regardless of scroll position, and running it first would burn `_TAP_RECOVERY_MAX_SCROLLS`'s bounded
-   budget on an obstruction it cannot clear.
+   `_tap_with_recovery` (`bajutsu/orchestrator/actions/handlers/gestures.py`) as the hook: it catches
+   only the latter, and a step handler's signature carries no per-scenario run-behavior setting, so
+   gating it there would mean changing `ActionHandler` and every handler and caller. Put the recovery
+   in the step loop instead (`bajutsu/orchestrator/loop.py`), beside the alert guard's existing
+   end-of-step "dismiss, then one more shot" branch: that layer already sees every step failure
+   whatever its exception, and already holds the scenario, so both guards end up in the one place that
+   owns the config. On a failed step, call unit 2's `dismiss_blocking_tip()`; **only** if it reports a
+   tip actually dismissed does the step get one retry. A failure with no tip present is left to fail
+   unchanged — retrying a generic "not found" with no confirmed cause would quietly mask a genuine
+   selector bug, the same fail-loud discipline prime directive 2 already holds `resolve_unique` to.
+   Because the dismiss is what gates the retry, a passing run never pays a query for this at all.
 
-4. **A wait-loop gate.** Following `_AlertGuardGate`'s shape (`bajutsu/orchestrator/waits.py`) but
-   considerably smaller, a new gate calls unit 2's `dismiss_blocking_tip()` on the wait's own poll
-   cadence — no independent wall-clock interval, since unit 1 established there is nothing
-   out-of-process to rate-limit the way BE-0315's cross-process SpringBoard query needed. Dismissing
-   proactively while a scenario is still waiting keeps most runs from ever reaching unit 3's tap-time
-   path at all; unit 3 remains the backstop for a tip that is already up the moment a tap is attempted
-   with no preceding wait. The gate only activates when the backend advertises `HANDLE_TIPKIT_TIP` and
-   the opt-in setting below is enabled; everywhere else, today's behavior is unchanged.
+4. **A mid-wait gate, riding the poll hook BE-0314 already installs.** A wait blocked behind a tip
+   should not burn its whole timeout before unit 3 rescues it, so the dismiss also runs while the wait
+   polls. Rather than a second gate object beside `_AlertGuardGate`, it composes onto the
+   `on_interrupt_poll` callback BE-0314's `interrupts` already threads through every wait: that hook is
+   handed each poll's already-fetched tree, so the dismiss costs no query of its own and needs no
+   independent wall-clock interval — unit 1 established there is nothing out-of-process to rate-limit
+   the way BE-0315's cross-process SpringBoard query needed. One detail the hook's contract forces: a
+   successful dismiss must report `False`, since `True` on that callback means "a recovery failed, end
+   the wait" — reporting it would abort a wait that the dismiss just freed to succeed. The gate
+   activates only when the backend advertises `HANDLE_TIPKIT_TIP` and the opt-in setting below is
+   enabled, and composes transparently whether or not the scenario also declares `interrupts`.
 
 5. **Opt-in configuration, off by default.** A new `tipKitHandling` setting (boolean), resolved through
    the same flag > scenario > target > default precedence
@@ -209,14 +211,19 @@ gate, opt-in configuration, and on-device verification.
 
 - [x] Unit 1 — on-device feasibility spike, confirmed: `PopoverDismissRegion` is the sole signal and
       dismiss target; a tip-covered target can fail as `ElementNotFound`, not only `ElementNotTappable`.
-- [ ] Unit 2 — `Driver.dismiss_blocking_tip()` behind `Capability.HANDLE_TIPKIT_TIP`, with the TipKit
+- [x] Unit 2 — `Driver.dismiss_blocking_tip()` behind `Capability.HANDLE_TIPKIT_TIP`, with the TipKit
       identifier confined to `bajutsu/drivers/xcuitest.py`.
-- [ ] Unit 3 — tap-time recovery hook catching both exceptions, tried before the bounded-scroll
-      recovery.
-- [ ] Unit 4 — wait-loop gate calling the driver method on the wait's own poll cadence.
-- [ ] Unit 5 — opt-in `tipKitHandling` setting (default off) with `--tipkit-handling` /
+- [x] Unit 3 — post-failure dismiss-and-retry in the step loop, beside the alert guard's own branch.
+- [x] Unit 4 — mid-wait dismiss composed onto BE-0314's `on_interrupt_poll` hook.
+- [x] Unit 5 — opt-in `tipKitHandling` setting (default off) with `--tipkit-handling` /
       `--no-tipkit-handling` and BE-0177 precedence.
-- [ ] Unit 6 — on-device verification and showcase fixtures/scenarios for both recovery paths.
+- [x] Unit 6 — on-device verification and showcase fixtures/scenarios for both recovery paths.
+
+Verified on a booted Simulator with `demos/showcase/scenarios/tipkit.yaml`: all three scenarios pass
+with the guard on, and forcing it off with `--no-tipkit-handling` fails exactly the two
+guard-dependent ones — the tap scenario with `no match: {'id': 'stable.refresh'}` (the target absent
+from the tree, unit 1's `ElementNotFound` finding) and the wait scenario on its full 15s timeout.
+Each guard path is therefore load-bearing, not incidentally passing.
 
 ## References
 
@@ -226,10 +233,13 @@ gate, opt-in configuration, and on-device verification.
 - [`bajutsu/drivers/xcuitest.py`](../../bajutsu/drivers/xcuitest.py) — the XCUITest driver that gains
   `dismiss_blocking_tip()`, and the one file the `PopoverDismissRegion` identifier appears in.
 - [`bajutsu/orchestrator/waits.py`](../../bajutsu/orchestrator/waits.py) — `_AlertGuardGate`, the
-  mid-wait gate shape this proposal's smaller TipKit gate (unit 4) follows.
+  mid-wait guard whose shape unit 4 was modelled on before it reused BE-0314's poll hook instead, and
+  the `on_interrupt_poll` contract that makes a successful dismiss report `False`.
+- [`bajutsu/orchestrator/loop.py`](../../bajutsu/orchestrator/loop.py) — the step loop that gains
+  both guards (units 3 and 4), beside the alert guard's existing end-of-step dismiss-and-retry.
 - [`bajutsu/orchestrator/actions/handlers/gestures.py`](../../bajutsu/orchestrator/actions/handlers/gestures.py)
-  — `_tap_with_recovery` and `_TAP_RECOVERY_MAX_SCROLLS`, BE-0349's tap-time recovery path this
-  proposal's unit 3 extends with a dismiss attempt tried ahead of the bounded scroll.
+  — `_tap_with_recovery`, BE-0349's tap-time recovery, which unit 3 explains is the wrong hook: it
+  catches only `ElementNotTappable`, and a tip-covered target leaves the tree instead.
 - [`bajutsu/drivers/playwright.py`](../../bajutsu/drivers/playwright.py) — `_on_dialog`, the web
   backend's existing precedent for a framework-owned overlay handled in the driver rather than through
   scenario config or the orchestrator.

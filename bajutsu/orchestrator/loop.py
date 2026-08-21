@@ -743,6 +743,45 @@ class _InterruptGuard:
         return elements
 
 
+def _dismiss_blocking_tip(driver: base.Driver, scenario: Scenario) -> bool:
+    """Clear a TipKit tip blocking the screen, when this scenario opted in; True if one was cleared.
+
+    Deliberately narrow: it fires only after a step already failed, so a passing run never pays a
+    query for it, and a scenario that did not ask keeps today's behavior exactly. The driver decides
+    what identifies a tip, so no backend-specific selector reaches this layer.
+    """
+    if not scenario.tip_kit_handling:
+        return False
+    if base.Capability.HANDLE_TIPKIT_TIP not in driver.capabilities():
+        return False
+    return driver.dismiss_blocking_tip()
+
+
+def _tip_poll_hook(
+    driver: base.Driver,
+    scenario: Scenario,
+    interrupt_poll: Callable[[list[base.Element]], bool] | None,
+) -> Callable[[list[base.Element]], bool] | None:
+    """Compose the mid-wait TipKit dismiss onto a step's interrupt-poll hook, or return it unchanged.
+
+    Dismissing while the wait is still blocked is what keeps most runs off the post-failure retry
+    path: the tip goes as soon as a poll sees it, and the wait's remaining budget is spent on the
+    target rather than on a screen nothing can reach. The dismiss never ends the wait — `True` is
+    reserved for "a recovery failed", so reporting one here would abort a wait that is now free to
+    succeed.
+    """
+    if not scenario.tip_kit_handling:
+        return interrupt_poll
+    if base.Capability.HANDLE_TIPKIT_TIP not in driver.capabilities():
+        return interrupt_poll
+
+    def poll(elements: list[base.Element]) -> bool:
+        driver.dismiss_blocking_tip()
+        return interrupt_poll(elements) if interrupt_poll is not None else False
+
+    return poll
+
+
 def _run_if(
     driver: base.Driver,
     if_block: If,
@@ -1130,6 +1169,13 @@ class _StepRunner:
             if self.cfg.interrupts and not self.state.running_recovery
             else None
         )
+        # The mid-wait TipKit dismiss rides the same poll hook, so a wait blocked behind a tip clears
+        # it without a query of its own — and a step with no `interrupts` still gets the gate.
+        tip_poll = _tip_poll_hook(
+            active_driver,
+            self.cfg.scenario,
+            guard.observe if guard is not None else None,
+        )
         if guard is not None and kind != "wait":
             # Re-baseline `before` from the settled post-recovery tree either way, so a cleared
             # interstitial's own screen change is not later misattributed to this step's action by
@@ -1182,7 +1228,7 @@ class _StepRunner:
                 alerts=outcome.alerts,
                 on_wait_tick=wait_tick,
                 transitions=self.cfg.transitions,
-                on_interrupt_poll=guard.observe if guard is not None else None,
+                on_interrupt_poll=tip_poll,
                 cancelled=self.cfg.cancelled,
             )
             if guard is not None and guard.failure is not None:
@@ -1190,6 +1236,30 @@ class _StepRunner:
                 # firing the end-of-step alert-guard dismiss/retry against the screen the failed
                 # recovery left, symmetric with the pre-act short-circuit above.
                 ok, reason = False, guard.failure
+            elif not ok and _dismiss_blocking_tip(active_driver, self.cfg.scenario):
+                # A TipKit tip hides what it covers from the tree, so the step it blocked failed as
+                # `ElementNotFound` as readily as `ElementNotTappable` — either way the target was
+                # unreachable for a reason this one dismiss just cleared, so it gets one more shot.
+                # Only reached when a tip was actually dismissed, so a step that failed for any other
+                # reason still fails on its first attempt, with no retry to mask it.
+                wait_trace = WaitTrace() if wait_trace is not None else None
+                ok, reason, results, snapshot = _run_step_body(
+                    active_driver,
+                    interp_step,
+                    kind,
+                    self.cfg.clock,
+                    self.cfg.network,
+                    self.cfg.relaunch,
+                    self.state.bindings,
+                    self.cfg.control,
+                    self.cfg.mailbox,
+                    self.cfg.ctx,
+                    wait_trace=wait_trace,
+                    selection=self.state.selection,
+                    on_wait_tick=wait_tick,
+                    transitions=self.cfg.transitions,
+                    on_interrupt_poll=tip_poll,
+                )
             elif not ok and self.cfg.alert_guard is not None:
                 event = self.cfg.alert_guard(active_driver)
                 if event is not None:
@@ -1213,7 +1283,7 @@ class _StepRunner:
                         selection=self.state.selection,
                         on_wait_tick=wait_tick,
                         transitions=self.cfg.transitions,
-                        on_interrupt_poll=guard.observe if guard is not None else None,
+                        on_interrupt_poll=tip_poll,
                         cancelled=self.cfg.cancelled,
                     )
             # A failure inside an interrupt's own recovery `steps` fails the step loudly, rather

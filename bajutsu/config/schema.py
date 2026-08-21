@@ -396,6 +396,8 @@ class TargetConfig(_Model):
         serialization_alias="systemAlertHandling",
     )
     erase: bool | None = None  # default for preconditions.erase (built-in: off)
+    # Default for a scenario's tipKitHandling (built-in: off — a tip is sometimes the assertion).
+    tip_kit_handling: bool | None = Field(default=None, alias="tipKitHandling")
     network: bool | None = None  # collect the app's network exchanges (built-in: on)
     # App-wide interstitial-screen handlers (BE-0314): the same `{ condition, steps }` shape a
     # scenario's `interrupts` uses, applied to every scenario for this target. A scenario's own

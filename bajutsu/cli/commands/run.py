@@ -293,7 +293,13 @@ def _load_scenarios(
 
 
 def _filter_scenarios(
-    scenarios: list[Scenario], tag: str, exclude: str, erase: bool | None, target_erase: bool
+    scenarios: list[Scenario],
+    tag: str,
+    exclude: str,
+    erase: bool | None,
+    target_erase: bool,
+    tipkit_handling: bool | None = None,
+    target_tipkit_handling: bool = False,
 ) -> list[Scenario]:
     """Apply `--tag`/`--exclude` selection and resolve each scenario's `preconditions.erase`.
 
@@ -301,6 +307,7 @@ def _filter_scenarios(
     most-specific-wins (BE-0177): `--erase` / `--no-erase` overrides every scenario, else a scenario's
     own explicit value, else *target_erase* (the target config default, already the built-in off when
     unset). Leaves every scenario with a concrete bool, so downstream never sees the unset `None`.
+    `tipKitHandling` resolves by the same precedence, and likewise lands as a concrete bool.
     """
     include = [t.strip() for t in tag.split(",") if t.strip()]
     excluded = [t.strip() for t in exclude.split(",") if t.strip()]
@@ -314,6 +321,10 @@ def _filter_scenarios(
             s.preconditions.erase = erase  # CLI flag overrides every scenario
         elif s.preconditions.erase is None:
             s.preconditions.erase = target_erase  # unset scenario inherits the target default
+        if tipkit_handling is not None:
+            s.tip_kit_handling = tipkit_handling
+        elif s.tip_kit_handling is None:
+            s.tip_kit_handling = target_tipkit_handling
     return scenarios
 
 
@@ -961,6 +972,11 @@ def run(
         "--erase/--no-erase",
         help="override every scenario's preconditions.erase (default: per-scenario)",
     ),
+    tipkit_handling: bool | None = typer.Option(
+        None,
+        "--tipkit-handling/--no-tipkit-handling",
+        help="dismiss a blocking iOS TipKit tip (default: per-scenario, off)",
+    ),
     # --- Alerts, capture & logging ---
     system_alert_handling: bool | None = typer.Option(
         None,
@@ -1132,7 +1148,15 @@ def run(
     )
     secret_bindings, secret_values = _resolve_secrets(eff)
     scenarios, description, source_name, files = _load_scenarios(eff, scenario or [], target_name)
-    scenarios = _filter_scenarios(scenarios, tag, exclude, erase, eff.run_defaults.erase)
+    scenarios = _filter_scenarios(
+        scenarios,
+        tag,
+        exclude,
+        erase,
+        eff.run_defaults.erase,
+        tipkit_handling,
+        eff.run_defaults.tip_kit_handling,
+    )
     actuator, backends = _select_actuator(backend, eff, engines)
     # Where this target's devices come from is a seam (BE-0236): the provider `acquire` returns the
     # udid spec the lanes resolve against (the `--udid` flag verbatim for the default local provider,

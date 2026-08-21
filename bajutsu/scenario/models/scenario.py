@@ -209,6 +209,14 @@ class Scenario(_Model):
         validation_alias=AliasChoices("systemAlertHandling", "alertHandling", "dismissAlerts"),
         serialization_alias="systemAlertHandling",
     )
+    # Dismiss a blocking TipKit tip when one is in the way. Off unless asked for, unlike the alert
+    # guard above: a tip is sometimes the very thing a scenario asserts on, and dismissing it by
+    # default would silently break that scenario. None keeps a dumped scenario clean.
+    tip_kit_handling: bool | None = Field(
+        default=None,
+        validation_alias=AliasChoices("tipKitHandling"),
+        serialization_alias="tipKitHandling",
+    )
 
     @model_validator(mode="before")
     @classmethod

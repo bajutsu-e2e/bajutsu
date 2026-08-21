@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-XXXX](BE-XXXX-ios-native-tipkit-guard-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| 実装 PR | _PR を作成した時点で記入_ |
 | トピック | Platform support |
 | 関連 | [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)、[BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers-ja.md)、[BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md)、[BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md)、[BE-0349](../BE-0349-tap-target-hittability-check/BE-0349-tap-target-hittability-check-ja.md)、[BE-0357](../BE-0357-xcuitest-duplicate-node-hittable-tiebreak/BE-0357-xcuitest-duplicate-node-hittable-tiebreak-ja.md) |
 <!-- /BE-METADATA -->
@@ -84,8 +85,8 @@ BE-0315 が、アプリごとの設定を求める代わりに、ケイパビリ
 ## 詳細設計
 
 作業は、実現可能性の検証(この提案を書き上げる前に実機で確認済み)、ケイパビリティトークンの背後に置
-くドライバ側の閉じるメソッド、tap 時点の回復フック、待機ループのゲート、opt-in の設定、実機での検証
-に分かれます。
+くドライバ側の閉じるメソッド、失敗後の再試行、待機中のゲート、opt-in の設定、実機での検証に分かれま
+す。
 
 1. **実現可能性の検証 — 確認済み。** 実際の Simulator を使ったランで、表示中の TipKit tip のアクセ
    シビリティツリー(showcase アプリの Stable タブでのステップの `elements.json`)を取得し、ロケール
@@ -131,34 +132,35 @@ BE-0315 が、アプリごとの設定を求める代わりに、ケイパビリ
    Swift ランナーのルートは不要で、ドライバがすでに持っているクエリとタップのプリミティブだけで済み
    ます。
 
-3. **tap 時点の回復パスを、tip の存在確認をゲートとして拡張する。**
+3. **ステップループに置く、失敗後の閉じる操作と再試行。** 作業単位 1 で確認したとおり、tip に覆われ
+   た対象は `isHittable` を失うだけでなく、ツリーから消えてしまいます。そのため、ブロックされたステッ
+   プは `ElementNotTappable` と同じくらい `ElementNotFound` としても失敗します。この事実から、
    [BE-0349](../BE-0349-tap-target-hittability-check/BE-0349-tap-target-hittability-check-ja.md)の
-   `_tap_with_recovery`(`bajutsu/orchestrator/actions/handlers/gestures.py`)は、tap の
-   `ElementNotTappable` をすでに捕捉し、有界なスクロールのあとに再試行します。しかし作業単位 1 で確
-   認したとおり、tip に覆われた対象は `ElementNotFound` としても失敗しえます。これはこの捕捉の外側で
-   起きます。対象が `isHittable` を失うだけでなく、ツリーから消えてしまうからです。回復処理を拡張し
-   て両方の例外を捕捉し、既存の回復を試みる前に、まず作業単位 2 の `dismiss_blocking_tip()` を呼び出
-   します。作業単位 4 の待機ループのゲートと同様に、このフックもバックエンドが `HANDLE_TIPKIT_TIP` を
-   公開しており、かつ `tipKitHandling`(作業単位 5)が有効な場合にだけ動作します。そのため tip をアサ
-   ーションの対象にするシナリオは、どちらの経路でも今日の挙動を保てます。この呼び出しが tip を実際に
-   閉じたと報告したときにだけ、tap を一度だけ再試行します。tip が存在しない `ElementNotFound` はその
-   まま失敗させます。確認され
-   た原因のない単なる「見つからない」に対して再試行してしまうと、本来のセレクタの誤りを静かに覆い隠
-   すことになるからです。これは `resolve_unique` がすでに従っている、prime directive 2 の失敗を隠さ
-   ないという規律と同じです。tip の存在が確認され、それでも再試行が失敗する場合は、`ElementNotTappable`
-   に対する既存の有界なスクロール回復がそのまま今日どおりのフォールバックとして動作します。スクロー
-   ルを先に試すことはありません。対象を覆う popover はスクロール位置にかかわらずそこに居座るため、先
-   にスクロールを試すと `_TAP_RECOVERY_MAX_SCROLLS` の有界な予算を、取り除けない障害物にまったく対処
-   しないまま消費してしまいます。
+   `_tap_with_recovery`(`bajutsu/orchestrator/actions/handlers/gestures.py`)はフックの置き場所とし
+   て外れます。捕捉しているのは後者だけであり、しかもステップハンドラのシグネチャにはシナリオ単位の
+   実行設定を渡す口がないため、そこでゲートするには `ActionHandler` と全ハンドラ、全呼び出し元を変更
+   することになります。代わりに回復処理はステップループ(`bajutsu/orchestrator/loop.py`)へ置き、アラ
+   ートガードが持つ既存の「閉じてから、もう一度だけ」のステップ末尾の分岐の隣に並べます。この層は例
+   外の種類にかかわらずすべてのステップの失敗を見ており、シナリオも持っているため、両方のガードが設
+   定を所有する唯一の場所に収まります。ステップが失敗したら作業単位 2 の `dismiss_blocking_tip()` を
+   呼び出し、tip を実際に閉じたと報告した場合に**限って**、そのステップを一度だけ再試行します。tip が
+   存在しない失敗はそのまま失敗させます。確認された原因のない単なる「見つからない」に対して再試行し
+   てしまうと、本来のセレクタの誤りを静かに覆い隠すことになるからです。これは `resolve_unique` がすで
+   に従っている、prime directive 2 の失敗を隠さないという規律と同じです。再試行を決めるのが閉じる操作
+   の成否である以上、成功するランがこのためにクエリを払うことは一度もありません。
 
-4. **待機ループのゲート。** `bajutsu/orchestrator/waits.py` の `_AlertGuardGate` と同じ形を踏襲しつ
-   つ、かなり小さくした新しいゲートが、待機自体のポーリング周期で作業単位 2 の `dismiss_blocking_tip()`
-   を呼び出します。独自の wall-clock 間隔は必要ありません。作業単位 1 で確認したとおり、BE-0315 のプ
-   ロセス外の SpringBoard クエリのように速度を抑える必要のある処理が、そもそも存在しないからです。シ
-   ナリオがまだ待機している間に先回りして閉じておけば、たいていのランは作業単位 3 の tap 時点の回復パ
-   スに到達しないで済みます。作業単位 3 は、直前に待機のない tap の瞬間にすでに tip が出ているケース
-   の、あくまで最後の砦です。このゲートは、バックエンドが `HANDLE_TIPKIT_TIP` を公開しており、かつ後
-   述の opt-in の設定が有効な場合にだけ動作し、それ以外では今日の挙動を変えません。
+4. **BE-0314 がすでに設置しているポーリングのフックに乗る、待機中のゲート。** tip の後ろでブロックさ
+   れた待機が、作業単位 3 に救われるまでタイムアウトを使い切ってしまうのは避けたいので、待機のポーリ
+   ング中にも閉じる操作を走らせます。`_AlertGuardGate` の隣に 2 つ目のゲートオブジェクトを置くのでは
+   なく、BE-0314 の `interrupts` がすべての待機に通している `on_interrupt_poll` コールバックに合成し
+   ます。このフックはポーリングごとに取得済みのツリーを受け取るため、閉じる操作は独自のクエリを払わ
+   ず、独自の wall-clock 間隔も要りません。作業単位 1 で確認したとおり、BE-0315 のプロセス外の
+   SpringBoard クエリのように速度を抑える必要のある処理が、そもそも存在しないからです。このフックの契
+   約から 1 つ注意点が生じます。閉じる操作が成功した場合は `False` を報告しなければなりません。この
+   コールバックの `True` は「回復が失敗したので待機を終える」という意味であり、報告してしまうと、閉じ
+   る操作によって成功できるようになったばかりの待機を中断させてしまいます。このゲートは、バックエンド
+   が `HANDLE_TIPKIT_TIP` を公開しており、かつ後述の opt-in の設定が有効な場合にだけ動作し、シナリオ
+   が `interrupts` を宣言しているかどうかにかかわらず透過的に合成されます。
 
 5. **既定でオフの opt-in 設定。** 新しい `tipKitHandling` 設定(真偽値)を、`systemAlertHandling` に
    すでに確立されているフラグ、シナリオ、ターゲット、既定値という優先順位([BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md))
@@ -225,13 +227,19 @@ BE-0315 が、アプリごとの設定を求める代わりに、ケイパビリ
 - [x] 作業単位 1 — 実現可能性の検証、確認済み。`PopoverDismissRegion` が唯一のシグナルであり閉じる
       対象であること、tip に覆われた対象が `ElementNotTappable` だけでなく `ElementNotFound` として
       も失敗しうることを実機で確認した。
-- [ ] 作業単位 2 — `Capability.HANDLE_TIPKIT_TIP` の背後に置く `Driver.dismiss_blocking_tip()`。
+- [x] 作業単位 2 — `Capability.HANDLE_TIPKIT_TIP` の背後に置く `Driver.dismiss_blocking_tip()`。
       TipKit の識別子は `bajutsu/drivers/xcuitest.py` の中だけに閉じ込める。
-- [ ] 作業単位 3 — 両方の例外を捕捉する tap 時点の回復フック。有界なスクロール回復より先に試す。
-- [ ] 作業単位 4 — 待機自体のポーリング周期でドライバのメソッドを呼び出す、待機ループのゲート。
-- [ ] 作業単位 5 — 既定でオフの `tipKitHandling` 設定(`--tipkit-handling`/`--no-tipkit-handling`、
+- [x] 作業単位 3 — ステップループに置く、失敗後の閉じる操作と再試行。アラートガードの分岐の隣に並べる。
+- [x] 作業単位 4 — BE-0314 の `on_interrupt_poll` フックに合成した、待機中の閉じる操作。
+- [x] 作業単位 5 — 既定でオフの `tipKitHandling` 設定(`--tipkit-handling`/`--no-tipkit-handling`、
       BE-0177 の優先順位に従う)。
-- [ ] 作業単位 6 — 実機での検証と、両方の回復パスに対する showcase の fixture・シナリオ。
+- [x] 作業単位 6 — 実機での検証と、両方の回復パスに対する showcase の fixture・シナリオ。
+
+`demos/showcase/scenarios/tipkit.yaml` を起動済みの Simulator で検証しました。ガードを有効にすると
+3 つのシナリオはすべて成功し、`--no-tipkit-handling` で強制的に無効にすると、ガードに依存する 2 つだ
+けが失敗します。tap のシナリオは `一致なし: {'id': 'stable.refresh'}`(対象がツリーから消えている、作
+業単位 1 の `ElementNotFound` の所見)で、wait のシナリオは 15 秒のタイムアウトを使い切って失敗します。
+したがってどちらのガードの経路も、たまたま成功しているのではなく実際に効いています。
 
 ## 参考
 
@@ -239,11 +247,14 @@ BE-0315 が、アプリごとの設定を求める代わりに、ケイパビリ
   `HANDLE_TIPKIT_TIP` が形を踏襲する `Capability` トークン(`HANDLE_SYSTEM_ALERT`、`PICKER_WHEEL`)。
 - [`bajutsu/drivers/xcuitest.py`](../../bajutsu/drivers/xcuitest.py) — `dismiss_blocking_tip()` が追
   加される XCUITest ドライバであり、`PopoverDismissRegion` という識別子が現れる唯一のファイル。
-- [`bajutsu/orchestrator/waits.py`](../../bajutsu/orchestrator/waits.py) — `_AlertGuardGate`。本提案
-  の、より小さな TipKit 用ゲート(作業単位 4)が踏襲する待機ループのゲートの形。
+- [`bajutsu/orchestrator/waits.py`](../../bajutsu/orchestrator/waits.py) — `_AlertGuardGate`。作業
+  単位 4 が当初手本にした待機中のガードの形と、閉じる操作の成功を `False` として報告させる
+  `on_interrupt_poll` の契約。
+- [`bajutsu/orchestrator/loop.py`](../../bajutsu/orchestrator/loop.py) — 両方のガード(作業単位 3・4)
+  が入るステップループ。アラートガードが持つ既存のステップ末尾の閉じる操作と再試行の隣。
 - [`bajutsu/orchestrator/actions/handlers/gestures.py`](../../bajutsu/orchestrator/actions/handlers/gestures.py)
-  — `_tap_with_recovery` と `_TAP_RECOVERY_MAX_SCROLLS`。BE-0349 の tap 時点の回復パスで、本提案の
-  作業単位 3 が有界なスクロールより先に閉じる操作を試すよう拡張する対象。
+  — `_tap_with_recovery`。BE-0349 の tap 時点の回復であり、作業単位 3 がフックの置き場所として外れる
+  と説明している対象。捕捉するのは `ElementNotTappable` だけで、tip に覆われた対象はツリーから消える。
 - [`bajutsu/drivers/playwright.py`](../../bajutsu/drivers/playwright.py) — `_on_dialog`。フレームワーク
   が所有するオーバーレイを、シナリオの設定や orchestrator ではなくドライバで処理する web バックエンド
   側の既存の前例。
