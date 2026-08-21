@@ -100,7 +100,7 @@ opt-in configuration, and on-device verification.
    an attempt to reproduce that on-device could not get such a popover to present, so it stands as
    unverified rather than disproved. The opt-in default bounds the consequence: the guard fires only
    on a scenario that asked for it, and only after a step already failed, so an author whose app
-   presents its own popovers and wants them untouched leaves `tipKitHandling` off. Narrowing the match
+   presents its own popovers and wants them untouched leaves `iosTipKitHandling` off. Narrowing the match
    (pairing the region with `TipView`'s presence) is the follow-up if a real collision turns up.
    The same run also surfaced a fact the original design missed: while the tip is up, an ordinary
    toolbar button behind it (`stable.refresh`) does not merely fail `isHittable` — it disappears from
@@ -160,19 +160,28 @@ opt-in configuration, and on-device verification.
    activates only when the backend advertises `HANDLE_TIPKIT_TIP` and the opt-in setting below is
    enabled, and composes transparently whether or not the scenario also declares `interrupts`.
 
-5. **Opt-in configuration, off by default.** A new `tipKitHandling` setting (boolean), resolved through
+5. **Opt-in configuration, off by default.** A new `iosTipKitHandling` setting (boolean), resolved through
    the same flag > scenario > target > default precedence
    [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md) already
-   established for `systemAlertHandling`, with a matching `--tipkit-handling` /
-   `--no-tipkit-handling` CLI flag. Unlike `systemAlertHandling`, which defaults on, this defaults
+   established for `systemAlertHandling`, with a matching `--ios-tipkit-handling` /
+   `--no-ios-tipkit-handling` CLI flag. Unlike `systemAlertHandling`, which defaults on, this defaults
    **off**: a TipKit tip is sometimes the subject a scenario is written to verify (an onboarding-flow
    assertion checking the tip's own text or its dismiss behavior), and turning the guard on by default
    would silently break that scenario by dismissing the very tip it asserts on. A scenario not asking
    for the guard keeps seeing the tip exactly as it does today.
 
+   The `ios` prefix is deliberate, and the one place this proposal's naming departs from
+   `systemAlertHandling`'s. That key needs no platform prefix because the idea it names — an OS prompt
+   the app's own tree cannot reach — has some form on every platform, so each backend can honor it in
+   its own terms. TipKit is one vendor's framework: there is no Android or web counterpart with its
+   defining property (one tree shape across every app that adopts it, per the Alternatives entry
+   below), so the key is inert anywhere else. Naming that in the key spares an author discovering it
+   from a silent no-op, and leaves room for a differently-shaped Android answer later without having
+   to rename an unprefixed key that had quietly meant "iOS only" all along.
+
 6. **Verify on device and wire into the showcase.** A `.popoverTip()` fixture anchored to the "Refresh"
    button in the showcase SwiftUI demo app's Stable tab (the fixture the feasibility spike in unit 1
-   already used), plus two scenarios that enable `tipKitHandling`: one exercising the wait-loop gate
+   already used), plus two scenarios that enable `iosTipKitHandling`: one exercising the wait-loop gate
    clearing a tip that appears mid-wait, and one tapping a target a tip already covers with no preceding
    wait, to exercise unit 3's recovery path directly. A dismiss against a real TipKit tip cannot be
    proven by the off-Simulator gate, so this unit must run against a booted Simulator; the
@@ -224,12 +233,12 @@ opt-in configuration, and on-device verification.
       identifier confined to `bajutsu/drivers/xcuitest.py`.
 - [x] Unit 3 — post-failure dismiss-and-retry in the step loop, beside the alert guard's own branch.
 - [x] Unit 4 — mid-wait dismiss composed onto BE-0314's `on_interrupt_poll` hook.
-- [x] Unit 5 — opt-in `tipKitHandling` setting (default off) with `--tipkit-handling` /
-      `--no-tipkit-handling` and BE-0177 precedence.
+- [x] Unit 5 — opt-in `iosTipKitHandling` setting (default off) with `--ios-tipkit-handling` /
+      `--no-ios-tipkit-handling` and BE-0177 precedence.
 - [x] Unit 6 — on-device verification and showcase fixtures/scenarios for both recovery paths.
 
 Verified on a booted Simulator with `demos/showcase/scenarios/tipkit.yaml`: all three scenarios pass
-with the guard on, and forcing it off with `--no-tipkit-handling` fails exactly the two
+with the guard on, and forcing it off with `--no-ios-tipkit-handling` fails exactly the two
 guard-dependent ones — the tap scenario with `no match: {'id': 'stable.refresh'}` (the target absent
 from the tree, unit 1's `ElementNotFound` finding) and the wait scenario on its full 15s timeout.
 Each guard path is therefore load-bearing, not incidentally passing.
@@ -253,7 +262,7 @@ Each guard path is therefore load-bearing, not incidentally passing.
   backend's existing precedent for a framework-owned overlay handled in the driver rather than through
   scenario config or the orchestrator.
 - [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md) — the
-  flag > scenario > target > default precedence `tipKitHandling` follows.
+  flag > scenario > target > default precedence `iosTipKitHandling` follows.
 - [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md) — the
   permission pre-set whose notification gap is the precedent for an OS-owned surface no per-app
   config can reach.

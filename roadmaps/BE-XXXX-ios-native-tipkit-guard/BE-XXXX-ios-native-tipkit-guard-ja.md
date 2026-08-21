@@ -107,7 +107,7 @@ BE-0315 が、アプリごとの設定を求める代わりに、ケイパビリ
    可能性があります。実機で再現を試みましたが、その popover を提示させられなかったため、否定されたので
    はなく未検証のままです。既定でオフであることが影響範囲を抑えます。このガードが動くのは、明示的に有
    効にしたシナリオで、しかもステップがすでに失敗したあとだけです。アプリが独自の popover を提示してお
-   り、それに触れたくない場合は `tipKitHandling` をオフのままにします。実際の衝突が見つかった場合は、
+   り、それに触れたくない場合は `iosTipKitHandling` をオフのままにします。実際の衝突が見つかった場合は、
    `TipView` の存在と組み合わせて一致条件を狭めるのが後続の対応です。同じランでは、もともとの設計
    が見落としていた事実も判明しました。tip が表示されている間、その裏にある通常のツールバーボタン
    (`stable.refresh`)は、単に `isHittable` が false になるだけではなく、ツリーから完全に消えてしま
@@ -175,18 +175,27 @@ BE-0315 が、アプリごとの設定を求める代わりに、ケイパビリ
    が `HANDLE_TIPKIT_TIP` を公開しており、かつ後述の opt-in の設定が有効な場合にだけ動作し、シナリオ
    が `interrupts` を宣言しているかどうかにかかわらず透過的に合成されます。
 
-5. **既定でオフの opt-in 設定。** 新しい `tipKitHandling` 設定(真偽値)を、`systemAlertHandling` に
+5. **既定でオフの opt-in 設定。** 新しい `iosTipKitHandling` 設定(真偽値)を、`systemAlertHandling` に
    すでに確立されているフラグ、シナリオ、ターゲット、既定値という優先順位([BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md))
-   と同じ形で解決し、`--tipkit-handling`/`--no-tipkit-handling` という CLI フラグを対応させます。
+   と同じ形で解決し、`--ios-tipkit-handling`/`--no-ios-tipkit-handling` という CLI フラグを対応させます。
    `systemAlertHandling` は既定でオンですが、この設定は既定で**オフ**にします。TipKit の tip 自体が
    シナリオの検証対象になる場合があるからです(tip 自体の文言や閉じる挙動を確認するオンボーディング
    フローのアサーション)。ガードを既定でオンにすると、検証対象であるはずの tip を自動で閉じてしまい、
    そのシナリオを静かに壊します。ガードを求めていないシナリオは、今日と変わらず tip をそのまま見続
    けます。
 
+   `ios` という接頭辞は意図的なもので、本提案の命名が `systemAlertHandling` と分かれる唯一の点です。
+   あちらに接頭辞が要らないのは、その名が指す考え方——アプリ自身のツリーからは届かない OS のプロンプト
+   ——が、どのプラットフォームにも何らかの形で存在し、各バックエンドがそれぞれの流儀で実現できるから
+   です。TipKit は特定のベンダーのフレームワークです。その決定的な性質(採用するどのアプリでも 1 つの
+   ツリーの形になること。後述の検討した代替案を参照)を備えた Android や web の対応物は存在せず、この
+   キーは他の環境では何もしません。それをキー名で示しておけば、著者が黙ったまま何も起きないことから
+   察する必要がなくなります。さらに、将来 Android に形の違う答えを用意する余地も残ります。接頭辞のな
+   いキーが暗黙に「iOS 限定」を意味していた状態から、あとで改名する必要がありません。
+
 6. **実機で検証し、showcase に組み込む。** showcase の SwiftUI デモアプリの Stable タブにある
    「Refresh」ボタンへ紐づけた `.popoverTip()` の fixture(作業単位 1 の実現可能性の検証で実際に使っ
-   たもの)と、`tipKitHandling` を有効にした 2 つのシナリオです。1 つは待機中に出現した tip をゲート
+   たもの)と、`iosTipKitHandling` を有効にした 2 つのシナリオです。1 つは待機中に出現した tip をゲート
    が閉じることを確認し、もう 1 つは直前に待機を挟まず、すでに tip が覆っている対象をタップして作業
    単位 3 の回復パスを直接確認します。実際の TipKit の tip に対する閉じる操作は Simulator 外のゲート
    では証明できないため、この作業単位は起動済みの Simulator に対して実行する必要があります。バックエ
@@ -244,12 +253,12 @@ BE-0315 が、アプリごとの設定を求める代わりに、ケイパビリ
       TipKit の識別子は `bajutsu/drivers/xcuitest.py` の中だけに閉じ込める。
 - [x] 作業単位 3 — ステップループに置く、失敗後の閉じる操作と再試行。アラートガードの分岐の隣に並べる。
 - [x] 作業単位 4 — BE-0314 の `on_interrupt_poll` フックに合成した、待機中の閉じる操作。
-- [x] 作業単位 5 — 既定でオフの `tipKitHandling` 設定(`--tipkit-handling`/`--no-tipkit-handling`、
+- [x] 作業単位 5 — 既定でオフの `iosTipKitHandling` 設定(`--ios-tipkit-handling`/`--no-ios-tipkit-handling`、
       BE-0177 の優先順位に従う)。
 - [x] 作業単位 6 — 実機での検証と、両方の回復パスに対する showcase の fixture・シナリオ。
 
 `demos/showcase/scenarios/tipkit.yaml` を起動済みの Simulator で検証しました。ガードを有効にすると
-3 つのシナリオはすべて成功し、`--no-tipkit-handling` で強制的に無効にすると、ガードに依存する 2 つだ
+3 つのシナリオはすべて成功し、`--no-ios-tipkit-handling` で強制的に無効にすると、ガードに依存する 2 つだ
 けが失敗します。tap のシナリオは `一致なし: {'id': 'stable.refresh'}`(対象がツリーから消えている、作
 業単位 1 の `ElementNotFound` の所見)で、wait のシナリオは 15 秒のタイムアウトを使い切って失敗します。
 したがってどちらのガードの経路も、たまたま成功しているのではなく実際に効いています。
@@ -272,7 +281,7 @@ BE-0315 が、アプリごとの設定を求める代わりに、ケイパビリ
   が所有するオーバーレイを、シナリオの設定や orchestrator ではなくドライバで処理する web バックエンド
   側の既存の前例。
 - [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md) —
-  `tipKitHandling` が従う、フラグ、シナリオ、ターゲット、既定値という優先順位。
+  `iosTipKitHandling` が従う、フラグ、シナリオ、ターゲット、既定値という優先順位。
 - [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md) — 通知権限
   のギャップが前例となる、アプリ側の設定では届かない画面。
 - [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers-ja.md) —

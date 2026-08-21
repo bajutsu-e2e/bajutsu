@@ -1,4 +1,4 @@
-# The TipKit guard: a framework-owned popover tip blocking a step, cleared by `tipKitHandling`.
+# The TipKit guard: a framework-owned popover tip blocking a step, cleared by `iosTipKitHandling`.
 #
 # The fixture is gated on SHOWCASE_TIPKIT (like SHOWCASE_GESTURES/PICKERS) because a showing tip
 # hides the content it covers from the accessibility tree — always-on, it would break every other
@@ -10,7 +10,7 @@
   tags: [tipkit]
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TIPKIT: "1" }
-  tipKitHandling: true
+  iosTipKitHandling: true
   steps:
     # No preceding wait on the target: the tip is already up when this tap is attempted, so the
     # post-failure dismiss-and-retry is what has to carry it (the mid-wait gate never sees it).
@@ -23,7 +23,7 @@
   tags: [tipkit]
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TIPKIT: "1" }
-  tipKitHandling: true
+  iosTipKitHandling: true
   steps:
     # The tip hides the rows, so this wait starts blocked and the mid-wait gate clears it — the
     # target then resolves well inside the timeout rather than after it expires.
@@ -38,7 +38,7 @@
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TIPKIT: "1" }
   steps:
-    # No `tipKitHandling`, so today's behavior holds: the tip stays, and a scenario asserting on it
+    # No `iosTipKitHandling`, so today's behavior holds: the tip stays, and a scenario asserting on it
     # still can. Addresses the tip's own container rather than the dismiss region the guard uses.
     - wait: { for: { id: TipView }, timeout: 10 }
   expect:

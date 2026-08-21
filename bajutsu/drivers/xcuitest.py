@@ -179,7 +179,7 @@ _UNIT = "point"
 # SwiftUI `.popover` forced past its compact sheet adaptation) plausibly installs the same scrim. The
 # guard is opt-in per scenario, which bounds that: it only ever fires on a scenario that asked, and
 # only after a step already failed. An author whose app presents its own popovers, and who wants
-# them left alone, leaves `tipKitHandling` off.
+# them left alone, leaves `iosTipKitHandling` off.
 _TIPKIT_DISMISS_REGION = "PopoverDismissRegion"
 
 

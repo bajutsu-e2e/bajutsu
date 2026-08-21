@@ -180,7 +180,9 @@ def resolve(config: Config, target: str) -> Effective:
             system_alert_handling=a.system_alert_handling,
             erase=a.erase if a.erase is not None else False,
             network=a.network if a.network is not None else True,
-            tip_kit_handling=a.tip_kit_handling if a.tip_kit_handling is not None else False,
+            ios_tip_kit_handling=a.ios_tip_kit_handling
+            if a.ios_tip_kit_handling is not None
+            else False,
             interrupts=list(a.interrupts),
         ),
     )

@@ -47,7 +47,7 @@ def test_tip_is_dismissed_mid_wait_and_the_wait_resumes_to_its_target() -> None:
         _scenario(
             {
                 "name": "a",
-                "tipKitHandling": True,
+                "iosTipKitHandling": True,
                 "steps": [{"wait": {"for": {"id": "home.title"}, "timeout": 10}}],
             }
         ),
@@ -67,7 +67,7 @@ def test_a_step_blocked_by_a_tip_is_retried_once_after_the_dismiss() -> None:
         _scenario(
             {
                 "name": "b",
-                "tipKitHandling": True,
+                "iosTipKitHandling": True,
                 "steps": [{"tap": {"id": "stable.refresh"}}],
             }
         ),
@@ -79,7 +79,7 @@ def test_a_step_blocked_by_a_tip_is_retried_once_after_the_dismiss() -> None:
 
 
 def test_the_guard_is_off_unless_the_scenario_asks_for_it() -> None:
-    # The default-off promise: with the tip showing and no `tipKitHandling`, the step fails as it
+    # The default-off promise: with the tip showing and no `iosTipKitHandling`, the step fails as it
     # does today rather than being silently rescued.
     driver = _tip_driver(covered=[el("stable.refresh", "Refresh", ["button"])])
     result = run_scenario(
@@ -115,7 +115,7 @@ def test_a_tip_and_a_system_alert_are_both_recovered_in_one_step() -> None:
     result = run_scenario(
         driver,
         _scenario(
-            {"name": "e", "tipKitHandling": True, "steps": [{"tap": {"id": "stable.refresh"}}]}
+            {"name": "e", "iosTipKitHandling": True, "steps": [{"tap": {"id": "stable.refresh"}}]}
         ),
         clock=FakeClock(),
         alert_guard=alert_guard,
@@ -140,7 +140,7 @@ def test_two_dismiss_regions_fail_the_step_rather_than_aborting_the_run() -> Non
     result = run_scenario(
         driver,
         _scenario(
-            {"name": "f", "tipKitHandling": True, "steps": [{"tap": {"id": "stable.refresh"}}]}
+            {"name": "f", "iosTipKitHandling": True, "steps": [{"tap": {"id": "stable.refresh"}}]}
         ),
         clock=FakeClock(),
     )
@@ -164,7 +164,7 @@ def test_a_refused_dismiss_tap_fails_the_step_rather_than_aborting_the_run() -> 
     result = run_scenario(
         driver,
         _scenario(
-            {"name": "g", "tipKitHandling": True, "steps": [{"tap": {"id": "stable.refresh"}}]}
+            {"name": "g", "iosTipKitHandling": True, "steps": [{"tap": {"id": "stable.refresh"}}]}
         ),
         clock=FakeClock(),
     )
@@ -189,7 +189,7 @@ def test_a_step_failing_with_no_tip_present_is_not_retried() -> None:
     result = run_scenario(
         driver,
         _scenario(
-            {"name": "d", "tipKitHandling": True, "steps": [{"tap": {"id": "does.not.exist"}}]}
+            {"name": "d", "iosTipKitHandling": True, "steps": [{"tap": {"id": "does.not.exist"}}]}
         ),
         clock=FakeClock(),
     )

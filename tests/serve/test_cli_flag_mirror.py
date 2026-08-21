@@ -26,9 +26,9 @@ def test_run_flag_surface_is_fully_classified() -> None:
     # spawns `run --project`), and score is a CI-log convention tell (doctor's grade to stderr) that
     # serve's own UI supersedes. Everything else must be pass-through-able.
     base_handled = {"target_name", "scenario", "config", "progress"}
-    # tipkit_handling stays CLI-only: it is a per-scenario iOS guard, and a serve user sets it as
-    # `tipKitHandling` in the scenario file serve already edits, rather than as a run-wide toggle.
-    not_serve_exposed = {"evidence_store", "project", "score", "tipkit_handling"}
+    # ios_tipkit_handling stays CLI-only: it is a per-scenario iOS guard, and a serve user sets it as
+    # `iosTipKitHandling` in the scenario file serve already edits, rather than as a run-wide toggle.
+    not_serve_exposed = {"evidence_store", "project", "score", "ios_tipkit_handling"}
     # `alert_handling` and `dismiss_alerts` are the hidden deprecated aliases of
     # `--system-alert-handling` (the former originally BE-0317's canonical name); serve renders the
     # canonical `system_alert_handling`, so the aliases stay CLI-only flags it never passes through.

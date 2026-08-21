@@ -298,8 +298,8 @@ def _filter_scenarios(
     exclude: str,
     erase: bool | None,
     target_erase: bool,
-    tipkit_handling: bool | None = None,
-    target_tipkit_handling: bool = False,
+    ios_tipkit_handling: bool | None = None,
+    target_ios_tipkit_handling: bool = False,
 ) -> list[Scenario]:
     """Apply `--tag`/`--exclude` selection and resolve each scenario's `preconditions.erase`.
 
@@ -307,7 +307,7 @@ def _filter_scenarios(
     most-specific-wins (BE-0177): `--erase` / `--no-erase` overrides every scenario, else a scenario's
     own explicit value, else *target_erase* (the target config default, already the built-in off when
     unset). Leaves every scenario with a concrete bool, so downstream never sees the unset `None`.
-    `tipKitHandling` resolves by the same precedence, and likewise lands as a concrete bool.
+    `iosTipKitHandling` resolves by the same precedence, and likewise lands as a concrete bool.
     """
     include = [t.strip() for t in tag.split(",") if t.strip()]
     excluded = [t.strip() for t in exclude.split(",") if t.strip()]
@@ -321,10 +321,10 @@ def _filter_scenarios(
             s.preconditions.erase = erase  # CLI flag overrides every scenario
         elif s.preconditions.erase is None:
             s.preconditions.erase = target_erase  # unset scenario inherits the target default
-        if tipkit_handling is not None:
-            s.tip_kit_handling = tipkit_handling
-        elif s.tip_kit_handling is None:
-            s.tip_kit_handling = target_tipkit_handling
+        if ios_tipkit_handling is not None:
+            s.ios_tip_kit_handling = ios_tipkit_handling
+        elif s.ios_tip_kit_handling is None:
+            s.ios_tip_kit_handling = target_ios_tipkit_handling
     return scenarios
 
 
@@ -972,9 +972,9 @@ def run(
         "--erase/--no-erase",
         help="override every scenario's preconditions.erase (default: per-scenario)",
     ),
-    tipkit_handling: bool | None = typer.Option(
+    ios_tipkit_handling: bool | None = typer.Option(
         None,
-        "--tipkit-handling/--no-tipkit-handling",
+        "--ios-tipkit-handling/--no-ios-tipkit-handling",
         help="dismiss a blocking iOS TipKit tip (default: per-scenario, off)",
     ),
     # --- Alerts, capture & logging ---
@@ -1154,8 +1154,8 @@ def run(
         exclude,
         erase,
         eff.run_defaults.erase,
-        tipkit_handling,
-        eff.run_defaults.tip_kit_handling,
+        ios_tipkit_handling,
+        eff.run_defaults.ios_tip_kit_handling,
     )
     actuator, backends = _select_actuator(backend, eff, engines)
     # Where this target's devices come from is a seam (BE-0236): the provider `acquire` returns the

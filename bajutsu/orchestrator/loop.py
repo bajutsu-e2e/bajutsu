@@ -750,7 +750,7 @@ def _dismiss_blocking_tip(driver: base.Driver, scenario: Scenario) -> bool:
     query for it, and a scenario that did not ask keeps today's behavior exactly. The driver decides
     what identifies a tip, so no backend-specific selector reaches this layer.
     """
-    if not scenario.tip_kit_handling:
+    if not scenario.ios_tip_kit_handling:
         return False
     if base.Capability.HANDLE_TIPKIT_TIP not in driver.capabilities():
         return False
@@ -771,7 +771,7 @@ def _tip_poll_hook(
     succeed. The poll's tree is passed down so the overwhelmingly common "no tip" answer needs no
     query of its own; only an actual tip costs the driver a fresh snapshot to mint a handle from.
     """
-    if not scenario.tip_kit_handling:
+    if not scenario.ios_tip_kit_handling:
         return interrupt_poll
     if base.Capability.HANDLE_TIPKIT_TIP not in driver.capabilities():
         return interrupt_poll
