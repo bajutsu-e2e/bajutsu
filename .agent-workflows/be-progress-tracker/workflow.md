@@ -21,12 +21,17 @@ workflow hands it, at each checkpoint:
 
 - the BE id, or the `BE-XXXX` placeholder before allocation;
 - the calling workflow's name and the step it just completed or is now entering;
-- one short sentence of what happened — the work-log line.
+- one short sentence of what happened — the work-log line;
+- the handle of the page an earlier checkpoint already created for this id, when there is one, so
+  this call updates that page instead of starting a second one.
 
 A calling workflow decides for itself which of its own steps are worth a checkpoint — typically the
 same boundaries that already warrant a user-facing update (a branch created, a plan confirmed, code
 written, a review pass clear, the gate green, a PR opened, one follow-up-loop iteration). Skipping a
 checkpoint that would add no new information is expected, not an error.
+
+Dispatch each checkpoint as cheaply as the host allows — see the adapter for the concrete model and
+mechanism; a single change to that choice should touch only the adapters, never this file.
 
 ## What the status page holds
 
@@ -46,8 +51,13 @@ Three sections, in this fixed order:
 - **First call for a given BE id in a session** — read the roadmap item if it exists yet, for the
   Overview; seed Progress with every step of the calling workflow, ticking only the ones already
   done; start the Work log with one entry.
-- **Every later call** — advance Progress and append exactly one Work log line. Leave Overview alone
-  unless the item's `Status` or title actually changed.
+- **Every later call carries no memory of the earlier ones** — each checkpoint is dispatched fresh
+  (see the adapter), so it knows only what this call was handed, not what an earlier checkpoint
+  wrote. Read the existing page first and carry its Progress ticks and Work log forward verbatim,
+  advancing Progress and appending exactly one new Work log line on top of them. Rebuilding the page
+  from this call's input alone would silently drop every earlier entry — that is the one failure
+  this step exists to prevent. When the existing page can't be read, say so in the page itself
+  rather than quietly starting a fresh log.
 - **Never invent status.** If the calling workflow hasn't reported a step as done, leave it pending
   — don't infer it from what "usually" happens next.
 

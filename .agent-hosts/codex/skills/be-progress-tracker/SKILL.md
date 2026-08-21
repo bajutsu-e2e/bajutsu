@@ -11,3 +11,8 @@ Codex has no hosted-Artifact equivalent, so write the status page to a local Mar
 — under the repo's gitignored scratch area (e.g. `tmp/be-status/BE-<id>.md`), never committed. Keep
 using the same path across every checkpoint for one BE id, and tell the user that path the first
 time you create it so they can open it themselves.
+
+`agents/openai.yaml` carries `display_name` / `short_description` like every other Codex adapter,
+but deliberately no `default_prompt`: this skill is never invoked by a user typing a prompt, only
+dispatched by another workflow's own checkpoint call (see "When it runs" in the shared workflow),
+so there is no standalone invocation to prompt for.

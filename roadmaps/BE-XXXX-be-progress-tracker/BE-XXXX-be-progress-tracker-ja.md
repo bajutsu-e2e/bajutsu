@@ -75,11 +75,13 @@
    `ideation`と`implement-be`の各フェーズが持つチェックポイントをそのまま引き継ぐこと、
    両フェーズを通じてすでに使っている`BE-XXXX`の仮番号をキーに使うことを述べるにとどめます。
 5. **Claudeアダプターの呼び出し指示**
-   `implement-be`と`ideation`の各`SKILL.md`には、Agentツールを通じてチェックポイントを
-   呼び出す際に`model: "haiku"`を明示的に渡す、という1行を追加します。サブエージェントの
-   呼び出しは、呼び出されるスキル自身のfrontmatterが指定するモデルを自動的には継承しない
-   ためです。`propose-and-build`のアダプターは、委任先の2スキルからチェックポイントと
-   その呼び出し方法をそのまま引き継ぐため、変更を必要としません。
+   `implement-be`、`ideation`、`propose-and-build`の各`SKILL.md`には、Agentツールを通じて
+   チェックポイントを呼び出す際に`model: "haiku"`を明示的に渡す、という1行をそれぞれ追加します。
+   サブエージェントの呼び出しは、呼び出されるスキル自身のfrontmatterが指定するモデルを自動的には
+   継承しないためです。チェックポイント自体は前項の2フェーズにわたって引き継げますが、
+   その呼び出し方法は引き継げません。アダプターは自分自身の共有ワークフローだけを読み、
+   他のスキルのアダプターは読まないためです。そのため`propose-and-build`のアダプターにも、
+   `implement-be`や`ideation`と同じこの1行が必要です。
 
 製品コードへの変更はありません。本項目は`.agent-workflows/`、`.claude/skills/`、
 `.agent-hosts/codex/skills/`配下だけに閉じたコントリビューターワークフロー向けの整備であり、
@@ -117,7 +119,7 @@
 - [x] `model: haiku`を持つClaudeアダプター（`.claude/skills/be-progress-tracker/SKILL.md`）
 - [x] ローカルファイルへのフォールバックを持つCodexアダプター（`.agent-hosts/codex/skills/be-progress-tracker/SKILL.md`）
 - [x] `implement-be`、`ideation`、`propose-and-build`の共有ワークフローへのチェックポイント配線
-- [x] `implement-be`と`ideation`向けのClaudeアダプター呼び出し指示（Agentツール経由で`model: "haiku"`を渡す）
+- [x] `implement-be`、`ideation`、`propose-and-build`向けのClaudeアダプター呼び出し指示（Agentツール経由で`model: "haiku"`を渡す）
 
 提案と実装を1つの変更としてまとめて行いました。
 

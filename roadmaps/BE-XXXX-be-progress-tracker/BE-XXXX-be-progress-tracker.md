@@ -68,11 +68,14 @@ The work breaks down into five independent pieces:
    warrant a checkpoint. `propose-and-build/workflow.md` defines none of its own: it notes that it
    inherits the checkpoints of the `ideation` and `implement-be` phases it delegates to, keyed on
    the same `BE-XXXX` placeholder it already carries through both phases.
-5. **Claude-adapter dispatch instructions** — `implement-be`'s and `ideation`'s `SKILL.md` each gain
-   one line telling the host to dispatch the checkpoint through the Agent tool with `model:
-   "haiku"` passed explicitly, since a subagent call does not automatically inherit a skill's own
-   frontmatter model. `propose-and-build`'s adapter needs no change, since it inherits the
-   checkpoints (and their dispatch) from the two skills it delegates to.
+5. **Claude-adapter dispatch instructions** — `implement-be`'s, `ideation`'s, and
+   `propose-and-build`'s `SKILL.md` each gain one line telling the host to dispatch the checkpoint
+   through the Agent tool with `model: "haiku"` passed explicitly, since a subagent call does not
+   automatically inherit a skill's own frontmatter model. The checkpoints themselves are
+   inheritable across `propose-and-build`'s two delegated phases (point 4 above), but their
+   dispatch is not: an adapter loads only its own shared workflow, never a sibling skill's adapter,
+   so `propose-and-build`'s adapter needs this line too, not only `implement-be`'s and
+   `ideation`'s.
 
 No product code changes: this item is entirely contributor-workflow tooling under `.agent-workflows/`,
 `.claude/skills/`, and `.agent-hosts/codex/skills/`, and touches no `bajutsu/`, `BajutsuKit/`, or
@@ -107,7 +110,7 @@ deterministic gate; it only ever formats decisions a human-in-the-loop skill has
 - [x] Claude adapter with `model: haiku` (`.claude/skills/be-progress-tracker/SKILL.md`)
 - [x] Codex adapter with a local-file fallback (`.agent-hosts/codex/skills/be-progress-tracker/SKILL.md`)
 - [x] Checkpoint wiring in `implement-be`, `ideation`, and `propose-and-build`'s shared workflows
-- [x] Claude-adapter dispatch instructions (`model: "haiku"` via the Agent tool) for `implement-be` and `ideation`
+- [x] Claude-adapter dispatch instructions (`model: "haiku"` via the Agent tool) for `implement-be`, `ideation`, and `propose-and-build`
 
 Authored and implemented together in one change.
 
