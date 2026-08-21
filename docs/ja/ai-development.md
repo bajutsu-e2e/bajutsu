@@ -325,7 +325,8 @@ pull request をレビューする仕事で、変更全体をその価値で量�
 （[BE-0380](../../roadmaps/BE-0380-fix-issue-skill/BE-0380-fix-issue-skill-ja.md)）。素のGitHub Issue、
 つまり小さな不具合やちょっとした使い勝手の悪さ、範囲の定まった改善を、`implement-be` 自身の実装、
 レビュー、ゲート、フォローアップの手順に載せて出荷します。違うのは 2 点だけです。担当はIssue自身の
-Assignee欄で確保し、`Status` の切り替えではなく、PR 本文の `Closes #<N>` で閉じます。ロードマップ項目に
+Assignee欄で確保し、Issueを閉じるのは `Status` の切り替えではなく、PR 本文の `Closes #<N>` です。
+ロードマップ項目に
 するかどうかの境界も `fix-issue` 自身が判断し、設計の判断が必要だとわかった修正は、出荷せずに
 `ideation` か `propose-and-build` へ委ねます。
 
