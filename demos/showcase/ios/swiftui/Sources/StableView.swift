@@ -1,8 +1,17 @@
 import SwiftUI
+import TipKit
+
+// The fixture the TipKit guard runs against: a framework-owned popover whose container and dismiss
+// scrim the app does not author, unlike every other overlay in this app.
+struct RefreshTip: Tip {
+    var title: Text { Text("Tap to refresh") }
+    var message: Text? { Text("Reload the horse list from the server.") }
+}
 
 struct StableView: View {
     @EnvironmentObject var model: AppModel
     @State private var status = "idle"
+    private let refreshTip = RefreshTip()
 
     var body: some View {
         // Path bound to the model (a deeplink to this tab pops it to root via `handleDeepLink`).
@@ -29,8 +38,14 @@ struct StableView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Refresh") { refresh() }
-                        .accessibilityID("stable.refresh")
+                    if model.tipKitMode {
+                        Button("Refresh") { refresh() }
+                            .accessibilityID("stable.refresh")
+                            .popoverTip(refreshTip)
+                    } else {
+                        Button("Refresh") { refresh() }
+                            .accessibilityID("stable.refresh")
+                    }
                 }
             }
             .safeAreaInset(edge: .bottom) {
