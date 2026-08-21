@@ -81,12 +81,15 @@ flake rate, and it would be wrong to imply one.
 Two units. Unit 1 is a measurement that unit 2 does not depend on, and either may land first.
 
 1. **Re-establish the Thread Performance Checker baseline.** Determine whether the runner still
-   provokes a priority-inversion report, and if so, what the report's stacks name. The checker writes
-   into the runner's captured output, which the fault-injection and visual jobs already upload as a
-   job artifact, so the measurement needs no new plumbing: run those jobs and grep the capture. Record
-   the finding in this item — including a negative one, which is the outcome the reasoning above
-   expects. A report that does fire names the waiting and holding threads, and that is what would turn
-   the inversion from a shape the code permits into a mechanism worth describing.
+   provokes a priority-inversion report, and if so, what the report's stacks name. The fault-injection
+   and visual jobs already upload the runner's captured output as a job artifact, but searching that
+   capture settles nothing while the checker stays silent: the checker writes a report to standard
+   error only when the runner process's environment carries `PERFC_LOG_REPORTS_TO_STDERR`, and the
+   `.xctestrun` those two jobs run omits the variable. Forward the variable into the runner process,
+   run those jobs, and search the capture. Record the finding in this item — including a negative
+   one, which is the outcome the reasoning above expects. A report that does fire names the waiting
+   and holding threads, and that is what would turn the inversion from a shape the code permits into
+   a mechanism worth describing.
 
    Do not close such a report as already handled by unit 2, because unit 2 addresses only one of the
    two shapes it could take. Declaring one level on both queues removes a *divergence* — two handlers
@@ -147,8 +150,9 @@ Two units. Unit 1 is a measurement that unit 2 does not depend on, and either ma
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — grep the fault-injection and visual jobs' runner captures for a Thread Performance
-      Checker report, and record the finding here, including a negative one.
+- [ ] Unit 1 — forward `PERFC_LOG_REPORTS_TO_STDERR` into the runner process, search the
+      fault-injection and visual jobs' runner captures for a Thread Performance Checker report, and
+      record the finding here, including a negative one.
 - [x] Unit 2 — pass `qos: .userInitiated` to both of the runner HTTP server's queue constructors, with
       a comment recording that the level pins what propagation supplies implicitly.
 
@@ -170,6 +174,31 @@ Log:
   escapes a behavioural check. The other test starts the server from a `.utility` context. It then
   asserts that a handler still runs at `.userInitiated`. Nothing else in the runner changes. The
   priority the code runs at is the one propagation already supplied.
+- 2026-08-22 — Unit 1 searched the uploaded artifacts and found nothing, but the search measures the
+  reporting path rather than the scheduling. We downloaded the artifacts the `fault-injection` and
+  `visual` jobs of nine runs between 2026-08-18 and 2026-08-21 uploaded, and searched all 1,144
+  files, among them the 28 XCUITest diagnostic logs the two jobs' result bundles carry — the
+  fullest record either job keeps. Neither `Thread Performance Checker` nor `priority inversion`
+  nor `Higher QoS thread blocked` appears in any of the 1,144 files. Querying the one intact bundle
+  with `xcresulttool` adds only the `kill` the fault-injection job sends on purpose, with no
+  runtime issue beside it. What that silence reflects is the checker's configuration. The
+  `.xctestrun` the end-to-end jobs run, read out of the same runs' `ios-build` artifact, inserts
+  the checker's library (`/usr/lib/libRPAC.dylib`) into the runner process and leaves
+  `PERFC_DISABLE_PRIORITY_INVERSIONS` unset, so the checker does run and does look for inversions.
+  Printing is what it does not do: the same file sets `PERFC_SUPPRESS_SYSTEM_REPORTS` to 1 and sets
+  neither `PERFC_LOG_REPORTS_TO_STDERR` nor `PERFC_LOG_REPORTS_TO_OSLOG`, both of which the
+  library's own strings show to be opt-in switches, so a report reaches no file either job uploads.
+  That configuration also reframes the observation the Motivation records, of a checker report seen
+  in a failing job's captured output during an earlier investigation: no report could have reached
+  the capture under the configuration measured here, so these jobs as they run today cannot
+  reproduce whatever produced that one, be it a different toolchain, a different reporting route,
+  or a misremembered observation. Closing this unit needs one measurement run carrying
+  `PERFC_LOG_REPORTS_TO_STDERR=1` in the runner process's environment. The per-spawn `.xctestrun`
+  patch already has a place for it: the patch merges a forwarded environment into
+  `TestingEnvironmentVariables`, the runner process's own environment
+  ([`_patch_xctestrun_env`](../../bajutsu/platform_lifecycle/environments/xcuitest.py)). Until such
+  a run exists, whether the runner provokes an inversion report stays unmeasured, and this unit
+  stays open.
 
 ## References
 
