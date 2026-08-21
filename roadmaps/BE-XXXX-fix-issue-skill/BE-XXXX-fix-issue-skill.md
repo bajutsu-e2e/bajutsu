@@ -64,9 +64,11 @@ draw that line.
    true shape does not always show in the issue body alone.
 2. **Ownership through the issue's own assignee field, not a bot-managed tracking issue.** BE-0109
    never syncs a plain issue, so `fix-issue` checks and claims ownership on the issue directly:
-   `gh issue view <N> --json assignees` first, then `gh issue edit <N> --add-assignee @me` when the
-   issue carries no assignee or already carries the current user. An issue already assigned to
-   someone else stops the skill. `implement-be` applies that same rule to a BE tracking issue.
+   `gh issue view <N> --json state,assignees` first, then `gh issue edit <N> --add-assignee @me`
+   when the issue is open and carries no assignee or already carries the current user. A closed
+   issue, or one already assigned to someone else, stops the skill. `implement-be` applies that
+   same assignee rule to a BE tracking issue, and its step 1 `Status` read is the guard the state
+   check replaces here.
 3. **The ship-the-code steps reuse `implement-be` almost word for word.** The skill grounds itself in
    the linked code and tests, opens a one-topic branch (`claude/fix-issue-<N>-<slug>`), and drafts a
    short plan: the files it will touch, the machine-checkable outcome, and the tests to add. It
@@ -133,7 +135,8 @@ draw that line.
 
 - [ ] 1. Scope-fit judgment in place of a label, including the escalation valve to `ideation` /
   `propose-and-build`.
-- [ ] 2. Ownership check and claim through the issue's native assignee field.
+- [ ] 2. Open-state and ownership check, and the claim, through the issue's native `state` and
+  assignee fields.
 - [ ] 3. Ship-the-code steps reused from `implement-be` (branch, plan confirmation, implementation,
   two-role self-review, the gate).
 - [ ] 4. The differences from a BE-item PR: no `Status` flip, no `[BE-NNNN]` prefix, `Closes #<N>`

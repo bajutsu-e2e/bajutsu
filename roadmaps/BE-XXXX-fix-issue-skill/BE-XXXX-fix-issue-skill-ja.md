@@ -58,13 +58,15 @@ Issueにこのラベルを付ける、という形です。本項目はこのラ
    は止まります。理由をユーザーに伝え、続行せずに
    [`ideation`](../../.agent-workflows/ideation/workflow.md)や
    [`propose-and-build`](../../.agent-workflows/propose-and-build/workflow.md)を指し示します。
-   修正の本当の形はIssue本文だけでは見えないことがあるため、このエスカレーションは、手順3の計画段階までのどの時点でも起こりえます。
+   修正の本当の形はIssue本文だけでは見えないことがあるため、このエスカレーションは、手順3の計画
+   段階までのどの時点でも起こりえます。
 2. **担当の確保は、ボットが管理するトラッキングIssueではなく、Issue自身のAssignee欄で行います。**
    BE-0109は素のIssueを同期しないため、`fix-issue`はIssue自身で担当を確認し確保します。まず
-   `gh issue view <N> --json assignees`で確認し、Issueに担当者がいないか、すでに自分が担当になって
-   いる場合に限り`gh issue edit <N> --add-assignee @me`を実行します。すでに他の人が担当になって
-   いるIssueでは、スキルはそこで止まります。`implement-be`もBEトラッキングIssueに同じ規則を適用
-   しています。
+   `gh issue view <N> --json state,assignees`で確認し、Issueがオープンであり、かつ担当者がいないか
+   すでに自分が担当になっている場合に限り`gh issue edit <N> --add-assignee @me`を実行します。閉じた
+   Issueや、すでに他の人が担当になっているIssueでは、スキルはそこで止まります。`implement-be`も
+   担当についてはBEトラッキングIssueに同じ規則を適用しており、その手順1の`Status`の読み取りが、
+   ここで状態を確認する役割にあたります。
 3. **コードを仕上げる手順は、`implement-be`をほぼそのまま再利用します。** スキルはリンクされた
    コードとテストを読んで足場を固め、1トピック1ブランチの原則に沿ったブランチ
    (`claude/fix-issue-<N>-<slug>`)を切り、触れるファイル、機械的に検証できる結果、追加するテスト
@@ -133,7 +135,7 @@ Issueにこのラベルを付ける、という形です。本項目はこのラ
 
 - [ ] 1. ラベルの代わりとなるスコープ適合の判断、および`ideation`/`propose-and-build`へのエスカレー
   ション。
-- [ ] 2. Issue自身のAssignee欄による担当の確認と確保。
+- [ ] 2. Issue自身の`state`とAssignee欄によるオープン状態および担当の確認と、担当の確保。
 - [ ] 3. `implement-be`から再利用するコード仕上げの手順(ブランチ、計画の確認、実装、2役割による
   自己レビュー、ゲート)。
 - [ ] 4. BE項目のPRとの違い:`Status`を切り替えない、`[BE-NNNN]`接頭辞を付けない、本文に
