@@ -313,6 +313,13 @@ def test_ios_lane_surface() -> None:
     assert is_relevant([".github/actions/bajutsu-e2e/action.yml"]) is True
     assert is_relevant([".github/actions/boot-simulator/action.yml"]) is True
     assert is_relevant([".github/actions/collect-ios-diagnostics/action.yml"]) is True
+    # The deterministic check the `network (xcuitest)` job runs over the persisted network.json
+    # (BE-0282). iOS-only: no other lane invokes it, and it must fire *this* lane — otherwise editing
+    # the checker fires nothing, the job never runs on the PR that changed it, and `E2E (iOS)` reports
+    # green having tested none of it.
+    assert is_relevant(["demos/showcase/network/assert_network_evidence.py"]) is True
+    assert is_relevant(["demos/showcase/network/assert_network_evidence.py"], "android") is False
+    assert is_relevant(["demos/showcase/network/assert_network_evidence.py"], "web") is False
     # ...but not another lane's driver, app SDK, or workflow — the regression this fixes: a bare
     # `bajutsu/drivers/` sweep previously fired the metered macOS jobs on an adb-only or
     # playwright-only change that XCUITest never imports.
@@ -1303,10 +1310,11 @@ def test_no_ios_declared_scenario_includes_another_declared_scenario() -> None:
             )
 
 
-# --- codegen / visual keyed from the showcase Makefile (BE-0338) ---------------------------------
-# `codegen` and `visual` declare their scenarios in `demos/showcase/Makefile` targets, not a workflow
-# `scenarios:` input, so their attribution is read from the recipes and pinned here against the
-# Makefile ground truth — the drift guard that lets the narrowing hold BE-0322's no-drift invariant.
+# --- Makefile-declared jobs keyed from the showcase Makefile (BE-0338) ----------------------------
+# `codegen`, `visual`, and `network` declare their scenarios in `demos/showcase/Makefile` targets, not
+# a workflow `scenarios:` input, so their attribution is read from the recipes and pinned here against
+# the Makefile ground truth — the drift guard that lets the narrowing hold BE-0322's no-drift
+# invariant.
 
 _MAKEFILE_SAMPLE = """\
 CONFIG := $(HERE)/showcase.config.yaml
@@ -1329,6 +1337,12 @@ e2e-visual: swiftui-build
 \tcd $(ROOT) && uv run --extra visual bajutsu run \\
 \t\t--scenario demos/showcase/scenarios/visual/visual_ios.yaml \\
 \t\t--target showcase-swiftui --udid $(SIM)
+
+e2e-network: swiftui-build runner-build
+\tcd $(ROOT) && uv run bajutsu run \\
+\t\t--scenario demos/showcase/scenarios/network_mock.yaml \\
+\t\t--scenario demos/showcase/scenarios/network_live.yaml \\
+\t\t--target showcase-swiftui --udid $(SIM)
 """
 
 
@@ -1347,27 +1361,67 @@ def test_makefile_target_scenarios_reads_a_targets_recipe() -> None:
     assert _makefile_target_scenarios(_MAKEFILE_SAMPLE, "e2e-visual") == {
         "demos/showcase/scenarios/visual/visual_ios.yaml"
     }
+    assert _makefile_target_scenarios(_MAKEFILE_SAMPLE, "e2e-network") == {
+        "demos/showcase/scenarios/network_mock.yaml",
+        "demos/showcase/scenarios/network_live.yaml",
+    }
     # A target that isn't present names nothing.
     assert _makefile_target_scenarios(_MAKEFILE_SAMPLE, "absent") == set()
 
 
 def test_makefile_job_scenarios_folds_a_jobs_targets() -> None:
     job_scenarios = makefile_job_scenarios(_MAKEFILE_SAMPLE)
-    # `codegen` unions its two targets; `visual` is its one target.
+    # `codegen` unions its two targets; `visual` and `network` each have one.
     assert job_scenarios["codegen"] == {
         "demos/showcase/scenarios/components.yaml",
         "demos/showcase/scenarios/text_editing.yaml",
         "demos/showcase/scenarios/gestures.yaml",
     }
     assert job_scenarios["visual"] == {"demos/showcase/scenarios/visual/visual_ios.yaml"}
+    assert job_scenarios["network"] == {
+        "demos/showcase/scenarios/network_mock.yaml",
+        "demos/showcase/scenarios/network_live.yaml",
+    }
 
 
 def test_makefile_job_scenarios_raises_when_a_target_names_no_scenario() -> None:
     # A recipe that names no scenario (a rename that outdated the target, or a parse failure) must
     # fail loud so the caller falls back to the whole lane rather than narrowing a job to nothing.
-    empty = "ui-test:\n\techo nothing here\nui-test-coverage:\n\techo nor here\ne2e-visual:\n\techo none\n"
+    empty = (
+        "ui-test:\n\techo nothing here\n"
+        "ui-test-coverage:\n\techo nor here\n"
+        "e2e-visual:\n\techo none\n"
+        "e2e-network:\n\techo none either\n"
+    )
     with pytest.raises(ValueError, match="codegen"):
         makefile_job_scenarios(empty)
+
+
+def test_makefile_job_scenarios_raises_on_the_network_targets_own_empty_recipe() -> None:
+    # The `empty` / `half` fixtures below both raise on an earlier job, so neither observes
+    # `network`'s own per-target path. Leave every other target scenario-bearing and empty only
+    # `e2e-network`, so the raise has to name it.
+    only_network_empty = _MAKEFILE_SAMPLE.replace(
+        "\tcd $(ROOT) && uv run bajutsu run \\\n"
+        "\t\t--scenario demos/showcase/scenarios/network_mock.yaml \\\n"
+        "\t\t--scenario demos/showcase/scenarios/network_live.yaml \\\n",
+        "\techo renamed away, names no scenario\n",
+    )
+    assert "network_mock.yaml" not in only_network_empty
+    with pytest.raises(ValueError, match="e2e-network"):
+        makefile_job_scenarios(only_network_empty)
+
+
+def test_makefile_job_scenarios_raises_when_a_job_lists_no_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The empty tuple is the one input the per-target ladder below cannot see: it iterates zero times,
+    # so the job would land in the map with an empty scenario set, be selected by nothing, and
+    # silently never fire on a scenario-only change — an under-fire, not the over-fire this module
+    # falls back to everywhere else.
+    monkeypatch.setitem(_MAKEFILE_JOB_TARGETS, "network", ())
+    with pytest.raises(ValueError, match="network"):
+        makefile_job_scenarios(_MAKEFILE_SAMPLE)
 
 
 def test_makefile_job_scenarios_raises_per_target_not_per_job() -> None:
@@ -1382,18 +1436,20 @@ def test_makefile_job_scenarios_raises_per_target_not_per_job() -> None:
         "\tuv run bajutsu codegen demos/showcase/scenarios/text_editing.yaml -o x.swift\n"
         "e2e-visual:\n"
         "\tuv run bajutsu run --scenario demos/showcase/scenarios/visual/visual_ios.yaml\n"
+        "e2e-network:\n"
+        "\tuv run bajutsu run --scenario demos/showcase/scenarios/network_mock.yaml\n"
     )
     with pytest.raises(ValueError, match="ui-test"):
         makefile_job_scenarios(half)
 
 
 def test_makefile_declared_scenarios_match_the_targets() -> None:
-    # BE-0338 drift guard — the linchpin. The `codegen` / `visual` attribution is read from the
+    # BE-0338 drift guard — the linchpin. The Makefile-declared jobs' attribution is read from the
     # showcase Makefile recipes (never a second hand-written copy), but pin the extracted set against
     # an explicit expectation so a Makefile edit that adds or drops a scenario from `ui-test` /
-    # `ui-test-coverage` / `e2e-visual` fails `make check` until the attribution is consciously moved
-    # with it. Without this the attribution is exactly the drift BE-0322's design removed; with it, it
-    # is as ground-truth-bound as the action-input map.
+    # `ui-test-coverage` / `e2e-visual` / `e2e-network` fails `make check` until the attribution is
+    # consciously moved with it. Without this the attribution is exactly the drift BE-0322's design
+    # removed; with it, it is as ground-truth-bound as the action-input map.
     text = showcase_makefile_text()
     assert text is not None
     assert makefile_job_scenarios(text) == {
@@ -1405,17 +1461,29 @@ def test_makefile_declared_scenarios_match_the_targets() -> None:
             "demos/showcase/scenarios/codegen_extra.yaml",
         },
         "visual": {"demos/showcase/scenarios/visual/visual_ios.yaml"},
+        "network": {
+            "demos/showcase/scenarios/network_mock.yaml",
+            "demos/showcase/scenarios/network_live.yaml",
+        },
     }
 
 
 def test_lane_job_scenario_map_folds_the_makefile_jobs_on_ios_only() -> None:
     # On iOS the combined map carries the workflow-declared jobs *and* the Makefile-declared
-    # `codegen` / `visual`. On Android / web the Makefile jobs are not folded — they key no jobs on
-    # scenarios (BE-0338 is iOS-only), so the combined map equals the (empty) workflow map.
+    # `codegen` / `visual` / `network`. On Android / web the Makefile jobs are not folded — they key no
+    # jobs on scenarios (BE-0338 is iOS-only), so the combined map equals the (empty) workflow map.
     ios_text = lane_workflow_text("ios")
     assert ios_text is not None
     ios_map = lane_job_scenario_map("ios", ios_text)
-    assert set(ios_map) == {"run", "actuation", "golden", "bundled-runner", "codegen", "visual"}
+    assert set(ios_map) == {
+        "run",
+        "actuation",
+        "golden",
+        "bundled-runner",
+        "codegen",
+        "visual",
+        "network",
+    }
     assert ios_map["codegen"] == {
         "demos/showcase/scenarios/components.yaml",
         "demos/showcase/scenarios/text_editing.yaml",
@@ -1424,27 +1492,31 @@ def test_lane_job_scenario_map_folds_the_makefile_jobs_on_ios_only() -> None:
         "demos/showcase/scenarios/codegen_extra.yaml",
     }
     assert ios_map["visual"] == {"demos/showcase/scenarios/visual/visual_ios.yaml"}
+    assert ios_map["network"] == {
+        "demos/showcase/scenarios/network_mock.yaml",
+        "demos/showcase/scenarios/network_live.yaml",
+    }
     for lane in ("android", "web"):
         text = lane_workflow_text(lane)
         assert text is not None
         assert lane_job_scenario_map(lane, text) == {}, lane
 
 
-def test_codegen_and_visual_carry_the_scenario_keyed_guard() -> None:
-    # Unit 4 wiring: both jobs must guard on their `affected` slot, not fire on bare `relevant`. A
-    # revert of the `if:` (back to `relevant == 'true'`) would silently un-narrow them, so pin the
-    # guard's presence here alongside the map-key match test above.
+def test_the_makefile_declared_jobs_carry_the_scenario_keyed_guard() -> None:
+    # Unit 4 wiring: each of these jobs must guard on its `affected` slot, not fire on bare
+    # `relevant`. A revert of the `if:` (back to `relevant == 'true'`) would silently un-narrow it, so
+    # pin the guard's presence here alongside the map-key match test above.
     text = lane_workflow_text("ios")
     assert text is not None
-    for job in ("codegen", "visual"):
+    for job in _MAKEFILE_JOB_TARGETS:
         assert f"contains(fromJSON(needs.changes.outputs.affected), '{job}')" in text, job
 
 
-def test_makefile_target_job_map_covers_only_the_two_keyed_jobs() -> None:
+def test_makefile_target_job_map_covers_only_the_makefile_declared_jobs() -> None:
     # `conformance` stays a dimension job (it drives the whole harness, declaring no scenario subset),
-    # so only `codegen` and `visual` are Makefile-keyed. Pin the mapping so a future addition is a
-    # conscious edit here.
-    assert set(_MAKEFILE_JOB_TARGETS) == {"codegen", "visual"}
+    # so only `codegen`, `visual`, and `network` are Makefile-keyed. Pin the mapping so a future
+    # addition is a conscious edit here.
+    assert set(_MAKEFILE_JOB_TARGETS) == {"codegen", "visual", "network"}
 
 
 def test_makefile_job_targets_match_the_workflow_make_invocations() -> None:
@@ -1458,7 +1530,7 @@ def test_makefile_job_targets_match_the_workflow_make_invocations() -> None:
     #     recipe is *scenario-bearing* must be in the dict — so adding a new scenario target to a job
     #     without listing it (leaving its scenario silently unattributed, an under-fire) fails here.
     # The addition check filters on scenario-bearing recipes via `_makefile_target_scenarios`, so the
-    # non-scenario build targets both jobs legitimately invoke (`swiftui-build`, `runner-build`) are
+    # non-scenario build targets these jobs legitimately invoke (`swiftui-build`, `runner-build`) are
     # ignored rather than forced into the dict.
     text = lane_workflow_text("ios")
     assert text is not None
@@ -1615,6 +1687,32 @@ def test_main_narrows_a_codegen_scenario_change_to_the_codegen_job(
     assert (
         output.read_text(encoding="utf-8")
         == 'relevant=true\nshared=false\naffected=["codegen"]\npool=false\n'
+    )
+
+
+def test_main_narrows_a_network_scenario_change_to_the_network_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # BE-0282: the two network scenarios are declared by `make e2e-network` alone, so a change to
+    # either narrows to just the `network` job. Before that target existed they were attributable to
+    # no job and fell back to the whole lane; the risk of the narrowing is the other direction — an
+    # `affected` that came back empty would skip the job while `E2E (iOS)` still reported green, so
+    # pin the positive selection end to end, as the codegen / visual pair above does.
+    _init_repo(tmp_path, monkeypatch)
+    _commit(tmp_path, "README.md", "seed")
+    _git(tmp_path, "branch", "pr")
+    main_tip = _commit(tmp_path, "main_only.txt", "unrelated on main")
+    _git(tmp_path, "checkout", "-q", "pr")
+    pr_tip = _commit(tmp_path, "demos/showcase/scenarios/network_mock.yaml", "mock edit")
+
+    output = tmp_path / "github_output"
+    monkeypatch.setenv("BASE_SHA", main_tip)
+    monkeypatch.setenv("HEAD_SHA", pr_tip)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    assert main() == 0
+    assert (
+        output.read_text(encoding="utf-8")
+        == 'relevant=true\nshared=false\naffected=["network"]\npool=false\n'
     )
 
 

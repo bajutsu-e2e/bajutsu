@@ -52,15 +52,15 @@ Alongside ``relevant`` the module emits two more outputs the lane's jobs read: `
 whole lane fires) and ``affected`` (a JSON array of the scenario-keyed jobs a scenario-only change
 reached). A scenario-keyed job runs when ``relevant`` is true and (``shared`` is true, or the job is
 in ``affected``); a dimension job that declares no scenario runs whenever ``relevant`` is true. On
-iOS the ``codegen`` and ``visual`` jobs are scenario-keyed too (BE-0338): they declare their
-scenarios in ``demos/showcase/Makefile`` targets rather than a workflow input, so ``job_scenario_map``
-never sees them — ``lane_job_scenario_map`` folds those Makefile-declared scenarios into the map,
-leaving ``conformance`` (which drives the whole harness, keyed on no scenario) the lane's one
-dimension job. The decision over-selects toward the whole lane — a shared-code
+iOS the ``codegen``, ``visual``, and ``network`` jobs are scenario-keyed too (BE-0338): they declare
+their scenarios in ``demos/showcase/Makefile`` targets rather than a workflow input, so
+``job_scenario_map`` never sees them — ``lane_job_scenario_map`` folds those Makefile-declared
+scenarios into the map, leaving ``conformance`` (which drives the whole harness, keyed on no
+scenario) the lane's one dimension job. The decision over-selects toward the whole lane — a shared-code
 change, an unattributable scenario fragment, an unreadable workflow, and a lane with no
 scenario-keyed jobs (Android, web) all fall back to ``shared`` — so it never skips a job a change
 could have broken. It reads only the ``git`` diff, the ``scenarios:`` each job declares, and (for the
-iOS ``codegen`` / ``visual`` jobs) the showcase Makefile targets those jobs run: no large language
+iOS Makefile-declared jobs) the showcase Makefile targets those jobs run: no large language
 model touches the decision, and it has no bearing on any run's pass/fail verdict.
 """
 
@@ -289,6 +289,10 @@ _LANE_PATHS: dict[str, str] = {
         # The main config and the BE-0292 bundled-runner config the `bundled-runner (xcuitest)` job runs.
         r"|demos/showcase/showcase(?:\.[^/]+)?\.config\.yaml$"
         r"|demos/showcase/scenarios/"
+        # The deterministic check the `network (xcuitest)` job runs over the persisted network.json
+        # (BE-0282). iOS-only: the web lane has its own copy under the `demos/web/` sweep below, and
+        # no other lane invokes this one.
+        r"|demos/showcase/network/"
         r"|Makefile$"
         # The showcase's own Makefile (`e2e-visual` and friends) — the top-level `Makefile$` above is
         # anchored to the repo root and doesn't reach this one, but the `visual` job depends on it.
@@ -594,17 +598,19 @@ def job_scenario_map(workflow_text: str) -> dict[str, set[str]]:
     return result
 
 
-# The `codegen` and `visual` jobs declare their scenarios in `demos/showcase/Makefile` targets, not
-# in a workflow `scenarios:` input (BE-0338). `codegen` codegens and runs the `ui-test` +
-# `ui-test-coverage` targets; `visual` runs the `e2e-visual` pixel VRT. Their attribution is read from
-# those recipes — the one place the scenarios are named — so it cannot be a second copy that a
-# Makefile edit outdates. `test_makefile_declared_scenarios_match_the_targets` pins the extracted set,
-# so a target gaining or losing a scenario fails `make check` unless the attribution moves with it,
-# the same no-drift invariant BE-0322's action-input map holds (`conformance` stays a dimension job:
-# it drives the whole harness and declares no scenario subset, so it is deliberately absent here).
+# These jobs declare their scenarios in `demos/showcase/Makefile` targets, not in a workflow
+# `scenarios:` input (BE-0338). `codegen` codegens and runs the `ui-test` + `ui-test-coverage`
+# targets; `visual` runs the `e2e-visual` pixel VRT; `network` runs the `e2e-network` capture / mock /
+# redaction lane (BE-0282). Their attribution is read from those recipes — the one place the scenarios
+# are named — so it cannot be a second copy that a Makefile edit outdates.
+# `test_makefile_declared_scenarios_match_the_targets` pins the extracted set, so a target gaining or
+# losing a scenario fails `make check` unless the attribution moves with it, the same no-drift
+# invariant BE-0322's action-input map holds (`conformance` stays a dimension job: it drives the whole
+# harness and declares no scenario subset, so it is deliberately absent here).
 _MAKEFILE_JOB_TARGETS: dict[str, tuple[str, ...]] = {
     "codegen": ("ui-test", "ui-test-coverage"),
     "visual": ("e2e-visual",),
+    "network": ("e2e-network",),
 }
 
 # A `demos/showcase/scenarios/…` YAML path as it appears literally in a Makefile recipe — the same
@@ -651,18 +657,23 @@ def _makefile_target_scenarios(makefile_text: str, target: str) -> set[str]:
 
 
 def makefile_job_scenarios(makefile_text: str) -> dict[str, set[str]]:
-    """Map ``codegen`` / ``visual`` to the scenarios their showcase Makefile targets run (BE-0338).
+    """Map each Makefile-declared job to the scenarios its showcase target runs (BE-0338).
 
     Raises:
-        ValueError: any mapped target names no scenario — a recipe rename or a parse failure. Checked
-            per target, not per job: a job whose second target still yields scenarios would otherwise
-            hide a first target that silently went empty, dropping that target's scenarios from the
-            job's set and under-attributing it. Failing on the empty target instead makes the caller
-            fall back to firing the whole lane, the same fail-closed direction ``job_scenario_map``
-            takes.
+        ValueError: a mapped job lists no target at all, or any mapped target names no scenario — a
+            recipe rename or a parse failure. The scenario check is per target, not per job: a job
+            whose second target still yields scenarios would otherwise hide a first target that
+            silently went empty, dropping that target's scenarios from the job's set and
+            under-attributing it. Failing on the empty target instead makes the caller fall back to
+            firing the whole lane, the same fail-closed direction ``job_scenario_map`` takes.
     """
     result: dict[str, set[str]] = {}
     for job, targets in _MAKEFILE_JOB_TARGETS.items():
+        # The one degenerate input the per-target ladder below cannot see: zero targets iterates zero
+        # times, so the job would land in the map with an empty scenario set and then be selected by
+        # nothing — a silent under-fire, the direction this module exists to avoid.
+        if not targets:
+            raise ValueError(f"job {job!r} lists no showcase Makefile target")
         scenarios: set[str] = set()
         for target in targets:
             target_scenarios = _makefile_target_scenarios(makefile_text, target)
@@ -697,9 +708,9 @@ def lane_job_scenario_map(lane: str, workflow_text: str) -> dict[str, set[str]]:
     """The full job-to-scenario map for ``lane`` (BE-0322 + BE-0338).
 
     The workflow's own ``scenarios:`` declarations (``job_scenario_map``), plus — on the iOS lane
-    only — the ``codegen`` / ``visual`` scenarios declared in the showcase Makefile, folded in so a
-    change to one of them names its job in ``affected``. Android and web key no jobs on scenarios, so
-    their map is the workflow map unchanged.
+    only — the scenarios the showcase Makefile declares for ``codegen`` / ``visual`` / ``network``,
+    folded in so a change to one of them names its job in ``affected``. Android and web key no jobs on
+    scenarios, so their map is the workflow map unchanged.
 
     Raises:
         ValueError: the workflow YAML, or (on iOS) the showcase Makefile, can't be parsed. The caller
@@ -710,7 +721,7 @@ def lane_job_scenario_map(lane: str, workflow_text: str) -> dict[str, set[str]]:
         makefile_text = showcase_makefile_text()
         if makefile_text is None:
             raise ValueError(
-                "showcase Makefile is absent; cannot key codegen / visual on scenarios"
+                "showcase Makefile is absent; cannot key its Makefile-declared jobs on scenarios"
             )
         for job, scenarios in makefile_job_scenarios(makefile_text).items():
             job_map.setdefault(job, set()).update(scenarios)

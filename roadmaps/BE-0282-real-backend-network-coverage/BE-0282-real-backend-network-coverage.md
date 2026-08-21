@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0282](BE-0282-real-backend-network-coverage.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0282") |
-| Implementing PR | [#1183](https://github.com/bajutsu-e2e/bajutsu/pull/1183) (web slice), [#1267](https://github.com/bajutsu-e2e/bajutsu/pull/1267) (promote web job to gate), [#1701](https://github.com/bajutsu-e2e/bajutsu/pull/1701) (web over-redaction rule) |
+| Implementing PR | [#1183](https://github.com/bajutsu-e2e/bajutsu/pull/1183) (web slice), [#1267](https://github.com/bajutsu-e2e/bajutsu/pull/1267) (promote web job to gate), [#1701](https://github.com/bajutsu-e2e/bajutsu/pull/1701) (web over-redaction rule), [#1693](https://github.com/bajutsu-e2e/bajutsu/pull/1693) (iOS slice) |
 | Topic | Verification & coverage |
 | Related | [BE-0020](../BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md), [BE-0027](../BE-0027-mock-server-external/BE-0027-mock-server-external.md), [BE-0003](../BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci.md) |
 <!-- /BE-METADATA -->
@@ -85,19 +85,20 @@ Proposal altitude. The work is MECE along the units below.
 
 - [x] Web network smoke: mock + request assert without `--no-network`, asserting interception, capture, and the `mocked` flag.
 - [x] Web redaction of real captured evidence (secret in header/body masked in persisted evidence).
-- [ ] iOS collector real path: connect `network_mock.yaml` / `network_live.yaml` as a non-gating job.
+- [x] iOS collector real path: connect `network_mock.yaml` / `network_live.yaml` as a non-gating job.
 - [x] Record the Android network gap explicitly (out of scope pending a native monitor).
-- [x] Land as signal first; promote to required only after it proves stable. (Web `network (playwright)` job promoted into the `E2E (web)` gate after proving stable in CI; iOS lane still to come.)
+- [x] Land as signal first; promote to required only after it proves stable. (Web `network (playwright)` job promoted into the `E2E (web)` gate after proving stable in CI; the iOS `network (xcuitest)` job landed as signal and awaits the same stability record.)
 
 Log:
 
 - [#1183](https://github.com/bajutsu-e2e/bajutsu/pull/1183) — web slice: added a Sync request to the demo app, `demos/web/scenarios/network.yaml` (mocked, captured `POST /api/sync` carrying a secret), a `fields: [password]` redact policy, `demos/web/network/assert_redaction.py`, the `make -C demos/web e2e-network` target, and the non-gating `network (playwright)` CI job. Android gap recorded in the workflow and `docs/architecture.md`. iOS collector real path deferred to a follow-up.
 - [#1267](https://github.com/bajutsu-e2e/bajutsu/pull/1267) — promoted the `network (playwright)` job from signal into the required `E2E (web)` gate after it proved stable in CI (0 failures over the last 50 runs), the web twin of android-e2e.yml's already-gating `network (adb)`. Updated the docs that describe the job in step — `docs/architecture.md`, `docs/ci.md`, `demos/web/README.md`, and each one's Japanese mirror — to drop the "non-gating / signal first" wording.
 - [#1701](https://github.com/bajutsu-e2e/bajutsu/pull/1701) — closed the web redaction check's over-redaction blind spot: a body replaced wholesale by the placeholder, or one whose every value was masked, satisfied all of its body rules, so the check now requires the Sync request's non-secret `account` key and value to survive. Added the tests that execute the checker itself — `assert_redaction.py`'s `main` ran in no gate test at all, and the browser lane only ever hands it correctly masked evidence, so its rules passed whether or not they still said anything.
+- [#1693](https://github.com/bajutsu-e2e/bajutsu/pull/1693) — iOS slice, the last unit: a `redact: { fields: [password] }` policy on `showcase-swiftui`, `demos/showcase/network/assert_network_evidence.py`, the `make -C demos/showcase e2e-network` target running `network_mock.yaml` + `network_live.yaml` into a throwaway runs dir, and the non-gating `network (xcuitest)` CI job. The redaction check also asserts the unstubbed exchange carries `mocked` false, so an over-broad mock matcher cannot claim traffic nothing stubbed — a check the web twin, holding only mocked traffic, cannot make. `scripts/e2e_changes.py` keys the job on its Makefile-declared scenarios (BE-0338), and `tests/test_showcase_network_demo.py` pins the scenarios, the policy, and the app's secret literals on the fast gate. Verified on a booted iPhone 17 Pro Simulator: both scenarios PASS, the captured `POST /post` is recorded `mocked: true` with status 201 and both secrets masked to `[REDACTED]`, and the observed `GET /horses` is recorded `mocked: false`.
 
 ## References
 
 - [BE-0020 — Multi-backend evidence fallback](../BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md)
 - [BE-0027 — External mock server](../BE-0027-mock-server-external/BE-0027-mock-server-external.md)
 - [BE-0003 — codegen, traces, network & CI (M3)](../BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci.md)
-- `bajutsu/network.py`, `bajutsu/web_network.py`, `demos/showcase/scenarios/network_live.yaml`, `demos/showcase/scenarios/network_mock.yaml`
+- `bajutsu/evidence/network.py`, `bajutsu/web_network.py`, `demos/showcase/scenarios/network_live.yaml`, `demos/showcase/scenarios/network_mock.yaml`

@@ -14,8 +14,9 @@ enum ShowcaseNet {
     }
 
     /// Issue a request with an explicit method and optional JSON body/headers.
-    /// One caller deliberately passes an Authorization header + `password` body field
-    /// so redaction has something to mask (SPEC §6).
+    /// No caller here passes `headers`, and this target's Log submit sends no `password` field: the
+    /// redaction demo (SPEC §6) lives on the SwiftUI twin's submit alone, which is why the network
+    /// lane pins `--target showcase-swiftui` (demos/showcase/Makefile, BE-0282).
     static func request(
         _ method: String,
         _ urlString: String,

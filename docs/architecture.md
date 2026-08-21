@@ -685,6 +685,19 @@ measurement, and the diagnostics both jobs upload are what tell the two apart.
   iterations, data-driven rows, and `relaunch` — exercised on-device per PR by `ios-e2e.yml`'s
   `actuation (xcuitest)` job, so none of them rests on adb and Playwright alone
   ([BE-0285](../roadmaps/BE-0285-scenario-feature-real-backend-coverage/BE-0285-scenario-feature-real-backend-coverage.md)).
+- The network path over the iOS transport — `BajutsuKit`'s in-app `URLProtocol` serving a mocked
+  request from its own stub and reporting each exchange to the collector on loopback — driven per PR
+  by `ios-e2e.yml`'s
+  `network (xcuitest)` job (`make -C demos/showcase e2e-network`, [BE-0282](../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)).
+  It runs `network_mock.yaml` (a stubbed `POST /post` answered 201, where a live server would answer
+  200) and `network_live.yaml` (an unstubbed catalog `GET`, asserted only to have been observed), then
+  asserts the persisted `network.json` (`demos/showcase/network/assert_network_evidence.py`): the mocked
+  exchange marked `mocked` with its `Authorization` header and `password` body field masked and no
+  raw secret anywhere in the file, and the unstubbed exchange carrying `mocked` false, so an
+  over-broad mock matcher cannot claim traffic nothing stubbed. Whether a *really captured* credential
+  is masked in shipped evidence is observed only here — every pure redaction test feeds the algorithm
+  a hand-built exchange. Non-gating: new on-device coverage lands as
+  a signal first, the path the web twin below took before joining `E2E (web)`.
 
 ### Validated in a browser (Linux, no Mac)
 
@@ -697,9 +710,9 @@ measurement, and the diagnostics both jobs upload are what tell the two apart.
   the `network (playwright)` job (`web-e2e.yml`; [BE-0282](../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)),
   which runs `demos/web/scenarios/network.yaml` **with network on** and then asserts the persisted
   `network.json` masks a captured secret. It landed as signal first and, having proven stable in CI,
-  now feeds the required `E2E (web)` gate. The iOS half (wiring `network_mock.yaml` /
-  `network_live.yaml` as a Simulator job) is not
-  yet done. Android now has app-side network capture (BE-0283): `BajutsuAndroid`'s OkHttp
+  now feeds the required `E2E (web)` gate. The iOS half is the `network (xcuitest)` job described
+  under "Validated on a real Simulator" above, so all three backends now drive the network runtime
+  they implement. Android now has app-side network capture (BE-0283): `BajutsuAndroid`'s OkHttp
   interceptor reports each exchange to the host collector over an `adb reverse` tunnel, the same
   app-side-cooperation shape `BajutsuKit` uses on iOS. The adb driver itself still declares no
   native `NETWORK` capability — there is no native network monitor to actuate — so `network (adb)`

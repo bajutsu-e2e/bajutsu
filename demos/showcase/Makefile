@@ -8,7 +8,7 @@
 	run-swiftui run-uikit run-swiftui-tabs run-uikit-tabs \
 	run-swiftui-noax run-uikit-noax doctor record ui-test ui-test-coverage \
 	vrt vrt-approve vrt-swiftui vrt-swiftui-approve vrt-uikit vrt-uikit-approve \
-	e2e-visual e2e-visual-approve \
+	e2e-visual e2e-visual-approve e2e-network \
 	flutter-build flutter-android-build flutter-android-noax-build \
 	run-flutter run-flutter-android clean
 
@@ -271,6 +271,40 @@ e2e-visual-approve:
 	-$(MAKE) --no-print-directory e2e-visual
 	cd $(ROOT) && uv run --extra visual bajutsu approve --baselines $(BASELINES_IOS_VRT)
 
+# On-device network capture, mocking, and redaction over XCUITest (BE-0282) — the iOS twin of
+# `make -C demos/web e2e-network` and of the android Makefile's own `e2e-network`. It drives the whole
+# BajutsuKit → loopback POST → collector chain: network_mock.yaml proves the in-app stub served the
+# Log submit (201, where a live server would answer 200) and network_live.yaml proves an unstubbed
+# request is observed. The bulk `run-swiftui`/`run-uikit` lanes sweep both files up incidentally; this
+# is the named lane the `network (xcuitest)` CI job runs, into a throwaway runs dir so the redaction
+# check that follows reads only this run's evidence. `--network` is `bajutsu run`'s own default, named
+# here because network being ON is what defines this lane (its twin `e2e` on the web side has to opt
+# out with `--no-network`).
+#
+# No stub server, deliberately, unlike the android twin: network_mock.yaml never reaches the network
+# at all (BajutsuKit answers it in-process), and BajutsuKit reports network_live.yaml's exchange
+# whether the request succeeds or fails, so the default SHOWCASE_API_URL needs nothing running. A
+# loopback stub would in fact be *invisible* here — `BajutsuURLProtocol.canInit` never intercepts
+# loopback, the guard that keeps the collector's own report POSTs from being re-reported.
+#
+# `assert_network_evidence.py` is what closes BE-0282's sharpest gap: the run grammar can assert on the
+# exchanges, but not on the persisted network.json, so whether a *really captured* secret is masked
+# there — and whether `mocked` is provenance rather than a default — is checked by that script.
+#
+# `--target showcase-swiftui`, not both toolkits like `run-swiftui`/`run-uikit`: only the SwiftUI Log
+# submit sends the Authorization header and the `password` field the redaction check reads
+# (ios/uikit/Sources/LogController.swift sends neither), so the UIKit twin would fail that check for
+# lack of a secret rather than for a redaction defect.
+NET_RUNS ?= $(ROOT)/tmp/showcase-network-runs
+e2e-network: swiftui-build runner-build
+	rm -rf $(NET_RUNS)
+	cd $(ROOT) && uv run bajutsu run \
+		--scenario demos/showcase/scenarios/network_mock.yaml \
+		--scenario demos/showcase/scenarios/network_live.yaml \
+		--target showcase-swiftui --udid $(SIM) --backend xcuitest --config $(CONFIG) \
+		--network --runs-dir $(NET_RUNS)
+	cd $(ROOT) && uv run python demos/showcase/network/assert_network_evidence.py $(NET_RUNS)
+
 # ---- Flutter (BE-0008) ----------------------------------------------------------------------------
 # The Flutter twin (demos/showcase/flutter), one Dart codebase built for both platforms. It adds no
 # backend: `Semantics(identifier: …)` surfaces into the OS accessibility tree the native backends
@@ -321,6 +355,8 @@ run-flutter-android: flutter-android-build
 			--target showcase-flutter-android --backend android --config $(CONFIG) || exit 1; \
 	done
 
+# $(NET_RUNS) is gitignored but still swept: `make lint-secrets` runs `gitleaks dir .`, and a
+# directory scan does not consult .gitignore (.gitleaks.toml), so a stale local run can redden the gate.
 clean:
 	rm -rf $(SWIFTUI)/build $(UIKIT)/build \
-		$(SWIFTUI)/*.xcodeproj $(UIKIT)/*.xcodeproj $(FLUTTER)/build
+		$(SWIFTUI)/*.xcodeproj $(UIKIT)/*.xcodeproj $(FLUTTER)/build $(NET_RUNS)
