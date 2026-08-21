@@ -5,8 +5,21 @@ import XCTest
 /// The transport is what Unit 4 inserts between the runner's socket and the generated handlers
 /// (BE-0381). `TransportParityTests` checks that each endpoint still answers what it always did;
 /// this suite checks the properties of the transport itself, which no per-endpoint comparison
-/// would notice: that every operation the contract declares actually registered, and that the
-/// concurrency the hand-rolled server guaranteed survives the hop through `async` handlers.
+/// would notice: that every operation the contract declares actually registered, and that BE-0287's
+/// guarantee — `/health` stays answerable — survives the hop through `async` handlers.
+///
+/// The hand-rolled server's other concurrency guarantee, BE-0323's "no two XCUITest operations run
+/// or *re-enter* concurrently", is deliberately not asserted here even though `APIHandler.operations`
+/// is now its sole holder, because in-process it is not observable. Measured on this stack: a probe
+/// whose `queryElements` spins the main run loop and records peak overlap, driven over the live
+/// socket by two concurrent `/elements`, reports `maxConcurrent == 1` unchanged when `operations` is
+/// given `attributes: .concurrent` and when it is dropped for a bare hop to main. Under `swift test`
+/// the operation's own hold on the main thread already serializes everything — `RunLoop.run(until:)`
+/// does not drain the main dispatch queue, which only XCUITest's run loop does, which is why
+/// BE-0323's abort is CI-only in the first place. An assertion here would therefore pass against
+/// both regressions; the invariant rests on the on-device lanes plus the argument recorded on
+/// `APIHandler.operations`, and `RouterConcurrencyTests` pins only what is observable of it (that
+/// the guard is handed on rather than wedging the server).
 final class LegacyBackedTransportTests: XCTestCase {
     /// Registration is one generated call covering all sixteen operations, so an operation dropped
     /// from `openapi.yaml` — or a path renamed in it — would leave the driver with a 404 discovered
