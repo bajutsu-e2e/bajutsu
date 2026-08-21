@@ -23,7 +23,7 @@ from bajutsu.scenario import load_scenarios
 def _select(value: str) -> base.Element:
     """A ``<select>`` element whose current option value is `value` (what the driver reads)."""
     return {"identifier": "nav.theme-picker", "label": None, "traits": ["button"],
-            "value": value, "frame": (0.0, 0.0, 100.0, 30.0)}  # fmt: skip
+            "value": value, "frame": (0.0, 0.0, 100.0, 30.0), "nativeZ": None}  # fmt: skip
 
 
 # --- DSL parse + validation ---

@@ -1856,6 +1856,7 @@ def test_the_run_resolves_a_system_alert_prompt_against_the_scenario_locale() ->
             "traits": ["button"],
             "value": None,
             "frame": (0.0, 0.0, 10.0, 10.0),
+            "nativeZ": None,
         }
         for label in ("許可", "許可しない")
     ]

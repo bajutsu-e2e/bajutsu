@@ -25,13 +25,13 @@ from bajutsu.scenario import load_scenarios
 def _wheel(value: str, *, identifier: str | None = None, y: float = 0.0) -> base.Element:
     """One `pickerWheel` component showing `value`. A sibling component carries no id of its own."""
     return {"identifier": identifier, "label": None, "traits": ["pickerWheel"],
-            "value": value, "frame": (0.0, y, 100.0, 40.0)}  # fmt: skip
+            "value": value, "frame": (0.0, y, 100.0, 40.0), "nativeZ": None}  # fmt: skip
 
 
 def _container(identifier: str) -> base.Element:
     """The `UIDatePicker` parent the sibling wheels are scoped to — `other`, per `typeName`."""
     return {"identifier": identifier, "label": None, "traits": ["other"],
-            "value": None, "frame": (0.0, 0.0, 100.0, 80.0)}  # fmt: skip
+            "value": None, "frame": (0.0, 0.0, 100.0, 80.0), "nativeZ": None}  # fmt: skip
 
 
 def _seeded(*wheels: tuple[base.Element, list[str]], extra: list[base.Element] | None = None):

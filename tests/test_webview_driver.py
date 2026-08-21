@@ -37,6 +37,7 @@ def _el(identifier: str, frame: base.Frame = (10.0, 20.0, 100.0, 40.0)) -> base.
         "value": None,
         "traits": [],
         "frame": frame,
+        "nativeZ": None,
     }
 
 

@@ -132,6 +132,7 @@ def test_wait_settled_waits_for_a_stable_screen() -> None:
                     "traits": ["button"],
                     "value": None,
                     "frame": (t, 0.0, 10.0, 10.0),
+                    "nativeZ": None,
                 }
             ]
 
@@ -278,6 +279,7 @@ def test_wait_settled_falls_back_to_tree_diff_when_no_transitions_reported() -> 
                     "traits": ["button"],
                     "value": None,
                     "frame": (t, 0.0, 10.0, 10.0),
+                    "nativeZ": None,
                 }
             ]
 

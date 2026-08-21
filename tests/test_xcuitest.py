@@ -53,6 +53,7 @@ def _el_wire(
         "value": value,
         "traits": traits or [],
         "frame": list(frame),
+        "nativeZ": None,
         "handle": handle,
     }
 

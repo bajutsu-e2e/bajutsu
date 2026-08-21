@@ -26,6 +26,7 @@ def test_selector_resolves_via_base() -> None:
             "traits": ["button"],
             "value": None,
             "frame": (0.0, 0.0, 10.0, 10.0),
+            "nativeZ": None,
         },
     ]
     sel = Selector.model_validate({"id": "settings.open"})

@@ -751,6 +751,7 @@ def _cross_context() -> triage.CrossRunTriageContext:
                 "traits": ["button"],
                 "value": None,
                 "frame": [0, 0, 1, 1],
+                "nativeZ": None,
             }
         ],
     )
@@ -767,6 +768,7 @@ def _cross_context() -> triage.CrossRunTriageContext:
                 "traits": ["button"],
                 "value": None,
                 "frame": [0, 0, 1, 1],
+                "nativeZ": None,
             }
         ],
     )

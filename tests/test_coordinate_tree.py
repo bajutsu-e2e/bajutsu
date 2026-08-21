@@ -191,11 +191,34 @@ def test_stable_key_ignores_volatile_fields_and_updates_cache(backend: BackendFa
 
     # Volatile value/traits/label do not move the key; identifier or frame does.
     a: list = [
-        {"identifier": "x", "label": "A", "value": "1", "traits": ["button"], "frame": (0, 0, 1, 1)}
+        {
+            "identifier": "x",
+            "label": "A",
+            "value": "1",
+            "traits": ["button"],
+            "frame": (0, 0, 1, 1),
+            "nativeZ": None,
+        }
     ]
-    b: list = [{"identifier": "x", "label": "B", "value": "2", "traits": [], "frame": (0, 0, 1, 1)}]
+    b: list = [
+        {
+            "identifier": "x",
+            "label": "B",
+            "value": "2",
+            "traits": [],
+            "frame": (0, 0, 1, 1),
+            "nativeZ": None,
+        }
+    ]
     c: list = [
-        {"identifier": "x", "label": "A", "value": "1", "traits": ["button"], "frame": (0, 9, 1, 1)}
+        {
+            "identifier": "x",
+            "label": "A",
+            "value": "1",
+            "traits": ["button"],
+            "frame": (0, 9, 1, 1),
+            "nativeZ": None,
+        }
     ]
     key = type(driver)._stable_key
     assert key(a) == key(b)  # only volatile fields differ

@@ -24,6 +24,7 @@ def _elements() -> list[dict[str, object]]:
             "traits": ["window"],
             "value": None,
             "frame": [0.0, 0.0, 320.0, 568.0],
+            "nativeZ": None,
         },
         {
             "identifier": "auth.email",
@@ -31,6 +32,7 @@ def _elements() -> list[dict[str, object]]:
             "traits": ["textField"],
             "value": None,
             "frame": [20.0, 100.0, 280.0, 30.0],
+            "nativeZ": None,
         },
         {
             "identifier": "auth.password",
@@ -38,6 +40,7 @@ def _elements() -> list[dict[str, object]]:
             "traits": ["textField"],
             "value": None,
             "frame": [20.0, 150.0, 280.0, 30.0],
+            "nativeZ": None,
         },
         {
             "identifier": "auth.submit",
@@ -45,6 +48,7 @@ def _elements() -> list[dict[str, object]]:
             "traits": ["button"],
             "value": None,
             "frame": [100.0, 220.0, 120.0, 44.0],
+            "nativeZ": None,
         },
     ]
 
@@ -96,6 +100,7 @@ def test_resolve_pick_label_fallback(tmp_path: Path) -> None:
             "traits": ["button"],
             "value": None,
             "frame": [50.0, 50.0, 100.0, 44.0],
+            "nativeZ": None,
         },
     ]
     step_dir = runs / "run1" / "00-s/step0"
@@ -125,6 +130,7 @@ def test_resolve_pick_ambiguous(tmp_path: Path) -> None:
             "traits": ["button"],
             "value": None,
             "frame": [10.0, 10.0, 80.0, 44.0],
+            "nativeZ": None,
         },
         {
             "identifier": "dup",
@@ -132,6 +138,7 @@ def test_resolve_pick_ambiguous(tmp_path: Path) -> None:
             "traits": ["button"],
             "value": None,
             "frame": [10.0, 60.0, 80.0, 44.0],
+            "nativeZ": None,
         },
     ]
     step_dir = runs / "run1" / "00-s/step0"
@@ -160,6 +167,7 @@ def test_resolve_pick_no_actionable_element(tmp_path: Path) -> None:
             "traits": ["window"],
             "value": None,
             "frame": [0.0, 0.0, 320.0, 568.0],
+            "nativeZ": None,
         },
     ]
     step_dir = runs / "run1" / "00-s/step0"

@@ -184,7 +184,14 @@ def test_topmost_at_point_scans_nothing_when_target_is_not_in_elements_by_identi
 
 def _anon(frame: base.Frame) -> base.Element:
     """An element with no identifier — the wrappers and images a real tree is full of."""
-    return {"identifier": None, "label": None, "traits": [], "value": None, "frame": frame}
+    return {
+        "identifier": None,
+        "label": None,
+        "traits": [],
+        "value": None,
+        "frame": frame,
+        "nativeZ": None,
+    }
 
 
 def test_redirect_candidates_keeps_only_the_named_descendants() -> None:
