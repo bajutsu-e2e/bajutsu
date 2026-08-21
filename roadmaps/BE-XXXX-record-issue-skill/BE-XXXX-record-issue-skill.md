@@ -68,8 +68,10 @@ host-specific invocation.
 a calling skill that spotted something out of its own scope — plus whatever supporting context is
 available: a file and line, a command that reproduces it, or the environment it showed up in. A
 calling skill also states whether a human is in the turn, because the skill cannot observe that
-itself: the sub-step invocation carries the flag (`pr-followup` sets it when it runs inside
-`implement-be`'s hands-free loop), and its absence means attended.
+itself — and neither can `pr-followup`, whose steps "behave identically whether run in a subagent
+or called directly". Only the loop layer knows: `implement-be` step 12 states it when it hands a
+subagent `pr-followup`'s steps, `pr-followup` passes it on to the sub-step invocation, and its
+absence means attended.
 
 **Step 1 — classify.** Decide among three landings. `feature_request.yml` only points anything short
 of a well-formed design away from the roadmap, so this skill states the concrete bar itself: does
@@ -86,10 +88,12 @@ invoker any candidate matches (number, title, state). The search excludes the `r
 issues the workflow of
 [BE-0109](../BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) creates and closes
 on its own: those are bot-owned, so a finding an existing BE item already covers belongs on that
-item through step 1's `ideation` landing rather than as a comment on one of them. When a match
-looks like the same issue, ask whether to comment on the existing issue instead of filing a new
-one, or to proceed anyway — the invoker decides, since only they can judge whether the match is
-close enough.
+item through step 1's `ideation` landing rather than as a comment on one of them. When an **open**
+match looks like the same issue, ask whether to comment on the existing issue instead of filing a
+new one, or to proceed anyway — the invoker decides, since only they can judge whether the match is
+close enough. Never route a report onto a **closed** match: `task-select` surveys open issues only,
+so a comment there never resurfaces as a candidate. File a new issue linking the closed one as
+prior context instead.
 
 **Step 3 — draft.** Read the matching template — `bug_report.yml` for a bug,
 `feature_request.yml` for an enhancement — and synthesize a markdown body whose sections mirror
@@ -158,6 +162,9 @@ would add process without adding information.
 - [ ] Add the Codex adapter `.agent-hosts/codex/skills/record-issue/SKILL.md`.
 - [ ] Wire the callers: name the `record-issue` sub-step in `pr-followup` (and any other calling
       skill) the way `ideation` / `implement-be` name `be-progress-tracker`.
+- [ ] Wire the loop layer: `implement-be` step 12 states whether a human is in the turn when it
+      hands a subagent `pr-followup`'s steps, and its structured-summary contract gains a
+      pending-draft field, kept distinct from the escalation field so a draft never stops the loop.
 - [ ] Documentation wiring: `docs/ai-development.md` (+ ja) and `CLAUDE.md`, including the Claude
       adapter's default `model:` tier (BE-0103).
 - [ ] Verify the standalone path and at least one calling-skill path (for example `pr-followup`
