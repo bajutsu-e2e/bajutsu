@@ -357,6 +357,17 @@ held for the whole life of a request under the synchronous `Router`. That `/heal
 while an operation holds the main thread is now pinned by a live-server test, rather than left to
 `APIHandler`'s and the transport's separate reasoning about the same invariant.
 
+**BE-0323's serialization is pinned at the queue, not through a provider.** `APIHandler.operations` is
+the sole holder of the invariant once Unit 4 takes `Router` out of production, so
+`APIHandlerConcurrencyTests` asserts what holds it: the queue admits one operation at a time, an
+assertion that fails when the queue is made `attributes: .concurrent`. The provider-side probe shape
+`RouterConcurrencyTests` uses cannot substitute for it — measured on this stack, that probe still
+reports no overlap while the concurrent queue genuinely runs two operations at once, because
+libdispatch's main-queue drain is not re-entrant, so the second operation's `DispatchQueue.main.sync`
+waits for the first's main block regardless. This is why the abort BE-0323 was filed for surfaced only
+under XCUITest's own run loop. Unit 5 therefore has to re-establish the queue assertion against
+whatever serializes on Hummingbird, rather than delete it with the `Router` comparisons.
+
 **The deliberate wire differences.** The generated serializer sends `application/json; charset=utf-8`
 where `Router` sent a bare `application/json`. The driver never reads the header — `_decode` in
 `bajutsu/drivers/xcuitest.py` takes only the status code and the body — and `/screenshot`, the one
@@ -380,7 +391,9 @@ Once every endpoint `bajutsu/drivers/xcuitest.py` calls is served by a generated
 listener from `LegacyBackedTransport` to the winning candidate's, declaring the Hummingbird
 dependency and raising the platform floor to iOS 17 at that point (see Unit 2), then delete
 `HTTPServer.swift`'s raw-socket accept loop and byte-by-byte parser, and `Router.swift`'s hand-written
-switch and JSON construction. Every handler is already the generated one by this point, so the
+switch and JSON construction. `APIHandlerConcurrencyTests`' queue assertion is re-pointed at whatever
+serializes there — it is the one guard on BE-0323 that survives the deletion of the `Router`
+comparisons, and the listener swap is exactly the change it is blind to. Every handler is already the generated one by this point, so the
 cutover swaps only the socket layer beneath them; the wire contract is unchanged throughout, and the
 Python driver needs no change at any stage.
 
@@ -474,7 +487,8 @@ Python driver needs no change at any stage.
       untouched. All sixteen migrate at once: registration is one generated call, and a per-path
       allowlist would have been machinery built only to be deleted. **BE-0287's bound survives by
       construction** — nothing new accepts connections — and `TransportParityTests` compares every
-      endpoint against the legacy `Router` over a live socket. Three recorded wire differences, none
+      endpoint against the legacy `Router` over a live socket. `APIHandlerConcurrencyTests` pins
+      BE-0323 where it is observable, on the serialness of `APIHandler.operations`. Three recorded wire differences, none
       observable to the driver: JSON replies carry `charset=utf-8`, a 400 the generated decoder raises
       carries the generic reason phrase where the handler's own 400s keep `Router`'s per-route text,
       and that decoder rejects a few malformed-body shapes `Router` used to tolerate.
