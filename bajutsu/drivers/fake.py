@@ -79,6 +79,10 @@ class FakeDriver:
         # are told apart by `within` / `traits` / `index` — so an identifier key could not separate
         # them. Seeded after construction, like `system_alert_buttons`.
         self.picker_wheel_options: dict[int, list[str]] = {}
+        # Identifier of the TipKit dismiss region `dismiss_blocking_tip` looks for in `screen`. The
+        # real name is the XCUITest driver's business, so a test seeds whatever it put in the tree
+        # rather than this fake hardcoding an iOS identifier of its own.
+        self.tipkit_dismiss_id: str | None = None
         self._react = react
         self.actions: list[tuple[str, object]] = []  # log of performed actions
         # The concrete actuations this driver performed, drained per step by the run loop. The fake
@@ -258,6 +262,18 @@ class FakeDriver:
     def system_alert_labels(self) -> list[str]:
         return [label for b in self.system_alert_buttons if (label := b["label"])]
 
+    def dismiss_blocking_tip(self) -> bool:
+        # Mirrors the real driver: absence is False, an ambiguous match still raises, and the
+        # dismiss goes through `tap` so a `react` callback can script the tip leaving the tree.
+        if self.tipkit_dismiss_id is None:
+            return False
+        sel: base.Selector = {"id": self.tipkit_dismiss_id}
+        if not base.find_all(self.screen, sel):
+            return False
+        base.resolve_unique(self.screen, sel)
+        self.tap(sel)
+        return True
+
     def wait_for(self, sel: base.Selector) -> bool:
         return len(base.find_all(self.screen, sel)) >= 1
 
@@ -279,6 +295,7 @@ class FakeDriver:
             base.Capability.TEXT_SELECTION,
             base.Capability.HANDLE_SYSTEM_ALERT,
             base.Capability.PICKER_WHEEL,
+            base.Capability.HANDLE_TIPKIT_TIP,
         }
     )
 

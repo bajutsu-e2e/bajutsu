@@ -169,6 +169,13 @@ _SYSTEM_ALERT_POLL_SECONDS = 0.2
 # actuation records.
 _UNIT = "point"
 
+# TipKit's own dismiss scrim, the full-screen "tap outside to close" region a popover tip installs.
+# Measured on-device: it is the only one of the tip's three nodes safe to key on. `TipView` (the
+# container) carries no dismiss behavior, and the close button's identifier is the SF Symbol name
+# `xmark.circle.fill`, which an unrelated app-authored button could plausibly reuse and turn into an
+# `AmbiguousSelector`. This name is TipKit-internal, so no app-authored view collides with it.
+_TIPKIT_DISMISS_REGION = "PopoverDismissRegion"
+
 
 def _as_float(value: Any) -> float | None:
     """A request body's numeric parameter as a float, or None when absent (for the actuation record)."""
@@ -656,6 +663,7 @@ class XcuitestDriver:
                 base.Capability.TEXT_SELECTION,
                 base.Capability.HANDLE_SYSTEM_ALERT,
                 base.Capability.PICKER_WHEEL,
+                base.Capability.HANDLE_TIPKIT_TIP,
             }
         )
         | base.DEVICE_CONTROL_ALL
@@ -1087,6 +1095,26 @@ class XcuitestDriver:
         """
         buttons, _ = self._parse_elements(self._transport("POST", "/systemAlert/query", {}))
         return [label for b in buttons if (label := b["label"])]
+
+    def dismiss_blocking_tip(self) -> bool:
+        """Dismiss a showing TipKit tip via its dismiss region; False when no tip is up.
+
+        Returns:
+            Whether a tip was found and dismissed.
+
+        Raises:
+            AmbiguousSelector: Several nodes claimed the dismiss region — a shape TipKit should never
+                produce, so it fails loudly rather than picking one (prime directive 2).
+        """
+        elements, handles = self._query_with_handles()
+        sel: base.Selector = {"id": _TIPKIT_DISMISS_REGION}
+        # Absence is the common case — the caller asks on every poll — so it is a plain False, not
+        # an exception. Only a genuinely ambiguous match propagates, via `resolve_unique`.
+        if not base.find_all(elements, sel):
+            return False
+        el = base.resolve_unique(elements, sel)
+        self._actuate("/tap", {"handle": handles[id(el)]}, sel, gesture="tap", element=el)
+        return True
 
     def back(self) -> None:
         # iOS has no hardware back: tap the OS navigation back button. Reuses `tap` rather than
