@@ -45,7 +45,7 @@ A natural first fix is a new label. A maintainer would apply it after judging an
 enough to skip a BE item, the way [BE-0109](../BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md)
 already labels roadmap-tracking issues. This item skips that label on purpose. The boundary between
 "ship it as a plain fix" and "this needs a proposal" is a judgment call. That call can surface
-mid-fix instead of at filing time alone, so the skill itself makes it.
+mid-fix, not only at filing time, so the skill itself makes it.
 [`ideation`](../../.agent-workflows/ideation/workflow.md) already judges the opposite boundary this
 way: it redirects a user who wants to build, rather than propose, without leaning on a label to
 draw that line.

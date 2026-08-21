@@ -81,9 +81,10 @@ Issueにこのラベルを付ける、という形です。本項目はこのラ
    付けず、スコープ付きの通常のタイトルのままにします。これは
    [`docs/ai-development.md`](../../docs/ai-development.md)がロードマップ項目を持たないPRについて
    すでに定めている形と同じです。本文には`Closes #<N>`を加えるため、PRがマージされれば元のIssueは
-   自動で閉じます。自己レビューとゲートの両方が問題なしとなった時点で、Draft PRは
-   ([BE-0230](../BE-0230-hands-free-implement-review-loop/BE-0230-hands-free-implement-review-loop.md))
-   これまでと同様に自動で開きます。その後は同じ停止条件、エスカレーション規則、繰り返し回数の上限
+   自動で閉じます。自己レビューとゲートの両方が問題なしとなった時点で、Draft PRはこれまでと同様に
+   自動で開きます
+   ([BE-0230](../BE-0230-hands-free-implement-review-loop/BE-0230-hands-free-implement-review-loop.md))。
+   その後は同じ停止条件、エスカレーション規則、繰り返し回数の上限
    を使う、`implement-be`と共通の`pr-followup`ループが、静かで緑の状態までPRを進めます。
 5. **新設するスキルのファイルです。** ホストに依存しない
    `.agent-workflows/fix-issue/workflow.md`が上記の手順を記述します。Claude Codeアダプター
