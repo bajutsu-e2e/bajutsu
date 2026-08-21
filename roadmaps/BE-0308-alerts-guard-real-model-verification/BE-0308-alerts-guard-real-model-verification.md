@@ -102,6 +102,14 @@ Proposal altitude. The work is MECE along the units below.
   verification measures the product rather than itself. What no credential-free layer can catch is a
   capture whose recorded dismiss control names the wrong button: only looking at the screenshot
   settles that, which is the live layer's job.
+- Ran the live layer against a real model through the `claude-code` provider (BE-0176), and the
+  locator answered every capture correctly. On the notification prompt it returned (126.6, 517.8)
+  against a `Don’t Allow` centre of (127, 518) — inside half a point. On the location prompt it
+  returned (200.7, 574.1), the bottom one of three stacked choices, which is the case that separates
+  finding *a* button from finding the *correct* one. On the paste consent it returned (200.7, 481.0),
+  inside `Don’t Allow Paste`. And on the app's own delete confirmation it reported no prompt at all,
+  so it never reached for the red `Delete`. The guard's vision is therefore sound on these dialogs;
+  what is not sound is the actuation path below it, recorded next.
 - Scoped the assertion to the locator's answer, not to the guard's on-device tap. Two defects
   surfaced while capturing, both in the guard's *actuation* path rather than its vision, and both
   outside this item's subject; each is recorded here and left for its own item rather than fixed
