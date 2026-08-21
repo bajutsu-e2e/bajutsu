@@ -19,8 +19,10 @@ improvement noticed during work into a GitHub Issue. It classifies the finding, 
 duplicate, drafts a title and body from this repository's own issue templates, and — only after
 the invoker gives explicit approval — files the issue with `gh issue create`. The shared procedure
 lives in one workflow document so it works two ways: as a standalone skill a person invokes
-directly, and as a sub-step another skill (for example `claude-review` or `pr-followup`) calls when
-it notices something worth flagging but out of the current change's scope.
+directly, and as a sub-step another skill (for example `pr-followup`) calls when it notices
+something worth flagging but out of the current change's scope. A judge-only skill such as
+[`claude-review`](../../.agent-workflows/claude-review/workflow.md) never calls it — that skill
+edits and files nothing — so its findings reach `record-issue` only through whatever invoked it.
 
 ## Motivation
 
@@ -100,7 +102,11 @@ filed alongside what it fixed inline.
 
 Because the workflow document describes one procedure regardless of caller, a standalone
 invocation and a call from another skill follow identical steps — including the confirmation
-gate, which no calling skill may skip on the invoker's behalf.
+gate, which no calling skill may skip on the invoker's behalf. When no human is in the turn —
+`pr-followup` running as one iteration of `implement-be`'s hands-free loop (BE-0230) is the case
+that matters — the skill files nothing and stalls nothing: it hands the finished draft back
+through the caller's own escalation path, so the human approves it on the next turn and an
+unattended run can never publish to the team.
 
 **Caller and documentation wiring.** A calling skill only runs a sub-step its own workflow names —
 `be-progress-tracker` runs because `ideation` and `implement-be` each name it — so `pr-followup`
@@ -144,7 +150,9 @@ would add process without adding information.
 - [ ] Documentation wiring: `docs/ai-development.md` (+ ja) and `CLAUDE.md`, including the Claude
       adapter's default `model:` tier (BE-0103).
 - [ ] Verify the standalone path and at least one calling-skill path (for example `pr-followup`
-      flagging an out-of-scope finding) both exercise the confirmation gate.
+      flagging an out-of-scope finding) both exercise the confirmation gate, and that an
+      unattended run (`pr-followup` inside `implement-be`'s hands-free loop) hands the draft
+      back through escalation instead of filing.
 
 ## References
 
