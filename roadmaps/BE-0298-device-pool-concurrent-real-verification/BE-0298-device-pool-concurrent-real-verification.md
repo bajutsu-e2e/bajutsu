@@ -148,6 +148,18 @@ Log:
   workflow-wide, so a spawn covers two documents and seven of them cost four where four cost two.
   `notices` is kept as the longer file so the pair genuinely overlaps. Promotion stays unchecked
   until a run measures this configuration stable.
+- The lightened configuration measured red too, and moved the failure rather than removing it (run
+  32428315916). The capture-service symptoms are gone — no `recordVideo produced no new bytes`, no
+  runner channel becoming unreachable — so cutting video, the touch markers, and half the scenarios
+  did what it was meant to. What remains is earlier and cruder: both Simulators booted, the run
+  started at 23:48:21, produced no output for 11 minutes 17 seconds, and failed on `device operation
+  timed out after 60s: xcrun simctl uninstall … (this host's CoreSimulator may be wedged)` with 11
+  crash reports. It never reached a scenario, so the isolation assertion was skipped and this run
+  yields no isolation verdict either way. The reading is that two booted guests wedge CoreSimulator
+  itself on this runner, which is upstream of every capture the lane could give up — so no further
+  reduction of what the run records is expected to change the outcome, and the iOS half's viability
+  is a question about the runner rather than about the lane. `pool (adb)` stayed green across the
+  same pushes, so the Android half needs none of this.
 
 ## References
 

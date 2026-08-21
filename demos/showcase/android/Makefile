@@ -245,6 +245,24 @@ e2e: compose-build views-build
 # Backgrounded and trap-killed so the port never leaks past the run. Not part of `make check` (needs a
 # booted AVD); android-e2e.yml drives it in its own job. Compose only — one toolkit proves the wire.
 # must match SHOWCASE_API_URL in demos/showcase/scenarios/network_android.yaml — not override-safe.
+# Keep the comment on its own line: an inline `# …` after a `:=` value leaves the whitespace before
+# the `#` in the variable, so the port would carry trailing spaces into the curl URL and net_stub arg.
+E2E_NET_STUB_PORT := 8770
+e2e-network: compose-build
+	adb wait-for-device
+	$(ANR_QUIET)
+	$(TOUCH_DEBUG_ON)
+	cd $(ROOT) && ( python3 demos/showcase/android/net_stub.py $(E2E_NET_STUB_PORT) & \
+		stub=$$!; trap "kill $$stub 2>/dev/null" EXIT; \
+		ready=0; for i in $$(seq 1 50); do \
+		  if curl -sf --max-time 1 -o /dev/null "http://127.0.0.1:$(E2E_NET_STUB_PORT)/"; then ready=1; break; fi; \
+		  sleep 0.1; \
+		done; \
+		if [ "$$ready" -ne 1 ]; then echo "net_stub.py did not answer on port $(E2E_NET_STUB_PORT) within the readiness timeout" >&2; exit 1; fi; \
+		$(E2E_ENV) \
+		uv run bajutsu run --scenario demos/showcase/scenarios/network_android.yaml \
+			--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG) )
+
 # The concurrent-device pool run (BE-0298): four scenarios through ONE `bajutsu run --workers 2`
 # over two booted emulators, so the device pool has to keep both workers busy at once and its
 # isolation claim — a per-worker serial and a per-worker `run_dir/<sid>` evidence dir, no shared mock
@@ -296,24 +314,6 @@ e2e-pool: compose-build
 		$(foreach s,$(E2E_POOL_SCENARIOS),--scenario demos/showcase/scenarios/$(s).yaml) \
 		--workers 2 \
 		--target showcase-compose --udid $(SERIALS) --backend android --config $(CONFIG)
-
-# Keep the comment on its own line: an inline `# …` after a `:=` value leaves the whitespace before
-# the `#` in the variable, so the port would carry trailing spaces into the curl URL and net_stub arg.
-E2E_NET_STUB_PORT := 8770
-e2e-network: compose-build
-	adb wait-for-device
-	$(ANR_QUIET)
-	$(TOUCH_DEBUG_ON)
-	cd $(ROOT) && ( python3 demos/showcase/android/net_stub.py $(E2E_NET_STUB_PORT) & \
-		stub=$$!; trap "kill $$stub 2>/dev/null" EXIT; \
-		ready=0; for i in $$(seq 1 50); do \
-		  if curl -sf --max-time 1 -o /dev/null "http://127.0.0.1:$(E2E_NET_STUB_PORT)/"; then ready=1; break; fi; \
-		  sleep 0.1; \
-		done; \
-		if [ "$$ready" -ne 1 ]; then echo "net_stub.py did not answer on port $(E2E_NET_STUB_PORT) within the readiness timeout" >&2; exit 1; fi; \
-		$(E2E_ENV) \
-		uv run bajutsu run --scenario demos/showcase/scenarios/network_android.yaml \
-			--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG) )
 
 # On-device golden element-tree assertion (BE-0006, BE-0208 unit 4) for the Compose a11y twin over
 # adb. This runs the *same* golden.yaml the iOS lane runs; only the baseline dir differs. The adb tree

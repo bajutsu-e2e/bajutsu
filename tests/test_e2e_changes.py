@@ -961,6 +961,31 @@ jobs:
     assert job_scenario_map(workflow) == {"run": {"demos/showcase/scenarios/smoke.yaml"}}
 
 
+def test_a_comment_quoting_the_pool_guard_does_not_drop_the_previous_job() -> None:
+    # The scanner reads the comment block above a job key while `current_job` still names the job
+    # before it, so an unanchored guard match on prose would drop that job from the map with no
+    # ValueError and no whole-fleet fallback — the one outcome `job_scenario_map` refuses. These
+    # workflows' comments quote expressions verbatim, so the case is not hypothetical.
+    workflow = """\
+jobs:
+  run:
+    if: needs.changes.outputs.relevant == 'true'
+    steps:
+      - uses: ./.github/actions/bajutsu-e2e
+        with:
+          scenarios: demos/showcase/scenarios/smoke.yaml
+  # Keyed on needs.changes.outputs.pool rather than the lane-wide signal, so an ordinary change
+  # does not pay for two booted devices.
+  pool:
+    if: needs.changes.outputs.pool == 'true'
+    steps:
+      - uses: ./.github/actions/bajutsu-e2e
+        with:
+          scenarios: demos/showcase/scenarios/smoke.yaml
+"""
+    assert job_scenario_map(workflow) == {"run": {"demos/showcase/scenarios/smoke.yaml"}}
+
+
 def test_pool_does_not_fire_on_an_irrelevant_change() -> None:
     assert touches_pool(["roadmaps/README.md", "docs/architecture.md"]) is False
     assert touches_pool([]) is False

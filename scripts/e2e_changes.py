@@ -509,6 +509,18 @@ def classify_change(paths: Iterable[str], lane: str = DEFAULT_LANE) -> str:
     return "scenario-only" if all(scenario_re.match(p) for p in relevant) else "shared"
 
 
+def _is_pool_guard(line: str) -> bool:
+    """Whether this line reads the `pool` output as part of a job's `if:` guard (BE-0298).
+
+    A comment never counts. The scanner reads the comment block above a job key while `current_job`
+    still names the *previous* job, so one prose line quoting the expression — which these workflows'
+    comments do routinely — would drop that job from the map with no ``ValueError`` and no whole-fleet
+    fallback: the single outcome `job_scenario_map` refuses. Every other pattern in this scanner is
+    anchored or comment-aware; this keeps that true of the guard too.
+    """
+    return not line.lstrip().startswith("#") and _POOL_GUARD_RE.search(line) is not None
+
+
 def job_scenario_map(workflow_text: str) -> dict[str, set[str]]:
     """Map each job to the scenario files it declares, read from a lane's workflow file (BE-0322).
 
@@ -564,7 +576,7 @@ def job_scenario_map(workflow_text: str) -> dict[str, set[str]]:
             break  # a new column-0 key ends the jobs block
         if job_match := _JOB_ID_RE.match(line):
             current_job = job_match.group(1)
-        elif current_job is not None and _POOL_GUARD_RE.search(line):
+        elif current_job is not None and _is_pool_guard(line):
             pool_keyed.add(current_job)
         elif current_job is not None and (scenario_match := _SCENARIOS_INPUT_RE.match(line)):
             value = scenario_match.group(1)
