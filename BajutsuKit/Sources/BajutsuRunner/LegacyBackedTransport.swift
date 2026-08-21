@@ -123,12 +123,19 @@ final class LegacyBackedTransport: ServerTransport {
         } catch let error as ServerError {
             // The runtime already classified the failure — a body that would not decode is a 400,
             // matching what `Router` answered for the same request. The reply carries only the
-            // status's reason phrase, never the runtime's own description: that quotes the request
-            // that failed, which can hold a typed string or a picker row value. The driver reads
-            // `status` and never `message` (`_decode` in `bajutsu/drivers/xcuitest.py`), so the
-            // diagnostic belongs in the runner log instead.
+            // status's reason phrase, never `ServerError.description`: that one interpolates
+            // `requestBody` and `operationInput`, which can hold a typed string or a picker row
+            // value. The driver reads `status` and never `message` (`_decode` in
+            // `bajutsu/drivers/xcuitest.py`), so the diagnostic belongs in the runner log instead.
+            //
+            // Both fields are logged, and neither echoes the body (measured, including the
+            // `dataCorrupted` case, which reports "Unexpected end of file" with no content).
+            // `causeDescription` already embeds the decoding detail whenever the runtime recognized
+            // the failure, so the two overlap on that path; `underlyingError` is logged for the path
+            // where they do not — an error the runtime cannot classify leaves `causeDescription`
+            // as the literal string "Unknown", and then it is the only account of what went wrong.
             FileHandle.standardError.write(
-                Data("bajutsu runner: \(request.method.rawValue) \(request.path ?? "") failed: \(error.causeDescription)\n".utf8)
+                Data("bajutsu runner: \(request.method.rawValue) \(request.path ?? "") failed: \(error.causeDescription): \(error.underlyingError)\n".utf8)
             )
             return .error(error.httpStatus.code, error.httpStatus.reasonPhrase)
         } catch {
