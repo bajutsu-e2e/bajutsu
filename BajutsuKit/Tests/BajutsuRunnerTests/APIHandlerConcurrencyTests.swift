@@ -7,61 +7,132 @@ import XCTest
 /// run, or *re-enter*, at once — and this suite is what keeps guarding it after Unit 5 deletes
 /// `Router` and `RouterConcurrencyTests` together.
 ///
-/// It asserts the queue's serialness directly rather than through a provider probe, because the
-/// probe shape cannot see it. Measured on this stack (Swift 6.3.3, `swift test`): with `operations`
-/// given `attributes: .concurrent`, two concurrent `/elements` over the live socket really do run
-/// concurrently *on the queue* — peak 2 — while a `ReentrancyProbe`-style provider counting its own
-/// overlap still reports 1, so an assertion on that counter passes against the regression. The cause
-/// is the main hop, not the run loop: libdispatch's main-queue drain is not re-entrant, so a
-/// `RunLoop.run(until:)` spin *inside* an executing main-queue block does not run another block
-/// queued on main (measured: a marker dispatched during such a spin does not run, while the same
-/// marker does run when the spin happens outside a main-queue block). The second operation's
-/// `DispatchQueue.main.sync` therefore waits for the first to return whether or not anything
-/// serialized it — which is also why BE-0323's abort only ever appeared under XCUITest's own run
-/// loop, on the device lanes. `RouterConcurrencyTests`' counterpart assertion is vacuous for the same
-/// reason: with `Router.actuationLock` removed entirely it still passes.
+/// The regression it has to catch is an operation that stops routing through the queue, not someone
+/// typing `attributes: .concurrent`. So each case holds one operation on the main thread and then
+/// dispatches a probe onto the queue: while the operation is in flight the probe must not run, which
+/// is true only if the operation is *occupying* the queue. An operation that called the provider
+/// inline, or took its own queue, leaves the probe free to run and fails the assertion — and so does
+/// making the queue concurrent, since the probe would then run alongside the held operation.
 ///
-/// What that leaves pinned here is the mechanism the invariant rests on — one queue, one operation at
-/// a time — and what it leaves unpinned is the queue being replaced wholesale. Unit 5 swaps the
-/// listener onto Hummingbird, so it has to re-establish this assertion against whatever serializes
-/// there rather than delete it with the suites that compare against `Router`.
+/// A provider-side overlap counter cannot do this job, which is why the assertion lives here rather
+/// than in a live-server test. Measured on this stack: with the queue made `attributes: .concurrent`,
+/// two `/elements` over the socket really do run concurrently on it — queue peak 2 — while a probe
+/// counting its own overlap inside the provider still reports 1, because libdispatch does not run a
+/// second main-queue block while the first is executing (a marker dispatched during a
+/// `RunLoop.run(until:)` spin inside a main block does not run; the same marker outside one does).
+/// That is also why BE-0323's abort only ever appeared under XCUITest's own run loop, and why
+/// `RouterConcurrencyTests`' counterpart assertion passes with `Router.actuationLock` removed
+/// outright.
+///
+/// Unit 5 swaps the listener onto Hummingbird, which is the one change these assertions are blind to:
+/// they must be re-pointed at whatever serializes there rather than deleted with the `Router`
+/// comparisons.
 final class APIHandlerConcurrencyTests: XCTestCase {
-    func testTheOperationQueueAdmitsOneOperationAtATime() {
-        let handler = APIHandler(provider: FakeElementProvider())
-        let lock = NSLock()
-        var current = 0
-        var peak = 0
-        // Dispatched straight onto the queue, with no hop to main: that is what makes an overlap
-        // visible here and invisible to any probe reached through `serialized`.
-        let secondEntered = DispatchSemaphore(value: 0)
-        let both = XCTestExpectation(description: "both blocks ran")
-        both.expectedFulfillmentCount = 2
+    /// A provider that parks the operation on the main thread until the test releases it, standing in
+    /// for the run-loop spin a real `app.snapshot()` or interaction performs while it waits on the app.
+    private final class HoldingProvider: ElementProviding {
+        let entered = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
 
-        for index in 0..<2 {
-            handler.operations.async {
-                lock.lock()
-                current += 1
-                peak = Swift.max(peak, current)
-                lock.unlock()
-                if index == 0 {
-                    // Bounded: a serial queue cannot let the second block in while this one holds the
-                    // queue, so the wait is expected to time out. A concurrent queue signals it, and
-                    // `peak` is 2 by the time this returns.
-                    _ = secondEntered.wait(timeout: .now() + 0.5)
-                } else {
-                    secondEntered.signal()
-                }
-                lock.lock()
-                current -= 1
-                lock.unlock()
-                both.fulfill()
-            }
+        private func hold() {
+            entered.signal()
+            release.wait()
         }
-        wait(for: [both], timeout: 5)
 
-        lock.lock()
-        let observed = peak
-        lock.unlock()
-        XCTAssertEqual(observed, 1, "every XCUITest operation must pass through a serial queue (BE-0323)")
+        func queryElements() -> [ElementSnapshot] {
+            hold()
+            return []
+        }
+
+        func tapPoint(x: Double, y: Double) -> TapResult {
+            hold()
+            return .ok
+        }
+
+        func typeText(_ text: String) -> TapResult {
+            hold()
+            return .ok
+        }
+
+        func tap(backingElement: AnyObject, taps: Int, duration: TimeInterval) -> TapResult { .ok }
+        func isHittable(backingElement: AnyObject) -> TapResult { .ok }
+        func gesture(backingElement: AnyObject, kind: String, scale: Double, radians: Double) -> TapResult { .ok }
+        func swipe(fromX: Double, fromY: Double, toX: Double, toY: Double) -> TapResult { .ok }
+        func scroll(fromX: Double, fromY: Double, toX: Double, toY: Double) -> TapResult { .ok }
+        func screenSize() -> (width: Double, height: Double) { (390, 844) }
+        func deleteText(count: Int) -> TapResult { .ok }
+        func selectAll() -> TapResult { .ok }
+        func copySelection() -> TapResult { .ok }
+        func setPickerValue(backingElement: AnyObject, value: String) -> TapResult { .ok }
+        func querySystemAlertButtons() -> [ElementSnapshot] { [] }
+        func tapSystemAlertButton(backingElement: AnyObject) -> TapResult { .ok }
+        func screenshot() -> Data? { nil }
+    }
+
+    func testAReadOccupiesTheQueue() {
+        assertOccupiesTheQueue("/elements") { handler in
+            _ = try await handler.queryElements(.init())
+        }
+    }
+
+    func testAnActuationOccupiesTheQueue() {
+        assertOccupiesTheQueue("/tap") { handler in
+            _ = try await handler.tap(.init(body: .json(.init(point: [12, 34]))))
+        }
+    }
+
+    func testATextEditOccupiesTheQueue() {
+        assertOccupiesTheQueue("/type") { handler in
+            _ = try await handler.typeText(.init(body: .json(.init(text: "hello"))))
+        }
+    }
+
+    // MARK: - Helper
+
+    /// Runs *operation*, and while it is parked on the main thread checks that a block dispatched onto
+    /// `operations` cannot run — then that it runs once the operation returns, so a probe that never
+    /// ran for an unrelated reason cannot pass this by accident.
+    private func assertOccupiesTheQueue(
+        _ name: String, _ operation: @escaping @Sendable (APIHandler) async throws -> Void
+    ) {
+        let provider = HoldingProvider()
+        let handler = APIHandler(provider: provider)
+        let probeRan = DispatchSemaphore(value: 0)
+        let probed = XCTestExpectation(description: "probe dispatched during \(name)")
+        let returned = XCTestExpectation(description: "\(name) returned")
+        // `@unchecked Sendable` box: written on the probing thread before `probed` is fulfilled, read
+        // on main after `wait(for:)` returns.
+        final class Observed: @unchecked Sendable { var ranWhileHeld = true }
+        let observed = Observed()
+
+        // Off the main thread throughout: the main thread's job is to spin the run loop that services
+        // the operation's `DispatchQueue.main.sync`, exactly as the live-server tests do.
+        DispatchQueue.global().async {
+            provider.entered.wait()
+            handler.operations.async { probeRan.signal() }
+            // Bounded: a queue the held operation occupies cannot run this, so the wait is expected to
+            // time out. A bypassed or concurrent queue runs it immediately.
+            observed.ranWhileHeld = probeRan.wait(timeout: .now() + 0.3) == .success
+            probed.fulfill()
+            provider.release.signal()
+        }
+        Task(priority: .userInitiated) {
+            try? await operation(handler)
+            returned.fulfill()
+        }
+        wait(for: [probed, returned], timeout: 10)
+
+        XCTAssertFalse(
+            observed.ranWhileHeld,
+            "\(name) must hold `operations` for the whole operation (BE-0323)"
+        )
+        // Only meaningful when the probe was still pending: a probe that already ran above consumed
+        // this signal, and re-checking it would report a second, misleading failure.
+        if !observed.ranWhileHeld {
+            XCTAssertEqual(
+                probeRan.wait(timeout: .now() + 5), .success,
+                "the probe must run once \(name) releases the queue"
+            )
+        }
     }
 }
