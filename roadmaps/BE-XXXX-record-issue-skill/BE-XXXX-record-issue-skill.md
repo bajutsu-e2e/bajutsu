@@ -97,9 +97,13 @@ prior context instead.
 
 **Step 3 — draft.** Read the matching template — `bug_report.yml` for a bug,
 `feature_request.yml` for an enhancement — and synthesize a markdown body whose sections mirror
-that template's fields. `gh issue create` posts plain markdown rather than rendering the template's
-YAML form, so the skill fills those fields itself instead of relying on `gh` to do it. Pick the
-matching label (`bug` or `enhancement`); no new label is needed; see *Alternatives considered*.
+that template's textarea fields. `gh issue create` posts plain markdown rather than rendering the
+template's YAML form, so the skill fills those fields itself instead of relying on `gh` to do it.
+A template's required `checkboxes` block is the exception: render it as a statement of what the
+skill actually verified — step 2's duplicate search and what it covered — never as a pre-ticked
+box, since `feature_request.yml`'s three prime-directive confirmations are the invoker's judgment
+to give. Pick the matching label (`bug` or `enhancement`); no new label is needed; see
+*Alternatives considered*.
 
 **Step 4 — confirm.** Show the invoker the full draft — title, body, and label — and wait for
 explicit approval before creating anything. Filing a GitHub Issue publishes content the whole team
