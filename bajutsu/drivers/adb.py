@@ -1127,11 +1127,6 @@ class AdbDriver(CoordinateTreeDriver):
     def _actuate_centered(self, args: list[str]) -> None:
         """Actuate a command whose target was just resolved, then open a read-lag barrier for it.
 
-        The coordinate-path counterpart to `_device_act`'s confirmed-success branch, which arms
-        nothing (BE-0339 Unit 5): there the resident session resolved and injected in one call, so no
-        asynchronously-published tree is in flight for a later read to race. Here a host-computed
-        coordinate and a separate `adb shell input` process are exactly that race, so the barrier stays.
-
         A center-resolving tap can change the layout (open a menu, expand a row, advance a stepper),
         and Android publishes that update a beat after the actuation returns — so without a barrier the
         next actuator's `_settle` accepts the still-pre-tap tree and resolves against stale frames, the
@@ -1185,6 +1180,14 @@ class AdbDriver(CoordinateTreeDriver):
             return False
         for _ in range(self._STALE_MAX_ATTEMPTS):
             tree = self._settle()
+            if self._act_unavailable:
+                # `_settle` reads through `_read_source`, which can itself discover a dead resident
+                # channel mid-loop and latch this — the entry guard above only ran once, before that
+                # read. Re-checking here stops the request from going out to a connection the driver
+                # just tore down (BE-0339 Unit 4), which would otherwise fault, log a "the channel
+                # stays in use" warning that contradicts the latch just set, and pay a doomed round
+                # trip before falling back anyway.
+                return False
             try:
                 el, tree = self._resolve(sel, timeout=self._RESOLVE_TIMEOUT_S, initial_tree=tree)
             except base.ElementNotFound:
@@ -1272,16 +1275,19 @@ class AdbDriver(CoordinateTreeDriver):
                 logger.debug(
                     "device %s on %r: identity %r, %d of %d", kind, sel, identity, index, len(same)
                 )
-                # The gesture happened on the device, so the cached tree is stale for the next resolve
-                # (the same bookkeeping `_act` does for a coordinate injection) — but no catch-up
-                # barrier opens for it (BE-0339 Unit 5). The barrier exists to bound the window between
-                # a host-computed coordinate and a separate `adb shell input` process injecting it; here
-                # the resident session resolved and injected in one call, synchronized with the
-                # platform's own accessibility-idle state before it answered, so there is no
-                # asynchronously-published tree for a later read to race. Arming anyway would buy
-                # nothing and would spend the barrier's full wall-clock budget on every device-acted
-                # gesture that legitimately changes no frame — the very concession this unit removes.
+                # The gesture happened on the device, so the cached tree is stale and the next read must
+                # postdate it — the same bookkeeping `_act` does for a coordinate injection. `respondAct`
+                # (the Kotlin `/act` handler) settles the tree it *resolves against* before injecting,
+                # but answers as soon as the injection call returns, with no wait for the gesture's own
+                # accessibility event to publish — so a follow-up read can still describe the pre-gesture
+                # screen exactly as a coordinate injection's follow-up read can. An identity-addressed
+                # follower self-heals via its own `stale` re-resolve; a coordinate-resolving one
+                # (`pinch`, `rotate`, a directional `swipe`/`drag` anchor) has no such check, so the
+                # barrier stays armed for it (an earlier version of this comment claimed the resident
+                # session synchronized with the platform's idle state before answering — it does not;
+                # see BE-0339's Progress log for the correction).
                 self.invalidate_settled_cache()
+                self._arm_catchup(pre_key, mark)
                 return True
             logger.debug("device %s on %r: the device called it stale; re-resolving", kind, sel)
         logger.warning(

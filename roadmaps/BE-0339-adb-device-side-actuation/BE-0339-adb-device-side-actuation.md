@@ -241,7 +241,7 @@ languages. The identity keeps the decision on the host and sends only its result
       for its *interval*. `pinch` and `rotate` stay on coordinates because a two-finger gesture needs
       a frame, not a center.
 - [x] Unit 4 — the coordinate path kept as a declared, logged degraded mode.
-- [x] Unit 5 — the read-lag barrier narrowed to the reads that still need it.
+- [ ] Unit 5 — the read-lag barrier narrowed to the reads that still need it.
 - [ ] Unit 6 — deterministic and conformance coverage, and a repeated Android-lane run.
 
 Log:
@@ -306,20 +306,35 @@ Log:
   rather than a bug. `POST /act` now builds the `MotionEvent`s itself and stamps them, so the
   interval is a declared 40 ms hold plus a 60 ms gap rather than whatever the host happened to cost.
 
-- 2026-08-21 — Units 4 and 5, plus the fast-gate half of Unit 6. Unit 4 closed two silent branches
-  rather than adding a new one: a resident connection that failed mid-lease nulled the read channel
-  but left `/act` live, so every gesture for the rest of the lease would rediscover the same failed
-  connection and re-warn once per tap instead of degrading once — it now latches `_act_unavailable`
-  alongside the read degrade. And `AndroidEnvironment._make_resident`'s "APKs not built" /
+- 2026-08-21 — Unit 4, the fast-gate half of Unit 6, and an attempt at Unit 5 that a review pass
+  caught before it shipped. Unit 4 closed two silent branches rather than adding a new one: a
+  resident connection that failed mid-lease nulled the read channel but left `/act` live, so every
+  gesture for the rest of the lease would rediscover the same failed connection and re-warn once per
+  tap instead of degrading once — it now latches `_act_unavailable` alongside the read degrade
+  (closing a second gap the same fix exposed: `_device_act`'s own `_settle()` read can discover that
+  same failure mid-loop, after its entry guard already passed, so the loop now re-checks the latch
+  before building a request). And `AndroidEnvironment._make_resident`'s "APKs not built" /
   explicit-opt-out branches, which chose the coordinate path with no log at all, now declare it at
-  the same level the "resident channel selected" branch already used. Unit 5 stops arming the
-  read-lag barrier on a *confirmed* device-side `tap` / `long_press` / `double_tap`: the resident
-  session resolved and injected in one call, synchronized with the platform's own accessibility-idle
-  state before it answered, so there is no asynchronously-published tree left for a later read to
-  race — arming it would spend the 4-second budget for nothing on a gesture that changes no frame. A
-  reply-lost (`AdbActUncertain`) gesture still arms it, because there the doubt is genuine and the
-  wall-clock barrier is the safety net. The coordinate fallback (`_actuate_centered`) keeps its own
-  arming unchanged. Unit 6's fast-gate share: a new driver conformance case
+  the same level the "resident channel selected" branch already used.
+  A first pass at Unit 5 stopped arming the read-lag barrier on a *confirmed* device-side `tap` /
+  `long_press` / `double_tap`, on the claim that the resident session "synchronized with the
+  platform's own accessibility-idle state before it answered." A review pass read `respondAct`
+  (the Kotlin `/act` handler) and found that claim false: it settles the tree it *resolves against*
+  before injecting, but answers as soon as the injection call returns, with no wait for the
+  gesture's own accessibility event to publish. An identity-addressed follower self-heals through
+  its own `stale` re-resolve, but a coordinate-resolving one (`pinch`, `rotate`, a directional
+  `swipe`/`drag` anchor) has none — reviving the exact pre-gesture-frame staleness BE-0332 closed for
+  the coordinate path, reached through the device-side door instead. Compounding it, a confirmed
+  device tap no longer drained through `_pan_baseline` either, so a pan taking its baseline right
+  after one could credit the tap's own still-in-flight publish as the pan's — the same
+  mistaken-attribution bug `_pan_baseline`'s own docstring already names, on a path this change had
+  left undrained. This reverts Unit 5 to its Unit 3 shape (every `tap` / `long_press` / `double_tap`
+  arms the barrier, device-side or not) pending a design that makes the underlying claim true — a
+  Kotlin-side change so `/act` itself waits for its gesture's publish before answering is the
+  candidate,
+  which the driver conformance suite (BE-0114) or a repeated Android-lane dispatch (Unit 6) could
+  then confirm before the host stops arming again.
+  Unit 6's fast-gate share stands on its own, independent of Unit 5: a new driver conformance case
   (`test_a_tap_lands_on_the_element_the_selector_named`) seeds two independently mirrored tap
   targets and asserts that a tap on one moves that target's own counter and leaves the other's
   untouched — the contract "the element the device acted on is the element the selector named" that
