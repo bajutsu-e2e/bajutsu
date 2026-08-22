@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0339") |
-| Implementing PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455) (Units 1–3: the directional-gesture anchor, `POST /act`, and identity-addressed actuation) |
+| Implementing PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455) (Units 1–3: the directional-gesture anchor, `POST /act`, and identity-addressed actuation), [#1702](https://github.com/bajutsu-e2e/bajutsu/pull/1702) (Unit 4 and Unit 6's fast-gate conformance coverage; a Unit 5 attempt reverted after review, Unit 6's on-device realization deferred after real-device evidence it wasn't safe to ship) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0332](../BE-0332-read-lag-barrier/BE-0332-read-lag-barrier.md), [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md), [BE-0312](../BE-0312-xcuitest-content-addressed-snapshot-handle/BE-0312-xcuitest-content-addressed-snapshot-handle.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) |
 <!-- /BE-METADATA -->
@@ -240,7 +240,7 @@ languages. The identity keeps the decision on the host and sends only its result
       `long_press`, and `double_tap` go to the device — the first two for their coordinate, the third
       for its *interval*. `pinch` and `rotate` stay on coordinates because a two-finger gesture needs
       a frame, not a center.
-- [ ] Unit 4 — the coordinate path kept as a declared, logged degraded mode.
+- [x] Unit 4 — the coordinate path kept as a declared, logged degraded mode.
 - [ ] Unit 5 — the read-lag barrier narrowed to the reads that still need it.
 - [ ] Unit 6 — deterministic and conformance coverage, and a repeated Android-lane run.
 
@@ -305,6 +305,88 @@ Log:
   `click`'s internal settle. All three pass on a fast host and fail on a loaded one, which is a flake
   rather than a bug. `POST /act` now builds the `MotionEvent`s itself and stamps them, so the
   interval is a declared 40 ms hold plus a 60 ms gap rather than whatever the host happened to cost.
+
+- 2026-08-21 — Unit 4, the fast-gate half of Unit 6, and an attempt at Unit 5 that a review pass
+  caught before it shipped. Unit 4 closed two silent branches rather than adding a new one: a
+  resident connection that failed mid-lease nulled the read channel but left `/act` live, so every
+  gesture for the rest of the lease would rediscover the same failed connection and re-warn once per
+  tap instead of degrading once — it now latches `_act_unavailable` alongside the read degrade
+  (closing a second gap the same fix exposed: `_device_act`'s own `_settle()` read can discover that
+  same failure mid-loop, after its entry guard already passed, so the loop now re-checks the latch
+  before building a request). And `AndroidEnvironment._make_resident`'s "APKs not built" /
+  explicit-opt-out branches, which chose the coordinate path with no log at all, now declare it at
+  the same level the "resident channel selected" branch already used.
+  A first pass at Unit 5 stopped arming the read-lag barrier on a *confirmed* device-side `tap` /
+  `long_press` / `double_tap`, on the claim that the resident session "synchronized with the
+  platform's own accessibility-idle state before it answered." A review pass read `respondAct`
+  (the Kotlin `/act` handler) and found that claim false: it settles the tree it *resolves against*
+  before injecting, but answers as soon as the injection call returns, with no wait for the
+  gesture's own accessibility event to publish. An identity-addressed follower self-heals through
+  its own `stale` re-resolve, but a coordinate-resolving one (`pinch`, `rotate`, a directional
+  `swipe`/`drag` anchor) has none — reviving the exact pre-gesture-frame staleness BE-0332 closed for
+  the coordinate path, reached through the device-side door instead. Compounding it, a confirmed
+  device tap no longer drained through `_pan_baseline` either, so a pan taking its baseline right
+  after one could credit the tap's own still-in-flight publish as the pan's — the same
+  mistaken-attribution bug `_pan_baseline`'s own docstring already names, on a path this change had
+  left undrained. This reverts Unit 5 to its Unit 3 shape (every `tap` / `long_press` / `double_tap`
+  arms the barrier, device-side or not) pending a design that makes the underlying claim true — a
+  Kotlin-side change so `/act` itself waits for its gesture's publish before answering is the
+  candidate,
+  which the driver conformance suite (BE-0114) or a repeated Android-lane dispatch (Unit 6) could
+  then confirm before the host stops arming again.
+  Unit 6's fast-gate share stands on its own, independent of Unit 5: a new driver conformance case
+  (`test_a_tap_lands_on_the_element_the_selector_named`) seeds two independently mirrored tap
+  targets and asserts that a tap on one moves that target's own counter and leaves the other's
+  untouched — the contract "the element the device acted on is the element the selector named" that
+  a coordinate assertion alone cannot state. Realized as app-side mirroring, `LogScreen.kt`'s
+  `log.longpress.value` pattern generalized to two named targets: `FakeDriver` and the Playwright web
+  harness both run this new case under `make check` (the Playwright side, verified again by hand
+  against the real Chromium binary — this container's pinned playwright and its pre-installed browser
+  build are a version apart, a pre-existing gap this change did not cause); the Compose and SwiftUI
+  conformance screens carry the same two targets for the on-device suites, written to match the
+  existing field-mirroring pattern in each file but — like Unit 2's Kotlin endpoint before it — not
+  locally compiled, for the same reason: no Android SDK or Xcode in the authoring environment. The
+  on-device conformance case and the repeated Android-lane dispatch that samples the flake's residual
+  rate are what Unit 6 still owes.
+
+- 2026-08-22 — What PR #1702's own checks found, in two rounds. A live review pass caught three
+  findings first. The new conformance case read a mirror once, right after the tap. That skipped
+  the condition wait the rest of the contract already uses. It now goes through `base.wait_until`
+  instead. The SwiftUI mirror button's label re-derived from the tapped count. That doubled the
+  churn `accessibilityStateValue` causes on the element the contract taps. The label is now
+  static. `AndroidEnvironment._begin_resident`'s start-failure branch was a third silent branch.
+  Unit 4 had missed it alongside the two it closed. It now names the same coordinate-actuation
+  degrade.
+  The second round carried the real signal. `conformance (adb)`, the on-device lane the case
+  targets, failed on the pushed commit. The new case alone failed. The other nineteen conformance
+  tests passed. The design co-located a tap target's identity with the value that mutates from
+  that same tap. That conflicts with `_device_act`'s identity-addressed resolve-then-inject match.
+  `LogScreen.kt` already avoids that shape: it keeps `log.longpress` and `log.longpress.value` on
+  separate elements. A fix generalized that split to the tap-mirror pair, across every backend the
+  conformance case reaches: `driver_conformance.py`'s shared constants and test body, the
+  `FakeDriver` and Playwright harnesses, and the Compose and SwiftUI conformance screens.
+  That fix closed the identity conflict — the split case passed on real hardware twice — but opened
+  a second problem. Two extra elements per mirror left the emulator's UI thread degraded for the
+  rest of the suite once `test_text_selection_capability_matches_behavior`'s select-all/copy ran:
+  three unrelated tests timed out re-seeding the screen, an identical accessibility-tree dump
+  (software keyboard included) frozen across all three thirty-second polls, twice in a row. A
+  wrapped `verticalScroll` on the Compose column, reasoned from the same evidence, did not fix it;
+  a third run showed the identical three failures plus, this time, the new case itself timing out
+  on a six-second-plus accessibility-publish lag. Root-causing that lag needed a real device and
+  its logcat, neither reachable from this environment — the CI artifact holding it sits behind a
+  host the network policy here blocks.
+  Two shapes, two different real-hardware failures, and no way to test a third without a device to
+  watch it on: co-located reintroduces the identity conflict this case exists to catch; split
+  degrades the suite around it. Both `ConformanceScreen.kt` and `ConformanceView.swift` revert to
+  their pre-Unit-6 state — neither ever shipped a tap mirror the iOS lane got to run, since every
+  push here superseded the last before a real Simulator result landed. The on-device realization of
+  this one contract case waits, skipped explicitly in both `test_driver_conformance_ondevice_android.py`
+  and `test_driver_conformance_ondevice.py` with the reasoning above, pending a session with real
+  device access to diagnose the degradation. The case itself, and its split-identity design, stand: they run
+  deterministically on `FakeDriver` and Playwright, catching the `_device_act` conflict class on
+  every PR through the fast gate, which is what prime directive 1 asks of the actual CI verdict.
+  The on-device realization of this case and the repeated Android-lane dispatch that samples the
+  flake's residual rate are what Unit 6 still owes.
 
 ## References
 
