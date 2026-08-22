@@ -347,7 +347,7 @@ class ResidentServerTest {
         val mark = readMark.current()
         val body = settledDump(device)
         val headers = mutableMapOf(READ_MARK_HEADER to mark.toString())
-        nativeZHeader()?.let { headers[NATIVE_Z_HEADER] = it }
+        nativeZHeader(device)?.let { headers[NATIVE_Z_HEADER] = it }
         respond(
             out,
             "200 OK",
@@ -366,14 +366,24 @@ class ResidentServerTest {
      * offset — a value keyed by document-order position would land on the wrong node (BE-0355 Unit 0
      * measured the gap at 28 nodes on a plain showcase screen). Each value is therefore keyed by what
      * the host can recompute from the `<node>` it is reading: bounds, class, package, and the
-     * occurrence index among nodes agreeing on all three.
+     * occurrence index among nodes agreeing on all three. The bounds half of that key must be the
+     * screen-clipped rect [AccessibilityNodeInfoDumper] itself writes to the `bounds` attribute
+     * (`AccessibilityNodeInfoHelper.getVisibleBoundsInScreen`'s node-rect-intersected-with-display
+     * behavior), not the raw [AccessibilityNodeInfo.getBoundsInScreen] — a node hanging past the
+     * display edge would otherwise key on a rect the host never recomputes, silently reporting no
+     * position for exactly the clipped/occluded layouts an investigator opens the evidence for. This
+     * walk only reproduces the display-edge half of that clipping, not clipping by an ancestor's own
+     * bounds (e.g. a node inside a smaller scrollable container that never reaches the screen edge) —
+     * a narrower gap than the one this closes, left beside the multi-window limitation already
+     * recorded in `_native_z_key`'s docstring on the host.
      *
      * Only nodes whose own [AccessibilityNodeInfo.getAvailableExtraData] already lists the key are
-     * read, so an app that never opted in pays one list check per node. Null when nothing reported.
+     * asked for a value; the walk itself still runs over every node on every read, so it is not
+     * bounded to opted-in apps the way the per-node check alone would suggest.
      */
-    private fun nativeZHeader(): String? =
+    private fun nativeZHeader(device: UiDevice): String? =
         try {
-            nativeZHeaderOrThrow()
+            nativeZHeaderOrThrow(device)
         } catch (e: Exception) {
             // A node can go stale mid-walk (the live tree this runs against right after
             // `settledDump` is not guaranteed frozen), and this diagnostic reading rides on
@@ -384,14 +394,19 @@ class ResidentServerTest {
             null
         }
 
-    private fun nativeZHeaderOrThrow(): String? {
+    private fun nativeZHeaderOrThrow(device: UiDevice): String? {
         val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
             ?: return null
+        val display = Rect(0, 0, device.displayWidth, device.displayHeight)
         val seen = mutableMapOf<String, Int>()
         val parts = mutableListOf<String>()
         fun visit(node: AccessibilityNodeInfo?) {
             if (node == null) return
             val bounds = Rect().also { node.getBoundsInScreen(it) }
+            // `Rect.intersect` leaves a fully off-screen rect unchanged rather than collapsing it
+            // to empty, matching `getVisibleBoundsInScreen`'s own behavior — the dumped body keys
+            // such a node on its raw (off-screen) rect too, so this stays consistent with it.
+            bounds.intersect(display)
             val key = "${bounds.left},${bounds.top},${bounds.right},${bounds.bottom}" +
                 "|${node.className ?: ""}|${node.packageName ?: ""}"
             val occurrence = seen.getOrDefault(key, 0)

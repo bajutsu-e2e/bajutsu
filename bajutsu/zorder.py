@@ -72,9 +72,15 @@ class ZOrderResponder:
             # one read rather than latching off the rest of the lease (`fetch_source` in
             # `bajutsu/adb_resident.py` catches both for the same reason).
             return {}
-        except (urllib.error.URLError, OSError):
+        except (urllib.error.URLError, OSError) as exc:
             # No app-side responder at all (connection refused, or nothing ever listened) — this
-            # will not change for the rest of the lease.
+            # will not change for the rest of the lease. A *connect*-phase timeout arrives here
+            # too, wrapped in `URLError` by urllib's own `do_open` (a read-phase one raises the
+            # bare `TimeoutError` the clause above already catches) — and that one is a hiccup
+            # from a responder that may well exist (the app still coming up), so it degrades this
+            # read rather than latching off the lease.
+            if isinstance(getattr(exc, "reason", exc), TimeoutError):
+                return {}
             self._unavailable = True
             return {}
         # A malformed top-level shape (loopback is not isolated between apps, so this need not be

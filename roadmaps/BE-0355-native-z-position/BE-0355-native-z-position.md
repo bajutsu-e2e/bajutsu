@@ -208,9 +208,11 @@ the same `nativeZ`. `bajutsu/adb_resident.py`'s hierarchy fetch (`fetch_source`,
 carrying that side structure back; and `_elements_from_nodes` (`bajutsu/drivers/adb.py:322`), which
 walks the same `<node>` sequence `parse_hierarchy_with_identities` (`bajutsu/drivers/adb.py:336`)
 already aligns element *i* against, carries position *i*'s value into element *i*'s `nativeZ`. The
-one added round trip is inside `respondSource` itself — the per-node `refreshWithExtraData` calls,
-plus the reconciling second walk above — issued only when a node's own `getAvailableExtraDataKeys()`
-already lists the Bajutsu key, so a non-cooperating app pays nothing beyond that one cheap check.
+added cost is inside `respondSource` itself: the reconciling second walk over the active window runs
+on every read regardless of whether the app opted in, and only the per-node `refreshWithExtraData`
+call inside that walk — reading `AccessibilityNodeInfo.getAvailableExtraData()` — is gated on a node
+already advertising the Bajutsu key. See Unit 0's cost finding below for the measured size of the
+walk itself, which the shipped slice does not gate.
 
 **Unit 0's findings (measured on an API 34 emulator against the showcase's Compose and Views apps).**
 
@@ -245,9 +247,20 @@ already lists the Bajutsu key, so a non-cooperating app pays nothing beyond that
   window), so two opted-in nodes sharing bounds, class, and package across the app's own windows
   could shift each other's count. Recorded as a known limitation on `_native_z_key`'s docstring
   rather than closed in this slice.
+- **The bounds half of that key must be screen-clipped, not raw.** `dumpWindowHierarchy`'s own
+  `bounds` attribute is a node's rect intersected with the display (`AccessibilityNodeInfoDumper` via
+  `AccessibilityNodeInfoHelper.getVisibleBoundsInScreen`), so a walk keying on the raw
+  `getBoundsInScreen()` rect disagreed with the host's recomputed key for any node hanging past the
+  display edge — reporting the honest absence instead of the app's real measurement on exactly the
+  clipped, partially off-screen layouts an investigator opens the evidence for. The walk now
+  intersects each rect with the device's own display bounds before keying, matching the dumper. This
+  reproduces only the display-edge half of that clipping, not clipping by an ancestor's own bounds
+  (e.g. a node inside a smaller scrollable container that never reaches the screen edge) — a narrower
+  gap left beside the multi-window limitation above.
 - **Cost.** A full per-node `refresh()` walk over 45 nodes measured 24 ms against a warm
-  `dumpWindowHierarchy`'s 19 ms; the eager path above avoids that entirely for an app using the
-  helper.
+  `dumpWindowHierarchy`'s 19 ms; the eager path above avoids the per-node round trip entirely for an
+  app using the helper, but not the walk itself, which runs on every read regardless of whether the
+  app opted in (see *Cost stays opt-in on both platforms* above).
 
 ### Cost stays opt-in on both platforms
 
@@ -259,12 +272,22 @@ attempting the connection, the driver caches that first failure for the session 
 so a non-cooperating app pays the timeout once rather than on every `/elements` query; this is what
 keeps the read "bounded and synchronous" in the sense *Prime directives preserved* below claims.
 Android's per-node `refreshWithExtraData` round trip is gated on that node's own
-`getAvailableExtraDataKeys()` already advertising the Bajutsu key, so an uninstrumented app's tree
-walk pays one cheap existence check per node and nothing more. For a cooperating app on either
-platform, Unit 0's spike also measures the actual per-element round-trip cost against a
+`getAvailableExtraData()` already advertising the Bajutsu key, so an uninstrumented app's tree walk
+pays one cheap existence check per node and nothing more *for that call*. For a cooperating app on
+either platform, Unit 0's spike also measures the actual per-element round-trip cost against a
 showcase-sized tree — the same per-read cost bar [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md)'s
 own resident-channel motivation was held to — and records the result in this section before Units 2
 and 3 land.
+
+**As shipped, this section's title overstates Android's half.** The reconciling walk itself — not
+just the per-node call — runs on every `GET /source`, including for an app that never linked the
+helper: `respondSource` cannot know in advance that a tree carries no opted-in node without walking
+it first. Unit 0's own cost measurement (below) puts that walk in the same order as the resident
+channel's warm `dumpWindowHierarchy`, so it roughly doubles the per-read cost of every Android run,
+not only one that uses `nativeZ`. Left as a known gap rather than closed here: gating the walk on a
+signal the host sends only for a target that has opted into `nativeZ` (mirroring how `since=` is
+already threaded per read) would restore the opt-in cost this section originally promised, but that
+plumbing is a follow-up unit's to design and land, not this one's to improvise under review.
 
 ### Work breakdown (`MECE`)
 
@@ -403,6 +426,20 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
   what gives the Android path on-device coverage. The conformance contract moved with the code: it
   no longer asserts the field is always absent, but that it is absent or a real finite measurement,
   since a backend can now be on either side of the opt-in.
+- Review on the implementing PR found five more real issues, all fixed or recorded above rather than
+  deferred silently. `ZOrderResponder.positions()` latched its negative cache on a connect-phase
+  timeout too — `urllib` wraps that one in `URLError` rather than raising the bare `TimeoutError` the
+  read-phase clause already caught — permanently losing `nativeZ` for a lease whose app was merely
+  still coming up; fixed by inspecting the wrapped reason. Two comments beside `Element.nativeZ` and
+  `xcuitest.py`'s `_to_element` still said the iOS and Android paths were unshipped, which this PR
+  makes false; corrected to name what actually reports. The Android resident server's bounds key used
+  the raw `getBoundsInScreen()` rect while the dumped body it must match keys on the display-clipped
+  one `AccessibilityNodeInfoDumper` writes, silently dropping the position of any node hanging past
+  the screen edge; fixed by intersecting with the device's own display bounds before keying. And the
+  *Detailed design* prose above still named an API that does not exist and claimed the Android walk
+  cost "nothing beyond one cheap check", both refuted by Unit 0's own findings a few lines below it;
+  corrected in place (English and Japanese) and recorded as a known follow-up rather than optimized
+  under review-loop pressure.
 
 ## References
 

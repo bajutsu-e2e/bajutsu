@@ -271,6 +271,23 @@ def test_zorder_responder_stops_asking_after_the_first_refusal() -> None:
     assert calls[0] == 1
 
 
+def test_zorder_responder_keeps_asking_after_a_connect_phase_timeout() -> None:
+    # urllib's do_open wraps a connect-phase OSError timeout in URLError — only a read-phase
+    # timeout raises the bare TimeoutError the other clause catches. A connect that just missed
+    # the budget (the app still coming up) is a hiccup, not a permanently absent responder.
+    responder = ZOrderResponder(port=1, token="t")
+    calls = [0]
+
+    def connect_timeout(*_args: object, **_kwargs: object) -> None:
+        calls[0] += 1
+        raise urllib.error.URLError(TimeoutError("timed out"))
+
+    with mock.patch("urllib.request.urlopen", connect_timeout):
+        assert responder.positions() == {}
+        assert responder.positions() == {}
+    assert calls[0] == 2
+
+
 def test_zorder_responder_keeps_asking_after_a_busy_main_thread() -> None:
     # A 503 means a responder that demonstrably exists just missed this one request (the app's
     # main thread was busy) — unlike a refused connection, that is not the permanent "no
