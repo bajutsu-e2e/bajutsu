@@ -206,7 +206,7 @@ final class HTTPServer {
     /// timeout that closes the connection while the handler is still blocked on the main thread would
     /// kill the whole XCTest host the moment that handler finally replied, taking the runner down with
     /// it. That race is routine here rather than exotic: the driver's read and actuation windows are
-    /// tighter than a contended host's slowest operation, and `Router` deliberately queues handlers
+    /// tighter than a contended host's slowest operation, and `APIHandler` deliberately queues handlers
     /// behind one main-thread lock. The option turns such a write into a plain `EPIPE`, which
     /// `sendAll` already treats as "stop writing". The timeouts then bound the two blocking calls a
     /// handler makes, so a peer that vanishes without closing cannot hold a connection slot for ever.
