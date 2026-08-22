@@ -71,7 +71,14 @@ calling skill also states whether a human is in the turn, because the skill cann
 itself — and neither can `pr-followup`, whose steps "behave identically whether run in a subagent
 or called directly". Only the loop layer knows: `implement-be` step 12 states it when it hands a
 subagent `pr-followup`'s steps, `pr-followup` passes it on to the sub-step invocation, and its
-absence means attended.
+absence means attended. The other input shape is a resumed invocation: an approved new-issue
+draft — title, body, and label — from which the skill resumes directly at step 5's
+`gh issue create`, since the human already gave explicit approval on a later turn, against the
+draft the loop's report showed them. Only an attended turn can carry this input; an unattended run
+never resumes on its own — resuming with no human present would file the draft with no approval at
+all, exactly what the confirmation gate exists to prevent. A comment on one of the candidate
+matches that an unattended run carried is the human's own follow-up from there, outside this resume
+path.
 
 **Step 1 — classify.** Decide among three landings. `feature_request.yml` only points anything short
 of a well-formed design away from the roadmap, so this skill states the concrete bar itself: does
@@ -87,51 +94,68 @@ improvement).
 invoker any candidate matches (number, title, state). The search excludes the `roadmap-tracking`
 issues the workflow of
 [BE-0109](../BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) creates and closes
-on its own: those are bot-owned, so a finding an existing BE item already covers belongs on that
-item through step 1's `ideation` landing rather than as a comment on one of them. When an **open**
-match looks like the same issue, ask whether to comment on the existing issue instead of filing a
-new one, or to proceed anyway — the invoker decides, since only they can judge whether the match is
-close enough. Never route a report onto a **closed** match: `task-select` surveys open issues only,
-so a comment there never resurfaces as a candidate. File a new issue linking the closed one as
-prior context instead.
+on its own: those are bot-owned, so a comment on one of them is no landing at all. Because that
+exclusion also removes the only signal that an open BE item already covers the finding, this step
+checks the roadmap itself: run
+[`roadmap-filter`](../../.agent-workflows/roadmap-filter/workflow.md) over `Proposal` and
+`In progress` and match the returned titles on the same keywords. On a hit, show the invoker that
+item and ask whether to stop there instead of drafting anything — when the item already covers the
+finding, an issue would only duplicate it — or to proceed anyway: a keyword match against a title
+is not proof of coverage, and only the invoker can judge it.
+When an **open** match looks like the same issue, ask whether to comment on the existing issue
+instead of filing a new one, or to proceed anyway — the invoker decides, since only they can judge
+whether the match is close enough. Never route a report onto a **closed** match: `task-select`
+surveys open
+issues only, so a comment there never resurfaces as a candidate. File a new issue linking the
+closed one as prior context instead.
 
 **Step 3 — draft.** Read the matching template — `bug_report.yml` for a bug,
 `feature_request.yml` for an enhancement — and synthesize a markdown body whose sections mirror
-that template's textarea fields. `gh issue create` posts plain markdown rather than rendering the
+that template's input fields — its `textarea`s and, for `bug_report.yml`, its required `dropdown`.
+`gh issue create` posts plain markdown rather than rendering the
 template's YAML form, so the skill fills those fields itself instead of relying on `gh` to do it.
 A template's required `checkboxes` block is the exception: render it as a statement of what the
 skill actually verified — step 2's duplicate search and what it covered — never as a pre-ticked
 box, since `feature_request.yml`'s three prime-directive confirmations are the invoker's judgment
 to give. Pick the matching label (`bug` or `enhancement`); no new label is needed; see
-*Alternatives considered*.
+*Alternatives considered*. When the invoker instead chose to comment on an open match in step 2,
+draft that comment body separately — the finding, its evidence, and where it was noticed — since
+`gh issue comment` carries no title or label of its own, and note the chosen label as a
+`gh issue edit --add-label` addition for step 5 to apply if the target issue lacks it.
 
-**Step 4 — confirm.** Show the invoker the full draft — title, body, and label — and wait for
-explicit approval before creating anything. Filing a GitHub Issue publishes content the whole team
-sees, so this step runs every time, not only the first time a session uses the skill.
+**Step 4 — confirm.** Show the invoker everything about to be posted — a new issue's title, body,
+and label, or an existing issue's comment body and any label to add — and wait for explicit
+approval before posting anything. Filing or commenting on a GitHub Issue publishes content the
+whole team sees, so this step runs every time, not only the first time a session uses the skill.
 
 **Step 5 — create and report.** On approval, run `gh issue create --title <title> --body-file
-<file> --label <label>`. When step 2 picked an existing issue, run `gh issue comment <number>
---body-file <file>` instead, under the same confirmation gate — a comment publishes to the team
-just as a new issue does. Then report the resulting issue URL back to the invoker, or, when called
-as a sub-step, back into the calling skill's own output, so a review or follow-up pass can list
-what it filed alongside what it fixed inline.
+<file> --label <label>` for a new issue, or, for a comment on the match step 2 picked, `gh issue
+comment <number> --body-file <comment-file>` followed by `gh issue edit <number> --add-label
+<label>` when step 4 approved a label to add. Report the resulting issue URL back to the invoker,
+or, when called as a sub-step, back into the calling skill's own output, so a review or follow-up
+pass can list what it filed alongside what it fixed inline.
 
 Because the workflow document describes one procedure regardless of caller, a standalone
 invocation and a call from another skill follow identical steps — including the confirmation
-gate, which no calling skill may skip on the invoker's behalf. When no human is in the turn —
+gate, which no calling skill may skip on the invoker's behalf. A resumed invocation (see *Inputs*)
+is not a skip of that gate: its confirmation already ran, on the attended turn where the human
+approved the exact draft the loop's report showed, so entering at step 5 executes an approval the
+gate already collected. When no human is in the turn —
 `pr-followup` running as one iteration of `implement-be`'s hands-free loop (BE-0230) is the case
-that matters — the skill files nothing and stalls nothing: it returns the finished draft in the
-iteration's structured summary, the channel `implement-be` step 12 already reads and
-`pr-followup` step 4 already uses for a self-review-only finding, so the human sees it when the
-loop reports and approves it on a later turn. Step 2's new-issue-or-comment question defers the
-same way rather than being settled unattended: the skill drafts for a new issue and carries step
-2's candidate matches beside it, so the human who approves makes that call too. A pending draft
-is deliberately not an escalation:
-every entry in BE-0230's escalation list stops the loop and hands the PR to the human, which an
-incidental out-of-scope note should never do to an otherwise-healthy follow-up loop. A returned
-draft is also an input: `record-issue` accepts an already-drafted title, body, and label and
-resumes at step 4, so the human's approval on a later turn runs step 5 against the draft they
-actually saw instead of re-drafting it or sending them back to file by hand.
+that matters — the skill files nothing and stalls nothing: it returns the finished draft in a new
+**pending-draft** field of the iteration's structured summary, distinct from the escalation field
+`implement-be` step 12 already reads (the field `pr-followup` step 4 routes a self-review-only
+finding through, and which the loop treats as a stop signal), so the human sees the draft when the
+loop reports, and approves it on a later turn. Step 2's new-issue-or-comment choice, and a
+roadmap-filter hit's stop-or-proceed choice, defer the same way rather than being settled
+unattended: the skill drafts for a new issue and carries every candidate it found — issue matches
+and any roadmap-filter hit — beside the draft, so the human decides whether to approve it, comment
+on a candidate by hand instead, or discard the finding. Approval of the drafted issue resumes the
+skill directly at step 5 against the draft the human actually saw, rather than re-drafting it. A
+pending draft
+is deliberately not an escalation: every entry in BE-0230's escalation list stops the loop and
+hands the PR to the human, which an incidental out-of-scope note should never do to an
+otherwise-healthy follow-up loop.
 
 **Caller and documentation wiring.** A calling skill only runs a sub-step its own workflow names —
 `be-progress-tracker` runs because `ideation` and `implement-be` each name it — so `pr-followup`
@@ -178,9 +202,10 @@ would add process without adding information.
 - [ ] Documentation wiring: `docs/ai-development.md` (+ ja) and `CLAUDE.md`, including the Claude
       adapter's default `model:` tier (BE-0103).
 - [ ] Verify the standalone path and at least one calling-skill path (for example `pr-followup`
-      flagging an out-of-scope finding) both exercise the confirmation gate, and that an
-      unattended run (`pr-followup` inside `implement-be`'s hands-free loop) returns its draft
-      in the iteration's structured summary instead of filing or escalating.
+      flagging an out-of-scope finding) both exercise the confirmation gate, that an unattended
+      run (`pr-followup` inside `implement-be`'s hands-free loop) returns its draft in the
+      iteration's structured summary instead of filing or escalating, and that a human's later
+      approval resumes the skill at step 5 against that same draft rather than re-drafting it.
 
 ## References
 
