@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -78,7 +80,14 @@ fun ConformanceScreen(identifiers: List<String>) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .enableTestTagsAsResourceId(),
+            .enableTestTagsAsResourceId()
+            // Scrollable (BE-0339 Unit 6): the two tap-mirror pairs each now carry a stable tap
+            // target plus a separate mirrored-value element (four elements instead of two), so an
+            // unscrolled column can run out of vertical room once a lingering keyboard from an
+            // earlier text-editing case (select-all/copy leaves it up, the same transient-UI class
+            // BE-0280 already names) covers part of the screen — pushing the seeded identifier
+            // boxes below the visible fold and out of the accessibility dump `_await_screen` reads.
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
     ) {
