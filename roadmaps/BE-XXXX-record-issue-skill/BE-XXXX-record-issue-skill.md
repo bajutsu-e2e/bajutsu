@@ -106,11 +106,11 @@ explicit approval before creating anything. Filing a GitHub Issue publishes cont
 sees, so this step runs every time, not only the first time a session uses the skill.
 
 **Step 5 — create and report.** On approval, run `gh issue create --title <title> --body-file
-<file> --label <label>` — or, when step 2 picked an existing issue, `gh issue comment <number>
---body-file <file>`, under the same confirmation gate, since a comment publishes to the team just as
-a new issue does — and report the resulting issue URL back to the invoker, or, when called as a
-sub-step, back into the calling skill's own output, so a review or follow-up pass can list what it
-filed alongside what it fixed inline.
+<file> --label <label>`. When step 2 picked an existing issue, run `gh issue comment <number>
+--body-file <file>` instead, under the same confirmation gate — a comment publishes to the team
+just as a new issue does. Then report the resulting issue URL back to the invoker, or, when called
+as a sub-step, back into the calling skill's own output, so a review or follow-up pass can list
+what it filed alongside what it fixed inline.
 
 Because the workflow document describes one procedure regardless of caller, a standalone
 invocation and a call from another skill follow identical steps — including the confirmation
