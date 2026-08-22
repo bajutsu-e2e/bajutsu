@@ -101,10 +101,13 @@ exclusion also removes the only signal that an open BE item already covers the f
 checks the roadmap itself: run
 [`roadmap-filter`](../../.agent-workflows/roadmap-filter/workflow.md) once for `Proposal` and once
 for `In progress` — it accepts a single status per run — and match the returned titles on the same
-keywords. On a hit, show the invoker that
-item and ask whether to stop there instead of drafting anything — when the item already covers the
-finding, an issue would only duplicate it — or to proceed anyway: a keyword match against a title
-is not proof of coverage, and only the invoker can judge it.
+keywords. A title is a coarse filter — an item's coverage of a small finding usually lives in its
+`Detailed design` rather than its title — so also grep every returned item's file (the `Path`
+column names it) for the same keywords, not only the ones whose title already matched. On a hit,
+title or body, show the invoker that item and ask whether to stop there instead of drafting
+anything — when the item already covers the finding, an issue would only duplicate it — or to
+proceed anyway: a keyword match, in a title or an item's body, is not proof of coverage, and only
+the invoker can judge it.
 When an **open** match looks like the same issue, ask whether to comment on the existing issue
 instead of filing a new one, or to proceed anyway — the invoker decides, since only they can judge
 whether the match is close enough. Never route a report onto a **closed** match: `task-select`
@@ -114,7 +117,8 @@ closed one as prior context instead.
 
 **Step 3 — draft.** Read the matching template — `bug_report.yml` for a bug,
 `feature_request.yml` for an enhancement — and synthesize a markdown body whose sections mirror
-that template's input fields — its `textarea`s and, for `bug_report.yml`, its required `dropdown`.
+that template's input fields — its `textarea`s and, for `bug_report.yml`, its required `dropdown`,
+whose rendered value is one of the options that template declares, verbatim, rather than free prose.
 `gh issue create` posts plain markdown rather than rendering the
 template's YAML form, so the skill fills those fields itself instead of relying on `gh` to do it.
 A template's required `checkboxes` block is the exception: render it as a statement of what the
@@ -148,14 +152,15 @@ approved the exact draft the loop's report showed, so entering at step 5 execute
 gate already collected. When no human is in the turn —
 `pr-followup` running as one iteration of `implement-be`'s hands-free loop (BE-0230) is the case
 that matters — the skill files nothing and stalls nothing: it returns the finished draft in a new
-**pending-draft** field of the iteration's structured summary, distinct from the escalation field
-`implement-be` step 12 already reads (the field `pr-followup` step 4 routes a self-review-only
-finding through, and which the loop treats as a stop signal), so the human sees the draft when the
-loop reports, and approves it on a later turn; the loop carries every pending draft its iterations
-returned into its own final report, deduplicated against the drafts earlier iterations already
-returned — each iteration is a fresh subagent that will re-notice the same finding — so the report
-holds one entry per finding rather than one per iteration, and a draft returned early survives to
-the report the human reads. Step 2's new-issue-or-comment choice, and a
+**pending-draft** field of the iteration's structured summary. That field is distinct from the
+escalation field `implement-be` step 12 already reads — the one `pr-followup` step 4 routes a
+self-review-only finding through, and the one the loop treats as a stop signal — so a draft never
+stops the loop: the human sees it when the loop reports, and approves it on a later turn. The loop
+carries every pending draft its iterations returned into its own final report, deduplicated against
+the drafts earlier iterations already returned, because each iteration is a fresh subagent that
+re-notices the same finding. The report therefore holds one entry per finding rather than one per
+iteration, and a draft returned early survives to the report the human reads.
+Step 2's new-issue-or-comment choice, and a
 roadmap-filter hit's stop-or-proceed choice, defer the same way rather than being settled
 unattended: the skill drafts for a new issue and carries every candidate it found — issue matches
 and any roadmap-filter hit — beside the draft, so the human decides whether to approve it, comment
