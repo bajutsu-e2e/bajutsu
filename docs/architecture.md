@@ -350,13 +350,15 @@ exists.
 The **concurrent-device lanes** boot two real devices instead. `pool (xcuitest)` (`ios-e2e.yml`)
 boots two Simulators and `pool (adb)` (`android-e2e.yml`) two emulators, each running state-neutral
 showcase scenarios through one `bajutsu run --workers 2`, so the pool has to share the work out and
-keep both workers busy at once. The Android job runs four scenario files; the iOS job runs two,
-`smoke.yaml` and `notices.yaml`, under its own capture-light
+keep both workers busy at once. The Android job runs four scenario files; the iOS job runs three
+one-document files — `smoke.yaml`, `push.yaml`, and `interrupts.yaml` — under its own capture-light
 [`showcase.pool.config.yaml`](../demos/showcase/showcase.pool.config.yaml) and with the touch markers
 off, because two Simulators plus a video recording per device exhausted the macOS runner's
-capture-service queue before the run finished (BE-0361's signature). Two files still hold four
-scenario documents between them, so the pool still has work for both workers at once and the
-concurrent pair the verdict below needs survives the cut.
+capture-service queue before the run finished (BE-0361's signature). The three hold seven leaf steps
+between them, down from sixteen, since the per-step screenshots are what that queue serves and the
+run loop records a pair of them for every leaf step whatever the capture list says. Three documents
+rather than two keeps one worker busy across two scenarios, so the concurrent pair the verdict below
+needs does not come down to two cold runner spawns landing at the same moment.
 
 `scripts/assert_pool_isolation.py` is what turns the outcome into a verdict, read from the finished
 run's `manifest.json` and the run directory's own subdirectory listing: it fails on an artifact
