@@ -1076,6 +1076,17 @@ def test_run_behavior_defaults_when_unset() -> None:
     assert eff.run_defaults.network is True
 
 
+def test_target_ios_tip_kit_handling_resolves_and_defaults_off() -> None:
+    # Off unless a target asks: a tip is sometimes the very thing a scenario asserts on, so the
+    # built-in default must not dismiss it.
+    plain = resolve(load_config("targets:\n  s:\n    bundleId: com.x\n"), "s")
+    assert plain.run_defaults.ios_tip_kit_handling is False
+    opted_in = resolve(
+        load_config("targets:\n  s:\n    bundleId: com.x\n    iosTipKitHandling: true\n"), "s"
+    )
+    assert opted_in.run_defaults.ios_tip_kit_handling is True
+
+
 def test_target_erase_and_network_resolve() -> None:
     cfg = load_config("targets:\n  s:\n    bundleId: com.x\n    erase: true\n    network: false\n")
     eff = resolve(cfg, "s")

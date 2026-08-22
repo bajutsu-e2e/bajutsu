@@ -65,6 +65,7 @@ scenarios:
 | `mocks` | list | `[]` | 決定的なネットワークスタブ。一致する送信リクエストには、ネットワークへ行かず定型レスポンスを返す（[ネットワークモック](#ネットワークモック決定的スタブ)） |
 | `redact` | object | なし | 証跡を書き出す前に適用するマスク（[evidence](evidence.md#マスキングredact)） |
 | `systemAlertHandling` | bool / object | なし（ON） | リアクティブな **アラートガード**。iOS バックエンドから見えない OS プロンプトを、XCUITest ではネイティブに（モデルなし、BE-0316 を再利用）片付け、vision をフォールバックにする。既定は ON。`false` で無効化し、`{ instruction: ["Allow"] }` なら ON のまま指定したボタンを押し、`{ pollInterval: 2 }` でネイティブのポーリング間隔を変える。CLI の `--system-alert-handling`/`--no-system-alert-handling` が上書きする（[下記](#systemalerthandlingシステムアラートガード)） |
+| `iosTipKitHandling` | bool | なし（オフ） | 操作をブロックしている Apple **TipKit** の tip を閉じます。フレームワークが所有する popover で、アプリ側がセレクタを与えられないため、`interrupts` のエントリでは名指しできません。iOS 専用（他の環境では何もしません）で、既定は**オフ**です。tip 自体がシナリオの検証対象になる場合があるからです。CLI の `--ios-tipkit-handling`/`--no-ios-tipkit-handling` が優先します |
 | `permissions` | dict | `{}` | 宣言的な OS 権限の状態（`{ <service>: grant \| revoke }`）。**アプリの起動前**に適用する（[下記](#permissions起動前の権限状態)） |
 | `interrupts` | list | `[]` | **予測できない時点**で現れる差し込み画面のハンドラ。各エントリは `{ condition, steps }` で、画面が現れた場所を問わず随時判定する（[下記](#interrupts予測できない差し込み画面への対処)） |
 

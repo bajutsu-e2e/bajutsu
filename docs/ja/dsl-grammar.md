@@ -106,6 +106,7 @@ Scenario ::= {
   mocks?:          list(<Mock>),            # 既定 []
   redact?:         <Redact>,
   systemAlertHandling?: <SystemAlertHandling>,  # アラートガード; 未指定で ON
+  iosTipKitHandling?: <bool>,                   # ブロックしている TipKit の tip を閉じる; 未指定で OFF（iOS のみ）
   permissions?:    <Permissions>,           # 起動前の OS 権限状態; 既定 {}
   interrupts?:     list(<Interrupt>),       # 既定 []  — 予測できないタイミングで現れる中断画面のハンドラ（BE-0314）。target config 自身のものの後に追加される
 }
@@ -368,6 +369,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` | `[]` |
 | `Scenario.preconditions` | `{}`（= `erase` は未設定 — target config が指定しない限りオフ、`reinstall: clean`） |
 | `Scenario.systemAlertHandling` | 未指定（アラートガード ON; プロンプトを dismiss） |
+| `Scenario.iosTipKitHandling` | 未指定（OFF — tip 自体が検証対象になる場合があるため。iOS のみ） |
 | `Scenario.permissions` | `{}`（起動前の権限状態を適用しない） |
 | `Preconditions.erase` | 未設定 — target config の `erase` を継承し、それもなければオフ（BE-0177） |
 | `Preconditions.reinstall` | `clean` |

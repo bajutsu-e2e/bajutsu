@@ -169,6 +169,19 @@ _SYSTEM_ALERT_POLL_SECONDS = 0.2
 # actuation records.
 _UNIT = "point"
 
+# The full-screen "tap outside to close" scrim a popover tip installs — measured on-device as the
+# only one of a tip's three nodes safe to key on. `TipView` (the container) carries no dismiss
+# behavior, and the close button's identifier is the SF Symbol name `xmark.circle.fill`, which an
+# unrelated app-authored button could plausibly reuse and turn into an `AmbiguousSelector`.
+#
+# Not verified as TipKit-exclusive: the name and the full-screen frame both point at
+# `UIPopoverPresentationController`, so a genuinely popover-presented view of the app's own (a
+# SwiftUI `.popover` forced past its compact sheet adaptation) plausibly installs the same scrim. The
+# guard is opt-in per scenario, which bounds that: it only ever fires on a scenario that asked, and
+# only after a step already failed. An author whose app presents its own popovers, and who wants
+# them left alone, leaves `iosTipKitHandling` off.
+_TIPKIT_DISMISS_REGION = "PopoverDismissRegion"
+
 
 def _as_float(value: Any) -> float | None:
     """A request body's numeric parameter as a float, or None when absent (for the actuation record)."""
@@ -656,6 +669,7 @@ class XcuitestDriver:
                 base.Capability.TEXT_SELECTION,
                 base.Capability.HANDLE_SYSTEM_ALERT,
                 base.Capability.PICKER_WHEEL,
+                base.Capability.HANDLE_TIPKIT_TIP,
             }
         )
         | base.DEVICE_CONTROL_ALL
@@ -1087,6 +1101,44 @@ class XcuitestDriver:
         """
         buttons, _ = self._parse_elements(self._transport("POST", "/systemAlert/query", {}))
         return [label for b in buttons if (label := b["label"])]
+
+    def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:
+        """Dismiss a showing TipKit tip via its dismiss region; False when no tip is up.
+
+        Args:
+            tree: A snapshot the caller already holds, used only to rule a tip out. Absence is the
+                overwhelmingly common case and this is asked on every wait poll, so answering it off
+                the caller's tree keeps a guarded wait's query count unchanged. A tip found there is
+                still re-queried before acting: a handle is only valid from the snapshot that minted
+                it, and *this* driver's `_query_with_handles` is what mints one.
+
+        Returns:
+            Whether a tip was found and dismissed.
+
+        Raises:
+            AmbiguousSelector: Several nodes claimed the dismiss region — a shape TipKit should never
+                produce, so it fails loudly rather than picking one (prime directive 2).
+        """
+        sel: base.Selector = {"id": _TIPKIT_DISMISS_REGION}
+        if tree is not None and not base.find_all(tree, sel):
+            return False
+        elements, handles = self._query_with_handles()
+        # Re-checked against the fresh tree either way: with no hint this is the only check, and with
+        # one the tip may have closed itself in between (a plain False, not an error).
+        if not base.find_all(elements, sel):
+            return False
+        el = base.resolve_unique(elements, sel)
+        try:
+            self._actuate("/tap", {"handle": handles[id(el)]}, sel, gesture="tap", element=el)
+        except base.ElementNotFound:
+            # The tip closed itself between that snapshot and this tap — TipKit dismisses on its own
+            # rules, so the window is a live race rather than a defect. "The tip is gone" is what a
+            # caller asked about, so it reads as no dismissal, not as an error: raising here would
+            # surface `PopoverDismissRegion` — an identifier no author wrote — as a wait's failure
+            # reason, and would overwrite the real reason on the post-failure path. An
+            # `AmbiguousSelector` from `resolve_unique` above still propagates.
+            return False
+        return True
 
     def back(self) -> None:
         # iOS has no hardware back: tap the OS navigation back button. Reuses `tap` rather than
