@@ -1267,12 +1267,15 @@ jobs:
   # here that turns out to be host exhaustion rather than a pool defect is a measurement, not a
   # regression — the uploaded diagnostics are what tells the two apart.
   #
-  # Two such runs have been measured, and both collapsed exactly there rather than on any pool check:
-  # both Simulators booted with distinct udids and every scenario started, then `recordVideo produced
-  # no new bytes … within 20.0s` on four scenarios, `simctl terminate` and `uninstall` timed out, and
-  # the runner channel went unreachable mid-run. So the load this job carries on the capture-service
-  # queue is cut three ways below — no video (its own config), no touch markers, and half the scenario
-  # files — and the next run measures whether that is enough.
+  # Four such runs have been measured, none of them on a pool check. The first two collapsed in the
+  # capture pipeline (`recordVideo produced no new bytes … within 20.0s`, `simctl terminate` and
+  # `uninstall` timing out, the runner channel unreachable mid-run), which is what cut video, the
+  # touch markers, and half the scenario files. The third never reached a scenario at all and wedged
+  # on `simctl uninstall`. The fourth reached them and wedged inside them: `/screenshot` timed out on
+  # both workers, `SimRenderServer` crashed, and CoreSimulator stayed wedged through two device
+  # reboots — so the cut below is the scenarios' own step count, the last thing on that queue this
+  # job can give up (see the run step). Each configuration is measured by the next run; promotion
+  # stays out of reach until one comes back green.
   pool:
     name: pool (xcuitest)
     needs: [changes, build]
@@ -1281,10 +1284,10 @@ jobs:
       needs.changes.outputs.pool == 'true'
     runs-on: macos-latest
     # Same 60-minute cap as the other consumer jobs, for the same reason: no build here (the `build`
-    # job staged the products), so two boots + two installs + four scenario documents across two cold
+    # job staged the products), so two boots + two installs + three scenario documents across two cold
     # XCTest-host startups is well under 15min when healthy, and the cap backs a genuine hang.
     # Under this job's own contention a wedged capture service is the likeliest hang, and it is exactly
-    # what the cap exists to bound — both measured failures spent most of their ~34min wall-clock there.
+    # what the cap exists to bound — the measured failures spent most of their ~34min wall-clock there.
     timeout-minutes: 60
     env:
       # The `run` job raises this floor to 20s for a cold-boot Simulator rendering its first Stable
@@ -1339,28 +1342,43 @@ jobs:
           xcrun simctl install "$UDID_A" "$APP"
           xcrun simctl install "$UDID_B" "$APP"
 
-      # Two state-neutral scenario files over two devices, down from four: they hold four scenario
-      # documents rather than seven, so the pool still has to hand work to both workers at once — the
-      # one concurrent pair `assert_pool_isolation.py`'s cross-device overlap check needs, kept
-      # intact. `notices` is the longer of the two files (three documents to `smoke`'s one), so the
-      # pair genuinely overlaps rather than one worker draining first. What the halving buys is the
-      # queue load the two measured collapses ran out of host for: three fewer app launches and their
-      # step screenshots, a shorter wall-clock window to wedge in, and half the cold XCTest-host
-      # spawns — this lane caps warm reuse at 1 workflow-wide (BAJUTSU_XCUITEST_MAX_WARM_REUSES,
-      # above), so a spawn covers two documents and seven of them cost four where four cost two.
-      # They are the shared showcase files, unchanged (BE-0221), and neither grants a permission
-      # nor reseeds device state, so neither worker's device can influence the other's through
-      # anything but the pool.
+      # Three state-neutral scenario documents over two devices, one per file, down from four across
+      # two files (`smoke` plus the `notices` file's three). The third measured collapse wedged
+      # *during* the scenarios rather than before them — `/screenshot` timed out on both workers
+      # within seconds of each other, `SimRenderServer` then died on its own dispatch queue (its
+      # crash report is in the uploaded diagnostics), and CoreSimulator stayed wedged through two
+      # device reboots — so what this job spends on that queue while scenarios run is the surface
+      # left to cut.
+      #
+      # It is cut by *step count*, the only lever there is: `before.png` and `after.png` are recorded
+      # for every leaf step by the run loop itself (`bajutsu/orchestrator/loop.py`, BE-0341), not by
+      # the capture list, so no config can drop them and a narrowed `capture:` moves nothing. Seven
+      # leaf steps replace sixteen, which is what the pixels scale with.
+      #
+      # Three documents rather than two, though two would cut further: with two, each worker leases
+      # once and its busy window is one short scenario long, so the cross-device overlap
+      # `assert_pool_isolation.py` requires would hinge on two cold XCTest-host spawns landing within
+      # seconds of each other — turning a host skew into an isolation verdict. A third document
+      # keeps one worker busy across two scenarios, and the overlap holds the way it did at four.
+      #
+      # All three are shared showcase files, unchanged (BE-0221). None grants a permission or reseeds
+      # device state beyond its own launch env, and `push` is delivered by `simctl` to the leased
+      # udid alone, so neither worker's device can influence the other's through anything but the
+      # pool. `device.yaml` is deliberately not among them despite being the same size: its clipboard
+      # round trip goes through CoreSimulator's pasteboard service, whose own transient timeout
+      # (`_PBCOPY_*` in bajutsu/simctl.py) is one more host-fragility surface on the job whose
+      # failures are host fragility.
       #
       # Its own config, not the lane's: showcase.pool.config.yaml omits `capture:` so the run takes
       # the schema baseline and records no video, and `touch-markers: false` drops the per-touch
       # CALayer. Both write through the capture-service queue this job's failures wedged.
-      - name: Run two scenarios across both devices (--workers 2)
+      - name: Run three scenarios across both devices (--workers 2)
         uses: ./.github/actions/bajutsu-e2e
         with:
           scenarios: >-
             demos/showcase/scenarios/smoke.yaml
-            demos/showcase/scenarios/notices.yaml
+            demos/showcase/scenarios/push.yaml
+            demos/showcase/scenarios/interrupts.yaml
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.pool.config.yaml

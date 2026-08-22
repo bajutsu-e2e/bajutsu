@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0298") |
-| Implementing PR | [#1666](https://github.com/bajutsu-e2e/bajutsu/pull/1666) |
+| Implementing PR | [#1666](https://github.com/bajutsu-e2e/bajutsu/pull/1666) / [#1712](https://github.com/bajutsu-e2e/bajutsu/pull/1712) |
 | Topic | Verification & coverage |
 | Related | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) |
 <!-- /BE-METADATA -->
@@ -160,6 +160,27 @@ Log:
   reduction of what the run records is expected to change the outcome, and the iOS half's viability
   is a question about the runner rather than about the lane. `pool (adb)` stayed green across the
   same pushes, so the Android half needs none of this.
+- [#1712](https://github.com/bajutsu-e2e/bajutsu/pull/1712) — a fourth run (32556974176) reached the scenarios and wedged inside them, the first to
+  carry direct evidence rather than an inference. `/screenshot` timed out on both workers within a
+  second of each other, both runners then exited `code 65` mid-run, and `SimRenderServer` itself
+  crashed on its own dispatch queue (`EXC_BREAKPOINT`, in the collected crash reports — the artifact
+  BE-0361 was built to produce, and the one the first three runs could only reason around).
+  CoreSimulator stayed wedged after it: `simctl spawn … defaults export` and `simctl terminate` each
+  timed out at 60s, both Simulators were rebooted, and the cold respawn's health never came up
+  within 90s, so the step exited 2 and the isolation assertion never ran. The host was already at
+  its ceiling before the first scenario — `PhysMem: 6994M used / 153M unused` at `Load Avg 177` on
+  `hw.ncpu: 3`, in the run's first telemetry sample. **What is left to cut:** the previous entry's
+  reading holds for the capture list, and for a stronger reason than that entry knew —
+  `before.png` and `after.png` are recorded per leaf step by the run loop itself (BE-0341), so no
+  `capture:` value removes them, and `showcase.pool.config.yaml`'s comment claiming otherwise was
+  corrected in the same change. The pixels scale with the *number of leaf steps*, which lives in the
+  scenario set: `smoke` + `push` + `interrupts` (three documents, seven leaf steps) replaces
+  `smoke` + `notices` (four documents, sixteen). Three documents rather than two, though two would
+  cut further, because with two each worker leases once and the cross-device overlap the verdict
+  requires would hinge on two cold XCTest-host spawns landing within seconds of each other — a host
+  skew deciding an isolation verdict. The standing reading is unchanged: this is a question about
+  the runner, and the next run measures whether the reduced step count buys enough headroom on a
+  host that has none.
 
 ## References
 

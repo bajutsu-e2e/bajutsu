@@ -6,8 +6,13 @@
 # scenarios, then a wedged `simctl terminate` / `uninstall` and an unreachable runner — BE-0361's
 # host-exhaustion signature, whose `SimRenderServer` capture-service queue serves `simctl` video,
 # screenshots, and the XCUITest `/screenshot` alike. Two devices on a 3-core / 7 GiB runner cannot
-# afford a continuous recording per device on that queue; the step screenshots the isolation
-# assertion reads are what this job actually needs.
+# afford a continuous recording per device on that queue.
+#
+# Video is all it can drop. The step screenshots (`before.png` / `after.png`) are recorded per leaf
+# step by the run loop itself (BE-0341), not by this list, so no `capture:` value removes them —
+# their cost is cut by the job's scenario set instead (ios-e2e.yml). Nor would removing them cost the
+# verdict anything: `assert_pool_isolation.py` reads each result's artifact *names* and the run
+# directory's listing, never a pixel, and the always-on `elements.json` names every step either way.
 #
 # Only `showcase-swiftui` is here — the one target that job runs. Kept separate from
 # showcase.config.yaml, following showcase.bundled-runner.config.yaml's precedent, so every other
