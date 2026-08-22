@@ -32,7 +32,9 @@ from driver_conformance import (
     SCROLL_TALL_ID,
     SECURE_FIELD_ID,
     TAP_MIRROR_A_ID,
+    TAP_MIRROR_A_VALUE_ID,
     TAP_MIRROR_B_ID,
+    TAP_MIRROR_B_VALUE_ID,
     ConformanceHarness,
     DriverConformanceContract,
 )
@@ -63,16 +65,24 @@ _FIELD_HTML = (
     'style="position:absolute;left:8px;top:460px;width:200px;height:40px">'
 )
 
-# The two always-present, independently-mirrored tap targets (BE-0339 Unit 6) — the web twin of
-# `LogScreen.kt`'s `log.longpress.value` mirroring. An `<input type="button">` has a live `.value`
-# IDL property `QUERY_JS` already reads, so a real click event increments it in the DOM itself —
-# not a value this harness computes and injects, the same "act on the real target" guarantee the
-# other conformance screens give the click / query code under test.
+# The two always-present, independently-mirrored tap-target pairs (BE-0339 Unit 6) — the web twin
+# of `LogScreen.kt`'s `log.longpress` / `log.longpress.value` split. Each pair is a stable tap
+# target (`type="button"`, its own `value` never changing) plus a *separate* `<input>` mirroring
+# the tap count, so the tap target's identity stays constant across the very click that resolves
+# and injects it — not a value this harness computes and injects, but a real click event mutating
+# the DOM itself, the same "act on the real target" guarantee the other conformance screens give
+# the click / query code under test.
 _TAP_MIRROR_HTML = "".join(
-    f'<input type="button" data-testid="{mirror_id}" value="0" '
+    f'<input type="button" id="{tap_id}" data-testid="{tap_id}" value="tap" '
     f'style="position:absolute;left:8px;top:{top}px;width:100px;height:40px" '
-    'onclick="this.value = String(Number(this.value) + 1)">'
-    for mirror_id, top in ((TAP_MIRROR_A_ID, 520), (TAP_MIRROR_B_ID, 580))
+    f"onclick=\"var v=document.getElementById('{value_id}'); "
+    'v.value = String(Number(v.value) + 1);">'
+    f'<input type="text" id="{value_id}" data-testid="{value_id}" value="0" readonly '
+    f'style="position:absolute;left:120px;top:{top}px;width:100px;height:40px">'
+    for tap_id, value_id, top in (
+        (TAP_MIRROR_A_ID, TAP_MIRROR_A_VALUE_ID, 520),
+        (TAP_MIRROR_B_ID, TAP_MIRROR_B_VALUE_ID, 580),
+    )
 )
 
 

@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0339") |
-| Implementing PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455) (Units 1–3: the directional-gesture anchor, `POST /act`, and identity-addressed actuation), [#1702](https://github.com/bajutsu-e2e/bajutsu/pull/1702) (Unit 4 and the fast-gate half of Unit 6; a Unit 5 attempt reverted after review) |
+| Implementing PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455) (Units 1–3: the directional-gesture anchor, `POST /act`, and identity-addressed actuation), [#1702](https://github.com/bajutsu-e2e/bajutsu/pull/1702) (Unit 4 and Unit 6's fast-gate and on-device conformance coverage; a Unit 5 attempt reverted after review) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0332](../BE-0332-read-lag-barrier/BE-0332-read-lag-barrier.md), [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md), [BE-0312](../BE-0312-xcuitest-content-addressed-snapshot-handle/BE-0312-xcuitest-content-addressed-snapshot-handle.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) |
 <!-- /BE-METADATA -->
@@ -348,6 +348,26 @@ Log:
   locally compiled, for the same reason: no Android SDK or Xcode in the authoring environment. The
   on-device conformance case and the repeated Android-lane dispatch that samples the flake's residual
   rate are what Unit 6 still owes.
+
+- 2026-08-22 — What PR #1702's own checks found, in two rounds. A live review pass caught three
+  findings first. The new conformance case read a mirror once, right after the tap. That skipped
+  the condition wait the rest of the contract already uses. It now goes through `base.wait_until`
+  instead. The SwiftUI mirror button's label re-derived from the tapped count. That doubled the
+  churn `accessibilityStateValue` causes on the element the contract taps. The label is now
+  static. `AndroidEnvironment._begin_resident`'s start-failure branch was a third silent branch.
+  Unit 4 had missed it alongside the two it closed. It now names the same coordinate-actuation
+  degrade.
+  The second round carried the real signal. `conformance (adb)`, the on-device lane the case
+  targets, failed on the pushed commit. The new case alone failed. The other nineteen conformance
+  tests passed. The design co-located a tap target's identity with the value that mutates from
+  that same tap. That conflicts with `_device_act`'s identity-addressed resolve-then-inject match.
+  `LogScreen.kt` already avoids that shape. It keeps `log.longpress` and `log.longpress.value` on
+  separate elements. The fix generalizes that split to the tap-mirror pair. It reaches every
+  backend the conformance case touches: `driver_conformance.py`'s shared constants and test body;
+  the `FakeDriver` and Playwright harnesses (the Playwright side got a second, real-driver check,
+  beyond the reformat); and the Compose and SwiftUI conformance screens. That closes the on-device
+  half of Unit 6 the prior entry still owed. The repeated Android-lane dispatch that samples the
+  flake's residual rate is what Unit 6 still owes.
 
 ## References
 

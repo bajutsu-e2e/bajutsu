@@ -97,12 +97,17 @@ OBSTRUCTION_COVER_ID = "conformance.obstruction.cover"
 OBSTRUCTION_CLEAR_ID = "conformance.obstruction.clear"
 
 #: Two always-present, independently-mirrored tap targets (BE-0339 Unit 6), alongside the field and
-#: the marker. Each carries its own tap count in `value`, starting at "0" — the app-side twin of
-#: `LogScreen.kt`'s `log.longpress.value` / `log.doubletap.value` mirroring. Two, not one, so a tap
+#: the marker. Each is a *pair* of elements — a static tap target plus a separate element mirroring
+#: its tap count in `value`, starting at "0" — the same split `LogScreen.kt`'s `log.longpress` /
+#: `log.longpress.value` and `log.doubletap` / `log.doubletap.value` use, and not a coincidence: the
+#: tap target's own identity must stay stable across the tap that resolves and injects it, which a
+#: `value` that changes as a *result* of that same tap cannot guarantee. Two pairs, not one, so a tap
 #: that lands on the wrong element (a coordinate neighbor a stale resolve happened to hit, the exact
 #: shape of the flake this item closes) is observable: tapping A must move only A's count, never B's.
 TAP_MIRROR_A_ID = "conformance.tapMirror.a"
+TAP_MIRROR_A_VALUE_ID = "conformance.tapMirror.a.value"
 TAP_MIRROR_B_ID = "conformance.tapMirror.b"
+TAP_MIRROR_B_VALUE_ID = "conformance.tapMirror.b.value"
 
 
 def field_value(driver: base.Driver) -> str:
@@ -111,7 +116,7 @@ def field_value(driver: base.Driver) -> str:
 
 
 def _mirror_value(driver: base.Driver, identifier: str) -> str:
-    """The current tap count of a mirror target (`TAP_MIRROR_A_ID` / `TAP_MIRROR_B_ID`), as text."""
+    """The current tap count mirrored at `identifier` (`TAP_MIRROR_A_VALUE_ID` / `_B_VALUE_ID`)."""
     return base.resolve_unique(driver.query(), {"id": identifier})["value"] or "0"
 
 
@@ -563,8 +568,8 @@ class DriverConformanceContract:
         # pre-gesture frame, or a tap injected a round trip after the coordinate was computed). Two
         # independently-mirrored targets make a wrong-neighbor tap observable in either direction.
         driver = harness.with_screen([])
-        a_before = int(_mirror_value(driver, TAP_MIRROR_A_ID))
-        b_before = int(_mirror_value(driver, TAP_MIRROR_B_ID))
+        a_before = int(_mirror_value(driver, TAP_MIRROR_A_VALUE_ID))
+        b_before = int(_mirror_value(driver, TAP_MIRROR_B_VALUE_ID))
         driver.tap({"id": TAP_MIRROR_A_ID})
         # A bounded condition wait, not one read (no fixed sleep): the accessibility update follows
         # the gesture, and a bare `query()` waits out no barrier — on the dump path it carries no
@@ -572,14 +577,20 @@ class DriverConformanceContract:
         # correct tap, exactly the publish lag this item exists to close. Waiting on the exact
         # successor count also rejects a gesture that double-fired.
         assert base.wait_until(
-            driver, {"id": TAP_MIRROR_A_ID, "value": str(a_before + 1)}, timeout=5.0, poll=0.1
+            driver,
+            {"id": TAP_MIRROR_A_VALUE_ID, "value": str(a_before + 1)},
+            timeout=5.0,
+            poll=0.1,
         )
-        assert int(_mirror_value(driver, TAP_MIRROR_B_ID)) == b_before
+        assert int(_mirror_value(driver, TAP_MIRROR_B_VALUE_ID)) == b_before
         driver.tap({"id": TAP_MIRROR_B_ID})
         assert base.wait_until(
-            driver, {"id": TAP_MIRROR_B_ID, "value": str(b_before + 1)}, timeout=5.0, poll=0.1
+            driver,
+            {"id": TAP_MIRROR_B_VALUE_ID, "value": str(b_before + 1)},
+            timeout=5.0,
+            poll=0.1,
         )
-        assert int(_mirror_value(driver, TAP_MIRROR_A_ID)) == a_before + 1
+        assert int(_mirror_value(driver, TAP_MIRROR_A_VALUE_ID)) == a_before + 1
 
     def test_is_tappable_reflects_real_on_screen_occlusion(
         self, harness: ConformanceHarness

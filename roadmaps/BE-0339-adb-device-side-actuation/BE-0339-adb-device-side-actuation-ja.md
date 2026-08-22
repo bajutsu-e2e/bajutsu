@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0339") |
-| 実装 PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455)（作業単位 1〜3、方向付きジェスチャのアンカー、`POST /act`、同一性で指すアクチュエーション）、[#1702](https://github.com/bajutsu-e2e/bajutsu/pull/1702)（作業単位 4 と作業単位 6 の高速ゲート分。作業単位 5 はレビュー後に差し戻し） |
+| 実装 PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455)（作業単位 1〜3、方向付きジェスチャのアンカー、`POST /act`、同一性で指すアクチュエーション）、[#1702](https://github.com/bajutsu-e2e/bajutsu/pull/1702)（作業単位 4 と、作業単位 6 の高速ゲート分・実機の適合性カバレッジ。作業単位 5 はレビュー後に差し戻し） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0332](../BE-0332-read-lag-barrier/BE-0332-read-lag-barrier-ja.md), [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve-ja.md), [BE-0312](../BE-0312-xcuitest-content-addressed-snapshot-handle/BE-0312-xcuitest-content-addressed-snapshot-handle-ja.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md) |
 <!-- /BE-METADATA -->
@@ -345,6 +345,27 @@ instrumentation セッションです。階層をダンプするそのセッシ�
   合わせて書きましたが、作業単位 2 の Kotlin 端点のときと同じ理由で、ローカルではコンパイルして
   いません。執筆環境に Android SDK も Xcode もないためです。実機の適合性ケースと、flake の残存率を
   測る Android レーンの繰り返しディスパッチが、作業単位 6 に残っています。
+
+- 2026-08-22 — PR #1702 自身の検証が見つけたものです。2 段階に分かれます。1 段階目はライブレビューが
+  捕まえた 3 件です。新しい適合性ケースは、ミラーをタップした直後に一度だけ値を読んでいました。
+  この箇所を、契約の他の箇所がすでに使っている条件待ちのラッパー `base.wait_until` に直しました。
+  SwiftUI 側のミラーボタンのラベルは、タップ回数から再計算されていました。`accessibilityStateValue`
+  がすでに引き起こしているアクセシビリティの再構築を、契約自身がタップするその要素の上でさらに重ねて
+  いた箇所です。これを固定のラベルに直しました。そして `AndroidEnvironment._begin_resident` の起動
+  失敗時の分岐です。作業単位 4 が塞いだ 2 つの
+  無音な分岐のほかに残っていた 3 つ目のもので、いまは同じ座標アクチュエーションへの縮退を名指すように
+  なりました。
+  2 段階目が本当の signal でした。このケースを書いた本来の実機レーン `conformance (adb)` が、push した
+  コミットで失敗しました。落ちたのは新しいケースだけで、残り 19 件の適合性テストはすべて通っています。
+  タップ対象の同一性と、その同じタップの結果として値が変わる要素とを同じ要素に同居させると、
+  `_device_act` の同一性で指す resolve してから inject する照合と衝突します。`LogScreen.kt` が
+  `log.longpress` と `log.longpress.value` を別々の要素に分けて、すでに避けている形と同じです。
+  修正は、このタップミラーの対にも同じ分割を一般化するものです。適合性ケースが届くすべてのバックエンド
+  に及びます。`driver_conformance.py` の共有定数と本体、`FakeDriver` と Playwright のハーネス
+  (Playwright 側は実際のドライバに対してもう一度手動で再確認しました。整形し直しただけではありません)、
+  そして Compose と SwiftUI の適合性画面です。この 1 つ前のエントリが積み残していた作業単位 6 の実機側を
+  これで閉じました。flake の残存率を測る Android レーンの繰り返しディスパッチが、作業単位 6 に残って
+  います。
 
 ## 参考
 

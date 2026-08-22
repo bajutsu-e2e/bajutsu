@@ -48,13 +48,16 @@ const val CONFORMANCE_SCROLL_ROW_COUNT = 20
 const val CONFORMANCE_SCROLL_TALL_ID = "conformance.scroll.tall"
 
 // Two always-present, independently-mirrored tap targets (BE-0339 Unit 6) — the Compose twin of
-// LogScreen's log.longpress.value / log.doubletap.value mirroring, and of the iOS
-// ConformanceView.tapMirrorAID / tapMirrorBID and the web _render mirror inputs. Each carries its own
-// tap count in content-desc, so the driver conformance contract's "the element the device acted on is
-// the element the selector named" is observable: tapping A must move only A's count, never B's — the
-// wrong-neighbor tap a stale coordinate resolve would otherwise produce.
+// LogScreen's log.longpress / log.longpress.value split, and of the iOS ConformanceView.tapMirrorAID
+// / tapMirrorBID and the web _render mirror inputs. Each tap target is its own stable-identity box —
+// no stateValue of its own — and mirrors its count into a *separate* element, so the count updating
+// as a direct result of the tap never touches the identity the driver just resolved against. Tapping
+// A must move only A's count, never B's — the wrong-neighbor tap a stale coordinate resolve would
+// otherwise produce.
 const val CONFORMANCE_TAP_MIRROR_A_ID = "conformance.tapMirror.a"
+const val CONFORMANCE_TAP_MIRROR_A_VALUE_ID = "conformance.tapMirror.a.value"
 const val CONFORMANCE_TAP_MIRROR_B_ID = "conformance.tapMirror.b"
+const val CONFORMANCE_TAP_MIRROR_B_VALUE_ID = "conformance.tapMirror.b.value"
 
 // BE-0114 / BE-0270: the on-device realization of a driver-conformance screen for the adb backend,
 // the Compose twin of the iOS ConformanceView. The conformance suite seeds an arbitrary set of
@@ -114,28 +117,28 @@ fun ConformanceScreen(identifiers: List<String>) {
                 .semantics { password() },
         )
         // The two tap-mirror targets (BE-0339 Unit 6): each is its own tappable box, its own counter,
-        // mirrored into its own content-desc — independent state, so a tap that lands on the wrong one
-        // is observable rather than silently agreeing with whichever counter it happened to hit.
+        // mirrored into a separate element's content-desc — independent state, so a tap that lands on
+        // the wrong one is observable rather than silently agreeing with whichever counter it hit.
         var mirrorA by remember { mutableStateOf(0) }
         Box(
             modifier = Modifier
                 .size(width = 280.dp, height = 60.dp)
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .aid(CONFORMANCE_TAP_MIRROR_A_ID)
-                .stateValue(mirrorA.toString())
                 .clickable { mirrorA++ },
             contentAlignment = Alignment.Center,
         ) { Text(mirrorA.toString()) }
+        Text(mirrorA.toString(), Modifier.aid(CONFORMANCE_TAP_MIRROR_A_VALUE_ID).stateValue(mirrorA.toString()))
         var mirrorB by remember { mutableStateOf(0) }
         Box(
             modifier = Modifier
                 .size(width = 280.dp, height = 60.dp)
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .aid(CONFORMANCE_TAP_MIRROR_B_ID)
-                .stateValue(mirrorB.toString())
                 .clickable { mirrorB++ },
             contentAlignment = Alignment.Center,
         ) { Text(mirrorB.toString()) }
+        Text(mirrorB.toString(), Modifier.aid(CONFORMANCE_TAP_MIRROR_B_VALUE_ID).stateValue(mirrorB.toString()))
         // Duplicates are the point (the ambiguous-selector case), so the children are keyed by
         // position (Column's default), never by identifier — keying by id would collapse repeats.
         identifiers.forEach { identifier ->

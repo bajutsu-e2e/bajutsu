@@ -18,7 +18,9 @@ from driver_conformance import (
     SCROLL_TALL_ID,
     SECURE_FIELD_ID,
     TAP_MIRROR_A_ID,
+    TAP_MIRROR_A_VALUE_ID,
     TAP_MIRROR_B_ID,
+    TAP_MIRROR_B_VALUE_ID,
     ConformanceHarness,
     DriverConformanceContract,
     element,
@@ -66,10 +68,11 @@ def _conformance_react(
     the fast gate. This `react` gives the fake just enough field behavior — focus follows the last
     tap, typing appends to the focused field, deleting trims its end — to exercise them for real.
 
-    `mirrors` (BE-0339 Unit 6) does the same for the two tap-mirror targets: each carries its own
-    tap count in `value`, incremented only when *that* target is the one tapped — the fake's
-    twin of `LogScreen.kt`'s `log.longpress.value` mirroring, so "the element that reacted is the
-    element named" is observable on the fast gate too.
+    `mirrors` (BE-0339 Unit 6) does the same for the two tap-mirror pairs: maps the *tap target's*
+    id to the *separate* element whose `value` mirrors its tap count, incremented only when that
+    target is the one tapped — the fake's twin of `LogScreen.kt`'s `log.longpress` /
+    `log.longpress.value` split, so "the element that reacted is the element named" is observable
+    on the fast gate too.
     """
     focused = {"on": False}
     mirrors = mirrors or {}
@@ -109,11 +112,13 @@ class FakeConformanceHarness:
 
     def with_screen(self, elements: list[base.Element]) -> base.Driver:
         field = element(identifier=FIELD_ID, value="", frame=_FIELD_FRAME)
-        mirror_a = _mirror(TAP_MIRROR_A_ID, (0.0, 400.0, 100.0, 40.0))
-        mirror_b = _mirror(TAP_MIRROR_B_ID, (0.0, 460.0, 100.0, 40.0))
+        tap_a = element(identifier=TAP_MIRROR_A_ID, frame=(0.0, 400.0, 100.0, 40.0))
+        value_a = _mirror(TAP_MIRROR_A_VALUE_ID, (0.0, 440.0, 100.0, 20.0))
+        tap_b = element(identifier=TAP_MIRROR_B_ID, frame=(0.0, 470.0, 100.0, 40.0))
+        value_b = _mirror(TAP_MIRROR_B_VALUE_ID, (0.0, 510.0, 100.0, 20.0))
         return FakeDriver(
-            screen=[*elements, field, _secure_field(), mirror_a, mirror_b],
-            react=_conformance_react(field, {TAP_MIRROR_A_ID: mirror_a, TAP_MIRROR_B_ID: mirror_b}),
+            screen=[*elements, field, _secure_field(), tap_a, value_a, tap_b, value_b],
+            react=_conformance_react(field, {TAP_MIRROR_A_ID: value_a, TAP_MIRROR_B_ID: value_b}),
         )
 
     def scrollable_screen(self) -> base.Driver:
