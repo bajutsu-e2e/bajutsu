@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0298") |
-| Implementing PR | [#1666](https://github.com/bajutsu-e2e/bajutsu/pull/1666) |
+| Implementing PR | [#1666](https://github.com/bajutsu-e2e/bajutsu/pull/1666) / [#1712](https://github.com/bajutsu-e2e/bajutsu/pull/1712) |
 | Topic | Verification & coverage |
 | Related | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) |
 <!-- /BE-METADATA -->
@@ -160,7 +160,7 @@ Log:
   reduction of what the run records is expected to change the outcome, and the iOS half's viability
   is a question about the runner rather than about the lane. `pool (adb)` stayed green across the
   same pushes, so the Android half needs none of this.
-- A fourth run (32556974176) reached the scenarios and wedged inside them, and it is the first to
+- [#1712](https://github.com/bajutsu-e2e/bajutsu/pull/1712) — a fourth run (32556974176) reached the scenarios and wedged inside them, the first to
   carry direct evidence rather than an inference. `/screenshot` timed out on both workers within a
   second of each other, both runners then exited `code 65` mid-run, and `SimRenderServer` itself
   crashed on its own dispatch queue (`EXC_BREAKPOINT`, in the collected crash reports — the artifact

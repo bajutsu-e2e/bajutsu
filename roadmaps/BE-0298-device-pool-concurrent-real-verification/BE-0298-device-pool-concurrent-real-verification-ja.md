@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0298") |
-| 実装 PR | [#1666](https://github.com/bajutsu-e2e/bajutsu/pull/1666) |
+| 実装 PR | [#1666](https://github.com/bajutsu-e2e/bajutsu/pull/1666) / [#1712](https://github.com/bajutsu-e2e/bajutsu/pull/1712) |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md) |
 <!-- /BE-METADATA -->
@@ -172,7 +172,7 @@ monkeypatch して、`"UDID-A"`/`"UDID-B"` のような架空の udid に対す�
   よりも上流にあるので、run が記録する内容をこれ以上削っても結果は変わらないと見込まれます。
   iOS 側の成立可否は、レーンではなく runner についての問題です。同じ push の間、`pool (adb)`
   は緑のままでした。Android 側にこの手当ては要りません。
-- 4 回目の実行（32556974176）はシナリオまで到達し、その内側で行き詰まりました。推測ではなく直接の
+- [#1712](https://github.com/bajutsu-e2e/bajutsu/pull/1712) — 4 回目の実行（32556974176）はシナリオまで到達し、その内側で行き詰まりました。推測ではなく直接の
   証拠が残った最初の実行です。`/screenshot` が両ワーカーで 1 秒と違わずタイムアウトし、続いて両方の
   ランナーが実行中に `code 65` で終了しました。そのあと `SimRenderServer` 自身が自前の dispatch
   キュー上でクラッシュしています（`EXC_BREAKPOINT`）。このクラッシュレポートは収集済みの成果物に
