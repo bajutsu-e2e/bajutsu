@@ -156,9 +156,12 @@ class TestXcuitestDriverConformance(DriverConformanceContract):
     # Marked, not skipped from inside the body: a body-level `pytest.skip()` still lets pytest set
     # every fixture up first, so the autouse `_evidence` above would start and stop a video recording
     # and a device log — real `simctl` work on the shared Simulator — for a case that never runs. The
-    # marker skips at setup, before any fixture, so this costs the lease nothing.
+    # marker skips at setup, before any fixture runs, so `harness` here stays the contract's
+    # signature without ever being constructed, and this costs the lease nothing.
     @pytest.mark.skip(reason="BE-0339 Unit 6: not yet realized on-device, see the docstring")
-    def test_a_tap_lands_on_the_element_the_selector_named(self) -> None:
+    def test_a_tap_lands_on_the_element_the_selector_named(
+        self, harness: ConformanceHarness
+    ) -> None:
         """Not yet realized on-device (BE-0339 Unit 6).
 
         The Android twin of this case degraded the emulator's UI thread for the rest of the suite
