@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0355](BE-0355-native-z-position-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0355") |
-| 実装 PR | [#1556](https://github.com/bajutsu-e2e/bajutsu/pull/1556) |
+| 実装 PR | [#1556](https://github.com/bajutsu-e2e/bajutsu/pull/1556)、[#1709](https://github.com/bajutsu-e2e/bajutsu/pull/1709) |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0349](../BE-0349-tap-target-hittability-check/BE-0349-tap-target-hittability-check-ja.md)、[BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)、[BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md)、[BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) |
 <!-- /BE-METADATA -->
@@ -95,10 +95,16 @@ class Element(TypedDict):
 `getZ()` は木全体ではなく同じ親を持つ兄弟同士の順序だけを決めるため、`getZ() == 8` の親の下にある
 `getZ() == 0` の子は、その親の兄弟である `getZ() == 4` の要素より依然として手前に描かれます。した
 がって 2 つの要素の `nativeZ` はバックエンドをまたいで比較できず、Android では親をまたいでも比較でき
-ません。Unit 0 は、バックエンドをまたいで正規化した前後の序数にするか、それぞれのバックエンド固有の
-単位を明示するかを選び、Unit 6 がその選択を[`docs/evidence.md`](../../docs/evidence.md)に記録しま
-す。これにより読み手が `nativeZ` から、本提案の動機が導出した `z_index` 代替案を批判したのと同じ、
-見かけ上権威ある誤った結論を引き出さないようにします。
+ません。
+
+**Unit 0 はこれを、バックエンド固有の単位を明示する形で決着させました。共通の約束は 1 つだけで、
+どのバックエンドでも `nativeZ` が大きいほど手前です。** もう一方の案、つまり両者を 1 つの序数へ
+正規化する案は却下しました。Android の `getZ()` を木全体の序数へ正規化するには、アプリの計測値と
+bajutsu がすでに持つ文書順を組み合わせるしかなく、それこそ本提案の動機が却下した `z_index`
+代替案を批判している導出そのものだからです。加えて、Android の値が順序を超えて運んでいる情報、
+つまりどれだけ手前かという量も捨ててしまいます。Unit 6 がこの選択を
+[`docs/evidence.md`](../../docs/evidence.md)に記録し、読み手が `nativeZ` から見かけ上権威ある
+誤った結論を引き出さないようにします。
 
 ### iOS: BajutsuKit の in-app フックへ新たに同期的な経路を通す
 
@@ -132,10 +138,37 @@ Protocol(`HTTP`)レスポンダです。
 `zPosition` だけを反映させたもの)を辿り、`xcuitest.py` の `_query_with_handles`
 (`bajutsu/drivers/xcuitest.py:533`)がすでに解決しているのと同じ識別子に紐づけて、要素ごとの確定
 した前後インデックスを報告します。この計算で `UIView` と `CALayer` のどちらを辿る必要があるか、
-あるいは両方を辿る必要があるかは、Unit 0 が実機で確認します。UIKit ほど直接的にレイアウトツリー
+あるいは両方を辿る必要があるかは、Unit 0 が実機で確認しました。UIKit ほど直接的にレイアウトツリー
 を外部に出さない SwiftUI のビュー階層についても、実際に画面へ合成される結果と一致するかを含めて
-確認します。これは BE-0349 がドキュメントだけを信じずに `isHittable` の挙動を実機で確認したのと
+確認しました。これは BE-0349 がドキュメントだけを信じずに `isHittable` の挙動を実機で確認したのと
 同じやり方です。
+
+**Unit 0 の結果**（起動済みの Simulator 上で、showcase の UIKit アプリと SwiftUI アプリに対して計測）。
+
+- **レスポンダは、結局のところ新しい能力ではありませんでした。** `BajutsuWebView`
+  （[`BajutsuKit/Sources/BajutsuKit/BajutsuWebView.swift`](../../BajutsuKit/Sources/BajutsuKit/BajutsuWebView.swift)、
+  BE-0037）が、ホストの割り当てたエフェメラルポートを使うループバックのソケットサーバを、テスト対象の
+  アプリの中ですでに動かしています。今回のレスポンダは新たに考案するのではなくこの形を踏襲し、既存の
+  ブリッジが持っていないトークン検査を加えました。
+- **ポートは調整済みで、シークレットは専用に持ちます。** `BAJUTSU_ZORDER_PORT` と
+  `BAJUTSU_ZORDER_TOKEN` を WebView ブリッジ自身のポートと並べて lease ごとに割り当てるので、
+  並列するデバイス同士が競合せず、固定の既知のポートを探知される余地もありません。シークレットは
+  本提案が当初想定した `BAJUTSU_COLLECTOR_TOKEN` の再利用ではなく、このレスポンダ専用に生成します。
+  その token はシナリオが network collector を動かすときにしか存在せず、認証のないリクエストを
+  必ず拒否しなければならないレスポンダが、しばしば存在しないシークレットに依存するわけには
+  いかないからです。
+- **UIKit では `UIView` のツリー走査で値が取れます。** 各ビューの前後の序数は `subviews` の配列順から
+  求め、アプリが `zPosition` を設定した箇所だけがその順序を上書きします。キーは
+  `accessibilityIdentifier` です。
+- **SwiftUI では何も報告できず、私有 API を使わない経路では変えられません。** SwiftUI の showcase の
+  ビューツリーを全走査しても `accessibilityIdentifier` はどこにもなく、外部に出されたアクセシビリティ
+  要素もありませんでした。葉は `CGDrawingView` と `_UIShapeHitTestingView` です。SwiftUI が
+  アクセシビリティ要素を実体化するのは支援技術がプロセスへ接続したときだけで、自分自身を覗いている
+  アプリはそれにあたらないためです。ナビゲーションバーとタブバーの項目も、どちらのツールキットでも
+  対象外です。ビューではなく `UIBarButtonItem` と `UITabBarItem` だからです。したがって Unit 2 は
+  UIKit のみの最初の一段とし、Unit 3 の `View` のみの一段と対称になります。
+- **コスト。** showcase 相当の大きさのツリーに対する `/zorder` の 1 往復は 2.0〜2.4 ミリ秒、
+  レスポンダを持たないアプリへの接続拒否は 0.16 ミリ秒でした。
 
 ### Android: アクセシビリティフレームワーク自身のオンデマンド追加データ機構
 
@@ -183,14 +216,46 @@ opt-in な機構がすでにあるため、この側には新しい
 がすでに Bajutsu のキーを含んでいる場合に限って発行されるため、協力しないアプリはこの 1 回の安価な
 存在確認以上のコストを払いません。
 
-Jetpack Compose のアクセシビリティノード生成(`AndroidComposeViewAccessibilityDelegateCompat`)が、
-`Modifier` で宣言した追加データキーを、`View` ベースのオーバーライドが通常制御する
-`AccessibilityNodeInfo` まで転送するかどうかは、まだ確認できていません。この生成処理自体は
-Compose が握っており、本提案の著者も BE-0349 自身のスパイクもこれを検証していません。Unit 0 が
-これを実機で確認します。BE-0349 自身の設計前スパイクが、ドキュメントで推測するのではなく
-`View.elevation` と Compose の `zIndex` の違いを実機で確定させたのと同じやり方です。この節の
-Android 側設計、具体的には Compose が上記の `View` オーバーライドとは別の報告経路を必要とするか、
-それとも最初の一段では対象外とするかは、そのスパイクの結果が出た時点で確定します。
+**Unit 0 の結果**（API 34 のエミュレータ上で、showcase の Compose アプリと Views アプリに対して計測）。
+
+- **Compose は、アプリが宣言した追加データキーを転送しません。** Bajutsu のキーと同じ名前で独自の
+  `SemanticsPropertyKey` を宣言した `Modifier.semantics` のノードを 2 つ置いて計測したところ、
+  公開されたのは Compose 自身の固定のキー（`androidx.compose.ui.semantics.id`、`…testTag`）と
+  プラットフォーム自身のキーだけで、Bajutsu のキーに応答したノードはありませんでした。したがって
+  Unit 3 は、この節がすでに代替として挙げていた `View` のみの最初の一段になります。本項目ではなく
+  将来の項目に向けた関連する観測も 2 つあります。1 つは、常駐チャネルの `XML` が `drawing-order`
+  属性を持つ（`uiautomator dump` のフォールバックは持たない）一方、Compose のノードは実体が
+  `View` ではないためすべて `0` になることです。もう 1 つは、Compose 自身のアクセシビリティツリーが
+  `Modifier.zIndex` の兄弟をすでに描画順で並べており、`View.elevation` のときのように文書順が
+  誤りにはならないことです。
+- **この節が挙げた API 名は存在しません。** クライアント側の getter は
+  `AccessibilityNodeInfo.getAvailableExtraData()` であり、`getAvailableExtraDataKeys()` では
+  ありません。この節が両方に付くと想定した `…ExtraData` の名前を持つのは setter だけです。
+- **プラットフォームは、オンデマンドのコールバックをアクセシビリティデリゲートに回しません。**
+  デリゲートの `onInitializeAccessibilityNodeInfo` は呼ばれるので、そこからの
+  `setAvailableExtraData` は効きます。しかし `addExtraDataToAccessibilityNodeInfo` は呼ばれないため、
+  `refreshWithExtraData` は true を返しながら何も届けませんでした。そこでアプリ側のヘルパーは、キーを
+  宣言すると同時に、ノードの構築中に `AccessibilityNodeInfo.getExtras()` へ値を書き込みます。この
+  経路は実際に届きます。あわせてオンデマンドのオーバーライドも残すので、この節が当初示した形で書かれた
+  `View` のサブクラスも応答します。`respondSource` はすでにある値を先に読み、無いときだけ問い合わせる
+  ので、一般的な場合はノードごとの往復を一切払いません。
+- **文書順で紐づけた側方構造は 28 ノードずれます。** ありふれた showcase の画面で
+  `dumpWindowHierarchy` は全ウィンドウにわたる 72 ノードを返したのに対し、
+  `getRootInActiveWindow()` の走査は 45 ノードで、同じ要素が本体では文書順 35 番目、走査では
+  7 番目にありました。そのため各値は、ホストが読んでいる `<node>` から再計算できるもの、つまり
+  bounds、class、package と、その 3 つが一致するノードのうち何番目かでキーにします。両側とも同じ
+  アクセシビリティツリーを深さ優先で辿るため、この出現順は一致します。ただし対象はアクティブ
+  ウィンドウに限られます。ホスト側の `narrow_to_active_window` は SystemUI 自身のウィンドウを
+  取り除きます。しかし、テスト対象のアプリ自身が持つ 2 つ目のウィンドウ（自分のメインウィンドウの
+  上に乗ったダイアログなど）は取り除きません。そのため、アプリ自身の
+  複数ウィンドウにまたがって bounds・class・package を共有する
+  opt-in 済みの 2 つのノードでは、互いの出現数がずれます。`_native_z_key` の docstring に既知の限界として記録し、このスライスでは
+  解消しません。
+- **キーの bounds 側は、生の値ではなく画面でクリップした値でなければなりません。** `dumpWindowHierarchy` 自身の `bounds` 属性は、ノードの矩形を画面と交差させた値です。この値は `AccessibilityNodeInfoDumper` が `AccessibilityNodeInfoHelper.getVisibleBoundsInScreen` を経由して得ています。そのため、生の `getBoundsInScreen()` の矩形をキーへ使う走査は、画面の端からはみ出たノードでは、ホスト側が再計算したキーと食い違っていました。アプリが実際に測定し報告した値なのに、正直な欠損として報告されてしまいます。しかも起きるのは、調査者が証跡を開くまさにそのクリップされた・一部隠れたレイアウトです。走査は、各矩形をデバイス自身の画面境界と交差させてからキーにします。これでダンプ側と一致します。この修正が再現するのは画面端によるクリッピングの半分だけです。祖先自身の境界によるクリッピング（画面端まで届かない小さなスクロール可能コンテナの中にあるノードなど）は再現しません。上記のマルチウィンドウの限界と並ぶ、より狭い範囲の課題です。
+- **コスト。** 45 ノードすべてに対する `refresh()` の走査が 24 ミリ秒、ウォームな
+  `dumpWindowHierarchy` が 19 ミリ秒でした。上記の先読みの経路は、ノードごとの往復は完全に避けます
+  が、走査そのものは避けません。走査は、アプリが opt-in したかどうかにかかわらず毎回の読み取りで
+  実行されます（前述の「コストは両 OS とも opt-in のまま」を参照）。
 
 ### コストは両 OS とも opt-in のまま
 
@@ -205,13 +270,15 @@ Android 側設計、具体的には Compose が上記の `View` オーバーラ�
 タイムアウトを一度だけ払い、`/elements` クエリごとに払うことはありません。これが、後述する
 「保たれる大原則」で述べる「境界があり同期的」という意味を保つものです。Android のノードごとの
 `refreshWithExtraData` 往復は、そのノード
-自身の `getAvailableExtraDataKeys()` がすでに Bajutsu のキーを列挙している場合に限って発行される
-ため、計装されていないアプリのツリー走査は 1 回の安価な存在確認だけで済みます。協力するアプリに
-ついては、Unit 0 のスパイクで showcase 相当の大きさのツリーに対する要素ごとの往復コストも測定
-します。この基準は、
+自身の `getAvailableExtraData()` がすでに Bajutsu のキーを列挙している場合に限って発行される
+ため、この呼び出し**単体**は計装されていないアプリのツリー走査でも 1 回の安価な存在確認だけで
+済みます。協力するアプリについては、Unit 0 のスパイクで showcase 相当の大きさのツリーに対する
+要素ごとの往復コストも測定します。この基準は、
 [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md)
 自身の常駐チャネルの動機、つまり 1 回の読み取りごとのコストと同じです。この結果は、Unit 2・3 が
 着手する前にこの節へ記録します。
+
+**実装が完了した時点で、この節の見出しは Android 側の実態を言い過ぎています。** 突き合わせのための走査そのものは、ヘルパーを一度もリンクしていないアプリでも `GET /source` のたびに走ります。`respondSource` には、木を実際に歩いてみるまで opt-in したノードが1つもないと知る手立てがないからです。Unit 0 自身のコスト計測（後述）は、この走査を常駐チャネルのウォームな `dumpWindowHierarchy` と同程度の重さだと示しています。そのため `nativeZ` を使わない Android の実行でも、読み取りごとのコストはおよそ倍になります。ここでは解消せず、既知の課題として残します。この節が本来約束していた opt-in のコストを取り戻す道は、この走査自体をゲートすることです。ゲートする信号は、`nativeZ` に opt-in したターゲットに対してのみホストが送ります（`since=` をすでに読み取りごとに通しているのと同じ形）。ただしその配線は後続の Unit が設計して仕上げるべきものであり、このレビューの場で即興に作るべきではありません。
 
 ### 作業分解(相互排他的かつ全体を尽くす、Mutually Exclusive, Collectively Exhaustive、`MECE`)
 
@@ -297,15 +364,15 @@ Android 側設計、具体的には Compose が上記の `View` オーバーラ�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] Unit 0 — スパイク: iOS のレイヤー走査の実現性とレスポンダの形、Android の Compose の
+- [x] Unit 0 — スパイク: iOS のレイヤー走査の実現性とレスポンダの形、Android の Compose の
       追加データ対応、両 OS での要素ごとの往復コスト
 - [x] Unit 1 — `Element` への `nativeZ` フィールド
-- [ ] Unit 2 — iOS 側の報告(BajutsuKit のレスポンダ、`xcuitest.py` の読み取り)
-- [ ] Unit 3 — Android 側の報告(追加データヘルパー、常駐サーバーの往復、`adb.py` の読み取り)
+- [x] Unit 2 — iOS 側の報告(BajutsuKit のレスポンダ、`xcuitest.py` の読み取り)
+- [x] Unit 3 — Android 側の報告(追加データヘルパー、常駐サーバーの往復、`adb.py` の読み取り)
 - [x] Unit 4 — `FakeDriver` 対応
 - [x] Unit 5 — driver conformance suite のケース
-- [ ] Unit 6 — ドキュメント(`evidence.md` / `architecture.md` とその `ja` 側)
-- [ ] Unit 7 — テスト
+- [x] Unit 6 — ドキュメント(`evidence.md` / `architecture.md` とその `ja` 側)
+- [x] Unit 7 — テスト
 
 ### ログ
 
@@ -330,6 +397,26 @@ Android 側設計、具体的には Compose が上記の `View` オーバーラ�
   バックエンドごとの報告経路を待って残しています。今回のスライスが持つ回帰テストは
   `tests/test_native_z.py` にあり、正直な欠損と、`is_tappable` および `topmost_at_point` の挙動が
   変わっていないことの両方を固定します。
+- 2 番目のスライスでは Unit 0 のスパイクを実機で実行し、そこで範囲の定まった 2 つの報告経路を実装しました。
+  スパイクの結果は上の詳細設計に記録してあります。そのうち 3 つは、設計を追認するのではなく変更させました。
+  iOS のレスポンダは、本提案が想定した BajutsuKit の新しい能力ではありません。`BajutsuWebView` が
+  テスト対象のアプリの中でループバックのソケットサーバをすでに動かしているためで、新しいレスポンダは
+  その形を写し取り、既存のものが持たないトークン検査を加えました。シークレットは
+  `BAJUTSU_COLLECTOR_TOKEN` ではなく実行ごとに専用のものを持ちます。その token は、シナリオが
+  network collector を動かすときにしか存在しないからです。そして Android のフレームワークは
+  `addExtraDataToAccessibilityNodeInfo` をアクセシビリティデリゲートに回さないため、アプリ側の
+  ヘルパーはノードの構築中にその extras へ位置を書き込み、`View` のサブクラス向けにオンデマンドの
+  オーバーライドも残しました。常駐サーバーはすでにある値を読み、無いときだけ問い合わせます。側方構造は
+  read mark と同じくレスポンスヘッダーに載せ、`XML` 本体を `uiautomator dump` とバイト単位で同一に
+  保ちます。キーは bounds、class、package と出現順です。デバイスが計測する走査のノードの並びが、
+  本体の並びと揃わないためです。宣言的な UI ツールキットは 2 つとも値を報告しません。どちらの OS でも
+  理由は同じで、SwiftUI も Compose も自身でアクセシビリティ要素を生成し、測定元となる実体を外に
+  出さないからです。したがって出荷した対象は UIKit と Android の `View` で、それ以外は正直な欠損の
+  ままです。showcase の Views アプリは、テスト用にビューへ印を付ける既存のヘルパー 1 か所から
+  opt-in しており、これが Android 側の経路に実機での網羅を与えています。conformance の契約もコードに
+  合わせて動かしました。フィールドが常に欠損しているという主張ではなく、欠損しているか実際の有限な
+  計測値であるという主張に変えています。バックエンドは opt-in のどちら側にも立てるようになったからです。
+- 実装 PR に対するレビューで、さらに5件の実在する問題が見つかりました。すべて修正するか、上に記録しています。黙って先送りにはしていません。`ZOrderResponder.positions()` は、接続段階のタイムアウトでもネガティブキャッシュをラッチしていました。`urllib` はこれを `URLError` で包みます。読み取り段階の節がすでに捕捉している素の `TimeoutError` とは別扱いです。そのため、アプリがまだ起動中なだけのリースから `nativeZ` を丸ごと失っていました。包まれた reason を調べるよう直しました。`Element.nativeZ` と `xcuitest.py` の `_to_element` の脇にあった2つのコメントは、iOS・Android 側の経路が未出荷だとまだ書いていました。本 PR によってその記述は偽になっていたので、実際に何を報告しているかへ書き直しました。Android の常駐サーバーの bounds キーは、生の `getBoundsInScreen()` の矩形を使っていました。突き合わせる相手のダンプ本体は、`AccessibilityNodeInfoDumper` が書き出す画面クリップ済みの矩形をキーにしていました。そのため、画面端からはみ出たノードの位置が黙って落ちていました。デバイス自身の画面境界と交差させてからキーにするよう直しました。上の「詳細設計」の説明文は、存在しない API 名を挙げていました。Android の走査のコストについても「1回の安価な存在確認以上は払わない」と書いていました。どちらも Unit 0 自身の結果の数行下で否定されている内容です。その場で訂正し（英語・日本語とも）、レビューの圧力の下で最適化するのではなく、既知の後続課題として記録しました。
 
 ## 参考
 

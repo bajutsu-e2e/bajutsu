@@ -15,6 +15,7 @@ from __future__ import annotations
 import contextlib
 import http.client
 import logging
+import math
 import subprocess
 import time
 import urllib.parse
@@ -44,6 +45,13 @@ logger = logging.getLogger("bajutsu.adb.resident")
 # Carried in a header so the XML body stays byte-identical to `uiautomator dump`'s, keeping
 # `parse_hierarchy` and `narrow_to_active_window` unchanged.
 _READ_MARK_HEADER = "X-Bajutsu-Read-Mark"
+
+# The response header carrying each opted-in view's own `View.getZ()` (BE-0355 Unit 3), in the same
+# header rather than the body and for the same reason as the mark above. Its value is
+# `<key>=<z>` pairs joined by `;`, where the key names the node by what the host can recompute from
+# the `<node>` it is reading — see `adb.py`'s `_native_z_key`. Absent on a server that does not
+# report it and on an app that opted no view in.
+_NATIVE_Z_HEADER = "X-Bajutsu-Native-Z"
 
 # The status the resident server answers when the identity the host sent no longer names the same
 # number of nodes on its own dump: the screen moved between the two resolves, so nothing was injected.
@@ -116,11 +124,12 @@ def fetch_source(
         if resp.status != 200:
             raise AdbResidentError(f"resident server returned HTTP {resp.status}")
         mark = _parse_mark(resp.getheader(_READ_MARK_HEADER))
+        native_z = _parse_native_z(resp.getheader(_NATIVE_Z_HEADER))
         # A truncated/garbled body (a mid-write device server) must degrade to the dump fallback, not
         # escape past the driver's AdbResidentError-only catch — whether it surfaces as a
         # UnicodeDecodeError (garbled bytes) or an http.client.HTTPException (IncompleteRead from a
         # short body, BadStatusLine/UnknownProtocol from a malformed status line).
-        return HierarchyRead(body.decode("utf-8"), mark)
+        return HierarchyRead(body.decode("utf-8"), mark, native_z=native_z)
     except (OSError, UnicodeDecodeError, http.client.HTTPException) as exc:
         raise AdbResidentError(f"resident channel unreachable on port {host_port}: {exc}") from exc
     finally:
@@ -203,6 +212,31 @@ def _parse_mark(raw: str | None) -> float | None:
         return float(raw)
     except ValueError:
         return None
+
+
+def _parse_native_z(raw: str | None) -> dict[str, float]:
+    """The `X-Bajutsu-Native-Z` header as content key to measured position, empty when absent.
+
+    A malformed pair is dropped rather than failing the read: `nativeZ` is diagnostic (BE-0355), so a
+    garbled reading costs one element its position and leaves the rest of the tree intact — the same
+    honest absence an app that never opted in reports.
+    """
+    if not raw:
+        return {}
+    found: dict[str, float] = {}
+    for pair in raw.split(";"):
+        key, sep, value = pair.rpartition("=")
+        if not sep or not key:
+            continue
+        try:
+            z = float(value)
+        except ValueError:
+            continue
+        # `NaN` / `Infinity` parse but name no position, the same reading `native_z_from_json`
+        # already refuses for a value read back off an artifact.
+        if math.isfinite(z):
+            found[key] = z
+    return found
 
 
 def fetch_clock(host_port: int, *, timeout: float = 5.0) -> float | None:
@@ -364,7 +398,7 @@ class ResidentServer:
                 # decor to strip passes through unchanged, and carrying an identical `raw` alongside
                 # `text` would make every `rawTree` capture write two copies of the same body.
                 raw = read.text if narrowed != read.text else None
-                return HierarchyRead(narrowed, read.mark, raw=raw)
+                return HierarchyRead(narrowed, read.mark, raw=raw, native_z=read.native_z)
             except AdbResidentError:
                 # Stop the resident server before the driver degrades to `uiautomator dump`. A read
                 # fault is usually a wedged-but-alive instrumentation — a read that outran the socket
