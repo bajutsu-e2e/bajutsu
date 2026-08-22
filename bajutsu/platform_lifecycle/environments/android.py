@@ -180,7 +180,9 @@ class AndroidEnvironment:
             channel = server.start()
         except AdbResidentError as exc:
             logger.warning(
-                "resident UI Automator server unavailable (%s); reading via `uiautomator dump`", exc
+                "resident UI Automator server unavailable (%s); reading via `uiautomator dump`, "
+                "actuating via coordinates",
+                exc,
             )
             return None
         self._resident = server

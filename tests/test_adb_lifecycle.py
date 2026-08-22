@@ -542,6 +542,10 @@ def test_android_environment_falls_back_to_dump_when_resident_unavailable(
         driver = env.start(_eff(), Preconditions())
     assert driver.name == "adb"
     assert any("resident" in r.message.lower() for r in caplog.records)
+    # Not silent on the act consequence either (BE-0339 Unit 4): a lease that lost the channel at
+    # startup still ends up on the coordinate path, and this is the one branch of the three that
+    # used to say only "reading via dump," leaving act unmentioned.
+    assert any("actuating via coordinates" in r.message for r in caplog.records)
     env.teardown(driver, _eff())
     assert not resident.stopped  # it never started, so nothing to stop
 

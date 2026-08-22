@@ -139,14 +139,18 @@ struct ConformanceView: View {
                 .frame(width: 280, height: 44)
                 .accessibilityID(Self.secureFieldID)
             // The two tap-mirror targets (BE-0339 Unit 6): each is its own tappable button, its own
-            // counter, mirrored into its own accessibility value.
-            Button(String(tapMirrorA)) { tapMirrorA += 1 }
+            // counter, mirrored into its own accessibility value. The label stays a fixed string,
+            // not `String(tapMirrorA)`: `accessibilityStateValue` already rebuilds the accessibility
+            // element on every tap (see its definition), and a label that also changed on every tap
+            // would double that churn on the very element the contract taps — the BE-0280 stale-handle
+            // shape this file's field comment above already names, reached through a second source.
+            Button("mirror A") { tapMirrorA += 1 }
                 .frame(width: 280, height: 60)
                 .background(Color.gray.opacity(0.25))
                 .contentShape(Rectangle())
                 .accessibilityID(Self.tapMirrorAID)
                 .accessibilityStateValue(String(tapMirrorA))
-            Button(String(tapMirrorB)) { tapMirrorB += 1 }
+            Button("mirror B") { tapMirrorB += 1 }
                 .frame(width: 280, height: 60)
                 .background(Color.gray.opacity(0.25))
                 .contentShape(Rectangle())
