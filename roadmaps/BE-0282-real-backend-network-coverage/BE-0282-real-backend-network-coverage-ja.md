@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0282") |
-| 実装 PR | [#1183](https://github.com/bajutsu-e2e/bajutsu/pull/1183)（web スライス）、[#1267](https://github.com/bajutsu-e2e/bajutsu/pull/1267)（web ジョブをゲートに昇格） |
+| 実装 PR | [#1183](https://github.com/bajutsu-e2e/bajutsu/pull/1183)（web スライス）、[#1267](https://github.com/bajutsu-e2e/bajutsu/pull/1267)（web ジョブをゲートに昇格）、[#1701](https://github.com/bajutsu-e2e/bajutsu/pull/1701)（web の過剰マスク検出） |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0020](../BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md), [BE-0027](../BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md), [BE-0003](../BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci-ja.md) |
 <!-- /BE-METADATA -->
@@ -90,6 +90,7 @@ response-schema の検証、sequence のマッチングはユニットテスト�
 
 - [#1183](https://github.com/bajutsu-e2e/bajutsu/pull/1183) — web スライス: デモアプリに Sync リクエストを追加し、`demos/web/scenarios/network.yaml`（モックされ、キャプチャされる、秘密情報を運ぶ `POST /api/sync`）、`fields: [password]` の redact ポリシー、`demos/web/network/assert_redaction.py`、`make -C demos/web e2e-network` ターゲット、ゲート対象外の `network (playwright)` CI ジョブを追加しました。Android のギャップはワークフローと `docs/architecture.md` に記録しました。iOS collector の実経路は後続に持ち越します。
 - [#1267](https://github.com/bajutsu-e2e/bajutsu/pull/1267) — `network (playwright)` ジョブが CI で安定を確認できた（直近 50 回の実行で失敗 0）ので、シグナルから必須の `E2E (web)` ゲートへ昇格させました。android-e2e.yml で既にゲート入りしている `network (adb)` の web 版にあたります。この昇格に合わせて、ジョブを説明する各ドキュメント（`docs/architecture.md`、`docs/ci.md`、`demos/web/README.md` と、それぞれの日本語ミラー）から「ゲート対象外／シグナルとして着地」の記述を落とし、同じ変更で更新しました。
+- [#1701](https://github.com/bajutsu-e2e/bajutsu/pull/1701) — web の redaction チェックが見落としていた、ボディ全体を置き換えてしまうマスクを検出できるようにしました。プレースホルダでボディを丸ごと置き換えてもボディ側の 2 つの規則は両方満たされてしまうので、Sync リクエストの秘密でない `account` キーが残っていることを新たに要求します。iOS 側が既に持っている規則の web 版です。あわせて iOS 側のテストも移植しました。`assert_redaction.py` の `main` はゲートのテストからまったく実行されておらず、ブラウザレーンは正しくマスクされたエビデンスしか渡さないため、スクリプトの各規則は中身が生きているかどうかに関わらず通っていました。
 
 ## 参考
 
