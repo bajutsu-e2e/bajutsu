@@ -212,7 +212,10 @@ class AndroidEnvironment:
         return adb.device_catalog(self._run)
 
     def observes_network_via_driver(self) -> bool:
-        return False  # no native network monitor — the same mocked story as iOS
+        # No native network monitor to actuate, so the app reports each exchange to the host
+        # collector over `bridge_collector`'s `adb reverse` tunnel instead (BE-0283) — the same
+        # external-receiver shape as iOS, and a real capture rather than a mocked one.
+        return False
 
     def mirrors_collector_port_on_device(self) -> bool:
         # `bridge_collector`'s `adb reverse tcp:<port> tcp:<port>` binds the same number inside the
