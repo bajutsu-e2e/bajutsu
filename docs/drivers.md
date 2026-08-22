@@ -205,14 +205,21 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   two moments describes the pre-scroll screen. Repeated reads then agree with each other on frames that
   are already wrong, so the two-consecutive-equal-reads settle cannot detect the lag on its own: the
   tree is *self-consistently* stale rather than visibly unsettled. After a `swipe`, a `scroll`, a
-  `pinch`, or a `rotate` — every gesture that moves frames wholesale — **and after a center-resolving
-  `tap`, `longPress`, or `doubleTap`** (BE-0332), the driver records the frame projection the screen
-  had beforehand, and the next coordinate resolve re-reads until the projection moves off that record
-  and then holds still briefly, bounded by a wall-clock budget it announces spending in full. A tap can
-  move the layout too — open a menu, expand a row, advance a stepper — so the actuator that follows one
-  must resolve against the tree the device published *after* it, not the pre-tap one; `tapPoint` (raw
-  coordinates) and `back` (no resolved target) do not arm the wait, since they have no
-  target-from-a-layout to postdate. That budget is the same number the `scroll` loop uses to confirm an
+  `pinch`, or a `rotate` — every gesture that moves frames wholesale — **and after `tap`, `longPress`,
+  or `doubleTap` whenever any of them falls back to a host-computed coordinate** (BE-0332), the driver
+  records the frame projection the screen had beforehand, and the next coordinate resolve re-reads
+  until the projection moves off that record and then holds still briefly, bounded by a wall-clock
+  budget it announces spending in full. A tap can move the layout too — open a menu, expand a row,
+  advance a stepper — so a coordinate actuator that follows one must resolve against the tree the
+  device published *after* it, not the pre-tap one; `tapPoint` (raw coordinates) and `back` (no
+  resolved target) do not arm the wait either, since they have no target-from-a-layout to postdate.
+  A confirmed device-side `tap`/`longPress`/`doubleTap` (the `POST /act` path above) arms nothing at
+  all: the resident session resolved and injected in one call, synchronized with the platform's own
+  accessibility-idle state before it answered, so there is no asynchronously-published tree left for a
+  later read to race — arming the wait there would spend its budget on a gesture that legitimately
+  changes no frame, for nothing gained (roadmap
+  [BE-0339](../roadmaps/BE-0339-adb-device-side-actuation/BE-0339-adb-device-side-actuation.md) Unit 5).
+  That budget is the same number the `scroll` loop uses to confirm an
   end of content before failing (`ReadLagProvider`, BE-0326 / BE-0332; see
   [architecture](architecture.md)) — one publish lag, so one budget, spent across those paths.
   A directional `swipe` and a `drag` are the one exception to *where* the resolve happens: their

@@ -668,12 +668,17 @@ class AdbDriver(CoordinateTreeDriver):
                 return read.text
             except AdbResidentError as exc:
                 logger.warning(
-                    "resident hierarchy read failed (%s); falling back to `uiautomator dump` "
-                    "for the rest of this lease",
+                    "resident hierarchy read failed (%s); falling back to `uiautomator dump` for "
+                    "reads and coordinate injection for gestures, for the rest of this lease",
                     exc,
                 )
                 self._fetch_hierarchy = None
                 self._fetch_clock = None  # the clock endpoint shares the dead channel
+                # Ditto for `/act`: a connection that cannot serve a read cannot serve an actuation
+                # either, so this latches the coordinate degrade here rather than leaving `_device_act`
+                # to rediscover the same dead channel — and re-warn — on every gesture for the rest of
+                # the lease (BE-0339 Unit 4).
+                self._act_unavailable = True
                 # The read channel is gone rather than momentarily noisy, so this is the moment the
                 # state explaining it still exists (BE-0367). Hooked here, at the propagation site,
                 # and never on the act path: `AdbActUnsupported` and `AdbActUncertain` fire during
@@ -1122,6 +1127,11 @@ class AdbDriver(CoordinateTreeDriver):
     def _actuate_centered(self, args: list[str]) -> None:
         """Actuate a command whose target was just resolved, then open a read-lag barrier for it.
 
+        The coordinate-path counterpart to `_device_act`'s confirmed-success branch, which arms
+        nothing (BE-0339 Unit 5): there the resident session resolved and injected in one call, so no
+        asynchronously-published tree is in flight for a later read to race. Here a host-computed
+        coordinate and a separate `adb shell input` process are exactly that race, so the barrier stays.
+
         A center-resolving tap can change the layout (open a menu, expand a row, advance a stepper),
         and Android publishes that update a beat after the actuation returns — so without a barrier the
         next actuator's `_settle` accepts the still-pre-tap tree and resolves against stale frames, the
@@ -1262,10 +1272,16 @@ class AdbDriver(CoordinateTreeDriver):
                 logger.debug(
                     "device %s on %r: identity %r, %d of %d", kind, sel, identity, index, len(same)
                 )
-                # The gesture happened on the device, so the cached tree is stale and the next read must
-                # postdate it — the same bookkeeping `_act` does for a coordinate injection.
+                # The gesture happened on the device, so the cached tree is stale for the next resolve
+                # (the same bookkeeping `_act` does for a coordinate injection) — but no catch-up
+                # barrier opens for it (BE-0339 Unit 5). The barrier exists to bound the window between
+                # a host-computed coordinate and a separate `adb shell input` process injecting it; here
+                # the resident session resolved and injected in one call, synchronized with the
+                # platform's own accessibility-idle state before it answered, so there is no
+                # asynchronously-published tree for a later read to race. Arming anyway would buy
+                # nothing and would spend the barrier's full wall-clock budget on every device-acted
+                # gesture that legitimately changes no frame — the very concession this unit removes.
                 self.invalidate_settled_cache()
-                self._arm_catchup(pre_key, mark)
                 return True
             logger.debug("device %s on %r: the device called it stale; re-resolving", kind, sel)
         logger.warning(

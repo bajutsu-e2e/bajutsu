@@ -240,8 +240,8 @@ languages. The identity keeps the decision on the host and sends only its result
       `long_press`, and `double_tap` go to the device — the first two for their coordinate, the third
       for its *interval*. `pinch` and `rotate` stay on coordinates because a two-finger gesture needs
       a frame, not a center.
-- [ ] Unit 4 — the coordinate path kept as a declared, logged degraded mode.
-- [ ] Unit 5 — the read-lag barrier narrowed to the reads that still need it.
+- [x] Unit 4 — the coordinate path kept as a declared, logged degraded mode.
+- [x] Unit 5 — the read-lag barrier narrowed to the reads that still need it.
 - [ ] Unit 6 — deterministic and conformance coverage, and a repeated Android-lane run.
 
 Log:
@@ -305,6 +305,34 @@ Log:
   `click`'s internal settle. All three pass on a fast host and fail on a loaded one, which is a flake
   rather than a bug. `POST /act` now builds the `MotionEvent`s itself and stamps them, so the
   interval is a declared 40 ms hold plus a 60 ms gap rather than whatever the host happened to cost.
+
+- 2026-08-21 — Units 4 and 5, plus the fast-gate half of Unit 6. Unit 4 closed two silent branches
+  rather than adding a new one: a resident connection that failed mid-lease nulled the read channel
+  but left `/act` live, so every gesture for the rest of the lease would rediscover the same failed
+  connection and re-warn once per tap instead of degrading once — it now latches `_act_unavailable`
+  alongside the read degrade. And `AndroidEnvironment._make_resident`'s "APKs not built" /
+  explicit-opt-out branches, which chose the coordinate path with no log at all, now declare it at
+  the same level the "resident channel selected" branch already used. Unit 5 stops arming the
+  read-lag barrier on a *confirmed* device-side `tap` / `long_press` / `double_tap`: the resident
+  session resolved and injected in one call, synchronized with the platform's own accessibility-idle
+  state before it answered, so there is no asynchronously-published tree left for a later read to
+  race — arming it would spend the 4-second budget for nothing on a gesture that changes no frame. A
+  reply-lost (`AdbActUncertain`) gesture still arms it, because there the doubt is genuine and the
+  wall-clock barrier is the safety net. The coordinate fallback (`_actuate_centered`) keeps its own
+  arming unchanged. Unit 6's fast-gate share: a new driver conformance case
+  (`test_a_tap_lands_on_the_element_the_selector_named`) seeds two independently mirrored tap
+  targets and asserts that a tap on one moves that target's own counter and leaves the other's
+  untouched — the contract "the element the device acted on is the element the selector named" that
+  a coordinate assertion alone cannot state. Realized as app-side mirroring, `LogScreen.kt`'s
+  `log.longpress.value` pattern generalized to two named targets: `FakeDriver` and the Playwright web
+  harness both run this new case under `make check` (the Playwright side, verified again by hand
+  against the real Chromium binary — this container's pinned playwright and its pre-installed browser
+  build are a version apart, a pre-existing gap this change did not cause); the Compose and SwiftUI
+  conformance screens carry the same two targets for the on-device suites, written to match the
+  existing field-mirroring pattern in each file but — like Unit 2's Kotlin endpoint before it — not
+  locally compiled, for the same reason: no Android SDK or Xcode in the authoring environment. The
+  on-device conformance case and the repeated Android-lane dispatch that samples the flake's residual
+  rate are what Unit 6 still owes.
 
 ## References
 

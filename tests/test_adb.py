@@ -616,6 +616,22 @@ def test_resident_failure_latches_to_dump_for_the_rest_of_the_lease() -> None:
     assert fetch_calls == 1
 
 
+def test_a_dead_read_channel_also_latches_the_act_path_unavailable() -> None:
+    # A resident connection that cannot serve a read cannot serve `/act` either — it is the same dead
+    # socket. Left unlatched, every later tap would rediscover that on its own, re-fault, and re-warn
+    # once per gesture for the rest of the lease instead of degrading once (BE-0339 Unit 4).
+    def fetch(_since: float | None) -> HierarchyRead:
+        raise AdbResidentError("channel down")
+
+    act, seen = _recording_act([True])
+    run, calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, fetch_hierarchy=fetch, act=act)
+    driver.query()  # kills the read channel and latches `_act_unavailable`
+    driver.tap({"id": "stable.submit"})  # never even probes the now-dead act endpoint
+    assert seen == []
+    assert [c for c in calls if "input" in c]  # the coordinate fallback carried the gesture
+
+
 def test_a_resident_read_fault_does_not_settle_the_last_actuation() -> None:
     # `_read_source` is the hierarchy READ path, not the gesture path: a fault here says nothing
     # about whether the last recorded actuation was accepted. Regression: this used to stamp the
@@ -2282,11 +2298,25 @@ def test_without_the_channel_the_coordinate_tap_is_unchanged() -> None:
     assert tap == ["adb", "-s", "U", "shell", "input", "tap", "100", "250"]
 
 
-def test_a_device_tap_arms_the_catch_up_barrier_like_a_coordinate_tap() -> None:
-    # The gesture happened, so the same bookkeeping must follow it: the cached tree is stale and the
-    # next coordinate resolve has to postdate this tap. Left unarmed, the device path would quietly
-    # drop the guarantee the coordinate path spent BE-0332 establishing.
+def test_a_confirmed_device_tap_does_not_arm_the_catch_up_barrier() -> None:
+    # Unlike a coordinate injection, a confirmed device-side tap resolved and injected in one call on
+    # the resident session, synchronized with the platform's own accessibility-idle state before it
+    # answered — there is no asynchronously-published tree left for a later read to race, so arming the
+    # host wall-clock barrier here would only spend its budget on gestures that legitimately change no
+    # frame (BE-0339 Unit 5). The cached tree still invalidates (see the `_settled_key` test above).
     act, _ = _recording_act([True])
+    run, _calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver.tap({"id": "stable.submit"})
+    assert driver._catchup is None
+
+
+def test_an_uncertain_device_tap_still_arms_the_catch_up_barrier() -> None:
+    # Unlike a confirmed success, a lost reply leaves genuine doubt about whether the gesture landed on
+    # the device at all — the host-side barrier stays as the safety net that lets the next read (or the
+    # step's own condition wait) fail loudly if it did not (BE-0339 Unit 5 narrows only the confirmed
+    # path, not this one).
+    act, _ = _recording_act([adb_driver_mod.AdbActUncertain("reply lost")])
     run, _calls = _capturing_run([FIXTURE])
     driver = AdbDriver("U", run=run, act=act)
     driver.tap({"id": "stable.submit"})

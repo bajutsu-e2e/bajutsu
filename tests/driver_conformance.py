@@ -96,10 +96,23 @@ OBSTRUCTION_TARGET_ID = "conformance.obstruction.target"
 OBSTRUCTION_COVER_ID = "conformance.obstruction.cover"
 OBSTRUCTION_CLEAR_ID = "conformance.obstruction.clear"
 
+#: Two always-present, independently-mirrored tap targets (BE-0339 Unit 6), alongside the field and
+#: the marker. Each carries its own tap count in `value`, starting at "0" — the app-side twin of
+#: `LogScreen.kt`'s `log.longpress.value` / `log.doubletap.value` mirroring. Two, not one, so a tap
+#: that lands on the wrong element (a coordinate neighbor a stale resolve happened to hit, the exact
+#: shape of the flake this item closes) is observable: tapping A must move only A's count, never B's.
+TAP_MIRROR_A_ID = "conformance.tapMirror.a"
+TAP_MIRROR_B_ID = "conformance.tapMirror.b"
+
 
 def field_value(driver: base.Driver) -> str:
     """The current text of the conformance field (empty string when it reports none)."""
     return base.resolve_unique(driver.query(), {"id": FIELD_ID})["value"] or ""
+
+
+def _mirror_value(driver: base.Driver, identifier: str) -> str:
+    """The current tap count of a mirror target (`TAP_MIRROR_A_ID` / `TAP_MIRROR_B_ID`), as text."""
+    return base.resolve_unique(driver.query(), {"id": identifier})["value"] or "0"
 
 
 def _field_center(driver: base.Driver) -> base.Point:
@@ -540,6 +553,25 @@ class DriverConformanceContract:
         scroll_to_target(driver, {"id": SCROLL_LAST_ROW}, "down", None, SCROLL_MAX)
         after = _rows_in_viewport(driver)
         assert after != before
+
+    def test_a_tap_lands_on_the_element_the_selector_named(
+        self, harness: ConformanceHarness
+    ) -> None:
+        # BE-0339 Unit 6: the contract the fast gate cannot otherwise reach — after a gesture, the
+        # element that reacted is the element the selector named, never a coordinate neighbor a stale
+        # resolve happened to land on (the Motivation section's failure mode: a swipe anchored on a
+        # pre-gesture frame, or a tap injected a round trip after the coordinate was computed). Two
+        # independently-mirrored targets make a wrong-neighbor tap observable in either direction.
+        driver = harness.with_screen([])
+        a_before = _mirror_value(driver, TAP_MIRROR_A_ID)
+        b_before = _mirror_value(driver, TAP_MIRROR_B_ID)
+        driver.tap({"id": TAP_MIRROR_A_ID})
+        a_after = _mirror_value(driver, TAP_MIRROR_A_ID)
+        assert a_after != a_before
+        assert _mirror_value(driver, TAP_MIRROR_B_ID) == b_before
+        driver.tap({"id": TAP_MIRROR_B_ID})
+        assert _mirror_value(driver, TAP_MIRROR_B_ID) != b_before
+        assert _mirror_value(driver, TAP_MIRROR_A_ID) == a_after
 
     def test_is_tappable_reflects_real_on_screen_occlusion(
         self, harness: ConformanceHarness

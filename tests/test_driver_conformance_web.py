@@ -31,6 +31,8 @@ from driver_conformance import (
     SCROLL_ROW_PREFIX,
     SCROLL_TALL_ID,
     SECURE_FIELD_ID,
+    TAP_MIRROR_A_ID,
+    TAP_MIRROR_B_ID,
     ConformanceHarness,
     DriverConformanceContract,
 )
@@ -61,6 +63,18 @@ _FIELD_HTML = (
     'style="position:absolute;left:8px;top:460px;width:200px;height:40px">'
 )
 
+# The two always-present, independently-mirrored tap targets (BE-0339 Unit 6) — the web twin of
+# `LogScreen.kt`'s `log.longpress.value` mirroring. An `<input type="button">` has a live `.value`
+# IDL property `QUERY_JS` already reads, so a real click event increments it in the DOM itself —
+# not a value this harness computes and injects, the same "act on the real target" guarantee the
+# other conformance screens give the click / query code under test.
+_TAP_MIRROR_HTML = "".join(
+    f'<input type="button" data-testid="{mirror_id}" value="0" '
+    f'style="position:absolute;left:8px;top:{top}px;width:100px;height:40px" '
+    'onclick="this.value = String(Number(this.value) + 1)">'
+    for mirror_id, top in ((TAP_MIRROR_A_ID, 520), (TAP_MIRROR_B_ID, 580))
+)
+
 
 def _render(elements: list[base.Element]) -> str:
     """One HTML page realizing the seeded conformance screen for `QUERY_JS` to read.
@@ -72,10 +86,12 @@ def _render(elements: list[base.Element]) -> str:
     to that trait), so the cross-backend `{ label, traits: [button] }` case resolves on Chromium
     too (BE-0223); every other element stays a plain `<div>`. The editable conformance field is
     always appended (BE-0280), like the app-side screens' field, so the text-editing / `tap_point`
-    invariants have a live field regardless of what was seeded.
+    invariants have a live field regardless of what was seeded. The two tap-mirror targets
+    (BE-0339 Unit 6) are always appended too, so the tap-identity invariant has real, independent
+    counters regardless of what was seeded.
     """
     nodes = "".join(_node(el) for el in elements)
-    return f"<!doctype html><html><body>{nodes}{_FIELD_HTML}</body></html>"
+    return f"<!doctype html><html><body>{nodes}{_FIELD_HTML}{_TAP_MIRROR_HTML}</body></html>"
 
 
 def _node(el: base.Element) -> str:

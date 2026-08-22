@@ -547,18 +547,24 @@ def test_android_environment_falls_back_to_dump_when_resident_unavailable(
 
 
 def test_android_environment_skips_resident_when_the_server_is_not_built(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     # Default-on is gated on the server being built (BE-0245 PR-D): with no factory, the env
     # override unset, and the APKs absent, start reads via `uiautomator dump` — a fresh clone that
     # never ran `make -C BajutsuAndroidUIAutomatorServer build` is never worse off than before.
+    import logging
+
     import bajutsu.adb_resident as adb_resident
 
     monkeypatch.delenv("BAJUTSU_ADB_RESIDENT", raising=False)
     monkeypatch.setattr(adb_resident, "server_apks_built", lambda *a: False)
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run([]))
-    env.start(_eff(), Preconditions())
+    with caplog.at_level(logging.DEBUG):
+        env.start(_eff(), Preconditions())
     assert env._resident is None  # nothing started
+    # Not silent (BE-0339 Unit 4): a run states which actuation path it landed on even when the
+    # channel was never attempted, not only when a live one later faults.
+    assert any("actuating via coordinates" in r.message for r in caplog.records)
 
 
 def test_the_suite_pins_the_resident_gate_to_a_fresh_clone() -> None:
@@ -589,16 +595,22 @@ def test_make_resident_defaults_on_when_the_server_apks_are_built(
 
 
 def test_make_resident_env_off_opts_out_even_when_built(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     # An explicit BAJUTSU_ADB_RESIDENT=0 forces the dump path even on a built tree — the escape hatch
     # for pinning the fallback path (the Android e2e lane uses it to guard the dump path, PR-D).
+    import logging
+
     import bajutsu.adb_resident as adb_resident
 
     monkeypatch.setenv("BAJUTSU_ADB_RESIDENT", "0")
     monkeypatch.setattr(adb_resident, "server_apks_built", lambda *a: True)
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run([]))
-    assert env._make_resident() is None
+    with caplog.at_level(logging.DEBUG):
+        assert env._make_resident() is None
+    # Not silent (BE-0339 Unit 4): an explicit opt-out states its actuation consequence too, not just
+    # its read consequence.
+    assert any("actuating via coordinates" in r.message for r in caplog.records)
 
 
 def test_make_resident_env_on_forces_a_server_even_when_not_built(
