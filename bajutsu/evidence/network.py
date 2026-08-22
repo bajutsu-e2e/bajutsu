@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import errno
 import json
+import logging
 import secrets
 import threading
 import time
@@ -33,6 +34,8 @@ from typing import Any, Protocol, runtime_checkable
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+_logger = logging.getLogger("bajutsu.evidence.network")
 
 
 class NetworkExchange(BaseModel):
@@ -60,15 +63,71 @@ class ScreenTransition(BaseModel):
     """One screen-transition event the app's `BajutsuScreen` observer reported (BE-0310).
 
     Minimal by design: no screen content, only what a positive "the transition finished"
-    signal needs. Extra keys are ignored and the app's own `timestamp` is informational only —
-    the collector stamps its own receive time (`snapshot_timed`), the same monotonic clock
-    domain the readiness gate and the `settled` wait already poll in, so nothing here depends on
-    the app process's separate clock.
+    signal needs. The app's own `timestamp` is informational and nothing reads it — the collector
+    stamps its own receive time (`snapshot_timed`), the same monotonic clock domain the readiness
+    gate and the `settled` wait already poll in, so nothing here depends on the app process's
+    separate clock. It is declared all the same, because it is half of what `BajutsuScreen.report`
+    puts on the wire and `_recognized_keys` below derives from these declarations: leaving it out
+    would make `kind` the sole recognized key, and so effectively mandatory.
     """
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     kind: str = ""
+    timestamp: float | None = None
+
+
+def _recognized_keys(model: type[BaseModel]) -> frozenset[str]:
+    """The payload keys *model* would actually read — its field names and every alias it validates.
+
+    `validation_alias` counts alongside `alias`, since pydantic accepts either on input; a field
+    declared with only the former would otherwise be readable by `model_validate` yet missing here,
+    which is the drift this helper exists to prevent. An `AliasPath` / `AliasChoices` is skipped
+    rather than guessed at — none is used today, and one added later needs this widened with it.
+    """
+    fields = model.model_fields.values()
+    return frozenset(
+        set(model.model_fields)
+        | {f.alias for f in fields if f.alias is not None}
+        | {f.validation_alias for f in fields if isinstance(f.validation_alias, str)}
+    )
+
+
+# Both models above default every field and ignore unknown keys, which together make
+# `model_validate` accept *any* JSON object: a payload sharing none of a model's keys validates
+# into a blank record rather than failing. That combination is deliberate for forward compatibility
+# — a newer SDK field must not break a run mid-flight — but it also means a report that belongs to
+# the other endpoint, or to no endpoint at all, is stored as a real one. `add` and `add_transition`
+# below therefore require at least one recognized key before validating, so a foreign payload is
+# dropped and logged instead of silently manufacturing a record.
+#
+# Both failure modes were observed. A blank exchange costs evidence: a `visual (xcuitest)` run on
+# 2026-08-13 wrote 99 of them to `network.json`, every field empty, which is unusable as evidence
+# and — because nothing was logged — left the sender unidentifiable. A blank *transition* costs
+# more, since the readiness gate consults only a transition's receive time and never its `kind`
+# (`platform_lifecycle/readiness.py`), so a misdirected report would satisfy readiness as though a
+# screen transition had finished.
+#
+# Requiring *one* recognized key rather than a specific one is what keeps this from becoming the
+# mandatory-discriminator design the roadmap item rejects: either model can rename or drop any single
+# field and its reports stay recognizable. That margin only exists while a model declares more than
+# one key, which is why `ScreenTransition` declares the `timestamp` it never reads. The two key sets
+# stay disjoint — an exchange names `startedAt` / `durationMs`, never `kind` or `timestamp` — so a
+# report posted to the wrong endpoint is still refused.
+_EXCHANGE_KEYS = _recognized_keys(NetworkExchange)
+_TRANSITION_KEYS = _recognized_keys(ScreenTransition)
+
+# A dropped payload is identified by its key names alone, never its values: a report carries
+# request/response bodies and headers, which is exactly what `redaction` exists to keep out of
+# shared evidence. The count is capped so one absurd payload cannot flood the log.
+_LOGGED_KEY_LIMIT = 20
+
+
+def _foreign_payload_keys(data: dict[str, Any], recognized: frozenset[str]) -> list[str] | None:
+    """The payload's keys when it shares none of *recognized*, or None when it is worth validating."""
+    if data.keys() & recognized:
+        return None
+    return sorted(data)[:_LOGGED_KEY_LIMIT]
 
 
 # Returns the screen-transition events observed so far, each with the collector's receive time
@@ -142,8 +201,17 @@ class NetworkCollector:
         """Validate and store one reported exchange.
 
         A payload that fails validation is dropped rather than raised, so an SDK change can't break
-        the run mid-flight (forward-compatible, matching `NetworkExchange`'s `extra="ignore"`).
+        the run mid-flight (forward-compatible, matching `NetworkExchange`'s `extra="ignore"`). A
+        payload carrying no exchange field at all is dropped too, and logged with its key names, so
+        a misdirected report neither lands in `network.json` as a blank exchange nor goes unnoticed.
         """
+        if (foreign := _foreign_payload_keys(data, _EXCHANGE_KEYS)) is not None:
+            _logger.warning(
+                "collector: dropped a report with no network-exchange field (keys: %s) — it was "
+                "posted to the exchange endpoint but is not an exchange",
+                foreign,
+            )
+            return
         try:
             ex = NetworkExchange.model_validate(data)
         except ValidationError:
@@ -155,8 +223,18 @@ class NetworkCollector:
         """Validate and store one reported screen-transition event (BE-0310).
 
         Same forward-compatible drop-on-failure behavior as `add`, and stored in its own list so
-        the readiness/settled signal never depends on network-capture state.
+        the readiness/settled signal never depends on network-capture state. A payload with no
+        `kind` is dropped and logged for the reason `add` drops a non-exchange, and with more at
+        stake: the readiness gate reads only a transition's receive time, so a blank record here
+        would report that a screen transition finished when none did.
         """
+        if (foreign := _foreign_payload_keys(data, _TRANSITION_KEYS)) is not None:
+            _logger.warning(
+                "collector: dropped a report with no screen-transition field (keys: %s) — it was "
+                "posted to /transitions but is not a transition",
+                foreign,
+            )
+            return
         try:
             transition = ScreenTransition.model_validate(data)
         except ValidationError:
