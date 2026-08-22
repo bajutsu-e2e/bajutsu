@@ -153,16 +153,20 @@ class TestXcuitestDriverConformance(DriverConformanceContract):
         # scope's amortization); after a crash, the plugin has re-leased, so this is the fresh device.
         return _OnDeviceHarness("xcuitest", _backend_lease_holder.driver, _spec_path(_eff))
 
-    def test_a_tap_lands_on_the_element_the_selector_named(
-        self, harness: ConformanceHarness
-    ) -> None:
-        # Not yet realized on-device (BE-0339 Unit 6): the Android twin of this case degraded the
-        # emulator's UI thread for the rest of the suite after adding the tap-mirror pair to
-        # ConformanceScreen — see the matching skip in test_driver_conformance_ondevice_android.py
-        # for the full account. ConformanceView.swift's tap-mirror elements were reverted alongside
-        # Compose's without ever getting a real iOS Simulator run (this PR's iOS signal never got
-        # past cancellation artifacts from superseding pushes), so shipping them untested here would
-        # repeat the same unverified-device-change mistake rather than avoid it. The case still runs
-        # deterministically against FakeDriver and Playwright (see tests/test_driver_conformance.py,
-        # tests/test_driver_conformance_web.py).
-        pytest.skip("BE-0339 Unit 6: not yet realized on-device, see comment above")
+    # Marked, not skipped from inside the body: a body-level `pytest.skip()` still lets pytest set
+    # every fixture up first, so the autouse `_evidence` above would start and stop a video recording
+    # and a device log — real `simctl` work on the shared Simulator — for a case that never runs. The
+    # marker skips at setup, before any fixture, so this costs the lease nothing.
+    @pytest.mark.skip(reason="BE-0339 Unit 6: not yet realized on-device, see the docstring")
+    def test_a_tap_lands_on_the_element_the_selector_named(self) -> None:
+        """Not yet realized on-device (BE-0339 Unit 6).
+
+        The Android twin of this case degraded the emulator's UI thread for the rest of the suite
+        after adding the tap-mirror pair to ConformanceScreen — see the matching skip in
+        `test_driver_conformance_ondevice_android.py` for the full account. `ConformanceView.swift`'s
+        tap-mirror elements were reverted alongside Compose's without ever getting a real iOS
+        Simulator run (this PR's iOS signal never got past cancellation artifacts from superseding
+        pushes), so shipping them untested here would repeat the same unverified-device-change
+        mistake rather than avoid it. The case still runs deterministically against `FakeDriver` and
+        Playwright (`tests/test_driver_conformance.py`, `tests/test_driver_conformance_web.py`).
+        """
