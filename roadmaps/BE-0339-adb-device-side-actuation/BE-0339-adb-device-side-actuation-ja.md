@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0339") |
-| 実装 PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455)（作業単位 1〜3、方向付きジェスチャのアンカー、`POST /act`、同一性で指すアクチュエーション）、[#1702](https://github.com/bajutsu-e2e/bajutsu/pull/1702)（作業単位 4 と、作業単位 6 の高速ゲート分・実機の適合性カバレッジ。作業単位 5 はレビュー後に差し戻し） |
+| 実装 PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455)（作業単位 1〜3、方向付きジェスチャのアンカー、`POST /act`、同一性で指すアクチュエーション）、[#1702](https://github.com/bajutsu-e2e/bajutsu/pull/1702)（作業単位 4 と作業単位 6 の高速ゲート分の適合性カバレッジ。作業単位 5 はレビュー後に差し戻し、作業単位 6 の実機側の実現は実機での検証結果を受けて保留） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0332](../BE-0332-read-lag-barrier/BE-0332-read-lag-barrier-ja.md), [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve-ja.md), [BE-0312](../BE-0312-xcuitest-content-addressed-snapshot-handle/BE-0312-xcuitest-content-addressed-snapshot-handle-ja.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md) |
 <!-- /BE-METADATA -->
@@ -358,14 +358,34 @@ instrumentation セッションです。階層をダンプするそのセッシ�
   2 段階目が本当の signal でした。このケースを書いた本来の実機レーン `conformance (adb)` が、push した
   コミットで失敗しました。落ちたのは新しいケースだけで、残り 19 件の適合性テストはすべて通っています。
   タップ対象の同一性と、その同じタップの結果として値が変わる要素とを同じ要素に同居させると、
-  `_device_act` の同一性で指す resolve してから inject する照合と衝突します。`LogScreen.kt` が
-  `log.longpress` と `log.longpress.value` を別々の要素に分けて、すでに避けている形と同じです。
-  修正は、このタップミラーの対にも同じ分割を一般化するものです。適合性ケースが届くすべてのバックエンド
-  に及びます。`driver_conformance.py` の共有定数と本体、`FakeDriver` と Playwright のハーネス
-  (Playwright 側は実際のドライバに対してもう一度手動で再確認しました。整形し直しただけではありません)、
-  そして Compose と SwiftUI の適合性画面です。この 1 つ前のエントリが積み残していた作業単位 6 の実機側を
-  これで閉じました。flake の残存率を測る Android レーンの繰り返しディスパッチが、作業単位 6 に残って
-  います。
+  `_device_act` の同一性で指す resolve してから inject する照合と衝突します。`LogScreen.kt` は
+  `log.longpress` と `log.longpress.value` を別々の要素に分けて、すでにこの形を避けています。修正は、
+  このタップミラーの対にも同じ分割を一般化するものでした。適合性ケースが届くすべてのバックエンドに
+  及びます。`driver_conformance.py` の共有定数と本体、`FakeDriver` と Playwright のハーネス、そして
+  Compose と SwiftUI の適合性画面です。
+  この分割は同一性の衝突を塞ぎました。分割したケースは実機で 2 回続けて通っています。ですが、別の
+  不具合を開けてしまいました。ミラー 1 対につき要素が 2 つ増えたことで、
+  `test_text_selection_capability_matches_behavior` の select-all/copy が走った後、エミュレータの UI
+  スレッドがスイートの残り全体で劣化しました。無関係な 3 件のテストが画面の再構成待ちでタイムアウト
+  しました。同じアクセシビリティツリーのダンプ(ソフトウェアキーボードを含む)が、30 秒の待機を
+  3 回とも同一のまま凍りつき、2 回連続で再現しました。同じ根拠から Compose の Column を
+  `verticalScroll` で包む修正も試しましたが、直りませんでした。3 回目の実行では同じ 3 件の失敗に加え、
+  今回は新しいケース自身も 6 秒を超えるアクセシビリティ publish の遅延でタイムアウトしました。その
+  遅延の根本原因を突き止めるには実機とその logcat が要ります。どちらもこの実行環境からは届きません。
+  証拠を持つ CI アーティファクトは、この環境のネットワークポリシーが塞いでいるホストの向こうにあります。
+  2 つの形を試し、実機での失敗が 2 通り出ました。3 つ目を実機なしで試す手立てはありませんでした。
+  同居させる形はこのケースが捕まえるはずの同一性の衝突を呼び戻し、分割した形はその周りのスイートを
+  劣化させます。`ConformanceScreen.kt` と `ConformanceView.swift` は、どちらも作業単位 6 に触れる前の
+  状態へ戻します。iOS レーンでは、ここでの push のたびに直前のコミットを追い越してしまい、実機の
+  Simulator の結果が届く前に上書きされ続けたため、タップミラーを一度も実行できていません。このケース
+  の実機側の実現は保留とし、`test_driver_conformance_ondevice_android.py` と
+  `test_driver_conformance_ondevice.py` の両方で、上記の理由とともに明示的にスキップします。実機に
+  アクセスできるセッションが劣化の原因を突き止めるまでの保留です。ケース自身と、その同一性を分割する
+  設計はそのまま残ります。`FakeDriver` と Playwright の上では決定的に実行され続け、`_device_act` の
+  衝突のクラスをすべての PR で高速ゲートを通じて捕まえます。これは、実際の CI の判定について規範 1 が
+  求めていることそのものです。
+  このケースの実機側の実現と、flake の残存率を測る Android レーンの繰り返しディスパッチが、作業単位 6
+  に残っています。
 
 ## 参考
 

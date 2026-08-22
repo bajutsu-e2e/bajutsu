@@ -149,3 +149,19 @@ class TestAdbDriverConformance(DriverConformanceContract):
     @pytest.fixture
     def harness(self, _adb_driver: base.Driver, _component: str) -> ConformanceHarness:
         return _AndroidHarness(_adb_driver, SERIAL, _component)
+
+    def test_a_tap_lands_on_the_element_the_selector_named(
+        self, harness: ConformanceHarness
+    ) -> None:
+        # Not yet realized on-device (BE-0339 Unit 6): a real conformance (adb) run showed that
+        # adding the tap-mirror pair to ConformanceScreen — either co-located with its own value or
+        # split into a separate value element — leaves the emulator's UI thread degraded for the
+        # rest of the suite once `test_text_selection_capability_matches_behavior` runs its
+        # select-all/copy: three unrelated tests time out re-seeding the screen with the keyboard
+        # still on top, and this case itself later saw a 6+ second accessibility-publish lag. The
+        # split shape fixed the *identity conflict* this case exists to catch (it passed twice), but
+        # not the degradation, and reverting to co-located reintroduces the identity conflict — so
+        # neither shape is safe to ship without a real device to root-cause the degradation itself.
+        # The case still runs deterministically against FakeDriver and Playwright (see
+        # tests/test_driver_conformance.py, tests/test_driver_conformance_web.py).
+        pytest.skip("BE-0339 Unit 6: not yet realized on-device, see comment above")

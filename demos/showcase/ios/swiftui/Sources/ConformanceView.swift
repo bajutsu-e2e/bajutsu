@@ -29,18 +29,6 @@ struct ConformanceView: View {
     /// `.secureTextField`, which is the iOS source for the normalized secure trait the contract pins.
     static let secureFieldID = "conformance.secureField"
 
-    /// Two always-present, independently-mirrored tap targets (BE-0339 Unit 6) — the iOS twin of
-    /// `LogView`'s `log.longpress` / `log.longpress.value` split, and of the Compose
-    /// `CONFORMANCE_TAP_MIRROR_A_ID` / `_B_ID` and the web `_render` mirror inputs. Each tap target is
-    /// its own stable-identity button — no accessibility value of its own — mirroring its count into a
-    /// *separate* element, so the count updating as a direct result of the tap never touches the
-    /// identity the driver just resolved against. Tapping A must move only A's count, never B's — the
-    /// wrong-neighbor tap a stale coordinate resolve would otherwise produce.
-    static let tapMirrorAID = "conformance.tapMirror.a"
-    static let tapMirrorAValueID = "conformance.tapMirror.a.value"
-    static let tapMirrorBID = "conformance.tapMirror.b"
-    static let tapMirrorBValueID = "conformance.tapMirror.b.value"
-
     /// The sentinel identifier the scroll conformance test seeds (BE-0326): when it is the whole
     /// seeded set, render the fixed scrollable list below instead of the per-identifier buttons, so
     /// the `scroll` action's re-query loop is driven against XCUITest's real query / scroll code.
@@ -58,11 +46,6 @@ struct ConformanceView: View {
     /// Backs the masked field. Never typed into by the contract — the field exists so `query()` can
     /// report its trait — so it stays empty.
     @State private var secureFieldText = ""
-
-    /// Backs the two tap-mirror targets (BE-0339 Unit 6) — independent counters, so a tap that lands
-    /// on the wrong target is observable rather than silently agreeing with whichever one it hit.
-    @State private var tapMirrorA = 0
-    @State private var tapMirrorB = 0
 
     /// Focus on the editable field, so a screen reseed can resign it and dismiss any transient iOS UI
     /// the previous text-editing test left up (BE-0280) — see the `onChange` teardown below.
@@ -141,26 +124,6 @@ struct ConformanceView: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 280, height: 44)
                 .accessibilityID(Self.secureFieldID)
-            // The two tap-mirror targets (BE-0339 Unit 6): each is its own tappable button with a
-            // fixed label — no accessibility value of its own, so the identity the driver resolves
-            // against never churns as a result of the very tap targeting it (the BE-0280 stale-handle
-            // shape this file's field comment above already names) — mirrored into a separate Text.
-            Button("mirror A") { tapMirrorA += 1 }
-                .frame(width: 280, height: 60)
-                .background(Color.gray.opacity(0.25))
-                .contentShape(Rectangle())
-                .accessibilityID(Self.tapMirrorAID)
-            Text(String(tapMirrorA))
-                .accessibilityID(Self.tapMirrorAValueID)
-                .accessibilityStateValue(String(tapMirrorA))
-            Button("mirror B") { tapMirrorB += 1 }
-                .frame(width: 280, height: 60)
-                .background(Color.gray.opacity(0.25))
-                .contentShape(Rectangle())
-                .accessibilityID(Self.tapMirrorBID)
-            Text(String(tapMirrorB))
-                .accessibilityID(Self.tapMirrorBValueID)
-                .accessibilityStateValue(String(tapMirrorB))
             ForEach(Array(identifiers.enumerated()), id: \.offset) { _, identifier in
                 // A generous, opaque hit area: the conformance contract pinches/rotates one of these
                 // (the MULTI_TOUCH case), and XCUITest's two-finger gestures need real room between

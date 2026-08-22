@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0339") |
-| Implementing PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455) (Units 1–3: the directional-gesture anchor, `POST /act`, and identity-addressed actuation), [#1702](https://github.com/bajutsu-e2e/bajutsu/pull/1702) (Unit 4 and Unit 6's fast-gate and on-device conformance coverage; a Unit 5 attempt reverted after review) |
+| Implementing PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455) (Units 1–3: the directional-gesture anchor, `POST /act`, and identity-addressed actuation), [#1702](https://github.com/bajutsu-e2e/bajutsu/pull/1702) (Unit 4 and Unit 6's fast-gate conformance coverage; a Unit 5 attempt reverted after review, Unit 6's on-device realization deferred after real-device evidence it wasn't safe to ship) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0332](../BE-0332-read-lag-barrier/BE-0332-read-lag-barrier.md), [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md), [BE-0312](../BE-0312-xcuitest-content-addressed-snapshot-handle/BE-0312-xcuitest-content-addressed-snapshot-handle.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) |
 <!-- /BE-METADATA -->
@@ -361,13 +361,32 @@ Log:
   targets, failed on the pushed commit. The new case alone failed. The other nineteen conformance
   tests passed. The design co-located a tap target's identity with the value that mutates from
   that same tap. That conflicts with `_device_act`'s identity-addressed resolve-then-inject match.
-  `LogScreen.kt` already avoids that shape. It keeps `log.longpress` and `log.longpress.value` on
-  separate elements. The fix generalizes that split to the tap-mirror pair. It reaches every
-  backend the conformance case touches: `driver_conformance.py`'s shared constants and test body;
-  the `FakeDriver` and Playwright harnesses (the Playwright side got a second, real-driver check,
-  beyond the reformat); and the Compose and SwiftUI conformance screens. That closes the on-device
-  half of Unit 6 the prior entry still owed. The repeated Android-lane dispatch that samples the
-  flake's residual rate is what Unit 6 still owes.
+  `LogScreen.kt` already avoids that shape: it keeps `log.longpress` and `log.longpress.value` on
+  separate elements. A fix generalized that split to the tap-mirror pair, across every backend the
+  conformance case reaches: `driver_conformance.py`'s shared constants and test body, the
+  `FakeDriver` and Playwright harnesses, and the Compose and SwiftUI conformance screens.
+  That fix closed the identity conflict — the split case passed on real hardware twice — but opened
+  a second problem. Two extra elements per mirror left the emulator's UI thread degraded for the
+  rest of the suite once `test_text_selection_capability_matches_behavior`'s select-all/copy ran:
+  three unrelated tests timed out re-seeding the screen, an identical accessibility-tree dump
+  (software keyboard included) frozen across all three thirty-second polls, twice in a row. A
+  wrapped `verticalScroll` on the Compose column, reasoned from the same evidence, did not fix it;
+  a third run showed the identical three failures plus, this time, the new case itself timing out
+  on a six-second-plus accessibility-publish lag. Root-causing that lag needed a real device and
+  its logcat, neither reachable from this environment — the CI artifact holding it sits behind a
+  host the network policy here blocks.
+  Two shapes, two different real-hardware failures, and no way to test a third without a device to
+  watch it on: co-located reintroduces the identity conflict this case exists to catch; split
+  degrades the suite around it. Both `ConformanceScreen.kt` and `ConformanceView.swift` revert to
+  their pre-Unit-6 state — neither ever shipped a tap mirror the iOS lane got to run, since every
+  push here superseded the last before a real Simulator result landed. The on-device realization of
+  this one contract case waits, skipped explicitly in both `test_driver_conformance_ondevice_android.py`
+  and `test_driver_conformance_ondevice.py` with the reasoning above, pending a session with real
+  device access to diagnose the degradation. The case itself, and its split-identity design, stand: they run
+  deterministically on `FakeDriver` and Playwright, catching the `_device_act` conflict class on
+  every PR through the fast gate, which is what prime directive 1 asks of the actual CI verdict.
+  The on-device realization of this case and the repeated Android-lane dispatch that samples the
+  flake's residual rate are what Unit 6 still owes.
 
 ## References
 

@@ -8,9 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -49,18 +47,6 @@ const val CONFORMANCE_SCROLL_ROW_PREFIX = "conformance.scroll.row."
 const val CONFORMANCE_SCROLL_ROW_COUNT = 20
 const val CONFORMANCE_SCROLL_TALL_ID = "conformance.scroll.tall"
 
-// Two always-present, independently-mirrored tap targets (BE-0339 Unit 6) — the Compose twin of
-// LogScreen's log.longpress / log.longpress.value split, and of the iOS ConformanceView.tapMirrorAID
-// / tapMirrorBID and the web _render mirror inputs. Each tap target is its own stable-identity box —
-// no stateValue of its own — and mirrors its count into a *separate* element, so the count updating
-// as a direct result of the tap never touches the identity the driver just resolved against. Tapping
-// A must move only A's count, never B's — the wrong-neighbor tap a stale coordinate resolve would
-// otherwise produce.
-const val CONFORMANCE_TAP_MIRROR_A_ID = "conformance.tapMirror.a"
-const val CONFORMANCE_TAP_MIRROR_A_VALUE_ID = "conformance.tapMirror.a.value"
-const val CONFORMANCE_TAP_MIRROR_B_ID = "conformance.tapMirror.b"
-const val CONFORMANCE_TAP_MIRROR_B_VALUE_ID = "conformance.tapMirror.b.value"
-
 // BE-0114 / BE-0270: the on-device realization of a driver-conformance screen for the adb backend,
 // the Compose twin of the iOS ConformanceView. The conformance suite seeds an arbitrary set of
 // identifiers — duplicated (an ambiguous selector), empty (a zero-match), or unique — and each
@@ -80,14 +66,7 @@ fun ConformanceScreen(identifiers: List<String>) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .enableTestTagsAsResourceId()
-            // Scrollable (BE-0339 Unit 6): the two tap-mirror pairs each now carry a stable tap
-            // target plus a separate mirrored-value element (four elements instead of two), so an
-            // unscrolled column can run out of vertical room once a lingering keyboard from an
-            // earlier text-editing case (select-all/copy leaves it up, the same transient-UI class
-            // BE-0280 already names) covers part of the screen — pushing the seeded identifier
-            // boxes below the visible fold and out of the accessibility dump `_await_screen` reads.
-            .verticalScroll(rememberScrollState()),
+            .enableTestTagsAsResourceId(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
     ) {
@@ -125,29 +104,6 @@ fun ConformanceScreen(identifiers: List<String>) {
                 .aid(CONFORMANCE_SECURE_FIELD_ID)
                 .semantics { password() },
         )
-        // The two tap-mirror targets (BE-0339 Unit 6): each is its own tappable box, its own counter,
-        // mirrored into a separate element's content-desc — independent state, so a tap that lands on
-        // the wrong one is observable rather than silently agreeing with whichever counter it hit.
-        var mirrorA by remember { mutableStateOf(0) }
-        Box(
-            modifier = Modifier
-                .size(width = 280.dp, height = 60.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .aid(CONFORMANCE_TAP_MIRROR_A_ID)
-                .clickable { mirrorA++ },
-            contentAlignment = Alignment.Center,
-        ) { Text(mirrorA.toString()) }
-        Text(mirrorA.toString(), Modifier.aid(CONFORMANCE_TAP_MIRROR_A_VALUE_ID).stateValue(mirrorA.toString()))
-        var mirrorB by remember { mutableStateOf(0) }
-        Box(
-            modifier = Modifier
-                .size(width = 280.dp, height = 60.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .aid(CONFORMANCE_TAP_MIRROR_B_ID)
-                .clickable { mirrorB++ },
-            contentAlignment = Alignment.Center,
-        ) { Text(mirrorB.toString()) }
-        Text(mirrorB.toString(), Modifier.aid(CONFORMANCE_TAP_MIRROR_B_VALUE_ID).stateValue(mirrorB.toString()))
         // Duplicates are the point (the ambiguous-selector case), so the children are keyed by
         // position (Column's default), never by identifier — keying by id would collapse repeats.
         identifiers.forEach { identifier ->
