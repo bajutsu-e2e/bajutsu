@@ -158,9 +158,9 @@ class Collector(Protocol):
 
     def snapshot(self) -> list[NetworkExchange]: ...  # observed exchanges, in arrival order
     def snapshot_timed(self) -> list[tuple[NetworkExchange, float]]: ...  # each + receive time
-    # Drop what the run loop scopes to one scenario: the observed exchanges, the transition events
-    # below, and on a collector carrying the in-app control channel (BE-0365) its pending commands.
-    def clear(self) -> None: ...
+    # Also drops the transition events below, and on a collector carrying the in-app control
+    # channel a command left undrained plus its report (BE-0365).
+    def clear(self) -> None: ...  # drop what the run loop scopes to one scenario
     def stop(self) -> None: ...  # release the observation resource (HTTP receiver / event hooks)
     # Screen-transition events (BE-0310), each with its receive time; independent of the exchanges
     # above. A collector with no such observer (web, fake) returns an empty list.
