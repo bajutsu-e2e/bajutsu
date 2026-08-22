@@ -74,9 +74,11 @@ subagent `pr-followup`'s steps, `pr-followup` passes it on to the sub-step invoc
 absence means attended. The other input shape is a resumed invocation: an approved new-issue
 draft — title, body, and label — from which the skill resumes directly at step 5's
 `gh issue create`, since the human already gave explicit approval on a later turn, against the
-draft the loop's report showed them. Only an attended turn can carry this input; an unattended run
-never resumes on its own — resuming with no human present would file the draft with no approval at
-all, exactly what the confirmation gate exists to prevent. A comment on one of the candidate
+draft the loop's report showed them. Only an attended turn can carry this input: the skill refuses a
+resumed invocation that arrives with the unattended flag set — that flag is its only signal that a
+human is in the turn — and returns the draft as a pending draft again rather than filing it, since
+resuming with no human present would file the draft with no approval at all, exactly what the
+confirmation gate exists to prevent. A comment on one of the candidate
 matches that an unattended run carried is the human's own follow-up from there, outside this resume
 path.
 
@@ -146,7 +148,9 @@ that matters — the skill files nothing and stalls nothing: it returns the fini
 **pending-draft** field of the iteration's structured summary, distinct from the escalation field
 `implement-be` step 12 already reads (the field `pr-followup` step 4 routes a self-review-only
 finding through, and which the loop treats as a stop signal), so the human sees the draft when the
-loop reports, and approves it on a later turn. Step 2's new-issue-or-comment choice, and a
+loop reports, and approves it on a later turn; the loop carries every pending draft its iterations
+returned into its own final report, so a draft returned early survives to the report the human
+reads. Step 2's new-issue-or-comment choice, and a
 roadmap-filter hit's stop-or-proceed choice, defer the same way rather than being settled
 unattended: the skill drafts for a new issue and carries every candidate it found — issue matches
 and any roadmap-filter hit — beside the draft, so the human decides whether to approve it, comment
@@ -199,6 +203,8 @@ would add process without adding information.
 - [ ] Wire the loop layer: `implement-be` step 12 states whether a human is in the turn when it
       hands a subagent `pr-followup`'s steps, and its structured-summary contract gains a
       pending-draft field, kept distinct from the escalation field so a draft never stops the loop.
+      Step 12 also carries every pending draft its iterations returned into its own final report,
+      so a draft returned early in a run still reaches the human.
 - [ ] Documentation wiring: `docs/ai-development.md` (+ ja) and `CLAUDE.md`, including the Claude
       adapter's default `model:` tier (BE-0103).
 - [ ] Verify the standalone path and at least one calling-skill path (for example `pr-followup`
