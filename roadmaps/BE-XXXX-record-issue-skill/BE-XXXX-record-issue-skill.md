@@ -119,7 +119,10 @@ gate, which no calling skill may skip on the invoker's behalf. When no human is 
 that matters — the skill files nothing and stalls nothing: it returns the finished draft in the
 iteration's structured summary, the channel `implement-be` step 12 already reads and
 `pr-followup` step 4 already uses for a self-review-only finding, so the human sees it when the
-loop reports and approves it on a later turn. A pending draft is deliberately not an escalation:
+loop reports and approves it on a later turn. Step 2's new-issue-or-comment question defers the
+same way rather than being settled unattended: the skill drafts for a new issue and carries step
+2's candidate matches beside it, so the human who approves makes that call too. A pending draft
+is deliberately not an escalation:
 every entry in BE-0230's escalation list stops the loop and hands the PR to the human, which an
 incidental out-of-scope note should never do to an otherwise-healthy follow-up loop.
 
