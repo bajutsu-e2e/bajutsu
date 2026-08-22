@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0365") |
+| 実装 PR | [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699)（単位 1） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0364](../BE-0364-in-app-control-channel/BE-0364-in-app-control-channel-ja.md) |
 <!-- /BE-METADATA -->
@@ -164,6 +165,15 @@ bajutsu が走っているアプリへコマンドを届ける経路であり、
 - [ ] 単位 5 — 日英両言語のドキュメント。この経路が必須にするリリースビルドの締め出しを含む
 
 ログ：
+
+- [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699)：単位 1。コレクタの保留コマンドキュー、それを引き取る認証付きの `GET /commands`、
+  そして `/commands/ack` の完了報告エンドポイントを実装しました。完了報告は `do_POST` の catch-all より
+  前で照合するので、`request` アサーションが読む exchange に混入しません。完了報告の `applied` は
+  省略できないため、引き取ったが適用できなかったコマンドは、適用できたコマンドとは別の知らせになります。
+  `clear()` は経路の状態をシナリオ単位に閉じ、id のカウンタだけは残します。未知の `GET` のパスは空の
+  200 ではなく 404 を返します。同じ変更で、この項目と重複していた BE-0364 を却下しました。BE-0364 の
+  ほうが精密だった 2 点は単位 1 と単位 2 に取り込みました。BE-0371 のタッチ可視化がまだ `main` に
+  入っていないというこの項目の古い記述も改めました。
 
 ## 参考
 

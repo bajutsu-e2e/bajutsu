@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0365") |
+| Implementing PR | [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699) (unit 1) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0364](../BE-0364-in-app-control-channel/BE-0364-in-app-control-channel.md) |
 <!-- /BE-METADATA -->
@@ -171,6 +172,15 @@ tested and splitting it changes what is under test.
 - [ ] Unit 5 — bilingual documentation, including the release-build gating this makes mandatory
 
 Log:
+
+- [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699) — unit 1: the collector's pending-command queue, the authenticated `GET /commands`
+  that drains it, and the `/commands/ack` report endpoint, matched ahead of `do_POST`'s catch-all so a
+  report never enters the exchanges a `request` assertion reads. The report's `applied` carries no
+  default, so a command the app drained but could not apply is a distinct message from one it applied.
+  `clear()` scopes the channel per scenario while the id counter survives, and an unknown `GET` path
+  now answers 404 rather than an empty 200. Rejected BE-0364 as a duplicate of this item in the same
+  change, folding its two sharper points into units 1 and 2, and retired this item's stale claim that
+  BE-0371's touch visualization was not yet on `main`.
 
 ## References
 
