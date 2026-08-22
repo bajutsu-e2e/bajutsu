@@ -7,9 +7,11 @@
 |---|---|
 | Proposal | [BE-0365](BE-0365-in-app-control-channel.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0365") |
+| Implementing PR | [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699) (unit 1) |
 | Topic | Driver & backend architecture |
+| Related | [BE-0364](../BE-0364-in-app-control-channel/BE-0364-in-app-control-channel.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -27,14 +29,15 @@ carries operational commands only, never a judgement, so the deterministic verdi
 One shipped feature and one in-flight design are bounded by the missing direction, and both give up
 the same way.
 
-The `visualize-touches-in-app` item, not yet on `main`, proposes an in-app touch visualization: it
-draws a marker at each touch the app receives, and the marks persist until the next gesture, so a
-step's screenshot carries them. That
+[BE-0371](../BE-0371-visualize-touches-in-app/BE-0371-visualize-touches-in-app.md) ships an in-app
+touch visualization behind `bajutsu run --touch-markers`: it draws a marker at each touch the app
+receives, and the marks persist until the next gesture, so a step's screenshot carries them. That
 collides with a `visual` assertion, which compares a screenshot against a checked-in baseline: the
 markers land in the very image the comparison reads. The right behaviour would be to hide the marks
-for that one capture and restore them after. Because the launch environment is the only way in, that
-item's design instead turns the visualization off for the *whole scenario* — coarser than the problem, and it costs
-the investigator the touch evidence for exactly the scenario they were looking at.
+for that one capture and restore them after. Because the launch environment is the only way in,
+`--touch-markers` instead leaves the markers off for the *whole scenario* whenever that scenario's
+verdict compares a screenshot — coarser than the problem, and it costs the investigator the touch
+evidence for exactly the scenario they were looking at.
 
 Request stubbing is bounded the same way. `BajutsuNet.startIfEnabled()` loads the scenario's rules
 once, from the launch environment (`BajutsuKit/Sources/BajutsuKit/BajutsuNet.swift:29`), so a
@@ -118,9 +121,9 @@ The units below are mutually exclusive and collectively exhaustive.
 
 | Unit | Work |
 |---|---|
-| 1 | The queue: a pending-command list on `NetworkCollector`, an authenticated `GET` that drains it, and an acknowledgement endpoint, with the token check applied exactly as `do_POST` applies it today |
-| 2 | The app side: a poll loop and command dispatch in `BajutsuKit`, activated by its own launch-env key and inert without it, plus the acknowledgement POST on the existing report session |
-| 3 | The wait: a condition wait on the acknowledgement in the run loop, failing loudly on timeout, and the first command — toggling the touch visualization around a screenshot-comparing step, replacing that item's whole-scenario opt-out. This is the one unit with an ordering dependency: it cannot land before the `visualize-touches-in-app` item does, because until then there is no visualization to toggle |
+| 1 | The queue: a pending-command list on `NetworkCollector`, an authenticated `GET` that drains it, and an acknowledgement endpoint matched *ahead of* `do_POST`'s catch-all, which stores every other path as a network exchange — so a completion report never enters the exchanges a `request` assertion reads. The report says whether the app *applied* the command, and carries the app's own reason when it did not, so "applied it" and "drained it and could not apply it" never reach unit 3's wait as the same message. The token check applies exactly as `do_POST` applies it today, and `clear()` drops the pending queue alongside the exchanges, so a command one scenario left undrained is never delivered to the next |
+| 2 | The app side: a poll loop and command dispatch in `BajutsuKit`, compiled out unless an explicit build setting selects it and, when compiled in, activated by its own launch-env key and inert without it — so the launch env is never the only guard. Includes the acknowledgement POST on the existing report session |
+| 3 | The wait: a condition wait on the acknowledgement in the run loop, failing loudly on timeout, and the first command — toggling BE-0371's touch visualization around a screenshot-comparing step, replacing the whole-scenario opt-out `--touch-markers` performs today. The wait reaches the app through the `Collector` protocol the pipeline already drives, so this unit also states which collectors carry a channel, and makes a command issued against one that does not fail loudly rather than be skipped |
 | 4 | The second command: a mid-scenario stub-table replacement, so a scenario can change a mocked response without being split in two |
 | 5 | Documentation in both languages: the channel, its activation key, the boundaries above, and the release-build gating the channel makes mandatory |
 
@@ -162,18 +165,34 @@ tested and splitting it changes what is under test.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — the collector's command queue, authenticated drain, and acknowledgement endpoint
+- [x] Unit 1 — the collector's command queue, authenticated drain, and acknowledgement endpoint
 - [ ] Unit 2 — the app-side poll loop and command dispatch, env-gated and inert by default
 - [ ] Unit 3 — the acknowledgement condition wait, and the touch-visualization toggle as the first command
 - [ ] Unit 4 — mid-scenario stub-table replacement as the second command
 - [ ] Unit 5 — bilingual documentation, including the release-build gating this makes mandatory
 
+Log:
+
+- [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699) — unit 1: the collector's pending-command queue, the authenticated `GET /commands`
+  that drains it, and the `/commands/ack` report endpoint, matched ahead of `do_POST`'s catch-all so a
+  report never enters the exchanges a `request` assertion reads. The report's `applied` carries no
+  default, so a command the app drained but could not apply is a distinct message from one it applied.
+  `clear()` scopes the channel per scenario while the id counter survives, and an unknown `GET` path
+  now answers 404 rather than an empty 200. Rejected BE-0364 as a duplicate of this item in the same
+  change, folding its two sharper points into units 1 and 2, and retired this item's stale claim that
+  BE-0371's touch visualization was not yet on `main`.
+
 ## References
 
 - [`BajutsuKit/README.md`](../../BajutsuKit/README.md) — the in-app package this channel extends, and
   the Safety guidance the channel makes mandatory rather than advisory.
-- [`docs/evidence.md`](../../docs/evidence.md) — the evidence kinds a run captures, and where the
-  touch visualization is documented once the `visualize-touches-in-app` item lands.
+- [`docs/evidence.md`](../../docs/evidence.md) — the evidence kinds a run captures, including the
+  `--touch-markers` section whose closing paragraph states the limit this item removes.
+- [BE-0371 — Draw a marker at each touch the app receives so recordings show where a gesture landed](../BE-0371-visualize-touches-in-app/BE-0371-visualize-touches-in-app.md)
+  — the shipped visualization unit 3 toggles; its ordering dependency is therefore already settled.
 - [BE-0291 — Reuse the XCUITest runner across scenarios to amortize cold startup](../BE-0291-xcuitest-runner-reuse-across-scenarios/BE-0291-xcuitest-runner-reuse-across-scenarios.md)
   — the relaunch behaviour that gives per-scenario granularity for free, and therefore bounds what
   this item still has to add.
+- [BE-0364 — Add a control channel so bajutsu can hide the touch visualization for a single capture](../BE-0364-in-app-control-channel/BE-0364-in-app-control-channel.md)
+  — the same channel proposed in parallel and rejected in favour of this item; two details it argued
+  more precisely are folded into the work breakdown above.

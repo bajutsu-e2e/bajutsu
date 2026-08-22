@@ -229,6 +229,8 @@ Claude Codeのハーネスはスキル実行時にこれを読み、正しいモ
 - [`implement-be`](../../.claude/skills/implement-be/SKILL.md)：`opus`（重）
 - [`propose-and-build`](../../.claude/skills/propose-and-build/SKILL.md)：`opus`（重）。Phase B で
   プロダクトコードを実装するので、`implement-be` と同じ段階にします。
+- [`fix-issue`](../../.claude/skills/fix-issue/SKILL.md)：`opus`（重）。素のGitHub Issueに対して
+  プロダクトコードを出荷するので、`implement-be` と同じ理由で同じ段階にします。
 - [`ideation`](../../.claude/skills/ideation/SKILL.md)：`sonnet`（中）
 - [`document-writing`](../../.claude/skills/document-writing/SKILL.md)：`sonnet`（中）
 - [`english-document-writing`](../../.claude/skills/english-document-writing/SKILL.md)：`sonnet`（中）
@@ -317,6 +319,16 @@ pull request をレビューする仕事で、変更全体をその価値で量�
 作者がレビューで設計が変わらないと見込む、小さくよく絞られた項目です。1 つの PR は設計のチェックポイントを
 コードレビューと一体にするので、マージは提案と実装を一度に受け入れます。固まった設計にとっては素直な形ですが、
 レビューが提案を変えれば手戻りを負うので、設計が本当に不確かなときは直列の経路に戻してください。
+
+**ロードマップ項目にならない作業**には、3 つのどれも当てはまりません。兄弟となる経路が
+[`fix-issue`](../../.agent-workflows/fix-issue/workflow.md) です
+（[BE-0380](../../roadmaps/BE-0380-fix-issue-skill/BE-0380-fix-issue-skill-ja.md)）。素のGitHub Issue、
+つまり小さな不具合やちょっとした使い勝手の悪さ、範囲の定まった改善を、`implement-be` 自身の実装、
+レビュー、ゲート、フォローアップの手順に載せて出荷します。違うのは 2 点だけです。担当はIssue自身の
+Assignee欄で確保し、Issueを閉じるのは `Status` の切り替えではなく、PR 本文の `Closes #<N>` です。
+ロードマップ項目に
+するかどうかの境界も `fix-issue` 自身が判断し、設計の判断が必要だとわかった修正は、出荷せずに
+`ideation` か `propose-and-build` へ委ねます。
 
 ## プルリクエスト: タイトルと本文
 

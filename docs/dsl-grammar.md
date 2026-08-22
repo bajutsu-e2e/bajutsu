@@ -134,8 +134,10 @@ Preconditions ::= {
 # Native SpringBoard query + tap on XCUITest (no model, reusing BE-0316); AI-vision fallback (BE-0315).
 SystemAlertHandling ::= boolean                                   # shorthand for { enabled: <bool> }
                | { enabled?: boolean,                       # default true
+                   rules?: [<SystemAlertRule>],              # answer a named prompt by choice; checked before instruction
                    instruction?: string | [string],         # [labels] = native; "text" = vision (else dismiss)
                    pollInterval?: number }                   # native poll cadence, seconds (default 1)
+SystemAlertRule ::= { prompt: notifications|tracking|paste, choice: grant|deny }  # unique prompt per list
 
 Permissions ::= map(PermissionService, PermissionAction)    # applied before the app launches
 PermissionService ::= "location" | "camera" | "microphone" | "contacts"
@@ -384,6 +386,7 @@ Omitted optional keys take these values (so a minimal scenario is just `name` + 
 | `Preconditions.launchArgs` | `[]` |
 | `Preconditions.launchEnv` | `{}` |
 | `SystemAlertHandling.enabled` | `true` |
+| `SystemAlertHandling.rules` | `[]` (no named-prompt rules; `instruction`/the built-in dismissive labels answer every prompt) |
 | `TypeText.submit` | `false` |
 | `Exists.negate` | `false` |
 | `MockResponse.status` | `200` |

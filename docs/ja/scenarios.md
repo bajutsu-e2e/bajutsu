@@ -117,6 +117,7 @@ iOS バックエンドは **SpringBoard レベルのプロンプト**（通知�
 |---|---|
 | （省略） | ON。**最も無害な**ボタンを押す（"Not Now" / "Don't Allow" / "Cancel"） |
 | `systemAlertHandling: false` | このシナリオでは無効 |
+| `systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` | ON。**名指しした対応済みプロンプト**に、他のプロンプトとどのラベルを共有していても、その規則自身の選択で答える |
 | `systemAlertHandling: { instruction: ["Allow", "OK"] }` | ON。ネイティブ経路がこれらのうちアラートに存在する最初の label を押す。たとえば権限を**許可**する場合 |
 | `systemAlertHandling: { instruction: "tap Allow" }` | ON。**vision** guard が解釈する自由文字列（正確な label を要するネイティブ経路は、既定の無害な label 群にフォールバックする） |
 | `systemAlertHandling: { pollInterval: 2 }` | ON。ネイティブの presence 照会を既定の 1 秒ではなく 2 秒間隔でポーリングする |
@@ -131,6 +132,28 @@ iOS バックエンドは **SpringBoard レベルのプロンプト**（通知�
 ```
 
 `instruction` は、ネイティブ経路が決定論的に解決する候補 label のリストです（アラートに存在する最初の label を、それを持つボタンがちょうど 1 つのときにだけ押します）。素の文字列は、vision guard が解釈する従来の自由文字列の形です。CLI の `--system-alert-handling` / `--no-system-alert-handling` フラグは**全シナリオを上書き**します（無指定ならシナリオごとの既定が使われます）。`--alert-instruction` は既定のボタン指示を設定するもので、シナリオ自身の `instruction` が優先されます。（[`demos/showcase/scenarios/permission.yaml`](../../demos/showcase/scenarios/permission.yaml) 実物）
+
+### 複数のプロンプトに違う答えを返す: `rules`
+
+順序付きの `instruction` は、ラベル表が対応するプロンプトに対する許可と拒否のどの組み合わせにも到達できます。ただし到達できるのは、2つのプロンプトがたまたま共有するラベルから作者が導いた順序を書いたときだけであり、自然に読める順序を書くと、シナリオが拒否するつもりのプロンプトを黙って許可してしまいます。`rules` は `handleSystemAlert` 自身の `prompt`/`choice` の語彙を再利用して、対応済みのプロンプトに名前で答えます。
+
+```yaml
+- name: onboarding — accept notifications, refuse tracking
+  systemAlertHandling:
+    rules:
+      - prompt: notifications
+        choice: grant
+      - prompt: tracking
+        choice: deny
+    instruction: ["Not Now"]          # どの規則も同定しなかったアラート
+  steps:
+    - tap:  { id: onboarding.start }
+    - wait: { for: { id: home.title }, timeout: 10 }
+```
+
+ガードは、規則の順序ではなく、その規則のプロンプトから画面上のどのアラートかを同定します。実行時のロケールで解決した、許可側と拒否側の両方のラベルがアラート上に揃っていなければなりません。同じプロンプトを指定する規則が2つあると解析時に失敗します。`rules` は `instruction` より先に参照され、`instruction` はどの規則も名指ししなかったプロンプトの受け皿として残るので、2つのフィールドは排他ではなく組み合わせて使えます。
+
+`rules` が方向づけるのは**決定論的なネイティブ経路だけ**です。どの規則も同定しなかったアラート、つまりラベル表の外にあるもの、SpringBoard の照会が列挙できない画面、あるいはネイティブ経路を持たないバックエンド上のあらゆるアラートは、AI 視覚のフォールバックに届きます。そしてそのフォールバックに規則は何も伝えません。規則のラベルは別のプロンプトへの答えなので、渡せばシナリオが名指ししていないプロンプトを受諾する方向へモデルを押してしまいます。フォールバックに動いてほしいものには `instruction` を与えてください。規則だけなら、フォールバックは自身の最も無害な既定のままです。
 
 > **`alertHandling` からの改名で、`alertHandling` 自体も `dismissAlerts` からの改名でした。** リアクティブなガードの設定名が「システムアラート」を明示し、下記の `handleSystemAlert` ステップと対で読めるよう、フィールドと CLI フラグを `systemAlertHandling` / `--system-alert-handling` に改名しました。`alertHandling`
 > （[BE-0317](../../roadmaps/BE-0317-rename-dismiss-alerts-to-alert-handling/BE-0317-rename-dismiss-alerts-to-alert-handling-ja.md)）
@@ -181,7 +204,7 @@ iOS バックエンドは **SpringBoard レベルのプロンプト**（通知�
 使う前に知っておきたい制限が 2 つあります。
 
 - **Simulator 専用です。** 言語の固定は `simctl` の操作なので、`xcuitest.deviceType: device` の target は実機が持つシステム言語のまま動きます。この形では、画面に出ている保証のない label を解決してしまいます。実機ではボタンを `sel.label` で指定してください。
-- **リアクティブなガードが持つ拒否ラベルの初期値は英語のままです。** `systemAlertHandling` が組み込みで持つラベル（`Don't Allow`、`Not Now`、`Cancel` など）は英語の文字列そのものです。そのため英語以外の `locale` ではネイティブ経路が一致せず、AI 視覚のガードへフォールバックします。決定的に保つには、固定した言語のラベルを `instruction` のリストで明示してください。
+- **リアクティブなガードが持つ拒否ラベルの初期値は英語のままです。** `systemAlertHandling` が組み込みで持つラベル（`Don't Allow`、`Not Now`、`Cancel` など）は英語の文字列そのものです。そのため英語以外の `locale` ではネイティブ経路が一致せず、AI 視覚のガードへフォールバックします。ラベル表が対応するプロンプトについては、`rules`（上記）の1エントリが固定した言語向けにラベルを解決するので、決定的なまま保てます。それ以外のプロンプトには `instruction` のリストを明示してください。
 
 （実物は [`demos/showcase/scenarios/permission_system_alert.yaml`](../../demos/showcase/scenarios/permission_system_alert.yaml) と [`demos/showcase/scenarios/paste_system_alert.yaml`](../../demos/showcase/scenarios/paste_system_alert.yaml)）
 
