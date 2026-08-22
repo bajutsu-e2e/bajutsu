@@ -39,8 +39,14 @@ from bajutsu.evidence.redaction import PLACEHOLDER as _PLACEHOLDER
 _HEADER_SECRET = "demo-secret-abc123"
 _BODY_SECRET = "hunter2"
 
-# A non-secret key of the same submit body, so over-redaction is distinguishable from redaction.
+# Two non-secret parts of the same submit body, so over-redaction is distinguishable from redaction:
+# a key, which a body replaced wholesale would lose, and a key/value pair, which masking every value
+# would. `count` is the Log screen's stepper, whose `@State` default is 1 and which the lane's
+# scenarios never tap, and Swift's `JSONSerialization` emits compact JSON — so the pair is written
+# verbatim, with no spacing to depend on.
 _KEPT_FIELD = '"note"'
+_KEPT_NUMBER_FIELD = "count"
+_KEPT_PAIR = f'"{_KEPT_NUMBER_FIELD}":1'
 
 # The two exchanges the lane's scenarios produce: the mocked Log submit and the observed catalog GET.
 _MOCK_PATH = "/post"
@@ -106,12 +112,21 @@ def _check_mocked_submit(exchanges: list[dict[str, Any]]) -> None:
         _fail("the password body field leaked its value into network.json")
     if _PLACEHOLDER not in body:
         _fail(f"the password body field was not masked to {_PLACEHOLDER}")
-    # Redaction has to be surgical, not total: a redactor that replaced the *whole* body with the
-    # placeholder would satisfy both checks above while destroying the evidence they exist to
-    # validate. `note` is the submit's own non-secret field, so its key surviving is what separates
-    # "masked the secret" from "masked everything".
+    # Redaction has to be surgical, not total: both checks above hold for a body that carries nothing
+    # but the placeholder. Two rules, because a body can lose its non-secret content two ways. It can
+    # be replaced wholesale, losing the non-secret *keys* — which `Redactor` alone cannot do
+    # (`redaction._masked` rewrites a matched field in place and leaves every other key), but the body
+    # also passes through the app's report, the collector, and the evidence writer on its way to disk,
+    # so the key rule guards that stretch.
     if _KEPT_FIELD not in body:
         _fail(f"the non-secret {_KEPT_FIELD} field did not survive redaction")
+    # Or every key survives and every *value* is masked, which is the redactor's own over-reach: widen
+    # the target's `redact.fields` / `headers`, or grow a `CREDENTIAL_SHAPES` pattern into something
+    # ordinary text matches (`sink._scrub` runs those over every serialized artifact), and the body
+    # reads all-placeholder while the key rule above still passes. Only a pinned non-secret value
+    # catches that.
+    if _KEPT_PAIR not in body:
+        _fail(f"the non-secret {_KEPT_PAIR} value did not survive redaction")
 
 
 def _check_observed_catalog(exchanges: list[dict[str, Any]]) -> None:

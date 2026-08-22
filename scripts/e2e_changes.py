@@ -55,8 +55,11 @@ in ``affected``); a dimension job that declares no scenario runs whenever ``rele
 iOS the ``codegen``, ``visual``, and ``network`` jobs are scenario-keyed too (BE-0338): they declare
 their scenarios in ``demos/showcase/Makefile`` targets rather than a workflow input, so
 ``job_scenario_map`` never sees them — ``lane_job_scenario_map`` folds those Makefile-declared
-scenarios into the map, leaving ``conformance`` (which drives the whole harness, keyed on no
-scenario) the lane's one dimension job. The decision over-selects toward the whole lane — a shared-code
+scenarios into the map. What the ``affected`` narrowing then leaves on iOS is ``conformance`` and
+``fault-injection``, each driving the whole harness on no scenario subset and so firing whenever
+``relevant`` is true; ``build``, which stages the products every consumer job installs, on the same
+bare guard; and ``pool``, keyed on the ``pool`` output above rather than on any scenario it names.
+The decision over-selects toward the whole lane — a shared-code
 change, an unattributable scenario fragment, an unreadable workflow, and a lane with no
 scenario-keyed jobs (Android, web) all fall back to ``shared`` — so it never skips a job a change
 could have broken. It reads only the ``git`` diff, the ``scenarios:`` each job declares, and (for the

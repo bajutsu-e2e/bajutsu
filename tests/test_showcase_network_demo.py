@@ -31,6 +31,8 @@ from demos.showcase.network.assert_network_evidence import (
     _BODY_SECRET,
     _HEADER_SECRET,
     _KEPT_FIELD,
+    _KEPT_NUMBER_FIELD,
+    _KEPT_PAIR,
     _LIVE_PATH,
     _MOCK_PATH,
     main,
@@ -132,9 +134,19 @@ def test_every_redacted_field_is_a_key_the_app_actually_sends() -> None:
     source = _log_view_source()
     for field in _showcase_redact().fields:
         assert f'"{field}"' in source, field
-    # And the non-secret key the checker requires to survive redaction, so over-redaction stays
-    # detectable (`_KEPT_FIELD` is already quoted).
+    # And the two non-secret parts the checker requires to survive redaction, so over-redaction stays
+    # detectable (both constants are already quoted). The pair's *value* is pinned separately: it is
+    # the stepper's `@State` default, which the lane's scenarios never tap, so a source edit raising
+    # the default is what would silently turn the value rule into a check on a string nothing sends.
     assert _KEPT_FIELD in source
+    assert f'"{_KEPT_NUMBER_FIELD}"' in source
+    assert f"var {_KEPT_NUMBER_FIELD} = {_KEPT_PAIR.rpartition(':')[2]}" in source
+    # The value half's other precondition: the pair holds only while nothing moves the stepper. Any
+    # mention of its id in the lane's own scenarios fails here — read or write, since a scenario that
+    # needs one is the moment to re-derive the pinned value rather than let the metered macOS lane
+    # report a scenario edit as a redaction failure.
+    for name in ("network_mock.yaml", "network_live.yaml"):
+        assert "log.count" not in (_SCENARIOS / name).read_text(encoding="utf-8"), name
 
 
 def test_an_unmocked_exchange_is_persisted_with_mocked_explicitly_false(tmp_path: Path) -> None:
@@ -254,9 +266,29 @@ def _set(key: str, value: Any) -> Callable[[dict[str, Any]], None]:
         # than masked — so the evidence no longer records that a credential was ever sent. Only the
         # "placeholder present" rule separates masking from deletion.
         pytest.param(_set("requestBody", '{"note":"","count":1}'), id="password-field-dropped"),
-        # Over-redaction: both "secret gone" and "placeholder present" hold, yet the evidence is
-        # useless. Only the non-secret-field check separates this from a correct masking.
+        # The over-redaction shapes, one case each so neither kept-part rule ships untested.
+        # A non-secret key gone while the rest of the body is intact — only the kept-*key* rule
+        # reaches this one; the kept-value rule below is satisfied.
+        pytest.param(
+            _set("requestBody", f'{{{_KEPT_PAIR},"password":"{PLACEHOLDER}"}}'),
+            id="a-non-secret-field-dropped-from-the-body",
+        ),
+        # The body replaced wholesale: "secret gone" and "placeholder present" both hold, yet the
+        # evidence is useless. Caught first by the kept-key rule.
         pytest.param(_set("requestBody", PLACEHOLDER), id="whole-body-replaced-by-the-placeholder"),
+        # Every value masked with every key intact — the shape `Redactor` can actually produce, since
+        # `_masked` rewrites a matched field in place and never drops a key. A widened field pattern
+        # gets here, and the kept-key rule passes it; only the kept-*value* rule reaches it.
+        pytest.param(
+            _set(
+                "requestBody",
+                json.dumps(
+                    dict.fromkeys(("intense", "count", "note", "password"), PLACEHOLDER),
+                    separators=(",", ":"),
+                ),
+            ),
+            id="every-value-masked-with-the-keys-intact",
+        ),
     ],
 )
 def test_the_evidence_check_fails_loudly_on_a_bad_mocked_exchange(
