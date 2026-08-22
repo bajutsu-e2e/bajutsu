@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0340](BE-0340-replay-scenario-upload.md) |
 | Author | [@akira-matsuda](https://github.com/akira-matsuda) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0340") |
+| Implementing PR | [#1653](https://github.com/bajutsu-e2e/bajutsu/pull/1653) |
 | Topic | Surfacing CLI features in the serve Web UI |
 | Related | [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md), [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md), [BE-0273](../BE-0273-serve-replay-scenario-viewer/BE-0273-serve-replay-scenario-viewer.md) |
 <!-- /BE-METADATA -->
@@ -81,7 +82,7 @@ new `POST /api/scenarios/upload` route does not exist yet, so this proposal adds
 
 - **A single-file "Upload scenario" affordance in the Replay tab.** Add an upload control next to
   the scenario picker in the Replay Form. The markup lives in `bajutsu/templates/serve.html.j2`; the
-  wiring lives in `bajutsu/templates/serve.core.mjs`. It mirrors the file-input pattern the compose
+  wiring lives in `bajutsu/templates/serve.panels.mjs`. It mirrors the file-input pattern the compose
   picker already uses (`cmp-scenarios-file`). The control reads the chosen `.yaml` file's text on
   the client. It posts that text to the same `/api/scenario` endpoint the Author editor's Save
   button uses, with the file's own name as the target path. A scenario reaching the scope through
@@ -114,9 +115,12 @@ new `POST /api/scenarios/upload` route does not exist yet, so this proposal adds
   save, true on a second save to the same ref. Unit tests cover `upload_scenarios`: two scenarios in
   one zip both land and both appear in `list_scenarios`; a zip where one entry fails to parse writes
   nothing; a zip-slip entry and an oversized entry both get turned away. New `data-testid`s mark the
-  upload controls. A dogfood E2E scenario alongside the existing Replay fixtures exercises the
-  single-file upload path from end to end. `docs/architecture.md` and its `docs/ja/` mirror gain a
-  note that Replay can populate a bound config's scenario scope directly, with no config rebind.
+  upload controls. A dogfood E2E scenario alongside the existing Replay fixtures asserts the upload
+  control's presence and enabled state — the web backend has no step to drive a native file picker,
+  so the write path (add / overwrite / all-or-nothing / zip-slip / oversized entry) is covered end
+  to end by the Python unit and HTTP tests instead. `docs/architecture.md` and its `docs/ja/` mirror
+  gain a note that Replay can populate a bound config's scenario scope directly, with no config
+  rebind.
 
 ## Alternatives considered
 
@@ -150,16 +154,26 @@ new `POST /api/scenarios/upload` route does not exist yet, so this proposal adds
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add an `overwritten` field to `save_scenario`'s response.
-- [ ] Add the single-file "Upload scenario" affordance to the Replay Form, posting to
+- [x] Add an `overwritten` field to `save_scenario`'s response.
+- [x] Add the single-file "Upload scenario" affordance to the Replay Form, posting to
       `POST /api/scenario`.
-- [ ] Add the `POST /api/scenarios/upload` endpoint and `upload_scenarios` operation for a `.zip` of
+- [x] Add the `POST /api/scenarios/upload` endpoint and `upload_scenarios` operation for a `.zip` of
       scenarios, with check-before-write and zip-slip/size bounds; add the route to `_EDITOR_PATHS`
       in `bajutsu/serve/authz.py`.
-- [ ] Add the zip-upload control to the Replay Form, sharing the created/overwritten summary
+- [x] Add the zip-upload control to the Replay Form, sharing the created/overwritten summary
       rendering with the single-file path.
-- [ ] Add unit tests for both paths, `data-testid`s, and a dogfood E2E scenario.
-- [ ] Update `docs/architecture.md` and its `docs/ja/` mirror.
+- [x] Add unit tests for both paths, `data-testid`s, and a dogfood E2E scenario. The dogfood
+      scenario asserts the control's presence and enabled state rather than driving an actual
+      upload: the web backend has no step to operate a native file picker, so the add /
+      overwrite / all-or-nothing / zip-slip / oversized-entry behavior is instead covered end to
+      end by the Python unit and HTTP tests.
+- [x] Update `docs/architecture.md` and its `docs/ja/` mirror.
+
+Log:
+
+- Landed the `overwritten` response field, both upload paths (`POST /api/scenario` for a single
+  `.yaml`, the new `POST /api/scenarios/upload` for a `.zip`), the `_EDITOR_PATHS` entry, the
+  Replay Form control, unit and HTTP tests, the dogfood scenario, and the bilingual docs update.
 
 ## References
 

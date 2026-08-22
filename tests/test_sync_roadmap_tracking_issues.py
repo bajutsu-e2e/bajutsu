@@ -84,7 +84,7 @@ def test_scan_sorts_by_id(tmp_path: Path) -> None:
     # Items are created in an order that would NOT sort by id if the scan preserved insertion order;
     # the flat scan sorts by directory name (id-major).
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "BE-9001-earliest", "Proposal (deferred)")
+    _write_item(roadmap, "BE-9001-earliest", "Deferred")
     _write_item(roadmap, "BE-9003-latest", "Implemented")
     _write_item(roadmap, "BE-9002-middle", "Proposal")
     assert [i.be_id for i in sync.scan_items(roadmap)] == ["BE-9001", "BE-9002", "BE-9003"]
@@ -116,10 +116,15 @@ def test_plan_is_a_noop_when_open_item_already_has_an_issue() -> None:
 
 
 def test_plan_closes_shipped_or_shelved_items_with_an_open_issue() -> None:
-    items = [_item("BE-0001", "Implemented"), _item("BE-0002", "Proposal (deferred)")]
-    result = sync.plan(items, existing_open_ids={"BE-0001", "BE-0002"})
+    # Every non-open status closes its issue — Rejected as readily as Deferred (BE-0366).
+    items = [
+        _item("BE-0001", "Implemented"),
+        _item("BE-0002", "Deferred"),
+        _item("BE-0003", "Rejected"),
+    ]
+    result = sync.plan(items, existing_open_ids={"BE-0001", "BE-0002", "BE-0003"})
     assert result.to_create == []
-    assert result.to_close == ["BE-0001", "BE-0002"]
+    assert result.to_close == ["BE-0001", "BE-0002", "BE-0003"]
 
 
 def test_plan_leaves_orphan_issue_ids_alone() -> None:

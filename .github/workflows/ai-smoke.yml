@@ -1,4 +1,6 @@
-# Real-API contract smoke for the AI backend adapters (BE-0300) — manual, opt-in, dormant by default.
+# The live-model lane — manual, opt-in, dormant by default. Two jobs, both non-gating signals:
+# the AI backend adapters' real-API contract smoke (BE-0300), and the system-alert guard's
+# real-model accuracy check (BE-0308).
 #
 # tests/test_ai_backend_live_smoke.py calls a real provider through Bajutsu's own adapter code
 # (`bajutsu.ai.anthropic.AnthropicBackend`) with a trivial forced-tool prompt and asserts only that
@@ -17,7 +19,15 @@
 # API adapter is wired here: Bedrock needs a live AWS role and `ant` a signed-in OAuth CLI seat,
 # neither realistically available as a CI secret — the item's Progress log records that gap. Their
 # tests still run locally / manually via `pytest -m live` when the credential is present.
-name: AI backend smoke
+#
+# tests/test_real_model_alerts.py asks the other half of the live question (BE-0308): not whether the
+# transport round-trips, but whether the *answer* is right. It shows the vision alert locator real
+# system dialogs captured from the showcase app and asserts its coordinates land inside the correct
+# dismiss control's frame — the guard's actual safety claim, which every other test of it takes on
+# faith by handing it an `AlertDecision` its own author typed. It needs no Simulator: the dialogs are
+# committed captures under `tests/fixtures/be0308/`, so only the model call is live. The guard is a
+# Tier 1 live-AI operation and stays one — nothing here reaches the `run` / CI verdict.
+name: AI live-model signals
 
 on:
   workflow_dispatch:
@@ -58,3 +68,32 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: uv run --no-sync pytest tests/test_ai_backend_live_smoke.py -m live -n0 -v
+
+  alert-guard:
+    name: accuracy (system-alert guard)
+    runs-on: ubuntu-latest
+    # One vision call per committed fixture, so a handful of calls; the same bound as the job above
+    # keeps a hung request from holding the ai-smoke Environment lock for Actions' 6h default.
+    timeout-minutes: 15
+    environment: ai-smoke
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
+        with:
+          enable-cache: true
+
+      # The dev group covers this too: the fixtures are committed PNGs and the locator reaches the
+      # model through the same `bajutsu[ai,...]` adapter the job above uses. No Simulator, no browser
+      # extra — the dialogs were captured once, on a Mac, by hand.
+      - name: Install the gate env (includes the AI extra + test tooling)
+        run: uv sync --group dev
+
+      # `-m live` overrides the default `-m 'not ... and not live'` (pyproject addopts); `-n0` because
+      # a few real vision calls gain nothing from xdist workers. With the key unset every case skips
+      # and the job is a green no-op, exactly like the smoke job above.
+      - name: Vision locator accuracy over real captured alerts
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: uv run --no-sync pytest tests/test_real_model_alerts.py -m live -n0 -v

@@ -375,24 +375,36 @@ Once OAuth is configured, access follows **GitHub organization and Team membersh
 hand-maintained login list:
 
 - **Sign-in and the viewer role** follow org membership. A user may sign in only as a member of a
-  configured org — an explicit `members` entry or a member of a `githubOrgs`-listed GitHub org (see
+  configured org — an explicit `members` entry, a member of a `githubOrgs`-listed GitHub org, or a
+  direct member of a `githubTeams`-listed or `editorTeams`-listed GitHub Team (see
   [`orgs:`](configuration.md#orgs-orgs-the-multi-tenant-server-backend)) — and a successful sign-in
-  grants **viewer** (read-only). A login that matches no org is turned away, so an OAuth deployment
+  grants **viewer** (read-only). `githubTeams` is the narrow unit: it admits one Team without
+  admitting its whole GitHub organization, which is what a shared organization needs when only one
+  Team of it should reach this deployment. While GitHub's Teams API errors, `/user/teams` fails
+  closed, so a login whose only membership is a Team is turned away for as long as the outage
+  lasts. A login that matches no org is turned away, so an OAuth deployment
   must declare an `orgs:` block — with one exception, a member of a configured admin Team, who
   clears this gate regardless (see **Admin** below). A deployment that also wires a database keeps
   this membership in the database instead, seeded once from that same `orgs:` block and administered
   from the web UI afterward (see [Multiple orgs](#multiple-orgs) below); which org owns which target
   still comes from the block either way.
-- **Editor** follows the org's `editorTeam`: a direct member of that one flat GitHub Team may run,
-  record, and edit scenarios.
+- **Editor** follows the org's `editorTeams`: a direct member of any of those flat GitHub Teams may
+  run, record, and edit scenarios. `editorTeams` admits as well as promotes, so a Team named there
+  needs no second entry under `githubTeams` to be able to sign in. It holds a list rather than one
+  Team so that an org spanning more than one GitHub organization can name the writing Team of
+  each. A configuration on the older singular `editorTeam` still works: `serve` folds that key
+  into `editorTeams`. Rename it anyway; the plural name is the documented one.
 - **Admin** follows one or more server-wide GitHub Teams, `BAJUTSU_OAUTH_ADMIN_TEAMS` (a
   comma-separated list, each written `"<github-org>/<team-slug>"`, where `<team-slug>` is GitHub's
-  own lowercased slug and not the Team's display name; like `editorTeam`, each entry names one flat
-  Team — a Team nested beneath it does not match), whose members also change server settings
+  own lowercased slug and not the Team's display name; like `githubTeams` and `editorTeams`, each
+  entry names one flat Team — a Team nested beneath it does not match — and is compared
+  case-insensitively, as GitHub itself resolves an org login and a Team slug), whose members also
+  change server settings
   (config / API key / provider). Admin is a single deployment-wide tier, so name only Teams whose
   members you trust across every org. Unlike the viewer/editor roles above, a member of any
-  configured admin Team clears the sign-in gate directly — the Team's GitHub organization does
-  *not* need to appear in any org's `githubOrgs` or `members` — so an admin can sign in and repoint
+  configured admin Team clears the sign-in gate directly — the Team itself does *not* need to
+  appear in any org's `members`, `githubOrgs`, `githubTeams`, or `editorTeams` — so an admin can sign
+  in and repoint
   the server at a corrected config even when the `orgs:` block is broken or missing entirely. One
   failure still closes that door: `/user/teams` fails closed, so while GitHub's Teams API is
   erroring, a login whose only claim is admin-Team membership is turned away like any other.
@@ -406,11 +418,13 @@ user's next sign-in — no server-side list to edit. Login always requests the `
 these memberships, so the consent screen mentions organization access.
 
 **Upgrading from the login lists.** Two things change beyond the role-source swap: sign-in now admits
-*everyone* in a configured `githubOrgs`/`members` entry, not just the logins that were on the old
+*everyone* in a configured `members` / `githubOrgs` / `githubTeams` / `editorTeams` entry, not just
+the logins that were on the old
 `BAJUTSU_OAUTH_ALLOWED_USERS` — if that allowlist was narrower than the org's full membership, tighten
 `orgs:` before switching, or the org gate alone will widen who can sign in. And
 `BAJUTSU_OAUTH_ALLOWED_USERS` / `_ADMINS` / `_VIEWERS` are simply ignored now, so re-declare every
-admin and editor as a Team membership before cutting over — anyone not yet covered by `editorTeam` or
+admin and editor as a Team membership before cutting over — anyone not yet covered by `editorTeams`
+or
 `BAJUTSU_OAUTH_ADMIN_TEAMS` drops to viewer on their next login. A deployment that already set the
 older, singular `BAJUTSU_OAUTH_ADMIN_TEAM` renames it to `BAJUTSU_OAUTH_ADMIN_TEAMS` at the same
 time — the old name is no longer read. `serve` warns on stderr at startup when the retired name is
@@ -639,7 +653,7 @@ still asks and simply uploads nothing.
 ### Multiple orgs
 
 To host more than one team on one backend, declare orgs in the mounted config — each with its member
-GitHub logins and/or GitHub orgs, plus the targets it owns (see
+GitHub logins, GitHub orgs, and/or GitHub Teams, plus the targets it owns (see
 [configuration](configuration.md#orgs-orgs-the-multi-tenant-server-backend)):
 
 ```yaml
@@ -650,6 +664,7 @@ orgs:
     targets: [demo, checkout]
   globex:
     members: [carol]
+    githubTeams: [shared-gh/globex-qa]    # one Team of a shared org, not the whole org
     targets: [other]
 ```
 
@@ -660,7 +675,8 @@ and the shared token plus the GitHub allowlist are the access boundary. The full
 cloud offering (a hosted Mac worker pool + IaC) is still future work in BE-0015.
 
 **Managing orgs from the web UI, once a database is wired.** A backend with `BAJUTSU_DATABASE_URL`
-set keeps each org's membership — its `members`, `githubOrgs`, and `editorTeam` — in that database
+set keeps each org's membership — its `members`, `githubOrgs`, `githubTeams`, and `editorTeams` — in
+that database
 rather than in the config file, so onboarding a tenant or moving a team's write access to a
 different GitHub Team no longer needs a config edit and a redeploy
 ([BE-0375](../roadmaps/BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management.md)).
@@ -670,7 +686,7 @@ An **Orgs** page appears in the web UI for admins, backed by four admin-only end
 |---|---|
 | `GET /api/orgs` | List every live org with its membership and its project count. |
 | `POST /api/orgs` | Create an org from `{"slug": "...", "name": "..."}`, with **no** members — so it admits nobody until you set its membership. |
-| `POST /api/orgs/<slug>/membership` | Replace `{"members": [...], "githubOrgs": [...], "editorTeam": "..."}` as one unit. |
+| `POST /api/orgs/<slug>/membership` | Replace `{"members": [...], "githubOrgs": [...], "githubTeams": [...], "editorTeams": [...]}` as one unit. A body still carrying the retired singular `editorTeam` is refused with a 400: it names no `editorTeams`, and obeying it would strip the org's write access. |
 | `DELETE /api/orgs/<slug>` | Retire an org. Refused while it still owns a project, and refused outright for `default`. |
 
 The audit log records every one of the four. `default` is reserved on all three mutations — created,
@@ -692,7 +708,7 @@ authorized for it.
 **Upgrading a database-backed deployment.** Run the Alembic migration as usual; it adds columns and
 seeds nothing. `serve` itself copies the bound config's `orgs:` membership into the database on its
 next start, once per org, so an existing deployment keeps admitting the same people it did before. From
-then on the file no longer decides those three fields, and `serve` writes a warning under
+then on the file no longer decides those four fields, and `serve` writes a warning under
 `event=org.membership.ignored` (with `check=orgs_membership_ignored`) naming any org whose entry
 still declares them. Pare those entries down to `targets:` at your convenience — that field is still
 read, and paring before the first copy is as safe as paring after: an entry declaring only `targets:`

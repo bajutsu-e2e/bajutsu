@@ -132,8 +132,10 @@ Preconditions ::= {
 # XCUITest ではネイティブの SpringBoard 照会 + tap（モデルなし、BE-0316 を再利用）。AI 視覚はフォールバック（BE-0315）。
 SystemAlertHandling ::= boolean                              # { enabled: <bool> } の短縮形
                | { enabled?: boolean,                       # 既定 true
+                   rules?: [<SystemAlertRule>],              # 名指ししたプロンプトに choice で答える。instruction より先に参照
                    instruction?: string | [string],         # [labels]=ネイティブ; "text"=視覚（無指定なら dismiss）
                    pollInterval?: number }                   # ネイティブのポーリング間隔・秒（既定 1）
+SystemAlertRule ::= { prompt: notifications|tracking|paste, choice: grant|deny }  # 1リストにつきプロンプトは一意
 
 Permissions ::= map(PermissionService, PermissionAction)    # アプリの起動前に適用する
 PermissionService ::= "location" | "camera" | "microphone" | "contacts"
@@ -155,8 +157,8 @@ Action    ::=
   | { type:        { text: string, into?: <Selector>, submit?: boolean } }   # submit 既定 false
   | { clear:       { into: <Selector> } }                  # フィールドをフォーカスして現在の内容をすべて削除（web コンテキストは非対応）
   | { delete:      { into: <Selector>, count: integer } }  # フィールドをフォーカスして末尾から count 文字削除（count > 0。web コンテキストは非対応）
-  | { select:      { into: <Selector>, mode?: "all" } }    # フィールドをフォーカスして内容を選択（mode 既定 "all"。idb / web コンテキストは非対応で codegen 経由の XCUITest に誘導）
-  | { copy:        {} }                                    # 選択中の内容をクリップボードにコピー（事前に select が必要。idb / web コンテキストは非対応）
+  | { select:      { into: <Selector>, mode?: "all" } }    # フィールドをフォーカスして内容を選択（mode 既定 "all"。web コンテキストは非対応。codegen は XCUITest の同等コードを出力）
+  | { copy:        {} }                                    # 選択中の内容をクリップボードにコピー（事前に select が必要。web コンテキストは非対応）
   | { selectOption:{ sel: <Selector>, option: string } }   # web の <select> をこの value を持つ option に設定（web 専用。iOS/Android は非対応）
   | { setPickerValue:{ sel: <Selector>, value: string } }  # ホイール型のピッカーをこの value を持つ行へ動かす（iOS 専用。sel は 1 つのホイールを指す）
   | { swipe:       <Swipe> }                          # 方向指定形式はスクロール。座標形式は素のドラッグ
@@ -166,7 +168,7 @@ Action    ::=
   | { pinch:       { sel: <Selector>, scale: number } }    # scale > 0  （>1 拡大, <1 縮小）
   | { rotate:      { sel: <Selector>, radians: number } }  # >0 時計回り
   | { handleSystemAlert: { sel: <Selector>, timeout: number } }  # iOS SpringBoard の権限プロンプトを tap（iOS/XCUITest 専用）。sel は label/labelMatches/index のみ
-  | { handleSystemAlert: { prompt: notifications|tracking, choice: grant|deny, timeout: number } }  # 同じステップ。label は run の locale から解決する（BE-0320）
+  | { handleSystemAlert: { prompt: notifications|tracking|paste, choice: grant|deny, timeout: number } }  # 同じステップ。label は run の locale から解決する（BE-0320）
   | { wait:        <Wait> }
   | { assert:      list(<Assertion>) }
   | { relaunch:    { env?: map(string,string), args?: list(string) } }
@@ -175,6 +177,7 @@ Action    ::=
   | { http:        { method?: string, url: string, headers?: map(string,string), body?: string, status?: integer, saveBody?: string } }  # method 既定 GET; saveBody → vars.<name>
   | { totp:        { secret: string, into: { var: string } } }  # RFC 6238 OTP → vars.<var>（secret は base32）
   | { email:       { match: { to?: string, subject?: string, subjectMatches?: string }, extract: { var: string, bodyMatches: string }, timeout: number } }  # メールボックスをポーリング → vars.<var>
+  | { generate:    <Generate> }                            # 実行時に計算した乱数または現在日時の値 → vars.<var>（BE-0377）
   | { background:       {} }                               # Home ボタン（SpringBoard 経由でバックグラウンド化。終了はしない）
   | { foreground:       {} }                               # バックグラウンド化したアプリを前面に戻す（simctl launch、終了なし）。background の対
   | { clearKeychain:    {} }                               # 保存済みパスワード / 証明書をリセット
@@ -203,6 +206,18 @@ Scroll ::= { to: <Selector>, direction?: ("up"|"down"|"left"|"right"), within?: 
     # `to` のフレーム中心が画面に入るまでスクロールし、入らなければ失敗する（BE-0326）。direction はスクロール方向（既定 "down"）で、Swipe の指方向とは逆。
     # within: ジェスチャを行うスクロール可能なコンテナ（既定は画面全体）。maxScrolls: 失敗までのステップ上限（既定 15、> 0）。
 Point ::= [ number, number ]
+
+Generate ::=
+    { random:   <Random>,   into: { var: string } }   # シナリオがまだ持っていない新しい値 ┐ XOR
+  | { datetime: <Datetime>, into: { var: string } }   # 現在時刻をテキストにした値         ┘
+Random ::=
+    { string: { length: integer, charset?: ("alnum"|"alpha"|"numeric"|"hex") } }  # length > 0、charset の既定は "alnum" ┐
+  | { int:    { min: integer, max: integer } }                                    # min ≤ max の閉区間                   │ XOR
+  | { float:  { min: number,  max: number, precision?: integer } }                # min ≤ max、precision ≥ 0 は小数桁数  │
+  | { uuid:   {} }                                                                # バージョン4の UUID                   ┘
+Datetime ::= { format?: string, offsetSeconds?: integer, offsetMinutes?: integer, offsetHours?: integer, offsetDays?: integer, timezone?: string }
+    # format: strftime のパターン。省略時は秒までの ISO 8601。4つの offset は符号付きで、加算されます。
+    # timezone: IANA 名（例 "America/Los_Angeles"）。省略時は UTC。描画できない format と解決できないゾーンはロード時に失敗します。
 
 # ── Selector（1 条件以上・指定フィールドは AND）────────────────────────
 Selector ::= {
@@ -359,6 +374,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Preconditions.launchArgs` | `[]` |
 | `Preconditions.launchEnv` | `{}` |
 | `SystemAlertHandling.enabled` | `true` |
+| `SystemAlertHandling.rules` | `[]`（名指しした規則なし。`instruction`／組み込みの否定的ラベルがすべてのプロンプトに答える） |
 | `TypeText.submit` | `false` |
 | `Exists.negate` | `false` |
 | `MockResponse.status` | `200` |

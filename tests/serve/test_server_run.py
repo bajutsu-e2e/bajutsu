@@ -743,7 +743,7 @@ def test_build_state_server_does_not_warn_on_an_uppercase_slug(
 ) -> None:
     # GitHub always lowercases a Team's slug, so an operator who copies the Team name as shown in
     # the UI (title case) writes an entry whose case differs from the stored slug -- but
-    # `in_admin_team` case-folds both sides before comparing, so this entry matches a real Team
+    # `in_admin_team` lowercases both sides before comparing, so this entry matches a real Team
     # `acme-gh/ops` perfectly. Warning here would tell the operator to "fix" a working config, and
     # teach them to ignore this warning for the one list where a genuinely broken entry hides.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")

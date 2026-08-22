@@ -12,6 +12,7 @@ from __future__ import annotations
 import typer
 
 from bajutsu.cli._projects import open_registry, source_from_config
+from bajutsu.run_files import DEFAULT_RUNS_DIR
 
 project_app = typer.Typer(
     add_completion=False,
@@ -20,7 +21,9 @@ project_app = typer.Typer(
 
 # The store is a sibling of the runs directory (serve wires `LocalProjectRegistry(runs_dir.parent /
 # "projects.json")`), so the CLI takes the same `--runs` root to point at the same file.
-_RUNS = typer.Option("runs", "--runs", help="runs root whose sibling holds the project store")
+_RUNS = typer.Option(
+    DEFAULT_RUNS_DIR, "--runs", help="runs root whose sibling holds the project store"
+)
 
 
 @project_app.command("add")

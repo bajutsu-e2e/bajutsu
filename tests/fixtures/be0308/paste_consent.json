@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "screen": [
+    402.0,
+    874.0
+  ],
+  "dismiss": {
+    "label": "Don’t Allow Paste",
+    "frame": [
+      57.0,
+      457.0,
+      288.0,
+      48.0
+    ]
+  },
+  "others": [
+    {
+      "label": "Allow Paste",
+      "frame": [
+        57.0,
+        513.0,
+        288.0,
+        48.0
+      ]
+    }
+  ],
+  "note": "iOS's cross-process paste-consent prompt; its refusal spells a typographic apostrophe, so the answer must come from looking at the dialog rather than from transcribing it"
+}

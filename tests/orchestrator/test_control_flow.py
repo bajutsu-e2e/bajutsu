@@ -158,7 +158,16 @@ def test_foreach_empty_succeeds() -> None:
 
 def test_foreach_no_identifier_fails() -> None:
     driver = FakeDriver(
-        [{"identifier": None, "label": "L", "traits": [], "value": None, "frame": (0, 0, 10, 10)}]
+        [
+            {
+                "identifier": None,
+                "label": "L",
+                "traits": [],
+                "value": None,
+                "frame": (0, 0, 10, 10),
+                "nativeZ": None,
+            }
+        ]
     )
     result = run_scenario(
         driver,

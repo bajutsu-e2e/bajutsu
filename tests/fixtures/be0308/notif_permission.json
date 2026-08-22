@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "screen": [
+    402.0,
+    874.0
+  ],
+  "dismiss": {
+    "label": "Don’t Allow",
+    "frame": [
+      57.0,
+      494.0,
+      140.0,
+      48.0
+    ]
+  },
+  "others": [
+    {
+      "label": "Allow",
+      "frame": [
+        205.0,
+        494.0,
+        140.0,
+        48.0
+      ]
+    }
+  ],
+  "note": "the OS notification-authorization prompt; the grant button sits beside the refusal, so a wrong answer grants a permission the run never asked for"
+}

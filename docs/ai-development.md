@@ -278,6 +278,8 @@ overridable:
 - [`implement-be`](../.claude/skills/implement-be/SKILL.md) → `opus` (Heavy)
 - [`propose-and-build`](../.claude/skills/propose-and-build/SKILL.md) → `opus` (Heavy) — it
   implements product code in its Phase B, so it carries the same tier as `implement-be`.
+- [`fix-issue`](../.claude/skills/fix-issue/SKILL.md) → `opus` (Heavy) — it ships product code for a
+  plain GitHub issue, so it carries the same tier as `implement-be` for the same reason.
 - [`ideation`](../.claude/skills/ideation/SKILL.md) → `sonnet` (Medium)
 - [`document-writing`](../.claude/skills/document-writing/SKILL.md) → `sonnet` (Medium)
 - [`english-document-writing`](../.claude/skills/english-document-writing/SKILL.md) → `sonnet` (Medium)
@@ -372,6 +374,15 @@ well-scoped item whose design the author does not expect review to reshape. One 
 design checkpoint with code review, so merging it accepts the proposal and the implementation at
 once; that is honest for a settled design but costs a rework if review reshapes the proposal, so
 fall back to the serial path whenever a design is genuinely uncertain.
+
+**When the work never earns a roadmap item at all**, none of the three applies, and the sibling path
+is [`fix-issue`](../.agent-workflows/fix-issue/workflow.md)
+([BE-0380](../roadmaps/BE-0380-fix-issue-skill/BE-0380-fix-issue-skill.md)). That skill ships a
+plain GitHub issue — a small bug, a papercut, or a scoped improvement — through `implement-be`'s own
+implementation, review, gate, and follow-up steps. Two things differ: `fix-issue` claims the work
+through the issue's native assignee field, and closes the loop with a `Closes #<N>` line in the PR
+body rather than a `Status` flip. `fix-issue` also judges the boundary itself — a fix that turns out
+to need a design decision escalates to `ideation` or `propose-and-build` instead of shipping.
 
 ## Pull requests: title and body
 
@@ -771,8 +782,8 @@ work up — exactly as on any other GitHub issue. Don't close a tracking issue b
 The issues are created and closed automatically by the `roadmap-tracking-issues` workflow
 (`scripts/sync_roadmap_tracking_issues.py`), which runs on `push: main` (paths `roadmaps/**`). The
 lifecycle is a pure function of each item's current `Status` — an open item with no matching open
-issue gets one; an issue whose item has since shipped (`Implemented`) or been shelved (`Proposal
-(deferred)`) is closed — so the sync is idempotent and self-healing (BE-0043 / BE-0061), never
+issue gets one; an issue whose item has since shipped (`Implemented`) or been shelved (`Deferred` or
+`Rejected`) is closed — so the sync is idempotent and self-healing (BE-0043 / BE-0061), never
 creating a second issue for an item on a re-run. GitHub is the source of truth for both facts —
 ownership (Assignees) and whether an issue already exists (an open `roadmap-tracking` issue with the
 item's `BE-NNNN` in its title) — so nothing is written back to the repo: the job needs only `issues:
@@ -813,7 +824,8 @@ on `Status` at all.
 | `Implemented` | Implemented — shipped |
 | `In progress` | In progress — accepted, actively being built |
 | `Proposal` | Proposals — under consideration |
-| `Proposal (deferred)` | Deferred — parked |
+| `Deferred` | Deferred — parked, with a named condition that would revive it |
+| `Rejected` | Rejected — decided against, with no condition expected to reopen it |
 
 Every item, in every bucket, is browsable, grouped by Topic with live progress bars, on the
 [roadmap dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html) — a page

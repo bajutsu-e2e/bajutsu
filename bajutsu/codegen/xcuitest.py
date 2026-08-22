@@ -354,6 +354,14 @@ def _emit_step(step: Step) -> list[str]:
         return [
             f"// TODO: email(into: {step.email.extract.var}) — poll mailbox + extract; not generated"
         ]
+    if step.generate is not None:
+        # A value computed in the bajutsu runner (a generator draw or a clock read), not on the
+        # device; no XCUITest equivalent (BE-0377).
+        kind = "random" if step.generate.random is not None else "datetime"
+        return [
+            f"// TODO: generate({kind}, into: {step.generate.into.var}) — runner-computed value; "
+            "not generated"
+        ]
     if step.manual is not None:
         # A human takeover (BE-0185): an operation only a human can perform. No generated-test
         # equivalent — a labeled TODO the author wires (a bypass) or performs, never a silent skip.

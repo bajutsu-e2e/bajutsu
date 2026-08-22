@@ -3,11 +3,12 @@ import SwiftUI
 import UIKit
 import UserNotifications
 
-// Tab: Permissions (SPEC §5.4 / §7) — the OS-integration screen. It owns the two deliberate
+// Tab: Permissions (SPEC §5.4 / §7) — the OS-integration screen. It owns the deliberate
 // OS-level alerts (notification + location prompts, both SpringBoard/out-of-process), and a
-// System section: an in-app Copy → Paste pasteboard round-trip that the backend can drive and assert.
-// (Reading a pasteboard seeded by another process trips iOS's paste-permission prompt; a value
-// this app itself wrote reads back silently, so the round-trip stays deterministic.)
+// System section: a Copy → Paste pasteboard round-trip that the backend can drive and assert.
+// (Reading a pasteboard seeded by another process trips iOS's paste-consent prompt; a value this
+// app itself wrote reads back silently. Both paths are exercised: system.yaml copies in-app,
+// paste_system_alert.yaml seeds the pasteboard with `setClipboard` and answers the prompt.)
 // Nothing here runs at launch; the prompts fire only on explicit taps.
 struct PermissionsView: View {
     @StateObject private var location = LocationAuth()
@@ -45,7 +46,7 @@ struct PermissionsView: View {
                 Section("System") {
                     Button("Copy") { UIPasteboard.general.string = "bajutsu-clip" }
                         .accessibilityID("sys.copy")
-                    Button("Paste") { pasted = UIPasteboard.general.string ?? "" }
+                    Button("Paste") { readPasteboard() }
                         .accessibilityID("sys.paste")
                     Text("Pasted: \(pasted)")
                         .foregroundStyle(.secondary)
@@ -54,6 +55,20 @@ struct PermissionsView: View {
                 }
             }
             .navigationTitle("Permissions")
+        }
+    }
+
+    // Read off the main thread. `UIPasteboard.general.string` blocks its caller for as long as
+    // iOS's cross-process paste-consent prompt is up, and a blocked main thread never lets
+    // XCUITest's tap return — so the very step that would answer that prompt could never run
+    // (BE-0369). The value publishes when the read returns, which is what the scenario waits for.
+    // A read that comes back with no string — a denied consent, or an empty pasteboard — publishes
+    // "(none)" rather than "", so a `choice: deny` step leaves a positive condition to wait for
+    // instead of a field indistinguishable from one never read.
+    private func readPasteboard() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let text = UIPasteboard.general.string ?? "(none)"
+            DispatchQueue.main.async { pasted = text }
         }
     }
 

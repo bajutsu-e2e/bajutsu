@@ -7,17 +7,23 @@ payload validated on its own; the `Step` aggregator that selects exactly one liv
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime
 from typing import Any, Literal, Self
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
-from bajutsu.scenario.models._base import Point, _Model
+from bajutsu.scenario.models._base import Point, _exactly_one, _Model
 from bajutsu.scenario.models.selector import Selector
 from bajutsu.scenario.system_alerts import (
     SystemAlertChoice,
     SystemAlertPrompt,
     system_alert_label,
 )
+
+# A fixed instant every `strftime` directive renders against, so `datetime.format` is validated at
+# load time without reading the clock (which would make the check itself time-dependent).
+_FORMAT_PROBE = datetime(2001, 2, 3, 4, 5, 6, tzinfo=UTC)
 
 
 def _check_regex(pattern: str, field: str) -> None:
@@ -74,11 +80,11 @@ class HandleSystemAlert(_Model):
         handleSystemAlert: { prompt: notifications, choice: grant, timeout: 10 }
 
     The second form states the *intent* and lets the run resolve the label from the scenario's
-    locale (BE-0320), for the two prompts a `permissions` preset cannot pre-answer — notification
-    authorization and App Tracking Transparency. It is worth reaching for because the literal text
-    is easy to get subtly wrong: English's own deny button spells its apostrophe typographically, not
-    as the ASCII character a hand-typed label carries. Every other alert keeps naming its button
-    through `sel`, unchanged.
+    locale (BE-0320), for the prompts a `permissions` preset cannot pre-answer — notification
+    authorization, App Tracking Transparency, and the cross-process paste consent (BE-0369). It is
+    worth reaching for because the literal text is easy to get subtly wrong: English's own deny
+    button spells its apostrophe typographically, not as the ASCII character a hand-typed label
+    carries. Every other alert keeps naming its button through `sel`, unchanged.
     """
 
     sel: Selector | None = None
@@ -119,7 +125,7 @@ class HandleSystemAlert(_Model):
     def resolved(self, locale: str) -> HandleSystemAlert:
         """This step with `prompt`/`choice` turned into the `sel` the locale's SpringBoard renders.
 
-        A `sel` form returns unchanged, so the resolution is a no-op for every alert outside the two
+        A `sel` form returns unchanged, so the resolution is a no-op for every alert outside the
         prompts the lookup covers.
 
         Raises:
@@ -414,6 +420,122 @@ class Totp(_Model):
 
     secret: str
     into: VarTarget
+
+
+class RandomString(_Model):
+    """`random: { string: … }` — `length` characters drawn from `charset`."""
+
+    length: int = Field(gt=0)
+    charset: Literal["alnum", "alpha", "numeric", "hex"] = "alnum"
+
+
+class RandomInt(_Model):
+    """`random: { int: … }` — an integer in the inclusive range `[min, max]`."""
+
+    min: int
+    max: int
+
+    @model_validator(mode="after")
+    def _ordered(self) -> Self:
+        if self.min > self.max:
+            raise ValueError(f"random.int: min must not exceed max ({self.min} > {self.max})")
+        return self
+
+
+class RandomFloat(_Model):
+    """`random: { float: … }` — a number in `[min, max]`, rounded to `precision` decimal places."""
+
+    min: float
+    max: float
+    precision: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> Self:
+        if self.min > self.max:
+            raise ValueError(f"random.float: min must not exceed max ({self.min} > {self.max})")
+        return self
+
+
+class RandomUuid(_Model):
+    """`random: { uuid: {} }` — a version-4 UUID. Fieldless: the shape carries the whole request."""
+
+
+class RandomValue(_Model):
+    """`generate: { random: … }` — exactly one generator kind (BE-0377)."""
+
+    string: RandomString | None = None
+    # `int` / `float` shadow builtins, so the field is suffixed and aliased to the YAML key, the
+    # same way `copy_` / `assert_` / `if_` already are.
+    int_: RandomInt | None = Field(default=None, alias="int")
+    float_: RandomFloat | None = Field(default=None, alias="float")
+    uuid: RandomUuid | None = None
+
+    @model_validator(mode="after")
+    def _one_kind(self) -> Self:
+        _exactly_one(self, ("string", "int_", "float_", "uuid"), "§6.2")
+        return self
+
+
+class DatetimeValue(_Model):
+    """`generate: { datetime: … }` — the current time as text, optionally shifted and zoned.
+
+    `format` is a `strftime` pattern (ISO 8601 when omitted); the four `offset*` fields are signed
+    and additive, so a value an hour before tomorrow is `offsetDays: 1, offsetHours: -1`. `timezone`
+    is an IANA name; the default is UTC, so a scenario matching a date the app renders in the
+    device's own zone must name that zone (pinning the device's zone is BE-0158's concern).
+    """
+
+    format: str | None = None
+    offset_seconds: int | None = Field(default=None, alias="offsetSeconds")
+    offset_minutes: int | None = Field(default=None, alias="offsetMinutes")
+    offset_hours: int | None = Field(default=None, alias="offsetHours")
+    offset_days: int | None = Field(default=None, alias="offsetDays")
+    timezone: str | None = None
+
+    @field_validator("format")
+    @classmethod
+    def _renderable(cls, v: str | None) -> str | None:
+        """Reject a pattern `strftime` cannot render, at load time rather than mid-run (§6.2)."""
+        if v is None:
+            return v
+        if not v.strip():
+            raise ValueError("datetime.format must not be empty")
+        try:
+            _FORMAT_PROBE.strftime(v)
+        except ValueError as e:
+            raise ValueError(f"datetime.format is not a valid strftime pattern: {e}") from e
+        return v
+
+    @field_validator("timezone")
+    @classmethod
+    def _known_zone(cls, v: str | None) -> str | None:
+        """Reject an unresolvable IANA name at load time, so a run never silently falls back to UTC."""
+        if v is None:
+            return v
+        try:
+            ZoneInfo(v)
+        except (ZoneInfoNotFoundError, ValueError) as e:
+            raise ValueError(f"datetime.timezone is not a known IANA zone: {v!r} ({e})") from e
+        return v
+
+
+class Generate(_Model):
+    """`generate` — compute a random or current-datetime value into `${vars.*}` (BE-0377).
+
+    Exactly one generator kind produces the value, and `into.var` names the slot a later `type` /
+    `assert` reads it from — the same placement `totp` uses. Local and deterministic: a generator
+    draw or a clock read, never a model and never the network. Only the *value* varies between
+    runs; a step the validator accepted always executes and always succeeds.
+    """
+
+    random: RandomValue | None = None
+    datetime: DatetimeValue | None = None
+    into: VarTarget
+
+    @model_validator(mode="after")
+    def _one_kind(self) -> Self:
+        _exactly_one(self, ("random", "datetime"), "§6.2")
+        return self
 
 
 class EmailMatch(_Model):

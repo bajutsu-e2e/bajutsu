@@ -7,13 +7,14 @@ from pathlib import Path
 import typer
 
 from bajutsu.cli._shared import DEFAULT_CONFIG
+from bajutsu.run_files import DEFAULT_RUNS_DIR
 
 _MCP_TRANSPORTS = ("stdio", "sse")
 
 
 def mcp(
     config: str = typer.Option(DEFAULT_CONFIG, "--config", help="Config file path"),
-    runs: str = typer.Option("runs", "--runs", help="Runs output directory"),
+    runs: str = typer.Option(DEFAULT_RUNS_DIR, "--runs", help="Runs output directory"),
     transport: str = typer.Option(
         "stdio", "--transport", help="MCP transport: stdio (Claude Desktop/Code) or sse"
     ),

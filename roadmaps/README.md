@@ -15,10 +15,11 @@
 > (one BE ID per item). Add unformed thoughts to [Unsorted ideas](#unsorted-ideas) first, then
 > promote them to a numbered item once the scope is clear.
 >
-> - **Every item's status** — Implemented, In progress, Proposal, or Deferred — lives on the
->   [roadmap dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html), not on this page:
->   browse, filter, and search every item there, grouped by topic with live progress bars. This
->   page covers what a roadmap item *is* and how to add one, never a snapshot of who stands where.
+> - **Every item's status** — Implemented, In progress, Proposal, Deferred, or Rejected — lives on
+>   the [roadmap dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html), not on this
+>   page: browse, filter, and search every item there, grouped by topic with live progress bars.
+>   This page covers what a roadmap item *is* and how to add one, never a snapshot of who stands
+>   where.
 > - **What exists today**, as prose rather than a per-item list, is
 >   [architecture.md#implementation-status](../docs/architecture.md#implementation-status).
 > - The design rationale is in [`DESIGN.md`](../DESIGN.md).

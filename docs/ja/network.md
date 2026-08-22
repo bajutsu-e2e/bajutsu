@@ -27,8 +27,8 @@ Simulator のアプリはホストプロセスとして動作し、Mac のルー
    いずれも起動環境変数でアプリに注入します。
 2. アプリ（**BajutsuKit** をリンクしたもの）は `URLProtocol` を組み込み、各リクエストとレスポンスを
    記録してコレクタへ POST します。記録は **TLS（Transport Layer Security、トランスポート層セキュリティ）
-   の後段**で行うため（プロキシも CA / certificate authority も使いません）、idb の下でも動作し、
-   プログラムから読み取れます。各 POST はトークンを `Authorization: Bearer` ヘッダとして添えます。
+   の後段**で行うため（プロキシも CA / certificate authority も使いません）、どの backend がアプリを
+   駆動していても動作し、プログラムから読み取れます。各 POST はトークンを `Authorization: Bearer` ヘッダとして添えます。
    コレクタは一致するトークンを持たないリクエストを 401 で拒否するので、同じマシン上の別プロセスが
    偽の通信を run の証跡に紛れ込ませることはできません。
 3. コレクタは通信をメモリ上に保持します。step の `request` アサーションはその通信に対してリアルタイムに

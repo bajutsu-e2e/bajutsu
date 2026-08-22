@@ -127,6 +127,7 @@ It is **on by default** and fires **only when a step (or `expect`) is blocked, o
 |---|---|
 | (omitted) | on; tap the **least-destructive** button ("Not Now" / "Don't Allow" / "Cancel") |
 | `systemAlertHandling: false` | off for this scenario |
+| `systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` | on; answer a **named, covered prompt** by its own choice, regardless of which label it shares with another prompt |
 | `systemAlertHandling: { instruction: ["Allow", "OK"] }` | on; the native path taps the first of these labels present on the alert — e.g. to **grant** a permission |
 | `systemAlertHandling: { instruction: "tap Allow" }` | on; free-text the **vision** guard interprets (the native path, which needs an exact label, falls back to its default dismissive labels) |
 | `systemAlertHandling: { pollInterval: 2 }` | on; poll the native presence query every 2 s instead of the one-second default |
@@ -147,6 +148,41 @@ the legacy free-text form the vision guard interprets. The CLI `--system-alert-h
 applies); `--alert-instruction` sets a default button instruction that a scenario's own `instruction`
 overrides.
 (real file: [`demos/showcase/scenarios/permission.yaml`](../demos/showcase/scenarios/permission.yaml))
+
+### Answering more than one prompt differently: `rules`
+
+An ordered `instruction` list can already reach every combination of grant and deny across the
+prompts the label table covers, but only through an ordering an author derives from which labels two
+prompts happen to share — and the ordering that reads naturally can grant the very prompt a scenario
+meant to refuse, silently. `rules` answers a specific covered prompt by name instead, reusing
+`handleSystemAlert`'s own `prompt`/`choice` vocabulary:
+
+```yaml
+- name: onboarding — accept notifications, refuse tracking
+  systemAlertHandling:
+    rules:
+      - prompt: notifications
+        choice: grant
+      - prompt: tracking
+        choice: deny
+    instruction: ["Not Now"]          # every alert no rule identifies
+  steps:
+    - tap:  { id: onboarding.start }
+    - wait: { for: { id: home.title }, timeout: 10 }
+```
+
+The guard identifies which alert is on screen from a rule's prompt — both its accepting and refusing
+labels, resolved for the run's locale, must be present on the alert — not from the order rules
+appear in; two rules naming the same prompt fail at parse time. `rules` is checked before
+`instruction`, which stays the catch-all for whatever prompt no rule names, so the two fields
+compose rather than exclude each other.
+
+`rules` steers the **deterministic native path only**. An alert no rule identifies — one outside the
+label table, a surface the SpringBoard query cannot enumerate, or any alert at all on a backend
+without the native path — reaches the AI-vision fallback, and the rules tell that fallback nothing:
+a rule's label is another prompt's answer, so handing it over would push the model to accept a prompt
+the scenario never named. Give the guard an `instruction` for anything you want the fallback to act
+on; with rules alone it keeps its own least-destructive default.
 
 This reactive guard and the proactive `handleSystemAlert` step below now share the *same* native
 SpringBoard mechanism (BE-0316's query + tap); they differ only in *when* they fire — the guard
@@ -211,9 +247,12 @@ When to reach for `handleSystemAlert` versus the two alert fields it stands besi
 
 ### Naming the intent instead of the text
 
-For the two prompts `permissions` cannot pre-answer — notification authorization, which is not a
-TCC (Transparency, Consent, and Control) service, and App Tracking Transparency (ATT), which has no
-`simctl` toggle at all — the step takes a `prompt` and a `choice` in place of `sel`, and the run
+For the prompts `permissions` cannot pre-answer — notification authorization, which is not a
+TCC (Transparency, Consent, and Control) service; App Tracking Transparency (ATT), which has no
+`simctl` toggle at all; and the cross-process paste consent, which iOS records as
+`kTCCServicePasteboard` yet exposes through no `simctl` toggle either
+([BE-0369](../roadmaps/BE-0369-ios-paste-consent-prompt-choice/BE-0369-ios-paste-consent-prompt-choice.md))
+— the step takes a `prompt` and a `choice` in place of `sel`, and the run
 resolves the label the pinned `locale` renders
 ([BE-0320](../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)):
 
@@ -221,10 +260,11 @@ resolves the label the pinned `locale` renders
 - handleSystemAlert: { prompt: notifications, choice: grant, timeout: 5 }
 ```
 
-`prompt` is `notifications` or `tracking`; `choice` is `grant` or `deny`. One step names the button by
-its meaning, so the same file grants the prompt under `en_US` and under `ja_JP` without an author
-transcribing either language's text — worth having even for English alone, whose deny button spells
-its apostrophe typographically (`Don’t Allow`), not as the ASCII character a hand-typed label carries.
+`prompt` is `notifications`, `tracking`, or `paste`; `choice` is `grant` or `deny`. One step names the
+button by its meaning, so the same file grants the prompt under `en_US` and under `ja_JP` without an
+author transcribing either language's text — worth having even for English alone, whose deny buttons
+spell their apostrophe typographically (`Don’t Allow`, `Don’t Allow Paste`), not as the ASCII
+character a hand-typed label carries.
 
 A locale whose language the lookup does not cover (today: English and Japanese) fails the step
 loudly, naming what is covered, rather than tapping a guessed button. Every other alert keeps naming
@@ -237,11 +277,14 @@ Two limits are worth knowing before reaching for it:
   resolve a label nothing guarantees is on screen. Name the button with `sel.label` there.
 - **The reactive guard's default labels are still English.** `systemAlertHandling`'s built-in
   dismissive labels (`Don't Allow`, `Not Now`, `Cancel`, …) are literal English text, so under a
-  non-English `locale` the native path finds no match and falls back to the AI-vision guard. Give
-  the guard an explicit `instruction` list in the pinned language to keep it deterministic.
+  non-English `locale` the native path finds no match and falls back to the AI-vision guard. For the
+  prompts the label table covers, a `rules` entry (above) resolves its labels for the pinned
+  language and keeps the guard deterministic; give it an explicit `instruction` list for any other
+  prompt.
 
-(real file:
-[`demos/showcase/scenarios/permission_system_alert.yaml`](../demos/showcase/scenarios/permission_system_alert.yaml))
+(real files:
+[`demos/showcase/scenarios/permission_system_alert.yaml`](../demos/showcase/scenarios/permission_system_alert.yaml),
+[`demos/showcase/scenarios/paste_system_alert.yaml`](../demos/showcase/scenarios/paste_system_alert.yaml))
 
 ## permissions (pre-launch permission state)
 
@@ -411,7 +454,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `back` | `back: {}` | navigate back one level, each backend using its platform-correct primitive — the Android system back key, the iOS OS-provided back button, or web history ([BE-0210](../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)) |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | two-finger magnify; `scale > 0` (`>1` zooms in, `<1` out) |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | two-finger rotation; `>0` is clockwise |
-| `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | tap a button on an iOS SpringBoard permission prompt, deterministically ([below](#handlesystemalert-the-deterministic-system-alert-step)); iOS (XCUITest) only. `sel` accepts only `label` / `labelMatches` / `index`, and resolves against the system language the run pins the Simulator to. In place of `sel`, `prompt: notifications\|tracking` + `choice: grant\|deny` names the button by meaning and lets the run resolve its label (BE-0320) |
+| `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | tap a button on an iOS SpringBoard permission prompt, deterministically ([below](#handlesystemalert-the-deterministic-system-alert-step)); iOS (XCUITest) only. `sel` accepts only `label` / `labelMatches` / `index`, and resolves against the system language the run pins the Simulator to. In place of `sel`, `prompt: notifications\|tracking\|paste` + `choice: grant\|deny` names the button by meaning and lets the run resolve its label (BE-0320) |
 | `wait` | `wait: { for\|until: ..., timeout: <sec> }` | condition wait (below) |
 | `assert` | `assert: [ <Assertion>... ]` | mid-step verification |
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | terminate + relaunch the app (re-applying launch env/args, plus the given overrides), then wait until ready |
@@ -420,6 +463,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `http` | `http: { method?, url, headers?, body?, status?, saveBody? }` | issue an HTTP request (test-data setup / webhook / API); checks `status`, stores the body as `${vars.<saveBody>}` |
 | `totp` | `totp: { secret, into: { var } }` | generate an RFC 6238 time-based one-time password (2FA) locally into `${vars.<var>}` |
 | `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | poll the configured mailbox until a matching message arrives, extract a code into `${vars.<var>}` |
+| `generate` | `generate: { random\|datetime: {...}, into: { var } }` | compute a random or current-datetime value at run time into `${vars.<var>}` ([below](#generate-a-value-computed-at-run-time)) |
 | `manual` | `manual: { label: "...", bypass?: "..." }` | a human takeover recorded during `record` (BE-0185); has no deterministic run-time equivalent, so it **fails loudly** at `run` time — never a silent pass |
 | `background` | `background: {}` | send the app to the background (Home button) |
 | `foreground` | `foreground: {}` | resume a backgrounded app (`simctl launch`, no settle sleep) |
@@ -734,6 +778,48 @@ clean step failure — never a silent wrong value. Only mail newer than the step
 on message id, so a stale code from an earlier run is never matched), and among new matches the
 newest wins. Deterministic and LLM-free; the endpoint and credentials live in config-referenced
 `${secrets.*}`, so the scenario stays app-agnostic ([BE-0046](../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
+
+### `generate` (a value computed at run time)
+
+```yaml
+- generate: { random: { string: { length: 8, charset: alnum } }, into: { var: username } }
+- type: { text: "${vars.username}", into: { id: signup.username } }
+
+- generate: { random: { uuid: {} }, into: { var: orderRef } }        # a version-4 UUID
+- generate: { random: { int: { min: 1, max: 100 } }, into: { var: quantity } }
+- generate: { random: { float: { min: 0, max: 50, precision: 2 } }, into: { var: amount } }   # e.g. "12.30"
+
+- generate: { datetime: { format: "%Y-%m-%d", offsetDays: 1 }, into: { var: tomorrow } }
+- type: { text: "${vars.tomorrow}", into: { id: booking.date } }
+```
+
+`generate` computes a value in the runner and stores it as `${vars.<var>}`, so a scenario can supply
+an input its author could not write as a literal — a username no earlier run has taken, tomorrow's
+date on a booking form, a reference that collides with no other scenario's. Data-driven rows
+([reuse](#reuse-data-and-tags)) supply a fixed table chosen in advance, and `extract` captures a
+value the app already displays; neither invents a value the scenario did not already have
+([BE-0377](../roadmaps/BE-0377-dynamic-value-generation/BE-0377-dynamic-value-generation.md)).
+
+Exactly one generator kind produces the value. **`random`** draws a `string` (a `length` of
+characters from a `charset` — `alnum` by default, or `alpha` / `numeric` / `hex`), an `int` in the
+inclusive range `[min, max]`, a `float` in `[min, max]` rounded to an optional `precision` of decimal
+places, or a version-4 `uuid`. **`datetime`** renders the current time as text: `format` takes a
+`strftime` pattern (ISO 8601 to the second when omitted), the signed `offsetSeconds` /
+`offsetMinutes` / `offsetHours` / `offsetDays` fields add together to shift it, and `timezone` takes
+an Internet Assigned Numbers Authority (IANA) zone name such as `America/Los_Angeles`. The default
+zone is UTC, so a scenario whose input must match a date the app renders in the device's own zone
+names that zone explicitly; pinning the *device* to a zone is a separate concern
+([BE-0158](../roadmaps/BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive.md)).
+
+The flow is deterministic even though the value is not. A `generate` step the loader accepted always
+executes and always succeeds — a generator draw or a clock read, no network and no model — and only
+the produced value differs between runs, the same way `totp`'s time-derived code already does. A
+`format` that cannot be rendered and a `timezone` that does not resolve fail the load, so no run
+ever substitutes a different value for one mid-flight. The run records each produced value in the
+manifest and the report, so a later failure shows which value the run actually used; a scenario that
+must check a specific value captures it through `${vars.*}` and compares against that capture, not
+against a literal it could not have known in advance. Every codegen target renders `generate` as a
+labeled `// TODO`, because the step runs in the runner rather than the app.
 
 ### `manual`
 

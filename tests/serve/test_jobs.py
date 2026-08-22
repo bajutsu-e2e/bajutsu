@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import signal
 import subprocess
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -963,3 +965,296 @@ def test_batch_run_arn_persists_across_a_repository_reload(serve_engine: Any) ->
     repo.save_batch_run_arn("j1", "arn:run/xyz")
 
     assert SqlRepository(engine).load_batch_run_arn("j1") == "arn:run/xyz"
+
+
+# --- cooperative cancellation of a `run` job (BE-0370) ---
+
+
+class _SignalProc:
+    """A proc double that records *how* a cancel reached it.
+
+    Deliberately carries no `pid`: `_terminate`'s group-wide `killpg` would otherwise resolve a real
+    process group on the host, so today's kill path lands on `terminate()` here and is counted there.
+    """
+
+    def __init__(
+        self,
+        lines: list[str] | None = None,
+        code: int = 0,
+        wedged: bool = False,
+        unkillable: bool = False,
+    ) -> None:
+        self.stdout: Any = iter(lines or [])
+        self.returncode = code
+        self.signals: list[int] = []
+        self.terminated = 0
+        self.killed = 0
+        self.alive = True
+        # A wedged run answers neither signal and never exits, so a bounded `wait` on it times out —
+        # what the escalation's unwind window sees before it resorts to SIGKILL.
+        self.wedged = wedged
+        # A process stuck in the kernel outlives even SIGKILL; nothing serve can do ends it.
+        self.unkillable = unkillable
+
+    def send_signal(self, sig: int) -> None:
+        self.signals.append(sig)
+
+    def terminate(self) -> None:
+        self.terminated += 1
+
+    def kill(self) -> None:
+        self.killed += 1
+        if not self.unkillable:
+            self.alive = False
+
+    def poll(self) -> int | None:
+        return None if self.alive else self.returncode
+
+    def wait(self, timeout: float | None = None) -> int:
+        if self.wedged and timeout is not None:
+            raise subprocess.TimeoutExpired(cmd="x", timeout=timeout)
+        self.alive = False
+        return self.returncode
+
+
+def _run_state(tmp_path: Path, proc: _SignalProc) -> srv.ServeState:
+    scn_dir, cfg, runs = project(tmp_path)
+    return srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        popen=lambda _cmd, **_kw: proc,
+    )
+
+
+def test_cancelling_a_run_job_signals_the_leader_alone(tmp_path: Path) -> None:
+    # The group also holds the backend driver the in-flight scenario is actuating through (a
+    # Playwright browser, an `xcodebuild test`), so a group-wide kill would crash that scenario before
+    # its next safe boundary — the abrupt failure BE-0370 removes.
+    proc = _SignalProc(["step 0 ok\n"])
+    state = _run_state(tmp_path, proc)
+    job = state.register(srv.Job(cmd=["x"], graceful_cancel=True))
+    assert srv_jobs._register_proc(job, proc, graceful=job.graceful_cancel)
+
+    assert srv_jobs.cancel_job(job)
+
+    assert proc.signals == [signal.SIGTERM]
+    assert proc.terminated == 0  # today's kill path was not taken
+    assert job.view()["cancelled"] is True
+
+
+def test_cancelling_a_record_job_keeps_todays_kill(tmp_path: Path) -> None:
+    # `record` / `crawl` produce no RunResult or manifest, so there is no verdict to preserve.
+    proc = _SignalProc()
+    state = _run_state(tmp_path, proc)
+    job = state.register(srv.Job(cmd=["x"]))  # no `graceful_cancel`
+    assert srv_jobs._register_proc(job, proc)
+
+    assert srv_jobs.cancel_job(job)
+
+    assert proc.signals == []
+    assert proc.terminated == 1
+
+
+def test_cancelling_a_run_jobs_build_phase_keeps_todays_kill(tmp_path: Path) -> None:
+    # A `run` job declares the cooperative path, but its on-demand build subprocess is not the run:
+    # `bajutsu run` has not started, so there is nothing to finish gracefully.
+    proc = _SignalProc()
+    state = _run_state(tmp_path, proc)
+    job = state.register(srv.Job(cmd=["x"], build="make build", graceful_cancel=True))
+    assert srv_jobs._register_proc(job, proc)  # the build registers without `graceful=`
+
+    assert srv_jobs.cancel_job(job)
+
+    assert proc.signals == []
+    assert proc.terminated == 1
+
+
+def test_a_wedged_run_is_killed_once_its_grace_window_expires(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The bound runs off the request thread — `POST /api/jobs/{id}/cancel` returns as soon as the
+    # signal is sent — and it has to end on SIGKILL: the run installed a SIGTERM handler that absorbs
+    # a second signal, and a run wedged past executing Python never runs that handler at all, so
+    # neither the leader-only signal nor the group-wide SIGTERM can be relied on to end it.
+    monkeypatch.setenv("BAJUTSU_CANCEL_GRACE", "0.05")
+    sigkilled = threading.Event()
+    monkeypatch.setattr(srv_jobs, "_kill", lambda _proc: sigkilled.set())
+    proc = _SignalProc(wedged=True)
+    state = _run_state(tmp_path, proc)
+    job = state.register(srv.Job(cmd=["x"], graceful_cancel=True))
+    assert srv_jobs._register_proc(job, proc, graceful=True)
+
+    srv_jobs.cancel_job(job)
+
+    assert sigkilled.wait(10)
+    # In order: the leader alone is asked to stop, then the group gets its SIGTERM (the pid-less
+    # double resolves no process group, so `_terminate` falls back to the process itself), and only
+    # then does the escalation reach SIGKILL.
+    assert proc.signals == [signal.SIGTERM]
+    assert proc.terminated == 1
+
+
+def test_a_run_that_closed_itself_out_is_not_killed_afterwards(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The escalation fires on a timer, so it can tick after a run has already finished writing its
+    # manifest. It must find that run gone and leave it alone rather than signalling a reaped pid.
+    monkeypatch.setenv("BAJUTSU_CANCEL_GRACE", "0.05")
+    signalled = threading.Event()
+    monkeypatch.setattr(srv_jobs, "_terminate", lambda _proc: signalled.set())
+    monkeypatch.setattr(srv_jobs, "_kill", lambda _proc: signalled.set())
+    proc = _SignalProc()
+    state = _run_state(tmp_path, proc)
+    job = state.register(srv.Job(cmd=["x"], graceful_cancel=True))
+    assert srv_jobs._register_proc(job, proc, graceful=True)
+
+    proc.wait()  # the run closed itself out before the cancel's window could expire
+    srv_jobs.cancel_job(job)
+
+    assert not signalled.wait(0.5)
+
+
+def _cancel_mid_stream(job: srv.Job, lines: list[str]) -> Any:
+    """Stream *lines*, cancelling *job* after the first one.
+
+    The window this item covers starts once the run is registered and streaming: a cancel *before*
+    `_register_proc` keeps today's immediate kill, so a test that sets `cancelled` up front would
+    exercise that path instead of this one.
+    """
+
+    def stream() -> Any:
+        yield lines[0]
+        srv_jobs.cancel_job(job)
+        yield from lines[1:]
+
+    return stream()
+
+
+def test_a_cooperatively_cancelled_run_is_recorded_as_a_failed_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The point of the whole item: the run still prints its `FAIL runs/<id>/manifest.json` line, so
+    # `_persist_run` learns the run id and records the attempt instead of persisting nothing.
+    monkeypatch.setenv(
+        "BAJUTSU_CANCEL_GRACE", "600"
+    )  # the escalation must not fire during the test
+    proc = _SignalProc(code=1)
+    state = _run_state(tmp_path, proc)
+    job = state.register(srv.Job(cmd=["x"], graceful_cancel=True))
+    proc.stdout = _cancel_mid_stream(
+        job, ["scenario 1/2 cancelled\n", "FAIL  runs/20260610-9/manifest.json\n"]
+    )
+
+    srv.run_job(state, job)
+
+    v = job.view()
+    assert v["runId"] == "20260610-9"  # the id `_persist_run` records the run under
+    assert v["status"] == "done" and v["ok"] is False
+    assert proc.signals == [signal.SIGTERM] and proc.terminated == 0
+
+
+def test_a_graceful_cancel_sweeps_the_process_group_after_the_leader_exits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A driver child that outlived the runner's own teardown would otherwise be orphaned on the serve
+    # host. The group is read while the leader is alive, since its pid can be reused once reaped.
+    monkeypatch.setenv("BAJUTSU_CANCEL_GRACE", "600")
+    swept: list[int | None] = []
+    monkeypatch.setattr(srv_jobs, "_pgid_of", lambda _proc: 4242)
+    monkeypatch.setattr(srv_jobs, "_sweep_group", swept.append)
+    proc = _SignalProc(code=1)
+    state = _run_state(tmp_path, proc)
+    job = state.register(srv.Job(cmd=["x"], graceful_cancel=True))
+    proc.stdout = _cancel_mid_stream(
+        job, ["scenario 1/2 cancelled\n", "FAIL  runs/20260610-9/manifest.json\n"]
+    )
+
+    srv.run_job(state, job)
+
+    assert swept == [4242]
+
+
+def test_an_ordinary_run_never_sweeps_the_process_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    swept: list[int | None] = []
+    monkeypatch.setattr(srv_jobs, "_pgid_of", lambda _proc: 4242)
+    monkeypatch.setattr(srv_jobs, "_sweep_group", swept.append)
+    proc = _SignalProc(["PASS  runs/20260610-9/manifest.json\n"])
+    state = _run_state(tmp_path, proc)
+    job = state.register(srv.Job(cmd=["x"], graceful_cancel=True))
+
+    srv.run_job(state, job)
+
+    assert swept == []  # nothing was cancelled, so the group is left alone
+
+
+def test_the_grace_window_reaches_the_spawned_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The run's own internal deadline is bound to the window serve is waiting out, so the two can
+    # never race each other into killing the run before its manifest is written.
+    monkeypatch.setenv("BAJUTSU_CANCEL_GRACE", "45")
+    env = srv_jobs._spawn_env(srv.Job(cmd=["x"], graceful_cancel=True))
+    assert env["BAJUTSU_CANCEL_GRACE"] == "45"
+
+
+def test_only_a_cooperative_job_is_told_the_grace_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A `record` / `crawl` spawn installs no handler, so naming a window for it would describe a bound
+    # nothing enforces.
+    monkeypatch.delenv("BAJUTSU_CANCEL_GRACE", raising=False)
+    assert "BAJUTSU_CANCEL_GRACE" not in srv_jobs._spawn_env(srv.Job(cmd=["x"]))
+    assert "BAJUTSU_CANCEL_GRACE" in srv_jobs._spawn_env(srv.Job(cmd=["x"], graceful_cancel=True))
+
+
+def test_sweeping_an_unknown_process_group_is_a_no_op() -> None:
+    srv_jobs._sweep_group(None)  # a proc double with no readable pid must not raise
+
+
+def test_the_build_phase_of_a_run_job_registers_as_uncancellable(tmp_path: Path) -> None:
+    # `_build_app` runs before `bajutsu run` exists, so its subprocess installs no SIGTERM handler.
+    # Registering it as cooperative would add the whole grace window to every cancelled build before
+    # the kill it needs, so the build phase must register plainly even on a `graceful_cancel` job.
+    scn_dir, cfg, runs = project(tmp_path)
+    proc = _SignalProc(["compiling\n"])
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        popen=lambda _cmd, **_kw: proc,
+    )
+    job = state.register(
+        srv.Job(cmd=["x"], app_path="Demo.app", build="make build", graceful_cancel=True)
+    )
+
+    assert srv_jobs._build_app(state, job)
+    assert job.proc_graceful is False
+
+    srv_jobs.cancel_job(job)
+
+    assert proc.signals == []  # today's kill, not the cooperative request
+    assert proc.terminated == 1
+
+
+def test_escalating_a_run_that_dies_on_sigkill_reports_no_further_fault(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # `kill` only queues the signal, so reading `poll()` straight afterwards says nothing about
+    # whether it worked. Concluding a fault from that read would report an unkillable job on every
+    # escalation that in fact succeeded.
+    proc = _SignalProc(wedged=True)  # ignores the SIGTERM stage, so the escalation reaches SIGKILL
+    with caplog.at_level(logging.WARNING, logger="bajutsu.serve.jobs"):
+        srv_jobs._escalate(proc)
+    assert proc.killed == 1
+    assert "stuck in the kernel" not in caplog.text
+
+
+def test_escalating_a_run_that_outlives_sigkill_says_so(caplog: pytest.LogCaptureFixture) -> None:
+    # The one incident this disclosure exists for: a job the Web UI can never end, which otherwise
+    # leaves no trace but a job that never finishes.
+    proc = _SignalProc(wedged=True, unkillable=True)
+    with caplog.at_level(logging.WARNING, logger="bajutsu.serve.jobs"):
+        srv_jobs._escalate(proc)
+    assert proc.killed == 1
+    assert "stuck in the kernel" in caplog.text

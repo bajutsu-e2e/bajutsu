@@ -12,7 +12,12 @@ from __future__ import annotations
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import AlertEvent, AlertGuardConfig
-from bajutsu.orchestrator.types import DEFAULT_DISMISSIVE_LABELS, pick_alert_label
+from bajutsu.orchestrator.types import (
+    DEFAULT_DISMISSIVE_LABELS,
+    ResolvedAlertRule,
+    match_alert_rule,
+    pick_alert_label,
+)
 
 
 class _LogicalClock:
@@ -50,6 +55,7 @@ def _button(label: str) -> base.Element:
         "traits": ["button"],
         "value": None,
         "frame": (0, 0, 10, 10),
+        "nativeZ": None,
     }
 
 
@@ -86,6 +92,50 @@ def test_pick_alert_label_skips_an_ambiguous_candidate() -> None:
     assert pick_alert_label(["OK"], ["OK", "OK"]) is None
 
 
+# --- match_alert_rule -------------------------------------------------------------------------------
+
+_NOTIF_RULE = ResolvedAlertRule(
+    identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+)
+_TRACKING_RULE = ResolvedAlertRule(
+    identifying_labels=frozenset({"Allow", "Ask App Not to Track"}),
+    tap_label="Ask App Not to Track",
+)
+
+
+def test_match_alert_rule_identifies_the_prompt_by_its_full_label_pair() -> None:
+    # The tracking prompt's alert carries both of its own labels, so the tracking rule matches even
+    # though "Allow" alone is shared with the notifications prompt.
+    assert (
+        match_alert_rule([_TRACKING_RULE], ["Allow", "Ask App Not to Track"])
+        == "Ask App Not to Track"
+    )
+
+
+def test_match_alert_rule_none_when_only_the_shared_label_is_present() -> None:
+    # "Allow" alone cannot identify which of two prompts is on screen.
+    assert match_alert_rule([_TRACKING_RULE], ["Allow", "Cancel"]) is None
+
+
+def test_match_alert_rule_returns_the_first_matching_rule_in_order() -> None:
+    assert match_alert_rule([_NOTIF_RULE, _TRACKING_RULE], ["Allow", "Don't Allow"]) == "Allow"
+    assert (
+        match_alert_rule([_NOTIF_RULE, _TRACKING_RULE], ["Allow", "Ask App Not to Track"])
+        == "Ask App Not to Track"
+    )
+
+
+def test_match_alert_rule_none_when_no_rules_or_no_match() -> None:
+    assert match_alert_rule([], ["Allow", "Don't Allow"]) is None
+    assert match_alert_rule([_NOTIF_RULE], ["Weird Button"]) is None
+
+
+def test_match_alert_rule_requires_each_identifying_label_exactly_once() -> None:
+    # Two buttons carrying the same label cannot uniquely identify the prompt, mirroring
+    # pick_alert_label's own exactly-once rule.
+    assert match_alert_rule([_NOTIF_RULE], ["Allow", "Allow", "Don't Allow"]) is None
+
+
 # --- AlertGuardConfig.probe_native ------------------------------------------------------------------
 
 
@@ -116,6 +166,26 @@ def test_probe_native_uses_default_dismissive_labels_when_none_configured() -> N
     assert state == "dismissed"
     assert event is not None and event.label == "Don't Allow"
     assert event.label in DEFAULT_DISMISSIVE_LABELS
+
+
+def test_probe_native_prefers_a_matching_rule_over_the_candidate_labels() -> None:
+    # A rule identifying the tracking prompt taps its own choice, even though "Allow" is also a
+    # candidate label that would otherwise resolve first via pick_alert_label.
+    guard = AlertGuardConfig(vision=_never_vision, labels=["Allow"], rules=[_TRACKING_RULE])
+    driver = _fake_with_alert(["Allow", "Ask App Not to Track"])
+    state, event = guard.probe_native(driver)
+    assert state == "dismissed"
+    assert event == AlertEvent(label="Ask App Not to Track")
+
+
+def test_probe_native_falls_back_to_labels_when_no_rule_matches() -> None:
+    guard = AlertGuardConfig(vision=_never_vision, labels=["Allow"], rules=[_TRACKING_RULE])
+    driver = _fake_with_alert(
+        ["Don't Allow", "Allow"]
+    )  # notifications prompt: no rule identifies it
+    state, event = guard.probe_native(driver)
+    assert state == "dismissed"
+    assert event == AlertEvent(label="Allow")
 
 
 def test_probe_native_unhandled_when_no_candidate_resolves() -> None:

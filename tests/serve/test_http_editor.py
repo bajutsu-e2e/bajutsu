@@ -18,6 +18,7 @@ def _elements() -> list[dict[str, object]]:
             "traits": ["button"],
             "value": None,
             "frame": [50.0, 50.0, 100.0, 44.0],
+            "nativeZ": None,
         },
     ]
 

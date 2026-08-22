@@ -21,7 +21,9 @@ from bajutsu.serve.helpers import load_serve_config_file
 from bajutsu.serve.orgs import (
     OrgConfig,
     identity_matches_org,
+    in_teams,
     org_for_identity,
+    orgs_declaring_membership,
     orgs_from_db,
 )
 from bajutsu.serve.state import ServeState
@@ -98,7 +100,7 @@ class _OrgModel:
                 )
             if not self.orgs:
                 return "the serve config declares no orgs: block", True
-        elif not any(oc.members or oc.github_orgs for oc in self.orgs.values()):
+        elif not orgs_declaring_membership(self.orgs):
             # Not `not self.orgs`: the bypass sign-in this reports calls `ensure_org` on its way
             # past, so a passive `default` row lands in the table — and every later sign-in would
             # read a non-empty table and quietly drop to INFO while the deployment still admits
@@ -106,7 +108,17 @@ class _OrgModel:
             # membership yet, not that no row exists.
             return "no org in the orgs table declares any membership yet", True
         if not identity.orgs:
-            return "GitHub returned no orgs for this login", False
+            # An empty org list stays the primary signal, since a `/user/orgs` outage looks exactly
+            # like it. Naming the Team list too, and only when it is *also* empty, keeps that reading
+            # intact while covering the deployment whose gate is a `githubTeams`/`editorTeams` entry:
+            # there the org list is beside the point, and blaming it alone would send an operator to
+            # an `orgs:` axis that entry never consults. A login carrying Teams but no orgs is
+            # unchanged -- one fetch came back, so only the other is worth naming.
+            return (
+                "GitHub returned no orgs or teams for this login"
+                if not identity.teams
+                else "GitHub returned no orgs for this login"
+            ), False
         return "no org membership matched this login", False
 
 
@@ -138,7 +150,7 @@ def oauth_callback(
 ) -> tuple[Any, int, str | None]:
     """Complete GitHub OAuth (BE-0015 7b-2, BE-0313): verify the CSRF state (the query value must
     match the cookie), exchange the code for a GitHub identity (login + org + Team memberships), gate
-    sign-in on GitHub org membership or membership in a configured admin Team, persist the user under
+    sign-in on an org's declared membership or on a configured admin Team, persist the user under
     their resolved org with a Team-derived role, and on success mint a session bound to that login.
     Returns ``(payload, status, session_id | None)``."""
     if state.auth.oauth is None:
@@ -187,9 +199,11 @@ def oauth_callback(
         return {"error": "oauth exchange failed"}, 403, None
     login = identity.login
     # Read the org model once, for both the sign-in gate and the org/role resolution below
-    # (BE-0313). Sign-in is gated on GitHub org membership: a login matching no
-    # `members`/`githubOrgs` entry is turned away — unless it also matches a configured admin Team,
-    # in which case the admin-Team check below admits it regardless. This runs at the top level,
+    # (BE-0313). Sign-in is gated on an org's declared membership: a login matching no
+    # `members`/`githubOrgs`/`githubTeams`/`editorTeams` entry is turned away — unless it also matches
+    # a configured admin Team, in which case the admin-Team check below admits it regardless. The
+    # gate and the placement below read the one ranking in `orgs._match_org`, so a login admitted
+    # through one org's Team is never filed under another. This runs at the top level,
     # before the database block, so an OAuth-configured but database-less deployment still gates
     # sign-in rather than admitting every GitHub user. Only the model's *source* depends on whether
     # a database is wired (BE-0375); where the gate itself sits is unchanged.
@@ -221,7 +235,7 @@ def oauth_callback(
     # sign in and repoint a broken or incomplete `orgs:` config, not be locked out by the same config
     # mistake they exist to fix.
     is_admin_team_member = in_admin_team(identity.teams, admin_teams)
-    matched_org = identity_matches_org(orgs, login, identity.orgs)
+    matched_org = identity_matches_org(orgs, login, identity.orgs, identity.teams)
     if not matched_org and not is_admin_team_member:
         # A rejection gets its own event (not `oauth.login`, which stays "login count"). The
         # message is keyed on the same `admin_teams_unusable` predicate as the level below, so
@@ -260,9 +274,9 @@ def oauth_callback(
         # org placement, so no config load can misplace anyone. `orgs_from_db` raises rather than
         # presenting an empty roster, so there is no silent "everything is empty" state left to
         # mistake for a real one.
-        org = org_for_identity(orgs, login, identity.orgs)
+        org = org_for_identity(orgs, login, identity.orgs, identity.teams)
         oc = orgs.get(org)
-        editor_team = oc.editor_team if oc is not None else None
+        editor_teams = oc.editor_teams if oc is not None else []
         state.repository.ensure_org(org, slug=org, name=org)
         state.repository.upsert_user(
             login,
@@ -273,7 +287,7 @@ def oauth_callback(
             # effect on next login without a data migration (BE-0015 7c-2, BE-0313).
             role=role_for(
                 teams=identity.teams,
-                editor_team=editor_team,
+                editor_teams=editor_teams,
                 admin_teams=admin_teams,
             ),
         )
@@ -392,6 +406,7 @@ _EDITOR_PATHS = frozenset(
         "/api/record",
         "/api/crawl",
         "/api/scenario",
+        "/api/scenarios/upload",
         "/api/approve",
         "/api/capture/start",
         "/api/capture/mark",
@@ -404,8 +419,8 @@ _EDITOR_PATHS = frozenset(
 # ("<github-org>/<team-slug>", no empty half or internal whitespace) -- shared between
 # `_build_server_state`'s `admin_teams_malformed` startup check and `admin_teams_unusable` below, so
 # the two copies can't drift the way `in_admin_team` and `_unmatched_org_cause` were already factored
-# out to prevent. Does not reject an uppercase character in either half; see `in_admin_team`'s own
-# case-folding for why (BE-0352).
+# out to prevent. Does not reject an uppercase character in either half; see `in_teams`'s own
+# lowercasing for why (BE-0352).
 ADMIN_TEAM_ENTRY_RE = re.compile(r"[^\s/]+/[^\s/]+")
 
 
@@ -419,28 +434,27 @@ def admin_teams_unusable(admin_teams: tuple[str, ...]) -> bool:
 
 
 def in_admin_team(teams: Sequence[str], admin_teams: tuple[str, ...]) -> bool:
-    """Whether any of *teams* is a server-wide admin Team — the one membership test behind both the
-    admin role below and `oauth_callback`'s admin-Team sign-in bypass, so the gate that admits a
-    bypassing login and the role it resolves to can never drift apart. Case-folded on both sides,
-    since GitHub resolves an org login and a Team slug case-insensitively; folding never turns an
-    empty team name into a match, and preserves the nested-Team guarantee, which rests on exact
-    string equality (BE-0352)."""
-    folded = {t.casefold() for t in admin_teams}
-    return any(team.casefold() in folded for team in teams)
+    """Whether any of *teams* is a server-wide admin Team — the membership test behind both the admin
+    role below and `oauth_callback`'s admin-Team sign-in bypass, so the gate that admits a bypassing
+    login and the role it resolves to can never drift apart. `orgs.in_teams` does the comparing, the
+    same one the per-org sign-in gate uses (BE-0352)."""
+    return in_teams(teams, admin_teams)
 
 
-def role_for(*, teams: Sequence[str], editor_team: str | None, admin_teams: tuple[str, ...]) -> str:
+def role_for(
+    *, teams: Sequence[str], editor_teams: Sequence[str], admin_teams: tuple[str, ...]
+) -> str:
     """The role for a login from its GitHub Team memberships (BE-0313): admin if a member of any of
-    the server-wide *admin_teams*, editor if a member of the resolved org's *editor_team*, else viewer
-    (the base role every signed-in user gets). *teams* are `"<github-org>/<team-slug>"` direct
-    memberships; an unset *editor_team* or empty *admin_teams* never matches. The admin check
-    (`in_admin_team`) is case-insensitive; this *editor_team* check is deliberately left exact for
-    now — it carries the same latent case trap, since `identity.teams` reports GitHub's own
-    organization-login case either way, but widening it is a role change outside this item's
-    sign-in-recovery scope. Recomputed on every login (BE-0015 7c-2)."""
+    the server-wide *admin_teams*, editor if a member of any of the resolved org's *editor_teams*,
+    else viewer (the base role every signed-in user gets). *teams* are `"<github-org>/<team-slug>"`
+    direct memberships; empty *editor_teams* or empty *admin_teams* never matches. Both checks go
+    through `in_teams`, so both are ASCII-case-insensitive: once `editorTeams` also admits a login at
+    the sign-in gate, a case-mismatched entry that used to cost only the editor role would cost
+    sign-in itself, and matching one way but not the other would admit a login and then hand it
+    viewer. Recomputed on every login (BE-0015 7c-2)."""
     if in_admin_team(teams, admin_teams):
         return "admin"
-    if editor_team is not None and editor_team in teams:
+    if in_teams(teams, editor_teams):
         return "editor"
     return "viewer"
 

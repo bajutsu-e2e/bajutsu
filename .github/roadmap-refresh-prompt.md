@@ -9,8 +9,8 @@ Reconcile each roadmap item's **state metadata** with what has actually merged o
 never silently lags the code:
 
 - **`Status`** — flip `Proposal` → `In progress` once a PR has started building the item, and
-  `In progress` → `Implemented` once its implementing code has merged. (`Proposal (deferred)` is a
-  deliberate human decision — never un-defer it here.)
+  `In progress` → `Implemented` once its implementing code has merged. (`Deferred` and `Rejected`
+  are deliberate human decisions — never reopen either one here.)
 - **`Progress`** — tick the `- [ ]` boxes whose work has landed, and add a short chronological,
   PR-linked log entry for what merged, matching the section's existing style.
 - **`Implementing PR`** — add or extend the `Implementing PR` row (both languages) with the PR(s)

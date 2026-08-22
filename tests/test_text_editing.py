@@ -20,6 +20,7 @@ def _field(identifier: str, value: str | None) -> base.Element:
         "traits": [],
         "value": value,
         "frame": (0.0, 0.0, 100.0, 40.0),
+        "nativeZ": None,
     }
 
 

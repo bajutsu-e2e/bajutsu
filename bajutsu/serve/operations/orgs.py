@@ -60,7 +60,7 @@ def _string_list(value: Any, field: str) -> tuple[list[str] | None, str | None]:
 def list_orgs_view(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
     """Every live org with its membership — the Orgs page's list and the source its edit form fills.
 
-    The rosters themselves, not just their sizes: the membership form replaces all three fields as
+    The rosters themselves, not just their sizes: the membership form replaces all four fields as
     one unit, so it has to start from the current values or the first save would silently empty
     what it never showed. Only an admin can reach this (`authz.required_role`), which is the same
     tier that could already read the `orgs:` block through `GET /api/config/content`.
@@ -76,7 +76,8 @@ def list_orgs_view(state: ServeState, *, actor: str | None = None) -> tuple[Any,
             "name": org.name,
             "members": org.members,
             "githubOrgs": org.github_orgs,
-            "editorTeam": org.editor_team,
+            "githubTeams": org.github_teams,
+            "editorTeams": org.editor_teams,
             "projectCount": len(repository.list_projects(org_id=org.id)),
             # The fallback an unmatched sign-in resolves to is listed (an admin admitted by the
             # bypass is sitting in it, and hiding that would hide where their own work lands) but is
@@ -127,7 +128,7 @@ def create_org(
 def update_org_membership(
     state: ServeState, slug: str, body: dict[str, Any], *, actor: str | None = None
 ) -> tuple[Any, int]:
-    """Replace an org's ``{members, githubOrgs, editorTeam}`` as one unit.
+    """Replace an org's ``{members, githubOrgs, githubTeams, editorTeams}`` as one unit.
 
     The same granularity a configuration edit already had, rather than per-entry add/remove: an
     admin sees the whole roster and sends back the whole roster, so two concurrent edits can't
@@ -153,13 +154,29 @@ def update_org_membership(
     github_orgs, invalid = _string_list(body.get("githubOrgs"), "githubOrgs")
     if invalid is not None:
         return {"error": invalid}, 400
-    raw_team = body.get("editorTeam")
-    if raw_team is not None and not isinstance(raw_team, str):
-        return {"error": "editorTeam must be a string"}, 400
-    editor_team = (raw_team or "").strip() or None
-    assert members is not None and github_orgs is not None  # narrowed by the two error returns
+    github_teams, invalid = _string_list(body.get("githubTeams"), "githubTeams")
+    if invalid is not None:
+        return {"error": invalid}, 400
+    editor_teams, invalid = _string_list(body.get("editorTeams"), "editorTeams")
+    if invalid is not None:
+        return {"error": invalid}, 400
+    if "editorTeam" in body:
+        # The retired singular field is refused here, not folded in the way the `orgs:` block's own
+        # key is (`OrgConfig._fold_retired_editor_team`). `_string_list` reads a missing `editorTeams`
+        # as an empty list, so a caller still on the old name would replace this org's roster with one
+        # granting nobody write access — and get a 200 back saying so. The two surfaces differ in what
+        # refusing costs: one request an operator can fix here, every login of the deployment there.
+        # Loud rather than normalized, like `_validate_slug` above (determinism first).
+        return {"error": "editorTeam is retired; send editorTeams as a list of Teams instead"}, 400
+    # Narrowed by the four error returns above.
+    assert members is not None and github_orgs is not None
+    assert github_teams is not None and editor_teams is not None
     if not state.repository.set_org_membership(
-        slug, members=members, github_orgs=github_orgs, editor_team=editor_team
+        slug,
+        members=members,
+        github_orgs=github_orgs,
+        github_teams=github_teams,
+        editor_teams=editor_teams,
     ):
         return {"error": f"no org named {slug!r}"}, 404
     _record_audit(
@@ -170,13 +187,19 @@ def update_org_membership(
         slug,
         # The logins themselves are the point of the entry — "who could sign in as this tenant, from
         # when" is exactly what an audit of a membership change has to answer.
-        {"members": members, "githubOrgs": github_orgs, "editorTeam": editor_team},
+        {
+            "members": members,
+            "githubOrgs": github_orgs,
+            "githubTeams": github_teams,
+            "editorTeams": editor_teams,
+        },
     )
     return {
         "slug": slug,
         "members": members,
         "githubOrgs": github_orgs,
-        "editorTeam": editor_team,
+        "githubTeams": github_teams,
+        "editorTeams": editor_teams,
     }, 200
 
 

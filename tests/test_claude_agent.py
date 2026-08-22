@@ -28,6 +28,7 @@ def _el(identifier: str, label: str, traits: list[str] | None = None) -> base.El
         "traits": traits or ["button"],
         "value": None,
         "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
     }
 
 
@@ -412,6 +413,7 @@ def _full_el(
         "value": value,
         "traits": traits,
         "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
     }
 
 
@@ -501,6 +503,7 @@ def test_secret_in_element_value_is_masked_before_send() -> None:
             "traits": ["staticText"],
             "value": "sk-secret-token",
             "frame": (0.0, 0.0, 1.0, 1.0),
+            "nativeZ": None,
         },
     ]
     obs = Observation(goal="g", screen=screen, history=[])
@@ -529,6 +532,7 @@ def _vel(label: str | None, traits: list[str], value: str | None = None) -> base
         "traits": traits,
         "value": value,
         "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
     }
 
 

@@ -50,10 +50,15 @@ uikit-noax-build:
 # built name carries the SDK version, so copy it to a stable name in the same dir (its __TESTROOT__
 # must stay beside the built products). This is the `xcuitest.build` fallback in showcase.config.yaml.
 RUNNER_PRODUCTS := $(RUNNER)/build/dd/Build/Products
+# `-skipPackagePluginValidation` is required, not tidiness: BajutsuRunner applies the Swift OpenAPI
+# Generator build-tool plugin, and Xcode gates an unapproved package plugin behind an interactive
+# trust prompt it cannot show under `xcodebuild`, failing the build outright with
+# `Validate plug-in "OpenAPIGenerator"`. Accepting it is bounded by the manifest's `exact:` pins.
 runner-build:
 	cd $(RUNNER) && xcodegen generate
 	cd $(RUNNER) && xcodebuild build-for-testing -project BajutsuRunner.xcodeproj -scheme BajutsuRunner \
-		-destination 'generic/platform=iOS Simulator' -derivedDataPath build/dd
+		-destination 'generic/platform=iOS Simulator' -derivedDataPath build/dd \
+		-skipPackagePluginValidation
 	cp $(RUNNER_PRODUCTS)/BajutsuRunner_*.xctestrun $(RUNNER_PRODUCTS)/BajutsuRunner.xctestrun
 
 # ---- Device builds for a device cloud (BE-0238 batch route) ---------------------------------------
@@ -103,7 +108,7 @@ runner-build-device:
 	$(require_team)
 	cd $(RUNNER) && xcodegen generate
 	cd $(RUNNER) && xcodebuild build-for-testing -project BajutsuRunner.xcodeproj -scheme BajutsuRunner \
-		-destination 'generic/platform=iOS' -derivedDataPath build/dd-device \
+		-destination 'generic/platform=iOS' -derivedDataPath build/dd-device -skipPackagePluginValidation \
 		-allowProvisioningUpdates CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=$(DEVELOPMENT_TEAM)
 	cp $(RUNNER_DEVICE_PRODUCTS)/BajutsuRunner_*.xctestrun $(RUNNER_DEVICE_PRODUCTS)/BajutsuRunner.xctestrun
 	@echo "device .xctestrun: $(RUNNER_DEVICE_PRODUCTS)/BajutsuRunner.xctestrun (package its Products dir alongside)"
@@ -112,10 +117,13 @@ runner-build-device:
 # resolves to XCUITest, the sole iOS backend since idb was retired (BE-0290). `scenarios/tabs.yaml`
 # stays tagged `xcuitest` and excluded here — a legacy split from when a coordinate backend could not
 # reach the tab bar — and `run-swiftui-tabs`/`run-uikit-tabs` below run it on its own; both paths run
-# on XCUITest now. `permission_system_alert.yaml` (BE-0316) is tagged `systemalert` and excluded too:
-# these bulk runs discover every scenario file and do not reset per-scenario permission state, so the
-# `notDetermined` prompt its handleSystemAlert step needs is not guaranteed here (its own iOS CI job
-# installs a fresh app for it). A dedicated tag keeps it out without riding the legacy `xcuitest` tag.
+# on XCUITest now. `permission_system_alert.yaml` (BE-0316) and `paste_system_alert.yaml` (BE-0369)
+# are tagged `systemalert` and excluded too: these bulk runs discover every scenario file and do not
+# reset per-scenario device state, so the `notDetermined` prompt the first one's handleSystemAlert
+# step needs is not guaranteed here, and the second one leaves the pasteboard holding its own string
+# for whatever scenario the lane discovers next. Each runs instead on a named iOS CI scenario list
+# (`run` for the first, `actuation` for the second), where what precedes it is controlled rather than
+# discovered. A dedicated tag keeps them out without riding the legacy `xcuitest` tag.
 # Two more tags are excluded for the same "this file has its own lane" reason: `visual`
 # (scenarios/visual.yaml), because these lanes pass no `--baselines` and every pixel check could only
 # report its baseline missing — `vrt` below names that file and its baseline directory explicitly;

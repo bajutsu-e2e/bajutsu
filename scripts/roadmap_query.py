@@ -2,7 +2,7 @@
 """Filter roadmap (BE) items by ``Status`` and print one table for an AI session (BE-0162).
 
 The [roadmap dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html) lists every item
-across all four status buckets, which is more than a session that only needs, say, the open
+across all five status buckets, which is more than a session that only needs, say, the open
 proposals wants to read into context. This projects each item's own metadata (the authoritative
 source the dashboard itself reads) into just the rows for one status, with the file path to open
 next::

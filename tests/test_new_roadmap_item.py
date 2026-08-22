@@ -110,7 +110,7 @@ def test_handle_is_stripped_of_leading_at(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "status", ["Proposal", "In progress", "Implemented", "Proposal (deferred)"]
+    "status", ["Proposal", "In progress", "Implemented", "Deferred", "Rejected"]
 )
 def test_item_lands_directly_under_roadmaps_regardless_of_status(
     tmp_path: Path, status: str

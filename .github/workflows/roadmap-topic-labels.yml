@@ -35,6 +35,7 @@ jobs:
   label:
     name: sync topic labels
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # A fork PR gets a read-only token, so label edits would fail; skip (the repo-owned PRs are the
     # only ones this can act on).
     if: github.event.pull_request.head.repo.full_name == github.repository

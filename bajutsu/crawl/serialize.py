@@ -32,6 +32,8 @@ def action_to_dict(a: Action) -> dict[str, object]:
         d["fields"] = [list(f) for f in a.fields]
     if a.point is not None:
         d["point"] = list(a.point)
+    if a.secure:
+        d["secure"] = True
     return d
 
 
@@ -46,6 +48,7 @@ def action_from_dict(d: dict[str, Any]) -> Action:
         value=d.get("value"),
         fields=tuple((str(f[0]), str(f[1])) for f in (d.get("fields") or [])),
         point=(float(point[0]), float(point[1])) if point else None,
+        secure=bool(d.get("secure")),
     )
 
 

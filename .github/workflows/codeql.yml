@@ -37,6 +37,7 @@ jobs:
   changes:
     name: Detect changed languages
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       pull-requests: read
@@ -69,6 +70,7 @@ jobs:
     name: Analyze
     needs: changes
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       security-events: write
       packages: read
@@ -100,6 +102,7 @@ jobs:
       needs.changes.outputs.swift == 'true' ||
       github.event_name != 'pull_request'
     runs-on: macos-latest
+    timeout-minutes: 30
     permissions:
       security-events: write
       packages: read
@@ -132,6 +135,7 @@ jobs:
       needs.changes.outputs.android == 'true' ||
       github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       security-events: write
       packages: read
@@ -169,6 +173,7 @@ jobs:
     needs: [analyze, analyze-swift, analyze-java-kotlin]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Verify analysis results
         env:

@@ -25,6 +25,8 @@ from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.evidence import FileSink
 from bajutsu.evidence.network import Collector, NetworkCollector, _no_transitions
+from bajutsu.evidence.redaction import Redactor
+from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.orchestrator.evidence_rules import requested_intervals
 
@@ -342,7 +344,11 @@ def device_pool(
             # launches. Either way the temp dir must exist before the driver is built.
             record_video_dir: Path | None = None
             if lease_env.records_video_up_front() and "video" in requested_intervals(scenario):
-                record_video_dir = run_dir / "_video_tmp"
+                # The recorder writes into this staging dir itself, so the sink reserves it; the
+                # finished recording crosses redaction when the sink finalizes it (BE-0331).
+                record_video_dir = RunArtifactWriter(
+                    run_dir, Redactor(eff.redact, values=secret_values)
+                ).reserve("_video_tmp")
                 record_video_dir.mkdir(parents=True, exist_ok=True)
             # A device backend points the app at its pre-started HTTP collector via launch env; a
             # driver-observed platform has no such env (it observes natively) and hooks its collector

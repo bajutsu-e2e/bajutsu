@@ -27,7 +27,12 @@ from bajutsu.serve.helpers import range_reply, valid_run_id
 from bajutsu.serve.routes import ROUTES, match_route
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.upload_artifacts import ArtifactKind
-from bajutsu.serve.uploads import MAX_UPLOAD_BYTES, BoundedZipReceiver, UploadTooLarge
+from bajutsu.serve.uploads import (
+    MAX_SCENARIO_ZIP_TOTAL_BYTES,
+    MAX_UPLOAD_BYTES,
+    BoundedZipReceiver,
+    UploadTooLarge,
+)
 
 # Stream an uploaded bundle to disk in 1 MiB chunks so a large app binary never loads into memory.
 _UPLOAD_CHUNK = 1024 * 1024
@@ -319,6 +324,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if path in _ARTIFACT_UPLOAD_PATHS:
                 self._handle_artifact_upload(_ARTIFACT_UPLOAD_PATHS[path])
                 return
+            if path == "/api/scenarios/upload":
+                self._handle_scenarios_upload()
+                return
             length = int(self.headers.get("Content-Length") or 0)
             # Block cross-origin state-changing requests unconditionally (BE-0121) — not only when a
             # token is configured. The no-token loopback default is the common `make serve` case, and
@@ -373,14 +381,21 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             # shared registry like GET/POST.
             self._dispatch_registry("DELETE", urlparse(self.path).path, {})
 
-        def _stream_bounded_body(self) -> BoundedZipReceiver | None:
+        def _stream_bounded_body(self, *, cap: int | None = None) -> BoundedZipReceiver | None:
             """Stream a raw POST body into a bounded, sha256-hashing temp file (`BoundedZipReceiver`,
-            shared by `_handle_upload` (BE-0073) and `_handle_artifact_upload` (BE-0268)) — the size
-            cap is enforced both up front (Content-Length) and while reading, so a lying length can't
-            overrun it. Writes the JSON error response itself and returns None on any failure —
-            cross-origin block, a missing/oversized Content-Length, a short read, or a mid-stream
-            cap/OS error — cleaning the receiver up before returning; a caller only gets a receiver
-            back on success, and owns its `cleanup()` from there."""
+            shared by `_handle_upload` (BE-0073), `_handle_artifact_upload` (BE-0268), and
+            `_handle_scenarios_upload` (BE-0340, passing a smaller *cap* — a scenario zip has no
+            reason to approach the whole-bundle wire size)) — the size cap is enforced both up front
+            (Content-Length) and while reading, so a lying length can't overrun it. Writes the JSON
+            error response itself and returns None on any failure — cross-origin block, a missing/
+            oversized Content-Length, a short read, or a mid-stream cap/OS error — cleaning the
+            receiver up before returning; a caller only gets a receiver back on success, and owns its
+            `cleanup()` from there. Leaving *cap* at its default constructs `BoundedZipReceiver` with
+            none of its own, so it falls back to reading the module's live `MAX_UPLOAD_BYTES` itself
+            (the same monkeypatch-friendly reasoning `BoundedZipReceiver.__init__` already documents
+            for not binding that value as a parameter default here either) — an explicit *cap*
+            instead overrides it outright, for a caller with its own, smaller bound."""
+            effective_cap = MAX_UPLOAD_BYTES if cap is None else cap
             # These early returns don't read the (possibly huge) body, so the connection still holds
             # the unread upload bytes. Close it rather than draining gigabytes or leaving them to
             # corrupt the next request on a keep-alive connection.
@@ -392,11 +407,11 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if length <= 0:
                 self._json({"error": "empty upload"}, 400)
                 return None
-            if length > MAX_UPLOAD_BYTES:
+            if length > effective_cap:
                 self.close_connection = True
-                self._json({"error": f"upload too large (max {MAX_UPLOAD_BYTES} bytes)"}, 413)
+                self._json({"error": f"upload too large (max {effective_cap} bytes)"}, 413)
                 return None
-            receiver = BoundedZipReceiver()
+            receiver = BoundedZipReceiver() if cap is None else BoundedZipReceiver(cap=cap)
             try:
                 remaining = length
                 while remaining > 0:
@@ -415,11 +430,11 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     return None
                 return receiver
             except UploadTooLarge:
-                # Belt-and-suspenders: length <= MAX_UPLOAD_BYTES is checked above, so this loop
-                # never actually exceeds the cap — kept only so the shared receiver's contract holds
-                # for both backends alike.
+                # Belt-and-suspenders: length <= effective_cap is checked above, so this loop never
+                # actually exceeds the cap — kept only so the shared receiver's contract holds for
+                # both backends alike.
                 self.close_connection = True
-                self._json({"error": f"upload too large (max {MAX_UPLOAD_BYTES} bytes)"}, 413)
+                self._json({"error": f"upload too large (max {effective_cap} bytes)"}, 413)
             except OSError:
                 self.close_connection = True
                 self._json({"error": "upload interrupted"}, 400)
@@ -474,6 +489,31 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                         sha256=receiver.digest(),
                         actor=self._actor(),
                     )
+                )
+            except Exception as exc:
+                self._respond_uncaught(exc)
+            finally:
+                receiver.cleanup()
+
+        def _handle_scenarios_upload(self) -> None:
+            """Stream a raw-body `.zip` of scenario files to a temp file (bounded), then add them to
+            the target's scenario scope (BE-0340: `ops.upload_scenarios`). Raw body
+            (`Content-Type: application/zip`, target via `?target=`), the same shape `_handle_upload`
+            uses — no multipart parser needed."""
+            target = self._qs("target")
+            # A compressed zip can't usefully exceed its own declared uncompressed-total bound, so
+            # the wire cap matches it — no reason to let a scenario zip approach the 1 GiB bundle cap.
+            receiver = self._stream_bounded_body(cap=MAX_SCENARIO_ZIP_TOTAL_BYTES)
+            if receiver is None:
+                return
+            # Same as `_handle_upload`/`_handle_artifact_upload`: this raw-body route sits before
+            # do_POST's boundary, so a raise gets its own JSON-500 conversion (BE-0264).
+            try:
+                # `digest()` closes the write handle — the hash itself is unused here, but the file
+                # must be flushed before `upload_scenarios` reads it back as a zip.
+                receiver.digest()
+                self._json(
+                    *ops.upload_scenarios(state, receiver.path, target=target, actor=self._actor())
                 )
             except Exception as exc:
                 self._respond_uncaught(exc)

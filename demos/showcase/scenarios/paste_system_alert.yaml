@@ -1,0 +1,114 @@
+# handleSystemAlert (BE-0369): the third prompt the locale-keyed lookup covers, and the suite's only
+# genuine *cross-process* paste. `setClipboard` writes the pasteboard through simctl — iOS attributes
+# that write to CoreSimulatorBridge, another process — so the app's own read of
+# `UIPasteboard.general.string` raises the consent prompt that system.yaml's in-app Copy → Paste
+# round-trip deliberately never reaches. The prompt is answered by a native accessibility query on
+# the SpringBoard alert: no screenshot, no vision model, no Claude API key, so the whole flow stays
+# deterministic (prime directive 1: AI never decides pass/fail). `systemAlertHandling: false` proves
+# it — with the vision guard off, a handleSystemAlert that failed to tap would fail the run rather
+# than be rescued by the guard.
+#
+# The consent is asked every time (iOS records it as `kTCCServicePasteboard` at "ask", and no
+# `simctl privacy` toggle reaches that service), so the scenario is repeatable on one device rather
+# than passing once and then finding no prompt.
+#
+# Four scenarios: `grant` and `deny` under the target's own locale, then the same pair under
+# `locale: ja_JP`. A pair per language proves both of that language's labels against SpringBoard
+# rather than only the one a grant needs — the English deny label spells its apostrophe
+# typographically ("Don’t Allow Paste", U+2019), which is the transcription trap the lookup exists to
+# remove, and the Japanese pair is what shows the lookup resolving a language the run itself is not
+# written in. The Japanese pair comes last because a scenario whose locale differs from the one the
+# device's SpringBoard is pinned to forces a cold runner respawn and a reboot to re-pin it (BE-0320):
+# in this order the lane pays that once, and nothing after it pays the way back.
+#
+# The denied read is what the showcase apps' `(none)` marker is for. `UIPasteboard.general.string`
+# returns nil when the consent is refused, and publishing that as an empty string would leave the
+# deny scenarios asserting a field indistinguishable from one never read — a check that passes
+# before the read even returns, and passes just as well if the tap had hit the *grant* button and the
+# assertion simply ran first. The marker turns the denied read into a positive condition to wait for
+# (prime directive 2).
+#
+# iOS (XCUITest) only, kept off every other lane by the same mechanism permission_system_alert.yaml
+# uses: Android's `smoke (adb)` job runs a fixed scenario list that never names this file, and the
+# `systemalert` tag keeps it out of the local bulk run-swiftui / run-uikit runs, which discover every
+# scenario file and do not reset per-scenario device state.
+- name: grant the paste-consent prompt with handleSystemAlert
+  tags: [systemalert]
+  systemAlertHandling: false
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - setClipboard: { text: "bajutsu-cross-clip" }   # written from outside the app (BE-0052)
+    - tap: { label: "Permissions", traits: [button] }
+    # The tab transition is asynchronous, so wait for the tab's own first control before scrolling —
+    # otherwise the scroll can swipe the launch tab (system.yaml and permission_system_alert.yaml
+    # hold the same wait for the same reason).
+    - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
+    - scroll: { to: { id: [sys.paste.value, sys_paste_value] }, direction: down }
+    - tap: { id: [sys.paste, sys_paste] }            # the app reads UIPasteboard.general.string
+    # Name the intent, not the text (BE-0320): the run pins the Simulator's system language to the
+    # scenario's locale and resolves the label SpringBoard renders under it, which is what lets the
+    # Japanese pair below reuse these same steps with nothing but a `locale:` line changed.
+    - handleSystemAlert: { prompt: paste, choice: grant, timeout: 10 }
+    # The app reads the pasteboard off the main thread, so it publishes the pasted value only after
+    # that read returns — condition-wait for it rather than racing the assertion (prime directive 2).
+    - wait: { for: { id: [sys.paste.value, sys_paste_value], value: "bajutsu-cross-clip" }, timeout: 10 }
+  expect:
+    - value: { sel: { id: [sys.paste.value, sys_paste_value] }, equals: "bajutsu-cross-clip" }
+
+- name: deny the paste-consent prompt with handleSystemAlert
+  tags: [systemalert]
+  systemAlertHandling: false
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    # The same seed as the grant scenario, and here it is the string that must *not* arrive: the
+    # refused read publishes the `(none)` marker, so a tap that hit the grant button by mistake fails
+    # this scenario on the value rather than passing it.
+    - setClipboard: { text: "bajutsu-cross-clip" }
+    - tap: { label: "Permissions", traits: [button] }
+    - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
+    - scroll: { to: { id: [sys.paste.value, sys_paste_value] }, direction: down }
+    - tap: { id: [sys.paste, sys_paste] }
+    - handleSystemAlert: { prompt: paste, choice: deny, timeout: 10 }
+    - wait: { for: { id: [sys.paste.value, sys_paste_value], value: "(none)" }, timeout: 10 }
+  expect:
+    - value: { sel: { id: [sys.paste.value, sys_paste_value] }, equals: "(none)" }
+
+# The Japanese pair. `locale: ja_JP` is the only difference from the two above: it pins the app's own
+# language and the device's system language alike (BE-0320), so the lookup resolves「ペーストを許可」
+# and「ペーストを許可しない」and the steps are otherwise unchanged. The showcase apps ship no
+# localized strings, so their own controls stay the English labels these steps name.
+- name: grant the paste-consent prompt on a Japanese Simulator
+  tags: [systemalert]
+  systemAlertHandling: false
+  preconditions:
+    locale: ja_JP
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - setClipboard: { text: "bajutsu-cross-clip" }
+    - tap: { label: "Permissions", traits: [button] }
+    - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
+    - scroll: { to: { id: [sys.paste.value, sys_paste_value] }, direction: down }
+    - tap: { id: [sys.paste, sys_paste] }
+    - handleSystemAlert: { prompt: paste, choice: grant, timeout: 10 }
+    - wait: { for: { id: [sys.paste.value, sys_paste_value], value: "bajutsu-cross-clip" }, timeout: 10 }
+  expect:
+    - value: { sel: { id: [sys.paste.value, sys_paste_value] }, equals: "bajutsu-cross-clip" }
+
+- name: deny the paste-consent prompt on a Japanese Simulator
+  tags: [systemalert]
+  systemAlertHandling: false
+  preconditions:
+    locale: ja_JP
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - setClipboard: { text: "bajutsu-cross-clip" }
+    - tap: { label: "Permissions", traits: [button] }
+    - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
+    - scroll: { to: { id: [sys.paste.value, sys_paste_value] }, direction: down }
+    - tap: { id: [sys.paste, sys_paste] }
+    - handleSystemAlert: { prompt: paste, choice: deny, timeout: 10 }
+    - wait: { for: { id: [sys.paste.value, sys_paste_value], value: "(none)" }, timeout: 10 }
+  expect:
+    - value: { sel: { id: [sys.paste.value, sys_paste_value] }, equals: "(none)" }

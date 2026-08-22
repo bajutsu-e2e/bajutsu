@@ -26,7 +26,7 @@ A Simulator app runs as a host process and shares the Mac's loopback, so:
    per-run shared token via `BAJUTSU_COLLECTOR_TOKEN`.
 2. The app (linked with **BajutsuKit**) installs a `URLProtocol` that records each
    request/response and POSTs it to the collector — **after TLS (Transport Layer Security)** (no proxy, no CA / certificate authority), so it
-   works under idb and is readable programmatically. Each POST carries the token as an
+   works regardless of which backend drives the app and is readable programmatically. Each POST carries the token as an
    `Authorization: Bearer` header, and the collector rejects any request without the
    matching token (401), so another local process can't inject fabricated exchanges into
    the run's evidence.

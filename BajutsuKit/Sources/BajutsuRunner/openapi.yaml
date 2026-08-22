@@ -1,0 +1,494 @@
+openapi: 3.1.0
+info:
+  title: Bajutsu XCUITest runner
+  version: 1.0.0
+  description: >-
+    The loopback HTTP contract between the Python `xcuitest` driver
+    (`bajutsu/drivers/xcuitest.py`) and the resident XCUITest runner. The runner binds
+    `127.0.0.1` only and serves exactly one same-host client, so this document describes a
+    private channel rather than a published API. It is transcribed from the behaviour
+    `Router.swift` already has, so the generated types stay wire-compatible with the driver
+    that ships today.
+servers:
+  - url: http://127.0.0.1
+    description: The runner's loopback listener; the port is assigned per lease.
+paths:
+  /health:
+    get:
+      operationId: health
+      summary: Whether the runner is serving.
+      description: >-
+        Touches no XCUITest state, so it stays answerable while a long gesture holds the main
+        thread. That is what lets the driver tell "runner busy" from "runner dead".
+      responses:
+        "200":
+          description: The runner is serving.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthReply"
+  /elements:
+    get:
+      operationId: queryElements
+      summary: Snapshot the app's element tree.
+      responses:
+        "200":
+          description: The current snapshot, one handle minted per element.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ElementsReply"
+  /screen:
+    get:
+      operationId: screen
+      summary: The device screen size in points.
+      description: >-
+        The element tree excludes the app window and can hold buffered off-screen ScrollView
+        children, so the driver cannot infer the viewport from the tree and reads it here.
+        This reply carries no `status` field; the driver treats a 200 as success.
+      responses:
+        "200":
+          description: The viewport size.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScreenReply"
+  /screenshot:
+    get:
+      operationId: screenshot
+      summary: Capture the screen as PNG.
+      responses:
+        "200":
+          description: PNG bytes.
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "500":
+          description: The capture failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorReply"
+  /tap:
+    post:
+      operationId: tap
+      summary: Tap an element by handle, or a raw coordinate.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TapRequest"
+      responses:
+        "200":
+          description: The actuation outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActuationReply"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /isHittable:
+    post:
+      operationId: isHittable
+      summary: Whether a live handle is reachable at its own point, without acting on it.
+      description: >-
+        A pure query reusing the same resolution outcomes as a tap, so the driver's
+        `scroll_until_tappable` stop condition can poll it with no side effects.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HandleRequest"
+      responses:
+        "200":
+          description: The hit-test outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActuationReply"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /gesture:
+    post:
+      operationId: gesture
+      summary: Perform a two-finger gesture (pinch or rotate) on an element.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GestureRequest"
+      responses:
+        "200":
+          description: The actuation outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActuationReply"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /swipe:
+    post:
+      operationId: swipe
+      summary: Swipe between two screen coordinates.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DragRequest"
+      responses:
+        "200":
+          description: The actuation outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActuationReply"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /scroll:
+    post:
+      operationId: scroll
+      summary: Drag non-inertially between two screen coordinates.
+      description: >-
+        Same coordinates as a swipe, but the drag holds at its end before lifting so the scroll
+        view settles where the gesture left it rather than flinging past the target.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DragRequest"
+      responses:
+        "200":
+          description: The actuation outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActuationReply"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /type:
+    post:
+      operationId: typeText
+      summary: Type text into the focused element.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TypeRequest"
+      responses:
+        "200":
+          description: The actuation outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActuationReply"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /deleteText:
+    post:
+      operationId: deleteText
+      summary: Delete characters from the end of the focused field.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteTextRequest"
+      responses:
+        "200":
+          description: The actuation outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActuationReply"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /selectAll:
+    post:
+      operationId: selectAll
+      summary: Select the whole content of the focused field.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmptyRequest"
+      responses:
+        "200":
+          description: The actuation outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActuationReply"
+  /copy:
+    post:
+      operationId: copySelection
+      summary: Copy the active selection to the clipboard.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmptyRequest"
+      responses:
+        "200":
+          description: The actuation outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActuationReply"
+  /setPickerValue:
+    post:
+      operationId: setPickerValue
+      summary: Move a picker wheel to the row carrying a given value.
+      description: >-
+        Reports `value-not-found` when the wheel resolved and was adjusted but never showed the
+        requested value (BE-0356). The platform cannot report that itself —
+        `adjust(toPickerWheelValue:)` neither throws nor returns, and records a miss as a soft
+        issue the resident runner deliberately tolerates — so the runner reads the wheel back and
+        compares.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PickerValueRequest"
+      responses:
+        "200":
+          description: The actuation outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActuationReply"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /systemAlert/query:
+    post:
+      operationId: querySystemAlert
+      summary: Snapshot the buttons of a presented SpringBoard system alert.
+      description: >-
+        Empty when no alert is up, so the driver polls this against the step's timeout as a
+        condition wait. The alert is out of the app's process, so its handles are keyed into a
+        store separate from the app tree's.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmptyRequest"
+      responses:
+        "200":
+          description: The alert's buttons, empty when no alert is up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ElementsReply"
+  /systemAlert/tap:
+    post:
+      operationId: tapSystemAlert
+      summary: Tap a SpringBoard alert button by handle.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HandleRequest"
+      responses:
+        "200":
+          description: The actuation outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActuationReply"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+components:
+  responses:
+    BadRequest:
+      description: The body was missing, not JSON, or lacked a required field.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorReply"
+  schemas:
+    HealthReply:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ready]
+          description: >-
+            The driver's readiness wait compares this against the literal `ready`, so it is an enum
+            for the same reason `ActuationReply.status` is: a rename has to stop compiling.
+    ScreenReply:
+      type: object
+      required: [width, height]
+      properties:
+        width:
+          type: number
+        height:
+          type: number
+    Element:
+      type: object
+      description: >-
+        One element of a snapshot. `identifier`, `label`, and `value` are omitted entirely when
+        the platform reports none — the runner drops the key rather than emitting a null.
+      required: [traits, frame, handle]
+      properties:
+        traits:
+          type: array
+          items:
+            type: string
+        frame:
+          type: array
+          description: '`[x, y, width, height]` in points.'
+          items:
+            type: number
+          minItems: 4
+          maxItems: 4
+        handle:
+          type: string
+          description: >-
+            The opaque per-snapshot handle the runner minted for this element. The driver
+            round-trips it into an actuation so the element acted on is the exact one selection
+            resolved, never a re-resolution on the runner.
+        identifier:
+          type: string
+        label:
+          type: string
+        value:
+          type: string
+    ElementsReply:
+      type: object
+      required: [status, elements]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+          description: >-
+            Matched against the driver's own `_OK` constant, so it is an enum rather than a free
+            string for the same reason the actuation statuses are.
+        elements:
+          type: array
+          items:
+            $ref: "#/components/schemas/Element"
+    ActuationReply:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, stale, not-found, not-hittable, value-not-found]
+          description: >-
+            `ok` succeeded. `stale` means the handle no longer maps to a live element, and
+            `not-found` that no live element matched it; both are test outcomes rather than
+            infrastructure errors. `not-hittable` means the element is live but unreachable at
+            its own point right now. `value-not-found` means the element resolved and was acted
+            on, but never took the requested value — a picker wheel with no such row (BE-0356).
+    ErrorReply:
+      type: object
+      required: [status, message]
+      properties:
+        status:
+          type: string
+          enum: [error]
+        message:
+          type: string
+    EmptyRequest:
+      type: object
+      description: >-
+        These operations take no parameters, but the driver still sends `{}` with a JSON
+        content type; the runner ignores the body.
+      additionalProperties: true
+    HandleRequest:
+      type: object
+      required: [handle]
+      properties:
+        handle:
+          type: string
+    TapRequest:
+      type: object
+      description: >-
+        Either form is accepted, and `point` wins when both are present: the runner reads
+        `point` first and falls back to `handle`, rejecting a body carrying neither with a 400.
+        Modelled as one object with optional members rather than a `oneOf`, because that is
+        what the runner actually parses.
+      properties:
+        handle:
+          type: string
+        point:
+          type: array
+          description: '`[x, y]` in points — the one actuation path with no element handle.'
+          items:
+            type: number
+          minItems: 2
+          maxItems: 2
+        taps:
+          type: integer
+          description: Tap count; clamped to at least 1. Absent means a single tap.
+        duration:
+          type: number
+          description: Press duration in seconds; clamped to at least 0. Absent means a plain tap.
+    PickerValueRequest:
+      type: object
+      required: [handle, value]
+      properties:
+        handle:
+          type: string
+        value:
+          type: string
+          description: >-
+            The row value the wheel must end on. It never reaches the actuation record, since like
+            a typed string it can hold a resolved secret.
+    GestureRequest:
+      type: object
+      required: [handle, kind]
+      properties:
+        handle:
+          type: string
+        kind:
+          type: string
+          enum: [pinch, rotate]
+        scale:
+          type: number
+          description: Pinch scale. Absent means 1.0.
+        radians:
+          type: number
+          description: Rotation in radians. Absent means 0.0.
+    DragRequest:
+      type: object
+      required: [from, to]
+      properties:
+        from:
+          type: array
+          items:
+            type: number
+          minItems: 2
+          maxItems: 2
+        to:
+          type: array
+          items:
+            type: number
+          minItems: 2
+          maxItems: 2
+    TypeRequest:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+    DeleteTextRequest:
+      type: object
+      required: [count]
+      properties:
+        count:
+          type: integer
+          description: Characters to delete; must be positive, else the runner answers 400.

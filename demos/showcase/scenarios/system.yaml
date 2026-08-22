@@ -1,7 +1,8 @@
 # Pasteboard round-trip: the Permissions tab's System section copies a known string and reads
 # it back, so a scenario can assert pasteboard state the backend's app-scoped query cannot otherwise
 # observe. The round-trip is in-app (Copy then Paste) so it reads back silently — reading a
-# pasteboard seeded by another process trips iOS's paste-permission prompt. The System section
+# pasteboard seeded by another process trips iOS's paste-consent prompt, which
+# paste_system_alert.yaml (BE-0369) is the scenario for. The System section
 # sits below Notifications + Location, so a `scroll` step reveals it (non-inertial, re-querying —
 # BE-0326) before tapping. Each id lists both its dotted SPEC form and its underscore Android Views
 # form, so one scenario runs on every target (BE-0221).
@@ -15,5 +16,9 @@
     - scroll: { to: { id: [sys.paste.value, sys_paste_value] }, direction: down }
     - tap: { id: [sys.copy, sys_copy] }
     - tap: { id: [sys.paste, sys_paste] }
+    # The iOS apps read the pasteboard off the main thread (BE-0369), so the mirror is written
+    # after the tap returns rather than within it — condition-wait for it instead of racing the
+    # assertion (prime directive 2). On Android the read is synchronous, so this passes at once.
+    - wait: { for: { id: [sys.paste.value, sys_paste_value], value: "bajutsu-clip" }, timeout: 10 }
   expect:
     - value: { sel: { id: [sys.paste.value, sys_paste_value] }, equals: "bajutsu-clip" }

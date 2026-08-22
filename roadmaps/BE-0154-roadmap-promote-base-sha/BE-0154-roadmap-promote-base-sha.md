@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0154](BE-0154-roadmap-promote-base-sha.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal (deferred)** |
+| Status | **Rejected** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0154") |
 | Topic | Security hardening |
 | Superseded by | [BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders.md) |

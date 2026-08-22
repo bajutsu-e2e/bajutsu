@@ -134,8 +134,10 @@ Preconditions ::= {
 # Native SpringBoard query + tap on XCUITest (no model, reusing BE-0316); AI-vision fallback (BE-0315).
 SystemAlertHandling ::= boolean                                   # shorthand for { enabled: <bool> }
                | { enabled?: boolean,                       # default true
+                   rules?: [<SystemAlertRule>],              # answer a named prompt by choice; checked before instruction
                    instruction?: string | [string],         # [labels] = native; "text" = vision (else dismiss)
                    pollInterval?: number }                   # native poll cadence, seconds (default 1)
+SystemAlertRule ::= { prompt: notifications|tracking|paste, choice: grant|deny }  # unique prompt per list
 
 Permissions ::= map(PermissionService, PermissionAction)    # applied before the app launches
 PermissionService ::= "location" | "camera" | "microphone" | "contacts"
@@ -157,8 +159,8 @@ Action    ::=
   | { type:        { text: string, into?: <Selector>, submit?: boolean } }   # submit default false
   | { clear:       { into: <Selector> } }                  # focus the field and remove its entire current content (web-context raises)
   | { delete:      { into: <Selector>, count: integer } }  # focus the field and delete count characters from the end (count > 0; web-context raises)
-  | { select:      { into: <Selector>, mode?: "all" } }    # focus the field and select its content (mode default "all"; idb/web-context raise → codegen to XCUITest)
-  | { copy:        {} }                                    # copy the active selection to the clipboard (requires a prior select; idb/web-context raise)
+  | { select:      { into: <Selector>, mode?: "all" } }    # focus the field and select its content (mode default "all"; web-context raises; codegen emits the native XCUITest equivalent)
+  | { copy:        {} }                                    # copy the active selection to the clipboard (requires a prior select; web-context raises)
   | { selectOption:{ sel: <Selector>, option: string } }   # set a web <select> to the option with this value (web only; iOS/Android raise)
   | { setPickerValue:{ sel: <Selector>, value: string } }  # move a wheel-style picker to the row with this value (iOS only; sel addresses one wheel)
   | { swipe:       <Swipe> }                          # directional form scrolls; coordinate form is a raw drag
@@ -168,7 +170,7 @@ Action    ::=
   | { pinch:       { sel: <Selector>, scale: number } }    # scale > 0  (>1 in, <1 out)
   | { rotate:      { sel: <Selector>, radians: number } }  # >0 clockwise
   | { handleSystemAlert: { sel: <Selector>, timeout: number } }  # tap an iOS SpringBoard permission prompt (iOS/XCUITest only); sel accepts only label/labelMatches/index
-  | { handleSystemAlert: { prompt: notifications|tracking, choice: grant|deny, timeout: number } }  # same step, label resolved from the run's locale (BE-0320)
+  | { handleSystemAlert: { prompt: notifications|tracking|paste, choice: grant|deny, timeout: number } }  # same step, label resolved from the run's locale (BE-0320)
   | { wait:        <Wait> }
   | { assert:      list(<Assertion>) }
   | { relaunch:    { env?: map(string,string), args?: list(string) } }
@@ -177,6 +179,7 @@ Action    ::=
   | { http:        { method?: string, url: string, headers?: map(string,string), body?: string, status?: integer, saveBody?: string } }  # method default GET; saveBody → vars.<name>
   | { totp:        { secret: string, into: { var: string } } }  # RFC 6238 OTP → vars.<var> (secret is base32)
   | { email:       { match: { to?: string, subject?: string, subjectMatches?: string }, extract: { var: string, bodyMatches: string }, timeout: number } }  # poll mailbox → vars.<var>
+  | { generate:    <Generate> }                            # a random or current-datetime value computed at run time → vars.<var> (BE-0377)
   | { background:       {} }                               # Home button (backgrounds via SpringBoard, no terminate)
   | { foreground:       {} }                               # resume a backgrounded app (simctl launch, no terminate); the other half of background
   | { clearKeychain:    {} }                               # reset saved passwords / certificates
@@ -205,6 +208,18 @@ Scroll ::= { to: <Selector>, direction?: ("up"|"down"|"left"|"right"), within?: 
     # scroll until `to`'s frame center is on-screen, else fail (BE-0326). direction = scroll direction (default "down"), the inverse of Swipe's finger direction.
     # within: the scrollable container to gesture inside (default: the whole screen). maxScrolls: step bound before failing (default 15, > 0).
 Point ::= [ number, number ]
+
+Generate ::=
+    { random:   <Random>,   into: { var: string } }   # a fresh value the scenario did not already have ┐ XOR
+  | { datetime: <Datetime>, into: { var: string } }   # the current time, as text                       ┘
+Random ::=
+    { string: { length: integer, charset?: ("alnum"|"alpha"|"numeric"|"hex") } }  # length > 0; charset default "alnum" ┐
+  | { int:    { min: integer, max: integer } }                                    # inclusive range, min ≤ max          │ XOR
+  | { float:  { min: number,  max: number, precision?: integer } }                # min ≤ max; precision ≥ 0 decimals   │
+  | { uuid:   {} }                                                                # a version-4 UUID                    ┘
+Datetime ::= { format?: string, offsetSeconds?: integer, offsetMinutes?: integer, offsetHours?: integer, offsetDays?: integer, timezone?: string }
+    # format: a strftime pattern; omitted = ISO 8601 to the second. The four offsets are signed and additive.
+    # timezone: an IANA name (e.g. "America/Los_Angeles"); omitted = UTC. An unrenderable format or an unknown zone fails at load.
 
 # ── Selector (≥1 field; provided fields are AND-ed) ────────────────────
 Selector ::= {
@@ -371,6 +386,7 @@ Omitted optional keys take these values (so a minimal scenario is just `name` + 
 | `Preconditions.launchArgs` | `[]` |
 | `Preconditions.launchEnv` | `{}` |
 | `SystemAlertHandling.enabled` | `true` |
+| `SystemAlertHandling.rules` | `[]` (no named-prompt rules; `instruction`/the built-in dismissive labels answer every prompt) |
 | `TypeText.submit` | `false` |
 | `Exists.negate` | `false` |
 | `MockResponse.status` | `200` |

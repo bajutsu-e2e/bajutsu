@@ -172,6 +172,98 @@ def test_system_alert_handling_poll_interval() -> None:
         )
 
 
+def test_system_alert_handling_rules_default_empty_and_pruned() -> None:
+    s = Scenario.model_validate({"name": "x", "steps": [{"tap": {"id": "a"}}]})
+    assert s.system_alert_handling is None  # unset entirely, same as today
+
+    on = Scenario.model_validate(
+        {"name": "x", "systemAlertHandling": {"enabled": True}, "steps": [{"tap": {"id": "a"}}]}
+    )
+    assert on.system_alert_handling is not None and on.system_alert_handling.rules == []
+    assert "rules" not in dump_scenarios([on])  # empty list prunes, like `interrupts`
+
+
+def test_system_alert_handling_rules_parse_and_round_trip() -> None:
+    s = Scenario.model_validate(
+        {
+            "name": "x",
+            "systemAlertHandling": {
+                "rules": [
+                    {"prompt": "notifications", "choice": "grant"},
+                    {"prompt": "tracking", "choice": "deny"},
+                ]
+            },
+            "steps": [{"tap": {"id": "a"}}],
+        }
+    )
+    assert s.system_alert_handling is not None
+    assert [(r.prompt, r.choice) for r in s.system_alert_handling.rules] == [
+        ("notifications", "grant"),
+        ("tracking", "deny"),
+    ]
+    rt = load_scenarios(dump_scenarios([s]))[0]
+    assert rt.system_alert_handling is not None
+    assert [(r.prompt, r.choice) for r in rt.system_alert_handling.rules] == [
+        ("notifications", "grant"),
+        ("tracking", "deny"),
+    ]
+
+
+def test_system_alert_handling_rules_and_instruction_compose() -> None:
+    # rules and instruction are not exclusive: instruction stays the catch-all for whatever
+    # prompt no rule names.
+    s = Scenario.model_validate(
+        {
+            "name": "x",
+            "systemAlertHandling": {
+                "rules": [{"prompt": "notifications", "choice": "grant"}],
+                "instruction": ["Not Now"],
+            },
+            "steps": [{"tap": {"id": "a"}}],
+        }
+    )
+    assert s.system_alert_handling is not None
+    assert s.system_alert_handling.instruction == ["Not Now"]
+    assert len(s.system_alert_handling.rules) == 1
+
+
+def test_system_alert_handling_rules_rejects_duplicate_prompt() -> None:
+    # Silently taking the first of two rules naming the same prompt would hide an authoring
+    # mistake, so it fails at parse time instead — the same reason an ambiguous selector fails.
+    with pytest.raises(ValidationError):
+        Scenario.model_validate(
+            {
+                "name": "x",
+                "systemAlertHandling": {
+                    "rules": [
+                        {"prompt": "notifications", "choice": "grant"},
+                        {"prompt": "notifications", "choice": "deny"},
+                    ]
+                },
+                "steps": [{"tap": {"id": "a"}}],
+            }
+        )
+
+
+def test_system_alert_handling_rules_rejects_unknown_prompt_or_choice() -> None:
+    with pytest.raises(ValidationError):
+        Scenario.model_validate(
+            {
+                "name": "x",
+                "systemAlertHandling": {"rules": [{"prompt": "bogus", "choice": "grant"}]},
+                "steps": [{"tap": {"id": "a"}}],
+            }
+        )
+    with pytest.raises(ValidationError):
+        Scenario.model_validate(
+            {
+                "name": "x",
+                "systemAlertHandling": {"rules": [{"prompt": "notifications", "choice": "bogus"}]},
+                "steps": [{"tap": {"id": "a"}}],
+            }
+        )
+
+
 def test_permissions_default_unset() -> None:
     # Empty by default, and pruned when empty so a dumped scenario stays clean (BE-0276).
     s = Scenario.model_validate({"name": "x", "steps": [{"tap": {"id": "a"}}]})

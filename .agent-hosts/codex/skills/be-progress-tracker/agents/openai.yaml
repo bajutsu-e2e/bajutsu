@@ -1,0 +1,3 @@
+interface:
+  display_name: "BE progress tracker"
+  short_description: "Update a BE item's status page (overview, progress, work log)"

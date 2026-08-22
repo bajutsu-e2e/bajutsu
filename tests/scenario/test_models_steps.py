@@ -314,7 +314,7 @@ def test_handle_system_alert_is_one_action() -> None:
 
 
 def test_handle_system_alert_parses_the_prompt_and_choice_form() -> None:
-    # BE-0320: the intent form, for the two prompts a `permissions` preset cannot pre-answer. `sel`
+    # BE-0320: the intent form, for the prompts a `permissions` preset cannot pre-answer. `sel`
     # stays unset until the run resolves it against its locale.
     step = Step.model_validate(
         {"handleSystemAlert": {"prompt": "notifications", "choice": "grant", "timeout": 5}}
@@ -360,8 +360,8 @@ def test_handle_system_alert_names_its_button_exactly_one_way(payload: dict[str,
 
 
 def test_handle_system_alert_rejects_an_unknown_prompt() -> None:
-    # The lookup covers two prompts by design; anything else is a scenario error at parse time, not
-    # a run-time miss.
+    # The lookup covers a few named prompts by design; anything else is a scenario error at parse
+    # time, not a run-time miss.
     with pytest.raises(ValidationError):
         Step.model_validate(
             {"handleSystemAlert": {"prompt": "camera", "choice": "grant", "timeout": 5}}

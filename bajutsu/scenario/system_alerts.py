@@ -1,20 +1,24 @@
-"""Locale-keyed button labels for the two iOS system prompts a permission preset cannot reach (BE-0320).
+"""Locale-keyed button labels for the iOS system prompts a permission preset cannot reach (BE-0320).
 
 `handleSystemAlert` taps a SpringBoard prompt's button by its visible text, and BE-0320 pins the
 Simulator's system language so that text is deterministic. This table closes the remaining gap for
-the two prompts BE-0276's `permissions` presets cannot pre-answer — notification authorization is
-not a TCC (Transparency, Consent, and Control) service, and App Tracking Transparency (ATT) has no
-`simctl` toggle at all — so a scenario about either can name the *intent* (`grant` / `deny`) instead
-of transcribing whichever language the pinned locale renders.
+the prompts BE-0276's `permissions` presets cannot pre-answer — notification authorization is not a
+TCC (Transparency, Consent, and Control) service, App Tracking Transparency (ATT) has no `simctl`
+toggle at all, and the cross-process paste consent is TCC-backed as `kTCCServicePasteboard` yet has
+no `simctl` toggle either (BE-0369) — so a scenario about any of them can name the *intent*
+(`grant` / `deny`) instead of transcribing whichever language the pinned locale renders.
 
-Deliberately narrow. It covers those two prompts alone, never an open-ended translation of arbitrary
-SpringBoard text, and only the languages whose values have been read back from a Simulator. Every
-other alert keeps using the literal `label` / `labelMatches` a scenario supplies, unchanged.
+Deliberately narrow. It covers those named prompts alone, never an open-ended translation of
+arbitrary SpringBoard text, and only the languages whose values have been read back from a
+Simulator. Every other alert keeps using the literal `label` / `labelMatches` a scenario supplies,
+unchanged.
 
 The values are Apple's own, transcribed from the iOS Simulator runtime's shipped strings:
 `UserNotificationsServer.framework/<lang>.lproj/Localizable.strings` (`PERMISSION_ALERT_ALLOW` /
-`PERMISSION_ALERT_DENY`) and `TCC.framework/<lang>.lproj/Localizable.strings`
-(`REQUEST_ACCESS_ALLOW_kTCCServiceUserTracking` / `REQUEST_ACCESS_DENY_kTCCServiceUserTracking`).
+`PERMISSION_ALERT_DENY`), `TCC.framework/<lang>.lproj/Localizable.strings`
+(`REQUEST_ACCESS_ALLOW_kTCCServiceUserTracking` / `REQUEST_ACCESS_DENY_kTCCServiceUserTracking`),
+and `DragUI.framework/<lang>.lproj/Localizable.strings` (`PASTE_AUTHORIZATION_BUTTON_ALLOW` /
+`PASTE_AUTHORIZATION_BUTTON_DENY`).
 Re-reading those files under a new runtime is what checks this table, rather than trusting it.
 """
 
@@ -24,9 +28,10 @@ import re
 from typing import Literal, TypedDict
 
 # The prompts this table covers. `notifications` matches the permission vocabulary's spelling
-# (`drivers.base.PERMISSION_SERVICES`) for the same OS prompt; `tracking` is ATT, which that
-# vocabulary has no entry for because no `simctl` command can pre-answer it.
-SystemAlertPrompt = Literal["notifications", "tracking"]
+# (`drivers.base.PERMISSION_SERVICES`) for the same OS prompt; `tracking` is ATT and `paste` is the
+# cross-process pasteboard read, neither of which that vocabulary has an entry for because no
+# `simctl` command can pre-answer them.
+SystemAlertPrompt = Literal["notifications", "tracking", "paste"]
 
 # What the author means, rather than which button says it. `deny` is the prompt's negative choice,
 # which is not always a plain refusal — ATT's is "Ask App Not to Track".
@@ -54,11 +59,12 @@ class _Prompts(TypedDict):
 
     notifications: dict[str, _Choices]
     tracking: dict[str, _Choices]
+    paste: dict[str, _Choices]
 
 
 # Keyed by prompt, then language subtag, then choice. Note the English deny labels: the notification
-# prompt uses a typographic apostrophe (U+2019), not the ASCII one a hand-typed `label` would carry
-# — exactly the transcription trap this lookup removes.
+# and paste prompts use a typographic apostrophe (U+2019), not the ASCII one a hand-typed `label`
+# would carry — exactly the transcription trap this lookup removes.
 _LABELS: _Prompts = {
     "notifications": {
         "en": {"grant": "Allow", "deny": "Don’t Allow"},
@@ -67,6 +73,10 @@ _LABELS: _Prompts = {
     "tracking": {
         "en": {"grant": "Allow", "deny": "Ask App Not to Track"},
         "ja": {"grant": "許可", "deny": "アプリにトラッキングしないように要求"},
+    },
+    "paste": {
+        "en": {"grant": "Allow Paste", "deny": "Don’t Allow Paste"},
+        "ja": {"grant": "ペーストを許可", "deny": "ペーストを許可しない"},
     },
 }
 
@@ -83,7 +93,7 @@ def system_alert_label(prompt: SystemAlertPrompt, choice: SystemAlertChoice, loc
     """The button label SpringBoard renders for `prompt`'s `choice` under `locale`.
 
     Args:
-        prompt: Which of the two covered OS prompts the step is answering.
+        prompt: Which of the covered OS prompts the step is answering.
         choice: What the author means by the tap, rather than which button says it.
         locale: The scenario's resolved locale (`Preconditions.resolved_locale`); only its language
             subtag selects the labels, since SpringBoard localizes by language, not by region.

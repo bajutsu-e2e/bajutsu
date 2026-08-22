@@ -42,6 +42,8 @@ def test_dedicated_lane_scenarios_carry_their_exclusion_tag() -> None:
         ("visual.yaml", "visual"),
         ("network_android.yaml", "android"),
         ("picker_wheel.yaml", "swiftui"),
+        ("permission_system_alert.yaml", "systemalert"),
+        ("paste_system_alert.yaml", "systemalert"),
     ):
         for s in load_scenarios((SCENARIO_DIR / name).read_text(encoding="utf-8")):
             assert tag in s.tags, f"{name}: {s.name!r} is missing the `{tag}` tag"

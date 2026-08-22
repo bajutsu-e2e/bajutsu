@@ -16,6 +16,12 @@ from functools import partial
 
 from bajutsu import assertions, interp
 from bajutsu.assertions import AssertionResult, EvalContext
+from bajutsu.cancellation import (
+    CANCELLED_FAILURE,
+    CancelSource,
+    RunCancelled,
+    not_cancelled,
+)
 from bajutsu.drivers import base
 from bajutsu.drivers.actuation import Actuation
 from bajutsu.evidence import Artifact, EvidenceSink, NullSink, intervals
@@ -102,6 +108,7 @@ def _poll_asserts(
     clock: Clock,
     *,
     ctx: EvalContext,
+    cancelled: CancelSource = not_cancelled,
 ) -> tuple[list[AssertionResult], list[base.Element]]:
     """Evaluate `asserts` as a condition wait: re-read the tree until it passes or the deadline.
 
@@ -118,6 +125,9 @@ def _poll_asserts(
 
     Returns the final results and the last tree read, so a step-level caller can reuse that settled
     tree as its `after` snapshot instead of re-querying (BE-0299 Unit 1 / BE-0259).
+
+    `cancelled` (BE-0370) raises `RunCancelled` out of the poll, like every other condition wait, once
+    the results are in — so an `assert` already satisfied on that poll still passes.
     """
     deadline = clock.now() + _timeout_floor()
     while True:
@@ -126,6 +136,8 @@ def _poll_asserts(
         results = assertions.evaluate(tree, asserts, network(), ctx=ctx)
         if assertions.passed(results) or clock.now() >= deadline:
             return results, tree
+        if cancelled():
+            raise RunCancelled
         if all(r.ok or r.kind in _READ_ONCE_KINDS for r in results):
             return results, tree  # only read-once assertions are left failing; a re-read can't help
         _adaptive_sleep(clock, t0)
@@ -304,6 +316,7 @@ def _do_email(
     clock: Clock,
     mailbox: MailboxReader | None,
     bindings: dict[str, str] | None,
+    cancelled: CancelSource = not_cancelled,
 ) -> tuple[bool, str]:
     """Poll the mailbox until a matching message arrives, then extract its value into `vars.*`.
 
@@ -312,6 +325,11 @@ def _do_email(
     the deadline. A missing mailbox, a timeout, or a matched message whose body the regex can't hit
     is a clean failure — never a silent wrong value. `mailbox.fetch` raising `SelectorError` (an
     unreachable / non-2xx endpoint) propagates to the caller's handler, which records it as a failure.
+
+    `cancelled` (BE-0370) raises `RunCancelled` out of the poll, like every other condition wait. This
+    wait needs the check as much as any: `email.timeout` is whatever the scenario asked for — a wait
+    for a one-time password commonly runs to a minute or more — so a cancelled run stuck here could
+    otherwise outlive the grace window and be killed before it wrote its manifest.
     """
     if mailbox is None:
         return False, "email: no mailbox configured (set targets.<name>.mailbox)"
@@ -331,6 +349,8 @@ def _do_email(
                 return False, "email: matched a message but extract regex did not match its body"
             bindings[f"vars.{email.extract.var}"] = value
             return True, ""
+        if cancelled():
+            raise RunCancelled
         clock.sleep(min(_EMAIL_POLL, deadline - clock.now()))
 
 
@@ -352,6 +372,7 @@ def _run_step_body(
     on_wait_tick: WaitTick | None = None,
     transitions: TransitionSource = _no_transitions,
     on_interrupt_poll: Callable[[list[base.Element]], bool] | None = None,
+    cancelled: CancelSource = not_cancelled,
 ) -> tuple[bool, str, list[AssertionResult], list[base.Element] | None]:
     """Execute one step's effect, returning (ok, reason, assertion_results, snapshot).
 
@@ -366,7 +387,9 @@ def _run_step_body(
     timeout is diagnosable from artifacts (BE-0231 Unit 1). ``alert_guard``/``alerts``, when given for
     a wait step, are passed through to ``_wait``'s mid-wait alert guard (BE-0269); other step kinds
     ignore them. ``on_interrupt_poll``, when given for a wait step, is passed to ``_wait`` so a
-    scenario's ``interrupts`` handlers can clear an interstitial screen mid-wait (BE-0314)."""
+    scenario's ``interrupts`` handlers can clear an interstitial screen mid-wait (BE-0314).
+    ``cancelled`` reaches the three step kinds that poll — ``wait``, ``assert``, and ``email`` — so
+    each notices a cancelled run within one polling tick (BE-0370)."""
     try:
         if kind == "wait":
             assert step.wait is not None
@@ -381,11 +404,12 @@ def _run_step_body(
                 on_tick=on_wait_tick,
                 transitions=transitions,
                 on_interrupt_poll=on_interrupt_poll,
+                cancelled=cancelled,
             )
             return ok, reason, [], tree
         if kind == "email":
             assert step.email is not None
-            ok, reason = _do_email(step.email, clock, mailbox, bindings)
+            ok, reason = _do_email(step.email, clock, mailbox, bindings, cancelled)
             return ok, reason, [], None
         if kind == "assert_":
             assert step.assert_ is not None
@@ -397,7 +421,9 @@ def _run_step_body(
             # A condition wait, not a single snapshot: a value the prior action mirrors into the tree
             # a beat late is caught, the same race the trailing `expect` already closes (BE-0299
             # Unit 2). Zero-budget (no wait floor) reads exactly once, as before.
-            results, tree = _poll_asserts(driver, step.assert_, network, clock, ctx=step_ctx)
+            results, tree = _poll_asserts(
+                driver, step.assert_, network, clock, ctx=step_ctx, cancelled=cancelled
+            )
             ok = assertions.passed(results)
             return ok, "" if ok else _fail_reason(results), results, tree
         _do_action(driver, step, relaunch, control, bindings, selection)
@@ -469,6 +495,7 @@ def run_scenario(
     locale: str | None = None,
     wall_clock: WallClock = time.time,
     capture: list[str] | None = None,
+    cancelled: CancelSource = not_cancelled,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
@@ -492,6 +519,13 @@ def run_scenario(
     guarantee applied on top of every step, alongside `capturePolicy` rules and inline
     `capture:` tokens — the default is empty, so a caller that doesn't pass one (a test
     constructing a scenario directly) sees the unchanged capturePolicy/inline-only behavior.
+
+    `cancelled` (BE-0370) makes a cancelled run land as an ordinary failed scenario: it is read at
+    each step boundary and inside the poll loops that back every condition wait, and the resulting
+    `RunCancelled` is turned into `failure: "cancelled"` here. The trailing `expect` re-check is
+    deliberately left to finish — a scenario whose every step passed gets its real verdict rather
+    than a cancellation label, and that block is bounded by the wait floor (zero on every lane that
+    doesn't raise it).
     """
     clock = clock or RealClock()
     sink = sink or NullSink()
@@ -545,12 +579,13 @@ def run_scenario(
             interrupts,
             locale,
             capture,
+            cancelled,
         )
         if failure is None and scenario.expect:
             expect = _interp_asserts(scenario.expect, live_bindings)
             clip = _clipboard_for(expect, control)
             if ctx.visual is not None:
-                driver.screenshot(str(ctx.visual.screenshot_path))
+                ctx.visual.capture_actual(driver)
             expect_results = _evaluate_expect(
                 driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
             )
@@ -560,7 +595,7 @@ def run_scenario(
                     expect_alerts.append(event)
                     expect_actuations.extend(drain_actuations(driver).records)
                     if ctx.visual is not None:
-                        driver.screenshot(str(ctx.visual.screenshot_path))
+                        ctx.visual.capture_actual(driver)
                     # Re-read the clipboard too: clearing the block may have let the app update the
                     # pasteboard, so the retry must compare against the fresh value, not the stale one.
                     clip = _clipboard_for(expect, control)
@@ -569,6 +604,12 @@ def run_scenario(
                     )  # retry once
             if not assertions.passed(expect_results):
                 failure = "expect: " + _fail_reason(expect_results)
+    except RunCancelled:
+        # A cancelled run is a failed run, not a silent gap: the scenario the cancel interrupted (or
+        # one whose first boundary was already past it) fails with the one spelling downstream reads,
+        # and the `finally` below still finalizes its intervals — so the report and the manifest are
+        # written exactly as they are for any other failure (BE-0370).
+        failure = CANCELLED_FAILURE
     finally:
         artifacts = sink.finish_scenario_intervals(sid, recordings)
 
@@ -806,6 +847,10 @@ class _LoopConfig:
     interrupts: list[Interrupt] | None
     locale: str | None
     capture: list[str] | None
+    # Whether this run has been asked to stop (BE-0370). Read at each step boundary below and handed
+    # to the poll loops that back `wait` / `assert`, so cancellation is noticed at a point the
+    # pipeline already tolerates a pause rather than partway through an actuation.
+    cancelled: CancelSource = not_cancelled
 
 
 class _StepRunner:
@@ -830,6 +875,10 @@ class _StepRunner:
 
     def exec_steps(self, steps: list[Step], active_driver: base.Driver) -> str | None:
         for step in steps:
+            # The step boundary is the cheapest safe point to stop a cancelled run (BE-0370): this
+            # step has not acted yet, so nothing is left half-actuated and no artifact is half-written.
+            if self.cfg.cancelled():
+                raise RunCancelled
             failure = self._run_one(step, active_driver)
             if failure is not None:
                 return failure
@@ -1134,6 +1183,7 @@ class _StepRunner:
                 on_wait_tick=wait_tick,
                 transitions=self.cfg.transitions,
                 on_interrupt_poll=guard.observe if guard is not None else None,
+                cancelled=self.cfg.cancelled,
             )
             if guard is not None and guard.failure is not None:
                 # A mid-wait recovery failure is a decided outcome — fail on it now rather than
@@ -1164,6 +1214,7 @@ class _StepRunner:
                         on_wait_tick=wait_tick,
                         transitions=self.cfg.transitions,
                         on_interrupt_poll=guard.observe if guard is not None else None,
+                        cancelled=self.cfg.cancelled,
                     )
             # A failure inside an interrupt's own recovery `steps` fails the step loudly, rather
             # than being swallowed while the run continues against a screen the recovery left
@@ -1270,6 +1321,12 @@ class _StepRunner:
             if not ext_ok:
                 outcome.ok, outcome.reason = False, ext_reason
 
+        # Read the produced value back out of the bindings the handler just wrote, so the run's
+        # record shows which value this step actually used (BE-0377). Evidence only — the verdict is
+        # unchanged either way.
+        if outcome.ok and interp_step.generate is not None:
+            outcome.generated = self.state.bindings.get(f"vars.{interp_step.generate.into.var}")
+
         # This call records the post-action *tree*: `_collect_captures` always leads with
         # `elements`, so every step keeps one whatever the scenario asked for. The screenshot
         # half is not on that list — `_handle_action` shot `screenshot.after` right after the
@@ -1349,6 +1406,7 @@ def _run_steps(
     interrupts: list[Interrupt] | None = None,
     locale: str | None = None,
     capture: list[str] | None = None,
+    cancelled: CancelSource = not_cancelled,
 ) -> str | None:
     """Run the step loop, appending outcomes; return the failure string or None.
 
@@ -1377,6 +1435,7 @@ def _run_steps(
         interrupts=interrupts,
         locale=locale,
         capture=capture,
+        cancelled=cancelled,
     )
     result = _StepRunner(state, cfg).exec_steps(scenario.steps, driver)
     _logger.debug("%s: %d runner-issued screen reads (BE-0234)", sid, state.total_reads)

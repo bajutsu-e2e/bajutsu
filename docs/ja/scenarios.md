@@ -117,6 +117,7 @@ iOS バックエンドは **SpringBoard レベルのプロンプト**（通知�
 |---|---|
 | （省略） | ON。**最も無害な**ボタンを押す（"Not Now" / "Don't Allow" / "Cancel"） |
 | `systemAlertHandling: false` | このシナリオでは無効 |
+| `systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` | ON。**名指しした対応済みプロンプト**に、他のプロンプトとどのラベルを共有していても、その規則自身の選択で答える |
 | `systemAlertHandling: { instruction: ["Allow", "OK"] }` | ON。ネイティブ経路がこれらのうちアラートに存在する最初の label を押す。たとえば権限を**許可**する場合 |
 | `systemAlertHandling: { instruction: "tap Allow" }` | ON。**vision** guard が解釈する自由文字列（正確な label を要するネイティブ経路は、既定の無害な label 群にフォールバックする） |
 | `systemAlertHandling: { pollInterval: 2 }` | ON。ネイティブの presence 照会を既定の 1 秒ではなく 2 秒間隔でポーリングする |
@@ -131,6 +132,28 @@ iOS バックエンドは **SpringBoard レベルのプロンプト**（通知�
 ```
 
 `instruction` は、ネイティブ経路が決定論的に解決する候補 label のリストです（アラートに存在する最初の label を、それを持つボタンがちょうど 1 つのときにだけ押します）。素の文字列は、vision guard が解釈する従来の自由文字列の形です。CLI の `--system-alert-handling` / `--no-system-alert-handling` フラグは**全シナリオを上書き**します（無指定ならシナリオごとの既定が使われます）。`--alert-instruction` は既定のボタン指示を設定するもので、シナリオ自身の `instruction` が優先されます。（[`demos/showcase/scenarios/permission.yaml`](../../demos/showcase/scenarios/permission.yaml) 実物）
+
+### 複数のプロンプトに違う答えを返す: `rules`
+
+順序付きの `instruction` は、ラベル表が対応するプロンプトに対する許可と拒否のどの組み合わせにも到達できます。ただし到達できるのは、2つのプロンプトがたまたま共有するラベルから作者が導いた順序を書いたときだけであり、自然に読める順序を書くと、シナリオが拒否するつもりのプロンプトを黙って許可してしまいます。`rules` は `handleSystemAlert` 自身の `prompt`/`choice` の語彙を再利用して、対応済みのプロンプトに名前で答えます。
+
+```yaml
+- name: onboarding — accept notifications, refuse tracking
+  systemAlertHandling:
+    rules:
+      - prompt: notifications
+        choice: grant
+      - prompt: tracking
+        choice: deny
+    instruction: ["Not Now"]          # どの規則も同定しなかったアラート
+  steps:
+    - tap:  { id: onboarding.start }
+    - wait: { for: { id: home.title }, timeout: 10 }
+```
+
+ガードは、規則の順序ではなく、その規則のプロンプトから画面上のどのアラートかを同定します。実行時のロケールで解決した、許可側と拒否側の両方のラベルがアラート上に揃っていなければなりません。同じプロンプトを指定する規則が2つあると解析時に失敗します。`rules` は `instruction` より先に参照され、`instruction` はどの規則も名指ししなかったプロンプトの受け皿として残るので、2つのフィールドは排他ではなく組み合わせて使えます。
+
+`rules` が方向づけるのは**決定論的なネイティブ経路だけ**です。どの規則も同定しなかったアラート、つまりラベル表の外にあるもの、SpringBoard の照会が列挙できない画面、あるいはネイティブ経路を持たないバックエンド上のあらゆるアラートは、AI 視覚のフォールバックに届きます。そしてそのフォールバックに規則は何も伝えません。規則のラベルは別のプロンプトへの答えなので、渡せばシナリオが名指ししていないプロンプトを受諾する方向へモデルを押してしまいます。フォールバックに動いてほしいものには `instruction` を与えてください。規則だけなら、フォールバックは自身の最も無害な既定のままです。
 
 > **`alertHandling` からの改名で、`alertHandling` 自体も `dismissAlerts` からの改名でした。** リアクティブなガードの設定名が「システムアラート」を明示し、下記の `handleSystemAlert` ステップと対で読めるよう、フィールドと CLI フラグを `systemAlertHandling` / `--system-alert-handling` に改名しました。`alertHandling`
 > （[BE-0317](../../roadmaps/BE-0317-rename-dismiss-alerts-to-alert-handling/BE-0317-rename-dismiss-alerts-to-alert-handling-ja.md)）
@@ -168,22 +191,22 @@ iOS バックエンドは **SpringBoard レベルのプロンプト**（通知�
 
 ### テキストではなく意図で指定する
 
-`permissions` では先回りできないプロンプトが 2 つあります。Transparency, Consent, and Control（TCC）のサービスではない通知の許可と、`simctl` の切り替え手段がまったくない App Tracking Transparency（ATT）です。この 2 つについては、`sel` の代わりに `prompt` と `choice` を指定できます。固定した `locale` が描画する label は run が解決します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。
+`permissions` では先回りできないプロンプトが 3 つあります。通知の許可、App Tracking Transparency（ATT）、そしてプロセスをまたぐペーストの同意です。通知の許可は Transparency, Consent, and Control（TCC）のサービスではなく、ATT には `simctl` の切り替え手段がまったくありません。ペーストの同意を iOS は TCC の `kTCCServicePasteboard` として記録しますが、このサービスにも `simctl` の切り替え手段はありません（[BE-0369](../../roadmaps/BE-0369-ios-paste-consent-prompt-choice/BE-0369-ios-paste-consent-prompt-choice-ja.md)）。この 3 つについては、`sel` の代わりに `prompt` と `choice` を指定できます。固定した `locale` が描画する label は run が解決します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。
 
 ```yaml
 - handleSystemAlert: { prompt: notifications, choice: grant, timeout: 5 }
 ```
 
-`prompt` は `notifications` か `tracking`、`choice` は `grant` か `deny` です。ボタンを意味で指定するため、同じファイルが `en_US` でも `ja_JP` でもプロンプトを許可します。どちらの言語のテキストも作者が書き写す必要はありません。これは英語だけを使う場合にも役立ちます。英語の拒否ボタンのアポストロフィは、手で打った label が持つ ASCII 文字ではなく、活字体のアポストロフィ（`Don’t Allow`）だからです。
+`prompt` は `notifications`、`tracking`、`paste` のいずれかで、`choice` は `grant` か `deny` です。ボタンを意味で指定するため、同じファイルが `en_US` でも `ja_JP` でもプロンプトを許可します。どちらの言語のテキストも作者が書き写す必要はありません。これは英語だけを使う場合にも役立ちます。英語の拒否ボタンのアポストロフィは、手で打った label が持つ ASCII 文字ではなく、活字体のアポストロフィ（`Don’t Allow`、`Don’t Allow Paste`）だからです。
 
 この対応表がまだ扱っていない言語（現時点では英語と日本語のみ）の locale を指定した場合、推測した label を tap するのではなく、扱える言語を名指ししてステップが明示的に失敗します。ほかのアラートは、これまでどおり `sel` でボタンを指定します。
 
 使う前に知っておきたい制限が 2 つあります。
 
 - **Simulator 専用です。** 言語の固定は `simctl` の操作なので、`xcuitest.deviceType: device` の target は実機が持つシステム言語のまま動きます。この形では、画面に出ている保証のない label を解決してしまいます。実機ではボタンを `sel.label` で指定してください。
-- **リアクティブなガードが持つ拒否ラベルの初期値は英語のままです。** `systemAlertHandling` が組み込みで持つラベル（`Don't Allow`、`Not Now`、`Cancel` など）は英語の文字列そのものです。そのため英語以外の `locale` ではネイティブ経路が一致せず、AI 視覚のガードへフォールバックします。決定的に保つには、固定した言語のラベルを `instruction` のリストで明示してください。
+- **リアクティブなガードが持つ拒否ラベルの初期値は英語のままです。** `systemAlertHandling` が組み込みで持つラベル（`Don't Allow`、`Not Now`、`Cancel` など）は英語の文字列そのものです。そのため英語以外の `locale` ではネイティブ経路が一致せず、AI 視覚のガードへフォールバックします。ラベル表が対応するプロンプトについては、`rules`（上記）の1エントリが固定した言語向けにラベルを解決するので、決定的なまま保てます。それ以外のプロンプトには `instruction` のリストを明示してください。
 
-（[`demos/showcase/scenarios/permission_system_alert.yaml`](../../demos/showcase/scenarios/permission_system_alert.yaml) 実物）
+（実物は [`demos/showcase/scenarios/permission_system_alert.yaml`](../../demos/showcase/scenarios/permission_system_alert.yaml) と [`demos/showcase/scenarios/paste_system_alert.yaml`](../../demos/showcase/scenarios/paste_system_alert.yaml)）
 
 ## permissions（起動前の権限状態）
 
@@ -309,7 +332,7 @@ targets:
 | `back` | `back: {}` | 1 階層戻ります。各バックエンドがプラットフォームに合った手段（Android のシステム戻るキー、iOS の OS 提供の戻るボタン、web の履歴）を使います（[BE-0210](../../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md)） |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | 2 本指の拡縮。`scale > 0`（`>1` で拡大, `<1` で縮小） |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | 2 本指の回転。`>0` で時計回り |
-| `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | iOS SpringBoard の権限プロンプトのボタンを決定的に tap する（[下記](#handlesystemalert決定的なシステムアラートステップ)）。iOS（XCUITest）専用。`sel` は `label` / `labelMatches` / `index` のみ受け付け、run が Simulator を固定するシステム言語に対して解決する。`sel` の代わりに `prompt: notifications\|tracking` と `choice: grant\|deny` を指定すると、ボタンを意味で指定でき、run がその label を解決する（BE-0320） |
+| `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | iOS SpringBoard の権限プロンプトのボタンを決定的に tap する（[下記](#handlesystemalert決定的なシステムアラートステップ)）。iOS（XCUITest）専用。`sel` は `label` / `labelMatches` / `index` のみ受け付け、run が Simulator を固定するシステム言語に対して解決する。`sel` の代わりに `prompt: notifications\|tracking\|paste` と `choice: grant\|deny` を指定すると、ボタンを意味で指定でき、run がその label を解決する（BE-0320） |
 | `wait` | `wait: { for\|until: ..., timeout: <sec> }` | 条件待機（下記） |
 | `assert` | `assert: [ <Assertion>... ]` | ステップ途中の中間検証 |
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | アプリを terminate + 再起動し（launch env/args を再適用し、指定分で上書き）、ready まで待つ |
@@ -318,6 +341,7 @@ targets:
 | `http` | `http: { method?, url, headers?, body?, status?, saveBody? }` | HTTP リクエストを送る（テストデータ準備 / Webhook / API）。`status` を検証し、ボディを `${vars.<saveBody>}` に保存する |
 | `totp` | `totp: { secret, into: { var } }` | RFC 6238 の時刻ベースワンタイムパスワード（2FA）をローカルで生成し `${vars.<var>}` に入れる |
 | `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | 設定したメールボックスを一致するメッセージが届くまでポーリングし、コードを `${vars.<var>}` に取り出す |
+| `generate` | `generate: { random\|datetime: {...}, into: { var } }` | 乱数または現在日時の値を実行時に計算し、`${vars.<var>}` に保存する（[後述](#generate実行時に計算する値)） |
 | `manual` | `manual: { label: "...", bypass?: "..." }` | `record` 中に記録される人による操作の引き取り（BE-0185）。決定的な実行時の等価物がないため、`run` 時に**明示的に失敗する**——合格を偽装しない |
 | `background` | `background: {}` | アプリをバックグラウンドへ送る（Home ボタン） |
 | `foreground` | `foreground: {}` | バックグラウンドのアプリを前面へ復帰する（`simctl launch`。settle 用の sleep なし） |
@@ -522,6 +546,52 @@ targets:
 ```
 
 `email` はメールで届く 2FA / 検証コードを待ちます。汎用 HTTP メールボックス（`targets.<name>.mailbox` で設定。[configuration](configuration.md#mailboxemail-ステップ) 参照）をポーリングし、**ステップ開始後に届いた**メッセージのうち `match` を満たすものが現れるまで待って、その本文から `bodyMatches` の正規表現（最初のキャプチャグループ、無ければマッチ全体）で値を `${vars.<var>}` に取り出します。待機は **`timeout` 必須の条件待機**です（固定 sleep なし）。タイムアウト、本文に正規表現が当たらない一致メッセージ、到達不能 / 2xx 以外のメールボックスは、いずれもクリーンなステップ失敗で、黙って誤った値を返すことはありません。対象はステップ開始より新しいメールだけ（メッセージ id で判定するので、以前の run の古いコードには一致しません）で、新着の一致が複数あれば最新を採ります。決定的で LLM 非依存、エンドポイントと認証情報は config 参照の `${secrets.*}` に置くのでシナリオはアプリ非依存のままです（[BE-0046](../../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)）。
+
+### `generate`（実行時に計算する値）
+
+```yaml
+- generate: { random: { string: { length: 8, charset: alnum } }, into: { var: username } }
+- type: { text: "${vars.username}", into: { id: signup.username } }
+
+- generate: { random: { uuid: {} }, into: { var: orderRef } }        # バージョン4の UUID
+- generate: { random: { int: { min: 1, max: 100 } }, into: { var: quantity } }
+- generate: { random: { float: { min: 0, max: 50, precision: 2 } }, into: { var: amount } }   # 例 "12.30"
+
+- generate: { datetime: { format: "%Y-%m-%d", offsetDays: 1 }, into: { var: tomorrow } }
+- type: { text: "${vars.tomorrow}", into: { id: booking.date } }
+```
+
+`generate` はランナー側で値を計算し、`${vars.<var>}` に保存します。これにより、作者がリテラルとして
+書けない入力値をシナリオが供給できます。以前の run がまだ使っていないユーザー名、予約フォームに
+入れる翌日の日付、他のシナリオと衝突しない参照番号などです。データ駆動の行（[再利用](#再利用とデータ駆動とタグ)）
+は事前に用意した固定の表を配り、`extract` はアプリがすでに表示している値を取り込みます。どちらも
+シナリオ自身が値を作り出すわけではありません（[BE-0377](../../roadmaps/BE-0377-dynamic-value-generation/BE-0377-dynamic-value-generation-ja.md)）。
+
+値を作る生成カテゴリは、ちょうど1つ指定します。**`random`** が生成するのは、次の4種類です。
+
+- **`string`**：`charset` から `length` 文字を引いた文字列。`charset` の既定は `alnum` で、
+  ほかに `alpha`、`numeric`、`hex` を選べます。
+- **`int`**：`[min, max]` の閉区間の整数。
+- **`float`**：`[min, max]` の範囲の数値。任意の `precision` で小数桁数に丸めます。
+- **`uuid`**：バージョン4の UUID。
+
+**`datetime`** は現在時刻をテキストにします。`format` は `strftime` のパターンを取り、省略時は
+秒までの ISO 8601 になります。符号付きの `offsetSeconds`、`offsetMinutes`、`offsetHours`、
+`offsetDays` は加算されて時刻をずらします。`timezone` は `America/Los_Angeles` のような
+Internet Assigned Numbers Authority（IANA）のゾーン名を取ります。既定のゾーンは UTC なので、
+アプリがデバイス自身のゾーンで描画する日付に入力を一致させたいシナリオは、そのゾーンを明示します。
+デバイス自身のゾーンを固定する部分は別の関心事です
+（[BE-0158](../../roadmaps/BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive-ja.md)）。
+
+値は run ごとに変わりますが、フローは決定的なままです。ローダが受理した `generate` ステップは、常に
+実行され常に成功します。生成器から値を引くか、クロックを読むだけで、ネットワークとモデルのいずれにも触れません。
+run ごとに違うのは生成された値だけで、これは `totp` の時刻由来のコードがすでにそうであるのと同じです。
+描画できない `format` と解決できない `timezone` は、シナリオのロード時に拒否され、実行中に黙って別の
+値に置き換わることはありません。生成した値は manifest とレポートに記録されるので、後で失敗したときに
+その run が実際に使った値がわかります。特定の値を検証しなければならないシナリオは、その値を
+`${vars.*}` に取り込んでから比較します。事前には知り得なかったリテラルと比較するわけにはいきません。
+`generate` はアプリではなくランナーで動くため、どの codegen ターゲットもラベル付きの `// TODO` として
+描画します。
 
 ### `manual`
 

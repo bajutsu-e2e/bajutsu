@@ -185,7 +185,8 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > per scenario. The pool holds the warm runner keyed by `(udid, actuator)`; a lease that resolves to
 > a different actuator (BE-0240), or a scenario that `erase`s the device, tears it down and respawns,
 > and a runner that fails its bounded `/health` probe is treated as a cache miss (one extra cold
-> start, never a lost run). idb and the other backends spawn no such resident and are unchanged.
+> start, never a lost run). The other backends (adb, Playwright, fake) spawn no such resident and
+> are unchanged.
 >
 > The resident runner crashes after a handful of `app.launch()` cycles (an XCTest-session limit; see
 > `docs/architecture.md`), so warm reuse is **bounded** (BE-0287): after `BAJUTSU_XCUITEST_MAX_WARM_REUSES`
@@ -267,3 +268,42 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > keeps the strongest retry it has.
 > Both signals are advisory to the *rung*, never to the verdict: a scenario that keeps crashing still
 > exhausts its budget and fails loudly.
+
+> **Cooperative cancellation (BE-0370).** A cancelled run finishes on its own terms and lands in the
+> run history as a failed run, instead of dying wherever it happens to be. `bajutsu run` answers
+> `SIGTERM` by setting an event rather than taking Python's default disposition, which is immediate
+> termination, and the pipeline reads that event at three safe boundaries: the top of each scenario in
+> `run_all`'s dispatch loop, between the steps of one scenario, and inside the poll loops that already
+> back every condition wait. A scenario the request reaches becomes `RunResult(ok=False,
+> failure="cancelled")` — the same shape a backend crash or a preflight failure already produces — so
+> `run_all` still returns exactly one result per scenario in declaration order, and `run_and_report`
+> writes `manifest.json`, `report.html`, and the JUnit XML the way it does for any other failing run.
+> An operator who cancels early in a long suite therefore sees every scenario that never got to run
+> counted as a failure too, the accepted consequence of treating a cancelled run as failed at all.
+> The event is read at one boundary beyond those three: where a backend crash would otherwise trigger
+> a fresh cold respawn (the retry above), because that bring-up can outlive the grace window below and
+> so leave the run killed before it wrote anything.
+>
+> The shutdown stays bounded, with or without a canceller watching. A scenario blocked inside a
+> single driver call notices the request only once that call returns — an XCUITest HTTP request, an
+> `adb` subprocess or a Playwright call all hold it that long — so the graceful path gets a grace
+> window. `BAJUTSU_CANCEL_GRACE` sets that window, 90 seconds by default: the 60 seconds a read
+> riding the transient retry can hold, plus 30 for the shutdown tail behind it — failing the
+> remaining scenarios, writing the report, and printing the verdict line. A window equal to the call
+> alone would leave that tail nothing. Past its own deadline beyond that window, the handler restores `SIGTERM`'s
+> default disposition and re-raises it, so a genuinely wedged runner dies exactly as it would have
+> without the handler installed. The handler answers every sender, not only the `serve` Web UI's Cancel button: a
+> `docker stop`, a systemd unit stop, and a CI job cancellation all reach it. `serve` waits out the
+> same window on a timer of its own before escalating to an unconditional kill, and passes the window
+> down to the run it spawns so the run's internal deadline is bound to the window `serve` is already
+> waiting rather than to a constant chosen independently of it.
+>
+> A cross-browser matrix run reads the event once more, between engine passes. Each pass first brings
+> up a whole `device_pool` — resolving the environment, reading the device catalog, starting the
+> per-device collectors — so a cancel during the first engine would otherwise still pay every
+> remaining engine's bring-up and teardown before the run could finish. Every scenario of an engine
+> that never ran is failed as cancelled rather than dropped from the report, so the manifest's
+> `matrix` block still names every requested engine and a cell that says `cancelled` states plainly
+> that the axis was requested and never executed. Dropping those engines instead would leave `ok`
+> aggregating only the passes that ran, so a cancel landing after a green first engine would record a
+> `PASS` for a run that never finished.

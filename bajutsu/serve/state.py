@@ -69,6 +69,18 @@ class Job:
     # reads/writes this org's object-store prefix. The single `default` org for local / single-tenant.
     org: str = _DEFAULT_ORG
     proc: Any = None  # the live subprocess (build or run), so a cancel can terminate it
+    # Whether the process this job spawns answers a cancel cooperatively (BE-0370): a `run` job's
+    # `bajutsu run` finishes the scenario it is on, fails the rest, and writes its manifest before
+    # exiting. Declared by the dispatcher (it alone knows what it is starting) and carried in the job
+    # spec, so a worker registers its spawn the same way. False for `record` / `crawl` / triage,
+    # which have no verdict to preserve and keep today's immediate group-wide kill.
+    graceful_cancel: bool = False
+    # Live state beside `proc`: whether the *currently registered* subprocess is that cooperative run.
+    # A `run` job's own on-demand build phase registers here too, and it keeps today's kill, so the
+    # declaration above is not enough on its own — the cancel path needs to know which phase is live.
+    # Written and cleared with `proc` at every site that touches it, so `proc is None` always implies
+    # False here rather than a stale value the reader has to reason is harmless.
+    proc_graceful: bool = False
     lines: list[str] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
     bus: LogBus | None = None  # live-log channel; set from state.logbus at creation (BE-0015)

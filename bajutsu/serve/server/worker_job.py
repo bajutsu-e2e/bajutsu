@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from bajutsu import simctl as _simctl
+from bajutsu.run_files import DEFAULT_RUNS_DIR
 from bajutsu.serve import oplog
 from bajutsu.serve.jobs import run_job
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
@@ -67,6 +68,9 @@ def job_spec(job: Job) -> dict[str, Any]:
         "record_save": list(job.record_save) if job.record_save else None,
         # run: download visual baselines into the workspace before running.
         "materialize_baselines": job.materialize_baselines,
+        # run: the spawned run answers a cancel cooperatively (BE-0370), so the worker registers its
+        # spawn the same way the control plane does and passes the grace window down to it.
+        "graceful_cancel": job.graceful_cancel,
         # The run's org, so the worker reads/writes this org's object-store prefix (BE-0015).
         "org": job.org,
         # Who started the run, so the worker can attribute the recorded run to the user (BE-0015).
@@ -174,7 +178,7 @@ def execute_job_spec(
     # A repository (worker BAJUTSU_DATABASE_URL) lets run_job's `_persist_run` record the finished
     # run under its org — the run executes here, so this is the only place it can be recorded.
     state = ServeState(
-        runs_dir=work / "runs",
+        runs_dir=work / DEFAULT_RUNS_DIR,
         cwd=work,
         popen=popen,
         simctl=simctl,
@@ -188,6 +192,8 @@ def execute_job_spec(
         app_path=spec.get("app_path"),
         build=spec.get("build"),
         out_path=spec.get("out_path"),  # so the terminal-status payload reports it (record jobs)
+        # Whether this job's spawn is a cooperatively-cancellable `run` (BE-0370).
+        graceful_cancel=bool(spec.get("graceful_cancel")),
         bus=state.logbus,
         # Carry org + actor so the recorded run is attributed correctly (BE-0015).
         org=org,

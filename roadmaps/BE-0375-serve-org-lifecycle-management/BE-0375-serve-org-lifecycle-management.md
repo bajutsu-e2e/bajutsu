@@ -9,7 +9,7 @@
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0375") |
-| Implementing PR | [#1636](https://github.com/bajutsu-e2e/bajutsu/pull/1636) |
+| Implementing PR | [#1636](https://github.com/bajutsu-e2e/bajutsu/pull/1636), [#1663](https://github.com/bajutsu-e2e/bajutsu/pull/1663), [#1664](https://github.com/bajutsu-e2e/bajutsu/pull/1664) |
 | Topic | Hosting the web UI |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md), [BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass.md), [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md), [BE-0170](../BE-0170-weighted-fair-org-dispatch/BE-0170-weighted-fair-org-dispatch.md) |
 <!-- /BE-METADATA -->
@@ -443,6 +443,103 @@ gate through that bypass regardless of how many `Org` rows exist, signs in with 
 No chicken-and-egg: the one piece of tenancy data this item deliberately leaves outside the
 database is exactly the piece that makes an empty `orgs` table recoverable.
 
+### 8. A GitHub Team is a membership axis of its own (follow-up)
+
+Added after this item shipped, since it changes the same four membership fields units 1, 5, and 6
+move into the database and would otherwise leave that set inconsistent across the two producers.
+
+An org gains `githubTeams`: a list of flat GitHub Teams, each written `"<github-org>/<team-slug>"`,
+whose direct members belong to the org at **viewer**. Until now an org could admit a login by naming
+it under `members` or by naming its whole GitHub organization under `githubOrgs`, with nothing in
+between — so admitting one team of a shared organization meant either a hand-maintained roster that
+decays as people join and leave, or opening the deployment to every other team in it. The Team is
+the unit GitHub already models, and `serve` reads a login's Teams on every sign-in for the
+editor/admin roles, so the membership was on hand and only the gate declined to consult it.
+
+`editorTeam` now admits as well as promotes. It names the Team allowed to run, record, and edit
+scenarios — the strongest per-org grant — yet it admitted nobody, so a Team named only there resolved
+to "may write but cannot sign in": every member turned away at the gate that runs before any role is
+computed. `OrgConfig.admitting_teams()` returns the union of `github_teams` and `editor_team`, so the
+gate and every "does this org declare a membership" check (unit 6's cutover warning included) read
+one accessor and cannot disagree about whether `editorTeam` alone admits anyone.
+
+Adding the axis to the gate alone would have admitted a login through one org's Team and then filed
+it under another — handing it that other tenant's targets and object-storage prefix (unit 4), and
+reading the wrong org's `editorTeam` for its role, so a login admitted by its editor Team would land
+as viewer. `identity_matches_org` and `org_for_identity` therefore delegate to one private
+`_match_org`, which ranks `members`, then `githubOrgs`, then an org's admitting Teams, and returns
+the matching org or None. Teams rank last, so declaring one never relocates a login an existing
+entry already placed. The one Team comparison behind the gate, the editor role, and the admin Team
+is now `orgs.in_teams`, lowercased on both sides as GitHub itself resolves an org login and a Team
+slug: BE-0313 left the `editorTeam` check exact while a mismatch cost only the editor role, and once
+that field admits, the same mismatch costs sign-in. `str.lower` rather than `str.casefold`, because
+full folding equates names GitHub keeps distinct (`gruß` and `gruss` can be two Teams of one
+organization) and a match now buys sign-in, so anyone able to create the folded-equal Team would
+clear the gate. Lowercasing preserves the nested-Team guarantee, which rests on exact equality of the
+whole `"<github-org>/<team-slug>"`. The Team axis is a required parameter on both resolvers, not a
+defaulted one: a call site able to omit it is how the gate and the placement would come to consult
+different axes again, and it would type-check clean while denying or misplacing a Team-admitted
+login. `org_for_user` is retired here for the reason unit 1 retired `org_for_target` — `_match_org`
+scans `members` itself, so the helper kept only its pre-BE-0313 semantics and no caller.
+
+The database side follows units 1 and 5 unchanged: a nullable `orgs.github_teams` JSON column
+(migration `0016`, adding a column and seeding nothing, like `0015`), carried through `OrgRecord`,
+`set_org_membership`, `seed_org_membership`, and `orgs_from_db`, and replaced as one unit with the
+other three through `POST /api/orgs/<slug>/membership` and the Orgs page's form. `editor_team` keeps
+its own column, since it decides a role as well as admitting. Unit 3's denial cause names the Team
+list too, and only when it is *also* empty ("GitHub returned no orgs or teams for this login"):
+blaming the org list alone would send an operator to an axis a Team-declared org never consults.
+`/user/teams` fails closed, so while GitHub's Teams API errors a login whose only membership is a
+Team is turned away — the direction a gate has to fail in, and the trade unit 7's bypass already
+accepted.
+
+### 9. The writing Team becomes a list (follow-up)
+
+`editorTeam` becomes `editorTeams`, a list of flat GitHub Teams. Unit 8 gave an org a list of
+admitting Teams and left the writing Team a single slot, which is a shape the other two membership
+axes had already outgrown: `githubOrgs` and `githubTeams` are lists because one org may span more
+than one GitHub organization, and an org shaped that way cannot then name a writing Team in each.
+The ways out were to merge the Teams on GitHub's side or to keep one roster by hand, and the second
+is the manual maintenance
+[BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md) removed. Naming both
+Teams under `githubTeams` is not a third way out, since that field admits at viewer and grants
+nobody write access.
+[BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass.md) reached the
+same conclusion for the server-wide admin Team, widening `BAJUTSU_OAUTH_ADMIN_TEAM` into
+`BAJUTSU_OAUTH_ADMIN_TEAMS` so one deployment could name an admin Team per GitHub organization.
+
+`OrgConfig` folds a retired singular `editorTeam` key into `editor_teams` rather than refusing it,
+which is where this rename departs from BE-0352's. That item could retire an environment variable
+outright, because an unread variable still leaves a configuration that loads. `OrgConfig` is
+`extra="forbid"`, so an un-renamed key raises out of `parse_orgs` — and `load_serve_config_file`
+answers a parse failure with no org model at all, which turns away every login under "user not
+allowed". A deployment that missed one key would lock itself out silently, the failure BE-0352's
+retired-name warning exists to prevent. A configuration carrying both spellings keeps both Teams: an
+operator who adds the plural name and leaves the singular one behind is the likelier partial rename,
+and neither spelling should lose the role it was written to grant. An `editorTeam: ""` folds to
+nothing, since an empty value meant "no editor Team" before the rename and an entry matching no Team
+would still make `orgs_declaring_membership` report a roster.
+
+The list simplifies the two places that special-cased the single slot. `admitting_teams()` becomes a
+plain concatenation of `github_teams` and `editor_teams`, and `role_for` drops its `is not None`
+guard, since `in_teams` on an empty list is already False. `POST /api/orgs/<slug>/membership` drops
+its bespoke "must be a string" check for the shared `_string_list` validator the other three fields
+use, so the endpoint now validates four uniform lists. That endpoint refuses a retired `editorTeam`
+field with a 400 rather than folding it, which is the opposite choice from the configuration surface
+and rests on what refusing costs: `_string_list` reads a missing `editorTeams` as an empty list, so
+obeying such a body would strip the org's write access and answer 200, while refusing costs one
+request an operator can fix. Refusing a configuration key would instead cost every login of the
+deployment.
+
+Migration `0017` is the first in this series to carry data rather than only add columns. Migrations
+`0015` and `0016` seeded nothing because every column they added is reconstructible from the `orgs:`
+block, and an `editor_team` is not: a write through `POST /api/orgs/<slug>/membership` stamps
+`membership_seeded_at`, after which `seed_org_membership` is a no-op forever, so that value lives in
+its row and nowhere else. Dropping the column without the copy would demote every editor of such an
+org to viewer, and say nothing. The downgrade copies back the first entry only, which is the one
+direction a widening is lossy in; refusing to downgrade a row holding two Teams would instead leave
+an operator no way back from the state this unit makes reachable.
+
 ## Alternatives considered
 
 - **Keep org membership in the configuration file, and let an admin trigger a `POST
@@ -532,8 +629,8 @@ database is exactly the piece that makes an empty `orgs` table recoverable.
       row rather than inferred from empty membership columns; a `targets:`-only entry skipped rather
       than written as an empty roster; the Alembic migration adds only the membership, marker, and
       soft-delete columns and runs no seeding of its own; the boot warning when an `orgs:` entry
-      still declares `members`/`githubOrgs`/`editorTeam` (an entry that carries only `targets` stays
-      expected and does not warn).
+      still declares `members`/`githubOrgs`/`githubTeams`/`editorTeam` (an entry that carries only
+      `targets` stays expected and does not warn).
 - [x] 7 — Confirm the admin-Team bypass still admits sign-in against an empty or wholly
       unmatching `orgs` table, now that the table rather than the configuration file decides the
       gate, and leave `BAJUTSU_OAUTH_ADMIN_TEAMS` in the environment.
@@ -547,6 +644,29 @@ database is exactly the piece that makes an empty `orgs` table recoverable.
       ([BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass.md))
       still admits sign-in and lets that admin create the deployment's first org against an empty
       `orgs` table.
+- [x] 9 — Follow-up: add `githubTeams` as an org's third membership axis and let `editorTeam` admit
+      as well as promote, ranking all three axes once in `orgs._match_org` so the sign-in gate and
+      the org placement cannot admit a login through one org and file it under another, with the
+      Team axis required rather than defaulted on both resolvers and `org_for_user` retired; lowercase
+      the one Team comparison (`orgs.in_teams`) shared by the gate, the editor role, and the admin
+      Team;
+      carry the field through migration `0016`, the repository seam, `orgs_declaring_membership`,
+      the membership API, and the Orgs page; and name the Team list in unit 3's denial cause when
+      GitHub returned neither axis. Tests: a Team-only login admitted *and placed in its Team's org*,
+      an `editorTeam`-only login admitted as editor, a case-mismatched Team, a nested Team refused,
+      a Team-only login denied while `/user/teams` returns nothing, and the config/database
+      resolution parity of unit 8 extended to the Team axis.
+
+- [x] 10 — Follow-up: widen `editorTeam` into `editorTeams`, a list, so an org spanning more than one
+      GitHub organization can name a writing Team in each; fold a retired singular `editorTeam` key
+      into the list rather than refusing it, since `OrgConfig` is `extra="forbid"` and a parse
+      failure leaves `serve` with no org model and every login denied; carry the field through
+      migration `0017` — the first here to copy data, since an `editor_team` set through the API is
+      reconstructible from nothing — the repository seam, `role_for`, the membership API's shared
+      `_string_list` validation, and the Orgs page. Tests: a second `editorTeams` entry both admits
+      and promotes, the retired key folds (alone, beside the plural one, and as an empty value), and
+      migration `0017` carries a pre-rename row's single Team into a one-element list while leaving a
+      row that never had one untouched.
 
 ## References
 
@@ -571,11 +691,17 @@ database is exactly the piece that makes an empty `orgs` table recoverable.
   set of tenants is exactly the shape that item's fairness scheme is for.
 - [`bajutsu/serve/orgs.py`](../../bajutsu/serve/orgs.py) — `OrgConfig` and `parse_orgs`, which this
   item adds a second producer beside (`orgs_from_db`); `identity_matches_org` and `org_for_identity`
-  keep their behavior and change only their source, while `org_for_target` loses its only caller.
+  changed only their source in units 1–7 and now share unit 8's `_match_org`, beside which
+  `in_teams` holds the one Team comparison; `org_for_target` loses its only caller here, and
+  `org_for_user` in unit 8.
 - [`bajutsu/serve/project_registry.py`](../../bajutsu/serve/project_registry.py) — the `(org_id,
   name)` key a project already carries, which this item's target identity follows.
 - [`bajutsu/serve/server/models.py`](../../bajutsu/serve/server/models.py) — the `Org` table this
-  item adds membership columns to.
+  item adds membership columns to, `github_teams` among them (unit 8's migration
+  [`0016`](../../bajutsu/serve/server/migrations/versions/0016_org_github_teams.py)).
+- [`bajutsu/serve/server/oauth.py`](../../bajutsu/serve/server/oauth.py) — `_fetch_teams`, whose
+  fail-closed behavior decides sign-in for a Team-declared org from unit 8 on, not only for unit 7's
+  admin bypass.
 - [`bajutsu/serve/server/db.py`](../../bajutsu/serve/server/db.py) — `Repository.ensure_org`, which
   this item leaves an idempotent create and adds a separate seeding method beside, and the
   `ProjectRecord`/`create_project`/`delete_project`

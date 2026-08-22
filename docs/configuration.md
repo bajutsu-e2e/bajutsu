@@ -77,7 +77,7 @@ platforms — rather than `effective.bundle_id` directly, which does not exist.
 | `platform_config.device_mode` (`WebConfig`) | app | web backend only: the device mode a browser context is created with — `deviceMode: desktop` (the default, unchanged from today) or a Playwright device preset name (e.g. `iPhone 13`) that emulates its viewport / touch / device scale / user agent, driving the web target as that mobile device. It is desktop-browser emulation (Chrome DevTools' device toolbar), not a real device ([drivers → Playwright](drivers.md#playwright-web)). Resolved **lazily** against `playwright.devices` in the driver, so config load never imports Playwright; an unknown preset fails loudly at driver start, not at config load. Distinct from the top-level `device` (the iOS Simulator name), which a web target ignores. iOS / Android ignore this ([BE-0228](../roadmaps/BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md)) |
 | `device_provider` | app | where this target's devices come from — `deviceProvider: { kind: local }` (the default, today's locally-attached `--udid` path) or another `kind` that a device-cloud adapter registers to reserve a device off-host and hand the run its serial / endpoint. The `kind` is resolved against the device-provider registry **at run time, not config load**, so the deterministic core never imports a cloud SDK; an unknown `kind` fails loudly when the run resolves the provider. Only `bajutsu run` resolves it today — `record`, `crawl`, and `audit --repeat` still resolve devices the old way and silently ignore this field. The seam sits upstream of the device pool and entirely off the run/CI verdict path (a provider only acquires and releases a device). Two built-in providers ship today: **`local`** (the default — the locally-attached `--udid` path, no extra fields) and **`appium`** (the live path to a reserved iOS device behind a self-hosted Appium / WebDriver grid — requires `endpoint: <url>`; Bajutsu drives that endpoint end to end over a live W3C WebDriver transport, resolving selectors Python-side the same way the local XCUITest backend does; see [iOS device cloud](ios-device-cloud.md#live--an-appium-endpoint-provider)). Concrete cloud adapters ship as separate optional packages ([BE-0236](../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0238](../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md)) |
 | `launch_server` | app | optional `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}` — bring up `baseUrl`'s host for the run, then tear it down: probe `readyUrl` (default `baseUrl`), reuse it if already serving, else run `cmd` and wait until ready (a condition wait, never a fixed sleep). The web analogue of `build` ([BE-0059](../roadmaps/BE-0059-launch-target-server/BE-0059-launch-target-server.md)). For an **uploaded** bundle in `serve`, the host never runs `cmd` directly — `serve --upload-exec` governs it (see [self-hosting](self-hosting.md#uploaded-config-command-execution-be-0090)); a `sandbox` run needs the extra fields `dockerImage` (a Docker image reference, e.g. `node:20-slim`) **or** `dockerfile` (a bundle-relative path built with `docker build`) — exactly one — plus `port` (the in-container listen port, published to a loopback host port) ([BE-0090](../roadmaps/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md)) |
-| `run_defaults.system_alert_handling` / `.erase` / `.network` | app | per-app defaults for run-behavior settings otherwise set per scenario or on a CLI flag ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). `systemAlertHandling` takes the scenario form (`false`, or `{ enabled, instruction }`) and defaults the alert guard; `erase` defaults `preconditions.erase`; `network` defaults collecting the app's network exchanges. Each resolves **flag > scenario > this > built-in** (guard on, erase off, network on), mirroring `--headed`/`headless`: `bajutsu run --system-alert-handling/--no-system-alert-handling`, `--erase/--no-erase`, `--network/--no-network` (and `--alert-instruction`) still override for one run |
+| `run_defaults.system_alert_handling` / `.erase` / `.network` | app | per-app defaults for run-behavior settings otherwise set per scenario or on a CLI flag ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). `systemAlertHandling` takes the scenario form (`false`, or `{ enabled, rules, instruction }`) and defaults the alert guard; `erase` defaults `preconditions.erase`; `network` defaults collecting the app's network exchanges. Each resolves **flag > scenario > this > built-in** (guard on, erase off, network on), mirroring `--headed`/`headless`: `bajutsu run --system-alert-handling/--no-system-alert-handling`, `--erase/--no-erase`, `--network/--no-network` (and `--alert-instruction`) still override for one run. `rules` layers instead: a scenario's own rules are checked before this default's, so a scenario's answer for a prompt shadows the app default for that prompt while the default still answers every other prompt — unless the scenario (or `--alert-instruction`) sets its own `instruction`, which drops the app default's rules entirely rather than letting them silently invert what that `instruction` already decided |
 | `deeplink_scheme` | app | the scheme used by the preconditions' deeplink |
 | `backend` | app ?? defaults | stability-ordered list of platforms (`ios`/`android`/`web`/`fake`) or actuators (`xcuitest`); a single string is listified ([drivers](drivers.md#backend-selection-and-the-actuator)) |
 | `device` / `locale` | app ?? defaults | `locale` is applied at launch (`simctl` launch args). On the iOS XCUITest backend it also pins the **Simulator's own system language** on every cold spawn — written to the device's global preference domain, then rebooted so SpringBoard renders it — so an out-of-process permission prompt's button text is the one this `locale` predicts rather than whatever language the Simulator happened to carry; a scenario whose `preconditions.locale` differs from the pinned one forces a cold respawn rather than reusing a warm runner ([BE-0320](../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)) |
@@ -318,33 +318,48 @@ notify:
 ### Orgs (`orgs:`, the multi-tenant server backend)
 
 `orgs:` declares tenants for the hosted server backend ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
-Each org lists its members — explicit GitHub logins (`members`) and/or whole GitHub orgs
-(`githubOrgs`) — the GitHub Team whose members may write (`editorTeam`), and the targets it owns:
+Each org lists its members — explicit GitHub logins (`members`), whole GitHub orgs (`githubOrgs`),
+and/or single GitHub Teams (`githubTeams`) — the GitHub Teams whose members may write
+(`editorTeams`),
+and the targets it owns:
 
 ```yaml
 orgs:
   acme:
     members: [alice, bob]                   # explicit GitHub logins
     githubOrgs: [acme-gh]                    # everyone in this GitHub org (needs the read:org OAuth scope)
-    editorTeam: acme-gh/scenario-maintainers # direct members of this Team become editors
+    githubTeams: [acme-gh/qa]                # direct members of these Teams, without the whole GitHub org
+    editorTeams: [acme-gh/scenario-maintainers] # direct members of these Teams become editors — and may sign in
     targets: [demo, checkout]
 ```
 
-At OAuth login users are assigned their org — an explicit `members` entry first, else a `githubOrgs`
-match from their GitHub org memberships. Afterward they see only that org's targets, and a run's
+At OAuth login users are assigned their org — an explicit `members` entry first, then a `githubOrgs`
+match from their GitHub org memberships, then a `githubTeams` or `editorTeams` match from their direct
+Team memberships. Teams rank last, so adding one to an org never moves a login that a `members` or
+`githubOrgs` entry already placed. Afterward they see only that org's targets, and a run's
 artifacts/scenarios/baselines live under the org's own object-store prefix. A target named in no org
 falls into the single `default` org, so a config **without** an `orgs:` block is single-tenant — the
 CLI and local `serve` ignore `orgs:` entirely.
 
 Once GitHub OAuth is configured, org membership also decides access
 ([BE-0313](../roadmaps/BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)). Signing in
-requires membership in a configured org — through `members` or `githubOrgs` — which grants the
-**viewer** role; a member of a configured admin Team signs in regardless (below). A direct member of
-the org's `editorTeam` is promoted to **editor**; a member of one
-of the server-wide admin Teams (`BAJUTSU_OAUTH_ADMIN_TEAMS`, see
-[Self-hosting](self-hosting.md#2-add-github-oauth-optional)) is **admin**. `editorTeam` and each
-`BAJUTSU_OAUTH_ADMIN_TEAMS` entry are each one flat Team, written as
-`"<github-org>/<team-slug>"`; a nested Team beneath either does not match. An OAuth deployment
+requires membership in a configured org — through `members`, `githubOrgs`, `githubTeams`, or
+`editorTeams` — which grants the **viewer** role; a member of a configured admin Team signs in
+regardless (below). A direct member of any of the org's `editorTeams` is promoted to **editor**; a
+member of one of the server-wide admin Teams (`BAJUTSU_OAUTH_ADMIN_TEAMS`, see
+[Self-hosting](self-hosting.md#2-add-github-oauth-optional)) is **admin**. `editorTeams` admits as
+well as promotes, so a Team that may write never has to be repeated under `githubTeams` to be able to
+sign in. `editorTeams` is a list because one org may span more than one GitHub organization, and a
+single slot could not then name the writing Team of each. A configuration still on the older
+singular `editorTeam` keeps working: `serve` folds that key into `editorTeams`, and folds both in
+when a partial rename leaves the singular name behind. Rename it anyway; the plural name is the
+documented one. Each `githubTeams` entry, each `editorTeams` entry, and each
+`BAJUTSU_OAUTH_ADMIN_TEAMS` entry is one flat Team, written as `"<github-org>/<team-slug>"`; a nested
+Team beneath any of them does not match, and all three are compared case-insensitively, as GitHub
+itself resolves an org login and a Team
+slug. A Team-declared org depends on GitHub's Teams API answering: that API fails closed — it never
+invents a Team — so while it errors, a login whose only membership is a Team is turned away rather
+than admitted. An OAuth deployment
 therefore must declare an `orgs:` block, or every login other than an admin Team member is turned
 away — a member of a configured admin Team can still sign in unless GitHub's Teams API is itself
 erroring, so a broken or missing `orgs:` block never locks every admin out on its own. An admin
@@ -353,16 +368,17 @@ a deployment relying on that recovery should avoid declaring a real org named `d
 recovering admin's user row, audit entries, and object-storage prefix land inside that tenant instead
 of a neutral catch-all.
 
-**A deployment with a database reads three of these four fields only once**
+**A deployment with a database reads four of these five fields only once**
 ([BE-0375](../roadmaps/BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management.md)).
 On the one boot that finds the `orgs` table still empty, `serve` copies each org's `members`,
-`githubOrgs`, and `editorTeam` into it from the configuration this server was **launched** with;
+`githubOrgs`, `githubTeams`, and `editorTeams` into it from the configuration this server was
+**launched** with;
 every sign-in after that resolves against the database alone. That copy happens once for the life of
 the deployment: a boot that finds any org already there — a retired one included — copies nothing,
 so no later configuration edit, and no restart carrying one, can add or reshape a tenant behind an
 admin's back. A configuration bound afterwards through the web UI or `POST /api/config` never
 copies at all, whatever its `orgs:` block says.
-An admin edits the membership from the Orgs page from then on, and an edit to those three fields
+An admin edits the membership from the Orgs page from then on, and an edit to those four fields
 here has no effect: `serve` records a warning naming the org whose entry still declares them, so an
 operator learns the file stopped deciding rather than watching an edit vanish. `targets` is the
 field that keeps working, so an entry pared down to `targets:` alone is the expected end state on

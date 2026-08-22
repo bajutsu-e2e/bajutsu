@@ -19,7 +19,8 @@ _USER = "https://api.github.com/user"
 _ORGS = "https://api.github.com/user/orgs"
 _TEAMS = "https://api.github.com/user/teams"
 # `read:org` lets us read the user's org memberships (including private ones) to map them to a
-# bajutsu org, and their Team memberships for the editor/admin role check (BE-0313); `read:user`
+# bajutsu org, and their Team memberships for the sign-in gate and the editor/admin role check
+# (BE-0313); `read:user`
 # covers the login itself (BE-0015 multi-tenancy).
 _SCOPE = "read:user read:org"
 
@@ -27,9 +28,10 @@ _SCOPE = "read:user read:org"
 @dataclass
 class Identity:
     """Who logged in: the GitHub *login*, the *orgs* (GitHub org logins) they belong to, and the
-    *teams* they are a direct member of. The org list maps the user to a bajutsu org (BE-0015); the
-    team list (each `"<github-org>/<team-slug>"`) decides the editor/admin role (BE-0313). Both are
-    empty when GitHub isn't consulted for them."""
+    *teams* they are a direct member of. Both lists feed the sign-in gate: the org list maps the user
+    to a bajutsu org (BE-0015), and the team list (each `"<github-org>/<team-slug>"`) both places a
+    login whose org declares Teams and decides the editor/admin role (BE-0313). Both are empty when
+    GitHub isn't consulted for them."""
 
     login: str
     orgs: list[str] = field(default_factory=list)
@@ -116,10 +118,11 @@ def _paginate(client: object, headers: dict[str, str], url: str) -> list[dict[st
 def _fetch_orgs(client: object, headers: dict[str, str]) -> list[str]:
     """Every GitHub org the user belongs to, following pagination (so a user in >30 orgs isn't
     truncated). Org membership maps the user to a bajutsu org *and*, since BE-0313, decides the
-    sign-in gate (`identity_matches_org` reads this same list), so a failure here now has effects
-    that depend on how the login was admitted: an explicit `members` login is unaffected — its org
-    comes from that `members` entry, which never consults this list — but a login relying only on
-    `githubOrgs` is turned away at sign-in instead, since the gate sees no matching org to admit it
+    sign-in gate (`identity_matches_org` reads this same list), so a failure here has effects that
+    depend on how the login was admitted: an explicit `members` login is unaffected — its org comes
+    from that `members` entry, which never consults this list — and so is a login admitted by an
+    org's `githubTeams` or `editorTeams`, which reads the Team list below instead. A login relying
+    only on `githubOrgs` is turned away at sign-in, since the gate sees no matching org to admit it
     through, *unless* the login is also a member of a configured admin Team, in which case the
     admin-Team bypass admits it into `default` regardless of this failure."""
     return [
@@ -131,17 +134,18 @@ def _fetch_orgs(client: object, headers: dict[str, str]) -> list[str]:
 
 def _fetch_teams(client: object, headers: dict[str, str]) -> list[str]:
     """Every GitHub Team the user is a *direct* member of, as `"<github-org>/<team-slug>"`, following
-    pagination. Team membership grants the editor/admin role (BE-0313) and, for a configured admin
-    Team, the sign-in gate itself, so a failure never *invents* a team: a failure on the first page
-    yields no teams, and a failure partway through pagination keeps only the teams already confirmed
-    from earlier pages, never granting one that wasn't actually returned by GitHub. That is still the
-    opposite failure direction from `_fetch_orgs` for the editor role and for a login the org gate
-    already admits — the failure costs only a role, never grants one — but for a login whose sign-in
-    depends solely on the admin-Team bypass (no org membership of its own), the same fail-closed
-    behavior costs sign-in itself, the one case where a Team-fetch failure and an org-fetch failure
-    now fail in the same direction. `/user/teams` lists a child Team distinct from its parent, so a
-    later exact-match check stays flat by construction: only the configured Team matches, never a
-    nested one beneath it."""
+    pagination. Team membership grants the editor/admin role (BE-0313) and decides the sign-in gate
+    for an org declaring `githubTeams` or `editorTeams`, as well as for a configured admin Team, so
+    a failure never *invents* a team: a failure on the first page yields no teams, and a failure
+    partway through pagination keeps only the teams already confirmed from earlier pages, never
+    granting one that wasn't actually returned by GitHub. For the editor role, and for a login some
+    org's `members`/`githubOrgs` entry already admits, that is the opposite failure direction from
+    `_fetch_orgs` — the failure costs only a role, never grants one. For a login whose sign-in rests
+    on Team membership alone (the admin-Team bypass, or an org whose only roster is a Team), the same
+    fail-closed behavior costs sign-in itself, which is the direction a gate has to fail in: one that
+    admitted on an unread Team list would admit everyone for the length of the outage. `/user/teams`
+    lists a child Team distinct from its parent, so every exact-match check stays flat by
+    construction: only the configured Team matches, never a nested one beneath it."""
     teams: list[str] = []
     for t in _paginate(client, headers, f"{_TEAMS}?per_page=100"):
         org = t.get("organization")

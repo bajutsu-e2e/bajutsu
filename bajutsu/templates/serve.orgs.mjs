@@ -1,8 +1,9 @@
 // serve.orgs.mjs — the admin's Orgs page: create, retire, and re-member a tenant (BE-0375).
 //
 // A serve.*.mjs section module (BE-0247 ES-module split), modelled on serve.projects.mjs. Where
-// that page manages what a tenant tests, this one manages the tenant itself: which GitHub login or
-// GitHub organization signs in as this org, and which flat GitHub Team its editors belong to. All
+// that page manages what a tenant tests, this one manages the tenant itself: which GitHub login,
+// GitHub organization, or flat GitHub Team signs in as this org, and which Team its editors belong
+// to. All
 // four endpoints behind it are admin-only and need a database, so a viewer/editor and a
 // database-less serve both get a non-list answer from `/api/orgs` — which is exactly what hides the
 // tab, without the page having to be told a role. The body only defines; the entry module
@@ -31,24 +32,25 @@ function orgRow(o) {
       : 'retire this org — it stops admitting sign-ins; its history is kept';
   const editTitle = o.reserved
     ? 'the sign-in fallback has no membership to edit — giving it one would make it a tenant'
-    : 'replace this org\'s members, GitHub organizations, and editor Team';
+    : 'replace this org\'s members, GitHub organizations, GitHub Teams, and editor Teams';
   return `<li class="prjrow orgrow" data-testid="orgs.row" data-slug="${esc(o.slug)}"${o.reserved ? ' data-reserved="1"' : ''}>
     <span class="prjname" data-testid="orgs.slug">${esc(o.slug)}</span>
-    <span class="prjsrc" data-testid="orgs.summary">${o.reserved ? 'sign-in fallback · ' : ''}${o.name && o.name !== o.slug ? esc(o.name) + ' · ' : ''}${o.members.length} member(s) · ${o.githubOrgs.length} GitHub org(s) · ${o.editorTeam ? esc(o.editorTeam) : 'no editor Team'} · ${o.projectCount} project(s)</span>
+    <span class="prjsrc" data-testid="orgs.summary">${o.reserved ? 'sign-in fallback · ' : ''}${o.name && o.name !== o.slug ? esc(o.name) + ' · ' : ''}${o.members.length} member(s) · ${o.githubOrgs.length} GitHub org(s) · ${o.githubTeams.length} Team(s) · ${o.editorTeams.length} editor Team(s) · ${o.projectCount} project(s)</span>
     <button class="cfgbtn" data-act="edit" data-testid="orgs.edit" title="${esc(editTitle)}"${o.reserved ? ' disabled' : ''}>Membership</button>
     <button class="cfgbtn prjremove" data-act="remove" data-testid="orgs.remove" title="${esc(removeTitle)}"${disabled ? ' disabled' : ''}>Delete</button>
   </li>`;
 }
 
-// The per-org membership form, revealed by the row's Membership button. All three fields are
+// The per-org membership form, revealed by the row's Membership button. All four fields are
 // replaced as one unit — the same granularity a config edit had — so the form always shows the
 // whole roster rather than offering per-entry adds that could interleave.
 function membershipForm(o) {
   return `<div class="gitsrc orgedit" data-testid="orgs.form" data-slug="${esc(o.slug)}">
-    <label class="gitsrclbl" for="orgs-members">Membership of "${esc(o.slug)}" — replaces all three fields</label>
+    <label class="gitsrclbl" for="orgs-members">Membership of "${esc(o.slug)}" — replaces all four fields</label>
     <input type="text" id="orgs-members" data-testid="orgs.members" placeholder="member GitHub logins (comma-separated)" value="${esc(o.members.join(', '))}">
     <input type="text" id="orgs-github-orgs" data-testid="orgs.github-orgs" placeholder="GitHub organizations (comma-separated)" value="${esc(o.githubOrgs.join(', '))}">
-    <input type="text" id="orgs-editor-team" data-testid="orgs.editor-team" placeholder="editor Team, e.g. acme-gh/scenario-maintainers" value="${esc(o.editorTeam || '')}">
+    <input type="text" id="orgs-github-teams" data-testid="orgs.github-teams" placeholder="GitHub Teams that may sign in, e.g. acme-gh/qa (comma-separated)" value="${esc(o.githubTeams.join(', '))}">
+    <input type="text" id="orgs-editor-teams" data-testid="orgs.editor-teams" placeholder="editor Teams, e.g. acme-gh/scenario-maintainers (comma-separated) — their members may sign in too" value="${esc(o.editorTeams.join(', '))}">
     <button class="cfgbtn" data-act="save" data-testid="orgs.save">Save</button>
     <button class="cfgbtn" data-act="cancel" data-testid="orgs.cancel">Cancel</button>
   </div>`;
@@ -116,7 +118,8 @@ async function saveMembership(slug) {
   const body = {
     members: parseList($('#orgs-members').value),
     githubOrgs: parseList($('#orgs-github-orgs').value),
-    editorTeam: $('#orgs-editor-team').value.trim(),
+    githubTeams: parseList($('#orgs-github-teams').value),
+    editorTeams: parseList($('#orgs-editor-teams').value),
   };
   const d = await postJSON('/api/orgs/' + encodeURIComponent(slug) + '/membership', body, {error: 'request failed'});
   if (d && d.error) { err.textContent = d.error; err.hidden = false; return; }

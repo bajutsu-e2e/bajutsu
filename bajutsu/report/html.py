@@ -7,12 +7,13 @@ live in bajutsu/templates/).
 from __future__ import annotations
 
 import functools
-import json
 from pathlib import Path
 from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
+from bajutsu.evidence.redaction import Redactor
+from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.orchestrator import RunResult
 from bajutsu.report.ctrf import ctrf_json
 from bajutsu.report.format import _fmt_duration
@@ -116,6 +117,15 @@ def html_report(
     )
 
 
+def _sink(run_dir: Path, writer: RunArtifactWriter | None) -> RunArtifactWriter:
+    """The run's sink, or one built for `run_dir` when the caller has no secret values to mask.
+
+    An offline re-render (BE-0068) reads a finished run and knows nothing of the values the original
+    run bound, so it gets an inert redactor — the sink's pattern backstop still runs (BE-0331).
+    """
+    return writer if writer is not None else RunArtifactWriter(run_dir, Redactor(None))
+
+
 def write_html_and_junit(
     run_dir: Path,
     run_id: str,
@@ -125,23 +135,22 @@ def write_html_and_junit(
     source_name: str | None = None,
     description: str | None = None,
     provenance: dict[str, object] | None = None,
+    writer: RunArtifactWriter | None = None,
 ) -> None:
     """Write (or rewrite) report.html + junit.xml + ctrf.json under run_dir, leaving manifest.json untouched.
 
     The renderable half of the report: the initial bake calls it after the manifest, and the
     offline re-render (BE-0068) calls it alone to refresh a finished run from its stored model.
     `provenance` (the manifest's run-identity stamp) only feeds the CTRF export's tool/environment
-    fields; None omits them.
+    fields; None omits them. `run_dir` is read (the report embeds the run's captured logs inline);
+    every write goes through `writer`.
     """
-    run_dir.mkdir(parents=True, exist_ok=True)
-    (run_dir / "junit.xml").write_text(junit_xml(results), encoding="utf-8")
-    (run_dir / "ctrf.json").write_text(
-        json.dumps(ctrf_json(run_id, results, provenance=provenance), ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    (run_dir / "report.html").write_text(
+    sink = _sink(run_dir, writer)
+    sink.write_text("junit.xml", junit_xml(results))
+    sink.write_json("ctrf.json", ctrf_json(run_id, results, provenance=provenance))
+    sink.write_text(
+        "report.html",
         html_report(run_id, results, run_dir, definitions, sources, source_name, description),
-        encoding="utf-8",
     )
 
 
@@ -154,31 +163,22 @@ def write_report(
     source_name: str | None = None,
     description: str | None = None,
     provenance: dict[str, object] | None = None,
+    writer: RunArtifactWriter | None = None,
 ) -> Path:
     """Write manifest.json (the versioned render model), junit.xml, and report.html under run_dir.
 
     `definitions` / `sources`, aligned with `results`, feed the report's merged Result tab and its
-    Rich/YAML toggle. `provenance` is the run-identity stamp (BE-0049).
+    Rich/YAML toggle. `provenance` is the run-identity stamp (BE-0049). `writer` is the run's sink.
 
     Returns:
         The manifest.json path.
     """
-    run_dir.mkdir(parents=True, exist_ok=True)
-    manifest_path = run_dir / "manifest.json"
-    manifest_path.write_text(
-        json.dumps(
-            manifest_dict(
-                run_id,
-                results,
-                source_name=source_name,
-                provenance=provenance,
-            ),
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
+    sink = _sink(run_dir, writer)
+    manifest_path = sink.write_json(
+        "manifest.json",
+        manifest_dict(run_id, results, source_name=source_name, provenance=provenance),
     )
     write_html_and_junit(
-        run_dir, run_id, results, definitions, sources, source_name, description, provenance
+        run_dir, run_id, results, definitions, sources, source_name, description, provenance, sink
     )
     return manifest_path

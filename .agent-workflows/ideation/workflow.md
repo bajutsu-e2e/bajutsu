@@ -38,6 +38,12 @@ silently drop it — surface the conflict, then reshape it into something that f
 
 ## Workflow
 
+Alongside the steps below, keep [`be-progress-tracker`](../be-progress-tracker/workflow.md)
+current when the host makes an easy way to call it: at minimum after step 4 (the item exists, even
+still as `BE-XXXX`), step 5 (the self-review pass comes back clean), and step 6 (`make check` is
+green). It only turns decisions this workflow already made into a glanceable status page — never
+let it gate or slow this workflow down; skip a checkpoint rather than block on it.
+
 ### 1. Ground yourself in the existing roadmap
 
 Before ideating, read:
@@ -55,9 +61,14 @@ anchored to what's already planned, in progress, or deliberately not adopted.
 ### 2. Ideate with the user
 
 Go back and forth. Offer concrete, bounded feature ideas; ask the questions that sharpen
-scope (who's it for, which tier, what's the machine-checkable outcome). Pull in adjacent
-existing items as reference points ("this is close to BE-00xx — extend it, or is it
-distinct?"). Keep proposing seeds the user can react to; that reaction is the point.
+scope (who's it for, which tier, what's the machine-checkable outcome). Ask one more that the
+machine-checkable question does not cover: what would the user point to, once the change has
+shipped, to say it worked? A machine-checkable outcome is the deterministic assertion a feature
+is gated on; this question asks for the observable difference the item's Motivation has to name,
+and step 4 carries the answer into that prose
+([BE-0383](../../roadmaps/BE-0383-motivation-verifiable-outcome/BE-0383-motivation-verifiable-outcome.md)).
+Pull in adjacent existing items as reference points ("this is close to BE-00xx — extend it, or
+is it distinct?"). Keep proposing seeds the user can react to; that reaction is the point.
 
 ### 3. Classify each idea that survives the discussion
 
@@ -93,6 +104,8 @@ prose in both languages ([BE-0278](../../roadmaps/BE-0278-tech-writing-skill/BE-
 and it shapes the draft rather than proofreading it, so read it *before* writing, not after. A BE
 item is argued prose: an Introduction that states its contribution up front, a Motivation that moves
 from the known problem to the new result, and a Detailed design that reads cleanly on both sides.
+When you fill Motivation's `TBD`, carry in the verifiable outcome that step 2's conversation already
+produced — the norm requires Motivation to name it, and the answer exists by the time you draft.
 
 **Localize the Japanese** side (the title, the `トピック`, and the prose) — the scaffolder seeds both
 files from the same English input, so the Japanese is a starting point to rewrite into natural

@@ -195,6 +195,7 @@ def _element(
         "traits": traits,
         "value": value,
         "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
     }
 
 

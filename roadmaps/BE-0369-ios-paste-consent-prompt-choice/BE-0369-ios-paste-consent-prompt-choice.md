@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0369](BE-0369-ios-paste-consent-prompt-choice.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0369") |
+| Implementing PR | [#1652](https://github.com/bajutsu-e2e/bajutsu/pull/1652), [#1670](https://github.com/bajutsu-e2e/bajutsu/pull/1670) |
 | Topic | Platform support |
 | Related | [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md), [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md) |
 <!-- /BE-METADATA -->
@@ -211,20 +212,56 @@ actually triggers the alert the way a genuine cross-app paste does.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — extend `bajutsu/scenario/system_alerts.py` with a third prompt, `paste` (schema,
+- [x] Unit 1 — extend `bajutsu/scenario/system_alerts.py` with a third prompt, `paste` (schema,
       `_Prompts`/`_LABELS`, `HandleSystemAlert`'s widened literal), rewriting the module docstring,
       the `SystemAlertPrompt` comment, and `HandleSystemAlert`'s docstring, which each say "two prompts".
-- [ ] Unit 2 — a showcase scenario that seeds the pasteboard with `setClipboard` and reads it back
-      through the existing Permissions tab, tagged like BE-0316's fixture and landed on the non-gating
-      `actuation (xcuitest)` job first, promoted into the gating `run` list only after unit 3.
-- [ ] Unit 3 — on-device verification that `setClipboard` triggers the prompt at all, and
-      transcription of its real button strings; name a fallback fixture if it does not. Also probe
-      whether the "Paste from Other Apps" preference can be pre-set from outside the app.
-- [ ] Unit 4 — docs: add `paste` to `docs/scenarios.md`'s "Naming the intent instead of the text"
-      section and to `docs/dsl-grammar.md`'s `handleSystemAlert` production, plus both Japanese mirrors.
-- [ ] Unit 5 — tests: cover `paste` in `tests/scenario/test_system_alerts.py`, whose
-      `("notifications", "tracking")` prompt tuple and label `parametrize` list name today's two
-      prompts explicitly.
+- [x] Unit 2 — `demos/showcase/scenarios/paste_system_alert.yaml`, seeding the pasteboard with
+      `setClipboard` and reading it back through the existing Permissions tab, tagged `systemalert`
+      like BE-0316's fixture and landed on the non-gating `actuation (xcuitest)` job. Promotion into
+      the gating `run` list is deliberately left to a follow-up, so the lane's first cross-process
+      paste earns its stability on CI's own hosts before a required check rests on it (BE-0218).
+      The fixture needed one change the design did not foresee — see unit 3.
+      A follow-up widened the fixture to four scenarios — `grant` and `deny` under the target's
+      locale, then the same pair under `locale: ja_JP` — since one granting scenario left the deny
+      label of either language, and both Japanese labels, checked by unit 5's table alone. The deny
+      half took one more showcase change: a refused read returns nil, so the apps publish `(none)`
+      rather than `""`, which is what gives that half a positive condition to wait for instead of a
+      field indistinguishable from one never read.
+- [x] Unit 3 — verified on a booted Simulator (iPhone 17, iOS 26.5), against both the SwiftUI and the
+      UIKit showcase app, under `en_US` and `ja_JP`.
+- [x] Unit 4 — docs: `paste` added to `docs/scenarios.md`'s "Naming the intent instead of the text"
+      section, `docs/dsl-grammar.md`'s `handleSystemAlert` production, and `docs/ci.md`'s `actuation`
+      job description, plus all three Japanese mirrors. `demos/showcase/SPEC.md` (both languages)
+      records the off-the-main-thread read unit 3 forced.
+- [x] Unit 5 — tests: `paste` covered in `tests/scenario/test_system_alerts.py`. The half-filled-entry
+      guard now derives its prompts from `SystemAlertPrompt` itself rather than a hand-written tuple,
+      so a fourth prompt cannot be added to `_LABELS` while that guard keeps checking only three.
+
+### What unit 3 found
+
+Three facts the proposal left open, and one it did not anticipate:
+
+- **`setClipboard` does raise the prompt.** iOS attributes a `simctl pbcopy` write to
+  `CoreSimulatorBridge`, another process, so the app's own read raises `"Showcase SwiftUI" would
+  like to paste from "CoreSimulatorBridge"`. The heavier two-app fallback fixture is not needed.
+  The consent is asked on every read, so the fixture is repeatable on one device.
+- **The button strings** come from `DragUI.framework/<lang>.lproj/Localizable.strings`
+  (`PASTE_AUTHORIZATION_BUTTON_ALLOW` / `_DENY`), a third framework beside the two the module
+  already cites: `Allow Paste` / `Don’t Allow Paste` and `ペーストを許可` / `ペーストを許可しない`,
+  identical under the iOS 18.6 and 26.5 runtimes and across `en` / `en_GB` / `en_AU`. The English
+  deny label carries the typographic apostrophe (U+2019) this lookup exists to get right.
+- **The preference cannot be pre-set from outside the app.** iOS records the consent in TCC as
+  `kTCCServicePasteboard`, but `simctl privacy` exposes no toggle for that service — the same shape
+  as ATT. Writing the Simulator's `TCC.db` directly did not suppress the prompt either, and the
+  system restored the row. *Alternatives considered*'s rejection of a preventive mechanism stands,
+  now on measurement rather than on an open question.
+- **The synchronous read deadlocks the fixture the design proposed.** `UIPasteboard.general.string`
+  blocks its caller for as long as the prompt is up, so with the showcase's main-thread read,
+  XCUITest's tap on `sys.paste` never returned — the run diagnosed a mid-run runner crash, and the
+  `handleSystemAlert` step that would have answered the prompt could never run. The fix is one change
+  per showcase app: read off the main thread and publish the value when the read returns, which is
+  what the design's own `wait` step already assumed. `system.yaml` gains the matching condition wait,
+  since its in-app round-trip is now asynchronous too.
 
 ## References
 

@@ -18,9 +18,9 @@ import typer
 from bajutsu import device_errors
 from bajutsu.analytics import ledger as _usage_ledger
 from bajutsu.analytics import usage as _usage
-from bajutsu.artifact_perms import make_run_dir
 from bajutsu.assertions import GoldenContext
 from bajutsu.backends import select_actuator_for_scenario
+from bajutsu.cancellation import CancelSource, graceful_sigterm
 from bajutsu.cli._projects import config_from_source, open_registry
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
@@ -42,9 +42,11 @@ from bajutsu.orchestrator import (
     AlertGuardConfig,
     RunResult,
 )
+from bajutsu.orchestrator.types import ResolvedAlertRule
 from bajutsu.platform_lifecycle import ProvisionProfile, environment_for
 from bajutsu.report.archive import archive_run_dir
 from bajutsu.report.manifest import _run_backend
+from bajutsu.run_files import DEFAULT_RUNS_DIR
 from bajutsu.run_id import new_run_id
 from bajutsu.runner import device_pool, run_all, run_and_report, run_matrix_and_report
 from bajutsu.runner.build import BuildError, build_if_missing
@@ -53,6 +55,7 @@ from bajutsu.runner.types import AlertGuardFor
 from bajutsu.scenario import (
     Scenario,
     SystemAlertHandling,
+    SystemAlertRule,
     apply_setups,
     contained_ref,
     dump_mocks,
@@ -63,6 +66,11 @@ from bajutsu.scenario import (
     load_scenarios,
     read_csv,
     select_scenarios,
+)
+from bajutsu.scenario.system_alerts import (
+    UncoveredSystemAlertLocale,
+    covered_languages,
+    system_alert_label,
 )
 
 
@@ -332,8 +340,9 @@ def _apply_system_alert_handling(
 ) -> None:
     """Apply the `--system-alert-handling` / `--no-system-alert-handling` override to every scenario.
 
-    Preserves any per-scenario button policy and poll interval; a no-op when the flag is unset (each
-    scenario's own `systemAlertHandling`, default on, decides). Mirrors the `--erase` override.
+    Preserves any per-scenario button policy, rules, and poll interval; a no-op when the flag is
+    unset (each scenario's own `systemAlertHandling`, default on, decides). Mirrors the `--erase`
+    override.
     """
     if system_alert_handling is None:
         return
@@ -342,8 +351,41 @@ def _apply_system_alert_handling(
         s.system_alert_handling = SystemAlertHandling(
             enabled=system_alert_handling,
             instruction=prev.instruction if prev else None,
+            rules=prev.rules if prev else [],
             pollInterval=prev.poll_interval if prev else None,
         )
+
+
+def _resolve_rules(rules: list[SystemAlertRule], locale: str) -> list[ResolvedAlertRule]:
+    """Each rule's prompt resolved to its identifying label pair and tap label, for `locale`.
+
+    Raises:
+        UncoveredSystemAlertLocale: a rule names a prompt the label table has no entry for under
+            `locale`'s language — the same fail-loudly choice `handleSystemAlert`'s own
+            `prompt`/`choice` resolution makes, rather than guessing at a label. Re-raised naming
+            *this* surface, since the lookup's own message is phrased for that step.
+    """
+    resolved = []
+    for rule in rules:
+        try:
+            grant = system_alert_label(rule.prompt, "grant", locale)
+            deny = system_alert_label(rule.prompt, "deny", locale)
+        except UncoveredSystemAlertLocale as exc:
+            # The lookup's message names `handleSystemAlert` and offers its `sel.label` remedy —
+            # neither of which a scenario reaching here need have written. Re-scope it to the guard
+            # and to the guard's own in-kind remedy (an `instruction` label list), so a loud failure
+            # names the surface that actually failed.
+            covered = ", ".join(covered_languages(rule.prompt))
+            raise UncoveredSystemAlertLocale(
+                f"systemAlertHandling.rules prompt: {rule.prompt} has no known button labels for "
+                f"locale {locale!r}; covered: {covered}. Give the guard an explicit `instruction` "
+                "label list instead, or add the language to bajutsu/scenario/system_alerts.py"
+            ) from exc
+        tap_label = grant if rule.choice == "grant" else deny
+        resolved.append(
+            ResolvedAlertRule(identifying_labels=frozenset({grant, deny}), tap_label=tap_label)
+        )
+    return resolved
 
 
 def _vision_instruction(instruction: str | list[str] | None) -> str | None:
@@ -352,6 +394,15 @@ def _vision_instruction(instruction: str | list[str] | None) -> str | None:
     A free-text string passes through unchanged (the legacy form). A candidate-label list — the
     deterministic native form — becomes a hint the vision fallback can still act on when the native
     path could not name a button ("Tap the button labeled one of, in order: Allow, OK").
+
+    `systemAlertHandling.rules` deliberately contributes nothing here. Every path that reaches the
+    vision guard is one where no rule identified the alert — an incapable backend, a surface
+    `springboard.alerts` cannot enumerate, or an alert whose prompt no rule matched — so a rule's tap
+    label is by construction some *other* prompt's answer. Handing it to the locator, whose policy is
+    "follow the instruction if given, else the least-destructive button" (`agents/alerts.py`), would
+    steer it to accept a prompt the scenario never named: the silent inversion the `rules` form exists
+    to remove, re-created one layer down. A rules-only scenario therefore leaves the locator on its
+    least-destructive default, exactly as it did before `rules` existed.
     """
     if isinstance(instruction, list):
         return "Tap the button labeled one of, in order: " + ", ".join(instruction)
@@ -400,6 +451,11 @@ def _alert_guard_factory(
     target_da = eff.run_defaults.system_alert_handling
     target_instruction = target_da.instruction if target_da else None
     target_interval = target_da.poll_interval if target_da else None
+    # Ordered rules answering specific covered prompts by name, config-level default only — the
+    # scenario's own rules are read per scenario below. A scenario's answer for a prompt shadows the
+    # target's for that prompt (first match wins); `_guard_for` also drops these entirely for a
+    # scenario that already has its own button-policy override (see there).
+    target_rules = target_da.rules if target_da else []
 
     def _guard_for(s: Scenario) -> AlertGuardConfig | None:
         if not _enabled(s):
@@ -420,7 +476,27 @@ def _alert_guard_factory(
             else DEFAULT_ALERT_POLL_INTERVAL
         )
 
+        # The scenario's own rules ahead of the target's: a rule for the same prompt in
+        # both layers is an override, not the parse-time error a duplicate within one list is, since
+        # matching returns on the first rule whose prompt is identified. The target's rules apply
+        # only when neither the scenario nor `--alert-instruction` already supplies its own button
+        # policy: either one is a deliberate override for this run, at a tier the button-policy
+        # ladder above already places ahead of the target config, and must outrank a mere
+        # target-level rule too — otherwise a project-wide rule added later could silently invert a
+        # scenario's own `instruction`, the exact failure this feature exists to remove. Resolved
+        # against this scenario's own locale — the same value the run pins the Simulator's system
+        # language to — so a rule's labels are the ones actually on screen; an uncovered language
+        # raises here, before this scenario's device work (caught by the runner as a scenario
+        # failure).
+        scenario_rules = scenario_da.rules if scenario_da else []
+        target_rules_for_scenario = (
+            [] if (scenario_instruction or default_instruction) else target_rules
+        )
+        locale = s.preconditions.resolved_locale(eff.locale)
+        rules = _resolve_rules([*scenario_rules, *target_rules_for_scenario], locale)
+
         # None when the credential is missing: the vision fallback then no-ops (never a hosted default).
+        # `rules` deliberately does not steer the locator — see `_vision_instruction`.
         handler = (
             SystemAlertGuard(locator, _vision_instruction(instruction)).dismiss
             if locator is not None
@@ -436,7 +512,9 @@ def _alert_guard_factory(
             with _usage_ledger.attributed(command="run", scenario=s.name):
                 return handler(driver)
 
-        return AlertGuardConfig(vision=vision, labels=labels, poll_interval=poll_interval)
+        return AlertGuardConfig(
+            vision=vision, labels=labels, rules=rules, poll_interval=poll_interval
+        )
 
     return _guard_for
 
@@ -563,6 +641,10 @@ class _RunPlan:
     # `--score`: emit the app's entry-screen convention score once (doctor's grade, inline) so CI needs
     # no separate `doctor` cold-spawn. Diagnostic only — never on the verdict path.
     score: bool
+    # Reports whether a `SIGTERM` has asked this run to stop (BE-0370). The pipeline reads it at
+    # each scenario, step, and condition-wait boundary and fails whatever it did not finish, so a
+    # cancelled run still writes its manifest and report instead of vanishing from the history.
+    cancelled: CancelSource
     # Whether a backend-crash-triggered retry may force `preconditions.erase=True`
     # (`bajutsu/runner/pipeline.py`'s forced-erase retry). `erase is not False` — True for the default
     # (unset) and explicit `--erase`, False only for an explicit `--no-erase` — captured here, ahead of
@@ -631,9 +713,6 @@ def _dispatch_single(
     exec_decision: dict[str, str | None] | None,
 ) -> tuple[list[RunResult], Path]:
     """The single-engine path — exactly today's flow: one pool, one `run_and_report`, no matrix."""
-    # Own the run dir owner-only before the pool can create anything under it (e.g. Playwright's
-    # `_video_tmp`), so no world-readable window exists before the pipeline's own chmod (BE-0131).
-    make_run_dir(plan.runs_dir / plan.run_id)
     lease, shutdown = device_pool(
         plan.udids,
         plan.backends,
@@ -675,6 +754,7 @@ def _dispatch_single(
             # XCUITest runner. Off by default, so an ordinary run is unchanged.
             on_score=_print_score if plan.score else None,
             force_erase_on_retry=plan.force_erase_on_retry,
+            cancelled=plan.cancelled,
         )
     finally:
         shutdown()
@@ -690,9 +770,6 @@ def _dispatch_matrix(
     Evidence lands under run_dir/<engine>/<sid>; the pipeline assembles ONE report whose matrix
     aggregates the per-engine verdicts (all-must-pass, machine-only).
     """
-    # Own the top run dir owner-only before any engine pool can create a subdir under it, so every
-    # engine's evidence sits beneath a non-world-readable parent from the first write (BE-0131).
-    make_run_dir(plan.runs_dir / plan.run_id)
 
     def run_pass(engine: str, engine_run_dir: Path) -> list[RunResult]:
         if progress_fn is not None:
@@ -727,6 +804,7 @@ def _dispatch_matrix(
                 # Each engine pass scores its own entry screen once (`--score`); off by default.
                 on_score=_print_score if plan.score else None,
                 force_erase_on_retry=plan.force_erase_on_retry,
+                cancelled=plan.cancelled,
             )
         finally:
             shutdown()
@@ -743,6 +821,7 @@ def _dispatch_matrix(
         secret_values=plan.secret_values,
         config_source=plan.config_source,
         exec_provenance=exec_decision,
+        cancelled=plan.cancelled,
     )
 
 
@@ -985,7 +1064,7 @@ def run(
         "for CI upload or sharing; runs after the verdict, so it can't affect pass/fail",
     ),
     runs_dir: str = typer.Option(
-        "runs",
+        DEFAULT_RUNS_DIR,
         "--runs-dir",
         help="directory to write the run tree into (default: ./runs). Lets a caller run from one "
         "working directory but persist the run elsewhere — e.g. serve running an uploaded bundle "
@@ -1088,50 +1167,56 @@ def run(
         baselines_dir, schemas_dir, gc = _resolve_evidence_dirs(
             baselines, schemas, goldens, eff, files[0]
         )
-        plan = _RunPlan(
-            eff=eff,
-            config_source=config_source,
-            target_name=target_name,
-            scenarios=scenarios,
-            description=description,
-            source_name=source_name,
-            engines=engines,
-            actuator=actuator,
-            backends=backends,
-            udids=udids,
-            udid_spec=lease.udid_spec,
-            workers=workers,
-            provision=lease.provision,
-            alert_guard_for=alert_guard_for,
-            baselines_dir=baselines_dir,
-            schemas_dir=schemas_dir,
-            golden_context=gc,
-            secret_bindings=secret_bindings,
-            secret_values=secret_values,
-            run_id=new_run_id(),
-            runs_dir=Path(runs_dir),
-            network=network,
-            log_predicate=log_predicate,
-            log_subsystem=log_subsystem,
-            progress=progress,
-            zip_run=zip_run,
-            evidence_store=evidence_store,
-            upload_exec=upload_exec,
-            score=score,
-            # `erase` is the pre-`_filter_scenarios` CLI flag: None (unset) and explicit `--erase` both
-            # mean "no operator opt-out", only `--no-erase` (False) does.
-            force_erase_on_retry=erase is not False,
-        )
-        # Install the usage/cost ledger before dispatch (BE-0196). Reporting only — emission is
-        # best-effort and off the deterministic verdict path (prime directive 1). Per-scenario
-        # `command` / `scenario` attribution is bound at the alert guard (`_alert_guard_factory`),
-        # which fires inside the runner's worker threads, so it reaches the worker under `--workers N`.
-        _usage_ledger.configure_from_ai_config(eff.ai)
-        # Snapshot AI usage before dispatch — the alert guard is the only thing that can spend tokens,
-        # and it fires during dispatch, so `_finish` reports exactly what this run used.
-        before = _usage.snapshot()
-        results, manifest = _dispatch(plan)
-        _finish(plan, results, manifest, before)
+        # Answer a `SIGTERM` by asking the run to stop at its next safe boundary instead of dying
+        # where it stands, leaving no manifest, no report, and no history row (BE-0370). The window
+        # covers `_finish` too: the `FAIL <manifest>` line it prints is what `serve` reads this run's
+        # id from, so a hard kill between the report and that line would still lose the run.
+        with graceful_sigterm() as cancelled:
+            plan = _RunPlan(
+                eff=eff,
+                config_source=config_source,
+                target_name=target_name,
+                scenarios=scenarios,
+                description=description,
+                source_name=source_name,
+                engines=engines,
+                actuator=actuator,
+                backends=backends,
+                udids=udids,
+                udid_spec=lease.udid_spec,
+                workers=workers,
+                provision=lease.provision,
+                alert_guard_for=alert_guard_for,
+                baselines_dir=baselines_dir,
+                schemas_dir=schemas_dir,
+                golden_context=gc,
+                secret_bindings=secret_bindings,
+                secret_values=secret_values,
+                run_id=new_run_id(),
+                runs_dir=Path(runs_dir),
+                network=network,
+                log_predicate=log_predicate,
+                log_subsystem=log_subsystem,
+                progress=progress,
+                zip_run=zip_run,
+                evidence_store=evidence_store,
+                upload_exec=upload_exec,
+                score=score,
+                # `erase` is the pre-`_filter_scenarios` CLI flag: None (unset) and explicit `--erase` both
+                # mean "no operator opt-out", only `--no-erase` (False) does.
+                force_erase_on_retry=erase is not False,
+                cancelled=cancelled,
+            )
+            # Install the usage/cost ledger before dispatch (BE-0196). Reporting only — emission is
+            # best-effort and off the deterministic verdict path (prime directive 1). Per-scenario
+            # `command` / `scenario` attribution is bound at the alert guard (`_alert_guard_factory`),
+            # which fires inside the runner's worker threads, so it reaches the worker under `--workers N`.
+            _usage_ledger.configure_from_ai_config(eff.ai)
+            # Snapshot AI usage before dispatch — the alert guard is the only thing that can spend tokens,
+            # and it fires during dispatch, so `_finish` reports exactly what this run used.
+            before = _usage.snapshot()
+            results, manifest = _dispatch(plan)
+            _finish(plan, results, manifest, before)
     finally:
         # Hand the device back to its provider (a no-op for the local one), even on failure so a
         # reserved cloud device is never leaked (BE-0236). Warn-only, never propagate: a provider's

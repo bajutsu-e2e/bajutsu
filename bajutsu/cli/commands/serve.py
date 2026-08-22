@@ -8,6 +8,8 @@ from pathlib import Path
 
 import typer
 
+from bajutsu.run_files import DEFAULT_RUNS_DIR
+
 
 def _is_loopback(host: str) -> bool:
     """Whether binding `host` keeps the server private to this machine.
@@ -34,7 +36,7 @@ def serve(
     scenarios: str = typer.Option(
         "", "--scenarios", help="override the app's scenarios dir (default: from config)"
     ),
-    runs: str = typer.Option("runs", "--runs", help="runs root to serve reports from"),
+    runs: str = typer.Option(DEFAULT_RUNS_DIR, "--runs", help="runs root to serve reports from"),
     baselines: str = typer.Option(
         "",
         "--baselines",

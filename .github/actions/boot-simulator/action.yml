@@ -7,7 +7,9 @@ description: >-
   "booted" itself before actuating. Prefers an already-booted device, then a pre-installed
   available iPhone (guaranteed compatible with the runner's Xcode); falls back to creating one
   with simctl's default runtime. Set `device-type` to pin one exact model (the pixel-VRT lane's
-  baseline is geometry-specific). Shared by the on-device jobs so the boot logic lives in one place.
+  baseline is geometry-specific), or `exclude-udid` to boot a *second*, distinct device beside one
+  this action already returned (the concurrent-device pool lane, BE-0298). Shared by the on-device
+  jobs so the boot logic lives in one place.
 
 inputs:
   wait:
@@ -27,6 +29,15 @@ inputs:
       update the pin or re-record the baseline) rather than silently drifting.
     required: false
     default: ""
+  exclude-udid:
+    description: >-
+      A UDID this call must not return, so a second invocation boots a device *distinct* from the
+      first one's. Without it the reuse branch below would hand back the device already booted, and
+      a caller asking for two devices would silently get one twice — the exact collapse the
+      concurrent-device pool lane exists to rule out (BE-0298). Empty (default) leaves the selection
+      unchanged.
+    required: false
+    default: ""
 
 outputs:
   udid:
@@ -44,14 +55,17 @@ runs:
       env:
         WAIT: ${{ inputs.wait }}
         DEVICE_TYPE: ${{ inputs.device-type }}
+        EXCLUDE_UDID: ${{ inputs.exclude-udid }}
       run: |
         set -euo pipefail
+        # Every selection below drops EXCLUDE_UDID, so a second call never returns the first call's
+        # device — empty (the single-device default) excludes nothing and leaves each query as it was.
         # Reuse a device that is already booted (zero boot cost) before booting a fresh one. With a
         # pinned device-type, reuse only a booted device of that exact model; unpinned, any iPhone.
         if [ -n "$DEVICE_TYPE" ]; then
-          udid=$(xcrun simctl list devices booted -j | jq -r --arg d "$DEVICE_TYPE" '[.devices | to_entries[] | .value[] | select(.name==$d) | .udid] | first // empty')
+          udid=$(xcrun simctl list devices booted -j | jq -r --arg d "$DEVICE_TYPE" --arg x "$EXCLUDE_UDID" '[.devices | to_entries[] | .value[] | select(.name==$d) | select(.udid!=$x) | .udid] | first // empty')
         else
-          udid=$(xcrun simctl list devices booted -j | jq -r '[.devices | to_entries[] | .value[] | select(.name|startswith("iPhone")) | .udid] | first // empty')
+          udid=$(xcrun simctl list devices booted -j | jq -r --arg x "$EXCLUDE_UDID" '[.devices | to_entries[] | .value[] | select(.name|startswith("iPhone")) | select(.udid!=$x) | .udid] | first // empty')
         fi
         if [ -n "$udid" ]; then
           echo "Reusing already-booted simulator $udid"
@@ -60,7 +74,7 @@ runs:
         fi
         if [ -n "$DEVICE_TYPE" ]; then
           # Pinned model (pixel VRT): boot an available device of this exact type, else create one.
-          udid=$(xcrun simctl list devices available -j | jq -r --arg d "$DEVICE_TYPE" '[.devices | to_entries[] | select(.key|test("iOS")) | .value[] | select(.name==$d) | .udid] | first // empty')
+          udid=$(xcrun simctl list devices available -j | jq -r --arg d "$DEVICE_TYPE" --arg x "$EXCLUDE_UDID" '[.devices | to_entries[] | select(.key|test("iOS")) | .value[] | select(.name==$d) | select(.udid!=$x) | .udid] | first // empty')
           if [ -z "$udid" ]; then
             devtype=$(xcrun simctl list devicetypes -j | jq -r --arg d "$DEVICE_TYPE" '[.devicetypes[] | select(.name==$d) | .identifier] | first // empty')
             if [ -z "$devtype" ]; then
@@ -72,7 +86,7 @@ runs:
         else
           # Pairing the newest device type with the newest runtime ourselves can hit
           # "Incompatible device"; a pre-installed available iPhone avoids that.
-          udid=$(xcrun simctl list devices available -j | jq -r '[.devices | to_entries[] | select(.key|test("iOS")) | .value[] | select(.name|startswith("iPhone")) | .udid] | first // empty')
+          udid=$(xcrun simctl list devices available -j | jq -r --arg x "$EXCLUDE_UDID" '[.devices | to_entries[] | select(.key|test("iOS")) | .value[] | select(.name|startswith("iPhone")) | select(.udid!=$x) | .udid] | first // empty')
           if [ -z "$udid" ]; then
             devtype=$(xcrun simctl list devicetypes -j | jq -r '[.devicetypes[] | select(.productFamily=="iPhone") | .identifier] | last')
             udid=$(xcrun simctl create ci-iphone "$devtype")

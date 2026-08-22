@@ -458,7 +458,14 @@ def test_render_observed_ids_reports_coverage_gaps_and_off_namespace() -> None:
 def _write_elements(step_dir, identifiers) -> None:  # type: ignore[no-untyped-def]
     step_dir.mkdir(parents=True, exist_ok=True)
     els = [
-        {"identifier": i, "label": None, "traits": [], "value": None, "frame": [0, 0, 1, 1]}
+        {
+            "identifier": i,
+            "label": None,
+            "traits": [],
+            "value": None,
+            "frame": [0, 0, 1, 1],
+            "nativeZ": None,
+        }
         for i in identifiers
     ]
     (step_dir / "elements.json").write_text(json.dumps(els), encoding="utf-8")
@@ -778,8 +785,22 @@ def test_cli_screen_coverage_with_crawl_and_runs(tmp_path) -> None:  # type: ign
     (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
     # a run that rendered a screen with two ids — fingerprint it the same way the crawl does
     els = [
-        {"identifier": "home.a", "label": None, "traits": [], "value": None, "frame": [0, 0, 1, 1]},
-        {"identifier": "home.b", "label": None, "traits": [], "value": None, "frame": [0, 0, 1, 1]},
+        {
+            "identifier": "home.a",
+            "label": None,
+            "traits": [],
+            "value": None,
+            "frame": [0, 0, 1, 1],
+            "nativeZ": None,
+        },
+        {
+            "identifier": "home.b",
+            "label": None,
+            "traits": [],
+            "value": None,
+            "frame": [0, 0, 1, 1],
+            "nativeZ": None,
+        },
     ]
     visited_fp = screen_fingerprint(els).value
     step = tmp_path / "runs" / "20260101-000000" / "00-x"

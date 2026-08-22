@@ -28,6 +28,14 @@ and you must stop and flag — not silently work around — anything that brushe
 
 ## Workflow
 
+Alongside the steps below, keep [`be-progress-tracker`](../be-progress-tracker/workflow.md)
+current when the host makes an easy way to call it: at minimum after step 1 (the item's overview
+is now known), step 5 (the plan is confirmed), step 6 (code is written), step 7 (the review pass
+comes back clean), step 9 (the gate is green), step 10 (the PR is open), and each step 12
+follow-up iteration. It only turns decisions this workflow already made into a glanceable status
+page for the human watching the session — never let it gate or slow this workflow down; skip a
+checkpoint rather than block on it.
+
 ### 1. Resolve the item
 
 Accept any of: a full ID (`BE-0066`), a bare number (`66` / `0066`), or a slug fragment.
@@ -44,7 +52,7 @@ spec, the `-ja.md` mirror is supporting context.
 **Before doing anything else, explain the item to the user.** Post a short overview —
 the ID and title, its `Status`/`Topic`, a plain-language summary of what it proposes and
 why (Introduction/Motivation in your own words, not copy-pasted), and its current state
-(proposal / already implemented / deferred). This orients the user before any branching,
+(proposal / already implemented / deferred / rejected). This orients the user before any branching,
 planning, or code — every run of this skill starts with it, not just the first time.
 
 Then branch on its `Status` (the metadata field, not a directory — the layout is flat):
@@ -54,8 +62,11 @@ Then branch on its `Status` (the metadata field, not a directory — the layout 
 - **`Status: Implemented`** — it has shipped. Stop and
   confirm what the user actually wants (extend it? a follow-up item? a bug fix?) before
   doing anything.
-- **`Proposal (deferred)`** — surface that it was deliberately parked; confirm the user
+- **`Deferred`** — surface that it was deliberately parked; confirm the user
   wants to un-defer and build it now.
+- **`Rejected`** — the maintainers decided against it, with no condition expected to reopen it
+  (BE-0366). **Stop and confirm** a human has explicitly overturned that decision before writing
+  any code; don't treat it as an ordinary proposal.
 
 ### 2. Claim the tracking issue
 
@@ -86,7 +97,7 @@ number=$(gh issue list --label roadmap-tracking --state open --search "BE-NNNN i
 `--add-assignee @me` assigns the human account `gh` is authenticated as — the same account
 commits and PRs are attributed to. It's idempotent (re-assigning yourself is a no-op), so
 running it again on a resumed session is harmless. If no matching open issue turns up (the
-sync lags `main` by one run, or you're un-deferring a `Proposal (deferred)` item per step 1),
+sync lags `main` by one run, or you're reviving a `Deferred` / `Rejected` item per step 1),
 don't block on it — note it and continue.
 
 ### 3. Ground yourself in the spec and the code

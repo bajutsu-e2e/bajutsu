@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -35,13 +36,14 @@ from dataclasses import dataclass, field
 from bajutsu import device_errors
 from bajutsu.drivers import base
 from bajutsu.elements import screen_size_from_elements, shows_app_ui
+from bajutsu.evidence.redaction import PLACEHOLDER
 
 _logger = logging.getLogger(__name__)
 
 # Controls a tap drives forward: navigation / activation, toggling a switch, or switching tabs.
 TAP_TRAITS = frozenset({"button", "link", "switch", "tab"})
 # Text inputs the crawl fills to satisfy a precondition (e.g. enabling a disabled submit button).
-INPUT_TRAITS = frozenset({"textField", "searchField", "secureTextField"})
+INPUT_TRAITS = frozenset({"textField", "searchField", base.Trait.SECURE_TEXT_FIELD})
 # Any interactive control — used by the structural fingerprint and blocked-control detection.
 ACTIONABLE_TRAITS = TAP_TRAITS | INPUT_TRAITS
 # Interactive-*state* traits (as opposed to a control's kind). `screen_identity` drops these from
@@ -104,6 +106,10 @@ class Action:
     duplicates); a "type" carries the text in `value`, a "fill" its (id, value) pairs in `fields`,
     a "tap_point" its (x, y) in `point` (`label` optional, for logging). All fields are hashable so
     an Action can key the frontier / tried set.
+
+    `secure` records that the platform marked the field this action enters as a masked input, read
+    off the element at the moment the action was built. The screen map keeps no `Element`, so this
+    is the only place that trait survives to the artifact, where redaction masks the value (BE-0331).
     """
 
     kind: str
@@ -113,6 +119,7 @@ class Action:
     value: str | None = None
     fields: tuple[tuple[str, str], ...] = ()
     point: tuple[float, float] | None = None
+    secure: bool = False
 
     @property
     def key(self) -> str:
@@ -137,16 +144,21 @@ class Action:
         return sel
 
     def describe(self) -> str:
+        """Name the action and its target, never the value it enters.
+
+        A description is free text that lands in the screen map's node, edge, plan and path fields,
+        where no structural masking rule can reach it (BE-0331). Leaving the value out keeps exactly
+        one field — the action's own `value` — for redaction to govern; `fill` already counted its
+        fields rather than printing them, and replay is unaffected because `perform` reads `value`
+        directly and never parses this string.
+        """
         if self.kind == "fill":
             return f"fill {len(self.fields)} fields"
         if self.kind == "tap_point" and self.point is not None:
             if self.label:
                 return f"tap tab {self.label!r}"
             return f"tap point ({self.point[0]:.2f}, {self.point[1]:.2f})"
-        what = self.target or (self.label or "?")
-        if self.kind == "type" and self.value:
-            return f"type {what}={self.value!r}"
-        return f"{self.kind} {what}"
+        return f"{self.kind} {self.target or (self.label or '?')}"
 
     def perform(self, driver: base.Driver) -> None:
         """Execute against the live screen.
@@ -158,8 +170,9 @@ class Action:
         """
         if self.kind == "fill":
             for fid, val in self.fields:
-                driver.tap({"id": fid})
-                driver.type_text(val)
+                sel: base.Selector = {"id": fid}
+                driver.tap(sel)
+                driver.type_text(self._replay_value(driver, sel, val, hint=fid))
             return
         if self.kind == "tap_point" and self.point is not None:
             w, h = screen_size_from_elements(driver.query())
@@ -167,7 +180,33 @@ class Action:
             return
         driver.tap(self.as_selector())
         if self.kind == "type":
-            driver.type_text(self.value or "")
+            driver.type_text(
+                self._replay_value(
+                    driver,
+                    self.as_selector(),
+                    self.value or "",
+                    hint=f"{self.target} {self.label or ''}",
+                )
+            )
+
+    def _replay_value(
+        self, driver: base.Driver, sel: base.Selector, value: str, *, hint: str
+    ) -> str:
+        """The text to enter, re-deriving a dummy when the recorded value was masked (BE-0331).
+
+        A warm start (`--continue` / `--resume-src`) rebuilds its actions from the persisted screen
+        map, where a masked input's value is the redaction placeholder. Typing that verbatim would
+        fail the very password rule `_input_value` is written to satisfy, so the field's own dummy is
+        derived again from the element the action resolves to — replay fidelity survives masking.
+        """
+        if value != PLACEHOLDER:
+            return value
+        matched = base.find_all(driver.query(), sel)
+        if matched:
+            return _input_value(matched[0])
+        # The tap above already resolved the field, so this is the near-impossible screen change
+        # between the two reads; the action's own record of what it targets still names the field.
+        return value_for_field(hint, self.secure)
 
 
 @dataclass(frozen=True)
@@ -312,12 +351,37 @@ def _is_enabled(element: base.Element) -> bool:
 
 def _input_value(element: base.Element) -> str:
     """A deterministic placeholder to type into a field (the `--guide off` path), good enough to clear "must be non-empty" preconditions but not validation-gated ones."""
-    hint = f"{_id_of(element) or ''} {element.get('label') or ''}".lower()
+    return value_for_field(
+        f"{_id_of(element) or ''} {element.get('label') or ''}",
+        base.Trait.SECURE_TEXT_FIELD in _traits(element),
+    )
+
+
+def value_for_field(hint: str, secure: bool) -> str:
+    """The same choice keyed on a field's name and secrecy alone, for a replay that has no element.
+
+    Public because an emitted artifact needs it too: a repro or candidate flow that would otherwise
+    record a masked value writes this dummy instead, so the scenario stays runnable (BE-0331).
+    """
+    hint = hint.lower()
     if "mail" in hint:
         return "test@example.com"
-    if "secureTextField" in _traits(element):
+    if secure:
         return "Test1234!"
     return "test"
+
+
+# A plan entry written before BE-0331 spelled a typed operation `type <target>='<value>'`; today
+# `Action.describe` leaves the value out. A `--continue` matches today's descriptions against the
+# persisted plan, so without this the older spelling never matches and every input branch the map
+# had left to explore is dropped in silence — the crawl can then stop as "completed".
+_LEGACY_TYPED_ENTRY = re.compile(r"(?s)^(type .+?)=(['\"]).*\2$")
+
+
+def plan_key(entry: str) -> str:
+    """One persisted plan entry reduced to the value-free form `Action.describe` emits today."""
+    match = _LEGACY_TYPED_ENTRY.match(entry)
+    return match.group(1) if match else entry
 
 
 def _fingerprint_token(element: base.Element) -> str:
@@ -432,17 +496,22 @@ def candidate_actions(elements: list[base.Element]) -> list[Action]:
             tap_priority[i] = min(tap_priority.get(i, 2), pri)
     taps = sorted(tap_priority, key=lambda i: (tap_priority[i], i))
     actions = [Action("tap", target=t) for t in taps]
-    empty_fields = sorted(
-        (i, _input_value(el))
+    inputs = sorted(
+        (i, _input_value(el), base.Trait.SECURE_TEXT_FIELD in _traits(el))
         for el in elements
         if (i := _id_of(el))
         and _is_enabled(el)
         and INPUT_TRAITS & _traits(el)
         and not (el.get("value") or "")
     )
-    actions += [Action("type", target=fid, value=val) for fid, val in empty_fields]
+    empty_fields = [(fid, val) for fid, val, _ in inputs]
+    actions += [Action("type", target=fid, value=val, secure=sec) for fid, val, sec in inputs]
     if len(empty_fields) >= 2:
-        actions.append(Action("fill", fields=tuple(empty_fields)))
+        # A fill is secure when any of its fields is: the artifact records one value list, so the
+        # stricter of the two answers is the only one that cannot under-mask.
+        actions.append(
+            Action("fill", fields=tuple(empty_fields), secure=any(sec for _, _, sec in inputs))
+        )
     return actions
 
 
@@ -881,9 +950,9 @@ def crawl(
         prior_reason = screen_map.stop_reason
         had_frontier = any(screen_map.plan.values())  # the loaded map recorded untried operations
         for fp in sorted(screen_map.plan):
-            remaining = set(
-                screen_map.plan[fp]
-            )  # `fp` is a key of `plan`; empty list → skipped below
+            # `fp` is a key of `plan`; empty list → skipped below. `plan_key` normalizes the
+            # pre-BE-0331 `type <target>='<value>'` spelling so a legacy map's input branches match.
+            remaining = {plan_key(e) for e in screen_map.plan[fp]}
             if not remaining:
                 continue
             path = list(screen_map.paths.get(fp, ()))

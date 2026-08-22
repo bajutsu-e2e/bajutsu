@@ -14,9 +14,10 @@ from fastmcp import FastMCP
 
 from bajutsu.mcp.resources import register_resources
 from bajutsu.mcp.tools import register_tools
+from bajutsu.run_files import DEFAULT_RUNS_DIR
 
 
-def create_server(config_path: Path, runs_dir: Path = Path("runs")) -> FastMCP:
+def create_server(config_path: Path, runs_dir: Path = Path(DEFAULT_RUNS_DIR)) -> FastMCP:
     """Build a configured MCP server with all tools and resources registered.
 
     Args:

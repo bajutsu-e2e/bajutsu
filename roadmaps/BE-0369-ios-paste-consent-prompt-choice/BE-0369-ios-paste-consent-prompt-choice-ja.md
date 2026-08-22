@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0369](BE-0369-ios-paste-consent-prompt-choice-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0369") |
+| 実装 PR | [#1652](https://github.com/bajutsu-e2e/bajutsu/pull/1652), [#1670](https://github.com/bajutsu-e2e/bajutsu/pull/1670) |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)、[BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md)、[BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md)、[BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)、[BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md) |
 <!-- /BE-METADATA -->
@@ -201,20 +202,53 @@ Permissions タブは今のところ、まさにこのケースを避けて通�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] ユニット1 — `bajutsu/scenario/system_alerts.py` に3つ目のプロンプト `paste` を追加する(スキーマ、
+- [x] ユニット1 — `bajutsu/scenario/system_alerts.py` に3つ目のプロンプト `paste` を追加しました(スキーマ、
       `_Prompts` / `_LABELS`、`HandleSystemAlert` の型を広げる)。あわせて「2つのプロンプト」と書いている
-      モジュールの docstring、`SystemAlertPrompt` の上のコメント、`HandleSystemAlert` の docstring も書き換える。
-- [ ] ユニット2 — `setClipboard` でペーストボードを書き込み、既存の Permissions タブを通じて読み戻す
-      showcase シナリオを追加する。BE-0316 のフィクスチャと同じようにタグを付け、まずゲートではない
-      `actuation (xcuitest)` ジョブに置き、ユニット3の実証を経てから gating の `run` の一覧へ昇格させる。
-- [ ] ユニット3 — `setClipboard` がそもそもこのプロンプトを引き起こすかどうかを実機で検証し、実際の
-      ボタン文言を書き写す。引き起こさない場合は代替のフィクスチャを名指しする。あわせて「他のアプリからの
-      ペースト」の設定をアプリの外から事前に設定できるかどうかも確かめる。
-- [ ] ユニット4 — ドキュメント: `docs/scenarios.md` の「テキストではなく意図で指定する」節と
-      `docs/dsl-grammar.md` の `handleSystemAlert` の生成規則、そして両方の日本語訳に `paste` を追加する。
-- [ ] ユニット5 — テスト: `tests/scenario/test_system_alerts.py` で `paste` を検証する。このファイルは
-      `("notifications", "tracking")` というプロンプトの組と、ラベルの `parametrize` の一覧で、今日の2つの
-      プロンプトを直接書き出している。
+      モジュールの docstring、`SystemAlertPrompt` の上のコメント、`HandleSystemAlert` の docstring も書き換えました。
+- [x] ユニット2 — `demos/showcase/scenarios/paste_system_alert.yaml` を追加しました。`setClipboard` で
+      ペーストボードを書き込み、既存の Permissions タブを通じて読み戻します。BE-0316 のフィクスチャと同じく
+      `systemalert` タグを付け、ゲート対象外の `actuation (xcuitest)` ジョブに置いています。gating の `run` への
+      昇格は意図的に後続の作業へ回しました。このレーンで初めてプロセスをまたぐペーストなので、必須チェックが
+      これに依存する前に、CI 自身のホストで安定性を確かめるためです(BE-0218)。フィクスチャには設計が見通して
+      いなかった変更が1つ必要でした。ユニット3を参照してください。
+      その後の作業でフィクスチャを4本に広げました。対象の locale のもとでの `grant` と `deny`、続けて
+      `locale: ja_JP` のもとでの同じ2本です。許可する1本だけでは、英語の拒否側のラベルと、日本語の
+      2つのラベルを、ユニット5の表だけで確かめている状態が残るからです。拒否側には showcase の
+      変更がもう1つ必要でした。拒否された読み取りは nil を返すため、アプリは `""` ではなく `(none)` を
+      公開します。`(none)` の公開により、拒否された読み取りが、待って確かめられる条件になります。
+- [x] ユニット3 — 起動中の Simulator(iPhone 17、iOS 26.5)で、SwiftUI と UIKit の両方の showcase アプリに対し、
+      `en_US` と `ja_JP` の両方で検証しました。
+- [x] ユニット4 — ドキュメント: `docs/scenarios.md` の「テキストではなく意図で指定する」節、
+      `docs/dsl-grammar.md` の `handleSystemAlert` の生成規則、`docs/ci.md` の `actuation` ジョブの説明に
+      `paste` を追加し、3つとも日本語訳も更新しました。`demos/showcase/SPEC.md`(日英両方)には、ユニット3が
+      要求したメインスレッド外での読み取りを記載しました。
+- [x] ユニット5 — テスト: `tests/scenario/test_system_alerts.py` で `paste` を検証します。半端な項目を
+      検出するガードは、手書きの組ではなく `SystemAlertPrompt` 自身からプロンプトを取るようにしました。
+      4つ目のプロンプトを `_LABELS` に足しても、ガードが3つしか見ないままになることはありません。
+
+### ユニット3 が明らかにしたこと
+
+提案が未確定としていた3点と、想定していなかった1点です。
+
+- **`setClipboard` はプロンプトを引き起こします。** iOS は `simctl pbcopy` の書き込みを別プロセスの
+  `CoreSimulatorBridge` に帰属させるため、アプリ自身の読み取りが「"Showcase SwiftUI" would like to paste
+  from "CoreSimulatorBridge"」を上げます。重い2アプリ構成の代替フィクスチャは不要でした。同意は読み取りの
+  たびに求められるので、1台の端末で何度でも実行できます。
+- **ボタンの文字列**は `DragUI.framework/<lang>.lproj/Localizable.strings` の
+  `PASTE_AUTHORIZATION_BUTTON_ALLOW` / `_DENY` から来ます。モジュールがすでに挙げている2つの並びに立つ、
+  3つ目のフレームワークです。値は `Allow Paste` / `Don’t Allow Paste` と `ペーストを許可` /
+  `ペーストを許可しない` です。iOS 18.6 と 26.5 のランタイム、`en` / `en_GB` / `en_AU` のいずれでも同一でした。
+  英語の拒否ラベルには、活字体のアポストロフィ(U+2019)が入ります。この対応表が存在する理由そのものです。
+- **この設定はアプリの外から事前に設定できません。** iOS は同意を TCC の `kTCCServicePasteboard` として
+  記録します。しかし `simctl privacy` はこのサービスの切り替え手段を持ちません。ATT とまったく同じ形です。
+  Simulator の `TCC.db` を直接書き換えてもプロンプトは抑止されず、システムが行を元に戻しました。
+  *検討した代替案* が予防的な機構を退けた判断は、未解決の問いではなく実測に立つものになりました。
+- **同期的な読み取りは、設計が提案したフィクスチャをデッドロックさせます。** `UIPasteboard.general.string` は
+  プロンプトが出ているあいだ呼び出し元をブロックします。showcase がメインスレッドで読んでいたため、
+  `sys.paste` への XCUITest の tap が返らず、run は実行中のランナークラッシュと診断しました。プロンプトに
+  応答するはずの `handleSystemAlert` ステップは、そもそも実行されません。修正は showcase アプリごとに1箇所で、
+  メインスレッド外で読み、読み取りが返った時点で値を公開します。設計自身の `wait` ステップがすでに前提として
+  いた挙動です。`system.yaml` にも対応する条件待ちを足しました。アプリ内で完結する往復も非同期になったためです。
 
 ## 参考
 

@@ -188,15 +188,16 @@ a config — the server enforces that restriction, and a refused action shows in
 
 ### Managing orgs
 
-An **org** is a tenant of a hosted deployment, and its membership decides which GitHub logins and
-GitHub organizations may sign in as it, and which GitHub Team among them may write. A deployment that
+An **org** is a tenant of a hosted deployment, and its membership decides which GitHub logins,
+GitHub organizations, and GitHub Teams may sign in as it, and which Team among them may write. The
+Team that may write is admitted too, so it needs no second entry to be able to sign in. A deployment that
 runs against a database keeps that membership in the database rather than in the config file, and the
 **Orgs** tab is where an admin edits it (BE-0375). The tab appears for an admin on such a
 deployment, and nowhere else: on any other deployment the server declines to list orgs, which is
 what keeps the tab hidden.
 
-Each row shows an org's slug, how many members and GitHub organizations it holds, its editor Team,
-and how many projects it owns — plus its display name, when that differs from the slug the row
+Each row shows an org's slug, how many members, GitHub organizations, and GitHub Teams it holds,
+its editor Team, and how many projects it owns — plus its display name, when that differs from the slug the row
 already leads with. **Create** takes a slug and an optional display name, and the new org
 starts with no members at all — nobody can sign in as it until you fill in its membership, which the
 page says inline so an empty tenant does not read as a bug. The slug `default` is refused: it is
@@ -204,7 +205,7 @@ where a sign-in matching no org lands — including every admin admitted by the 
 a real tenant there would take the namespace an admin recovers through. That row still appears in
 the list, marked as the fallback and with both its controls disabled, since an admin who arrived
 that way is sitting in it. **Membership** opens a form that replaces
-all three fields at once, prefilled from what the server holds right now; a change takes effect on
+all four fields at once, prefilled from what the server holds right now; a change takes effect on
 each member's next sign-in. **Delete** retires an org, and stays greyed out while the org still owns
 a project (deregister those first). Retiring signs out everyone holding a session as that org at the
 same moment, so nobody keeps acting as it on a cookie issued beforehand; it keeps the org's runs and
@@ -327,7 +328,7 @@ scenario is written under the target's scenarios directory, so it appears in the
 **Run it in place.** The **▶ Run** button beside Save (also disabled until there is YAML) runs the
 panel's current content — the just-authored scenario, or YAML you pasted or edited by hand — without
 switching tabs. A run-result pane opens with the live log and the finished report, with **Stop** to
-abort and a close button to dismiss the pane. The verdict is the deterministic runner's, exactly as
+cancel the run and a close button to dismiss the pane. The verdict is the deterministic runner's, exactly as
 on the Replay tab.
 
 **Readiness (doctor).** A **Readiness** panel with a **Check** button sits in the form — the
@@ -350,9 +351,18 @@ browser. Two sub-tabs: **Run** and **History**.
    run scenarios in parallel across them, and **Workers** tracks the count). **erase device first**
    and **disable alert-dismiss** apply as in Record. On web: tick **show browser (headed)** to watch
    the run in a visible Chromium window.
-3. Click **Run** (**Stop** aborts). The output streams live in the log, and the run's `report.html`
+3. Click **Run** (**Stop** cancels). The output streams live in the log, and the run's `report.html`
    embeds beside it on completion. Before a run, the same **Readiness** panel as on Record (see
    above) answers "is my environment ready, and is my app addressable?" on a click — advisory only.
+
+**Cancelling a run does not discard it.** **Stop** asks the runner to finish on its own terms. The
+runner fails every scenario it did not complete, with the reason `cancelled`, then writes the report
+an ordinary failing run writes. The cancelled attempt then appears under **History** like any
+other failure. "This scenario was never run" and "this scenario was started, then cancelled"
+stay distinguishable there. A run cancelled before its first scenario started — while a Simulator
+boots or the app builds — still stops outright and leaves no report, having reached no verdict yet to
+preserve. **Stop** on the Record and Crawl tabs is unchanged for the same reason: neither reaches a
+verdict of its own.
 
 Under the log panel, a **Generate code** bar exports the selected scenario as a native test — the
 same codegen as on the [Author](#author--capture-edit-and-enrich-one-scenario) tab, placed where a
