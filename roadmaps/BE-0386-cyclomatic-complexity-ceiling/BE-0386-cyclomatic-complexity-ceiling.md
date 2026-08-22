@@ -78,8 +78,9 @@ threshold set explicitly rather than left at its default:
 ## Alternatives considered
 
 - **Adopt Radon and Xenon instead of ruff's `C901`** — rejected: ruff is already the linter in the
-  gate, and `C901` measures the same mccabe cyclomatic complexity Xenon's threshold check wraps
-  Radon's computation of, at no cost of a second tool or a second `make check` step. This is
+  gate, and `C901` measures the same mccabe cyclomatic complexity that Xenon checks a threshold
+  against, wrapping Radon's computation of it — and it needs no second tool and no second
+  `make check` step. This is
   consistent with BE-0067's use of ruff's `S` rules rather than a separate Bandit install.
 - **Set `max-complexity` to ruff's default (10) immediately** — rejected: that flags 55 functions at
   once, most of them not the outliers that most need attention, and forces a rushed triage rather
