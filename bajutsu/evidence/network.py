@@ -446,7 +446,10 @@ def _make_handler(collector: NetworkCollector) -> type[BaseHTTPRequestHandler]:
             """The request's path alone, without a query string or a trailing slash.
 
             `urlsplit` drops the query, so an unexpected `?...` suffix still routes to its endpoint
-            instead of falling through to the catch-all and being stored as a bogus exchange.
+            instead of falling through to the catch-all and being stored as a bogus exchange. It is
+            safe to hand `urlsplit` a request-line path even though it reads a leading `//` as an
+            authority: `BaseHTTPRequestHandler` has already collapsed one (CPython gh-87389), and
+            `test_a_doubled_leading_slash_still_reaches_its_endpoint` is what fails if it stops.
             """
             return urlsplit(self.path).path.rstrip("/")
 

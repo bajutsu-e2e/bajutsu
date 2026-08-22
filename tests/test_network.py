@@ -886,6 +886,56 @@ def test_channel_paths_route_past_a_query_string() -> None:
         c.stop()
 
 
+def _raw_request(
+    port: int, token: str, method: str, target: str, payload: object = None
+) -> tuple[int, bytes]:
+    """Send a literal request line and return (status, body).
+
+    Raw rather than through a client on purpose: `urllib` and `http.client` both collapse
+    `//commands` to `/commands` before it reaches the wire, so a doubled leading slash is only
+    reachable from a socket — which is why the hole it opened was invisible to every other test here.
+    """
+    body = b"" if payload is None else json.dumps(payload).encode()
+    request = (
+        f"{method} {target} HTTP/1.1\r\n"
+        f"Host: 127.0.0.1:{port}\r\n"
+        f"Authorization: Bearer {token}\r\n"
+        f"Content-Length: {len(body)}\r\n\r\n"
+    ).encode() + body
+    with socket.create_connection(("127.0.0.1", port), timeout=5) as sock:
+        sock.sendall(request)
+        chunks = []
+        while chunk := sock.recv(4096):
+            chunks.append(chunk)
+    head, _, response_body = b"".join(chunks).partition(b"\r\n\r\n")
+    return int(head.split()[1]), response_body
+
+
+def test_a_doubled_leading_slash_still_reaches_its_endpoint() -> None:
+    """A request line beginning `//` is the ordinary shape a client produces by joining a base URL
+    that already ends in one, and `urlsplit` reads that prefix as an *authority* rather than a path:
+    `urlsplit("//commands/ack").path` is `/ack`, which would match no endpoint and leave the report
+    to the exchange catch-all. `_route` is safe anyway, because `BaseHTTPRequestHandler` collapses
+    the prefix before the handler ever sees it (CPython gh-87389) — measured, not assumed. This test
+    pins that stdlib guarantee, since our own routing is what would have to change without it."""
+    c = NetworkCollector()
+    port = c.start()
+    try:
+        command_id = c.enqueue_command(InAppCapability.TOUCH_VISUALIZATION, enabled=False)
+        applied = {"id": command_id, "applied": True}
+        status, body = _raw_request(port, c.token, "GET", "//commands")
+        assert status == 200 and len(json.loads(body)) == 1
+        assert _raw_request(port, c.token, "POST", "//commands", applied)[0] == 405
+        assert _raw_request(port, c.token, "POST", "//commands/ack", applied)[0] == 204
+        assert c.report_for(command_id) is not None
+        transition = {"kind": "screenChanged"}
+        assert _raw_request(port, c.token, "POST", "//transitions", transition)[0] == 204
+        assert len(c.transitions_snapshot_timed()) == 1
+        assert c.snapshot() == []  # nothing above became an exchange
+    finally:
+        c.stop()
+
+
 def test_get_on_any_other_path_is_a_404_behind_the_token() -> None:
     """Nothing but the drain is served over GET. A mistyped or version-skewed poll path gets a 404
     rather than the bare 200 this handler used to give everything, which an app would read as "no

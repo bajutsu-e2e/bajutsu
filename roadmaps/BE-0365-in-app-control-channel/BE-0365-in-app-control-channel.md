@@ -35,9 +35,9 @@ receives, and the marks persist until the next gesture, so a step's screenshot c
 collides with a `visual` assertion, which compares a screenshot against a checked-in baseline: the
 markers land in the very image the comparison reads. The right behaviour would be to hide the marks
 for that one capture and restore them after. Because the launch environment is the only way in,
-`--touch-markers` instead skips any scenario whose verdict compares a screenshot — coarser than the
-problem, and it costs the investigator the touch evidence for exactly the scenario they were
-looking at.
+`--touch-markers` instead leaves the markers off for the *whole scenario* whenever that scenario's
+verdict compares a screenshot — coarser than the problem, and it costs the investigator the touch
+evidence for exactly the scenario they were looking at.
 
 Request stubbing is bounded the same way. `BajutsuNet.startIfEnabled()` loads the scenario's rules
 once, from the launch environment (`BajutsuKit/Sources/BajutsuKit/BajutsuNet.swift:29`), so a
@@ -123,7 +123,7 @@ The units below are mutually exclusive and collectively exhaustive.
 |---|---|
 | 1 | The queue: a pending-command list on `NetworkCollector`, an authenticated `GET` that drains it, and an acknowledgement endpoint matched *ahead of* `do_POST`'s catch-all, which stores every other path as a network exchange — so a completion report never enters the exchanges a `request` assertion reads. The report says whether the app *applied* the command, and carries the app's own reason when it did not, so "applied it" and "drained it and could not apply it" never reach unit 3's wait as the same message. The token check applies exactly as `do_POST` applies it today, and `clear()` drops the pending queue alongside the exchanges, so a command one scenario left undrained is never delivered to the next |
 | 2 | The app side: a poll loop and command dispatch in `BajutsuKit`, compiled out unless an explicit build setting selects it and, when compiled in, activated by its own launch-env key and inert without it — so the launch env is never the only guard. Includes the acknowledgement POST on the existing report session |
-| 3 | The wait: a condition wait on the acknowledgement in the run loop, failing loudly on timeout, and the first command — toggling BE-0371's touch visualization around a screenshot-comparing step, replacing the whole-scenario skip `--touch-markers` performs today. The wait reaches the app through the `Collector` protocol the pipeline already drives, so this unit also states which collectors carry a channel, and makes a command issued against one that does not fail loudly rather than be skipped |
+| 3 | The wait: a condition wait on the acknowledgement in the run loop, failing loudly on timeout, and the first command — toggling BE-0371's touch visualization around a screenshot-comparing step, replacing the whole-scenario opt-out `--touch-markers` performs today. The wait reaches the app through the `Collector` protocol the pipeline already drives, so this unit also states which collectors carry a channel, and makes a command issued against one that does not fail loudly rather than be skipped |
 | 4 | The second command: a mid-scenario stub-table replacement, so a scenario can change a mocked response without being split in two |
 | 5 | Documentation in both languages: the channel, its activation key, the boundaries above, and the release-build gating the channel makes mandatory |
 
