@@ -295,6 +295,11 @@ e2e-visual-approve:
 # submit sends the Authorization header and the `password` field the redaction check reads
 # (ios/uikit/Sources/LogController.swift sends neither), so the UIKit twin would fail that check for
 # lack of a secret rather than for a redaction defect.
+#
+# The `network (xcuitest)` job names this directory literally in its `Upload run artifacts` step and
+# uploads it with `if-no-files-found: ignore`, so a rename here would empty that artifact silently.
+# tests/test_showcase_network_demo.py::test_the_network_jobs_artifact_uploads_the_makefile_runs_dir
+# pins the two together.
 NET_RUNS ?= $(ROOT)/tmp/showcase-network-runs
 e2e-network: swiftui-build runner-build
 	rm -rf $(NET_RUNS)

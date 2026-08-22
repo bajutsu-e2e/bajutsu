@@ -15,6 +15,7 @@ BajutsuKit → loopback POST → collector transport instead of the browser's.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,14 @@ from demos.showcase.network.assert_network_evidence import (
 _REPO = Path(__file__).resolve().parent.parent
 _SHOWCASE = _REPO / "demos" / "showcase"
 _SCENARIOS = _SHOWCASE / "scenarios"
+_IOS_WORKFLOW = _REPO / ".github" / "workflows" / "ios-e2e.yml"
+
+# The `network` job's artifact — the handle the upload-path pin below identifies its step by.
+_NET_ARTIFACT = "ios-e2e-network-run"
+
+# `NET_RUNS ?= $(ROOT)/tmp/showcase-network-runs` — the throwaway run directory the lane's
+# `--runs-dir` writes to, read as a path relative to the repository root (`ROOT`).
+_NET_RUNS_RE = re.compile(r"^NET_RUNS\s*\?=\s*\$\(ROOT\)/(\S+)\s*$", re.MULTILINE)
 
 # The target the lane drives, and so the one whose `redact` policy applies to its evidence.
 _TARGET = "showcase-swiftui"
@@ -374,3 +383,60 @@ def test_the_evidence_check_sweeps_for_a_secret_outside_the_two_exchanges(tmp_pa
     with pytest.raises(SystemExit) as exc:
         main(["assert_network_evidence.py", str(runs)])
     assert exc.value.code == 1
+
+
+# --- the Makefile ↔ workflow coupling the lane's artifact depends on -------------------------------
+
+
+def _network_job_steps() -> list[dict[str, Any]]:
+    """Parse rather than scan: an indentation scanner can read a neighbouring step's block instead."""
+    workflow = yaml.safe_load(_IOS_WORKFLOW.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["network"]["steps"]
+    assert isinstance(steps, list)
+    return [step for step in steps if isinstance(step, dict)]
+
+
+def _network_artifact_paths(steps: list[dict[str, Any]]) -> list[str]:
+    """Keyed on the artifact's own name, so a reordered or newly added upload step cannot shadow it."""
+    uploads = [
+        step
+        for step in steps
+        if str(step.get("uses", "")).startswith("actions/upload-artifact")
+        and step.get("with", {}).get("name") == _NET_ARTIFACT
+    ]
+    assert len(uploads) == 1, (
+        f"the `network` job has no unique step uploading the {_NET_ARTIFACT!r} artifact — this pin "
+        "identifies the upload by that name."
+    )
+    path = uploads[0]["with"]["path"]
+    entries = path.split() if isinstance(path, str) else list(path)
+    return [str(entry).strip().strip("\"'").rstrip("/") for entry in entries]
+
+
+def test_the_network_jobs_artifact_uploads_the_makefile_runs_dir() -> None:
+    # The one Makefile↔workflow coupling the lane introduces that no other pin covers: `NET_RUNS` is
+    # duplicated as a bare literal in the `network` job's upload step, which runs with
+    # `if-no-files-found: ignore`, so a rename on either side would empty the artifact with a green
+    # step — and on a deliberately non-gating job that artifact is the whole debugging surface. Pin
+    # the two together in the same shape as tests/test_e2e_changes.py's target-name and guard pins.
+    makefile = (_SHOWCASE / "Makefile").read_text(encoding="utf-8")
+    m = _NET_RUNS_RE.search(makefile)
+    assert m is not None, (
+        "demos/showcase/Makefile no longer declares `NET_RUNS ?= $(ROOT)/<path>` — this pin reads "
+        "that line to learn the run directory the workflow must upload."
+    )
+    net_runs = m.group(1).rstrip("/")
+    steps = _network_job_steps()
+    paths = _network_artifact_paths(steps)
+    assert net_runs in paths, (
+        f"demos/showcase/Makefile writes the network lane's run directory to {net_runs!r}, but the "
+        f"`network` job's artifact uploads {paths!r} — move both together, or the artifact ships "
+        "empty of the captured evidence with a green step."
+    )
+    # `NET_RUNS` is a `?=` default, so a `NET_RUNS=…` on the job's own `make` line would move the real
+    # directory while leaving both pinned lines — and this test — untouched.
+    runs = [str(step.get("run", "")) for step in steps if "e2e-network" in str(step.get("run", ""))]
+    assert runs and not any("NET_RUNS" in run for run in runs), (
+        f"the `network` job's e2e-network step overrides NET_RUNS ({runs!r}); the upload path above "
+        "is pinned against the Makefile default, which the override would bypass."
+    )
