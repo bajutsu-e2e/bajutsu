@@ -74,6 +74,52 @@ nine passing and two skipping, and the job's diagnostics step went on to collect
 same commit passed. The daemon had not stopped serving, then: it stalled past one deadline and served
 again well inside the next test.
 
+The fault recurred two days later, and the second incident measures what a single stall could not. On
+2026-08-21 both attempts of
+[`conformance (xcuitest)`](https://github.com/bajutsu-e2e/bajutsu/actions/runs/32508240616/job/96887520203)
+on [PR #1686](https://github.com/bajutsu-e2e/bajutsu/pull/1686) failed at head `13666d42c`, against
+the same device and on the same call. The first attempt reported six setup errors among sixteen
+passes in 25 minutes 58 seconds, and the second reported five errors and one failure among fifteen
+passes in 27 minutes 10 seconds. Between the first error of the second attempt at 19:49:19 and the
+last at 20:04:22, the device refused five setups and served four tests. Each of the eleven items
+before that window had taken 22 to 32 seconds; the four that passed inside it took 39 to 74. The
+daemon alternated between refusing and answering for fifteen minutes rather than failing once.
+
+Which items a stall hits carries no pattern, which is what rules out a cause inside any one test.
+Three items that errored in the first attempt did not in the second —
+`test_text_selection_capability_matches_behavior` and
+`test_scroll_reveals_a_target_taller_than_the_viewport` passed, and
+`test_tap_raises_element_not_tappable_when_covered` skipped — while three that passed in the first
+errored in the second: `test_delete_text_reduces_the_field_length`,
+`test_wait_until_is_condition_backed`, and `test_scroll_reveals_an_offscreen_target`. The commit
+under test was identical across both attempts, an hour and a half apart on the same runner image.
+
+The stall also reaches past `simctl`, which the same logs record. Each attempt warned seven times
+that `recordVideo produced no new bytes` inside its 20-second deadline, and each hit the
+stall-diagnostics capture cap for that trigger. The evidence recorder and the device query stalled
+together, so the fault sits below both — in the host, or in the Simulator services the host runs —
+rather than in the one subprocess a per-call deadline covers. Nothing in the job samples the host's
+own memory or process count, which is why we can date the degradation precisely and cannot yet
+attribute it. Unit 3's diagnosis half below is what would begin recording the host's state.
+
+One measurement from that job widens what a stall can cost, and it deserves stating plainly, because
+the argument for this item's scope turns on a timeout never being a verdict. Between two of the setup
+errors, `test_tap_point_focuses_the_field_like_a_semantic_tap` did not error. The test ran and failed
+the ordinary assertion `assert len(field_value(driver)) > baseline` at
+`tests/driver_conformance.py:476`, taking 183 seconds where no item before the first stall had taken
+more than 32. That same test had errored in the first attempt, so the stall window presents one item
+as a setup error on one run and as a failed assertion on the next. The change under review touched no
+coordinate-tap code — only the Swift runner's HTTP transport and roadmap prose — so a degraded device
+does produce wrong verdicts, and not timeouts alone. The three units below would have absorbed all
+five setup errors of that attempt and none of that failure: a red gate from a false assertion inside
+a stall window belongs to the device-replacement escalation BE-0354 owns, which this item does not
+reach.
+
+The recovery report the job uploads confirms that nothing intervened. Its
+`conformance-recovery.json` records `{"respawns": 0, "recovered": 0, "exhausted": 0, "events": []}`
+for both attempts. Every one of those interleaved passes therefore came from the device recovering
+on its own, with no respawn, no repair, and no escalation attempted.
+
 The cost lands on a required check and on a person. The job spent 26 minutes to report a host fault
 as a red gate, and a maintainer had to read it, decide it was infrastructure, and re-run it. BE-0334
 already disposed of the two responses that suggest themselves at that moment — demoting the check
