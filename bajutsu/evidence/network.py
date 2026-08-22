@@ -16,6 +16,15 @@ kept in an independent store from the network exchanges — the readiness gate a
 `settled` wait read only this one, never network-capture state, so the two stay independent
 as documented.
 
+The same receiver also carries the in-app control channel (BE-0365): bajutsu queues a command
+naming one piece of its own in-app instrumentation and the state that piece should take, the app
+drains the queue over an authenticated `GET /commands`, and reports back on `/commands/ack` whether
+it applied the command.
+That direction is what lets a capability change *within* a scenario rather than only at launch, and
+it needs no new server, port, or authentication scheme — the app opens no socket, and the per-run
+token above guards the commands exactly as it guards the reports. The channel carries no judgement:
+nothing on it may influence whether a step passes, and no assertion reads from it.
+
 The in-app side that captures and POSTs the exchanges is a separate Swift package
 (`BajutsuKit`); this module is only the bajutsu-side receiver and data model.
 """
@@ -28,6 +37,7 @@ import secrets
 import threading
 import time
 from collections.abc import Callable
+from enum import StrEnum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Protocol, runtime_checkable
 from urllib.parse import urlsplit
@@ -69,6 +79,57 @@ class ScreenTransition(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     kind: str = ""
+
+
+class InAppCapability(StrEnum):
+    """A piece of bajutsu's own in-app instrumentation the control channel may address (BE-0365).
+
+    Closed on purpose, and that is the boundary rather than a comment about it: the channel controls
+    what bajutsu put inside the app, never the application's own state. A command that seeded app
+    data or drove navigation would move per-app knowledge into the tool (prime directive 3), so a
+    new capability is argued for here instead of being named as a free string at a call site.
+    """
+
+    TOUCH_VISUALIZATION = "touch_visualization"  # the touch markers BE-0371 draws
+
+
+class AppCommand(BaseModel):
+    """One command bajutsu asks the running app to apply (BE-0365).
+
+    bajutsu-side only — the collector serializes these out and never parses one back, so this model
+    is strict and frozen rather than forward-compatible like the reports the app POSTs. It carries
+    no judgement: nothing here may influence whether a step passes, and no assertion reads it.
+
+    `enabled` is the whole state a capability takes today, because the instrumentation the channel
+    reaches is a toggle. A capability whose state is not a toggle (a mid-scenario stub table,
+    BE-0365 unit 4) arrives as a sibling model discriminated on `capability`, not as another
+    optional field here: widening this one would make the invalid cross-product — a stub table with
+    no table, a toggle carrying one — representable, and leave a validator to rule out what a union
+    rules out structurally (the shape `config/effective.py` already argues for).
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: str
+    capability: InAppCapability
+    enabled: bool
+
+
+class AppCommandReport(BaseModel):
+    """The app's report on one command it drained (BE-0365).
+
+    Inbound, so forward-compatible like the exchange and transition reports — but `applied` carries
+    no default, because "applied it" and "drained it and could not apply it" must not reach the
+    acknowledgement wait as the same message, and a default would quietly make one of them the
+    other. An app whose capability was compiled out, or whose handler raised, says so here with its
+    own `reason`, so the wait fails with the cause rather than timing out blind (BE-0365 unit 3).
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore", frozen=True)
+
+    id: str
+    applied: bool
+    reason: str = ""
 
 
 # Returns the screen-transition events observed so far, each with the collector's receive time
@@ -135,6 +196,15 @@ class NetworkCollector:
         # Per-run shared token, minted in start(); the app attaches it to every POST and the
         # handler rejects any request without it, so only the app this run launched can report.
         self.token = ""
+        # The control channel (BE-0365): commands waiting for the app to drain, every id issued,
+        # and the subset the app has reported applying.
+        self._commands: list[AppCommand] = []
+        self._issued: set[str] = set()
+        self._reports: dict[str, AppCommandReport] = {}
+        # Monotonic for this collector's whole life and deliberately *not* reset by `clear()`: a
+        # reused id would let a cleared scenario's late acknowledgement match a fresh command and
+        # release its wait without the app having applied anything.
+        self._issued_count = 0
 
     # --- data ---
 
@@ -164,6 +234,71 @@ class NetworkCollector:
         with self._lock:
             self._transitions.append((transition, self._now()))
 
+    def enqueue_command(self, capability: InAppCapability, *, enabled: bool) -> str:
+        """Queue one command for the app to drain, and return the id that identifies it.
+
+        Args:
+            capability: which piece of bajutsu's in-app instrumentation the command addresses.
+            enabled: the state that capability should take.
+
+        Returns:
+            The command's id, to condition-wait on through `report_for` (BE-0365 unit 3).
+        """
+        with self._lock:
+            self._issued_count += 1
+            command_id = f"c{self._issued_count}"
+            self._commands.append(AppCommand(id=command_id, capability=capability, enabled=enabled))
+            self._issued.add(command_id)
+            return command_id
+
+    def drain_commands(self) -> list[AppCommand]:
+        """Take every pending command, leaving the queue empty.
+
+        Draining under the lock bounds delivery at *at most* once: two polls racing cannot both take
+        the same command and have the app apply it twice. It buys nothing about the reply — the queue
+        is emptied before the response is written, so a reply lost in flight (a killed app, a client
+        timeout, a reset peer) is not redelivered. That loss surfaces as the acknowledgement wait's
+        loud timeout (BE-0365 unit 3), never as a second application, so a caller must not read a
+        successful drain as proof the app received anything.
+        """
+        with self._lock:
+            drained = self._commands
+            self._commands = []
+            return drained
+
+    def record_report(self, data: dict[str, Any]) -> bool:
+        """Store the app's report on one command; false when it names no command this run issued.
+
+        Refusing a payload rather than dropping it is the one place this collector departs from
+        `add` / `add_transition`'s forward-compatible drop: a report is the only news the
+        acknowledgement wait ever gets, so one bajutsu cannot read has to fail visibly (the handler
+        answers 400) instead of leaving the wait to time out as though the app had stayed silent.
+        Requiring the id to be one this run issued is the same guarantee against a stale report
+        straggling in across a `clear()` and releasing the next scenario's wait.
+
+        Neither refusal is recorded anywhere else, so the wait a refused report was meant for still
+        fails by timing out rather than by naming the report bajutsu turned away.
+        """
+        try:
+            report = AppCommandReport.model_validate(data)
+        except ValidationError:
+            return False
+        with self._lock:
+            if report.id not in self._issued:
+                return False
+            self._reports[report.id] = report
+            return True
+
+    def report_for(self, command_id: str) -> AppCommandReport | None:
+        """The app's report on this command, or None while none has arrived.
+
+        Three answers, none of them collapsed into another: None keeps the acknowledgement wait
+        waiting, `applied=False` fails it at once with the app's own `reason`, and `applied=True`
+        releases it (BE-0365 unit 3).
+        """
+        with self._lock:
+            return self._reports.get(command_id)
+
     def check_token(self, candidate: str) -> bool:
         """Constant-time compare of a presented token against this run's token.
 
@@ -187,10 +322,16 @@ class NetworkCollector:
             return list(self._transitions)
 
     def clear(self) -> None:
-        """Drop all stored exchanges and transitions — called between scenarios to scope them to one run."""
+        """Drop everything scoped to one scenario — exchanges, transitions, and channel state."""
         with self._lock:
             self._items.clear()
             self._transitions.clear()
+            # The control channel is scenario-scoped for the same reason (BE-0365): a command one
+            # scenario left undrained must not reach the next, and its acknowledgement must not
+            # release a later wait. `_issued_count` survives on purpose — see `__init__`.
+            self._commands.clear()
+            self._issued.clear()
+            self._reports.clear()
 
     # --- lifecycle ---
 
@@ -271,21 +412,48 @@ class NetworkCollector:
         self.port = 0
 
 
+# The receiver's known endpoints. Everything else POSTed is stored as a network exchange, which is
+# why each of these has to be matched *before* that catch-all (BE-0365).
+_TRANSITIONS_PATH = "/transitions"
+_COMMANDS_PATH = "/commands"
+_ACKNOWLEDGE_PATH = "/commands/ack"
+
+
 def _make_handler(collector: NetworkCollector) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
-        def do_POST(self) -> None:
-            # Authenticate before reading the body: reject a missing/mismatched token loudly
-            # (401) rather than dropping it silently, so a misconfigured client is visible and
-            # another local process can't inject fabricated exchanges (BE-0115).
+        def _authenticated(self) -> bool:
+            """True when the request bears this run's token; answers 401 itself when it does not.
+
+            Rejecting loudly rather than dropping silently keeps a misconfigured client visible, and
+            stops another local process from injecting fabricated exchanges (BE-0115) or reading the
+            pending commands (BE-0365).
+            """
             auth = self.headers.get("Authorization", "")
             presented = auth[len("Bearer ") :] if auth.startswith("Bearer ") else ""
-            if not collector.check_token(presented):
-                # Close rather than drain the unread body (mirrors serve's reject path). This
-                # server is HTTP/1.0, so connections already close per request; the explicit flag
-                # guards the reject path should the protocol ever be bumped to keep-alive.
-                self.close_connection = True
-                self.send_response(401)
-                self.end_headers()
+            if collector.check_token(presented):
+                return True
+            # Close rather than drain the unread body (mirrors serve's reject path). This
+            # server is HTTP/1.0, so connections already close per request; the explicit flag
+            # guards the reject path should the protocol ever be bumped to keep-alive.
+            self.close_connection = True
+            self.send_response(401)
+            self.end_headers()
+            return False
+
+        def _route(self) -> str:
+            """The request's path alone, without a query string or a trailing slash.
+
+            `urlsplit` drops the query, so an unexpected `?...` suffix still routes to its endpoint
+            instead of falling through to the catch-all and being stored as a bogus exchange. It is
+            safe to hand `urlsplit` a request-line path even though it reads a leading `//` as an
+            authority: `BaseHTTPRequestHandler` has already collapsed one (CPython gh-87389), and
+            `test_a_doubled_leading_slash_still_reaches_its_endpoint` is what fails if it stops.
+            """
+            return urlsplit(self.path).path.rstrip("/")
+
+        def do_POST(self) -> None:
+            # Authenticate before reading the body.
+            if not self._authenticated():
                 return
             length = int(self.headers.get("Content-Length") or 0)
             raw = self.rfile.read(length) if length else b""
@@ -295,16 +463,26 @@ def _make_handler(collector: NetworkCollector) -> type[BaseHTTPRequestHandler]:
                 self.send_response(400)
                 self.end_headers()
                 return
+            route = self._route()
+            # Ahead of the two report paths on purpose: the catch-all below stores any other path as
+            # a network exchange, so falling through would put a control-channel acknowledgement
+            # into the exchanges a `request` assertion reads (BE-0365).
+            if route == _ACKNOWLEDGE_PATH:
+                self._acknowledge(data)
+                return
+            if route == _COMMANDS_PATH or route.startswith(f"{_COMMANDS_PATH}/"):
+                # The drain is a GET, so a POST anywhere in the channel's namespace is a mistake —
+                # most plausibly an acknowledgement sent one path segment short. Answering it here
+                # is what keeps it out of the catch-all: `NetworkExchange` defaults every field, so
+                # any JSON object validates and would be stored as an all-empty exchange that a
+                # `request` count assertion then sees.
+                self.send_response(405 if route == _COMMANDS_PATH else 404)
+                self.end_headers()
+                return
             # /transitions (BE-0310) carries screen-transition events; every other path keeps the
             # original network-exchange behavior, so an app not yet linking the transition observer
-            # is unaffected. Compare on the path component alone (urlsplit drops a query string),
-            # so an unexpected `?...` suffix still routes correctly instead of silently falling
-            # through to `add` and being stored as a bogus network exchange.
-            add = (
-                collector.add_transition
-                if urlsplit(self.path).path.rstrip("/") == "/transitions"
-                else collector.add
-            )
+            # is unaffected.
+            add = collector.add_transition if route == _TRANSITIONS_PATH else collector.add
             # Accept a single record or a batch (list).
             for item in data if isinstance(data, list) else [data]:
                 if isinstance(item, dict):
@@ -312,9 +490,40 @@ def _make_handler(collector: NetworkCollector) -> type[BaseHTTPRequestHandler]:
             self.send_response(204)
             self.end_headers()
 
-        def do_GET(self) -> None:
-            self.send_response(200)
+        def _acknowledge(self, data: Any) -> None:
+            """Store the app's report on one command, answering 400 when bajutsu cannot read it."""
+            if not isinstance(data, dict) or not collector.record_report(data):
+                self.send_response(400)
+                self.end_headers()
+                return
+            self.send_response(204)
             self.end_headers()
+
+        def do_GET(self) -> None:
+            # Authenticated exactly as do_POST is: the pending commands are as much this run's
+            # state as its exchanges, and no other local process may read or drain them (BE-0365).
+            if not self._authenticated():
+                return
+            if self._route() == _COMMANDS_PATH:
+                self._send_pending_commands()
+                return
+            # Nothing else is served over GET. Answering 404 rather than the bare 200 this handler
+            # used to give every path is what stops an app polling a mistyped or version-skewed
+            # path from reading an empty 200 as "no commands pending" — a hang with no evidence on
+            # either side.
+            self.send_response(404)
+            self.end_headers()
+
+        def _send_pending_commands(self) -> None:
+            """Hand the app every pending command, emptying the queue in the same step."""
+            body = json.dumps(
+                [command.model_dump(mode="json") for command in collector.drain_commands()]
+            ).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
 
         def log_message(self, *_args: Any) -> None:  # silence per-request stderr logging
             pass

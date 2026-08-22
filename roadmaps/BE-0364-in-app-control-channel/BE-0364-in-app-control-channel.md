@@ -7,12 +7,24 @@
 |---|---|
 | Proposal | [BE-0364](BE-0364-in-app-control-channel.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Rejected** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0364") |
 | Topic | Driver & backend architecture |
+| Superseded by | [BE-0365](../BE-0365-in-app-control-channel/BE-0365-in-app-control-channel.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
+
+> **Rejected — superseded by [BE-0365](../BE-0365-in-app-control-channel/BE-0365-in-app-control-channel.md).**
+> BE-0365 proposes the same channel in the same place, with the same boundaries: a command queue
+> behind the collector's idle `GET`, the app polling it, and a condition wait on the completion
+> report. The two items were written in parallel and reached `main` as separate proposals, so this
+> one is rejected rather than deferred — nothing here waits on a blocker, and BE-0365 leaves nothing
+> for it to propose. Two points this item argued more precisely are folded into BE-0365's
+> work breakdown: the completion endpoint matched ahead of `do_POST`'s catch-all, so a completion
+> report never enters the exchanges a `request` assertion reads, and the compile-time build setting
+> that keeps a launch environment variable from being the only guard on remote control of the app.
+> Kept for the historical record.
 
 bajutsu configures the app under test once, at launch. `BajutsuKit` reads its launch environment in
 `startIfEnabled()`, and after that bajutsu has no way to send the app anything: the only connection
