@@ -563,15 +563,23 @@ class DriverConformanceContract:
         # pre-gesture frame, or a tap injected a round trip after the coordinate was computed). Two
         # independently-mirrored targets make a wrong-neighbor tap observable in either direction.
         driver = harness.with_screen([])
-        a_before = _mirror_value(driver, TAP_MIRROR_A_ID)
-        b_before = _mirror_value(driver, TAP_MIRROR_B_ID)
+        a_before = int(_mirror_value(driver, TAP_MIRROR_A_ID))
+        b_before = int(_mirror_value(driver, TAP_MIRROR_B_ID))
         driver.tap({"id": TAP_MIRROR_A_ID})
-        a_after = _mirror_value(driver, TAP_MIRROR_A_ID)
-        assert a_after != a_before
-        assert _mirror_value(driver, TAP_MIRROR_B_ID) == b_before
+        # A bounded condition wait, not one read (no fixed sleep): the accessibility update follows
+        # the gesture, and a bare `query()` waits out no barrier — on the dump path it carries no
+        # device mark either — so a lone read here can still describe the pre-tap tree and fail a
+        # correct tap, exactly the publish lag this item exists to close. Waiting on the exact
+        # successor count also rejects a gesture that double-fired.
+        assert base.wait_until(
+            driver, {"id": TAP_MIRROR_A_ID, "value": str(a_before + 1)}, timeout=5.0, poll=0.1
+        )
+        assert int(_mirror_value(driver, TAP_MIRROR_B_ID)) == b_before
         driver.tap({"id": TAP_MIRROR_B_ID})
-        assert _mirror_value(driver, TAP_MIRROR_B_ID) != b_before
-        assert _mirror_value(driver, TAP_MIRROR_A_ID) == a_after
+        assert base.wait_until(
+            driver, {"id": TAP_MIRROR_B_ID, "value": str(b_before + 1)}, timeout=5.0, poll=0.1
+        )
+        assert int(_mirror_value(driver, TAP_MIRROR_A_ID)) == a_before + 1
 
     def test_is_tappable_reflects_real_on_screen_occlusion(
         self, harness: ConformanceHarness
