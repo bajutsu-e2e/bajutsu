@@ -2,14 +2,14 @@
 # (adb) and web-e2e.yml (Playwright) in scope, but unlike them this lane carries the platform's
 # REQUIRED status check: the `E2E` job below always reports (even when the macOS jobs are
 # path-gated skipped), so it — not this file's name — is what `main`'s branch-protection ruleset
-# pins. Ten macOS jobs, all on the XCUITest backend (the resident BajutsuRunner), against the
+# pins. Eleven macOS jobs, all on the XCUITest backend (the resident BajutsuRunner), against the
 # showcase suite (BE-0079, the single iOS fixture). One `build` job compiles the apps + runner once
 # and uploads them as an artifact; the consumer jobs (run / actuation / golden / bundled-runner /
 # conformance / pool) download + install rather than build, so the cold Swift build is paid once, not
 # once per job. Each macOS job starts with the same bootstrap (select Xcode, install uv, install
 # xcodegen, boot a Simulator — the `build` job skips the boot — resolve the Xcode version for a
-# cache key) via the `setup-ios-toolchain` composite action. `codegen` and `visual` are not
-# consumers (they compile a different product) and stay self-contained:
+# cache key) via the `setup-ios-toolchain` composite action. `codegen`, `visual`, and `network` are
+# not consumers (each drives a `make` target that builds what it needs) and stay self-contained:
 #   - run (xcuitest): the homogeneous gating lane — every `bajutsu run`-over-XCUITest scenario that
 #     used to be its own job (smoke, gestures, the runner channel's /type + /swipe + /back, and the
 #     deterministic permissions surface) folded into one `bajutsu run`. They differed only in which
@@ -69,6 +69,13 @@
 #     renderer varies by Xcode / device / OS), so a drift surfaces here as a signal, never
 #     blocking a merge, the same rationale android-e2e.yml's `visual` and web-e2e.yml's jobs
 #     follow for their own non-required lanes.
+#   - network (xcuitest): the iOS twin of web-e2e.yml's `network (playwright)` and
+#     android-e2e.yml's `network (adb)` (BE-0282) — the real network path over the third backend's
+#     transport: BajutsuKit's in-app `URLProtocol` answers a mocked request from its own stub,
+#     reports each exchange to the collector on loopback, and the persisted `network.json` is then
+#     asserted to have masked a *really captured* secret — the gap BE-0282 exists for. Deliberately
+#     NOT part of the `E2E` gate's `needs:` (see that job below) — new coverage lands as a signal
+#     first and is promoted once stable, the same path the web twin took before joining `E2E (web)`.
 #   - `run` is itself the second consolidation of this lane: smoke / gestures / permission /
 #     runner-actuation were once separate jobs (and earlier still one `xcuitest-gestures` job), each
 #     re-paying the cold XCTest-host startup — the lane's dominant cost. Folding them back into one
@@ -1232,6 +1239,117 @@ jobs:
           path: runs/
           if-no-files-found: ignore
 
+  # The real network path over the iOS transport — the last unit of BE-0282, and the twin of
+  # web-e2e.yml's `network (playwright)` and android-e2e.yml's `network (adb)`. Everything but this
+  # runtime is already unit-tested; see that item's Motivation for the argument. What only a real run
+  # can show is that a secret in a *captured* header and body is masked in the persisted
+  # `network.json` — which the run grammar cannot assert — so `make e2e-network` runs the two network
+  # scenarios into a throwaway runs dir and then checks that file
+  # (demos/showcase/network/assert_network_evidence.py).
+  #
+  # Self-contained like `visual` rather than a `build`-artifact consumer: it drives a `make` target,
+  # and that target's own `swiftui-build` / `runner-build` prerequisites are what make it runnable on
+  # a developer's Mac too. The two DerivedData caches below keep the build incremental across runs.
+  # Deliberately NOT in the `E2E` gate's `needs:` below: new on-device coverage lands as a signal
+  # first and is promoted once stable, the path the web twin took before joining `E2E (web)`.
+  network:
+    name: network (xcuitest)
+    needs: changes
+    # BE-0338: runs on a shared-code change, or when one of its two scenarios changed. Both are
+    # declared in demos/showcase/Makefile's `e2e-network` target, which scripts/e2e_changes.py folds
+    # into `affected`.
+    if: >-
+      needs.changes.outputs.relevant == 'true' &&
+      (needs.changes.outputs.shared == 'true' ||
+      contains(fromJSON(needs.changes.outputs.affected), 'network'))
+    runs-on: macos-latest
+    # Same 60-minute cap as the other Simulator jobs: an incremental Xcode build, a fresh boot, and
+    # two short scenarios are well under it, so the cap backs a genuine hang on the metered runner.
+    timeout-minutes: 60
+    # Raise the wait floor so a cold-boot Simulator has budget to render the Stable tab before
+    # network_live.yaml's own 10s first wait — the same knob `run`, `visual`, and the Android lane
+    # use. A condition wait returns the instant its target appears, so this is a ceiling, not a
+    # fixed sleep (prime directive 2).
+    env:
+      BAJUTSU_MIN_WAIT_TIMEOUT: "20"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up the iOS toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-ios-toolchain
+
+      # Same app / runner DerivedData caches (and keys) the `visual` job uses, so this job's build is
+      # incremental across runs. A miss just rebuilds cold, so the cache only ever speeds it up.
+      - name: Cache DerivedData (app)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: demos/showcase/ios/swiftui/build/dd
+          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
+          restore-keys: |
+            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
+
+      - name: Cache DerivedData (runner)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: BajutsuKit/Runner/build/dd
+          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml', 'BajutsuKit/Package.resolved', 'BajutsuKit/Sources/BajutsuRunner/openapi.yaml', 'BajutsuKit/Sources/BajutsuRunner/openapi-generator-config.yaml') }}
+          restore-keys: |
+            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
+
+      # The run path is the base install (the XCUITest backend needs no pip extra), and the redaction
+      # check imports `bajutsu.evidence.redaction` for the placeholder it compares against, so the
+      # same environment serves both. Synced concurrently with the build, which does not depend on it.
+      - name: Build the app + runner (fetch Python deps concurrently)
+        run: |
+          uv sync --no-dev &
+          sync_pid=$!
+          trap 'kill "$sync_pid" 2>/dev/null || true' EXIT
+          make -C demos/showcase swiftui-build
+          make -C demos/showcase runner-build
+          wait "$sync_pid"
+          trap - EXIT
+
+      - name: Wait for the Simulator
+        run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
+
+      # As in `visual` and the two pytest lanes: this job drives `make`, not the bajutsu-e2e action,
+      # so it wires the BE-0361 diagnostics itself.
+      - name: Start iOS diagnostics
+        # An observer may never decide this job — see the `visual` job's own note.
+        continue-on-error: true
+        uses: ./.github/actions/collect-ios-diagnostics
+        with:
+          phase: start
+          udid: ${{ steps.toolchain.outputs.udid }}
+
+      - name: Run the network capture, mock, and redaction lane
+        id: network
+        run: make -C demos/showcase e2e-network SIM=${{ steps.toolchain.outputs.udid }}
+
+      - name: Collect iOS diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/collect-ios-diagnostics
+        with:
+          phase: collect
+          udid: ${{ steps.toolchain.outputs.udid }}
+          failed: ${{ steps.network.outcome != 'success' }}
+
+      # Both paths: the run itself writes to the target's own throwaway dir (`--runs-dir`), while the
+      # runner logs and the diagnostics still land under `runs/` (the workflow-level
+      # BAJUTSU_XCUITEST_RUNNER_LOG). Uploading only one of the two would drop half of what a failure
+      # here needs — the captured evidence, or the runner's own account of why it never arrived.
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ios-e2e-network-run
+          path: |
+            tmp/showcase-network-runs/
+            runs/
+          if-no-files-found: ignore
+
   # The concurrent-device lane (BE-0298): the one job here that boots **two** Simulators and runs
   # `bajutsu run --workers 2` across them. Every other job on this lane boots exactly one device, so
   # none of them can observe what the device pool actually claims for a parallel run — that each
@@ -1392,11 +1510,11 @@ jobs:
 
   # Single required status check for E2E. Always runs so it reports even when the macOS
   # jobs are skipped (docs-only PRs) — a skipped dependency is a pass; only a real
-  # failure or cancellation fails the gate. `actuation`, `golden`, `visual`, `fault-injection`, and
-  # `pool` are deliberately excluded from `needs:` (see each job's comment) so newly-wired actuation
-  # (BE-0281), a host-specific pixel drift, the deliberately-hostile fault-injection lane (BE-0305),
-  # or the two-device pool lane (BE-0298) never blocks a merge. Make `E2E` the required check, not
-  # the path-gated macOS jobs.
+  # failure or cancellation fails the gate. `actuation`, `golden`, `visual`, `fault-injection`,
+  # `network`, and `pool` are deliberately excluded from `needs:` (see each job's comment) so
+  # newly-wired actuation (BE-0281), a host-specific pixel drift, the deliberately-hostile
+  # fault-injection lane (BE-0305), the newly-wired network lane (BE-0282), or the two-device pool
+  # lane (BE-0298) never blocks a merge. Make `E2E` the required check, not the path-gated macOS jobs.
   e2e:
     name: E2E (iOS)
     needs: [changes, build, run, codegen, bundled-runner, conformance]
