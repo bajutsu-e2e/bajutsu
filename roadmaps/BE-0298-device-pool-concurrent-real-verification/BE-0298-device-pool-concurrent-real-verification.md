@@ -175,10 +175,11 @@ Log:
   `capture:` value removes them, and `showcase.pool.config.yaml`'s comment claiming otherwise was
   corrected in the same change. The pixels scale with the *number of leaf steps*, which lives in the
   scenario set: `smoke` + `push` + `interrupts` (three documents, seven leaf steps) replaces
-  `smoke` + `notices` (four documents, sixteen). Three documents rather than two, though two would
-  cut further, because with two each worker leases once and the cross-device overlap the verdict
-  requires would hinge on two cold XCTest-host spawns landing within seconds of each other — a host
-  skew deciding an isolation verdict. The standing reading is unchanged: this is a question about
+  `smoke` + `notices` (four documents, sixteen). The set holds three documents rather than two,
+  though two would cut further: with two, each worker leases once and the cross-device overlap the
+  verdict requires would hinge on two cold XCTest-host spawns landing within seconds of each
+  other — a host skew deciding an isolation verdict. The standing reading is unchanged: this is a
+  question about
   the runner, and the next run measures whether the reduced step count buys enough headroom on a
   host that has none.
 
