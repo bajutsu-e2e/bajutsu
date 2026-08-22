@@ -7,13 +7,17 @@
 |---|---|
 | 提案 | [BE-0244](BE-0244-deploy-hosted-web-ui-service-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **却下** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0244") |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
+
+> **却下。サービスはすでに稼働しています。** 共有のホスト版 Web UI サービスは、下記の段階的な計画とは
+> 別の経路ですでに稼働しています。そのため、本項目が追跡していたプロビジョニング作業はもう必要ありません。
+> 記録として残します。
 
 [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) は、公開ホスト版
 Web UI のスタックを選定し、それを実現する**ソフトウェアをすべて出荷しました**。`serve` の 5 つの

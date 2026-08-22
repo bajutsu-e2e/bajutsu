@@ -271,6 +271,35 @@ def pick_alert_label(candidates: Sequence[str], buttons: Sequence[str]) -> str |
     return None
 
 
+@dataclass(frozen=True)
+class ResolvedAlertRule:
+    """One `systemAlertHandling.rules` entry with its prompt's labels resolved for a locale.
+
+    `identifying_labels` is the prompt's full label pair (grant and deny), resolved from
+    `bajutsu.scenario.system_alerts` for the run's locale — matching requires both, since a single
+    shared label (e.g. "Allow") cannot by itself tell two covered prompts apart. `tap_label` is the
+    label the rule's `choice` names.
+    """
+
+    identifying_labels: frozenset[str]
+    tap_label: str
+
+
+def match_alert_rule(rules: Sequence[ResolvedAlertRule], buttons: Sequence[str]) -> str | None:
+    """The tap label of the first rule whose prompt is uniquely identified on `buttons`.
+
+    A rule matches when each of its prompt's two labels is present on the alert exactly once — the
+    full pair, not only the label it taps, since a single shared label cannot by itself distinguish
+    one covered prompt from another. None means no rule's prompt is identified, so the caller falls
+    through to the ordered `instruction` candidates.
+    """
+    present = list(buttons)
+    for rule in rules:
+        if all(present.count(label) == 1 for label in rule.identifying_labels):
+            return rule.tap_label
+    return None
+
+
 @dataclass
 class AlertGuardConfig:
     """The reactive system-alert guard's per-scenario configuration and dismiss entry point (BE-0315).
@@ -278,33 +307,39 @@ class AlertGuardConfig:
     Callable as the `BlockedHandler` it replaces — `guard(driver)` clears a blocking system alert,
     preferring the deterministic native path (BE-0316's SpringBoard query + `handle_system_alert`)
     when the backend advertises `HANDLE_SYSTEM_ALERT`, and falling back to the injected `vision` guard
-    otherwise. `labels` are the ordered candidate button labels the native path resolves against
-    (empty → the built-in dismissive default); `poll_interval` is the native presence-query cadence
-    the mid-wait gate polls on, decoupled from the wait's own condition poll.
+    otherwise. `rules` are checked first — each answers one named prompt regardless of which label it
+    shares with another; `labels` are the ordered candidate button labels the native path
+    falls back to for whatever no rule identifies (empty → the built-in dismissive default);
+    `poll_interval` is the native presence-query cadence the mid-wait gate polls on, decoupled from
+    the wait's own condition poll.
     """
 
     vision: BlockedHandler
     labels: list[str] = field(default_factory=list)
+    rules: list[ResolvedAlertRule] = field(default_factory=list)
     poll_interval: float = DEFAULT_ALERT_POLL_INTERVAL
 
     def probe_native(self, driver: base.Driver) -> tuple[NativeAlertState, AlertEvent | None]:
         """Query and, where possible, clear a system alert natively; report what happened.
 
         Reads BE-0316's SpringBoard query (`system_alert_labels`) to learn the alert's buttons, picks
-        a policy-named one, and taps it through BE-0316's `handle_system_alert`. The returned
-        `AlertEvent` is set only for `"dismissed"`. `"absent"` is a deterministic no-*SpringBoard*-alert
-        fact — but the native query only sees `springboard.alerts`, so a non-enumerable surface (an
-        action sheet, a WKWebView dialog) reads as `"absent"` too, and the caller still routes it to the
-        vision guard (`__call__` one-shot; the mid-wait gate via its debounced collapsed-tree proxy).
-        `"unhandled"` means an alert is up but no candidate label resolves, so the caller falls back to
-        the vision guard.
+        a policy-named one — a `rules` match first, then the ordered `labels` candidates —
+        and taps it through BE-0316's `handle_system_alert`. The returned `AlertEvent` is set only for
+        `"dismissed"`. `"absent"` is a deterministic no-*SpringBoard*-alert fact — but the native query
+        only sees `springboard.alerts`, so a non-enumerable surface (an action sheet, a WKWebView
+        dialog) reads as `"absent"` too, and the caller still routes it to the vision guard (`__call__`
+        one-shot; the mid-wait gate via its debounced collapsed-tree proxy). `"unhandled"` means an
+        alert is up but no rule or candidate label resolves, so the caller falls back to the vision
+        guard.
         """
         if base.Capability.HANDLE_SYSTEM_ALERT not in driver.capabilities():
             return "incapable", None
         buttons = driver.system_alert_labels()
         if not buttons:
             return "absent", None
-        label = pick_alert_label(self.labels or DEFAULT_DISMISSIVE_LABELS, buttons)
+        label = match_alert_rule(self.rules, buttons) or pick_alert_label(
+            self.labels or DEFAULT_DISMISSIVE_LABELS, buttons
+        )
         if label is None:
             return "unhandled", None
         try:

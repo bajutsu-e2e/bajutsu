@@ -7,12 +7,23 @@
 |---|---|
 | 提案 | [BE-0364](BE-0364-in-app-control-channel-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **却下** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0364") |
 | トピック | ドライバとバックエンドのアーキテクチャ |
+| 無効化 | [BE-0365](../BE-0365-in-app-control-channel/BE-0365-in-app-control-channel-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
+
+> **却下（[BE-0365](../BE-0365-in-app-control-channel/BE-0365-in-app-control-channel-ja.md) が置き換えます）。**
+> BE-0365 は同じ経路を同じ場所に、同じ境界で提案しています。コレクタの遊んでいる `GET` の裏にコマンド
+> キューを置き、アプリがそれをポーリングし、完了報告を条件待ちする、という設計です。2 つの項目は並行して
+> 書かれ、別々の提案として `main` に入りました。保留ではなく却下とするのは、この項目が何かの解消を
+> 待っているわけではなく、BE-0365 のもとでは提案するものが残らないからです。この項目のほうが精密に
+> 論じていた 2 点は、BE-0365 の作業分解に取り込みました。1 つは完了報告のエンドポイントを `do_POST` の
+> catch-all より前で照合し、完了報告が `request` アサーションの読む exchange に入らないようにすること、
+> もう 1 つは、アプリの遠隔操作を守る防壁が起動環境変数だけにならないよう、コンパイル時のビルド設定で
+> 締め出すことです。記録として残します。
 
 bajutsu がテスト対象アプリを設定するのは、起動時の 1 回だけです。`BajutsuKit` は `startIfEnabled()` で
 起動環境を読みますが、それ以降 bajutsu からアプリへ何かを送る手段はありません。アプリ側の接続は送信

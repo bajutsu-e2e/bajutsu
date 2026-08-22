@@ -17,6 +17,7 @@ from bajutsu.scenario.models.assertions import Assertion
 from bajutsu.scenario.models.evidence import CaptureRule, Network, Redact
 from bajutsu.scenario.models.mocks import Mock
 from bajutsu.scenario.models.steps import Interrupt, Step
+from bajutsu.scenario.system_alerts import SystemAlertChoice, SystemAlertPrompt
 
 # The grant/revoke actions a `permissions` entry may take (BE-0276); the service side of the
 # vocabulary (`PERMISSION_SERVICES`) lives in `drivers.base` since every backend's capability
@@ -62,6 +63,21 @@ class Preconditions(_Model):
         return self.locale or target_locale
 
 
+class SystemAlertRule(_Model):
+    """One entry of `systemAlertHandling.rules`: the choice to make on one named prompt.
+
+    `prompt` and `choice` reuse the vocabulary the proactive `handleSystemAlert` step already takes
+    (its `prompt`/`choice` form) instead of a literal button label, so the same rule grants or denies
+    the prompt under any locale `bajutsu.scenario.system_alerts` covers. The reactive guard identifies
+    which alert is on screen from this prompt's own two labels — not from an ordering trick over
+    `instruction`, which cannot record which answer belongs to which prompt (see `SystemAlertHandling`
+    below).
+    """
+
+    prompt: SystemAlertPrompt
+    choice: SystemAlertChoice
+
+
 class SystemAlertHandling(_Model):
     """Per-scenario control of the reactive system-alert guard.
 
@@ -75,15 +91,27 @@ class SystemAlertHandling(_Model):
     rather than only dismissing it. This is the *reactive* counterpart to the *proactive*
     `handleSystemAlert` step (BE-0316): the step taps a named button at an author-chosen point, this
     guard clears prompts automatically wherever they surface.
-    Two on-disk forms (the bare boolean is shorthand for `{ enabled: <bool> }`):
+    Three on-disk forms (the bare boolean is shorthand for `{ enabled: <bool> }`):
         systemAlertHandling: false                       — disable the guard for this scenario
+        systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] } — deterministic:
+                                                             answer a named prompt by its own choice,
+                                                             regardless of which label it shares with
+                                                             another covered prompt
         systemAlertHandling: { instruction: ["Allow"] }  — deterministic: tap the first of these
                                                              labels present on the alert (native path)
         systemAlertHandling: { instruction: "tap Allow" } — legacy free text the vision locator
                                                              interprets
+    `rules` is consulted before `instruction`; an alert whose prompt no rule names falls through to
+    `instruction`, or the built-in dismissive default when the scenario gives neither.
     """
 
     enabled: bool = True
+    # Ordered answers to specific covered prompts, by name rather than by button text. The
+    # guard identifies the alert on screen from a rule's own prompt (its resolved label pair), so
+    # ordering only matters for two rules whose pairs could both match the same alert — none of the
+    # prompts `system_alerts.py` covers today can. Checked before `instruction` below; an alert no
+    # rule identifies falls through to it.
+    rules: list[SystemAlertRule] = Field(default_factory=list)
     # The button to press instead of the default dismissive one. Two forms (BE-0315):
     #   - a list of candidate labels ("Allow", then "OK") the native path resolves deterministically,
     #     tapping the first that is present on the alert (via BE-0316's `handle_system_alert`);
@@ -122,6 +150,20 @@ class SystemAlertHandling(_Model):
     def _positive_interval(cls, v: float | None) -> float | None:
         if v is not None and v <= 0:
             raise ValueError("pollInterval must be positive")
+        return v
+
+    @field_validator("rules")
+    @classmethod
+    def _unique_prompts(cls, v: list[SystemAlertRule]) -> list[SystemAlertRule]:
+        # Silently taking the first of two rules naming the same prompt would hide an authoring
+        # mistake — the same reason an ambiguous selector fails rather than tapping its first match.
+        seen = [r.prompt for r in v]
+        dupes = sorted({p for p in seen if seen.count(p) > 1})
+        if dupes:
+            raise ValueError(
+                f"systemAlertHandling.rules names {dupes} more than once; "
+                "each prompt takes exactly one rule"
+            )
         return v
 
 
