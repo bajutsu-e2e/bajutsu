@@ -694,9 +694,9 @@ measurement, and the diagnostics both jobs upload are what tell the two apart.
   asserts the persisted `network.json` (`demos/showcase/network/assert_network_evidence.py`): the mocked
   exchange marked `mocked` with its `Authorization` header and `password` body field masked and no
   raw secret anywhere in the file, and the unstubbed exchange carrying `mocked` false, so an
-  over-broad mock matcher cannot claim traffic nothing stubbed. Whether a *really captured* credential
-  is masked in shipped evidence is observed only here — every pure redaction test feeds the algorithm
-  a hand-built exchange. Non-gating: new on-device coverage lands as
+  over-broad mock matcher cannot claim traffic nothing stubbed. On iOS, whether a *really captured*
+  credential is masked in shipped evidence is observed only here — every pure redaction test feeds
+  the algorithm a hand-built exchange. Non-gating: new on-device coverage lands as
   a signal first, the path the web twin below took before joining `E2E (web)`.
 
 ### Validated in a browser (Linux, no Mac)
