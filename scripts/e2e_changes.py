@@ -56,15 +56,15 @@ iOS the ``codegen``, ``visual``, and ``network`` jobs are scenario-keyed too (BE
 their scenarios in ``demos/showcase/Makefile`` targets rather than a workflow input, so
 ``job_scenario_map`` never sees them — ``lane_job_scenario_map`` folds those Makefile-declared
 scenarios into the map. What the ``affected`` narrowing then leaves on iOS is ``conformance`` and
-``fault-injection``, each driving the whole harness on no scenario subset and so firing whenever
-``relevant`` is true; ``build``, which stages the products every consumer job installs, on the same
-bare guard; and ``pool``, keyed on the ``pool`` output above rather than on any scenario it names.
-The decision over-selects toward the whole lane — a shared-code
-change, an unattributable scenario fragment, an unreadable workflow, and a lane with no
-scenario-keyed jobs (Android, web) all fall back to ``shared`` — so it never skips a job a change
-could have broken. It reads only the ``git`` diff, the ``scenarios:`` each job declares, and (for the
-iOS Makefile-declared jobs) the showcase Makefile targets those jobs run: no large language
-model touches the decision, and it has no bearing on any run's pass/fail verdict.
+``fault-injection``, which declare no scenario subset (each drives its own whole suite) and so fire
+whenever ``relevant`` is true; ``build``, which stages the products every consumer job installs, on
+the same bare guard; and ``pool``, keyed on the ``pool`` output above rather than on the scenarios it
+names. The decision over-selects toward the whole lane — a shared-code change, an unattributable
+scenario fragment, an unreadable workflow, and a lane with no scenario-keyed jobs (Android, web) all
+fall back to ``shared`` — so it never skips a job a change could have broken. It reads only the
+``git`` diff, the ``scenarios:`` each job declares, and (for the iOS Makefile-declared jobs) the
+showcase Makefile targets those jobs run: no large language model touches the decision, and it has no
+bearing on any run's pass/fail verdict.
 """
 
 from __future__ import annotations
