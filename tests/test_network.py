@@ -6,6 +6,7 @@ from __future__ import annotations
 import errno
 import json
 import socket
+import threading
 import urllib.error
 import urllib.request
 
@@ -14,7 +15,13 @@ import pytest
 from bajutsu.assertions import EvalContext, evaluate, evaluate_one
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import network
-from bajutsu.evidence.network import NetworkCollector, NetworkExchange, ScreenTransition
+from bajutsu.evidence.network import (
+    AppCommandReport,
+    InAppCapability,
+    NetworkCollector,
+    NetworkExchange,
+    ScreenTransition,
+)
 from bajutsu.orchestrator import run_scenario
 from bajutsu.scenario import (
     Assertion,
@@ -645,6 +652,302 @@ def test_collector_transitions_snapshot_timed_records_receive_order() -> None:
     timed = c.transitions_snapshot_timed()
     assert [t for _, t in timed] == [1.0, 2.5]
     assert all(isinstance(tr, ScreenTransition) for tr, _ in timed)
+
+
+# --- the in-app control channel (BE-0365) -------------------------------------------------------
+
+
+def _get_commands(port: int, token: str | None, path: str = "/commands") -> tuple[int, object]:
+    """Drain the collector's pending commands; returns (HTTP status, decoded body or None)."""
+    headers = {"Authorization": f"Bearer {token}"} if token is not None else {}
+    req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", headers=headers)
+    try:
+        with urllib.request.urlopen(req) as resp:
+            assert resp.headers.get("Content-Type") == "application/json"
+            return int(resp.status), json.loads(resp.read())
+    except urllib.error.HTTPError as err:
+        with err:  # HTTPError is itself the response object — close its socket/FD
+            return int(err.code), None
+
+
+def _post_ack(port: int, token: str, payload: object, path: str = "/commands/ack") -> int:
+    """POST one report to /commands/ack and return the HTTP status."""
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}",
+        data=json.dumps(payload).encode(),
+        method="POST",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return int(resp.status)
+    except urllib.error.HTTPError as err:
+        with err:
+            return int(err.code)
+
+
+def test_commands_endpoint_never_delivers_a_command_twice() -> None:
+    """The drain is the delivery: a second poll sees nothing, so the app cannot apply a command
+    twice because two polls raced."""
+    c = NetworkCollector()
+    port = c.start()
+    try:
+        command_id = c.enqueue_command(InAppCapability.TOUCH_VISUALIZATION, enabled=False)
+        status, body = _get_commands(port, c.token)
+        assert status == 200
+        assert body == [{"id": command_id, "capability": "touch_visualization", "enabled": False}]
+        assert _get_commands(port, c.token) == (200, [])
+    finally:
+        c.stop()
+
+
+def test_commands_endpoint_rejects_an_unauthenticated_drain() -> None:
+    """A GET without this run's token is rejected with 401 and leaves the queue intact — another
+    local process can neither read nor consume the commands (BE-0115's guarantee, extended)."""
+    c = NetworkCollector()
+    port = c.start()
+    try:
+        c.enqueue_command(InAppCapability.TOUCH_VISUALIZATION, enabled=False)
+        assert _get_commands(port, token=None) == (401, None)
+        assert _get_commands(port, token="wrong-token") == (401, None)
+        _, body = _get_commands(port, c.token)  # still pending for the real app
+        assert isinstance(body, list) and len(body) == 1
+    finally:
+        c.stop()
+
+
+def test_report_records_that_the_app_applied_the_command() -> None:
+    c = NetworkCollector()
+    port = c.start()
+    try:
+        command_id = c.enqueue_command(InAppCapability.TOUCH_VISUALIZATION, enabled=True)
+        assert c.report_for(command_id) is None
+        assert _post_ack(port, c.token, {"id": command_id, "applied": True}) == 204
+        report = c.report_for(command_id)
+        assert report == AppCommandReport(id=command_id, applied=True)
+    finally:
+        c.stop()
+
+
+def test_report_keeps_a_failure_distinct_from_a_success_and_from_silence() -> None:
+    """The three states the acknowledgement wait needs stay three. An app whose capability was
+    compiled out, or whose handler raised, says so with its own reason — so the wait fails naming
+    the cause rather than timing out as though the app had never answered."""
+    c = NetworkCollector()
+    port = c.start()
+    try:
+        command_id = c.enqueue_command(InAppCapability.TOUCH_VISUALIZATION, enabled=False)
+        payload = {"id": command_id, "applied": False, "reason": "touch markers not compiled in"}
+        assert _post_ack(port, c.token, payload) == 204
+        report = c.report_for(command_id)
+        assert report is not None and not report.applied
+        assert report.reason == "touch markers not compiled in"
+    finally:
+        c.stop()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param({"id": "c99", "applied": True}, id="id-this-run-never-issued"),
+        pytest.param({"id": 7, "applied": True}, id="id-not-a-string"),
+        pytest.param({"applied": True}, id="no-id"),
+        pytest.param({"id": "c1"}, id="no-outcome"),
+        pytest.param(["c1"], id="not-an-object"),
+    ],
+)
+def test_report_that_bajutsu_cannot_read_is_refused_not_stored(payload: object) -> None:
+    """A report counts only when it names a command this run issued *and* says whether the app
+    applied it. Anything else is refused rather than dropped, so it can never release a wait the
+    app did not satisfy — and, unlike the exchange reports, never passes silently either."""
+    c = NetworkCollector()
+    port = c.start()
+    try:
+        command_id = c.enqueue_command(InAppCapability.TOUCH_VISUALIZATION, enabled=False)
+        assert _post_ack(port, c.token, payload) == 400
+        assert c.report_for(command_id) is None
+    finally:
+        c.stop()
+
+
+def test_acknowledgement_never_lands_in_the_exchanges_an_assertion_reads() -> None:
+    """do_POST stores every unknown path as a network exchange, so /commands/ack has to be matched
+    ahead of that catch-all: otherwise the channel would feed the exchanges a `request` assertion
+    evaluates, and the app under test would take part in its own verdict."""
+    c = NetworkCollector()
+    port = c.start()
+    try:
+        command_id = c.enqueue_command(InAppCapability.TOUCH_VISUALIZATION, enabled=False)
+        assert _post_ack(port, c.token, {"id": command_id, "applied": True}) == 204
+        assert c.snapshot() == []
+        assert c.transitions_snapshot_timed() == []
+    finally:
+        c.stop()
+
+
+def test_clear_drops_pending_commands_and_reports() -> None:
+    """Channel state is scenario-scoped like the exchanges: a command one scenario left undrained is
+    not delivered to the next, and its report releases nothing there."""
+    c = NetworkCollector()
+    command_id = c.enqueue_command(InAppCapability.TOUCH_VISUALIZATION, enabled=False)
+    assert c.record_report({"id": command_id, "applied": True})
+    c.clear()
+    assert c.drain_commands() == []
+    assert c.report_for(command_id) is None
+    # The id is no longer one this run issued, so a straggler cannot release the next wait.
+    assert not c.record_report({"id": command_id, "applied": True})
+
+
+def test_command_ids_never_repeat_across_a_clear() -> None:
+    """The id counter deliberately survives `clear()`. Were it reset, a straggling acknowledgement
+    from the cleared scenario would match the next scenario's first command and release its wait
+    without the app having applied anything."""
+    c = NetworkCollector()
+    first = c.enqueue_command(InAppCapability.TOUCH_VISUALIZATION, enabled=False)
+    c.clear()
+    assert c.enqueue_command(InAppCapability.TOUCH_VISUALIZATION, enabled=True) != first
+
+
+def test_commands_endpoint_drains_in_order_and_drops_nothing() -> None:
+    """One poll takes the whole queue, oldest first. Order is semantic — an enqueued enable then
+    disable applied in reverse leaves the app in the opposite state — and a command silently left
+    behind would hang the wait on an id the app never sees."""
+    c = NetworkCollector()
+    port = c.start()
+    try:
+        first = c.enqueue_command(InAppCapability.TOUCH_VISUALIZATION, enabled=False)
+        second = c.enqueue_command(InAppCapability.TOUCH_VISUALIZATION, enabled=True)
+        _, body = _get_commands(port, c.token)
+        assert body == [
+            {"id": first, "capability": "touch_visualization", "enabled": False},
+            {"id": second, "capability": "touch_visualization", "enabled": True},
+        ]
+    finally:
+        c.stop()
+
+
+def test_concurrent_drains_never_hand_the_same_command_to_two_polls() -> None:
+    """Concurrent polls between them take every command exactly once, which is the contract the
+    app's poll loop depends on.
+
+    This samples the contract, and deliberately does not claim to pin the lock `drain_commands`
+    holds: measured, dropping that lock leaves this suite green even at 200 rounds x 8
+    barrier-synchronized threads with `sys.setswitchinterval(1e-6)`, because the read-then-reassign
+    the lock protects is two bytecodes the GIL practically never splits. The lock stays because
+    correctness does not rest on that accident.
+    """
+    c = NetworkCollector()
+    ids = {c.enqueue_command(InAppCapability.TOUCH_VISUALIZATION, enabled=False) for _ in range(50)}
+    taken: list[list[str]] = []
+    lock = threading.Lock()
+
+    def drain() -> None:
+        drained = [command.id for command in c.drain_commands()]
+        with lock:
+            taken.append(drained)
+
+    threads = [threading.Thread(target=drain) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    delivered = [command_id for batch in taken for command_id in batch]
+    assert sorted(delivered) == sorted(ids)  # every command once, none twice
+
+
+def test_post_under_the_channel_namespace_never_becomes_an_exchange() -> None:
+    """The drain is a GET, so a POST in the channel's namespace is a mistake — most plausibly an
+    acknowledgement sent one segment short. `NetworkExchange` defaults every field, so any JSON
+    object validates: were these to reach the catch-all they would be stored as all-empty exchanges
+    that a `request` count assertion sees, which is the app taking part in its own verdict."""
+    c = NetworkCollector()
+    port = c.start()
+    try:
+        assert _post_ack(port, c.token, {"id": "c1", "applied": True}, path="/commands") == 405
+        assert _post_ack(port, c.token, {"id": "c1", "applied": True}, path="/commands/done") == 404
+        assert c.snapshot() == []
+    finally:
+        c.stop()
+
+
+def test_channel_paths_route_past_a_query_string() -> None:
+    """Both channel endpoints compare the path alone, so an unexpected `?...` suffix still reaches
+    its endpoint instead of falling through to the exchange catch-all."""
+    c = NetworkCollector()
+    port = c.start()
+    try:
+        command_id = c.enqueue_command(InAppCapability.TOUCH_VISUALIZATION, enabled=False)
+        status, body = _get_commands(port, c.token, path="/commands?retry=1")
+        assert status == 200 and isinstance(body, list) and len(body) == 1
+        ack = {"id": command_id, "applied": True}
+        assert _post_ack(port, c.token, ack, path="/commands/ack?retry=1") == 204
+        assert c.report_for(command_id) is not None and c.snapshot() == []
+    finally:
+        c.stop()
+
+
+def _raw_request(
+    port: int, token: str, method: str, target: str, payload: object = None
+) -> tuple[int, bytes]:
+    """Send a literal request line and return (status, body).
+
+    Raw rather than through a client on purpose: `urllib` and `http.client` both collapse
+    `//commands` to `/commands` before it reaches the wire, so a doubled leading slash is only
+    reachable from a socket — which is why the hole it opened was invisible to every other test here.
+    """
+    body = b"" if payload is None else json.dumps(payload).encode()
+    request = (
+        f"{method} {target} HTTP/1.1\r\n"
+        f"Host: 127.0.0.1:{port}\r\n"
+        f"Authorization: Bearer {token}\r\n"
+        f"Content-Length: {len(body)}\r\n\r\n"
+    ).encode() + body
+    with socket.create_connection(("127.0.0.1", port), timeout=5) as sock:
+        sock.sendall(request)
+        chunks = []
+        while chunk := sock.recv(4096):
+            chunks.append(chunk)
+    head, _, response_body = b"".join(chunks).partition(b"\r\n\r\n")
+    return int(head.split()[1]), response_body
+
+
+def test_a_doubled_leading_slash_still_reaches_its_endpoint() -> None:
+    """A request line beginning `//` is the ordinary shape a client produces by joining a base URL
+    that already ends in one, and `urlsplit` reads that prefix as an *authority* rather than a path:
+    `urlsplit("//commands/ack").path` is `/ack`, which would match no endpoint and leave the report
+    to the exchange catch-all. `_route` is safe anyway, because `BaseHTTPRequestHandler` collapses
+    the prefix before the handler ever sees it (CPython gh-87389) — measured, not assumed. This test
+    pins that stdlib guarantee, since our own routing is what would have to change without it."""
+    c = NetworkCollector()
+    port = c.start()
+    try:
+        command_id = c.enqueue_command(InAppCapability.TOUCH_VISUALIZATION, enabled=False)
+        applied = {"id": command_id, "applied": True}
+        status, body = _raw_request(port, c.token, "GET", "//commands")
+        assert status == 200 and len(json.loads(body)) == 1
+        assert _raw_request(port, c.token, "POST", "//commands", applied)[0] == 405
+        assert _raw_request(port, c.token, "POST", "//commands/ack", applied)[0] == 204
+        assert c.report_for(command_id) is not None
+        transition = {"kind": "screenChanged"}
+        assert _raw_request(port, c.token, "POST", "//transitions", transition)[0] == 204
+        assert len(c.transitions_snapshot_timed()) == 1
+        assert c.snapshot() == []  # nothing above became an exchange
+    finally:
+        c.stop()
+
+
+def test_get_on_any_other_path_is_a_404_behind_the_token() -> None:
+    """Nothing but the drain is served over GET. A mistyped or version-skewed poll path gets a 404
+    rather than the bare 200 this handler used to give everything, which an app would read as "no
+    commands pending" and then hang with no evidence on either side."""
+    c = NetworkCollector()
+    port = c.start()
+    try:
+        assert _get_commands(port, c.token, path="/") == (404, None)
+        assert _get_commands(port, c.token, path="/commands/pending") == (404, None)
+        assert _get_commands(port, token=None, path="/") == (401, None)  # auth comes first
+    finally:
+        c.stop()
 
 
 def test_orchestrator_request_assertion_step() -> None:
