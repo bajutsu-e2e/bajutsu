@@ -1180,14 +1180,6 @@ class AdbDriver(CoordinateTreeDriver):
             return False
         for _ in range(self._STALE_MAX_ATTEMPTS):
             tree = self._settle()
-            if self._act_unavailable:
-                # `_settle` reads through `_read_source`, which can itself discover a dead resident
-                # channel mid-loop and latch this — the entry guard above only ran once, before that
-                # read. Re-checking here stops the request from going out to a connection the driver
-                # just tore down (BE-0339 Unit 4), which would otherwise fault, log a "the channel
-                # stays in use" warning that contradicts the latch just set, and pay a doomed round
-                # trip before falling back anyway.
-                return False
             try:
                 el, tree = self._resolve(sel, timeout=self._RESOLVE_TIMEOUT_S, initial_tree=tree)
             except base.ElementNotFound:
@@ -1209,6 +1201,15 @@ class AdbDriver(CoordinateTreeDriver):
                 )
                 # `el` outlived the read its peers were counted from. Rather than send an ordinal
                 # measured against the wrong screen, leave this gesture to the coordinate path.
+                return False
+            if self._act_unavailable:
+                # Every read between the entry guard and here — `_settle`, a not-found retry inside
+                # `_resolve`, `_scroll_into_view` — goes through `_read_source`, which can itself
+                # discover a dead resident channel mid-loop and latch this (BE-0339 Unit 4). One check
+                # right before the send, rather than one after each read, covers every such window:
+                # nothing between the entry guard and here needs the channel, only the send does. Left
+                # unchecked, the request would go out to a connection the driver just tore down, fault,
+                # and log a "the channel stays in use" warning that contradicts the latch just set.
                 return False
             request = ActRequest(
                 kind=kind,
@@ -1259,10 +1260,14 @@ class AdbDriver(CoordinateTreeDriver):
                 self._arm_catchup(pre_key, mark)
                 return True
             except AdbResidentError as exc:
-                # A blip on a channel that does have the endpoint. Degrade this one gesture and keep
-                # the channel: the read path makes the same choice, retrying per read rather than
-                # disabling itself, and latching here would hand every later gesture back to the
-                # coordinate path precisely when the device is least settled.
+                # A blip on the *act* call specifically — distinct from `_read_source`'s own
+                # `AdbResidentError`, which does latch the read channel off for the rest of the lease
+                # (BE-0339 Unit 4), because there the failing call *is* the shared connection reads
+                # depend on too. This one is scoped to `/act`: a socket write or response glitch on
+                # this single request says nothing about whether the next read, or the next act call,
+                # will succeed. Degrade this one gesture and keep the channel; latching here would hand
+                # every later gesture back to the coordinate path precisely when the device is least
+                # settled, on evidence that does not support it.
                 self._actuations.settle(False)
                 logger.warning(
                     "resident actuation faulted (%s); this gesture falls back to coordinate "
