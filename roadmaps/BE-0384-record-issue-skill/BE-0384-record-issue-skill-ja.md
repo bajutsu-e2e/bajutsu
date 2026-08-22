@@ -1,14 +1,14 @@
-[English](BE-XXXX-record-issue-skill.md) · **日本語**
+[English](BE-0384-record-issue-skill.md) · **日本語**
 
-# BE-XXXX — 軽微な不具合や改善をGitHub Issueとして起票するrecord-issueスキルを用意する
+# BE-0384 — 軽微な不具合や改善をGitHub Issueとして起票するrecord-issueスキルを用意する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-record-issue-skill-ja.md) |
+| 提案 | [BE-0384](BE-0384-record-issue-skill-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0384") |
 | トピック | コントリビューターワークフロー |
 <!-- /BE-METADATA -->
 

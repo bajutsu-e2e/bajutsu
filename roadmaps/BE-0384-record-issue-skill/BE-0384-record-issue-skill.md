@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-record-issue-skill-ja.md)
+**English** · [日本語](BE-0384-record-issue-skill-ja.md)
 
-# BE-XXXX — Ship a record-issue skill that files minor bugs and improvements as GitHub Issues
+# BE-0384 — Ship a record-issue skill that files minor bugs and improvements as GitHub Issues
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-record-issue-skill.md) |
+| Proposal | [BE-0384](BE-0384-record-issue-skill.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0384") |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
