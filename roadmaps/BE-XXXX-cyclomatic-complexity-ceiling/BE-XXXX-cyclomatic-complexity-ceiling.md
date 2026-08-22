@@ -65,7 +65,7 @@ threshold set explicitly rather than left at its default:
    given a targeted `# noqa: C901` naming the reason (the `_make_handler` / `make_app` factory
    question above is exactly the kind of case this triage resolves) where it does not.
 2. **Enable `PLR0911` / `PLR0912` / `PLR0915` at their own default thresholds** (6 returns, 12
-   branches, 50 statements) and triage their combined 82 findings the same way — a fix where the
+   branches, 50 statements) and triage their combined 87 findings the same way — a fix where the
    count reflects a function that should split, a targeted `# noqa` where it should not.
 3. **Ratchet `max-complexity` down once step 1's list is clear.** Lowering it to 20 brings 3 more
    functions into scope, to 15 brings 5 more, and to 12 brings 10 more beyond that — each drop lands

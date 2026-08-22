@@ -56,12 +56,14 @@ mid-migration:
    valid — annotating every test's return type as `-> None` adds no safety, since pytest never
    inspects it. `warn_unused_ignores =
    false` stays in place only until the existing `# type: ignore` comments are swept; each one is
-   removed or replaced with a justified `noqa`-style comment in the same pass that finds it, not left
-   for later.
+   removed or replaced with a narrowed `# type: ignore[<code>]` naming the reason, in the same pass
+   that finds it, not left for later.
 2. **Clear the `attr-defined` findings that come from patching a module's own import**, module by
-   module. Start with the smallest directories — `tests/scenario/` at 7 errors and
-   `tests/report/` at 17 — before the largest: `tests/serve/` at 228, and the flat files
-   directly under `tests/` at 902, led by `test_crawl.py` at 200 and `test_record.py` at 75.
+   module. Each count below is that directory's *total* mypy error count, not its `attr-defined`
+   subset (269 of the baseline's 1,361), because a directory is cleared outright before the next one
+   starts. Start with the smallest directories — `tests/scenario/` at 7 errors and `tests/report/`
+   at 17 — before the largest: `tests/serve/` at 228, and the flat files directly under `tests/` at
+   902, led by `test_crawl.py` at 200 and `test_record.py` at 75.
 
    Each fix patches the call the test actually cares about instead of reaching into the target
    module's private import — `patch.object(module, "sleep")` on a name the module already exposes,

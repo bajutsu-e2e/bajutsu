@@ -45,22 +45,32 @@ loss.
 
 Two independent checks, both driven by the `coverage.json` the `test` target already writes:
 
-1. **A floor-drift advisory.** A new script compares `coverage.json`'s `totals.percent_covered`
-   against the `Makefile`'s `--cov-fail-under` value after every `test` run and prints a reminder —
-   never fails the build — once the gap passes 2 points, naming the current measured percentage and
-   the floor. This mirrors `make lint-pr`'s own advisory pattern (checked, printed, but not gating,
-   since the decision to spend a PR raising the floor is a human one, not a mechanical one).
+1. **A floor-drift advisory, run from `make lint-pr`.** The floor moves into
+   `[tool.coverage.report]`'s `fail_under` key in `pyproject.toml` first — coverage.py honours that
+   key natively, so the `Makefile`'s `test` target drops its `--cov-fail-under=89` flag, leaving the
+   gate and the advisory one declarative source instead of a value scraped from a shell recipe line
+   that a later edit (a new flag, a wrap, a reorder) could silently change. A new script then compares
+   `coverage.json`'s `totals.percent_covered` against that `fail_under` value after every `test` run
+   and prints a reminder — never fails the build — once the gap passes 2 points, naming the current
+   measured percentage and the floor. It runs from `make lint-pr`, the target this repository already
+   reserves for advisory checks — the `Makefile`'s own comment on `lint-pr` reads "ADVISORY and
+   deliberately NOT in `check`" — rather than from `make check`, whose every other prerequisite fails
+   the build on a nonzero exit; a non-blocking step placed there would have to swallow its own exit
+   status, hiding the advisory's real failures (a missing `coverage.json`, a crash after a `Makefile`
+   edit, a bad parse) while `make check` still reports green.
 2. **A per-file floor that only ever rises.** A checked-in snapshot (e.g. `coverage-floors.json`)
    records, per source file with more than a handful of statements, the branch-coverage percentage
-   measured the last time this item's check ran, rounded down a few points for slack. A new
-   `make check` step is check-only — mirroring the `format` / `format-check` split, it fails when a
-   file's current measured coverage drops below its recorded floor and never writes to the snapshot.
-   A separate `make coverage-floors` target recomputes and rewrites the snapshot to each file's
-   current, higher coverage; a human runs it deliberately and commits the result once coverage has
-   risen, the same way `make format` is a deliberate, separate step from the check-only gate.
-   `doctor.py` at 65% keeps its 65%-based floor rather than being forced up to today's global 89%;
-   the point is that it can only go up from wherever it starts, never silently back down — and never
-   automatically, mid-`make check`.
+   measured the last time this item's check ran, seeded with no margin subtracted — a slack margin
+   would hand each file the same room the global floor's 4-point gap hands the whole repository
+   today, the exact regression window this item exists to close; `make coverage-floors` (below) is
+   already the deliberate escape hatch for a drop a human decides to accept. A new `make check` step
+   is check-only — mirroring the `format` / `format-check` split, it fails when a file's current
+   measured coverage drops below its recorded floor and never writes to the snapshot. A separate
+   `make coverage-floors` target recomputes and rewrites the snapshot to each file's current, higher
+   coverage; a human runs it deliberately and commits the result once coverage has risen, the same way
+   `make format` is a deliberate, separate step from the check-only gate. `doctor.py` at 65% keeps its
+   65%-based floor rather than being forced up to today's global 89%; the point is that it can only go
+   up from wherever it starts, never silently back down — and never automatically, mid-`make check`.
 
 Both checks read `coverage.json` after the existing `test` target runs; neither reruns the suite or
 adds a second coverage collection pass.
@@ -91,7 +101,9 @@ adds a second coverage collection pass.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add the floor-drift advisory script and wire it into `make check` (non-blocking).
+- [ ] Move the coverage floor into `[tool.coverage.report]`'s `fail_under` in `pyproject.toml`;
+  drop `--cov-fail-under` from the `Makefile`'s `test` target.
+- [ ] Add the floor-drift advisory script and wire it into `make lint-pr` (advisory).
 - [ ] Generate the initial `coverage-floors.json` snapshot from today's measured per-file branch
   coverage.
 - [ ] Add the per-file floor check to `make check` (blocking, check-only — never writes).

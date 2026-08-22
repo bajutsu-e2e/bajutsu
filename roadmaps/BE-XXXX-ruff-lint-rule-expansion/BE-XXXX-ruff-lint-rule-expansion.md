@@ -20,10 +20,11 @@ building up in stages that each closed one gap — most recently `S`, flake8-ban
 categories flake8 covers through separate plugins still sit outside that list. This item adds a
 curated set of them — `PTH` (pathlib over `os.path`), `RET` (return-statement consistency), `ARG`
 (unused arguments), `SLF` (private-member access from outside its class), `W` (the pycodestyle
-warnings `E`'s sibling never turned on), and a hand-picked subset of `TRY` (exception-handling style)
-and `PLW` (Pylint's warning tier, which ruff reimplements directly) — consistent with BE-0067's use
-of ruff's own `S` rules rather than a separate Bandit install, applied to the rest of the gap this
-repository's static analysis leaves against a typical flake8 + Pylint setup.
+warnings `E`'s sibling never turned on), `PLE` (Pylint's error tier, which ruff reimplements
+directly), and a hand-picked subset of `TRY` (exception-handling style) and `PLW` (Pylint's warning
+tier) — consistent with BE-0067's use of ruff's own `S` rules rather than a separate Bandit
+install, applied to the rest of the gap this repository's static analysis leaves against a typical
+flake8 + Pylint setup.
 
 ## Motivation
 
@@ -50,21 +51,24 @@ does not take up: a full `PL` run measures 526 findings, and `PLC0415` (import o
 alone accounts for 258 of them — a false-positive-heavy result here, since this codebase's own
 convention is to import an optional or heavy dependency lazily inside the function that needs it
 (the mypy overrides for `boto3`, `playwright`, and the rest already document that pattern). `PLE`
-(Pylint's error tier — the rules closest to a real bug) reports zero findings, meaning the tier most
-worth adopting is already clean without adopting it. This item's `PLW` slice — `PLW0603` (7, a
-`global` statement), `PLW2901` (3, a loop variable overwritten inside its own loop), and `PLW1510`
-(3, `subprocess.run` called without an explicit `check=`) — is the useful remainder once `PLC0415`'s
-noise and `PLE`'s empty tier are set aside. A further subset of `PL`, the function-size rules
+(Pylint's error tier — the rules closest to a real bug) reports zero findings, so this item selects
+it alongside `W` on the same "free to turn on" grounds: no migration cost now, and every future
+`PLE` error — a misplaced bare `raise` (`PLE0704`), an `await` outside an `async` function
+(`PLE1142`), a bad `strip` argument (`PLE1310`) — gated from here on. This item's `PLW` slice —
+`PLW0603` (7, a `global` statement), `PLW2901` (3, a loop variable overwritten inside its own loop),
+and `PLW1510` (3, `subprocess.run` called without an explicit `check=`) — is the useful remainder
+once `PLC0415`'s noise is set aside. A further subset of `PL`, the function-size rules
 `PLR0911` / `PLR0912` / `PLR0915`, belongs with the sibling cyclomatic-complexity-ceiling proposal
 rather than here, since they measure the same thing a complexity threshold measures — how large and
 branchy one function has grown — not a style question.
 
 ## Detailed design
 
-Add the seven categories to `[tool.ruff.lint]`'s `select` list, each landing as its own commit so a
+Add the eight categories to `[tool.ruff.lint]`'s `select` list, each landing as its own commit so a
 review can look at one rule's fixes at a time:
 
 - **`W`**: add with no follow-up work — zero findings today.
+- **`PLE`**: add with no follow-up work — zero findings today.
 - **`RET`**: add and apply the fixes directly — 2 in `bajutsu/` plus 4 in `tests/`, 6 total (4 of
   the 6 `--fix`-eligible).
 - **`PTH`**: add and fix the findings — 17 in `bajutsu/` plus 6 in `tests/` plus 3 in
@@ -91,7 +95,7 @@ review can look at one rule's fixes at a time:
 
 `tests/**` and `demos/**` keep their existing blanket ignores for `ANN`, `T20`, and `S`
 ([pyproject.toml](../../pyproject.toml)); this item does not narrow those. `scripts/**` keeps its
-`T20` / `S607` ignores. Measuring all seven categories across all four trees — `bajutsu/`, `tests/`,
+`T20` / `S607` ignores. Measuring all eight categories across all four trees — `bajutsu/`, `tests/`,
 `demos/`, and `scripts/` — before landing shows `tests/**` needs two new blanket ignores, `SLF` and
 `ARG`, for the reasons given above; the small `PTH`, `RET`, and `PLW` residues found outside
 `bajutsu/` are fixed rather than ignored, as detailed in each bullet above. `demos/**` and
@@ -100,8 +104,8 @@ review can look at one rule's fixes at a time:
 ## Alternatives considered
 
 - **Adopt the full `PL` prefix** — rejected: `PLC0415` alone contributes 258 of 526 findings,
-  overwhelmingly against this codebase's deliberate lazy-import convention, and `PLE`, the tier that
-  would justify the churn, is already clean.
+  overwhelmingly against this codebase's deliberate lazy-import convention. Selecting `PLE` by its
+  own prefix, as this item does, takes the tier worth having without inheriting that noise.
 - **Adopt a dedicated Pylint, Dlint, or `hacking` install alongside ruff** — rejected: consistent
   with BE-0067's use of ruff's `S` rules rather than a separate Bandit install, ruff already
   reimplements the useful slice of each (`PL*` for Pylint's rules, and `S` already covers the security-linting role
@@ -122,6 +126,7 @@ review can look at one rule's fixes at a time:
 > (oldest first), linking the PRs.
 
 - [ ] Add `W` — no fixes needed.
+- [ ] Add `PLE` — no fixes needed.
 - [ ] Add `RET` and apply its 6 fixes (2 in `bajutsu/`, 4 in `tests/`; 4 of the 6 `--fix`-eligible).
 - [ ] Add `PTH` and fix its 26 findings (17 in `bajutsu/`, 6 in `tests/`, 3 in `demos/`/`scripts/`).
 - [ ] Add `SLF`, with a `tests/**` ignore, and fix its 38 findings in `bajutsu/`.
