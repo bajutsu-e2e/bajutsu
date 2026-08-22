@@ -1,14 +1,14 @@
-[English](BE-XXXX-coverage-floor-continuous-ratchet.md) · **日本語**
+[English](BE-0385-coverage-floor-continuous-ratchet.md) · **日本語**
 
-# BE-XXXX — カバレッジフロアを継続的なラチェットにする
+# BE-0385 — カバレッジフロアを継続的なラチェットにする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-coverage-floor-continuous-ratchet-ja.md) |
+| 提案 | [BE-0385](BE-0385-coverage-floor-continuous-ratchet-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0385") |
 | トピック | Contributor workflow |
 <!-- /BE-METADATA -->
 

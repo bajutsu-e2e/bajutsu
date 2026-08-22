@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-test-suite-mypy-typing-ja.md)
+**English** · [日本語](BE-0388-test-suite-mypy-typing-ja.md)
 
-# BE-XXXX — Type-check the test suite under mypy
+# BE-0388 — Type-check the test suite under mypy
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-test-suite-mypy-typing.md) |
+| Proposal | [BE-0388](BE-0388-test-suite-mypy-typing.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0388") |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 

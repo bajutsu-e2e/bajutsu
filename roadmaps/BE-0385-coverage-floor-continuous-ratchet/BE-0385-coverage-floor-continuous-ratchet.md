@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-coverage-floor-continuous-ratchet-ja.md)
+**English** · [日本語](BE-0385-coverage-floor-continuous-ratchet-ja.md)
 
-# BE-XXXX — Turn the coverage floor into a continuous ratchet
+# BE-0385 — Turn the coverage floor into a continuous ratchet
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-coverage-floor-continuous-ratchet.md) |
+| Proposal | [BE-0385](BE-0385-coverage-floor-continuous-ratchet.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0385") |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
