@@ -128,7 +128,10 @@ same way rather than being settled unattended: the skill drafts for a new issue 
 2's candidate matches beside it, so the human who approves makes that call too. A pending draft
 is deliberately not an escalation:
 every entry in BE-0230's escalation list stops the loop and hands the PR to the human, which an
-incidental out-of-scope note should never do to an otherwise-healthy follow-up loop.
+incidental out-of-scope note should never do to an otherwise-healthy follow-up loop. A returned
+draft is also an input: `record-issue` accepts an already-drafted title, body, and label and
+resumes at step 4, so the human's approval on a later turn runs step 5 against the draft they
+actually saw instead of re-drafting it or sending them back to file by hand.
 
 **Caller and documentation wiring.** A calling skill only runs a sub-step its own workflow names —
 `be-progress-tracker` runs because `ideation` and `implement-be` each name it — so `pr-followup`
