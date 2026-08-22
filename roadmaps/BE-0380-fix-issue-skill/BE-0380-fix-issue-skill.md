@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0380](BE-0380-fix-issue-skill.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0380") |
+| Implementing PR | [#1679](https://github.com/bajutsu-e2e/bajutsu/pull/1679) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -138,17 +139,17 @@ draw that line.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1. Scope-fit judgment in place of a label, including the escalation valve to `ideation` /
+- [x] 1. Scope-fit judgment in place of a label, including the escalation valve to `ideation` /
   `propose-and-build` and the claim release that keeps an escalated issue from reading as in flight.
-- [ ] 2. Open-state and ownership check, and the claim, through the issue's native `state` and
+- [x] 2. Open-state and ownership check, and the claim, through the issue's native `state` and
   assignee fields.
-- [ ] 3. Ship-the-code steps reused from `implement-be` (branch, plan confirmation, implementation,
+- [x] 3. Ship-the-code steps reused from `implement-be` (branch, plan confirmation, implementation,
   two-role self-review, the gate).
-- [ ] 4. The differences from a BE-item PR: no `Status` flip, no `[BE-NNNN]` prefix, `Closes #<N>`
+- [x] 4. The differences from a BE-item PR: no `Status` flip, no `[BE-NNNN]` prefix, `Closes #<N>`
   in the body, the same auto-opened Draft PR (with `implement-be`'s documentation-only Ready-for-review
   exception carried over) and bounded `pr-followup` loop.
-- [ ] 5. New skill files: the host-neutral workflow, the Claude Code adapter, and the Codex adapter.
-- [ ] 6. Documentation wiring: `docs/ai-development.md` (+ ja), `CLAUDE.md`, and `task-select`.
+- [x] 5. New skill files: the host-neutral workflow, the Claude Code adapter, and the Codex adapter.
+- [x] 6. Documentation wiring: `docs/ai-development.md` (+ ja), `CLAUDE.md`, and `task-select`.
 
 ## References
 

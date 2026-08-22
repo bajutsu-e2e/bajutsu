@@ -7,8 +7,8 @@ run. The one machine-checkable surface worth pinning is that the value is a *val
 typo fails here locally instead of silently falling back to some default at run time.
 
 This walks the real ``.claude/skills`` tree: every ``model:`` present must be recognized, and the
-skills that BE-0103 wired must still declare one (so removing the field is a visible regression, not
-a silent drift back to always-max).
+skills that BE-0103 and BE-0380 wired must still declare one (so removing the field is a visible
+regression, not a silent drift back to always-max).
 """
 
 from __future__ import annotations
@@ -80,13 +80,19 @@ def test_every_declared_model_is_known() -> None:
 
 
 def test_tiered_skills_declare_a_model() -> None:
-    """The skills BE-0103 tiered still declare a non-empty ``model:``, so dropping the default is a
-    visible regression rather than a silent drift back to running everything at always-max."""
-    tiered = {"implement-be", "ideation", "japanese-document-writing"}
+    """The skills BE-0103 and BE-0380 tiered still declare a non-empty ``model:``, so dropping the
+    default is a visible regression rather than a silent drift back to running everything at
+    always-max.
+
+    The set is only the subset BE-0103 and BE-0380 chose to pin here — not every skill that declares
+    a ``model:``, nor every skill docs/ai-development.md lists a tier for. Extend it from a later
+    item that wants its own skill's tier guarded the same way.
+    """
+    tiered = {"fix-issue", "implement-be", "ideation", "japanese-document-writing"}
     declared = {
         md.parent.name
         for md in _skill_files()
         if (model := _declared_model(_frontmatter(md))) is not _ABSENT and model
     }
     missing = tiered - declared
-    assert not missing, f"tiered skills must declare a model: (BE-0103): {sorted(missing)}"
+    assert not missing, f"tiered skills must declare a model: {sorted(missing)}"
