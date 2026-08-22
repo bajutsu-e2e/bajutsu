@@ -39,6 +39,7 @@ from typing import Any
 from bajutsu.device_os import DeviceOS
 from bajutsu.drivers import base
 from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
+from bajutsu.zorder import ZOrderSource
 
 
 class XcuitestChannelError(RuntimeError):
@@ -672,6 +673,7 @@ class XcuitestDriver:
         on_stall: Callable[[], None] | None = None,
         sleep: Callable[[float], None] = time.sleep,
         device_os: DeviceOS | None = None,
+        zorder: ZOrderSource | None = None,
     ) -> None:
         # The parsed OS version of the device this drives (BE-0358), or None when the environment
         # could not name one. Nothing here branches on it yet — it exists so a driver-level failure
@@ -703,6 +705,9 @@ class XcuitestDriver:
         # would be pure waste. None until the first read. No `parsed_input`: unlike adb's resident
         # channel, nothing here narrows the runner's own reply before it becomes `elements`.
         self._raw_bytes: bytes | None = None
+        # The in-app responder that measures `nativeZ` (BE-0355). None when the run allocated no
+        # port, or when the app never links BajutsuKit — either way every element keeps `None`.
+        self._zorder = zorder
 
     # --- the channel ---
 
@@ -715,7 +720,35 @@ class XcuitestDriver:
         """
         reply = self._transport("GET", "/elements", None)
         self._raw_bytes = reply.raw
-        return self._parse_elements(reply)
+        elements, handles = self._parse_elements(reply)
+        self._apply_native_z(elements)
+        return elements, handles
+
+    def _apply_native_z(self, elements: list[base.Element]) -> None:
+        """Fill each element's `nativeZ` from the app's own reading of where it sits (BE-0355).
+
+        Read here rather than in `_to_element` because the answer comes from a second channel — the
+        app itself, not the runner — and must be asked for the same moment this query describes.
+        An identifier the runner reports more than once names no single element, so it takes no
+        position: the alternative is handing one element another's reading, which is exactly the
+        wrong-but-authoritative value this field exists to avoid.
+        """
+        if self._zorder is None:
+            return
+        positions = self._zorder.positions()
+        if not positions:
+            return
+        seen: dict[str, int] = {}
+        for el in elements:
+            identifier = el["identifier"]
+            if identifier is None:
+                continue
+            seen[identifier] = seen.get(identifier, 0) + 1
+        for el in elements:
+            identifier = el["identifier"]
+            if identifier is None or seen.get(identifier, 0) != 1:
+                continue
+            el["nativeZ"] = positions.get(identifier)
 
     @staticmethod
     def _parse_elements(reply: _Reply) -> tuple[list[base.Element], dict[int, str]]:

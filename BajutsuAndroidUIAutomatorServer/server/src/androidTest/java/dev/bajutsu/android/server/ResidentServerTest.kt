@@ -2,11 +2,13 @@ package dev.bajutsu.android.server
 
 import android.app.UiAutomation
 import android.graphics.Rect
+import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
 import android.util.Xml
 import android.view.InputDevice
 import android.view.MotionEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
@@ -344,13 +346,76 @@ class ResidentServerTest {
         // drops the mark back below the actuation it must clear.
         val mark = readMark.current()
         val body = settledDump(device)
+        val headers = mutableMapOf(READ_MARK_HEADER to mark.toString())
+        nativeZHeader()?.let { headers[NATIVE_Z_HEADER] = it }
         respond(
             out,
             "200 OK",
             "application/xml; charset=utf-8",
             body,
-            mapOf(READ_MARK_HEADER to mark.toString()),
+            headers,
         )
+    }
+
+    /**
+     * The `nativeZ` each opted-in view reports, as a header value the XML body stays untouched by.
+     *
+     * `dumpWindowHierarchy` serializes in one platform call and hands out no per-node
+     * [AccessibilityNodeInfo] to refresh, so the values come from a second walk. That walk covers the
+     * active window while the body spans every window, so the two disagree on both length and
+     * offset — a value keyed by document-order position would land on the wrong node (BE-0355 Unit 0
+     * measured the gap at 28 nodes on a plain showcase screen). Each value is therefore keyed by what
+     * the host can recompute from the `<node>` it is reading: bounds, class, package, and the
+     * occurrence index among nodes agreeing on all three.
+     *
+     * Only nodes whose own [AccessibilityNodeInfo.getAvailableExtraData] already lists the key are
+     * read, so an app that never opted in pays one list check per node. Null when nothing reported.
+     */
+    private fun nativeZHeader(): String? =
+        try {
+            nativeZHeaderOrThrow()
+        } catch (e: Exception) {
+            // A node can go stale mid-walk (the live tree this runs against right after
+            // `settledDump` is not guaranteed frozen), and this diagnostic reading rides on
+            // `/source`'s own response — a fault here must degrade to the same honest absence a
+            // non-cooperating app reports, not cost the caller the hierarchy read it actually
+            // depends on.
+            Log.w(TAG, "nativeZ walk failed; reporting no positions for this read", e)
+            null
+        }
+
+    private fun nativeZHeaderOrThrow(): String? {
+        val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+            ?: return null
+        val seen = mutableMapOf<String, Int>()
+        val parts = mutableListOf<String>()
+        fun visit(node: AccessibilityNodeInfo?) {
+            if (node == null) return
+            val bounds = Rect().also { node.getBoundsInScreen(it) }
+            val key = "${bounds.left},${bounds.top},${bounds.right},${bounds.bottom}" +
+                "|${node.className ?: ""}|${node.packageName ?: ""}"
+            val occurrence = seen.getOrDefault(key, 0)
+            seen[key] = occurrence + 1
+            if (node.availableExtraData.orEmpty().contains(NATIVE_Z_KEY)) {
+                // An opted-in view can answer either way: the app-side library sets the value while
+                // the node is being built, and a view that instead overrides the platform's
+                // on-demand callback answers only when asked. Read the value already here first, so
+                // the common case costs no round trip, and ask only when it is absent.
+                var z = node.extras.getFloat(NATIVE_Z_KEY, Float.NaN)
+                if (z.isNaN() && node.refreshWithExtraData(NATIVE_Z_KEY, Bundle())) {
+                    z = node.extras.getFloat(NATIVE_Z_KEY, Float.NaN)
+                }
+                if (!z.isNaN()) parts.add("$key|$occurrence=$z")
+            }
+            for (i in 0 until node.childCount) visit(node.getChild(i))
+        }
+        visit(root)
+        if (parts.isEmpty()) return null
+        val header = parts.joinToString(";")
+        // A header field is not a body: past a few hundred views the value outgrows what an HTTP
+        // header should carry, and `nativeZ` is diagnostic — dropping it costs a reading, while
+        // truncating it would hand some node another's.
+        return if (header.length > NATIVE_Z_HEADER_MAX) null else header
     }
 
     /**
@@ -485,6 +550,21 @@ class ResidentServerTest {
         // time of the newest accessibility event observed as of the served dump. Kept in sync with the
         // host side (`bajutsu/adb_resident.py` `_READ_MARK_HEADER`).
         const val READ_MARK_HEADER = "X-Bajutsu-Read-Mark"
+
+        // The response header GET /source stamps with each opted-in view's own `View.getZ()`
+        // (BE-0355 Unit 3). Carried in a header for the same reason the read mark is: the XML body
+        // stays byte-identical to `uiautomator dump`'s, so `parse_hierarchy` is unchanged. Kept in
+        // sync with the host side (`bajutsu/adb_resident.py` `_NATIVE_Z_HEADER`).
+        const val NATIVE_Z_HEADER = "X-Bajutsu-Native-Z"
+
+        // The extra-data key an opted-in view advertises. This server is app-independent by design
+        // (see settings.gradle.kts), so it names the key rather than depending on the app-side
+        // library that answers it — kept in sync with `BajutsuAndroid`'s `BajutsuZOrder` and with
+        // `bajutsu/drivers/adb.py`.
+        const val NATIVE_Z_KEY = "dev.bajutsu.EXTRA_DATA_NATIVE_Z"
+
+        // Past this the reading is dropped rather than truncated (see `nativeZHeader`).
+        const val NATIVE_Z_HEADER_MAX = 8_000
 
         // How long GET /source?since= waits for an event to postdate the requested mark before dumping
         // the latest tree anyway (BE-0332 Unit 4). A ceiling on the read lag, not a fixed delay: the
