@@ -93,14 +93,15 @@ improvement).
 
 **Step 2 — search for a duplicate.** Run `gh issue list --search "<keywords>
 -label:roadmap-tracking" --state all --limit 10` with keywords drawn from the finding, and show the
-invoker any candidate matches (number, title, state). The search excludes the `roadmap-tracking`
-issues the workflow of
+invoker any candidate matches (number, title, state, labels). The search excludes the
+`roadmap-tracking` issues the workflow of
 [BE-0109](../BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) creates and closes
 on its own: those are bot-owned, so a comment on one of them is no landing at all. Because that
 exclusion also removes the only signal that an open BE item already covers the finding, this step
 checks the roadmap itself: run
-[`roadmap-filter`](../../.agent-workflows/roadmap-filter/workflow.md) over `Proposal` and
-`In progress` and match the returned titles on the same keywords. On a hit, show the invoker that
+[`roadmap-filter`](../../.agent-workflows/roadmap-filter/workflow.md) once for `Proposal` and once
+for `In progress` — it accepts a single status per run — and match the returned titles on the same
+keywords. On a hit, show the invoker that
 item and ask whether to stop there instead of drafting anything — when the item already covers the
 finding, an issue would only duplicate it — or to proceed anyway: a keyword match against a title
 is not proof of coverage, and only the invoker can judge it.
@@ -122,8 +123,10 @@ box, since `feature_request.yml`'s three prime-directive confirmations are the i
 to give. Pick the matching label (`bug` or `enhancement`); no new label is needed; see
 *Alternatives considered*. When the invoker instead chose to comment on an open match in step 2,
 draft that comment body separately — the finding, its evidence, and where it was noticed — since
-`gh issue comment` carries no title or label of its own, and note the chosen label as a
-`gh issue edit --add-label` addition for step 5 to apply if the target issue lacks it.
+`gh issue comment` carries no title or label of its own. Note the chosen label as a
+`gh issue edit --add-label` addition for step 5 only when the target issue carries neither `bug`
+nor `enhancement` — step 2 shows each candidate's labels alongside its number, title, and state —
+so commenting never re-classifies an issue someone else filed.
 
 **Step 4 — confirm.** Show the invoker everything about to be posted — a new issue's title, body,
 and label, or an existing issue's comment body and any label to add — and wait for explicit
@@ -149,8 +152,10 @@ that matters — the skill files nothing and stalls nothing: it returns the fini
 `implement-be` step 12 already reads (the field `pr-followup` step 4 routes a self-review-only
 finding through, and which the loop treats as a stop signal), so the human sees the draft when the
 loop reports, and approves it on a later turn; the loop carries every pending draft its iterations
-returned into its own final report, so a draft returned early survives to the report the human
-reads. Step 2's new-issue-or-comment choice, and a
+returned into its own final report, deduplicated against the drafts earlier iterations already
+returned — each iteration is a fresh subagent that will re-notice the same finding — so the report
+holds one entry per finding rather than one per iteration, and a draft returned early survives to
+the report the human reads. Step 2's new-issue-or-comment choice, and a
 roadmap-filter hit's stop-or-proceed choice, defer the same way rather than being settled
 unattended: the skill drafts for a new issue and carries every candidate it found — issue matches
 and any roadmap-filter hit — beside the draft, so the human decides whether to approve it, comment
@@ -204,7 +209,8 @@ would add process without adding information.
       hands a subagent `pr-followup`'s steps, and its structured-summary contract gains a
       pending-draft field, kept distinct from the escalation field so a draft never stops the loop.
       Step 12 also carries every pending draft its iterations returned into its own final report,
-      so a draft returned early in a run still reaches the human.
+      deduplicated against earlier iterations' drafts, so a draft returned early in a run still
+      reaches the human as one entry rather than one per iteration.
 - [ ] Documentation wiring: `docs/ai-development.md` (+ ja) and `CLAUDE.md`, including the Claude
       adapter's default `model:` tier (BE-0103).
 - [ ] Verify the standalone path and at least one calling-skill path (for example `pr-followup`
