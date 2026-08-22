@@ -77,7 +77,11 @@ def _conformance_react(
     def react(_driver: FakeDriver, kind: str, arg: object) -> None:
         if kind == "tap":
             focused["on"] = isinstance(arg, dict) and arg.get("id") == FIELD_ID
-            if isinstance(arg, dict) and (mirror := mirrors.get(arg.get("id", ""))) is not None:
+            # `id` may be the both-forms list a real selector carries (BE-0221), not just a plain
+            # string — `dict.get` on an unhashable list would raise, so this only looks a mirror up
+            # for the plain-string shape and simply misses (no mirror, no crash) for the list one.
+            tapped_id = arg.get("id") if isinstance(arg, dict) else None
+            if isinstance(tapped_id, str) and (mirror := mirrors.get(tapped_id)) is not None:
                 mirror["value"] = str(int(mirror["value"] or "0") + 1)
         elif kind == "tap_point" and isinstance(arg, tuple):
             x, y, w, h = field["frame"]
@@ -94,10 +98,11 @@ def _conformance_react(
 class FakeConformanceHarness:
     """Realizes a conformance screen as a `FakeDriver` seeded with those elements.
 
-    Every screen also carries the always-present conformance field (BE-0280) and the two tap-mirror
-    targets (BE-0339 Unit 6), wired to a `react` that models their state, so the text-editing,
-    `tap_point`, and tap-identity invariants are all observable on the fast gate exactly as they are
-    against a real field or a real device on-device.
+    Every `with_screen` screen also carries the always-present conformance field (BE-0280) and the
+    two tap-mirror targets (BE-0339 Unit 6), wired to a `react` that models their state, so the
+    text-editing, `tap_point`, and tap-identity invariants are all observable on the fast gate exactly
+    as they are against a real field or a real device on-device. `obstruction_screen` below carries
+    only the field: no conformance case taps a mirror against it today.
     """
 
     backend = "fake"
