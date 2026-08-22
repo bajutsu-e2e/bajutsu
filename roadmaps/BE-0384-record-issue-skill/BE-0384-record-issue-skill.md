@@ -74,11 +74,11 @@ subagent `pr-followup`'s steps, `pr-followup` passes it on to the sub-step invoc
 absence means attended. The other input shape is a resumed invocation: an approved new-issue
 draft — title, body, and label — from which the skill resumes directly at step 5's
 `gh issue create`, since the human already gave explicit approval on a later turn, against the
-draft the loop's report showed them. Only an attended turn can carry this input: the skill refuses a
-resumed invocation that arrives with the unattended flag set — that flag is its only signal that a
-human is in the turn — and returns the draft as a pending draft again rather than filing it, since
-resuming with no human present would file the draft with no approval at all, exactly what the
-confirmation gate exists to prevent. A comment on one of the candidate
+draft the loop's report showed them. Only an attended turn can carry this input. The unattended
+flag is the skill's only signal that a human is in the turn, so the skill refuses a resumed
+invocation that arrives with that flag set: it returns the draft as a pending draft again rather
+than filing it. Resuming with no human present would file the draft with no approval at all,
+exactly what the confirmation gate exists to prevent. A comment on one of the candidate
 matches that an unattended run carried is the human's own follow-up from there, outside this resume
 path.
 
