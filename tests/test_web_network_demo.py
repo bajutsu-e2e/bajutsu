@@ -27,6 +27,7 @@ from demos.web.network.assert_redaction import (
     _BODY_SECRET,
     _HEADER_SECRET,
     _KEPT_FIELD,
+    _KEPT_VALUE,
     main,
 )
 
@@ -91,15 +92,17 @@ def test_demo_redact_policy_masks_the_sync_secret() -> None:
     assert "a@b.com" in exchange["requestBody"]  # non-secret field kept
 
 
-def test_the_kept_field_is_a_key_the_app_actually_sends() -> None:
-    # `_KEPT_FIELD` guards against over-redaction only while the app really sends it: renaming the
-    # Sync body's non-secret key would otherwise leave the check looking for a key nothing sends,
-    # reddening only the browser lane. The app builds the body with `JSON.stringify` over an object
-    # literal, so the key is bare in source and quoted only once serialized — the form the checker
-    # matches — hence the unquoting here.
+def test_the_kept_field_and_value_are_what_the_app_actually_sends() -> None:
+    # The kept field guards against over-redaction only while the app really sends it: renaming the
+    # Sync body's non-secret key, or changing its value, would otherwise leave the check looking for
+    # something nothing sends, reddening only the browser lane. The app builds the body with
+    # `JSON.stringify` over an object literal, so the key is bare in source and quoted only once
+    # serialized — the form the checker matches — hence the unquoting here. The value is a quoted
+    # string literal in both places, so it is matched as-is.
     source = (_DEMO / "app" / "index.html").read_text(encoding="utf-8")
     key = _KEPT_FIELD.strip('"')
     assert f"{key}:" in source
+    assert _KEPT_VALUE in source
 
 
 # --- The checker itself, executed (BE-0282) -------------------------------------------------------
@@ -108,7 +111,9 @@ def test_the_kept_field_is_a_key_the_app_actually_sends() -> None:
 # `network (playwright)` job, which only ever feeds it evidence a working redactor produced. So
 # nothing else stops it from quietly becoming a check that passes on bad evidence: relax a comparison
 # and CI stays green, because real evidence happens to be masked. These run `main` over synthetic
-# network.json files instead, one mutation per case, so each rule fails loudly for its own reason.
+# network.json files instead, one mutation per case, each pinned to the message its own rule prints —
+# an exit code alone would stay green if one rule started swallowing another's mutation, which is the
+# same silent-pass this suite exists to catch.
 
 # The shape a real browser run writes for the mocked Sync request, already redacted.
 _SYNC_EXCHANGE: dict[str, Any] = {
@@ -151,34 +156,74 @@ def _set(key: str, value: Any) -> Callable[[dict[str, Any]], None]:
 
 
 @pytest.mark.parametrize(
-    "mutate",
+    ("mutate", "message"),
     [
-        pytest.param(_set("mocked", False), id="stub-served-exchange-not-marked-mocked"),
-        pytest.param(_set("mocked", "true"), id="mocked-is-a-string-not-a-bool"),
-        pytest.param(_drop_key("mocked"), id="mocked-absent-rather-than-recorded"),
-        pytest.param(_set("status", 200), id="a-live-server-answered-instead-of-the-mock"),
-        pytest.param(_drop_key("status"), id="status-absent"),
+        pytest.param(
+            _set("mocked", False),
+            "is not marked mocked",
+            id="stub-served-exchange-not-marked-mocked",
+        ),
+        pytest.param(
+            _set("mocked", "true"), "is not marked mocked", id="mocked-is-a-string-not-a-bool"
+        ),
+        pytest.param(
+            _drop_key("mocked"), "is not marked mocked", id="mocked-absent-rather-than-recorded"
+        ),
+        pytest.param(
+            _set("status", 200),
+            "expected the mock's 201 status",
+            id="a-live-server-answered-instead-of-the-mock",
+        ),
+        pytest.param(_drop_key("status"), "expected the mock's 201 status", id="status-absent"),
         pytest.param(
             _set("requestHeaders", {"authorization": f"Bearer {_HEADER_SECRET}"}),
+            "Authorization header not masked",
             id="authorization-header-unmasked",
         ),
-        pytest.param(_set("requestHeaders", {}), id="authorization-header-absent"),
+        pytest.param(
+            _set("requestHeaders", {}),
+            "Authorization header not masked",
+            id="authorization-header-absent",
+        ),
         pytest.param(
             _set("requestBody", f'{{"account":"a@b.com","password":"{_BODY_SECRET}"}}'),
+            "leaked its value into network.json",
             id="password-body-field-unmasked",
         ),
-        pytest.param(_drop_key("requestBody"), id="request-body-absent"),
+        pytest.param(
+            _drop_key("requestBody"),
+            "the password body field was not masked",
+            id="request-body-absent",
+        ),
         # The secret is gone and the non-secret field survived, yet the field was *dropped* rather
         # than masked — so the evidence no longer records that a credential was ever sent. Only the
         # "placeholder present" rule separates masking from deletion.
-        pytest.param(_set("requestBody", '{"account":"a@b.com"}'), id="password-field-dropped"),
+        pytest.param(
+            _set("requestBody", '{"account":"a@b.com"}'),
+            "the password body field was not masked",
+            id="password-field-dropped",
+        ),
         # Over-redaction: both "secret gone" and "placeholder present" hold, yet the evidence is
-        # useless. Only the non-secret-field check separates this from a correct masking.
-        pytest.param(_set("requestBody", PLACEHOLDER), id="whole-body-replaced-by-the-placeholder"),
+        # useless. Only the surviving-key check separates this from a correct masking.
+        pytest.param(
+            _set("requestBody", PLACEHOLDER),
+            "did not survive redaction",
+            id="whole-body-replaced-by-the-placeholder",
+        ),
+        # The adjacent shape the key check alone would pass: every key survives, every *value* is
+        # masked, so the evidence records the request's shape and nothing about what it carried.
+        pytest.param(
+            _set("requestBody", f'{{"account":"{PLACEHOLDER}","password":"{PLACEHOLDER}"}}'),
+            "value was masked along with the secret",
+            id="every-value-masked-including-the-non-secret-one",
+        ),
     ],
 )
 def test_the_redaction_check_fails_loudly_on_a_bad_exchange(
-    tmp_path: Path, mutate: Callable[[dict[str, Any]], None]
+    tmp_path: Path,
+    mutate: Callable[[dict[str, Any]], None],
+    message: str,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     exchange = dict(_SYNC_EXCHANGE)
     mutate(exchange)
@@ -186,6 +231,9 @@ def test_the_redaction_check_fails_loudly_on_a_bad_exchange(
     with pytest.raises(SystemExit) as exc:
         main(["assert_redaction.py", str(runs)])
     assert exc.value.code == 1
+    # Pinned to the rule's own message, not merely a non-zero exit: were an earlier rule to start
+    # catching this mutation, the case would stay green while the rule it targets went quiet.
+    assert message in capsys.readouterr().err
 
 
 def test_the_redaction_check_fails_when_a_run_captured_nothing(tmp_path: Path) -> None:

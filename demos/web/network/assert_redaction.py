@@ -8,7 +8,7 @@ closes on the cheap Linux lane. This script is that machine check: it reads the 
 browser run produced and fails loudly (a non-zero exit) unless the mocked POST /api/sync exchange is
 present, carries status 201 and `mocked: true`, and has both secrets — the Authorization header and
 the `password` body field — masked, with the raw secret values absent from the whole file and the
-request's non-secret `account` field still there. No model is consulted: this stays on the
+request's non-secret `account` field still there, value and all. No model is consulted: this stays on the
 deterministic verdict path (prime directive 1).
 
 Usage: python demos/web/network/assert_redaction.py <runs-dir>
@@ -28,8 +28,10 @@ from bajutsu.evidence.redaction import PLACEHOLDER as _PLACEHOLDER
 _HEADER_SECRET = "sk-demo-secret-token-abc123"
 _BODY_SECRET = "hunter2-demo-secret"
 
-# A non-secret key of the same Sync body, so over-redaction is distinguishable from redaction.
+# A non-secret key of the same Sync body, so over-redaction is distinguishable from redaction — and
+# its value, so a redactor that masked *every* value is distinguishable too.
 _KEPT_FIELD = '"account"'
+_KEPT_VALUE = '"a@b.com"'
 
 
 def _fail(msg: str) -> NoReturn:
@@ -81,9 +83,12 @@ def main(argv: list[str]) -> int:
     # Redaction has to be surgical, not total: a redactor that replaced the *whole* body with the
     # placeholder would satisfy both checks above while destroying the evidence they exist to
     # validate. `account` is the Sync request's own non-secret field, so its key surviving is what
-    # separates "masked the secret" from "masked everything".
+    # separates "masked the secret" from "masked everything". Its value is checked separately,
+    # because masking every value leaves the keys intact and would otherwise pass.
     if _KEPT_FIELD not in body:
         _fail(f"the non-secret {_KEPT_FIELD} field did not survive redaction")
+    if _KEPT_VALUE not in body:
+        _fail(f"the non-secret {_KEPT_FIELD} field's value was masked along with the secret")
 
     # Belt and braces: no raw secret survives anywhere in the persisted file.
     for name, secret in (("Authorization header", _HEADER_SECRET), ("password body", _BODY_SECRET)):

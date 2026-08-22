@@ -54,8 +54,8 @@ exchange with status `201` proves the mock — not the network — served it. Th
 assertion is the deterministic interception/capture check; then
 [`network/assert_redaction.py`](network/assert_redaction.py) reads the persisted `network.json` and
 fails unless the exchange is `mocked`, is `201`, has both secrets masked, and still carries the
-request's non-secret `account` field — without that last rule, a redactor that replaced the whole
-body would pass. No LLM anywhere — the verdict is the assertion plus that check.
+request's non-secret `account` field with its value — without that last rule, a redactor that
+replaced the whole body, or masked every value in it, would pass. No LLM anywhere — the verdict is the assertion plus that check.
 
 This lane is the web half of [BE-0282](../../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md).
 It runs in CI as the `network (playwright)` job, which landed as signal first and, having proven
