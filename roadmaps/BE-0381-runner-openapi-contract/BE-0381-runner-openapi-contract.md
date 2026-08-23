@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0381") |
-| Implementing PR | [#1606](https://github.com/bajutsu-e2e/bajutsu/pull/1606) |
+| Implementing PR | [#1606](https://github.com/bajutsu-e2e/bajutsu/pull/1606) (Units 1–3), [#1686](https://github.com/bajutsu-e2e/bajutsu/pull/1686) (Unit 4) |
 | Topic | Platform support |
 | Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md), [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn.md), [BE-0362](../BE-0362-runner-http-queue-qos/BE-0362-runner-http-queue-qos.md) |
 <!-- /BE-METADATA -->
@@ -149,7 +149,7 @@ happens to require one.
 `5.9` manifest resolves, runs the plugin, and builds against the `6.1`-tools OpenAPI packages —
 verified by building rather than inferred — so the OpenAPI tooling forces neither the manifest bump
 nor a floor change. What would force both is the Hummingbird dependency, and that arrives with Unit
-4 rather than here (see *Measured result* below), so the floor question travels with it.
+5 rather than here (see *Measured result* below), so the floor question travels with it.
 
 That ordering is not tidiness. An intermediate revision of this item raised the floor to iOS 18 and
 declared Hummingbird here, and the iOS end-to-end gate rejected it: the showcase apps declare
@@ -257,10 +257,11 @@ versions below the new floor, for an upstream-maintained adapter in place of a s
 That is the maintainer's call to make, and it is recorded here as made, alongside the measurement
 that argued the other way.
 
-**The dependency itself lands in Unit 4, not here.** `swift-openapi-hummingbird` requires iOS 17,
-and nothing imports Hummingbird until a server is wired to `APIHandler`, so declaring it while Unit 3
-is the newest work would link SwiftNIO into the wheel-bundled runner for code nothing calls and raise
-the package's floor for the same nothing. Unit 4 adds the dependency, raises the floor to iOS 17 —
+**The dependency itself lands in Unit 5, not here.** `swift-openapi-hummingbird` requires iOS 17,
+and nothing imports Hummingbird until the *listener* moves onto it — which Unit 4 does not do, since
+it serves the generated handlers over the socket layer that already exists. Declaring it any earlier
+would link SwiftNIO into the wheel-bundled runner for code nothing calls and raise the package's
+floor for the same nothing. Unit 5 adds the dependency, raises the floor to iOS 17 —
 the adapter's actual minimum, not a release beyond it — and pays the 62,272 KB at the point the
 runner serves through it. Two consequences to expect there, neither obvious from the version number:
 iOS 18 would not be expressible below `swift-tools-version:6.0`, and tools 6.0 defaults every target
@@ -334,12 +335,88 @@ single-purpose endpoints — `/screen`, `/swipe`, `/scroll`
 ([BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element.md)), `/type`, `/deleteText`,
 `/selectAll`, `/copy`, `/screenshot` — come last.
 
+#### Delivered: the staging moved from the dispatch into the tests
+
+`LegacyBackedTransport` is the transitional `ServerTransport` the plan above describes: `HTTPServer`
+still accepts, parses, and frames, and every route it dispatches is now a generated handler. The four
+groups, though, did not survive contact with the generated API. Registration is a single call —
+`registerHandlers(on:)` covers all sixteen operations at once — so serving a subset would have meant
+building a per-path allowlist whose only purpose was to be deleted again, rather than a rollback
+point anything downstream could use. All sixteen therefore migrate together.
+
+What the groups were *for* is still paid for, in the comparison rather than in the dispatch.
+`APIHandlerParityTests` (Unit 3) compares the two implementations in isolation; `TransportParityTests`
+now compares them over a live socket, endpoint by endpoint, against the same provider state — status
+code, content type, and every field of the reply, across the whole five-status vocabulary.
+
+**BE-0287's eight-handler bound survives by construction**, which answers the warning Unit 3 left
+here: no new router accepts connections, so `HTTPServer`'s `DispatchSemaphore(value: 8)` still bounds
+exactly what it always bounded. The generated handlers are `async`, so the transport blocks its
+connection thread until the task finishes — which costs the bound nothing, because a slot was already
+held for the whole life of a request under the synchronous `Router`. That `/health` stays answerable
+while an operation holds the main thread is now pinned by a live-server test, rather than left to
+`APIHandler`'s and the transport's separate reasoning about the same invariant.
+
+**BE-0323's serialization is pinned by occupancy, not by a provider's overlap count.**
+`APIHandler.operations` is the sole holder of the invariant once Unit 4 takes `Router` out of
+production, and the regression worth catching is an operation that stops routing through that queue —
+not a queue someone declares concurrent. So `APIHandlerConcurrencyTests` holds one operation on the
+main thread, dispatches a probe onto the queue, and requires the probe *not* to run until the
+operation returns: true only while the operation occupies the queue. It fails against both
+regressions, measured — a read that calls the provider inline leaves that read's case red and the
+other families green, and a concurrent queue turns all three red.
+
+The provider-side probe shape `RouterConcurrencyTests` uses cannot substitute for it. Measured on this
+stack, that probe reports no overlap while a concurrent queue genuinely runs two operations at once,
+because libdispatch does not run a second main-queue block while the first is executing, so the second
+operation's `DispatchQueue.main.sync` waits for the first's main block regardless of what serialized
+it. This is why the abort BE-0323 was filed for surfaced only under XCUITest's own run loop, and why
+`RouterConcurrencyTests`' counterpart assertion passes with `Router.actuationLock` removed outright.
+Unit 5 therefore has to re-point these assertions at whatever serializes on Hummingbird, rather than
+delete them with the `Router` comparisons.
+
+**BE-0362's declaration reaches the one hop this transport adds.** The task that carries each reply
+declares `.userInitiated` rather than inheriting it, because the work inside it — the generated decode
+of the request and the encode of the reply, a screenshot's PNG included — never passes through
+`operations` and its `qos:`. A test drives that hop from a `.utility` caller, since inheriting looks
+identical while `HTTPServer`'s own `.userInitiated` queue is the caller and stops looking identical the
+moment Unit 5's event loop is.
+
+**The deliberate wire differences.** The generated serializer sends `application/json; charset=utf-8`
+where `Router` sent a bare `application/json`. The driver never reads the header — `_decode` in
+`bajutsu/drivers/xcuitest.py` takes only the status code and the body — and `/screenshot`, the one
+reply it branches on by path rather than by header, is unaffected. A test pins the difference so it
+stays a recorded decision rather than a surprise. Two smaller differences ride along, recorded here
+because the tests that pin them are deleted with the harness in Unit 5: a 400 raised by the generated
+decoder carries the status's generic reason phrase rather than `Router`'s per-route text — a 400 the
+handler derives itself keeps that text, which `APIHandlerParityTests.testBadRequestParity` pins field
+for field — and the decoder rejects bodies `Router` tolerated: a non-integer `taps` or `count`, a
+malformed `point` beside a valid `handle`, or a non-conforming body on the three operations that
+require none, answering 400 without actuating where `Router` coerced the value or ignored the body.
+The driver sends none of these shapes, and `_decode` reads only `status`.
+
+`Router` outlives Unit 4 unused by production, because it is what the migration is checked *against*:
+the parity suites, and the reply-side half of `ContractConformanceTests`, read the shipped behavior
+off it and compare. Its deletion and theirs are the same change, and belong to Unit 5 — with one
+exception that must survive them. `ContractConformanceTests`'
+`testGeneratedRequestTypesDecodeTheDriversBodies` constructs no `Router` at all: it decodes the
+literal bodies `bajutsu/drivers/xcuitest.py` sends into the generated request types, which is the only
+fast-suite guard that the *request* half of the contract still accepts what the shipping driver
+builds. Unit 4 is what makes that half load-bearing, since the generated decoder is now what answers
+the driver, so a regenerated schema that tightened `taps` or renamed `from`/`to` would otherwise reach
+a device rather than fail `swift test`. `TransportParityTests` has two assertions of the same
+kind — `testMalformedBodyIsRejectedAsAJSONError` and `testScreenshotServesRawPNGOverTheWire` assert
+absolutely rather than against `Router`.
+
 ### Unit 5 — Cut over and remove the legacy transport
 
 Once every endpoint `bajutsu/drivers/xcuitest.py` calls is served by a generated handler, swap the
-listener from the transitional legacy-backed transport to the winning candidate's, then delete
+listener from `LegacyBackedTransport` to the winning candidate's, declaring the Hummingbird
+dependency and raising the platform floor to iOS 17 at that point (see Unit 2), then delete
 `HTTPServer.swift`'s raw-socket accept loop and byte-by-byte parser, and `Router.swift`'s hand-written
-switch and JSON construction. Every handler is already the generated one by this point, so the
+switch and JSON construction. `APIHandlerConcurrencyTests`' queue assertion is re-pointed at whatever
+serializes there — it is the one guard on BE-0323 that survives the deletion of the `Router`
+comparisons, and the listener swap is exactly the change it is blind to. Every handler is already the generated one by this point, so the
 cutover swaps only the socket layer beneath them; the wire contract is unchanged throughout, and the
 Python driver needs no change at any stage.
 
@@ -391,7 +468,10 @@ Python driver needs no change at any stage.
   string of items in Motivation and Unit 3 — BE-0287, BE-0289, BE-0323 — is the history of a channel
   that has broken in production in narrow, specific ways more than once; replacing its entire HTTP
   transport in a single step reopens that whole surface at once, with no staged point to roll one
-  endpoint back if its generated path disagrees with the legacy one.
+  endpoint back if its generated path disagrees with the legacy one. What Unit 4 delivered is not
+  this alternative: the transport beneath the handlers is untouched, and the comparison harness grew
+  rather than being skipped. The endpoints moved together because registration is a single generated
+  call, not because the comparison was dropped — see *Delivered* under Unit 4.
 - **Extend Bonjour discovery, LAN exposure, and bearer-token authentication per the source proposal's
   general sections on those topics.** Out of scope for this item, since the resident runner's channel
   is localhost-only today, as the Introduction states; a future item should propose these separately
@@ -425,10 +505,22 @@ Python driver needs no change at any stage.
       whatever router it builds; a server with no bound would drop it silently. Parity tests compare
       every endpoint's generated reply against the legacy `Router`'s for the same input, and
       mutation-testing confirms they fail on a drifted status string or a dropped optional field.
-- [ ] Unit 4 — migrate the sixteen endpoints in the four groups above, one group at a time, behind the
-      comparison harness.
-- [ ] Unit 5 — remove `HTTPServer.swift`'s and `Router.swift`'s hand-rolled transport code once
-      cutover is complete.
+- [x] Unit 4 — serve every endpoint through the generated handlers. `LegacyBackedTransport` carries
+      them over `HTTPServer`'s socket layer, so the wire contract holds and the Python driver is
+      untouched. All sixteen migrate at once: registration is one generated call, and a per-path
+      allowlist would have been machinery built only to be deleted. **BE-0287's bound survives by
+      construction** — nothing new accepts connections — and `TransportParityTests` compares every
+      endpoint against the legacy `Router` over a live socket. `APIHandlerConcurrencyTests` pins
+      BE-0323 by occupancy — a held operation must keep a probe off `APIHandler.operations` — and the
+      reply task's declared `.userInitiated` (BE-0362) is pinned from a lower-QoS caller. Three recorded wire differences, none
+      observable to the driver: JSON replies carry `charset=utf-8`, a 400 the generated decoder raises
+      carries the generic reason phrase where the handler's own 400s keep `Router`'s per-route text,
+      and that decoder rejects a few malformed-body shapes `Router` used to tolerate.
+- [ ] Unit 5 — swap the listener onto Hummingbird, declaring the dependency and raising the floor to
+      iOS 17 there, and remove `LegacyBackedTransport`, `HTTPServer.swift`, and `Router.swift`
+      together with the parity suites that compare against them — keeping
+      `ContractConformanceTests`' `testGeneratedRequestTypesDecodeTheDriversBodies` and
+      `TransportParityTests`' two absolute assertions, which pin the contract rather than `Router`.
 
 ## References
 

@@ -68,6 +68,24 @@ def _alloc_webview_bridge(
     return WebViewBridge(port=port), port
 
 
+def _alloc_zorder(lease_env: object) -> tuple[int, str] | None:
+    """Reserve the port and per-run secret the in-app `nativeZ` responder answers on (BE-0355).
+
+    One per lease, like the WebView bridge, so parallel devices never contend. The responder is a
+    listener inside the app under test and iOS loopback is not isolated between apps, so it is given
+    a fresh secret to require rather than left open to any co-resident process.
+    """
+    if getattr(lease_env, "observes_network_via_driver", lambda: False)():
+        return None
+    import secrets
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    return port, secrets.token_urlsafe(16)
+
+
 def device_pool(
     udids: list[str],
     backends: list[str],
@@ -375,6 +393,10 @@ def device_pool(
             webview_bridge, webview_port = _alloc_webview_bridge(lease_env)
             if webview_port is not None:
                 extra_env["BAJUTSU_WEBVIEW_PORT"] = str(webview_port)
+            zorder = _alloc_zorder(lease_env)
+            if zorder is not None:
+                extra_env["BAJUTSU_ZORDER_PORT"] = str(zorder[0])
+                extra_env["BAJUTSU_ZORDER_TOKEN"] = zorder[1]
             driver, readiness = launch_driver(
                 udid,
                 eff,

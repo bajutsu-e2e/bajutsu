@@ -42,6 +42,7 @@ it is imported by the per-backend suites.
 
 from __future__ import annotations
 
+import math
 import time
 from collections import Counter
 from typing import Protocol, runtime_checkable
@@ -341,17 +342,18 @@ class DriverConformanceContract:
         plain = base.resolve_unique(elements, {"id": FIELD_ID})
         assert base.Trait.SECURE_TEXT_FIELD not in plain["traits"]
 
-    def test_native_z_is_none_unless_the_backend_measures_it(
-        self, harness: ConformanceHarness
-    ) -> None:
+    def test_native_z_is_absent_or_a_real_measurement(self, harness: ConformanceHarness) -> None:
         # `nativeZ` (BE-0355) is diagnostic only and app-measured: every element carries the field,
-        # and a backend that cannot measure a real front-to-back position reports `None` rather than
-        # deriving one from the tree's own document order — an honest absence over a wrong guess.
-        # No backend measures one yet (the iOS and Android reporting paths are that item's still-open
-        # Units 2 and 3), so the whole contract today is that absence, and this case is what fails on
-        # the day a backend starts fabricating a value instead of reporting one the app measured.
-        driver = harness.with_screen([element(identifier="a"), element(identifier="b")])
-        assert all(el["nativeZ"] is None for el in driver.query())
+        # and a backend reports a number only where the app under test measured one for that element.
+        # Everything else is `None` — an honest absence over a value derived from the tree's own
+        # document order, which is the wrong-but-authoritative reading this field exists to avoid.
+        # Both halves are asserted here because a backend can be on either side of the opt-in: the
+        # fake and any app that never links the app-side hook report the absence, while an
+        # instrumented app reports positions this pins to real, finite numbers.
+        elements = harness.with_screen([element(identifier="a"), element(identifier="b")]).query()
+        assert all("nativeZ" in el for el in elements)
+        measured = [el["nativeZ"] for el in elements if el["nativeZ"] is not None]
+        assert all(isinstance(z, float) and math.isfinite(z) for z in measured)
 
     def test_baseline_capabilities_are_declared(self, harness: ConformanceHarness) -> None:
         # Every backend must read the screen: the preflight baseline (BE-0082) is QUERY + ELEMENTS.

@@ -41,9 +41,16 @@ e2e: web-deps
 # request's secret (the redaction gap the run grammar can't assert). Same background-serve +
 # readiness poll as `e2e`; no device, no Simulator — pure Linux.
 #
-# Android has no native network monitor yet (adb declares no NETWORK capability), so there is no
-# Android twin of this lane — the gap is deliberate and recorded in web-e2e.yml and docs, not an
-# oversight.
+# Android has an app-side counterpart, though not a twin of this lane's full coverage: `network
+# (adb)` in android-e2e.yml asserts the same `request` shape against real emulator traffic
+# (BE-0283), captured by BajutsuAndroid's OkHttp interceptor reporting to a host collector over
+# `adb reverse`, and it gates the required `E2E (android)` check just as this lane's job gates
+# `E2E (web)`. It asserts only that the exchange was observed: the mock interception, the `mocked`
+# flag, and the redaction assertion above stay exclusive to this lane. The adb driver itself still
+# declares no native `NETWORK` capability (`observes_network_via_driver` is false — there is no
+# native network monitor to actuate), so that job validates the app-side path directly rather than a
+# driver capability. The iOS half (wiring `network_mock.yaml` / `network_live.yaml` as a Simulator
+# job) is BE-0282's one open unit.
 NET_RUNS ?= $(ROOT)/tmp/web-network-runs
 e2e-network: web-deps
 	cd $(APP) && python3 -m http.server $(PORT) >/dev/null 2>&1 & srv=$$!; \

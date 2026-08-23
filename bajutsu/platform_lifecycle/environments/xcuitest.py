@@ -37,6 +37,7 @@ from bajutsu.platform_lifecycle.environments._bundled_runner import (
 )
 from bajutsu.platform_lifecycle.environments.ios import _DeviceEnvironment
 from bajutsu.scenario import Preconditions
+from bajutsu.zorder import ZOrderResponder, ZOrderSource
 
 _logger = logging.getLogger(__name__)
 
@@ -159,6 +160,19 @@ def _terminate_process_group(proc: subprocess.Popen[bytes]) -> None:
     # Reap the parent so it does not linger as a zombie until this process exits.
     with contextlib.suppress(subprocess.TimeoutExpired, OSError):
         proc.wait(timeout=5)
+
+
+def _zorder_client(extra_env: Mapping[str, str] | None) -> ZOrderSource | None:
+    """The `nativeZ` responder client for a launch, or None when this run allocated no port.
+
+    The port and token come from the same launch env the app reads (BE-0355), so host and app agree
+    without a second channel to keep in step.
+    """
+    port = (extra_env or {}).get("BAJUTSU_ZORDER_PORT")
+    token = (extra_env or {}).get("BAJUTSU_ZORDER_TOKEN")
+    if not port or not token:
+        return None
+    return ZOrderResponder(port=int(port), token=token)
 
 
 def _allocate_port() -> int:
@@ -624,6 +638,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # Set by `request_device_replacement` when the run pipeline escalates a crash retry above the
         # forced erase (BE-0354); consumed by the next `start`, which swaps the device before it preps.
         self._replacement_requested = False
+        # The in-app `nativeZ` responder client for the launch this environment last started
+        # (BE-0355); None until a `start` sees a port in its launch env.
+        self._zorder: ZOrderSource | None = None
 
     def start(
         self,
@@ -637,6 +654,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
         ios = require_ios(eff)
         xcfg = ios.xcuitest
         device_type = effective_device_type(xcfg)
+        # The app answers `nativeZ` on the port this run injected, so the client is built from the
+        # same launch env the app will read (BE-0355). Held on the environment rather than threaded
+        # through the spawn path, so a warm resume reuses the responder its own launch set up.
+        self._zorder = _zorder_client(extra_env)
         # Read once and cleared here rather than where it is honored, so no `start` can leave a stale
         # escalation behind for a later lease — including the real-device route below, which returns
         # before the rung and has no simctl to mint a device through anyway.
@@ -1230,6 +1251,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             runner_alive=self._runner_alive,
             on_stall=self._capture_stall,
             device_os=self._device_os(),
+            zorder=self._zorder,
         )
         # `log_tail` / `discard` reach live environment state (`self._runner_log` / `self._runner_proc`);
         # they are valid only until the next `spawn()` overwrites it, which the strictly sequential
@@ -1488,6 +1510,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             runner_alive=self._runner_alive,
             on_stall=self._capture_stall,
             device_os=self._device_os(),
+            zorder=self._zorder,
         )
         try:
             cast(base.BackendLifecycle, driver).await_ready(timeout=_WARM_HEALTH_TIMEOUT)
