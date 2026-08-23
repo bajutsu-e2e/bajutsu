@@ -616,6 +616,37 @@ def test_resident_failure_latches_to_dump_for_the_rest_of_the_lease() -> None:
     assert fetch_calls == 1
 
 
+def test_a_dead_read_channel_also_latches_the_act_path_unavailable() -> None:
+    # A resident connection that cannot serve a read cannot serve `/act` either — it is the same dead
+    # socket. Left unlatched, every later tap would rediscover that on its own, re-fault, and re-warn
+    # once per gesture for the rest of the lease instead of degrading once (BE-0339 Unit 4).
+    def fetch(_since: float | None) -> HierarchyRead:
+        raise AdbResidentError("channel down")
+
+    act, seen = _recording_act([True])
+    run, calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, fetch_hierarchy=fetch, act=act)
+    driver.query()  # kills the read channel and latches `_act_unavailable`
+    driver.tap({"id": "stable.submit"})  # never even probes the now-dead act endpoint
+    assert seen == []
+    assert [c for c in calls if "input" in c]  # the coordinate fallback carried the gesture
+
+
+def test_a_tap_that_discovers_the_dead_channel_itself_never_probes_act() -> None:
+    # A narrower ordering than the test above: the channel is still alive when `tap` starts, so the
+    # entry guard passes — the death happens inside this same call, via `_settle`'s own read. Without
+    # a re-check after that read, the request would still go out to the connection just torn down.
+    def fetch(_since: float | None) -> HierarchyRead:
+        raise AdbResidentError("channel down")
+
+    act, seen = _recording_act([True])
+    run, calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, fetch_hierarchy=fetch, act=act)
+    driver.tap({"id": "stable.submit"})  # `_settle` -> `_read_source` kills the channel mid-call
+    assert seen == []
+    assert [c for c in calls if "input" in c]  # the coordinate fallback carried the gesture
+
+
 def test_a_resident_read_fault_does_not_settle_the_last_actuation() -> None:
     # `_read_source` is the hierarchy READ path, not the gesture path: a fault here says nothing
     # about whether the last recorded actuation was accepted. Regression: this used to stamp the
@@ -2284,8 +2315,11 @@ def test_without_the_channel_the_coordinate_tap_is_unchanged() -> None:
 
 def test_a_device_tap_arms_the_catch_up_barrier_like_a_coordinate_tap() -> None:
     # The gesture happened, so the same bookkeeping must follow it: the cached tree is stale and the
-    # next coordinate resolve has to postdate this tap. Left unarmed, the device path would quietly
-    # drop the guarantee the coordinate path spent BE-0332 establishing.
+    # next coordinate resolve has to postdate this tap. `respondAct` settles the tree it resolves
+    # against before injecting, but answers as soon as the injection call returns — it does not wait
+    # for the gesture's own accessibility event to publish — so left unarmed, a coordinate-resolving
+    # follower (`pinch`, `rotate`, a directional `swipe`/`drag` anchor) could still resolve against the
+    # pre-gesture screen, exactly the guarantee the coordinate path spent BE-0332 establishing.
     act, _ = _recording_act([True])
     run, _calls = _capturing_run([FIXTURE])
     driver = AdbDriver("U", run=run, act=act)
