@@ -1,6 +1,7 @@
 package com.bajutsu.showcase.views
 
 import android.view.View
+import dev.bajutsu.android.BajutsuZOrder
 
 // SPEC §8: the single place identifiers (and state-mirroring values) enter the tree, the Views twin
 // of the UIKit `accessibilityID(_:)` extension. Gated on BuildConfig.ACCESSIBLE, so the `noax` flavor
@@ -17,6 +18,11 @@ fun <T : View> T.aid(name: String): T {
     if (BuildConfig.ACCESSIBLE) {
         val resolved = resources.getIdentifier(name, "id", context.packageName)
         if (resolved != 0) id = resolved
+        // Opt the same views into reporting their own front-to-back position (BE-0355). Gated with
+        // the id for one reason: a view bajutsu cannot name is a view no evidence reader can look up
+        // a position for. Debug-flavored showcase only — the delegate is readable by any
+        // accessibility client on the device.
+        BajutsuZOrder.report(this)
     }
     return this
 }

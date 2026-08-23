@@ -11,6 +11,9 @@ final class FakeElementProvider: ElementProviding {
     // When set, `queryElements` raises this — standing in for an `app.snapshot()` that raises while
     // the UI is in flux (the Router catches it as an empty screen, not a runner crash).
     var queryRaises: NSException?
+    /// Runs at the top of `queryElements`, on the main thread the operation has already taken. A
+    /// test holds it there to check what the runner still answers meanwhile (BE-0287).
+    var beforeQueryElements: (() -> Void)?
 
     var isHittableResult: TapResult = .ok
 
@@ -34,6 +37,7 @@ final class FakeElementProvider: ElementProviding {
     var systemAlertTapCalls: [AnyObject] = []
 
     func queryElements() -> [ElementSnapshot] {
+        beforeQueryElements?()
         if let exception = queryRaises { exception.raise() }
         return elementsToReturn
     }

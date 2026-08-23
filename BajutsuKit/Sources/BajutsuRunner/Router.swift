@@ -1,6 +1,14 @@
 import Foundation
 import ObjCExceptionCatcher
 
+/// The hand-rolled router BE-0381 replaces. `RunnerServer` no longer serves through it: every route
+/// is a generated handler as of Unit 4. It stays until Unit 5 because it is what the migration is
+/// checked *against* — `APIHandlerParityTests`, `TransportParityTests`, and the reply-side half of
+/// `ContractConformanceTests` all read the shipped behavior off this implementation and compare. Its
+/// deletion and theirs are the same change. `ContractConformanceTests`'
+/// `testGeneratedRequestTypesDecodeTheDriversBodies` is *not* part of it: it pins the generated
+/// request types against the bodies the Python driver sends and never touches this type, so it
+/// outlives the comparisons.
 final class Router {
     private let provider: ElementProviding
     private let store = SnapshotStore()

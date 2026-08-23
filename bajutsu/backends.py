@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from bajutsu.device_os import DeviceOS
     from bajutsu.drivers.adb import ActFn, ClockFetch, HierarchyFetch
     from bajutsu.scenario import Scenario
+    from bajutsu.zorder import ZOrderSource
 
 # Platform token -> its actuators, most-stable-first. `--backend` / config `backend` accept
 # either a platform token (these keys) or a bare actuator name (the values below).
@@ -409,6 +410,7 @@ def make_driver(
     fetch_clock: ClockFetch | None = None,
     act: ActFn | None = None,
     device_os: DeviceOS | None = None,
+    zorder: ZOrderSource | None = None,
 ) -> base.Driver:
     """Construct the driver for an actuator, wiring up its backend-specific arguments.
 
@@ -421,7 +423,10 @@ def make_driver(
     fast on a runner whose process has exited. It also takes `on_stall`, the environment's bounded
     diagnostics capture (BE-0361), called when that same layer declares a mid-run crash, and
     `device_os`, the parsed OS version of the device it is driving (BE-0358), so a driver-level
-    failure can name the OS it happened on. Every other actuator ignores all three. `device_os`
+    failure can name the OS it happened on. `zorder` is the in-app responder that measures each
+    element's front-to-back position (BE-0355); without one, or with an app that never answers,
+    every element keeps the `nativeZ: None` a backend with no such hook owes its reader. Every other
+    actuator ignores all four. `device_os`
     travels as a keyword rather than as a `Driver` member because that Protocol is
     `@runtime_checkable` with no shared base class: a data member there would be a declaration every
     backend and every inline test double has to repeat.
@@ -445,6 +450,7 @@ def make_driver(
             runner_alive=runner_alive,
             on_stall=on_stall,
             device_os=device_os,
+            zorder=zorder,
         )
     if actuator == "playwright":
         # Lazy: keep Playwright (a heavy optional dep) off the default import path.

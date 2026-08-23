@@ -40,6 +40,7 @@ its own launch-env key, so the function is inert unless one of them is set:
 | `BAJUTSU_COLLECTOR` | network capture, and the screen-transition hook alongside it |
 | `BAJUTSU_MOCKS` | request stubbing |
 | `BAJUTSU_TOUCH_MARKERS` | the in-app touch visualization — swizzles `-[UIWindow sendEvent:]` and draws a layer over the app's own window |
+| `BAJUTSU_ZORDER_PORT` + `BAJUTSU_ZORDER_TOKEN` | the `nativeZ` responder (BE-0355) — a loopback-only HTTP listener that reports each element's front-to-back position, answering only requests bearing the token |
 
 bajutsu sets these on `run`, so the function is inert in normal use. Network capture
 activates only when `BAJUTSU_COLLECTOR` is present. It registers globally (covering
@@ -53,7 +54,9 @@ It captures headers and bodies — **test/debug builds only**. Gate it out of re
 compilation condition rather than leaning on the launch-env keys alone: a release binary that
 still calls `startIfEnabled()` can have any of the features in the table above turned on by an
 environment variable, and `BAJUTSU_TOUCH_MARKERS` in particular installs a process-wide event
-hook and draws over the app's own window. Configure bajutsu `redact` to mask secrets in the
+hook and draws over the app's own window, while the `nativeZ` responder opens a listening
+socket that names every element on screen (loopback only, and bearer-token gated, but iOS
+loopback is not isolated between apps). Configure bajutsu `redact` to mask secrets in the
 written evidence (`network.json`).
 
 ## Coverage

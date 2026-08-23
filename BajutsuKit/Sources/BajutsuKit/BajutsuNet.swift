@@ -48,6 +48,9 @@ public enum BajutsuNet {
         // Ahead of the guard below on purpose: touch visualization needs neither a collector nor a
         // mock rule, and a plain recorded run with no network features at all is the case it is for.
         BajutsuTouch.startIfEnabled(environment: environment)
+        // Ahead of the guard for the same reason: the driver asks for a stacking order on any run,
+        // and the responder gates itself on the port and token the host injected (BE-0355).
+        BajutsuZOrder.startIfEnabled(environment: environment)
         if let raw = environment["BAJUTSU_COLLECTOR"], let url = URL(string: repairedURL(raw)) {
             collectorURL = url
             collectorToken = environment["BAJUTSU_COLLECTOR_TOKEN"]

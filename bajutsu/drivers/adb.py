@@ -33,8 +33,8 @@ import logging
 import re
 import subprocess
 import time
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -66,11 +66,17 @@ class HierarchyRead:
     strips SystemUI decor windows — `text` is what that narrowing produced. None when the caller applies
     no such transform, so a `rawTree` capture (`RawSourceProvider`) has both halves to diff a mismatch
     against: the device's own dump, and bajutsu's own processing of it.
+
+    `native_z` maps each opted-in view's content key to its own `View.getZ()` (BE-0355 Unit 3), keyed
+    the way it is because the device measures those values in a second walk whose node sequence does
+    not line up with the dumped body's. Empty on the dump fallback, on a server that does not report
+    it, and on an app that opted no view in.
     """
 
     text: str
     mark: float | None = None
     raw: str | None = None
+    native_z: dict[str, float] = field(default_factory=dict)
 
 
 # Takes the mark a read must postdate (BE-0332 Unit 4): the resident server blocks until an
@@ -296,8 +302,8 @@ def _to_element(node: ET.Element, malformed_bounds: list[int] | None = None) -> 
         "value": desc or None,
         "traits": _traits(node),
         "frame": _bounds(node.get("bounds") or "", malformed_bounds),
-        # `dumpWindowHierarchy`'s XML has no z attribute; the per-node extra-data round trip that
-        # would supply one is BE-0355's still-open Unit 3, so this stays an honest absence.
+        # `dumpWindowHierarchy`'s XML has no z attribute, so a measured position arrives beside the
+        # body and is matched in by `_elements_from_nodes` (BE-0355). Absent until then.
         "nativeZ": None,
     }
 
@@ -326,21 +332,57 @@ def _identity(node: ET.Element) -> NodeIdentity:
     )
 
 
-def _elements_from_nodes(nodes: list[ET.Element]) -> list[base.Element]:
+def _native_z_key(node: ET.Element, occurrence: int) -> str:
+    """What names a node to the device's own second walk, recomputed from the dumped `<node>`.
+
+    Bounds, class, and package, plus how many nodes agreeing on all three came before it. The device
+    cannot key its readings by document-order position — it measures them in a walk over the active
+    window while the body spans every window — and cannot key them by identity either, since the
+    four accessibility fields `_identity` uses are deliberately not unique. Both sides walk the same
+    accessibility tree depth-first, so the occurrence count agrees, *scoped to the active window*:
+    `narrow_to_active_window` drops SystemUI's own windows from the body before this key is computed,
+    but not a second window of the app under test itself (a dialog over its own main window). Two
+    opted-in nodes sharing bounds, class, and package across the app's own windows would shift each
+    other's occurrence count and could match onto the wrong one — narrower than the false-authority
+    failure mode `nativeZ` exists to avoid overall (BE-0355), since it needs bounds- and
+    class-identical nodes across the same app's own windows, but not yet closed. Kept in sync with
+    `ResidentServerTest.kt`'s `nativeZHeader`.
+    """
+    # The verbatim `[l,t][r,b]` corners, not `_bounds`' (x, y, width, height) `Frame`: the device
+    # keys by the screen rect it read, so deriving anything here would only be a second chance to
+    # disagree.
+    match = _BOUNDS.match(node.get("bounds") or "")
+    corners = ",".join(match.groups()) if match else ""
+    return f"{corners}|{node.get('class') or ''}|{node.get('package') or ''}|{occurrence}"
+
+
+def _elements_from_nodes(
+    nodes: list[ET.Element], native_z: Mapping[str, float] | None = None
+) -> list[base.Element]:
     """`_to_element` over every node, warning once for the parse if any `bounds` was malformed.
 
     The one place both `parse_hierarchy` and `parse_hierarchy_with_identities` build their `Element`
     list, so the malformed-bounds tally and its warning are counted and logged once, not duplicated at
-    each call site.
+    each call site — and the one place a device-measured `nativeZ` is matched onto the node it belongs
+    to (BE-0355).
     """
     malformed_bounds = [0]
     els = [_to_element(n, malformed_bounds) for n in nodes]
     if malformed_bounds[0]:
         _warn_malformed_bounds(malformed_bounds[0])
+    if native_z:
+        seen: dict[str, int] = {}
+        for node, el in zip(nodes, els, strict=True):
+            stem = _native_z_key(node, 0).rsplit("|", 1)[0]
+            occurrence = seen.get(stem, 0)
+            seen[stem] = occurrence + 1
+            el["nativeZ"] = native_z.get(f"{stem}|{occurrence}")
     return els
 
 
-def parse_hierarchy_with_identities(text: str) -> tuple[list[base.Element], list[NodeIdentity]]:
+def parse_hierarchy_with_identities(
+    text: str, native_z: Mapping[str, float] | None = None
+) -> tuple[list[base.Element], list[NodeIdentity]]:
     """`parse_hierarchy`, plus each element's device-addressable identity, index-aligned.
 
     Both lists walk the same `<node>` sequence in document order, so element *i* is named by identity
@@ -350,7 +392,7 @@ def parse_hierarchy_with_identities(text: str) -> tuple[list[base.Element], list
     if root is None:
         return [], []
     nodes = list(root.iter("node"))
-    return _elements_from_nodes(nodes), [_identity(n) for n in nodes]
+    return _elements_from_nodes(nodes, native_z), [_identity(n) for n in nodes]
 
 
 def slice_hierarchy_root(text: str) -> ET.Element | None:
@@ -520,6 +562,9 @@ class AdbDriver(CoordinateTreeDriver):
         # the newest accessibility event the resident reader had seen. None on the dump path. Set by
         # `_read_source` on every read, before `_advance_catchup` folds that read into the barrier.
         self._read_mark: float | None = None
+        # Each opted-in view's own measured position from the last resident read (BE-0355). Empty on
+        # the dump fallback, which carries no such reading.
+        self._native_z: dict[str, float] = {}
         # Whether a read has postdated the *current* actuation's device mark (BE-0332 Unit 3). Reset on
         # every actuation and set true only when `_advance_catchup` closes a mark-anchored barrier on a
         # postdating read — never on the dump heuristic, an actuation that armed no mark, or a barrier
@@ -602,7 +647,9 @@ class AdbDriver(CoordinateTreeDriver):
         return self._run(args)
 
     def _describe(self) -> list[base.Element]:
-        els, identities = parse_hierarchy_with_identities(self._read_source())
+        # `_read_source` refreshes `_native_z` for this read, so it is read after, never before.
+        source = self._read_source()
+        els, identities = parse_hierarchy_with_identities(source, self._native_z)
         self._identities = {id(el): ident for el, ident in zip(els, identities, strict=True)}
         # The tree the identity map above describes. `_device_act` counts an element's peers against
         # *this* list, never against a tree it captured earlier: `_resolve` re-queries on a transient
@@ -636,6 +683,7 @@ class AdbDriver(CoordinateTreeDriver):
             try:
                 read = self._fetch_hierarchy(since)
                 self._read_mark = read.mark
+                self._native_z = read.native_z
                 logger.debug(
                     "resident read in %.2fs: mark %s, blocked on %s",
                     time.monotonic() - t0,
@@ -682,8 +730,10 @@ class AdbDriver(CoordinateTreeDriver):
                 stall_diagnostics.capture(
                     "resident-read", stall_diagnostics.device_probes(self.serial)
                 )
-        # The dump subprocess carries no event mark, so the barrier reverts to its wall-clock budget.
+        # The dump subprocess carries no event mark, so the barrier reverts to its wall-clock budget,
+        # and no measured position either, so every element reports the honest absence.
         self._read_mark = None
+        self._native_z = {}
         t0 = time.monotonic()
         text = self._run(adb.dump_cmd(self.serial))
         logger.debug(

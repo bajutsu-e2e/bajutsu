@@ -161,8 +161,9 @@ class Element(TypedDict):
     # paint-order proxy `topmost_at_point` below already warns about. Diagnostic only: no selector
     # matches on it and no occlusion check reads it, so `is_tappable` / `topmost_at_point` /
     # XCUITest's `isHittable` are unaffected. `None` is an honest absence — a backend with no such
-    # hook, or an app that has not opted in — rather than a wrong guess. No backend reports a real
-    # value yet; the iOS and Android reporting paths are BE-0355's still-open Units 2 and 3.
+    # hook, or an app that has not opted in — rather than a wrong guess. UIKit screens (through
+    # BajutsuKit's responder) and Android `View` screens in an opted-in app report a value; every
+    # other backend, and every app that has not opted in, reports `None` (BE-0355).
     # `_collapse_identical_duplicates`'s content key deliberately omits it: two candidates that
     # agree on every other reported field still collapse, however far apart they measure.
     nativeZ: float | None

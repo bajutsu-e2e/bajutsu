@@ -18,8 +18,8 @@ final class RunnerUITest: XCTestCase {
         // leave every later request with "connection refused". This covers only *recorded* soft
         // failures; a *raised* NSException (an interaction or an `app.snapshot()` query that fails
         // when the screen is in flux — "No matches found", a failed snapshot) unwinds past this and
-        // would abort the runner regardless. The Router catches that at every handler boundary
-        // (`caughtOnMain`: actuation → stale, query → empty screen, screenshot → 500), so the two
+        // would abort the runner regardless. `APIHandler` catches that at every handler boundary
+        // (`caught`: actuation → stale, query → empty screen, screenshot → 500), so the two
         // together keep the runner serving; a genuinely failed operation still surfaces to the Python
         // side through its response status.
         continueAfterFailure = true
@@ -36,7 +36,7 @@ final class RunnerUITest: XCTestCase {
         // observes a dead process and retries with a fresh cold spawn; the launch timeout is
         // intermittent, so a retry usually lands. Once resident (`serving`), a recorded soft failure
         // is the operational blip `continueAfterFailure` deliberately tolerates and must NOT end the
-        // runner (the Router already contains it at each handler boundary).
+        // runner (`APIHandler` already contains it at each handler boundary).
         guard !serving else { return }
         FileHandle.standardError.write(
             Data("bajutsu runner: startup failure before the server bound — exiting for a fresh cold spawn: \(issue.compactDescription)\n".utf8)

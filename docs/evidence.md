@@ -54,13 +54,33 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 > ([BE-0355](../roadmaps/BE-0355-native-z-position/BE-0355-native-z-position.md)). Reading it changes
 > nothing a run decides — no selector matches on `nativeZ`, and the occlusion checks
 > (`is_tappable`, `topmost_at_point`, and XCUITest's own `isHittable`) behave exactly as they did
-> before the field existed. It reads `null` wherever no app-measured position exists, which today
-> means everywhere: reporting a real value needs an app that has linked the opt-in Bajutsu hook, and
-> the hook's iOS and Android halves are still open work on that roadmap item. A `null` is deliberate
-> rather than a gap to be filled in by inference. Deriving a position from the element list's own
-> order — the paint-order proxy `topmost_at_point` falls back to — would read as authoritative while
-> being wrong on exactly the layouts an investigator opens the evidence for, such as an Android view
-> whose `elevation` lifts it above a sibling declared after it.
+> before the field existed.
+>
+> **What the number means is the backend's own, and only its direction carries across.** On both
+> backends a larger `nativeZ` is closer to the viewer; nothing else about two values is comparable
+> unless they came from the same backend. iOS reports an ordinal over the app's real compositing
+> order, counted back to front, because `CALayer.zPosition` reads zero across an ordinary flat
+> layout and Apple documents it as the wrong tool for sibling order. Android reports `View.getZ()` —
+> elevation plus any translation on the z axis — in device pixels, and that value orders siblings
+> within one parent and nothing wider: a child at `0` under a parent at `8` still composites in front
+> of that parent's sibling at `4`. So on Android a number tells you which of two elements is in front
+> only when they are siblings; on iOS, any two values from the same read compare, since the ordinal
+> spans the whole screen; and no comparison holds across backends.
+>
+> **A `null` is the common case, and it is deliberate rather than a gap to be filled in by
+> inference.** Reporting a real value needs an app that opted in: on iOS by linking BajutsuKit, on
+> Android by calling `BajutsuZOrder.report(view)` in a debug build — and, on iOS, being driven through
+> bajutsu's own XCUITest runner rather than the WebDriverAgent-backed live/record path, which injects
+> no port for the responder to answer on and so reads `null` even for an opted-in app. Two toolkits
+> report nothing even then, because each generates its own accessibility elements and does not expose
+> the underlying one the position would be measured from: **SwiftUI** materializes its accessibility
+> elements only for an assistive technology attached to the process, so an app looking at its own view
+> tree finds no identifiers on it, and **Jetpack Compose** forwards no app-declared extra-data key
+> through its own node generation. UIKit and Android `View` screens report; SwiftUI and Compose
+> screens read `null`. Deriving a position from the element list's own order — the paint-order proxy
+> `topmost_at_point` falls back to — would read as authoritative while being wrong on exactly the
+> layouts an investigator opens the evidence for, such as an Android view whose `elevation` lifts it
+> above a sibling declared after it.
 
 > `rawTree` writes `hierarchy.raw<suffix>` — the device's/runner's own reply, untouched by any of
 > bajutsu's processing: adb's `uiautomator dump`/resident XML (`.xml`), or XCUITest's undecoded
