@@ -176,7 +176,8 @@ monkeypatch して、`"UDID-A"`/`"UDID-B"` のような架空の udid に対す�
   証拠が残った最初の実行です。`/screenshot` が両ワーカーで 1 秒と違わずタイムアウトし、続いて両方の
   ランナーが実行中に `code 65` で終了しました。そのあと `SimRenderServer` 自身が自前の dispatch
   キュー上でクラッシュしています（`EXC_BREAKPOINT`）。このクラッシュレポートは収集済みの成果物に
-  含まれます。BE-0361 が産出するために作られたもので、最初の 3 回では推論するしかなかったものです。
+  含まれます。BE-0361 の診断は、まさにこれを残すために用意したものです。最初の 3 回では、これを
+  推論するしかありませんでした。
   その後も CoreSimulator は行き詰まったままでした。`simctl spawn … defaults export` と
   `simctl terminate` はそれぞれ 60 秒でタイムアウトしました。Simulator を 2 台とも再起動しても、
   cold respawn の health は 90 秒以内に上がりませんでした。ステップは exit 2 で終わり、分離の
