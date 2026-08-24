@@ -5,6 +5,6 @@ uv.lock merge=uv-lock
 
 # Regenerate apm.lock.yaml from .apm/skills/ on a merge conflict instead of line-merging `apm
 # install` output (BE-0390, mirroring the uv.lock driver above). The `apm-lock` driver is wired by
-# `make hooks` / `make setup` (scripts/merge-apm-lock.sh); without it git falls back to the default
-# merge, which conflicts on the `generated_at` line for any two branches that touched a skill.
+# `make hooks` / `make setup` (scripts/merge-apm-lock.sh); without it git leaves conflict markers
+# among per-file SHA-256 hashes, whose correct value is on neither side of the merge.
 apm.lock.yaml merge=apm-lock

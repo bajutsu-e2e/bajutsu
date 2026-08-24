@@ -107,9 +107,11 @@ APMは、スキル、プロンプト、指示、Model Context Protocol（MCP）�
    再生成する`apm.lock.yaml`のマージドライバ
    （[`scripts/merge-apm-lock.sh`](../../scripts/merge-apm-lock.sh)）で、
    [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)が
-   `uv.lock`に対してすでに用意しているものと同じ仕組みです。ドライバがないと、installのたびに
-   書き換わる`generated_at`のタイムスタンプが、スキルに触れたブランチどうしで必ず競合します。
-   その下に並ぶハッシュを行マージすれば、どちらのソースとも一致しないロックファイルが残りかねません。
+   `uv.lock`に対してすでに用意しているものと同じ仕組みです。ドライバがないと、同じスキルを編集した
+   2つのブランチは、正しい値がどちらの側にもないファイルごとのSHA-256の行に、競合マーカーを残します。
+   再生成したロックファイルは暫定的なものです。gitはマージ結果を書き出す前にドライバを走らせるため、
+   `apm install`はマージ前のツリーを読むからです。`uv lock --check`が`uv.lock`のドライバを支えるのと
+   同じく、解決後の`make skills`で更新するまでは`make lint-skills`がゲートを落とします。
 6. **ドキュメント**：[`CLAUDE.md`](../../CLAUDE.md)の*Agent skill layout*節を、単一ソースの構成に
    書き換えます。[`AGENTS.md`](../../AGENTS.md)、
    [`docs/ja/ai-development.md`](../../docs/ja/ai-development.md)と英語版、

@@ -104,9 +104,12 @@ The work breaks down into six independent pieces:
    ([`scripts/merge-apm-lock.sh`](../../scripts/merge-apm-lock.sh)) that regenerates the lockfile
    from `.apm/skills/` on a conflict, mirroring what
    [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
-   already does for `uv.lock`. Without the driver, the `generated_at` timestamp every install
-   rewrites would conflict between any two branches that touched a skill, and line-merging the
-   hashes below it could record a lockfile matching neither side's sources.
+   already does for `uv.lock`. Without the driver, two branches that edited the same skill leave
+   conflict markers among per-file SHA-256 hashes, whose correct value is on neither side. The
+   regenerated lockfile is provisional — git runs a merge driver before writing any merged file, so
+   `apm install` reads the pre-merge tree — and `make lint-skills` fails the gate until a
+   `make skills` after the resolution refreshes it, exactly as `uv lock --check` backs the `uv.lock`
+   driver.
 6. **Documentation.** The *Agent skill layout* section of [`CLAUDE.md`](../../CLAUDE.md) is rewritten
    around the single source, and the skill links in [`AGENTS.md`](../../AGENTS.md),
    [`docs/ai-development.md`](../../docs/ai-development.md) with its Japanese mirror,

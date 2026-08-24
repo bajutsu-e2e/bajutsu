@@ -117,13 +117,13 @@ remain (BE-0043), so you don't have to configure them by hand:
   fails and git leaves `uv.lock` conflicted — resolve `pyproject.toml` first, then re-merge.
 - an **`apm.lock.yaml` merge driver** ([`scripts/merge-apm-lock.sh`](../scripts/merge-apm-lock.sh),
   mapped the same way) that **regenerates the skill lockfile from `.apm/skills/`** on a conflict, for
-  the same reason (BE-0390). Every `apm install` rewrites the lockfile's `generated_at` line, so two
-  branches that each edited a skill conflict there even when the skills they edited differ, and
-  line-merging the recorded hashes below that line can yield a lockfile matching neither side's
-  sources. The driver reruns `apm install`, which also refreshes the deployed `.claude/skills/`
-  tree — stage both once the merge finishes. When `apm` is absent, or a source skill still carries
-  conflict markers, the driver refuses and leaves `apm.lock.yaml` conflicted rather than recording
-  hashes of a half-merged tree.
+  the same reason (BE-0390). The lockfile is a flat list of per-file SHA-256 hashes, so two branches
+  that edited the same skill conflict on a hash line whose correct value sits on neither side —
+  nothing a reader can resolve by hand. What the driver writes is provisional, exactly as the
+  `uv.lock` driver's output is: git runs every merge driver before it writes any merged file, so the
+  `apm install` inside reads the pre-merge working tree. `make lint-skills` closes that gap the way
+  `uv lock --check` backs the `uv.lock` driver — after resolving a skill conflict, run `make skills`
+  and commit the lockfile and the deployed `.claude/skills/` tree it rewrote.
 - **`rerere`** (reuse recorded resolution), so a conflict you have resolved once replays
   automatically the next time the same conflict appears.
 
@@ -193,9 +193,11 @@ clone has a working skill set before anyone installs APM. The cost is that each 
 tracked twice; keeping `SKILL.md` inside APM's size budget (roughly 500 lines and 5,000 tokens)
 bounds it.
 
-So: edit the source, run `make skills`, and commit what it rewrote. `apm.lock.yaml` carries a
-`generated_at` timestamp that every install rewrites, so a no-op `make skills` still dirties that one
-line; the audit ignores it, and discarding it is fine.
+So: edit the source, run `make skills`, and commit what it rewrote. A `make skills` that changes
+nothing leaves the lockfile untouched: APM 0.28.0 preserves the `generated_at` timestamp of an
+existing `apm.lock.yaml` and stamps a new one only when it writes the lockfile from scratch. A
+timestamp-only diff therefore means the lockfile was regenerated rather than updated; the audit
+ignores the line, so discarding that diff is fine.
 
 `make lint-skills` catches the drift either way round — a deployed file edited by hand, and a source
 edit whose `make skills` was forgotten. Like `lint-actions` and `lint-secrets`, it skips with a notice when `apm` isn't on PATH;
