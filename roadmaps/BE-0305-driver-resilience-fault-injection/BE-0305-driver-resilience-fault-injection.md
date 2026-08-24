@@ -139,7 +139,11 @@ Log:
   both — reinstating that same defect — and that rewriting the loop to compare against a value no job
   reports leaves a permanently green required check. All three layers were mutation-checked: removing
   `changes` from every half, narrowing a gate, dropping the `cancelled` arm, and neutering the verdict
-  each redden.
+  each redden. Reviewing the net itself added two pins beside those three layers, for the routes an
+  addition rather than an edit opens: a lane whose aggregator this file never reads, and a
+  `continue-on-error` that disarms a red — on a gated job, where it hands `needs:` a `success` its job
+  never earned, or on the aggregator's own verdict step, where it reports the required check green over
+  a script that exited non-zero.
 
 ## References
 

@@ -26,6 +26,13 @@ permanently green required check that satisfies every structural assertion, so t
 real script under `bash` and pins the outcome it produces for each result value a dependency can
 carry.
 
+Removal is not the only way in. Two further routes reach the same outcome by addition rather than by
+edit: a lane added later that nothing here ever reads, and a `continue-on-error` that disarms a red —
+on a gated job, where it hands `needs:` a `success` the job never earned, or on the aggregator's own
+verdict step, where it reports the required check green over a script that exited non-zero. Both are
+pinned as well: the lane set against the workflow directory, and that key against every gated job,
+the aggregator, and the verdict step itself.
+
 The rest pin what BE-0305 shipped: both fault-injection lanes, promoted out of per-PR-signal status
 into their aggregators' `needs:` once measured stable, so a regression in the retry and crash-recovery
 detection those lanes exercise for real can no longer merge as an ignorable red signal. Silently
@@ -86,10 +93,16 @@ _NEEDS_RESULT = re.compile(r"^\$\{\{\s*needs\.([A-Za-z0-9_-]+)\.result\s*\}\}$")
 _LOOP = re.compile(r"for\s+result\s+in\s+(?P<vars>.+?);\s*do")
 
 
-def _aggregator(lane: str) -> dict[str, Any]:
+def _jobs(lane: str) -> dict[str, Any]:
+    """Every job in the lane's workflow, keyed by job id."""
     parsed = yaml.safe_load((WORKFLOWS / f"{lane}-e2e.yml").read_text(encoding="utf-8"))
     assert isinstance(parsed, dict)
-    job = parsed["jobs"]["e2e"]
+    jobs: dict[str, Any] = parsed["jobs"]
+    return jobs
+
+
+def _aggregator(lane: str) -> dict[str, Any]:
+    job = _jobs(lane)["e2e"]
     assert job["name"] == LANES[lane], (lane, job["name"])
     return job
 
@@ -111,10 +124,27 @@ def _read_jobs(step: dict[str, Any]) -> dict[str, str]:
 
 
 def _looped_vars(step: dict[str, Any]) -> set[str]:
-    """The env var names the verdict loop iterates over."""
+    """The env var names the verdict loop iterates over.
+
+    All three spellings (`"$A"`, `$A`, `${A}`) count: a `needs.*.result` is always one bare word, so
+    they behave identically here, and pinning one of them would redden the suite with a wrong
+    diagnosis on a reformat that changed no wiring.
+    """
     match = _LOOP.search(step["run"])
     assert match, f"no verdict loop found in:\n{step['run']}"
-    return set(re.findall(r'"\$([A-Za-z0-9_]+)"', match.group("vars")))
+    return set(re.findall(r"\$\{?([A-Za-z0-9_]+)\}?", match.group("vars")))
+
+
+def _disarms_its_own_failure(node: dict[str, Any]) -> bool:
+    """Whether a job or a step declares its own failure not to count.
+
+    Read as text rather than compared against `True`: importing `bajutsu` narrows PyYAML's bool
+    resolver process-wide (`bajutsu/_yaml.py`), so under this suite the value arrives as the string
+    `"true"` and an `is True` check would never fire — itself the never-firing assertion this file
+    exists to rule out. Text holds whichever way it parses, and counts a `${{ }}` expression as
+    disarming too, since nothing on the verdict path has business making its own red conditional.
+    """
+    return str(node.get("continue-on-error", False)).lower() != "false"
 
 
 def test_every_needed_job_reaches_the_verdict() -> None:
@@ -168,6 +198,39 @@ def test_each_gate_depends_on_the_jobs_it_is_supposed_to() -> None:
             f"{lane}: no longer gates {sorted(expected - set(_aggregator(lane)['needs']))}; "
             f"newly gates {sorted(set(_aggregator(lane)['needs']) - expected)}"
         )
+
+
+def test_every_e2e_lane_is_pinned_here() -> None:
+    """A lane added later must not ship unpinned — the defect class above repeats once per lane.
+
+    `LANES` is a closed literal, so a fourth lane (Flutter is the next backend planned) could land its
+    own aggregator listing `changes` in `needs:` and never reading it, and every test here would pass,
+    never having opened that file. Deriving the lane set would defeat the point; failing until the new
+    lane is listed puts the wiring in front of its author.
+    """
+    on_disk = {path.name.removesuffix("-e2e.yml") for path in WORKFLOWS.glob("*-e2e.yml")}
+    assert on_disk == set(LANES), f"lanes not pinned: {sorted(on_disk - set(LANES))}"
+    assert set(GATED) == set(LANES), f"no gate pinned for: {sorted(set(LANES) - set(GATED))}"
+
+
+def test_nothing_on_the_verdict_path_disarms_itself_with_continue_on_error() -> None:
+    """`continue-on-error` reports success for a failure, and no assertion above would notice.
+
+    On a gated job it hands `needs:` a `success` the job never earned; on the aggregator, or on the
+    aggregator's own verdict step, it reports the required check green over a script that exited
+    non-zero. Any of the three leaves every other assertion here intact while the gate stops meaning
+    anything — the permanently green required check this file exists to rule out, reached from the
+    other side, and a plausible one-line edit under pressure to unblock a merge. Nothing on the
+    verdict path sets the key today; the step-level ones that exist sit on diagnostics steps, whose
+    failure is beside the point of the job they run in.
+    """
+    for lane in LANES:
+        jobs = _jobs(lane)
+        aggregator = _aggregator(lane)
+        for job_id in aggregator["needs"]:
+            assert not _disarms_its_own_failure(jobs[job_id]), (lane, job_id)
+        assert not _disarms_its_own_failure(aggregator), lane
+        assert not _disarms_its_own_failure(_check_step(aggregator)), lane
 
 
 def test_the_verdict_script_reddens_the_gate_for_every_dependency() -> None:
