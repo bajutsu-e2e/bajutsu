@@ -18,16 +18,34 @@
 # can never authorize a removal. Guards fail closed: anything unknown is a refusal, never a pass.
 set -euo pipefail
 
+# Guard 1 protects the worktree the *caller* is sitting in, which the `cd` below is about to lose:
+# afterwards `--show-toplevel` names whichever checkout holds this copy of the script, so an
+# absolute-path invocation from another worktree would leave that guard covering the wrong one.
+invoked_from="$PWD"
+
 cd "$(dirname "$0")/.."
 
 # A live session can hold a momentarily clean tree (between edits, or mid-thinking), so mtime is the
 # only signal that it is still there. Generous by default; override for a deliberate sweep of an
 # idle machine.
 STALE_MINUTES="${BAJUTSU_CLEANUP_STALE_MINUTES:-180}"
+# A value `find -mmin` cannot parse deletes the staleness guard instead of widening it: find's usage
+# error goes to /dev/null and its status is swallowed, leaving "no recent files" — a pass. Refuse the
+# value here, where "anything unknown is a refusal" is still cheap to honour.
+case "$STALE_MINUTES" in
+  '' | *[!0-9]*)
+    echo "cleanup: BAJUTSU_CLEANUP_STALE_MINUTES must be a whole number of minutes," \
+      "got '$STALE_MINUTES'" >&2
+    exit 1
+    ;;
+esac
 
 main_worktree="$(git rev-parse --path-format=absolute --git-common-dir)"
 main_worktree="$(cd "$(dirname "$main_worktree")" && pwd -P)"
-self_worktree="$(git rev-parse --path-format=absolute --show-toplevel)"
+# Fall back to this script's checkout when the caller stood outside a repository — there is no
+# session worktree to protect in that case, and the main-checkout clause above still holds.
+self_worktree="$(git -C "$invoked_from" rev-parse --path-format=absolute --show-toplevel 2>/dev/null \
+  || git rev-parse --path-format=absolute --show-toplevel)"
 self_worktree="$(cd "$self_worktree" && pwd -P)"
 
 # `find` over a worktree must not walk build output: .venv alone is ~120 packages, and its mtimes
@@ -86,8 +104,12 @@ refusals_for() {
   else
     local merged
     merged="$(gh pr list --head "$branch" --state merged --json number --jq 'length' 2>/dev/null || echo unknown)"
+    # Every value except a positive count refuses. `unknown` is only what a *silent* failure leaves
+    # behind; a gh that prints something before failing (a wrapper, a shim, an auth notice) yields
+    # neither `unknown` nor a count, and matching just those two would pass that off as a delivery
+    # this script never confirmed.
     case "$merged" in
-      unknown) echo "could not query pull requests for '$branch'" ;;
+      '' | *[!0-9]*) echo "could not query pull requests for '$branch'" ;;
       0) echo "no merged pull request for '$branch' — its work never landed" ;;
     esac
   fi

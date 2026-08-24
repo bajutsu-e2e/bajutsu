@@ -77,7 +77,10 @@ script cannot obtain counts as a refusal, never as a pass.
 5. The working tree holds no uncommitted or untracked changes.
 6. No file under the worktree changed within the staleness window, which defaults to 180 minutes and
    is overridable through `BAJUTSU_CLEANUP_STALE_MINUTES`. A live session holds a clean tree between
-   edits, so file modification time is the signal that the session is still there.
+   edits, so file modification time is the signal that the session is still there. The script also
+   refuses a window that is not a whole number of minutes. `find` treats such a value as an error,
+   and the error goes unseen. The empty answer left behind then reads as an idle worktree. A
+   malformed window deletes this guard rather than widening it.
 7. The branch has no commits absent from `origin/main`.
 8. The branch has a merged pull request. This guard is the one that catches the branch that has
    never committed: ancestry tests cannot distinguish work that finished from work that never

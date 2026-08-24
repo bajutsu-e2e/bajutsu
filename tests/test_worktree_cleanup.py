@@ -87,14 +87,25 @@ def _age(path: Path) -> None:
             os.utime(p, (old, old), follow_symlinks=False)
 
 
+def _fake_gh_raw(tmp_path: Path, body: str) -> dict[str, str]:
+    """PATH with a `gh` running this script body — for answers that are not a plain count."""
+    bin_dir = tmp_path / "fakebin"
+    bin_dir.mkdir(exist_ok=True)
+    gh = bin_dir / "gh"
+    gh.write_text(f"#!/bin/sh\n{body}\n")
+    gh.chmod(0o755)
+    return _clean_env(PATH=f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+
+
 def _run(
-    repo: Path, *args: str, env: dict[str, str] | None = None
+    repo: Path, *args: str, env: dict[str, str] | None = None, cwd: Path | None = None
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [str(repo / "scripts" / SCRIPT.name), *args],
         capture_output=True,
         text=True,
         env=env if env is not None else _clean_env(),
+        cwd=str(cwd) if cwd is not None else None,
     )
 
 
@@ -169,11 +180,74 @@ def test_refuses_recently_touched_worktree(repo: Path, tmp_path: Path) -> None:
     assert tree.exists()
 
 
+def test_refuses_a_locked_worktree(repo: Path, tmp_path: Path) -> None:
+    """Guard 2: a host's lock alone must refuse, even when every other guard would pass."""
+    tree = repo / "wt"
+    _git(repo, "worktree", "add", "-b", "claude/locked", str(tree), "origin/main")
+    _age(tree)
+    _git(repo, "worktree", "lock", "--reason", "session 4711", str(tree))
+
+    result = _run(repo, "--remove", str(tree), env=_fake_gh(tmp_path, 1))
+
+    assert result.returncode == 1
+    assert "worktree is locked (session 4711)" in result.stderr
+    assert tree.exists()
+
+
 def test_refuses_the_main_checkout(repo: Path, tmp_path: Path) -> None:
     result = _run(repo, "--remove", str(repo), env=_fake_gh(tmp_path, 1))
 
     assert result.returncode == 1
     assert "main checkout" in result.stderr
+
+
+def test_refuses_the_worktree_the_caller_is_standing_in(repo: Path, tmp_path: Path) -> None:
+    """Guard 1 follows the caller, not the copy of the script that happens to be invoked.
+
+    An absolute-path invocation runs the main checkout's copy, so resolving "self" after the
+    script's own `cd` would name that checkout and leave the session's worktree unprotected.
+    """
+    tree = repo / "wt"
+    _git(repo, "worktree", "add", "-b", "claude/self", str(tree), "origin/main")
+    _age(tree)
+
+    result = _run(repo, "--remove", str(tree), env=_fake_gh(tmp_path, 1), cwd=tree)
+
+    assert result.returncode == 1
+    assert "cleanup is running in" in result.stderr
+    assert tree.exists()
+
+
+def test_refuses_an_unusable_staleness_window(repo: Path, tmp_path: Path) -> None:
+    """A window `find -mmin` cannot parse would silently delete guard 5 rather than widen it."""
+    tree = repo / "wt"
+    _git(repo, "worktree", "add", "-b", "claude/typo", str(tree), "origin/main")
+    _age(tree)
+    env = _fake_gh(tmp_path, 1) | {"BAJUTSU_CLEANUP_STALE_MINUTES": "180m"}
+
+    result = _run(repo, "--remove", str(tree), env=env)
+
+    assert result.returncode == 1
+    assert "whole number of minutes" in result.stderr
+    assert tree.exists()
+
+
+def test_refuses_when_gh_answers_with_something_other_than_a_count(
+    repo: Path, tmp_path: Path
+) -> None:
+    """Fail closed: only a positive count is a delivery, so noise-then-failure must refuse too."""
+    tree = repo / "wt"
+    _git(repo, "worktree", "add", "-b", "claude/noisy", str(tree), "origin/main")
+    _age(tree)
+    # A wrapper or shim that writes to stdout before failing: the status is caught, but its output
+    # is already in the answer.
+    env = _fake_gh_raw(tmp_path, 'echo "gh: please re-authenticate"\nexit 1')
+
+    result = _run(repo, "--remove", str(tree), env=env)
+
+    assert result.returncode == 1
+    assert "could not query pull requests" in result.stderr
+    assert tree.exists()
 
 
 def test_refuses_when_gh_cannot_answer(repo: Path, tmp_path: Path) -> None:
