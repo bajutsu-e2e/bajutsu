@@ -364,7 +364,7 @@ the run's artifacts and never feeds any scenario's pass/fail.
 The job takes a change filter of its own — `touches_pool` in `scripts/e2e_changes.py`, narrower
 than the lane-wide signal every other job reads — because it boots twice what the Android lane's
 other jobs boot. It stays a per-PR signal outside that lane's required aggregate check, on
-BE-0282's signal-then-required path and for the same reason the fault-injection lanes take that path:
+BE-0282's signal-then-required path that the fault-injection lanes above also take, for a reason of its own:
 two emulators against one runner is the most resource-sensitive work the lane carries.
 
 An iOS twin, `pool (xcuitest)`, booted two Simulators on the macOS lane until BE-0298 withdrew it.
