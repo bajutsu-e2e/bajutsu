@@ -111,7 +111,7 @@ Don't start typing from the title. Build the real picture first:
   heavily) and read the surrounding code, so your change matches what exists.
 - Check what already exists, so you neither rebuild something shipped nor assume something
   absent. `make repo-map ARGS="--headings docs/architecture.md"` names the groups under
-  **Implemented**; read the one covering your area rather than the whole 281-line section.
+  **Implemented**; read the one covering your area rather than the whole section.
 - **Check dependencies.** If the References / design lean on another BE item, verify that
   item's status with `make roadmap-find ARGS="--id BE-NNNN"`, which answers in one row instead
   of opening the item. A prerequisite still at `Status: Proposal` is a blocker — surface it and

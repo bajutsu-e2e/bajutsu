@@ -13,8 +13,7 @@ Use Claude Code facilities for host-specific steps:
 - Use the Agent tool for independent review and follow-up subagents.
 - Send step 3's discovery to the `scout` agent rather than searching in the main thread — it
   runs on `fable` and returns paths, not file contents. Discovery that inherits this skill's
-  `opus` puts the repo's cheapest work on its most expensive path: one recorded `Explore` run
-  spent 430,695 tokens on `opus` to return 1,118 characters.
+  `opus` puts the repo's cheapest work on its most expensive path.
 - Run step 7's two roles on different models (BE-0347): `fable` for the review/plan pass, and for the implement pass `sonnet` when the fix stays within `roadmaps/` or `docs/`, `opus` when it touches product code.
 - Use the installed `pr-review-toolkit` for the specialized review pass.
 - Use `/loop` for the paced post-PR follow-up described by the workflow.

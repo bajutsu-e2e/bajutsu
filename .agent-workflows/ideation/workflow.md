@@ -51,9 +51,9 @@ Before ideating, pull in what already exists:
 - `make roadmap-find ARGS="--grep <topic>"` — the items already on the topic, in one table.
   The roadmap runs to close to 400 items. Grepping it returns far more than the query does.
 - `make roadmap-status STATUS="Proposal"` — the open backlog, when a keyword misses the framing.
-- `make repo-map ARGS="--headings docs/architecture.md"` names the groups under **Implemented**,
-  the source of truth for what already exists. Read the group covering the area, so you never
-  propose something already shipped. That section runs 281 lines; one group runs 20 to 80.
+- `make repo-map ARGS="--headings docs/architecture.md"` names the groups under **Implemented**.
+  That section records what already exists. Read the group covering the area, not the whole
+  section, so you never propose something shipped.
 - The `BE-NNNN-*/` files those queries surface. Read the English `.md` alone: the `-ja.md`
   mirror holds nothing it lacks.
 - [`roadmaps/README.md`](../../roadmaps/README.md) — what a roadmap item *is*, and how to add

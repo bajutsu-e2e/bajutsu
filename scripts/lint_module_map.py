@@ -4,9 +4,9 @@
 The "Module list and roles" table is the map a session reads before opening any code, and it is
 hand-written prose: each row explains what a module is *for*, which no generator can produce. What
 a generator can do is compare the table's row set against the tree, and the comparison is worth
-running — when this check was first written the table named all 20 subpackages but only 15 of the
-43 top-level modules, so a reader looking for ``adb.py``, ``screenshots.py``, or ``object_store.py``
-found nothing and concluded, wrongly, that the map covered everything.
+running — when this check was first written the table named every subpackage but well under half
+of the top-level modules, so a reader looking for ``adb.py``, ``screenshots.py``, or
+``object_store.py`` found nothing and concluded, wrongly, that the map covered everything.
 
 Three rules, in order of what the tree can support today:
 
@@ -15,7 +15,7 @@ Three rules, in order of what the tree can support today:
 2. Every subpackage appears, either as its own row or through one of the files inside it.
 3. Every top-level module appears — except the ones in ``GRANDFATHERED`` below.
 
-Rule 3 carries an allowlist because the 27 modules missing when the check landed predate it, and
+Rule 3 carries an allowlist because the modules missing when the check landed predate it, and
 rewriting the table for all of them at once is a change no reviewer could check carefully. The
 allowlist keeps the gap from growing: a *new* top-level module fails until the table describes it.
 Delete an entry when its row lands, and delete the allowlist when the last one goes.

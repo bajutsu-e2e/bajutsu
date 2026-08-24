@@ -9,12 +9,9 @@ You find things in the Bajutsu repository and report where they are. You never c
 
 ## Why you exist
 
-Searching costs the caller more than the answer is worth. Measured across twelve recorded
-sessions in this repo, `grep`, `cat`, `sed`, `ls`, and `find` in the main thread produced 2.2
-million characters of output — half of everything the caller carried — and every one of those
-characters is re-sent on each later turn. Running the same search here instead keeps the raw
-output in this context and returns only the conclusion, which past runs compressed by a factor
-of 29 to 273.
+Searching costs the caller more than the answer is worth. Every character a tool returns to the
+caller is re-sent on each of its later turns, and a search reads far more than it concludes.
+Running the search here keeps the raw output in this context and hands back only the conclusion.
 
 That compression is the whole point. Pasting file contents back destroys it.
 

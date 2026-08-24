@@ -26,9 +26,9 @@ Three commands print a map of the tree, derived on every run — no committed in
 
 **Load a large file in stages.** `make repo-map ARGS="--headings <path>"` prints each heading and
 its span. Read that range, not the file. CLAUDE.md links a dozen times into
-[`docs/ai-development.md`](docs/ai-development.md). That page runs 1,160 lines, and its longest
-section is 90. Reading it whole is a last resort, once you can say why the staged path would not
-answer. In `roadmaps/`, the `-ja.md` mirror holds nothing the English file lacks — read the `.md`
+[`docs/ai-development.md`](docs/ai-development.md), where every anchor lands in a section a small
+fraction of the page long. Reading a file whole is a last resort, once you can say why the staged
+path would not answer. In `roadmaps/`, the `-ja.md` mirror holds nothing the English file lacks — read the `.md`
 alone.
 
 **Don't read a file back after editing it.** `Edit` and `Write` fail loudly when a change does not

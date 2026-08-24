@@ -309,7 +309,7 @@ The frontmatter can't reach interactive and delegated work, so choose there by h
   at spawn time.
 
 Passing `model` at spawn time is a thing to remember, not a mechanism, and it gets forgotten.
-One recorded `Explore` run spent 430,695 tokens on `opus` to return 1,118 characters.
+A discovery fan-out that nobody routed runs at whatever the driver is paying for.
 [`.claude/agents/scout.md`](../.claude/agents/scout.md) closes that gap for discovery.
 The agent pins `fable` in its own frontmatter and holds its reply to paths and line ranges.
 Naming `scout` buys the cheap path without anyone choosing it.

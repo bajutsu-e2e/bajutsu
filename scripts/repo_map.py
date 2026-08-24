@@ -2,9 +2,8 @@
 """Print a map of the repository — documentation pages or Python modules — for an AI session.
 
 A session that does not yet know where something lives pays for the search: a few `ls` and `grep`
-calls that miss before one lands. The repository is large enough for that to matter — 73 pages and
-about 23,000 lines under ``docs/``, and 313 modules and about 75,000 lines under ``bajutsu/`` —
-and neither tree carries an index a session can read instead::
+calls that miss before one lands. Both trees this maps are large enough for that to matter, and
+neither carries an index a session can read instead::
 
     python3 scripts/repo_map.py --docs                    # every docs page, one line each
     python3 scripts/repo_map.py --code                    # every package and top-level module
@@ -18,8 +17,7 @@ makes that impossible, and follows what ``roadmap_query.py`` and ``build_roadmap
 already do for the roadmap.
 
 ``--headings`` serves the reading discipline the map exists to support: find the heading whose
-span covers what you need, then read that line range instead of the whole file. ``docs/cli.md`` is
-1,047 lines, and its longest section is 181 of them.
+span covers what you need, then read that line range instead of the whole file.
 
 The map is derived, deterministic, and offline. It reads the tree with the standard library alone,
 so any Python 3.11 or newer interpreter runs it without the project's virtual environment built
@@ -47,9 +45,9 @@ PACKAGE = Path("bajutsu")
 
 # Lines that open a block carrying no prose. A summary is the page's first sentence of actual
 # prose, so the scan steps over each of these rather than reporting a table pipe or a fence.
-# A block quote is *not* on the list: 48 of the 73 pages under docs/ open with one right after the
-# H1, and it is the page's own one-line description — skipping it would report the "Related:"
-# navigation line that follows on 20 of them.
+# A block quote is *not* on the list: most pages under docs/ open with one right after the H1, and
+# it is the page's own one-line description — skipping it would report the "Related:" navigation
+# line that follows instead.
 _SKIP_PREFIXES = ("#", "|", "<!--", "![", "---", "***", ":::", "Related:")
 _FENCES = ("```", "~~~")
 
