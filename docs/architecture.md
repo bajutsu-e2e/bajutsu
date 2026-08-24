@@ -376,7 +376,7 @@ and 7 GiB, with a *single* booted Simulator bringing up 257 guest processes and 
 physical memory unused, so a second Simulator doubles the guest population against an already
 saturated ceiling. Dropping the video recording, the touch markers, and half the scenarios moved the
 collapse earlier without removing it. So the isolation claim now rests on real concurrent devices on
-Android, and on iOS on the fast suite's bookkeeping proof alone.
+Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 
 ---
 
@@ -625,8 +625,8 @@ Android, and on iOS on the fast suite's bookkeeping proof alone.
   the tip's own `PopoverDismissRegion` scrim — no Swift runner change, since the tip already surfaces
   in the same accessibility tree every wait poll and tap resolution already fetches. The step loop
   retries a step once when the dismiss actually found and cleared a tip, beside the alert guard's own
-  end-of-step branch, and the dismiss also composes onto BE-0314's `on_interrupt_poll` hook so a wait
-  is not held to its full timeout by one either. Defaults off (unlike `systemAlertHandling`) because a
+  end-of-step branch, and the dismiss also composes onto BE-0314's `on_interrupt_poll` hook so a tip
+  does not hold a wait to its full timeout either. Defaults off (unlike `systemAlertHandling`) because a
   scenario sometimes asserts on the tip itself; `--ios-tipkit-handling`/`--no-ios-tipkit-handling`
   follows the same flag > scenario > target > default precedence as `systemAlertHandling` (BE-0177)
 - Evidence: instant (`screenshot`/`elements`/`actionLog`/`rawTree` — `actionLog` carries each step's
