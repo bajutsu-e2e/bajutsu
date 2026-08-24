@@ -338,8 +338,8 @@ so carry more inherent flakiness risk than the ones driving a healthy one — an
 earned. Over its first ten days `fault-injection (xcuitest)` failed 78 times against 52 passes.
 
 What retired the caution was not the rate falling but the cause being found. Every one of those 78
-failures precedes the commit that fixed the runner's HTTP server against replying to a peer that had
-gone away, which killed the XCTest host with SIGPIPE. The lane holds the runner under `SIGSTOP`,
+failures precedes the commit that fixed a defect in the runner's HTTP server: replying to a peer that
+had already gone away killed the XCTest host with SIGPIPE. The lane holds the runner under `SIGSTOP`,
 which is how a connection comes to be abandoned in the first place, so it was tripping that defect
 far more often than any suite driving a healthy runner — the lane finding a real runner-channel bug,
 which is what it exists to do. Since that fix it has run 64 times without a failure, against
