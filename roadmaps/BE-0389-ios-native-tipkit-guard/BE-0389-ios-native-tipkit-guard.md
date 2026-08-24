@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ios-native-tipkit-guard-ja.md)
+**English** · [日本語](BE-0389-ios-native-tipkit-guard-ja.md)
 
-# BE-XXXX — iOS native TipKit tip guard
+# BE-0389 — iOS native TipKit tip guard
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ios-native-tipkit-guard.md) |
+| Proposal | [BE-0389](BE-0389-ios-native-tipkit-guard.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0389") |
 | Implementing PR | [#1682](https://github.com/bajutsu-e2e/bajutsu/pull/1682) |
 | Topic | Platform support |
 | Related | [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md), [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0349](../BE-0349-tap-target-hittability-check/BE-0349-tap-target-hittability-check.md), [BE-0357](../BE-0357-xcuitest-duplicate-node-hittable-tiebreak/BE-0357-xcuitest-duplicate-node-hittable-tiebreak.md) |
