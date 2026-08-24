@@ -42,6 +42,7 @@ leave no trace.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -253,6 +254,12 @@ def test_the_verdict_script_reddens_the_gate_for_every_dependency() -> None:
     three lanes overrides `shell:`). Without it the fidelity this layer rests on is one-directional in
     the dangerous direction: a later verdict script whose intermediate command can fail would exit
     non-zero on every real run while still passing here.
+
+    Extend the real environment rather than replacing it, for the same reason: Actions hands a `run:`
+    step the runner's whole environment plus the step's `env:`, which is what `os.environ | env`
+    models. Passing `env` alone leaves the script with no `PATH` — bash then falls back to a
+    compiled-in default that happens to resolve `grep` and `jq`, but not a tool installed anywhere
+    else, and that carries `.` on the search path where the runner's does not.
     """
     for lane in LANES:
         step = _check_step(_aggregator(lane))
@@ -260,7 +267,10 @@ def test_the_verdict_script_reddens_the_gate_for_every_dependency() -> None:
             for result, must_redden in RESULTS.items():
                 env = dict.fromkeys(_read_jobs(step), "success") | {var: result}
                 completed = subprocess.run(
-                    ["bash", "-e", "-c", step["run"]], env=env, capture_output=True, text=True
+                    ["bash", "-e", "-c", step["run"]],
+                    env=os.environ | env,
+                    capture_output=True,
+                    text=True,
                 )
                 assert (completed.returncode != 0) is must_redden, (
                     f"{lane}: with {var}={result} the gate exited {completed.returncode}, "
