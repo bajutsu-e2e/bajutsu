@@ -180,7 +180,9 @@ class AndroidEnvironment:
             channel = server.start()
         except AdbResidentError as exc:
             logger.warning(
-                "resident UI Automator server unavailable (%s); reading via `uiautomator dump`", exc
+                "resident UI Automator server unavailable (%s); reading via `uiautomator dump`, "
+                "actuating via coordinates",
+                exc,
             )
             return None
         self._resident = server
@@ -193,11 +195,24 @@ class AndroidEnvironment:
 
         override = os.environ.get(_RESIDENT_ENV, "").strip().lower()
         if override in {"0", "false", "no"}:
-            return None  # explicit opt-out: read via `uiautomator dump`
+            # Explicit opt-out: reads go through `uiautomator dump` and gestures inject a coordinate —
+            # the declared degraded mode, not a silent one (BE-0339 Unit 4), logged at the same level
+            # as the "selected" branch below rather than louder, since opting out is an ordinary
+            # configuration choice, not a fault.
+            logger.debug(
+                "%s=%s: reading via `uiautomator dump`, actuating via coordinates",
+                _RESIDENT_ENV,
+                override,
+            )
+            return None
         # Default-on by APK presence: route reads through the resident server whenever it is built.
         # A truthy override forces it on even before a build (start() then degrades loudly to dump).
         forced_on = override in {"1", "true", "yes"}
         if not forced_on and not server_apks_built():
+            logger.debug(
+                "resident UI Automator server APKs not built; reading via `uiautomator dump`, "
+                "actuating via coordinates (BE-0339 Unit 4)"
+            )
             return None
         # The choice now flips on whatever is built on disk, not an explicit flag, so log which
         # channel it landed on (and why) — otherwise a stale local build silently switching a run

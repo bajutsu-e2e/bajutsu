@@ -17,6 +17,10 @@ from driver_conformance import (
     SCROLL_ROW_PREFIX,
     SCROLL_TALL_ID,
     SECURE_FIELD_ID,
+    TAP_MIRROR_A_ID,
+    TAP_MIRROR_A_VALUE_ID,
+    TAP_MIRROR_B_ID,
+    TAP_MIRROR_B_VALUE_ID,
     ConformanceHarness,
     DriverConformanceContract,
     element,
@@ -50,19 +54,38 @@ def _secure_field() -> base.Element:
     )
 
 
-def _text_field_react(field: base.Element) -> React:
-    """Model the conformance field so the gate observes the real text round-trip, not just a log.
+def _mirror(identifier: str, frame: base.Frame) -> base.Element:
+    return element(identifier=identifier, value="0", frame=frame)
+
+
+def _conformance_react(
+    field: base.Element, mirrors: dict[str, base.Element] | None = None
+) -> React:
+    """Model the conformance field and tap mirrors, so the gate observes real state, not just a log.
 
     The on-device and web backends surface a live editable field; `FakeDriver` records actions but
     holds no field state, so the round-trip / focus invariants (BE-0280) would be unobservable on
     the fast gate. This `react` gives the fake just enough field behavior — focus follows the last
     tap, typing appends to the focused field, deleting trims its end — to exercise them for real.
+
+    `mirrors` (BE-0339 Unit 6) does the same for the two tap-mirror pairs: maps the *tap target's*
+    id to the *separate* element whose `value` mirrors its tap count, incremented only when that
+    target is the one tapped — the fake's twin of `LogScreen.kt`'s `log.longpress` /
+    `log.longpress.value` split, so "the element that reacted is the element named" is observable
+    on the fast gate too.
     """
     focused = {"on": False}
+    mirrors = mirrors or {}
 
     def react(_driver: FakeDriver, kind: str, arg: object) -> None:
         if kind == "tap":
             focused["on"] = isinstance(arg, dict) and arg.get("id") == FIELD_ID
+            # `id` may be the both-forms list a real selector carries (BE-0221), not just a plain
+            # string — `dict.get` on an unhashable list would raise, so this only looks a mirror up
+            # for the plain-string shape and simply misses (no mirror, no crash) for the list one.
+            tapped_id = arg.get("id") if isinstance(arg, dict) else None
+            if isinstance(tapped_id, str) and (mirror := mirrors.get(tapped_id)) is not None:
+                mirror["value"] = str(int(mirror["value"] or "0") + 1)
         elif kind == "tap_point" and isinstance(arg, tuple):
             x, y, w, h = field["frame"]
             px, py = arg
@@ -78,17 +101,24 @@ def _text_field_react(field: base.Element) -> React:
 class FakeConformanceHarness:
     """Realizes a conformance screen as a `FakeDriver` seeded with those elements.
 
-    Every screen also carries the always-present conformance field (BE-0280), wired to a `react`
-    that models its text state, so the text-editing and `tap_point` invariants are observable on the
-    fast gate exactly as they are against a real field on-device.
+    Every `with_screen` screen also carries the always-present conformance field (BE-0280) and the
+    two tap-mirror targets (BE-0339 Unit 6), wired to a `react` that models their state, so the
+    text-editing, `tap_point`, and tap-identity invariants are all observable on the fast gate exactly
+    as they are against a real field or a real device on-device. `obstruction_screen` below carries
+    only the field: no conformance case taps a mirror against it today.
     """
 
     backend = "fake"
 
     def with_screen(self, elements: list[base.Element]) -> base.Driver:
         field = element(identifier=FIELD_ID, value="", frame=_FIELD_FRAME)
+        tap_a = element(identifier=TAP_MIRROR_A_ID, frame=(0.0, 400.0, 100.0, 40.0))
+        value_a = _mirror(TAP_MIRROR_A_VALUE_ID, (0.0, 440.0, 100.0, 20.0))
+        tap_b = element(identifier=TAP_MIRROR_B_ID, frame=(0.0, 470.0, 100.0, 40.0))
+        value_b = _mirror(TAP_MIRROR_B_VALUE_ID, (0.0, 510.0, 100.0, 20.0))
         return FakeDriver(
-            screen=[*elements, field, _secure_field()], react=_text_field_react(field)
+            screen=[*elements, field, _secure_field(), tap_a, value_a, tap_b, value_b],
+            react=_conformance_react(field, {TAP_MIRROR_A_ID: value_a, TAP_MIRROR_B_ID: value_b}),
         )
 
     def scrollable_screen(self) -> base.Driver:
@@ -114,7 +144,7 @@ class FakeConformanceHarness:
         clear = element(identifier=OBSTRUCTION_CLEAR_ID, frame=(0.0, 500.0, 100.0, 20.0))
         return FakeDriver(
             screen=[target, cover, clear, field, _secure_field()],
-            react=_text_field_react(field),
+            react=_conformance_react(field),
         )
 
 
