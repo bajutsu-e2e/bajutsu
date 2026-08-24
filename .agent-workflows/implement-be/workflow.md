@@ -109,11 +109,12 @@ Don't start typing from the title. Build the real picture first:
   re-propose them.
 - Open **every file the proposal links** (proposals here reference their touch-points
   heavily) and read the surrounding code, so your change matches what exists.
-- Check [`docs/architecture.md#implementation-status`](../../docs/architecture.md) — the
-  source of truth for what already exists, so you neither rebuild something shipped nor
-  assume something absent.
+- Check what already exists, so you neither rebuild something shipped nor assume something
+  absent. `make repo-map ARGS="--headings docs/architecture.md"` names the groups under
+  **Implemented**; read the one covering your area rather than the whole 281-line section.
 - **Check dependencies.** If the References / design lean on another BE item, verify that
-  item's status. A prerequisite still at `Status: Proposal` is a blocker — surface it and
+  item's status with `make roadmap-find ARGS="--id BE-NNNN"`, which answers in one row instead
+  of opening the item. A prerequisite still at `Status: Proposal` is a blocker — surface it and
   ask how to proceed (build the prerequisite first? a thinner first slice?).
 
 For a large item, use the host's available read-only subagents to fan out discovery, then
