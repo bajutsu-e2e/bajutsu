@@ -14,8 +14,9 @@ enum ShowcaseNet {
     }
 
     /// Issue a request with an explicit method and optional JSON body/headers.
-    /// One caller deliberately passes an Authorization header + `password` body field
-    /// so redaction has something to mask (SPEC §6).
+    /// `headers` goes unused here: the secret-carrying request of SPEC §6 — an `Authorization`
+    /// header plus a `password` body field, so redaction has something to mask — lives on the
+    /// SwiftUI twin's `submit()`, not on this target's Log submit.
     static func request(
         _ method: String,
         _ urlString: String,
