@@ -361,10 +361,10 @@ two scenarios on different devices having overlapped in wall-clock. The check is
 comparison, and it runs after `bajutsu run` has returned its own verdict, so it observes
 the run's artifacts and never feeds any scenario's pass/fail.
 
-The lane takes a change filter of its own — `touches_pool` in `scripts/e2e_changes.py`, narrower
+The job takes a change filter of its own — `touches_pool` in `scripts/e2e_changes.py`, narrower
 than the lane-wide signal every other job reads — because it boots twice what the Android lane's
-other jobs boot. The lane stays a per-PR signal outside that lane's required aggregate check, on
-BE-0282's signal-then-required path and for the same reason the fault-injection lanes take that path:
+other jobs boot. It stays a per-PR signal outside that lane's required aggregate check, on
+other jobs boot. The job stays a per-PR signal outside the Android lane's required aggregate check, on
 two emulators against one runner is the most resource-sensitive work the lane carries.
 
 An iOS twin, `pool (xcuitest)`, booted two Simulators on the macOS lane until BE-0298 withdrew it.
@@ -375,9 +375,9 @@ spent about half an hour of a runner billed at 10x. BE-0361 measured that runner
 and 7 GiB, with a *single* booted Simulator bringing up 257 guest processes and leaving 189 MB of
 physical memory unused, so a second Simulator doubles the guest population against an already
 saturated ceiling. Dropping the video recording, the touch markers, and half the scenarios moved the
-collapse earlier without removing it, which leaves the isolation claim verified against real
-concurrent devices on Android alone, and on iOS by the fast suite's bookkeeping proof alone.
-
+collapse earlier without removing it. So the isolation claim now rests on real concurrent devices on
+collapse earlier without removing it. The isolation claim now rests on real concurrent devices on
+Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 ---
 
 ## Implementation status
