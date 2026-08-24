@@ -109,7 +109,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:3d45b68a7d56ff77e78d0dee96f4d58cba98e60c56b9b8e68f64532df1c198f1
+  content_hash: sha256:dc2a957e740093b3b2eadeebb529551a4133865b115c7a0268aac2744f4bddd2
 - kind: project-relative
   target: claude
   value: .claude/skills/git-sync
@@ -339,7 +339,7 @@ local_deployed_file_hashes:
   .claude/skills/cleanup/SKILL.md: sha256:705e0586a3b1744c1fc568c33501cf2921f6d497a04d0e313a7f7b119703f18c
   .claude/skills/document-writing/SKILL.md: sha256:a7da31bafd19498d477689dbb2e6ea74698e35a4e329661a7073271ba70fb5d8
   .claude/skills/english-document-writing/SKILL.md: sha256:f660690c3e1fe16acce32b03d4126a4fc9f73782a4cb007c6c328cd389603336
-  .claude/skills/fix-issue/SKILL.md: sha256:3d45b68a7d56ff77e78d0dee96f4d58cba98e60c56b9b8e68f64532df1c198f1
+  .claude/skills/fix-issue/SKILL.md: sha256:dc2a957e740093b3b2eadeebb529551a4133865b115c7a0268aac2744f4bddd2
   .claude/skills/git-sync/SKILL.md: sha256:f9c2eb3a39c02a4a415294e9874c7dca8feb1654ffc5950d1705f84fe68970ea
   .claude/skills/ideation/SKILL.md: sha256:cb377d49e8ce06bd114a19e0d17b0928ab426e19e8794a9b398a5d3d7ca9aa9f
   .claude/skills/implement-be/SKILL.md: sha256:0231bece76a28b3de953ec45add8044872225ab3474d40d4c7aa1308ae8b6e1c

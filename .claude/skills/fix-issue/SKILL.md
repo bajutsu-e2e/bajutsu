@@ -132,8 +132,10 @@ pass, and for the implement pass `sonnet` when the fix stays within `docs/`, `op
 product code. The `pr-review-toolkit` plugin supplies the specialized lenses.
 One input differs from `implement-be`'s: there is no roadmap `Status` flip pending here, so the
 review/plan pass needs no note about one. Keep fixing and re-running a fresh review/plan pass until
-it comes back empty, under that step's 3-round cap, and don't open the PR while a real finding still
-stands. A finding that calls for a genuine design change means the fix no longer fits this skill:
+it comes back empty, under the 3-round cap that step's
+[`references/self-review.md`](../../../.apm/skills/implement-be/references/self-review.md) defines, and don't open the
+PR while a real finding still stands. A finding that calls for a genuine design change means the fix
+no longer fits this skill:
 take step 3's escalation instead — name what the fix now needs, point at `ideation` or
 `propose-and-build`, and release the claim — rather than opening the PR.
 
@@ -175,9 +177,12 @@ documentation or prose. Draft → Ready is the human's call, never the skill's.
 
 ### 8. Run bounded PR follow-up
 
-Run [`implement-be`](../../../.apm/skills/implement-be/SKILL.md) steps 11 and 12 against the new PR, unmodified:
-`/loop` paces the iterations, and each iteration's [`pr-followup`](../../../.apm/skills/pr-followup/SKILL.md) work
-runs in a fresh Agent-tool subagent so the implementation transcript stays out of it, and the loop uses the same merge-conflict check, the same
+Run [`implement-be`](../../../.apm/skills/implement-be/SKILL.md) steps 11 and 12 against the new PR, unmodified —
+including its [`references/pr-followup-loop.md`](../../../.apm/skills/implement-be/references/pr-followup-loop.md),
+which is where the stop conditions, escalations, and iteration caps now live, so read it before the
+first iteration. `/loop` paces the iterations, and each iteration's
+[`pr-followup`](../../../.apm/skills/pr-followup/SKILL.md) work runs in a fresh Agent-tool subagent so the
+implementation transcript stays out of it; the loop uses the same merge-conflict check, the same
 three stop conditions, the same escalations, and the same iteration caps. Stop when the PR is
 quiet-and-green and report it — marking the PR ready is the human's sign-off, not the loop's.
 
