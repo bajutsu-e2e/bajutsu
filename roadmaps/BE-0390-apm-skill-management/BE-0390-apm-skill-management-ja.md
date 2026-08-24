@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0390](BE-0390-apm-skill-management-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0390") |
 | トピック | Contributor workflow |
 <!-- /BE-METADATA -->
@@ -115,9 +115,10 @@ APMは、スキル、プロンプト、指示、Model Context Protocol（MCP）�
 ツリーを突き合わせる決定的な検査であり、判定に言語モデルは介在しません。
 
 以上の設計は、ドキュメントだけでなくAPM 0.28.0の実挙動を確認したうえで組み立てています。ローカルの
-`.apm/skills/<name>/`は、frontmatterを含めて`.claude/skills/<name>/`へそのまま複製されました。
-`references/`と`scripts/`も、実行権限ごと複製されました。`targets: [claude]`だけを宣言した場合、
-`.agents/`ツリーは生成されませんでした。`apm.lock.yaml`には、配備ファイルごとのSHA-256が記録され
+`.apm/skills/<name>/`は、frontmatterと`references/`、`scripts/`、実行権限を変えないまま
+`.claude/skills/<name>/`へ配備されました。APMが書き換えたのはスキルをまたぐ相対リンクだけで、
+ソース側を指す形になりました。`targets: [claude]`だけを宣言した場合、`.agents/`ツリーは
+生成されませんでした。`apm.lock.yaml`には、配備ファイルごとのSHA-256が記録され
 ました。配備ファイルを手で書き換えると`apm audit`がずれとして報告し、次の`apm install`が書き戻し
 ました。
 
@@ -148,12 +149,12 @@ APMは、スキル、プロンプト、指示、Model Context Protocol（MCP）�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] マニフェスト、ソースツリー、コミットする配備先（`apm.yml`、`.apm/skills/`、リポジトリ直下の`.gitignore`、`.claude/skills/.gitignore`の削除）
-- [ ] 14個のスキルを1つの`SKILL.md`へ変換し、詳細を`references/`へ配置
-- [ ] `.agent-workflows/`、`.agent-hosts/`、`.agents`の撤去、ロードマップのリンク書き換え、BE-0384の設計記述の移行
-- [ ] textlint実行環境の移設と`dependabot.yml`のエントリ更新
-- [ ] `make skills`、`make lint-skills`、`make check`への組み込み、session-startフック
-- [ ] ドキュメント：`CLAUDE.md`、`AGENTS.md`、`docs/ai-development.md`（両言語）、コントリビューター向けチュートリアル（両言語）、レビュー契約
+- [x] マニフェスト、ソースツリー、コミットする配備先（`apm.yml`、`.apm/skills/`、リポジトリ直下の`.gitignore`、`.claude/skills/.gitignore`の削除）
+- [x] 14個のスキルを1つの`SKILL.md`へ変換し、詳細を`references/`へ配置
+- [x] `.agent-workflows/`、`.agent-hosts/`、`.agents`の撤去、ロードマップのリンク書き換え、BE-0384の設計記述の移行
+- [x] textlint実行環境の移設と`dependabot.yml`のエントリ更新
+- [x] `make skills`、`make lint-skills`、`make check`への組み込み、session-startフック
+- [x] ドキュメント：`CLAUDE.md`、`AGENTS.md`、`docs/ai-development.md`（両言語）、コントリビューター向けチュートリアル（両言語）、レビュー契約
 
 ## 参考
 

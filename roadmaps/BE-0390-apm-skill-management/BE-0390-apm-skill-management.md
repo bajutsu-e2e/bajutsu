@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0390](BE-0390-apm-skill-management.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0390") |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
@@ -111,9 +111,10 @@ nothing on the `run` or CI verdict path. Prime directive 1 holds under the new g
 is deterministic and no language model reaches the gate.
 
 The design rests on behavior we verified against APM 0.28.0 rather than on documentation alone. A
-local `.apm/skills/<name>/` deployed to `.claude/skills/<name>/` byte for byte, with frontmatter
-untouched, `references/` and `scripts/` carried across, and the executable bit preserved. `targets:
-[claude]` alone produced no `.agents/` tree. `apm.lock.yaml` recorded a SHA-256 per deployed file; a
+local `.apm/skills/<name>/` deployed to `.claude/skills/<name>/` with frontmatter untouched,
+`references/` and `scripts/` carried across, and the executable bit preserved; the one thing APM
+rewrote was a cross-skill relative link, repointed at the source tree. `targets: [claude]` alone
+produced no `.agents/` tree. `apm.lock.yaml` recorded a SHA-256 per deployed file; a
 hand edit to a deployed file came back from `apm audit` as drift, and the next `apm install` restored
 it.
 
@@ -145,12 +146,12 @@ it.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Manifest, source tree, and the committed deployment (`apm.yml`, `.apm/skills/`, the root `.gitignore`, and the removal of `.claude/skills/.gitignore`)
-- [ ] Conversion of the fourteen skills to one `SKILL.md` each, with depth under `references/`
-- [ ] Retirement of `.agent-workflows/`, `.agent-hosts/`, and `.agents`, with the roadmap links rewritten and BE-0384's design text moved to the single source
-- [ ] Relocation of the textlint runtime and its `dependabot.yml` entry
-- [ ] `make skills`, `make lint-skills`, the `make check` step, and the session-start hook
-- [ ] Documentation: `CLAUDE.md`, `AGENTS.md`, `docs/ai-development.md` (both languages), the contributor tutorial (both languages), and the review contract
+- [x] Manifest, source tree, and the committed deployment (`apm.yml`, `.apm/skills/`, the root `.gitignore`, and the removal of `.claude/skills/.gitignore`)
+- [x] Conversion of the fourteen skills to one `SKILL.md` each, with depth under `references/`
+- [x] Retirement of `.agent-workflows/`, `.agent-hosts/`, and `.agents`, with the roadmap links rewritten and BE-0384's design text moved to the single source
+- [x] Relocation of the textlint runtime and its `dependabot.yml` entry
+- [x] `make skills`, `make lint-skills`, the `make check` step, and the session-start hook
+- [x] Documentation: `CLAUDE.md`, `AGENTS.md`, `docs/ai-development.md` (both languages), the contributor tutorial (both languages), and the review contract
 
 ## References
 

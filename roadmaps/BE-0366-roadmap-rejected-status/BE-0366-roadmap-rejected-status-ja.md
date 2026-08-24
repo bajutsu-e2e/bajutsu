@@ -143,7 +143,7 @@ LLM を持ち込みません。
   `Deferred` と `Rejected` を名指しするよう直し、コードとコメントを一致させます。
 - ほかに6つの箇所が `Proposal (deferred)` という文字列そのものを名指ししており、改称のもとで
   古びてしまいます。
-  [`.agent-workflows/implement-be/workflow.md`](../../.agent-workflows/implement-be/workflow.md)
+  [`.apm/skills/implement-be/SKILL.md`](../../.apm/skills/implement-be/SKILL.md)
   は、項目の `Status` による分岐の注記と、トラッキング Issue が見つからない場合の注記の2箇所で、
   エージェントが保留解除の確認を取るかどうかをこの文字列そのもので判定しています。この `Status`
   分岐には、`Rejected` に対しても同様の一時停止・確認の分岐を追加します。人間が却下を明示的に
@@ -152,7 +152,7 @@ LLM を持ち込みません。
   更新ガード「（`Proposal (deferred)` は人間による意図的な決定であり、ここでは決して保留解除
   しない）」は `Deferred` に改称したうえで `Rejected` も加え、このジョブがどちらの値も再開
   しないようにします。後述の「検討した代替案」は、まさにこのガードを前提に論じています。
-  [`.agent-workflows/roadmap-filter/workflow.md`](../../.agent-workflows/roadmap-filter/workflow.md)
+  [`.apm/skills/roadmap-filter/SKILL.md`](../../.apm/skills/roadmap-filter/SKILL.md)
   は、これを有効な `STATUS` フィルタ値の一覧に挙げています。
   [`docs/roadmap-workflow.md`](../../docs/roadmap-workflow.md) とその
   [`docs/ja/roadmap-workflow.md`](../../docs/ja/roadmap-workflow.md) 対訳は、`implement-be` の

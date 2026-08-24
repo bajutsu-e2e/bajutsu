@@ -1,4 +1,0 @@
-interface:
-  display_name: "Fix a GitHub issue"
-  short_description: "Ship a plain GitHub issue end to end, with tests and a Draft PR"
-  default_prompt: "Use $fix-issue to fix issue #0 end to end."

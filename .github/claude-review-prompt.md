@@ -202,7 +202,7 @@ rather than the blanket rule above.
 
 - **Japanese prose quality — raise the floor higher than the other lenses.** Any Japanese the PR
   adds or edits — `docs/ja/`, roadmap `*-ja.md`, or Japanese in comments — must follow the
-  [`japanese-document-writing`](../.claude/skills/japanese-document-writing) skill (mandated by
+  [`japanese-document-writing`](../.apm/skills/japanese-document-writing/SKILL.md) skill (mandated by
   [`CLAUDE.md`](../CLAUDE.md)). Flag only a **clear, nameable violation**: wrong register (常体
   mixed into ですます調), a forced/unnatural translation of a term that should stay untranslated, a
   coined term, an omission, or a sentence a native reader would actually find confusing or
@@ -213,8 +213,8 @@ rather than the blanket rule above.
   Hold the English side to the same bar, since the bilingual-docs convention makes the two
   languages one document. Any English prose the PR adds or edits in `docs/*.md` or a roadmap
   `BE-NNNN-<slug>.md` must follow the
-  [`document-writing`](../.agent-workflows/document-writing/workflow.md) and
-  [`english-document-writing`](../.agent-workflows/english-document-writing/workflow.md) skills.
+  [`document-writing`](../.apm/skills/document-writing/SKILL.md) and
+  [`english-document-writing`](../.apm/skills/english-document-writing/SKILL.md) skills.
   Flag only a **clear, nameable violation** of one of these skills' named rules — the contribution
   buried instead of stated up front, a sentence's key element misplaced, the verb stranded far from
   its subject, passive voice with no reason for it, filler that adds no information, or a broken

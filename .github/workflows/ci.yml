@@ -41,7 +41,7 @@ jobs:
         run: uv sync --group dev
 
       # Each step invokes the matching `make` target so the gate's commands and file/target lists
-      # live only in the Makefile. gitleaks and actionlint are the two separately-installed binaries
+      # live only in the Makefile. gitleaks, actionlint, and apm are the separately-installed tools
       # (kept inline below: `make lint-secrets`/`make lint-actions` only run them when on PATH, but
       # CI installs each).
       - name: Lockfile up to date (uv lock --check)
@@ -61,6 +61,17 @@ jobs:
 
       - name: Lint roadmap (cross-links + author handle)
         run: make lint-roadmap
+
+      # `make lint-skills` skips with a notice when apm isn't on PATH, so without this install the
+      # skill-drift check would skip everywhere and never fail a PR (BE-0390). Pinned to the exact
+      # version the item was verified against; uv resolves it from PyPI like the Python deps.
+      - name: Install apm
+        run: uv tool install "apm-cli==0.28.0"
+
+      # Fails when a deployed .claude/skills/ file no longer matches its .apm/skills/ source —
+      # a hand-edited deployment, or a source edit whose `make skills` was forgotten.
+      - name: Lint agent skills (apm audit)
+        run: make lint-skills
 
       # gitleaks (https://github.com/gitleaks/gitleaks) isn't pip/uv-installable — the second gate
       # check needing its own install, alongside actionlint below. Same pattern as actionlint: pin

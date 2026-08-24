@@ -1,5 +1,6 @@
 .PHONY: setup hooks install deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck \
-        lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr lint-secrets check new-roadmap-item \
+        lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr lint-secrets skills lint-skills \
+        check new-roadmap-item \
         roadmap-status roadmap-dashboard docs docs-serve docs-diagrams runner-bundle
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
@@ -207,6 +208,27 @@ lint-secrets:
 		echo "lint-secrets: gitleaks not installed — skipping (CI enforces it); see docs/ai-development.md"; \
 	fi
 
+# Deploy the agent skills: APM reads apm.yml, copies each .apm/skills/<name>/ source tree to
+# .claude/skills/<name>/, and records a SHA-256 per deployed file in apm.lock.yaml (BE-0390).
+# Both the lockfile and the deployed tree are committed, so a fresh clone has a working skill set
+# without running this; run it after editing a source skill, then commit what it rewrote.
+skills:
+	apm install
+
+# Fail when a deployed skill file no longer matches its source. `apm audit --ci` replays the
+# install and compares against the lockfile's hashes, so it catches drift in both directions: a
+# deployed file edited by hand, and a source edit whose `make skills` was forgotten. --no-policy
+# keeps the check offline (org-policy discovery would otherwise reach api.github.com) and
+# deterministic — the same reason no LLM sits anywhere near this gate step. Skips with a notice,
+# like `lint-actions`/`lint-secrets`, when apm isn't on PATH; CI installs a pinned apm-cli and runs
+# it there, so drift fails a pull request even when a contributor's machine skipped the check.
+lint-skills:
+	@if command -v apm >/dev/null 2>&1; then \
+		apm audit --ci --no-policy; \
+	else \
+		echo "lint-skills: apm not installed — skipping (CI enforces it); see docs/ai-development.md"; \
+	fi
+
 # Filter roadmap (BE) items by Status into one small table — ID / Item / Topic / Path — so an AI
 # session surveys just the rows it needs (e.g. every Proposal) without paging through the dashboard's
 # rendered HTML or opening each item file to check its `Status` (BE-0162). Pure and offline: reads
@@ -219,7 +241,7 @@ roadmap-status:
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
 # predicts "green in CI". The uv-native checks run identically everywhere; actionlint is
 # the lone exception (see lint-actions above).
-check: hooks format-check lint lint-docstrings lint-imports lint-sh lint-actions lint-js lint-roadmap lint-secrets lock-check typecheck test
+check: hooks format-check lint lint-docstrings lint-imports lint-sh lint-actions lint-js lint-roadmap lint-skills lint-secrets lock-check typecheck test
 
 # Generated API reference (BE-0065). Deliberately NOT in `check`: like on-device E2E, the
 # reference build is a separate, heavier path (it pulls the `docs` extra) and must not slow the

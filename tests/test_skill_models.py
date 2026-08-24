@@ -6,9 +6,12 @@ itself stays advisory — a session can always upshift, and the gate never dicta
 run. The one machine-checkable surface worth pinning is that the value is a *valid, known* id, so a
 typo fails here locally instead of silently falling back to some default at run time.
 
-This walks the real ``.claude/skills`` tree: every ``model:`` present must be recognized, and the
-skills that BE-0103 and BE-0380 wired must still declare one (so removing the field is a visible
-regression, not a silent drift back to always-max).
+This walks the real ``.claude/skills`` tree — the deployment Claude Code reads. Its source is
+``.apm/skills/<name>/SKILL.md``; ``apm install`` deploys the frontmatter verbatim (only
+cross-skill relative links are rewritten) and ``make lint-skills`` fails on drift (BE-0390), so
+this walk also checks each source's ``model:``. Every ``model:`` present must be recognized, and the
+skills that BE-0103 and BE-0380 wired must still declare one (so removing the field is a visible regression, not
+a silent drift back to always-max).
 """
 
 from __future__ import annotations

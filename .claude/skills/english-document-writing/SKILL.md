@@ -4,6 +4,62 @@ model: sonnet
 description: Apply Bajutsu's English prose mechanics when writing, translating, or revising English roadmap items and documentation. Use it together with document-writing.
 ---
 
-# Claude adapter
+<!--
+The English mechanics below are distilled from Jeffrey Scott Vitter,
+"Structure + Style = Communication" (The University of Kansas, 2011).
+-->
 
-Read `.agent-workflows/english-document-writing/workflow.md` completely, then follow it.
+# Technical-writing norm for English prose
+
+This skill is the English layer of Bajutsu's prose norm. It holds the mechanics that only English
+grammar and typography need — the choices that have a single right answer in English and no
+counterpart in Japanese.
+
+It sits beneath the language-agnostic [`document-writing`](../../../.apm/skills/document-writing/SKILL.md) skill. When you
+write or revise English prose, apply **both**: `document-writing` for the writing technique both
+languages share (top-down drafting, sentence stress, subject–verb proximity, active voice, cutting
+filler), and this skill for the English mechanics below. Invoke both **before** you write, not
+after. These mechanics never apply to Japanese — Japanese has its own dash and punctuation rules,
+in [`japanese-document-writing`](../../../.apm/skills/japanese-document-writing/SKILL.md), the sibling layer beneath the same
+umbrella.
+
+Like the rest of the prose norm, this is a review-time expectation checked by people, not a CI gate
+(prime directive 1 keeps an LLM off the `run` / CI verdict path).
+
+## English-specific mechanics
+
+- **Formal word choice.** Use "many" or "much", not "a lot of". Spell out contractions in formal
+  text. Reserve symbols and abbreviations for formulas; in prose, spell out the word (write "for
+  all", not "∀"; "such that", not "s.t.").
+- **Serial (Oxford) comma.** In a list of three or more items, put a comma before the final "and"
+  or "or": "the driver, the runner, and the reporter".
+- **That vs. which.** Use *that* (no comma) for a restrictive clause that specifies which thing you
+  mean. Use *which* (set off by commas) for a non-restrictive clause that adds information not
+  needed to identify the thing.
+- **No bare "this" / "that" as a noun.** Name what it points to: "this behavior", "that
+  constraint", not a lone "this".
+- **No singular "they" for an unspecified single person.** Reword to the plural ("reviewers raise
+  their hands") or a role, rather than "each reviewer raised their hand".
+- **Dashes.** A hyphen joins a compound adjective ("capability-aware selection"). An en-dash marks a
+  range ("steps 3–7") with no surrounding spaces. An em-dash sets off an aside for emphasis — with a
+  space on each side, per this repo's own convention (Chicago itself specifies no space).
+- **Numbers.** Spell out a positive whole number below ten used as an adjective ("three drivers");
+  use the numeral when it is a noun or ten or above.
+- **Colon.** Introduce a list or an elaboration with a colon only after a complete sentence.
+
+## Verify your work
+
+Reread the English draft once against the mechanics above, alongside the language-agnostic reread in
+[`document-writing`](../../../.apm/skills/document-writing/SKILL.md#verify-your-work). Then run the mandatory
+[textlint](https://github.com/textlint/textlint) check — the runtime and rules live at
+[`tools/textlint/`](../../../tools/textlint/), cover English prose too, and are documented in
+[`document-writing`'s textlint section](../../../.apm/skills/document-writing/SKILL.md#mandatory-textlint-verification-after-drafting).
+Keep revising and rerunning until every finding is gone; textlint is a mechanical floor, not a
+substitute for the norms above.
+
+## References
+
+- Jeffrey Scott Vitter, *Structure + Style = Communication* (The University of Kansas, 2011) — the
+  source of the English mechanics above.
+- [`document-writing`](../../../.apm/skills/document-writing/SKILL.md) — the language-agnostic umbrella above this layer.
+- [`japanese-document-writing`](../../../.apm/skills/japanese-document-writing/SKILL.md) — the Japanese sibling layer.

@@ -162,6 +162,51 @@ purpose; keep it out of commits so worktrees stay independent.
 
 The short form of this rule is in [`CLAUDE.md`](../CLAUDE.md).
 
+## Agent skills: one source, one deployment (BE-0390)
+
+A skill is one source directory, `.apm/skills/<name>/`, holding a `SKILL.md` and — where the
+procedure has depth the body shouldn't carry — a `references/` directory. The `SKILL.md` carries
+both the procedure and the Claude Code tools it uses; there is no separate per-host adapter to keep
+in step, and no second hand-maintained copy of the procedure — the committed deployment below is
+generated.
+
+[APM](https://microsoft.github.io/apm/) resolves the tree. The root `apm.yml` names the package and
+pins `targets: [claude]`, so APM deploys only to `.claude/skills/` and never writes the trees it
+produces for other harnesses. `apm.lock.yaml` records a SHA-256 for every deployed file.
+
+```bash
+make skills        # apm install — deploy .apm/skills/ to .claude/skills/
+make lint-skills   # apm audit --ci --no-policy — fail on drift (part of `make check`)
+```
+
+**Both sides are committed** — the source and the deployed `.claude/skills/` tree — so a fresh
+clone has a working skill set before anyone installs APM. The cost is that each skill's bytes are
+tracked twice; keeping `SKILL.md` inside APM's size budget (roughly 500 lines and 5,000 tokens)
+bounds it.
+
+So: edit the source, run `make skills`, and commit what it rewrote. `apm.lock.yaml` carries a
+`generated_at` timestamp that every install rewrites, so a no-op `make skills` still dirties that one
+line; the audit ignores it, and discarding it is fine.
+
+`make lint-skills` catches the drift either way round — a deployed file edited by hand, and a source
+edit whose `make skills` was forgotten. Like `lint-actions` and `lint-secrets`, it skips with a notice when `apm` isn't on PATH;
+CI installs a pinned `apm-cli` and runs it there, so drift fails a pull request even when a
+contributor's machine skipped the check. Install it locally with
+`uv tool install "apm-cli==0.28.0"`.
+
+The check stays clear of prime directive 1: `apm audit` compares recorded hashes against the working
+tree, so no language model reaches the gate. `--no-policy` keeps it offline as well — organization
+policy discovery would otherwise reach `api.github.com`.
+
+**Where the depth goes.** `SKILL.md` points at a `references/` file *at the step that needs it*, so
+a session loads only what it uses. A norm set is the exception: `document-writing`,
+`english-document-writing`, and `japanese-document-writing` are applied in full rather than step by
+step, so where one splits, its `SKILL.md` opens by telling the host to load every `references/` file
+before drafting. No step *needs* a norm, so a host left to load on demand could apply a subset and
+still believe it followed the skill.
+
+The short form of this rule is in [`CLAUDE.md`](../CLAUDE.md#agent-skill-layout).
+
 ## Stay in your lane
 
 Touch only the files your task needs. The architecture is layered (scenario → orchestrator →
@@ -269,10 +314,11 @@ The tier → model-id mapping lives only here, so re-pointing a tier at a new Cl
 one-line change in one place. The model ids above are Claude Code aliases (`opus` / `sonnet` /
 `haiku`), which stay stable as the underlying model versions advance.
 
-### Where Claude Code applies the default: adapter frontmatter
+### Where Claude Code applies the default: skill frontmatter
 
-Each Claude Code adapter declares its skill's tier as a `model:` field in its `SKILL.md`
-frontmatter. The Claude Code harness picks the right model when the skill runs. The default remains
+Each skill declares its tier as a `model:` field in its `SKILL.md` frontmatter — in the source at
+`.apm/skills/<name>/SKILL.md`, whose frontmatter `apm install` deploys verbatim to the tree linked
+below (BE-0390). The Claude Code harness picks the right model when the skill runs. The default remains
 overridable:
 
 - [`implement-be`](../.claude/skills/implement-be/SKILL.md) → `opus` (Heavy)
@@ -292,7 +338,7 @@ overridable:
 
 Most light-tier chores aren't skills, so that tier is otherwise reached interactively or by subagent
 delegation, below — `roadmap-filter` is the exception, since its whole job is one light,
-deterministic lookup. `tests/test_skill_models.py` checks that each Claude Code adapter's `model:`
+deterministic lookup. `tests/test_skill_models.py` checks that each deployed skill's `model:`
 is a known, valid id, so a typo fails the gate locally instead of silently falling back.
 
 ### Phases and subagent delegation
@@ -321,7 +367,7 @@ one agent on one. A **`fable`** review/plan pass judges the diff against
 it never edits a file. A separate implement pass applies those instructions, on **`sonnet`** when the
 fix stays inside `roadmaps/` or `docs/` and **`opus`** when it touches product code — the same
 task-weight rule the tier table above applies everywhere else. The canonical procedure lives in
-[`ideation`](../.agent-workflows/ideation/workflow.md) step 5, which `pr-followup`,
+[`ideation`](../.apm/skills/ideation/SKILL.md) step 5, which `pr-followup`,
 `propose-and-build`, and `implement-be` all run rather than restate.
 
 The split is the point; the two models make it concrete. An agent that fixes the finding it raised
@@ -347,14 +393,14 @@ no secrets by design, and any commit pushed outside these skills.
 Turning an idea into shipped code runs through three skills that form a triangle — author,
 ship, or both:
 
-- [`ideation`](../.agent-workflows/ideation/workflow.md) — **author only.** A sounding board that
+- [`ideation`](../.apm/skills/ideation/SKILL.md) — **author only.** A sounding board that
   shapes an idea into a BE proposal and stops at the `roadmaps/` files (never touches product
   code). The proposal carries the `BE-XXXX` placeholder; CI allocates the real id after the PR
   merges.
-- [`implement-be`](../.agent-workflows/implement-be/workflow.md) — **ship a numbered item.** Takes an
+- [`implement-be`](../.apm/skills/implement-be/SKILL.md) — **ship a numbered item.** Takes an
   already-allocated `BE-NNNN`, treats its proposal as the spec, implements it with tests, flips
   the item to `Status: Implemented`, and proves `make check` green.
-- [`propose-and-build`](../.agent-workflows/propose-and-build/workflow.md) — **both, in one PR.**
+- [`propose-and-build`](../.apm/skills/propose-and-build/SKILL.md) — **both, in one PR.**
   Composes the other two for a small, settled item the author is ready to build now: it authors
   the proposal *and* implements it on a single branch, landing them as one BE-creation PR that
   carries the roadmap item, the code, and the tests together. The item keeps the `BE-XXXX`
@@ -376,7 +422,7 @@ once; that is honest for a settled design but costs a rework if review reshapes 
 fall back to the serial path whenever a design is genuinely uncertain.
 
 **When the work never earns a roadmap item at all**, none of the three applies, and the sibling path
-is [`fix-issue`](../.agent-workflows/fix-issue/workflow.md)
+is [`fix-issue`](../.apm/skills/fix-issue/SKILL.md)
 ([BE-0380](../roadmaps/BE-0380-fix-issue-skill/BE-0380-fix-issue-skill.md)). That skill ships a
 plain GitHub issue — a small bug, a papercut, or a scoped improvement — through `implement-be`'s own
 implementation, review, gate, and follow-up steps. Two things differ: `fix-issue` claims the work
@@ -838,7 +884,7 @@ exists, not a preference to keep the item reading as a forward-looking proposal.
 no code is `Proposal`; the PR that **ships its code** sets `Status` to `Implemented` (or `In progress`
 when it lands a partial slice) in that same PR, ticks the matching `Progress` boxes, and records the PR
 under `Implementing PR`. `Proposal` is never left standing on an item whose code has already shipped —
-that is exactly the promotion the [`implement-be`](../.agent-workflows/implement-be/workflow.md) skill
+that is exactly the promotion the [`implement-be`](../.apm/skills/implement-be/SKILL.md) skill
 performs, and it binds humans and agents alike. (The one exception is *authoring* a new item: an
 `ideation`-style proposal that ships no code stays `Proposal`, since there is nothing implemented yet.)
 
@@ -859,16 +905,16 @@ These rules apply to all documentation — English under `docs/` and the Japanes
 `docs/ja/` — and to every future update, not just new files. Agents must follow them, and they
 apply equally when reporting on or summarizing work.
 
-- **Follow the [`document-writing`](../.agent-workflows/document-writing/workflow.md) skill.** It is the
+- **Follow the [`document-writing`](../.apm/skills/document-writing/SKILL.md) skill.** It is the
   authoritative prose norm for every document here and every BE roadmap item, in both languages:
   the language-agnostic writing technique both languages share (draft top-down, state the
   contribution up front, reserve a sentence's end for its most important element, keep the verb near
   the subject, prefer the active voice, cut filler, and write one topic per paragraph with the
   argument moving in a single direction — paragraph writing). Invoke it *before* writing or revising,
   not after. It is the umbrella above two language layers: for English prose apply
-  [`english-document-writing`](../.agent-workflows/english-document-writing/workflow.md) with it (serial comma,
+  [`english-document-writing`](../.apm/skills/english-document-writing/SKILL.md) with it (serial comma,
   *that* / *which*, dashes, numbers, and the rest of the English mechanics), and for Japanese prose
-  the [`japanese-document-writing`](../.agent-workflows/japanese-document-writing/workflow.md) skill (see below).
+  the [`japanese-document-writing`](../.apm/skills/japanese-document-writing/SKILL.md) skill (see below).
   The rules below are the specific expectations this section and those skills share.
 - **Write natural prose.** A Japanese document must read as natural Japanese; an English document
   must read as natural English. A mirror conveys the same content naturally in its own language —
@@ -879,12 +925,12 @@ apply equally when reporting on or summarizing work.
   translating it would read unnaturally, keep the original term instead — usually the English word
   (e.g. `selector`, `actuator`, `backend`, `assertion`) rather than a contrived literal rendering.
 - **No omissions; be self-contained.** Follow the `document-writing` skill's
-  [self-contained-prose norm](../.agent-workflows/document-writing/workflow.md#self-contained-prose-both-languages):
+  [self-contained-prose norm](../.apm/skills/document-writing/SKILL.md#self-contained-prose-both-languages):
   a reader who has not read anything else in the repository must be able to follow the document start
   to finish, with every abbreviation spelled out and every term defined at first use, everywhere a term
   appears — including roadmap items, not only `docs/`.
 - **Avoid anaphora that forces the reader to backtrack.** Follow the `document-writing` skill's
-  [anaphora norm](../.agent-workflows/document-writing/workflow.md#minimize-anaphora-both-languages):
+  [anaphora norm](../.apm/skills/document-writing/SKILL.md#minimize-anaphora-both-languages):
   repeat the noun instead of reusing a pronoun or demonstrative once the antecedent is more than one
   sentence back, crosses a paragraph, a list, or a heading, or could plausibly resolve to more than
   one nearby candidate.
@@ -909,10 +955,10 @@ apply equally when reporting on or summarizing work.
   `run` / CI path. [`drivers.md`](drivers.md) is the model to follow.
 - **Japanese prose follows the `japanese-document-writing` skill.** Whether you write the Japanese side
   fresh or translate the English mirror into `docs/ja/` (or a roadmap `*-ja.md`), apply
-  [`japanese-document-writing`](../.agent-workflows/japanese-document-writing/workflow.md): it is the authoritative style
+  [`japanese-document-writing`](../.apm/skills/japanese-document-writing/SKILL.md): it is the authoritative style
   for Japanese prose in this repo, and a translation must read as natural Japanese under those norms,
   not a literal rendering of the English. It sits beneath the
-  [`document-writing`](../.agent-workflows/document-writing/workflow.md) umbrella (above); apply both for Japanese
+  [`document-writing`](../.apm/skills/document-writing/SKILL.md) umbrella (above); apply both for Japanese
   prose.
 - **Japanese documents use 敬体 (the polite *desu/masu* style, ですます調).** Every Japanese file
   under `docs/ja/` and every roadmap `*-ja.md` is written in 敬体, never the plain *da/dearu* style

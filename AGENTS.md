@@ -33,5 +33,5 @@ Please read [`CLAUDE.md`](CLAUDE.md) before starting. In short:
   `ARGS`.
 - **Write docs as plain technical prose, both languages.** Full rule:
   [`docs/ai-development.md`](docs/ai-development.md#documentation-style-every-document-both-languages),
-  and the [`japanese-document-writing`](.agent-workflows/japanese-document-writing/workflow.md) skill for Japanese
+  and the [`japanese-document-writing`](.apm/skills/japanese-document-writing/SKILL.md) skill for Japanese
   prose.
