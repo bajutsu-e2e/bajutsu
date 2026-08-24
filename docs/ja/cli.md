@@ -553,6 +553,8 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
               [--host 127.0.0.1] [--token <t>] [--max-concurrent-runs 4] [--evidence-store <uri>]
 ```
 
+### 認証とセキュリティヘッダ
+
 - **`--token`（または `$BAJUTSU_SERVE_TOKEN`）による認証（BE-0051）。** トークン設定時は全リクエストが認証必須です。
   API クライアントは `Authorization: Bearer <token>` を送り、ブラウザは `POST /api/login` で一度だけトークンを
   交換し（401 で UI が入力を促す）、HttpOnly かつ SameSite のセッション Cookie を受け取ります。トークンは URL に
@@ -563,6 +565,9 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   拒否します（`SameSite=Strict` セッション Cookie に対する多層防御）。`Origin` を送らない非ブラウザ
   クライアントは影響を受けません。全レスポンスに `X-Content-Type-Options: nosniff` /
   `X-Frame-Options: DENY` / `Referrer-Policy: no-referrer` を付与します。
+
+### config とディレクトリの指定
+
 - `--config` は**任意**です。省略すると UI のファイルブラウザ（「Open config」ボタン）から `config.yml` を開けます。
   ブラウザの走査は `--root`（既定: カレントディレクトリ）配下に限定されます。`--scenarios <dir>` は選択アプリの設定済み
   ディレクトリの上書きとして使えます。
@@ -587,6 +592,9 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   OS の配色に従います）。
 - app を選ぶ（そのシナリオがドロップダウンに並ぶ）と、backend / udid / erase / `disable alert-dismiss` を設定して **Run** を押します。
   出力がライブ表示され、完了で `report.html` が埋め込まれます。
+
+### 各タブの機能
+
 - **Crawl** タブは、app、シミュレータのプール（Replay と同様の複数選択。2 台以上選ぶと 1 つの画面マップを
   共有して並列にクロールします。詳細は [BE-0064](../../roadmaps/BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md)）、
   予算（max screens / steps）を選び、`POST /api/crawl` で crawl を起動します。返ってきた run id で UI が
@@ -605,6 +613,9 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   各行は run が動いたデバイスの OS バージョンも示し、行はバージョンごとに分かれます
   （[BE-0358](../../roadmaps/BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)）。
   デバイスも AI も判定も使いません。`GET /flakiness` で配信し、タブの更新ボタンで再取得します。
+
+### バンドルのアップロードと合成
+
 - **バンドルのアップロード（[BE-0073](../../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)）。**
   「Open config」ダイアログには 3 つめのソース **Upload a bundle** があり、ホストのファイルシステムに触れない
   ブラウザ利用者が、ホスト型の `serve` に**自分のスイートを持ち込め**ます。レイアウトが動くローカル checkout
@@ -655,6 +666,9 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   [configuration](configuration.md#ai-プロバイダaibe-0047)、BE-0215）の 4 択で、`serve` はこの選択を
   `BAJUTSU_AI_PROVIDER` として起動ジョブに渡します。タブごとの
   選択はなく、すべての AI 経路（オーサリング、アラートガード、triage）が同じ 1 つのプロバイダを使います。
+
+### シナリオの編集と検証
+
 - **エディタでのシナリオのインライン検証（[BE-0138](../../roadmaps/BE-0138-serve-lint/BE-0138-serve-lint-ja.md)）。**
   Author タブの YAML エディタは、保存時だけでなく**入力しながら**検証します。デバウンスした `POST /api/lint`
   が `bajutsu lint` と同じチェックを実行し、行に紐づく診断を返します。診断は該当行のガターのマーカーと、
@@ -676,6 +690,9 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   これは `serve` を loopback を越えてホスティングするための前提です
   （[BE-0015](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) / [BE-0016](../../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）。
   現状は `127.0.0.1` バインドかつ認証なしなので、信頼できないネットワークにはまだ晒さないでください。
+
+### 同時実行数、証跡、ホスティング
+
 - **`--max-concurrent-runs`（既定 4）** は同時実行できる run/record ジョブ数の上限です。1 呼び出し元が
   希少なデバイスを独占しないようにします（BE-0051）。上限超過の dispatch は **429** を返します。`0` で無制限。
 - **`--evidence-store <uri>`（または `$BAJUTSU_EVIDENCE_STORE`）。各 run の証跡をアップロードします（[BE-0110](../../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md)）。** `s3://bucket/prefix` または `gs://bucket/prefix` を指定すると、完了した run のツリーがそこへアップロードされます。キーは `<prefix><evidence_prefix><runId>/…` の形になるので、パスによってクラウドのライフサイクルポリシーが切り替わります。スタンドアロンの `run --evidence-store`（Runner 自身の認証情報で直接アップロードする）と違い、**`serve` は認証情報を保持し、Worker には渡しません**。コントロールプレーンがファイルごとに presigned PUT URL を発行し、Worker はクラウド SDK も認証情報も持たずに平文 HTTP でアップロードします。呼び出し元は `POST /api/run` のボディに `evidence_prefix`（安全な相対セグメントとして検証されます）を渡して run ごとのパスを選びます。サーバが自分のバケットとベースプレフィックスを前置するので、run ID が必ずキーに含まれ、run 同士が衝突しません。アップロードは判定の後に走るため、失敗しても警告のみです。**サーバ側**に `s3` または `gcs` extra が必要です（Worker には不要）。トポロジは [self-hosting](self-hosting.md) を参照してください。

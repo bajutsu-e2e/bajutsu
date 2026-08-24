@@ -164,6 +164,8 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
 `drivers/adb.py` + `bajutsu/adb.py` (roadmap
 [BE-0007](../roadmaps/BE-0007-android-backend/BE-0007-android-backend.md)).
 
+### Reading the tree and resolving a selector
+
 - `query()`: reads the window's UI Automator XML and maps each `<node>` to an `Element` with a pure
   parser (`parse_hierarchy`). The read runs over the **resident UI Automator server** when it is
   built (`make -C BajutsuAndroidUIAutomatorServer build`) — one warm `UiAutomation` session answering
@@ -201,6 +203,9 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   timing; see **On-device actuation fidelity** below for its coordinate fallback. `swipe` adds a
   finite duration so it is a real drag; `type_text` is `input text` (spaces sent as its `%s`
   escape).
+
+### Waiting for the tree to catch up with a pan
+
 - **A coordinate resolve waits for the tree to catch up with a pan.** Android moves the content first
   and publishes the accessibility update naming the new frames afterwards. A read landing between those
   two moments describes the pre-scroll screen. Repeated reads then agree with each other on frames that
@@ -285,6 +290,9 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   resident channel this means a coordinate resolve still pays one confirmatory read (plus a short
   poll sleep) after the catch-up barrier itself closes for free — the barrier's own dump is free, the
   settle poll's is not.
+
+### On-device actuation
+
 - **On-device actuation fidelity** (roadmap
   [BE-0210](../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)):
   the `back` step is the true system back (`input keyevent 4` / `KEYCODE_BACK`) — Android has no
@@ -335,6 +343,9 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   double-tap path below. `MULTI_TOUCH` is declared statically in the capability set regardless of
   root, so preflight admits `gestures_multitouch` on adb; the root check is enforced at actuation
   time, not in the capability set.
+
+### Screenshots, lifecycle, and permissions
+
 - `screenshot` writes the PNG bytes from `adb exec-out screencap -p` (binary-clean stdout).
 - Lifecycle (`AndroidEnvironment`, the twin of the iOS `simctl` sequence): boot-readiness wait
   (polling `getprop sys.boot_completed` to a bounded deadline — a condition wait, no fixed sleep, and
@@ -350,6 +361,9 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   never blocks a scenario. Granting deterministically up front, rather than tapping the dialog when
   it appears, keeps timing off the run path; the list is app-specific, so it lives in config, not the
   driver.
+
+### Evidence and network
+
 - **Interval evidence** (BE-0007 Unit 4): `video` records via `adb shell screenrecord` and
   `deviceLog` streams `adb logcat`, the twins of the simctl providers. `screenrecord` writes
   device-side (it cannot stream to a host file), so the recording is finalized on SIGINT and pulled
