@@ -925,8 +925,10 @@ def test_pool_is_conjoined_with_the_lanes_own_relevance() -> None:
 
 def test_the_ios_lane_has_no_pool_keyed_job_left() -> None:
     # BE-0298's iOS half is withdrawn, so the iOS lane's own workflow and its Simulator bring-up leave
-    # the pool surface with it: nothing on that lane reads the output, and keeping them on the surface
-    # would fire the Android job on a change no Android job can observe.
+    # the pool surface with it: no job reads that lane's `pool` output any more, so those paths would
+    # only describe a job that no longer exists. They could not have fired the Android job either way —
+    # each sits in `_LANE_PATHS["ios"]` alone, and `touches_pool` conjoins the surface with the lane's
+    # own relevance.
     assert touches_pool([".github/workflows/ios-e2e.yml"], "ios") is False
     assert touches_pool([".github/actions/boot-simulator/action.yml"], "ios") is False
     assert touches_pool([".github/actions/bajutsu-e2e/action.yml"], "ios") is False

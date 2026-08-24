@@ -183,8 +183,9 @@ Log:
   `exclude-udid` input on the `boot-simulator` action, and the `touch-markers` / `workers` /
   `diagnostics-udid` inputs on the `bajutsu-e2e` action. This item added each one for that job and no
   other caller passes any of them, so both composite actions return to their pre-BE-0298 shape.
-  `touches_pool` keeps only the Android job's surface, and the iOS lane stops emitting a `pool`
-  output nothing reads. **What stays:** `pool (adb)`, green on every run since it landed, with
+  `touches_pool` keeps only the Android job's surface, and the iOS lane's `changes` job stops
+  republishing the `pool` output nothing reads — the detector still emits it, as it does on the web
+  lane. **What stays:** `pool (adb)`, green on every run since it landed, with
   `scripts/assert_pool_isolation.py` and its unit tests unchanged — so this item's claim is still
   checked against two real concurrent devices, on the lane whose host can hold them.
 

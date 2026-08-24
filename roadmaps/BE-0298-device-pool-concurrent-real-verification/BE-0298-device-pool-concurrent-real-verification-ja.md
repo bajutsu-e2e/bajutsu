@@ -195,8 +195,8 @@ monkeypatch して、`"UDID-A"`/`"UDID-B"` のような架空の udid に対す�
   `boot-simulator` action の `exclude-udid` 入力、`bajutsu-e2e` action の `touch-markers` /
   `workers` / `diagnostics-udid` 入力です。いずれも本項目がこのジョブのために追加した入力で、
   ほかの呼び出し側は 1 つも渡していないので、2 つのコンポジット action は BE-0298 以前の形に戻ります。
-  `touches_pool` が対象とするのは Android のジョブの面だけになり、iOS レーンは誰も読まない `pool`
-  出力を出すのをやめます。**残るもの**：`pool (adb)` です。着地してから毎回緑で、
+  `touches_pool` が対象とするのは Android のジョブの面だけになり、iOS レーンの `changes` ジョブは、
+  誰も読まない `pool` 出力の再公開をやめます。検出側は web レーンと同じく、この出力を出し続けます。**残るもの**：`pool (adb)` です。着地してから毎回緑で、
   `scripts/assert_pool_isolation.py` とそのユニットテストもそのままです。本項目の主張は、
   2 台を同時に起動できるホストのレーンで、実際の並行デバイスに対して検証され続けます。
 
