@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0298") |
-| 実装 PR | [#1666](https://github.com/bajutsu-e2e/bajutsu/pull/1666) |
+| 実装 PR | [#1666](https://github.com/bajutsu-e2e/bajutsu/pull/1666) · [#1732](https://github.com/bajutsu-e2e/bajutsu/pull/1732) |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md) |
 <!-- /BE-METADATA -->
@@ -173,7 +173,7 @@ monkeypatch して、`"UDID-A"`/`"UDID-B"` のような架空の udid に対す�
   よりも上流にあるので、run が記録する内容をこれ以上削っても結果は変わらないと見込まれます。
   iOS 側の成立可否は、レーンではなく runner についての問題です。同じ push の間、`pool (adb)`
   は緑のままでした。Android 側にこの手当ては要りません。
-- iOS 側の `pool (xcuitest)` を取り下げ、このジョブしか使っていなかった配線もあわせて外しました。
+- [#1732](https://github.com/bajutsu-e2e/bajutsu/pull/1732) — iOS 側の `pool (xcuitest)` を取り下げ、このジョブしか使っていなかった配線もあわせて外しました。
   **5 回の実測**は、4 回の崩壊と 1 回の判定です。最初の 2 回は、当初のシナリオセットを動画記録と
   タッチマーカー付きで走らせ、どちらもキャプチャのパイプラインで死にました（`recordVideo produced
   no new bytes`、固まった `simctl terminate` / `uninstall`、到達不能になった runner チャネル）。

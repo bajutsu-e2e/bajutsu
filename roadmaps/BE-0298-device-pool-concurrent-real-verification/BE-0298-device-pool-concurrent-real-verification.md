@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0298") |
-| Implementing PR | [#1666](https://github.com/bajutsu-e2e/bajutsu/pull/1666) |
+| Implementing PR | [#1666](https://github.com/bajutsu-e2e/bajutsu/pull/1666) · [#1732](https://github.com/bajutsu-e2e/bajutsu/pull/1732) |
 | Topic | Verification & coverage |
 | Related | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) |
 <!-- /BE-METADATA -->
@@ -161,7 +161,7 @@ Log:
   reduction of what the run records is expected to change the outcome, and the iOS half's viability
   is a question about the runner rather than about the lane. `pool (adb)` stayed green across the
   same pushes, so the Android half needs none of this.
-- Withdrew the iOS half, `pool (xcuitest)`, and with it the wiring no other job used. **What five
+- [#1732](https://github.com/bajutsu-e2e/bajutsu/pull/1732) — withdrew the iOS half, `pool (xcuitest)`, and with it the wiring no other job used. **What five
   runs measured:** four collapses and one verdict. The first two ran the original scenario set with
   a video recording and the touch markers on, and both died in the capture pipeline
   (`recordVideo produced no new bytes`, a wedged `simctl terminate` / `uninstall`, an unreachable
