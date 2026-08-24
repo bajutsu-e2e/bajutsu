@@ -364,7 +364,7 @@ the run's artifacts and never feeds any scenario's pass/fail.
 The job takes a change filter of its own — `touches_pool` in `scripts/e2e_changes.py`, narrower
 than the lane-wide signal every other job reads — because it boots twice what the Android lane's
 other jobs boot. It stays a per-PR signal outside that lane's required aggregate check, on
-other jobs boot. The job stays a per-PR signal outside the Android lane's required aggregate check, on
+BE-0282's signal-then-required path that the fault-injection lanes above also take, for a reason of its own:
 two emulators against one runner is the most resource-sensitive work the lane carries.
 
 An iOS twin, `pool (xcuitest)`, booted two Simulators on the macOS lane until BE-0298 withdrew it.
@@ -376,8 +376,8 @@ and 7 GiB, with a *single* booted Simulator bringing up 257 guest processes and 
 physical memory unused, so a second Simulator doubles the guest population against an already
 saturated ceiling. Dropping the video recording, the touch markers, and half the scenarios moved the
 collapse earlier without removing it. So the isolation claim now rests on real concurrent devices on
-collapse earlier without removing it. The isolation claim now rests on real concurrent devices on
 Android; on iOS it rests on the fast suite's bookkeeping proof alone.
+
 ---
 
 ## Implementation status
@@ -386,6 +386,8 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 > **what the current code actually runs** from **what is not yet wired up**.
 
 ### Implemented (tested; the path works end-to-end in code)
+
+#### Drivers and backend selection
 
 - Selector resolution and ambiguity detection (the determinism core)
 - Platform-aware backend registry: `--backend` / `backend:` accept `ios` / `android` / `web` /
@@ -447,6 +449,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   id convention, the lazy-semantics precondition, and the confirmed gaps — no `network`/`mocks`
   observation, and Android clipboard needs the in-app receiver the plugin-free Flutter app doesn't
   link)
+
+#### Scenarios, assertions, and the run loop
+
 - Scenario schema (strict validation) and YAML round-trip; `id` / `idMatches` accept a list of OR
   candidates for cross-platform id forms (BE-0221)
 - Evaluation of the assertion kinds (`exists` / `value` / `label` / `count` / `enabled` / `disabled` /
@@ -493,6 +498,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   run with an `appPath` to install, so `--udid` keeps the erase-level retry on the device the
   operator named. Because a replacement resets strictly more than an erase does, it also honors the
   two opt-outs the erase rung honors: `reinstall: overwrite` and `bajutsu run --no-erase`
+
+#### DSL authoring, control flow, and data
+
 - DSL: the `within` selector (geometric scoping), the `relaunch` step (validated on-device),
   reusable `setup` preludes, `locale` applied at launch, and parallel runs (`--workers`) over a
   device pool
@@ -527,6 +535,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   `prev_after` (BE-0234) included. On a match, the runner runs the entry's `steps` and then resumes
   the interrupted step (a `wait` keeps its original deadline; an act step retries once), with a
   re-entrancy cap falling back to the step's ordinary outcome
+
+#### DSL gestures, text entry, and device actions
+
 - DSL `scroll` action (BE-0326): scroll a region — the whole screen, or a `within` container — until
   a target selector's frame center lands inside the viewport, or fail deterministically at a
   `maxScrolls` bound (default 15) or once two consecutive reads *show* the region standing still
@@ -600,6 +611,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   selector's existing `within`/`traits`/`index` fields, one step per component. Gated on the
   `PICKER_WHEEL` capability, which only the resident-runner XCUITest backend and `FakeDriver`
   declare, so Android and web are rejected at preflight before any device work
+
+#### DSL system-alert handling
+
 - DSL `handleSystemAlert` (BE-0316): a deterministic, iOS-only step that taps a SpringBoard
   permission-prompt button by a native accessibility query (the runner's second, on-demand
   SpringBoard handle) — resolution stays Python-side in `resolve_unique`; only the XCUITest backend
@@ -618,6 +632,20 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   the AI-vision guard demoted to a fallback for what the native path can't name (a backend lacking the
   capability, a non-enumerable blocking surface, or a free-text `instruction` the native path can't
   resolve to one label); on by default, `false` disables it per scenario
+
+#### Evidence, network observation, and reporting
+
+- DSL `iosTipKitHandling` (BE-0389), an opt-in guard for a blocking Apple TipKit tip: TipKit's
+  presentation marks the content it covers accessibility-hidden rather than merely occluding it, so a
+  blocked tap can fail as `ElementNotFound`, not only `ElementNotTappable`. The XCUITest backend alone
+  declares `Capability.HANDLE_TIPKIT_TIP` and implements `Driver.dismiss_blocking_tip()` by resolving
+  the tip's own `PopoverDismissRegion` scrim — no Swift runner change, since the tip already surfaces
+  in the same accessibility tree every wait poll and tap resolution already fetches. The step loop
+  retries a step once when the dismiss actually found and cleared a tip, beside the alert guard's own
+  end-of-step branch, and the dismiss also composes onto BE-0314's `on_interrupt_poll` hook so a tip
+  does not hold a wait to its full timeout either. Defaults off (unlike `systemAlertHandling`) because a
+  scenario sometimes asserts on the tip itself; `--ios-tipkit-handling`/`--no-ios-tipkit-handling`
+  follows the same flag > scenario > target > default precedence as `systemAlertHandling` (BE-0177)
 - Evidence: instant (`screenshot`/`elements`/`actionLog`/`rawTree` — `actionLog` carries each step's
   concrete actuations: the coordinate sent, the gesture's geometry, the channel that carried it;
   `rawTree` carries the raw dump behind `elements`, opt-in, adb and XCUITest) + interval
@@ -653,6 +681,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   a `TriageAgent` diagnosis (rule-based `HeuristicTriageAgent`, or `--ai` Claude with the failure
   screenshot). An agent can propose a structured fix (`renameId` / `addIndex` / `raiseTimeout`);
   `--apply`/`--write` patches the scenario source (diff-previewed, opt-in) and `--rerun` re-runs it
+
+#### The CLI, `serve`, and codegen
+
 - The CLI: `run` / `project` / `doctor` / `audit` / `coverage` / `impact` / `stats` / `flakiness` / `export` / `trace` / `report` / `triage` / `record` / `crawl` / `codegen` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` — with `record` + `crawl` as the Tier 1 AI authoring paths and the alert guard
 - The **parsed device OS** (`device_os.py`, BE-0358): the device's operating-system (OS) version as a small parsed fact — platform, major, minor — read from the `device_runtime` label a run already records per scenario. An absent or unrecognized label parses to "unknown" rather than to a guessed version. Both flakiness surfaces carry the parsed OS in their grouping key, so a scenario's verdict history is per OS version, and a reproducible cross-version difference no longer scores as flakiness. The XCUITest driver receives it as a `make_driver` keyword — not a `Driver` member, which every backend and every test double would then have to declare — so a driver-level report can name the OS it ran on. **Reading the OS is not a licence to branch on it**: this repository fixes a behavioural OS difference version-agnostically, and a per-OS branch must earn its place in its own roadmap item against that alternative
 - Read-only advisory analysis commands (no device, no AI, never gate CI — only a missing/unreadable input exits non-zero): a determinism/flakiness **audit** with static, repeat-and-diff, and longitudinal modes (`audit`, BE-0049); a scenario id-namespace **coverage** map (`coverage`, BE-0050); **test impact analysis** — the affected scenario steps a `git` diff selects, by inverting the coverage index (`impact`, BE-0321); the aggregate run-stats dashboard as CLI/HTML output (`stats`, BE-0102); cross-run **flakiness** ranking, from a runs directory or the `serve` database (`flakiness`, BE-0220); a finished run's **export** as a portable `.zip` (`export`, BE-0060); and **report** re-rendering (`report.html`/`junit.xml`/`ctrf.json`) from stored run data with no re-run (`report`, BE-0068)
@@ -687,6 +718,19 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   iterations, data-driven rows, and `relaunch` — exercised on-device per PR by `ios-e2e.yml`'s
   `actuation (xcuitest)` job, so none of them rests on adb and Playwright alone
   ([BE-0285](../roadmaps/BE-0285-scenario-feature-real-backend-coverage/BE-0285-scenario-feature-real-backend-coverage.md)).
+- The network path over the iOS transport — `BajutsuKit`'s in-app `URLProtocol` serving a mocked
+  request from its own stub and reporting each exchange to the collector on loopback — driven per PR
+  by `ios-e2e.yml`'s
+  `network (xcuitest)` job (`make -C demos/showcase e2e-network`, [BE-0282](../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)).
+  It runs `network_mock.yaml` (a stubbed `POST /post` answered 201, where a live server would answer
+  200) and `network_live.yaml` (an unstubbed catalog `GET`, asserted only to have been observed), then
+  asserts the persisted `network.json` (`demos/showcase/network/assert_network_evidence.py`): the mocked
+  exchange marked `mocked` with its `Authorization` header and `password` body field masked and no
+  raw secret anywhere in the file, and the unstubbed exchange carrying `mocked` false, so an
+  over-broad mock matcher cannot claim traffic nothing stubbed. On iOS, whether a *really captured*
+  credential is masked in shipped evidence is observed only here — every pure redaction test feeds
+  the algorithm a hand-built exchange. Non-gating: new on-device coverage lands as
+  a signal first, the path the web twin below took before joining `E2E (web)`.
 
 ### Validated in a browser (Linux, no Mac)
 
@@ -699,9 +743,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   the `network (playwright)` job (`web-e2e.yml`; [BE-0282](../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)),
   which runs `demos/web/scenarios/network.yaml` **with network on** and then asserts the persisted
   `network.json` masks a captured secret. It landed as signal first and, having proven stable in CI,
-  now feeds the required `E2E (web)` gate. The iOS half (wiring `network_mock.yaml` /
-  `network_live.yaml` as a Simulator job) is not
-  yet done. Android now has app-side network capture (BE-0283): `BajutsuAndroid`'s OkHttp
+  now feeds the required `E2E (web)` gate. The iOS half is the `network (xcuitest)` job described
+  under "Validated on a real Simulator" above, so all three backends now drive the network runtime
+  they implement. Android now has app-side network capture (BE-0283): `BajutsuAndroid`'s OkHttp
   interceptor reports each exchange to the host collector over an `adb reverse` tunnel, the same
   app-side-cooperation shape `BajutsuKit` uses on iOS. The adb driver itself still declares no
   native `NETWORK` capability — there is no native network monitor to actuate — so `network (adb)`

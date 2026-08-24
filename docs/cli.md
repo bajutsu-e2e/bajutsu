@@ -757,6 +757,8 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
               [--host 127.0.0.1] [--token <t>] [--max-concurrent-runs 4] [--evidence-store <uri>]
 ```
 
+### Authentication and security headers
+
 - **`--token` (or `$BAJUTSU_SERVE_TOKEN`) — authentication (BE-0051).** With a token set, every
   request must authenticate: API clients send `Authorization: Bearer <token>`; the browser exchanges
   the token once via `POST /api/login` (the UI prompts on a 401), which sets an HttpOnly, SameSite
@@ -768,6 +770,9 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   doesn't match the `Host` is rejected (defense-in-depth atop the `SameSite=Strict` session cookie);
   non-browser clients (no `Origin`) are unaffected. Every response carries `X-Content-Type-Options:
   nosniff`, `X-Frame-Options: DENY`, and `Referrer-Policy: no-referrer`.
+
+### Opening a config
+
 - `--config` is **optional**. Omit it and open a `config.yml` from the UI's file browser (an
   "Open config" button); the browser is confined to `--root` (default: the current directory).
   `--scenarios <dir>` is available as an override of the selected app's configured dir.
@@ -838,6 +843,9 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   compression-ratio caps); every target's path fields are confined to the bundle at bind; and binding
   a config is an admin-role action behind the same token auth as every other request — bringing an
   arbitrary binary is only exposed on an authenticated, single-Mac `serve`.
+
+### Composing a config from artifacts
+
 - **Compose from artifacts ([BE-0268](../roadmaps/BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md)).**
   A combined bundle couples three pieces of very different change cadence — a large binary that
   changes every build, a small scenario tree that changes every edit, and a config that almost never
@@ -873,6 +881,9 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   interactively — [configuration](configuration.md#ai-provider-ai-be-0047), BE-0215). `serve` applies
   it to spawned jobs via `BAJUTSU_AI_PROVIDER`, so there is no per-tab picker; every AI path
   (authoring, the alert guard, triage) uses the one provider.
+
+### Editing and validating a scenario
+
 - **Inline scenario validation in the editor ([BE-0138](../roadmaps/BE-0138-serve-lint/BE-0138-serve-lint.md)).**
   The Author tab's YAML editor validates **as you type**, not only on Save: a debounced `POST /api/lint`
   runs the same `bajutsu lint` checks and returns line-anchored diagnostics, shown as a gutter marker
@@ -896,6 +907,9 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   surprising argv. This hardening is the prerequisite for hosting `serve` beyond loopback
   ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) / [BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md));
   it still binds `127.0.0.1` and has no auth, so don't expose it to an untrusted network yet.
+
+### Run limits, evidence, and hosting
+
 - **`--max-concurrent-runs` (default 4)** caps how many run/record jobs may run at once so one
   caller can't monopolize the scarce device (BE-0051); dispatch over the cap returns **429**. Set
   `0` for unlimited.

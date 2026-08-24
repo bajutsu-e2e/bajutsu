@@ -70,7 +70,7 @@ preflight:
 
 # Shell scripts the gate lints. pre-push/pre-commit/prepare-commit-msg have no .sh suffix, so
 # they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg .githooks/pre-commit .githooks/prepare-commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/xcuitest-runner-hash.sh scripts/collect_android_diagnostics.sh scripts/android_pool_e2e.sh .claude/hooks/session-start.sh demos/tour/demo.sh
+SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg .githooks/pre-commit .githooks/prepare-commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/worktree_cleanup.sh scripts/merge-uv-lock.sh scripts/xcuitest-runner-hash.sh scripts/collect_android_diagnostics.sh scripts/android_pool_e2e.sh .claude/hooks/session-start.sh demos/tour/demo.sh
 
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the
@@ -176,6 +176,15 @@ lint-js:
 lint-roadmap:
 	uv run python scripts/lint_roadmap.py $(ARGS)
 
+# Check docs/architecture.md's hand-written module table against the bajutsu/ package: no row may
+# name a module that does not exist, and no subpackage or top-level module may go unmentioned.
+# The role prose in each row is not generated — only the row *set* is compared — so the map cannot
+# quietly fall behind the tree the way it already had when this check landed (only 15 of the 43
+# top-level modules were named; the 27 non-dunder gaps are grandfathered, and a new module fails
+# until its row lands).
+lint-module-map:
+	uv run python scripts/lint_module_map.py
+
 # Scaffold a new roadmap (BE) item — both language files in the canonical format, with the literal
 # BE-XXXX placeholder (CI allocates the real id). The error-prone item-authoring recipe as one
 # command (BE-0069). Usage:
@@ -216,10 +225,31 @@ lint-secrets:
 roadmap-status:
 	uv run python scripts/roadmap_query.py --status "$(STATUS)"
 
+# Find roadmap (BE) items by keyword, topic, or id — the same small table as `roadmap-status`, for
+# the question "is there already an item about X". Answers it from each item's title/Topic/
+# Introduction excerpt instead of a grep over ~127k lines of item prose (BE-0162). Composes with a
+# status, and refuses an unfiltered scan. Pure and offline, like `roadmap-status`.
+#   make roadmap-find ARGS="--grep scroll"
+#   make roadmap-find ARGS="--status Implemented --topic driver"
+#   make roadmap-find ARGS="--id BE-0349"
+roadmap-find:
+	uv run python scripts/roadmap_query.py $(ARGS)
+
+# Map the repository for a session that does not yet know where something lives: one line per
+# docs/ page, or per bajutsu/ package and top-level module, or per heading of one file with its
+# line span. Printed, never committed — a committed index drifts from the tree it describes, and a
+# session that trusts a stale index searches in the wrong place. Needs only the standard library,
+# so `python3 scripts/repo_map.py --docs` runs on any 3.11+ interpreter, with no virtualenv built.
+#   make repo-map ARGS="--docs"
+#   make repo-map ARGS="--code --grep driver"
+#   make repo-map ARGS="--headings docs/cli.md"
+repo-map:
+	uv run python scripts/repo_map.py $(ARGS)
+
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
 # predicts "green in CI". The uv-native checks run identically everywhere; actionlint is
 # the lone exception (see lint-actions above).
-check: hooks format-check lint lint-docstrings lint-imports lint-sh lint-actions lint-js lint-roadmap lint-secrets lock-check typecheck test
+check: hooks format-check lint lint-docstrings lint-imports lint-sh lint-actions lint-js lint-roadmap lint-module-map lint-secrets lock-check typecheck test
 
 # Generated API reference (BE-0065). Deliberately NOT in `check`: like on-device E2E, the
 # reference build is a separate, heavier path (it pulls the `docs` extra) and must not slow the
