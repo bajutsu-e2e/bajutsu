@@ -875,69 +875,66 @@ def test_main_emits_false_for_a_roadmap_only_pr(
 
 
 # --- The concurrent-device pool filter (BE-0298) --------------------------------------------------
-# The two-device jobs boot twice what every other job on a lane boots, on the metered macOS runner,
-# and nothing else on any lane can observe what they check. So they are keyed on a narrower surface
-# than `shared`: `touches_pool` is that surface, conjoined with the lane's own relevance.
+# The Android two-emulator job boots twice what every other job on its lane boots, and nothing else on
+# any lane can observe what it checks. So it is keyed on a narrower surface than the lane-wide signal:
+# `touches_pool` is that surface, conjoined with the lane's own relevance. It is the only such job
+# left — the iOS half was withdrawn, since two booted Simulators exhaust the hosted macOS runner — so
+# the iOS and web lanes emit the output and leave it unread.
 
 
 def test_pool_fires_on_the_parallel_run_surface() -> None:
     for path in (
         "bajutsu/runner/pool.py",
         "bajutsu/runner/pipeline.py",
-        "bajutsu/platform_lifecycle/environments/xcuitest.py",
+        "bajutsu/platform_lifecycle/environments/android.py",
         # `_resolve_lanes` — the comma `--udid` list turned into the pool, and the `--workers` cap.
         "bajutsu/cli/commands/run.py",
         "bajutsu/evidence/core.py",
         "bajutsu/evidence/sink.py",
         "scripts/assert_pool_isolation.py",
-        ".github/actions/boot-simulator/action.yml",
-        ".github/actions/bajutsu-e2e/action.yml",
-        # Mints device A, whose udid the job feeds to `exclude-udid` and then to `--udid "$A,$B"`.
-        ".github/actions/setup-ios-toolchain/action.yml",
+        "scripts/android_pool_e2e.sh",
+        # Mints the first emulator; the script boots the second beside it.
+        ".github/actions/setup-android-toolchain/action.yml",
+        "demos/showcase/android/Makefile",
     ):
-        assert touches_pool([path]) is True, path
+        assert touches_pool([path], "android") is True, path
 
 
 def test_pool_does_not_fire_on_a_relevant_change_off_that_surface() -> None:
     # The whole point of the narrower key: an ordinary driver or scenario change fires the lane's
-    # single-device jobs (`is_relevant` stays true) without paying for two booted Simulators.
+    # single-device jobs (`is_relevant` stays true) without paying for two booted emulators.
     for path in (
-        "bajutsu/drivers/xcuitest.py",
+        "bajutsu/drivers/adb.py",
         "demos/showcase/scenarios/smoke.yaml",
-        "demos/showcase/ios/swiftui/project.yml",
+        "demos/showcase/android/compose/build.gradle.kts",
     ):
-        assert is_relevant([path]) is True, path
-        assert touches_pool([path]) is False, path
+        assert is_relevant([path], "android") is True, path
+        assert touches_pool([path], "android") is False, path
 
 
 def test_pool_is_conjoined_with_the_lanes_own_relevance() -> None:
-    # `_POOL_PATHS` names both lanes' workflow files — and both lanes' two-device machinery — without
-    # distinguishing them, so the conjunction with `is_relevant` is what stops one lane's two-device
-    # job firing on the other lane's file.
+    # `_POOL_PATHS` names the Android lane's two-emulator machinery without naming the lane, so the
+    # conjunction with `is_relevant` is what stops another lane's change firing that job.
     assert touches_pool([".github/workflows/android-e2e.yml"], "android") is True
     assert touches_pool([".github/workflows/android-e2e.yml"], "ios") is False
-    assert touches_pool([".github/workflows/ios-e2e.yml"], "ios") is True
-    assert touches_pool([".github/workflows/ios-e2e.yml"], "android") is False
     assert touches_pool(["scripts/android_pool_e2e.sh"], "android") is True
     assert touches_pool(["scripts/android_pool_e2e.sh"], "ios") is False
     assert touches_pool(["demos/showcase/android/Makefile"], "android") is True
     assert touches_pool(["demos/showcase/android/Makefile"], "ios") is False
-    # The iOS job's capture-light config: relevant to the iOS lane through its own
-    # `showcase(?:\.[^/]+)?\.config\.yaml` fragment, but not to the Android lane, which claims only
-    # the main config by name.
-    assert touches_pool(["demos/showcase/showcase.pool.config.yaml"], "ios") is True
-    assert touches_pool(["demos/showcase/showcase.pool.config.yaml"], "android") is False
 
 
-def test_a_pool_keyed_job_is_not_in_the_scenario_map() -> None:
-    # The two-device job names the scenarios it runs, but its `if:` reads `pool`, not `affected`.
-    # Leaving it in the map would attribute a scenario-only change to a job that boots two devices —
-    # and would credit it with an `affected` entry no guard consults, which the guard/map equality
-    # test below would read as a rename that lost its guard.
+def test_the_ios_lane_has_no_pool_keyed_job_left() -> None:
+    # BE-0298's iOS half is withdrawn, so the iOS lane's own workflow and its Simulator bring-up leave
+    # the pool surface with it: no job reads that lane's `pool` output any more, so those paths would
+    # only describe a job that no longer exists. They could not have fired the Android job either way —
+    # each sits in `_LANE_PATHS["ios"]` alone, and `touches_pool` conjoins the surface with the lane's
+    # own relevance.
+    assert touches_pool([".github/workflows/ios-e2e.yml"], "ios") is False
+    assert touches_pool([".github/actions/boot-simulator/action.yml"], "ios") is False
+    assert touches_pool([".github/actions/bajutsu-e2e/action.yml"], "ios") is False
     text = lane_workflow_text("ios")
     assert text is not None
-    assert "demos/showcase/scenarios/smoke.yaml" in text
-    assert "pool" not in job_scenario_map(text)
+    assert "outputs.pool" not in text
 
 
 def test_a_pool_keyed_job_is_dropped_even_where_it_declares_scenarios() -> None:

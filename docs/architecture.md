@@ -335,7 +335,7 @@ deliberately outside their lanes' required aggregate checks, and are promoted on
 signal-then-required path BE-0282 established, applied here to lanes that break the device on
 purpose and so carry more inherent flakiness risk than the ones driving a healthy one.
 
-### Concurrent-device lanes (BE-0298)
+### The concurrent-device lane (BE-0298)
 
 Every job described above boots exactly one device, so none of them can observe what
 `runner/pool.py`'s `device_pool` claims for a parallel run: that under `--workers N` each worker
@@ -349,16 +349,9 @@ at the OS and subprocess level outside them — two real `simctl` or `adb` invoc
 lock, a host port allocated per device, an artifact path computed before a worker's subdirectory
 exists.
 
-The **concurrent-device lanes** boot two real devices instead. `pool (xcuitest)` (`ios-e2e.yml`)
-boots two Simulators and `pool (adb)` (`android-e2e.yml`) two emulators, each running state-neutral
-showcase scenarios through one `bajutsu run --workers 2`, so the pool has to share the work out and
-keep both workers busy at once. The Android job runs four scenario files; the iOS job runs two,
-`smoke.yaml` and `notices.yaml`, under its own capture-light
-[`showcase.pool.config.yaml`](../demos/showcase/showcase.pool.config.yaml) and with the touch markers
-off, because two Simulators plus a video recording per device exhausted the macOS runner's
-capture-service queue before the run finished (BE-0361's signature). Two files still hold four
-scenario documents between them, so the pool still has work for both workers at once and the
-concurrent pair the verdict below needs survives the cut.
+The **concurrent-device lane** boots two real devices instead. `pool (adb)` (`android-e2e.yml`)
+boots two emulators and runs four state-neutral showcase scenario files through one
+`bajutsu run --workers 2`, so the pool has to share the work out and keep both workers busy at once.
 
 `scripts/assert_pool_isolation.py` is what turns the outcome into a verdict, read from the finished
 run's `manifest.json` and the run directory's own subdirectory listing: it fails on an artifact
@@ -368,16 +361,23 @@ two scenarios on different devices having overlapped in wall-clock. The check is
 comparison, and it runs after `bajutsu run` has returned its own verdict, so it observes
 the run's artifacts and never feeds any scenario's pass/fail.
 
-Both lanes are keyed on a change filter of their own — `touches_pool` in `scripts/e2e_changes.py`,
-narrower than the lane-wide signal every other job reads — because each boots twice what
-its lane's other jobs boot, on the iOS side against a runner billed at 10x. Both are per-PR signals
-outside their lanes' required aggregate checks, on BE-0282's signal-then-required path and for a
-sharper version of the fault-injection lanes' reason: BE-0361 measured the macOS runner as 3 cores
-and 7 GiB, with a *single* booted Simulator bringing up 257 guest processes and leaving 189 MB of
-physical memory unused, so a second device doubles the guest population against an already-saturated
-ceiling. A red run there that turns out to be host exhaustion rather than a pool defect is a
-measurement, and the diagnostics both jobs upload are what tell the two apart.
+The job takes a change filter of its own — `touches_pool` in `scripts/e2e_changes.py`, narrower
+than the lane-wide signal every other job reads — because it boots twice what the Android lane's
+other jobs boot. It stays a per-PR signal outside that lane's required aggregate check, on
+other jobs boot. The job stays a per-PR signal outside the Android lane's required aggregate check, on
+two emulators against one runner is the most resource-sensitive work the lane carries.
 
+An iOS twin, `pool (xcuitest)`, booted two Simulators on the macOS lane until BE-0298 withdrew it.
+That job returned one isolation verdict in five runs. The other four collapsed on the host rather
+than on any pool check. `SimRenderServer` crashed on its own dispatch queue; `simctl uninstall` timed
+out against a wedged CoreSimulator; the runner channel became unreachable mid-run. Each red run
+spent about half an hour of a runner billed at 10x. BE-0361 measured that runner as 3 cores
+and 7 GiB, with a *single* booted Simulator bringing up 257 guest processes and leaving 189 MB of
+physical memory unused, so a second Simulator doubles the guest population against an already
+saturated ceiling. Dropping the video recording, the touch markers, and half the scenarios moved the
+collapse earlier without removing it. So the isolation claim now rests on real concurrent devices on
+collapse earlier without removing it. The isolation claim now rests on real concurrent devices on
+Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 ---
 
 ## Implementation status
