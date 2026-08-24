@@ -8,6 +8,7 @@ crash-recovery tests then re-exercise it through `run_all`.
 
 from __future__ import annotations
 
+from bajutsu import simctl
 from bajutsu.drivers import base, xcuitest
 from bajutsu.runner.recovery import (
     CrashRecoveryBudget,
@@ -16,7 +17,8 @@ from bajutsu.runner.recovery import (
     _default_crash_retries,
     _default_run_crash_recovery_budget,
     guarded_teardown,
-    is_infrastructure_fault,
+    is_host_fault,
+    recovers_by_respawn,
 )
 
 
@@ -34,27 +36,49 @@ class _AdvancingClock:
         self.t += seconds
 
 
-def test_backend_crash_is_an_infrastructure_fault() -> None:
-    # The base crash type and its backend-specific subclass are infrastructure: the harness re-leases
-    # and retries rather than failing the contract.
-    assert is_infrastructure_fault(base.BackendCrashError("runner died"))
-    assert is_infrastructure_fault(
-        xcuitest.XcuitestRunnerCrashError("channel timed out", method="tap")
-    )
+# The exception types that are neither a host fault nor a respawn's to repair: a selector that
+# resolved wrongly, an actuator that refused, a failed assertion, a bare error. Each keeps failing
+# immediately (BE-0334's asymmetry).
+_CONTRACT_VIOLATIONS = (
+    base.AmbiguousSelector("two matches"),
+    base.ElementNotFound("no match"),
+    base.SelectorError("selector failed"),
+    base.UnsupportedAction("backend cannot"),
+    AssertionError("contract violated"),
+    RuntimeError("something else"),
+)
 
 
-def test_contract_violations_are_not_infrastructure_faults() -> None:
-    # A selector that resolved wrongly, an actuator that refused, a failed assertion, a bare error:
-    # none is infrastructure, so each keeps failing immediately (BE-0334's asymmetry).
-    for exc in (
-        base.AmbiguousSelector("two matches"),
-        base.ElementNotFound("no match"),
-        base.SelectorError("selector failed"),
-        base.UnsupportedAction("backend cannot"),
-        AssertionError("contract violated"),
-        RuntimeError("something else"),
-    ):
-        assert not is_infrastructure_fault(exc)
+def test_a_backend_crash_recovers_by_respawn() -> None:
+    # The base crash type and its backend-specific subclass are what a fresh lease repairs: the
+    # harness re-leases and retries rather than failing the contract.
+    assert recovers_by_respawn(base.BackendCrashError("runner died"))
+    assert recovers_by_respawn(xcuitest.XcuitestRunnerCrashError("channel timed out", method="tap"))
+
+
+def test_contract_violations_recover_by_nothing() -> None:
+    for exc in _CONTRACT_VIOLATIONS:
+        assert not recovers_by_respawn(exc)
+
+
+def test_a_wedged_device_does_not_recover_by_respawn() -> None:
+    # BE-0378's whole point: a timeout is the host's fault, but a respawn rebuilds the device out of
+    # the same `simctl` calls that just stalled, so the retry predicate must keep excluding it.
+    assert not recovers_by_respawn(simctl.DeviceTimeout("get_app_container timed out after 60s"))
+
+
+def test_a_wedged_device_and_a_crash_are_both_host_faults() -> None:
+    # The diagnosis is the wider set: everything a respawn recovers, plus the wedge it cannot.
+    assert is_host_fault(simctl.DeviceTimeout("get_app_container timed out after 60s"))
+    assert is_host_fault(base.BackendCrashError("runner died"))
+    assert is_host_fault(xcuitest.XcuitestRunnerCrashError("channel timed out", method="tap"))
+
+
+def test_contract_violations_are_not_host_faults() -> None:
+    # A device fault that is *not* a timeout stays out too: a `simctl.DeviceError` says the app is not
+    # installed or the udid is wrong, which is this run's own wiring rather than the host wedging.
+    for exc in (*_CONTRACT_VIOLATIONS, simctl.DeviceError("app is not installed")):
+        assert not is_host_fault(exc)
 
 
 def test_budget_rides_out_every_attempt_within_the_count() -> None:

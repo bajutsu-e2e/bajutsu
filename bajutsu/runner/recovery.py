@@ -10,9 +10,15 @@ selector, a refused actuator, a failed assertion — is not infrastructure and k
 That decision logic first lived inline in the pipeline's scenario loop. The on-device driver
 conformance suite (`tests/test_driver_conformance_ondevice.py`) needs the *same* recovery, so it is
 extracted here; the pipeline drives it today, and Unit 2 wires the conformance harness onto it, so
-the two cannot then drift into different notions of "an infrastructure fault" or "how many respawns
+the two cannot then drift into different notions of "what a respawn recovers" or "how many respawns
 are left" (BE-0334). The classification rests on the exception type the driver already raises, so it
 stays a deterministic branch on a Python class: no model sits on the `run`/CI verdict.
+
+Two questions hang off that classification, and BE-0378 gives each its own predicate here so their
+consumers cannot drift apart: `recovers_by_respawn` decides a retry, and `is_host_fault` diagnoses a
+failure the host caused. A wedged CoreSimulator answers the two differently — it is the host's
+fault, and a respawn built out of the very `simctl` calls that just stalled is the wrong instrument
+for it — which is exactly why one predicate can no longer serve both.
 
 The guarded teardown helper (BE-0342) is the same seam: the pool's own teardown sites — a device's
 environment and its collector socket, at every point the pool starts, switches, releases, or tears
@@ -135,16 +141,37 @@ def _default_crash_recovery_budget() -> float | None:
     return value if value > 0 else None
 
 
-def is_infrastructure_fault(exc: BaseException) -> bool:
-    """Whether `exc` is a Simulator infrastructure fault (recover) rather than a contract violation.
+def recovers_by_respawn(exc: BaseException) -> bool:
+    """Whether re-leasing a fresh device may repair `exc` — the retry decision, and only that.
 
     The distinction is exactly the exception type the driver already raises: a runner crash, a
     readiness gate that killed the runner, and a lease bring-up that died all surface as
     `base.BackendCrashError` (or a subclass), so recovery is a deterministic `isinstance` branch. A
     mis-resolved selector (`SelectorError`), a refused actuator (`UnsupportedAction`), and a failed
     contract assertion are *not* infrastructure and must keep failing immediately.
+
+    Narrower than `is_host_fault` on purpose (BE-0378): a `simctl.DeviceTimeout` is the host's fault
+    but not a respawn's to fix, since a respawn rebuilds the device out of the same `simctl` calls
+    that just stalled — far too heavy an answer to a stall that outlives one deadline and not the
+    next. Read this to decide a retry; read `is_host_fault` to report one.
     """
     return isinstance(exc, base.BackendCrashError)
+
+
+def is_host_fault(exc: BaseException) -> bool:
+    """Whether `exc` says something about the host rather than about the code under test.
+
+    The diagnosis, never the retry decision (BE-0378) — call `recovers_by_respawn` for that. It
+    covers everything a respawn recovers, plus the wedged CoreSimulator BE-0363 named: a
+    `simctl.DeviceTimeout` is raised by a subprocess deadline, never by an assertion, so it can no
+    more be a verdict about the app than a runner crash can. A lane that reports it as such shows a
+    degrading host as a rising wedge count rather than as a conformance failure somebody re-ran.
+
+    Names `simctl.DeviceTimeout` rather than a platform-neutral type because none exists yet;
+    BE-0374 proposes `device_errors.DeviceTimeout` as a second base for the iOS type, and this
+    predicate names that instead once it lands, covering every backend that adopts it.
+    """
+    return isinstance(exc, base.BackendCrashError | simctl.DeviceTimeout)
 
 
 @dataclass(frozen=True)
