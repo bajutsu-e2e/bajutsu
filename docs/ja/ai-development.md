@@ -151,7 +151,7 @@ git worktree remove ../bajutsu-<topic>
 向けのツリーを書き出しません。`apm.lock.yaml` には、配備ファイルごとの SHA-256 が記録されます。
 
 ```bash
-make skills        # apm install — .apm/skills/ を .claude/skills/ へ配備する
+make skills        # apm install --no-policy — .apm/skills/ を .claude/skills/ へ配備する
 make lint-skills   # apm audit --ci --no-policy — ずれがあれば落とす（`make check` に含む）
 ```
 
@@ -173,7 +173,16 @@ make lint-skills   # apm audit --ci --no-policy — ずれがあれば落とす�
 
 この検査は prime directive 1 に触れません。`apm audit` は記録済みのハッシュと作業ツリーを比較するだけで、
 ゲートに言語モデルは届きません。`--no-policy` は検査をオフラインにも保ちます。これがないと、組織ポリシーの
-探索が `api.github.com` へ出ていきます。
+探索が `api.github.com` へ出ていきます。このリポジトリが実行する `apm install` にも、すべて同じフラグを
+渡します。理由は二つあります。配備と、それを再生し直す検査とを一つの設定の下に置けること。そして
+「作業ツリーから解決でき、ネットワークを必要としない」という性質が、配備の側にも成り立つことです。
+フラグがなくても、ネットワークのない `apm install` は成功します。0.28.0 はポリシーへ到達できなかった旨を
+警告して先へ進むからです。それでも実行のたびにネットワークへ出ていきますし、警告は失敗のように読めます。
+
+**スキルの改名や引退に、追加の手順は要りません。** `apm install` は、自分の持ち物でなくなった配備先を
+削除します。ソースのディレクトリを `git mv` して `make skills` を実行すれば、古い
+`.claude/skills/<name>/` はそれで消えます。`make skills` を忘れても、ゲートが捕まえます。改名後の
+ソースには配備先がなく、`apm audit` がそれをずれとして報告するからです。
 
 **深さの置き場所。** `SKILL.md` は、`references/` のファイルを**それが必要になる手順の位置で**指します。
 セッションは使う分だけを読み込みます。例外は規範のセットです。`document-writing`、

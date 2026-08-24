@@ -27,7 +27,7 @@ if ! command -v apm >/dev/null 2>&1; then
 	exit 1
 fi
 
-if ! apm install >/dev/null; then
+if ! apm install --no-policy >/dev/null; then
 	echo "merge-apm-lock: 'apm install' failed — fix the skill sources, then run 'make skills'" >&2
 	exit 1
 fi

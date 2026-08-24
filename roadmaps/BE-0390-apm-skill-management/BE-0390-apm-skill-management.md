@@ -92,14 +92,18 @@ The work breaks down into six independent pieces:
    sits at `.agent-workflows/document-writing/textlint/` therefore moves to a repository path outside
    the skill tree. The `document-writing` skill and the npm entry in
    [`.github/dependabot.yml`](../../.github/dependabot.yml) both point at the new path.
-5. **Tooling.** `make skills` runs `apm install`; `make lint-skills` runs `apm audit --ci`, which
+5. **Tooling.** `make skills` runs `apm install --no-policy`; `make lint-skills` runs
+   `apm audit --ci --no-policy`, which
    replays the install into a scratch directory and reports any deployed file that differs from its
    source. `make check` gains the audit step, skipping it with a notice when the `apm` binary is
    absent, the way `lint-actions` and `lint-secrets` already skip — and, as for those two, CI
    installs a pinned `apm-cli` and runs the audit there, so drift fails a pull request even when a
    contributor's machine skipped the check. The
    [session-start hook](../../.claude/hooks/session-start.sh) installs a pinned `apm-cli` and runs
-   `apm install`, so a web session starts from the committed skill set. `make hooks` gains one more
+   `apm install`, so a web session starts from the committed skill set. Every `apm install` call
+   site passes `--no-policy`, so the deploy and the audit that replays it run under one
+   configuration and neither needs the network; without it 0.28.0 warns about the unreachable
+   policy and proceeds, which costs a round trip and reads like a failure. `make hooks` gains one more
    local git setting: an `apm.lock.yaml` merge driver
    ([`scripts/merge-apm-lock.sh`](../../scripts/merge-apm-lock.sh)) that regenerates the lockfile
    from `.apm/skills/` on a conflict, mirroring what

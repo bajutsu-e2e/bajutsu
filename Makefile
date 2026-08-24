@@ -214,9 +214,13 @@ lint-secrets:
 # Deploy the agent skills: APM reads apm.yml, copies each .apm/skills/<name>/ source tree to
 # .claude/skills/<name>/, and records a SHA-256 per deployed file in apm.lock.yaml (BE-0390).
 # Both the lockfile and the deployed tree are committed, so a fresh clone has a working skill set
-# without running this; run it after editing a source skill, then commit what it rewrote.
+# without running this; run it after editing a source skill, then commit what it rewrote. A rename
+# needs no extra step: `apm install` prunes the deployment it no longer owns.
+# --no-policy for the same reason lint-skills passes it, and so the deploy and the audit that
+# replays it run under one configuration: org-policy discovery would otherwise reach api.github.com,
+# which only warns when it fails but leaves this offline-resolvable install needing the network.
 skills:
-	apm install
+	apm install --no-policy
 
 # Fail when a deployed skill file no longer matches its source. `apm audit --ci` replays the
 # install and compares against the lockfile's hashes, so it catches drift in both directions: a

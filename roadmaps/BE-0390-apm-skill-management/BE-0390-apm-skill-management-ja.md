@@ -96,13 +96,18 @@ APMは、スキル、プロンプト、指示、Model Context Protocol（MCP）�
    リポジトリパスへ移します。`document-writing`スキルと
    [`.github/dependabot.yml`](../../.github/dependabot.yml)のnpmエントリは、移設先を指すように
    更新します。
-5. **ツール整備**：`make skills`で`apm install`を、`make lint-skills`で`apm audit --ci`を実行します。
+5. **ツール整備**：`make skills`で`apm install --no-policy`を、`make lint-skills`で
+   `apm audit --ci --no-policy`を実行します。
    `apm audit --ci`は一時ディレクトリへインストールを再現し、ソースと異なる配備ファイルを報告します。
    `make check`にはこの検査を加え、`apm`が入っていない環境では`lint-actions`や`lint-secrets`と
    同じく通知を出して飛ばします。この2つと同様に、CIはバージョンを固定した`apm-cli`を導入して検査を
    実行します。手元で検査を飛ばした変更でも、ずれがあればPRが落ちます。
    [session-startフック](../../.claude/hooks/session-start.sh)は、バージョンを固定した`apm-cli`を
    導入して`apm install`を実行し、webセッションがコミット済みのスキル集合から始まるようにします。
+   `apm install`はどの呼び出し箇所でも`--no-policy`を渡します。配備と、それを再生し直す検査とが
+   一つの設定の下に揃い、どちらもネットワークを必要としなくなるからです。渡さない場合、0.28.0は
+   到達できないポリシーについて警告して先へ進みます。往復のコストがかかるうえ、警告が失敗のように
+   読めてしまいます。
    `make hooks`には、ローカルのgit設定をもう1つ加えます。競合時に`.apm/skills/`からロックファイルを
    再生成する`apm.lock.yaml`のマージドライバ
    （[`scripts/merge-apm-lock.sh`](../../scripts/merge-apm-lock.sh)）で、

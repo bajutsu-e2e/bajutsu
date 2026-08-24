@@ -184,7 +184,7 @@ pins `targets: [claude]`, so APM deploys only to `.claude/skills/` and never wri
 produces for other harnesses. `apm.lock.yaml` records a SHA-256 for every deployed file.
 
 ```bash
-make skills        # apm install — deploy .apm/skills/ to .claude/skills/
+make skills        # apm install --no-policy — deploy .apm/skills/ to .claude/skills/
 make lint-skills   # apm audit --ci --no-policy — fail on drift (part of `make check`)
 ```
 
@@ -207,7 +207,17 @@ contributor's machine skipped the check. Install it locally with
 
 The check stays clear of prime directive 1: `apm audit` compares recorded hashes against the working
 tree, so no language model reaches the gate. `--no-policy` keeps it offline as well — organization
-policy discovery would otherwise reach `api.github.com`.
+policy discovery would otherwise reach `api.github.com`. Every `apm install` this repository runs
+passes the same flag, for two reasons: it puts the deploy and the audit that replays it under one
+configuration, and it makes "resolves from the working tree, no network" true of the deploy as
+well. Without the flag a disconnected `apm install` still succeeds — 0.28.0 warns that it could not
+reach the policy and proceeds — but it is a network round trip on every run, and the warning reads
+like a failure.
+
+**Renaming or retiring a skill needs no extra step.** `apm install` prunes the deployment it no
+longer owns, so `git mv`-ing a source directory and running `make skills` deletes the old
+`.claude/skills/<name>/` for you. Forget the `make skills` and the gate still catches it: the
+renamed source has no deployment, which `apm audit` reports as drift.
 
 **Where the depth goes.** `SKILL.md` points at a `references/` file *at the step that needs it*, so
 a session loads only what it uses. A norm set is the exception: `document-writing`,

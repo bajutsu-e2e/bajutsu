@@ -57,7 +57,7 @@ uv sync --group dev >&2
 log "installing apm and deploying skills"
 uv tool install "apm-cli==0.28.0" >&2 || log "apm-cli install failed (non-fatal)"
 if command -v apm >/dev/null 2>&1; then
-  apm install >&2 || log "apm install (skill deploy) failed (non-fatal)"
+  apm install --no-policy >&2 || log "apm install (skill deploy) failed (non-fatal)"
 else
   log "apm not on PATH after install — skills not deployed, lint-skills will skip"
 fi
