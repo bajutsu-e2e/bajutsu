@@ -716,12 +716,17 @@ class AdbDriver(CoordinateTreeDriver):
                 return read.text
             except AdbResidentError as exc:
                 logger.warning(
-                    "resident hierarchy read failed (%s); falling back to `uiautomator dump` "
-                    "for the rest of this lease",
+                    "resident hierarchy read failed (%s); falling back to `uiautomator dump` for "
+                    "reads and coordinate injection for gestures, for the rest of this lease",
                     exc,
                 )
                 self._fetch_hierarchy = None
                 self._fetch_clock = None  # the clock endpoint shares the dead channel
+                # Ditto for `/act`: a connection that cannot serve a read cannot serve an actuation
+                # either, so this latches the coordinate degrade here rather than leaving `_device_act`
+                # to rediscover the same dead channel — and re-warn — on every gesture for the rest of
+                # the lease (BE-0339 Unit 4).
+                self._act_unavailable = True
                 # The read channel is gone rather than momentarily noisy, so this is the moment the
                 # state explaining it still exists (BE-0367). Hooked here, at the propagation site,
                 # and never on the act path: `AdbActUnsupported` and `AdbActUncertain` fire during
@@ -1247,6 +1252,15 @@ class AdbDriver(CoordinateTreeDriver):
                 # `el` outlived the read its peers were counted from. Rather than send an ordinal
                 # measured against the wrong screen, leave this gesture to the coordinate path.
                 return False
+            if self._act_unavailable:
+                # Every read between the entry guard and here — `_settle`, a not-found retry inside
+                # `_resolve`, `_scroll_into_view` — goes through `_read_source`, which can itself
+                # discover a dead resident channel mid-loop and latch this (BE-0339 Unit 4). One check
+                # right before the send, rather than one after each read, covers every such window:
+                # nothing between the entry guard and here needs the channel, only the send does. Left
+                # unchecked, the request would go out to a connection the driver just tore down, fault,
+                # and log a "the channel stays in use" warning that contradicts the latch just set.
+                return False
             request = ActRequest(
                 kind=kind,
                 identity=identity,
@@ -1296,10 +1310,14 @@ class AdbDriver(CoordinateTreeDriver):
                 self._arm_catchup(pre_key, mark)
                 return True
             except AdbResidentError as exc:
-                # A blip on a channel that does have the endpoint. Degrade this one gesture and keep
-                # the channel: the read path makes the same choice, retrying per read rather than
-                # disabling itself, and latching here would hand every later gesture back to the
-                # coordinate path precisely when the device is least settled.
+                # A blip on the *act* call specifically — distinct from `_read_source`'s own
+                # `AdbResidentError`, which does latch the read channel off for the rest of the lease
+                # (BE-0339 Unit 4), because there the failing call *is* the shared connection reads
+                # depend on too. This one is scoped to `/act`: a socket write or response glitch on
+                # this single request says nothing about whether the next read, or the next act call,
+                # will succeed. Degrade this one gesture and keep the channel; latching here would hand
+                # every later gesture back to the coordinate path precisely when the device is least
+                # settled, on evidence that does not support it.
                 self._actuations.settle(False)
                 logger.warning(
                     "resident actuation faulted (%s); this gesture falls back to coordinate "
@@ -1313,7 +1331,16 @@ class AdbDriver(CoordinateTreeDriver):
                     "device %s on %r: identity %r, %d of %d", kind, sel, identity, index, len(same)
                 )
                 # The gesture happened on the device, so the cached tree is stale and the next read must
-                # postdate it — the same bookkeeping `_act` does for a coordinate injection.
+                # postdate it — the same bookkeeping `_act` does for a coordinate injection. `respondAct`
+                # (the Kotlin `/act` handler) settles the tree it *resolves against* before injecting,
+                # but answers as soon as the injection call returns, with no wait for the gesture's own
+                # accessibility event to publish — so a follow-up read can still describe the pre-gesture
+                # screen exactly as a coordinate injection's follow-up read can. An identity-addressed
+                # follower self-heals via its own `stale` re-resolve; a coordinate-resolving one
+                # (`pinch`, `rotate`, a directional `swipe`/`drag` anchor) has no such check, so the
+                # barrier stays armed for it (an earlier version of this comment claimed the resident
+                # session synchronized with the platform's idle state before answering — it does not;
+                # see BE-0339's Progress log for the correction).
                 self.invalidate_settled_cache()
                 self._arm_catchup(pre_key, mark)
                 return True

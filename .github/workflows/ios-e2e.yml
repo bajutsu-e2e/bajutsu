@@ -977,6 +977,10 @@ jobs:
           # BAJUTSU_CRASH_RECOVERY_BUDGET) are inherited from the workflow-level env, not re-pinned here,
           # so this lane cannot silently drift from the `run` lane's budget. A crash every attempt still
           # fails loudly (BE-0049); the 60-min job timeout above is the outer backstop.
+          # A wedged CoreSimulator is not a crash: it gets no respawn, and is named a host fault in
+          # the log and the report instead, so a red check reads as the host's fault (BE-0378). A
+          # stall the harness's own retry absorbs reddens nothing, so it is counted there too — the
+          # leading indicator of the same host.
           # Count every respawn into an uploaded artifact, so a degrading lane shows as a rising count.
           BAJUTSU_BACKEND_RECOVERY_REPORT: conformance-recovery.json
         run: uv run pytest tests/test_driver_conformance_ondevice.py -m ondevice -n0 -v
