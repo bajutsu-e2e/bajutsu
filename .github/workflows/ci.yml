@@ -66,15 +66,18 @@ jobs:
       # skill-drift check would skip everywhere and never fail a PR (BE-0390). Pinned to the exact
       # version the item was verified against; uv resolves it from PyPI like the Python deps.
       - name: Install apm
-        run: uv tool install "apm-cli==0.28.0"
+        run: |
+          uv tool install "apm-cli==0.28.0"
+          apm --version   # fail here rather than let `make lint-skills` skip silently
 
       # Fails when a deployed .claude/skills/ file no longer matches its .apm/skills/ source —
       # a hand-edited deployment, or a source edit whose `make skills` was forgotten.
       - name: Lint agent skills (apm audit)
         run: make lint-skills
 
-      # gitleaks (https://github.com/gitleaks/gitleaks) isn't pip/uv-installable — the second gate
-      # check needing its own install, alongside actionlint below. Same pattern as actionlint: pin
+      # gitleaks (https://github.com/gitleaks/gitleaks) isn't pip/uv-installable — one of the three
+      # gate checks needing its own install, alongside apm above and actionlint below. Same pattern
+      # as actionlint: pin
       # the release tarball by exact version and verify its checksum (the release's own published
       # checksums.txt), since the download URL itself is a mutable release asset.
       - name: Install gitleaks
