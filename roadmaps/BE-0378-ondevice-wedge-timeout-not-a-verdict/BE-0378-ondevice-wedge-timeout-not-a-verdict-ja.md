@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0378](BE-0378-ondevice-wedge-timeout-not-a-verdict-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0378") |
 | トピック | Platform support |
 | 関連 | [BE-0334](../BE-0334-conformance-suite-infra-fault-recovery/BE-0334-conformance-suite-infra-fault-recovery-ja.md), [BE-0363](../BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout-ja.md), [BE-0374](../BE-0374-device-timeout-crash-retry-policy/BE-0374-device-timeout-crash-retry-policy-ja.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md), [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md) |
@@ -228,11 +228,11 @@ run のパイプラインからは使われていません。`is_infrastructure_
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 単位 1 — アプリのデータコンテナをリースごとに 1 回解決し、リースの識別に対して記憶して、
+- [x] 単位 1 — アプリのデータコンテナをリースごとに 1 回解決し、リースの識別に対して記憶して、
       コールドスポーンの `clean` な再インストールでキャッシュしたパスを捨てる。
-- [ ] 単位 2 — 残った 1 回の読み取りに、タイムアウト時の 2 回目の試行を、共有の `simctl` ヘルパー
+- [x] 単位 2 — 残った 1 回の読み取りに、タイムアウト時の 2 回目の試行を、共有の `simctl` ヘルパー
       ではなくハーネス側で与える。
-- [ ] 単位 3 — `is_infrastructure_fault` を、再試行を判断する `recovers_by_respawn`（所属する型は
+- [x] 単位 3 — `is_infrastructure_fault` を、再試行を判断する `recovers_by_respawn`（所属する型は
       不変）と、診断する `is_host_fault`（`simctl.DeviceTimeout` を加える）に分ける。古い名前が残す
       docstring と `RECOVER_MARKER` の説明を書き直し、再試行しなかったホストの障害をジョブのログと
       復旧レポートに報告する。

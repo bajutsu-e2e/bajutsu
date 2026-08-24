@@ -180,6 +180,112 @@ def test_does_not_retry_a_contract_violation(pytester) -> None:
     result.stdout.fnmatch_lines(["*AmbiguousSelector*"])
 
 
+def test_reports_a_wedged_device_instead_of_retrying_it(pytester, monkeypatch, tmp_path) -> None:
+    # BE-0378 unit 3: a `simctl.DeviceTimeout` says the host wedged, not that the driver broke its
+    # contract — so the lane names it a host fault. It is still not retried, and the lease is left
+    # intact, so the next test pays no cold respawn to answer a stall that clears on its own.
+    report = tmp_path / "recovery.json"
+    monkeypatch.setenv("BAJUTSU_BACKEND_RECOVERY_REPORT", str(report))
+    monkeypatch.setenv("BAJUTSU_CRASH_RETRIES", "2")  # retries to spare; none may be spent here
+    pytester.makeconftest(_INNER_CONFTEST)
+    pytester.makepyfile(
+        textwrap.dedent(
+            """
+            import pytest
+            from bajutsu import simctl
+
+            pytestmark = pytest.mark.backend_crash_recovery
+            _LAUNCHES = {"n": 0}
+
+            class _FakeDriver:
+                pass
+
+            @pytest.fixture(scope="module")
+            def _backend_launch():
+                def launch():
+                    _LAUNCHES["n"] += 1
+                    return _FakeDriver(), (lambda: None)
+                return launch
+
+            @pytest.fixture
+            def driver(_backend_lease_holder):
+                return _backend_lease_holder.driver
+
+            def test_wedges(driver):
+                raise simctl.DeviceTimeout(
+                    "device operation timed out after 60s: xcrun simctl get_app_container UDID"
+                    " com.example data (this host's CoreSimulator may be wedged)"
+                )
+
+            def test_keeps_the_same_lease(driver):
+                assert _LAUNCHES["n"] == 1  # the wedge cost no respawn
+            """
+        )
+    )
+    result = pytester.runpytest_inprocess()
+    result.assert_outcomes(failed=1, passed=1)
+    # Named in the job log, so a maintainer reading the red check sees the wedge rather than a
+    # conformance failure.
+    result.stdout.fnmatch_lines(["*host fault*not retried*CoreSimulator may be wedged*"])
+    summary = json.loads(report.read_text())
+    assert summary["hostFaults"] == 1
+    # The retry tallies are untouched: nothing respawned, so nothing recovered or was exhausted.
+    assert summary["respawns"] == 0
+    assert summary["recovered"] == 0
+    assert summary["exhausted"] == 0
+    (event,) = summary["events"]
+    assert event["kind"] == "hostFault"
+    # The command and the deadline it exceeded ride along on the timeout's own message.
+    assert "get_app_container" in event["reason"] and "60s" in event["reason"]
+
+
+def test_still_retries_a_crash_that_is_also_a_host_fault(pytester, monkeypatch, tmp_path) -> None:
+    # A `BackendCrashError` answers both of BE-0378's questions, and the retry decision outranks the
+    # diagnosis: it recovers by respawn as it always did, and is never double-counted as a host fault.
+    report = tmp_path / "recovery.json"
+    monkeypatch.setenv("BAJUTSU_BACKEND_RECOVERY_REPORT", str(report))
+    pytester.makeconftest(_INNER_CONFTEST)
+    pytester.makepyfile(
+        textwrap.dedent(
+            """
+            import pytest
+            from bajutsu.drivers import base
+
+            pytestmark = pytest.mark.backend_crash_recovery
+            _LAUNCHES = {"n": 0}
+
+            class _FakeDriver:
+                def __init__(self, crash: bool) -> None:
+                    self._crash = crash
+                def act(self) -> None:
+                    if self._crash:
+                        raise base.BackendCrashError("fake runner crashed mid-test")
+
+            @pytest.fixture(scope="module")
+            def _backend_launch():
+                def launch():
+                    _LAUNCHES["n"] += 1
+                    return _FakeDriver(crash=_LAUNCHES["n"] == 1), (lambda: None)
+                return launch
+
+            @pytest.fixture
+            def driver(_backend_lease_holder):
+                return _backend_lease_holder.driver
+
+            def test_acts(driver):
+                driver.act()
+            """
+        )
+    )
+    result = pytester.runpytest_inprocess()
+    result.assert_outcomes(passed=1)
+    summary = json.loads(report.read_text())
+    assert summary["respawns"] == 1
+    assert summary["recovered"] == 1
+    assert summary["hostFaults"] == 0
+    assert [e["kind"] for e in summary["events"]] == ["crash"]
+
+
 def test_amortizes_the_lease_across_crash_free_tests(pytester) -> None:
     # The reason the lease is module-scoped (BE-0334 Unit 3): in the common, crash-free case the
     # expensive cold spawn runs once and every test reuses it. The plugin must not erode that.
@@ -442,6 +548,7 @@ def test_writes_an_empty_report_when_nothing_crashes(pytester, monkeypatch, tmp_
         "respawns": 0,
         "recovered": 0,
         "exhausted": 0,
+        "hostFaults": 0,
         "events": [],
     }
 
@@ -597,6 +704,48 @@ def test_next_driver_access_launches_a_fresh_lease() -> None:
     assert first is launches[0]
     assert second is launches[1]
     assert first is not second
+
+
+def test_generation_names_the_current_lease() -> None:
+    # BE-0378 unit 1: the identity a caller memoises an installation-scoped fact against. It starts at
+    # zero (nothing leased), and each fresh lease moves it, so a cold respawn drops any such memo.
+    from backend_crash_recovery import LeaseHolder
+
+    def launch() -> tuple[object, object]:
+        return _FakeDriver(), (lambda: None)
+
+    holder = LeaseHolder(launch)  # type: ignore[arg-type]
+    assert holder.generation == 0
+    assert holder.driver is not None
+    assert holder.generation == 1
+    assert holder.driver is not None
+    assert holder.generation == 1  # the same lease reused: a memo keyed on it stays valid
+    holder.invalidate()
+    assert holder.driver is not None
+    assert holder.generation == 2
+
+
+def test_a_failed_launch_does_not_move_the_generation() -> None:
+    # A bring-up that raised leased nothing, so there is no new installation for a memo to name.
+    import pytest
+    from backend_crash_recovery import LeaseHolder
+
+    from bajutsu.drivers import base
+
+    state = {"started": 0}
+
+    def launch() -> tuple[object, object]:
+        state["started"] += 1
+        if state["started"] == 1:
+            raise base.BackendCrashError("died during readiness")
+        return _FakeDriver(), (lambda: None)
+
+    holder = LeaseHolder(launch)  # type: ignore[arg-type]
+    with pytest.raises(base.BackendCrashError):
+        _ = holder.driver
+    assert holder.generation == 0
+    assert holder.driver is not None
+    assert holder.generation == 1
 
 
 def test_mid_run_teardown_swallows_a_wiring_defect_into_a_warning(caplog) -> None:

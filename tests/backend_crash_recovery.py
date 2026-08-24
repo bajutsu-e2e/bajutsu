@@ -14,10 +14,15 @@ the driver and the platform teardown that reaches the runner process it lives in
 `_backend_lease_holder` fixture here wraps it in a `LeaseHolder` the plugin re-leases between
 attempts. The plugin is inert for any test the marker does not cover.
 
-Every respawn is reported (BE-0334 Unit 4): announced inline in the job log as it happens, and
-counted into a JSON report at `BAJUTSU_BACKEND_RECOVERY_REPORT` (an uploaded CI artifact) — so a
-degrading lane is visible as a rising count rather than merely looking slower, and a maintainer can
-tell whether the underlying fault is getting worse or staying rare.
+A wedged CoreSimulator is the host's fault too, but not a respawn's to repair (BE-0378), so it takes
+the other outcome: the failure stands, and the plugin names it a host fault rather than leaving it to
+read as a conformance verdict. The lease is deliberately left alone — discarding it would make the
+next test pay the cold respawn this fault does not warrant.
+
+Both outcomes are reported (BE-0334 Unit 4, BE-0378): announced inline in the job log as they
+happen, and counted into a JSON report at `BAJUTSU_BACKEND_RECOVERY_REPORT` (an uploaded CI
+artifact) — so a degrading lane is visible as a rising count rather than merely looking slower, and a
+maintainer can tell whether the underlying fault is getting worse or staying rare.
 """
 
 from __future__ import annotations
@@ -39,7 +44,8 @@ from bajutsu.runner.recovery import (
     _default_crash_recovery_budget,
     _default_crash_retries,
     guarded_teardown,
-    is_infrastructure_fault,
+    is_host_fault,
+    recovers_by_respawn,
 )
 
 _logger = logging.getLogger(__name__)
@@ -50,10 +56,14 @@ RECOVER_MARKER = "backend_crash_recovery"
 # fast gate) writes nothing — the plugin only ever *counts*, it never gates.
 _REPORT_ENV = "BAJUTSU_BACKEND_RECOVERY_REPORT"
 
-# Set by the makereport wrapper on a report whose exception is an infrastructure fault, carrying the
-# crash message. `None`/absent means "not a backend crash" (fail immediately), which is all the
-# protocol hook reads it for — the message rides along for whoever surfaces it.
+# Set by the makereport wrapper on a report whose exception a respawn may repair, carrying the crash
+# message. `None`/absent means "not a backend crash" (fail immediately), which is all the protocol
+# hook reads it for — the message rides along for whoever surfaces it.
 _CRASH_ATTR = "_backend_crash_reason"
+
+# The same, for a host fault no respawn repairs (BE-0378): the failure stands, and this tag is what
+# lets the protocol hook report it as the host's rather than the driver contract's.
+_HOST_FAULT_ATTR = "_backend_host_fault_reason"
 
 # Every crash the recovery loop saw, in order, accumulated across the session for the report.
 _EVENTS: pytest.StashKey[list[dict[str, object]]] = pytest.StashKey()
@@ -79,12 +89,26 @@ class LeaseHolder:
         self._launch = launch
         self._driver: base.Driver | None = None
         self._teardown: LeaseTeardown | None = None
+        self._generation = 0
 
     @property
     def driver(self) -> base.Driver:
         if self._driver is None:
             self._driver, self._teardown = self._launch()
+            # Only a launch that returned counts: a bring-up that raised leased nothing, so nothing
+            # a caller could have memoised against this identity ever existed (BE-0378).
+            self._generation += 1
         return self._driver
+
+    @property
+    def generation(self) -> int:
+        """How many leases this holder has taken — the current lease's identity, 0 before the first.
+
+        A caller that caches something belonging to the *installed app* rather than to the holder —
+        the conformance harness's data-container path — memoises it against this number, so a cold
+        respawn's `clean` reinstall drops the cache along with the container it named (BE-0378).
+        """
+        return self._generation
 
     def invalidate(self) -> None:
         """Discard the current (dead) lease so the next `driver` access cold-respawns."""
@@ -126,29 +150,35 @@ def _backend_lease_holder(request: pytest.FixtureRequest, _backend_launch: Lease
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",
-        f"{RECOVER_MARKER}: on-device suite that recovers a Simulator infrastructure fault by "
-        "re-leasing (BE-0334)",
+        f"{RECOVER_MARKER}: on-device suite that recovers a crashed backend by re-leasing "
+        "(BE-0334), and reports a wedged host as a host fault instead (BE-0378)",
     )
 
 
 @pytest.hookimpl(wrapper=True)
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
-    """Tag a report whose exception is an infrastructure fault, so the protocol hook can recover it.
+    """Tag a report the protocol hook must act on: a crash to recover, or a host fault to report.
 
     The classification has to happen here, where the live exception is in hand: a `TestReport` keeps
     only a rendered `longrepr`, not the exception object, so the protocol hook downstream cannot tell
-    a `BackendCrashError` from a contract violation without this tag.
+    a `BackendCrashError` from a contract violation without this tag. The `elif` is what makes the
+    second tag mean "a host fault *no respawn repairs*" — a crash is both, and the retry decision
+    outranks the diagnosis (BE-0378).
     """
     report = yield
-    if call.excinfo is not None and is_infrastructure_fault(call.excinfo.value):
-        setattr(report, _CRASH_ATTR, str(call.excinfo.value))
+    if call.excinfo is not None:
+        exc = call.excinfo.value
+        if recovers_by_respawn(exc):
+            setattr(report, _CRASH_ATTR, str(exc))
+        elif is_host_fault(exc):
+            setattr(report, _HOST_FAULT_ATTR, str(exc))
     return report
 
 
-def _crash_reason(reports: list[pytest.TestReport]) -> str | None:
-    """The message of the first infrastructure-fault report in `reports`, or None if there is none."""
+def _tagged_reason(reports: list[pytest.TestReport], attr: str) -> str | None:
+    """The message of the first report in `reports` carrying `attr`, or None if none does."""
     for report in reports:
-        reason = getattr(report, _CRASH_ATTR, None)
+        reason = getattr(report, attr, None)
         if reason is not None:
             return reason
     return None
@@ -170,8 +200,15 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None) -> 
         # phase re-runs the *whole* item (as the pipeline re-runs the whole scenario), so a teardown
         # crash after a passing call replays that call — safe here, the conformance tests are idempotent.
         reports = runtestprotocol(item, nextitem=nextitem, log=False)
-        reason = _crash_reason(reports)
+        reason = _tagged_reason(reports, _CRASH_ATTR)
         if reason is None:
+            # No respawn-recoverable crash, so this attempt is terminal either way — but a wedged
+            # host still gets named, so the red check reads as the host's fault rather than as a
+            # conformance verdict. The lease is left intact on purpose (BE-0378): discarding it would
+            # charge the next test a cold respawn, the very remedy this fault does not warrant.
+            host_fault = _tagged_reason(reports, _HOST_FAULT_ATTR)
+            if host_fault is not None:
+                _record_host_fault(item, host_fault)
             _publish(item, reports)
             break
         decision = budget.on_crash(attempt)
@@ -204,6 +241,7 @@ def _record_crash(
     events = item.session.stash.setdefault(_EVENTS, [])
     events.append(
         {
+            "kind": "crash",
             "nodeid": item.nodeid,
             "attempt": attempt,
             "totalAttempts": total_attempts,
@@ -212,8 +250,6 @@ def _record_crash(
             "reason": reason,
         }
     )
-    # Write the line inline (via the terminal reporter, not the captured per-test log) so a respawn is
-    # visible in the job log even on a test that then recovers to green.
     if decision.will_retry:
         line = (
             f"⟳ {item.nodeid}: backend crashed (attempt {attempt}/{total_attempts}), "
@@ -229,6 +265,28 @@ def _record_crash(
             f"✘ {item.nodeid}: backend crashed and did not recover across "
             f"{total_attempts} attempts: {reason}"
         )
+    _announce(item, line)
+
+
+def _record_host_fault(item: pytest.Item, reason: str) -> None:
+    """Announce a host fault the lane deliberately did not retry, and record it (BE-0378 unit 3).
+
+    The reason carries the command and the deadline it exceeded, since that is what
+    `simctl.DeviceTimeout`'s own message says — enough for a maintainer reading either the job log
+    or the uploaded report to see the wedge without opening the failing test.
+    """
+    events = item.session.stash.setdefault(_EVENTS, [])
+    events.append({"kind": "hostFault", "nodeid": item.nodeid, "reason": reason})
+    _announce(
+        item,
+        f"✘ {item.nodeid}: host fault, not a verdict — reported and deliberately not retried, "
+        f"since a respawn is built from the very calls that stalled: {reason}",
+    )
+
+
+def _announce(item: pytest.Item, line: str) -> None:
+    # Write the line inline (via the terminal reporter, not the captured per-test log) so the event is
+    # visible in the job log even on a test that then recovers to green.
     _logger.warning(line)
     reporter = item.config.pluginmanager.getplugin("terminalreporter")
     if reporter is not None:
@@ -242,17 +300,23 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
     if not path:
         return
     events = session.stash.get(_EVENTS, [])
+    # The retry tallies below count crashes only: a host fault took no attempt and had none to
+    # exhaust, so folding it in would read as a recovery that never happened (BE-0378).
+    crashes = [e for e in events if e["kind"] == "crash"]
     by_test: dict[object, list[dict[str, object]]] = {}
-    for event in events:
+    for event in crashes:
         by_test.setdefault(event["nodeid"], []).append(event)
     # A test is "exhausted" if any of its crashes gave up (a will_retry=False event); otherwise every
     # crash chose to retry, so the infra fault was recovered — though a later genuine (non-crash)
     # failure can still redden the test, which "recovered" does not distinguish.
     exhausted = sum(1 for evs in by_test.values() if any(not e["willRetry"] for e in evs))
     summary = {
-        "respawns": sum(1 for e in events if e["willRetry"]),
+        "respawns": sum(1 for e in crashes if e["willRetry"]),
         "recovered": len(by_test) - exhausted,
         "exhausted": exhausted,
+        # Beside the respawn count, so a degrading host shows up as a rising wedge count rather than
+        # as a red required check somebody re-ran (BE-0378).
+        "hostFaults": len(events) - len(crashes),
         "events": events,
     }
     target = Path(path)

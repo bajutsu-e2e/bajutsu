@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0378](BE-0378-ondevice-wedge-timeout-not-a-verdict.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0378") |
 | Topic | Platform support |
 | Related | [BE-0334](../BE-0334-conformance-suite-infra-fault-recovery/BE-0334-conformance-suite-infra-fault-recovery.md), [BE-0363](../BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout.md), [BE-0374](../BE-0374-device-timeout-crash-retry-policy/BE-0374-device-timeout-crash-retry-policy.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md), [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md) |
@@ -233,11 +233,11 @@ conformance harness leases one pinned device with none of them.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — resolve the app's data container once per lease and memoise it against the
+- [x] Unit 1 — resolve the app's data container once per lease and memoise it against the
       lease's identity, so a cold respawn's `clean` reinstall drops the cached path.
-- [ ] Unit 2 — give that one remaining read a second attempt on a timeout, in the harness rather
+- [x] Unit 2 — give that one remaining read a second attempt on a timeout, in the harness rather
       than in the shared `simctl` helper.
-- [ ] Unit 3 — split `is_infrastructure_fault` in two. `recovers_by_respawn` takes the retry
+- [x] Unit 3 — split `is_infrastructure_fault` in two. `recovers_by_respawn` takes the retry
       decision with its membership unchanged, and `is_host_fault` takes the diagnosis and gains
       `simctl.DeviceTimeout`. Rewrite the module docstring and the `RECOVER_MARKER` text the old
       name leaves behind, and report a non-retried host fault in the job log and the recovery
