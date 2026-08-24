@@ -5,7 +5,7 @@
 # pins. Ten macOS jobs, all on the XCUITest backend (the resident BajutsuRunner), against the
 # showcase suite (BE-0079, the single iOS fixture). One `build` job compiles the apps + runner once
 # and uploads them as an artifact; the consumer jobs (run / actuation / golden / bundled-runner /
-# conformance / pool) download + install rather than build, so the cold Swift build is paid once, not
+# conformance / fault-injection / pool) download + install rather than build, so the cold Swift build is paid once, not
 # once per job. Each macOS job starts with the same bootstrap (select Xcode, install uv, install
 # xcodegen, boot a Simulator — the `build` job skips the boot — resolve the Xcode version for a
 # cache key) via the `setup-ios-toolchain` composite action. `codegen` and `visual` are not
@@ -52,8 +52,9 @@
 #     above drives a *healthy* runner, so BE-0207's transient retry and BE-0287's crash recovery are
 #     exercised only by a synthetic exception in the fast suite; this one signals the real runner
 #     process — frozen briefly, frozen past the retry budget, killed — and checks each layer behaves.
-#     Deliberately NOT part of the `E2E` gate's `needs:` (see that job below): a lane that breaks the
-#     runner on purpose lands as a signal first and is promoted once stable (BE-0282's precedent).
+#     Landed as a signal — a lane that breaks the runner on purpose earns that caution — and promoted
+#     into the `E2E` gate's `needs:` once measured stable (BE-0305, BE-0282's precedent); see that job
+#     below for the measurement.
 #   - pool (xcuitest): the concurrent-device job (BE-0298) — the only one here that boots TWO
 #     Simulators and runs `bajutsu run --workers 2` across them, then asserts the device pool's
 #     isolation claim (per-worker udid, per-worker `run_dir/<sid>` evidence dir) from what the run
@@ -1022,10 +1023,11 @@ jobs:
   # waits it out and re-issues the read; killed outright, the run must stop on an honest crash diagnosis
   # rather than an unrelated timeout.
   #
-  # A signal, not a gate: deliberately outside the `E2E` aggregate's `needs:` below. A lane that
-  # deliberately breaks the runner carries more inherent flakiness risk than one driving a healthy one,
-  # so it lands as a per-PR signal and is promoted only once stable — the same signal-then-required path
-  # BE-0282's network lane took. It also never marks `backend_crash_recovery`: that plugin re-leases and
+  # On the `E2E` aggregate's `needs:` below since BE-0305's promotion. A lane that deliberately breaks
+  # the runner carries more inherent flakiness risk than one driving a healthy one, so it landed as a
+  # per-PR signal and was promoted once measured stable — the same signal-then-required path BE-0282's
+  # network lane took; see the `E2E (iOS)` job's own comment for the measurement. It also never marks
+  # `backend_crash_recovery`: that plugin re-leases and
   # re-runs a test whose backend crashed, and here the crash is the assertion.
   fault-injection:
     name: fault-injection (xcuitest)
@@ -1267,7 +1269,8 @@ jobs:
   # pressure that trips `SimRenderServer` on the capture-service queue every screenshot, video, and
   # XCUITest `/screenshot` is served from. A second device doubles the guest population against the
   # same ceiling, so this job lands as a signal and is promoted only if it proves stable, the
-  # signal-then-required path BE-0282 established and `fault-injection` / `visual` follow. A red run
+  # signal-then-required path BE-0282 established, `visual` follows, and `fault-injection` has since
+  # walked to the end. A red run
   # here that turns out to be host exhaustion rather than a pool defect is a measurement, not a
   # regression — the uploaded diagnostics are what tells the two apart.
   #
@@ -1396,28 +1399,46 @@ jobs:
 
   # Single required status check for E2E. Always runs so it reports even when the macOS
   # jobs are skipped (docs-only PRs) — a skipped dependency is a pass; only a real
-  # failure or cancellation fails the gate. `actuation`, `golden`, `visual`, `fault-injection`, and
-  # `pool` are deliberately excluded from `needs:` (see each job's comment) so newly-wired actuation
-  # (BE-0281), a host-specific pixel drift, the deliberately-hostile fault-injection lane (BE-0305),
-  # or the two-device pool lane (BE-0298) never blocks a merge. Make `E2E` the required check, not
-  # the path-gated macOS jobs.
+  # failure or cancellation fails the gate. `actuation`, `golden`, `visual`, and `pool` are
+  # deliberately excluded from `needs:` (see each job's comment) so newly-wired actuation (BE-0281),
+  # a host-specific pixel drift, or the two-device pool lane (BE-0298) never blocks a merge. Make
+  # `E2E` the required check, not the path-gated macOS jobs.
+  #
+  # `fault-injection` was in that excluded list and is now in `needs:`, completing BE-0305's
+  # signal-then-required path. Its record splits at one commit rather than trending: from #1461
+  # landing the lane through 2026-08-13T12:28Z it failed 78 times against 52 passes, and every one of
+  # those failures precedes 2026-08-13T12:58Z, when #1609 landed `fix(xcuitest): keep the runner HTTP
+  # server alive through abandoned connections`. The lane `SIGSTOP`s the runner, which is exactly how
+  # an abandoned connection arises, so it was tripping the SIGPIPE that fix removed — the lane
+  # catching a real runner-channel defect, which is what it is for. Since that commit: 64 runs and no
+  # failures, against `conformance`'s 58-and-2 over the same span. Hence the promotion. A regression
+  # in the transient retry's or the crash classifier's real detection is precisely what BE-0305
+  # exists to stop shipping unnoticed, and a signal is something a merge can ignore.
+  #
+  # `changes`'s own result is checked, not just the macOS jobs': `changes` has no `if:`, so it always
+  # runs and never reports `skipped` — but if it *fails*, every macOS job is skipped as a side effect
+  # of the failed dependency rather than of a genuine path-skip, and a check that inspected only them
+  # would read that as a pass — the required gate reporting green having run nothing. The Android and
+  # web aggregators already guard it; this one did not until BE-0305 wired `fault-injection` in.
   e2e:
     name: E2E (iOS)
-    needs: [changes, build, run, codegen, bundled-runner, conformance]
+    needs: [changes, build, run, codegen, bundled-runner, conformance, fault-injection]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Check E2E results
         env:
+          CHANGES: ${{ needs.changes.result }}
           BUILD: ${{ needs.build.result }}
           RUN: ${{ needs.run.result }}
           CODEGEN: ${{ needs.codegen.result }}
           BUNDLED_RUNNER: ${{ needs.bundled-runner.result }}
           CONFORMANCE: ${{ needs.conformance.result }}
+          FAULT_INJECTION: ${{ needs.fault-injection.result }}
         run: |
-          echo "build=$BUILD run=$RUN codegen=$CODEGEN bundled_runner=$BUNDLED_RUNNER conformance=$CONFORMANCE"
-          for result in "$BUILD" "$RUN" "$CODEGEN" "$BUNDLED_RUNNER" "$CONFORMANCE"; do
+          echo "changes=$CHANGES build=$BUILD run=$RUN codegen=$CODEGEN bundled_runner=$BUNDLED_RUNNER conformance=$CONFORMANCE fault_injection=$FAULT_INJECTION"
+          for result in "$CHANGES" "$BUILD" "$RUN" "$CODEGEN" "$BUNDLED_RUNNER" "$CONFORMANCE" "$FAULT_INJECTION"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
               echo "E2E failed"
               exit 1
