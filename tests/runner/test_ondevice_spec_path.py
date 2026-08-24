@@ -34,14 +34,16 @@ def _timeout() -> simctl.DeviceTimeout:
 
 def test_reads_the_container_once_when_the_device_answers() -> None:
     calls: list[list[str]] = []
+    said: list[str] = []
 
     def run(args: list[str], extra_env: object) -> str:
         calls.append(args)
         return _CONTAINER + "\n"
 
-    assert read_data_container(_UDID, _BUNDLE, run) == _CONTAINER  # type: ignore[arg-type]
+    assert read_data_container(_UDID, _BUNDLE, run, said.append) == _CONTAINER  # type: ignore[arg-type]
     assert len(calls) == 1
     assert calls[0] == simctl.data_container_cmd(_UDID, _BUNDLE)
+    assert said == []  # nothing stalled, so the lane hears nothing
 
 
 def test_a_timed_out_read_gets_one_further_attempt() -> None:
@@ -55,8 +57,13 @@ def test_a_timed_out_read_gets_one_further_attempt() -> None:
             raise _timeout()
         return _CONTAINER + "\n"
 
-    assert read_data_container(_UDID, _BUNDLE, run) == _CONTAINER  # type: ignore[arg-type]
+    said: list[str] = []
+    assert read_data_container(_UDID, _BUNDLE, run, said.append) == _CONTAINER  # type: ignore[arg-type]
     assert attempts["n"] == 2
+    # Announced rather than logged: the caller is a fixture of a test that then passes, whose
+    # captured log pytest never renders — so a logged stall would cost a deadline in silence.
+    assert len(said) == 1
+    assert "timed out" in said[0]
 
 
 def test_a_stall_that_outlives_both_deadlines_still_fails() -> None:
@@ -69,7 +76,7 @@ def test_a_stall_that_outlives_both_deadlines_still_fails() -> None:
         raise _timeout()
 
     with pytest.raises(simctl.DeviceTimeout):
-        read_data_container(_UDID, _BUNDLE, run)  # type: ignore[arg-type]
+        read_data_container(_UDID, _BUNDLE, run, lambda _: None)  # type: ignore[arg-type]
     assert attempts["n"] == 2
 
 
@@ -83,7 +90,7 @@ def test_a_device_error_that_is_not_a_timeout_is_not_retried() -> None:
         raise simctl.DeviceError("app is not installed")
 
     with pytest.raises(simctl.DeviceError):
-        read_data_container(_UDID, _BUNDLE, run)  # type: ignore[arg-type]
+        read_data_container(_UDID, _BUNDLE, run, lambda _: None)  # type: ignore[arg-type]
     assert attempts["n"] == 1
 
 

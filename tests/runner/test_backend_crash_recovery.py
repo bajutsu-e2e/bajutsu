@@ -239,6 +239,52 @@ def test_reports_a_wedged_device_instead_of_retrying_it(pytester, monkeypatch, t
     assert "get_app_container" in event["reason"] and "60s" in event["reason"]
 
 
+def test_an_absorbed_stall_is_reported_though_its_test_passes(
+    pytester, monkeypatch, tmp_path
+) -> None:
+    # The one host event no failure carries (BE-0378): a stall the harness's own retry cleared. Its
+    # test passes, so pytest renders neither the captured log nor a failure section — leaving the lane
+    # to pay a full deadline and say nothing, which is the degradation the report exists to surface.
+    report = tmp_path / "recovery.json"
+    monkeypatch.setenv("BAJUTSU_BACKEND_RECOVERY_REPORT", str(report))
+    pytester.makeconftest(_INNER_CONFTEST)
+    pytester.makepyfile(
+        textwrap.dedent(
+            """
+            import pytest
+            from backend_crash_recovery import record_absorbed_stall
+
+            pytestmark = pytest.mark.backend_crash_recovery
+
+            class _FakeDriver:
+                pass
+
+            @pytest.fixture(scope="module")
+            def _backend_launch():
+                return lambda: (_FakeDriver(), (lambda: None))
+
+            @pytest.fixture(scope="module")
+            def _stalled(request):
+                # Where the real one is raised: a module-scoped fixture's preparatory device read.
+                record_absorbed_stall(request.node, "data container read timed out after 60s")
+
+            def test_passes_anyway(_backend_lease_holder, _stalled):
+                assert _backend_lease_holder is not None
+            """
+        )
+    )
+    result = pytester.runpytest_inprocess()
+    result.assert_outcomes(passed=1)
+    result.stdout.fnmatch_lines(["*host stall absorbed*timed out after 60s*"])
+    summary = json.loads(report.read_text())
+    assert summary["absorbedStalls"] == 1
+    # Counted apart from the wedge that reddens a check: this one cost time, not a verdict.
+    assert summary["hostFaults"] == 0
+    assert summary["respawns"] == 0
+    (event,) = summary["events"]
+    assert event["kind"] == "absorbedStall"
+
+
 def test_still_retries_a_crash_that_is_also_a_host_fault(pytester, monkeypatch, tmp_path) -> None:
     # A `BackendCrashError` answers both of BE-0378's questions, and the retry decision outranks the
     # diagnosis: it recovers by respawn as it always did, and is never double-counted as a host fault.
@@ -549,6 +595,7 @@ def test_writes_an_empty_report_when_nothing_crashes(pytester, monkeypatch, tmp_
         "recovered": 0,
         "exhausted": 0,
         "hostFaults": 0,
+        "absorbedStalls": 0,
         "events": [],
     }
 

@@ -35,6 +35,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from _pytest.nodes import Node
 from _pytest.runner import runtestprotocol
 
 from bajutsu.drivers import base
@@ -284,11 +285,26 @@ def _record_host_fault(item: pytest.Item, reason: str) -> None:
     )
 
 
-def _announce(item: pytest.Item, line: str) -> None:
+def record_absorbed_stall(node: Node, reason: str) -> None:
+    """Announce and record a host stall that a retry absorbed, on an item that then passes (BE-0378).
+
+    The other two events are reached only by a failure, so a stall the second attempt clears would
+    otherwise cost the lane a full deadline and leave no trace — yet it is the earliest form of the
+    degradation the report exists to make visible, since the host that wedges a required check later
+    is this same host getting worse. Takes any node rather than an item because the read it reports on
+    is the suite's own module-scoped preparation, which belongs to no single test.
+    """
+    events = node.session.stash.setdefault(_EVENTS, [])
+    events.append({"kind": "absorbedStall", "nodeid": node.nodeid, "reason": reason})
+    _announce(node, f"\u27f3 {node.nodeid}: host stall absorbed by a retry — {reason}")
+
+
+def _announce(node: Node, line: str) -> None:
     # Write the line inline (via the terminal reporter, not the captured per-test log) so the event is
-    # visible in the job log even on a test that then recovers to green.
+    # visible in the job log even on a test that then recovers to green — a captured log section is
+    # rendered only for a report that fails.
     _logger.warning(line)
-    reporter = item.config.pluginmanager.getplugin("terminalreporter")
+    reporter = node.config.pluginmanager.getplugin("terminalreporter")
     if reporter is not None:
         reporter.write_line(line)
 
@@ -315,8 +331,12 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
         "recovered": len(by_test) - exhausted,
         "exhausted": exhausted,
         # Beside the respawn count, so a degrading host shows up as a rising wedge count rather than
-        # as a red required check somebody re-ran (BE-0378).
-        "hostFaults": len(events) - len(crashes),
+        # as a red required check somebody re-ran (BE-0378). Counted by kind, not by subtraction: an
+        # absorbed stall is a host event too, and folding it in here would read as a wedge that never
+        # happened.
+        "hostFaults": sum(1 for e in events if e["kind"] == "hostFault"),
+        # The leading indicator beside it: a stall a retry cleared, which reddens nothing today.
+        "absorbedStalls": sum(1 for e in events if e["kind"] == "absorbedStall"),
         "events": events,
     }
     target = Path(path)

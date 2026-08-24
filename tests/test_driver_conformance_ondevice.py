@@ -30,7 +30,8 @@ from pathlib import Path
 
 import ondevice_evidence
 import pytest
-from backend_crash_recovery import LeaseHolder, LeaseTeardown
+from _pytest.nodes import Node
+from backend_crash_recovery import LeaseHolder, LeaseTeardown, record_absorbed_stall
 from driver_conformance import (
     ConformanceHarness,
     DriverConformanceContract,
@@ -103,9 +104,20 @@ def _effective() -> Effective:
     return eff.rebased(_CONFIG_PATH.resolve().parent, confine=False)
 
 
-def _spec_path(eff: Effective) -> Path:
-    """The `conformance-spec.txt` in the installed app's Documents dir (the reseed channel)."""
-    container = read_data_container(UDID, ios_bundle_id(eff), simctl._real_run)
+def _spec_path(eff: Effective, node: Node) -> Path:
+    """The `conformance-spec.txt` in the installed app's Documents dir (the reseed channel).
+
+    Args:
+        node: The suite's own module node, which carries a stall the read absorbed into the job log
+            and the uploaded report — this read belongs to no single test, so it reports as the
+            module it prepares.
+    """
+    container = read_data_container(
+        UDID,
+        ios_bundle_id(eff),
+        simctl._real_run,
+        lambda reason: record_absorbed_stall(node, reason),
+    )
     return Path(container) / "Documents" / "conformance-spec.txt"
 
 
@@ -115,10 +127,11 @@ def _eff() -> Effective:
 
 
 @pytest.fixture(scope="module")
-def _spec_paths(_eff: Effective) -> SpecPathMemo:
+def _spec_paths(request: pytest.FixtureRequest, _eff: Effective) -> SpecPathMemo:
     # Module-scoped, so the device read below is paid once per lease rather than once per test — the
     # exposure BE-0378 removes. The memo re-reads on its own whenever the lease changes.
-    return SpecPathMemo(lambda: _spec_path(_eff))
+    node = request.node
+    return SpecPathMemo(lambda: _spec_path(_eff, node))
 
 
 # Boot the fixture straight into (the empty) conformance mode, not the normal tab app: this enters

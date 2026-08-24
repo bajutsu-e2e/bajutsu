@@ -12,7 +12,6 @@ an iOS notion, and that plugin's whole point is never to learn which backend it 
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 from pathlib import Path
 
@@ -20,10 +19,10 @@ from backend_crash_recovery import LeaseHolder
 
 from bajutsu import simctl
 
-_logger = logging.getLogger(__name__)
 
-
-def read_data_container(udid: str, bundle_id: str, run: simctl.RunFn) -> str:
+def read_data_container(
+    udid: str, bundle_id: str, run: simctl.RunFn, announce: Callable[[str], None]
+) -> str:
     """The installed app's data container path, giving a timed-out read one further attempt.
 
     A stall that clears between two deadlines is the fault this absorbs: the occurrence BE-0378
@@ -36,12 +35,15 @@ def read_data_container(udid: str, bundle_id: str, run: simctl.RunFn) -> str:
 
     Args:
         run: The simctl runner, injected so the retry is exercised on the fast gate without a device.
+        announce: Reports an absorbed stall. Injected rather than logged, because the caller that
+            pays the deadline is a fixture of a test that then passes, and a captured log record is
+            rendered only for a report that failed — so the lane would eat the stall in silence.
     """
     cmd = simctl.data_container_cmd(udid, bundle_id)
     try:
         return run(cmd, None).strip()
     except simctl.DeviceTimeout as exc:
-        _logger.warning("resolving the app's data container timed out; retrying once: %s", exc)
+        announce(f"resolving the app's data container timed out, retrying once: {exc}")
     return run(cmd, None).strip()
 
 
