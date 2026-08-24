@@ -128,6 +128,16 @@ def test_stale_grandfathered_reports_a_vanished_entry(tmp_path: Path, monkeypatc
     assert lmm.stale_grandfathered(pkg) == ["long_gone.py"]
 
 
+def test_stale_grandfathered_reports_an_entry_the_table_now_documents(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """An entry that earned a row must leave the list, or rule 3 stops protecting that module."""
+    pkg = _package(tmp_path, "documented.py", "still_missing.py")
+    monkeypatch.setattr(lmm, "GRANDFATHERED", frozenset({"documented.py", "still_missing.py"}))
+
+    assert lmm.stale_grandfathered(pkg, {"documented.py"}) == ["documented.py"]
+
+
 def test_main_passes_on_a_matching_tree(tmp_path: Path, capsys, monkeypatch) -> None:
     """A table that covers the tree exits zero and says how much it checked."""
     monkeypatch.setattr(lmm, "GRANDFATHERED", frozenset())

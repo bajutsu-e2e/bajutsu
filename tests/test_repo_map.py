@@ -207,6 +207,35 @@ def test_a_gitignored_page_is_left_out(tmp_path: Path) -> None:
     assert [row.name for row in rows] == ["Real"]
 
 
+def test_a_gitignored_page_is_left_out_under_a_hook_environment(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A git hook exports GIT_DIR into everything it runs; the map must still answer for `cwd`.
+
+    Without this the scrub in `_tracked` is untested: every other test strips `GIT_*` from its own
+    subprocess environment, and outside a hook there is nothing to strip, so dropping `env=` from
+    the production call would leave the suite green.
+    """
+    subprocess.run(["git", "init", "-q", "."], cwd=tmp_path, env=_git_env(), check=True)
+    (tmp_path / ".gitignore").write_text("docs/generated.md\n", encoding="utf-8")
+    _write(tmp_path / "docs" / "real.md", "# Real\n\nProse.\n")
+    _write(tmp_path / "docs" / "generated.md", "# Built\n\nProse.\n")
+    monkeypatch.setenv("GIT_DIR", str(Path.cwd() / ".git"))
+
+    assert [row.name for row in rm.iter_docs(tmp_path / "docs")] == ["Real"]
+
+
+def test_a_pipe_in_page_prose_does_not_shift_the_columns(tmp_path: Path) -> None:
+    """A summary quoting something like `--backend ios|android` must not break the table."""
+    _write(tmp_path / "docs" / "p.md", "# Title\n\nRuns `--backend ios|android` for you.\n")
+
+    table = rm.render_table(rm.iter_docs(tmp_path / "docs"), ("Path", "Lines", "Title", "Summary"))
+    row = table.splitlines()[2]
+
+    assert r"ios\|android" in row
+    assert row.count("|") - row.count(r"\|") == 5  # the five column separators, and no more
+
+
 def test_an_untracked_page_is_still_listed(tmp_path: Path) -> None:
     """A page being drafted right now is not ignored, so it must stay findable."""
     subprocess.run(["git", "init", "-q", "."], cwd=tmp_path, env=_git_env(), check=True)

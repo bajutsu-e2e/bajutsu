@@ -16,7 +16,9 @@
 # interpret-trailers` would place the trailer on the first line and .githooks/commit-msg would then
 # read it as a non-conventional subject and block the commit.
 #
-# Bypass for a genuine one-off:   git commit --no-verify
+# Bypass: `git commit --no-verify` does NOT reach this hook — it skips only pre-commit and
+# commit-msg. Delete the trailer in the editor for a one-off, and use
+# `git -c core.hooksPath=/dev/null commit` to skip this hook entirely.
 set -euo pipefail
 
 msg_file=$1

@@ -12,7 +12,9 @@ Three rules, in order of what the tree can support today:
 
 1. Every name the table lists exists. A row pointing at a module that was renamed or removed sends
    a reader somewhere empty, which costs more than no row at all.
-2. Every subpackage appears, either as its own row or through one of the files inside it.
+2. Every *top-level* subpackage appears, either as its own row or through one of the files
+   inside it. A nested one (``cli/commands/``, ``serve/server/``) is not compared, because the
+   table documents those subtrees in a row's role prose rather than in the cell this reads.
 3. Every top-level module appears — except the ones in ``GRANDFATHERED`` below.
 
 Rule 3 carries an allowlist because the modules missing when the check landed predate it, and
@@ -128,9 +130,17 @@ def undocumented_modules(names: set[str], package: Path) -> list[str]:
     )
 
 
-def stale_grandfathered(package: Path) -> list[str]:
-    """Allowlist entries whose module is gone, so the allowlist itself cannot rot."""
-    return sorted(name for name in GRANDFATHERED if not (package / name).exists())
+def stale_grandfathered(package: Path, names: set[str] | None = None) -> list[str]:
+    """Allowlist entries that are gone, or already documented, so the allowlist cannot rot.
+
+    An entry whose module has since earned a table row must leave the list. While it stays, rule 3
+    no longer protects that module: deleting the row again would pass the gate, and the module
+    would drop off the map a second time with nothing to catch it.
+    """
+    documented = names or set()
+    return sorted(
+        name for name in GRANDFATHERED if not (package / name).exists() or name in documented
+    )
 
 
 def main(argv: list[str]) -> int:
@@ -166,8 +176,8 @@ def main(argv: list[str]) -> int:
             "add a row describing what the module is for",
         ),
         (
-            "allowlists a module that no longer exists",
-            stale_grandfathered(args.package),
+            "allowlists a module that is gone, or that the table now documents",
+            stale_grandfathered(args.package, names),
             f"drop the entry from GRANDFATHERED in {Path(__file__).name}",
         ),
     ):

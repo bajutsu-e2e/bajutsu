@@ -179,8 +179,9 @@ lint-roadmap:
 # Check docs/architecture.md's hand-written module table against the bajutsu/ package: no row may
 # name a module that does not exist, and no subpackage or top-level module may go unmentioned.
 # The role prose in each row is not generated — only the row *set* is compared — so the map cannot
-# quietly fall behind the tree the way it already had when this check landed (15 of 43 top-level
-# modules were missing; those are grandfathered, and a new one fails until its row lands).
+# quietly fall behind the tree the way it already had when this check landed (only 15 of the 43
+# top-level modules were named; the 27 non-dunder gaps are grandfathered, and a new module fails
+# until its row lands).
 lint-module-map:
 	uv run python scripts/lint_module_map.py
 

@@ -191,16 +191,17 @@ def render_table(rows: list[Row], *, with_status: bool = False) -> str:
     ``--status`` query leaves it off: the answer is the same for every row there, and the
     four-column shape is what the ``roadmap-filter`` skill documents.
     """
+    cells: list[tuple[str, ...]]
     if with_status:
         header = "| ID | Item | Status | Topic | Path |"
         delimiter = "|---|---|---|---|---|"
-        body = [
-            f"| {row.id} | {row.title} | {row.status} | {row.topic} | {row.path} |" for row in rows
-        ]
+        cells = [(r.id, r.title, r.status, r.topic, r.path) for r in rows]
     else:
         header = "| ID | Item | Topic | Path |"
         delimiter = "|---|---|---|---|"
-        body = [f"| {row.id} | {row.title} | {row.topic} | {row.path} |" for row in rows]
+        cells = [(r.id, r.title, r.topic, r.path) for r in rows]
+    # An item title or Topic carrying a pipe would shift every column after it.
+    body = ["| " + " | ".join(c.replace("|", r"\|") for c in row) + " |" for row in cells]
     return "\n".join([header, delimiter, *body])
 
 

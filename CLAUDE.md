@@ -54,12 +54,13 @@ The Python core needs no Simulator, so the gate is fast and runs anywhere (Linux
 
 ```bash
 make check        # format-check + lint + lint-docstrings + lint-imports + lint-sh
-                  #   + lint-actions + lint-js + lint-roadmap + lint-secrets + lock-check
-                  #   + typecheck + test (coverage floor)   — mirrors CI exactly
+                  #   + lint-actions + lint-js + lint-roadmap + lint-module-map + lint-secrets
+                  #   + lock-check + typecheck + test (coverage floor)   — mirrors CI exactly
 ```
 
 Individual steps: `make format-check` · `make lint` · `make lint-docstrings` · `make lint-imports`
-· `make lint-sh` · `make lint-actions` · `make lint-js` · `make lint-roadmap` · `make lint-secrets`
+· `make lint-sh` · `make lint-actions` · `make lint-js` · `make lint-roadmap`
+· `make lint-module-map` · `make lint-secrets`
 · `make lock-check` · `make typecheck` · `make test`. (`make format` rewrites; the gate only
 checks.) Every step is uv-native and runs on a fresh clone — except `actionlint`, a standalone
 binary that CI installs but `make` skips (with a notice) when it is absent. CI

@@ -286,18 +286,31 @@ def render_table(rows: list[Row], headers: tuple[str, str, str, str]) -> str:
     """Render the rows as a Markdown table, one row per mapped file, package, or heading."""
     head = "| " + " | ".join(headers) + " |"
     delimiter = "|---|---|---|---|"
-    body = [f"| {row.path} | {row.size} | {row.name} | {row.detail} |" for row in rows]
+    body = [
+        "| " + " | ".join(_cell(v) for v in (row.path, row.size, row.name, row.detail)) + " |"
+        for row in rows
+    ]
     return "\n".join([head, delimiter, *body])
 
 
+def _cell(value: str) -> str:
+    """One table cell with its pipes escaped, so page prose cannot shift the columns.
+
+    ``detail`` carries a docs page's own first sentence, and :func:`to_plain_text` round-trips an
+    inline code span verbatim — so a page mentioning something like ``--backend ios|android``
+    would otherwise pair one row's path with the next row's summary.
+    """
+    return value.replace("|", r"\|")
+
+
 def filter_rows(rows: list[Row], needle: str) -> list[Row]:
-    """The rows whose path, name, or detail contains ``needle``, matched case-insensitively."""
+    """The rows whose path, name, or detail contains ``needle``, matched case-insensitively.
+
+    The size column is deliberately not searched: every row shares its wording, so ``--grep lines``
+    would match the whole map and hand back exactly what the filter was run to avoid.
+    """
     lowered = needle.casefold()
-    return [
-        row
-        for row in rows
-        if lowered in " ".join([row.path, row.size, row.name, row.detail]).casefold()
-    ]
+    return [row for row in rows if lowered in " ".join([row.path, row.name, row.detail]).casefold()]
 
 
 def main(argv: list[str]) -> int:
