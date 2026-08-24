@@ -109,8 +109,9 @@ APMは、スキル、プロンプト、指示、Model Context Protocol（MCP）�
    到達できないポリシーについて警告して先へ進みます。往復のコストがかかるうえ、警告が失敗のように
    読めてしまいます。
    `make hooks`には、ローカルのgit設定をもう1つ加えます。競合時に`.apm/skills/`からロックファイルを
-   再生成する`apm.lock.yaml`のマージドライバ
-   （[`scripts/merge-apm-lock.sh`](../../scripts/merge-apm-lock.sh)）で、
+   再生成するマージドライバ
+   （[`scripts/merge-apm-generated.sh`](../../scripts/merge-apm-generated.sh)）で、対象は
+   `apm.lock.yaml`と配置先の`.claude/skills/**`の両方です。
    [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)が
    `uv.lock`に対してすでに用意しているものと同じ仕組みです。ドライバがないと、同じスキルを編集した
    2つのブランチは、正しい値がどちらの側にもないファイルごとのSHA-256の行に、競合マーカーを残します。
@@ -168,7 +169,7 @@ APMは、スキル、プロンプト、指示、Model Context Protocol（MCP）�
 - [x] 14個のスキルを1つの`SKILL.md`へ変換し、詳細を`references/`へ配置
 - [x] `.agent-workflows/`、`.agent-hosts/`、`.agents`の撤去、ロードマップのリンク書き換え、BE-0384の設計記述の移行
 - [x] textlint実行環境の移設と`dependabot.yml`のエントリ更新
-- [x] `make skills`、`make lint-skills`、`make check`への組み込み、session-startフック、`make hooks`が配線する`apm.lock.yaml`のマージドライバ
+- [x] `make skills`、`make lint-skills`、`make check`への組み込み、session-startフック、`make hooks`が配線するAPMの生成物（`apm.lock.yaml`と`.claude/skills/**`）のマージドライバ
 - [x] ドキュメント：`CLAUDE.md`、`AGENTS.md`、`docs/ai-development.md`（両言語）、コントリビューター向けチュートリアル（両言語）、レビュー契約
 
 ## 参考

@@ -104,12 +104,15 @@ The work breaks down into six independent pieces:
    site passes `--no-policy`, so the deploy and the audit that replays it run under one
    configuration and neither needs the network; without it 0.28.0 warns about the unreachable
    policy and proceeds, which costs a round trip and reads like a failure. `make hooks` gains one more
-   local git setting: an `apm.lock.yaml` merge driver
-   ([`scripts/merge-apm-lock.sh`](../../scripts/merge-apm-lock.sh)) that regenerates the lockfile
-   from `.apm/skills/` on a conflict, mirroring what
+   local git setting: a merge driver over APM's committed generated output
+   ([`scripts/merge-apm-generated.sh`](../../scripts/merge-apm-generated.sh)) that regenerates both
+   `apm.lock.yaml` and the deployed `.claude/skills/**` tree from `.apm/skills/` on a conflict,
+   mirroring what
    [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
    already does for `uv.lock`. Without the driver, two branches that edited the same skill leave
-   conflict markers among per-file SHA-256 hashes, whose correct value is on neither side. The
+   conflict markers among per-file SHA-256 hashes, whose correct value is on neither side, and a
+   second conflict in the deployed copy whose hand resolution looks right while leaving a deployment
+   its source no longer matches. The
    regenerated lockfile is provisional — git runs a merge driver before writing any merged file, so
    `apm install` reads the pre-merge tree — and `make lint-skills` fails the gate until a
    `make skills` after the resolution refreshes it, exactly as `uv lock --check` backs the `uv.lock`

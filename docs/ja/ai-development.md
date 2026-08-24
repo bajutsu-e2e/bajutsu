@@ -86,15 +86,21 @@ make preflight   # git fetch origin && git rebase origin/main && make check の�
   [`.gitattributes`](../../.gitattributes) でマッピング）。競合時に resolver の出力を行マージするのではなく
   **`pyproject.toml` から `uv.lock` を再生成**します。`pyproject.toml` 自体が競合している場合は `uv lock` が
   失敗し、git は `uv.lock` を競合のまま残します。先に `pyproject.toml` を解決してから再マージしてください。
-- **`apm.lock.yaml` のマージドライバ**（[`scripts/merge-apm-lock.sh`](../../scripts/merge-apm-lock.sh)、
-  同じく [`.gitattributes`](../../.gitattributes) でマッピング）。同じ理由から、競合時にスキルの
-  ロックファイルを `.apm/skills/` から**再生成**します（BE-0390）。ロックファイルはファイルごとの
-  SHA-256 を並べたものなので、同じスキルを編集した 2 つのブランチは、正しい値がどちらの側にもない
-  ハッシュの行で競合します。人が手で解決できる形ではありません。ドライバが書き出す内容は、
-  `uv.lock` のドライバと同じく暫定的なものです。git はマージ結果を書き出す前にドライバを走らせるので、
-  内部の `apm install` はマージ前の作業ツリーを読みます。この隙間は、`uv lock --check` が `uv.lock` の
-  ドライバを支えるのと同じく `make lint-skills` が塞ぎます。スキルの競合を解決したら `make skills` を
-  実行し、書き換わったロックファイルと配置先の `.claude/skills/` をコミットしてください。
+- **APM の生成物のマージドライバ**（[`scripts/merge-apm-generated.sh`](../../scripts/merge-apm-generated.sh)、
+  同じく [`.gitattributes`](../../.gitattributes) でマッピング）。同じ理由から、競合時に
+  `.apm/skills/` から**再生成**します（BE-0390）。対象は `apm install` の生成物のうちコミットする
+  二つ、すなわち `apm.lock.yaml` と配置先の `.claude/skills/**` です。どちらも手では解決できません。
+  ロックファイルはファイルごとの SHA-256 を並べたものであり、いずれも正しい値がどちらの側にもない
+  生成バイト列だからです。正しい値は、**マージ後の**ソースから再インストールが書き出す内容です。
+  分量の大半は配置先が占めます（`SKILL.md` が 14 個と `references/` が 5 個。ロックファイルは
+  数百行です）。しかも手で解決したときの危険は配置先の方が大きく、うまくいったように見えて、
+  ソースと一致しない配置先が残ります。これは後から `make lint-skills` のずれとして現れ、
+  マージと結び付けて考えるのは困難です。したがって、**手で解決するのは `.apm/skills/` だけ**にして、
+  残りはドライバに任せてください。ドライバが書き出す内容は、`uv.lock` のドライバと同じく暫定的です。
+  git はマージ結果を書き出す前にドライバを走らせるので、内部の `apm install` はマージ前の作業ツリーを
+  読みます。この隙間は、`uv lock --check` が `uv.lock` のドライバを支えるのと同じく
+  `make lint-skills` が塞ぎます。スキルの競合を解決したら `make skills` を実行し、書き換わった
+  ロックファイルと配置先をコミットしてください。
 - **`rerere`**（記録した解決の再利用）。一度解決した衝突は、同じ衝突が次に現れたときに自動で再適用されます。
 
 `core.hooksPath` と同様、これらは clone/pull が引き継がないクローンごとのローカル git 設定なので、
