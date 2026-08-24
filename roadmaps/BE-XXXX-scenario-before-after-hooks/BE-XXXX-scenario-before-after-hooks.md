@@ -42,12 +42,12 @@ The gap on the other side is not partial coverage but a missing mechanism: Bajut
 hook at all. The only place to put cleanup today is at the tail of `steps`, and that placement
 fails the one case cleanup exists for. The step loop breaks on the first failure
 ([run-loop](../../docs/run-loop.md), step 9), so trailing cleanup steps run only when every
-preceding step already passed — exactly the run that needed no cleanup least. A scenario that signs
+preceding step already passed — exactly the run that needed cleanup least. A scenario that signs
 up a test user, then hits a broken button three steps later, leaves that user behind: nothing in
 the scenario file ever ran the deletion, because the step that would have run it was never reached.
 A workaround outside the scenario file — a CI-level script, a separately scheduled cleanup job —
 cannot see the run's own `vars.*` bindings, so it cannot address the specific record a `http`
-step's `extract` captured earlier in that same run, and it cannot distinguish a scenario that needs
+step's `saveBody` captured earlier in that same run, and it cannot distinguish a scenario that needs
 extra diagnostics collected only on failure from one that needs its test data deleted only on
 success.
 
@@ -56,8 +56,10 @@ distinct phase elsewhere, which is the shape this item generalizes rather than i
 scenario-level `expect` block runs strictly after `steps` finishes, and can still flip an
 all-passing step sequence to a failing run (`run_scenario`,
 [`bajutsu/orchestrator/loop.py:478`](../../bajutsu/orchestrator/loop.py)); `capturePolicy`'s
-`Trigger.result: Literal["error"]` ([`bajutsu/scenario/models/evidence.py:20`](../../bajutsu/scenario/models/evidence.py))
-already fires a rule specifically when a step fails, keyed to that same "error" outcome word. What
+`Trigger.result: Literal["error"]` ([`bajutsu/scenario/models/evidence.py:22`](../../bajutsu/scenario/models/evidence.py))
+already fires a rule specifically when a step fails, keyed to that same "error" outcome word — a
+per-step trigger evaluated throughout the run, not a scenario-wide verdict, but the same word for
+the same idea. What
 is missing is a phase, symmetric with these two, whose action is an arbitrary list of steps rather
 than either a fixed assertion check or an evidence capture, and that is available before the
 scenario runs as well as after it.
@@ -77,7 +79,8 @@ before reaching them.
 # scenario.yaml
 scenario:
   before:
-    - http: { method: POST, url: "${vars.apiBase}/users", extract: { "$.id": userId } }
+    # the seed endpoint returns the new user's bare id as its response body
+    - http: { method: POST, url: "${vars.apiBase}/users", saveBody: userId }
   steps:
     - tap: { id: login.button }
     - type: { id: login.username, text: "${vars.userId}" }
@@ -94,23 +97,29 @@ scenario:
         - http: { method: POST, url: "${vars.diagnostics}/report", body: { userId: "${vars.userId}" } }
 ```
 
+The example's `before` step relies on `http`'s existing `saveBody`, which stores a response's whole
+body text as `${vars.<name>}` — it captures the seed endpoint's bare id directly only because that
+endpoint is written to return nothing else; extracting one field out of a larger JSON response is a
+separate, unrelated gap this item does not propose closing.
+
 `before` is a plain `list[Step]` — an ordered prelude with no branching, since there is nothing yet
 to branch on. `after` is a list of `AfterRule` entries, each an `on` outcome (`always`, `success`,
 or `error`) paired with the `steps` to run for it; more than one entry may share the same `on`
 value, composing in declaration order, the same way `capturePolicy` already lets more than one rule
-fire on the same trigger. `on`'s two outcome words, `success` and `error`, extend the vocabulary
-`capturePolicy`'s `Trigger.result: Literal["error"]` already established for "the scenario failed",
-rather than inventing a second word for the same idea; `always` is the one addition, for cleanup
-that does not depend on the outcome at all.
+fire on the same trigger. `on`'s two outcome words, `success` and `error`, extend the word
+`capturePolicy`'s `Trigger.result: Literal["error"]` already established for a failed outcome —
+there a single step's, here the whole scenario's — rather than inventing a second word for the same
+idea; `always` is the one addition, for cleanup that does not depend on the outcome at all.
 
 Both fields also exist at the target-config level (`TargetConfig.before` /
 `TargetConfig.after`), as an app-wide default a scenario's own `before`/`after` extends — the same
 config-then-scenario layering `interrupts` already established
-([`bajutsu/config/schema.py:403`](../../bajutsu/config/schema.py)). `before` merges config-then-
-scenario (the app-wide prelude runs first, then this scenario's own addition), matching
-`interrupts`. `after` merges in the opposite order, scenario-then-config: a scenario's own teardown
-(for example, deleting the specific record it created) runs before the app-wide one (for example, logging out),
-mirroring how a resource's own release runs before the outer resource that contains it — the same
+([`bajutsu/config/schema.py:403`](../../bajutsu/config/schema.py)).
+`before` merges config-then-scenario (the app-wide prelude runs first, then this scenario's own
+addition), matching `interrupts`. `after` merges in the opposite order, scenario-then-config: a
+scenario's own teardown (for example, deleting the specific record it created) runs before the
+app-wide one (for example, logging out), mirroring how a resource's own release runs before the
+outer resource that contains it — the same
 last-acquired-first-released order most fixture-based test frameworks already give setup/teardown
 pairs (pytest's fixture teardown, cited here as prior art rather than as a mechanism this item
 depends on).
@@ -126,21 +135,33 @@ same way those existing users do:
 
 1. **Before `_run_steps` runs**, execute the effective `before` list. A failure there sets
    `failure = "before: " + reason` and skips `steps` and `expect` entirely — `before` is a
-   precondition for the scenario, not a step within it, the same way `run_scenario` already will
-   not proceed past a `preconditions` value the target cannot satisfy.
+   precondition for the scenario, not a step within it, the same way the runner already refuses to
+   start a scenario at all when its `preconditions` are ones the target cannot satisfy (a failed
+   launch step raises a `simctl.DeviceError` from `launch_driver`,
+   [`bajutsu/runner/launch.py:27`](../../bajutsu/runner/launch.py), before `run_scenario` is ever
+   called).
 2. **`steps` and `expect` run unchanged.** This item does not touch how their own verdict is
-   computed.
-3. **After that verdict is settled**, run the effective `after` list's `always` entries in
-   declaration order, then whichever of `success` / `error` matches the verdict from step 2. An
-   `after` entry's own failure updates `failure` only when the run was passing up to that point
-   (`failure = "after: " + reason`, mirroring how `expect` can already flip a passing `steps`
-   sequence); when `steps`/`expect` had already failed, an `after` entry's failure is appended to
-   the existing `failure` string instead of replacing it, so the reason a reader sees first is
-   still the original cause, not a symptom of cleanup that ran because of it.
-4. Both phases run inside the `try`/`finally` `run_scenario` already wraps around `_run_steps`, so
-   `after` is attempted even when `_run_steps` raised rather than returning a failure string —
-   consistent with the existing `finally: artifacts = sink.finish_scenario_intervals(...)`, which
-   already runs unconditionally for the same reason.
+   computed. A `before` failure counts as an `error` outcome of step 3 below, the
+   same as an ordinary `steps`/`expect` failure would — cleanup still matters for whatever partial
+   state a `before` list left behind before it failed.
+3. **Once a verdict exists** — `steps`/`expect` finished normally, `before` failed and skipped them,
+   or the run was cancelled (`RunCancelled`, caught where `run_scenario` already sets
+   `failure = CANCELLED_FAILURE`, [`bajutsu/orchestrator/loop.py:607`](../../bajutsu/orchestrator/loop.py)) —
+   run the effective `after` list's `always` entries in declaration order, then whichever of
+   `success` / `error` matches that verdict (a cancelled run dispatches as `error`, consistent with
+   `docs/run-loop.md`'s framing of a cancelled run as an ordinary failed one). An `after` entry's own
+   failure updates `failure` only when the run was passing up to that point (`failure = "after: " +
+   reason`, mirroring how `expect` can already flip a passing `steps` sequence); when the run had
+   already failed for any reason above, an `after` entry's failure is appended to the existing
+   `failure` string instead of replacing it, so the reason a reader sees first is still the original
+   cause, not a symptom of cleanup that ran because of it.
+4. The `after` phase reuses the same `cancelled` source `steps` already reads at every boundary and
+   wait-poll tick, so a fresh cancellation asserted while `after` itself is running cuts it short the
+   same way it would a step — cleanup does not get to run unbounded past a second cancel request.
+   Both phases are reached on every path out of `steps`/`expect`, including the one `RunCancelled`
+   already takes, so `after` runs before the existing
+   `finally: artifacts = sink.finish_scenario_intervals(...)`, which already finalizes
+   unconditionally for the same reason.
 
 ### Report
 
@@ -187,9 +208,11 @@ already use elsewhere for a target that does not yet.
    whose scenario creates a record in `before`, then deletes it in an `after` `success` rule.
 7. **Tests.** Schema parse/validate for both levels; both merge orders; `vars.*` sharing into and
    out of both phases; the new `RunResult` fields. Verdict computation across the full outcome
-   matrix: a failing `before` skips `steps`/`expect`; `always` runs regardless of the outcome; an
-   `error` rule's own failure is appended rather than replacing the original `failure`; a `success`
-   rule's failure becomes the sole `failure` on an otherwise-passing run.
+   matrix: a failing `before` skips `steps`/`expect` and dispatches `after` as `error`; `always`
+   runs regardless of the outcome; an `error` rule's own failure is appended rather than replacing
+   the original `failure`; a `success` rule's failure becomes the sole `failure` on an
+   otherwise-passing run; a cancelled run dispatches `after` as `error` and a fresh cancellation
+   during `after` itself cuts the phase short the same way it would an ordinary step.
 
 ### Prime directives preserved
 
@@ -249,12 +272,15 @@ already use elsewhere for a target that does not yet.
 - [`bajutsu/scenario/expand.py:153`](../../bajutsu/scenario/expand.py) — `apply_setups`, the
   existing before-only mechanism this item complements, whose steps splice directly into `steps`
   rather than running as their own phase.
+- [`bajutsu/runner/launch.py:27`](../../bajutsu/runner/launch.py) — `launch_driver`, where an
+  unsatisfiable `preconditions` value already fails a scenario before `run_scenario` runs at all —
+  the precedent `before`'s own gating follows.
 - [`bajutsu/orchestrator/loop.py:478`](../../bajutsu/orchestrator/loop.py) — `run_scenario`, the
   exact seam the new before/after phases slot into.
 - [`bajutsu/orchestrator/loop.py:635`](../../bajutsu/orchestrator/loop.py) — `_ExecSteps`, the
   recursive step-execution closure `if`/`forEach`/`interrupts` already share, and that `before`/
   `after` reuse rather than duplicate.
-- [`bajutsu/scenario/models/evidence.py:20`](../../bajutsu/scenario/models/evidence.py) —
+- [`bajutsu/scenario/models/evidence.py:22`](../../bajutsu/scenario/models/evidence.py) —
   `Trigger.result: Literal["error"]`, the existing `capturePolicy` outcome word this item's `after`
   rules extend with `success` rather than replace.
 - [`bajutsu/orchestrator/types.py:171`](../../bajutsu/orchestrator/types.py) — `RunResult`, where

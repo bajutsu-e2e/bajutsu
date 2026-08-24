@@ -43,7 +43,7 @@ Bajutsu にはすでに「前」の仕組みがありますが、独立しては
 シナリオが3手順後に壊れたボタンに当たって失敗すれば、そのユーザーは残ったままになります。削除する
 はずだった手順に、実行が一度も到達しないからです。シナリオファイルの外に置く回避策——CI 側のスクリプトや
 別スケジュールの後片付けジョブ——も解決になりません。その実行自身の `vars.*` バインディングが見えないため、
-同じ実行の中で `http` 手順の `extract` が捕まえた特定のレコードを狙って処理できませんし、失敗したときだけ
+同じ実行の中で `http` 手順の `saveBody` が捕まえた特定のレコードを狙って処理できませんし、失敗したときだけ
 追加の診断情報を集めたいシナリオと、成功したときだけテストデータを削除したいシナリオを区別する手段も
 ありません。
 
@@ -53,8 +53,9 @@ Bajutsu にはすでに「前」の仕組みがありますが、独立しては
 反転させることがあります（`run_scenario`、
 [`bajutsu/orchestrator/loop.py:478`](../../bajutsu/orchestrator/loop.py)）。`capturePolicy` の
 `Trigger.result: Literal["error"]`
-（[`bajutsu/scenario/models/evidence.py:20`](../../bajutsu/scenario/models/evidence.py)）は、手順が
-失敗したときだけ特定のルールを発火させる仕組みで、その判定は同じ `error` という結果の語に紐付いています。
+（[`bajutsu/scenario/models/evidence.py:22`](../../bajutsu/scenario/models/evidence.py)）は、手順が
+失敗したときだけ特定のルールを発火させる仕組みです。判定の対象は実行を通してとらえた1手順の結果であり、
+シナリオ全体の判定ではありませんが、同じ `error` という結果の語に紐付いています。
 不足しているのは、この2つと対称な段階、すなわち固定のアサーション判定でも証跡の収集でもなく任意の手順列を
 アクションに取り、しかもシナリオの実行後だけでなく実行前にも置ける段階です。
 
@@ -72,7 +73,8 @@ Bajutsu にはすでに「前」の仕組みがありますが、独立しては
 # scenario.yaml
 scenario:
   before:
-    - http: { method: POST, url: "${vars.apiBase}/users", extract: { "$.id": userId } }
+    # このシード用エンドポイントは、新規ユーザーの id そのものをレスポンス本文として返す
+    - http: { method: POST, url: "${vars.apiBase}/users", saveBody: userId }
   steps:
     - tap: { id: login.button }
     - type: { id: login.username, text: "${vars.userId}" }
@@ -89,17 +91,23 @@ scenario:
         - http: { method: POST, url: "${vars.diagnostics}/report", body: { userId: "${vars.userId}" } }
 ```
 
+この例の `before` 手順は、既存の `http` が持つ `saveBody` をそのまま使っています。`saveBody` は
+レスポンス本文全体をテキストとして `${vars.<name>}` に保存する仕組みで、シード用エンドポイントが
+本文として id 以外を返さないよう作られているからこそ、それだけで id を捕まえられます。より大きな
+JSON レスポンスから1つのフィールドだけを取り出す仕組みは別のギャップであり、この項目が解決を
+提案するものではありません。
+
 `before` は素直な `list[Step]` で、分岐のない順序付きの前処理です。分岐する対象となる結果が、まだ
 存在しないからです。`after` は `AfterRule` のリストで、各エントリは結果を表す `on`
 （`always` / `success` / `error`）と、そのとき実行する `steps` の組です。同じ `on` の値を持つ
 エントリを複数書いてもかまいません。宣言順に合成され、`capturePolicy` がすでに同じトリガーへ複数の
 ルールを発火させられるのと同じ形です。`on` の2つの結果語、`success` と `error` は、`capturePolicy` の
-`Trigger.result: Literal["error"]` がすでに確立していた「シナリオが失敗した」を表す語彙を拡張したもので、
-同じ概念に別の語を新しく充てているわけではありません。`always` は、結果に関わらない後片付けのために
-唯一新しく加えた語です。
+`Trigger.result: Literal["error"]` がすでに「失敗した」という結果に充てていた語を拡張したものです。
+`capturePolicy` では1手順の失敗、ここではシナリオ全体の判定という違いはありますが、同じ概念に別の語を
+新しく充てているわけではありません。`always` は、結果に関わらない後片付けのために唯一新しく加えた語です。
 
 `before` と `after` はどちらも target-config レベルにも存在します（`TargetConfig.before` /
-`TargetConfig.after`)。シナリオ側の `before`/`after` がその上に積み重なる、アプリ全体のデフォルト値です。
+`TargetConfig.after`）。シナリオ側の `before`/`after` がその上に積み重なる、アプリ全体のデフォルト値です。
 これは `interrupts` がすでに確立した config 優先・シナリオ追加の階層と同じです
 （[`bajutsu/config/schema.py:403`](../../bajutsu/config/schema.py)）。`before` は config・シナリオの
 順で合成します。アプリ全体の前処理が先に走り、そのあとにこのシナリオ固有の追加が続くという、`interrupts`
@@ -121,19 +129,31 @@ scenario:
 1. **`_run_steps` が動く前に**、有効な `before` リストを実行します。ここで失敗すると
    `failure = "before: " + 理由` が設定され、`steps` と `expect` はどちらも実行されずに終わります。
    `before` はシナリオの中の1手順ではなく、シナリオを実行するための前提条件です。これは、対象が満たせない
-   `preconditions` の値がある場合に `run_scenario` がそもそも先へ進まないのと同じ扱いです。
+   `preconditions` の値がある場合に、ランナーがそもそもシナリオを開始しないのと同じ扱いです。起動段階で
+   `simctl.DeviceError` が送出され(`launch_driver`、
+   [`bajutsu/runner/launch.py:27`](../../bajutsu/runner/launch.py))、`run_scenario` が呼ばれる前に
+   失敗します。
 2. **`steps` と `expect` は変更なく実行されます。** この項目は、両者の結果判定そのものには手を加えません。
-3. **その結果が確定したあと**、有効な `after` リストのうち、まず `always` のエントリを宣言順に、続いて
-   手順2の結果に一致する `success` / `error` のエントリを実行します。`after` エントリ自身が失敗した
-   場合、それまで実行が成功していたときに限り `failure` を更新します
+   `before` の失敗は、後述する手順3にとって `error` という結果として扱います。`steps`/`expect` が
+   失敗した場合と同じ扱いです。`before` が途中まで作った状態があるなら、その後片付けも必要だからです。
+3. **判定が確定したあと**——`steps`/`expect` が最後まで実行された場合も、`before` が失敗して両者を
+   飛ばした場合も、実行がキャンセルされた場合(`RunCancelled`。`run_scenario` がすでに
+   `failure = CANCELLED_FAILURE` を設定する箇所で捕捉します。
+   [`bajutsu/orchestrator/loop.py:607`](../../bajutsu/orchestrator/loop.py))も——有効な `after`
+   リストのうち、まず `always` のエントリを宣言順に、続いてその判定に一致する `success` / `error` の
+   エントリを実行します(キャンセルされた実行は `error` として扱います。`docs/run-loop.md` がキャンセル
+   された実行を通常の失敗と同列に位置づけているのと同じ扱いです)。`after` エントリ自身が失敗した場合、
+   それまで実行が成功していたときに限り `failure` を更新します
    (`failure = "after: " + 理由`。すでに成功していた `steps` の結果を `expect` が反転させられるのと
-   同じ形です)。`steps`/`expect` がすでに失敗していた場合は、`after` エントリの失敗は既存の `failure`
-   文字列を置き換えるのではなく、そこに追記します。読み手がまず目にする理由が、後片付けの副作用ではなく
-   元の原因のままであるようにするためです。
-4. どちらの段階も、`run_scenario` が `_run_steps` の周りにすでに持つ `try`/`finally` の内側で実行します。
-   `_run_steps` が失敗理由を返すのではなく例外を送出した場合でも `after` が試みられるようにするためで、
-   同じ理由で無条件に実行される既存の
-   `finally: artifacts = sink.finish_scenario_intervals(...)` と整合します。
+   同じ形です)。上記のいずれかの理由ですでに失敗していた場合は、`after` エントリの失敗は既存の
+   `failure` 文字列を置き換えるのではなく、そこに追記します。読み手がまず目にする理由が、後片付けの
+   副作用ではなく元の原因のままであるようにするためです。
+4. `after` 段階も、`steps` がすでに各境界と待機のポーリングのたびに読んでいる同じ `cancelled` を
+   読みます。`after` の実行中に新たなキャンセルが発生すれば、通常の手順と同じように、その場で `after`
+   を打ち切ります。後片付けが2回目のキャンセル要求を無視していつまでも走り続けることはありません。
+   どちらの段階も、`steps`/`expect` から抜けるすべての経路——`RunCancelled` がすでにたどる経路を
+   含めて——で到達するため、`after` は無条件に終了処理を行う既存の
+   `finally: artifacts = sink.finish_scenario_intervals(...)` より前に実行されます。
 
 ### レポート
 
@@ -163,7 +183,7 @@ scenario:
    （[`bajutsu/scenario/models/scenario.py`](../../bajutsu/scenario/models/scenario.py)）と
    `TargetConfig`（[`bajutsu/config/schema.py`](../../bajutsu/config/schema.py)）の両方に
    `before: list[Step]` と `after: list[AfterRule]`（`AfterRule = { on: Literal["always", "success",
-   "error"], steps: list[Step] }`)を追加します。どちらもデフォルト値を空リストとし、未設定のフィールドが
+   "error"], steps: list[Step] }`）を追加します。どちらもデフォルト値を空リストとし、未設定のフィールドが
    dump から消えるようにします。`interrupts` と同じ扱いです。
 2. **合成のヘルパー。** `before` は config・シナリオの順、`after` はシナリオ・config の順で合成します。
    `interrupts` の config/シナリオ合成がすでに解決している場所と同じ地点で1回だけ解決します。
@@ -180,10 +200,12 @@ scenario:
    かを説明します。`before` でレコードを作成し、`after` の `success` ルールでそれを削除する showcase
    フィクスチャを追加します。
 7. **テスト。** 両レベルでのスキーマのパース・検証、両方向の合成順序、結果判定の組み合わせ
-   (`before` の失敗が `steps`/`expect` を飛ばすこと、`always` が結果に関わらず実行されること、`error`
-   ルール自身の失敗が元の `failure` を置き換えず追記されること、他が成功しているときの `success` ルールの
-   失敗がそのまま唯一の `failure` になること)、両段階への・からの `vars.*` の共有、新しい `RunResult`
-   フィールド。
+   (`before` の失敗が `steps`/`expect` を飛ばし `after` を `error` としてディスパッチすること、
+   `always` が結果に関わらず実行されること、`error` ルール自身の失敗が元の `failure` を置き換えず
+   追記されること、他が成功しているときの `success` ルールの失敗がそのまま唯一の `failure` になること、
+   キャンセルされた実行が `after` を `error` としてディスパッチし、`after` 自体の実行中の新たな
+   キャンセルが通常の手順と同じようにその場で段階を打ち切ること)、両段階への・からの `vars.*` の共有、
+   新しい `RunResult` フィールド。
 
 ### prime directive との整合性
 
@@ -241,12 +263,15 @@ scenario:
 
 - [`bajutsu/scenario/expand.py:153`](../../bajutsu/scenario/expand.py) — `apply_setups`。この項目が
   補う既存の「前」だけの仕組みで、その手順は独立した段階としてではなく `steps` へ直接連結されます。
+- [`bajutsu/runner/launch.py:27`](../../bajutsu/runner/launch.py) — `launch_driver`。満たせない
+  `preconditions` の値が、`run_scenario` が呼ばれるより前にすでにシナリオを失敗させている先例で、
+  `before` 自身のゲート判定はこれを踏襲します。
 - [`bajutsu/orchestrator/loop.py:478`](../../bajutsu/orchestrator/loop.py) — `run_scenario`。新しい
   before/after の段階がまさに組み込まれる場所です。
 - [`bajutsu/orchestrator/loop.py:635`](../../bajutsu/orchestrator/loop.py) — `_ExecSteps`。
   `if`/`forEach`/`interrupts` がすでに共有している再帰的な手順実行クロージャで、`before`/`after` は
   これを複製せずそのまま再利用します。
-- [`bajutsu/scenario/models/evidence.py:20`](../../bajutsu/scenario/models/evidence.py) —
+- [`bajutsu/scenario/models/evidence.py:22`](../../bajutsu/scenario/models/evidence.py) —
   `Trigger.result: Literal["error"]`。既存の `capturePolicy` の結果語で、この項目の `after` ルールは
   これを置き換えるのではなく `success` を加えて拡張します。
 - [`bajutsu/orchestrator/types.py:171`](../../bajutsu/orchestrator/types.py) — `RunResult`。
