@@ -93,10 +93,10 @@ that could not have caused it — so the harness should classify infrastructure 
 them the way the run pipeline does. A discard that leaves the old runner alive turns its own recovery
 into the next fault: the re-lease it performs is what puts a second runner on the device.
 
-Which check that reaches depends on the suite. The fault-injection lane the logs above come from is
-deliberately kept out of the `E2E (iOS)` aggregate's `needs:`, alongside `actuation`, `golden`, and
-`visual`, so a red one there blocks no merge — which is why the defect surfaced on a non-gating
-signal. The conformance suite discards a lease the same way and *is* in that aggregate, so the same
+Which check that reaches depends on the suite. The fault-injection lane the logs above come from was
+at the time deliberately kept out of the `E2E (iOS)` aggregate's `needs:`, alongside `actuation`,
+`golden`, and `visual`, so a red one there blocked no merge — which is why the defect surfaced on a
+non-gating signal (BE-0305 has since promoted that lane onto the gate). The conformance suite discards a lease the same way and *is* in that aggregate, so the same
 defect there lands on the required check.
 
 Nothing about this depends on any one branch. The same test fails with the same message in
@@ -207,8 +207,8 @@ teardown a suite supplies is its platform's own.
   bites when a lease is discarded, which takes a crash or an injected fault first. What it produces
   when it does bite is a red check on a pull request that cannot have caused it — the exact outcome
   BE-0334 exists to prevent, arriving through BE-0334's own recovery path. On the fault-injection lane
-  that check blocks no merge; on the conformance suite, which discards a lease the same way, it is the
-  required `E2E (iOS)`. Rejected.
+  that check blocked no merge at the time (BE-0305 has since promoted the lane onto the gate); on the
+  conformance suite, which discards a lease the same way, it is the required `E2E (iOS)`. Rejected.
 
 ## Progress
 
