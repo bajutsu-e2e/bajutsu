@@ -82,7 +82,9 @@ The work breaks down into six independent pieces:
 5. **Tooling.** `make skills` runs `apm install`; `make lint-skills` runs `apm audit --ci`, which
    replays the install into a scratch directory and reports any deployed file that differs from its
    source. `make check` gains the audit step, skipping it with a notice when the `apm` binary is
-   absent, the way `lint-actions` and `lint-secrets` already skip. The
+   absent, the way `lint-actions` and `lint-secrets` already skip — and, as for those two, CI
+   installs a pinned `apm-cli` and runs the audit there, so drift fails a pull request even when a
+   contributor's machine skipped the check. The
    [session-start hook](../../.claude/hooks/session-start.sh) installs a pinned `apm-cli` and runs
    `apm install`, so a web session starts from the committed skill set.
 6. **Documentation.** The *Agent skill layout* section of [`CLAUDE.md`](../../CLAUDE.md) is rewritten

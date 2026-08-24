@@ -74,7 +74,8 @@ APMは、スキル、プロンプト、指示、Model Context Protocol（MCP）�
    モデルの使い分けに影響はありません。
 3. **旧ツリーの撤去**：`.agent-workflows/`と`.agent-hosts/`、`.agents`シンボリックリンクを
    削除します。両ツリーを説明する2つの`README.md`も削除します。BE-0366、BE-0379、BE-0380、
-   BE-0383、BE-0384の5件は、両言語あわせて約80箇所で`.agent-workflows/`へリンクしています。各リンクは、同じ変更で新しい`.apm/skills/<name>/SKILL.md`のパスへ書き換えます。
+   BE-0383、BE-0384の5件は、両言語あわせて約80箇所で`.agent-workflows/`へリンクしています。
+   各リンクは、同じ変更で新しい`.apm/skills/<name>/SKILL.md`のパスへ書き換えます。
    ロードマップのリンターが検査するのは`roadmaps/`へ入るリンクであって出るリンクではないため、
    書き換えを怠るとゲートは通ったままリンクだけが壊れます。
 4. **textlint実行環境の移設**：APMはスキルのソースディレクトリ配下のファイルをすべて複製します。
@@ -86,7 +87,8 @@ APMは、スキル、プロンプト、指示、Model Context Protocol（MCP）�
 5. **ツール整備**：`make skills`で`apm install`を、`make lint-skills`で`apm audit --ci`を実行します。
    `apm audit --ci`は一時ディレクトリへインストールを再現し、ソースと異なる配備ファイルを報告します。
    `make check`にはこの検査を加え、`apm`が入っていない環境では`lint-actions`や`lint-secrets`と
-   同じく通知を出して飛ばします。
+   同じく通知を出して飛ばします。この2つと同様に、CIはバージョンを固定した`apm-cli`を導入して検査を
+   実行します。手元で検査を飛ばした変更でも、ずれがあればPRが落ちます。
    [session-startフック](../../.claude/hooks/session-start.sh)は、バージョンを固定した`apm-cli`を
    導入して`apm install`を実行し、webセッションがコミット済みのスキル集合から始まるようにします。
 6. **ドキュメント**：[`CLAUDE.md`](../../CLAUDE.md)の*Agent skill layout*節を、単一ソースの構成に
