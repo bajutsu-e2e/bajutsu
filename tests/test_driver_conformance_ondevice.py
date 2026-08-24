@@ -30,12 +30,14 @@ from pathlib import Path
 
 import ondevice_evidence
 import pytest
-from backend_crash_recovery import LeaseHolder, LeaseTeardown
+from _pytest.nodes import Node
+from backend_crash_recovery import LeaseHolder, LeaseTeardown, record_absorbed_stall
 from driver_conformance import (
     ConformanceHarness,
     DriverConformanceContract,
     OnDeviceConformanceHarness,
 )
+from ondevice_spec_path import SpecPathMemo, read_data_container
 from xcuitest_lease import xcuitest_lease_launch
 
 from bajutsu import simctl
@@ -48,8 +50,11 @@ from bajutsu.evidence import intervals
 # path) is infrastructure, not a verdict: the `backend_crash_recovery` plugin (BE-0334) re-leases a
 # fresh device off the `_backend_launch` fixture below and re-runs the affected test, exactly as
 # `bajutsu run` recovers a `BackendCrashError`. A contract violation is not a `BackendCrashError`, so
-# it is never retried — it keeps failing immediately. (A cold spawn that never comes up is already
-# retried by the spawn layer (BE-0319) and stays terminal past it, as in the pipeline.)
+# it is never retried — it keeps failing immediately. Nor is a wedged CoreSimulator
+# (`simctl.DeviceTimeout`): the plugin names that a host fault and lets the failure stand, rather than
+# rebuilding the device to answer a stall that clears on its own (BE-0378). (A cold spawn that never
+# comes up is already retried by the spawn layer (BE-0319) and stays terminal past it, as in the
+# pipeline.)
 pytestmark = [pytest.mark.ondevice, pytest.mark.backend_crash_recovery]
 
 # The E2E workflow provisions a booted Simulator with the showcase app and signals it here; absent
@@ -99,15 +104,34 @@ def _effective() -> Effective:
     return eff.rebased(_CONFIG_PATH.resolve().parent, confine=False)
 
 
-def _spec_path(eff: Effective) -> Path:
-    """The `conformance-spec.txt` in the installed app's Documents dir (the reseed channel)."""
-    container = simctl._real_run(simctl.data_container_cmd(UDID, ios_bundle_id(eff)), None).strip()
+def _spec_path(eff: Effective, node: Node) -> Path:
+    """The `conformance-spec.txt` in the installed app's Documents dir (the reseed channel).
+
+    Args:
+        node: The suite's own module node, which carries a stall the read absorbed into the job log
+            and the uploaded report — this read belongs to no single test, so it reports as the
+            module it prepares.
+    """
+    container = read_data_container(
+        UDID,
+        ios_bundle_id(eff),
+        simctl._real_run,
+        lambda reason: record_absorbed_stall(node, reason),
+    )
     return Path(container) / "Documents" / "conformance-spec.txt"
 
 
 @pytest.fixture(scope="module")
 def _eff() -> Effective:
     return _effective()
+
+
+@pytest.fixture(scope="module")
+def _spec_paths(request: pytest.FixtureRequest, _eff: Effective) -> SpecPathMemo:
+    # Module-scoped, so the device read below is paid once per lease rather than once per test — the
+    # exposure BE-0378 removes. The memo re-reads on its own whenever the lease changes.
+    node = request.node
+    return SpecPathMemo(lambda: _spec_path(_eff, node))
 
 
 # Boot the fixture straight into (the empty) conformance mode, not the normal tab app: this enters
@@ -148,10 +172,14 @@ def _evidence(request: pytest.FixtureRequest) -> Iterator[None]:
 
 class TestXcuitestDriverConformance(DriverConformanceContract):
     @pytest.fixture
-    def harness(self, _eff: Effective, _backend_lease_holder: LeaseHolder) -> ConformanceHarness:
+    def harness(
+        self, _backend_lease_holder: LeaseHolder, _spec_paths: SpecPathMemo
+    ) -> ConformanceHarness:
         # Read the driver off the holder each test: crash-free, it is the one shared lease (the module
         # scope's amortization); after a crash, the plugin has re-leased, so this is the fresh device.
-        return _OnDeviceHarness("xcuitest", _backend_lease_holder.driver, _spec_path(_eff))
+        # `for_lease` leases too, so the two agree on which installation the spec path names.
+        driver = _backend_lease_holder.driver
+        return _OnDeviceHarness("xcuitest", driver, _spec_paths.for_lease(_backend_lease_holder))
 
     # Marked, not skipped from inside the body: a body-level `pytest.skip()` still lets pytest set
     # every fixture up first, so the autouse `_evidence` above would start and stop a video recording
