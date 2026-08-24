@@ -1,0 +1,299 @@
+#!/usr/bin/env python3
+"""Print a map of the repository — documentation pages or Python modules — for an AI session.
+
+A session that does not yet know where something lives pays for the search: a few `ls` and `grep`
+calls that miss before one lands. The repository is large enough for that to matter — 73 pages and
+about 23,000 lines under ``docs/``, and 313 modules and about 75,000 lines under ``bajutsu/`` —
+and neither tree carries an index a session can read instead::
+
+    python3 scripts/repo_map.py --docs                    # every docs page, one line each
+    python3 scripts/repo_map.py --code                    # every package and top-level module
+    python3 scripts/repo_map.py --docs --grep driver      # just the rows naming a driver
+    python3 scripts/repo_map.py --headings docs/cli.md    # where to Read inside one file
+
+Nothing is written: the map goes to standard output and is never committed. A committed index
+would drift from the tree it describes, and the drift is the expensive failure — a session that
+trusts a stale index searches in the wrong place and starts over. Generating the map on every run
+makes that impossible, and follows what ``roadmap_query.py`` and ``build_roadmap_dashboard.py``
+already do for the roadmap.
+
+``--headings`` serves the reading discipline the map exists to support: find the heading whose
+span covers what you need, then read that line range instead of the whole file. ``docs/cli.md`` is
+1,047 lines, and its longest section is 181 of them.
+
+The map is derived, deterministic, and offline. It reads the tree with the standard library alone,
+so any Python 3.11 or newer interpreter runs it without the project's virtual environment built
+first, and it never calls a large language model (LLM), so the same input tree always prints the
+same bytes.
+"""
+
+from __future__ import annotations
+
+import argparse
+import ast
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+# Import the shared markdown-to-plain-text conversion whether this runs as ``python3 scripts/…``
+# (scripts/ already on the path) or is loaded under its bare name by a test — add scripts/ so the
+# sibling import resolves either way.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from build_roadmap_index import to_plain_text
+
+DOCS = Path("docs")
+PACKAGE = Path("bajutsu")
+
+# Lines that open a block carrying no prose. A summary is the page's first sentence of actual
+# prose, so the scan steps over each of these rather than reporting a table pipe or a fence.
+# A block quote is *not* on the list: 48 of the 73 pages under docs/ open with one right after the
+# H1, and it is the page's own one-line description — skipping it would report the "Related:"
+# navigation line that follows on 20 of them.
+_SKIP_PREFIXES = ("#", "|", "<!--", "![", "---", "***", ":::", "Related:")
+_FENCES = ("```", "~~~")
+
+# A summary column wider than this pushes the table past a comfortable read; the roadmap query's
+# 220 is tuned for a dashboard hover card, which has more room than one row among 73.
+_SUMMARY_LEN = 130
+
+# A package row names the modules inside it. `serve/` holds 93 files, so the list is cut here
+# rather than letting one row dominate the map.
+_MODULES_LEN = 180
+
+
+@dataclass(frozen=True)
+class Row:
+    """One mapped file or package: where it is, how big it is, and what it holds."""
+
+    path: str
+    size: str
+    name: str
+    detail: str
+
+
+def _line_count(text: str) -> int:
+    """The number of lines, counted the way ``wc -l`` and a file's line numbers agree on."""
+    return len(text.splitlines())
+
+
+def _title(lines: list[str]) -> tuple[str, int]:
+    """The page's H1 text and its index, or an empty title and -1 when the page has none."""
+    for index, line in enumerate(lines):
+        if line.startswith("# "):
+            return line[2:].strip(), index
+    return "", -1
+
+
+def _summary(lines: list[str], start: int) -> str:
+    """The first paragraph of real prose after ``start``, flattened to one plain-text line.
+
+    Skips the blank lines, headings, tables, images, fenced blocks, and "Related:" navigation line
+    that a page may open with, so the summary is the sentence a reader would use to decide whether
+    to open the page. A leading block quote counts as prose, and its ``>`` markers are stripped —
+    most pages under ``docs/`` put their one-line description there. Returns an empty string for a
+    page that has no prose at all.
+    """
+    index = start + 1
+    while index < len(lines):
+        line = lines[index].strip()
+        if line.startswith(_FENCES):
+            closing = lines[index].strip()[:3]
+            index += 1
+            while index < len(lines) and not lines[index].strip().startswith(closing):
+                index += 1
+            index += 1
+            continue
+        if not line or line.startswith(_SKIP_PREFIXES):
+            index += 1
+            continue
+        paragraph: list[str] = []
+        while index < len(lines) and lines[index].strip():
+            paragraph.append(lines[index].strip().lstrip("> ").strip())
+            index += 1
+        return to_plain_text(" ".join(paragraph), max_len=_SUMMARY_LEN)
+    return ""
+
+
+def iter_docs(root: Path = DOCS) -> list[Row]:
+    """Return one row per Markdown page under ``root``, sorted by path.
+
+    Args:
+        root: the documentation tree to walk (default: ``docs``).
+    """
+    rows: list[Row] = []
+    for path in sorted(root.rglob("*.md")):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        title, at = _title(lines)
+        rows.append(
+            Row(
+                path=path.as_posix(),
+                size=str(len(lines)),
+                name=title or path.stem,
+                detail=_summary(lines, at) if at >= 0 else "",
+            )
+        )
+    return rows
+
+
+def _declarations(path: Path) -> list[str]:
+    """The top-level class and function names a module defines, in source order.
+
+    A module that does not parse contributes no names rather than failing the whole map: the map
+    is a navigation aid, and one unparseable file should not hide the other 312.
+    """
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError):
+        return []
+    return [
+        node.name
+        for node in tree.body
+        if isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
+    ]
+
+
+def iter_code(package: Path = PACKAGE) -> list[Row]:
+    """Return one row per package directory and one per top-level module, sorted by path.
+
+    A package row aggregates the modules it holds; a top-level module row names the classes and
+    functions it defines. Two levels, not 313 file rows: the map answers "which area owns this",
+    and ``grep`` already answers "which file defines this symbol". A package's file count and line
+    count cover every ``.py`` in the directory, ``__init__.py`` included; the list of module names
+    leaves ``__init__`` out, since it is not a name anyone opens the package by.
+
+    Args:
+        package: the Python package to walk (default: ``bajutsu``).
+    """
+    rows: list[Row] = []
+    for directory in sorted(d for d in package.rglob("*") if d.is_dir()):
+        if "__pycache__" in directory.parts:
+            continue
+        files = sorted(directory.glob("*.py"))
+        modules = [p.stem for p in files if p.stem != "__init__"]
+        if not modules:
+            continue
+        total = sum(_line_count(p.read_text(encoding="utf-8")) for p in files)
+        rows.append(
+            Row(
+                path=directory.as_posix() + "/",
+                size=f"{len(files)} files, {total} lines",
+                name="package",
+                detail=_join_names(modules),
+            )
+        )
+    for path in sorted(package.glob("*.py")):
+        if path.stem == "__init__":
+            continue
+        rows.append(
+            Row(
+                path=path.as_posix(),
+                size=f"{_line_count(path.read_text(encoding='utf-8'))} lines",
+                name="module",
+                detail=_join_names(_declarations(path)),
+            )
+        )
+    return sorted(rows, key=lambda row: row.path)
+
+
+def _join_names(names: list[str]) -> str:
+    """The names as one cell, cut to the whole items that fit and labelled with the true total.
+
+    A silently truncated list reads as complete, so a reader could conclude a name is absent when
+    the row simply stopped early. Naming the total keeps the row honest about being a sample.
+    """
+    joined = ", ".join(names)
+    if len(joined) <= _MODULES_LEN:
+        return joined
+    kept = joined[:_MODULES_LEN].rsplit(", ", 1)[0]
+    return f"{kept}, … ({len(names)} in all)"
+
+
+def iter_headings(path: Path) -> list[Row]:
+    """Return one row per Markdown heading in ``path``: its line, its text, and its span.
+
+    The span is the number of lines until the next heading, or the end of the file — the size of
+    the range to read once a heading looks like the right one. A ``#`` inside a fenced block is a
+    shell comment, not a heading: ``docs/cli.md`` alone holds four of them, and counting one as a
+    heading would report a span that starts in the middle of an example.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines()
+    found = [(n, line) for n, line in _outside_fences(lines) if line.startswith("#")]
+    rows: list[Row] = []
+    for index, (number, line) in enumerate(found):
+        end = found[index + 1][0] if index + 1 < len(found) else len(lines) + 1
+        level = len(line) - len(line.lstrip("#"))
+        rows.append(
+            Row(
+                path=f"{path.as_posix()}:{number}",
+                size=f"{end - number} lines",
+                name="#" * level,
+                detail=line.lstrip("#").strip(),
+            )
+        )
+    return rows
+
+
+def _outside_fences(lines: list[str]) -> list[tuple[int, str]]:
+    """The file's lines, numbered from 1, with every fenced block dropped."""
+    kept: list[tuple[int, str]] = []
+    fence: str | None = None
+    for number, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        if fence is not None:
+            if stripped.startswith(fence):
+                fence = None
+            continue
+        if stripped.startswith(_FENCES):
+            fence = stripped[:3]
+            continue
+        kept.append((number, line))
+    return kept
+
+
+def render_table(rows: list[Row], headers: tuple[str, str, str, str]) -> str:
+    """Render the rows as a Markdown table, one row per mapped file, package, or heading."""
+    head = "| " + " | ".join(headers) + " |"
+    delimiter = "|---|---|---|---|"
+    body = [f"| {row.path} | {row.size} | {row.name} | {row.detail} |" for row in rows]
+    return "\n".join([head, delimiter, *body])
+
+
+def filter_rows(rows: list[Row], needle: str) -> list[Row]:
+    """The rows whose path, name, or detail contains ``needle``, matched case-insensitively."""
+    lowered = needle.casefold()
+    return [
+        row
+        for row in rows
+        if lowered in " ".join([row.path, row.size, row.name, row.detail]).casefold()
+    ]
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="Map this repository's docs or Python modules.")
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--docs", action="store_true", help="map every page under docs/")
+    mode.add_argument("--code", action="store_true", help="map every package and top-level module")
+    mode.add_argument("--headings", type=Path, help="map one file's headings, with line spans")
+    parser.add_argument("--grep", help="keep only the rows matching this word (case-insensitive)")
+    parser.add_argument("--docs-root", type=Path, default=DOCS, help="the docs tree to walk")
+    parser.add_argument("--package", type=Path, default=PACKAGE, help="the package to walk")
+    args = parser.parse_args(argv)
+
+    try:
+        if args.docs:
+            rows, headers = iter_docs(args.docs_root), ("Path", "Lines", "Title", "Summary")
+        elif args.code:
+            rows, headers = iter_code(args.package), ("Path", "Size", "Kind", "Holds")
+        else:
+            rows, headers = iter_headings(args.headings), ("File:line", "Span", "Level", "Heading")
+    except OSError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    if args.grep is not None:
+        rows = filter_rows(rows, args.grep)
+    print(render_table(rows, headers))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
