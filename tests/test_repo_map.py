@@ -10,6 +10,7 @@ the fenced-block handling that keeps a shell comment out of the heading map.
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
@@ -181,6 +182,27 @@ def test_filter_rows_is_case_insensitive(tmp_path: Path) -> None:
     rows = rm.filter_rows(rm.iter_docs(tmp_path / "docs"), "DRIVER")
 
     assert [row.name for row in rows] == ["Driver abstraction"]
+
+
+def test_a_gitignored_page_is_left_out(tmp_path: Path) -> None:
+    """`docs/api/roadmap.md` is built by `make docs`; listing it would make the map depend on
+    whether a docs build had run."""
+    subprocess.run(["git", "init", "-q", "."], cwd=tmp_path, check=True)
+    (tmp_path / ".gitignore").write_text("docs/generated.md\n", encoding="utf-8")
+    _write(tmp_path / "docs" / "real.md", "# Real\n\nProse.\n")
+    _write(tmp_path / "docs" / "generated.md", "# Built\n\nProse.\n")
+
+    rows = rm.iter_docs(tmp_path / "docs")
+
+    assert [row.name for row in rows] == ["Real"]
+
+
+def test_an_untracked_page_is_still_listed(tmp_path: Path) -> None:
+    """A page being drafted right now is not ignored, so it must stay findable."""
+    subprocess.run(["git", "init", "-q", "."], cwd=tmp_path, check=True)
+    _write(tmp_path / "docs" / "draft.md", "# Draft\n\nProse.\n")
+
+    assert [row.name for row in rm.iter_docs(tmp_path / "docs")] == ["Draft"]
 
 
 def test_main_requires_a_mode(capsys) -> None:
