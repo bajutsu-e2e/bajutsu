@@ -63,6 +63,13 @@ final class AppModel: ObservableObject {
     // `within` / `traits` / `index` addressing a real set of sibling wheels to separate.
     let pickersMode: Bool
 
+    // TipKit tip mode: a test-only affordance gated on the SHOWCASE_TIPKIT launch env, mirroring
+    // pickers above. When set, the Stable tab anchors a `.popoverTip()` to its Refresh button, so a
+    // run can exercise the guard against a real blocking tip. Gated rather than always-on because a
+    // TipKit tip hides the content it covers from the accessibility tree, which would break every
+    // other Stable-tab scenario.
+    let tipKitMode: Bool
+
     let animationsDisabled: Bool
 
     private let env: [String: String]
@@ -76,6 +83,7 @@ final class AppModel: ObservableObject {
         selectedTab = .stable
         gesturesMode = env["SHOWCASE_GESTURES"] != nil
         pickersMode = env["SHOWCASE_PICKERS"] != nil
+        tipKitMode = env["SHOWCASE_TIPKIT"] != nil
         conformanceIDs = Self.conformanceIDs(env["SHOWCASE_CONFORMANCE"])
         if conformanceIDs != nil {
             startConformancePolling()

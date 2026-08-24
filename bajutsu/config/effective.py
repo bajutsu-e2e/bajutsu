@@ -131,6 +131,7 @@ class RunDefaults:
     system_alert_handling: SystemAlertHandling | None = None
     erase: bool = False
     network: bool = True
+    ios_tip_kit_handling: bool = False
     # App-wide interstitial-screen handlers (BE-0314), prepended to a scenario's own `interrupts`.
     # Empty when the target config declares none.
     interrupts: list[Interrupt] = field(default_factory=list)

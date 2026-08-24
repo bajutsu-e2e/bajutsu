@@ -74,6 +74,12 @@ class Capability:
     # iOS control, and XCUITest's `adjust(toPickerWheelValue:)` is what makes landing on a named
     # row deterministic — the mirror image of SELECT_OPTION, which only the web backend can honor.
     PICKER_WHEEL = "pickerWheel"
+    # Dismiss a blocking Apple TipKit tip — an in-app popover the framework, not the app, builds —
+    # by its TipKit-internal dismiss region. Only the XCUITest backend advertises it: TipKit is an
+    # iOS framework, and the identifier it exposes is the driver's knowledge to hold, not the
+    # orchestrator's. Unlike HANDLE_SYSTEM_ALERT the tip is in-process, so this needs no runner route
+    # — but it stays a token so an iOS-only identifier never reaches the backend-agnostic core.
+    HANDLE_TIPKIT_TIP = "handleTipkitTip"
     # The `DeviceControl` family, one token per operation (BE-0212, split from the coarse
     # `deviceControl` of BE-0128). A backend advertises exactly the operations it can honor, so
     # preflight gates each device-control step on its own operation — the Android emulator backs
@@ -306,6 +312,15 @@ class Driver(Protocol):
     # the HANDLE_SYSTEM_ALERT capability (a backend without it returns []), so it never adds a route
     # of its own — the query is BE-0316's `/systemAlert/query`, read here without the tap.
     def system_alert_labels(self) -> list[str]: ...
+    # Dismiss a blocking TipKit tip if one is up; True when one was dismissed, False when none was
+    # showing. Which node identifies a tip is the driver's business — the caller gets a boolean, so
+    # the orchestrator's guard stays free of any iOS-specific identifier. Gated on
+    # HANDLE_TIPKIT_TIP: a backend without it returns False rather than raising, since both callers
+    # (the post-failure retry and the mid-wait gate) run opportunistically, where "no tip here" and
+    # "this backend has no tips" call for the same no-op. `tree`, when given, is a snapshot the
+    # caller already holds: the mid-wait gate asks on every poll tick, so letting it answer "no tip"
+    # off the poll's own tree keeps the common case free instead of doubling the wait's query load.
+    def dismiss_blocking_tip(self, tree: list[Element] | None = None) -> bool: ...
     # Single-shot by contract (BE-0118): whether `sel` matches the *current* screen,
     # checked once. A backend never loops here — the shared `wait_until` owns the
     # deadline poll, so a caller's timeout means the same real seconds on every backend.
