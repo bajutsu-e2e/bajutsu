@@ -70,11 +70,12 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [x] Boot two real devices concurrently — Simulators in `ios-e2e.yml`, emulators in
-  `android-e2e.yml` (resources permitting) — and run `--workers 2` against both.
+- [x] Boot two real devices concurrently and run `--workers 2` across them — emulators in
+  `android-e2e.yml`. The Simulator half in `ios-e2e.yml` landed and was then withdrawn: the hosted
+  macOS runner cannot hold two booted Simulators (the last log entry records what it measured).
 - [x] Assert per-worker isolation of `udid` and the `run_dir/<scenario_id>` subdirectory.
 - [x] Land non-gating first.
-- [ ] Promote each lane to required once stable.
+- [ ] Promote the Android lane to required once stable.
 
 Log:
 
@@ -160,6 +161,32 @@ Log:
   reduction of what the run records is expected to change the outcome, and the iOS half's viability
   is a question about the runner rather than about the lane. `pool (adb)` stayed green across the
   same pushes, so the Android half needs none of this.
+- Withdrew the iOS half, `pool (xcuitest)`, and with it the wiring no other job used. **What five
+  runs measured:** four collapses and one verdict. The first two ran the original scenario set with
+  a video recording and the touch markers on, and both died in the capture pipeline
+  (`recordVideo produced no new bytes`, a wedged `simctl terminate` / `uninstall`, an unreachable
+  runner channel). The third ran the capture-light configuration and wedged `simctl uninstall` after
+  eleven minutes of silence, before any scenario started. The fourth reached the scenarios and met a
+  `SimRenderServer` crash on its own dispatch queue, with `/screenshot` timing out on both workers
+  within a second of each other. The fifth, on the smallest set the isolation verdict permits — ten
+  leaf steps, no video, no touch markers — passed, which is one green after four reds rather than a
+  stability record. **Why the cuts ran out:** each reduction moved the failure instead of removing
+  it, and the third run wedged CoreSimulator upstream of every capture the lane could still give up.
+  The capture list cannot drop the `before.png` / `after.png` the run loop records per leaf step
+  (BE-0341), so the scenario set was the last lever, and it is now at the floor the cross-device
+  overlap check needs. BE-0361 measured this runner at 3 cores and 7 GiB, where a *single* booted
+  Simulator already leaves 189 MB of physical memory unused. The one lever left is a larger runner —
+  a paid one, and out of scope here. **What the job cost meanwhile:** about half an hour of a runner
+  billed at 10x per red run, on a job keyed on `touches_pool`, whose surface is the runner package
+  itself — so the cost landed on exactly the pull requests least able to ignore it, the ones changing
+  the pool. **What went with the job:** `demos/showcase/showcase.pool.config.yaml`, the
+  `exclude-udid` input on the `boot-simulator` action, and the `touch-markers` / `workers` /
+  `diagnostics-udid` inputs on the `bajutsu-e2e` action. This item added each one for that job and no
+  other caller passes any of them, so both composite actions return to their pre-BE-0298 shape.
+  `touches_pool` keeps only the Android job's surface, and the iOS lane stops emitting a `pool`
+  output nothing reads. **What stays:** `pool (adb)`, green on every run since it landed, with
+  `scripts/assert_pool_isolation.py` and its unit tests unchanged — so this item's claim is still
+  checked against two real concurrent devices, on the lane whose host can hold them.
 
 ## References
 
