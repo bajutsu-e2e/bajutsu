@@ -108,13 +108,22 @@ the "definition of done" reminder (both-language docs touched? a test changed wi
 Rebasing frequently means you meet other sessions' merged work early, when conflicts are a line
 or two — not at the end as a tangled merge.
 
-`make hooks` also self-heals two local git settings that take the sting out of the conflicts that
+`make hooks` also self-heals three local git settings that take the sting out of the conflicts that
 remain (BE-0043), so you don't have to configure them by hand:
 
 - a **`uv.lock` merge driver** ([`scripts/merge-uv-lock.sh`](../scripts/merge-uv-lock.sh), mapped via
   [`.gitattributes`](../.gitattributes)) that **regenerates the lockfile from `pyproject.toml`** on a
   conflict instead of line-merging resolver output. If `pyproject.toml` itself conflicts, `uv lock`
   fails and git leaves `uv.lock` conflicted — resolve `pyproject.toml` first, then re-merge.
+- an **`apm.lock.yaml` merge driver** ([`scripts/merge-apm-lock.sh`](../scripts/merge-apm-lock.sh),
+  mapped the same way) that **regenerates the skill lockfile from `.apm/skills/`** on a conflict, for
+  the same reason (BE-0390). Every `apm install` rewrites the lockfile's `generated_at` line, so two
+  branches that each edited a skill conflict there even when the skills they edited differ, and
+  line-merging the recorded hashes below that line can yield a lockfile matching neither side's
+  sources. The driver reruns `apm install`, which also refreshes the deployed `.claude/skills/`
+  tree — stage both once the merge finishes. When `apm` is absent, or a source skill still carries
+  conflict markers, the driver refuses and leaves `apm.lock.yaml` conflicted rather than recording
+  hashes of a half-merged tree.
 - **`rerere`** (reuse recorded resolution), so a conflict you have resolved once replays
   automatically the next time the same conflict appears.
 

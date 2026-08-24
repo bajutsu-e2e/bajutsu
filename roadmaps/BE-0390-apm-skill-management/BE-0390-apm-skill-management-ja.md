@@ -103,6 +103,13 @@ APMは、スキル、プロンプト、指示、Model Context Protocol（MCP）�
    実行します。手元で検査を飛ばした変更でも、ずれがあればPRが落ちます。
    [session-startフック](../../.claude/hooks/session-start.sh)は、バージョンを固定した`apm-cli`を
    導入して`apm install`を実行し、webセッションがコミット済みのスキル集合から始まるようにします。
+   `make hooks`には、ローカルのgit設定をもう1つ加えます。競合時に`.apm/skills/`からロックファイルを
+   再生成する`apm.lock.yaml`のマージドライバ
+   （[`scripts/merge-apm-lock.sh`](../../scripts/merge-apm-lock.sh)）で、
+   [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)が
+   `uv.lock`に対してすでに用意しているものと同じ仕組みです。ドライバがないと、installのたびに
+   書き換わる`generated_at`のタイムスタンプが、スキルに触れたブランチどうしで必ず競合します。
+   その下に並ぶハッシュを行マージすれば、どちらのソースとも一致しないロックファイルが残りかねません。
 6. **ドキュメント**：[`CLAUDE.md`](../../CLAUDE.md)の*Agent skill layout*節を、単一ソースの構成に
    書き換えます。[`AGENTS.md`](../../AGENTS.md)、
    [`docs/ja/ai-development.md`](../../docs/ja/ai-development.md)と英語版、
@@ -154,7 +161,7 @@ APMは、スキル、プロンプト、指示、Model Context Protocol（MCP）�
 - [x] 14個のスキルを1つの`SKILL.md`へ変換し、詳細を`references/`へ配置
 - [x] `.agent-workflows/`、`.agent-hosts/`、`.agents`の撤去、ロードマップのリンク書き換え、BE-0384の設計記述の移行
 - [x] textlint実行環境の移設と`dependabot.yml`のエントリ更新
-- [x] `make skills`、`make lint-skills`、`make check`への組み込み、session-startフック
+- [x] `make skills`、`make lint-skills`、`make check`への組み込み、session-startフック、`make hooks`が配線する`apm.lock.yaml`のマージドライバ
 - [x] ドキュメント：`CLAUDE.md`、`AGENTS.md`、`docs/ai-development.md`（両言語）、コントリビューター向けチュートリアル（両言語）、レビュー契約
 
 ## 参考

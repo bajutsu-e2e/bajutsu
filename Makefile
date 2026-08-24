@@ -14,13 +14,16 @@ setup: hooks
 #                          pre-commit/prepare-commit-msg/commit-msg secret scan, via .gitleaks.toml
 #                          — a tracked file, so no local git-config registration is needed here)
 #   - merge.uv-lock     -> regenerate uv.lock from pyproject.toml on conflict (BE-0043)
+#   - merge.apm-lock    -> regenerate apm.lock.yaml from .apm/skills/ on conflict (BE-0390)
 #   - rerere            -> replay a once-resolved conflict automatically (BE-0043)
 hooks:
 	@[ -d .githooks ] && git config core.hooksPath .githooks && echo "hooks: core.hooksPath -> .githooks" || true
 	@git config merge.uv-lock.name "regenerate uv.lock from pyproject.toml" \
 	  && git config merge.uv-lock.driver "./scripts/merge-uv-lock.sh %A" \
+	  && git config merge.apm-lock.name "regenerate apm.lock.yaml from .apm/skills/" \
+	  && git config merge.apm-lock.driver "./scripts/merge-apm-lock.sh %A" \
 	  && git config rerere.enabled true \
-	  && echo "hooks: uv.lock merge driver + rerere wired"
+	  && echo "hooks: uv.lock + apm.lock.yaml merge drivers + rerere wired"
 
 # Config-aware one-command bootstrap (BE-0164): the base toolchain (`setup`) PLUS exactly the
 # backend deps a project's config needs — not "every backend unconditionally", not "everything".
@@ -71,7 +74,7 @@ preflight:
 
 # Shell scripts the gate lints. pre-push/pre-commit/prepare-commit-msg have no .sh suffix, so
 # they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg .githooks/pre-commit .githooks/prepare-commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/xcuitest-runner-hash.sh scripts/collect_android_diagnostics.sh scripts/android_pool_e2e.sh .claude/hooks/session-start.sh demos/tour/demo.sh
+SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg .githooks/pre-commit .githooks/prepare-commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/merge-apm-lock.sh scripts/xcuitest-runner-hash.sh scripts/collect_android_diagnostics.sh scripts/android_pool_e2e.sh .claude/hooks/session-start.sh demos/tour/demo.sh
 
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the
@@ -127,8 +130,8 @@ lock-check:
 lint-sh:
 	uv run shellcheck $(SHELL_SCRIPTS)
 
-# actionlint is a standalone Go binary (not pip/uv installable), so it's the one gate
-# check that needs a separate install. CI always installs and runs it; locally we lint
+# actionlint is a standalone Go binary (not pip/uv installable), so it needs a separate install —
+# as do gitleaks (lint-secrets) and apm (lint-skills). CI always installs and runs it; locally we lint
 # the workflows if it's present and skip with a notice otherwise, so `check` still runs
 # anywhere. Install locally: https://github.com/rhysd/actionlint/blob/main/docs/install.md
 lint-actions:
@@ -239,8 +242,9 @@ roadmap-status:
 	uv run python scripts/roadmap_query.py --status "$(STATUS)"
 
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
-# predicts "green in CI". The uv-native checks run identically everywhere; actionlint is
-# the lone exception (see lint-actions above).
+# predicts "green in CI". The uv-native checks run identically everywhere; actionlint, gitleaks,
+# and apm are the exceptions — CI installs each one, and the step skips with a notice when it is
+# absent (see lint-actions / lint-secrets / lint-skills above).
 check: hooks format-check lint lint-docstrings lint-imports lint-sh lint-actions lint-js lint-roadmap lint-skills lint-secrets lock-check typecheck test
 
 # Generated API reference (BE-0065). Deliberately NOT in `check`: like on-device E2E, the

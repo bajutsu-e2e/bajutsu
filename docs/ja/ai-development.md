@@ -79,13 +79,22 @@ make preflight   # git fetch origin && git rebase origin/main && make check の�
 こまめに rebase すれば、他セッションのマージ済み作業に早く出会えます。衝突が 1〜2 行のうちに解消でき、
 最後にまとめて絡まったマージを解く必要がなくなります。
 
-`make hooks` は、それでも残る衝突の痛みを和らげる 2 つのローカル git 設定も自己修復します（BE-0043）。手で
+`make hooks` は、それでも残る衝突の痛みを和らげる 3 つのローカル git 設定も自己修復します（BE-0043）。手で
 設定する必要はありません。
 
 - **`uv.lock` のマージドライバ**（[`scripts/merge-uv-lock.sh`](../../scripts/merge-uv-lock.sh)、
   [`.gitattributes`](../../.gitattributes) でマッピング）。競合時に resolver の出力を行マージするのではなく
   **`pyproject.toml` から `uv.lock` を再生成**します。`pyproject.toml` 自体が競合している場合は `uv lock` が
   失敗し、git は `uv.lock` を競合のまま残します。先に `pyproject.toml` を解決してから再マージしてください。
+- **`apm.lock.yaml` のマージドライバ**（[`scripts/merge-apm-lock.sh`](../../scripts/merge-apm-lock.sh)、
+  同じく [`.gitattributes`](../../.gitattributes) でマッピング）。同じ理由から、競合時にスキルの
+  ロックファイルを `.apm/skills/` から**再生成**します（BE-0390）。`apm install` は毎回
+  `generated_at` の行を書き換えるので、編集したスキルが違うブランチどうしでもこの行で競合します。
+  さらに、その下に並ぶハッシュを行マージすると、どちらのソースとも一致しないロックファイルができます。
+  ドライバは `apm install` を回し直します。配置先の `.claude/skills/` も同時に更新されるので、
+  マージが終わったら両方を stage してください。`apm` がない場合や、ソースのスキルに競合マーカーが
+  残っている場合は、解決しきっていないツリーのハッシュを記録しないよう、`apm.lock.yaml` を競合のまま
+  残します。
 - **`rerere`**（記録した解決の再利用）。一度解決した衝突は、同じ衝突が次に現れたときに自動で再適用されます。
 
 `core.hooksPath` と同様、これらは clone/pull が引き継がないクローンごとのローカル git 設定なので、

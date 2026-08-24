@@ -99,7 +99,14 @@ The work breaks down into six independent pieces:
    installs a pinned `apm-cli` and runs the audit there, so drift fails a pull request even when a
    contributor's machine skipped the check. The
    [session-start hook](../../.claude/hooks/session-start.sh) installs a pinned `apm-cli` and runs
-   `apm install`, so a web session starts from the committed skill set.
+   `apm install`, so a web session starts from the committed skill set. `make hooks` gains one more
+   local git setting: an `apm.lock.yaml` merge driver
+   ([`scripts/merge-apm-lock.sh`](../../scripts/merge-apm-lock.sh)) that regenerates the lockfile
+   from `.apm/skills/` on a conflict, mirroring what
+   [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
+   already does for `uv.lock`. Without the driver, the `generated_at` timestamp every install
+   rewrites would conflict between any two branches that touched a skill, and line-merging the
+   hashes below it could record a lockfile matching neither side's sources.
 6. **Documentation.** The *Agent skill layout* section of [`CLAUDE.md`](../../CLAUDE.md) is rewritten
    around the single source, and the skill links in [`AGENTS.md`](../../AGENTS.md),
    [`docs/ai-development.md`](../../docs/ai-development.md) with its Japanese mirror,
@@ -151,7 +158,7 @@ it.
 - [x] Conversion of the fourteen skills to one `SKILL.md` each, with depth under `references/`
 - [x] Retirement of `.agent-workflows/`, `.agent-hosts/`, and `.agents`, with the roadmap links rewritten and BE-0384's design text moved to the single source
 - [x] Relocation of the textlint runtime and its `dependabot.yml` entry
-- [x] `make skills`, `make lint-skills`, the `make check` step, and the session-start hook
+- [x] `make skills`, `make lint-skills`, the `make check` step, the session-start hook, and the `apm.lock.yaml` merge driver wired by `make hooks`
 - [x] Documentation: `CLAUDE.md`, `AGENTS.md`, `docs/ai-development.md` (both languages), the contributor tutorial (both languages), and the review contract
 
 ## References
