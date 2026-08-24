@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0305") |
-| Implementing PR | [#1461](https://github.com/bajutsu-e2e/bajutsu/pull/1461), [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) |
+| Implementing PR | [#1461](https://github.com/bajutsu-e2e/bajutsu/pull/1461), [#1724](https://github.com/bajutsu-e2e/bajutsu/pull/1724) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0254](../BE-0254-coordinate-tree-driver-base/BE-0254-coordinate-tree-driver-base.md), [BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md), [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) |
 <!-- /BE-METADATA -->
@@ -101,7 +101,7 @@ Log:
   killed host process — so the diagnosis is correct but arrives after the full 60s recovery window
   rather than immediately. Left as-is here (the verdict is right and loud); a tighter liveness check is
   a separate item.
-- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) — promoted both lanes into their lanes'
+- [#1724](https://github.com/bajutsu-e2e/bajutsu/pull/1724) — promoted both lanes into their lanes'
   required aggregate checks, closing the item. The promotion condition was "once stable", and the
   first attempt to settle it by counting got the answer wrong in an instructive way: `gh run list
   --limit 150` returns the newest 150 runs, which at this repository's run density reaches back only
