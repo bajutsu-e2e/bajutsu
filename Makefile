@@ -216,6 +216,16 @@ lint-secrets:
 roadmap-status:
 	uv run python scripts/roadmap_query.py --status "$(STATUS)"
 
+# Find roadmap (BE) items by keyword, topic, or id — the same small table as `roadmap-status`, for
+# the question "is there already an item about X". Answers it from each item's title/Topic/
+# Introduction excerpt instead of a grep over ~127k lines of item prose (BE-0162). Composes with a
+# status, and refuses an unfiltered scan. Pure and offline, like `roadmap-status`.
+#   make roadmap-find ARGS="--grep scroll"
+#   make roadmap-find ARGS="--status Implemented --topic driver"
+#   make roadmap-find ARGS="--id BE-0349"
+roadmap-find:
+	uv run python scripts/roadmap_query.py $(ARGS)
+
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
 # predicts "green in CI". The uv-native checks run identically everywhere; actionlint is
 # the lone exception (see lint-actions above).
