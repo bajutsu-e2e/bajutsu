@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0282](BE-0282-real-backend-network-coverage-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0282") |
-| 実装 PR | [#1183](https://github.com/bajutsu-e2e/bajutsu/pull/1183)（web スライス）、[#1267](https://github.com/bajutsu-e2e/bajutsu/pull/1267)（web ジョブをゲートに昇格）、[#1701](https://github.com/bajutsu-e2e/bajutsu/pull/1701)（web の過剰マスク検出） |
+| 実装 PR | [#1183](https://github.com/bajutsu-e2e/bajutsu/pull/1183)（web スライス）、[#1267](https://github.com/bajutsu-e2e/bajutsu/pull/1267)（web ジョブをゲートに昇格）、[#1701](https://github.com/bajutsu-e2e/bajutsu/pull/1701)（web の過剰マスク検出）、[#1693](https://github.com/bajutsu-e2e/bajutsu/pull/1693)（iOS スライス） |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0020](../BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md), [BE-0027](../BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md), [BE-0003](../BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci-ja.md) |
 <!-- /BE-METADATA -->
@@ -82,19 +82,20 @@ response-schema の検証、sequence のマッチングはユニットテスト�
 
 - [x] web ネットワークスモーク: `--no-network` なしでモックとリクエストアサートを実行し、介入・キャプチャ・`mocked` フラグをアサートする。
 - [x] web の実キャプチャエビデンスの redaction（ヘッダ／ボディの秘密情報が永続化エビデンスでマスクされる）。
-- [ ] iOS collector の実経路: `network_mock.yaml` と `network_live.yaml` をゲート対象外ジョブとしてつなぐ。
+- [x] iOS collector の実経路: `network_mock.yaml` と `network_live.yaml` をゲート対象外ジョブとしてつなぐ。
 - [x] Android のネットワークギャップを明示的に記録する（ネイティブモニタが整うまでスコープ外）。
-- [x] まずシグナルとして着地させ、安定を確認してから必須に昇格させる。（web の `network (playwright)` ジョブは CI で安定を確認できたので `E2E (web)` ゲートに昇格。iOS レーンは今後。）
+- [x] まずシグナルとして着地させ、安定を確認してから必須に昇格させる。（web の `network (playwright)` ジョブは CI で安定を確認できたので `E2E (web)` ゲートに昇格。iOS の `network (xcuitest)` ジョブはシグナルとして着地し、同じ安定の実績を待っています。）
 
 ログ:
 
 - [#1183](https://github.com/bajutsu-e2e/bajutsu/pull/1183) — web スライス: デモアプリに Sync リクエストを追加し、`demos/web/scenarios/network.yaml`（モックされ、キャプチャされる、秘密情報を運ぶ `POST /api/sync`）、`fields: [password]` の redact ポリシー、`demos/web/network/assert_redaction.py`、`make -C demos/web e2e-network` ターゲット、ゲート対象外の `network (playwright)` CI ジョブを追加しました。Android のギャップはワークフローと `docs/architecture.md` に記録しました。iOS collector の実経路は後続に持ち越します。
 - [#1267](https://github.com/bajutsu-e2e/bajutsu/pull/1267) — `network (playwright)` ジョブが CI で安定を確認できた（直近 50 回の実行で失敗 0）ので、シグナルから必須の `E2E (web)` ゲートへ昇格させました。android-e2e.yml で既にゲート入りしている `network (adb)` の web 版にあたります。この昇格に合わせて、ジョブを説明する各ドキュメント（`docs/architecture.md`、`docs/ci.md`、`demos/web/README.md` と、それぞれの日本語ミラー）から「ゲート対象外／シグナルとして着地」の記述を落とし、同じ変更で更新しました。
 - [#1701](https://github.com/bajutsu-e2e/bajutsu/pull/1701) — web の redaction チェックが見落としていた、過剰なマスクを検出できるようにしました。プレースホルダでボディを丸ごと置き換えても、値をすべてマスクしても、ボディ側の規則はすべて満たされてしまうので、Sync リクエストの秘密でない `account` のキーと値が残っていることを新たに要求します。あわせて、チェック自体を実行するテストを追加しました。`assert_redaction.py` の `main` はゲートのテストからまったく実行されておらず、ブラウザレーンは正しくマスクされたエビデンスしか渡さないため、スクリプトの各規則は中身が生きているかどうかに関わらず通っていました。
+- [#1693](https://github.com/bajutsu-e2e/bajutsu/pull/1693) — iOS スライス（最後の単位）: `showcase-swiftui` に `redact: { fields: [password] }` のポリシー、`demos/showcase/network/assert_network_evidence.py`、`network_mock.yaml` と `network_live.yaml` を使い捨ての runs ディレクトリへ実行する `make -C demos/showcase e2e-network` ターゲット、そしてゲート対象外の `network (xcuitest)` CI ジョブを追加しました。redaction のチェックでは、スタブを介さない exchange が `mocked` を false として記録されることもアサートします。マッチ範囲の広すぎるモックが、何もスタブしていない通信を自分のものだと主張できないという確認で、モックした通信しか持たない web 版では行えません。ジョブのシナリオ帰属は `scripts/e2e_changes.py` が Makefile の宣言から読み（BE-0338）、`tests/test_showcase_network_demo.py` がシナリオ・ポリシー・アプリ側の秘密情報のリテラルを高速ゲートに固定します。起動済みの iPhone 17 Pro Simulator で検証しました。2 本のシナリオはいずれも PASS し、キャプチャされた `POST /post` は `mocked: true`・status 201 で、2 つの秘密情報はどちらも `[REDACTED]` にマスクされ、観測された `GET /horses` は `mocked: false` として記録されました。
 
 ## 参考
 
 - [BE-0020 — マルチバックエンドのエビデンスフォールバック](../BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md)
 - [BE-0027 — 外部モックサーバ](../BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md)
 - [BE-0003 — codegen、トレース、ネットワークと CI（M3）](../BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci-ja.md)
-- `bajutsu/network.py`、`bajutsu/web_network.py`、`demos/showcase/scenarios/network_live.yaml`、`demos/showcase/scenarios/network_mock.yaml`
+- `bajutsu/evidence/network.py`、`bajutsu/web_network.py`、`demos/showcase/scenarios/network_live.yaml`、`demos/showcase/scenarios/network_mock.yaml`

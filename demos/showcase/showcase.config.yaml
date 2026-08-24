@@ -40,6 +40,13 @@ targets:
     appPath: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
     build: make swiftui-build
     scenarios: scenarios
+    # Mask the Log submit's secret in captured network evidence (BE-0282), the iOS twin of the web
+    # demo's own policy. `Authorization` is masked by default (BE-0130); the `password` body field the
+    # app sends (ios/swiftui/Sources/LogView.swift) is app-specific, so it is named here.
+    # network_mock.yaml exercises this; network/assert_network_evidence.py checks the persisted
+    # evidence.
+    redact:
+      fields: [password]
     # `[ios]` resolves to XCUITest, the sole iOS backend since idb was retired (BE-0290). Its generic
     # runner drives this a11y app by bundle id, so the whole suite — including
     # gestures_multitouch.yaml's pinch/rotate and the driver conformance contract (BE-0114) — runs on
