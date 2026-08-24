@@ -170,7 +170,7 @@ it.
 - [x] Conversion of the fourteen skills to one `SKILL.md` each, with depth under `references/`
 - [x] Retirement of `.agent-workflows/`, `.agent-hosts/`, and `.agents`, with the roadmap links rewritten and BE-0384's design text moved to the single source
 - [x] Relocation of the textlint runtime and its `dependabot.yml` entry
-- [x] `make skills`, `make lint-skills`, the `make check` step, the session-start hook, and the `apm.lock.yaml` merge driver wired by `make hooks`
+- [x] `make skills`, `make lint-skills`, the `make check` step, the session-start hook, and the merge driver over APM's generated output (`apm.lock.yaml` and `.claude/skills/**`) wired by `make hooks`
 - [x] Documentation: `CLAUDE.md`, `AGENTS.md`, `docs/ai-development.md` (both languages), the contributor tutorial (both languages), and the review contract
 
 ## References

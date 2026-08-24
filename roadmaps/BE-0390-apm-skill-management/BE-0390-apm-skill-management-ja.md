@@ -101,12 +101,13 @@ APMは、スキル、プロンプト、指示、Model Context Protocol（MCP）�
    `uv run apm install --no-policy`を、`make lint-skills`で`uv run apm audit --ci --no-policy`を
    実行します。
    `apm audit --ci`は一時ディレクトリへインストールを再現し、ソースと異なる配備ファイルを報告します。
-   `make check`にはこの検査を加え、`apm`が入っていない環境では`lint-actions`や`lint-secrets`と
-   同じく通知を出して飛ばします。この2つと同様に、CIはバージョンを固定した`apm-cli`を導入して検査を
-   実行します。手元で検査を飛ばした変更でも、ずれがあればPRが落ちます。
-   [session-startフック](../../.claude/hooks/session-start.sh)は、バージョンを固定した`apm-cli`を
-   導入して`apm install`を実行し、webセッションがコミット済みのスキル集合から始まるようにします。
-   `apm install`はどの呼び出し箇所でも`--no-policy`を渡します。配備と、それを再生し直す検査とが
+   `make check`にはこの検査を加えますが、`lint-actions`や`lint-secrets`と違ってスキップの分岐は
+   ありません。この2つのツールは`uv`では解決できませんが、`apm-cli`は`dev`の依存なので常に走り、
+   手元で走らないことで検査が通ってしまう余地がありません。CIにも個別の導入手順は要りません。
+   [session-startフック](../../.claude/hooks/session-start.sh)も同様です。既存の
+   `uv sync --group dev`が`apm`を含むので、フックは配備だけを実行し、webセッションはコミット済みの
+   スキル集合から始まります。
+   `apm install`はどの呼び出し箇所でも`--no-policy`を渡します。配備と、それを再現する検査とが
    一つの設定の下に揃い、どちらもネットワークを必要としなくなるからです。渡さない場合、0.28.0は
    到達できないポリシーについて警告して先へ進みます。往復のコストがかかるうえ、警告が失敗のように
    読めてしまいます。
