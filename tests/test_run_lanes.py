@@ -274,6 +274,31 @@ def test_filter_scenarios_erase_flag_beats_scenario_and_target() -> None:
     assert scenarios[0].preconditions.erase is False
 
 
+# `iosTipKitHandling` rides the same BE-0177 precedence as `erase` above, so it gets the same three
+# cases. `--no-ios-tipkit-handling` is what the item's on-device verification uses to prove the guard
+# is load-bearing, so a silent regression in this override would invalidate that evidence while the
+# gate stayed green.
+
+
+def test_filter_scenarios_ios_tipkit_inherits_target_default() -> None:
+    scenarios = load_scenarios(_one_scenario("a"))
+    assert scenarios[0].ios_tip_kit_handling is None
+    _filter_scenarios(scenarios, "", "", None, False, None, True)
+    assert scenarios[0].ios_tip_kit_handling is True
+
+
+def test_filter_scenarios_ios_tipkit_scenario_beats_target() -> None:
+    scenarios = load_scenarios(_one_scenario("a") + "  iosTipKitHandling: false\n")
+    _filter_scenarios(scenarios, "", "", None, False, None, True)
+    assert scenarios[0].ios_tip_kit_handling is False
+
+
+def test_filter_scenarios_ios_tipkit_flag_beats_scenario_and_target() -> None:
+    scenarios = load_scenarios(_one_scenario("a") + "  iosTipKitHandling: true\n")
+    _filter_scenarios(scenarios, "", "", None, False, False, True)
+    assert scenarios[0].ios_tip_kit_handling is False
+
+
 # --- _alert_guard_factory: build the guard factory, or None when no scenario wants one
 
 

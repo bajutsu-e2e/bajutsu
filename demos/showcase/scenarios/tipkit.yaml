@@ -1,0 +1,45 @@
+# The TipKit guard: a framework-owned popover tip blocking a step, cleared by `iosTipKitHandling`.
+#
+# The fixture is gated on SHOWCASE_TIPKIT (like SHOWCASE_GESTURES/PICKERS) because a showing tip
+# hides the content it covers from the accessibility tree — always-on, it would break every other
+# Stable-tab scenario. That same hiding is why a blocked step fails as `ElementNotFound` rather than
+# `ElementNotTappable`, so this file is the on-device proof of both guard paths.
+#
+# iOS-only: TipKit is an Apple framework, so the tag keeps the Android and Flutter sweeps off it.
+- name: tipkit guard clears a tip blocking a tap
+  tags: [tipkit]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TIPKIT: "1" }
+  iosTipKitHandling: true
+  steps:
+    # No preceding wait on the target: the tip is already up when this tap is attempted, so the
+    # post-failure dismiss-and-retry is what has to carry it (the mid-wait gate never sees it).
+    - tap: { id: stable.refresh }
+    - wait: { for: { id: stable.status }, timeout: 10 }
+  expect:
+    - exists: { id: stable.refresh }
+
+- name: tipkit guard clears a tip blocking a wait
+  tags: [tipkit]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TIPKIT: "1" }
+  iosTipKitHandling: true
+  steps:
+    # The tip hides the rows, so this wait starts blocked and the mid-wait gate clears it — the
+    # target then resolves well inside the timeout rather than after it expires.
+    - wait: { for: { id: stable.row.1 }, timeout: 15 }
+    - tap: { id: stable.row.1 }
+    - wait: { for: { id: horse.title }, timeout: 10 }
+  expect:
+    - exists: { id: horse.title }
+
+- name: a tip is left alone when the scenario does not ask for the guard
+  tags: [tipkit]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TIPKIT: "1" }
+  steps:
+    # No `iosTipKitHandling`, so today's behavior holds: the tip stays, and a scenario asserting on it
+    # still can. Addresses the tip's own container rather than the dismiss region the guard uses.
+    - wait: { for: { id: TipView }, timeout: 10 }
+  expect:
+    - exists: { id: TipView }
