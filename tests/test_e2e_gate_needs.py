@@ -108,8 +108,16 @@ def _aggregator(lane: str) -> dict[str, Any]:
 
 
 def _check_step(job: dict[str, Any]) -> dict[str, Any]:
-    steps = [step for step in job["steps"] if "env" in step and "run" in step]
-    assert len(steps) == 1, f"expected one result-checking step, found {len(steps)}"
+    """The aggregator's verdict step, selected by the loop every caller here actually needs.
+
+    Selecting on "carries `env:` and `run:`" would instead pick up any second such step — a
+    `$GITHUB_STEP_SUMMARY` line, a debug `echo` over a `needs.*` value — and redden most of this file
+    at once over an addition that changed nothing about the gate.
+    """
+    steps = [
+        step for step in job["steps"] if "env" in step and _LOOP.search(str(step.get("run", "")))
+    ]
+    assert len(steps) == 1, f"expected one verdict step, found {len(steps)}"
     return steps[0]
 
 
@@ -240,6 +248,11 @@ def test_the_verdict_script_reddens_the_gate_for_every_dependency() -> None:
     — a permanently green required check. This one asks the script itself, once per dependency per
     result, which is also what proves a newly-gated job is wired into the verdict rather than merely
     named in `env:`.
+
+    Run under `-e`, because that is the shell Actions gives a `run:` step (`bash -e {0}`; none of the
+    three lanes overrides `shell:`). Without it the fidelity this layer rests on is one-directional in
+    the dangerous direction: a later verdict script whose intermediate command can fail would exit
+    non-zero on every real run while still passing here.
     """
     for lane in LANES:
         step = _check_step(_aggregator(lane))
@@ -247,7 +260,7 @@ def test_the_verdict_script_reddens_the_gate_for_every_dependency() -> None:
             for result, must_redden in RESULTS.items():
                 env = dict.fromkeys(_read_jobs(step), "success") | {var: result}
                 completed = subprocess.run(
-                    ["bash", "-c", step["run"]], env=env, capture_output=True, text=True
+                    ["bash", "-e", "-c", step["run"]], env=env, capture_output=True, text=True
                 )
                 assert (completed.returncode != 0) is must_redden, (
                     f"{lane}: with {var}={result} the gate exited {completed.returncode}, "
