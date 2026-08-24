@@ -41,9 +41,10 @@ jobs:
         run: uv sync --group dev
 
       # Each step invokes the matching `make` target so the gate's commands and file/target lists
-      # live only in the Makefile. gitleaks, actionlint, and apm are the separately-installed tools
+      # live only in the Makefile. gitleaks and actionlint are the separately-installed tools
       # (kept inline below: `make lint-secrets`/`make lint-actions` only run them when on PATH, but
-      # CI installs each).
+      # CI installs each). apm is not among them — it is a `dev` dependency, so the sync above
+      # covers it and `make lint-skills` has no skip branch to defeat.
       - name: Lockfile up to date (uv lock --check)
         run: make lock-check
 

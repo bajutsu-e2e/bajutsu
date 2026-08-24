@@ -40,9 +40,9 @@ make check        # format-check + lint + lint-docstrings + lint-imports + lint-
 Individual steps: `make format-check` · `make lint` · `make lint-docstrings` · `make lint-imports`
 · `make lint-sh` · `make lint-actions` · `make lint-js` · `make lint-roadmap` · `make lint-skills`
 · `make lint-secrets` · `make lock-check` · `make typecheck` · `make test`. (`make format` rewrites;
-the gate only checks.) Every step is uv-native and runs on a fresh clone — except `actionlint`,
-`gitleaks`, and `apm`, three tools that CI installs separately but `make` skips (with a notice) when
-they are absent. CI
+the gate only checks.) Every step is uv-native and runs on a fresh clone — except `actionlint` and
+`gitleaks`, two tools that CI installs separately but `make` skips (with a notice) when they are
+absent. CI
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the same steps on every PR —
 keeping the local bar identical is what makes "green locally" predict "green in CI".
 
