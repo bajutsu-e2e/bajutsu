@@ -187,8 +187,10 @@ differ from `ideation`'s, the specialized review lenses, and the loop's 3-round 
 The implementing PR is what ships the item, so promote it in this same change:
 
 1. In **both** language files, set the metadata `Status` to **Implemented**. Add an `Implementing PR:
-   [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN)` row right under `Status` once
-   the PR number exists (fill it at step 10 if you don't have it yet).
+   [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN)` row once the PR number exists (fill it at
+   step 10 if you don't have it yet) — directly **after `Tracking issue`**, which is the slot
+   [`scripts/check_roadmap_format.py`](../../../scripts/check_roadmap_format.py) enforces; put it
+   anywhere else and `make check` fails on metadata field order.
 2. Nothing else to regenerate: the item's directory never moves (BE-0159) — every item lives at a
    permanent flat `roadmaps/BE-NNNN-<slug>/` path, and `Status` decides only which bucket the
    [roadmap dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html) shows it under, read

@@ -163,7 +163,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:8c2f8bba04fcda0fe2e48531b07fe90ac34e5507a8ddd9a94bdbe08eb39d8d0a
+  content_hash: sha256:0231bece76a28b3de953ec45add8044872225ab3474d40d4c7aa1308ae8b6e1c
 - kind: project-relative
   target: claude
   value: .claude/skills/implement-be/references/pr-followup-loop.md
@@ -342,7 +342,7 @@ local_deployed_file_hashes:
   .claude/skills/fix-issue/SKILL.md: sha256:3d45b68a7d56ff77e78d0dee96f4d58cba98e60c56b9b8e68f64532df1c198f1
   .claude/skills/git-sync/SKILL.md: sha256:f9c2eb3a39c02a4a415294e9874c7dca8feb1654ffc5950d1705f84fe68970ea
   .claude/skills/ideation/SKILL.md: sha256:cb377d49e8ce06bd114a19e0d17b0928ab426e19e8794a9b398a5d3d7ca9aa9f
-  .claude/skills/implement-be/SKILL.md: sha256:8c2f8bba04fcda0fe2e48531b07fe90ac34e5507a8ddd9a94bdbe08eb39d8d0a
+  .claude/skills/implement-be/SKILL.md: sha256:0231bece76a28b3de953ec45add8044872225ab3474d40d4c7aa1308ae8b6e1c
   .claude/skills/implement-be/references/pr-followup-loop.md: sha256:bbda4633fe56634efe36949ce61fcffd24b4f1a873729764f3e1cc93c12089cf
   .claude/skills/implement-be/references/self-review.md: sha256:568d3025ad71272d01f2d0a8dbd23a39ddb1f40f8d0534628e5306dc4ad3e597
   .claude/skills/japanese-document-writing/SKILL.md: sha256:c4553cc7b7f77ed5e218bf29b4eef0e52192c88232ca7fcebdee345d330dc2c7
