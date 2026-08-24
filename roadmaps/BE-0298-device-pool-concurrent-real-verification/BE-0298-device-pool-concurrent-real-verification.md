@@ -174,14 +174,18 @@ Log:
   `before.png` and `after.png` are recorded per leaf step by the run loop itself (BE-0341), so no
   `capture:` value removes them, and `showcase.pool.config.yaml`'s comment claiming otherwise was
   corrected in the same change. The pixels scale with the *number of leaf steps*, which lives in the
-  scenario set: `smoke` + `push` + `interrupts` (three documents, seven leaf steps) replaces
+  scenario set: `smoke` + `firstlook` + `interrupts` (three documents, ten leaf steps) replaces
   `smoke` + `notices` (four documents, sixteen). The set holds three documents rather than two,
   though two would cut further: with two, each worker leases once and the cross-device overlap the
   verdict requires would hinge on two cold XCTest-host spawns landing within seconds of each
-  other — a host skew deciding an isolation verdict. The standing reading is unchanged: this is a
-  question about
-  the runner, and the next run measures whether the reduced step count buys enough headroom on a
-  host that has none.
+  other — a host skew deciding an isolation verdict. Which three is decided by the verdict too, on
+  review of this change: every one of them drives only the app's own UI on its own device, the
+  criterion the Android twin's `E2E_POOL_SCENARIOS` already uses, and one of the two dispatched
+  first is multi-step, since `scenario_window` measures a window from the steps' own `started_at`
+  and a single-step file leaves one too narrow for a late spawn to overlap. `push` is out on both
+  counts, and its own coverage is unaffected: the `actuation` job runs it. The standing reading is
+  unchanged: this is a question about the runner, and the next run measures whether the reduced step
+  count buys enough headroom on a host that has none.
 
 ## References
 

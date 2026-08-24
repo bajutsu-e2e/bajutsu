@@ -1291,7 +1291,8 @@ jobs:
     # job staged the products), so two boots + two installs + three scenario documents across two cold
     # XCTest-host startups is well under 15min when healthy, and the cap backs a genuine hang.
     # Under this job's own contention a wedged capture service is the likeliest hang, and it is exactly
-    # what the cap exists to bound — the measured failures spent most of their ~34min wall-clock there.
+    # what the cap exists to bound — the first two measured failures spent most of their ~34min
+    # wall-clock there.
     timeout-minutes: 60
     env:
       # The `run` job raises this floor to 20s for a cold-boot Simulator rendering its first Stable
@@ -1347,7 +1348,7 @@ jobs:
           xcrun simctl install "$UDID_B" "$APP"
 
       # Three state-neutral scenario documents over two devices, one per file, down from four across
-      # two files (`smoke` plus the `notices` file's three). The third measured collapse wedged
+      # two files (`smoke` plus the `notices` file's three). The fourth measured collapse wedged
       # *during* the scenarios rather than before them — `/screenshot` timed out on both workers
       # within seconds of each other, `SimRenderServer` then died on its own dispatch queue (its
       # crash report is in the uploaded diagnostics), and CoreSimulator stayed wedged through two
@@ -1356,22 +1357,32 @@ jobs:
       #
       # It is cut by *step count*, the only lever there is: `before.png` and `after.png` are recorded
       # for every leaf step by the run loop itself (`bajutsu/orchestrator/loop.py`, BE-0341), not by
-      # the capture list, so no config can drop them and a narrowed `capture:` moves nothing. Seven
+      # the capture list, so no config can drop them and a narrowed `capture:` moves nothing. Ten
       # leaf steps replace sixteen, which is what the pixels scale with.
       #
       # Three documents rather than two, though two would cut further: with two, each worker leases
       # once and its busy window is one short scenario long, so the cross-device overlap
       # `assert_pool_isolation.py` requires would hinge on two cold XCTest-host spawns landing within
-      # seconds of each other — turning a host skew into an isolation verdict. A third document
-      # keeps one worker busy across two scenarios, and the overlap holds the way it did at four.
+      # seconds of each other — turning a host skew into an isolation verdict. A third document keeps
+      # one worker busy across two scenarios. Document count alone does not buy that overlap, though:
+      # `scenario_window` derives each window from the steps' own `started_at` and leaves the launch
+      # outside it (scripts/assert_pool_isolation.py), so a spawn landing a minute after the other
+      # shifts a window rather than widening it. `firstlook` is what holds one open — five leaf steps
+      # against `smoke`'s one — so the pair dispatched at t0 cannot both be finished before the
+      # slower worker stamps its first step, and the skew stays a skew instead of becoming a verdict.
       #
-      # All three are shared showcase files, unchanged (BE-0221). None grants a permission or reseeds
-      # device state beyond its own launch env, and `push` is delivered by `simctl` to the leased
-      # udid alone, so neither worker's device can influence the other's through anything but the
-      # pool. `device.yaml` is deliberately not among them despite being the same size: its clipboard
-      # round trip goes through CoreSimulator's pasteboard service, whose own transient timeout
-      # (`_PBCOPY_*` in bajutsu/simctl.py) is one more host-fragility surface on the job whose
-      # failures are host fragility.
+      # All three are shared showcase files, unchanged (BE-0221), and each drives only the app's own
+      # UI on its own device — the criterion the Android twin's set is chosen by (`E2E_POOL_SCENARIOS`
+      # in demos/showcase/android/Makefile). None grants a permission or reseeds device state beyond
+      # its own launch env, so neither worker's device can influence the other's through anything but
+      # the pool. `push.yaml` is deliberately not among them, small as it is: `--workers 2` hands the
+      # third document to whichever worker frees first, so nothing here can be ordered after a
+      # delivered notification the way the `actuation` job orders its own list — and a scenario-level
+      # failure costs this job its whole point, since the isolation assertion runs only on a passing
+      # run. `device.yaml` is out for a second reason: its clipboard round trip goes through
+      # CoreSimulator's pasteboard service, whose own transient timeout (`_PBCOPY_*` in
+      # bajutsu/simctl.py) is one more host-fragility surface on the job whose failures are host
+      # fragility.
       #
       # Its own config, not the lane's: showcase.pool.config.yaml omits `capture:` so the run takes
       # the schema baseline and records no video, and `touch-markers: false` drops the per-touch
@@ -1381,7 +1392,7 @@ jobs:
         with:
           scenarios: >-
             demos/showcase/scenarios/smoke.yaml
-            demos/showcase/scenarios/push.yaml
+            demos/showcase/scenarios/firstlook.yaml
             demos/showcase/scenarios/interrupts.yaml
           target: showcase-swiftui
           backend: xcuitest
