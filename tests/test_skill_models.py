@@ -7,13 +7,12 @@ run. The one machine-checkable surface worth pinning is that the value is a *val
 typo fails here locally instead of silently falling back to some default at run time.
 
 This walks both trees: ``.claude/skills`` — the deployment Claude Code reads — and
-``.apm/skills``, its single source (BE-0390). Walking the source directly is what makes the check
-unconditional: ``apm install`` deploys frontmatter verbatim, but the drift step that would carry a
-source-only edit into the deployment (``make lint-skills``) skips when ``apm`` is absent, so a
-deployment-only walk would pass a typo introduced in a source on such a clone. Every ``model:``
-present must be recognized, and the
-skills that BE-0103 and BE-0380 wired must still declare one (so removing the field is a visible regression, not
-a silent drift back to always-max).
+``.apm/skills``, its single source (BE-0390). ``apm install`` deploys frontmatter verbatim, so the
+two normally agree; walking the source too pins the authoritative copy directly and names the
+offending tree when one side regresses on its own — a source edit whose ``make skills`` was
+forgotten, or a hand-edited deployment. Every ``model:`` present must be recognized, and the skills
+that BE-0103 and BE-0380 wired must still declare one (so removing the field is a visible
+regression, not a silent drift back to always-max).
 """
 
 from __future__ import annotations
