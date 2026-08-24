@@ -364,7 +364,7 @@ the run's artifacts and never feeds any scenario's pass/fail.
 The job takes a change filter of its own — `touches_pool` in `scripts/e2e_changes.py`, narrower
 than the lane-wide signal every other job reads — because it boots twice what the Android lane's
 other jobs boot. It stays a per-PR signal outside that lane's required aggregate check, on
-other jobs boot. The job stays a per-PR signal outside the Android lane's required aggregate check, on
+BE-0282's signal-then-required path and for the same reason the fault-injection lanes take that path:
 two emulators against one runner is the most resource-sensitive work the lane carries.
 
 An iOS twin, `pool (xcuitest)`, booted two Simulators on the macOS lane until BE-0298 withdrew it.
@@ -376,8 +376,8 @@ and 7 GiB, with a *single* booted Simulator bringing up 257 guest processes and 
 physical memory unused, so a second Simulator doubles the guest population against an already
 saturated ceiling. Dropping the video recording, the touch markers, and half the scenarios moved the
 collapse earlier without removing it. So the isolation claim now rests on real concurrent devices on
-collapse earlier without removing it. The isolation claim now rests on real concurrent devices on
-Android; on iOS it rests on the fast suite's bookkeeping proof alone.
+Android, and on iOS on the fast suite's bookkeeping proof alone.
+
 ---
 
 ## Implementation status
@@ -618,6 +618,17 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   the AI-vision guard demoted to a fallback for what the native path can't name (a backend lacking the
   capability, a non-enumerable blocking surface, or a free-text `instruction` the native path can't
   resolve to one label); on by default, `false` disables it per scenario
+- DSL `iosTipKitHandling` (BE-0389), an opt-in guard for a blocking Apple TipKit tip: TipKit's
+  presentation marks the content it covers accessibility-hidden rather than merely occluding it, so a
+  blocked tap can fail as `ElementNotFound`, not only `ElementNotTappable`. The XCUITest backend alone
+  declares `Capability.HANDLE_TIPKIT_TIP` and implements `Driver.dismiss_blocking_tip()` by resolving
+  the tip's own `PopoverDismissRegion` scrim — no Swift runner change, since the tip already surfaces
+  in the same accessibility tree every wait poll and tap resolution already fetches. The step loop
+  retries a step once when the dismiss actually found and cleared a tip, beside the alert guard's own
+  end-of-step branch, and the dismiss also composes onto BE-0314's `on_interrupt_poll` hook so a wait
+  is not held to its full timeout by one either. Defaults off (unlike `systemAlertHandling`) because a
+  scenario sometimes asserts on the tip itself; `--ios-tipkit-handling`/`--no-ios-tipkit-handling`
+  follows the same flag > scenario > target > default precedence as `systemAlertHandling` (BE-0177)
 - Evidence: instant (`screenshot`/`elements`/`actionLog`/`rawTree` — `actionLog` carries each step's
   concrete actuations: the coordinate sent, the gesture's geometry, the channel that carried it;
   `rawTree` carries the raw dump behind `elements`, opt-in, adb and XCUITest) + interval
