@@ -51,16 +51,11 @@ fi
 log "uv sync --group dev"
 uv sync --group dev >&2
 
-# Deploy the agent skills from their single source (BE-0390). The committed .claude/skills/ tree
-# already matches, so this is normally a no-op; it also puts `apm` on PATH, which is what keeps
-# `make check`'s lint-skills step from skipping in a web session. Best-effort, like every step here.
-log "installing apm and deploying skills"
-uv tool install "apm-cli==$(make -s print-apm-version)" >&2 || log "apm-cli install failed (non-fatal)"
-if command -v apm >/dev/null 2>&1; then
-  apm install --no-policy >&2 || log "apm install (skill deploy) failed (non-fatal)"
-else
-  log "apm not on PATH after install — skills not deployed, lint-skills will skip"
-fi
+# Deploy the agent skills from their single source (BE-0390). The `uv sync` above already installed
+# apm-cli, a `dev` dependency, so there is nothing to install here. The committed .claude/skills/
+# tree already matches its source, so this is normally a no-op. Best-effort, like every step here.
+log "apm install (deploy skills)"
+uv run --no-sync apm install --no-policy >&2 || log "apm install (skill deploy) failed (non-fatal)"
 
 # Point git at the tracked hooks so the pre-push gate runs for this session.
 # Safe to re-run; just rewrites a single config value.

@@ -62,21 +62,15 @@ jobs:
       - name: Lint roadmap (cross-links + author handle)
         run: make lint-roadmap
 
-      # `make lint-skills` skips with a notice when apm isn't on PATH, so without this install the
-      # skill-drift check would skip everywhere and never fail a PR (BE-0390). Pinned to the exact
-      # version the item was verified against; uv resolves it from PyPI like the Python deps.
-      - name: Install apm
-        run: |
-          uv tool install "apm-cli==$(make -s print-apm-version)"
-          apm --version   # fail here rather than let `make lint-skills` skip silently
-
       # Fails when a deployed .claude/skills/ file no longer matches its .apm/skills/ source —
-      # a hand-edited deployment, or a source edit whose `make skills` was forgotten.
+      # a hand-edited deployment, or a source edit whose `make skills` was forgotten. apm-cli is a
+      # `dev` dependency, so the `uv sync --group dev` above already installed the pinned version —
+      # no separate install step, and no way for the check to skip (BE-0390).
       - name: Lint agent skills (apm audit)
         run: make lint-skills
 
-      # gitleaks (https://github.com/gitleaks/gitleaks) isn't pip/uv-installable — one of the three
-      # gate checks needing its own install, alongside apm above and actionlint below. Same pattern
+      # gitleaks (https://github.com/gitleaks/gitleaks) isn't pip/uv-installable — one of the two
+      # gate checks needing its own install, alongside actionlint below. Same pattern
       # as actionlint: pin
       # the release tarball by exact version and verify its checksum (the release's own published
       # checksums.txt), since the download URL itself is a mutable release asset.

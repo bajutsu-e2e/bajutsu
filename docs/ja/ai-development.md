@@ -157,8 +157,8 @@ git worktree remove ../bajutsu-<topic>
 向けのツリーを書き出しません。`apm.lock.yaml` には、配備ファイルごとの SHA-256 が記録されます。
 
 ```bash
-make skills        # apm install --no-policy — .apm/skills/ を .claude/skills/ へ配備する
-make lint-skills   # apm audit --ci --no-policy — ずれがあれば落とす（`make check` に含む）
+make skills        # uv run apm install --no-policy — .apm/skills/ を .claude/skills/ へ配備する
+make lint-skills   # uv run apm audit --ci --no-policy — ずれがあれば落とす（`make check` に含む）
 ```
 
 **ソースと配備先の両方をコミットします。** クローンした直後から、APM を入れる前に動くスキルセットが
@@ -172,13 +172,12 @@ make lint-skills   # apm audit --ci --no-policy — ずれがあれば落とす�
 その差分は破棄してかまいません。
 
 `make lint-skills` は、どちらの向きのずれも捕まえます。配備先を手で書き換えた場合と、ソースを編集して
-`make skills` を忘れた場合の両方です。`lint-actions` や `lint-secrets` と同じく、`apm` が PATH にない
-ときは通知を出してスキップします。CI は版を固定した `apm-cli` を入れて実行するので、貢献者の手元で
-スキップされても、ずれはプルリクエストで落ちます。ローカルへの導入は
-`uv tool install "apm-cli==$(make -s print-apm-version)"` です。[`Makefile`](../../Makefile) の
-`APM_VERSION` が唯一の固定箇所で、CI と session-start フックも同じ値を読みます。更新は 1 ファイルで
-済みます（このページの他の箇所にある `0.28.0` は、挙動を確認した版の記録なので、更新の対象では
-ありません）。
+`make skills` を忘れた場合の両方です。`lint-actions` や `lint-secrets` と違って、この段には**スキップの
+分岐がありません**。`apm-cli` は [`pyproject.toml`](../../pyproject.toml) で版を固定した `dev` の依存で、
+`uv sync --group dev` がどのクローンにも入れるので、走らないことで通ってしまう余地がないからです。
+固定は下限ではなく厳密な指定で、`uv.lock` にも記録されます。したがって `apm.lock.yaml` を書き出す版は、
+手元でも CI でも同じです（このページの他の箇所にある `0.28.0` は、挙動を確認した版の記録なので、
+更新の対象ではありません）。
 
 この検査は prime directive 1 に触れません。`apm audit` は記録済みのハッシュと作業ツリーを比較するだけで、
 ゲートに言語モデルは届きません。`--no-policy` は検査をオフラインにも保ちます。これがないと、組織ポリシーの
@@ -316,8 +315,8 @@ Claude Codeのハーネスはスキル実行時にこれを読み、正しいモ
 
 軽い雑務の多くはスキルではないので、その段階はふだん下の対話操作かサブエージェントへの委譲で使います。
 `roadmap-filter` は例外で、その仕事そのものが軽い決定論的な検索だからです。`tests/test_skill_models.py` が
-配備済みのスキルそれぞれの `model:` を既知の妥当なidかどうか確認するので、打ち間違いは黙って握りつぶされず、
-ローカルのゲートが落とします。
+スキルそれぞれの `model:` を、配備先だけでなく `.apm/skills/` のソースについても、既知の妥当なidかどうか
+確認するので、打ち間違いは黙って握りつぶされず、ローカルのゲートが落とします。
 
 ### フェーズとサブエージェントへの委譲
 

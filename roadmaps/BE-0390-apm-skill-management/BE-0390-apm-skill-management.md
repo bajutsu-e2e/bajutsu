@@ -92,18 +92,20 @@ The work breaks down into six independent pieces:
    sits at `.agent-workflows/document-writing/textlint/` therefore moves to a repository path outside
    the skill tree. The `document-writing` skill and the npm entry in
    [`.github/dependabot.yml`](../../.github/dependabot.yml) both point at the new path.
-5. **Tooling.** `make skills` runs `apm install --no-policy`; `make lint-skills` runs
-   `apm audit --ci --no-policy`, which
+5. **Tooling.** `apm-cli` is a `dev` dependency pinned exactly in `pyproject.toml`, so `uv` resolves
+   it like every other Python tool and `uv.lock` carries the version that writes `apm.lock.yaml`.
+   `make skills` runs `uv run apm install --no-policy`; `make lint-skills` runs
+   `uv run apm audit --ci --no-policy`, which
    replays the install into a scratch directory and reports any deployed file that differs from its
-   source. `make check` gains the audit step, skipping it with a notice when the `apm` binary is
-   absent, the way `lint-actions` and `lint-secrets` already skip — and, as for those two, CI
-   installs a pinned `apm-cli` and runs the audit there, so drift fails a pull request even when a
-   contributor's machine skipped the check. The
-   [session-start hook](../../.claude/hooks/session-start.sh) installs a pinned `apm-cli` and runs
-   `apm install`, so a web session starts from the committed skill set. Every `apm install` call
-   site passes `--no-policy`, so the deploy and the audit that replays it run under one
-   configuration and neither needs the network; without it 0.28.0 warns about the unreachable
-   policy and proceeds, which costs a round trip and reads like a failure. `make hooks` gains one more
+   source. `make check` gains the audit step with **no skip branch** — unlike `lint-actions` and
+   `lint-secrets`, whose tools genuinely cannot be resolved by `uv`, this one always runs, so the
+   drift check cannot pass by not running on a contributor's machine. The
+   [session-start hook](../../.claude/hooks/session-start.sh) needs no install step either; its
+   existing `uv sync --group dev` covers apm, and it only deploys, so a web session starts from the
+   committed skill set. Every `apm install` call site passes `--no-policy`, so the deploy and the
+   audit that replays it run under one configuration and neither needs the network; without it
+   0.28.0 warns about the unreachable policy and proceeds, which costs a round trip and reads like
+   a failure. `make hooks` gains one more
    local git setting: a merge driver over APM's committed generated output
    ([`scripts/merge-apm-generated.sh`](../../scripts/merge-apm-generated.sh)) that regenerates both
    `apm.lock.yaml` and the deployed `.claude/skills/**` tree from `.apm/skills/` on a conflict,

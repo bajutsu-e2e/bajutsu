@@ -107,8 +107,13 @@ dev = [
     "pytest-cov>=5",
     "pytest-xdist>=3",
     "ruff>=0.5",
+    # Deploys and audits the agent skills (BE-0390), resolved by uv like every other dep so
+    # `make lint-skills` cannot silently skip on a clone that never installed a separate tool.
+    # Pinned exactly, not floored: apm.lock.yaml is `apm install` output, so the version writing it
+    # is part of what makes "green locally" predict "green in CI", and uv.lock carries that pin.
+    "apm-cli==0.28.0",
     # Bundles the `shellcheck` binary so the gate lints shell scripts via uv alone
-    # (no system package needed). The lone non-uv check is actionlint (CI-installed).
+    # (no system package needed). The non-uv checks are actionlint and gitleaks (CI-installed).
     "shellcheck-py>=0.10",
     "types-pyyaml>=6.0",
 ]

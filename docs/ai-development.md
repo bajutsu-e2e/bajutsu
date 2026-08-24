@@ -191,8 +191,8 @@ pins `targets: [claude]`, so APM deploys only to `.claude/skills/` and never wri
 produces for other harnesses. `apm.lock.yaml` records a SHA-256 for every deployed file.
 
 ```bash
-make skills        # apm install --no-policy — deploy .apm/skills/ to .claude/skills/
-make lint-skills   # apm audit --ci --no-policy — fail on drift (part of `make check`)
+make skills        # uv run apm install --no-policy — deploy .apm/skills/ to .claude/skills/
+make lint-skills   # uv run apm audit --ci --no-policy — fail on drift (part of `make check`)
 ```
 
 **Both sides are committed** — the source and the deployed `.claude/skills/` tree — so a fresh
@@ -207,13 +207,12 @@ timestamp-only diff therefore means the lockfile was regenerated rather than upd
 ignores the line, so discarding that diff is fine.
 
 `make lint-skills` catches the drift either way round — a deployed file edited by hand, and a source
-edit whose `make skills` was forgotten. Like `lint-actions` and `lint-secrets`, it skips with a notice when `apm` isn't on PATH;
-CI installs a pinned `apm-cli` and runs it there, so drift fails a pull request even when a
-contributor's machine skipped the check. Install it locally with
-`uv tool install "apm-cli==$(make -s print-apm-version)"` — the `APM_VERSION` in the
-[`Makefile`](../Makefile) is the single pin CI and the session-start hook read too, so a bump lands
-in one file. (The bare `0.28.0` elsewhere on this page records what the behavior was *verified*
-against, which no bump changes.)
+edit whose `make skills` was forgotten. Unlike `lint-actions` and `lint-secrets`, it has **no skip
+branch**: `apm-cli` is a `dev` dependency pinned in [`pyproject.toml`](../pyproject.toml), so
+`uv sync --group dev` installs it on any clone and the check cannot pass by not running. The pin is
+exact rather than a floor, and `uv.lock` records it, so the version writing `apm.lock.yaml` is the
+same locally and in CI. (The bare `0.28.0` elsewhere on this page records what the behavior was
+*verified* against, which no bump changes.)
 
 The check stays clear of prime directive 1: `apm audit` compares recorded hashes against the working
 tree, so no language model reaches the gate. `--no-policy` keeps it offline as well — organization
@@ -369,8 +368,8 @@ overridable:
 
 Most light-tier chores aren't skills, so that tier is otherwise reached interactively or by subagent
 delegation, below — `roadmap-filter` is the exception, since its whole job is one light,
-deterministic lookup. `tests/test_skill_models.py` checks that each deployed skill's `model:`
-is a known, valid id, so a typo fails the gate locally instead of silently falling back.
+deterministic lookup. `tests/test_skill_models.py` checks that each skill's `model:` — in the
+`.apm/skills/` source as well as the deployed tree — is a known, valid id, so a typo fails the gate locally instead of silently falling back.
 
 ### Phases and subagent delegation
 

@@ -11,7 +11,8 @@
 # regenerate them from .apm/skills/ and hand git the fresh bytes.
 #
 # Wired by `make hooks` / `make setup` as the `apm-generated` merge driver; `.gitattributes` maps
-# both paths to it. Git invokes us with the current/ours temp file (%A) that we must overwrite with
+# both paths to it. apm reaches us through `uv run`, since apm-cli is a `dev` dependency rather than
+# a separately installed tool, so a synced clone needs nothing extra for a merge to resolve. Git invokes us with the current/ours temp file (%A) that we must overwrite with
 # the merged result, and the real pathname being merged (%P) — which is where `apm install` writes,
 # so we copy from there. One `apm install` per conflicted file is redundant but cheap (~0.2s) and
 # keeps the driver stateless; git gives it no way to know how many files a merge still has to go.
@@ -26,13 +27,8 @@ set -euo pipefail
 merged="$1" # %A — git expects the resolved content written here
 path="$2"   # %P — the pathname being merged, which is what `apm install` rewrites
 
-if ! command -v apm >/dev/null 2>&1; then
-	echo "merge-apm-generated: apm not installed — install apm-cli, then 'make skills' and re-merge" >&2
-	exit 1
-fi
-
-if ! apm install --no-policy >/dev/null; then
-	echo "merge-apm-generated: 'apm install' failed — fix the skill sources, then re-merge" >&2
+if ! uv run --no-sync apm install --no-policy >/dev/null 2>&1; then
+	echo "merge-apm-generated: 'uv run apm install' failed — run 'uv sync --group dev', fix the skill sources, then re-merge" >&2
 	exit 1
 fi
 

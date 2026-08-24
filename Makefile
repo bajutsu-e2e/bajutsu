@@ -1,14 +1,7 @@
 .PHONY: setup hooks install deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck \
         lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr lint-secrets skills lint-skills \
         check new-roadmap-item \
-        roadmap-status roadmap-dashboard docs docs-serve docs-diagrams runner-bundle \
-        print-apm-version
-
-# The one place the apm-cli pin lives (BE-0390). apm.lock.yaml is generated output, so the version
-# that writes it is part of what "green locally predicts green in CI" rests on. CI and the
-# session-start hook read this through `print-apm-version` rather than repeating the literal, so a
-# bump lands in one file instead of three.
-APM_VERSION := 0.28.0
+        roadmap-status roadmap-dashboard docs docs-serve docs-diagrams runner-bundle
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
 # Simulator). Installs the Python toolchain and wires the tracked git hooks.
@@ -138,7 +131,7 @@ lint-sh:
 	uv run shellcheck $(SHELL_SCRIPTS)
 
 # actionlint is a standalone Go binary (not pip/uv installable), so it needs a separate install —
-# as do gitleaks (lint-secrets) and apm (lint-skills). CI always installs and runs it; locally we lint
+# as does gitleaks (lint-secrets). CI always installs and runs it; locally we lint
 # the workflows if it's present and skip with a notice otherwise, so `check` still runs
 # anywhere. Install locally: https://github.com/rhysd/actionlint/blob/main/docs/install.md
 lint-actions:
@@ -227,32 +220,17 @@ lint-secrets:
 # replays it run under one configuration: org-policy discovery would otherwise reach api.github.com,
 # which only warns when it fails but leaves this offline-resolvable install needing the network.
 skills:
-	apm install --no-policy
+	uv run apm install --no-policy
 
 # Fail when a deployed skill file no longer matches its source. `apm audit --ci` replays the
 # install and compares against the lockfile's hashes, so it catches drift in both directions: a
 # deployed file edited by hand, and a source edit whose `make skills` was forgotten. --no-policy
 # keeps the check offline (org-policy discovery would otherwise reach api.github.com) and
-# deterministic — the same reason no LLM sits anywhere near this gate step. Skips with a notice,
-# like `lint-actions`/`lint-secrets`, when apm isn't on PATH; CI installs a pinned apm-cli and runs
-# it there, so drift fails a pull request even when a contributor's machine skipped the check.
-# A local apm that differs from the pin only warns: it audits a lockfile CI's pinned apm may write
-# differently, which is worth knowing when a drift failure looks inexplicable, but failing here
-# would force a downgrade to defend against a divergence no released version demonstrates.
+# deterministic — the same reason no LLM sits anywhere near this gate step. Unlike lint-actions and
+# lint-secrets there is no skip branch: apm-cli is a `dev` dependency (pyproject.toml), so uv
+# resolves the pinned version on any clone and this step cannot pass by not running.
 lint-skills:
-	@if command -v apm >/dev/null 2>&1; then \
-		apm --version 2>/dev/null | grep -qF "$(APM_VERSION)" \
-		  || echo "lint-skills: local apm differs from the pinned $(APM_VERSION) — see docs/ai-development.md"; \
-		apm audit --ci --no-policy; \
-	else \
-		echo "lint-skills: apm not installed — skipping (CI enforces it); see docs/ai-development.md"; \
-	fi
-
-# Print the pinned apm-cli version, for callers that can't read a make variable directly
-# (.github/workflows/ci.yml, .claude/hooks/session-start.sh). Bare `echo` so `make -s` output is
-# exactly the version and nothing else.
-print-apm-version:
-	@echo "$(APM_VERSION)"
+	uv run apm audit --ci --no-policy
 
 # Filter roadmap (BE) items by Status into one small table — ID / Item / Topic / Path — so an AI
 # session surveys just the rows it needs (e.g. every Proposal) without paging through the dashboard's
@@ -264,9 +242,9 @@ roadmap-status:
 	uv run python scripts/roadmap_query.py --status "$(STATUS)"
 
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
-# predicts "green in CI". The uv-native checks run identically everywhere; actionlint, gitleaks,
-# and apm are the exceptions — CI installs each one, and the step skips with a notice when it is
-# absent (see lint-actions / lint-secrets / lint-skills above).
+# predicts "green in CI". The uv-native checks run identically everywhere; actionlint and gitleaks
+# are the exceptions — CI installs each one, and the step skips with a notice when it is absent
+# (see lint-actions / lint-secrets above).
 check: hooks format-check lint lint-docstrings lint-imports lint-sh lint-actions lint-js lint-roadmap lint-skills lint-secrets lock-check typecheck test
 
 # Generated API reference (BE-0065). Deliberately NOT in `check`: like on-device E2E, the

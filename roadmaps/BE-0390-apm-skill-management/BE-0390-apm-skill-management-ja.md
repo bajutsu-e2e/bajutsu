@@ -96,8 +96,10 @@ APMは、スキル、プロンプト、指示、Model Context Protocol（MCP）�
    リポジトリパスへ移します。`document-writing`スキルと
    [`.github/dependabot.yml`](../../.github/dependabot.yml)のnpmエントリは、移設先を指すように
    更新します。
-5. **ツール整備**：`make skills`で`apm install --no-policy`を、`make lint-skills`で
-   `apm audit --ci --no-policy`を実行します。
+5. **ツール整備**：`apm-cli`は`pyproject.toml`で版を厳密に固定した`dev`の依存です。ほかのPythonツールと
+   同じく`uv`が解決し、`apm.lock.yaml`を書き出す版は`uv.lock`が記録します。`make skills`で
+   `uv run apm install --no-policy`を、`make lint-skills`で`uv run apm audit --ci --no-policy`を
+   実行します。
    `apm audit --ci`は一時ディレクトリへインストールを再現し、ソースと異なる配備ファイルを報告します。
    `make check`にはこの検査を加え、`apm`が入っていない環境では`lint-actions`や`lint-secrets`と
    同じく通知を出して飛ばします。この2つと同様に、CIはバージョンを固定した`apm-cli`を導入して検査を
