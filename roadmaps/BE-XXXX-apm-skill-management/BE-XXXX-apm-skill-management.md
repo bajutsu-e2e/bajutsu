@@ -61,19 +61,31 @@ The work breaks down into six independent pieces:
    optional `references/`, `scripts/`, and `assets/` directories. `.gitignore` gains `apm_modules/`,
    the package cache APM rebuilds from the lockfile. We commit `apm.yml`, `apm.lock.yaml`, and the
    deployed `.claude/skills/` tree, so a fresh clone has a working skill set before anyone runs a
-   command.
+   command. `.claude/skills/.gitignore` goes away with the old layout and all fourteen skills ship
+   committed, which resolves the local-only contradiction above: under a committed deployment
+   target, an ignored entry would only hide files `apm install` keeps writing and `apm audit` keeps
+   reporting.
 2. **Skill conversion.** Each of the fourteen skills folds its Claude Code adapter's host-specific
    instructions — the Agent tool, `/loop`, the `pr-review-toolkit` plugin, the per-role models — into
    its single `SKILL.md`. Each also splits its procedure, so the body stays within APM's budget and
    the depth moves to `references/`. Frontmatter passes through verbatim, so `model: haiku` on
    `roadmap-filter` and `be-progress-tracker` survives the move and the model tiering of
    [BE-0103](../BE-0103-dev-model-effort-tiering/BE-0103-dev-model-effort-tiering.md) is unaffected.
+   Three skills split differently. `document-writing`, `english-document-writing`, and
+   `japanese-document-writing` are norm sets that [`CLAUDE.md`](../../CLAUDE.md) mandates applying in
+   full rather than step sequences, so each keeps its complete norm set in `SKILL.md`; where a norm
+   set exceeds the budget, its `SKILL.md` opens by telling the host to load every `references/` file
+   before drafting. Partial loading is what this exception rules out: no step *needs* a norm, so a
+   host left to load on demand could apply a subset and still believe it followed the skill.
 3. **Retirement of the old trees.** We delete `.agent-workflows/`, `.agent-hosts/`, the `.agents`
    symlink, and the two `README.md` files documenting them. Five roadmap items — BE-0366, BE-0379,
    BE-0380, BE-0383, and BE-0384 — link into `.agent-workflows/` about eighty times across both
    languages; each link is rewritten to the item's new `.apm/skills/<name>/SKILL.md` path in the
-   same change. The roadmap linter checks links *into* `roadmaps/` rather than out of it, so these
-   would rot silently rather than fail the gate.
+   same change. BE-0384 (`record-issue`) needs more than its links rewritten: it is still a
+   `Proposal`, and its *Detailed design* and *Progress* checklist prescribe the three-file layout, so
+   that design text moves to the single source too — otherwise implementing it later recreates the
+   trees this piece deletes. The roadmap linter checks links *into* `roadmaps/` rather than out of
+   it, so these would rot silently rather than fail the gate.
 4. **Relocation of the textlint runtime.** APM copies every file beneath a skill's source directory,
    including a `node_modules/` a contributor has installed there. The textlint runtime that today
    sits at `.agent-workflows/document-writing/textlint/` therefore moves to a repository path outside
@@ -133,9 +145,9 @@ it.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Manifest, source tree, and the committed deployment (`apm.yml`, `.apm/skills/`, `.gitignore`)
+- [ ] Manifest, source tree, and the committed deployment (`apm.yml`, `.apm/skills/`, the root `.gitignore`, and the removal of `.claude/skills/.gitignore`)
 - [ ] Conversion of the fourteen skills to one `SKILL.md` each, with depth under `references/`
-- [ ] Retirement of `.agent-workflows/`, `.agent-hosts/`, and `.agents`, with the roadmap links rewritten
+- [ ] Retirement of `.agent-workflows/`, `.agent-hosts/`, and `.agents`, with the roadmap links rewritten and BE-0384's design text moved to the single source
 - [ ] Relocation of the textlint runtime and its `dependabot.yml` entry
 - [ ] `make skills`, `make lint-skills`, the `make check` step, and the session-start hook
 - [ ] Documentation: `CLAUDE.md`, `AGENTS.md`, `docs/ai-development.md` (both languages), the contributor tutorial (both languages), and the review contract
@@ -150,6 +162,8 @@ it.
   receives each primitive, and the source of the `.agents/skills/` collision noted above.
 - [BE-0103](../BE-0103-dev-model-effort-tiering/BE-0103-dev-model-effort-tiering.md) — the model and
   effort tiering carried by the `model:` frontmatter that survives the move.
-- [BE-0379](../BE-0379-be-progress-tracker/BE-0379-be-progress-tracker.md) and
-  [BE-0380](../BE-0380-fix-issue-skill/BE-0380-fix-issue-skill.md) — the two most recent items whose
-  design assumes the three-tree layout this item retires.
+- [BE-0379](../BE-0379-be-progress-tracker/BE-0379-be-progress-tracker.md),
+  [BE-0380](../BE-0380-fix-issue-skill/BE-0380-fix-issue-skill.md), and
+  [BE-0384](../BE-0384-record-issue-skill/BE-0384-record-issue-skill.md) — items whose design assumes
+  the three-tree layout this item retires. BE-0384 is the one still unbuilt (`Status: Proposal`), so
+  its design text, not only its links, moves with the layout.

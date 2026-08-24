@@ -64,18 +64,29 @@ APMは、スキル、プロンプト、指示、Model Context Protocol（MCP）�
    必要に応じた`references/`、`scripts/`、`assets/`です。`.gitignore`には、APMがロックファイルから
    再構築するキャッシュ`apm_modules/`を加えます。`apm.yml`と`apm.lock.yaml`、そして配備先の
    `.claude/skills/`はコミットします。クローンした直後、コマンドを1つも実行しない状態でスキルが
-   揃うためです。
+   揃うためです。`.claude/skills/.gitignore`は、旧構成とともに削除し、14個すべてをコミット対象に
+   します。動機で述べたローカル限定の矛盾は、これで解消します。配備先をコミットする方針のもとでは、
+   無視の指定は`apm install`が書き続け`apm audit`が報告し続けるファイルを隠すだけだからです。
 2. **スキルの変換**：14個のスキルそれぞれについて、Claude Codeアダプターが持つホスト固有の指示を
    単一の`SKILL.md`へ畳み込みます。畳み込む対象は、Agentツール、`/loop`、`pr-review-toolkit`
    プラグイン、役割ごとのモデル指定です。あわせて手順を分割し、本文をAPMの規約の範囲に収めたうえで、詳細を
    `references/`へ移します。frontmatterはそのまま配備されるため、`roadmap-filter`と
    `be-progress-tracker`の`model: haiku`は移行後も残り、
    [BE-0103](../BE-0103-dev-model-effort-tiering/BE-0103-dev-model-effort-tiering-ja.md)が定めた
-   モデルの使い分けに影響はありません。
+   モデルの使い分けに影響はありません。ただし、3つのスキルは分割の仕方が異なります。
+   `document-writing`、`english-document-writing`、`japanese-document-writing`は手順の並びではなく、
+   [`CLAUDE.md`](../../CLAUDE.md)が全体の適用を義務づける規範の集合です。そこで、この3つは規範の
+   全体を`SKILL.md`に残します。分量が規約を超える場合は、執筆の前に`references/`のすべてを読むよう
+   `SKILL.md`の冒頭で指示します。この例外が排除するのは部分的な読み込みです。規範を必要とする
+   「手順」は存在しないため、必要に応じた読み込みに任せると、一部だけを適用しながらスキルに従ったと
+   見なす事態が起こります。
 3. **旧ツリーの撤去**：`.agent-workflows/`と`.agent-hosts/`、`.agents`シンボリックリンクを
    削除します。両ツリーを説明する2つの`README.md`も削除します。BE-0366、BE-0379、BE-0380、
    BE-0383、BE-0384の5件は、両言語あわせて約80箇所で`.agent-workflows/`へリンクしています。
-   各リンクは、同じ変更で新しい`.apm/skills/<name>/SKILL.md`のパスへ書き換えます。
+   各リンクは、同じ変更で新しい`.apm/skills/<name>/SKILL.md`のパスへ書き換えます。BE-0384
+   （`record-issue`）は、リンクの書き換えだけでは足りません。状態が`提案`のままであり、*詳細設計*と
+   *進捗*のチェックリストが3ファイル構成を指示しているためです。この設計の記述も、単一ソースの構成へ
+   書き換えます。放置すると、後から実装する人が、本項目で削除したツリーを作り直すことになります。
    ロードマップのリンターが検査するのは`roadmaps/`へ入るリンクであって出るリンクではないため、
    書き換えを怠るとゲートは通ったままリンクだけが壊れます。
 4. **textlint実行環境の移設**：APMはスキルのソースディレクトリ配下のファイルをすべて複製します。
@@ -137,9 +148,9 @@ APMは、スキル、プロンプト、指示、Model Context Protocol（MCP）�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] マニフェスト、ソースツリー、コミットする配備先（`apm.yml`、`.apm/skills/`、`.gitignore`）
+- [ ] マニフェスト、ソースツリー、コミットする配備先（`apm.yml`、`.apm/skills/`、リポジトリ直下の`.gitignore`、`.claude/skills/.gitignore`の削除）
 - [ ] 14個のスキルを1つの`SKILL.md`へ変換し、詳細を`references/`へ配置
-- [ ] `.agent-workflows/`、`.agent-hosts/`、`.agents`の撤去とロードマップのリンク書き換え
+- [ ] `.agent-workflows/`、`.agent-hosts/`、`.agents`の撤去、ロードマップのリンク書き換え、BE-0384の設計記述の移行
 - [ ] textlint実行環境の移設と`dependabot.yml`のエントリ更新
 - [ ] `make skills`、`make lint-skills`、`make check`への組み込み、session-startフック
 - [ ] ドキュメント：`CLAUDE.md`、`AGENTS.md`、`docs/ai-development.md`（両言語）、コントリビューター向けチュートリアル（両言語）、レビュー契約
@@ -155,5 +166,7 @@ APMは、スキル、プロンプト、指示、Model Context Protocol（MCP）�
 - [BE-0103](../BE-0103-dev-model-effort-tiering/BE-0103-dev-model-effort-tiering-ja.md) —
   移行後も残る`model:`のfrontmatterが担う、モデルと推論負荷の使い分け。
 - [BE-0379](../BE-0379-be-progress-tracker/BE-0379-be-progress-tracker-ja.md)、
-  [BE-0380](../BE-0380-fix-issue-skill/BE-0380-fix-issue-skill-ja.md) — 本項目が撤去する3ツリー
-  構成を前提に設計された、直近の2項目。
+  [BE-0380](../BE-0380-fix-issue-skill/BE-0380-fix-issue-skill-ja.md)、
+  [BE-0384](../BE-0384-record-issue-skill/BE-0384-record-issue-skill-ja.md) — 本項目が撤去する
+  3ツリー構成を前提に設計された項目。BE-0384だけが未実装（状態は`提案`）であり、リンクだけでなく
+  設計の記述も構成の変更に合わせて移します。
