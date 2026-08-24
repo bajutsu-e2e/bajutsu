@@ -376,8 +376,8 @@ and 7 GiB, with a *single* booted Simulator bringing up 257 guest processes and 
 physical memory unused, so a second Simulator doubles the guest population against an already
 saturated ceiling. Dropping the video recording, the touch markers, and half the scenarios moved the
 collapse earlier without removing it. So the isolation claim now rests on real concurrent devices on
-Android, and on iOS on the fast suite's bookkeeping proof alone.
-
+collapse earlier without removing it. The isolation claim now rests on real concurrent devices on
+Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 ---
 
 ## Implementation status
