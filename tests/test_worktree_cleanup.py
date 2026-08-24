@@ -21,9 +21,23 @@ import pytest
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "worktree_cleanup.sh"
 
 
+def _clean_env(**overrides: str) -> dict[str, str]:
+    """The ambient environment with git's own variables stripped.
+
+    Run from a git hook (the tracked pre-push runs `make check`), git exports GIT_DIR and
+    GIT_INDEX_FILE, which would point every command below at the real repository instead of the
+    throwaway one built for the test.
+    """
+    return {k: v for k, v in os.environ.items() if not k.startswith("GIT_")} | overrides
+
+
 def _git(repo: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+        ["git", "-C", str(repo), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=_clean_env(),
     ).stdout
 
 
@@ -40,7 +54,9 @@ def repo(tmp_path: Path) -> Path:
     )
 
     work = tmp_path / "repo"
-    subprocess.run(["git", "clone", str(origin), str(work)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "clone", str(origin), str(work)], check=True, capture_output=True, env=_clean_env()
+    )
     _git(work, "config", "user.email", "t@example.com")
     _git(work, "config", "user.name", "T")
     (work / "README.md").write_text("hello\n")
@@ -60,7 +76,7 @@ def _fake_gh(tmp_path: Path, merged_count: int) -> dict[str, str]:
     gh = bin_dir / "gh"
     gh.write_text(f"#!/bin/sh\necho {merged_count}\n")
     gh.chmod(0o755)
-    return {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    return _clean_env(PATH=f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
 
 
 def _age(path: Path) -> None:
@@ -75,7 +91,10 @@ def _run(
     repo: Path, *args: str, env: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [str(repo / "scripts" / SCRIPT.name), *args], capture_output=True, text=True, env=env
+        [str(repo / "scripts" / SCRIPT.name), *args],
+        capture_output=True,
+        text=True,
+        env=env if env is not None else _clean_env(),
     )
 
 
@@ -171,7 +190,7 @@ def test_refuses_when_gh_cannot_answer(repo: Path, tmp_path: Path) -> None:
         assert resolved, f"test precondition: {tool} must be on PATH"
         (without_gh / tool).symlink_to(resolved)
 
-    result = _run(repo, "--remove", str(tree), env={**os.environ, "PATH": str(without_gh)})
+    result = _run(repo, "--remove", str(tree), env=_clean_env(PATH=str(without_gh)))
 
     assert result.returncode == 1
     assert "gh is unavailable" in result.stderr
