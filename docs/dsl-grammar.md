@@ -108,6 +108,7 @@ Scenario ::= {
   mocks?:          list(<Mock>),            # default []
   redact?:         <Redact>,
   systemAlertHandling?: <SystemAlertHandling>,  # alert guard; on when unset
+  iosTipKitHandling?: <bool>,                   # dismiss a blocking TipKit tip; off when unset (iOS only)
   permissions?:    <Permissions>,           # pre-launch OS permission state; default {}
   interrupts?:     list(<Interrupt>),       # default []  — handlers for interstitials that surface at an unpredictable point (BE-0314), appended after the target config's own
 }
@@ -380,6 +381,7 @@ Omitted optional keys take these values (so a minimal scenario is just `name` + 
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` | `[]` |
 | `Scenario.preconditions` | `{}` (i.e. `erase` unset — off unless the target config says otherwise — and `reinstall: clean`) |
 | `Scenario.systemAlertHandling` | unset (alert guard on; dismiss the prompt) |
+| `Scenario.iosTipKitHandling` | unset (off — a tip is sometimes the assertion; iOS only) |
 | `Scenario.permissions` | `{}` (no pre-launch permission state applied) |
 | `Preconditions.erase` | unset — inherits the target config's `erase`, else off (BE-0177) |
 | `Preconditions.reinstall` | `clean` |

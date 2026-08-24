@@ -1490,6 +1490,127 @@ def test_system_alert_labels_returns_empty_when_no_alert_is_up() -> None:
     assert _driver(lambda m, p, b: _elements()).system_alert_labels() == []
 
 
+# --- dismiss_blocking_tip: the TipKit guard's driver half ---
+# The TipKit-internal identifier lives only in this driver, so these tests are what pin it: the
+# orchestrator's guards see a boolean and never name a node.
+
+
+def _tip_wire(handle: str, identifier: str) -> dict[str, Any]:
+    # The tip's dismiss scrim covers the whole screen, which is how it blocks the tap underneath.
+    return _el_wire(handle, identifier, frame=(0.0, 0.0, 402.0, 874.0))
+
+
+def test_dismiss_blocking_tip_taps_the_dismiss_region_and_reports_it() -> None:
+    sent: list[tuple[str, dict[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(
+                _tip_wire("h-scrim", "PopoverDismissRegion"),
+                _el_wire("h-refresh", "stable.refresh", "Refresh", traits=["button"]),
+            )
+        sent.append((path, body))
+        return _Reply(status="ok")
+
+    assert _driver(transport).dismiss_blocking_tip() is True
+    assert sent == [("/tap", {"handle": "h-scrim"})]
+
+
+def test_dismiss_blocking_tip_reports_false_and_taps_nothing_when_no_tip_is_up() -> None:
+    # The common case: both guards ask on every poll, so absence is a plain False, not an exception.
+    sent: list[tuple[str, dict[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_el_wire("h-refresh", "stable.refresh", "Refresh", traits=["button"]))
+        sent.append((path, body))
+        return _Reply(status="ok")
+
+    assert _driver(transport).dismiss_blocking_tip() is False
+    assert sent == []
+
+
+def test_dismiss_blocking_tip_reports_false_when_the_tip_closes_itself_mid_dismiss() -> None:
+    # TipKit dismisses on its own rules, so the window between the snapshot that minted the handle and
+    # the tap is a live race, not a defect. The runner answers `not-found` (or exhausts `stale`), which
+    # `_actuate` raises as `ElementNotFound` — a `SelectorError`. Left to propagate it would surface
+    # `PopoverDismissRegion`, an identifier no author wrote, as a wait's failure reason, and would
+    # overwrite the real reason on the post-failure path. "The tip is gone" is what the caller asked
+    # about, so it reads as no dismissal.
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_tip_wire("h-scrim", "PopoverDismissRegion"))
+        return _Reply(status="not-found")  # the scrim went between the query and the tap
+
+    assert _driver(transport).dismiss_blocking_tip() is False
+
+
+def test_dismiss_blocking_tip_fails_loudly_on_two_dismiss_regions() -> None:
+    # A shape TipKit should never produce. Distinct frames so `resolve_unique` cannot collapse them
+    # as a content-identical duplicate: with a real choice to make, it must refuse to guess.
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        assert path == "/elements", f"no actuation may be attempted, got {path}"
+        return _elements(
+            _el_wire("h-a", "PopoverDismissRegion", frame=(0.0, 0.0, 402.0, 874.0)),
+            _el_wire("h-b", "PopoverDismissRegion", frame=(0.0, 0.0, 100.0, 100.0)),
+        )
+
+    with pytest.raises(base.AmbiguousSelector):
+        _driver(transport).dismiss_blocking_tip()
+
+
+def test_dismiss_blocking_tip_rules_a_tip_out_from_the_callers_tree_without_querying() -> None:
+    # The mid-wait gate asks on every poll tick, so the common "no tip" answer must cost no query —
+    # otherwise a guarded wait polls at half its usual rate and a tight timeout starts to flake.
+    calls: list[str] = []
+
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        calls.append(path)
+        return _elements()
+
+    tree = [
+        base.Element(
+            identifier="stable.refresh",
+            label="Refresh",
+            value=None,
+            traits=["button"],
+            frame=(0.0, 0.0, 10.0, 10.0),
+            nativeZ=None,
+        )
+    ]
+    assert _driver(transport).dismiss_blocking_tip(tree) is False
+    assert calls == []
+
+
+def test_dismiss_blocking_tip_still_queries_when_the_hint_shows_a_tip() -> None:
+    # A handle is only valid from the snapshot that minted it, so a tip seen in the caller's tree is
+    # re-resolved against this driver's own fresh query before the tap.
+    sent: list[tuple[str, dict[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_tip_wire("h-scrim", "PopoverDismissRegion"))
+        sent.append((path, body))
+        return _Reply(status="ok")
+
+    hint = [
+        base.Element(
+            identifier="PopoverDismissRegion",
+            label="dismiss popup",
+            value=None,
+            traits=["other"],
+            frame=(0.0, 0.0, 402.0, 874.0),
+            nativeZ=None,
+        )
+    ]
+    assert _driver(transport).dismiss_blocking_tip(hint) is True
+    assert sent == [("/tap", {"handle": "h-scrim"})]
+
+
+def test_xcuitest_advertises_the_tipkit_capability() -> None:
+    assert base.Capability.HANDLE_TIPKIT_TIP in XcuitestDriver.CAPABILITIES
+
+
 # --- setPickerValue: the value-not-found status branch (BE-0356) ---
 
 

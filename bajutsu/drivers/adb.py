@@ -1597,6 +1597,12 @@ class AdbDriver(CoordinateTreeDriver):
         # No SpringBoard on Android; the reactive guard's native path never runs here (BE-0315).
         return []
 
+    def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:
+        # TipKit is an iOS framework. Android's nearest equivalents (`TooltipCompat`, Compose
+        # Material3 tooltips) are per-app widgets with no shared tree shape, so they stay BE-0314
+        # `interrupts` territory rather than a built-in guard.
+        return False
+
     def type_text(self, text: str) -> None:
         # `text` is deliberately absent from the record — not even its length (see `actuation.py`).
         self._actuations.record(Actuation(gesture="typeText", via="focused", unit=_UNIT))

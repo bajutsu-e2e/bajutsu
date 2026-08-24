@@ -14,6 +14,7 @@ from bajutsu.cancellation import CANCELLED_FAILURE
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence.network import ScreenTransition
 from bajutsu.orchestrator import run_scenario
+from bajutsu.orchestrator.types import AlertEvent, AlertGuardConfig
 
 
 class _CancelAfter:
@@ -261,3 +262,43 @@ def test_a_signal_settle_that_reached_its_deadline_still_passes_under_a_cancel()
     )
     assert result.ok
     assert result.failure is None
+
+
+def test_cancel_inside_the_alert_guard_retry_does_not_burn_its_timeout() -> None:
+    """The alert guard's end-of-step retry re-enters `_wait`, so it needs the cancel source too.
+
+    That retry is a second, hand-written `_run_step_body` call, and its `cancelled` parameter defaults
+    to "never cancelled" — so omitting it fails nothing loudly, it just makes a `/cancel` invisible for
+    the whole of a retried wait, doubling how long a cancelled run holds on.
+
+    The cancel is armed by the guard firing rather than by a read count: the first wait has to time out
+    *uncancelled* for the retry to exist at all, and counting reads to land after that would encode the
+    poll cadence. So the observable is the clock — one timeout's worth of waiting, not two.
+    """
+    driver = FakeDriver([el("blocker", "Allow", ["button"])])
+    clock = FakeClock()
+    fired = False
+
+    def on_blocked(d: FakeDriver) -> AlertEvent | None:
+        # The vision guard the (non-native) FakeDriver falls back to, at end of step. Clears the
+        # screen so the retry is a genuine re-wait, and arms the cancel for that retry alone.
+        nonlocal fired
+        if d.screen:
+            d.screen = []
+            fired = True
+            return AlertEvent(label="Allow")
+        return None
+
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"wait": {"for": {"id": "never"}, "timeout": 10.0}}]}),
+        clock=clock,
+        cancelled=lambda: fired,
+        alert_guard=AlertGuardConfig(vision=on_blocked),
+    )
+    assert not result.ok
+    assert fired, "the alert guard never fired, so the retry path was never exercised"
+    assert clock.now() < 15.0, (
+        f"the retry burned its own full timeout too ({clock.now()}s of a 10s wait) — "
+        "the cancel source never reached it"
+    )
