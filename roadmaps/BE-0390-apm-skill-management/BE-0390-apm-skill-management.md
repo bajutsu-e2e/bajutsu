@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-apm-skill-management-ja.md)
+**English** · [日本語](BE-0390-apm-skill-management-ja.md)
 
-# BE-XXXX — Manage agent skills with APM from a single per-skill source
+# BE-0390 — Manage agent skills with APM from a single per-skill source
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-apm-skill-management.md) |
+| Proposal | [BE-0390](BE-0390-apm-skill-management.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0390") |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
