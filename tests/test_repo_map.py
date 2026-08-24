@@ -10,6 +10,7 @@ the fenced-block handling that keeps a shell comment out of the heading map.
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -22,6 +23,15 @@ assert _spec and _spec.loader
 rm = importlib.util.module_from_spec(_spec)
 sys.modules[_spec.name] = rm
 _spec.loader.exec_module(rm)
+
+
+def _git_env() -> dict[str, str]:
+    """The environment minus git's own variables, so a subprocess answers for `cwd`'s repo.
+
+    Under the pre-push hook every test inherits GIT_DIR and GIT_INDEX_FILE from the real
+    repository, which would otherwise make these temporary trees answer for it instead.
+    """
+    return {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
 
 
 def _write(path: Path, text: str) -> Path:
@@ -187,7 +197,7 @@ def test_filter_rows_is_case_insensitive(tmp_path: Path) -> None:
 def test_a_gitignored_page_is_left_out(tmp_path: Path) -> None:
     """`docs/api/roadmap.md` is built by `make docs`; listing it would make the map depend on
     whether a docs build had run."""
-    subprocess.run(["git", "init", "-q", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "init", "-q", "."], cwd=tmp_path, env=_git_env(), check=True)
     (tmp_path / ".gitignore").write_text("docs/generated.md\n", encoding="utf-8")
     _write(tmp_path / "docs" / "real.md", "# Real\n\nProse.\n")
     _write(tmp_path / "docs" / "generated.md", "# Built\n\nProse.\n")
@@ -199,7 +209,7 @@ def test_a_gitignored_page_is_left_out(tmp_path: Path) -> None:
 
 def test_an_untracked_page_is_still_listed(tmp_path: Path) -> None:
     """A page being drafted right now is not ignored, so it must stay findable."""
-    subprocess.run(["git", "init", "-q", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "init", "-q", "."], cwd=tmp_path, env=_git_env(), check=True)
     _write(tmp_path / "docs" / "draft.md", "# Draft\n\nProse.\n")
 
     assert [row.name for row in rm.iter_docs(tmp_path / "docs")] == ["Draft"]

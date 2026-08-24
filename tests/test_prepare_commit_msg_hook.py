@@ -9,6 +9,7 @@ so these tests drive the real hook script against a temporary repository.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -22,14 +23,23 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def _git_env() -> dict[str, str]:
+    """The environment minus git's own variables, so git answers for `cwd`'s repo.
+
+    A git hook exports GIT_DIR and GIT_INDEX_FILE into everything it runs, so under the pre-push
+    gate these tests would otherwise drive the real repository instead of their temporary one.
+    """
+    return {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+
+
 def _repo(tmp_path: Path, branch: str) -> Path:
     """A repository on ``branch``, with one file staged for the hook's own gitleaks scan."""
     repo = tmp_path / "repo"
     repo.mkdir()
     run = ["git", "-c", "user.email=t@example.com", "-c", "user.name=T"]
-    subprocess.run([*run, "init", "-q", "-b", branch, "."], cwd=repo, check=True)
+    subprocess.run([*run, "init", "-q", "-b", branch, "."], cwd=repo, env=_git_env(), check=True)
     (repo / "f.txt").write_text("content\n", encoding="utf-8")
-    subprocess.run([*run, "add", "f.txt"], cwd=repo, check=True)
+    subprocess.run([*run, "add", "f.txt"], cwd=repo, env=_git_env(), check=True)
     return repo
 
 
@@ -44,6 +54,7 @@ def _run_hook(repo: Path, message: str, source: str = "message") -> str:
     subprocess.run(
         ["bash", str(HOOK), str(msg_file), source],
         cwd=repo,
+        env=_git_env(),
         capture_output=True,
         check=False,
     )

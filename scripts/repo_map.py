@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -82,11 +83,16 @@ def _tracked(paths: list[Path], root: Path) -> list[Path]:
     if not paths:
         return paths
     absolute = {path: path.resolve().as_posix() for path in paths}
+    # A git hook exports GIT_DIR and GIT_INDEX_FILE into everything it runs, and those would send
+    # check-ignore to the hook's repository instead of the tree being mapped. Drop them so `cwd`
+    # decides, which is what the caller asked for.
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     try:
         result = subprocess.run(
             ["git", "check-ignore", "--stdin"],
             input="\n".join(absolute.values()),
             cwd=root if root.is_dir() else root.parent,
+            env=env,
             capture_output=True,
             text=True,
             check=False,
