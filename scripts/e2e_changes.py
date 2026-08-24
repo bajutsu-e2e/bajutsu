@@ -37,13 +37,15 @@ the lane (``ios`` — the default — / ``android`` / ``web``); it writes ``rele
 ``GITHUB_OUTPUT``. An empty ``BASE_SHA`` (a manual ``workflow_dispatch`` with no PR context) always
 counts as relevant.
 
-A fourth output, ``pool``, keys the concurrent-device jobs BE-0298 adds. Those jobs boot **two** real
-devices, which on the metered macOS runner is the lane's most expensive and most environment-sensitive
-work, and no other job on any lane can observe what they check — every other job boots one device, so
-the pool's cross-worker isolation is invisible to it. So they are keyed on a surface narrower than
-``shared``: the code deciding how a run splits across devices and where each worker's evidence lands
-(``touches_pool``). It over-selects the same way every filter here does, and it is a conjunction with
-``relevant``, so a change to the *other* lane's workflow never fires this lane's pool job.
+A fourth output, ``pool``, keys the concurrent-device job BE-0298 adds. That job boots **two** real
+devices, which is the lane's most expensive and most environment-sensitive work, and no other job can
+observe what it checks — every other job boots one device, so the pool's cross-worker isolation is
+invisible to it. So it is keyed on a surface narrower than ``shared``: the code deciding how a run
+splits across devices and where each worker's evidence lands (``touches_pool``). It over-selects the
+same way every filter here does, and it is a conjunction with ``relevant``, so a change to the *other*
+lane's workflow never fires this one's pool job. Only the Android lane still has such a job — the iOS
+half was withdrawn (BE-0298), since two booted Simulators exhaust the hosted macOS runner — so the
+iOS and web lanes emit the output and leave it unread.
 
 BE-0322 narrows the fan-out for the one case it can prove safe: a change confined to a lane's
 scenario files fires only the jobs that declare a changed scenario, rather than the whole lane.
@@ -57,14 +59,13 @@ their scenarios in ``demos/showcase/Makefile`` targets rather than a workflow in
 ``job_scenario_map`` never sees them — ``lane_job_scenario_map`` folds those Makefile-declared
 scenarios into the map. What the ``affected`` narrowing then leaves on iOS is ``conformance`` and
 ``fault-injection``, which declare no scenario subset (each drives its own whole suite) and so fire
-whenever ``relevant`` is true; ``build``, which stages the products every consumer job installs, on
-the same bare guard; and ``pool``, keyed on the ``pool`` output above rather than on the scenarios it
-names. The decision over-selects toward the whole lane — a shared-code change, an unattributable
-scenario fragment, an unreadable workflow, and a lane with no scenario-keyed jobs (Android, web) all
-fall back to ``shared`` — so it never skips a job a change could have broken. It reads only the
-``git`` diff, the ``scenarios:`` each job declares, and (for the iOS Makefile-declared jobs) the
-showcase Makefile targets those jobs run: no large language model touches the decision, and it has no
-bearing on any run's pass/fail verdict.
+whenever ``relevant`` is true; and ``build``, which stages the products every consumer job installs,
+on the same bare guard. The decision over-selects toward the whole lane — a shared-code change, an
+unattributable scenario fragment, an unreadable workflow, and a lane with no scenario-keyed jobs
+(Android, web) all fall back to ``shared`` — so it never skips a job a change could have broken. It
+reads only the ``git`` diff, the ``scenarios:`` each job declares, and (for the iOS Makefile-declared
+jobs) the showcase Makefile targets those jobs run: no large language model touches the decision, and
+it has no bearing on any run's pass/fail verdict.
 """
 
 from __future__ import annotations
@@ -365,18 +366,16 @@ _LANE_PATHS: dict[str, str] = {
     ),
 }
 
-# The parallel-run surface the concurrent-device `pool` jobs guard (BE-0298) — narrower than any
-# lane's own fragment above, because those jobs boot two devices where every other job boots one. It
+# The parallel-run surface the concurrent-device `pool` job guards (BE-0298) — narrower than any
+# lane's own fragment above, because that job boots two devices where every other job boots one. It
 # holds the code that decides how a run splits across devices and where each worker's evidence lands:
 # the runner package (the pool itself, the pipeline that fans scenarios out to it), the whole
 # lifecycle package (a change to any device's bring-up or teardown changes what two concurrent leases
 # contend over), the two evidence modules that name a scenario's own directory, this module and the
-# assertion the jobs gate on, each lane's own two-device job definition, the Android job's own
-# two-emulator script, the `bajutsu-e2e` action whose `workers` / `diagnostics-udid` inputs only
-# these jobs pass, the showcase Android Makefile holding the `e2e-pool` target that job runs, the iOS
-# job's own capture-light config, and each lane's device-bring-up actions — both toolchain composites
-# and `boot-simulator`, since between them they mint every device a two-device job leases.
-# Over-selects by directory, the same safe direction the sweep above takes.
+# assertion the job gates on, the Android lane's own job definition and its two-emulator script, the
+# showcase Android Makefile holding the `e2e-pool` target that job runs, and the Android toolchain
+# composite that mints its first device. Over-selects by directory, the same safe direction the sweep
+# above takes.
 _POOL_PATHS = (
     r"bajutsu/runner/"
     r"|bajutsu/platform_lifecycle/"
@@ -389,21 +388,9 @@ _POOL_PATHS = (
     r"|scripts/assert_pool_isolation\.py$"
     r"|scripts/e2e_changes\.py$"
     r"|scripts/android_pool_e2e\.sh$"
-    r"|\.github/workflows/ios-e2e\.yml$"
     r"|\.github/workflows/android-e2e\.yml$"
-    r"|\.github/actions/bajutsu-e2e/"
-    # Both lanes' bring-up: `boot-simulator` mints iOS device B (its `exclude-udid` input exists for
-    # this job alone), and each toolchain composite mints device A — `setup-ios-toolchain` forwards
-    # the udid the iOS job then passes as the left half of `--udid "$A,$B"`, so breaking that
-    # forwarding yields a malformed list only a two-device job ever resolves.
-    r"|\.github/actions/boot-simulator/"
-    r"|\.github/actions/setup-ios-toolchain/"
     r"|\.github/actions/setup-android-toolchain/"
     r"|demos/showcase/android/Makefile$"
-    # The capture-light config only `pool (xcuitest)` runs: it omits `capture:` so the run falls
-    # through to the schema baseline and records no video. Nothing else reads it, so a change to it is
-    # observable on that job alone.
-    r"|demos/showcase/showcase\.pool\.config\.yaml$"
 )
 
 _POOL_RE = re.compile(r"^(?:" + _POOL_PATHS + r")")
@@ -484,10 +471,11 @@ def touches_pool(paths: Iterable[str], lane: str = DEFAULT_LANE) -> bool:
     """Whether ``lane``'s concurrent-device job should run for this change (BE-0298).
 
     A conjunction: the change must be relevant to the lane at all *and* touch the parallel-run
-    surface. The conjunction is what keeps one lane's two-device job from firing on the other lane's
-    workflow file, which ``_POOL_PATHS`` names without distinguishing. Only the iOS and Android lanes
-    have a two-device job — a web lane's parallel workers are ``BrowserContext`` lanes with no device
-    to contend over (BE-0054) — so the web lane's ``pool`` output is emitted and simply unread.
+    surface. The conjunction is what keeps the Android two-device job from firing on another lane's
+    workflow file, which ``_POOL_PATHS`` names without distinguishing. Only the Android lane has such
+    a job: the iOS half was withdrawn because two booted Simulators exhaust the hosted macOS runner
+    (BE-0298), and a web lane's parallel workers are ``BrowserContext`` lanes with no device to
+    contend over (BE-0054) — so those two lanes emit the ``pool`` output and leave it unread.
 
     Raises:
         ValueError: ``lane`` is unknown — see ``_lane_re``.
