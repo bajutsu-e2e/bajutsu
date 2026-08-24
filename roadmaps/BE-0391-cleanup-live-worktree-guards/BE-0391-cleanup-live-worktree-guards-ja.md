@@ -1,14 +1,14 @@
-[English](BE-XXXX-cleanup-live-worktree-guards.md) · **日本語**
+[English](BE-0391-cleanup-live-worktree-guards.md) · **日本語**
 
-# BE-XXXX — 稼働中セッションと未着手ブランチからワークツリー整理を守る
+# BE-0391 — 稼働中セッションと未着手ブランチからワークツリー整理を守る
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-cleanup-live-worktree-guards-ja.md) |
+| 提案 | [BE-0391](BE-0391-cleanup-live-worktree-guards-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0391") |
 | 実装 PR | [#1730](https://github.com/bajutsu-e2e/bajutsu/pull/1730) |
 | トピック | Contributor workflow |
 <!-- /BE-METADATA -->

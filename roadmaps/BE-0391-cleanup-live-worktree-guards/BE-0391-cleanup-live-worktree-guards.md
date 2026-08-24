@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-cleanup-live-worktree-guards-ja.md)
+**English** · [日本語](BE-0391-cleanup-live-worktree-guards-ja.md)
 
-# BE-XXXX — Guard worktree cleanup against live sessions and undelivered branches
+# BE-0391 — Guard worktree cleanup against live sessions and undelivered branches
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-cleanup-live-worktree-guards.md) |
+| Proposal | [BE-0391](BE-0391-cleanup-live-worktree-guards.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0391") |
 | Implementing PR | [#1730](https://github.com/bajutsu-e2e/bajutsu/pull/1730) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
