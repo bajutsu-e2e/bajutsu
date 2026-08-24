@@ -14,6 +14,23 @@ A scenario (YAML) is the shared hub: AI helps *author* and *investigate*; a dete
 runner decides pass/fail. Python logic core lives in [`bajutsu/`](bajutsu/); the Swift
 test-support package is [`BajutsuKit/`](BajutsuKit/); runnable examples are in [`demos/`](demos/).
 
+## Find it before you read it
+
+Three commands print a map of the tree, derived on every run — no committed index to go stale:
+
+- `make repo-map ARGS="--docs"` — every `docs/` page, with its length and its own one-line
+  description. `make repo-map ARGS="--code"` — every `bajutsu/` package and top-level module. Add
+  `--grep <word>` to either. What each module is *for* is prose, in
+  [`docs/architecture.md`](docs/architecture.md#module-list-and-roles).
+- `make roadmap-find ARGS="--grep <word>"` — the roadmap items on a topic, out of ~380.
+
+**Load a large file in stages.** `make repo-map ARGS="--headings <path>"` prints each heading and
+its span. Read that range, not the file. CLAUDE.md links a dozen times into
+[`docs/ai-development.md`](docs/ai-development.md). That page runs 1,160 lines, and its longest
+section is 90. Reading it whole is a last resort, once you can say why the staged path would not
+answer. In `roadmaps/`, the `-ja.md` mirror holds nothing the English file lacks — read the `.md`
+alone.
+
 ## Prime directives (do not violate)
 
 1. **AI is the author and the failure investigator, never the judge.** `run` is fully
