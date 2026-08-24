@@ -203,7 +203,10 @@ ignores the line, so discarding that diff is fine.
 edit whose `make skills` was forgotten. Like `lint-actions` and `lint-secrets`, it skips with a notice when `apm` isn't on PATH;
 CI installs a pinned `apm-cli` and runs it there, so drift fails a pull request even when a
 contributor's machine skipped the check. Install it locally with
-`uv tool install "apm-cli==0.28.0"`.
+`uv tool install "apm-cli==$(make -s print-apm-version)"` — the `APM_VERSION` in the
+[`Makefile`](../Makefile) is the single pin CI and the session-start hook read too, so a bump lands
+in one file. (The bare `0.28.0` elsewhere on this page records what the behavior was *verified*
+against, which no bump changes.)
 
 The check stays clear of prime directive 1: `apm audit` compares recorded hashes against the working
 tree, so no language model reaches the gate. `--no-policy` keeps it offline as well — organization

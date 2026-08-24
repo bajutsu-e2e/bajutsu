@@ -1,7 +1,14 @@
 .PHONY: setup hooks install deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck \
         lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr lint-secrets skills lint-skills \
         check new-roadmap-item \
-        roadmap-status roadmap-dashboard docs docs-serve docs-diagrams runner-bundle
+        roadmap-status roadmap-dashboard docs docs-serve docs-diagrams runner-bundle \
+        print-apm-version
+
+# The one place the apm-cli pin lives (BE-0390). apm.lock.yaml is generated output, so the version
+# that writes it is part of what "green locally predicts green in CI" rests on. CI and the
+# session-start hook read this through `print-apm-version` rather than repeating the literal, so a
+# bump lands in one file instead of three.
+APM_VERSION := 0.28.0
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
 # Simulator). Installs the Python toolchain and wires the tracked git hooks.
@@ -229,12 +236,23 @@ skills:
 # deterministic — the same reason no LLM sits anywhere near this gate step. Skips with a notice,
 # like `lint-actions`/`lint-secrets`, when apm isn't on PATH; CI installs a pinned apm-cli and runs
 # it there, so drift fails a pull request even when a contributor's machine skipped the check.
+# A local apm that differs from the pin only warns: it audits a lockfile CI's pinned apm may write
+# differently, which is worth knowing when a drift failure looks inexplicable, but failing here
+# would force a downgrade to defend against a divergence no released version demonstrates.
 lint-skills:
 	@if command -v apm >/dev/null 2>&1; then \
+		apm --version 2>/dev/null | grep -qF "$(APM_VERSION)" \
+		  || echo "lint-skills: local apm differs from the pinned $(APM_VERSION) — see docs/ai-development.md"; \
 		apm audit --ci --no-policy; \
 	else \
 		echo "lint-skills: apm not installed — skipping (CI enforces it); see docs/ai-development.md"; \
 	fi
+
+# Print the pinned apm-cli version, for callers that can't read a make variable directly
+# (.github/workflows/ci.yml, .claude/hooks/session-start.sh). Bare `echo` so `make -s` output is
+# exactly the version and nothing else.
+print-apm-version:
+	@echo "$(APM_VERSION)"
 
 # Filter roadmap (BE) items by Status into one small table — ID / Item / Topic / Path — so an AI
 # session surveys just the rows it needs (e.g. every Proposal) without paging through the dashboard's

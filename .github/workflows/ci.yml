@@ -67,7 +67,7 @@ jobs:
       # version the item was verified against; uv resolves it from PyPI like the Python deps.
       - name: Install apm
         run: |
-          uv tool install "apm-cli==0.28.0"
+          uv tool install "apm-cli==$(make -s print-apm-version)"
           apm --version   # fail here rather than let `make lint-skills` skip silently
 
       # Fails when a deployed .claude/skills/ file no longer matches its .apm/skills/ source —

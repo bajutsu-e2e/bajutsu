@@ -55,7 +55,7 @@ uv sync --group dev >&2
 # already matches, so this is normally a no-op; it also puts `apm` on PATH, which is what keeps
 # `make check`'s lint-skills step from skipping in a web session. Best-effort, like every step here.
 log "installing apm and deploying skills"
-uv tool install "apm-cli==0.28.0" >&2 || log "apm-cli install failed (non-fatal)"
+uv tool install "apm-cli==$(make -s print-apm-version)" >&2 || log "apm-cli install failed (non-fatal)"
 if command -v apm >/dev/null 2>&1; then
   apm install --no-policy >&2 || log "apm install (skill deploy) failed (non-fatal)"
 else

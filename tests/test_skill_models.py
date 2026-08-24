@@ -6,10 +6,12 @@ itself stays advisory — a session can always upshift, and the gate never dicta
 run. The one machine-checkable surface worth pinning is that the value is a *valid, known* id, so a
 typo fails here locally instead of silently falling back to some default at run time.
 
-This walks the real ``.claude/skills`` tree — the deployment Claude Code reads. Its source is
-``.apm/skills/<name>/SKILL.md``; ``apm install`` deploys the frontmatter verbatim (only
-cross-skill relative links are rewritten) and ``make lint-skills`` fails on drift (BE-0390), so
-this walk also checks each source's ``model:``. Every ``model:`` present must be recognized, and the
+This walks both trees: ``.claude/skills`` — the deployment Claude Code reads — and
+``.apm/skills``, its single source (BE-0390). Walking the source directly is what makes the check
+unconditional: ``apm install`` deploys frontmatter verbatim, but the drift step that would carry a
+source-only edit into the deployment (``make lint-skills``) skips when ``apm`` is absent, so a
+deployment-only walk would pass a typo introduced in a source on such a clone. Every ``model:``
+present must be recognized, and the
 skills that BE-0103 and BE-0380 wired must still declare one (so removing the field is a visible regression, not
 a silent drift back to always-max).
 """
@@ -20,7 +22,9 @@ from pathlib import Path
 
 import yaml
 
-SKILLS = Path(__file__).resolve().parent.parent / ".claude" / "skills"
+_REPO = Path(__file__).resolve().parent.parent
+SKILLS = _REPO / ".claude" / "skills"
+SOURCES = _REPO / ".apm" / "skills"
 
 # The syntactic allow-list of recognized ``model:`` ids — not the tier → model assignment. Which
 # tier a task uses (heavy → opus, and so on) is guidance documented in docs/ai-development.md, and a
@@ -68,13 +72,14 @@ def _declared_model(fm: dict[str, object]) -> object:
 
 
 def _skill_files() -> list[Path]:
-    return sorted(SKILLS.glob("*/SKILL.md"))
+    """Every ``SKILL.md`` in the repository — deployment first, then source."""
+    return sorted(SKILLS.glob("*/SKILL.md")) + sorted(SOURCES.glob("*/SKILL.md"))
 
 
 def test_every_declared_model_is_known() -> None:
     """A declared ``model:`` the harness won't recognize (typo, or an empty value) fails loudly."""
     bad = {
-        md.parent.name: model
+        str(md.relative_to(_REPO)): model
         for md in _skill_files()
         if (model := _declared_model(_frontmatter(md))) is not _ABSENT
         and not _is_known_model(str(model))

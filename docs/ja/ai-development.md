@@ -169,7 +169,10 @@ make lint-skills   # apm audit --ci --no-policy — ずれがあれば落とす�
 `make skills` を忘れた場合の両方です。`lint-actions` や `lint-secrets` と同じく、`apm` が PATH にない
 ときは通知を出してスキップします。CI は版を固定した `apm-cli` を入れて実行するので、貢献者の手元で
 スキップされても、ずれはプルリクエストで落ちます。ローカルへの導入は
-`uv tool install "apm-cli==0.28.0"` です。
+`uv tool install "apm-cli==$(make -s print-apm-version)"` です。[`Makefile`](../../Makefile) の
+`APM_VERSION` が唯一の固定箇所で、CI と session-start フックも同じ値を読みます。更新は 1 ファイルで
+済みます（このページの他の箇所にある `0.28.0` は、挙動を確認した版の記録なので、更新の対象では
+ありません）。
 
 この検査は prime directive 1 に触れません。`apm audit` は記録済みのハッシュと作業ツリーを比較するだけで、
 ゲートに言語モデルは届きません。`--no-policy` は検査をオフラインにも保ちます。これがないと、組織ポリシーの
