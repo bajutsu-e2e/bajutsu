@@ -387,6 +387,8 @@ Android, and on iOS on the fast suite's bookkeeping proof alone.
 
 ### Implemented (tested; the path works end-to-end in code)
 
+#### Drivers and backend selection
+
 - Selector resolution and ambiguity detection (the determinism core)
 - Platform-aware backend registry: `--backend` / `backend:` accept `ios` / `android` / `web` /
   `fake` tokens, each expanding to its actuators (`backends.py`) — `ios` expands to `xcuitest`, the
@@ -447,6 +449,9 @@ Android, and on iOS on the fast suite's bookkeeping proof alone.
   id convention, the lazy-semantics precondition, and the confirmed gaps — no `network`/`mocks`
   observation, and Android clipboard needs the in-app receiver the plugin-free Flutter app doesn't
   link)
+
+#### Scenarios, assertions, and the run loop
+
 - Scenario schema (strict validation) and YAML round-trip; `id` / `idMatches` accept a list of OR
   candidates for cross-platform id forms (BE-0221)
 - Evaluation of the assertion kinds (`exists` / `value` / `label` / `count` / `enabled` / `disabled` /
@@ -493,6 +498,9 @@ Android, and on iOS on the fast suite's bookkeeping proof alone.
   run with an `appPath` to install, so `--udid` keeps the erase-level retry on the device the
   operator named. Because a replacement resets strictly more than an erase does, it also honors the
   two opt-outs the erase rung honors: `reinstall: overwrite` and `bajutsu run --no-erase`
+
+#### DSL authoring, control flow, and data
+
 - DSL: the `within` selector (geometric scoping), the `relaunch` step (validated on-device),
   reusable `setup` preludes, `locale` applied at launch, and parallel runs (`--workers`) over a
   device pool
@@ -527,6 +535,9 @@ Android, and on iOS on the fast suite's bookkeeping proof alone.
   `prev_after` (BE-0234) included. On a match, the runner runs the entry's `steps` and then resumes
   the interrupted step (a `wait` keeps its original deadline; an act step retries once), with a
   re-entrancy cap falling back to the step's ordinary outcome
+
+#### DSL gestures, text entry, and device actions
+
 - DSL `scroll` action (BE-0326): scroll a region — the whole screen, or a `within` container — until
   a target selector's frame center lands inside the viewport, or fail deterministically at a
   `maxScrolls` bound (default 15) or once two consecutive reads *show* the region standing still
@@ -600,6 +611,9 @@ Android, and on iOS on the fast suite's bookkeeping proof alone.
   selector's existing `within`/`traits`/`index` fields, one step per component. Gated on the
   `PICKER_WHEEL` capability, which only the resident-runner XCUITest backend and `FakeDriver`
   declare, so Android and web are rejected at preflight before any device work
+
+#### DSL system-alert handling
+
 - DSL `handleSystemAlert` (BE-0316): a deterministic, iOS-only step that taps a SpringBoard
   permission-prompt button by a native accessibility query (the runner's second, on-demand
   SpringBoard handle) — resolution stays Python-side in `resolve_unique`; only the XCUITest backend
@@ -618,6 +632,9 @@ Android, and on iOS on the fast suite's bookkeeping proof alone.
   the AI-vision guard demoted to a fallback for what the native path can't name (a backend lacking the
   capability, a non-enumerable blocking surface, or a free-text `instruction` the native path can't
   resolve to one label); on by default, `false` disables it per scenario
+
+#### Evidence, network observation, and reporting
+
 - DSL `iosTipKitHandling` (BE-0389), an opt-in guard for a blocking Apple TipKit tip: TipKit's
   presentation marks the content it covers accessibility-hidden rather than merely occluding it, so a
   blocked tap can fail as `ElementNotFound`, not only `ElementNotTappable`. The XCUITest backend alone
@@ -664,6 +681,9 @@ Android, and on iOS on the fast suite's bookkeeping proof alone.
   a `TriageAgent` diagnosis (rule-based `HeuristicTriageAgent`, or `--ai` Claude with the failure
   screenshot). An agent can propose a structured fix (`renameId` / `addIndex` / `raiseTimeout`);
   `--apply`/`--write` patches the scenario source (diff-previewed, opt-in) and `--rerun` re-runs it
+
+#### The CLI, `serve`, and codegen
+
 - The CLI: `run` / `project` / `doctor` / `audit` / `coverage` / `impact` / `stats` / `flakiness` / `export` / `trace` / `report` / `triage` / `record` / `crawl` / `codegen` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` — with `record` + `crawl` as the Tier 1 AI authoring paths and the alert guard
 - The **parsed device OS** (`device_os.py`, BE-0358): the device's operating-system (OS) version as a small parsed fact — platform, major, minor — read from the `device_runtime` label a run already records per scenario. An absent or unrecognized label parses to "unknown" rather than to a guessed version. Both flakiness surfaces carry the parsed OS in their grouping key, so a scenario's verdict history is per OS version, and a reproducible cross-version difference no longer scores as flakiness. The XCUITest driver receives it as a `make_driver` keyword — not a `Driver` member, which every backend and every test double would then have to declare — so a driver-level report can name the OS it ran on. **Reading the OS is not a licence to branch on it**: this repository fixes a behavioural OS difference version-agnostically, and a per-OS branch must earn its place in its own roadmap item against that alternative
 - Read-only advisory analysis commands (no device, no AI, never gate CI — only a missing/unreadable input exits non-zero): a determinism/flakiness **audit** with static, repeat-and-diff, and longitudinal modes (`audit`, BE-0049); a scenario id-namespace **coverage** map (`coverage`, BE-0050); **test impact analysis** — the affected scenario steps a `git` diff selects, by inverting the coverage index (`impact`, BE-0321); the aggregate run-stats dashboard as CLI/HTML output (`stats`, BE-0102); cross-run **flakiness** ranking, from a runs directory or the `serve` database (`flakiness`, BE-0220); a finished run's **export** as a portable `.zip` (`export`, BE-0060); and **report** re-rendering (`report.html`/`junit.xml`/`ctrf.json`) from stored run data with no re-run (`report`, BE-0068)

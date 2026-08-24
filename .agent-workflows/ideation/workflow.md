@@ -46,14 +46,18 @@ let it gate or slow this workflow down; skip a checkpoint rather than block on i
 
 ### 1. Ground yourself in the existing roadmap
 
-Before ideating, read:
+Before ideating, pull in what already exists:
 
-- [`roadmaps/README.md`](../../roadmaps/README.md) and
-  [`README-ja.md`](../../roadmaps/README-ja.md) — the index of every BE item, its
-  topic, status, and track.
-- [`docs/architecture.md#implementation-status`](../../docs/architecture.md) — the
-  source of truth for what already exists (so you don't "propose" something shipped).
-- The specific `BE-NNNN-*/` files relevant to the user's topic.
+- `make roadmap-find ARGS="--grep <topic>"` — the items already on the topic, in one table.
+  The roadmap runs to close to 400 items. Grepping it returns far more than the query does.
+- `make roadmap-status STATUS="Proposal"` — the open backlog, when a keyword misses the framing.
+- `make repo-map ARGS="--headings docs/architecture.md"` names the groups under **Implemented**.
+  That section records what already exists. Read the group covering the area, not the whole
+  section, so you never propose something shipped.
+- The `BE-NNNN-*/` files those queries surface. Read the English `.md` alone: the `-ja.md`
+  mirror holds nothing it lacks.
+- [`roadmaps/README.md`](../../roadmaps/README.md) — what a roadmap item *is*, and how to add
+  one. It does not list the items; the queries above do.
 
 This is what makes it a *sounding board* and not a blank page: every suggestion is
 anchored to what's already planned, in progress, or deliberately not adopted.
@@ -68,7 +72,9 @@ is gated on; this question asks for the observable difference the item's Motivat
 and step 4 carries the answer into that prose
 ([BE-0383](../../roadmaps/BE-0383-motivation-verifiable-outcome/BE-0383-motivation-verifiable-outcome.md)).
 Pull in adjacent existing items as reference points ("this is close to BE-00xx — extend it, or
-is it distinct?"). Keep proposing seeds the user can react to; that reaction is the point.
+is it distinct?"). `make roadmap-find ARGS="--grep <word>"` finds them. Pass `--id BE-00xx`
+instead to confirm one you already have in mind. Keep proposing seeds the user can react to;
+that reaction is the point.
 
 ### 3. Classify each idea that survives the discussion
 

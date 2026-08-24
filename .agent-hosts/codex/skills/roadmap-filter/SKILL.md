@@ -1,6 +1,6 @@
 ---
 name: roadmap-filter
-description: List Bajutsu roadmap items filtered by Status. Use for read-only roadmap surveys and path lookup.
+description: Find Bajutsu roadmap items by status, keyword, topic, or id. Use for read-only roadmap surveys, "is there already an item about X", and path lookup.
 ---
 
 # Codex adapter

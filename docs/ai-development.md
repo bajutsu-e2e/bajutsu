@@ -308,6 +308,12 @@ The frontmatter can't reach interactive and delegated work, so choose there by h
   out-of-repo review plugins (`pr-review-toolkit`), whose frontmatter we don't own — set their model
   at spawn time.
 
+Passing `model` at spawn time is a thing to remember, not a mechanism, and it gets forgotten.
+A discovery fan-out that nobody routed runs at whatever the driver is paying for.
+[`.claude/agents/scout.md`](../.claude/agents/scout.md) closes that gap for discovery.
+The agent pins `fable` in its own frontmatter and holds its reply to paths and line ranges.
+Naming `scout` buys the cheap path without anyone choosing it.
+
 Deliberately **not gate-enforced**: which model a session used isn't recoverable from the diff, and
 hard-pinning would remove the human's judgment to upshift when a "light" task turns out hard. This
 follows the same "procedures as commands, advisory not policy" precedent as the rest of the
