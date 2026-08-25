@@ -208,7 +208,7 @@ def test_an_unreadable_database_is_a_5xx_not_a_denial(
             raise OSError("database is down")
 
     state = _state(serve_engine, tmp_path, oauth=_FakeOAuth("alice"))
-    state.repository = _BrokenRepository()  # type: ignore[assignment]
+    state.repository = _BrokenRepository()
     with caplog.at_level(logging.WARNING):
         payload, status, sid = _sign_in(state)
     assert status == 503 and sid is None
@@ -919,7 +919,7 @@ def test_seeding_survives_an_unreadable_database(
             raise OSError("database is down")
 
     state = _state(serve_engine, tmp_path)
-    state.repository = _BrokenRepository()  # type: ignore[assignment]
+    state.repository = _BrokenRepository()
     with caplog.at_level(logging.WARNING):
         seed_orgs_from_bound_config(state)
     record = next(r for r in caplog.records if getattr(r, "event", None) == "org.seed.failed")

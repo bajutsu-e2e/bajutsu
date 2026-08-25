@@ -217,7 +217,7 @@ def test_run_project_that_is_not_active_is_409(tmp_path: Path) -> None:
 def test_run_project_dispatches_and_stamps_the_project_id(tmp_path: Path) -> None:
     state = _hub_state(
         tmp_path,
-        popen=fake_popen(["PASS  runs/20260711-9/manifest.json\n"]),  # type: ignore[arg-type]
+        popen=fake_popen(["PASS  runs/20260711-9/manifest.json\n"]),
     )
     reg = state.project_registry
     assert reg is not None
@@ -238,7 +238,7 @@ def test_run_project_dispatches_and_stamps_the_project_id(tmp_path: Path) -> Non
 def test_start_run_carries_the_active_project_id_onto_the_job(tmp_path: Path) -> None:
     state = _hub_state(
         tmp_path,
-        popen=fake_popen(["PASS  runs/20260711-8/manifest.json\n"]),  # type: ignore[arg-type]
+        popen=fake_popen(["PASS  runs/20260711-8/manifest.json\n"]),
     )
     reg = state.project_registry
     assert reg is not None
@@ -290,7 +290,7 @@ def test_run_project_after_activating_it_dispatches(tmp_path: Path) -> None:
     state = _hub_state(
         tmp_path,
         root=tmp_path,
-        popen=fake_popen(["PASS  runs/20260711-5/manifest.json\n"]),  # type: ignore[arg-type]
+        popen=fake_popen(["PASS  runs/20260711-5/manifest.json\n"]),
     )
     first = _file_config(tmp_path / "first.config.yaml", "first")
     second = _file_config(tmp_path / "second.config.yaml", "second")
@@ -664,7 +664,7 @@ def test_a_registry_error_at_enqueue_leaves_the_run_unlabeled(tmp_path: Path) ->
     at enqueue time degrades to an unlabeled run (project_id=None) rather than breaking start_run."""
 
     class _FlakyRegistry(LocalProjectRegistry):
-        def resolve_active(self, *, org_id: str) -> None:  # type: ignore[override]
+        def resolve_active(self, *, org_id: str) -> None:
             raise RuntimeError("registry backend unavailable")
 
     scn_dir, cfg, runs = project(tmp_path)
@@ -674,7 +674,7 @@ def test_a_registry_error_at_enqueue_leaves_the_run_unlabeled(tmp_path: Path) ->
         runs_dir=runs,
         cwd=tmp_path,
         project_registry=_FlakyRegistry(tmp_path / "projects.json"),
-        popen=fake_popen(["PASS  runs/20260711-7/manifest.json\n"]),  # type: ignore[arg-type]
+        popen=fake_popen(["PASS  runs/20260711-7/manifest.json\n"]),
     )
 
     payload, status = ops.start_run(state, {"target": "demo", "scenario": "smoke.yaml"})

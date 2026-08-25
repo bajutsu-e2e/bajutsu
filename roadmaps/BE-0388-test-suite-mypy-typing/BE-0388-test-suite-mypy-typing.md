@@ -185,6 +185,9 @@ The pydantic-plugin question stays out of this item's scope; see *Alternatives c
   become subclasses overriding only what they specialize; `StubArtifactStore` does the same for the
   eleven-method `ArtifactStore`. That removed the duplication as well as the findings.
 
+  Fourteen `# type: ignore` comments went stale as the stubs came to satisfy their protocols, and
+  were dropped with them for the reason the previous slice records.
+
   One fake had drifted rather than merely being partial. `test_http_auth.py`'s `_FakeOAuth` declared
   a `fetch_login` the `OAuthClient` protocol no longer has, and lacked the `fetch_identity` that
   replaced it. Nothing failed, because those tests exercise only the redirect leg — which is the
