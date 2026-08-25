@@ -8,7 +8,7 @@
 	run-swiftui run-uikit run-swiftui-tabs run-uikit-tabs \
 	run-swiftui-noax run-uikit-noax doctor record ui-test ui-test-coverage \
 	vrt vrt-approve vrt-swiftui vrt-swiftui-approve vrt-uikit vrt-uikit-approve \
-	e2e-visual e2e-visual-approve e2e-network \
+	e2e-visual e2e-visual-approve e2e-network e2e-browser \
 	flutter-build flutter-android-build flutter-android-noax-build \
 	run-flutter run-flutter-android clean
 
@@ -124,6 +124,9 @@ runner-build-device:
 # for whatever scenario the lane discovers next. Each runs instead on a named iOS CI scenario list
 # (`run` for the first, `actuation` for the second), where what precedes it is controlled rather than
 # discovered. A dedicated tag keeps them out without riding the legacy `xcuitest` tag.
+# `browser` (scenarios/browser.yaml, the SFSafariViewController flow) is excluded for the same
+# reason as the two below: it needs a fixture page served on BROWSER_PORT, which only its own
+# `e2e-browser` lane starts, so discovering it here would leave the browser with nothing to load.
 # Two more tags are excluded for the same "this file has its own lane" reason: `visual`
 # (scenarios/visual.yaml), because these lanes pass no `--baselines` and every pixel check could only
 # report its baseline missing — `vrt` below names that file and its baseline directory explicitly;
@@ -140,9 +143,9 @@ SIM ?= $(shell xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | hea
 # its own runs. These targets already exclude the `visual` tag, and `run` skips a screenshot-comparing
 # scenario anyway, so the markers reach no assertion that reads pixels.
 run-swiftui: swiftui-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android --config $(CONFIG) --touch-markers
+	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,browser --config $(CONFIG) --touch-markers
 run-uikit: uikit-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,swiftui --config $(CONFIG) --touch-markers
+	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,swiftui,browser --config $(CONFIG) --touch-markers
 
 # scenarios/tabs.yaml on its own, forced onto XCUITest (see the comment above run-swiftui/run-uikit).
 run-swiftui-tabs: swiftui-build runner-build
@@ -310,6 +313,28 @@ e2e-network: swiftui-build runner-build
 		--network --runs-dir $(NET_RUNS)
 	cd $(ROOT) && uv run python demos/showcase/network/assert_network_evidence.py $(NET_RUNS)
 
+# ---- In-app browser (SFSafariViewController) -------------------------------------------------------
+# scenarios/browser.yaml on its own, with the fixture page it loads served for the length of the run.
+# A Simulator reaches the host's loopback, so a plain `python3 -m http.server` is all the browser
+# needs — the same shape demos/web/Makefile uses for its own app, including the readiness poll
+# (never a fixed sleep, matching the runner's own discipline). Keep BROWSER_PORT in step with the
+# SHOWCASE_BROWSER_URL in that scenario's `launchEnv`. Simulator-only: a real device cannot reach a
+# server on the host's loopback. Runs against both toolkits, which expose the same ids for it.
+BROWSER_PORT ?= 8799
+
+e2e-browser: swiftui-build uikit-build runner-build
+	cd $(HERE)/browser && python3 -m http.server $(BROWSER_PORT) >/dev/null 2>&1 & srv=$$!; \
+	trap 'kill $$srv 2>/dev/null' EXIT; \
+	ready=0; for i in $$(seq 1 100); do \
+	  if curl -sf --max-time 2 -o /dev/null "http://localhost:$(BROWSER_PORT)/"; then ready=1; break; fi; \
+	  sleep 0.1; \
+	done; \
+	if [ "$$ready" -ne 1 ]; then echo "fixture server did not answer on port $(BROWSER_PORT) within the readiness timeout" >&2; exit 1; fi; \
+	cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/browser.yaml \
+		--target showcase-swiftui --udid $(SIM) --backend ios --config $(CONFIG) && \
+	cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/browser.yaml \
+		--target showcase-uikit --udid $(SIM) --backend ios --config $(CONFIG)
+
 # ---- Flutter (BE-0008) ----------------------------------------------------------------------------
 # The Flutter twin (demos/showcase/flutter), one Dart codebase built for both platforms. It adds no
 # backend: `Semantics(identifier: …)` surfaces into the OS accessibility tree the native backends
@@ -331,7 +356,7 @@ flutter-android-noax-build:
 # Prereqs: a booted Simulator, `make runner-build`; an attached emulator for Android.
 run-flutter: flutter-build runner-build
 	cd $(ROOT) && uv run bajutsu run --target showcase-flutter --udid $(SIM) --backend xcuitest \
-		--exclude network,systemalert,alert,visual,swiftui --config $(CONFIG)
+		--exclude network,systemalert,alert,visual,swiftui,browser --config $(CONFIG)
 
 # The same on-device set the native Compose lane runs (demos/showcase/android/Makefile), minus
 # device.yaml — its device-control clipboard round-trips through the in-app BajutsuAndroid receiver

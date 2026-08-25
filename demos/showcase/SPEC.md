@@ -108,6 +108,7 @@ Driven via `launchEnv` ([DESIGN §6.1](../../DESIGN.md)). All are read once at l
 | `SHOWCASE_UITEST` | disable animations (tight condition waits) | unset |
 | `SHOWCASE_API_URL` | base URL for the catalog GET (`/horses`) | `https://example.com` |
 | `SHOWCASE_HTTP_BASE` | base for the echo POST/DELETE endpoints | `https://httpbin.org` |
+| `SHOWCASE_BROWSER_URL` | page the in-app browser opens (§5.4) | `https://example.com` |
 
 > There is **no auth gate**: the app launches straight into the tab UI, always on the Stable tab.
 > Every other tab is reached by tapping the native tab bar, which the XCUITest backend does by
@@ -238,6 +239,20 @@ the tap that triggered it return:
   value, and asserts it. A read that comes back with no string — the paste consent refused, or an
   empty pasteboard — publishes `(none)`, so a scenario answering that prompt with `choice: deny` has
   a value to wait for rather than a field it cannot tell from one never read
+
+**In-app browser** — the same section opens `SFSafariViewController` on `SHOWCASE_BROWSER_URL`.
+The browser draws its interface in a separate process, `com.apple.SafariViewService`. The backend
+reads that process's tree, not the app's own. Chrome and rendered page reach a scenario through
+that process's application handle. The frames arrive in the app's coordinate space. The
+pasteboard above is the fixture for device state an app-scoped query cannot see. This section is
+the fixture for out-of-process UI a scenario must still drive.
+[`browser.yaml`](scenarios/browser.yaml) is this fixture's scenario. Its own lane,
+`make -C demos/showcase e2e-browser`, serves the page the browser loads.
+- `sys.openBrowser` — button that presents the browser on `SHOWCASE_BROWSER_URL`
+- `sys.browser.value` — `idle`/`loaded`/`loadFailed`. The value mirrors the one fact the app
+  observes: whether the page finished loading. `SFSafariViewControllerDelegate` reports that
+  outcome. A scenario reads the mirror after dismissing the browser, once this screen is back in
+  the tree
 
 ### 5.5 Tab: Notices — `notice` namespace (long list → detail, scroll-to-element)
 

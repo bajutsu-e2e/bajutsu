@@ -1,4 +1,5 @@
 import CoreLocation
+import SafariServices
 import UIKit
 import UserNotifications
 
@@ -9,13 +10,26 @@ import UserNotifications
 /// (Reading a pasteboard seeded by another process trips iOS's paste-consent prompt; a value this
 /// app wrote reads back silently. Both paths are exercised: system.yaml copies in-app,
 /// paste_system_alert.yaml seeds the pasteboard with `setClipboard` and answers the prompt.)
-final class PermissionsController: UIViewController, CLLocationManagerDelegate {
+final class PermissionsController: UIViewController, CLLocationManagerDelegate,
+    SFSafariViewControllerDelegate {
+    private let model: AppModel
     private let notifValueLabel = UILabel()
     private let notifAuthorizedLabel = UILabel()
     private let locationValueLabel = UILabel()
     private let pastedValueLabel = UILabel()
+    private let browserValueLabel = UILabel()
 
     private let locationManager = CLLocationManager()
+
+    init(model: AppModel) {
+        self.model = model
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -65,6 +79,18 @@ final class PermissionsController: UIViewController, CLLocationManagerDelegate {
         pastedValueLabel.accessibilityID("sys.paste.value")
         pastedValueLabel.accessibilityStateValue("")
 
+        // In-app browser (SPEC §5.4): SFSafariViewController draws its UI in another process, so
+        // while it is up the app's own tree is not what the backend reads.
+        let openBrowser = UIButton(type: .system, primaryAction: UIAction(title: "Open Browser") { [weak self] _ in
+            self?.openBrowser()
+        })
+        openBrowser.contentHorizontalAlignment = .leading
+        openBrowser.accessibilityID("sys.openBrowser")
+
+        browserValueLabel.text = "Browser: idle"
+        browserValueLabel.accessibilityID("sys.browser.value")
+        browserValueLabel.accessibilityStateValue("idle")
+
         // A grouped form mirroring the SwiftUI twin: Notifications, Location, and System sections.
         installGroupedForm([
             makeSectionHeader("Notifications"),
@@ -72,7 +98,7 @@ final class PermissionsController: UIViewController, CLLocationManagerDelegate {
             makeSectionHeader("Location"),
             makeSectionCard([requestLocation, locationValueLabel]),
             makeSectionHeader("System"),
-            makeSectionCard([copy, paste, pastedValueLabel]),
+            makeSectionCard([copy, paste, pastedValueLabel, openBrowser, browserValueLabel]),
         ])
 
         refreshNotifStatus()
@@ -147,5 +173,33 @@ final class PermissionsController: UIViewController, CLLocationManagerDelegate {
     private func setPastedValue(_ text: String) {
         pastedValueLabel.text = "Pasted: \(text)"
         pastedValueLabel.accessibilityStateValue(text)
+    }
+
+    // MARK: - In-app browser
+
+    // Mirrors the one fact about the browser this app can observe: whether the page finished
+    // loading. Everything the browser draws belongs to another process — the backend reads that
+    // tree from the browser's own application handle, not from this app's — so the app-side signal
+    // is deliberately narrow, and it is readable again only once the browser has been dismissed and
+    // this screen is back in the tree.
+    private func openBrowser() {
+        guard let url = URL(string: model.browserURL) else {
+            setBrowserValue("badURL")
+            return
+        }
+        let controller = SFSafariViewController(url: url)
+        controller.delegate = self
+        present(controller, animated: !model.animationsDisabled)
+    }
+
+    func safariViewController(
+        _ controller: SFSafariViewController, didCompleteInitialLoad didLoadSuccessfully: Bool
+    ) {
+        setBrowserValue(didLoadSuccessfully ? "loaded" : "loadFailed")
+    }
+
+    private func setBrowserValue(_ text: String) {
+        browserValueLabel.text = "Browser: \(text)"
+        browserValueLabel.accessibilityStateValue(text)
     }
 }

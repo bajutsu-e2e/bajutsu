@@ -119,6 +119,9 @@ final class AppModel: ObservableObject {
 
     // Networking config (SPEC §3, §6).
     var apiURL: String { env["SHOWCASE_API_URL"] ?? "https://example.com" }
+    // The page the in-app browser opens (SPEC §5.4). `browser.yaml` points this at a page its own
+    // Makefile lane serves, so the scenario asserts fixed content rather than a live site's.
+    var browserURL: String { env["SHOWCASE_BROWSER_URL"] ?? "https://example.com" }
     var httpBase: String { env["SHOWCASE_HTTP_BASE"] ?? "https://httpbin.org" }
 
     func horses(matching query: String) -> [Horse] {
