@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from _shared import FakeObjectStore
 
@@ -40,7 +41,12 @@ def _state(tmp_path: Path, *, id_namespaces: list[str] | None = None) -> ServeSt
 
 
 def _write_run(
-    runs: Path, run_id: str, sid: str, *, network: list[dict], elements: list[dict]
+    runs: Path,
+    run_id: str,
+    sid: str,
+    *,
+    network: list[dict[str, Any]],
+    elements: list[dict[str, Any]],
 ) -> None:
     """A run's evidence at the real layout (`bajutsu.runner.pipeline`/`bajutsu.evidence`):
     `<sid>/network.json` (scenario-level) and `<sid>/<step_id>/elements.json` (per-step), plus the

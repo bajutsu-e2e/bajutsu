@@ -16,9 +16,11 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 import pytest
+from alembic.config import Config
 
 # Shared with the serve_engine fixture in tests/conftest.py: constants, dialect params, and the
 # double opt-in URL resolver have a single source of truth there so both suites stay in sync.
@@ -33,20 +35,19 @@ from sqlalchemy import (
     inspect,
     text,
 )
+from sqlalchemy.engine import Engine
 
 import bajutsu.serve.server as server_pkg
 from bajutsu.serve.server.models import Base
 
 
-def _alembic_config():
-    from alembic.config import Config
-
+def _alembic_config() -> Config:
     cfg = Config()
     cfg.set_main_option("script_location", str(Path(server_pkg.__file__).parent / "migrations"))
     return cfg
 
 
-def _schema_signature(engine) -> dict[str, Any]:
+def _schema_signature(engine: Engine) -> dict[str, Any]:
     """Per-table (columns+types+nullability, foreign keys, unique constraints) for every table but
     Alembic's own bookkeeping one — enough to catch column/constraint drift, not just a missing
     table."""
@@ -65,7 +66,7 @@ def _schema_signature(engine) -> dict[str, Any]:
     return signature
 
 
-def _load_migration(name: str):
+def _load_migration(name: str) -> ModuleType:
     """Load a migration module by filename stem (e.g. '0010_run_project_fk_set_null')."""
     path = Path(server_pkg.__file__).parent / "migrations" / "versions" / f"{name}.py"
     spec = importlib.util.spec_from_file_location(name, path)
@@ -94,7 +95,9 @@ def _reset_schema(url: str) -> None:
 
 
 @pytest.fixture
-def migration_db_url(request, tmp_path, monkeypatch) -> str:
+def migration_db_url(
+    request: pytest.FixtureRequest, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> str:
     """A clean, empty database URL for the requested dialect, wired into `BAJUTSU_DATABASE_URL` so
     the Alembic config resolves it. SQLite uses a throwaway file; Postgres uses the service from
     `BAJUTSU_TEST_POSTGRES_URL`. Both env vars must be set together: the URL without the flag skips
@@ -132,7 +135,7 @@ def test_project_id_fk_name_reflects_the_correct_constraint() -> None:
 
 
 @pytest.mark.parametrize("migration_db_url", _DIALECTS, indirect=True)
-def test_initial_migration_matches_the_orm_schema(migration_db_url) -> None:
+def test_initial_migration_matches_the_orm_schema(migration_db_url: str) -> None:
     from alembic import command
 
     command.upgrade(_alembic_config(), "head")
@@ -154,7 +157,7 @@ def test_initial_migration_matches_the_orm_schema(migration_db_url) -> None:
 
 
 @pytest.mark.parametrize("migration_db_url", _DIALECTS, indirect=True)
-def test_0017_carries_a_single_editor_team_into_the_list(migration_db_url) -> None:
+def test_0017_carries_a_single_editor_team_into_the_list(migration_db_url: str) -> None:
     # The one migration in this series that moves data, not just columns (BE-0375 unit 9): an
     # `editor_team` an admin set through the API lives nowhere but this row, since the write stamps
     # `membership_seeded_at` and no later startup reseeds it from the `orgs:` block. Dropping the
@@ -183,7 +186,7 @@ def test_0017_carries_a_single_editor_team_into_the_list(migration_db_url) -> No
     engine = create_engine(migration_db_url)
     try:
         with engine.connect() as conn:
-            rows = dict(
+            rows: dict[str, str] = dict(
                 conn.execute(text("SELECT id, editor_teams FROM orgs")).all()  # type: ignore[arg-type]
             )
         # SQLite hands back the stored JSON text; Postgres decodes JSONB into Python. Compare
@@ -202,7 +205,7 @@ def test_0017_carries_a_single_editor_team_into_the_list(migration_db_url) -> No
     engine = create_engine(migration_db_url)
     try:
         with engine.connect() as conn:
-            back = dict(
+            back: dict[str, str] = dict(
                 conn.execute(text("SELECT id, editor_team FROM orgs")).all()  # type: ignore[arg-type]
             )
         assert back == {"acme": "acme-gh/scenario-maintainers", "globex": None}
@@ -211,7 +214,7 @@ def test_0017_carries_a_single_editor_team_into_the_list(migration_db_url) -> No
 
 
 @pytest.mark.parametrize("migration_db_url", _DIALECTS, indirect=True)
-def test_downgrade_base_removes_the_tables(migration_db_url) -> None:
+def test_downgrade_base_removes_the_tables(migration_db_url: str) -> None:
     from alembic import command
 
     cfg = _alembic_config()

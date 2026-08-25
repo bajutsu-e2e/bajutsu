@@ -92,7 +92,9 @@ class _FakeS3:
         return {}
 
     def delete_objects(self, Bucket: str, Delete: dict[str, object]) -> dict[str, object]:  # noqa: N803
-        for obj in Delete["Objects"]:  # type: ignore[index]
+        objects = Delete["Objects"]
+        assert isinstance(objects, list)
+        for obj in objects:
             self._objects.pop(obj["Key"], None)
         return {}
 

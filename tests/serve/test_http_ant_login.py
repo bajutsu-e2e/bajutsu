@@ -8,6 +8,7 @@ is ever spawned. Local serve only — a hosted deployment refuses the sign-in.
 from __future__ import annotations
 
 import io
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -66,7 +67,7 @@ def _popen_sequence(*procs: _FakeAnt):  # type: ignore[no-untyped-def]
 
 def _install_ant(monkeypatch: pytest.MonkeyPatch) -> None:
     """Report the `ant` binary present regardless of the CI host (the op probes with shutil.which)."""
-    monkeypatch.setattr(ops.config.shutil, "which", lambda _exe: "/usr/bin/ant")
+    monkeypatch.setattr(shutil, "which", lambda _exe: "/usr/bin/ant")
 
 
 def test_ant_login_starts_and_reports_ok(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -137,7 +138,7 @@ def test_ant_login_refused_when_hosted(tmp_path: Path, monkeypatch: pytest.Monke
 def test_ant_login_missing_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """No `ant` on PATH → 400 with the same install hint the availability check surfaces."""
     scn_dir, cfg, runs = project(tmp_path)
-    monkeypatch.setattr(ops.config.shutil, "which", lambda _exe: None)
+    monkeypatch.setattr(shutil, "which", lambda _exe: None)
     server, port = _serve(
         srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
     )

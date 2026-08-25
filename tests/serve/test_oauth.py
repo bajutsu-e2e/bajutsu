@@ -12,9 +12,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from _shared import log_field
 
 from bajutsu.serve import operations as ops
-from bajutsu.serve.server.oauth import Identity
+from bajutsu.serve.server.oauth import Identity, OAuthClient
 from bajutsu.serve.state import ServeState, SessionManager
 
 if TYPE_CHECKING:
@@ -70,7 +71,7 @@ def _config_file(tmp_path: Path, body: str = _ORGS_YAML) -> Path:
 def _state(
     tmp_path: Path,
     *,
-    oauth: object = None,
+    oauth: OAuthClient | None = None,
     config: Path | None = None,
     admin_teams: list[str] | None = None,
 ) -> ServeState:
@@ -224,7 +225,7 @@ class _RaisingOAuthClient:
 def _db_state(
     serve_engine: Callable[..., Engine],
     tmp_path: Path,
-    oauth: object,
+    oauth: OAuthClient,
     admin_teams: list[str] | None = None,
     config: Path | None = None,
 ) -> tuple[ServeState, Engine]:
@@ -547,8 +548,8 @@ def test_oauth_callback_ordinary_admin_team_bypass_logs_at_info(
     # exactly the alert an operator would key on `event=oauth.login` for.
     record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.login")
     assert record.levelno == logging.INFO
-    assert record.actor == "mallory"
-    assert record.bypass is True
+    assert log_field(record, "actor") == "mallory"
+    assert log_field(record, "bypass") is True
 
 
 def test_oauth_callback_admin_team_bypass_logs_a_warning_when_no_config_is_bound(
@@ -566,7 +567,7 @@ def test_oauth_callback_admin_team_bypass_logs_a_warning_when_no_config_is_bound
         ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
     record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.login")
     assert record.levelno == logging.WARNING
-    assert record.bypass is True
+    assert log_field(record, "bypass") is True
 
 
 def test_oauth_callback_org_member_does_not_log_a_bypass_warning(
@@ -586,8 +587,8 @@ def test_oauth_callback_org_member_does_not_log_a_bypass_warning(
     assert "admin-Team bypass" not in caplog.text
     record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.login")
     assert record.levelno == logging.INFO  # WARNING is reserved for a bypass admission
-    assert record.bypass is False
-    assert record.actor == "alice"
+    assert log_field(record, "bypass") is False
+    assert log_field(record, "actor") == "alice"
 
 
 def test_oauth_callback_admin_team_bypasses_the_org_gate_with_no_orgs_block(
@@ -805,7 +806,7 @@ def test_oauth_callback_rejects_a_login_in_neither_the_org_gate_nor_the_admin_te
     # record too -- under its own event, not `oauth.login`, which stays "login count" (BE-0015 7c-1
     # audit-style visibility, not just a raw 403 with nothing an operator can correlate on).
     record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
-    assert record.actor == "mallory"
+    assert log_field(record, "actor") == "mallory"
     # Worded for either source (BE-0375): the same final branch is reached from an `orgs:` block
     # and from the `orgs` table, and naming one of them would mislead half the deployments.
     assert "no org membership matched this login" in record.getMessage()

@@ -9,31 +9,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from _shared import FakeObjectStore
+
 from bajutsu.serve.baselines import LocalBaselineStore
 from bajutsu.serve.server.baselines import ObjectBaselineStore
-
-
-class _FakeObjectStore:
-    def __init__(self) -> None:
-        self.objects: dict[str, bytes] = {}
-
-    def exists(self, key: str) -> bool:
-        return key in self.objects
-
-    def get_bytes(self, key: str) -> bytes | None:
-        return self.objects.get(key)
-
-    def put_bytes(self, key: str, data: bytes) -> None:
-        self.objects[key] = data
-
-    def put_file(self, key: str, path: Path) -> None:
-        self.objects[key] = path.read_bytes()
-
-    def presigned_url(self, key: str) -> str:
-        return f"https://signed.example/{key}"
-
-    def list_keys(self, prefix: str) -> list[str]:
-        return [k for k in self.objects if k.startswith(prefix)]
 
 
 def test_local_baseline_store_round_trips_and_lists(tmp_path: Path) -> None:
@@ -57,7 +36,7 @@ def test_local_baseline_store_rejects_escapes(tmp_path: Path) -> None:
 
 
 def test_object_baseline_store_names_are_sorted_and_filtered() -> None:
-    obj = _FakeObjectStore()
+    obj = FakeObjectStore()
     obj.objects["baselines/b.png"] = b"b"
     obj.objects["baselines/a.png"] = b"a"
     obj.objects["baselines/"] = b""  # a stray marker object -> empty name, dropped
@@ -65,7 +44,7 @@ def test_object_baseline_store_names_are_sorted_and_filtered() -> None:
 
 
 def test_object_baseline_store_round_trips_under_prefix() -> None:
-    obj = _FakeObjectStore()
+    obj = FakeObjectStore()
     store = ObjectBaselineStore(obj, prefix="tenant/")
     written = store.write("home.png", b"\x89PNG")  # keep the write out of the assert (-O strips it)
     assert written == "home.png"
@@ -86,7 +65,7 @@ def test_approve_writes_to_the_baseline_store(tmp_path: Path) -> None:
     (runs / "r1" / "00-home").mkdir(parents=True)
     (runs / "r1" / "00-home" / "visual-actual.png").write_bytes(b"PNG")
     state = srv.ServeState(runs_dir=runs, cwd=tmp_path)
-    obj = _FakeObjectStore()
+    obj = FakeObjectStore()
     state.baselines = ObjectBaselineStore(obj)
 
     payload, code = ops.approve_baseline(

@@ -17,12 +17,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from _shared import log_field
 
 from bajutsu.serve import operations as ops
 from bajutsu.serve.authz import _target_forbidden
 from bajutsu.serve.operations.config import seed_orgs_from_bound_config
 from bajutsu.serve.orgs import identity_matches_org, org_for_identity, orgs_from_db, parse_orgs
-from bajutsu.serve.server.oauth import Identity
+from bajutsu.serve.server.oauth import Identity, OAuthClient
 from bajutsu.serve.state import ServeState, SessionManager
 
 if TYPE_CHECKING:
@@ -83,7 +84,7 @@ def _state(
     tmp_path: Path,
     *,
     body: str = _COLLIDING_YAML,
-    oauth: object = None,
+    oauth: OAuthClient | None = None,
     admin_teams: list[str] | None = None,
     seed: bool = True,
     **extra: Any,
@@ -639,6 +640,7 @@ def test_the_backfill_seeds_once_and_a_later_config_edit_cannot_undo_it(
 
     # An operator edits `orgs:` and rebinds. The row is already past cutover, so the edit does not
     # reach it — and the entry is reported so they learn the file no longer decides this.
+    assert state.config is not None
     state.config.write_text(
         _COLLIDING_YAML.replace("members: [alice]", "members: [alice, mallory]"), encoding="utf-8"
     )
@@ -648,7 +650,8 @@ def test_the_backfill_seeds_once_and_a_later_config_edit_cannot_undo_it(
     record = next(
         r for r in caplog.records if getattr(r, "event", None) == "org.membership.ignored"
     )
-    assert "acme" in record.getMessage() and record.check == "orgs_membership_ignored"
+    assert "acme" in record.getMessage()
+    assert log_field(record, "check") == "orgs_membership_ignored"
 
 
 def test_seeding_reports_nothing_for_an_entry_that_only_declares_targets(
@@ -658,6 +661,7 @@ def test_seeding_reports_nothing_for_an_entry_that_only_declares_targets(
     # after the cutover. Warning on a merely non-empty `orgs:` block would fire forever on a
     # correctly configured deployment, or push an operator to empty it and lose that ownership.
     state = _state(serve_engine, tmp_path)
+    assert state.config is not None
     state.config.write_text(
         "targets:\n  checkout: { bundleId: com.x }\n"
         "orgs:\n  acme:\n    targets: [checkout]\n  globex:\n    targets: [checkout]\n",
@@ -684,6 +688,7 @@ def test_a_targets_only_entry_is_left_unseeded_so_a_restored_roster_still_seeds(
     assert state.repository is not None
     assert orgs_from_db(state.repository) == {}
 
+    assert state.config is not None
     state.config.write_text(
         "targets:\n  checkout: { bundleId: com.x }\n"
         "orgs:\n  acme:\n    members: [alice]\n    targets: [checkout]\n",
@@ -701,6 +706,7 @@ def test_seeding_is_skipped_once_the_table_holds_any_org(
     # not add a tenant behind an admin's back, so a table holding any org at all stops the seed.
     state = _state(serve_engine, tmp_path)
     assert state.repository is not None
+    assert state.config is not None
     state.config.write_text(
         _COLLIDING_YAML + "  initech:\n    members: [peter]\n", encoding="utf-8"
     )
@@ -737,7 +743,7 @@ def test_seeding_still_reports_config_entries_that_declare_membership(
         r for r in caplog.records if getattr(r, "event", None) == "org.membership.ignored"
     )
     assert "acme" in record.getMessage() and "globex" in record.getMessage()
-    assert record.check == "orgs_membership_ignored"
+    assert log_field(record, "check") == "orgs_membership_ignored"
 
 
 # Each test below drives one *real* API bind operation. None of them may seed: such a bind accepts a
@@ -851,6 +857,7 @@ def test_an_org_created_through_the_api_is_never_seeded_over(
     admin = _admin(state)
     ops.create_org(state, {"slug": "initech"}, actor=admin)
     ops.update_org_membership(state, "initech", {"members": ["peter"]}, actor=admin)
+    assert state.config is not None
     state.config.write_text(
         _COLLIDING_YAML + "  initech:\n    members: [mallory]\n", encoding="utf-8"
     )
@@ -870,6 +877,7 @@ def test_a_membership_edit_on_an_unseeded_row_is_never_seeded_over(
     state.repository.ensure_org("legacy", slug="legacy", name="legacy")
     edit = ops.update_org_membership(state, "legacy", {"members": ["zoe"]}, actor=_admin(state))
     assert edit[1] == 200
+    assert state.config is not None
     state.config.write_text(
         _COLLIDING_YAML + "  legacy:\n    members: [mallory]\n", encoding="utf-8"
     )
@@ -915,7 +923,7 @@ def test_seeding_survives_an_unreadable_database(
     with caplog.at_level(logging.WARNING):
         seed_orgs_from_bound_config(state)
     record = next(r for r in caplog.records if getattr(r, "event", None) == "org.seed.failed")
-    assert record.check == "orgs_seed_failed"
+    assert log_field(record, "check") == "orgs_seed_failed"
 
 
 # --- unit 7: the admin-Team bypass answers the empty-table case --------------------------------

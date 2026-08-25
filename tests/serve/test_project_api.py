@@ -280,7 +280,9 @@ def test_activate_switches_the_active_project_and_rebinds_the_config(tmp_path: P
     assert payload["active"] is True
     # The active project flips *and* the whole UI now runs against the switched-to config, without a
     # restart — the hub behavior unit 4 owns (unit 3 refused a non-active run with a 409).
-    assert reg.resolve_active(org_id="default").name == "second"  # type: ignore[union-attr]
+    active = reg.resolve_active(org_id="default")
+    assert active is not None and active.name == "second"
+    assert state.config is not None
     assert Path(state.config).resolve() == second.resolve()
 
 

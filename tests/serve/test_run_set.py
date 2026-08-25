@@ -78,7 +78,9 @@ def test_fan_out_registers_one_batch_job_per_scenario(tmp_path: Path) -> None:
     assert status == 200
     assert len(payload["jobIds"]) == 3
     # Every dispatched job carries a per-scenario BatchRequest — one scenario each, not the whole set.
-    scenarios = sorted(job.batch.scenario for job in executor.jobs)
+    for job in executor.jobs:
+        assert job.batch is not None
+    scenarios = sorted(job.batch.scenario for job in executor.jobs if job.batch is not None)
     assert scenarios == [
         "scenarios/one.yaml",
         "scenarios/three.yaml",
@@ -103,7 +105,8 @@ def test_fan_out_honours_an_explicit_scenario_subset(tmp_path: Path) -> None:
 
     assert status == 200
     assert len(payload["jobIds"]) == 1
-    assert executor.jobs[0].batch.scenario == "scenarios/two.yaml"
+    batch = executor.jobs[0].batch
+    assert batch is not None and batch.scenario == "scenarios/two.yaml"
 
 
 def test_fan_out_rejects_a_target_not_wired_for_cloud_batch(tmp_path: Path) -> None:
@@ -373,7 +376,7 @@ def test_fan_out_rejects_scenarios_that_travel_as_materials(tmp_path: Path) -> N
         def list(self):
             return [{"file": "one.yaml"}]
 
-        def runnable(self, name: str):
+        def runnable(self, name: str) -> Runnable:
             return Runnable(
                 arg="one.yaml",
                 materials={"one.yaml": "- name: a\n  steps:\n    - tap: { id: x }\n"},
