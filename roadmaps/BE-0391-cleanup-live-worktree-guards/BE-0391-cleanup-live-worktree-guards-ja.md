@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0391](BE-0391-cleanup-live-worktree-guards-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0391") |
 | 実装 PR | [#1730](https://github.com/bajutsu-e2e/bajutsu/pull/1730) |
 | トピック | Contributor workflow |
@@ -141,13 +141,18 @@ gitによる2つの拒否は、上記のガードの背後に控える最後の�
 ログ：
 
 - 2026-08-24 — セッションの記録から事例を調査しました。スキルが実行したコマンドはすべて文書どおりに
-  動作していました。そのうえで、ガードスクリプトとテスト、書き直したワークフローを投入しました。
+  動作していました。そのうえで、ガードスクリプトとテスト、書き直したワークフローを投入しました
+  （[#1730](https://github.com/bajutsu-e2e/bajutsu/pull/1730)）。
+- 2026-08-25 — 先行するPRでは決まっていなかった番号が確定したので、スクリプトとテストに残っていた
+  `BE-XXXX`のプレースホルダーを置き換えました。あわせて参考節のリンクをBE-0390が移した先へ向け直し、
+  項目を実装済みにしています。
 
 ## 参考
 
-- [`.agent-workflows/cleanup/workflow.md`](../../.agent-workflows/cleanup/workflow.md) — 本項目が
-  書き直すワークフローです。
+- [`.apm/skills/cleanup/SKILL.md`](../../.apm/skills/cleanup/SKILL.md) — 本項目が書き直す`cleanup`
+  スキルです。投入した当時のワークフローとホストごとのアダプターは、下記のBE-0390が1つのソースに
+  まとめました。
 - [`docs/ja/ai-development.md`](../../docs/ja/ai-development.md) — このスキルが後に削除する作業ツリーを
   作る手順を説明しています。
 - [BE-0390](../BE-0390-apm-skill-management/BE-0390-apm-skill-management-ja.md) —
-  スキルの配置を`.apm/skills/`へ移す項目で、書き直したワークフローもそこへ移ります。
+  スキルの配置を`.apm/skills/`へ移した項目で、書き直したスキルもいまはそこにあります。

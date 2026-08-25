@@ -6,7 +6,7 @@
 # origin/main that has not committed anything yet sits *at* origin/main, so `--merged` lists it and
 # `git branch -d` deletes it without complaint — both behave exactly as documented. "Merged" there
 # means "has not started", not "is finished", which is precisely a live session's state. That is how
-# an active session's worktree was removed out from under it (BE-XXXX). Prose could not fix it: the
+# an active session's worktree was removed out from under it (BE-0391). Prose could not fix it: the
 # commands were correct, the predicate was wrong. So the predicate lives here, in one place, and the
 # skill only ever calls this script.
 #

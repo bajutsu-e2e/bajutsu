@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0391](BE-0391-cleanup-live-worktree-guards.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0391") |
 | Implementing PR | [#1730](https://github.com/bajutsu-e2e/bajutsu/pull/1730) |
 | Topic | Contributor workflow |
@@ -137,13 +137,17 @@ Log:
 
 - 2026-08-24 — Investigated the incident from the session transcripts, established that every
   command the skill ran behaved as documented, and shipped the guard script, its tests, and the
-  rewritten workflow.
+  rewritten workflow ([#1730](https://github.com/bajutsu-e2e/bajutsu/pull/1730)).
+- 2026-08-25 — Settled the id the earlier PR could not know: replaced the `BE-XXXX` placeholder in
+  the script and its tests, pointed the reference at the single source BE-0390 had since moved the
+  workflow to, and marked the item implemented.
 
 ## References
 
-- [`.agent-workflows/cleanup/workflow.md`](../../.agent-workflows/cleanup/workflow.md) — the
-  workflow this item rewrites.
+- [`.apm/skills/cleanup/SKILL.md`](../../.apm/skills/cleanup/SKILL.md) — the `cleanup` skill this
+  item rewrites. It shipped as a workflow with one adapter per host, which BE-0390 below folded
+  into this single source.
 - [`docs/ai-development.md`](../../docs/ai-development.md#isolate-concurrent-sessions-with-worktrees)
   — the worktree recipe that creates the checkouts this skill later removes.
-- [BE-0390](../BE-0390-apm-skill-management/BE-0390-apm-skill-management.md) — moves the skill
-  layout to `.apm/skills/`, which will carry the rewritten workflow.
+- [BE-0390](../BE-0390-apm-skill-management/BE-0390-apm-skill-management.md) — moved the skill
+  layout to `.apm/skills/`, which now carries the rewritten skill.

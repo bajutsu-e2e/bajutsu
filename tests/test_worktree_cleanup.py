@@ -1,6 +1,6 @@
 """Tests for scripts/worktree_cleanup.sh — the guard behind the `cleanup` skill.
 
-The incident this script exists for (BE-XXXX): a branch created off ``origin/main`` that has not
+The incident this script exists for (BE-0391): a branch created off ``origin/main`` that has not
 committed anything yet *is* ``origin/main``, so ``git branch --merged origin/main`` lists it and
 ``git branch -d`` deletes it. The old skill read that as "work is finished" when it actually meant
 "work has not started", and removed a live session's worktree. The first test below is that exact
