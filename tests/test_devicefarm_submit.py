@@ -38,6 +38,7 @@ from bajutsu.cloud.devicefarm import (
     submit_and_collect,
     verdict_from_manifest,
 )
+from bajutsu.config import AndroidConfig, IosConfig
 from scripts.devicefarm_submit import main
 
 
@@ -205,6 +206,7 @@ def test_devicefarm_config_skips_app_install_for_the_pre_installed_app() -> None
 
     cfg = Path("demos/showcase/devicefarm/showcase.devicefarm.config.yaml")
     eff = resolve(load_config(cfg.read_text(encoding="utf-8")), "showcase-compose")
+    assert isinstance(eff.platform_config, AndroidConfig)
     assert eff.platform_config.app_path is None
     assert eff.platform_config.package == "com.bajutsu.showcase.android.compose"
     assert eff.backend == ["android"]
@@ -218,6 +220,7 @@ def test_devicefarm_ios_config_targets_a_real_device() -> None:
 
     cfg = Path("demos/showcase/devicefarm/showcase.devicefarm.ios.config.yaml")
     eff = resolve(load_config(cfg.read_text(encoding="utf-8")), "showcase-swiftui")
+    assert isinstance(eff.platform_config, IosConfig)
     assert eff.platform_config.app_path is None
     assert eff.platform_config.xcuitest is not None
     assert eff.platform_config.xcuitest.device_type == "device"
@@ -685,7 +688,7 @@ def test_submit_and_collect_uploads_schedules_and_returns_the_manifest_verdict(
 def test_poll_backoff_grows_then_caps_at_the_interval_ceiling() -> None:
     # A short upload/run should settle after a small first wait rather than the fixed 30s poll, while
     # a long one still polls no more often than the ceiling: start small, double, cap at the ceiling.
-    delays = [_POLL_INITIAL_SECONDS]
+    delays: list[float] = [_POLL_INITIAL_SECONDS]
     for _ in range(7):
         delays.append(_next_poll_delay(delays[-1]))
     assert delays[0] == _POLL_INITIAL_SECONDS

@@ -46,8 +46,9 @@ def test_app_jwt_has_expected_claims_and_a_valid_signature() -> None:
     assert claims["exp"] == 1_000_000 + 540  # within GitHub's 10-minute cap
 
     public = serialization.load_pem_private_key(pem.encode(), password=None).public_key()
+    assert isinstance(public, rsa.RSAPublicKey)  # the app key this test mints is RSA
     # Raises InvalidSignature if the signature doesn't verify — so reaching the assert means it did.
-    public.verify(  # type: ignore[call-arg]
+    public.verify(
         _unb64(sig_seg),
         f"{header_seg}.{claims_seg}".encode("ascii"),
         padding.PKCS1v15(),

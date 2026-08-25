@@ -63,7 +63,7 @@ def test_command_builders() -> None:
 def test_uninstall_is_idempotent() -> None:
     """uninstall() of an app that isn't installed is a no-op, not a crash."""
 
-    def absent(args: list[str], e: object = None) -> str:
+    def absent(args: list[str], e: Mapping[str, str] | None = None) -> str:
         raise subprocess.CalledProcessError(2, args, stderr="not installed")
 
     simctl.Env("U", run=absent).uninstall("com.x")  # swallows the error
@@ -72,10 +72,10 @@ def test_uninstall_is_idempotent() -> None:
 def test_is_installed_reflects_get_app_container() -> None:
     import subprocess
 
-    def present(args: list[str], e: object = None) -> str:
+    def present(args: list[str], e: Mapping[str, str] | None = None) -> str:
         return "/path/to.app"
 
-    def absent(args: list[str], e: object = None) -> str:
+    def absent(args: list[str], e: Mapping[str, str] | None = None) -> str:
         raise subprocess.CalledProcessError(2, args, stderr="No such file or directory")
 
     assert simctl.Env("U", run=present).is_installed("com.x") is True
@@ -95,9 +95,9 @@ def test_booted_udids_parses_simctl() -> None:
             }
         }
     )
-    assert simctl.booted_udids(run=lambda args, e=None: payload) == ["AAA"]
+    assert simctl.booted_udids(run=lambda args, e: payload) == ["AAA"]
 
-    def boom(args: list[str], e: object = None) -> str:
+    def boom(args: list[str], e: Mapping[str, str] | None = None) -> str:
         raise OSError("simctl not found")
 
     assert simctl.booted_udids(run=boom) == []  # failure -> empty, never raises
@@ -116,10 +116,10 @@ def test_device_booted_is_three_valued() -> None:
             }
         }
     )
-    assert simctl.device_booted("AAA", run=lambda args, e=None: payload) is True
-    assert simctl.device_booted("BBB", run=lambda args, e=None: payload) is False
+    assert simctl.device_booted("AAA", run=lambda args, e: payload) is True
+    assert simctl.device_booted("BBB", run=lambda args, e: payload) is False
 
-    def boom(args: list[str], e: object = None) -> str:
+    def boom(args: list[str], e: Mapping[str, str] | None = None) -> str:
         raise OSError("simctl not found")
 
     # A probe that could not run reads as unknown, not as "not booted" — the same distinction
@@ -145,10 +145,10 @@ def test_device_catalog_maps_udid_to_model_and_os() -> None:
             }
         }
     )
-    catalog = simctl.device_catalog(run=lambda args, e=None: payload)
+    catalog = simctl.device_catalog(run=lambda args, e: payload)
     assert catalog == {"AAA": {"name": "iPhone 15", "runtime": "iOS 17.2"}}
 
-    def boom(args: list[str], e: object = None) -> str:
+    def boom(args: list[str], e: Mapping[str, str] | None = None) -> str:
         raise OSError("simctl not found")
 
     assert simctl.device_catalog(run=boom) == {}  # failure -> empty, never raises
@@ -180,10 +180,10 @@ def test_device_available_is_three_valued() -> None:
     payload = json.dumps(
         {"devices": {"com.apple.CoreSimulator.SimRuntime.iOS-26-0": [{"udid": "AAA"}]}}
     )
-    assert simctl.device_available("AAA", run=lambda args, e=None: payload) is True
-    assert simctl.device_available("BBB", run=lambda args, e=None: payload) is False
+    assert simctl.device_available("AAA", run=lambda args, e: payload) is True
+    assert simctl.device_available("BBB", run=lambda args, e: payload) is False
 
-    def boom(args: list[str], e: object = None) -> str:
+    def boom(args: list[str], e: Mapping[str, str] | None = None) -> str:
         raise OSError("simctl not found")
 
     # A probe that could not run reads as unknown, never as "the device is gone": creating a
@@ -206,7 +206,7 @@ def test_device_type_of_reads_the_unfiltered_listing() -> None:
     )
     calls: list[list[str]] = []
 
-    def run(args: list[str], e: object = None) -> str:
+    def run(args: list[str], e: Mapping[str, str] | None = None) -> str:
         calls.append(args)
         return payload
 
@@ -245,7 +245,7 @@ def test_device_type_identifier_and_newest_iphone() -> None:
     # simctl lists devicetypes oldest first, so the last iPhone is the newest installed one.
     assert simctl.newest_iphone_device_type(run=run) == "com.apple.x.iPhone-17-Pro"
 
-    def boom(args: list[str], e: object = None) -> str:
+    def boom(args: list[str], e: Mapping[str, str] | None = None) -> str:
         raise OSError("simctl not found")
 
     assert simctl.device_type_identifier("iPhone 17 Pro", run=boom) is None
@@ -255,7 +255,7 @@ def test_device_type_identifier_and_newest_iphone() -> None:
 def test_create_device_returns_the_new_udid() -> None:
     calls: list[list[str]] = []
 
-    def run(args: list[str], e: object = None) -> str:
+    def run(args: list[str], e: Mapping[str, str] | None = None) -> str:
         calls.append(args)
         return "AAAA-BBBB\n"
 
@@ -266,7 +266,7 @@ def test_create_device_returns_the_new_udid() -> None:
 def test_create_device_pins_the_given_runtime() -> None:
     calls: list[list[str]] = []
 
-    def run(args: list[str], e: object = None) -> str:
+    def run(args: list[str], e: Mapping[str, str] | None = None) -> str:
         calls.append(args)
         return "AAAA-BBBB\n"
 
@@ -286,7 +286,7 @@ def test_create_device_pins_the_given_runtime() -> None:
 def test_create_device_falls_back_when_the_pinned_runtime_is_gone() -> None:
     calls: list[list[str]] = []
 
-    def run(args: list[str], e: object = None) -> str:
+    def run(args: list[str], e: Mapping[str, str] | None = None) -> str:
         calls.append(args)
         if len(calls) == 1:
             raise subprocess.CalledProcessError(1, args, stderr="Invalid runtime")
@@ -314,7 +314,7 @@ def test_create_device_warns_when_it_falls_back_to_unpinned(
     # about what it actually got, so the fallback logs its own warning here, next to the decision.
     calls: list[list[str]] = []
 
-    def run(args: list[str], e: object = None) -> str:
+    def run(args: list[str], e: Mapping[str, str] | None = None) -> str:
         calls.append(args)
         if len(calls) == 1:
             raise subprocess.CalledProcessError(1, args, stderr="Invalid runtime")
@@ -334,7 +334,7 @@ def test_create_device_wraps_an_oserror_from_the_unpinned_retry() -> None:
     # OSError does not apply there — the fallback needs (and had been missing) its own.
     calls: list[list[str]] = []
 
-    def run(args: list[str], e: object = None) -> str:
+    def run(args: list[str], e: Mapping[str, str] | None = None) -> str:
         calls.append(args)
         if len(calls) == 1:
             raise subprocess.CalledProcessError(1, args, stderr="Invalid runtime")
@@ -348,7 +348,7 @@ def test_create_device_wraps_an_oserror_from_the_unpinned_retry() -> None:
 
 
 def test_create_device_fails_loudly_when_no_runtime_remains() -> None:
-    def boom(args: list[str], e: object = None) -> str:
+    def boom(args: list[str], e: Mapping[str, str] | None = None) -> str:
         raise subprocess.CalledProcessError(
             1, args, stderr="Invalid runtime: no runtimes are installed"
         )
@@ -358,7 +358,7 @@ def test_create_device_fails_loudly_when_no_runtime_remains() -> None:
 
     # A device type simctl accepted but printed nothing for leaves no udid to return.
     with pytest.raises(simctl.DeviceError, match="printed no udid"):
-        simctl.create_device("com.apple.x.iPhone-17", run=lambda args, e=None: "\n")
+        simctl.create_device("com.apple.x.iPhone-17", run=lambda args, e: "\n")
 
 
 def test_locale_args() -> None:
@@ -444,7 +444,7 @@ def test_parsers_accept_a_real_captured_payload() -> None:
     """
     payload = _REAL_LIST_DEVICES.read_text(encoding="utf-8")
 
-    catalog = simctl.device_catalog(run=lambda args, e=None: payload)
+    catalog = simctl.device_catalog(run=lambda args, e: payload)
     assert catalog, "the captured payload should yield a non-empty device catalog"
     for udid, entry in catalog.items():
         assert udid  # every catalogued device is keyed by a real udid
@@ -456,7 +456,7 @@ def test_parsers_accept_a_real_captured_payload() -> None:
     # The same payload carries per-device `state`, so the booted filter runs against the real shape;
     # the captured host had booted simulators, so the parser must find them (and each must be in the
     # catalog above — booted devices are a subset of the available ones).
-    booted = simctl.booted_udids(run=lambda args, e=None: payload)
+    booted = simctl.booted_udids(run=lambda args, e: payload)
     assert booted, "the captured payload had booted simulators; the parser should find them"
     assert set(booted) <= set(catalog)
 
@@ -746,7 +746,7 @@ def test_system_locale_matches_reports_an_unreadable_domain_as_unknown() -> None
     # A payload that parses but is not a dict is unreadable too (a mangled export), unlike a
     # readable domain that merely lacks the key — that one is a mismatch, covered above.
     mangled = plistlib.dumps([]).decode()
-    assert simctl.Env("UDID", run=lambda a, e=None: mangled).system_locale_matches("ja") is None
+    assert simctl.Env("UDID", run=lambda a, e: mangled).system_locale_matches("ja") is None
 
 
 def test_device_type_label_recovers_the_model_name() -> None:

@@ -21,6 +21,16 @@ from bajutsu.platform_lifecycle import AndroidEnvironment, ProvisionProfile, env
 from bajutsu.scenario import Preconditions, Redact
 
 
+def _recorder(calls: list[list[str]]) -> adb.RunFn:
+    """An `adb` RunFn that records each argv and returns empty output."""
+
+    def run(argv: list[str]) -> str:
+        calls.append(argv)
+        return ""
+
+    return run
+
+
 def test_bad_serial_is_rejected() -> None:
     # A serial from --udid / config that could inject an adb option (leading `-`) or a shell
     # metacharacter is rejected before it reaches a subprocess argv.
@@ -141,7 +151,7 @@ def test_pm_grant_cmd() -> None:
 
 def test_env_grants_each_permission_in_order() -> None:
     calls: list[list[str]] = []
-    adb.Env("S", run=lambda a: calls.append(a) or "").grant_permissions(
+    adb.Env("S", run=_recorder(calls)).grant_permissions(
         "com.x", ["android.permission.CAMERA", "android.permission.POST_NOTIFICATIONS"]
     )
     assert calls == [
@@ -172,7 +182,7 @@ def test_env_apply_permissions_grants_and_revokes_by_service(
     # location splits into two android.permission.* names (fine + coarse); each runs its own
     # pm grant/revoke, in the mapped order (BE-0276).
     calls: list[list[str]] = []
-    adb.Env("S", run=lambda a: calls.append(a) or "").apply_permissions(
+    adb.Env("S", run=_recorder(calls)).apply_permissions(
         "com.x", {"location": "grant", "camera": "revoke"}
     )
     assert calls == [
@@ -195,9 +205,7 @@ def test_env_apply_permissions_fails_loudly_on_an_unknown_action() -> None:
     # scenario — but `_pm_run` must not silently treat anything-but-grant as a revoke.
     calls: list[list[str]] = []
     with pytest.raises(adb.DeviceError, match="unknown pm action"):
-        adb.Env("S", run=lambda a: calls.append(a) or "").apply_permissions(
-            "com.x", {"camera": "bogus"}
-        )
+        adb.Env("S", run=_recorder(calls)).apply_permissions("com.x", {"camera": "bogus"})
     assert calls == []
 
 
@@ -207,7 +215,7 @@ def test_env_apply_permissions_validates_before_touching_the_device() -> None:
     # service before it ever reaches here; this exercises the runtime backstop directly.
     calls: list[list[str]] = []
     with pytest.raises(adb.DeviceError, match="bogus"):
-        adb.Env("S", run=lambda a: calls.append(a) or "").apply_permissions(
+        adb.Env("S", run=_recorder(calls)).apply_permissions(
             "com.x", {"camera": "grant", "bogus": "grant"}
         )
     assert calls == []
@@ -219,7 +227,7 @@ def test_env_apply_permissions_validates_action_before_touching_the_device() -> 
     # later entry's bad action (BE-0276).
     calls: list[list[str]] = []
     with pytest.raises(adb.DeviceError, match="unknown pm action"):
-        adb.Env("S", run=lambda a: calls.append(a) or "").apply_permissions(
+        adb.Env("S", run=_recorder(calls)).apply_permissions(
             "com.x", {"camera": "grant", "microphone": "bogus"}
         )
     assert calls == []
@@ -309,7 +317,7 @@ def _eff(
     )
 
 
-def _resolve_activity_run(calls: list[list[str]]):
+def _resolve_activity_run(calls: list[list[str]]) -> adb.RunFn:
     """An adb `run` that records every argv and answers the two queries the launch makes."""
 
     def run(args: list[str]) -> str:
@@ -905,6 +913,7 @@ def test_relauncher_invalidates_the_driver_settled_cache() -> None:
 
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run([]))
     driver = env.start(_eff(), Preconditions())
+    assert isinstance(driver, AdbDriver)
     driver._settled_key = ()  # seed a stale "proven" key `_settle` must not trust after the relaunch
     relaunch = env.relauncher(_eff(), Scenario(name="t", steps=[]), driver)
     relaunch(Relaunch())
@@ -915,6 +924,7 @@ def test_crawl_reset_invalidates_the_driver_settled_cache() -> None:
     # Same gap as relauncher above, on the crawl entry point.
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run([]))
     driver = env.start(_eff(), Preconditions())
+    assert isinstance(driver, AdbDriver)
     driver._settled_key = ()
     env.crawl_reset(_eff())(driver)
     assert driver._settled_key is None

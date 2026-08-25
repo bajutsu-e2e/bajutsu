@@ -9,6 +9,7 @@ client and the job executor — so one iteration runs without a live control pla
 from __future__ import annotations
 
 import json
+import socketserver
 import threading
 import time
 from collections.abc import Iterator
@@ -35,6 +36,16 @@ from bajutsu.cli.commands.worker import (
 )
 from bajutsu.serve import InMemoryLogBus
 from bajutsu.serve.capabilities import WORKER_CAPABILITIES_ENV
+
+
+def _port(server: socketserver.BaseServer) -> int:
+    """The bound port of a loopback test server. `server_address` is typed for every address family,
+    so the read asserts the (host, port) pair these servers actually bind (BE-0388)."""
+    address = server.server_address
+    assert isinstance(address, tuple) and len(address) >= 2
+    port = address[1]
+    assert isinstance(port, int)
+    return port
 
 
 @pytest.fixture(autouse=True)
@@ -78,8 +89,7 @@ def _server(routes: dict[str, tuple[int, Any]]) -> Iterator[tuple[ThreadingHTTPS
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     try:
-        _host, port = httpd.server_address
-        yield httpd, f"http://127.0.0.1:{port}"
+        yield httpd, f"http://127.0.0.1:{_port(httpd)}"
     finally:
         httpd.shutdown()
         thread.join()
@@ -436,7 +446,7 @@ class _EvidenceHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(length) or b"{}")
         self.server.url_requests.append(body)  # type: ignore[attr-defined]
-        base = f"http://127.0.0.1:{self.server.server_address[1]}"
+        base = f"http://127.0.0.1:{_port(self.server)}"
         override = self.server.url_override  # type: ignore[attr-defined]
         urls_response = self.server.urls_response  # type: ignore[attr-defined]
         if urls_response is not None:  # return a caller-fixed (possibly malformed) `urls` value
@@ -486,8 +496,7 @@ def _evidence_server(
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     try:
-        _host, port = httpd.server_address
-        yield httpd, f"http://127.0.0.1:{port}"
+        yield httpd, f"http://127.0.0.1:{_port(httpd)}"
     finally:
         httpd.shutdown()
         httpd.server_close()  # close the listening socket so tests don't leak file descriptors
@@ -581,13 +590,13 @@ class _WorkerIOHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(length) or b"{}")
         self.server.requests.append((self.path, body))  # type: ignore[attr-defined]
-        status = self.server.post_status  # type: ignore[attr-defined] — force a non-200 to test fail-loud
+        status = self.server.post_status  # type: ignore[attr-defined]  # forces a non-200, to test fail-loud
         if status != 200:
             self.send_response(status)
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
-        base = f"http://127.0.0.1:{self.server.server_address[1]}"
+        base = f"http://127.0.0.1:{_port(self.server)}"
         if self.path.endswith("/scenario-url"):
             # `scenario_url` None models a 200 response missing its `url` (a malformed control plane).
             payload: Any = {"url": self.server.scenario_url}  # type: ignore[attr-defined]
@@ -643,12 +652,11 @@ def _worker_io_server(
     httpd.gets = {}  # type: ignore[attr-defined]
     httpd.put_fail = put_fail or set()  # type: ignore[attr-defined]
     httpd.post_status = post_status  # type: ignore[attr-defined]
-    httpd.scenario_url = scenario_url  # type: ignore[attr-defined] — "@self" = a live PUT URL
+    httpd.scenario_url = scenario_url  # type: ignore[attr-defined]  # "@self" = a live PUT URL
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     try:
-        _host, port = httpd.server_address
-        yield httpd, f"http://127.0.0.1:{port}"
+        yield httpd, f"http://127.0.0.1:{_port(httpd)}"
     finally:
         httpd.shutdown()
         httpd.server_close()
@@ -716,7 +724,7 @@ def test_presigned_io_save_scenario_confines_to_the_workspace(tmp_path: Path) ->
     ws.mkdir()
     with _worker_io_server() as (httpd, base):
         _io(base).save_scenario(ws, "../secret.yaml", "demo", "stolen.yaml")
-    assert httpd.requests == []  # type: ignore[attr-defined] — nothing requested or uploaded
+    assert httpd.requests == []  # type: ignore[attr-defined]  # nothing requested or uploaded
 
 
 def test_presigned_io_save_scenario_raises_when_the_authored_file_is_missing(
@@ -728,7 +736,7 @@ def test_presigned_io_save_scenario_raises_when_the_authored_file_is_missing(
         pytest.raises(RuntimeError, match="authored no scenario"),
     ):
         _io(base).save_scenario(tmp_path, "scenarios/login.yaml", "demo", "login.yaml")
-    assert httpd.requests == []  # type: ignore[attr-defined] — no URL requested for a phantom file
+    assert httpd.requests == []  # type: ignore[attr-defined]  # no URL requested for a phantom file
 
 
 def test_presigned_io_save_scenario_raises_on_a_non_200(tmp_path: Path) -> None:
