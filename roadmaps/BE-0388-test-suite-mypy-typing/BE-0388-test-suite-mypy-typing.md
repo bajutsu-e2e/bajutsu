@@ -192,11 +192,12 @@ The pydantic-plugin question stays out of this item's scope; see *Alternatives c
   a `fetch_login` the `OAuthClient` protocol no longer has, and lacked the `fetch_identity` that
   replaced it. Nothing failed, because those tests exercise only the redirect leg — which is the
   kind of drift review did not catch and this item's baseline did.
-- Cleared the 880 findings in the flat files under `tests/`, swept the 164 `# type: ignore` comments
+- Cleared the 880 findings in the flat files under `tests/`, swept the 131 `# type: ignore` comments
   the clean-up left stale, and folded the run into `typecheck`, which now covers `tests` on every
   `make check` and every CI run ([#1768](https://github.com/bajutsu-e2e/bajutsu/pull/1768)). The item
   is complete: `mypy --allow-untyped-defs tests` reports zero findings across 372 source files, and
-  the suite's 6,610 tests pass unchanged.
+  the suite's 6,610 tests pass unchanged. The folded target keeps the separate `--cache-dir` the
+  first slice introduced, so neither run abandons the other's cache metadata.
 
   Two settings were relaxed while the migration ran; only one survives it.
   `--no-warn-unused-ignores` is gone, because the sweep is what it was holding open.
