@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0387") |
-| 実装 PR | [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) |
+| 実装 PR | [#1761](https://github.com/bajutsu-e2e/bajutsu/pull/1761) |
 | トピック | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -149,7 +149,7 @@ import）だけで258件を占めます。本リポジトリ自身の慣習は�
 **ログ**
 
 - 8つの分類すべてを、チェックリストの並び順どおりに1分類1コミットで投入しました
-  （[#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM)）。上の件数は投入時点で計測した
+  （[#1761](https://github.com/bajutsu-e2e/bajutsu/pull/1761)）。上の件数は投入時点で計測した
   実測値です。提案執筆時の数値からわずかに増えています。`ARG002` は94件から98件、`TRY004` は
   10件から11件、`tests/` の `PLW1510` は5件から7件になりました。提案を書いたあとにコードが
   増えたぶんです。*詳細設計* が想定していた扱いと異なる判断を3つ採りました。いずれも、

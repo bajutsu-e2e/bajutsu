@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0387") |
-| Implementing PR | [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) |
+| Implementing PR | [#1761](https://github.com/bajutsu-e2e/bajutsu/pull/1761) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -141,7 +141,7 @@ review can look at one rule's fixes at a time:
 **Log**
 
 - Landed all eight categories, one commit each, in the order the checklist lists them
-  ([#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM)). The counts above are the measured
+  ([#1761](https://github.com/bajutsu-e2e/bajutsu/pull/1761)). The counts above are the measured
   ones at landing time; they drift slightly from the proposal's (`ARG002` 94 → 98, `TRY004` 10 → 11,
   `PLW1510` in `tests/` 5 → 7) because the tree grew after the proposal was written. Three
   treatments differ from what the *Detailed design* anticipated, each for a reason the code only
