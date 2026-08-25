@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0388") |
-| 実装 PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760)、[#PR2](https://github.com/bajutsu-e2e/bajutsu/pull/PR2) |
+| 実装 PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760)、[#1763](https://github.com/bajutsu-e2e/bajutsu/pull/1763) |
 | トピック | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -158,7 +158,7 @@ pydantic プラグインをどうするかは、本項目の範囲には含め�
   1361件です。
 - `tests/scenario/`、`tests/report/`、`tests/orchestrator/`、`tests/runner/` を解消しました。
   226件を片付け、`tests/serve/` と直下のフラットなファイル群に1076件が残っています
-  （[#PR2](https://github.com/bajutsu-e2e/bajutsu/pull/PR2)）。ほとんどが次の4つの形に収まり、
+  （[#1763](https://github.com/bajutsu-e2e/bajutsu/pull/1763)）。ほとんどが次の4つの形に収まり、
   テスト対象コードの欠陥は1件もありませんでした。
   - テスト補助関数の戻り値が `object` と注釈されており、実際には `Scenario`、`Effective`、
     `Actuation` のリストを返していた。そのため後続のアサーションがすべて型を失っていた。

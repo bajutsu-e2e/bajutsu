@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0388") |
-| Implementing PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760), [#PR2](https://github.com/bajutsu-e2e/bajutsu/pull/PR2) |
+| Implementing PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760), [#1763](https://github.com/bajutsu-e2e/bajutsu/pull/1763) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -155,7 +155,7 @@ The pydantic-plugin question stays out of this item's scope; see *Alternatives c
   time.
 - Cleared `tests/scenario/`, `tests/report/`, `tests/orchestrator/`, and `tests/runner/` — 226
   findings, leaving 1,076 across `tests/serve/` and the flat files
-  ([#PR2](https://github.com/bajutsu-e2e/bajutsu/pull/PR2)). Four shapes covered nearly every one,
+  ([#1763](https://github.com/bajutsu-e2e/bajutsu/pull/1763)). Four shapes covered nearly every one,
   and none was a defect in the code under test:
   - a test helper annotated `object` where it returns a `Scenario`, an `Effective`, or a list of
     `Actuation`s, so every assertion downstream of it lost its type;
