@@ -168,6 +168,10 @@ The pydantic-plugin question stays out of this item's scope; see *Alternatives c
   - a pydantic model constructed by Python field name, such as `test_runner=`, where mypy — without
     the plugin this item leaves out of scope — sees only the alias `testRunner=`.
 
+  The 19 `# type: ignore` comments these fixes made stale went with them, rather than waiting for
+  the final sweep: leaving one on a call whose siblings no longer carry it would suppress a genuine
+  future error at that one site while the others reported it.
+
   Two assertions changed meaning rather than only their types. `ScreenTransition(name="detail")`
   passed a field the model does not declare, which `extra="ignore"` silently dropped; it now sets
   the `kind` field it meant. `test_visual_assertion_with_exclude_and_threshold` indexed a
