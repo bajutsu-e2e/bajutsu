@@ -12,20 +12,20 @@ rather than `ElementNotTappable`, and a plain `is_tappable` occlusion model woul
 
 from __future__ import annotations
 
-from _orch import FakeClock, _scenario
+from _orch import FakeClock, _scenario, _tap_ids
 from conftest import el
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
-from bajutsu.orchestrator.types import AlertEvent
+from bajutsu.orchestrator.types import AlertEvent, AlertGuardConfig
 
 # Stands in for TipKit's dismiss region. The real identifier lives in the XCUITest driver; this is
 # only what the fake was seeded with, so no iOS-specific name leaks into an orchestrator test.
 _SCRIM = "tip.scrim"
 
 
-def _tip_driver(*, covered: list[dict[str, object]]) -> FakeDriver:
+def _tip_driver(*, covered: list[base.Element]) -> FakeDriver:
     """A driver whose screen is a showing tip, hiding `covered` until the scrim is tapped."""
 
     def react(d: FakeDriver, kind: str, arg: object) -> None:
@@ -74,7 +74,7 @@ def test_a_step_blocked_by_a_tip_is_retried_once_after_the_dismiss() -> None:
         clock=FakeClock(),
     )
     assert result.ok, result.failure
-    taps = [a.get("id") for k, a in driver.actions if k == "tap"]
+    taps = _tap_ids(driver)
     assert taps == [_SCRIM, "stable.refresh"]  # tip cleared, then the step's own act
 
 
@@ -118,7 +118,7 @@ def test_a_tip_and_a_system_alert_are_both_recovered_in_one_step() -> None:
             {"name": "e", "iosTipKitHandling": True, "steps": [{"tap": {"id": "stable.refresh"}}]}
         ),
         clock=FakeClock(),
-        alert_guard=alert_guard,
+        alert_guard=AlertGuardConfig(vision=alert_guard),
     )
     assert result.ok, result.failure
     assert dismissed == ["sys.alert"], (
@@ -221,7 +221,7 @@ def test_a_scrim_that_never_closes_is_tapped_a_bounded_number_of_times() -> None
         clock=FakeClock(),
     )
     assert not result.ok  # a clean timeout, not a hang
-    scrim_taps = [a for k, a in driver.actions if k == "tap" and a.get("id") == _SCRIM]
+    scrim_taps = [i for i in _tap_ids(driver) if i == _SCRIM]
     # A literal, deliberately not `_TIP_MAX_DISMISSES + 1`: deriving the bound from the constant the
     # code under test reads makes the assertion move with a regression instead of catching it —
     # raising the ceiling would then still pass. This number is the contract, so it is spelled out.

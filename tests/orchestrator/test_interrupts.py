@@ -8,7 +8,7 @@ never a model call (prime directive 1) — so the whole feature is covered here 
 
 from __future__ import annotations
 
-from _orch import FakeClock, _scenario
+from _orch import FakeClock, _scenario, _tap_ids
 from conftest import el
 
 from bajutsu.config import load_config, resolve
@@ -17,6 +17,7 @@ from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import Artifact, intervals
 from bajutsu.orchestrator import AlertGuardConfig, run_scenario
 from bajutsu.orchestrator.types import AlertEvent
+from bajutsu.orchestrator.waits import WaitTrace
 from bajutsu.scenario import Interrupt, Scenario, dump_scenarios, load_scenarios
 
 
@@ -48,6 +49,11 @@ class _RecordingSink:
             for token in kinds
             if token.partition(".")[0] == "screenshot"
         ]
+
+    def wait_diagnostic(
+        self, step_id: str, *, trace: WaitTrace, elements: list[base.Element]
+    ) -> Artifact | None:
+        return None  # these tests assert on instant captures, never on a wait diagnostic
 
     def start_scenario_intervals(self, sid: str, kinds: list[str]) -> list[intervals.Interval]:
         return []
@@ -122,7 +128,7 @@ def test_interrupt_clears_overlay_before_a_tap() -> None:
         interrupts=[_interrupt({"exists": {"id": "ov.close"}}, [{"tap": {"id": "ov.close"}}])],
     )
     assert result.ok, result.failure
-    taps = [a.get("id") for k, a in driver.actions if k == "tap"]
+    taps = _tap_ids(driver)
     assert taps == ["ov.close", "login.button"]  # overlay cleared, then the real act
 
 
@@ -416,7 +422,7 @@ def test_pre_act_guard_reads_fresh_not_a_stale_prev_after_snapshot() -> None:
         ],
     )
     assert result.ok, result.failure
-    taps = [a.get("id") for k, a in driver.actions if k == "tap"]
+    taps = _tap_ids(driver)
     assert taps == ["go", "overlay.close", "home.button"]  # caught mid-gap, then step 1 proceeded
 
 
@@ -452,5 +458,5 @@ def test_config_interrupts_run_before_scenario_interrupts() -> None:
         interrupts=[*config_interrupts, *scenario.interrupts],
     )
     assert result.ok, result.failure
-    first_two = [a.get("id") for k, a in driver.actions if k == "tap"][:2]
+    first_two = _tap_ids(driver)[:2]
     assert first_two == ["cfg.btn", "scn.btn"]  # config handler acts before the scenario's

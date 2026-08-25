@@ -6,7 +6,7 @@ import json
 import logging
 import subprocess
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import pytest
@@ -15,7 +15,8 @@ from _runner import _eff, _el, _web_eff
 from bajutsu import simctl
 from bajutsu.config import Effective
 from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
+from bajutsu.drivers.fake import FakeDriver, FakeNetworkCollector
+from bajutsu.evidence import FileSink
 from bajutsu.evidence.network import NetworkCollector, NetworkExchange, ScreenTransition
 from bajutsu.platform_lifecycle import ProvisionProfile
 from bajutsu.runner import (
@@ -24,12 +25,13 @@ from bajutsu.runner import (
     device_relauncher,
 )
 from bajutsu.scenario import Relaunch, Scenario
+from bajutsu.webview import WebViewBridge
 
 
 def test_relauncher_relaunches_with_locale_and_overrides() -> None:
-    calls: list[tuple[list[str], object]] = []
+    calls: list[tuple[list[str], Mapping[str, str] | None]] = []
 
-    def fake_run(args: list[str], env: object = None) -> str:
+    def fake_run(args: list[str], env: Mapping[str, str] | None = None) -> str:
         calls.append((args, env))
         return ""
 
@@ -54,6 +56,7 @@ def test_relauncher_relaunches_with_locale_and_overrides() -> None:
     assert "(ja)" in launch
     # The collector url survives the relaunch and the per-relaunch env override is applied
     # (both reach the app via the SIMCTL_CHILD_ child-env channel).
+    assert launch_env is not None
     assert launch_env.get("SIMCTL_CHILD_BAJUTSU_COLLECTOR") == "http://127.0.0.1:9"
     assert launch_env.get("SIMCTL_CHILD_K") == "V"
 
@@ -66,9 +69,9 @@ def test_device_pool_per_device_resources(monkeypatch: pytest.MonkeyPatch) -> No
     """A pool of >1 devices gives each leased scenario its own collector (distinct url),
     interval-recording sink (bound to the udid), and device control — the three features
     that used to drop in parallel."""
-    calls: list[tuple[list[str], object]] = []
+    calls: list[tuple[list[str], Mapping[str, str] | None]] = []
 
-    def fake_run(args: list[str], extra_env: object = None) -> str:
+    def fake_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
         calls.append((args, extra_env))
         return ""
 
@@ -91,7 +94,9 @@ def test_device_pool_per_device_resources(monkeypatch: pytest.MonkeyPatch) -> No
         la = lease(_eff(), _scn("a"))
         lb = lease(_eff(), _scn("b"))
         # Distinct collectors on distinct ports (no shared single-loopback receiver).
-        assert la.collector is not None and lb.collector is not None
+        assert isinstance(la.collector, NetworkCollector)
+        assert isinstance(lb.collector, NetworkCollector)
+        assert isinstance(la.sink, FileSink) and isinstance(lb.sink, FileSink)
         assert la.collector is not lb.collector
         assert la.collector.port != lb.collector.port
         # Per-device sink bound to the leased udid -> interval evidence works in parallel.
@@ -114,6 +119,8 @@ def test_device_pool_per_device_resources(monkeypatch: pytest.MonkeyPatch) -> No
         shutdown()
     # shutdown() stops every device's collector.
     assert la is not None and lb is not None
+    assert isinstance(la.collector, NetworkCollector)
+    assert isinstance(lb.collector, NetworkCollector)
     assert la.collector._server is None and lb.collector._server is None
 
 
@@ -182,15 +189,17 @@ def test_device_pool_wires_readiness_and_provenance_into_the_sink(
         _eff(),
         Path("runs"),
         available=lambda b: True,
-        env_run=lambda args, extra_env=None: "",
+        env_run=lambda args, extra_env: "",
     )
     lz = None
     try:
         lz = lease(_eff(), _scn("a"))
+        assert isinstance(lz.sink, FileSink)
         assert lz.sink.readiness is not None
         assert lz.sink.readiness.signal == "count"
         assert lz.sink.provenance is not None
-        assert lz.sink.provenance["scenarioHash"].startswith("sha256:")
+        scenario_hash = lz.sink.provenance["scenarioHash"]
+        assert isinstance(scenario_hash, str) and scenario_hash.startswith("sha256:")
         assert "toolVersion" in lz.sink.provenance
     finally:
         if lz is not None:
@@ -211,7 +220,7 @@ def test_device_pool_labels_leased_simulator(monkeypatch: pytest.MonkeyPatch) ->
         }
     )
 
-    def fake_run(args: list[str], extra_env: object = None) -> str:
+    def fake_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
         return catalog if args == simctl.list_devices_cmd() else ""
 
     monkeypatch.setattr(
@@ -247,11 +256,12 @@ def test_device_pool_single_device_keeps_full_features(monkeypatch: pytest.Monke
         network=True,
         log_subsystem="com.example.demo",
         available=lambda b: True,
-        env_run=lambda args, extra_env=None: "",
+        env_run=lambda args, extra_env: "",
     )
     try:
         lz = lease(_eff(), _scn("a"))
         assert lz.collector is not None  # network collection in a pool of one
+        assert isinstance(lz.sink, FileSink)
         assert lz.sink.udid == "UDID-1"  # interval evidence bound to the device
         assert lz.control is not None  # device control available
         assert lz.relaunch is not None  # relaunch wired to the device
@@ -262,9 +272,9 @@ def test_device_pool_single_device_keeps_full_features(monkeypatch: pytest.Monke
 
 def test_device_pool_no_network_has_no_collector(monkeypatch: pytest.MonkeyPatch) -> None:
     """--no-network: the pool builds no collectors and injects no collector url."""
-    calls: list[tuple[list[str], object]] = []
+    calls: list[tuple[list[str], Mapping[str, str] | None]] = []
 
-    def fake_run(args: list[str], extra_env: object = None) -> str:
+    def fake_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
         calls.append((args, extra_env))
         return ""
 
@@ -325,7 +335,7 @@ def test_device_pool_stops_started_collectors_when_one_fails(
             Path("runs"),
             network=True,
             available=lambda b: True,
-            env_run=lambda args, extra_env=None: "",
+            env_run=lambda args, extra_env: "",
         )
     assert len(started) == 1 and started[0].stopped  # type: ignore[attr-defined]
 
@@ -368,7 +378,7 @@ def test_device_pool_completes_the_start_rollback_despite_a_stop_failure(
             Path("runs"),
             network=True,
             available=lambda b: True,
-            env_run=lambda args, extra_env=None: "",
+            env_run=lambda args, extra_env: "",
         )
     assert stopped == [1, 2]  # the second device's rollback still ran despite the first's failure
     assert "UDID-A" in caplog.text  # the swallowed stop failure was logged, not silent
@@ -413,7 +423,7 @@ def test_device_pool_reserves_a_bridgeable_port_only_where_the_device_mirrors_it
         Path("runs"),
         network=True,
         available=lambda b: True,
-        env_run=lambda args, extra_env=None: "",
+        env_run=lambda args, extra_env: "",
     )
     try:
         assert calls == (["start_bridgeable"] if mirrors else ["start"])
@@ -421,10 +431,11 @@ def test_device_pool_reserves_a_bridgeable_port_only_where_the_device_mirrors_it
         shutdown()
 
 
-class _StubCollector:
+class _StubCollector(FakeNetworkCollector):
     """A minimal `Collector` for the web lease test (the real one needs a Playwright page)."""
 
     def __init__(self, *, fail_stop: bool = False) -> None:
+        super().__init__([])
         self.stopped = False
         self.fail_stop = fail_stop
 
@@ -707,7 +718,8 @@ def test_device_pool_gives_each_lease_a_distinct_webview_bridge_port(
     try:
         la = lease(_eff(), _scn("a"))
         lb = lease(_eff(), _scn("b"))
-        assert la.webview_bridge is not None and lb.webview_bridge is not None
+        assert isinstance(la.webview_bridge, WebViewBridge)
+        assert isinstance(lb.webview_bridge, WebViewBridge)
         assert la.webview_bridge.port != lb.webview_bridge.port  # no cross-device port collision
     finally:
         if la is not None:
@@ -1639,6 +1651,7 @@ def test_device_pool_bridges_the_collector_before_launch_and_tears_it_down(
     try:
         leased = lease(_eff(), _scn("a"))
         env = created[-1]  # the lease env
+        assert isinstance(leased.collector, NetworkCollector)
         assert env.bridged_port == leased.collector.port  # tunnels the pre-started collector's port
         assert env.bridged_before_launch  # established BEFORE the app launched
         assert not env.bridge_torn
@@ -1810,6 +1823,7 @@ def test_device_pool_web_lease(monkeypatch: pytest.MonkeyPatch) -> None:
         leased = lease(_eff_web(), _scn("a"))
         assert leased.control is None  # no simctl device control
         assert leased.collector is None  # network off for web
+        assert isinstance(leased.sink, FileSink)
         assert leased.sink.udid == "web"
         assert fakes[0].navigated == 1  # launch == navigate to base_url
         assert leased.relaunch is not None
@@ -1958,8 +1972,9 @@ def test_device_pool_releases_resources_when_launch_fails(monkeypatch: pytest.Mo
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
 
-    class _RecordingCollector:
+    class _RecordingCollector(FakeNetworkCollector):
         def __init__(self) -> None:
+            super().__init__([])
             self.stopped = False
 
         def snapshot(self) -> list[NetworkExchange]:
@@ -1979,7 +1994,7 @@ def test_device_pool_releases_resources_when_launch_fails(monkeypatch: pytest.Mo
 
     built: list[_RecordingCollector] = []
 
-    class _Provider:
+    class _Provider(FakeDriver):
         def network_collector(self, mocks: object = None) -> _RecordingCollector:
             c = _RecordingCollector()
             built.append(c)
@@ -2059,7 +2074,7 @@ def test_device_pool_network_lease_defaults_to_collector_provenance(
 def _replacing_env_factory(
     created: list[_RecordingEnv],
     *,
-    replacement: str,
+    replacement: str | None,
     reusable: bool = True,
     fail_start: bool = False,
     replacement_catalog: dict[str, dict[str, str]] | None = None,
@@ -2266,7 +2281,7 @@ def test_device_pool_re_keys_the_collector_onto_the_replacement(
         # udid assertion is what makes this discriminating — a collector left under the dead key would
         # leave this lease with none at all.
         assert second.udid == "UDID-NEW"
-        assert second.collector is not None and second.collector.port == port  # type: ignore[union-attr]
+        assert isinstance(second.collector, NetworkCollector) and second.collector.port == port
         second.release()
     finally:
         shutdown()

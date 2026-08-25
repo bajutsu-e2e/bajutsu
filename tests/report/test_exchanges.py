@@ -11,6 +11,7 @@ from _report import _passing
 from bajutsu.evidence import Artifact
 from bajutsu.orchestrator import RunResult, StepOutcome
 from bajutsu.report import html_report
+from bajutsu.report.format import _read_json
 
 
 def test_network_json_is_read_once_per_render(
@@ -34,7 +35,7 @@ def test_network_json_is_read_once_per_render(
     from bajutsu.report import panels
 
     reads: list[str] = []
-    real = panels._read_json
+    real = _read_json
 
     def counting(run_dir: Path, name: str) -> Any:
         reads.append(name)

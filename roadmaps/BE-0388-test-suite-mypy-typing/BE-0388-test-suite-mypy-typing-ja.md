@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0388") |
-| 実装 PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760) |
+| 実装 PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760)、[#PR2](https://github.com/bajutsu-e2e/bajutsu/pull/PR2) |
 | トピック | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -136,10 +136,10 @@ pydantic プラグインをどうするかは、本項目の範囲には含め�
 
 - [x] `typecheck-tests` という Makefile ターゲット（`mypy --allow-untyped-defs
   --no-warn-unused-ignores tests`）を追加する。まだ `make check` のゲートには載せない。
-- [ ] `tests/ai/`（すでにクリーン、0件）と `tests/scenario/`（7件）を解消し、緩めた実行で
+- [x] `tests/ai/`（すでにクリーン、0件）と `tests/scenario/`（7件）を解消し、緩めた実行で
   十分か確認してから、より大きなディレクトリへ進む。
-- [ ] `tests/report/`（14件）と `tests/orchestrator/`（79件）を解消する。
-- [ ] `tests/runner/`（126件）を解消する。
+- [x] `tests/report/`（14件）と `tests/orchestrator/`（79件）を解消する。
+- [x] `tests/runner/`（126件）を解消する。
 - [ ] `tests/serve/`（196件、124ファイルと最大のディレクトリ）を解消する。
 - [ ] `tests/` 直下のフラットなファイル群（197ファイルで880件）を、`test_crawl.py`（200件）、
   `test_record.py`（75件）、`test_intervals.py`（48件）から解消する。
@@ -156,6 +156,26 @@ pydantic プラグインをどうするかは、本項目の範囲には含め�
   選べないからです。その経緯は上記の *詳細設計* に記録しました。この時点で測り直した緩めた実行の
   エラーは158ファイルで1302件でした。*動機* が記録する提案時点の緩めない実行は159ファイルで
   1361件です。
+- `tests/scenario/`、`tests/report/`、`tests/orchestrator/`、`tests/runner/` を解消しました。
+  226件を片付け、`tests/serve/` と直下のフラットなファイル群に1076件が残っています
+  （[#PR2](https://github.com/bajutsu-e2e/bajutsu/pull/PR2)）。ほとんどが次の4つの形に収まり、
+  テスト対象コードの欠陥は1件もありませんでした。
+  - テスト補助関数の戻り値が `object` と注釈されており、実際には `Scenario`、`Effective`、
+    `Actuation` のリストを返していた。そのため後続のアサーションがすべて型を失っていた。
+  - あえて部分的に実装したドライバやコレクタのスタブ。呼び出しごとにキャストするのではなく、
+    `FakeDriver` や `FakeNetworkCollector` を継承してプロトコルを実際に満たすようにした。
+  - パッチのために対象モジュール自身の `time` / `subprocess` / `urllib` の import を読んでいた
+    テスト。標準ライブラリのモジュールへ直接パッチするようにした。同じオブジェクトなので
+    パッチの効果は変わらず、読み取りが strict モードの暗黙再エクスポート検査に触れなくなる。
+  - pydantic のモデルを Python のフィールド名（`test_runner=` など）で構築していた箇所。
+    本項目が範囲外とするプラグインなしでは、mypy には別名の `testRunner=` しか見えない。
+
+  2件だけは型ではなくアサーションの意味が変わりました。`ScreenTransition(name="detail")` は
+  モデルが宣言していないフィールドを渡しており、`extra="ignore"` によって黙って捨てられて
+  いました。本来意図していた `kind` フィールドを設定するように直しました。
+  `test_visual_assertion_with_exclude_and_threshold` は
+  `list[ExcludeRegion | SelectorRegion]` を添字で取り出して `.w` を読んでいました。`.w` を
+  持つのは `ExcludeRegion` だけなので、読む前にその型であることを確かめるようにしました。
 
 ## 参考
 

@@ -307,6 +307,7 @@ def test_gate_absent_native_alert_still_drives_vision_for_a_persistent_collapse(
 
     def vision(d: base.Driver) -> AlertEvent | None:
         calls["n"] += 1
+        assert isinstance(d, FakeDriver)
         d.screen = [target]  # vision clears the non-SpringBoard surface the native query cannot see
         return AlertEvent(label="Dismiss")
 

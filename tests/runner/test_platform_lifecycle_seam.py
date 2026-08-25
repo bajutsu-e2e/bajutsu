@@ -8,12 +8,14 @@ single-fork refactor folded behind the Protocol.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from _runner import _eff, _ios_eff, _web_eff
 
 from bajutsu import simctl
 from bajutsu.drivers import base
+from bajutsu.drivers.fake import FakeDriver
 from bajutsu.platform_lifecycle import (
     AndroidEnvironment,
     FakeEnvironment,
@@ -91,10 +93,11 @@ def test_web_environment_requires_base_url() -> None:
 
 
 def test_web_environment_navigates_then_returns_the_driver(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _WebDriver:
+    class _WebDriver(FakeDriver):
         name = "web"
 
         def __init__(self) -> None:
+            super().__init__([])
             self.navigated = False
 
         def navigate(self) -> None:
@@ -125,7 +128,7 @@ def test_web_relaunch_forwards_id_namespaces_to_await_ready(
 
     monkeypatch.setattr("bajutsu.platform_lifecycle.readiness._await_ready", fake_await_ready)
 
-    class _WebDriver:
+    class _WebDriver(FakeDriver):
         name = "web"
 
         def navigate(self) -> None:
@@ -222,7 +225,7 @@ def test_device_catalog_is_empty_for_web_and_read_for_devices() -> None:
     seen = XcuitestEnvironment(
         "xcuitest",
         "U",
-        env_run=lambda args, extra_env=None: catalog if args == simctl.list_devices_cmd() else "",
+        env_run=lambda args, extra_env: catalog if args == simctl.list_devices_cmd() else "",
     ).device_catalog()
     assert seen.get("U") == {"name": "X", "runtime": "iOS 17.2"}
 
@@ -246,6 +249,8 @@ def test_web_hook_collector_wires_the_scenarios_mocks() -> None:
         def stop(self) -> None:
             pass
 
+    # Not a `FakeDriver` subclass, unlike the other stubs here: `network_collector` returns this
+    # file's own `_Collector`, which would clash with the base's narrower return type.
     class _WebDriver:
         name = "web"
 
@@ -266,10 +271,11 @@ def test_web_hook_collector_wires_the_scenarios_mocks() -> None:
 
 
 def test_web_controller_is_none_and_teardown_closes_the_browser() -> None:
-    class _WebDriver:
+    class _WebDriver(FakeDriver):
         name = "web"
 
         def __init__(self) -> None:
+            super().__init__([])
             self.closed = 0
 
         def close(self) -> None:
@@ -313,10 +319,11 @@ def test_crawl_health_seams_are_web_only() -> None:
 
 
 def test_web_crawl_seams_drive_the_web_driver() -> None:
-    class _WebDriver:
+    class _WebDriver(FakeDriver):
         name = "web"
 
         def __init__(self) -> None:
+            super().__init__([])
             self.relaunched = 0
             self.errored = False
 
@@ -364,10 +371,11 @@ def test_web_crawl_reset_makes_a_fresh_context(monkeypatch: pytest.MonkeyPatch) 
     # readiness wait. (_await_ready is stubbed so the test doesn't poll a fake driver.)
     monkeypatch.setattr("bajutsu.platform_lifecycle.readiness._await_ready", lambda *a, **k: None)
 
-    class _WebDriver:
+    class _WebDriver(FakeDriver):
         name = "web"
 
         def __init__(self) -> None:
+            super().__init__([])
             self.reset = 0
 
         def reset_context(self) -> None:
@@ -427,7 +435,7 @@ def test_xcuitest_environment_requires_test_runner_in_config(
     monkeypatch.setattr(
         "bajutsu.platform_lifecycle.environments.xcuitest.bundled_products_dir", lambda: None
     )
-    xe = XcuitestEnvironment("xcuitest", "UDID", env_run=lambda a, extra_env=None: "")
+    xe = XcuitestEnvironment("xcuitest", "UDID", env_run=lambda a, extra_env: "")
     with pytest.raises(simctl.DeviceError, match="testRunner"):
         xe.start(_eff(), Preconditions())
 
@@ -448,7 +456,7 @@ def test_xcuitest_environment_start_launches_runner_and_creates_driver(
         "bajutsu.platform_lifecycle.environments.xcuitest._allocate_port", lambda: 54321
     )
 
-    popen_calls: list[dict[str, object]] = []
+    popen_calls: list[dict[str, Any]] = []
 
     class FakePopen:
         def __init__(self, cmd: list[str], **kwargs: object) -> None:
@@ -465,7 +473,7 @@ def test_xcuitest_environment_start_launches_runner_and_creates_driver(
 
     monkeypatch.setattr("subprocess.Popen", FakePopen)
 
-    class FakeXcuitestDriver:
+    class FakeXcuitestDriver(FakeDriver):
         name = "xcuitest"
         ready_called = False
 
@@ -482,7 +490,7 @@ def test_xcuitest_environment_start_launches_runner_and_creates_driver(
             return set()
 
     fake_driver = FakeXcuitestDriver()
-    make_driver_calls: list[dict[str, object]] = []
+    make_driver_calls: list[dict[str, Any]] = []
 
     def mock_make_driver(*a: object, **k: object) -> FakeXcuitestDriver:
         make_driver_calls.append({"args": a, "kwargs": k})
@@ -496,7 +504,7 @@ def test_xcuitest_environment_start_launches_runner_and_creates_driver(
     with tempfile.NamedTemporaryFile(suffix=".xctestrun") as f:
         plistlib.dump({"__xctestrun_metadata__": {"FormatVersion": 1}, "T": {}}, f)
         f.flush()
-        eff = _ios_eff(xcuitest=XcuitestConfig(test_runner=f.name), app_path=None)
+        eff = _ios_eff(xcuitest=XcuitestConfig(testRunner=f.name), app_path=None)
         xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=fake_run)
         driver = xe.start(eff, Preconditions())
 
@@ -546,7 +554,7 @@ def test_xcuitest_environment_applies_permissions_before_the_runner_launches(
 
     monkeypatch.setattr("subprocess.Popen", FakePopen)
 
-    class FakeXcuitestDriver:
+    class FakeXcuitestDriver(FakeDriver):
         name = "xcuitest"
 
         def health_ready(self) -> bool:
@@ -562,7 +570,7 @@ def test_xcuitest_environment_applies_permissions_before_the_runner_launches(
     with tempfile.NamedTemporaryFile(suffix=".xctestrun") as f:
         plistlib.dump({"__xctestrun_metadata__": {"FormatVersion": 1}, "T": {}}, f)
         f.flush()
-        eff = _ios_eff(xcuitest=XcuitestConfig(test_runner=f.name), app_path=None)
+        eff = _ios_eff(xcuitest=XcuitestConfig(testRunner=f.name), app_path=None)
         xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=fake_run)
         xe.start(eff, Preconditions(), permissions={"camera": "grant"})
 
@@ -627,7 +635,7 @@ def test_discard_reaps_a_leader_that_outlives_the_grace(
             return 0
 
     signalled = _capture_group_signals(monkeypatch)
-    xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda _a, _e=None: "")
+    xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda _a, _e: "")
     xe._runner_proc = StubbornProc()  # type: ignore[assignment]
     xe._discard_runner(warn_on_crash=False)
     assert signalled == [(4242, signal.SIGTERM), (4242, signal.SIGKILL)]
@@ -654,7 +662,7 @@ def test_discard_sweeps_the_group_even_when_the_leader_exits_at_once(
             return 0  # the leader is gone within the grace; its children may not be
 
     signalled = _capture_group_signals(monkeypatch)
-    xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda _a, _e=None: "")
+    xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda _a, _e: "")
     xe._runner_proc = PromptProc()  # type: ignore[assignment]
     xe._discard_runner(warn_on_crash=False)
     assert signalled == [(4242, signal.SIGTERM), (4242, signal.SIGKILL)]
@@ -686,7 +694,7 @@ def test_discard_survives_a_process_group_that_is_already_gone(
             return 0
 
     monkeypatch.setattr("os.getpgid", lambda pid: (_ for _ in ()).throw(ProcessLookupError("gone")))
-    xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda _a, _e=None: "")
+    xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda _a, _e: "")
     xe._runner_proc = GoneProc()  # type: ignore[assignment]
     xe._discard_runner(warn_on_crash=False)  # must not raise
     # With no group id to read, both signals fall back to the process itself, and both are suppressed.
@@ -723,7 +731,7 @@ def test_a_group_signal_that_does_not_land_falls_back_to_the_process(
 
     monkeypatch.setattr("os.getpgid", lambda pid: 4242)
     monkeypatch.setattr("os.killpg", lambda pgid, sig: (_ for _ in ()).throw(killpg_error))
-    xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda _a, _e=None: "")
+    xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda _a, _e: "")
     xe._runner_proc = Proc()  # type: ignore[assignment]
     xe._discard_runner(warn_on_crash=False)
     assert signals == ["terminate", "kill"]
@@ -785,8 +793,8 @@ def test_spawn_cold_discards_a_never_ready_runner(
     with tempfile.NamedTemporaryFile(suffix=".xctestrun") as f:
         plistlib.dump({"__xctestrun_metadata__": {"FormatVersion": 1}, "T": {}}, f)
         f.flush()
-        eff = _ios_eff(xcuitest=XcuitestConfig(test_runner=f.name), app_path=None)
-        xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda _a, _e=None: "")
+        eff = _ios_eff(xcuitest=XcuitestConfig(testRunner=f.name), app_path=None)
+        xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda _a, _e: "")
         with pytest.raises(XcuitestChannelError, match="did not come up"):
             xe.start(eff, Preconditions())
 
@@ -808,7 +816,7 @@ def test_xcuitest_environment_forwards_preconditions_to_runner_env(
         "bajutsu.platform_lifecycle.environments.xcuitest._allocate_port", lambda: 11111
     )
 
-    popen_calls: list[dict[str, object]] = []
+    popen_calls: list[dict[str, Any]] = []
 
     class FakePopen:
         def __init__(self, cmd: list[str], **kwargs: object) -> None:
@@ -848,18 +856,18 @@ def test_xcuitest_environment_forwards_preconditions_to_runner_env(
         )
         f.flush()
         eff = dc_replace(
-            _ios_eff(xcuitest=XcuitestConfig(test_runner=f.name), app_path=None),
+            _ios_eff(xcuitest=XcuitestConfig(testRunner=f.name), app_path=None),
             launch_env={"APP_ENV": "test", "DEBUG": "1"},
             launch_args=["-verbose"],
             locale="ja_JP",
         )
         pre = Preconditions(
-            launch_env={"SCENARIO_KEY": "val"},
-            launch_args=["-reset"],
+            launchEnv={"SCENARIO_KEY": "val"},
+            launchArgs=["-reset"],
             locale="fr_FR",
             deeplink="myapp://home",
         )
-        xe = XcuitestEnvironment("xcuitest", "U", env_run=lambda a, extra_env=None: "")
+        xe = XcuitestEnvironment("xcuitest", "U", env_run=lambda a, extra_env: "")
         xe.start(eff, pre, extra_env={"BAJUTSU_COLLECTOR": "http://127.0.0.1:9999"})
 
     # xcodebuild does not forward its env into the Simulator, so the forwarded vars are read

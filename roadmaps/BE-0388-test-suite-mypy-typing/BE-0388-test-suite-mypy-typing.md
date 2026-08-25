@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0388") |
-| Implementing PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760) |
+| Implementing PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760), [#PR2](https://github.com/bajutsu-e2e/bajutsu/pull/PR2) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -133,10 +133,10 @@ The pydantic-plugin question stays out of this item's scope; see *Alternatives c
 
 - [x] Add the `typecheck-tests` Makefile target — `mypy --allow-untyped-defs
   --no-warn-unused-ignores tests` — without yet putting it on the `make check` gate.
-- [ ] Clear `tests/ai/` (already clean, 0 errors) and `tests/scenario/` (7 errors) — confirm the
+- [x] Clear `tests/ai/` (already clean, 0 errors) and `tests/scenario/` (7 errors) — confirm the
   relaxed run is sufficient before touching a larger directory.
-- [ ] Clear `tests/report/` (14 errors) and `tests/orchestrator/` (79 errors).
-- [ ] Clear `tests/runner/` (126 errors).
+- [x] Clear `tests/report/` (14 errors) and `tests/orchestrator/` (79 errors).
+- [x] Clear `tests/runner/` (126 errors).
 - [ ] Clear `tests/serve/` (196 errors, 124 files — the largest single directory).
 - [ ] Clear the flat files directly under `tests/` (880 errors across 197 files), starting with
   `test_crawl.py` (200), `test_record.py` (75), and `test_intervals.py` (48).
@@ -146,13 +146,33 @@ The pydantic-plugin question stays out of this item's scope; see *Alternatives c
 
 **Log**
 
-- Landed the `typecheck-tests` target ([#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760)). The
-  relaxed settings became command-line flags on a second mypy invocation rather than the
+- Landed the `typecheck-tests` target
+  ([#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760)). The relaxed settings became command-line flags on a second mypy invocation rather than the
   `[[tool.mypy.overrides]]` block this item first proposed, because mypy names every module under
   `tests/` by basename and so no per-module pattern selects the suite; *Detailed design* above
   records the reasoning. Re-measuring at that point put the relaxed run at 1,302 errors across 158
   files, against the 1,361 across 159 that *Motivation* reports for the unrelaxed run at proposal
   time.
+- Cleared `tests/scenario/`, `tests/report/`, `tests/orchestrator/`, and `tests/runner/` — 226
+  findings, leaving 1,076 across `tests/serve/` and the flat files
+  ([#PR2](https://github.com/bajutsu-e2e/bajutsu/pull/PR2)). Four shapes covered nearly every one,
+  and none was a defect in the code under test:
+  - a test helper annotated `object` where it returns a `Scenario`, an `Effective`, or a list of
+    `Actuation`s, so every assertion downstream of it lost its type;
+  - a deliberately partial driver or collector stub, which now subclasses `FakeDriver` /
+    `FakeNetworkCollector` and so satisfies the protocol for real, rather than being cast at each
+    call site;
+  - a test reading a module's own `time` / `subprocess` / `urllib` import to patch it, which now
+    patches that standard-library module directly — the same object, so the patch is unchanged, and
+    the read no longer trips strict mode's implicit-reexport check;
+  - a pydantic model constructed by Python field name, such as `test_runner=`, where mypy — without
+    the plugin this item leaves out of scope — sees only the alias `testRunner=`.
+
+  Two assertions changed meaning rather than only their types. `ScreenTransition(name="detail")`
+  passed a field the model does not declare, which `extra="ignore"` silently dropped; it now sets
+  the `kind` field it meant. `test_visual_assertion_with_exclude_and_threshold` indexed a
+  `list[ExcludeRegion | SelectorRegion]` and read `.w`, a field only `ExcludeRegion` carries, and
+  now asserts that variant before reading it.
 
 ## References
 

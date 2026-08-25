@@ -17,10 +17,16 @@ from bajutsu.orchestrator.waits import _TRANSITION_QUIESCENCE
 from bajutsu.scenario import Wait
 
 
-class _GuardStub:
+class _GuardStub(FakeDriver):
     """Minimal driver stub for the vision-path guard tests: advertises no HANDLE_SYSTEM_ALERT
     capability, so the mid-wait gate takes its collapsed-tree + vision branch rather than the native
-    path (BE-0315)."""
+    path (BE-0315).
+
+    Subclasses override `query()` alone; the `FakeDriver` base keeps the rest of the `Driver` surface
+    real, so a stub can be passed where a driver is expected without a cast."""
+
+    def __init__(self) -> None:
+        super().__init__([])
 
     def capabilities(self) -> set[str]:
         return set()
@@ -662,6 +668,7 @@ class _CollapsingDriver(_GuardStub):
     name = "collapsing"
 
     def __init__(self, revealed: list[base.Element]) -> None:
+        super().__init__()
         self._revealed = revealed
         self.cleared = False
 
@@ -680,9 +687,10 @@ def test_wait_for_guard_fires_mid_wait_and_records_the_alert() -> None:
     driver = _CollapsingDriver([el("ready", "R")])
     calls = {"n": 0}
 
-    def on_blocked(d: object) -> AlertEvent:
+    def on_blocked(d: base.Driver) -> AlertEvent:
         calls["n"] += 1
-        d.cleared = True  # type: ignore[attr-defined]
+        assert isinstance(d, _CollapsingDriver)
+        d.cleared = True
         return AlertEvent(label="Not Now")
 
     alerts: list[AlertEvent] = []
@@ -755,7 +763,9 @@ def test_mid_wait_alert_guard_dismiss_preserves_correct_before_after_evidence(
 
     def _els(step_index: int) -> list[dict[str, object]]:
         art = next(a for a in result.steps[step_index].artifacts if a.kind == "elements")
-        return json.loads((run_dir / art.name).read_text(encoding="utf-8"))
+        els = json.loads((run_dir / art.name).read_text(encoding="utf-8"))
+        assert isinstance(els, list)
+        return els
 
     # step0's (the wait's) tree is its post-action one: the screen the dismissal settled on, never
     # the collapsed one the guard fired against. Its `before.png` still holds that pre-wait moment.
@@ -776,6 +786,7 @@ def test_wait_guard_debounces_a_transient_collapse() -> None:
         name = "one-frame"
 
         def __init__(self) -> None:
+            super().__init__()
             self.polls = 0
 
         def query(self) -> list[base.Element]:
@@ -837,6 +848,7 @@ def test_wait_guard_never_fires_while_app_ui_is_visible() -> None:
         name = "app"
 
         def __init__(self) -> None:
+            super().__init__()
             self.polls = 0
 
         def query(self) -> list[base.Element]:
@@ -1021,6 +1033,7 @@ def test_wait_guard_does_not_extend_the_deadline() -> None:
         name = "slow"
 
         def __init__(self, clock: _LogicalClock) -> None:
+            super().__init__()
             self._clock = clock
 
         def query(self) -> list[base.Element]:
@@ -1155,18 +1168,24 @@ def test_wait_ticks_fire_for_every_non_for_branch() -> None:
     from bajutsu.orchestrator.waits import _wait
     from bajutsu.scenario import Wait
 
-    class Churning:  # a new tree every poll -> never settles / never "changes back" -> loops to deadline
+    class Churning(FakeDriver):  # a new tree every poll -> never settles -> loops to deadline
         name = "churning"
 
         def __init__(self) -> None:
+            super().__init__([])
             self._n = 0
 
         def query(self) -> list[base.Element]:
             self._n += 1
             return [el(f"row{self._n}", "R")]
 
-    class Static:  # a constant tree: `gone` never vanishes and `screenChanged` never differs
+    class Static(
+        FakeDriver
+    ):  # a constant tree: `gone` never vanishes, `screenChanged` never differs
         name = "static"
+
+        def __init__(self) -> None:
+            super().__init__([])
 
         def query(self) -> list[base.Element]:
             return [el("spinner", "S")]
@@ -1181,13 +1200,13 @@ def test_wait_ticks_fire_for_every_non_for_branch() -> None:
         return seen
 
     cases = {
-        "settled": ticks(Wait.model_validate({"until": "settled", "timeout": 20.0}), Churning()),  # type: ignore[arg-type]
+        "settled": ticks(Wait.model_validate({"until": "settled", "timeout": 20.0}), Churning()),
         "gone": ticks(
             Wait.model_validate({"until": {"gone": {"id": "spinner"}}, "timeout": 20.0}), Static()
-        ),  # type: ignore[arg-type]
+        ),
         "screenChanged": ticks(
             Wait.model_validate({"until": "screenChanged", "timeout": 20.0}), Static()
-        ),  # type: ignore[arg-type]
+        ),
         "request": ticks(
             Wait.model_validate({"until": {"request": {"path": "/never"}}, "timeout": 20.0}),
             Static(),  # type: ignore[arg-type]
