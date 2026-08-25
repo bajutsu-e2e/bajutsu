@@ -14,6 +14,27 @@ A scenario (YAML) is the shared hub: AI helps *author* and *investigate*; a dete
 runner decides pass/fail. Python logic core lives in [`bajutsu/`](bajutsu/); the Swift
 test-support package is [`BajutsuKit/`](BajutsuKit/); runnable examples are in [`demos/`](demos/).
 
+## Find it before you read it
+
+Three commands print a map of the tree, derived on every run — no committed index to go stale:
+
+- `make repo-map ARGS="--docs"` — every `docs/` page, with its length and its own one-line
+  description. `make repo-map ARGS="--code"` — every `bajutsu/` package and top-level module. Add
+  `--grep <word>` to either. What each module is *for* is prose, in
+  [`docs/architecture.md`](docs/architecture.md#module-list-and-roles).
+- `make roadmap-find ARGS="--grep <word>"` — the roadmap items on a topic, out of ~380.
+
+**Load a large file in stages.** `make repo-map ARGS="--headings <path>"` prints each heading and
+its span. Read that range, not the file. CLAUDE.md links a dozen times into
+[`docs/ai-development.md`](docs/ai-development.md), where every anchor lands in a section a small
+fraction of the page long. Reading a file whole is a last resort, once you can say why the staged
+path would not answer. In `roadmaps/`, the `-ja.md` mirror holds nothing the English file lacks — read the `.md`
+alone.
+
+**Don't read a file back after editing it.** `Edit` and `Write` fail loudly when a change does not
+apply. A Read afterwards confirms nothing and pays for the file twice. Every tool result is re-sent
+on each later turn, so one needless read keeps costing.
+
 ## Prime directives (do not violate)
 
 1. **AI is the author and the failure investigator, never the judge.** `run` is fully
@@ -33,16 +54,17 @@ The Python core needs no Simulator, so the gate is fast and runs anywhere (Linux
 
 ```bash
 make check        # format-check + lint + lint-docstrings + lint-imports + lint-sh
-                  #   + lint-actions + lint-js + lint-roadmap + lint-skills + lint-secrets
+                  #   + lint-actions + lint-js + lint-roadmap + lint-skills + lint-module-map
+                  #   + lint-secrets
                   #   + lock-check + typecheck + test (coverage floor)   — mirrors CI exactly
 ```
 
 Individual steps: `make format-check` · `make lint` · `make lint-docstrings` · `make lint-imports`
 · `make lint-sh` · `make lint-actions` · `make lint-js` · `make lint-roadmap` · `make lint-skills`
-· `make lint-secrets` · `make lock-check` · `make typecheck` · `make test`. (`make format` rewrites;
-the gate only checks.) Every step is uv-native and runs on a fresh clone — except `actionlint` and
-`gitleaks`, two tools that CI installs separately but `make` skips (with a notice) when they are
-absent. CI
+· `make lint-module-map` · `make lint-secrets` · `make lock-check` · `make typecheck` · `make test`.
+(`make format` rewrites; the gate only checks.) Every step is uv-native and runs on a fresh clone —
+except `actionlint` and `gitleaks`, two tools that CI installs separately but `make` skips (with a
+notice) when they are absent. CI
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the same steps on every PR —
 keeping the local bar identical is what makes "green locally" predict "green in CI".
 
@@ -178,25 +200,14 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   information*; internal `_helpers` keep one prose line of *why*. **Never restate types**; describe
   meaning. English, like all code. Migrate module by module in small PRs. Full rule:
   [`docs/ai-development.md`](docs/ai-development.md).
-- **Follow the [`document-writing`](.apm/skills/document-writing/SKILL.md) skill whenever you write or revise a
-  BE roadmap item or a prose doc, in either language.** It is the authoritative prose norm:
-  language-agnostic technique (draft top-down, state the contribution up front, put a sentence's
-  most important element at its end, keep the verb near the subject, prefer the active voice, cut
-  filler). Invoke it *before* writing, not after. It is the umbrella above two language layers —
-  apply `english-document-writing` with it for English prose, `japanese-document-writing` for Japanese (both
-  below). Like the bilingual-docs rule, it is a review-time norm, not a CI gate.
-- **Apply the [`english-document-writing`](.apm/skills/english-document-writing/SKILL.md) skill whenever you
-  write, translate into, or revise English prose.** It is the English layer beneath
-  [`document-writing`](.apm/skills/document-writing/SKILL.md): the English-specific mechanics (serial comma,
-  *that* / *which*, dashes, numbers, formal word choice) that only English grammar and typography
-  need. Apply both for English prose. It never applies to Japanese.
-- **Always follow the [`japanese-document-writing`](.apm/skills/japanese-document-writing/SKILL.md) skill
-  whenever you generate Japanese — without exception.** This is not limited to `docs/ja/` and
-  roadmap `*-ja.md`: it covers *any* Japanese you produce, including freshly written prose,
-  translations from English, and revisions/rewrites of existing Japanese. The skill is the
-  authoritative style for Japanese prose in this project; invoke it before writing or editing the
-  Japanese, not after. It is the Japanese layer beneath the [`document-writing`](.apm/skills/document-writing/SKILL.md)
-  umbrella (above); apply both for Japanese prose.
+- **Invoke the writing skills *before* you write or revise a BE roadmap item or a prose doc, not
+  after.** [`document-writing`](.apm/skills/document-writing/SKILL.md) is the authoritative
+  norm and the umbrella above two language layers; apply it together with the layer for the
+  language you are writing — [`english-document-writing`](.apm/skills/english-document-writing/SKILL.md)
+  for English, [`japanese-document-writing`](.apm/skills/japanese-document-writing/SKILL.md)
+  for Japanese. The Japanese layer binds **without exception, for any Japanese you produce** — new
+  prose, translations, and revisions alike, not only `docs/ja/` and roadmap `*-ja.md`. Like the
+  bilingual-docs rule, all three are review-time norms, not a CI gate.
 - Docs are **bilingual**: English in `docs/`, Japanese mirror in `docs/ja/`. Update both when
   you change a documented behavior.
 - **Keep DESIGN.md and `docs/architecture.md` in step with behavior (BE-0113).** A PR that changes

@@ -220,25 +220,22 @@ _CODE_PLACEHOLDER_RE = re.compile(r"\x00(\d+)\x00")
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
-def extract_summary(text: str, *, max_len: int = 220) -> str:
-    """The first paragraph of an item's ``## Introduction`` section, as a plain-text one-liner.
+def to_plain_text(markdown: str, *, max_len: int = 220) -> str:
+    """One paragraph of markdown as a plain-text one-liner, truncated on a word boundary.
 
-    Used as a short at-a-glance overview (the dashboard relationship map's hover card, BE-0335)
-    rather than as parsed metadata: every item's file already opens with one, so this reads it
-    instead of asking an author to maintain a second, shorter description that could drift from the
-    real one. An inline code span is stashed behind a placeholder *before* any other substitution
-    runs — including link resolution — and restored verbatim at the end, so its content (an
-    identifier like ``` `__init__` ``` or ``` `wait_for` ```, or even literal text that happens to
-    look like a markdown link) round-trips untouched rather than being mutated by a rule meant for
-    the surrounding prose. A markdown link outside a code span keeps its visible text; bold/italic
-    markers are stripped. Returns an empty string when the file has no ``## Introduction`` section
-    (the legacy-format fixtures used in tests), so a caller can treat "no summary" as ordinary
-    rather than an error.
+    An inline code span is stashed behind a placeholder *before* any other substitution runs —
+    including link resolution — and restored verbatim at the end, so its content (an identifier
+    like ``` `__init__` ``` or ``` `wait_for` ```, or even literal text that happens to look like a
+    markdown link) round-trips untouched rather than being mutated by a rule meant for the
+    surrounding prose. A markdown link outside a code span keeps its visible text; bold/italic
+    markers are stripped.
+
+    Args:
+        markdown: one paragraph, which may span several source lines.
+        max_len: the length past which the result is cut back to the last whole word and an
+            ellipsis appended.
     """
-    match = _INTRO_RE.search(text)
-    if not match:
-        return ""
-    paragraph = _WHITESPACE_RE.sub(" ", match.group(1)).strip()
+    paragraph = _WHITESPACE_RE.sub(" ", markdown).strip()
     code_spans: list[str] = []
 
     def _stash(m: re.Match[str]) -> str:
@@ -253,6 +250,23 @@ def extract_summary(text: str, *, max_len: int = 220) -> str:
     if len(paragraph) <= max_len:
         return paragraph
     return paragraph[:max_len].rsplit(" ", 1)[0].rstrip(",;:") + "…"
+
+
+def extract_summary(text: str, *, max_len: int = 220) -> str:
+    """The first paragraph of an item's ``## Introduction`` section, as a plain-text one-liner.
+
+    Used as a short at-a-glance overview (the dashboard relationship map's hover card, BE-0335)
+    rather than as parsed metadata: every item's file already opens with one, so this reads it
+    instead of asking an author to maintain a second, shorter description that could drift from the
+    real one. Returns an empty string when the file has no ``## Introduction`` section (the
+    legacy-format fixtures used in tests), so a caller can treat "no summary" as ordinary rather
+    than an error. :func:`to_plain_text` does the markdown flattening, which ``repo_map`` reuses
+    for the one-line summary it derives from a ``docs/`` page.
+    """
+    match = _INTRO_RE.search(text)
+    if not match:
+        return ""
+    return to_plain_text(match.group(1), max_len=max_len)
 
 
 def parse_metadata(text: str) -> tuple[str, dict[str, str]]:

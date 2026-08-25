@@ -5,6 +5,10 @@ source of truth for both Claude Code and any other AI coding agent (Codex, Curso
 
 Please read [`CLAUDE.md`](CLAUDE.md) before starting. In short:
 
+- **Find it before you read it.** `make repo-map ARGS="--docs"` and `make repo-map ARGS="--code"`
+  print a map of the tree on every run, and `make roadmap-find ARGS="--grep <word>"` finds the
+  roadmap items on a topic. For a large file, `make repo-map ARGS="--headings <path>"` gives each
+  heading and its line span — read that range, not the file.
 - **Verify with `make check`** before calling a change done and before pushing — it mirrors CI
   exactly (the full step list is in [`CLAUDE.md`](CLAUDE.md)).
 - **AI never judges a `run`.** Pass/fail is deterministic, from machine assertions only — never

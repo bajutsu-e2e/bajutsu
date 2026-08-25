@@ -70,6 +70,9 @@ jobs:
       - name: Lint agent skills (apm audit)
         run: make lint-skills
 
+      - name: Lint module map (architecture table vs the package tree)
+        run: make lint-module-map
+
       # gitleaks (https://github.com/gitleaks/gitleaks) isn't pip/uv-installable — one of the two
       # gate checks needing its own install, alongside actionlint below. Same pattern
       # as actionlint: pin
