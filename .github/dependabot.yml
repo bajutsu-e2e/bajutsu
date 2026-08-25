@@ -25,11 +25,11 @@ updates:
       python:
         patterns: ["*"]
 
-  # The npm lockfiles are tooling-only (the textlint runtime behind the document-writing skills,
-  # and the web demo's codegen helper) — without these entries their transitive advisories
+  # The npm lockfiles are tooling-only (the textlint runtime the prose skills run, and the web
+  # demo's codegen helper) — without these entries their transitive advisories
   # accumulate unwatched, since neither directory is reachable from pyproject.toml.
   - package-ecosystem: npm
-    directory: /.agent-workflows/document-writing/textlint
+    directory: /tools/textlint
     schedule:
       interval: weekly
     cooldown:

@@ -41,9 +41,10 @@ jobs:
         run: uv sync --group dev
 
       # Each step invokes the matching `make` target so the gate's commands and file/target lists
-      # live only in the Makefile. gitleaks and actionlint are the two separately-installed binaries
+      # live only in the Makefile. gitleaks and actionlint are the separately-installed tools
       # (kept inline below: `make lint-secrets`/`make lint-actions` only run them when on PATH, but
-      # CI installs each).
+      # CI installs each). apm is not among them — it is a `dev` dependency, so the sync above
+      # covers it and `make lint-skills` has no skip branch to defeat.
       - name: Lockfile up to date (uv lock --check)
         run: make lock-check
 
@@ -62,11 +63,19 @@ jobs:
       - name: Lint roadmap (cross-links + author handle)
         run: make lint-roadmap
 
+      # Fails when a deployed .claude/skills/ file no longer matches its .apm/skills/ source —
+      # a hand-edited deployment, or a source edit whose `make skills` was forgotten. apm-cli is a
+      # `dev` dependency, so the `uv sync --group dev` above already installed the pinned version —
+      # no separate install step, and no way for the check to skip (BE-0390).
+      - name: Lint agent skills (apm audit)
+        run: make lint-skills
+
       - name: Lint module map (architecture table vs the package tree)
         run: make lint-module-map
 
-      # gitleaks (https://github.com/gitleaks/gitleaks) isn't pip/uv-installable — the second gate
-      # check needing its own install, alongside actionlint below. Same pattern as actionlint: pin
+      # gitleaks (https://github.com/gitleaks/gitleaks) isn't pip/uv-installable — one of the two
+      # gate checks needing its own install, alongside actionlint below. Same pattern
+      # as actionlint: pin
       # the release tarball by exact version and verify its checksum (the release's own published
       # checksums.txt), since the download URL itself is a mutable release asset.
       - name: Install gitleaks

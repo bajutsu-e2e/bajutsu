@@ -19,7 +19,7 @@ This item adds `fix-issue`, a skill that ships a plain GitHub issue end to end: 
 review, the gate, and a Draft pull request (PR). A plain issue is a small bug, a papercut, or a
 scoped improvement that never warranted a roadmap (Bajutsu Evolution, BE) item. The skill touches
 no roadmap file and needs no new label. It plays the same role for a bare issue that
-[`implement-be`](../../.agent-workflows/implement-be/workflow.md) plays for a numbered BE item, and
+[`implement-be`](../../.apm/skills/implement-be/SKILL.md) plays for a numbered BE item, and
 it reuses that skill's implementation, review, and follow-up steps directly. It diverges where a
 plain issue genuinely differs from a BE item: how the skill claims ownership, and what closes the
 loop once the fix merges.
@@ -31,7 +31,7 @@ A contributor can already file a lightweight bug or improvement without writing 
 ([`bug_report.yml`](../../.github/ISSUE_TEMPLATE/bug_report.yml),
 [`feature_request.yml`](../../.github/ISSUE_TEMPLATE/feature_request.yml)) exist for that case, and
 their `config.yml` already tells a filer to reach for the roadmap when an idea is large. The
-[`task-select`](../../.agent-workflows/task-select/workflow.md) skill already surveys
+[`task-select`](../../.apm/skills/task-select/SKILL.md) skill already surveys
 these open issues alongside the roadmap and ranks them as candidates for the next task.
 
 Nothing ships the candidate once someone picks it, though. `implement-be` turns a plan into a
@@ -47,7 +47,7 @@ enough to skip a BE item, the way [BE-0109](../BE-0109-roadmap-tracking-issues/B
 already labels roadmap-tracking issues. This item skips that label on purpose. The boundary between
 "ship it as a plain fix" and "this needs a proposal" is a judgment call. That call can surface
 mid-fix instead of at filing time alone, so the skill itself makes it.
-[`ideation`](../../.agent-workflows/ideation/workflow.md) already judges the opposite boundary this
+[`ideation`](../../.apm/skills/ideation/SKILL.md) already judges the opposite boundary this
 way: it redirects a user who wants to build, rather than propose, without leaning on a label to
 draw that line.
 
@@ -60,8 +60,8 @@ draw that line.
    [three prime directives](../../CLAUDE.md#prime-directives-do-not-violate). When a fix turns out
    to need a design decision, a cross-cutting change, or a reshaping of an idea that brushes a
    directive, the skill stops. It tells the user why, and points at
-   [`ideation`](../../.agent-workflows/ideation/workflow.md) or
-   [`propose-and-build`](../../.agent-workflows/propose-and-build/workflow.md) rather than
+   [`ideation`](../../.apm/skills/ideation/SKILL.md) or
+   [`propose-and-build`](../../.apm/skills/propose-and-build/SKILL.md) rather than
    continuing — and it releases the claim design point 2 made
    (`gh issue edit <N> --remove-assignee @me`), so an escalated issue does not stay marked as in
    flight. This valve can trigger at any point through step 3's planning stage, because a fix's
@@ -97,7 +97,8 @@ draw that line.
    above. A Claude Code adapter, `.claude/skills/fix-issue/SKILL.md`, declares `model: opus` in its
    frontmatter — the same Heavy tier as `implement-be`, since both ship product code. A Codex
    adapter, `.agent-hosts/codex/skills/fix-issue/SKILL.md`, keeps the host parity every existing
-   skill has today ([`CLAUDE.md`](../../CLAUDE.md#agent-skill-layout)).
+   skill has today ([`CLAUDE.md`](../../CLAUDE.md#agent-skill-layout)). (BE-0390 later folded the
+   three files into the single source `.apm/skills/fix-issue/SKILL.md`.)
 6. **Documentation and hand-off wiring.**
    - [`docs/ai-development.md`](../../docs/ai-development.md) (and its `docs/ja/` mirror) gains a
      `fix-issue` → `opus` (Heavy) line in the per-skill model list, next to `propose-and-build`'s
@@ -108,7 +109,7 @@ draw that line.
      `fix-issue` alongside `implement-be` under "Implementation work." A `fix-issue` PR is the same
      self-contained, gate-green change that bullet already auto-opens as Draft and drives with the
      paced follow-up loop.
-   - [`task-select`](../../.agent-workflows/task-select/workflow.md) step 5's recommended next
+   - [`task-select`](../../.apm/skills/task-select/SKILL.md) step 5's recommended next
      command becomes `fix-issue #<N>` when the chosen candidate is a bare GitHub issue with no BE
      id. Its existing `implement-be BE-NNNN` recommendation stays for a roadmap item.
 
@@ -153,13 +154,13 @@ draw that line.
 
 ## References
 
-- [`implement-be`](../../.agent-workflows/implement-be/workflow.md) — the BE-item counterpart this
+- [`implement-be`](../../.apm/skills/implement-be/SKILL.md) — the BE-item counterpart this
   skill mirrors for a plain issue, and the source of the steps it reuses unmodified.
-- [`ideation`](../../.agent-workflows/ideation/workflow.md) — the skill this one's escalation valve
+- [`ideation`](../../.apm/skills/ideation/SKILL.md) — the skill this one's escalation valve
   points to, and the precedent for judging a scope boundary inside a skill rather than with a label.
-- [`propose-and-build`](../../.agent-workflows/propose-and-build/workflow.md) — the other escalation
+- [`propose-and-build`](../../.apm/skills/propose-and-build/SKILL.md) — the other escalation
   target, for a small idea whose design is already settled enough to author and build in one PR.
-- [`task-select`](../../.agent-workflows/task-select/workflow.md) — the read-only skill that already
+- [`task-select`](../../.apm/skills/task-select/SKILL.md) — the read-only skill that already
   ranks plain GitHub issues as candidates, and gains the hand-off to `fix-issue` in design point 6.
 - [BE-0109](../BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) — GitHub Issues as
   the ownership tracker for open roadmap items, and the bot-managed mechanism this item's issues stay

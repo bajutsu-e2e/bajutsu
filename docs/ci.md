@@ -92,9 +92,11 @@ on any run's pass/fail verdict.
 The dev tools live in the `dev` dependency group, so the Linux job runs `uv sync --group
 dev` then `uv run --no-sync …` (plain `uv run` would re-sync to the default set and drop
 them). The gate mirrors [`make check`](../Makefile) and the [`pre-push`](../.githooks/pre-push)
-hook step-for-step; every check except `actionlint` (a standalone binary CI installs) runs
-identically on a fresh clone via `uv` alone, which is what makes "green locally" predict
-"green in CI".
+hook step-for-step; every check except `actionlint` and `gitleaks` (two tools CI installs
+separately, each step skipping with a notice when its tool is absent) runs identically on a fresh
+clone via `uv` alone, which is what makes "green locally" predict "green in CI". The skill-drift
+check is in the `uv` half, not the exceptions: `apm-cli` is a `dev` dependency (BE-0390), so
+`make lint-skills` has no skip branch.
 
 ### Every job declares a timeout
 

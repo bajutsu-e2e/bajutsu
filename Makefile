@@ -1,5 +1,6 @@
 .PHONY: setup hooks install deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck \
-        lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr lint-secrets check new-roadmap-item \
+        lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr lint-secrets skills lint-skills \
+        check new-roadmap-item \
         roadmap-status roadmap-dashboard docs docs-serve docs-diagrams runner-bundle
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
@@ -13,13 +14,16 @@ setup: hooks
 #                          pre-commit/prepare-commit-msg/commit-msg secret scan, via .gitleaks.toml
 #                          — a tracked file, so no local git-config registration is needed here)
 #   - merge.uv-lock     -> regenerate uv.lock from pyproject.toml on conflict (BE-0043)
+#   - merge.apm-generated -> regenerate apm.lock.yaml and .claude/skills/ from .apm/skills/ (BE-0390)
 #   - rerere            -> replay a once-resolved conflict automatically (BE-0043)
 hooks:
 	@[ -d .githooks ] && git config core.hooksPath .githooks && echo "hooks: core.hooksPath -> .githooks" || true
 	@git config merge.uv-lock.name "regenerate uv.lock from pyproject.toml" \
 	  && git config merge.uv-lock.driver "./scripts/merge-uv-lock.sh %A" \
+	  && git config merge.apm-generated.name "regenerate APM's generated output from .apm/skills/" \
+	  && git config merge.apm-generated.driver "./scripts/merge-apm-generated.sh %A %P" \
 	  && git config rerere.enabled true \
-	  && echo "hooks: uv.lock merge driver + rerere wired"
+	  && echo "hooks: uv.lock + apm generated-output merge drivers + rerere wired"
 
 # Config-aware one-command bootstrap (BE-0164): the base toolchain (`setup`) PLUS exactly the
 # backend deps a project's config needs — not "every backend unconditionally", not "everything".
@@ -70,7 +74,7 @@ preflight:
 
 # Shell scripts the gate lints. pre-push/pre-commit/prepare-commit-msg have no .sh suffix, so
 # they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg .githooks/pre-commit .githooks/prepare-commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/worktree_cleanup.sh scripts/merge-uv-lock.sh scripts/xcuitest-runner-hash.sh scripts/collect_android_diagnostics.sh scripts/android_pool_e2e.sh .claude/hooks/session-start.sh demos/tour/demo.sh
+SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg .githooks/pre-commit .githooks/prepare-commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/worktree_cleanup.sh scripts/merge-uv-lock.sh scripts/merge-apm-generated.sh scripts/xcuitest-runner-hash.sh scripts/collect_android_diagnostics.sh scripts/android_pool_e2e.sh .claude/hooks/session-start.sh demos/tour/demo.sh
 
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the
@@ -126,8 +130,8 @@ lock-check:
 lint-sh:
 	uv run shellcheck $(SHELL_SCRIPTS)
 
-# actionlint is a standalone Go binary (not pip/uv installable), so it's the one gate
-# check that needs a separate install. CI always installs and runs it; locally we lint
+# actionlint is a standalone Go binary (not pip/uv installable), so it needs a separate install —
+# as does gitleaks (lint-secrets). CI always installs and runs it; locally we lint
 # the workflows if it's present and skip with a notice otherwise, so `check` still runs
 # anywhere. Install locally: https://github.com/rhysd/actionlint/blob/main/docs/install.md
 lint-actions:
@@ -216,6 +220,27 @@ lint-secrets:
 		echo "lint-secrets: gitleaks not installed — skipping (CI enforces it); see docs/ai-development.md"; \
 	fi
 
+# Deploy the agent skills: APM reads apm.yml, copies each .apm/skills/<name>/ source tree to
+# .claude/skills/<name>/, and records a SHA-256 per deployed file in apm.lock.yaml (BE-0390).
+# Both the lockfile and the deployed tree are committed, so a fresh clone has a working skill set
+# without running this; run it after editing a source skill, then commit what it rewrote. A rename
+# needs no extra step: `apm install` prunes the deployment it no longer owns.
+# --no-policy for the same reason lint-skills passes it, and so the deploy and the audit that
+# replays it run under one configuration: org-policy discovery would otherwise reach api.github.com,
+# which only warns when it fails but leaves this offline-resolvable install needing the network.
+skills:
+	uv run apm install --no-policy
+
+# Fail when a deployed skill file no longer matches its source. `apm audit --ci` replays the
+# install and compares against the lockfile's hashes, so it catches drift in both directions: a
+# deployed file edited by hand, and a source edit whose `make skills` was forgotten. --no-policy
+# keeps the check offline (org-policy discovery would otherwise reach api.github.com) and
+# deterministic — the same reason no LLM sits anywhere near this gate step. Unlike lint-actions and
+# lint-secrets there is no skip branch: apm-cli is a `dev` dependency (pyproject.toml), so uv
+# resolves the pinned version on any clone and this step cannot pass by not running.
+lint-skills:
+	uv run apm audit --ci --no-policy
+
 # Filter roadmap (BE) items by Status into one small table — ID / Item / Topic / Path — so an AI
 # session surveys just the rows it needs (e.g. every Proposal) without paging through the dashboard's
 # rendered HTML or opening each item file to check its `Status` (BE-0162). Pure and offline: reads
@@ -247,9 +272,10 @@ repo-map:
 	uv run python scripts/repo_map.py $(ARGS)
 
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
-# predicts "green in CI". The uv-native checks run identically everywhere; actionlint is
-# the lone exception (see lint-actions above).
-check: hooks format-check lint lint-docstrings lint-imports lint-sh lint-actions lint-js lint-roadmap lint-module-map lint-secrets lock-check typecheck test
+# predicts "green in CI". The uv-native checks run identically everywhere; actionlint and gitleaks
+# are the exceptions — CI installs each one, and the step skips with a notice when it is absent
+# (see lint-actions / lint-secrets above).
+check: hooks format-check lint lint-docstrings lint-imports lint-sh lint-actions lint-js lint-roadmap lint-skills lint-module-map lint-secrets lock-check typecheck test
 
 # Generated API reference (BE-0065). Deliberately NOT in `check`: like on-device E2E, the
 # reference build is a separate, heavier path (it pulls the `docs` extra) and must not slow the
