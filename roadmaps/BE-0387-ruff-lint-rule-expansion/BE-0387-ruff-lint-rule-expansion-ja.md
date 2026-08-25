@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0387](BE-0387-ruff-lint-rule-expansion-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0387") |
+| 実装 PR | [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) |
 | トピック | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -130,20 +131,48 @@ import）だけで258件を占めます。本リポジトリ自身の慣習は�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `W` を追加する。修正は不要。
-- [ ] `PLE` を追加する。修正は不要。
-- [ ] `RET` を追加し、6件の修正を適用する（`bajutsu/` の2件、`tests/` の4件。うち4件は `--fix` で
+- [x] `W` を追加する。修正は不要。
+- [x] `PLE` を追加する。修正は不要。
+- [x] `RET` を追加し、6件の修正を適用する（`bajutsu/` の2件、`tests/` の4件。うち4件は `--fix` で
   対応できる）。
-- [ ] `PTH` を追加し、26件を修正する（`bajutsu/` の17件、`tests/` の6件、`demos/`・`scripts/`
+- [x] `PTH` を追加し、26件を修正する（`bajutsu/` の17件、`tests/` の6件、`demos/`・`scripts/`
   の3件）。
-- [ ] `SLF` を `tests/**` への無視付きで追加し、`bajutsu/` にある38件を修正する。
-- [ ] `ARG` を `tests/**` への無視付きで追加し、`bajutsu/` にある130件（`ARG002` 94件、`ARG001`
+- [x] `SLF` を `tests/**` への無視付きで追加し、`bajutsu/` にある38件を修正する。
+- [x] `ARG` を `tests/**` への無視付きで追加し、`bajutsu/` にある134件（`ARG002` 98件、`ARG001`
   20件、`ARG005` 16件）を切り分け、`demos/`・`scripts/` にある6件（`ARG001` 3件、`ARG002` 2件、
   `ARG005` 1件）を修正する。
-- [ ] `TRY003` を無視した状態で `TRY` を追加し、残る30件（`TRY300` / `TRY004` / `TRY400`）を修正する。
-- [ ] `PLW` を追加し、`bajutsu/` にある13件（`PLW0603` / `PLW2901` / `PLW1510`）に加え、それ以外に
-  ある15件（`tests/` の13件：`PLW0108` 8件 + `PLW1510` 5件、`demos/`・`scripts/` の2件：`PLW1510`
+- [x] `TRY003` を無視した状態で `TRY` を追加し、残る31件（`TRY300` / `TRY004` / `TRY400`）を修正する。
+- [x] `PLW` を追加し、`bajutsu/` にある13件（`PLW0603` / `PLW2901` / `PLW1510`）に加え、それ以外に
+  ある17件（`tests/` の15件：`PLW0108` 8件 + `PLW1510` 7件、`demos/`・`scripts/` の2件：`PLW1510`
   1件 + `PLW2901` 1件）を修正する。
+
+**ログ**
+
+- 8つの分類すべてを、チェックリストの並び順どおりに1分類1コミットで投入しました
+  （[#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM)）。上の件数は投入時点で計測した
+  実測値です。提案執筆時の数値からわずかに増えています。`ARG002` は94件から98件、`TRY004` は
+  10件から11件、`tests/` の `PLW1510` は5件から7件になりました。提案を書いたあとにコードが
+  増えたぶんです。*詳細設計* が想定していた扱いと異なる判断を3つ採りました。いずれも、
+  ルールを有効にしてはじめてコードが示した理由によるものです。
+  - **`SLF`** はクラスの内部状態を1件も検出しませんでした。38件はすべて、モジュールレベルの
+    プライベートな補助シンボルへのモジュール跨ぎの参照です。内訳は `adb._real_run` と
+    `_checked_serial`、`simctl._real_run`、`base._contains`、`readiness._await_ready` と
+    `_await_boot`、`intervals._spawn`、`_yaml._Loader` です。しかもいくつかは**公開関数**の
+    デフォルト引数として使われており、すでにモジュールの契約面の一部になっています。したがって
+    アンダースコアを外して公開名にすることが、詳細設計の言う「narrow public accessor を出す」に
+    あたります。`# noqa` を付けたのは2件だけで、`oplog` が `logging.Handler` に付ける名前空間つき
+    マーカー `_bajutsu_oplog` と、`theme_editor` が意図的にキャッシュを破棄する箇所です。
+  - **`TRY004`** は10件すべてについて、`TypeError` へ変えず現在の例外型を `# noqa` 付きで残し
+    ました。いずれも外部から受け取ったペイロードを検証する箇所です。JSON や YAML の文書、
+    HTTP レスポンスの形がそれにあたります。型が違うことはデータの誤りであって、呼び出し側が
+    誤った型を渡したことではありません。しかも複数の関数が `Raises: ValueError` を docstring に明記しており、
+    呼び出し側は `ValueError` を捕捉しています。`TypeError` へ変えれば、そうしたハンドラーが
+    黙って壊れます。
+  - **`TRY300`** は17件のうち15件について、return を `else` ブロックへ移しました。残る2件は
+    `try` の中に残しています。`notify._mask_url` は、返している f 文字列そのものがガードの
+    保護対象だからです。ステップのディスパッチャーは、そのブロックが4つの分岐から return して
+    おり、最後の1つだけを `else` へ持ち上げると、残る3つが成功パスではないかのように読めて
+    しまうからです。
 
 ## 参考
 
