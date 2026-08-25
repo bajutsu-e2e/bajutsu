@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-scenario-before-after-hooks-ja.md)
+**English** · [日本語](BE-0392-scenario-before-after-hooks-ja.md)
 
-# BE-XXXX — Independent before/after lifecycle hooks for scenarios
+# BE-0392 — Independent before/after lifecycle hooks for scenarios
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-scenario-before-after-hooks.md) |
+| Proposal | [BE-0392](BE-0392-scenario-before-after-hooks.md) |
 | Author | [@akira-matsuda](https://github.com/akira-matsuda) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0392") |
 | Topic | Scenario authoring features |
 | Related | [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md), [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers.md) |
 <!-- /BE-METADATA -->

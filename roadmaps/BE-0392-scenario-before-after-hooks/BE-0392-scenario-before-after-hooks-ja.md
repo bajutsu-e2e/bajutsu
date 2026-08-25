@@ -1,14 +1,14 @@
-[English](BE-XXXX-scenario-before-after-hooks.md) · **日本語**
+[English](BE-0392-scenario-before-after-hooks.md) · **日本語**
 
-# BE-XXXX — シナリオの steps から独立した before/after ライフサイクルフック
+# BE-0392 — シナリオの steps から独立した before/after ライフサイクルフック
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-scenario-before-after-hooks-ja.md) |
+| 提案 | [BE-0392](BE-0392-scenario-before-after-hooks-ja.md) |
 | 提案者 | [@akira-matsuda](https://github.com/akira-matsuda) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0392") |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps-ja.md)、[BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md)、[BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers-ja.md) |
 <!-- /BE-METADATA -->
