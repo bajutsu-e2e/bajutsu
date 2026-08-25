@@ -78,9 +78,12 @@ and the documentation correction.
    [`bajutsu/drivers/xcuitest.py`](../../bajutsu/drivers/xcuitest.py) treats
    `PopoverDismissRegion` as sufficient evidence that a tip is up. It instead requires both
    `PopoverDismissRegion` and `TipView` to be present, and reports `False` — no tap, no error —
-   when only the scrim is. What the driver taps does not change: `TipView` carries no dismiss
-   behavior, so the scrim stays the dismiss target, exactly as BE-0389 established. The container is
-   a detection signal only. Both the caller's-tree short-circuit and the re-check against the freshly
+   when only the scrim is. What the driver taps does not change: the scrim stays the dismiss target,
+   as BE-0389 established, and the container is a detection signal only. BE-0389 asserted that
+   without measuring it, so this item measures it: tapping `TipView` leaves the tip up, the tree
+   unchanged at 29 elements with container and scrim both still present, while tapping the close
+   button clears it and the tree returns to 118 elements. The container is therefore usable for
+   recognizing a tip and unusable for closing one. Both the caller's-tree short-circuit and the re-check against the freshly
    queried tree apply the pair, so a dialog costs no more queries than a tip-free screen already
    does. `resolve_unique` keeps guarding the scrim alone: several scrims remain a shape TipKit should
    never produce, and so still fail loudly rather than picking one (prime directive 2), while the

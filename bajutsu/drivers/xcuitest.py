@@ -176,8 +176,9 @@ _UNIT = "point"
 # "dismiss popup" label, and the same full-screen frame — so keying on the scrim by itself cannot
 # tell a tip from an app's own popover, and dismissing by tapping it would close that app's dialog.
 # Requiring the container as well identifies what the guard is for, leaving an unrecognized popover
-# alone by default. The container is a detection signal only: it carries no dismiss behavior, so the
-# scrim stays the dismiss target, as BE-0389 established. The tip's third node, the close button, is
+# alone by default. The container is a detection signal only, measured: tapping it leaves the tip up
+# (the tree is unchanged, container and scrim both still there), while tapping the close button clears
+# it. So the scrim stays the dismiss target, as BE-0389 established. The tip's third node, the close button, is
 # not part of the pair — its identifier is the SF Symbol name `xmark.circle.fill`, which an unrelated
 # app-authored button could plausibly reuse and turn into an `AmbiguousSelector`.
 _TIPKIT_DISMISS_REGION = "PopoverDismissRegion"
