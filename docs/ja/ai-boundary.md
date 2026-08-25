@@ -109,3 +109,27 @@ Claude の経路をテストし続けます。AI-free の保証はあくまで**
 [BE-0163](../../roadmaps/BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider-ja.md)、
 [BE-0176](../../roadmaps/BE-0176-claude-code-ai-backend/BE-0176-claude-code-ai-backend-ja.md)
 に従います）。どれを選んでも、上記の分類は変わりません。
+
+## AI 経路を一行で止める
+
+上に挙げた手段はどれも任意導入なので、何も設定しなければモデルには到達しません。ただしその沈黙は、
+リポジトリ上の表明ではなく環境の偶然です。意図はレビュアーが読める場所のどこにも残りません。
+しかも、1つのシナリオを `record` で書くために export したキーは、同じシェルで走るすべての `run` に
+ついて、アラートガードの vision フォールバックを有効に戻します。プロバイダを `none` に設定すると、この方針を
+表明できます（[BE-0394](../../roadmaps/BE-0394-ai-provider-none-kill-switch/BE-0394-ai-provider-none-kill-switch-ja.md)）。
+
+```yaml
+defaults:
+  ai:
+    provider: none      # このリポジトリでは AI 経路を一切走らせない
+```
+
+この一行をコミットすると、執筆と調査の 3 つのコマンド（`record`、`crawl`、`triage --ai`）は
+起動せずに設定名を告げて終了し、どのコード経路も AI バックエンドを構築できなくなります。
+`run --system-alert-handling` だけは扱いが異なります。モデルへ届くのはその半分だけだからです。
+ガードの vision フォールバックは何もしない処理になる一方、資格情報を必要としない決定的な
+ネイティブのアラート経路は、処理できるシステムプロンプトを従来どおり処理し続けます。config の
+`ai.provider` は `$BAJUTSU_AI_PROVIDER` より優先されるため、環境を誰も管理していない継続的
+インテグレーション（CI）のランナーでもこの設定は効きます。優先順位の詳細と、
+`none` を提示しない `serve` の Settings のドロップダウンという唯一の例外は、
+[設定](configuration.md#ai-プロバイダaibe-0047)にあります。

@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0394](BE-0394-ai-provider-none-kill-switch.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0394") |
 | Topic | AI provider configuration |
 | Related | [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md), [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules.md) |
@@ -248,14 +248,14 @@ mirrors them one for one.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] The `none` adapter and its registration, with unit tests
-- [ ] `selectable_providers()` and the `serve` exclusion, with a rejected `set_provider` test
-- [ ] The `"ai-disabled"` message branches and the reworded alert-guard note
-- [ ] The `run`-path test: no locator, no ledger event, native path unaffected
-- [ ] The refusal tests for `record`, `crawl`, `triage --ai`, and enrichment, plus the pinned
+- [x] The `none` adapter and its registration, with unit tests
+- [x] `selectable_providers()` and the `serve` exclusion, with a rejected `set_provider` test
+- [x] The `"ai-disabled"` message branches and the reworded alert-guard note
+- [x] The `run`-path test: no locator, no ledger event, native path unaffected
+- [x] The refusal tests for `record`, `crawl`, `triage --ai`, and enrichment, plus the pinned
       `claudeAvailable: true` limitation
-- [ ] Documentation in `docs/configuration.md` and `docs/ai-boundary.md`, both languages
-- [ ] Reciprocal `Related` rows in BE-0047, BE-0104, and BE-0315, once CI allocates this item's id
+- [x] Documentation in `docs/configuration.md` and `docs/ai-boundary.md`, both languages
+- [x] Reciprocal `Related` rows in BE-0047, BE-0104, and BE-0315
 
 ## References
 

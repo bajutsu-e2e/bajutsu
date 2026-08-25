@@ -110,3 +110,28 @@ Which mechanism authenticates is config (per
 [BE-0163](../roadmaps/BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider.md) /
 [BE-0176](../roadmaps/BE-0176-claude-code-ai-backend/BE-0176-claude-code-ai-backend.md)); the
 classification above is the same regardless of which you pick.
+
+## Turning every Claude path off, in one line
+
+The mechanisms above are opt-in, so a project that configures none of them reaches no model. That
+silence is still an accident of the environment rather than a statement in the repository: nothing a
+reviewer reads records the intent, and a key exported to author one scenario with `record`
+re-enables the alert guard's vision fallback for every `run` in the same shell. Setting the provider
+to `none` states the policy instead
+([BE-0394](../roadmaps/BE-0394-ai-provider-none-kill-switch/BE-0394-ai-provider-none-kill-switch.md)):
+
+```yaml
+defaults:
+  ai:
+    provider: none      # no AI path may run in this repository
+```
+
+With that line committed, the three authoring and investigation commands — `record`, `crawl`, and
+`triage --ai` — exit with a message naming the setting rather than starting, and no code path can
+construct an AI backend at all. `run --system-alert-handling` behaves differently, because only half
+of it reaches a model: the guard's vision fallback becomes a no-op, while the deterministic native
+alert path, which needs no credential, keeps clearing the system prompts it can. A configured
+`ai.provider` outranks `$BAJUTSU_AI_PROVIDER`, so the setting also holds on a continuous-integration
+runner whose environment nobody controls. The
+[configuration guide](configuration.md#ai-provider-ai-be-0047) covers the precedence rules and the
+one exception, `serve`'s Settings dropdown, which never offers `none`.

@@ -11,6 +11,7 @@
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0047") |
 | Implementing PR | [#356](https://github.com/bajutsu-e2e/bajutsu/pull/356) |
 | Topic | AI provider configuration |
+| Related | [BE-0394](../BE-0394-ai-provider-none-kill-switch/BE-0394-ai-provider-none-kill-switch.md) |
 | Origin | Maestro |
 <!-- /BE-METADATA -->
 

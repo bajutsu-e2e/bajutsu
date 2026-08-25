@@ -16,6 +16,7 @@ import typer
 
 from bajutsu.agents import ai_config, anthropic_client
 from bajutsu.ai import credential_gap
+from bajutsu.ai import disabled as ai_disabled
 from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.config import (
     WEB_ENGINES,
@@ -146,6 +147,15 @@ def _ai_redactor(eff: Effective) -> Redactor:
 
 def _credential_gap_message(gap: str, eff: Effective) -> str:
     """A provider-specific, actionable message for a missing AI credential (BE-0047 fail-closed)."""
+    if gap == ai_disabled.DISABLED:
+        # The kill switch (BE-0394), not a broken environment — so the message names the setting and
+        # how to re-enable an AI path. It cannot name the *file* that sets it: `Effective` carries the
+        # resolved config with no path back to its source, so that would need `--config` threaded here.
+        return (
+            "AI is disabled for this target by ai.provider: none — no AI path may run. "
+            "Set ai.provider to a provider (api-key / bedrock / ant / claude-code) in the config, "
+            "or drop the setting to fall back to $BAJUTSU_AI_PROVIDER."
+        )
     if gap == "bedrock-model":
         return (
             "no AI credential: the Bedrock provider needs a provider-prefixed model id "
@@ -448,24 +458,33 @@ def _start_launch_server_or_exit(
 
 
 def _build_alert_locator(eff: Effective, redactor: Redactor) -> ClaudeAlertLocator | None:
-    """The shared alert-guard locator, or None (with a note) when the AI credential is missing (BE-0260).
+    """The shared alert-guard locator, or None (with a note) when the provider reports a gap (BE-0260).
 
     The vision locator reaches Claude through the configured provider (BE-0053 / BE-0047), so a
     missing/insufficient credential prints an actionable note and returns None — the guard no-ops
     rather than constructing a client that would fall back to a hosted default, keeping the
-    deterministic gate Claude-free. Shared by `run` (one locator across its per-scenario guards) and
-    by `_build_alert_guard` (the single-guard `crawl` / `record` path).
+    deterministic gate Claude-free. `ai.provider: none` (BE-0394) arrives through the same seam as a
+    gap that can never close, so the switch needs no branch of its own here — only its own wording.
+    Shared by `run` (one locator across its per-scenario guards) and by `_build_alert_guard` (the
+    single-guard `crawl` / `record` path).
     """
     from bajutsu.agents.alerts import ClaudeAlertLocator
 
     # The credential is provider-specific: the key named by ai.keyEnv (default ANTHROPIC_API_KEY) for
-    # Anthropic, a provider-prefixed model for Bedrock (AWS credentials authenticate there). When it's
-    # absent we don't construct the locator at all — the vision fallback no-ops rather than falling back.
+    # Anthropic, a provider-prefixed model for Bedrock (AWS credentials authenticate there), and for
+    # `none` a gap that is the policy itself rather than a missing value — a key exported into the
+    # shell no longer re-enables the fallback. When there is a gap we don't construct the locator at
+    # all — the vision fallback no-ops rather than falling back.
     # Only the *vision* fallback needs the credential; the iOS XCUITest native alert path (BE-0315)
     # still clears the common system prompts without one, so the note names the vision fallback, not
     # "the whole guard", to avoid implying the run has no alert handling at all.
     gap = credential_gap(eff.ai)
-    if gap == "anthropic-key":
+    if gap == ai_disabled.DISABLED:
+        typer.echo(
+            "note: alert-handling is on but the vision alert guard is off (ai.provider: none) — "
+            "no screenshot is sent (on the iOS XCUITest backend the native path still clears common prompts)"
+        )
+    elif gap == "anthropic-key":
         typer.echo(
             f"note: alert-handling is on but ${anthropic_client.key_env(eff.ai)} is unset — "
             "the vision alert guard will no-op (on the iOS XCUITest backend the native path still clears common prompts)"

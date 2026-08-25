@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from _shared import project
 
 from bajutsu.agents.protocols import EnrichmentProposal, StepContext
@@ -236,6 +237,38 @@ def test_start_enrich_explicit_alias_backend_resolves(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Validation errors
 # ---------------------------------------------------------------------------
+
+
+def test_start_enrich_refuses_under_provider_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # BE-0394: enrichment sends the element tree to a model, so the kill switch has to stop it before
+    # the job is dispatched. No `agent_factory` here — the real credential seam is what is under test,
+    # and the key is present, so only the config setting can produce the refusal.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text(
+        "- name: alpha\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8"
+    )
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [fake], ai: { provider: none } }\n"
+        f"targets:\n  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",
+        encoding="utf-8",
+    )
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    state = ServeState(runs_dir=runs, config=cfg, scenarios_dir=scn_dir, cwd=tmp_path)
+
+    payload, status = ops.start_enrich(
+        state,
+        {"target": "demo", "scenario": "smoke.yaml", "name": "alpha"},
+        driver_factory=lambda _e, _b, _u: pytest.fail(
+            "a driver was built despite ai.provider: none"
+        ),
+    )
+    assert status == 400 and "ai-disabled" in payload["error"]
 
 
 def test_start_enrich_requires_config(tmp_path: Path) -> None:

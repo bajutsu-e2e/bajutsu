@@ -43,6 +43,7 @@ from bajutsu.ai.registry import (
     known_providers,
     register,
     resolved_provider,
+    selectable_providers,
 )
 
 __all__ = [
@@ -66,4 +67,5 @@ __all__ = [
     "known_providers",
     "register",
     "resolved_provider",
+    "selectable_providers",
 ]

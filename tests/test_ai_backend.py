@@ -17,7 +17,14 @@ from conftest import FakeBlock
 from bajutsu.agents.ai_config import AiConfig
 from bajutsu.agents.claude import ClaudeAgent
 from bajutsu.agents.protocols import Observation
-from bajutsu.ai import base, create_backend, credential_gap, known_providers
+from bajutsu.ai import (
+    base,
+    create_backend,
+    credential_gap,
+    disabled,
+    known_providers,
+    selectable_providers,
+)
 from bajutsu.ai.base import (
     AnyTool,
     Message,
@@ -125,6 +132,41 @@ def test_claude_code_resolves_to_its_own_adapter() -> None:
     backend = create_backend(AiConfig(provider="claude-code"))
     assert isinstance(backend, ClaudeCodeBackend)
     assert not isinstance(backend, AnthropicBackend)
+
+
+# --- the `none` kill switch (BE-0394) ---
+
+
+def test_none_is_registered_but_never_selectable() -> None:
+    # Registered so the name resolves rather than failing as an unknown provider; excluded from the
+    # selectable set so serve's Settings dropdown can never offer a switch the config would outrank.
+    assert "none" in known_providers()
+    assert "none" not in selectable_providers()
+    assert set(selectable_providers()) == set(known_providers()) - {"none"}
+
+
+def test_none_reports_a_gap_that_can_never_close(monkeypatch: Any) -> None:
+    # The gap is the policy, not a missing value: a key exported into the shell does not close it,
+    # which is the failure mode an unset ANTHROPIC_API_KEY has and this provider exists to remove.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    assert credential_gap(AiConfig(provider="none")) == disabled.DISABLED
+
+
+def test_none_refuses_to_construct_a_backend(monkeypatch: Any) -> None:
+    # Fail closed at the single construction seam: a call site that skipped the credential check
+    # gets an exception rather than a silent round trip to a model.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    with pytest.raises(RuntimeError, match=r"ai\.provider: none"):
+        create_backend(AiConfig(provider="none"))
+
+
+def test_none_announces_no_model() -> None:
+    # No surface that discloses the provider may name a model that will never be used.
+    from bajutsu.ai.registry import announcement
+
+    assert announcement("claude-opus-4-8", AiConfig(provider="none")) == [
+        "🤖 AI: disabled (ai.provider: none)"
+    ]
 
 
 # --- per-provider startup announcement (BE-0176 follow-up) ---
