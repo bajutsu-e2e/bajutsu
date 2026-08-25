@@ -15,9 +15,12 @@ from conftest import el
 from pydantic import ValidationError
 
 from bajutsu.cancellation import RunCancelled, cancelled_teardown_seconds, grace_seconds
+from bajutsu.capability_preflight import unsupported
 from bajutsu.config import load_config, resolve
+from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
+from bajutsu.orchestrator.evidence_rules import requested_intervals
 from bajutsu.runner.pipeline import with_lifecycle_phases
 from bajutsu.scenario import (
     AfterRule,
@@ -520,3 +523,40 @@ def test_an_app_wide_phase_cannot_use_a_component() -> None:
             "      - on: always\n"
             "        steps: [{ use: { component: c } }]\n"
         )
+
+
+def test_the_capability_preflight_sees_a_hook_steps_construct() -> None:
+    # Missed here, an unsupported teardown step passes the preflight, a device is leased, and the
+    # whole scenario is driven before the step fails — and a failing `after` rule on an otherwise
+    # passing run becomes that run's failure, so a green scenario reports red after full device work.
+    scenario = _scenario(
+        {
+            "name": "s",
+            "before": [{"pinch": {"sel": {"id": "a"}, "scale": 2.0}}],
+            "steps": [{"tap": {"id": "a"}}],
+            "after": [
+                {
+                    "on": "always",
+                    "steps": [{"selectOption": {"sel": {"id": "a"}, "option": "y"}}],
+                }
+            ],
+        }
+    )
+    reasons = unsupported(scenario, {base.Capability.QUERY, base.Capability.ELEMENTS})
+    assert any("before" in r for r in reasons), reasons
+    assert any("after[0]" in r for r in reasons), reasons
+
+
+def test_an_interval_capture_on_a_hook_step_opens_its_interval() -> None:
+    # An interval kind is opened once for the whole scenario and split back out of the per-step list
+    # downstream, so a hook step naming one and not seen here records nothing — and appends no
+    # `SkippedCapture` either, leaving the gap undisclosed (the opposite of BE-0020).
+    scenario = _scenario(
+        {
+            "name": "s",
+            "before": [{"tap": {"id": "a"}, "capture": ["video"]}],
+            "steps": [{"tap": {"id": "a"}}],
+            "after": [{"on": "always", "steps": [{"tap": {"id": "c"}, "capture": ["deviceLog"]}]}],
+        }
+    )
+    assert set(requested_intervals(scenario)) == {"video", "deviceLog"}

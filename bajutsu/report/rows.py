@@ -398,11 +398,12 @@ def _phase_rows(
 
     A plain list, not `_merged_rows`: the network exchanges are interleaved into the scenario's own
     timeline once, and repeating them beside setup and teardown would double-count them. Rows pair
-    with their definition by the outcome's own `index`, the same way `_merged_rows` does, so a
-    container step (`if` / `forEach` / `web`) — which records its nested steps' outcomes alongside
-    its own — does not shift every row after it onto the wrong definition. Not-run steps trail in
-    plan order, the same disclosure `_merged_rows` gives: a phase that stopped partway through must
-    show which steps never started rather than an unexplained short list.
+    with their definition by the outcome's own `index`, the same way `_merged_rows` does. That
+    inherits `_merged_rows`' limit as well: a container step (`if` / `forEach` / `web`) numbers its
+    nested steps from the same counter, so the rows after it pair with the wrong definition and the
+    container's own successors render with none. Not-run steps trail in plan order, the same
+    disclosure `_merged_rows` gives: a phase that stopped partway through must show which steps never
+    started rather than an unexplained short list.
     """
     shown_from = grouped_provenance([d.get("from") for d in plan])
     by_index = {out.index: out for out in outcomes}
@@ -434,9 +435,10 @@ def _after_rows(
 
     One shape this ordering cannot resolve: a container step (`if` / `forEach` / `web`) inside a rule
     records its nested steps' outcomes in the same list, so the rows after it in that rule pair with
-    the wrong definition. `_phase_rows` avoids this by pairing on the outcome's own `index`, which
-    the per-rule walk here cannot do — a rule's steps have no plan-wide index to key on. The verdict,
-    the JUnit body, and the CTRF record are unaffected; only this block's attribution is.
+    the wrong definition. Neither `_phase_rows` nor `_merged_rows` resolves it either — they key on
+    the outcome's own `index`, which a container's nested steps also consume — so every step table
+    shares the shift rather than this one alone. The verdict, the JUnit body, and the CTRF record are
+    unaffected; only the attribution in these blocks is.
     """
     rows: list[dict[str, Any]] = []
     cursor = 0
