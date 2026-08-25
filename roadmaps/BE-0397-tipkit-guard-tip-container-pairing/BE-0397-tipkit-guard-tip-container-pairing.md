@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-tipkit-guard-tip-container-pairing-ja.md)
+**English** · [日本語](BE-0397-tipkit-guard-tip-container-pairing-ja.md)
 
-# BE-XXXX — Require the tip container before the TipKit guard dismisses a popover
+# BE-0397 — Require the tip container before the TipKit guard dismisses a popover
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-tipkit-guard-tip-container-pairing.md) |
+| Proposal | [BE-0397](BE-0397-tipkit-guard-tip-container-pairing.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0397") |
 | Implementing PR | [#1750](https://github.com/bajutsu-e2e/bajutsu/pull/1750) |
 | Topic | Platform support |
 | Related | [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers.md), [BE-0389](../BE-0389-ios-native-tipkit-guard/BE-0389-ios-native-tipkit-guard.md) |

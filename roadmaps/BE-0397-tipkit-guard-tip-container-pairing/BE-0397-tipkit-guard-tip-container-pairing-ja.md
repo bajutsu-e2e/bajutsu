@@ -1,14 +1,14 @@
-[English](BE-XXXX-tipkit-guard-tip-container-pairing.md) · **日本語**
+[English](BE-0397-tipkit-guard-tip-container-pairing.md) · **日本語**
 
-# BE-XXXX — TipKit ガードが popover を閉じる前に tip のコンテナを確かめる
+# BE-0397 — TipKit ガードが popover を閉じる前に tip のコンテナを確かめる
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-tipkit-guard-tip-container-pairing-ja.md) |
+| 提案 | [BE-0397](BE-0397-tipkit-guard-tip-container-pairing-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0397") |
 | 実装 PR | [#1750](https://github.com/bajutsu-e2e/bajutsu/pull/1750) |
 | トピック | Platform support |
 | 関連 | [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers-ja.md)、[BE-0389](../BE-0389-ios-native-tipkit-guard/BE-0389-ios-native-tipkit-guard-ja.md) |
