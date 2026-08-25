@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0388](BE-0388-test-suite-mypy-typing-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0388") |
+| 実装 PR | [#PR1](https://github.com/bajutsu-e2e/bajutsu/pull/PR1) |
 | トピック | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -53,21 +54,23 @@ mypy 自身の pydantic プラグイン（`plugins = ["pydantic.mypy"]`、今日
 `tests/` を `typecheck` へ組み込む作業を3段階に分け、ゲートが移行の途中で赤くならないよう各段階を
 別々の PR として進めます。
 
-1. **`tests.*` にスコープした緩めたオーバーライドを設定します（設定のみです。`tests` を
-   `typecheck` の対象へ加えるのは最終ステップで行います）。**
-   `disallow_untyped_defs = false` により、素の `def test_x():` はそのまま許容されます。pytest は
+1. **`typecheck-tests` という Makefile ターゲットを追加し、緩めた設定で mypy を走らせます。**
+   このターゲットは `make check` の外に置きます。ゲートへ加えるのは最終ステップです。ターゲットが
+   実行するのは `mypy --allow-untyped-defs --no-warn-unused-ignores tests` です。
+   `--allow-untyped-defs` により、素の `def test_x():` はそのまま許容されます。pytest は
    戻り値の型を見ないため、すべてのテストに `-> None` の注釈を付けても安全性は増えません。
-   `warn_unused_ignores = false` は、既存の `# type: ignore` コメントを一掃するまでの暫定です。
+   `--no-warn-unused-ignores` は、既存の `# type: ignore` コメントを一掃するまでの暫定です。
    見つけたコメントは、見つけたその作業のなかで削除するか、`# type: ignore[<code>]` の形にして
    理由を明記します。後回しにはしません。
 2. **モジュールが自身の import へ入り込んでパッチする形の `attr-defined` を、ディレクトリ単位で
    解消します。** 以下に挙げる件数は、それぞれのディレクトリの `attr-defined` の内訳ではなく、
-   そのディレクトリの mypy エラー総数です（ベースライン全体の1361件のうち `attr-defined` は
-   269件です）。1つのディレクトリを完全に解消してから次のディレクトリへ進むためです。件数の
-   少ないディレクトリ、つまり `tests/scenario/` の7件と `tests/report/` の
-   17件からはじめます。件数の多いディレクトリは後に回します。`tests/serve/` の228件と、`tests/`
-   直下のフラットなファイル群の902件です。後者のなかでは `test_crawl.py` の200件と
-   `test_record.py` の75件が多くを占めます。
+   緩めた実行におけるそのディレクトリの mypy エラー総数です。1つのディレクトリを完全に解消してから
+   次のディレクトリへ進むためです。件数の少ないディレクトリ、つまり `tests/scenario/` の7件と
+   `tests/report/` の14件からはじめます。件数の多いディレクトリは後に回します。`tests/serve/` の
+   196件と、`tests/` 直下のフラットなファイル群の880件です。フラットなファイル群のなかでは
+   `test_crawl.py` の200件と `test_record.py` の75件が多くを占めます。この節と下記の *進捗* に
+   挙げた件数は、いずれも作業の着手時に緩めた実行で測り直したものです。*動機* の数値と食い違うのは
+   そのためです。*動機* が記録しているのは、提案を書いた時点のスイートに対する緩めない実行です。
 
    各修正は、テストが本当に必要としている呼び出しにパッチを当てます。対象モジュールの内部 import へ
    入り込むのではなく、モジュールがすでに公開している名前に対して `patch.object(module, "sleep")`
@@ -79,8 +82,23 @@ mypy 自身の pydantic プラグイン（`plugins = ["pydantic.mypy"]`、今日
    以上に厳しいかのどちらかです。どちらであっても、テスト側の修正か本体コードの型を広げる修正で
    対応し、`# type: ignore` で一律に抑え込むことはしません。
 
-`tests/` のすべてのディレクトリがクリーンになったら、`typecheck` の Makefile ターゲットと CI の
-ステップへ `tests` を加え、`bajutsu demos scripts` と同じように以後実行されるようにします。
+ステップ1が2つの緩和をコマンドラインフラグとして与えるのは、モジュール単位のパターンでは
+テストスイートを選べないからです。`tests/` には `__init__.py` がありません。pytest の prepend
+インポートモードが `tests/` を `sys.path` へ載せる前提で、テスト補助モジュールは短い名前のまま
+import されているからです。その結果、mypy は `tests/` 配下のすべてのモジュールをファイル名だけで
+命名し、`tests.*` というパターンはどのモジュールにも一致しません。`test_*` というパターンは、mypy が
+`*` にドットで区切った1要素全体を要求するため、そもそも受け付けられません。2つの設定を全体的に
+緩め、ゲートの既存の対象だけを締め直す案も同じ理由で成り立ちません。`demos/` と `scripts/` の
+モジュールもファイル名だけで命名されるため、締め直すにはそれらを列挙する必要があるからです。
+
+mypy の差分キャッシュは2回の実行で共有されるので、実行を分ける費用はわずかです。2回の実行で
+異なるのはフラグだけです。strict な `[tool.mypy]` の設定は、ゲートがすでに
+`bajutsu demos scripts` へ適用しているものと同じです。
+
+`tests/` のすべてのディレクトリがクリーンになったら、`--no-warn-unused-ignores` を外したうえで
+`typecheck-tests` を `typecheck` ターゲットへ統合し、緩めた実行が `mypy bajutsu demos scripts` と
+並んでゲートで走るようにします。継続的インテグレーション（CI）のワークフロー自体に手を入れる必要は
+ありません。型チェックのステップはすでに `make typecheck` を呼んでいるからです。
 
 pydantic プラグインをどうするかは、本項目の範囲には含めません。*検討した代替案* を参照してください。
 
@@ -106,18 +124,28 @@ pydantic プラグインをどうするかは、本項目の範囲には含め�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `tests.*` の緩めたオーバーライド（`disallow_untyped_defs = false`、
-  `warn_unused_ignores = false`）を追加する。まだ `tests` を `typecheck` の対象には加えない。
-- [ ] `tests/ai/`（すでにクリーン、0件）と `tests/scenario/`（7件）を解消し、オーバーライドで
+- [x] `typecheck-tests` という Makefile ターゲット（`mypy --allow-untyped-defs
+  --no-warn-unused-ignores tests`）を追加する。まだ `make check` のゲートには載せない。
+- [ ] `tests/ai/`（すでにクリーン、0件）と `tests/scenario/`（7件）を解消し、緩めた実行で
   十分か確認してから、より大きなディレクトリへ進む。
-- [ ] `tests/report/`（17件）と `tests/orchestrator/`（83件）を解消する。
-- [ ] `tests/runner/`（124件）を解消する。
-- [ ] `tests/serve/`（228件、123ファイルと最大のディレクトリ）を解消する。
-- [ ] `tests/` 直下のフラットなファイル群（約180ファイルで902件）を、`test_crawl.py`（200件）、
-  `test_record.py`（75件）、`test_intervals.py`（49件）から解消する。
+- [ ] `tests/report/`（14件）と `tests/orchestrator/`（79件）を解消する。
+- [ ] `tests/runner/`（126件）を解消する。
+- [ ] `tests/serve/`（196件、124ファイルと最大のディレクトリ）を解消する。
+- [ ] `tests/` 直下のフラットなファイル群（197ファイルで880件）を、`test_crawl.py`（200件）、
+  `test_record.py`（75件）、`test_intervals.py`（48件）から解消する。
 - [ ] 残るすべての `unused-ignore` を一掃し、各 `# type: ignore` を削除するか理由を明記する。
-- [ ] `typecheck` の Makefile ターゲットと CI ステップに `tests` を追加し、上記の一掃が終わった時点で
-  オーバーライドの `warn_unused_ignores = false` を外す。
+- [ ] `typecheck-tests` を `typecheck` の Makefile ターゲットへ統合し、上記の一掃が終わった時点で
+  `--no-warn-unused-ignores` を外す。
+
+**ログ**
+
+- `typecheck-tests` ターゲットを追加しました
+  （[#PR1](https://github.com/bajutsu-e2e/bajutsu/pull/PR1)）。緩めた設定は、本項目が当初提案した
+  `[[tool.mypy.overrides]]` ではなく、2回目の mypy 実行へのコマンドラインフラグになりました。mypy が
+  `tests/` 配下のモジュールをファイル名だけで命名するため、モジュール単位のパターンではスイートを
+  選べないからです。その経緯は上記の *詳細設計* に記録しました。この時点で測り直した緩めた実行の
+  エラーは158ファイルで1302件でした。*動機* が記録する提案時点の緩めない実行は159ファイルで
+  1361件です。
 
 ## 参考
 

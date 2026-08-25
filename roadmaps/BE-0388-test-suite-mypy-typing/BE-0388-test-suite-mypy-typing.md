@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0388](BE-0388-test-suite-mypy-typing.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0388") |
+| Implementing PR | [#PR1](https://github.com/bajutsu-e2e/bajutsu/pull/PR1) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -51,19 +52,22 @@ a drive-by edit to `pyproject.toml`.
 Roll `tests/` into `typecheck` in three steps, each its own PR so the gate never turns red
 mid-migration:
 
-1. **Add the relaxed override scoped to `tests.*` (config only — `tests` joins the `typecheck`
-   target in the final step).** `disallow_untyped_defs = false` keeps a bare `def test_x():`
-   valid — annotating every test's return type as `-> None` adds no safety, since pytest never
-   inspects it. `warn_unused_ignores =
-   false` stays in place only until the existing `# type: ignore` comments are swept; each one is
-   removed or replaced with a narrowed `# type: ignore[<code>]` naming the reason, in the same pass
-   that finds it, not left for later.
+1. **Add a `typecheck-tests` Makefile target that runs the relaxed check, outside `make check`
+   (`tests` joins the gate in the final step).** The target runs
+   `mypy --allow-untyped-defs --no-warn-unused-ignores tests`. `--allow-untyped-defs` keeps a bare
+   `def test_x():` valid — annotating every test's return type as `-> None` adds no safety, since
+   pytest never inspects it. `--no-warn-unused-ignores` stays in place only until the existing
+   `# type: ignore` comments are swept; each one is removed or replaced with a narrowed
+   `# type: ignore[<code>]` naming the reason, in the same pass that finds it, not left for later.
 2. **Clear the `attr-defined` findings that come from patching a module's own import**, module by
-   module. Each count below is that directory's *total* mypy error count, not its `attr-defined`
-   subset (269 of the baseline's 1,361), because a directory is cleared outright before the next one
+   module. Each count below is that directory's *total* mypy error count under the relaxed run,
+   not its `attr-defined` subset, because a directory is cleared outright before the next one
    starts. Start with the smallest directories — `tests/scenario/` at 7 errors and `tests/report/`
-   at 17 — before the largest: `tests/serve/` at 228, and the flat files directly under `tests/` at
-   902, led by `test_crawl.py` at 200 and `test_record.py` at 75.
+   at 14 — before the largest: `tests/serve/` at 196, and the flat files directly under `tests/` at
+   880, led by `test_crawl.py` at 200 and `test_record.py` at 75. Every count in this section and
+   in *Progress* below was re-measured under the relaxed run when the work started, which is why
+   each differs from the corresponding figure in *Motivation* — those count the unrelaxed run, over
+   the suite as it stood when the author wrote the proposal.
 
    Each fix patches the call the test actually cares about instead of reaching into the target
    module's private import — `patch.object(module, "sleep")` on a name the module already exposes,
@@ -75,8 +79,23 @@ mid-migration:
    than the code actually needs — each instance gets a test fix or a production-code type widening,
    never a blanket `# type: ignore`.
 
-Once every directory in `tests/` is clean, add `tests` to the `typecheck` Makefile target and the CI
-step, so it runs alongside `bajutsu demos scripts` from then on.
+Step 1 gives the two relaxations as command-line flags rather than as a `[[tool.mypy.overrides]]`
+block scoped to `tests.*`, because no per-module pattern can select the test suite. `tests/` carries
+no `__init__.py` — the suite imports its helper modules by bare name, the way pytest's prepend
+import mode puts `tests/` on `sys.path` — so mypy names every module under `tests/` by basename
+alone, and the pattern `tests.*` matches nothing. mypy refuses the pattern `test_*` outright,
+because `*` must stand for a whole dotted component. Relaxing the two settings globally and
+re-tightening them for the gate's existing targets fails for the same reason: mypy names the modules
+under `demos/` and `scripts/` by basename too, so re-tightening would have to list every one.
+
+A second invocation costs little, because both runs share mypy's incremental cache. The two runs
+differ in their flags alone — the strict `[tool.mypy]` configuration is the same one the gate
+already applies to `bajutsu demos scripts`.
+
+Once every directory in `tests/` is clean, fold `typecheck-tests` into the `typecheck` target with
+`--no-warn-unused-ignores` dropped, so the relaxed run joins the gate alongside
+`mypy bajutsu demos scripts` from then on. The continuous integration (CI) workflow needs no edit of
+its own: its type step already calls `make typecheck`.
 
 The pydantic-plugin question stays out of this item's scope; see *Alternatives considered*.
 
@@ -101,18 +120,28 @@ The pydantic-plugin question stays out of this item's scope; see *Alternatives c
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add the relaxed `tests.*` mypy override — `disallow_untyped_defs = false` and
-  `warn_unused_ignores = false` — without yet adding `tests` to the `typecheck` target.
+- [x] Add the `typecheck-tests` Makefile target — `mypy --allow-untyped-defs
+  --no-warn-unused-ignores tests` — without yet putting it on the `make check` gate.
 - [ ] Clear `tests/ai/` (already clean, 0 errors) and `tests/scenario/` (7 errors) — confirm the
-  override is sufficient before touching a larger directory.
-- [ ] Clear `tests/report/` (17 errors) and `tests/orchestrator/` (83 errors).
-- [ ] Clear `tests/runner/` (124 errors).
-- [ ] Clear `tests/serve/` (228 errors, 123 files — the largest single directory).
-- [ ] Clear the flat files directly under `tests/` (902 errors across roughly 180 files), starting with
-  `test_crawl.py` (200), `test_record.py` (75), and `test_intervals.py` (49).
+  relaxed run is sufficient before touching a larger directory.
+- [ ] Clear `tests/report/` (14 errors) and `tests/orchestrator/` (79 errors).
+- [ ] Clear `tests/runner/` (126 errors).
+- [ ] Clear `tests/serve/` (196 errors, 124 files — the largest single directory).
+- [ ] Clear the flat files directly under `tests/` (880 errors across 197 files), starting with
+  `test_crawl.py` (200), `test_record.py` (75), and `test_intervals.py` (48).
 - [ ] Sweep every remaining `unused-ignore` finding; remove or justify each `# type: ignore`.
-- [ ] Add `tests` to the `typecheck` Makefile target and the CI step; drop the relaxed override's
-  `warn_unused_ignores = false` now that the sweep above is complete.
+- [ ] Fold `typecheck-tests` into the `typecheck` Makefile target and drop
+  `--no-warn-unused-ignores` now that the sweep above is complete.
+
+**Log**
+
+- Landed the `typecheck-tests` target ([#PR1](https://github.com/bajutsu-e2e/bajutsu/pull/PR1)). The
+  relaxed settings became command-line flags on a second mypy invocation rather than the
+  `[[tool.mypy.overrides]]` block this item first proposed, because mypy names every module under
+  `tests/` by basename and so no per-module pattern selects the suite; *Detailed design* above
+  records the reasoning. Re-measuring at that point put the relaxed run at 1,302 errors across 158
+  files, against the 1,361 across 159 that *Motivation* reports for the unrelaxed run at proposal
+  time.
 
 ## References
 
