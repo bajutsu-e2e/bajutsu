@@ -72,7 +72,7 @@ def _load_migration(name: str) -> ModuleType:
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    spec.loader.exec_module(mod)
     return mod
 
 
@@ -206,7 +206,7 @@ def test_0017_carries_a_single_editor_team_into_the_list(migration_db_url: str) 
     try:
         with engine.connect() as conn:
             back: dict[str, str] = dict(
-                conn.execute(text("SELECT id, editor_team FROM orgs")).all()  # type: ignore[arg-type]
+                conn.execute(text("SELECT id, editor_team FROM orgs")).all()
             )
         assert back == {"acme": "acme-gh/scenario-maintainers", "globex": None}
     finally:

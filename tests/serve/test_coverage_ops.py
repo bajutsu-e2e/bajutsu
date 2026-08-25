@@ -172,9 +172,7 @@ def test_run_set_folds_in_dimensions_from_object_storage(tmp_path: Path) -> None
         f"r1/{sid}/network.json": json.dumps(network).encode(),
         f"r1/{step_id}/elements.json": json.dumps([{"identifier": "settings.toggle"}]).encode(),
     }
-    state.artifacts = ObjectStorageArtifactStore(  # type: ignore[assignment]
-        FakeObjectStore(objects), prefix=""
-    )
+    state.artifacts = ObjectStorageArtifactStore(FakeObjectStore(objects), prefix="")
 
     payload, status = ops.coverage_view(state, {"target": "demo", "runs": ["r1"]})
     assert status == 200

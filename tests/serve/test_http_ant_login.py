@@ -82,7 +82,7 @@ def test_ant_login_starts_and_reports_ok(tmp_path: Path, monkeypatch: pytest.Mon
     try:
         code, body = _post(port, "/api/ant/login", {})
         assert code == 202 and body["started"] is True and body["state"] == "running"
-        assert len(popen.calls) == 1  # type: ignore[attr-defined]
+        assert len(popen.calls) == 1
         assert _get_json(port, "/api/ant/login") == {"state": "ok"}
     finally:
         server.shutdown()
@@ -108,7 +108,7 @@ def test_ant_login_supersedes_a_running_signin(
         assert first_code == 202 and first["started"] is True
         assert second_code == 202 and second["started"] is True  # a fresh sign-in, not a refusal
         assert first_proc.terminated is True  # the stale attempt was torn down
-        assert len(popen.calls) == 2  # type: ignore[attr-defined]
+        assert len(popen.calls) == 2
         assert state.ant_login_proc is second_proc
     finally:
         server.shutdown()
@@ -129,7 +129,7 @@ def test_ant_login_refused_when_hosted(tmp_path: Path, monkeypatch: pytest.Monke
     try:
         code, body = _post(port, "/api/ant/login", {})
         assert code == 403 and "local serve" in body["error"]
-        assert len(popen.calls) == 0  # type: ignore[attr-defined]
+        assert len(popen.calls) == 0
     finally:
         server.shutdown()
         server.server_close()

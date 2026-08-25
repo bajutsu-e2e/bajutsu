@@ -205,7 +205,7 @@ def test_run_job_reads_the_run_manifest_only_once(
             return getattr(self._inner, name)
 
     counting = CountingStore(state.artifacts)
-    state.artifacts = counting  # type: ignore[assignment]
+    state.artifacts = counting
     srv.run_job(state, state.register(srv.Job(cmd=["x"])))
 
     assert repo.get_run("20260621-r") is not None
