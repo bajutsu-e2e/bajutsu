@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Implementing PR | TBD |
+| Implementing PR | [#1750](https://github.com/bajutsu-e2e/bajutsu/pull/1750) |
 | Topic | Platform support |
 | Related | [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers.md), [BE-0389](../BE-0389-ios-native-tipkit-guard/BE-0389-ios-native-tipkit-guard.md) |
 <!-- /BE-METADATA -->

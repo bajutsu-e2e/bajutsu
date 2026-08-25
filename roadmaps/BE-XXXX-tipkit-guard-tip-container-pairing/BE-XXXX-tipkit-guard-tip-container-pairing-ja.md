@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| 実装 PR | TBD |
+| 実装 PR | [#1750](https://github.com/bajutsu-e2e/bajutsu/pull/1750) |
 | トピック | Platform support |
 | 関連 | [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers-ja.md)、[BE-0389](../BE-0389-ios-native-tipkit-guard/BE-0389-ios-native-tipkit-guard-ja.md) |
 <!-- /BE-METADATA -->
