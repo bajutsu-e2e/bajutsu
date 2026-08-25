@@ -132,7 +132,14 @@ JSON レスポンスから1つのフィールドだけを取り出す仕組み�
    `preconditions` の値がある場合に、ランナーがそもそもシナリオを開始しないのと同じ扱いです。起動段階で
    `simctl.DeviceError` が送出され(`launch_driver`、
    [`bajutsu/runner/launch.py:27`](../../bajutsu/runner/launch.py))、`run_scenario` が呼ばれる前に
-   失敗します。
+   失敗します。`apply_setups` は `setup` 前提シナリオを展開時に `steps` の先頭へ連結するため
+   （[`bajutsu/scenario/expand.py:176`](../../bajutsu/scenario/expand.py)）、`_run_steps` より前に
+   走る `before` 段階は、その前提シナリオよりも前に走ることになります。つまり `before` は、前提
+   シナリオとシナリオ本体の両方がその後で使う状態を用意する場所であり、`before` の手順が前提シナリオの
+   到達する画面に依存してはいけません。`TargetConfig.before` も同じ規則に従います。アプリ全体の
+   `TargetConfig.setup` 前提シナリオを置き換えるのではなく、その前に走ります
+   （[`bajutsu/config/schema.py:356`](../../bajutsu/config/schema.py)）。独立したレポートの区画を
+   持つのは `before` だけなので、2つは別の仕組みのまま残ります。
 2. **`steps` と `expect` は変更なく実行されます。** この項目は、両者の結果判定そのものには手を加えません。
    `before` の失敗は、後述する手順3にとって `error` という結果として扱います。`steps`/`expect` が
    失敗した場合と同じ扱いです。`before` が途中まで作った状態があるなら、その後片付けも必要だからです。
@@ -140,9 +147,11 @@ JSON レスポンスから1つのフィールドだけを取り出す仕組み�
    飛ばした場合も、実行がキャンセルされた場合(`RunCancelled`。`run_scenario` がすでに
    `failure = CANCELLED_FAILURE` を設定する箇所で捕捉します。
    [`bajutsu/orchestrator/loop.py:607`](../../bajutsu/orchestrator/loop.py))も——有効な `after`
-   リストのうち、まず `always` のエントリを宣言順に、続いてその判定に一致する `success` / `error` の
-   エントリを実行します(キャンセルされた実行は `error` として扱います。`docs/run-loop.md` がキャンセル
-   された実行を通常の失敗と同列に位置づけているのと同じ扱いです)。`after` エントリ自身が失敗した場合、
+   リストを宣言順に実行し、`on` が `always` にもその判定にも一致しないエントリを飛ばします。`on` で
+   グループにまとめるのではなく交互に並べたまま実行するため、前述のシナリオ・config の順序が1つの
+   `on` グループの内側にとどまらず、段階全体にわたって保たれます(キャンセルされた実行は `error` として
+   扱います。`docs/run-loop.md` がキャンセルされた実行を通常の失敗と同列に位置づけているのと同じ
+   扱いです)。`after` エントリ自身が失敗した場合、
    それまで実行が成功していたときに限り `failure` を更新します
    (`failure = "after: " + 理由`。すでに成功していた `steps` の結果を `expect` が反転させられるのと
    同じ形です)。上記のいずれかの理由ですでに失敗していた場合は、`after` エントリの失敗は既存の
@@ -196,8 +205,12 @@ JSON レスポンスから1つのフィールドだけを取り出す仕組み�
    `interrupts` の config/シナリオ合成がすでに解決している場所と同じ地点で1回だけ解決します。
 3. **ランナーへの組み込み。** 前述の before 段階のゲート、after 段階の結果に応じたディスパッチ、
    `failure` 文字列の合成を `run_scenario` に実装します。
-4. **レポート。** `RunResult` への `before_outcomes` / `after_outcomes` の追加と、レポートレンダラーの
-   独立した「Before」/「After」区画。
+4. **レポート。** `RunResult` への `before_outcomes` / `after_outcomes` の追加、レポートレンダラーの
+   独立した「Before」/「After」区画、そして `RunResult.steps` を直接読んでいるために before/after
+   だけの失敗を取りこぼす2つの出力——JUnit の `<failure>` 本文を作る `_details`
+   （[`bajutsu/report/manifest.py`](../../bajutsu/report/manifest.py)）と、CTRF の手順リスト
+   （[`bajutsu/report/ctrf.py`](../../bajutsu/report/ctrf.py)）。`manifest.json` へは `asdict` が
+   新しいフィールドをそのまま運ぶため、対応は不要です。
 5. **codegen。** `always` エントリに対する `beforeEach`/`afterEach`(または各バックエンドの対応する
    構文)の出力、対応可能なバックエンドでの `success`/`error` に応じた出力、それ以外での TODO への
    フォールバック。
@@ -212,7 +225,9 @@ JSON レスポンスから1つのフィールドだけを取り出す仕組み�
    追記されること、他が成功しているときの `success` ルールの失敗がそのまま唯一の `failure` になること、
    キャンセルされた実行が `after` を `error` としてディスパッチしたうえで後片付けのエントリを実際に
    実行し(その経路ではラッチされた `cancelled` を読まない)、段階自身の期限を過ぎた時点で残りを
-   放棄すること)、両段階への・からの `vars.*` の共有、新しい `RunResult` フィールド。
+   放棄すること)、両段階への・からの `vars.*` の共有、新しい `RunResult` フィールド。他が成功して
+   いるときの `success` ルールの失敗は、HTML のレポートだけでなく JUnit の失敗テキストと CTRF の
+   レコードにも、そのルールの名前が現れなければなりません。
 
 ### prime directive との整合性
 
@@ -259,7 +274,8 @@ JSON レスポンスから1つのフィールドだけを取り出す仕組み�
 - [ ] Unit 2 — `before` の config・シナリオ順の合成、`after` のシナリオ・config 順の合成。
 - [ ] Unit 3 — `run_scenario` へのランナー組み込み(before 段階のゲート、after 段階の結果に応じた
       ディスパッチ、`failure` 文字列の合成)。
-- [ ] Unit 4 — `RunResult` への `before_outcomes` / `after_outcomes`、レポートレンダラーの区画。
+- [ ] Unit 4 — `RunResult` への `before_outcomes` / `after_outcomes`、レポートレンダラーの区画、
+      JUnit の `_details` 本文と CTRF の手順リスト。
 - [ ] Unit 5 — codegen の対応付け(対応可能なバックエンドでの `beforeEach`/`afterEach` と結果に応じた
       出力、それ以外での TODO フォールバック)。
 - [ ] Unit 6 — ドキュメント(scenarios.md と日本語訳)の比較表、showcase フィクスチャ。

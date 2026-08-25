@@ -139,7 +139,13 @@ same way those existing users do:
    start a scenario at all when its `preconditions` are ones the target cannot satisfy (a failed
    launch step raises a `simctl.DeviceError` from `launch_driver`,
    [`bajutsu/runner/launch.py:27`](../../bajutsu/runner/launch.py), before `run_scenario` is ever
-   called).
+   called). Because `apply_setups` prepends a `setup` prelude onto `steps` at expand time
+   ([`bajutsu/scenario/expand.py:176`](../../bajutsu/scenario/expand.py)), a `before` phase running
+   ahead of `_run_steps` runs ahead of that prelude too: `before` seeds state the prelude and the
+   scenario both then use, and a `before` step must not depend on a screen the prelude reaches.
+   `TargetConfig.before` layers under the same rule, running before the app-wide
+   `TargetConfig.setup` prelude ([`bajutsu/config/schema.py:356`](../../bajutsu/config/schema.py))
+   rather than replacing it — the two stay distinct because only `before` is its own report phase.
 2. **`steps` and `expect` run unchanged.** This item does not touch how their own verdict is
    computed. A `before` failure counts as an `error` outcome of step 3 below, the
    same as an ordinary `steps`/`expect` failure would — cleanup still matters for whatever partial
@@ -147,8 +153,10 @@ same way those existing users do:
 3. **Once a verdict exists** — `steps`/`expect` finished normally, `before` failed and skipped them,
    or the run was cancelled (`RunCancelled`, caught where `run_scenario` already sets
    `failure = CANCELLED_FAILURE`, [`bajutsu/orchestrator/loop.py:607`](../../bajutsu/orchestrator/loop.py)) —
-   run the effective `after` list's `always` entries in declaration order, then whichever of
-   `success` / `error` matches that verdict (a cancelled run dispatches as `error`, consistent with
+   run the effective `after` list in declaration order, skipping any entry whose `on` matches
+   neither `always` nor that verdict — interleaved rather than grouped by `on`, so the
+   scenario-then-config order above holds across the whole phase and not merely within one `on`
+   group (a cancelled run dispatches as `error`, consistent with
    `docs/run-loop.md`'s framing of a cancelled run as an ordinary failed one). An `after` entry's own
    failure updates `failure` only when the run was passing up to that point (`failure = "after: " +
    reason`, mirroring how `expect` can already flip a passing `steps` sequence); when the run had
@@ -204,7 +212,11 @@ already use elsewhere for a target that does not yet.
 3. **Runner integration.** The before-phase gate, the after-phase's outcome-aware dispatch, and the
    failure-reason composition described above, in `run_scenario`.
 4. **Report.** `before_outcomes` / `after_outcomes` on `RunResult`; the report renderer's distinct
-   "Before" / "After" sections.
+   "Before" / "After" sections; and the two exports that read `RunResult.steps` directly and would
+   otherwise drop a before/after-only failure — `_details`, the JUnit `<failure>` body
+   ([`bajutsu/report/manifest.py`](../../bajutsu/report/manifest.py)), and the CTRF step list
+   ([`bajutsu/report/ctrf.py`](../../bajutsu/report/ctrf.py)). `asdict` carries the new fields into
+   `manifest.json` unchanged.
 5. **Codegen.** `beforeEach`/`afterEach` (or the per-backend equivalent) emission for `always`
    entries; outcome-aware emission for `success`/`error` where the backend supports it; the TODO
    fallback elsewhere.
@@ -220,7 +232,8 @@ already use elsewhere for a target that does not yet.
    the original `failure`; a `success` rule's failure becomes the sole `failure` on an
    otherwise-passing run; a cancelled run dispatches `after` as `error` and still runs its cleanup
    entries (the latched `cancelled` source is not read on that path), abandoning the remaining ones
-   once the phase's own deadline passes.
+   once the phase's own deadline passes. A `success`-rule failure on an otherwise-passing run must
+   also name that rule in the JUnit failure text and the CTRF record, not only in the HTML report.
 
 ### Prime directives preserved
 
@@ -268,7 +281,8 @@ already use elsewhere for a target that does not yet.
 - [ ] Unit 2 — config-then-scenario merge for `before`, scenario-then-config merge for `after`.
 - [ ] Unit 3 — runner integration in `run_scenario` (before-phase gate, after-phase outcome
       dispatch, failure-reason composition).
-- [ ] Unit 4 — `before_outcomes` / `after_outcomes` on `RunResult`; report renderer sections.
+- [ ] Unit 4 — `before_outcomes` / `after_outcomes` on `RunResult`; report renderer sections; the
+      JUnit `_details` body and the CTRF step list.
 - [ ] Unit 5 — codegen mapping (`beforeEach`/`afterEach` and outcome-aware emission where
       supported; TODO fallback elsewhere).
 - [ ] Unit 6 — docs (scenarios.md + ja) with a comparison table, and a showcase fixture.
