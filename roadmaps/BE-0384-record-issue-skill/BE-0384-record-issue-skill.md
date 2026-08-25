@@ -92,9 +92,9 @@ stop and point the invoker to `ideation` (or, for a small item whose design is a
 point at, so the finding returns in the same pending-draft field the unattended path below uses,
 marked as needing a roadmap item rather than an issue — without that route this one judgment call
 would cost the whole finding, the outcome this item exists to prevent. When none of the three
-holds, classify the finding as a **bug** (something behaves other than intended) or a lightweight
-**enhancement** (a small, bounded improvement).
-
+would cost the whole finding, the outcome this item exists to prevent. When none of those three
+conditions holds, classify the finding as a **bug** (something behaves other than intended) or a
+lightweight **enhancement** (a small, bounded improvement).
 **Step 2 — search for a duplicate.** Run `gh issue list --search "<keywords>
 -label:roadmap-tracking" --state all --limit 10` with keywords drawn from the finding, and show the
 invoker any candidate matches (number, title, state, labels). The search excludes the
