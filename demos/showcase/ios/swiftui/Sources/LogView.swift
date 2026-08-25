@@ -25,6 +25,7 @@ struct LogView: View {
     @State private var showSheet = false
     @State private var showCover = false
     @State private var showDialog = false
+    @State private var showPopoverDialog = false
     @State private var dialogResult = "none"
     @State private var showAlert = false
     @State private var alertResult = "none"
@@ -75,6 +76,10 @@ struct LogView: View {
                         .accessibilityID("log.openGallery")
                     Button("Open Delete") { showDialog = true }
                         .accessibilityID("log.openDelete")
+                    // Opens the TipKit guard's counter-fixture; the dialog itself is attached at the
+                    // NavigationStack level below, beside the other four presentations.
+                    Button("Open Popover Dialog") { showPopoverDialog = true }
+                        .accessibilityID("log.openPopoverDialog")
                     Text("Dialog: \(dialogResult)")
                         .foregroundStyle(.secondary)
                         .accessibilityID("log.dialog.value")
@@ -203,6 +208,25 @@ struct LogView: View {
         // "OK", each carrying an `id` in the a11y build. Result mirrors to log.alert.value
         // (`none`/`cancel`/`ok`), so a scenario can tell the two actions apart by which value
         // lands.
+        // The fixture for the TipKit guard's other direction: a real SwiftUI confirmationDialog
+        // installs the SAME `PopoverDismissRegion` scrim a TipKit tip does — measured on-device,
+        // identical identifier, label, and full-screen frame — so it is what proves the guard leaves
+        // an app's own popover alone. The duplicate-element problem noted above rules the dialog out
+        // as a *tap* fixture, not as this one: the guard's detection never taps its buttons.
+        //
+        // Attached here rather than on its row: `Form` is a lazy, cell-reusing collection, so a
+        // presentation hanging off a row is installed only while that row is realized. This row sits
+        // below the fold, and the scenario scrolls to reach it, so a recycled row would drop the
+        // dialog and the scenario would pin the guard against a dialog that never presented.
+        .confirmationDialog(
+            "Remove this note?",
+            isPresented: $showPopoverDialog,
+            titleVisibility: .visible
+        ) {
+            Button("Copy note") { dialogResult = "copy-note" }
+            Button("Remove note", role: .destructive) { dialogResult = "remove-note" }
+            Button("Cancel", role: .cancel) {}
+        }
         .alert("Sample Alert", isPresented: $showAlert) {
             Button("Cancel", role: .cancel) { alertResult = "cancel" }
                 .accessibilityID("log.alert.cancel")

@@ -20,9 +20,12 @@ from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
 from bajutsu.orchestrator.types import AlertEvent
 
-# Stands in for TipKit's dismiss region. The real identifier lives in the XCUITest driver; this is
-# only what the fake was seeded with, so no iOS-specific name leaks into an orchestrator test.
+# Stand in for the two nodes a showing tip is recognized by: TipKit's dismiss region and the tip's
+# own container. The real identifiers live in the XCUITest driver; these are only what the fake was
+# seeded with, so no iOS-specific name leaks into an orchestrator test. Both are required for a
+# dismiss, because the region alone is also what an app's own `confirmationDialog` installs.
 _SCRIM = "tip.scrim"
+_CONTAINER = "tip.container"
 
 
 def _tip_driver(*, covered: list[dict[str, object]]) -> FakeDriver:
@@ -32,8 +35,9 @@ def _tip_driver(*, covered: list[dict[str, object]]) -> FakeDriver:
         if kind == "tap" and getattr(arg, "get", lambda _k: None)("id") == _SCRIM:
             d.screen = list(covered)
 
-    driver = FakeDriver([el(_SCRIM, "dismiss popup")], react=react)
+    driver = FakeDriver([el(_SCRIM, "dismiss popup"), el(_CONTAINER)], react=react)
     driver.tipkit_dismiss_id = _SCRIM
+    driver.tipkit_container_id = _CONTAINER
     return driver
 
 
@@ -91,6 +95,39 @@ def test_the_guard_is_off_unless_the_scenario_asks_for_it() -> None:
     assert ("tap", {"id": _SCRIM}) not in driver.actions
 
 
+def test_an_app_popover_showing_the_same_region_is_left_alone() -> None:
+    # The region without the tip container is what a `confirmationDialog` looks like, measured
+    # on-device: same identifier, same label, same full-screen frame. Dismissing it would close the
+    # app's own dialog mid-scenario, and the step would then fail on a missing button with no mention
+    # of the guard — so an opted-in scenario must reach that dialog's buttons untouched.
+    #
+    # The settle is what puts the question to the guard, and it is load-bearing: both guards run only
+    # when something is unresolved — the post-failure dismiss `if not ok`, the mid-wait hook only
+    # while a wait is still blocked — so a lone tap on an element already on screen succeeds first
+    # try and never asks. Settling polls with the dialog up, which is the one shape that does ask.
+    driver = FakeDriver(
+        [el(_SCRIM, "dismiss popup"), el("log.dialog.delete", "Delete", ["button"])]
+    )
+    driver.tipkit_dismiss_id = _SCRIM
+    driver.tipkit_container_id = _CONTAINER
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "i",
+                "iosTipKitHandling": True,
+                "steps": [
+                    {"wait": {"until": "settled", "timeout": 5}},
+                    {"tap": {"id": "log.dialog.delete"}},
+                ],
+            }
+        ),
+        clock=FakeClock(),
+    )
+    assert result.ok, result.failure
+    assert ("tap", {"id": _SCRIM}) not in driver.actions
+
+
 def test_a_tip_and_a_system_alert_are_both_recovered_in_one_step() -> None:
     # The two end-of-step guards are checked in sequence, not as an `elif` ladder: dismissing the tip
     # must not consume the failure and leave the alert — the case the alert guard exists for — unhandled.
@@ -99,8 +136,9 @@ def test_a_tip_and_a_system_alert_are_both_recovered_in_one_step() -> None:
             # The tip goes, but the target is still behind the alert until the alert guard fires.
             d.screen = [el("sys.alert", "Allow")]
 
-    driver = FakeDriver([el(_SCRIM, "dismiss popup")], react=react)
+    driver = FakeDriver([el(_SCRIM, "dismiss popup"), el(_CONTAINER)], react=react)
     driver.tipkit_dismiss_id = _SCRIM
+    driver.tipkit_container_id = _CONTAINER
     dismissed: list[str] = []
 
     def alert_guard(d: base.Driver) -> AlertEvent | None:
@@ -134,9 +172,11 @@ def test_two_dismiss_regions_fail_the_step_rather_than_aborting_the_run() -> Non
         [
             el(_SCRIM, "dismiss popup", frame=(0.0, 0.0, 402.0, 874.0)),
             el(_SCRIM, "dismiss popup", frame=(0.0, 0.0, 100.0, 100.0)),
+            el(_CONTAINER),
         ]
     )
     driver.tipkit_dismiss_id = _SCRIM
+    driver.tipkit_container_id = _CONTAINER
     result = run_scenario(
         driver,
         _scenario(
@@ -159,8 +199,11 @@ def test_a_refused_dismiss_tap_fails_the_step_rather_than_aborting_the_run() -> 
         def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:
             raise base.ElementNotTappable("element resolved but covered by another element")
 
-    driver = _RefusingDriver([el(_SCRIM, "dismiss popup", frame=(0.0, 0.0, 402.0, 874.0))])
+    driver = _RefusingDriver(
+        [el(_SCRIM, "dismiss popup", frame=(0.0, 0.0, 402.0, 874.0)), el(_CONTAINER)]
+    )
     driver.tipkit_dismiss_id = _SCRIM
+    driver.tipkit_container_id = _CONTAINER
     result = run_scenario(
         driver,
         _scenario(
@@ -186,6 +229,7 @@ def test_a_step_failing_with_no_tip_present_is_not_retried() -> None:
 
     driver = _CountingDriver([el("home.title", "Home")])
     driver.tipkit_dismiss_id = _SCRIM
+    driver.tipkit_container_id = _CONTAINER
     result = run_scenario(
         driver,
         _scenario(
@@ -198,17 +242,19 @@ def test_a_step_failing_with_no_tip_present_is_not_retried() -> None:
 
 
 def test_a_scrim_that_never_closes_is_tapped_a_bounded_number_of_times() -> None:
-    # The dismiss region is TipKit's scrim identifier, but not provably TipKit's alone: an
-    # app-authored `.popover` with `interactiveDismissDisabled()` installs one and does NOT close on
-    # a scrim tap. Unbounded, the mid-wait hook would tap on every tick for the whole timeout and
-    # then land one on whatever the popover was covering. `_TIP_MAX_DISMISSES` caps it and the wait
-    # degrades to its ordinary timeout, the same way a mis-set `interrupts` entry goes inert.
+    # A tip whose scrim tap does not clear it: TipKit dismisses on its own rules, so "the dismiss did
+    # not take" is a state the guard has to survive rather than one it can rule out. Unbounded, the
+    # mid-wait hook would tap on every tick for the whole timeout and then land one on whatever the
+    # tip was covering. `_TIP_MAX_DISMISSES` caps it and the wait degrades to its ordinary timeout,
+    # the same way a mis-set `interrupts` entry goes inert.
     #
     # The bound is composed the way the alert guard's already is (`_GUARD_MAX_ATTEMPTS` + 1): the
     # mid-wait hook is capped, and the end-of-step dismiss adds its own single attempt. One hook is
     # built per step and shared by both retries, so neither re-arms the mid-wait counter.
-    driver = FakeDriver([el(_SCRIM, "dismiss popup")])  # no `react`: the scrim outlives every tap
+    # No `react`: the tip outlives every tap.
+    driver = FakeDriver([el(_SCRIM, "dismiss popup"), el(_CONTAINER)])
     driver.tipkit_dismiss_id = _SCRIM
+    driver.tipkit_container_id = _CONTAINER
     result = run_scenario(
         driver,
         _scenario(

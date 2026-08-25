@@ -779,14 +779,14 @@ class _StepCounter:
 _INTERRUPT_MAX_FIRES = 3
 
 # Mid-wait TipKit dismisses allowed within one step, for the same reason as the two ceilings above.
-# The dismiss region is TipKit's own scrim identifier, but nothing proves it is TipKit's *alone* — an
-# app-authored `.popover` installs one too, and with `interactiveDismissDisabled()` it does not close
-# on a scrim tap. Unbounded, a guarded wait would then synthesize a tap every tick for its whole
-# timeout, each recorded as an actuation, and land one on whatever is underneath the moment the
-# popover finally closes on its own. Bounded, "the dismiss didn't take" degrades to the step's
-# ordinary failure or timeout, exactly as a mis-set `interrupts` entry does. One hook is built per
-# step and shared by both retries, so the total per step is this plus the end-of-step dismiss's own
-# single attempt — the same composition the alert guard already documents for _GUARD_MAX_ATTEMPTS.
+# TipKit dismisses on its own rules, so "the scrim tap did not clear the tip" is a state the guard has
+# to survive rather than one it can rule out. Unbounded, a guarded wait would then synthesize a tap
+# every tick for its whole timeout, each recorded as an actuation, and land one on whatever is
+# underneath the moment the tip finally closes on its own. Bounded, "the dismiss didn't take" degrades
+# to the step's ordinary failure or timeout, exactly as a mis-set `interrupts` entry does. One hook is
+# built per step and shared by both retries, so the total per step is this plus the end-of-step
+# dismiss's own single attempt — the same composition the alert guard already documents for
+# _GUARD_MAX_ATTEMPTS.
 _TIP_MAX_DISMISSES = 2
 
 
