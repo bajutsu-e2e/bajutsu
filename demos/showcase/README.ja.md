@@ -95,6 +95,7 @@ bajutsu run --target showcase-swiftui --scenario demos/showcase/scenarios/modals
 | [`android/`](android/) | Android 版の 4 プロダクト（Compose × Views、BE-0007 の準備） |
 | [`showcase.config.yaml`](showcase.config.yaml) | iOS と Android を合わせた 8 つの `targets.<name>` エントリ |
 | [`scenarios/`](scenarios) | 共有の id ベース `run` シナリオ（iOS と Android の両方の a11y アプリを駆動） |
+| [`browser/`](browser/index.html) | `scenarios/browser.yaml` がアプリ内ブラウザで開くページ（`make -C demos/showcase e2e-browser` が配信）|
 | [`record/goals.txt`](record/goals.txt) | `record` A/B デモ用の自然言語ゴール |
 | [`crawl/`](crawl/expected-screen-map.ja.md) | `crawl`（[BE-0038](../../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)、実装中）が生成すべき画面マップ。検証用テストデータ |
 
@@ -116,6 +117,9 @@ XCUITest で実行します（`make -C demos/showcase run-swiftui-noax` / `run-u
   ビルドには id がありません。その操作（filter sheet、gallery、search）は `modals.yaml` と `search.yaml`
   の対応物ですでに覆われています。
 - **`visual.yaml` / `golden/`**：ピクセルやツリーの baseline は id と画像に固有で、別の関心事です。
+- **`browser.yaml`**：`SFSafariViewController` のフロー。アサート対象のページを描くのはアプリではなく
+  ブラウザなので、`-noax` ビルドでもツリーは同一になり、twin は a11y 版と同じことしか確かめられません。
+  アプリ側の id は 2 つで、どちらもページを配信するレーンの下にあります。
 - **`text_editing.yaml`**：テキストを入力すると Search フィールドは placeholder を失うため、`-noax`
   実行では後続の `select`／`clear`／`delete` でフィールドを可視ラベル「Search horses」で再指定できません。
   また（`push.yaml` と同様に）iOS 専用です。Compose／Views のツリーは編集可能フィールドのテキストを

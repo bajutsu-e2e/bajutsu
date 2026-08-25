@@ -31,6 +31,11 @@ final class XcuitestElementProvider: ElementProviding {
     // A second, on-demand handle for SpringBoard — which owns the out-of-process permission prompt
     // (BE-0316) — built lazily so every other query and tap stays scoped to the app under test.
     private lazy var springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+    // A third handle for the process that draws `SFSafariViewController` (BE-XXXX), built lazily for
+    // the same reason: a run that never opens a browser never touches it.
+    private lazy var safariViewService = XCUIApplication(bundleIdentifier: Self.safariViewServiceID)
+
+    private static let safariViewServiceID = "com.apple.SafariViewService"
 
     init(app: XCUIApplication) {
         self.app = app
@@ -42,7 +47,31 @@ final class XcuitestElementProvider: ElementProviding {
         // actuator. A snapshot failure yields an empty screen rather than a crash — the run fails
         // loudly downstream when nothing resolves.
         guard let root = try? app.snapshot() else { return [] }
-        return flattenSnapshot(root: SnapshotNodeAdapter(root))
+        guard safariViewService.state == .runningForeground else {
+            return flattenSnapshot(root: SnapshotNodeAdapter(root))
+        }
+        // A presented `SFSafariViewController` is drawn by another process, and the app's own
+        // snapshot reports it differently per iOS version: through iOS 18 it mirrors the whole
+        // browser subtree, from iOS 26 it stops at the remote-view boundary and reports nothing
+        // below it. Reading the browser from the service that owns it makes the two versions agree —
+        // one tree, complete on both — and the mirror is pruned so the versions that do carry it
+        // don't report every browser element twice, which would read as an ambiguous selector.
+        let appElements = flattenSnapshot(root: SnapshotNodeAdapter(root)) {
+            ($0.nodeIdentifier ?? "").hasPrefix(BrowserChrome.browserViewIDPrefix)
+        }
+        guard let browserRoot = try? safariViewService.snapshot() else {
+            // The prune only pays off when the service's own tree replaces the mirror. Without that
+            // tree in hand, report the app's own walk whole: on the iOS versions that do mirror the
+            // browser, returning the pruned walk would hand back a screen the browser was cut out
+            // of, and a scenario would time out on elements the app was still carrying.
+            return flattenSnapshot(root: SnapshotNodeAdapter(root))
+        }
+        // The two versions also name the browser's own chrome differently in one place, which
+        // `normalizeBrowserChrome` repairs so a scenario's selector travels between them (BE-XXXX).
+        let browser = SnapshotNodeAdapter(browserRoot)
+        return appElements + normalizeBrowserChrome(
+            flattenSnapshot(root: browser, in: .safariViewService), root: browser
+        )
     }
 
     func screenSize() -> (width: Double, height: Double) {
@@ -76,12 +105,22 @@ final class XcuitestElementProvider: ElementProviding {
         if centerIsOnScreen(el) {
             guard el.isHittable else { return .notHittable }
         }
+        // A browser element is actuated at its own point rather than through the element (BE-XXXX).
+        // `XCUIElement.tap()` reaches the page content across the process boundary but is silently
+        // dropped by the browser's own chrome — a resolved, hittable Close button simply does not
+        // dismiss — whereas the coordinate tap the element's frame yields lands on both. The frame
+        // is read live here, not from the snapshot, so a browser still animating in is tapped where
+        // it now is; the coordinate space is the app's own, which the guard above already tests
+        // against `app.frame`.
+        let target: Tappable = backing.root == .safariViewService
+            ? coordinate(Double(el.frame.midX), Double(el.frame.midY))
+            : el
         if duration > 0 {
-            el.press(forDuration: duration)
+            target.press(forDuration: duration)
         } else if taps >= 2 {
-            el.doubleTap()
+            target.doubleTap()
         } else {
-            el.tap()
+            target.tap()
         }
         return .ok
     }
@@ -263,19 +302,33 @@ final class XcuitestElementProvider: ElementProviding {
     /// value with it, for its own reason — a slider or text field legitimately changes value between
     /// the snapshot and the tap; both decide only between candidates read from one live query.
     private func liveElement(for backing: PositionPathBacking) -> XCUIElement? {
-        let el = element(at: backing.path)
+        let root = application(for: backing.root)
+        let el = element(at: backing.path, from: root)
         if el.exists, attributesMatch(
             recorded: backing.recorded, current: recordedAttributes(of: el, includingValue: false)
         ) {
             return el
         }
-        return uniquelyIdentifiedElement(matching: backing.recorded)
+        return uniquelyIdentifiedElement(matching: backing.recorded, in: root)
+    }
+
+    /// The application handle an element's position path is relative to (BE-XXXX). Both recovery
+    /// steps below must query the same one the snapshot was read from: the app's own tree does not
+    /// carry the browser's elements from iOS 26, so resolving a browser element against it would
+    /// report a perfectly live control as stale.
+    private func application(for root: ElementRoot) -> XCUIApplication {
+        switch root {
+        case .app: return app
+        case .safariViewService: return safariViewService
+        }
     }
 
     /// Resolve one semantic identity without depending on snapshot hierarchy shape.
-    private func uniquelyIdentifiedElement(matching recorded: RecordedAttributes) -> XCUIElement? {
+    private func uniquelyIdentifiedElement(
+        matching recorded: RecordedAttributes, in root: XCUIApplication
+    ) -> XCUIElement? {
         guard recorded.identifier != nil || recorded.label != nil else { return nil }
-        var query = app.descendants(matching: .any)
+        var query = root.descendants(matching: .any)
         if let identifier = recorded.identifier {
             query = query.matching(identifier: identifier)
         }
@@ -321,8 +374,8 @@ final class XcuitestElementProvider: ElementProviding {
 
     /// Resolve a root-relative index path back to an `XCUIElement` by descending direct children —
     /// the inverse of the position path `flattenSnapshot` records over `app.snapshot()`.
-    private func element(at path: PositionPath) -> XCUIElement {
-        path.reduce(app as XCUIElement) { parent, index in
+    private func element(at path: PositionPath, from root: XCUIApplication) -> XCUIElement {
+        path.reduce(root as XCUIElement) { parent, index in
             parent.children(matching: .any).element(boundBy: index)
         }
     }
@@ -333,6 +386,20 @@ final class XcuitestElementProvider: ElementProviding {
             .withOffset(CGVector(dx: x, dy: y))
     }
 }
+
+// MARK: - Actuation surface
+
+/// The tap operations `XCUIElement` and `XCUICoordinate` already share, so `tap` picks its target
+/// once — the element itself, or the point its frame yields for a browser element (BE-XXXX) — and
+/// keeps one copy of the taps / duration branch rather than one per target kind.
+private protocol Tappable {
+    func tap()
+    func doubleTap()
+    func press(forDuration duration: TimeInterval)
+}
+
+extension XCUIElement: Tappable {}
+extension XCUICoordinate: Tappable {}
 
 // MARK: - Snapshot bridging
 

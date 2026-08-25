@@ -477,17 +477,40 @@ async function loadConfig(){
   fsSourceEnabled=!c.configSources||c.configSources.includes('fs');
   $('#fssrc').hidden=!fsSourceEnabled;
   setCfgName(c.hasConfig?c.config:'no config bound — open one →',c.hasConfig);
-  setOrgBadge(c.actor,c.org);
+  setOrgBadge(c.actor,c.org,c.orgs);
   if(c.hasConfig){await loadShared()}else{openFs()}
 }
 // Show which org this session acts as, next to the config it acts on (BE-0375). Both come from the
 // same boot read; the badge stays hidden unless the server named an identity, so a local or
 // shared-token serve looks exactly as before rather than reporting a `default` nobody chose.
-function setOrgBadge(actor,org){
-  const el=$('#orgbadge');if(!el)return;
+function setOrgBadge(actor,org,orgs){
+  const el=$('#orgbadge'),sw=$('#orgsw');if(!el)return;
   const show=Boolean(actor&&org);
-  el.hidden=!show;
+  // With more than one org to act as, the badge gives way to a switcher listing them; with one
+  // there is nothing to choose, so the badge stays and the switcher never appears. Only ever one of
+  // the two is visible, so the header shows the acting org exactly once either way.
+  const choices=Array.isArray(orgs)?orgs:[];
+  const pick=show&&choices.length>1;
+  el.hidden=!show||pick;
   if(show){el.textContent=org;el.title=`signed in as ${actor} — acting as org "${org}"`}
+  if(!sw)return;
+  sw.hidden=!pick;
+  if(pick){
+    sw.innerHTML=choices.map(o=>`<option value="${esc(o)}"${o===org?' selected':''}>${esc(o)}</option>`).join('');
+    sw.title=`signed in as ${actor} — acting as org "${org}"`;
+  }
+}
+// Switching org repoints every tab at once (runs, evidence, secrets, projects), so the page is
+// reloaded rather than each view refreshed: a partial update would leave already-rendered views
+// showing the previous tenant's data. On refusal the boot read runs again, so the select re-syncs to
+// the org still in force instead of showing one the server rejected.
+async function switchOrg(slug){
+  const d=await postJSON('/api/org',{org:slug},{error:'switch failed'});
+  // Re-read the boot payload and re-render the header alone, rather than re-running `loadConfig`:
+  // its tail opens the "Open config" modal when no config is bound, so a refused switch would pop a
+  // dialog over whatever the user was doing.
+  if(d.error){alert(d.error);const c=await getJSON('/api/config',{hasConfig:false});setOrgBadge(c.actor,c.org,c.orgs);return}
+  location.reload();
 }
 // Set the nav's config-name label and reveal the "View" button only when a config is actually bound.
 function setCfgName(text,hasConfig){$('#cfgname').textContent=text;$('#viewcfg').hidden=!hasConfig}
@@ -574,6 +597,7 @@ async function switchProject(name,opts){
   if(opts&&opts.goStats)showView('stats');
 }
 $('#projectsw').addEventListener('change',e=>switchProject(e.target.value));
+$('#orgsw').addEventListener('change',e=>switchOrg(e.target.value));
 
 // ---- Git config-source credential (BE-0224): the write-once token for a private repo, stored via
 // the SecretStore seam. Masked-only, like the API key — the plaintext is never read back.

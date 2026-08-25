@@ -20,7 +20,7 @@ final class MainTabBarController: UITabBarController {
         searchNav = UINavigationController(rootViewController: SearchController(model: model))
         logNav = UINavigationController(rootViewController: LogController(model: model))
         noticesNav = UINavigationController(rootViewController: NoticesController(model: model))
-        permissionsNav = UINavigationController(rootViewController: PermissionsController())
+        permissionsNav = UINavigationController(rootViewController: PermissionsController(model: model))
 
         super.init(nibName: nil, bundle: nil)
 

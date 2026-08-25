@@ -106,6 +106,7 @@ Compose の testTag はドット区切り id をそのまま再現するので�
 | `SHOWCASE_UITEST` | アニメーション無効化（条件待機を締める） | 未設定 |
 | `SHOWCASE_API_URL` | カタログ GET（`/horses`）の base URL | `https://example.com` |
 | `SHOWCASE_HTTP_BASE` | エコー用 POST/DELETE エンドポイントの base | `https://httpbin.org` |
+| `SHOWCASE_BROWSER_URL` | アプリ内ブラウザが開くページ（§5.4） | `https://example.com` |
 
 > **認証ゲートはありません**。アプリは起動直後からタブ UI に入り、つねに Stable タブに着地します。
 > ほかのタブへは、ネイティブのタブバーをタップして移動します（XCUITest バックエンドがラベルで
@@ -234,6 +235,21 @@ Log から到達するモーダル（5 つの提示様式）：
   アサートします。読み取りが文字列を返さなかったとき、つまりペーストの同意を拒否したときやペーストボードが
   空のときは、`(none)` を公開します。プロンプトに `choice: deny` で応答するシナリオが、一度も読んでいない
   フィールドと見分けのつかない状態ではなく、待って確かめられる値を得るためです
+
+**アプリ内ブラウザ** — 同じ System セクションから、`SHOWCASE_BROWSER_URL` が指すページを
+`SFSafariViewController` で開きます。ブラウザは画面を別プロセス（`com.apple.SafariViewService`）で
+描きます。そのためブラウザが出ているあいだ、バックエンドが読むのはアプリ自身のツリーではありません。
+ブラウザのクロームも描画済みのページも、その別プロセスのアプリケーションハンドルから、アプリと同じ
+座標系でシナリオに届きます。上のペーストボードがアプリ内クエリでは見えないデバイス状態の
+フィクスチャであるのと同じ意味で、このセクションはシナリオが操作するプロセス外 UI のフィクスチャです。
+シナリオは [`browser.yaml`](scenarios/browser.yaml)、専用のレーンは
+`make -C demos/showcase e2e-browser` です。このレーンがブラウザの読み込むページを配信します。
+- `sys.openBrowser` — `SHOWCASE_BROWSER_URL` をブラウザで開くボタン
+- `sys.browser.value` — `idle`/`loaded`/`loadFailed`。`SHOWCASE_BROWSER_URL` を URL として解釈できない
+  ときはブラウザを開かず、`badURL` を公開する。アプリ自身がブラウザについて観測できる唯一の事実、
+  つまりページの読み込みが完了したかどうかを `SFSafariViewControllerDelegate` の通知でミラーした値。
+  ブラウザを開くたびに `idle` へ戻すので、前回の結果で `loaded` の待機が満たされることはない。
+  読めるのはブラウザを閉じてこの画面がツリーに戻ってからで、シナリオもそこでアサートする
 
 ### 5.5 タブ：Notices（`notice` 名前空間。長いリスト → 詳細、スクロール先の要素）
 

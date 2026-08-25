@@ -1,0 +1,46 @@
+# In-app browser: the Permissions tab's System section opens `SFSafariViewController` on a page
+# served locally by this scenario's own lane (`make -C demos/showcase e2e-browser`). The browser
+# draws its UI in another process, so what this scenario asserts — the page's own text, the
+# browser's chrome, and a click that reaches the page — is a tree the backend reads from that
+# process rather than from the app under test.
+#
+# Tagged `browser` and excluded from the bulk lanes for the usual "this file has its own lane"
+# reason: those lanes serve no fixture page, so the browser would have nothing to load. The ids are
+# the dotted iOS form only — unlike the shared scenarios, this one has no Android twin to run
+# against, since `SFSafariViewController` is an iOS control.
+#
+# `Close` and `URL` are the browser's own identifiers, not the app's. iOS 18 leaves the dismiss
+# control unidentified (it is labelled `Done` there, `Close` on iOS 26), so the driver reports it
+# under the identifier iOS 26 uses and this one selector addresses it on both.
+- name: the in-app browser renders its page and takes a click
+  tags: [browser]
+  preconditions:
+    launchEnv:
+      SHOWCASE_UITEST: "1"
+      # The page `e2e-browser` serves; keep the port in step with BROWSER_PORT in the Makefile.
+      SHOWCASE_BROWSER_URL: "http://localhost:8799/"
+  steps:
+    - tap: { label: "Permissions", traits: [button] }
+      capture: [deviceLog]
+    - wait: { for: { id: perm.requestNotif }, timeout: 10 }
+    # The System section sits below Notifications + Location (as in system.yaml).
+    - scroll: { to: { id: sys.openBrowser }, direction: down }
+    - tap: { id: sys.openBrowser }
+    # Page content, rendered by the out-of-process browser. The tree is an accessibility tree and
+    # not a DOM, so the page is addressed by its visible text.
+    - wait: { for: { label: "Bajutsu Browser Fixture" }, timeout: 20 }
+    - assert:
+        - exists: { label: "not clicked" }
+        # The browser's own address field, which mirrors the loaded host.
+        - exists: { id: URL }
+    # The click reaches the page: the button's handler rewrites the paragraph.
+    - tap: { label: "Confirm", traits: [button] }
+    - wait: { for: { label: "clicked" }, timeout: 10 }
+    # Leave through the browser's own dismiss control, back to the app under test.
+    - tap: { id: Close }
+    # The app's own mirror of the one fact it can observe about the browser: the page loaded.
+    - wait: { for: { id: sys.browser.value, value: "loaded" }, timeout: 10 }
+  expect:
+    - value: { sel: { id: sys.browser.value }, equals: "loaded" }
+    - exists: { id: sys.openBrowser }
+    - exists: { label: "Bajutsu Browser Fixture", negate: true }

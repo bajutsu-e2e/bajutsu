@@ -375,6 +375,14 @@ ROUTES: tuple[Route, ...] = (
         "/api/orgs",
         lambda state, ctx: ops.create_org(state, ctx.body(), actor=ctx.actor()),
     ),
+    # Which org the caller acts as. Singular, and deliberately not under `/api/orgs/…`: everything
+    # there administers *other* tenants and is admin-only, while this moves the caller between orgs
+    # that already admit them and needs no role gate at all (`authz.required_role`).
+    Route(
+        "POST",
+        "/api/org",
+        lambda state, ctx: ops.set_active_org(state, ctx.body(), actor=ctx.actor()),
+    ),
     # Replacing an org's membership is a whole-value write, which REST would spell PUT; it is a POST
     # because that is the only body-carrying verb both transports implement (BE-0375), and every
     # other whole-value write in `serve` — `/api/projects/{name}/activate`, `/api/provider` — is

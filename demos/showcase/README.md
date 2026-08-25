@@ -96,6 +96,7 @@ bajutsu run --target showcase-swiftui --scenario demos/showcase/scenarios/modals
 | [`android/`](android/) | the four Android twins (Compose × Views, BE-0007 preparation) |
 | [`showcase.config.yaml`](showcase.config.yaml) | the eight iOS + Android `targets.<name>` entries |
 | [`scenarios/`](scenarios) | shared id-based `run` scenarios (drive every a11y app, iOS and Android alike) |
+| [`browser/`](browser/index.html) | the page `scenarios/browser.yaml` loads in the in-app browser, served by `make -C demos/showcase e2e-browser` |
 | [`record/goals.txt`](record/goals.txt) | natural-language goals for the `record` A/B demo |
 | [`crawl/`](crawl/expected-screen-map.md) | the screen map `crawl` ([BE-0038](../../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md), in progress) should produce — validation test data |
 
@@ -116,6 +117,9 @@ Not every `scenarios/` file has a twin, by design:
   build has none of; its flows (filter sheet, gallery, search) are already covered by `modals.yaml`
   and `search.yaml` twins.
 - **`visual.yaml` / `golden/`** — pixel/tree baselines are id- and image-specific, a separate concern.
+- **`browser.yaml`** — the `SFSafariViewController` flow. The browser renders the page this file
+  asserts on. A `-noax` build presents the identical tree, so a twin would test nothing the a11y
+  file does not. Its two app-side ids sit behind a lane that serves the page.
 - **`text_editing.yaml`** — once text is typed the Search field drops its placeholder, so a `-noax`
   run cannot re-address it by the visible "Search horses" label for the follow-up `select` / `clear`
   / `delete`. It is also iOS-only (like `push.yaml`): the Compose / Views trees do not expose an

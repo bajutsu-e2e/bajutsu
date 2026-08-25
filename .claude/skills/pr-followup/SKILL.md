@@ -152,8 +152,9 @@ What comes back depends on whether a human is in the turn:
 
 - **Attended** — the sub-step confirms with the invoker and files the issue. Report the resulting
   issue URL alongside what was fixed inline.
-- **Unattended** — the sub-step files nothing and returns a finished draft, which step 5 carries in
-  the summary's **pending-draft** field. A pending draft is deliberately **not** an escalation: the
+- **Unattended** — the sub-step files nothing. It returns a finished draft — or, for a finding its
+  step 1 escalated, the finding marked as needing a roadmap item rather than an issue — which step 5
+  carries in the summary's **pending-draft** field. A pending draft is deliberately **not** an escalation: the
   escalations below stop the loop and hand the pull request to the human, and an incidental
   out-of-scope note should never do that to an otherwise-healthy follow-up loop. The human sees the
   draft when the loop reports, and approves it on a later turn.

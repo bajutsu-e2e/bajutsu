@@ -67,7 +67,30 @@ class User(Base):
     # Default editor to match the role policy (an allowlisted user can run); admins/viewers come
     # from the env lists, recomputed on each login. Aligned across model / migration / upsert (7c-2).
     role: Mapped[str] = mapped_column(server_default="editor")  # viewer | editor | admin
+    # When this user last picked their active org themselves, rather than having it resolved for
+    # them at sign-in. Null means `org_id` is whatever the membership ranking answered, which a
+    # later sign-in re-resolves freely; set means the user chose it, and sign-in keeps that choice
+    # for as long as the org is still one they may act as. A timestamp rather than a flag, like
+    # `Org.membership_seeded_at`: it records when.
+    org_selected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     created_at: Mapped[datetime] = _created_at()
+
+
+class UserOrg(Base):
+    """One org a user may act as, with the role they hold in it.
+
+    A login whose GitHub memberships match several orgs gets a row per match, written fresh on every
+    sign-in — the only moment those memberships are known, since no GitHub token is kept afterward.
+    `users.org_id` names which one of them is active. The role lives here rather than only on the
+    user because a role is per-org by construction: an org's `editor_teams` promotes a member inside
+    that org and says nothing about any other.
+    """
+
+    __tablename__ = "user_orgs"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("orgs.id"), primary_key=True)
+    role: Mapped[str]  # viewer | editor | admin, resolved for this (user, org) pair
 
 
 class Project(Base):

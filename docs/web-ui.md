@@ -70,7 +70,18 @@ the config name names the **org** this session acts as: every tab is scoped to i
 can run, the runs and evidence you see, the secrets and the project list — so it is worth being able
 to read at a glance, particularly for an admin who administers several. Hovering it names the login
 too. A local or shared-token `serve` has no signed-in identity and no tenants, so the badge does not
-appear there. Each tab is a full screen of its own; switching tabs never discards
+appear there.
+
+If your GitHub memberships admit you to more than one org, that badge is a dropdown instead: pick
+another org and the page reloads acting as it, with that tenant's runs, evidence, secrets, and
+projects — and with the role that tenant grants you, which may differ from the one you held in the
+last. The choice sticks: your next sign-in lands you in the org you picked rather than re-deciding
+for you. It stops sticking only if that org stops admitting you, in which case the next sign-in moves
+you to the best remaining match. An admin who is a member of one of the deployment's admin Teams can
+act as any org it has, including one created after signing in. A switch does not move work already
+done: a run keeps the org it was started under, and so do its evidence and its audit entries.
+
+Each tab is a full screen of its own; switching tabs never discards
 what another tab was doing.
 
 Some forms change with the backend. Against the iOS Simulator (XCUITest) you see a **Device** picker,

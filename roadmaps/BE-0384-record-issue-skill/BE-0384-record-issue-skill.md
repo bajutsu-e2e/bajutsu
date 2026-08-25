@@ -88,23 +88,45 @@ of a well-formed design away from the roadmap, so this skill states the concrete
 this need a Detailed design, a discussion of trade-offs, or changes across multiple modules? If so,
 this is not a minor finding —
 stop and point the invoker to `ideation` (or, for a small item whose design is already settled,
-`propose-and-build`) instead of filing an issue. Otherwise, classify the finding as a **bug**
-(something behaves other than intended) or a lightweight **enhancement** (a small, bounded
-improvement).
-
+`propose-and-build`) instead of filing an issue. With no human in the turn there is no invoker to
+point at, so the finding returns in the same pending-draft field the unattended path below uses,
+marked as needing a roadmap item rather than an issue — without that route this one judgment call
+would cost the whole finding, the outcome this item exists to prevent. When none of the three
+would cost the whole finding, the outcome this item exists to prevent. When none of those three
+conditions holds, classify the finding as a **bug** (something behaves other than intended) or a
+lightweight **enhancement** (a small, bounded improvement).
 **Step 2 — search for a duplicate.** Run `gh issue list --search "<keywords>
 -label:roadmap-tracking" --state all --limit 10` with keywords drawn from the finding, and show the
 invoker any candidate matches (number, title, state, labels). The search excludes the
 `roadmap-tracking` issues the workflow of
 [BE-0109](../BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) creates and closes
 on its own: those are bot-owned, so a comment on one of them is no landing at all. Because that
-exclusion also removes the only signal that an open BE item already covers the finding, this step
-checks the roadmap itself: run
-[`roadmap-filter`](../../.apm/skills/roadmap-filter/SKILL.md) once for `Proposal` and once
-for `In progress` — it accepts a single status per run — and match the returned titles on the same
-keywords. A title is a coarse filter — an item's coverage of a small finding usually lives in its
-`Detailed design` rather than its title — so also grep every returned item's file (the `Path`
-column names it) for the same keywords, not only the ones whose title already matched. On a hit,
+exclusion also removes the only signal that a BE item already covers the finding, this step
+checks the roadmap itself, cheap pass first. The cheap pass is the keyword lookup
+[`roadmap-filter`](../../.apm/skills/roadmap-filter/SKILL.md) exists for, `make roadmap-find
+ARGS="--grep <keyword>"`, which matches the id, title, `Topic`, and `## Introduction` excerpt of
+every item in one run, across all five statuses. A title-and-introduction match is still coarse,
+since an item's coverage of a small finding usually lives in its `Detailed design`, so the step also
+greps the item files themselves (`grep -ril "<keyword>" roadmaps/`) — every time, not only when the
+cheap pass came back empty, since a coarse hit on one item says nothing about another item's
+`Detailed design`. The metadata pass still runs first, because it answers with each match's id,
+title, `Topic`, and status rather than a path still to open. The grep's keyword has to be narrowed
+until it discriminates before its hits reach the choices below: `roadmaps/` holds close to 400 items
+across some 770 files and 127,000-plus lines, so a common word matches nearly all of them —
+`grep -ril issue roadmaps/` returns essentially every file there — and a list that size filters
+nothing. A keyword narrow enough to discriminate returns a short list of paths rather than the prose
+behind them, which is what keeps the second pass affordable every time. Some findings sit in the
+roadmap's own core vocabulary, though, where even a faithful phrase returns dozens of paths, and
+narrowing past the finding's own wording is not the answer: an over-narrowed grep that comes back
+empty is a manufactured miss, indistinguishable from real absence. There the grep pass is reported
+**inconclusive** — the keywords tried and their hit counts, never a subset of paths the skill picked
+— and the metadata pass's hits plus that note carry the choices, since a truncated list would settle
+a choice the invoker owns on evidence the invoker never saw. Both passes
+span all five statuses, `Deferred` and `Rejected` included: an item the roadmap deliberately parked,
+or decided against with no condition expected to reopen it, is the last thing to re-file as an
+issue, and a status-scoped survey is exactly what would miss it. Neither pass proves absence,
+though — a keyword search finds only the wording it was given — so a miss never substitutes for the
+invoker's judgment. On a hit,
 title or body, show the invoker that item and ask whether to stop there instead of drafting
 anything — when the item already covers the finding, an issue would only duplicate it — or to
 proceed anyway: a keyword match, in a title or an item's body, is not proof of coverage, and only
@@ -162,11 +184,14 @@ the drafts earlier iterations already returned, because each iteration is a fres
 re-notices the same finding. The report therefore holds one entry per finding rather than one per
 iteration, and a draft returned early survives to the report the human reads.
 Step 2's new-issue-or-comment choice, and a
-roadmap-filter hit's stop-or-proceed choice, defer the same way rather than being settled
+roadmap hit's stop-or-proceed choice, defer the same way rather than being settled
 unattended: the skill drafts for a new issue and carries every candidate it found — issue matches
-and any roadmap-filter hit — beside the draft, so the human decides whether to approve it, comment
+and every roadmap hit, from the metadata pass and the grep alike (an inconclusive grep contributing
+its keywords-and-counts note in place of hits) — beside the draft, so the human decides whether to approve it, comment
 on a candidate by hand instead, or discard the finding. Approval of the drafted issue resumes the
 skill directly at step 5 against the draft the human actually saw, rather than re-drafting it. A
+step 1 escalation entry carries no issue draft, so it is not resumable at all: approving it starts
+`ideation` or `propose-and-build` on the finding, never a re-entry at step 5. A
 pending draft
 is deliberately not an escalation: every entry in BE-0230's escalation list stops the loop and
 hands the PR to the human, which an incidental out-of-scope note should never do to an

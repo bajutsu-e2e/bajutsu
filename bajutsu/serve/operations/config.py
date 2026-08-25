@@ -164,6 +164,11 @@ def config_info(state: ServeState, *, actor: str | None = None) -> tuple[Any, in
         # in — the one org whose scope every other tab silently applies.
         "actor": actor,
         "org": state.org_of(actor) if actor else None,
+        # The orgs this caller may switch between, so the header can offer the choice. Their own
+        # memberships, disclosed to them alone — nothing they could not learn by switching, which is
+        # why the full roster stays behind the admin-only `GET /api/orgs`. One entry (or none) means
+        # there is nothing to choose and the header keeps the read-only badge.
+        "orgs": sorted(state.eligible_orgs(actor)) if actor else [],
     }, 200
 
 

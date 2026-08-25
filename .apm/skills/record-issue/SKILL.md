@@ -54,7 +54,10 @@ against a concrete bar — does the finding need a Detailed design, a discussion
 changes across multiple modules? If any of the three holds, the finding is not minor: **stop and
 point the invoker at [`ideation`](../ideation/SKILL.md)**, or at
 [`propose-and-build`](../propose-and-build/SKILL.md) when the design is already settled enough to
-author and build in one pull request (PR). File nothing.
+author and build in one pull request (PR). File nothing. With no human in the turn (see *When no
+human is in the turn* below) there is no invoker to point at, so return the finding and the
+recommended landing in the **pending-draft** field instead, marked as needing a roadmap item rather
+than an issue, so the loop's report still carries the finding to the human.
 
 Otherwise classify the finding as one of two kinds, which decide the template and the label that
 step 3 uses:
@@ -77,18 +80,49 @@ sync opens and closes on its own, because those issues are bot-owned: a comment 
 landing at all.
 
 That exclusion also removes the only signal that an open roadmap item already covers the finding, so
-check the roadmap directly. [`roadmap-filter`](../roadmap-filter/SKILL.md) accepts a single status
-per run, so run it twice:
+check the roadmap directly. Start with the keyword lookup
+[`roadmap-filter`](../roadmap-filter/SKILL.md) exists for — one run matches the id, title, `Topic`,
+and `## Introduction` excerpt of every item, across all five statuses:
 
 ```bash
-make roadmap-status STATUS="Proposal"
-make roadmap-status STATUS="In progress"
+make roadmap-find ARGS="--grep <keyword>"
 ```
 
-Match the returned titles on the same keywords. A title is a coarse filter — an item usually covers
-a small finding in its `Detailed design` rather than in its title — so also grep every returned
-item's file, named by the table's `Path` column, for those keywords, not only the items whose title
-already matched.
+A title-and-introduction match is a coarse filter, and an item usually covers a small finding in its
+`Detailed design`, so run the grep pass as well, not only when the first pass came back empty — a
+coarse hit on one item says nothing about another item's `Detailed design` (a `-ja.md` hit names the
+same item as its English sibling):
+
+```bash
+grep -ril "<keyword>" roadmaps/
+```
+
+Run the metadata pass first all the same. It answers with the id, title, `Topic`, and status of each
+match in one small table, so a hit there is already actionable, while the grep answers with paths
+still to open.
+
+**Narrow the keyword until the grep discriminates**, before carrying its hits into the choices
+below. Close to 400 items live under `roadmaps/`, across some 770 files and more than 127,000 lines,
+so a common word matches nearly all of them — `grep -ril issue roadmaps/` returns essentially every
+file there, and a list that size filters nothing. When a flood comes back, re-run with a more
+distinctive phrase rather than putting the roadmap itself in front of the invoker. A keyword narrow
+enough to discriminate returns a short list of paths rather than the prose behind them, which is
+what keeps the second pass cheap enough to run every time.
+
+Some findings sit in the roadmap's own core vocabulary, though, where even a phrase faithful to the
+finding still returns dozens of paths. **Never narrow past the finding's own wording to force a
+short list.** An over-narrowed grep that comes back empty is a manufactured miss, indistinguishable
+from real absence, and catching the item a duplicate would re-file is the whole point of this pass.
+When no keyword both stays faithful and discriminates, report the grep pass as **inconclusive**:
+give the invoker the keywords tried and how many paths each returned, never a subset of the paths
+you picked, and let the metadata pass's hits plus that note carry the choices below. A truncated
+list would settle a choice the invoker owns, on evidence the invoker never saw.
+
+Both passes cover **all five statuses**, `Deferred` and `Rejected` included — the two a
+status-scoped survey would miss, and the two that matter most here: an item the roadmap deliberately
+parked, or decided against with no condition expected to reopen it, is the last thing to re-file as
+an issue. Neither pass proves absence, though. A keyword search finds only the wording it was given,
+so a hit is a reason to stop and ask the invoker, and a miss is not a licence to skip that judgment.
 
 Two choices come out of this step, and the invoker makes both:
 
@@ -139,17 +173,20 @@ not only the first time a session uses the skill, and no calling skill may waive
 
 ### 5. Create and report
 
-On approval, file the new issue:
+On approval, write the drafted body to `tmp/record-issue-body.md` — gitignored, and overwritten
+fresh for each finding, so a stale body from an earlier finding can never be filed — then file the
+new issue:
 
 ```bash
-gh issue create --title "<title>" --body-file <file> --label <label>
+gh issue create --title "<title>" --body-file tmp/record-issue-body.md --label <label>
 ```
 
-Or, for a comment on the match step 2 picked, post the comment and add the label only when step 4
-approved one:
+Or, for a comment on the match step 2 picked, write the drafted comment body to
+`tmp/record-issue-comment.md` the same way, post it, and add the label only when step 4 approved
+one:
 
 ```bash
-gh issue comment <number> --body-file <comment-file>
+gh issue comment <number> --body-file tmp/record-issue-comment.md
 gh issue edit <number> --add-label <label>
 ```
 
@@ -163,6 +200,11 @@ what it fixed inline.
 ([BE-0230](../../../roadmaps/BE-0230-hands-free-implement-review-loop/BE-0230-hands-free-implement-review-loop.md))
 is the case that matters. There the skill **files nothing and stalls nothing**: it finishes the
 draft and returns the draft in the **pending-draft** field of that iteration's structured summary.
+A step 1 escalation takes the same route rather than ending the finding: a finding too substantial
+for an issue returns as a pending draft marked for `ideation` or `propose-and-build`, so the
+classification's one judgment call never costs the whole finding. That entry carries no issue
+draft, so it is **not a resumable invocation**: approving it starts `ideation` or
+`propose-and-build` on the finding, and never re-enters this skill at step 5.
 
 Entering step 5 from a resumed invocation is not a skip of step 4's gate. The confirmation already
 ran, on the attended turn where the human approved the exact draft the loop's report showed, so
@@ -175,7 +217,9 @@ Three rules keep the unattended path honest:
   an otherwise-healthy follow-up loop. The pending-draft field stays distinct from the escalation
   field for that reason.
 - **Defer step 2's choices rather than settling them.** Draft for a **new issue**, and carry every
-  candidate the search found — issue matches and any roadmap-filter hit — beside the draft. The
+  candidate the search found — issue matches and every roadmap hit, from the metadata pass and the
+  grep alike — beside the draft. An inconclusive grep contributes its keywords-and-counts note in
+  place of hits, for the same reason it does on an attended turn. The
   human then decides whether to approve the draft, comment on a candidate by hand instead, or
   discard the finding. Approval resumes this skill at step 5 against the draft the human actually
   saw, rather than re-drafting it.
