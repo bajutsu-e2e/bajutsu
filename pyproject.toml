@@ -154,6 +154,7 @@ select = [
     "SIM",
     "T20",
     "UP",
+    "W",
 ]
 ignore = [
     "ANN401",  # Any is used intentionally for flexible APIs
