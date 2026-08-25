@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0388") |
-| 実装 PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760)、[#1763](https://github.com/bajutsu-e2e/bajutsu/pull/1763)、[#PR3](https://github.com/bajutsu-e2e/bajutsu/pull/PR3) |
+| 実装 PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760)、[#1763](https://github.com/bajutsu-e2e/bajutsu/pull/1763)、[#1766](https://github.com/bajutsu-e2e/bajutsu/pull/1766) |
 | トピック | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -181,7 +181,7 @@ pydantic プラグインをどうするかは、本項目の範囲には含め�
   `list[ExcludeRegion | SelectorRegion]` を添字で取り出して `.w` を読んでいました。`.w` を
   持つのは `ExcludeRegion` だけなので、読む前にその型であることを確かめるようにしました。
 - `tests/serve/` を解消しました。196件を片付け、`tests/` 直下のフラットなファイル群に880件が
-  残っています（[#PR3](https://github.com/bajutsu-e2e/bajutsu/pull/PR3)）。このディレクトリで
+  残っています（[#1766](https://github.com/bajutsu-e2e/bajutsu/pull/1766)）。このディレクトリで
   目立ったのは、シームのプロトコルを部分的にしか実装しないフェイクを、ファイルごとに定義し直して
   いた形です。メモリ上の `ObjectStore` フェイクがほぼ同じ内容で9個あり、それぞれがプロトコルの
   9メソッドのうち別々の4つか5つだけを実装していました。`tests/serve/_shared.py` の
