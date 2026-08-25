@@ -170,18 +170,25 @@ _SYSTEM_ALERT_POLL_SECONDS = 0.2
 # actuation records.
 _UNIT = "point"
 
-# The full-screen "tap outside to close" scrim a popover tip installs — measured on-device as the
-# only one of a tip's three nodes safe to key on. `TipView` (the container) carries no dismiss
-# behavior, and the close button's identifier is the SF Symbol name `xmark.circle.fill`, which an
-# unrelated app-authored button could plausibly reuse and turn into an `AmbiguousSelector`.
-#
-# Not verified as TipKit-exclusive: the name and the full-screen frame both point at
-# `UIPopoverPresentationController`, so a genuinely popover-presented view of the app's own (a
-# SwiftUI `.popover` forced past its compact sheet adaptation) plausibly installs the same scrim. The
-# guard is opt-in per scenario, which bounds that: it only ever fires on a scenario that asked, and
-# only after a step already failed. An author whose app presents its own popovers, and who wants
-# them left alone, leaves `iosTipKitHandling` off.
+# The two nodes a showing TipKit tip is recognized by: the full-screen "tap outside to close" scrim a
+# popover installs, and the tip's own container. The scrim is not TipKit's alone — measured
+# on-device, a SwiftUI `confirmationDialog` installs one carrying the same identifier, the same
+# "dismiss popup" label, and the same full-screen frame — so keying on the scrim by itself cannot
+# tell a tip from an app's own popover, and dismissing by tapping it would close that app's dialog.
+# Requiring the container as well identifies what the guard is for, leaving an unrecognized popover
+# alone by default. The container is a detection signal only: it carries no dismiss behavior, so the
+# scrim stays the dismiss target, as BE-0389 established. The tip's third node, the close button, is
+# not part of the pair — its identifier is the SF Symbol name `xmark.circle.fill`, which an unrelated
+# app-authored button could plausibly reuse and turn into an `AmbiguousSelector`.
 _TIPKIT_DISMISS_REGION = "PopoverDismissRegion"
+_TIPKIT_TIP_CONTAINER = "TipView"
+
+
+def _tip_is_up(tree: list[base.Element]) -> bool:
+    """Whether `tree` shows a TipKit tip: the dismiss scrim and the tip's container together."""
+    return bool(base.find_all(tree, {"id": _TIPKIT_DISMISS_REGION})) and bool(
+        base.find_all(tree, {"id": _TIPKIT_TIP_CONTAINER})
+    )
 
 
 def _as_float(value: Any) -> float | None:
@@ -1138,6 +1145,9 @@ class XcuitestDriver:
     def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:
         """Dismiss a showing TipKit tip via its dismiss region; False when no tip is up.
 
+        A tip is recognized by the dismiss scrim *and* the tip's own container together, so an app's
+        own popover — a `confirmationDialog` installs the identical scrim — is left alone.
+
         Args:
             tree: A snapshot the caller already holds, used only to rule a tip out. Absence is the
                 overwhelmingly common case and this is asked on every wait poll, so answering it off
@@ -1150,15 +1160,16 @@ class XcuitestDriver:
 
         Raises:
             AmbiguousSelector: Several nodes claimed the dismiss region — a shape TipKit should never
-                produce, so it fails loudly rather than picking one (prime directive 2).
+                produce, so it fails loudly rather than picking one (prime directive 2). The
+                container is only ever tested for presence, so several of those are not an error.
         """
         sel: base.Selector = {"id": _TIPKIT_DISMISS_REGION}
-        if tree is not None and not base.find_all(tree, sel):
+        if tree is not None and not _tip_is_up(tree):
             return False
         elements, handles = self._query_with_handles()
         # Re-checked against the fresh tree either way: with no hint this is the only check, and with
         # one the tip may have closed itself in between (a plain False, not an error).
-        if not base.find_all(elements, sel):
+        if not _tip_is_up(elements):
             return False
         el = base.resolve_unique(elements, sel)
         try:

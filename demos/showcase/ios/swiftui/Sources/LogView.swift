@@ -25,6 +25,7 @@ struct LogView: View {
     @State private var showSheet = false
     @State private var showCover = false
     @State private var showDialog = false
+    @State private var showPopoverDialog = false
     @State private var dialogResult = "none"
     @State private var showAlert = false
     @State private var alertResult = "none"
@@ -75,6 +76,23 @@ struct LogView: View {
                         .accessibilityID("log.openGallery")
                     Button("Open Delete") { showDialog = true }
                         .accessibilityID("log.openDelete")
+                    // The fixture for the TipKit guard's other direction: a real SwiftUI
+                    // confirmationDialog installs the SAME `PopoverDismissRegion` scrim a TipKit tip
+                    // does — measured on-device, identical identifier, label, and full-screen frame —
+                    // so it is what proves the guard leaves an app's own popover alone. The
+                    // duplicate-element problem noted below rules the dialog out as a *tap* fixture,
+                    // not as this one: the guard's detection never taps its buttons.
+                    Button("Open Popover Dialog") { showPopoverDialog = true }
+                        .accessibilityID("log.openPopoverDialog")
+                        .confirmationDialog(
+                            "Remove this note?",
+                            isPresented: $showPopoverDialog,
+                            titleVisibility: .visible
+                        ) {
+                            Button("Copy note") { dialogResult = "copy-note" }
+                            Button("Remove note", role: .destructive) { dialogResult = "remove-note" }
+                            Button("Cancel", role: .cancel) {}
+                        }
                     Text("Dialog: \(dialogResult)")
                         .foregroundStyle(.secondary)
                         .accessibilityID("log.dialog.value")
