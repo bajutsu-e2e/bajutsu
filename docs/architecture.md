@@ -632,7 +632,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   `PICKER_WHEEL` capability, which only the resident-runner XCUITest backend and `FakeDriver`
   declare, so Android and web are rejected at preflight before any device work
 
-#### DSL system-alert handling
+#### DSL system-alert and tip handling
 
 - DSL `handleSystemAlert` (BE-0316): a deterministic, iOS-only step that taps a SpringBoard
   permission-prompt button by a native accessibility query (the runner's second, on-demand
@@ -652,9 +652,6 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   the AI-vision guard demoted to a fallback for what the native path can't name (a backend lacking the
   capability, a non-enumerable blocking surface, or a free-text `instruction` the native path can't
   resolve to one label); on by default, `false` disables it per scenario
-
-#### Evidence, network observation, and reporting
-
 - DSL `iosTipKitHandling` (BE-0389), an opt-in guard for a blocking Apple TipKit tip: TipKit's
   presentation marks the content it covers accessibility-hidden rather than merely occluding it, so a
   blocked tap can fail as `ElementNotFound`, not only `ElementNotTappable`. The XCUITest backend alone
@@ -666,6 +663,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   does not hold a wait to its full timeout either. Defaults off (unlike `systemAlertHandling`) because a
   scenario sometimes asserts on the tip itself; `--ios-tipkit-handling`/`--no-ios-tipkit-handling`
   follows the same flag > scenario > target > default precedence as `systemAlertHandling` (BE-0177)
+
+#### Evidence, network observation, and reporting
+
 - Evidence: instant (`screenshot`/`elements`/`actionLog`/`rawTree` — `actionLog` carries each step's
   concrete actuations: the coordinate sent, the gesture's geometry, the channel that carried it;
   `rawTree` carries the raw dump behind `elements`, opt-in, adb and XCUITest) + interval
