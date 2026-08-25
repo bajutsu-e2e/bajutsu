@@ -26,14 +26,16 @@
 #     screen ready before reading it, so none ever meets the degenerate accessibility tree
 #     `CoordinateTreeDriver`'s transient-empty retry exists for. This one puts the display to sleep, so
 #     the real read really is empty, and checks the retry rides over it instead of raising a false
-#     "element not found". A non-gating signal first, like `codegen` below.
+#     "element not found". Landed as a non-gating signal and promoted onto the gate once measured
+#     stable (BE-0305) — see the `E2E (android)` job below for the measurement.
 #   - pool (adb): the concurrent-device job (BE-0298) — the only one here that boots TWO emulators
 #     and runs `bajutsu run --workers 2` across them, then asserts the device pool's isolation claim
 #     (per-worker serial, per-worker `run_dir/<sid>` evidence dir) from what the run left on disk.
 #     Every other job boots one emulator, so none of them can observe it; the fast suite proves it
 #     only of the pool's own bookkeeping against fabricated udids. Uniquely keyed on
 #     `changes.outputs.pool`, and non-gating: two emulators on this host is the lane's most
-#     resource-sensitive work, so it lands as a signal first like `codegen` and `fault-injection`.
+#     resource-sensitive work, so it lands as a signal first like `codegen` — the path
+#     `fault-injection` has since walked to the end.
 #   - uiautomator (codegen) (adb): the codegen output path (BE-0294) — generate a native UI Automator
 #     (Kotlin) test from a scenario and run it with Gradle's connectedAndroidTest, no bajutsu / adb
 #     driver / AI at test time. The Android twin of ios-e2e.yml's `codegen (xcuitest)`; a non-gating
@@ -65,13 +67,13 @@
 # It runs no LLM — a deterministic `run` over fixed scenarios — so it stays within the prime
 # directives, and it is kept off the fast `make check` gate exactly as the iOS and web e2e lanes are.
 # The lane now carries a REQUIRED status check like iOS's `E2E`: the `E2E (android)` job below
-# `needs` the deterministic host-independent jobs (`smoke`, `conformance`, `network`) and always reports (a
+# `needs` the deterministic host-independent jobs (`smoke`, `conformance`, `network`, and — since
+# BE-0305's promotion — `fault-injection`) and always reports (a
 # path-skip is a pass), so it — not the KVM jobs, which are path-gated — is what `main`'s
-# branch-protection ruleset pins. `golden`, `visual`, `codegen`, and `fault-injection` are deliberately
-# NOT part of its
+# branch-protection ruleset pins. `golden`, `visual`, and `codegen` are deliberately NOT part of its
 # `needs:`: a pixel baseline is host-specific (the x86_64 software renderer varies), the element-tree
-# golden can drift with an upstream dependency, and the codegen (BE-0294) and fault-injection (BE-0305)
-# lanes land as per-PR signals first, so each stays a per-PR signal that never blocks a merge — the same
+# golden can drift with an upstream dependency, and the codegen lane (BE-0294)
+# lands as a per-PR signal first, so each stays a per-PR signal that never blocks a merge — the same
 # deterministic-and-host-independent boundary iOS's `E2E` already draws. Each job boots its
 # own AVD and builds its own APKs; unlike iOS's metered macOS runners (10x billing), Android runs on
 # standard-priced Linux under KVM, so the per-job cost is acceptable for the attribution win a red
@@ -685,10 +687,11 @@ jobs:
   # false "element not found". The resident server APKs are built so the fault lands on the channel the
   # other jobs read over (BE-0245), not only on the `uiautomator dump` fallback.
   #
-  # A signal, not a gate: deliberately outside the `E2E (android)` aggregate's `needs:` below. A lane
-  # that deliberately breaks the device carries more inherent flakiness risk than one driving a healthy
-  # one, so it lands as a per-PR signal and is promoted only once stable — the same signal-then-required
-  # path BE-0282's network lane took.
+  # On the `E2E (android)` aggregate's `needs:` below since BE-0305's promotion. A lane that
+  # deliberately breaks the device carries more inherent flakiness risk than one driving a healthy one,
+  # so it landed as a per-PR signal and was promoted once measured stable — the same
+  # signal-then-required path BE-0282's network lane took; see the `E2E (android)` job's own comment
+  # for the measurement.
   fault-injection:
     name: fault-injection (adb)
     needs: *warm-cache-consumer-needs
@@ -1154,12 +1157,20 @@ jobs:
   # path) — a skipped dependency is a pass; only a real failure or cancellation fails the gate.
   # `network` joins `smoke`/`conformance` in `needs:`: its pass/fail is a deterministic,
   # host-independent fact (was the exchange observed?), so a regression there must fail the required
-  # check like the other two — it is path-gated the same way, so a skip is still a pass. `golden`,
-  # `visual`, `codegen`, `fault-injection`, and `pool` remain deliberately excluded (see the header):
-  # the element-tree golden can drift with an upstream dependency, a pixel baseline is host-specific,
-  # and the codegen (BE-0294), fault-injection (BE-0305), and two-emulator pool (BE-0298) lanes land
-  # as per-PR signals first (the signal-then-required precedent of BE-0282) — each is promoted into
-  # `needs:` only once stable. Make `E2E (android)` the required check, not the path-gated KVM jobs.
+  # check like the other two — it is path-gated the same way, so a skip is still a pass.
+  # `fault-injection` joins them too, completing BE-0305's signal-then-required path: over the same
+  # span the iOS lane's promotion is measured against (since 2026-08-13, see that lane's own
+  # aggregator) it ran 73 times for one failure, and that failure was the emulator never coming up
+  # (`Unable to connect to adb daemon on port: 5037`) rather than anything the lane asserts — against
+  # `conformance`'s four failures in 67 runs, on the gate throughout. A lane that breaks the device on
+  # purpose earned its signal-first caution, and the measurement has since retired it; a regression in
+  # the retry's detection heuristic is exactly what BE-0305 exists to stop shipping, so it must fail
+  # the gate rather than surface as a signal a merge can ignore. `golden`, `visual`,
+  # `codegen`, and `pool` remain deliberately excluded (see the header): the element-tree golden can
+  # drift with an upstream dependency, a pixel baseline is host-specific, and the codegen (BE-0294)
+  # and two-emulator pool (BE-0298) lanes land as per-PR signals first (the signal-then-required
+  # precedent of BE-0282) — each is promoted into `needs:` only once stable. Make `E2E (android)` the
+  # required check, not the path-gated KVM jobs.
   #
   # `changes`'s own result is checked too, not just the KVM jobs': `changes` has no `if:`, so it
   # always runs and never reports `skipped` — but if it *fails* (e.g. a misconfigured `E2E_LANE`,
@@ -1168,7 +1179,7 @@ jobs:
   # them would read that as a pass — the required gate reporting green having run nothing.
   e2e:
     name: E2E (android)
-    needs: [changes, smoke, conformance, network]
+    needs: [changes, smoke, conformance, network, fault-injection]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -1179,9 +1190,10 @@ jobs:
           SMOKE: ${{ needs.smoke.result }}
           CONFORMANCE: ${{ needs.conformance.result }}
           NETWORK: ${{ needs.network.result }}
+          FAULT_INJECTION: ${{ needs.fault-injection.result }}
         run: |
-          echo "changes=$CHANGES smoke=$SMOKE conformance=$CONFORMANCE network=$NETWORK"
-          for result in "$CHANGES" "$SMOKE" "$CONFORMANCE" "$NETWORK"; do
+          echo "changes=$CHANGES smoke=$SMOKE conformance=$CONFORMANCE network=$NETWORK fault_injection=$FAULT_INJECTION"
+          for result in "$CHANGES" "$SMOKE" "$CONFORMANCE" "$NETWORK" "$FAULT_INJECTION"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
               echo "E2E (android) failed"
               exit 1

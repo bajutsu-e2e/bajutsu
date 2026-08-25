@@ -1,4 +1,0 @@
-interface:
-  display_name: "Claude review (local)"
-  short_description: "Judge a diff against this repo's CI review contract"
-  default_prompt: "Use $claude-review to check this diff against the review contract before I push."

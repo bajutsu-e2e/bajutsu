@@ -79,13 +79,28 @@ make preflight   # git fetch origin && git rebase origin/main && make check の�
 こまめに rebase すれば、他セッションのマージ済み作業に早く出会えます。衝突が 1〜2 行のうちに解消でき、
 最後にまとめて絡まったマージを解く必要がなくなります。
 
-`make hooks` は、それでも残る衝突の痛みを和らげる 2 つのローカル git 設定も自己修復します（BE-0043）。手で
+`make hooks` は、それでも残る衝突の痛みを和らげる 3 つのローカル git 設定も自己修復します（BE-0043）。手で
 設定する必要はありません。
 
 - **`uv.lock` のマージドライバ**（[`scripts/merge-uv-lock.sh`](../../scripts/merge-uv-lock.sh)、
   [`.gitattributes`](../../.gitattributes) でマッピング）。競合時に resolver の出力を行マージするのではなく
   **`pyproject.toml` から `uv.lock` を再生成**します。`pyproject.toml` 自体が競合している場合は `uv lock` が
   失敗し、git は `uv.lock` を競合のまま残します。先に `pyproject.toml` を解決してから再マージしてください。
+- **APM の生成物のマージドライバ**（[`scripts/merge-apm-generated.sh`](../../scripts/merge-apm-generated.sh)、
+  同じく [`.gitattributes`](../../.gitattributes) でマッピング）。同じ理由から、競合時に
+  `.apm/skills/` から**再生成**します（BE-0390）。対象は `apm install` の生成物のうちコミットする
+  二つ、すなわち `apm.lock.yaml` と配置先の `.claude/skills/**` です。どちらも手では解決できません。
+  ロックファイルはファイルごとの SHA-256 を並べたものであり、いずれも正しい値がどちらの側にもない
+  生成バイト列だからです。正しい値は、**マージ後の**ソースから再インストールが書き出す内容です。
+  分量の大半は配置先が占めます（`SKILL.md` が 14 個と `references/` が 5 個。ロックファイルは
+  数百行です）。しかも手で解決したときの危険は配置先の方が大きく、うまくいったように見えて、
+  ソースと一致しない配置先が残ります。これは後から `make lint-skills` のずれとして現れ、
+  マージと結び付けて考えるのは困難です。したがって、**手で解決するのは `.apm/skills/` だけ**にして、
+  残りはドライバに任せてください。ドライバが書き出す内容は、`uv.lock` のドライバと同じく暫定的です。
+  git はマージ結果を書き出す前にドライバを走らせるので、内部の `apm install` はマージ前の作業ツリーを
+  読みます。この隙間は、`uv lock --check` が `uv.lock` のドライバを支えるのと同じく
+  `make lint-skills` が塞ぎます。スキルの競合を解決したら `make skills` を実行し、書き換わった
+  ロックファイルと配置先をコミットしてください。
 - **`rerere`**（記録した解決の再利用）。一度解決した衝突は、同じ衝突が次に現れたときに自動で再適用されます。
 
 `core.hooksPath` と同様、これらは clone/pull が引き継がないクローンごとのローカル git 設定なので、
@@ -129,6 +144,62 @@ git worktree remove ../bajutsu-<topic>
 コミットに混ぜず、worktree を独立に保ってください。
 
 このルールの短縮版は [`CLAUDE.md`](../../CLAUDE.md) にあります。
+
+## エージェントスキル: 単一のソースと単一の配備先（BE-0390）
+
+スキル 1 つは、ソースのディレクトリ 1 つ `.apm/skills/<name>/` です。ここに `SKILL.md` を置き、
+本体に載せるべきでない深さがあれば `references/` ディレクトリを併せて置きます。`SKILL.md` は手順と、
+その手順が使う Claude Code の道具の両方を持ちます。ホストごとのアダプターを別に保守する必要はなく、
+手で保守する手順の写しも残りません。後述のとおり、配備先は `make skills` が書き出します。
+
+ツリーを解決するのは [APM](https://microsoft.github.io/apm/) です。ルートの `apm.yml` がパッケージ名を
+与え、`targets: [claude]` を固定します。これにより APM は `.claude/skills/` にだけ配備し、他のハーネス
+向けのツリーを書き出しません。`apm.lock.yaml` には、配備ファイルごとの SHA-256 が記録されます。
+
+```bash
+make skills        # uv run apm install --no-policy — .apm/skills/ を .claude/skills/ へ配備する
+make lint-skills   # uv run apm audit --ci --no-policy — ずれがあれば落とす（`make check` に含む）
+```
+
+**ソースと配備先の両方をコミットします。** クローンした直後から、APM を入れる前に動くスキルセットが
+手に入ります。代償は、各スキルのバイト列を 2 度追跡することです。`SKILL.md` を APM のサイズ予算
+（およそ 500 行、5,000 トークン）に収めることで、この代償を抑えます。
+
+したがって、編集するのはソースであり、`make skills` を実行して書き換わったものをコミットします。
+内容が変わらない `make skills` は、ロックファイルに手を付けません。APM 0.28.0 は既存の
+`apm.lock.yaml` の `generated_at` をそのまま残し、ロックファイルを新規に書き出すときだけ新しい値を
+刻みます。タイムスタンプだけの差分は、更新ではなく再生成が起きた印です。検査はこの行を見ないので、
+その差分は破棄してかまいません。
+
+`make lint-skills` は、どちらの向きのずれも捕まえます。配備先を手で書き換えた場合と、ソースを編集して
+`make skills` を忘れた場合の両方です。`lint-actions` や `lint-secrets` と違って、この段には**スキップの
+分岐がありません**。`apm-cli` は [`pyproject.toml`](../../pyproject.toml) で版を固定した `dev` の依存で、
+`uv sync --group dev` がどのクローンにも入れるので、走らないことで通ってしまう余地がないからです。
+固定は下限ではなく厳密な指定で、`uv.lock` にも記録されます。したがって `apm.lock.yaml` を書き出す版は、
+手元でも CI でも同じです（このページの他の箇所にある `0.28.0` は、挙動を確認した版の記録なので、
+更新の対象ではありません）。
+
+この検査は prime directive 1 に触れません。`apm audit` は記録済みのハッシュと作業ツリーを比較するだけで、
+ゲートに言語モデルは届きません。`--no-policy` は検査をオフラインにも保ちます。これがないと、組織ポリシーの
+探索が `api.github.com` へ出ていきます。このリポジトリが実行する `apm install` にも、すべて同じフラグを
+渡します。理由は二つあります。配備と、それを再現する検査とを一つの設定の下に置けることです。そして
+「作業ツリーから解決でき、ネットワークを必要としない」という性質が、配備の側にも成り立つことです。
+フラグがなくても、ネットワークのない `apm install` は成功します。0.28.0 はポリシーへ到達できなかった旨を
+警告して先へ進むからです。それでも実行のたびにネットワークへ出ていきますし、警告は失敗のように読めます。
+
+**スキルの改名や引退に、追加の手順は要りません。** `apm install` は、自分の持ち物でなくなった配備先を
+削除します。ソースのディレクトリを `git mv` して `make skills` を実行すれば、古い
+`.claude/skills/<name>/` はそれで消えます。`make skills` を忘れても、ゲートが捕まえます。改名後の
+ソースには配備先がなく、`apm audit` がそれをずれとして報告するからです。
+
+**深さの置き場所。** `SKILL.md` は、`references/` のファイルを**それが必要になる手順の位置で**指します。
+セッションは使う分だけを読み込みます。例外は規範のセットです。`document-writing`、
+`english-document-writing`、`japanese-document-writing` の 3 つは、手順を追う形ではなく全体を適用する
+決まりなので、分割したときは `SKILL.md` の冒頭で「執筆前に `references/` を全部読む」と指示します。
+どの手順がどの規範を必要とするかという対応が規範の側になく、必要に応じて読む形にすると、一部だけを
+適用したまま規範に従ったつもりになれてしまうからです。
+
+このルールの短い版は [`CLAUDE.md`](../../CLAUDE.md#agent-skill-layout) にあります。
 
 ## 自分のレーンに留まる
 
@@ -221,9 +292,10 @@ PR ごとにシグナルとして走らせますが、各集約ジョブの `nee
 直すだけです。表のモデル id は Claude Code のエイリアス（`opus` / `sonnet` / `haiku`）で、背後のモデルの
 バージョンが上がっても安定します。
 
-### Claude Codeアダプターのfrontmatterに既定を埋め込む
+### スキルのfrontmatterに既定を埋め込む
 
-各Claude Codeアダプターは、対応するスキルの段階を `SKILL.md` frontmatterの `model:` として宣言します。
+各スキルは、自分の段階を `SKILL.md` frontmatterの `model:` として宣言します。宣言はソース側の
+`.apm/skills/<name>/SKILL.md` にあり、`apm install` が下記の配備先へそのまま複製します（BE-0390）。
 Claude Codeのハーネスはスキル実行時にこれを読み、正しいモデルを選びます。既定は上書きできます。
 
 - [`implement-be`](../../.claude/skills/implement-be/SKILL.md)：`opus`（重）
@@ -235,6 +307,11 @@ Claude Codeのハーネスはスキル実行時にこれを読み、正しいモ
 - [`document-writing`](../../.claude/skills/document-writing/SKILL.md)：`sonnet`（中）
 - [`english-document-writing`](../../.claude/skills/english-document-writing/SKILL.md)：`sonnet`（中）
 - [`japanese-document-writing`](../../.claude/skills/japanese-document-writing/SKILL.md)：`sonnet`（中）
+- [`record-issue`](../../.claude/skills/record-issue/SKILL.md)：`sonnet`（中）。軽微な気づきをGitHub Issueと
+  して起票するスキルです
+  （[BE-0384](../../roadmaps/BE-0384-record-issue-skill/BE-0384-record-issue-skill-ja.md)）。気づきの分類、
+  重複検索で挙がった候補の見極め、Issueテンプレートに沿った本文の下書きは、いずれも文章の判断なので
+  軽段階では力不足です。一方でプロダクトコードは 1 行も書かないので、重段階は無駄になります。
 - [`roadmap-filter`](../../.claude/skills/roadmap-filter/SKILL.md)：`haiku`（軽）。`Status` で
   ロードマップを見渡す読み取り専用のスキルです（BE-0162）。`make roadmap-status STATUS="…"` を包み、
   ある状態の項目だけ（たとえば未着手の `Proposal` すべて）を、次に開くファイルパス付きで一覧します。
@@ -243,8 +320,8 @@ Claude Codeのハーネスはスキル実行時にこれを読み、正しいモ
 
 軽い雑務の多くはスキルではないので、その段階はふだん下の対話操作かサブエージェントへの委譲で使います。
 `roadmap-filter` は例外で、その仕事そのものが軽い決定論的な検索だからです。`tests/test_skill_models.py` が
-各Claude Codeアダプターの `model:` を既知の妥当なidかどうか確認するので、打ち間違いは黙って握りつぶされず、
-ローカルのゲートが落とします。
+スキルそれぞれの `model:` を、配備先だけでなく `.apm/skills/` のソースについても、既知の妥当なidかどうか
+確認するので、打ち間違いは黙って握りつぶされず、ローカルのゲートが落とします。
 
 ### フェーズとサブエージェントへの委譲
 
@@ -276,7 +353,7 @@ push の前に CI のレビュー契約をなぞる自己レビューは、1 つ
 指示を書きます。review/plan パスはファイルに一切手を入れません。指示を当てるのは別の implement パスで、
 修正が `roadmaps/` と `docs/` の中で収まるなら **`sonnet`**、プロダクトコードに触れるなら **`opus`** を
 使います。上の対応表がほかの場面でも使っている、タスクの重さで決める規則と同じです。手順そのものの典拠は
-[`ideation`](../../.agent-workflows/ideation/workflow.md) の手順 5 で、`pr-followup`、`propose-and-build`、
+[`ideation`](../../.apm/skills/ideation/SKILL.md) の手順 5 で、`pr-followup`、`propose-and-build`、
 `implement-be` は述べ直さずに同じ手順を走らせます。
 
 効くのは役割の分離であり、モデルの使い分けは分離を形にしているだけです。自分で挙げた指摘を自分で直す
@@ -302,13 +379,13 @@ pull request をレビューする仕事で、変更全体をその価値で量�
 アイデアを出荷可能なコードにする作業では、3 つのスキルを使い分けます。起草するか、出荷するか、
 その両方かです。
 
-- [`ideation`](../../.agent-workflows/ideation/workflow.md)：**起草のみ**。アイデアを BE 提案に整える相談相手で、
+- [`ideation`](../../.apm/skills/ideation/SKILL.md)：**起草のみ**。アイデアを BE 提案に整える相談相手で、
   `roadmaps/` のファイルで止まります（プロダクトコードには触れません）。提案は `BE-XXXX` のプレースホルダを
   持ち、実際の id は PR がマージされたあとに CI が採番します。
-- [`implement-be`](../../.agent-workflows/implement-be/workflow.md)：**採番済み項目の出荷**。採番済みの `BE-NNNN`
+- [`implement-be`](../../.apm/skills/implement-be/SKILL.md)：**採番済み項目の出荷**。採番済みの `BE-NNNN`
   を受け取り、その提案を仕様として実装とテストを書き、項目を `Status: Implemented` に切り替え、
   `make check` が緑であることを示します。
-- [`propose-and-build`](../../.agent-workflows/propose-and-build/workflow.md)：**両方を、1 つの PR で**。設計が固まった
+- [`propose-and-build`](../../.apm/skills/propose-and-build/SKILL.md)：**両方を、1 つの PR で**。設計が固まった
   小さな項目を、作者がいま実装できると確信しているときに、前の 2 つを組み合わせます。提案の起草と実装を
   1 つのブランチで進め、ロードマップ項目とコードとテストをまとめて運ぶ 1 つの BE 作成 PR として出します。
   項目は `BE-XXXX` のプレースホルダを保ったまま PR のなかで `Status: Implemented` に到達します。`Status` と
@@ -327,7 +404,7 @@ pull request をレビューする仕事で、変更全体をその価値で量�
 レビューが提案を変えれば手戻りを負うので、設計が本当に不確かなときは直列の経路に戻してください。
 
 **ロードマップ項目にならない作業**には、3 つのどれも当てはまりません。兄弟となる経路が
-[`fix-issue`](../../.agent-workflows/fix-issue/workflow.md) です
+[`fix-issue`](../../.apm/skills/fix-issue/SKILL.md) です
 （[BE-0380](../../roadmaps/BE-0380-fix-issue-skill/BE-0380-fix-issue-skill-ja.md)）。素のGitHub Issue、
 つまり小さな不具合やちょっとした使い勝手の悪さ、範囲の定まった改善を、`implement-be` 自身の実装、
 レビュー、ゲート、フォローアップの手順に載せて出荷します。違うのは 2 点だけです。担当はIssue自身の
@@ -335,6 +412,20 @@ Assignee欄で確保し、Issueを閉じるのは `Status` の切り替えでは
 ロードマップ項目に
 するかどうかの境界も `fix-issue` 自身が判断し、設計の判断が必要だとわかった修正は、出荷せずに
 `ideation` か `propose-and-build` へ委ねます。
+
+**まだIssueにもなっていない気づき**には、その一歩手前の入口として
+[`record-issue`](../../.apm/skills/record-issue/SKILL.md) があります
+（[BE-0384](../../roadmaps/BE-0384-record-issue-skill/BE-0384-record-issue-skill-ja.md)）。このスキルが
+やるのは起票だけです。軽微な不具合や範囲の定まった小さな改善を分類し、既存のIssueとロードマップに重複が
+ないかを検索します。そのうえでリポジトリ自身のIssueテンプレートに沿って本文を下書きし、起票者が明示的に
+承認してからIssueを作ります。修正は出荷せず、ブランチも切りません。`record-issue` が起票したIssueは、のちに
+`task-select` が候補として並べ、`fix-issue` が出荷します。つまり 3 つのスキルが、作業の合間の気づきを
+マージされた修正まで運びます。取りこぼすことも、目の前の変更を膨らませることもありません。`record-issue` はどのスキルからでも
+サブステップとして呼べます。現在配線されている呼び出し元は
+[`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) で、承認の手順はどの呼び出し元も省けません。
+`implement-be` の無人ループのなかでこの呼び出しが起きたときは、`record-issue` は何も起票せず、できあがった
+下書きをそのイテレーションのサマリーに返します。下書きを置く欄はエスカレーションの欄と別なのでループは
+止まらず、人間はあとのターンで下書きを承認します。
 
 ## プルリクエスト: タイトルと本文
 
@@ -761,7 +852,7 @@ BE-0159 以降、すべての項目はパスが固定された一つの `roadmap
 項目を前向きな提案として読ませ続けたいという好みを表すものではありません。コードのない状態で書き起こした項目は
 `提案` です。その**コードを出荷する** PR は、同じ PR のなかで `状態` を `実装済み`（一部だけを出荷するなら
 `実装中`）に変え、対応する `進捗` のチェックを付け、その PR を `実装 PR` に記録します。コードがすでに出荷された
-項目に `提案` を残すことはありません。これはまさに [`implement-be`](../../.agent-workflows/implement-be/workflow.md)
+項目に `提案` を残すことはありません。これはまさに [`implement-be`](../../.apm/skills/implement-be/SKILL.md)
 スキルが行う昇格であり、人にもエージェントにも等しく適用されます。（唯一の例外は新規項目を*起草*する場合です。
 コードを出荷しない `ideation` 形式の提案は、まだ何も実装していないので `提案` のままにします。）
 
@@ -783,15 +874,15 @@ lint-roadmap ARGS="--fix"` は壊れた項目リンクを対象の現在のパ�
 今後のすべての更新（新規ファイルに限らない）に適用されます。エージェントは厳守してください。作業を
 報告したり要約したりするときも同じく適用されます。
 
-- **[`document-writing`](../../.agent-workflows/document-writing/workflow.md) スキルに従う。** ここのすべての
+- **[`document-writing`](../../.apm/skills/document-writing/SKILL.md) スキルに従う。** ここのすべての
   ドキュメントとすべての BE ロードマップ項目に対する、両言語の正式な散文規範です。両言語が共有する
   言語に依存しない執筆技法（上から下へ推敲する、主眼を冒頭で述べる、各文の文末を最も重要な要素のために
   空ける、主語と述語を近づける、能動態を選ぶ、冗語を削る、段落ごとに1つの話題だけを置いて論証を一方向に
   進める（パラグラフライティング））を定めます。書いたあとではなく、書く前・
   推敲する前に呼び出します。このスキルは、英語と日本語それぞれの言語レイヤーの上位に立つ傘です。
-  英語の散文には [`english-document-writing`](../../.agent-workflows/english-document-writing/workflow.md) を併せて適用します
+  英語の散文には [`english-document-writing`](../../.apm/skills/english-document-writing/SKILL.md) を併せて適用します
   （シリアルコンマ、*that* / *which*、ダッシュ、数の表記といった英語固有の作法）。日本語の散文には
-  下記の [`japanese-document-writing`](../../.agent-workflows/japanese-document-writing/workflow.md) を適用します。以下の
+  下記の [`japanese-document-writing`](../../.apm/skills/japanese-document-writing/SKILL.md) を適用します。以下の
   ルールは、この節とこれらのスキルが共有する具体的な期待です。
 - **自然な文章で書く。** 日本語ドキュメントは自然な日本語、英語ドキュメントは自然な英語で書きます。
   ミラーは逐語的な置き換えではなく、その言語で同じ内容を自然に伝えるものにします。
@@ -800,12 +891,12 @@ lint-roadmap ARGS="--fix"` は壊れた項目リンクを対象の現在のパ�
 - **不自然な翻訳禁止。** 用語は一般的な訳語を使います。訳すと不自然になる場合は、訳さず元の用語
   （多くは英単語。例: `selector`、`actuator`、`backend`、`assertion`）をそのまま使います。
 - **省略禁止、単体で完結。**
-  [`document-writing`](../../.agent-workflows/document-writing/workflow.md#self-contained-prose-both-languages)
+  [`document-writing`](../../.apm/skills/document-writing/SKILL.md#self-contained-prose-both-languages)
   スキルの自己完結の規範に従います。読者がリポジトリの他のページを何も読んでいなくても文書を最初から
   最後まで追えるようにし、略語は初出で展開し、用語は初出の箇所で定義します。これは `docs/` に限らず、
   ロードマップ項目を含め、用語が現れるあらゆる箇所に適用されます。
 - **指示語で読者を後戻りさせない。**
-  [`document-writing`](../../.agent-workflows/document-writing/workflow.md#minimize-anaphora-both-languages)
+  [`document-writing`](../../.apm/skills/document-writing/SKILL.md#minimize-anaphora-both-languages)
   スキルの指示語抑制の規範に従います。先行詞が1文より前に離れる、段落・箇条書き・見出しをまたぐ、あるいは
   近くに候補となる先行詞が複数ありうるときは、指示語ではなく名詞をそのまま繰り返します。
 - **横断的な規範は再記述せず、リンクする（BE-0284）。** 複数の文書にまたがる規則（ゲートのステップ一覧、
@@ -826,9 +917,9 @@ lint-roadmap ARGS="--fix"` は壊れた項目リンクを対象の現在のパ�
   指しているかどうかの判断には人間の判断が必要で、prime directive 1 がその判断を `run` / CI の
   経路から遠ざけているためです。手本は [`drivers.md`](drivers.md) です。
 - **日本語の文章は `japanese-document-writing` スキルに従う。** 日本語版を新規に書くときも、英語版を
-  `docs/ja/`（やロードマップの `*-ja.md`）へ翻訳するときも、[`japanese-document-writing`](../../.agent-workflows/japanese-document-writing/workflow.md)
+  `docs/ja/`（やロードマップの `*-ja.md`）へ翻訳するときも、[`japanese-document-writing`](../../.apm/skills/japanese-document-writing/SKILL.md)
   を適用します。これがこのリポジトリにおける日本語の文章の正式なスタイルであり、翻訳は英語の逐語訳ではなく、
-  この規範に沿った自然な日本語にします。これは [`document-writing`](../../.agent-workflows/document-writing/workflow.md)
+  この規範に沿った自然な日本語にします。これは [`document-writing`](../../.apm/skills/document-writing/SKILL.md)
   の下位に位置する日本語レイヤーです（上記）。日本語の散文では両方を適用します。
 - **日本語ドキュメントは敬体（ですます調）で書く。** `docs/ja/` 配下のすべての日本語ファイルと、
   ロードマップの `*-ja.md` は敬体で書きます。常体（だ・である調）は使いません。文書全体で一貫させます。

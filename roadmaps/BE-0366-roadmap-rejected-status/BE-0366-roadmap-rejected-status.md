@@ -138,7 +138,7 @@ what happened.
   the comment above `OPEN_STATUSES` calls the non-open statuses "the other two"; both are updated to
   name `Deferred` and `Rejected` as the three non-open values, so the comments keep matching the code.
 - Six more surfaces name the literal `Proposal (deferred)` string and would go stale under the
-  rename: [`.agent-workflows/implement-be/workflow.md`](../../.agent-workflows/implement-be/workflow.md)
+  rename: [`.apm/skills/implement-be/SKILL.md`](../../.apm/skills/implement-be/SKILL.md)
   keys an agent's un-defer confirmation on it, in the item's `Status` branch and again in the
   tracking-issue fallback note — that `Status` branch also gains a matching stop-and-confirm arm for
   `Rejected`, so an agent asked to implement a rejected item stops and confirms a human has explicitly
@@ -147,7 +147,7 @@ what happened.
   "(`Proposal (deferred)` is a deliberate human decision — never un-defer it here)" — renames to
   `Deferred` and gains `Rejected`, so the job never reopens either value; *Alternatives considered*
   below rests on exactly that guard;
-  [`.agent-workflows/roadmap-filter/workflow.md`](../../.agent-workflows/roadmap-filter/workflow.md)
+  [`.apm/skills/roadmap-filter/SKILL.md`](../../.apm/skills/roadmap-filter/SKILL.md)
   lists it as a valid `STATUS` filter value;
   [`docs/roadmap-workflow.md`](../../docs/roadmap-workflow.md) and its
   [`docs/ja/roadmap-workflow.md`](../../docs/ja/roadmap-workflow.md) mirror name it in the

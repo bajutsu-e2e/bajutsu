@@ -1,4 +1,0 @@
-interface:
-  display_name: "English document writing"
-  short_description: "Apply Bajutsu English prose and typography rules"
-  default_prompt: "Use $english-document-writing to revise this English prose."

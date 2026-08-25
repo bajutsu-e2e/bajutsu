@@ -51,6 +51,12 @@ fi
 log "uv sync --group dev"
 uv sync --group dev >&2
 
+# Deploy the agent skills from their single source (BE-0390). The `uv sync` above already installed
+# apm-cli, a `dev` dependency, so there is nothing to install here. The committed .claude/skills/
+# tree already matches its source, so this is normally a no-op. Best-effort, like every step here.
+log "apm install (deploy skills)"
+uv run --no-sync apm install --no-policy >&2 || log "apm install (skill deploy) failed (non-fatal)"
+
 # Point git at the tracked hooks so the pre-push gate runs for this session.
 # Safe to re-run; just rewrites a single config value.
 if [ -d .githooks ]; then

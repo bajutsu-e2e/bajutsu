@@ -124,8 +124,8 @@ GitHub の Spec Kit は、自身の仕様書について、まさにこの欠落
 - [BE-0278][] ── 本項目が拡張する、統一された文章規範を作った項目です。
 - [BE-0347][] ── 本項目の「動機」が、未検証の主張の実例として使う項目です。
 
-[document-writing]: ../../.agent-workflows/document-writing/workflow.md
-[ideation]: ../../.agent-workflows/ideation/workflow.md
+[document-writing]: ../../.apm/skills/document-writing/SKILL.md
+[ideation]: ../../.apm/skills/ideation/SKILL.md
 [spec-kit]: https://github.com/github/spec-kit
 [BE-0278]: ../BE-0278-tech-writing-skill/BE-0278-tech-writing-skill-ja.md
 [BE-0347]: ../BE-0347-bounded-ci-review-cycle/BE-0347-bounded-ci-review-cycle-ja.md

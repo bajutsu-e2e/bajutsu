@@ -106,7 +106,7 @@ implementation detail — file names, functions, mechanisms — which is exactly
 `spec.md` must exclude by design; splitting Motivation's "what and why" from Detailed design's "how"
 into separate documents would fight the format every existing BE item already uses. A
 `constitution.md`-style gate already exists in a different shape: `ideation`'s own prime directives
-[step](../../.agent-workflows/ideation/workflow.md#prime-directives-these-bound-every-idea), backed
+[step](../../.apm/skills/ideation/SKILL.md#prime-directives-these-bound-every-idea), backed
 by `CLAUDE.md` and `DESIGN.md`, and adding a second, Spec-Kit-shaped gate on top would duplicate it
 rather than close a gap.
 
@@ -130,9 +130,9 @@ rather than close a gap.
 - [BE-0347][] — the item whose own Motivation this item's *Motivation* section uses as a worked
   example of an unverified claim.
 
-[document-writing]: ../../.agent-workflows/document-writing/workflow.md
-[ideation]: ../../.agent-workflows/ideation/workflow.md
-[propose-and-build]: ../../.agent-workflows/propose-and-build/workflow.md
+[document-writing]: ../../.apm/skills/document-writing/SKILL.md
+[ideation]: ../../.apm/skills/ideation/SKILL.md
+[propose-and-build]: ../../.apm/skills/propose-and-build/SKILL.md
 [claude-review-prompt]: ../../.github/claude-review-prompt.md
 [spec-kit]: https://github.com/github/spec-kit
 [BE-0278]: ../BE-0278-tech-writing-skill/BE-0278-tech-writing-skill.md

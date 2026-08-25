@@ -1,4 +1,0 @@
-interface:
-  display_name: "Japanese document writing"
-  short_description: "Apply Bajutsu Japanese technical-writing rules"
-  default_prompt: "Use $japanese-document-writing to revise this Japanese prose."

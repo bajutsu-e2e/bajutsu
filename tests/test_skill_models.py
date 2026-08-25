@@ -6,8 +6,12 @@ itself stays advisory — a session can always upshift, and the gate never dicta
 run. The one machine-checkable surface worth pinning is that the value is a *valid, known* id, so a
 typo fails here locally instead of silently falling back to some default at run time.
 
-This walks the real ``.claude/skills`` tree: every ``model:`` present must be recognized, and the
-skills that BE-0103 and BE-0380 wired must still declare one (so removing the field is a visible
+This walks both trees: ``.claude/skills`` — the deployment Claude Code reads — and
+``.apm/skills``, its single source (BE-0390). ``apm install`` deploys frontmatter verbatim, so the
+two normally agree; walking the source too pins the authoritative copy directly and names the
+offending tree when one side regresses on its own — a source edit whose ``make skills`` was
+forgotten, or a hand-edited deployment. Every ``model:`` present must be recognized, and the skills
+that BE-0103 and BE-0380 wired must still declare one (so removing the field is a visible
 regression, not a silent drift back to always-max).
 """
 
@@ -17,7 +21,9 @@ from pathlib import Path
 
 import yaml
 
-SKILLS = Path(__file__).resolve().parent.parent / ".claude" / "skills"
+_REPO = Path(__file__).resolve().parent.parent
+SKILLS = _REPO / ".claude" / "skills"
+SOURCES = _REPO / ".apm" / "skills"
 
 # The syntactic allow-list of recognized ``model:`` ids — not the tier → model assignment. Which
 # tier a task uses (heavy → opus, and so on) is guidance documented in docs/ai-development.md, and a
@@ -65,13 +71,14 @@ def _declared_model(fm: dict[str, object]) -> object:
 
 
 def _skill_files() -> list[Path]:
-    return sorted(SKILLS.glob("*/SKILL.md"))
+    """Every ``SKILL.md`` in the repository — deployment first, then source."""
+    return sorted(SKILLS.glob("*/SKILL.md")) + sorted(SOURCES.glob("*/SKILL.md"))
 
 
 def test_every_declared_model_is_known() -> None:
     """A declared ``model:`` the harness won't recognize (typo, or an empty value) fails loudly."""
     bad = {
-        md.parent.name: model
+        str(md.relative_to(_REPO)): model
         for md in _skill_files()
         if (model := _declared_model(_frontmatter(md))) is not _ABSENT
         and not _is_known_model(str(model))
@@ -87,12 +94,19 @@ def test_tiered_skills_declare_a_model() -> None:
     The set is only the subset BE-0103 and BE-0380 chose to pin here — not every skill that declares
     a ``model:``, nor every skill docs/ai-development.md lists a tier for. Extend it from a later
     item that wants its own skill's tier guarded the same way.
+
+    Each tree is checked on its own rather than over the union of both: a skill's source and its
+    deployment share a directory name, so one flat set would let either side satisfy the other and
+    hide a one-sided loss — dropping ``model:`` from a source while its deployment still carries it.
     """
     tiered = {"fix-issue", "implement-be", "ideation", "japanese-document-writing"}
-    declared = {
-        md.parent.name
-        for md in _skill_files()
-        if (model := _declared_model(_frontmatter(md))) is not _ABSENT and model
-    }
-    missing = tiered - declared
-    assert not missing, f"tiered skills must declare a model: {sorted(missing)}"
+    for tree in (SKILLS, SOURCES):
+        declared = {
+            md.parent.name
+            for md in sorted(tree.glob("*/SKILL.md"))
+            if (model := _declared_model(_frontmatter(md))) is not _ABSENT and model
+        }
+        missing = tiered - declared
+        assert not missing, (
+            f"tiered skills must declare a model in {tree.relative_to(_REPO)}: {sorted(missing)}"
+        )

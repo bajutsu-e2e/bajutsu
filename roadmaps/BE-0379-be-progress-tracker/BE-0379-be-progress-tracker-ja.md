@@ -16,9 +16,9 @@
 ## はじめに
 
 **`be-progress-tracker`** という小さな専用スキルを追加します。
-[`ideation`](../../.agent-workflows/ideation/workflow.md)、
-[`implement-be`](../../.agent-workflows/implement-be/workflow.md)、
-[`propose-and-build`](../../.agent-workflows/propose-and-build/workflow.md)
+[`ideation`](../../.apm/skills/ideation/SKILL.md)、
+[`implement-be`](../../.apm/skills/implement-be/SKILL.md)、
+[`propose-and-build`](../../.apm/skills/propose-and-build/SKILL.md)
 は、それぞれ自分のステップの区切りでこのスキルを呼び出し、BE項目1件につき1枚の進捗ページ
 （概要、実装の進捗、作業ログ）を最新の状態に保ちます。長いセッションを見守る人が、
 会話全体を読まなくても項目の現状を把握できるようにするためです。この機能を3つの呼び出し元
@@ -54,7 +54,7 @@
 作業は、互いに独立した5つの単位に分解できます。
 
 1. **共有ワークフロー**
-   （[`.agent-workflows/be-progress-tracker/workflow.md`](../../.agent-workflows/be-progress-tracker/workflow.md)）は、
+   （[`.apm/skills/be-progress-tracker/SKILL.md`](../../.apm/skills/be-progress-tracker/SKILL.md)）は、
    ドキュメントの3つの固定セクション（概要、進捗、作業ログ）を定めます。呼び出し元が渡すべき
    チェックポイントの内容も、BEのID、呼び出し元ワークフローの名前とステップ、作業ログ1文として
    ここで定めます。担う範囲も明確にし、唯一の正とはならないこと、処理が失敗しても呼び出し元を
@@ -64,10 +64,12 @@
    frontmatterに`model: haiku`を持ち、進捗ページをMarkdownのArtifactとして公開します。
    BE項目1件につきArtifact1枚とし、以後のチェックポイントでは同じURLに再デプロイします。
 3. **Codexアダプター**
-   （[`.agent-hosts/codex/skills/be-progress-tracker/SKILL.md`](../../.agent-hosts/codex/skills/be-progress-tracker/SKILL.md)）には、
+   （`.agent-hosts/codex/skills/be-progress-tracker/SKILL.md`）には、
    ホスティングされたArtifactに相当するものがありません。そこで同じ3セクション構成の
    ページを、Gitの管理対象外にした`tmp/be-status/`配下のローカルファイルへ書き出し、
-   最初の1回だけそのパスをユーザーに伝えます。
+   最初の1回だけそのパスをユーザーに伝えます。なお
+   [BE-0390](../BE-0390-apm-skill-management/BE-0390-apm-skill-management-ja.md)が、のちにCodex用の
+   ツリーを撤去し、Claude用アダプターをスキルごとの単一ソースへ畳み込みました。
 4. **呼び出し元3つの共有ワークフローへのチェックポイント配線**
    `implement-be/workflow.md`と`ideation/workflow.md`には、それぞれ自身のどの番号付き
    ステップでチェックポイントを呼ぶべきかを述べる短い段落を追加します。
@@ -83,8 +85,9 @@
    他のスキルのアダプターは読まないためです。そのため`propose-and-build`のアダプターにも、
    `implement-be`や`ideation`と同じこの1行が必要です。
 
-製品コードへの変更はありません。本項目は`.agent-workflows/`、`.claude/skills/`、
-`.agent-hosts/codex/skills/`配下だけに閉じたコントリビューターワークフロー向けの整備であり、
+製品コードへの変更はありません。本項目は当時のスキルツリー（`.agent-workflows/`、
+`.claude/skills/`、`.agent-hosts/codex/skills/`）配下だけに閉じたコントリビューター
+ワークフロー向けの整備であり、
 `bajutsu/`、`BajutsuKit/`、`run`/CIの経路には触れません。第1の指針もそのまま保たれます。
 このトラッカーが決定的なゲートの近くに現れることは一切なく、人間が判断を下すスキルがすでに
 下した決定を書式に整えるだけです。
@@ -115,7 +118,7 @@
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [x] 共有ワークフロー（`.agent-workflows/be-progress-tracker/workflow.md`）
+- [x] 共有ワークフロー（`.apm/skills/be-progress-tracker/SKILL.md`）
 - [x] `model: haiku`を持つClaudeアダプター（`.claude/skills/be-progress-tracker/SKILL.md`）
 - [x] ローカルファイルへのフォールバックを持つCodexアダプター（`.agent-hosts/codex/skills/be-progress-tracker/SKILL.md`）
 - [x] `implement-be`、`ideation`、`propose-and-build`の共有ワークフローへのチェックポイント配線
@@ -131,7 +134,7 @@
   を通じて役割ごとに異なるモデルを割り当てる先例。
 - [`roadmap-filter`](../../.claude/skills/roadmap-filter/SKILL.md) — 本項目のClaudeアダプターが
   踏襲した、既存の`model: haiku`スキル。
-- [`implement-be`](../../.agent-workflows/implement-be/workflow.md)、
-  [`ideation`](../../.agent-workflows/ideation/workflow.md)、
-  [`propose-and-build`](../../.agent-workflows/propose-and-build/workflow.md) — 本スキルを
+- [`implement-be`](../../.apm/skills/implement-be/SKILL.md)、
+  [`ideation`](../../.apm/skills/ideation/SKILL.md)、
+  [`propose-and-build`](../../.apm/skills/propose-and-build/SKILL.md) — 本スキルを
   呼び出す3つのワークフロー。

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0390](BE-0390-apm-skill-management.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0390") |
+| Implementing PR | [#1731](https://github.com/bajutsu-e2e/bajutsu/pull/1731) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -91,14 +92,33 @@ The work breaks down into six independent pieces:
    sits at `.agent-workflows/document-writing/textlint/` therefore moves to a repository path outside
    the skill tree. The `document-writing` skill and the npm entry in
    [`.github/dependabot.yml`](../../.github/dependabot.yml) both point at the new path.
-5. **Tooling.** `make skills` runs `apm install`; `make lint-skills` runs `apm audit --ci`, which
+5. **Tooling.** `apm-cli` is a `dev` dependency pinned exactly in `pyproject.toml`, so `uv` resolves
+   it like every other Python tool and `uv.lock` carries the version that writes `apm.lock.yaml`.
+   `make skills` runs `uv run apm install --no-policy`; `make lint-skills` runs
+   `uv run apm audit --ci --no-policy`, which
    replays the install into a scratch directory and reports any deployed file that differs from its
-   source. `make check` gains the audit step, skipping it with a notice when the `apm` binary is
-   absent, the way `lint-actions` and `lint-secrets` already skip — and, as for those two, CI
-   installs a pinned `apm-cli` and runs the audit there, so drift fails a pull request even when a
-   contributor's machine skipped the check. The
-   [session-start hook](../../.claude/hooks/session-start.sh) installs a pinned `apm-cli` and runs
-   `apm install`, so a web session starts from the committed skill set.
+   source. `make check` gains the audit step with **no skip branch** — unlike `lint-actions` and
+   `lint-secrets`, whose tools genuinely cannot be resolved by `uv`, this one always runs, so the
+   drift check cannot pass by not running on a contributor's machine. The
+   [session-start hook](../../.claude/hooks/session-start.sh) needs no install step either; its
+   existing `uv sync --group dev` covers apm, and it only deploys, so a web session starts from the
+   committed skill set. Every `apm install` call site passes `--no-policy`, so the deploy and the
+   audit that replays it run under one configuration and neither needs the network; without it
+   0.28.0 warns about the unreachable policy and proceeds, which costs a round trip and reads like
+   a failure. `make hooks` gains one more
+   local git setting: a merge driver over APM's committed generated output
+   ([`scripts/merge-apm-generated.sh`](../../scripts/merge-apm-generated.sh)) that regenerates both
+   `apm.lock.yaml` and the deployed `.claude/skills/**` tree from `.apm/skills/` on a conflict,
+   mirroring what
+   [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
+   already does for `uv.lock`. Without the driver, two branches that edited the same skill leave
+   conflict markers among per-file SHA-256 hashes, whose correct value is on neither side, and a
+   second conflict in the deployed copy whose hand resolution looks right while leaving a deployment
+   its source no longer matches. The
+   regenerated lockfile is provisional — git runs a merge driver before writing any merged file, so
+   `apm install` reads the pre-merge tree — and `make lint-skills` fails the gate until a
+   `make skills` after the resolution refreshes it, exactly as `uv lock --check` backs the `uv.lock`
+   driver.
 6. **Documentation.** The *Agent skill layout* section of [`CLAUDE.md`](../../CLAUDE.md) is rewritten
    around the single source, and the skill links in [`AGENTS.md`](../../AGENTS.md),
    [`docs/ai-development.md`](../../docs/ai-development.md) with its Japanese mirror,
@@ -111,9 +131,10 @@ nothing on the `run` or CI verdict path. Prime directive 1 holds under the new g
 is deterministic and no language model reaches the gate.
 
 The design rests on behavior we verified against APM 0.28.0 rather than on documentation alone. A
-local `.apm/skills/<name>/` deployed to `.claude/skills/<name>/` byte for byte, with frontmatter
-untouched, `references/` and `scripts/` carried across, and the executable bit preserved. `targets:
-[claude]` alone produced no `.agents/` tree. `apm.lock.yaml` recorded a SHA-256 per deployed file; a
+local `.apm/skills/<name>/` deployed to `.claude/skills/<name>/` with frontmatter untouched,
+`references/` and `scripts/` carried across, and the executable bit preserved; the one thing APM
+rewrote was a cross-skill relative link, repointed at the source tree. `targets: [claude]` alone
+produced no `.agents/` tree. `apm.lock.yaml` recorded a SHA-256 per deployed file; a
 hand edit to a deployed file came back from `apm audit` as drift, and the next `apm install` restored
 it.
 
@@ -145,12 +166,12 @@ it.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Manifest, source tree, and the committed deployment (`apm.yml`, `.apm/skills/`, the root `.gitignore`, and the removal of `.claude/skills/.gitignore`)
-- [ ] Conversion of the fourteen skills to one `SKILL.md` each, with depth under `references/`
-- [ ] Retirement of `.agent-workflows/`, `.agent-hosts/`, and `.agents`, with the roadmap links rewritten and BE-0384's design text moved to the single source
-- [ ] Relocation of the textlint runtime and its `dependabot.yml` entry
-- [ ] `make skills`, `make lint-skills`, the `make check` step, and the session-start hook
-- [ ] Documentation: `CLAUDE.md`, `AGENTS.md`, `docs/ai-development.md` (both languages), the contributor tutorial (both languages), and the review contract
+- [x] Manifest, source tree, and the committed deployment (`apm.yml`, `.apm/skills/`, the root `.gitignore`, and the removal of `.claude/skills/.gitignore`)
+- [x] Conversion of the fourteen skills to one `SKILL.md` each, with depth under `references/`
+- [x] Retirement of `.agent-workflows/`, `.agent-hosts/`, and `.agents`, with the roadmap links rewritten and BE-0384's design text moved to the single source
+- [x] Relocation of the textlint runtime and its `dependabot.yml` entry
+- [x] `make skills`, `make lint-skills`, the `make check` step, the session-start hook, and the merge driver over APM's generated output (`apm.lock.yaml` and `.claude/skills/**`) wired by `make hooks`
+- [x] Documentation: `CLAUDE.md`, `AGENTS.md`, `docs/ai-development.md` (both languages), the contributor tutorial (both languages), and the review contract
 
 ## References
 

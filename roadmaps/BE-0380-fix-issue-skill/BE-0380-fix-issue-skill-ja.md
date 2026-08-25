@@ -19,7 +19,7 @@
 新スキル、fix-issueを追加します。素のGitHub Issueとは、ロードマップ(Bajutsu Evolution、BE)項目に
 するほどでもない小さな不具合、ちょっとした使い勝手の悪さ、範囲の定まった改善を指します。このスキル
 はロードマップのファイルには一切触れず、新しいラベルも必要としません。
-[`implement-be`](../../.agent-workflows/implement-be/workflow.md)が番号付きのBE項目に対して
+[`implement-be`](../../.apm/skills/implement-be/SKILL.md)が番号付きのBE項目に対して
 担っている役割を、素のIssueに対して同じように担うスキルです。implement-beの実装、レビュー、
 フォローアップの各手順は、そのまま再利用します。異なるのは、素のIssueがBE項目と本質的に違う2点
 だけです。担当をどう確保するか、修正が取り込まれたときに何が完了を告げるか、です。
@@ -30,7 +30,7 @@ BE提案を書かずに、軽い不具合や改善をIssueとして出すこと�
 ラベルのIssueテンプレート([`bug_report.yml`](../../.github/ISSUE_TEMPLATE/bug_report.yml)、
 [`feature_request.yml`](../../.github/ISSUE_TEMPLATE/feature_request.yml))がまさにその用途で
 用意されています。両者の`config.yml`も、大きなアイデアのときだけロードマップに進むよう案内してい
-ます。[`task-select`](../../.agent-workflows/task-select/workflow.md)スキルも、これらのオープンな
+ます。[`task-select`](../../.apm/skills/task-select/SKILL.md)スキルも、これらのオープンな
 Issueをロードマップと並べて調査し、次に着手すべき候補としてすでに順位付けしています。
 
 しかし、候補が選ばれたあとにそれを仕上げる仕組みはありません。`implement-be`は計画を統合済みの修正
@@ -46,7 +46,7 @@ Issueをロードマップと並べて調査し、次に着手すべき候補と
 Issueにこのラベルを付ける、という形です。本項目はこのラベルを意図的に見送ります。「素の修正として
 仕上げてよい」と「提案が必要」の境界は判断であり、その判断は起票時点で下せるとは限らず、修正作業の
 途中で初めて明らかになることもあるため、ラベルではなくスキル自身が下します。
-[`ideation`](../../.agent-workflows/ideation/workflow.md)はすでに逆方向の境界をこの形で判断してい
+[`ideation`](../../.apm/skills/ideation/SKILL.md)はすでに逆方向の境界をこの形で判断してい
 ます。提案ではなく実装を求めるユーザーを、ラベルに頼らずリダイレクトしているのです。
 
 ## 詳細設計
@@ -58,8 +58,8 @@ Issueにこのラベルを付ける、という形です。本項目はこのラ
    [3つの基本原則](../../CLAUDE.md#prime-directives-do-not-violate)と衝突しないことです。修正が
    設計判断や横断的な変更、あるいは基本原則に触れるアイデアの再構成を要すると判明した場合、スキル
    は止まります。理由をユーザーに伝え、続行せずに
-   [`ideation`](../../.agent-workflows/ideation/workflow.md)や
-   [`propose-and-build`](../../.agent-workflows/propose-and-build/workflow.md)を指し示します。
+   [`ideation`](../../.apm/skills/ideation/SKILL.md)や
+   [`propose-and-build`](../../.apm/skills/propose-and-build/SKILL.md)を指し示します。
    このとき、詳細設計の2で確保した担当も解除します(`gh issue edit <N> --remove-assignee @me`)。
    委ねたIssueが作業中のまま残らないようにするためです。修正の本当の形はIssue本文だけでは見えない
    ことがあるため、このエスカレーションは、手順3の計画段階までのどの時点でも起こりえます。
@@ -100,6 +100,8 @@ Issueにこのラベルを付ける、という形です。本項目はこのラ
    アダプター`.agent-hosts/codex/skills/fix-issue/SKILL.md`は、既存のすべてのスキルが今日備えて
    いるホスト間の対応関係を保ちます
    ([`CLAUDE.md`](../../CLAUDE.md#agent-skill-layout))。
+   （BE-0390が、のちにこの3つのファイルを単一ソース`.apm/skills/fix-issue/SKILL.md`へ
+   畳み込みました。）
 6. **ドキュメントと引き渡しの整備です。**
    - [`docs/ai-development.md`](../../docs/ai-development.md)(および`docs/ja/`側の対訳)に、
      `propose-and-build`の項目と同じ理由による`fix-issue` → `opus`(Heavy)の1行をスキル別モデル
@@ -109,7 +111,7 @@ Issueにこのラベルを付ける、という形です。本項目はこのラ
      「実装作業」の項で`implement-be`と並べて`fix-issue`を挙げます。`fix-issue`が生むPRは、その
      箇条書きがすでにDraftとして自動で開き、ペースを保った追跡ループで進めている、まとまった状態で
      ゲートを通る変更そのものだからです。
-   - [`task-select`](../../.agent-workflows/task-select/workflow.md)手順5の推奨コマンドは、選ば
+   - [`task-select`](../../.apm/skills/task-select/SKILL.md)手順5の推奨コマンドは、選ば
      れた候補がBE番号を持たない素のGitHub Issueのとき`fix-issue #<N>`になります。ロードマップ項目
      に対する既存の`implement-be BE-NNNN`という推奨は変わりません。
 
@@ -153,13 +155,13 @@ Issueにこのラベルを付ける、という形です。本項目はこのラ
 
 ## 参考
 
-- [`implement-be`](../../.agent-workflows/implement-be/workflow.md)：本スキルが素のIssueに対して
+- [`implement-be`](../../.apm/skills/implement-be/SKILL.md)：本スキルが素のIssueに対して
   写し取っているBE項目側の対であり、そのまま再利用する手順の出どころです。
-- [`ideation`](../../.agent-workflows/ideation/workflow.md)：本スキルがエスカレーション先として指す
+- [`ideation`](../../.apm/skills/ideation/SKILL.md)：本スキルがエスカレーション先として指す
   スキルであり、スコープの境界をラベルではなくスキルの中で判断する先例です。
-- [`propose-and-build`](../../.agent-workflows/propose-and-build/workflow.md)：もう1つのエスカ
+- [`propose-and-build`](../../.apm/skills/propose-and-build/SKILL.md)：もう1つのエスカ
   レーション先で、設計がすでに固まっており1つのPRで提案と実装を済ませられる小さなアイデア向けです。
-- [`task-select`](../../.agent-workflows/task-select/workflow.md)：素のGitHub Issueを候補として
+- [`task-select`](../../.apm/skills/task-select/SKILL.md)：素のGitHub Issueを候補として
   すでに順位付けしている読み取り専用のスキルで、詳細設計の6で`fix-issue`への引き渡しを得ます。
 - [BE-0109](../BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md)：オープンな
   ロードマップ項目の担当を追うGitHub Issueの仕組みであり、本項目が扱うIssueはBE番号に結び付かず、

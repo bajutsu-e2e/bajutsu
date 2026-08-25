@@ -1,4 +1,0 @@
-interface:
-  display_name: "Task selection"
-  short_description: "Rank the best next task from issues and the roadmap"
-  default_prompt: "Use $task-select to recommend the next task to work on."

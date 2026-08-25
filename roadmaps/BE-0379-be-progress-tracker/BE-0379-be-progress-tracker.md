@@ -15,9 +15,9 @@
 
 ## Introduction
 
-Add **`be-progress-tracker`**, a small dedicated skill that [`ideation`](../../.agent-workflows/ideation/workflow.md),
-[`implement-be`](../../.agent-workflows/implement-be/workflow.md), and
-[`propose-and-build`](../../.agent-workflows/propose-and-build/workflow.md) call at their own step
+Add **`be-progress-tracker`**, a small dedicated skill that [`ideation`](../../.apm/skills/ideation/SKILL.md),
+[`implement-be`](../../.apm/skills/implement-be/SKILL.md), and
+[`propose-and-build`](../../.apm/skills/propose-and-build/SKILL.md) call at their own step
 boundaries to keep one live status page per BE item — its overview, implementation progress, and a
 work log — so a human watching a long session can see where an item stands without reading the
 whole transcript. It is a **separate** skill rather than logic folded into the three callers, and
@@ -50,7 +50,7 @@ Two more points sharpen the design:
 
 The work breaks down into five independent pieces:
 
-1. **Shared workflow** — [`.agent-workflows/be-progress-tracker/workflow.md`](../../.agent-workflows/be-progress-tracker/workflow.md)
+1. **Shared workflow** — [`.apm/skills/be-progress-tracker/SKILL.md`](../../.apm/skills/be-progress-tracker/SKILL.md)
    defines the document's three fixed sections (Overview, Progress, Work log), the checkpoint
    contract a caller must supply (the BE id, the calling workflow's name and step, and one work-log
    sentence), and the non-goals: never a source of truth (the roadmap item and the PR stay
@@ -60,9 +60,11 @@ The work breaks down into five independent pieces:
    carries `model: haiku` in its frontmatter and publishes the status page as a Markdown Artifact,
    one per BE item, redeployed to the same URL on every later checkpoint rather than republished
    from scratch.
-3. **Codex adapter** — [`.agent-hosts/codex/skills/be-progress-tracker/SKILL.md`](../../.agent-hosts/codex/skills/be-progress-tracker/SKILL.md)
+3. **Codex adapter** — `.agent-hosts/codex/skills/be-progress-tracker/SKILL.md`
    has no hosted-Artifact equivalent to reach for, so it writes the same three-section page to a
    local, gitignored file under `tmp/be-status/` instead and tells the user that path once.
+   ([BE-0390](../BE-0390-apm-skill-management/BE-0390-apm-skill-management.md) later retired the
+   Codex tree and folded the Claude adapter into the single per-skill source.)
 4. **Checkpoint wiring in the three calling workflows** — `implement-be/workflow.md` and
    `ideation/workflow.md` each gain one short paragraph naming which of their own numbered steps
    warrant a checkpoint. `propose-and-build/workflow.md` defines none of its own: it notes that it
@@ -77,8 +79,9 @@ The work breaks down into five independent pieces:
    so `propose-and-build`'s adapter needs this line too, not only `implement-be`'s and
    `ideation`'s.
 
-No product code changes: this item is entirely contributor-workflow tooling under `.agent-workflows/`,
-`.claude/skills/`, and `.agent-hosts/codex/skills/`, and touches no `bajutsu/`, `BajutsuKit/`, or
+No product code changes: this item is entirely contributor-workflow tooling under the skill trees
+of the day (`.agent-workflows/`, `.claude/skills/`, and `.agent-hosts/codex/skills/`), and touches
+no `bajutsu/`, `BajutsuKit/`, or
 `run`/CI path. Prime directive 1 is untouched — the tracker never appears anywhere near the
 deterministic gate; it only ever formats decisions a human-in-the-loop skill has already made.
 
@@ -106,7 +109,7 @@ deterministic gate; it only ever formats decisions a human-in-the-loop skill has
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [x] Shared workflow (`.agent-workflows/be-progress-tracker/workflow.md`)
+- [x] Shared workflow (`.apm/skills/be-progress-tracker/SKILL.md`)
 - [x] Claude adapter with `model: haiku` (`.claude/skills/be-progress-tracker/SKILL.md`)
 - [x] Codex adapter with a local-file fallback (`.agent-hosts/codex/skills/be-progress-tracker/SKILL.md`)
 - [x] Checkpoint wiring in `implement-be`, `ideation`, and `propose-and-build`'s shared workflows
@@ -122,7 +125,7 @@ Authored and implemented together in one change.
   dispatching distinct roles to distinct models through the Agent tool.
 - [`roadmap-filter`](../../.claude/skills/roadmap-filter/SKILL.md) — the existing `model: haiku`
   skill this item's Claude adapter follows.
-- [`implement-be`](../../.agent-workflows/implement-be/workflow.md),
-  [`ideation`](../../.agent-workflows/ideation/workflow.md),
-  [`propose-and-build`](../../.agent-workflows/propose-and-build/workflow.md) — the three workflows
+- [`implement-be`](../../.apm/skills/implement-be/SKILL.md),
+  [`ideation`](../../.apm/skills/ideation/SKILL.md),
+  [`propose-and-build`](../../.apm/skills/propose-and-build/SKILL.md) — the three workflows
   that call this skill.
