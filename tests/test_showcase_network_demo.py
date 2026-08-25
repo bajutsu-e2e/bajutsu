@@ -98,7 +98,7 @@ def test_mock_scenario_stubs_and_asserts_the_log_submit() -> None:
 # the `screenshot.before` baseline, a tree read, and the previous step's artifact writes, together
 # 0.2-1.2s per boundary on a CI Simulator. So the lane is deterministic only while both halves of
 # this fixture contract hold: the toast wait is armed on the step *right after* the tap, and the
-# toast outlives one boundary with room to spare. Both were violated at once until #1743 — an
+# toast outlives one boundary with room to spare. Both were violated at once until #1744 — an
 # `until: request` wait sat between the tap and the toast wait, and the toast lived 1.2s — which cost
 # the `network (xcuitest)` job roughly one run in two, always on the same `wait timeout: for {'id':
 # 'log.toast'}`. Neither half is observable off-device, so this is where a re-ordering edit or a
@@ -131,9 +131,22 @@ def test_the_toast_waits_are_armed_on_the_step_right_after_the_submit_tap() -> N
 
 
 def test_the_app_dismisses_the_toast_slower_than_a_step_boundary() -> None:
-    delay = re.search(r"Task\.sleep\(for: \.milliseconds\((\d+)\)\)", _log_view_source())
-    assert delay is not None, "the toast's auto-dismiss delay moved out of LogView.swift"
-    assert int(delay.group(1)) >= _TOAST_DISMISS_FLOOR_MS
+    # Anchored on the `showToast = false` it guards, so an unrelated `Task.sleep` added earlier in
+    # the file cannot quietly become the pin's subject.
+    swiftui = re.search(
+        r"Task\.sleep\(for: \.milliseconds\((\d+)\)\)\n\s*showToast = false", _log_view_source()
+    )
+    assert swiftui is not None, "the toast's auto-dismiss delay moved out of LogView.swift"
+    assert int(swiftui.group(1)) >= _TOAST_DISMISS_FLOOR_MS
+
+    # The UIKit twin runs both scenarios too (`run-uikit`, `run-uikit-noax`), so its own toast has
+    # to outlive a boundary as well.
+    uikit = (_SHOWCASE / "ios" / "uikit" / "Sources" / "LogController.swift").read_text(
+        encoding="utf-8"
+    )
+    dismiss = re.search(r"asyncAfter\(deadline: \.now\(\) \+ ([\d.]+)\)", uikit)
+    assert dismiss is not None, "the toast's auto-dismiss delay moved out of LogController.swift"
+    assert float(dismiss.group(1)) * 1000 >= _TOAST_DISMISS_FLOOR_MS
 
 
 def test_live_scenario_asserts_only_that_the_catalog_request_was_observed() -> None:

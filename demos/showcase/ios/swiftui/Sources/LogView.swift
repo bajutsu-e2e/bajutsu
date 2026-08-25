@@ -215,7 +215,7 @@ struct LogView: View {
 
     // POST SHOWCASE_HTTP_BASE/post with the note/count as JSON. Carries a secret header
     // (Authorization: Bearer …) and a password body field so redaction has something to
-    // mask (SPEC §6). On success: toast (~1.2s auto-dismiss) and a new row.
+    // mask (SPEC §6). On success: toast (~3s auto-dismiss) and a new row.
     private func submit() {
         status = "loading"
         guard let url = URL(string: model.httpBase + "/post") else { status = "error"; return }
