@@ -31,7 +31,7 @@ import json
 import logging
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Generator, Iterator
 from pathlib import Path
 
 import pytest
@@ -139,7 +139,9 @@ _HOLDERS: pytest.StashKey[dict[object, LeaseHolder]] = pytest.StashKey()
 
 
 @pytest.fixture(scope="module")
-def _backend_lease_holder(request: pytest.FixtureRequest, _backend_launch: LeaseLaunch):
+def _backend_lease_holder(
+    request: pytest.FixtureRequest, _backend_launch: LeaseLaunch
+) -> Iterator[LeaseHolder]:
     holder = LeaseHolder(_backend_launch)
     registry = request.session.stash.setdefault(_HOLDERS, {})
     registry[request.path] = holder
@@ -157,7 +159,9 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 @pytest.hookimpl(wrapper=True)
-def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
+def pytest_runtest_makereport(
+    item: pytest.Item, call: pytest.CallInfo[None]
+) -> Generator[None, pytest.TestReport, pytest.TestReport]:
     """Tag a report the protocol hook must act on: a crash to recover, or a host fault to report.
 
     The classification has to happen here, where the live exception is in hand: a `TestReport` keeps
@@ -181,6 +185,7 @@ def _tagged_reason(reports: list[pytest.TestReport], attr: str) -> str | None:
     for report in reports:
         reason = getattr(report, attr, None)
         if reason is not None:
+            assert isinstance(reason, str)
             return reason
     return None
 

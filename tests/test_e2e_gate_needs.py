@@ -104,6 +104,7 @@ def _jobs(lane: str) -> dict[str, Any]:
 
 def _aggregator(lane: str) -> dict[str, Any]:
     job = _jobs(lane)["e2e"]
+    assert isinstance(job, dict)
     assert job["name"] == LANES[lane], (lane, job["name"])
     return job
 
@@ -119,7 +120,9 @@ def _check_step(job: dict[str, Any]) -> dict[str, Any]:
         step for step in job["steps"] if "env" in step and _LOOP.search(str(step.get("run", "")))
     ]
     assert len(steps) == 1, f"expected one verdict step, found {len(steps)}"
-    return steps[0]
+    step = steps[0]
+    assert isinstance(step, dict)
+    return step
 
 
 def _read_jobs(step: dict[str, Any]) -> dict[str, str]:

@@ -34,7 +34,9 @@ def _container(identifier: str) -> base.Element:
             "value": None, "frame": (0.0, 0.0, 100.0, 80.0), "nativeZ": None}  # fmt: skip
 
 
-def _seeded(*wheels: tuple[base.Element, list[str]], extra: list[base.Element] | None = None):
+def _seeded(
+    *wheels: tuple[base.Element, list[str]], extra: list[base.Element] | None = None
+) -> FakeDriver:
     """A fake showing `wheels` (each with its rows seeded by object identity) plus `extra`."""
     driver = FakeDriver(screen=[*(extra or []), *(w for w, _ in wheels)])
     for wheel, options in wheels:

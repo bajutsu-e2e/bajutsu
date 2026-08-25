@@ -133,7 +133,7 @@ def test_stale_grandfathered_reports_a_vanished_entry(
 
 
 def test_stale_grandfathered_reports_an_entry_the_table_now_documents(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """An entry that earned a row must leave the list, or rule 3 stops protecting that module."""
     pkg = _package(tmp_path, "documented.py", "still_missing.py")

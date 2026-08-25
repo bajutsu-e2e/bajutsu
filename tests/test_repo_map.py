@@ -208,7 +208,7 @@ def test_a_gitignored_page_is_left_out(tmp_path: Path) -> None:
 
 
 def test_a_gitignored_page_is_left_out_under_a_hook_environment(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A git hook exports GIT_DIR into everything it runs; the map must still answer for `cwd`.
 

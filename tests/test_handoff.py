@@ -6,6 +6,7 @@ import io
 import os
 import sys
 import types
+from collections.abc import Callable
 
 import pytest
 
@@ -170,8 +171,8 @@ def test_stream_handoff_treats_a_malformed_response_as_cancel(
     ],
 )
 def test_prompt_handoff_interprets_the_typed_line(
-    monkeypatch: pytest.MonkeyPatch, typed: bytes, check
-) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch: pytest.MonkeyPatch, typed: bytes, check: Callable[[str], None]
+) -> None:
     _pipe_stdin(monkeypatch, typed)
     assert check(PromptHandoff(lambda _m: None, timeout=2.0).request(HandoffRequest(reason="x")))
 

@@ -27,12 +27,14 @@ def _scaffold(tmp_path: Path, **kw: str) -> Path:
     roadmap = tmp_path / "roadmaps"
     roadmap.mkdir()
     defaults = {"topic": _TOPIC, "status": "Proposal", "handle": "octocat"}
-    return nri.scaffold(
+    created = nri.scaffold(
         roadmap,
         kw.pop("slug", "demo-feature"),
         kw.pop("title", "Demo feature"),
         **{**defaults, **kw},
-    )  # type: ignore[arg-type]
+    )
+    assert isinstance(created, Path)
+    return created
 
 
 def test_creates_both_language_files_with_placeholder(tmp_path: Path) -> None:
