@@ -54,7 +54,10 @@ against a concrete bar — does the finding need a Detailed design, a discussion
 changes across multiple modules? If any of the three holds, the finding is not minor: **stop and
 point the invoker at [`ideation`](../ideation/SKILL.md)**, or at
 [`propose-and-build`](../propose-and-build/SKILL.md) when the design is already settled enough to
-author and build in one pull request (PR). File nothing.
+author and build in one pull request (PR). File nothing. With no human in the turn (see *When no
+human is in the turn* below) there is no invoker to point at, so return the finding and the
+recommended landing in the **pending-draft** field instead, marked as needing a roadmap item rather
+than an issue, so the loop's report still carries the finding to the human.
 
 Otherwise classify the finding as one of two kinds, which decide the template and the label that
 step 3 uses:
@@ -77,18 +80,28 @@ sync opens and closes on its own, because those issues are bot-owned: a comment 
 landing at all.
 
 That exclusion also removes the only signal that an open roadmap item already covers the finding, so
-check the roadmap directly. [`roadmap-filter`](../roadmap-filter/SKILL.md) accepts a single status
-per run, so run it twice:
+check the roadmap directly. Start with the keyword lookup
+[`roadmap-filter`](../roadmap-filter/SKILL.md) exists for — one run matches the id, title, `Topic`,
+and `## Introduction` excerpt of every item, across all five statuses:
+
+```bash
+make roadmap-find ARGS="--grep <keyword>"
+```
+
+That pass reaches `Deferred` and `Rejected` items too, so the skill never files an issue for a
+finding the roadmap already parked or decided against. A title-and-introduction match is still a
+coarse filter — an item usually covers a small finding in its `Detailed design` — so when the pass
+returns nothing, fall back to the open statuses and grep their item files, named by the table's
+`Path` column, for the same keywords:
 
 ```bash
 make roadmap-status STATUS="Proposal"
 make roadmap-status STATUS="In progress"
 ```
 
-Match the returned titles on the same keywords. A title is a coarse filter — an item usually covers
-a small finding in its `Detailed design` rather than in its title — so also grep every returned
-item's file, named by the table's `Path` column, for those keywords, not only the items whose title
-already matched.
+Keep the fallback second, not first: close to 400 items live under `roadmaps/`, and their files run
+past 127,000 lines, so grepping them is the expensive pass — and inside `implement-be`'s hands-free
+loop it would repeat once per finding per iteration.
 
 Two choices come out of this step, and the invoker makes both:
 
@@ -142,14 +155,14 @@ not only the first time a session uses the skill, and no calling skill may waive
 On approval, file the new issue:
 
 ```bash
-gh issue create --title "<title>" --body-file <file> --label <label>
+gh issue create --title "<title>" --body-file tmp/record-issue-body.md --label <label>
 ```
 
 Or, for a comment on the match step 2 picked, post the comment and add the label only when step 4
 approved one:
 
 ```bash
-gh issue comment <number> --body-file <comment-file>
+gh issue comment <number> --body-file tmp/record-issue-comment.md
 gh issue edit <number> --add-label <label>
 ```
 
@@ -163,6 +176,9 @@ what it fixed inline.
 ([BE-0230](../../../roadmaps/BE-0230-hands-free-implement-review-loop/BE-0230-hands-free-implement-review-loop.md))
 is the case that matters. There the skill **files nothing and stalls nothing**: it finishes the
 draft and returns the draft in the **pending-draft** field of that iteration's structured summary.
+A step 1 escalation takes the same route rather than ending the finding: a finding too substantial
+for an issue returns as a pending draft marked for `ideation` or `propose-and-build`, so the
+classification's one judgment call never costs the whole finding.
 
 Entering step 5 from a resumed invocation is not a skip of step 4's gate. The confirmation already
 ran, on the attended turn where the human approved the exact draft the loop's report showed, so

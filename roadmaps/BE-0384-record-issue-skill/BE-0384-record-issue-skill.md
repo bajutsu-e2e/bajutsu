@@ -88,7 +88,10 @@ of a well-formed design away from the roadmap, so this skill states the concrete
 this need a Detailed design, a discussion of trade-offs, or changes across multiple modules? If so,
 this is not a minor finding —
 stop and point the invoker to `ideation` (or, for a small item whose design is already settled,
-`propose-and-build`) instead of filing an issue. Otherwise, classify the finding as a **bug**
+`propose-and-build`) instead of filing an issue. With no human in the turn there is no invoker to
+point at, so the finding returns in the same pending-draft field the unattended path below uses,
+marked as needing a roadmap item rather than an issue — otherwise this one judgment call would cost
+the whole finding, the outcome this item exists to prevent. Otherwise, classify the finding as a **bug**
 (something behaves other than intended) or a lightweight **enhancement** (a small, bounded
 improvement).
 
@@ -98,13 +101,18 @@ invoker any candidate matches (number, title, state, labels). The search exclude
 `roadmap-tracking` issues the workflow of
 [BE-0109](../BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) creates and closes
 on its own: those are bot-owned, so a comment on one of them is no landing at all. Because that
-exclusion also removes the only signal that an open BE item already covers the finding, this step
-checks the roadmap itself: run
-[`roadmap-filter`](../../.apm/skills/roadmap-filter/SKILL.md) once for `Proposal` and once
-for `In progress` — it accepts a single status per run — and match the returned titles on the same
-keywords. A title is a coarse filter — an item's coverage of a small finding usually lives in its
-`Detailed design` rather than its title — so also grep every returned item's file (the `Path`
-column names it) for the same keywords, not only the ones whose title already matched. On a hit,
+exclusion also removes the only signal that a BE item already covers the finding, this step
+checks the roadmap itself, cheap pass first. The cheap pass is the keyword lookup
+[`roadmap-filter`](../../.apm/skills/roadmap-filter/SKILL.md) exists for, `make roadmap-find
+ARGS="--grep <keyword>"`, which matches the id, title, `Topic`, and `## Introduction` excerpt of
+every item in one run, across all five statuses — reaching the `Deferred` and `Rejected` items a
+status-scoped survey would miss, so the skill never files an issue for a finding the roadmap already
+parked or decided against. A title-and-introduction match is still coarse, since an item's coverage
+of a small finding usually lives in its `Detailed design`, so when the cheap pass returns nothing,
+fall back to the open statuses (`make roadmap-status STATUS="Proposal"`, then `"In progress"`) and
+grep every returned item's file (the `Path` column names it) for the same keywords. The fallback
+stays second because it is the expensive pass — close to 400 items, past 127,000 lines — and inside
+the hands-free loop it would otherwise repeat once per finding per iteration. On a hit,
 title or body, show the invoker that item and ask whether to stop there instead of drafting
 anything — when the item already covers the finding, an issue would only duplicate it — or to
 proceed anyway: a keyword match, in a title or an item's body, is not proof of coverage, and only

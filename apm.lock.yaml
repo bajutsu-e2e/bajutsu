@@ -244,7 +244,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:e5c2a0d5f0e08ec5246fe677a84c30406add88419431874b138b349d47563e86
+  content_hash: sha256:504b27f84b494ebb304d65652027206fd35cc17c80d17320cb267788b8aea9c2
 - kind: project-relative
   target: claude
   value: .claude/skills/propose-and-build
@@ -280,7 +280,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:cb4206818d47bec22233efdea86695a20db79176a261a130a7fdbb45b1b4b38d
+  content_hash: sha256:a4d47a03280763463b03a34367e0cdff8f91b58250bec0bb66d1e169385917e7
 - kind: project-relative
   target: claude
   value: .claude/skills/roadmap-filter
@@ -369,8 +369,8 @@ local_deployed_file_hashes:
   .claude/skills/japanese-document-writing/references/argument.md: sha256:34a642cd51b155203f6be2342db2b6ae5a96a7a40ee7c400001560f16d89a3cf
   .claude/skills/japanese-document-writing/references/expression.md: sha256:a9868652cdd9fcf00a2604b1536b0876795709b779523acd9b0522b979ffa9ae
   .claude/skills/japanese-document-writing/references/formatting.md: sha256:5c4d212825292359f062a55d4e5993d65b5fd0cdd00a8f28dc742cd747e84103
-  .claude/skills/pr-followup/SKILL.md: sha256:e5c2a0d5f0e08ec5246fe677a84c30406add88419431874b138b349d47563e86
+  .claude/skills/pr-followup/SKILL.md: sha256:504b27f84b494ebb304d65652027206fd35cc17c80d17320cb267788b8aea9c2
   .claude/skills/propose-and-build/SKILL.md: sha256:0b11ab2208732c221307ac73f1c0166c03c1b34a4f3623d45fe90808c87faf30
-  .claude/skills/record-issue/SKILL.md: sha256:cb4206818d47bec22233efdea86695a20db79176a261a130a7fdbb45b1b4b38d
+  .claude/skills/record-issue/SKILL.md: sha256:a4d47a03280763463b03a34367e0cdff8f91b58250bec0bb66d1e169385917e7
   .claude/skills/roadmap-filter/SKILL.md: sha256:482a131cd01ae6b25804c2d94a85acf87781254d668ea67ee3f3564a840b1c5c
   .claude/skills/task-select/SKILL.md: sha256:4fc35b7c1966344be8722032d0273273db8e9096155755071c32834030139e92
