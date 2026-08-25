@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0384](BE-0384-record-issue-skill-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0384") |
+| 実装 PR | [#1748](https://github.com/bajutsu-e2e/bajutsu/pull/1748) |
 | トピック | コントリビューターワークフロー |
 <!-- /BE-METADATA -->
 
@@ -202,24 +203,36 @@ BE-0230のエスカレーション一覧の各項目はどれもループを停�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `.apm/skills/record-issue/SKILL.md`を執筆し(分類 → 重複検索 → 下書き → 承認 → 起票)、
+- [x] `.apm/skills/record-issue/SKILL.md`を執筆し(分類 → 重複検索 → 下書き → 承認 → 起票)、
       `make skills`で`.claude/skills/record-issue/`へ配備する。
-- [ ] 呼び出し元に組み込む: `ideation` / `implement-be`が`be-progress-tracker`を名指しするのと
+- [x] 呼び出し元に組み込む: `ideation` / `implement-be`が`be-progress-tracker`を名指しするのと
       同じ形で、`pr-followup`(および他の呼び出し元スキル)に`record-issue`のサブステップを
       名指しする。
-- [ ] ループ層に組み込む: `implement-be`の手順12は、サブエージェントに`pr-followup`の手順を渡す
+- [x] ループ層に組み込む: `implement-be`の手順12は、サブエージェントに`pr-followup`の手順を渡す
       際に人がターンにいるかどうかを伝える。その構造化サマリーの契約に承認待ちの下書き用
       フィールドを追加する。このフィールドはエスカレーション用フィールドとは別にし、下書きが
       ループを止めないようにする。手順12は、各イテレーションが返したpending-draftを、
       それ以前のイテレーションの分と重複排除したうえで、すべて自分自身の最終報告へ持ち越す。
       早く返った下書きも、イテレーションごとに重複せず人間へ届く。
-- [ ] ドキュメントの更新: `docs/ai-development.md`(日本語版含む)と`CLAUDE.md`。スキルの
+- [x] ドキュメントの更新: `docs/ai-development.md`(日本語版含む)と`CLAUDE.md`。スキルの
       既定の`model:`層(BE-0103)も含む。
-- [ ] 独立した呼び出しと、呼び出し元スキルからの呼び出し(例: `pr-followup`がスコープ外の気づきを
+- [x] 独立した呼び出しと、呼び出し元スキルからの呼び出し(例: `pr-followup`がスコープ外の気づきを
       見つけた場合)の両方で、承認の手順が働くことを確認する。あわせて、無人の実行
       (`implement-be`のハンズフリーループ内の`pr-followup`)を確認する。起票やエスカレーションを
       せず、下書きを構造化サマリーで返すことを確かめる。承認する人間が後のターンで、その下書きに
       対して手順5から再開すること(作り直さないこと)も確かめる。
+
+**ログ**
+
+- スキル本体、`pr-followup` と `implement-be` への組み込み、ドキュメントを出荷しました。スキルは
+  散文なので、動かして確かめられるランタイムはありません。そこで最後の確認は、組み込んだ 3 つの
+  文書を突き合わせて行いました。見たのは次の 4 点です
+  （[#1748](https://github.com/bajutsu-e2e/bajutsu/pull/1748)）。
+  - 承認の手順を呼び出し元が省けないこと。
+  - 人がターンにいるかどうかの申告が `pr-followup` を経て `record-issue` まで変わらずに届くこと。
+  - pending-draft のフィールドが 3 つの文書すべてで名前を持ち、エスカレーション用フィールドと
+    区別されていること。
+  - 無人の申告が立っているあいだは再開の呼び出しを拒むこと。
 
 ## 参考
 
