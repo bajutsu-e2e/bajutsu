@@ -122,10 +122,9 @@ def _resolve_dir(
     """
     if flag:
         return Path(flag)
-    elif config_value:
+    if config_value:
         return Path(config_value)
-    else:
-        return scenario_file.parent / default_name
+    return scenario_file.parent / default_name
 
 
 def _scenario_files(
