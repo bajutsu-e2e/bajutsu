@@ -56,7 +56,14 @@
   iosTipKitHandling: true
   steps:
     - tap: { label: "Log", traits: [button] }
-    - wait: { for: { id: log.openPopoverDialog }, timeout: 10 }
+    - wait: { for: { id: log.submit }, timeout: 10 }
+    # The Modals section's lower controls start behind the floating tab bar (modals.yaml and
+    # alert.yaml both scroll for the same reason), and log.openPopoverDialog sits below
+    # log.openDelete — so aim the scroll past it. Without this the button resolves in the tree at the
+    # very bottom of the screen and the tap only lands because the driver recovers with a scroll of
+    # its own, which makes the fixture depend on where the fold happens to fall.
+    - scroll: { to: { id: log.dialog.value }, direction: down }
+    - wait: { for: { id: log.openPopoverDialog }, timeout: 5 }
     - tap: { id: log.openPopoverDialog }
     # A settle, deliberately not `wait: { for: <the dialog's own button> }`: the mid-wait dismiss hook
     # is called only while a wait is still *blocked*, so waiting on a button that is already there

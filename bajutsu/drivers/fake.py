@@ -285,8 +285,14 @@ class FakeDriver:
     def _tip_is_up(self, tree: list[base.Element]) -> bool:
         """Both seeded identifiers present, the pair the real driver requires before it dismisses."""
         dismiss, container = self.tipkit_dismiss_id, self.tipkit_container_id
-        if dismiss is None or container is None:
+        if dismiss is None:
             return False
+        if container is None:
+            # A seeded region with no container is a broken fixture, not a tip-free screen — the real
+            # driver needs the pair, so a silent False would let a "left alone" test pass because the
+            # seeding was half-done rather than because the pairing works. Loud, like the picker
+            # wheel's own missing-seed above.
+            raise LookupError("fixture error: tipkit_dismiss_id seeded without tipkit_container_id")
         return bool(base.find_all(tree, {"id": dismiss})) and bool(
             base.find_all(tree, {"id": container})
         )

@@ -656,9 +656,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   presentation marks the content it covers accessibility-hidden rather than merely occluding it, so a
   blocked tap can fail as `ElementNotFound`, not only `ElementNotTappable`. The XCUITest backend alone
   declares `Capability.HANDLE_TIPKIT_TIP` and implements `Driver.dismiss_blocking_tip()` by resolving
-  the tip's own `PopoverDismissRegion` scrim, required together with the tip's `TipView` container so
-  that an app's own popover — a `confirmationDialog` installs an identical scrim — is left alone. No
-  Swift runner change is needed, since the tip already surfaces
+  the `PopoverDismissRegion` scrim, required together with the tip's own `TipView` container so that
+  an app's own popover — a `confirmationDialog` installs an identical scrim — is left alone. No Swift
+  runner change is needed, since the tip already surfaces
   in the same accessibility tree every wait poll and tap resolution already fetches. The step loop
   retries a step once when the dismiss actually found and cleared a tip, beside the alert guard's own
   end-of-step branch, and the dismiss also composes onto BE-0314's `on_interrupt_poll` hook so a tip

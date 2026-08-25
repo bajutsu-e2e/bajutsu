@@ -203,11 +203,16 @@ records `tap PopoverDismissRegion [0, 0, 402, 874]` inside the settle step, and 
 follows reports `expected present but was absent`. The new scenario is therefore load-bearing rather
 than incidentally passing.
 
-One shape of that scenario does not work, and the reason is worth recording: waiting on the dialog's
-own button (`wait: { for: { label: "Remove note" } }`) passes even with the unfixed driver, because
-the mid-wait dismiss hook runs only while a wait is still blocked, and a wait for a button already on
-screen succeeds on its first tick without ever asking the guard. The scenario settles instead, which
-keeps the tree polled while the dialog is up.
+Two shapes of that scenario do not work, and both reasons are worth recording. Waiting on the
+dialog's own button (`wait: { for: { label: "Remove note" } }`) passes even with the unfixed driver,
+because the mid-wait dismiss hook runs only while a wait is still blocked, and a wait for a button
+already on screen succeeds on its first tick without ever asking the guard; the scenario settles
+instead, which keeps the tree polled while the dialog is up. Reaching the dialog's own opener without
+scrolling first also works by accident: the button resolves at the very bottom of the screen, behind
+the floating tab bar, and the tap lands only because the driver recovers with a scroll of its own —
+the manifest recorded a failed tap at `y = 828.7`, a scroll, then a retry at `y = 174.3`. An explicit
+`scroll` puts the tap on the first attempt at `y = 171`, so the fixture no longer depends on where the
+fold falls.
 
 ## References
 
