@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0384](BE-0384-record-issue-skill.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0384") |
+| Implementing PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -204,23 +205,34 @@ would add process without adding information.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Author `.apm/skills/record-issue/SKILL.md` (classify → duplicate search → draft →
+- [x] Author `.apm/skills/record-issue/SKILL.md` (classify → duplicate search → draft →
       confirm → create), and run `make skills` to deploy it to `.claude/skills/record-issue/`.
-- [ ] Wire the callers: name the `record-issue` sub-step in `pr-followup` (and any other calling
+- [x] Wire the callers: name the `record-issue` sub-step in `pr-followup` (and any other calling
       skill) the way `ideation` / `implement-be` name `be-progress-tracker`.
-- [ ] Wire the loop layer: `implement-be` step 12 states whether a human is in the turn when it
+- [x] Wire the loop layer: `implement-be` step 12 states whether a human is in the turn when it
       hands a subagent `pr-followup`'s steps, and its structured-summary contract gains a
       pending-draft field, kept distinct from the escalation field so a draft never stops the loop.
       Step 12 also carries every pending draft its iterations returned into its own final report,
       deduplicated against earlier iterations' drafts, so a draft returned early in a run still
       reaches the human as one entry rather than one per iteration.
-- [ ] Documentation wiring: `docs/ai-development.md` (+ ja) and `CLAUDE.md`, including the skill's
+- [x] Documentation wiring: `docs/ai-development.md` (+ ja) and `CLAUDE.md`, including the skill's
       default `model:` tier (BE-0103).
-- [ ] Verify the standalone path and at least one calling-skill path (for example `pr-followup`
+- [x] Verify the standalone path and at least one calling-skill path (for example `pr-followup`
       flagging an out-of-scope finding) both exercise the confirmation gate, that an unattended
       run (`pr-followup` inside `implement-be`'s hands-free loop) returns its draft in the
       iteration's structured summary instead of filing or escalating, and that a human's later
       approval resumes the skill at step 5 against that same draft rather than re-drafting it.
+
+**Log**
+
+- Shipped the skill, its `pr-followup` and `implement-be` wiring, and the documentation. A skill is
+  prose with no runtime to exercise, so the last box was checked by reading the three wired texts
+  against each other ([#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN)). Four things had to
+  hold:
+  - the confirmation step admits no caller-side waiver;
+  - the human-in-the-turn statement reaches `record-issue` unchanged, through `pr-followup`;
+  - the pending-draft field is named in all three texts, and held apart from the escalation field;
+  - a resumed invocation is refused while the statement says no human is in the turn.
 
 ## References
 

@@ -22,6 +22,12 @@ The user provides one of:
 - A branch name
 - "the current PR" (use the current branch's PR)
 
+A caller running these steps unattended also states that **no human is in the turn** —
+[`implement-be`](../../../.apm/skills/implement-be/SKILL.md) step 12 states it when handing these steps to a
+subagent. The statement changes nothing about the fix-and-reply work below; it reaches only the
+[`record-issue`](../../../.apm/skills/record-issue/SKILL.md) sub-step, which cannot observe a human's presence itself
+and must never publish an issue without approval. An absent statement means the turn is attended.
+
 ## Steps
 
 ### 1. Assess the PR state
@@ -60,6 +66,10 @@ gh pr checks <PR>
      always reflect exactly what still needs attention. The only conversations left open are the
      undecided ones you escalate (see below); never resolve a comment whose question is still
      unanswered.
+- A finding you notice **outside this PR's scope** — a minor defect or a small improvement in code a
+  review comment merely passed by — is neither a fix to make here nor a comment to leave unanswered.
+  Hand the finding to the [`record-issue` sub-step](#record-an-out-of-scope-finding) below instead
+  of widening the fix.
 
 ### 4. Self-review against the CI review contract
 
@@ -127,7 +137,26 @@ green and no new comments arrived), since there is nothing new to self-review or
   `skipped`, and the workflow leaves no trace on the pull request when it drops one — so the silence
   is indistinguishable from a review that found nothing, and a follow-up poll would read it as a
   quiet PR. Escalate on `skipped`, or when no run by this account appears.
-- Report what was fixed and what remains.
+- Report what was fixed and what remains, and carry any **pending draft** the `record-issue`
+  sub-step returned in a field of its own, kept separate from an escalation.
+
+## Record an out-of-scope finding
+
+Steps 2 through 4 regularly surface something worth fixing that this PR should not carry. Run
+[`record-issue`](../../../.apm/skills/record-issue/SKILL.md) as a sub-step for each such finding, handing it the
+finding, whatever supporting context exists (the file and line, a reproducing command, the
+environment), and — when the Inputs above said so — the statement that no human is in the turn.
+Follow that skill's steps unchanged: its step 4 confirmation is not this skill's to waive.
+
+What comes back depends on whether a human is in the turn:
+
+- **Attended** — the sub-step confirms with the invoker and files the issue. Report the resulting
+  issue URL alongside what was fixed inline.
+- **Unattended** — the sub-step files nothing and returns a finished draft, which step 5 carries in
+  the summary's **pending-draft** field. A pending draft is deliberately **not** an escalation: the
+  escalations below stop the loop and hand the pull request to the human, and an incidental
+  out-of-scope note should never do that to an otherwise-healthy follow-up loop. The human sees the
+  draft when the loop reports, and approves it on a later turn.
 
 ## Escalation
 

@@ -258,19 +258,25 @@ interval while waiting on human review. Each iteration does three things:
      conflict yet", proceed, and re-check next iteration.
    - `MERGEABLE` → proceed.
 2. **Start a fresh Agent-tool subagent** and give it
-   [`pr-followup`](../../../.apm/skills/pr-followup/SKILL.md)'s steps directly. Its task for
+   [`pr-followup`](../../../.apm/skills/pr-followup/SKILL.md)'s steps directly, **stating that no human is in the
+   turn** — the loop runs unattended, and only this layer knows that, so
+   [`record-issue`](../../../.apm/skills/record-issue/SKILL.md) would otherwise wait on an approval nobody is there to
+   give. Its task for
    the PR: assess CI and review comments, make targeted fixes, self-review the fix against the CI
    review contract, run `make check`, push, request the live review on demand, reply to and resolve
    threads, and **return a short structured summary** — what it changed, whether it pushed, whether
    its self-review came back clean and whether it therefore requested a live review, the resulting
-   CI/review state, and whether it hit one of `pr-followup`'s escalations. The
+   CI/review state, any **pending draft** the `record-issue` sub-step returned, and whether it hit
+   one of `pr-followup`'s escalations. A pending draft sits in a field of its own, never in the
+   escalation field, so an out-of-scope note never stops the loop. The
    fresh context is what keeps the implement transcript out of the expensive work (step 11).
 3. **Read the summary and evaluate the stop conditions.** The loop layer owns the
    conflict / `CHANGES_REQUESTED` checks and the counters; `pr-followup` itself is unchanged.
 
 **Read [`references/pr-followup-loop.md`](references/pr-followup-loop.md) before the first
-iteration.** It holds the three stop conditions, the escalations, and the two iteration backstops
-that decide when this loop ends. The loop never marks the PR ready — that sign-off is the human's.
+iteration.** It holds the three stop conditions, the escalations, the two iteration backstops that
+decide when this loop ends, and the rule for carrying the iterations' pending drafts into the loop's
+final report. The loop never marks the PR ready — that sign-off is the human's.
 
 ## References
 

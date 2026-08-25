@@ -360,6 +360,12 @@ overridable:
 - [`document-writing`](../.claude/skills/document-writing/SKILL.md) → `sonnet` (Medium)
 - [`english-document-writing`](../.claude/skills/english-document-writing/SKILL.md) → `sonnet` (Medium)
 - [`japanese-document-writing`](../.claude/skills/japanese-document-writing/SKILL.md) → `sonnet` (Medium)
+- [`record-issue`](../.claude/skills/record-issue/SKILL.md) → `sonnet` (Medium) — it files a minor
+  finding as a GitHub Issue
+  ([BE-0384](../roadmaps/BE-0384-record-issue-skill/BE-0384-record-issue-skill.md)). Classifying the
+  finding, weighing a duplicate search's candidates, and drafting a body from an issue template are
+  prose judgments the light tier handles poorly, and the skill writes no product code, so the heavy
+  tier would be waste.
 - [`roadmap-filter`](../.claude/skills/roadmap-filter/SKILL.md) → `haiku` (Light) — a read-only
   survey of the roadmap by `Status` (BE-0162): it wraps `make roadmap-status STATUS="…"` so a
   session lists just the items in one status (e.g. every open `Proposal`), with each item's file
@@ -465,6 +471,21 @@ implementation, review, gate, and follow-up steps. Two things differ: `fix-issue
 through the issue's native assignee field, and closes the loop with a `Closes #<N>` line in the PR
 body rather than a `Status` flip. `fix-issue` also judges the boundary itself — a fix that turns out
 to need a design decision escalates to `ideation` or `propose-and-build` instead of shipping.
+
+**When the finding has no issue yet**, the entry point one step earlier is
+[`record-issue`](../.apm/skills/record-issue/SKILL.md)
+([BE-0384](../roadmaps/BE-0384-record-issue-skill/BE-0384-record-issue-skill.md)). That skill only
+files: it classifies a minor bug or a small, bounded improvement, searches the open issues and the
+roadmap for a duplicate, drafts a body from this repository's own issue templates, and creates the
+issue once the invoker explicitly approves the draft. It ships no fix and opens no branch. What
+`record-issue` files is what `task-select` later ranks and `fix-issue` later ships, so the three
+skills carry a finding noticed in passing all the way to a merged fix instead of losing it or
+letting it swell the change in hand. Any skill may call `record-issue` as a sub-step —
+[`pr-followup`](../.apm/skills/pr-followup/SKILL.md) is the caller wired today — and no caller may
+waive the approval step. When that call happens unattended, inside `implement-be`'s hands-free loop,
+`record-issue` files nothing: it returns the finished draft in the iteration's summary, in a field
+kept separate from an escalation so the loop runs on, and the human approves the draft on a later
+turn.
 
 ## Pull requests: title and body
 
