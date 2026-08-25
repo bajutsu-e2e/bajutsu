@@ -2,3 +2,13 @@
 # resolver output (BE-0043). The `uv-lock` driver is wired by `make hooks` / `make setup`
 # (scripts/merge-uv-lock.sh); without it git falls back to the default merge, which is harmless.
 uv.lock merge=uv-lock
+
+# Regenerate APM's committed generated output from .apm/skills/ on a merge conflict instead of
+# line-merging it (BE-0390, mirroring the uv.lock driver above). Both the lockfile and the deployed
+# skill tree are `apm install` output, so a conflict's correct value is on neither side of the
+# merge — it is whatever a re-install writes from the merged source. The `apm-generated` driver is
+# wired by `make hooks` / `make setup` (scripts/merge-apm-generated.sh); without it git leaves
+# conflict markers among per-file SHA-256 hashes, and, in the deployed tree, invites a hand
+# resolution that looks right while leaving a deployment its source no longer matches.
+apm.lock.yaml merge=apm-generated
+.claude/skills/** merge=apm-generated

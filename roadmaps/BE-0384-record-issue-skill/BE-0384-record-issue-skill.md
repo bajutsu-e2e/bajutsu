@@ -21,13 +21,13 @@ the invoker gives explicit approval — files the issue with `gh issue create`. 
 lives in one workflow document so it works two ways: as a standalone skill a person invokes
 directly, and as a sub-step another skill (for example `pr-followup`) calls when it notices
 something worth flagging but out of the current change's scope. A judge-only skill such as
-[`claude-review`](../../.agent-workflows/claude-review/workflow.md) never calls it — that skill
+[`claude-review`](../../.apm/skills/claude-review/SKILL.md) never calls it — that skill
 edits and files nothing — so its findings reach `record-issue` only through whatever invoked it.
 
 ## Motivation
 
 Bajutsu already draws a line between two weights of idea. A substantial feature goes through the
-roadmap (BE) process: [`ideation`](../../.agent-workflows/ideation/workflow.md) drafts a scoped
+roadmap (BE) process: [`ideation`](../../.apm/skills/ideation/SKILL.md) drafts a scoped
 proposal with a Motivation and a Detailed design, and a human merges it before CI allocates a real
 BE ID. A minor defect or a small improvement does not need any of that weight —
 [`feature_request.yml`](../../.github/ISSUE_TEMPLATE/feature_request.yml) already says as much:
@@ -44,7 +44,7 @@ Claude Code's own harness already has a shape for the first half of this problem
 tool lets a session flag an out-of-scope finding as a chip the user can act on later, without
 derailing the current turn. That chip is ephemeral and scoped to one session — it does not survive
 past the session, is not visible to the rest of the team, and is not a GitHub Issue, so
-[`task-select`](../../.agent-workflows/task-select/workflow.md) — which already treats open GitHub
+[`task-select`](../../.apm/skills/task-select/SKILL.md) — which already treats open GitHub
 Issues as one of its two candidate sources alongside the roadmap — cannot pick it up. `record-issue`
 is the durable, repository-level counterpart: filing a persistent, team-visible issue that
 `task-select` can surface to anyone, in a later session, on a different machine.
@@ -56,13 +56,13 @@ as a candidate — so the two items never overlap in scope.
 
 ## Detailed design
 
-**Skill layout.** Following the three-layer convention in
-[`CLAUDE.md`](../../CLAUDE.md#agent-skill-layout), the shared procedure lives in
-`.agent-workflows/record-issue/workflow.md`; a Claude adapter at
-`.claude/skills/record-issue/SKILL.md` and a Codex adapter at
-`.agent-hosts/codex/skills/record-issue/SKILL.md` (with its `agents/openai.yaml` interface metadata,
-which every existing Codex adapter carries) each load that shared procedure and add only their
-host-specific invocation.
+**Skill layout.** Following the single-source convention in
+[`CLAUDE.md`](../../CLAUDE.md#agent-skill-layout), the skill is one source directory,
+`.apm/skills/record-issue/`, holding a `SKILL.md` that carries both the procedure and the
+Claude Code invocation it needs, plus a `references/` file for any depth that would push the body
+past APM's size budget. `make skills` deploys it to `.claude/skills/record-issue/`, and both the
+source and the deployment are committed
+([BE-0390](../BE-0390-apm-skill-management/BE-0390-apm-skill-management.md)).
 
 **Inputs.** A description of the finding — either typed directly by the invoker, or handed over by
 a calling skill that spotted something out of its own scope — plus whatever supporting context is
@@ -99,7 +99,7 @@ invoker any candidate matches (number, title, state, labels). The search exclude
 on its own: those are bot-owned, so a comment on one of them is no landing at all. Because that
 exclusion also removes the only signal that an open BE item already covers the finding, this step
 checks the roadmap itself: run
-[`roadmap-filter`](../../.agent-workflows/roadmap-filter/workflow.md) once for `Proposal` and once
+[`roadmap-filter`](../../.apm/skills/roadmap-filter/SKILL.md) once for `Proposal` and once
 for `In progress` — it accepts a single status per run — and match the returned titles on the same
 keywords. A title is a coarse filter — an item's coverage of a small finding usually lives in its
 `Detailed design` rather than its title — so also grep every returned item's file (the `Path`
@@ -175,7 +175,7 @@ otherwise-healthy follow-up loop.
 `be-progress-tracker` runs because `ideation` and `implement-be` each name it — so `pr-followup`
 (and any other calling skill) gains an explicit `record-issue` sub-step. The same change wires the
 documentation: `docs/ai-development.md` (and its `docs/ja/` mirror) and `CLAUDE.md`, including the
-Claude adapter's default `model:` tier (BE-0103).
+skill's default `model:` tier (BE-0103).
 
 ## Alternatives considered
 
@@ -204,10 +204,8 @@ would add process without adding information.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Author `.agent-workflows/record-issue/workflow.md` (classify → duplicate search → draft →
-      confirm → create).
-- [ ] Add the Claude adapter `.claude/skills/record-issue/SKILL.md`.
-- [ ] Add the Codex adapter `.agent-hosts/codex/skills/record-issue/SKILL.md`.
+- [ ] Author `.apm/skills/record-issue/SKILL.md` (classify → duplicate search → draft →
+      confirm → create), and run `make skills` to deploy it to `.claude/skills/record-issue/`.
 - [ ] Wire the callers: name the `record-issue` sub-step in `pr-followup` (and any other calling
       skill) the way `ideation` / `implement-be` name `be-progress-tracker`.
 - [ ] Wire the loop layer: `implement-be` step 12 states whether a human is in the turn when it
@@ -216,8 +214,8 @@ would add process without adding information.
       Step 12 also carries every pending draft its iterations returned into its own final report,
       deduplicated against earlier iterations' drafts, so a draft returned early in a run still
       reaches the human as one entry rather than one per iteration.
-- [ ] Documentation wiring: `docs/ai-development.md` (+ ja) and `CLAUDE.md`, including the Claude
-      adapter's default `model:` tier (BE-0103).
+- [ ] Documentation wiring: `docs/ai-development.md` (+ ja) and `CLAUDE.md`, including the skill's
+      default `model:` tier (BE-0103).
 - [ ] Verify the standalone path and at least one calling-skill path (for example `pr-followup`
       flagging an out-of-scope finding) both exercise the confirmation gate, that an unattended
       run (`pr-followup` inside `implement-be`'s hands-free loop) returns its draft in the
@@ -229,12 +227,12 @@ would add process without adding information.
 - [`.github/ISSUE_TEMPLATE/bug_report.yml`](../../.github/ISSUE_TEMPLATE/bug_report.yml) and
   [`feature_request.yml`](../../.github/ISSUE_TEMPLATE/feature_request.yml) — the templates this
   skill's drafts mirror.
-- [`ideation`](../../.agent-workflows/ideation/workflow.md) and
-  [`propose-and-build`](../../.agent-workflows/propose-and-build/workflow.md) — the counterparts
+- [`ideation`](../../.apm/skills/ideation/SKILL.md) and
+  [`propose-and-build`](../../.apm/skills/propose-and-build/SKILL.md) — the counterparts
   for an idea substantial enough to need a Detailed design.
-- [`task-select`](../../.agent-workflows/task-select/workflow.md) — already surveys open GitHub
+- [`task-select`](../../.apm/skills/task-select/SKILL.md) — already surveys open GitHub
   Issues as a candidate source; the intended consumer of what this skill files.
 - [BE-0380](../BE-0380-fix-issue-skill/BE-0380-fix-issue-skill.md) — the consuming counterpart that
   ships a fix for an issue this skill filed.
-- [`CLAUDE.md`](../../CLAUDE.md#agent-skill-layout) — the three-layer skill-authoring convention
-  this item's layout follows.
+- [`CLAUDE.md`](../../CLAUDE.md#agent-skill-layout) — the single-source skill convention
+  this item's layout follows (BE-0390).

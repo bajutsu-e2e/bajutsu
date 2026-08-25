@@ -56,7 +56,3 @@
   バインディングだけを保持します（[BE-0225](BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md)）。バインディングが経由する
   永続的でcontent-addressedなストレージ（[BE-0243](BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md)、[BE-0268](BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts-ja.md)）
   は履歴一覧とロールバックUIの土台になり得ますが、その一覧とUIはまだありません。
-- **サインイン直後にorgのアクティブなprojectへ遷移させる**：サインインしたユーザーには、serveのシェルが
-  開いていた画面がそのまま表示されます。遷移先のorgのアクティブなproject
-  （[BE-0225](BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md)）は既に存在するため、サインイン
-  直後にそこへ導く変更はUI側の小さな追加で済みます。

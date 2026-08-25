@@ -1,4 +1,0 @@
-interface:
-  display_name: "Document writing"
-  short_description: "Apply the shared Bajutsu technical-writing norm"
-  default_prompt: "Use $document-writing to revise this document."

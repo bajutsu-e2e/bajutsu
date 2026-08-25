@@ -54,16 +54,17 @@ The Python core needs no Simulator, so the gate is fast and runs anywhere (Linux
 
 ```bash
 make check        # format-check + lint + lint-docstrings + lint-imports + lint-sh
-                  #   + lint-actions + lint-js + lint-roadmap + lint-module-map + lint-secrets
+                  #   + lint-actions + lint-js + lint-roadmap + lint-skills + lint-module-map
+                  #   + lint-secrets
                   #   + lock-check + typecheck + test (coverage floor)   — mirrors CI exactly
 ```
 
 Individual steps: `make format-check` · `make lint` · `make lint-docstrings` · `make lint-imports`
-· `make lint-sh` · `make lint-actions` · `make lint-js` · `make lint-roadmap`
-· `make lint-module-map` · `make lint-secrets`
-· `make lock-check` · `make typecheck` · `make test`. (`make format` rewrites; the gate only
-checks.) Every step is uv-native and runs on a fresh clone — except `actionlint`, a standalone
-binary that CI installs but `make` skips (with a notice) when it is absent. CI
+· `make lint-sh` · `make lint-actions` · `make lint-js` · `make lint-roadmap` · `make lint-skills`
+· `make lint-module-map` · `make lint-secrets` · `make lock-check` · `make typecheck` · `make test`.
+(`make format` rewrites; the gate only checks.) Every step is uv-native and runs on a fresh clone —
+except `actionlint` and `gitleaks`, two tools that CI installs separately but `make` skips (with a
+notice) when they are absent. CI
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the same steps on every PR —
 keeping the local bar identical is what makes "green locally" predict "green in CI".
 
@@ -88,18 +89,30 @@ gate: `make -C demos/showcase run-swiftui` (requires `make deps` first). Don't b
 
 ## Agent skill layout
 
-Keep reusable workflow instructions independent of the agent host:
+One skill is **one source directory**, managed with the Agent Package Manager (APM) since
+[BE-0390](roadmaps/BE-0390-apm-skill-management/BE-0390-apm-skill-management.md):
 
-- `.agent-workflows/<name>/workflow.md` holds the shared procedure and its portable resources.
-- `.claude/skills/<name>/SKILL.md` is the Claude Code adapter. Keep `model`, Claude tools,
-  slash commands, hooks, and Claude plugins there.
-- `.agent-hosts/codex/skills/<name>/SKILL.md` is the Codex adapter. Keep Codex tools, policies,
-  and `agents/openai.yaml` there. The `.agents` link exposes only this Codex-specific tree.
+- `.apm/skills/<name>/SKILL.md` is the skill — its frontmatter (`name`, `description`, `model`) and
+  its whole procedure, including the Claude Code tools, slash commands, and plugins it uses. There
+  is no separate adapter and no second copy to keep in step.
+- `.apm/skills/<name>/references/` holds depth the body would otherwise carry: a step's long
+  procedure, a norm set's rules. `SKILL.md` stays within APM's budget — roughly 500 lines and
+  5,000 tokens — and points at the reference file *at the step that needs it*, so a session loads
+  only what it uses.
+- `.claude/skills/<name>/` is the **deployed** tree, written by `apm install` and committed, so a
+  fresh clone has a working skill set before anyone installs APM. Never edit it by hand.
+- `apm.yml` names the package and pins `targets: [claude]`; `apm.lock.yaml` records a SHA-256 per
+  deployed file.
 
-Never link `.agents/skills` to the complete `.claude/skills` directory. A host-neutral change
-belongs in the shared workflow; a host-specific invocation or setting belongs only in that host's
-adapter. Keep each adapter small: its metadata selects the skill, and its body loads the complete
-shared workflow before applying the host-specific mapping.
+Edit the source, then run `make skills` and commit both sides. `make lint-skills` (part of
+`make check`) runs `apm audit --ci`, which fails when a deployed file no longer matches its source —
+whether it was hand-edited or its `make skills` was forgotten.
+
+The one exception to loading `references/` on demand is a **norm set** — `document-writing`,
+`english-document-writing`, `japanese-document-writing` — which this file mandates applying in full
+rather than step by step. Where such a skill splits, its `SKILL.md` opens by telling the host to
+load every `references/` file before drafting: no step *needs* a norm, so a host left to load on
+demand could apply a subset and still believe it followed the skill.
 
 ## Working in parallel without breaking each other
 
@@ -112,9 +125,9 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   you; run `make setup` once on a fresh clone (web sessions get it automatically). The
   deterministic test suite is the regression net — if you change behavior, a test should change
   with it. Self-heal mechanism: [`docs/ai-development.md`](docs/ai-development.md#never-push-red).
-- **Git defenses are wired the same way (BE-0043).** `make hooks` also self-heals two local git
-  settings that ease parallel work: a `uv.lock` merge driver and `rerere`. No manual `git config`
-  needed. Mechanism:
+- **Git defenses are wired the same way (BE-0043).** `make hooks` also self-heals the local git
+  settings that ease parallel work: a `uv.lock` merge driver, the matching `apm.lock.yaml` one
+  (BE-0390), and `rerere`. No manual `git config` needed. Mechanism:
   [`docs/ai-development.md`](docs/ai-development.md#rebase-early-integrate-small-conflicts).
 - **Never commit a secret.** A tracked pre-commit/prepare-commit-msg/commit-msg hook and a CI
   re-scan, both backed by [gitleaks](https://github.com/gitleaks/gitleaks) and its tracked
@@ -140,13 +153,13 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   task→capability matrix and the phase/subagent guidance live in
   [`docs/ai-development.md`](docs/ai-development.md#right-sizing-the-model-and-reasoning-effort-be-0103).
 - **Who opens the PR depends on the work (BE-0230).** Two paths:
-  - **BE-creation work** — a proposal PR from [`ideation`](.agent-workflows/ideation/workflow.md) or the
-    proposal phase of [`propose-and-build`](.agent-workflows/propose-and-build/workflow.md): **don't
+  - **BE-creation work** — a proposal PR from [`ideation`](.apm/skills/ideation/SKILL.md) or the
+    proposal phase of [`propose-and-build`](.apm/skills/propose-and-build/SKILL.md): **don't
     auto-create it.** Push to your branch and let the human open the PR. A proposal is a human
     checkpoint, and its BE id is allocated only when a human merges it (BE-0089) — auto-opening
     would erode that checkpoint.
-  - **Implementation work** — [`implement-be`](.agent-workflows/implement-be/workflow.md) and
-    [`fix-issue`](.agent-workflows/fix-issue/workflow.md) (BE-0380), whose output
+  - **Implementation work** — [`implement-be`](.apm/skills/implement-be/SKILL.md) and
+    [`fix-issue`](.apm/skills/fix-issue/SKILL.md) (BE-0380), whose output
     is always a self-contained, gate-green change: **auto-open the Draft PR after the gate, then run
     a paced `/loop`** that drives the mechanical tail (CI fixes, review replies) to quiet-and-green,
     delegating each iteration's `pr-followup` work to a fresh subagent so the heavy implement
@@ -188,10 +201,10 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   meaning. English, like all code. Migrate module by module in small PRs. Full rule:
   [`docs/ai-development.md`](docs/ai-development.md).
 - **Invoke the writing skills *before* you write or revise a BE roadmap item or a prose doc, not
-  after.** [`document-writing`](.agent-workflows/document-writing/workflow.md) is the authoritative
+  after.** [`document-writing`](.apm/skills/document-writing/SKILL.md) is the authoritative
   norm and the umbrella above two language layers; apply it together with the layer for the
-  language you are writing — [`english-document-writing`](.agent-workflows/english-document-writing/workflow.md)
-  for English, [`japanese-document-writing`](.agent-workflows/japanese-document-writing/workflow.md)
+  language you are writing — [`english-document-writing`](.apm/skills/english-document-writing/SKILL.md)
+  for English, [`japanese-document-writing`](.apm/skills/japanese-document-writing/SKILL.md)
   for Japanese. The Japanese layer binds **without exception, for any Japanese you produce** — new
   prose, translations, and revisions alike, not only `docs/ja/` and roadmap `*-ja.md`. Like the
   bilingual-docs rule, all three are review-time norms, not a CI gate.
@@ -216,7 +229,7 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   omissions** (each document self-contained; spell out an acronym in full on first use with the
   acronym in parentheses, e.g. role-based access control (RBAC), then the acronym alone). Japanese
   docs — `docs/ja/` and every roadmap `*-ja.md` — are written in **敬体 (ですます調)**, never 常体,
-  under the [`japanese-document-writing`](.agent-workflows/japanese-document-writing/workflow.md) skill (above). Full
+  under the [`japanese-document-writing`](.apm/skills/japanese-document-writing/SKILL.md) skill (above). Full
   guidance: [`docs/ai-development.md`](docs/ai-development.md).
 - **Roadmap items use BE IDs (strict).** Every item is one directory `roadmaps/BE-NNNN-<slug>/`
   holding **both** language files `BE-NNNN-<slug>.md` and `BE-NNNN-<slug>-ja.md` (`BE` = *Bajutsu

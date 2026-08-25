@@ -20,14 +20,14 @@ Issueテンプレートから件名と本文を下書きします。起票者が
 `gh issue create`で起票します。共通の手順は1つのワークフロー文書にまとめてあります。そのため、人が
 直接呼び出す独立したスキルとしても動作します。`pr-followup`など他のスキルが「今回の変更のスコープ外
 だが指摘しておきたい」気づきを見つけた際に呼び出すサブステップとしても、同じ手順で動作します。
-[`claude-review`](../../.agent-workflows/claude-review/workflow.md)のような判定専用のスキルは、
+[`claude-review`](../../.apm/skills/claude-review/SKILL.md)のような判定専用のスキルは、
 このスキルを直接呼び出しません。`claude-review`は編集と起票のどちらも行わないため、その指摘は呼び出し元を
 経由してはじめて`record-issue`に届きます。
 
 ## 動機
 
 Bajutsuでは、アイデアの重みをすでに2段階に分けています。本格的な機能は
-[ロードマップ(BE)プロセス](../../.agent-workflows/ideation/workflow.md)を通ります。`ideation`は
+[ロードマップ(BE)プロセス](../../.apm/skills/ideation/SKILL.md)を通ります。`ideation`は
 動機と詳細設計を備えたスコープの定まった提案を起草し、人間がマージした後にCIが実際のBE番号を
 割り当てます。一方、軽微な不具合や小さな改善はこの重さを必要としません。
 [`feature_request.yml`](../../.github/ISSUE_TEMPLATE/feature_request.yml)自身が「軽量な要望や
@@ -43,7 +43,7 @@ Bajutsuでは、アイデアの重みをすでに2段階に分けています。
 Claude Codeのハーネス自体には、この問題の前半に対応する仕組みがすでにあります。`spawn_task`
 ツールは、スコープ外の気づきを、現在のターンを止めずに後で対応できるチップとして残します。ただし
 このチップはセッションに閉じた一時的なもので、セッションを越えて残らず、チーム全体には見えません。
-GitHub Issueでもないため、[`task-select`](../../.agent-workflows/task-select/workflow.md)からは
+GitHub Issueでもないため、[`task-select`](../../.apm/skills/task-select/SKILL.md)からは
 拾えません。`task-select`は、ロードマップと並んで、開いているGitHub Issueをすでに候補の1つとして
 扱っているスキルです。`record-issue`は、このセッションローカルな仕組みに対応する、リポジトリ
 レベルで永続する側です。誰でも、別のセッションから、別のマシンからでも`task-select`を通じて
@@ -56,12 +56,12 @@ GitHub Issueでもないため、[`task-select`](../../.agent-workflows/task-sel
 
 ## 詳細設計
 
-**スキルの構成。** [`CLAUDE.md`](../../CLAUDE.md#agent-skill-layout)は3層構成の規約を定めています。
-これに従い、共通の手順は`.agent-workflows/record-issue/workflow.md`に置きます。Claude用アダプターは
-`.claude/skills/record-issue/SKILL.md`に置きます。Codex用アダプターは
-`.agent-hosts/codex/skills/record-issue/SKILL.md`に置きます。既存のCodexアダプターがすべて持つ
-`agents/openai.yaml`のインターフェースメタデータも、ここに含めます。どちらも共通の手順を読み込み、
-各ホスト固有の呼び出し方だけを追加します。
+**スキルの構成。** [`CLAUDE.md`](../../CLAUDE.md#agent-skill-layout)は単一ソースの規約を定めて
+います。これに従い、スキルはソースのディレクトリ1つ`.apm/skills/record-issue/`にまとめます。
+その`SKILL.md`が、手順と、Claude Codeでの呼び出し方の両方を持ちます。本体がAPMのサイズ予算を
+超える深さは`references/`のファイルへ降ろします。配備先`.claude/skills/record-issue/`へは
+`make skills`が書き出し、ソースと配備先の双方をコミットします
+([BE-0390](../BE-0390-apm-skill-management/BE-0390-apm-skill-management-ja.md))。
 
 **入力。** 気づいた内容の説明です。呼び出す人が直接入力する場合も、呼び出し元のスキルが自分の
 スコープ外で見つけた気づきを渡す場合もあります。加えて、ファイルと行番号、再現するコマンド、
@@ -96,7 +96,7 @@ GitHub Issueでもないため、[`task-select`](../../.agent-workflows/task-sel
 これらはボットが管理するIssueなので、そこへコメントするのは行き先として成立しません。
 ただし、この除外によって、開いているBE項目がすでにこの気づきをカバーしているという唯一の
 手がかりも消えてしまいます。そこでこの手順では、
-[`roadmap-filter`](../../.agent-workflows/roadmap-filter/workflow.md)を使います。
+[`roadmap-filter`](../../.apm/skills/roadmap-filter/SKILL.md)を使います。
 `Proposal`用と`In progress`用にそれぞれ1回ずつ実行します。1回の実行で扱えるstatusは
 1つだけだからです。返ってきたタイトルを同じキーワードで照合します。タイトルは粗いフィルタに
 すぎません。小さな気づきへの言及は、たいていタイトルではなく詳細設計の中にあるからです。
@@ -174,7 +174,7 @@ BE-0230のエスカレーション一覧の各項目はどれもループを停�
 サブステップだけを実行します。`be-progress-tracker`が動くのは、`ideation`と`implement-be`がそれぞれ
 名指ししているからです。同じ形で、`pr-followup`(および他の呼び出し元スキル)に`record-issue`の
 サブステップを名指しします。あわせてドキュメントも更新します。対象は`docs/ai-development.md`
-(日本語版含む)と`CLAUDE.md`で、Claude用アダプターの既定の`model:`層(BE-0103)も含みます。
+(日本語版含む)と`CLAUDE.md`で、スキルの既定の`model:`層(BE-0103)も含みます。
 
 ## 検討した代替案
 
@@ -202,10 +202,8 @@ BE-0230のエスカレーション一覧の各項目はどれもループを停�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `.agent-workflows/record-issue/workflow.md`を執筆する(分類 → 重複検索 → 下書き → 承認 →
-      起票)。
-- [ ] Claude用アダプター`.claude/skills/record-issue/SKILL.md`を追加する。
-- [ ] Codex用アダプター`.agent-hosts/codex/skills/record-issue/SKILL.md`を追加する。
+- [ ] `.apm/skills/record-issue/SKILL.md`を執筆し(分類 → 重複検索 → 下書き → 承認 → 起票)、
+      `make skills`で`.claude/skills/record-issue/`へ配備する。
 - [ ] 呼び出し元に組み込む: `ideation` / `implement-be`が`be-progress-tracker`を名指しするのと
       同じ形で、`pr-followup`(および他の呼び出し元スキル)に`record-issue`のサブステップを
       名指しする。
@@ -215,7 +213,7 @@ BE-0230のエスカレーション一覧の各項目はどれもループを停�
       ループを止めないようにする。手順12は、各イテレーションが返したpending-draftを、
       それ以前のイテレーションの分と重複排除したうえで、すべて自分自身の最終報告へ持ち越す。
       早く返った下書きも、イテレーションごとに重複せず人間へ届く。
-- [ ] ドキュメントの更新: `docs/ai-development.md`(日本語版含む)と`CLAUDE.md`。Claude用アダプターの
+- [ ] ドキュメントの更新: `docs/ai-development.md`(日本語版含む)と`CLAUDE.md`。スキルの
       既定の`model:`層(BE-0103)も含む。
 - [ ] 独立した呼び出しと、呼び出し元スキルからの呼び出し(例: `pr-followup`がスコープ外の気づきを
       見つけた場合)の両方で、承認の手順が働くことを確認する。あわせて、無人の実行
@@ -228,11 +226,11 @@ BE-0230のエスカレーション一覧の各項目はどれもループを停�
 - [`.github/ISSUE_TEMPLATE/bug_report.yml`](../../.github/ISSUE_TEMPLATE/bug_report.yml)と
   [`feature_request.yml`](../../.github/ISSUE_TEMPLATE/feature_request.yml)：このスキルの下書きが
   対応するテンプレート。
-- [`ideation`](../../.agent-workflows/ideation/workflow.md)と
-  [`propose-and-build`](../../.agent-workflows/propose-and-build/workflow.md)：詳細設計が要るほど
+- [`ideation`](../../.apm/skills/ideation/SKILL.md)と
+  [`propose-and-build`](../../.apm/skills/propose-and-build/SKILL.md)：詳細設計が要るほど
   本格的なアイデアの受け皿。
-- [`task-select`](../../.agent-workflows/task-select/workflow.md)：開いているGitHub Issueを
+- [`task-select`](../../.apm/skills/task-select/SKILL.md)：開いているGitHub Issueを
   すでに候補の1つとして扱っており、このスキルが起票したIssueを拾う側。
 - [BE-0380](../BE-0380-fix-issue-skill/BE-0380-fix-issue-skill-ja.md)：このスキルが起票したIssueの
   実装を担う受け手。
-- [`CLAUDE.md`](../../CLAUDE.md#agent-skill-layout)：この項目のスキル構成が従う3層構成の規約。
+- [`CLAUDE.md`](../../CLAUDE.md#agent-skill-layout)：この項目のスキル構成が従う単一ソースの規約（BE-0390）。

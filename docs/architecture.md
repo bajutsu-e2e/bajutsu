@@ -330,10 +330,30 @@ crash diagnosis that names a mid-run runner fault, never an unrelated timeout.
 
 Neither lane guesses how long to hold a fault: each lifts it on the driver's *own* log record that it
 reached the layer under test (`tests/fault_injection.py`), so which mechanism a case exercises is
-decided by observed behavior rather than by the length of a sleep. Both are per-PR signals,
-deliberately outside their lanes' required aggregate checks, and are promoted once stable — the
-signal-then-required path BE-0282 established, applied here to lanes that break the device on
-purpose and so carry more inherent flakiness risk than the ones driving a healthy one.
+decided by observed behavior rather than by the length of a sleep.
+
+Both lanes now feed their lane's required aggregate check. They landed outside it — the
+signal-then-required path BE-0282 established, applied to lanes that break the device on purpose and
+so carry more inherent flakiness risk than the ones driving a healthy one — and that caution was
+earned. Over its first ten days `fault-injection (xcuitest)` failed 78 times against 52 passes.
+
+What retired the caution was not the rate falling but the cause being found. Every one of those 78
+failures precedes the commit that fixed the runner's HTTP server against replying to a peer that had
+gone away, which killed the XCTest host with SIGPIPE. The lane holds the runner under `SIGSTOP`,
+which is how a connection comes to be abandoned in the first place, so it was tripping that defect
+far more often than any suite driving a healthy runner — the lane finding a real runner-channel bug,
+which is what it exists to do. Since that fix it has run 64 times without a failure, against
+`conformance (xcuitest)`'s 58-and-2 over the same span; `fault-injection (adb)` ran 73 times for one
+failure there, and that one was the emulator never coming up rather than anything the lane asserts,
+against `conformance (adb)`'s four in 67. Both lanes now sit at or better than a suite that has been
+on the gate throughout.
+
+A regression in `_is_transient_empty`'s threshold or in the crash classifier's matching is the
+precise failure these lanes exist to catch, and a signal is something a merge can ignore — so the
+promotion is what makes the coverage mean anything. `tests/test_e2e_gate_needs.py` pins it on the fast
+suite in three layers: which jobs each gate depends on, that every one of them has its result read,
+and — by running the verdict script itself — that each of those results actually reddens the check. A
+gate can otherwise be narrowed, or left permanently green, without a single test noticing.
 
 ### The concurrent-device lane (BE-0298)
 
@@ -612,7 +632,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   `PICKER_WHEEL` capability, which only the resident-runner XCUITest backend and `FakeDriver`
   declare, so Android and web are rejected at preflight before any device work
 
-#### DSL system-alert handling
+#### DSL system-alert and tip handling
 
 - DSL `handleSystemAlert` (BE-0316): a deterministic, iOS-only step that taps a SpringBoard
   permission-prompt button by a native accessibility query (the runner's second, on-demand
@@ -632,9 +652,6 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   the AI-vision guard demoted to a fallback for what the native path can't name (a backend lacking the
   capability, a non-enumerable blocking surface, or a free-text `instruction` the native path can't
   resolve to one label); on by default, `false` disables it per scenario
-
-#### Evidence, network observation, and reporting
-
 - DSL `iosTipKitHandling` (BE-0389), an opt-in guard for a blocking Apple TipKit tip: TipKit's
   presentation marks the content it covers accessibility-hidden rather than merely occluding it, so a
   blocked tap can fail as `ElementNotFound`, not only `ElementNotTappable`. The XCUITest backend alone
@@ -646,6 +663,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   does not hold a wait to its full timeout either. Defaults off (unlike `systemAlertHandling`) because a
   scenario sometimes asserts on the tip itself; `--ios-tipkit-handling`/`--no-ios-tipkit-handling`
   follows the same flag > scenario > target > default precedence as `systemAlertHandling` (BE-0177)
+
+#### Evidence, network observation, and reporting
+
 - Evidence: instant (`screenshot`/`elements`/`actionLog`/`rawTree` — `actionLog` carries each step's
   concrete actuations: the coordinate sent, the gesture's geometry, the channel that carried it;
   `rawTree` carries the raw dump behind `elements`, opt-in, adb and XCUITest) + interval

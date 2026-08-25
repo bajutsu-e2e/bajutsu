@@ -105,7 +105,7 @@ actual CI reviewer is, applies the contract at
 [`.github/claude-review-prompt.md`](../.github/claude-review-prompt.md) to the staged diff and
 fixes every finding — except a false positive or an already-explained trade-off (noted and left
 as-is), or one that calls for a genuine design change (escalated to you instead); capped at 3
-rounds. See [`ideation`](../.agent-workflows/ideation/workflow.md) step 5 for the exact procedure.
+rounds. See [`ideation`](../.apm/skills/ideation/SKILL.md) step 5 for the exact procedure.
 
 The gate stays green even for a docs-only change:
 
@@ -267,7 +267,7 @@ sequence contiguous by only spending a number on an item that ships.
 
 For a **small, well-scoped item whose design you do not expect review to reshape**, the serial path's
 latency — the dead time between "proposal opened" and "id allocated" — is pure overhead. That is what
-[`propose-and-build`](../.agent-workflows/propose-and-build/workflow.md) is for:
+[`propose-and-build`](../.apm/skills/propose-and-build/SKILL.md) is for:
 
 ```
 /propose-and-build

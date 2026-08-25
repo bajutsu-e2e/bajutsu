@@ -1,4 +1,0 @@
-interface:
-  display_name: "Cleanup worktrees"
-  short_description: "Remove merged worktrees and stale branches safely"
-  default_prompt: "Use $cleanup to clean up completed worktrees safely."

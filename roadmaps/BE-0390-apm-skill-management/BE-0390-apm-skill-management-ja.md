@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0390](BE-0390-apm-skill-management-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0390") |
+| 実装 PR | [#1731](https://github.com/bajutsu-e2e/bajutsu/pull/1731) |
 | トピック | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -95,13 +96,31 @@ APMは、スキル、プロンプト、指示、Model Context Protocol（MCP）�
    リポジトリパスへ移します。`document-writing`スキルと
    [`.github/dependabot.yml`](../../.github/dependabot.yml)のnpmエントリは、移設先を指すように
    更新します。
-5. **ツール整備**：`make skills`で`apm install`を、`make lint-skills`で`apm audit --ci`を実行します。
+5. **ツール整備**：`apm-cli`は`pyproject.toml`で版を厳密に固定した`dev`の依存です。ほかのPythonツールと
+   同じく`uv`が解決し、`apm.lock.yaml`を書き出す版は`uv.lock`が記録します。`make skills`で
+   `uv run apm install --no-policy`を、`make lint-skills`で`uv run apm audit --ci --no-policy`を
+   実行します。
    `apm audit --ci`は一時ディレクトリへインストールを再現し、ソースと異なる配備ファイルを報告します。
-   `make check`にはこの検査を加え、`apm`が入っていない環境では`lint-actions`や`lint-secrets`と
-   同じく通知を出して飛ばします。この2つと同様に、CIはバージョンを固定した`apm-cli`を導入して検査を
-   実行します。手元で検査を飛ばした変更でも、ずれがあればPRが落ちます。
-   [session-startフック](../../.claude/hooks/session-start.sh)は、バージョンを固定した`apm-cli`を
-   導入して`apm install`を実行し、webセッションがコミット済みのスキル集合から始まるようにします。
+   `make check`にはこの検査を加えますが、`lint-actions`や`lint-secrets`と違ってスキップの分岐は
+   ありません。この2つのツールは`uv`では解決できませんが、`apm-cli`は`dev`の依存なので常に走り、
+   手元で走らないことで検査が通ってしまう余地がありません。CIにも個別の導入手順は要りません。
+   [session-startフック](../../.claude/hooks/session-start.sh)も同様です。既存の
+   `uv sync --group dev`が`apm`を含むので、フックは配備だけを実行し、webセッションはコミット済みの
+   スキル集合から始まります。
+   `apm install`はどの呼び出し箇所でも`--no-policy`を渡します。配備と、それを再現する検査とが
+   一つの設定の下に揃い、どちらもネットワークを必要としなくなるからです。渡さない場合、0.28.0は
+   到達できないポリシーについて警告して先へ進みます。往復のコストがかかるうえ、警告が失敗のように
+   読めてしまいます。
+   `make hooks`には、ローカルのgit設定をもう1つ加えます。競合時に`.apm/skills/`からロックファイルを
+   再生成するマージドライバ
+   （[`scripts/merge-apm-generated.sh`](../../scripts/merge-apm-generated.sh)）で、対象は
+   `apm.lock.yaml`と配置先の`.claude/skills/**`の両方です。
+   [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)が
+   `uv.lock`に対してすでに用意しているものと同じ仕組みです。ドライバがないと、同じスキルを編集した
+   2つのブランチは、正しい値がどちらの側にもないファイルごとのSHA-256の行に、競合マーカーを残します。
+   再生成したロックファイルは暫定的なものです。gitはマージ結果を書き出す前にドライバを走らせるため、
+   `apm install`はマージ前のツリーを読むからです。`uv lock --check`が`uv.lock`のドライバを支えるのと
+   同じく、解決後の`make skills`で更新するまでは`make lint-skills`がゲートを落とします。
 6. **ドキュメント**：[`CLAUDE.md`](../../CLAUDE.md)の*Agent skill layout*節を、単一ソースの構成に
    書き換えます。[`AGENTS.md`](../../AGENTS.md)、
    [`docs/ja/ai-development.md`](../../docs/ja/ai-development.md)と英語版、
@@ -115,9 +134,10 @@ APMは、スキル、プロンプト、指示、Model Context Protocol（MCP）�
 ツリーを突き合わせる決定的な検査であり、判定に言語モデルは介在しません。
 
 以上の設計は、ドキュメントだけでなくAPM 0.28.0の実挙動を確認したうえで組み立てています。ローカルの
-`.apm/skills/<name>/`は、frontmatterを含めて`.claude/skills/<name>/`へそのまま複製されました。
-`references/`と`scripts/`も、実行権限ごと複製されました。`targets: [claude]`だけを宣言した場合、
-`.agents/`ツリーは生成されませんでした。`apm.lock.yaml`には、配備ファイルごとのSHA-256が記録され
+`.apm/skills/<name>/`は、frontmatterと`references/`、`scripts/`、実行権限を変えないまま
+`.claude/skills/<name>/`へ配備されました。APMが書き換えたのはスキルをまたぐ相対リンクだけで、
+ソース側を指す形になりました。`targets: [claude]`だけを宣言した場合、`.agents/`ツリーは
+生成されませんでした。`apm.lock.yaml`には、配備ファイルごとのSHA-256が記録され
 ました。配備ファイルを手で書き換えると`apm audit`がずれとして報告し、次の`apm install`が書き戻し
 ました。
 
@@ -148,12 +168,12 @@ APMは、スキル、プロンプト、指示、Model Context Protocol（MCP）�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] マニフェスト、ソースツリー、コミットする配備先（`apm.yml`、`.apm/skills/`、リポジトリ直下の`.gitignore`、`.claude/skills/.gitignore`の削除）
-- [ ] 14個のスキルを1つの`SKILL.md`へ変換し、詳細を`references/`へ配置
-- [ ] `.agent-workflows/`、`.agent-hosts/`、`.agents`の撤去、ロードマップのリンク書き換え、BE-0384の設計記述の移行
-- [ ] textlint実行環境の移設と`dependabot.yml`のエントリ更新
-- [ ] `make skills`、`make lint-skills`、`make check`への組み込み、session-startフック
-- [ ] ドキュメント：`CLAUDE.md`、`AGENTS.md`、`docs/ai-development.md`（両言語）、コントリビューター向けチュートリアル（両言語）、レビュー契約
+- [x] マニフェスト、ソースツリー、コミットする配備先（`apm.yml`、`.apm/skills/`、リポジトリ直下の`.gitignore`、`.claude/skills/.gitignore`の削除）
+- [x] 14個のスキルを1つの`SKILL.md`へ変換し、詳細を`references/`へ配置
+- [x] `.agent-workflows/`、`.agent-hosts/`、`.agents`の撤去、ロードマップのリンク書き換え、BE-0384の設計記述の移行
+- [x] textlint実行環境の移設と`dependabot.yml`のエントリ更新
+- [x] `make skills`、`make lint-skills`、`make check`への組み込み、session-startフック、`make hooks`が配線するAPMの生成物（`apm.lock.yaml`と`.claude/skills/**`）のマージドライバ
+- [x] ドキュメント：`CLAUDE.md`、`AGENTS.md`、`docs/ai-development.md`（両言語）、コントリビューター向けチュートリアル（両言語）、レビュー契約
 
 ## 参考
 

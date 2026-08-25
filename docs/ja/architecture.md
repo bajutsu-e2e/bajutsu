@@ -247,7 +247,13 @@ adb の harness はその代わりに、新しい `SHOWCASE_CONFORMANCE` の int
 
 **障害注入レーン**は、代わりに実際の条件を注入します。`fault-injection (adb)`（`android-e2e.yml`）はエミュレータのディスプレイをスリープさせます。すると実際の読み取り元（常駐 UI Automator チャネルと、その背後の `uiautomator dump` フォールバック）が本当に空のツリーを返します。リトライがそこを、誤った「要素が見つからない」を出さずに乗り越えることを検証します。2 つ目のケースはディスプレイを落としたまま保ってリトライ予算を使い切らせ、その結末が静かな失敗ではなく明示的な `ElementNotFound` になることを固定します。`fault-injection (xcuitest)`（`ios-e2e.yml`）はランナー自身のホストプロセスにシグナルを送ります。`SIGSTOP` はソケットを accept できる状態に保ったまま応答を止めます。ホストから見れば、まさに固まったランナーの姿です。そのため短い凍結は一過性リトライが吸収し、リトライ予算を超える凍結は crash-recovery が乗り越えます。`SIGKILL` では、無関係なタイムアウトではなく実行中のランナー障害を名指しするクラッシュ診断で実行が終わらなければなりません。
 
-どちらのレーンも、障害をどれだけ保つかを推測しません。各ケースは、検証対象の層に到達したというドライバ自身のログ記録（`tests/fault_injection.py`）を合図に障害を解除します。したがって、あるケースがどの機構を駆動したかは、sleep の長さではなく観測された挙動が決めます。両レーンは PR ごとのシグナルであり、各レーンの必須集約チェックからは意図的に外してあり、安定を確認してから必須化します。これは BE-0282 が確立した「まずシグナル、のちに必須」の道筋です。意図的にデバイスを壊すレーンは、健全なデバイスを駆動するレーンより本質的にフレーキーになるリスクが高いので、その道筋に乗せます。
+どちらのレーンも、障害をどれだけ保つかを推測しません。各ケースは、検証対象の層に到達したというドライバ自身のログ記録（`tests/fault_injection.py`）を合図に障害を解除します。したがって、あるケースがどの機構を駆動したかは、sleep の長さではなく観測された挙動が決めます。
+
+両レーンは現在、それぞれのレーンの必須集約チェックに入っています。着地した時点では外してありました。BE-0282 が確立した「まずシグナル、のちに必須」の道筋に乗せたためで、意図的にデバイスを壊すレーンは、健全なデバイスを駆動するレーンより本質的にフレーキーになるリスクが高いからです。その慎重さには根拠がありました。最初の 10 日間で `fault-injection (xcuitest)` は、52 回の成功に対して 78 回失敗しています。
+
+慎重さを解いたのは、失敗の率が下がったことではなく、原因が判明したことです。78 回の失敗はすべて、ある修正より前に起きています。その修正は、応答を待たずに去った相手へ返信すると SIGPIPE で XCTest のホストプロセスが落ちるという、runner の HTTP サーバの欠陥を直したものです。このレーンは runner を `SIGSTOP` で止めたまま保ちます。相手が去った接続は、まさにそこから生まれます。したがってこのレーンは、健全な runner を駆動するどのスイートよりも高い頻度でその欠陥を踏んでいました。レーンが runner チャネルの実際の不具合を見つけていたわけで、それこそがレーンの存在理由です。この修正の後、レーンは 64 回実行して 1 回も失敗していません。同じ期間の `conformance (xcuitest)` は 58 回成功して 2 回失敗しています。`fault-injection (adb)` は同じ期間に 73 回実行して失敗は 1 回で、その 1 回はレーンが検証している内容ではなく、エミュレータが起動しなかったことによるものです。同じ期間の `conformance (adb)` は 67 回中 4 回失敗しています。両レーンはいま、ずっとゲートに乗っているスイートと同等か、それよりよい水準にあります。
+
+`_is_transient_empty` の閾値やクラッシュ分類器のマッチングに回帰が入れば、それは両レーンが捕まえるために存在する失敗そのものです。そしてシグナルであれば、マージはそれを無視できてしまいます。したがって必須化こそが、このカバレッジに意味を持たせます。必須化は `tests/test_e2e_gate_needs.py` が高速スイートで、3 つの層に分けて固定します。各ゲートがどのジョブに依存するか、そのすべてについて結果が読まれているか、そして verdict のスクリプト自体を実行して、それぞれの結果が本当にチェックを赤にするかです。これらがなければ、ゲートを狭めることも、永久に green のまま放置することも、どのテストにも気付かれずにできてしまいます。
 
 ### 並行デバイスレーン（BE-0298）
 
@@ -314,7 +320,7 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
 - DSL のテキスト編集ステップ（BE-0265）: `clear` / `delete` / `select` / `copy` が `type` だけでは埋まらない部分を補います。adb・Playwright・XCUITest・fake の各バックエンドに実装済みで、web コンテキストは `select`/`copy` で `UnsupportedAction` を送出し（codegen 側は代わりに XCUITest へ誘導）、`clear`/`delete` でも同様に非対応です。ステップをまたぐ `SelectionState` が「`copy` の前に `select` が必要」という前提条件を担保し、どのバックエンドも選択状態を照会可能な形で公開しないため、検証は既存の `clipboard` 読み戻しのみで行います
 - DSL のデバイス / システムアクション（iOS）: `background`、`clearKeychain`、`clearClipboard`、`overrideStatusBar` / `clearStatusBar`（決定的なステータスバー）、テストデータ準備 / Webhook 用の `http` アクション
 
-#### DSL のシステムアラート処理
+#### DSL のシステムアラートと tip の処理
 
 - DSL の `handleSystemAlert`（BE-0316）: SpringBoard の権限プロンプトのボタンを、ネイティブなアクセシビリティ照会（ランナーの 2 つ目のオンデマンドな SpringBoard ハンドル）で tap する、決定的で iOS 専用のステップです。解決は Python 側の `resolve_unique` に残ります。この能力を宣言するのは XCUITest バックエンドだけなので、Android と web は preflight で失敗します。label が決定的になるのは、XCUITest のライフサイクルが cold spawn のたびに **Simulator 自身の**システム言語を run の `locale` に固定するからです。SpringBoard はアプリの launch 引数が届かない別プロセスなので、グローバル設定ドメインへの書き込みと再起動 1 回で行い、warm な runner の再利用はその locale が一致していることを条件にします。`permissions` で先回りできないプロンプト（通知の許可、ATT、そしてプロセスをまたぐペーストの同意。BE-0369）については、`sel` の代わりに `prompt` と `choice` も指定でき、固定した locale が描画する label を run が解決します（BE-0320）
 - そのリアクティブな対極である DSL の `systemAlertHandling`（BE-0315）: ステップまたは `wait` がブロックされたときにだけ発火するアラートガードです。`handleSystemAlert` と同じ SpringBoard 照会を独自の間隔（既定 1 秒。wait のポーリング周期からは切り離しています）でポーリングし、決定的な候補ラベルのポリシーで dismiss します — モデル呼び出しはなく、BE-0316 の配管を並行 API を足さずに再利用しています。ネイティブ側が名指しできないケース（能力を宣言しないバックエンド、列挙できないブロック要因、1 つのラベルへ解決できない自由記述の `instruction`）では AI 視覚ガードへフォールバックします。既定で有効で、`false` でシナリオ単位に無効化できます
@@ -322,7 +328,6 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
 
 #### 証跡、ネットワーク観測、レポート
 
-- iOS の TipKit tip に対する opt-in ガードである DSL の `iosTipKitHandling`（BE-0389）: TipKit の提示は、覆う内容をアクセシビリティから隠すのであって、単に重ねて表示するのではありません。そのため、ブロックされた tap は `ElementNotTappable` だけでなく `ElementNotFound` としても失敗しえます。XCUITest バックエンドだけが `Capability.HANDLE_TIPKIT_TIP` を宣言し、tip 自身の `PopoverDismissRegion` scrim を解決して `Driver.dismiss_blocking_tip()` を実装します。tip はすでに、どの wait のポーリングも tap の解決もフェッチする同じアクセシビリティツリーに現れるため、Swift ランナー側の変更は不要です。ステップループは、dismiss が実際に tip を見つけて片付けたときだけステップを 1 回リトライします。これはアラートガード自身のステップ末尾の分岐の隣に置かれます。dismiss は BE-0314 の `on_interrupt_poll` フックにも合成されるため、wait がそれだけでタイムアウトいっぱいまで保持されることもありません。`systemAlertHandling` と異なり既定は無効です。シナリオが tip 自体をアサーションの対象にすることがあるためです。`--ios-tipkit-handling`/`--no-ios-tipkit-handling` は `systemAlertHandling`（BE-0177）と同じ flag > scenario > target > default の優先順位に従います
 - 証跡: 瞬時（`screenshot`/`elements`/`actionLog`/`rawTree`。`actionLog` はステップごとの具体的な actuation、つまり送った座標、ジェスチャの形状、それを運んだ経路を持ち、`rawTree` は `elements` の元になった生ダンプで、opt-in、adb と XCUITest が対応します）+ 区間（`video`/`deviceLog`/`appTrace`）+ ネットワーク collector（`network.json`）+ **ビジュアルリグレッション**（baseline に対する `visual`。`approve` コマンドで baseline を昇格）+ `capturePolicy` 発火 + 書き出し前の **redaction 適用** + `bajutsu run --touch-markers`（BE-0371、iOS 限定、`BajutsuKit` をリンクするアプリが必要。アプリの `UIEvent` キューが実際に配送した各タッチをマーカーとして録画と各ステップのスクリーンショットへ描画、ジェスチャが実際に届いた証跡。既定では無効、リポジトリ自身の iOS CI レーンでは有効、verdict がスクリーンショットを比較するシナリオではスキップ）
 - ネットワーク観測 + **決定的モック**（シナリオ `mocks` → プロトコル内スタブ、実機検証済み）: `request` アサーション、`wait: { until: request }`、オフラインのスタブ応答
 - **画面遷移シグナル**（BE-0310、iOS）: `BajutsuKit` のオプトインの `BajutsuScreen` が

@@ -83,3 +83,8 @@ docs/api/roadmap.md
 # serve upload temp dirs (BE-0073) — never commit extracted bundles
 uploads/
 demos/showcase/scenarios/baselines/
+
+# APM's package cache (BE-0390) — rebuilt from apm.lock.yaml by `make skills`, never committed.
+# The deployed skill tree it writes (.claude/skills/) *is* committed, so a fresh clone has a
+# working skill set before anyone installs apm.
+apm_modules/

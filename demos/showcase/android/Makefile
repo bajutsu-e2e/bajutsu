@@ -387,9 +387,10 @@ e2e-conformance: compose-build
 # transient-empty retry rides over it — the condition its unit test can only fabricate. Like
 # `e2e-conformance` this drives pytest (so it needs the dev group) and runs serially; the display is
 # left awake whatever happens. `TOUCH_DEBUG_OFF` because nothing here inspects touch overlays, and no
-# `adb root`: the cases only read and tap. Not part of `make check` (it needs a booted AVD), and
-# deliberately non-gating in CI — android-e2e.yml drives it in its own `fault-injection (adb)` job,
-# outside the `E2E (Android)` aggregate, until it proves stable.
+# `adb root`: the cases only read and tap. Not part of `make check` (it needs a booted AVD); in CI,
+# android-e2e.yml drives it in its own `fault-injection (adb)` job, on the `E2E (android)` aggregate's
+# `needs:` since BE-0305's promotion (it landed as a non-gating signal and was promoted once measured
+# stable).
 e2e-fault-injection: compose-build
 	@[ -n "$(SERIAL)" ] || { echo "SERIAL is empty: the fault-injection module would skip and exit 0"; exit 1; }
 	$(ANR_QUIET)

@@ -1,0 +1,17 @@
+name: bajutsu
+version: 1.0.0
+description: Bajutsu's own agent skills, deployed from one source tree per skill.
+
+# One host. Without this pin APM would also deploy to every other harness it detects a
+# config for, including the `.agents/skills/` tree the retired Codex adapters used to occupy.
+targets:
+  - claude
+
+dependencies:
+  apm: []
+  mcp: []
+
+# Deploy this repository's own `.apm/skills/` — no remote package is resolved, so `apm install`
+# needs no network.
+includes: auto
+scripts: {}

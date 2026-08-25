@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0305](BE-0305-driver-resilience-fault-injection-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0305") |
-| 実装 PR | [#1461](https://github.com/bajutsu-e2e/bajutsu/pull/1461) |
+| 実装 PR | [#1461](https://github.com/bajutsu-e2e/bajutsu/pull/1461), [#1724](https://github.com/bajutsu-e2e/bajutsu/pull/1724) |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0254](../BE-0254-coordinate-tree-driver-base/BE-0254-coordinate-tree-driver-base-ja.md), [BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry-ja.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve-ja.md), [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md) |
 <!-- /BE-METADATA -->
@@ -79,7 +79,7 @@ idb/uiautomator の遷移途中でほぼ空になるレスポンスの実際の�
 
 - [x] idb/adb 向けに、実際の transient-empty 障害注入をまずゲート対象外で追加する。
 - [x] XCUITest 向けに、実際の crash-recovery 障害注入をまずゲート対象外で追加する。
-- [ ] それぞれ安定後に必須化する。
+- [x] それぞれ安定後に必須化する。
 - [x] 既存の合成フィクスチャによるユニットテストを、高速で決定的な制御フロー検証として残す。
 
 ログ:
@@ -105,6 +105,50 @@ idb/uiautomator の遷移途中でほぼ空になるレスポンスの実際の�
   生き残るからです。したがって診断は正しいものの、ただちにではなく 60 秒の復旧ウィンドウを
   使い切ったあとに届きます。本項目ではそのままにしました（判定は正しいままで、明確に失敗します）。より厳密な生存
   確認は別項目にします。
+- [#1724](https://github.com/bajutsu-e2e/bajutsu/pull/1724) 両方のレーンをそれぞれのレーンの必須集約
+  チェックへ入れ、本項目を完了しました。必須化の条件は「安定を確認してから」でしたが、それを数えて
+  決めようとした最初の試みは、教訓の残る形で誤りました。`gh run list --limit 150` が返すのは直近の
+  150 run だけで、このリポジトリの run 密度では 4 日程度しか遡りません。そのため
+  `--jq 'select(.createdAt > "2026-08-04")'` というフィルタは 150 件すべてに一致し、何も絞って
+  いませんでした。そしてその 4 日間は、たまたま状況が変わった後の綺麗な側に丸ごと収まっていました。
+  だから両レーンは無傷に見えたのです。Actions API をページングして 2026-08-04 から 2026-08-22 までの
+  全 run を数え直すと、記録は `fault-injection (xcuitest)` が 116 回成功に対して**78 回失敗**、
+  `fault-injection (adb)` が 378 回に対して 4 回失敗でした。
+- したがって必須化を正当化するのは、失敗率の低さではなく、原因が判明したことです。iOS の 78 回の失敗は
+  すべて 2026-08-13T12:58Z より前に起きています。この時刻に
+  [#1609](https://github.com/bajutsu-e2e/bajutsu/pull/1609) が
+  `fix(xcuitest): keep the runner HTTP server alive through abandoned connections` をマージしました。
+  最後の失敗は、その 30 分前です。このレーンは runner を `SIGSTOP` で止めたまま保ちます。相手が去った
+  接続は、まさにそこから生まれます。したがってこのレーンは、健全な runner を駆動するどのスイートよりも
+  高い頻度でその SIGPIPE を踏んでいました。レーンが runner チャネルの実際の不具合を見つけていたわけで、
+  それこそがレーンの存在理由です。この修正の後、レーンは 64 回実行して 1 回も失敗していません。同じ期間の
+  `conformance (xcuitest)` は 58 回成功して 2 回失敗しています。`fault-injection (adb)` は同じ期間に
+  73 回実行して失敗は 1 回で、その 1 回はレーンが検証している内容ではなく、エミュレータが起動しなかった
+  こと（`Unable to connect to adb daemon on port: 5037`）によるものです。同じ期間の
+  `conformance (adb)` は 67 回中 4 回失敗しています。両レーンはいま、ずっとゲートに乗っているスイートと
+  同等か、それよりよい水準にあります。必須化が拠るのはこの比較です。
+- 必須化はゲートの実時間を増やしません。各レーンの障害注入ジョブは、同じレーンの `conformance` ジョブ
+  より十分早く終わります（adb では 3 分と 6 分、xcuitest では 9 分と 22 分）。branch protection の変更も
+  不要でした。ruleset が固定しているのは `E2E (iOS)` と `E2E (android)` の集約ジョブなので、必須化は
+  `needs:` の編集で済みます。
+- 回帰の網は `tests/test_e2e_gate_needs.py` で、3 つの層に分かれています。最初の 2 つだけでは足りないと
+  判明したからです。各ゲートがどのジョブに依存するかを固定し、そのすべてについて結果が読まれていることを
+  固定します。そのうえで verdict のスクリプトを `bash` で依存ジョブごと結果ごとに実行し、それぞれの結果が
+  本当にチェックを赤にすることを固定します。真ん中の層だけでも、書いている途中で実在する欠陥を見つけました。
+  `E2E (iOS)` は `changes` を `needs:` に挙げながら `needs.changes.result` を一度も読んでおらず、
+  `changes` が落ちるとすべての macOS ジョブが*依存の失敗*として skip され、必須チェックはそれを
+  パススキップの合格と数えて、何も実行しないまま green を報告してしまいます。Android と web はどちらも
+  ガードしていて、iOS だけが抜けていました。修正と必須化は同じジョブの数行を編集するので、同じ変更で
+  直しました。外側の 2 つの層は、レビューのパスが次の 2 点を示したために足しました。`needs:` と
+  ステップの読み取りが一致していても、両方から同じジョブを落とせば一致は保たれ、同じ欠陥が復活します。
+  そして、ループの条件をどのジョブも報告しない値に書き換えれば、永久に green の必須チェックが残ります。
+  3 つの層はすべてミューテーションで確認しました。`changes` をすべての箇所から削除する操作、ゲートを
+  狭める操作、`cancelled` の判定を落とす操作、verdict を無効化する操作は、それぞれ赤くなります。
+  この網そのものをレビューした結果、3 つの層に加えてさらに 2 つを固定しました。編集ではなく追加に
+  よって生まれる経路のためです。1 つは、このファイルがその集約ジョブを一度も読まないレーンです。
+  もう 1 つは赤を無効にする `continue-on-error` で、ゲート対象のジョブに置かれた場合と、集約ジョブ
+  自身の判定ステップに置かれた場合の両方を固定します。前者は失敗したジョブについて `needs:` に
+  `success` を渡し、後者はスクリプトが非ゼロで終了しても必須チェックを green と報告します。
 
 ## 参考
 
