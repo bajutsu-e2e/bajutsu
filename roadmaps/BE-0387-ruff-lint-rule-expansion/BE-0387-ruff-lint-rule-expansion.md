@@ -151,17 +151,29 @@ review can look at one rule's fixes at a time:
     `simctl._real_run`, `base._contains`, `readiness._await_ready` / `_await_boot`,
     `intervals._spawn`, `_yaml._Loader` — several of them the default argument of a *public*
     function, which makes them part of their module's contract already. Dropping the underscore is
-    the "narrow public accessor" the design asked for; `oplog`'s namespaced `_bajutsu_oplog` marker
-    and `theme_editor`'s deliberate cache clear are the only two noqa.
-  - **`TRY004`** kept all ten exception types behind a noqa rather than switching them to
-    `TypeError`. Each validates an external payload — a JSON/YAML document, an HTTP response shape —
+    the "narrow public accessor" the design asked for, and six of the seven take it. `_yaml._Loader`
+    is the exception: `pyproject.toml`'s file-level `S506` ignore exists so that module's
+    `yaml.load` line stays byte-identical to `main`, where CodeQL dismissed the matching
+    `py/unsafe-deserialization` alert — and a code-scanning dismissal is keyed to a fingerprint that
+    hashes the alert's own source line, so renaming the class would re-open it as a fresh alert to
+    triage. Its three cross-module references carry a noqa instead, alongside `oplog`'s namespaced
+    `_bajutsu_oplog` marker and `theme_editor`'s deliberate cache clear — five noqa in all.
+  - **`TRY004`** kept all eleven exception types behind a noqa rather than switching them to
+    `TypeError`. Ten validate an external payload — a JSON/YAML document, an HTTP response shape —
     where a wrong type is a data error, not a caller passing the wrong type; several are documented
     `Raises: ValueError` and their callers catch `ValueError`, so the switch would have silently
-    broken those handlers.
+    broken those handlers. The eleventh, in `serve/_cli_flags.py`, guards a typer-registry
+    invariant rather than a payload, and its noqa says so rather than borrowing the other ten's
+    reason.
   - **`TRY300`** moved 15 of its 17 returns into an `else`. `notify._mask_url` keeps its return
     inside the `try` because the returned f-string is exactly what the guard protects, and the step
     dispatcher keeps its own because that block returns from four branches — hoisting only the last
     would suggest the other three are not on the success path.
+
+  Of `ARG002`'s 98 `bajutsu/` findings, 97 are interface-mandated and keep the parameter behind a
+  noqa naming the shape. The one exception is `XcuitestEnvironment._create_replacement`, a private
+  method with two in-class callers and no protocol obligation, whose `eff` is simply dead — so it
+  joins `_write_pixelmatch_diff`'s `h` and `_run_if`'s `clock` among the removals.
 
 ## References
 

@@ -1018,7 +1018,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             simctl.Env(old, run=self._run).shutdown()
         except simctl.DeviceTimeout as exc:
             _logger.warning("quarantining Simulator %s: %s; replacing it anyway", old, exc)
-        note = self._create_replacement(eff, device_type)
+        note = self._create_replacement(device_type)
         # The spawn that follows is a genuine first bring-up — a device just created and booted, with
         # no app installed and no XCTest host this boot — so it earns the full cold readiness ceiling,
         # not the tighter respawn one this environment's history would otherwise select. Exactly the
@@ -1045,7 +1045,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             DeviceError: as `_replacement_target` does — no device type to clone, or no `appPath`.
         """
         old = self._udid
-        note = self._create_replacement(eff, self._replacement_target(eff, why="is gone"))
+        note = self._create_replacement(self._replacement_target(eff, why="is gone"))
         _logger.warning("Simulator %s vanished from CoreSimulator; %s", old, note)
         return f"{old} vanished; {note}"
 
@@ -1082,7 +1082,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             )
         return device_type
 
-    def _create_replacement(self, eff: Effective, device_type: str) -> str:  # noqa: ARG002  # Environment shape
+    def _create_replacement(self, device_type: str) -> str:
         """Create, boot, and adopt a fresh Simulator of `device_type`; the diagnostic note.
 
         Shared by both rungs that replace a device — the vanished-device rung of a failed cold spawn
