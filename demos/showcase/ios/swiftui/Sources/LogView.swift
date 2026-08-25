@@ -246,7 +246,10 @@ struct LogView: View {
         rows.append((rows.last ?? 0) + 1)
         showToast = true
         Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(1200))
+            // 3s, an ordinary toast duration (Android's LENGTH_LONG is 3.5s): a scenario has to
+            // observe this appear and go across a step boundary, and evidence capture alone can
+            // cost 1.2s of a transient's life on a CI Simulator (scenarios/network_mock.yaml).
+            try? await Task.sleep(for: .milliseconds(3000))
             showToast = false
         }
     }

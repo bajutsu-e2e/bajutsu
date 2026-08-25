@@ -26,7 +26,7 @@ import yaml
 from bajutsu.evidence.network import NetworkExchange
 from bajutsu.evidence.redaction import PLACEHOLDER, Redactor
 from bajutsu.scenario import load_scenario_file
-from bajutsu.scenario.models import Scenario
+from bajutsu.scenario.models import Gone, Scenario, WaitRequest
 from bajutsu.scenario.models.evidence import Redact
 from demos.showcase.network.assert_network_evidence import (
     _BODY_SECRET,
@@ -42,6 +42,7 @@ from demos.showcase.network.assert_network_evidence import (
 _REPO = Path(__file__).resolve().parent.parent
 _SHOWCASE = _REPO / "demos" / "showcase"
 _SCENARIOS = _SHOWCASE / "scenarios"
+_NOAX_SCENARIOS = _SHOWCASE / "ios" / "scenarios-noax"
 _IOS_WORKFLOW = _REPO / ".github" / "workflows" / "ios-e2e.yml"
 
 # The `network` job's artifact — the handle the upload-path pin below identifies its step by.
@@ -65,8 +66,8 @@ def _log_view_source() -> str:
     return (_SHOWCASE / "ios" / "swiftui" / "Sources" / "LogView.swift").read_text(encoding="utf-8")
 
 
-def _sole_scenario(name: str) -> Scenario:
-    scenarios = load_scenario_file((_SCENARIOS / name).read_text(encoding="utf-8")).scenarios
+def _sole_scenario(name: str, directory: Path = _SCENARIOS) -> Scenario:
+    scenarios = load_scenario_file((directory / name).read_text(encoding="utf-8")).scenarios
     assert len(scenarios) == 1
     return scenarios[0]
 
@@ -90,6 +91,49 @@ def test_mock_scenario_stubs_and_asserts_the_log_submit() -> None:
     assert req.method == "POST"
     assert req.path == _MOCK_PATH
     assert req.status == 201
+
+
+# The mock scenario watches a toast the app dismisses a fixed delay after the response lands, and
+# every step boundary in between spends part of that delay on the run loop's own evidence capture —
+# the `screenshot.before` baseline, a tree read, and the previous step's artifact writes, together
+# 0.2-1.2s per boundary on a CI Simulator. So the lane is deterministic only while both halves of
+# this fixture contract hold: the toast wait is armed on the step *right after* the tap, and the
+# toast outlives one boundary with room to spare. Both were violated at once until #1743 — an
+# `until: request` wait sat between the tap and the toast wait, and the toast lived 1.2s — which cost
+# the `network (xcuitest)` job roughly one run in two, always on the same `wait timeout: for {'id':
+# 'log.toast'}`. Neither half is observable off-device, so this is where a re-ordering edit or a
+# shortened toast has to fail.
+_TOAST_DISMISS_FLOOR_MS = 2500
+
+
+def _assert_toast_waits_follow_the_submit_tap(sc: Scenario) -> None:
+    taps = [i for i, step in enumerate(sc.steps) if step.tap is not None]
+    assert len(taps) == 2, "the Log tab, then Submit"
+    submit = taps[-1]
+
+    appeared = sc.steps[submit + 1].wait
+    assert appeared is not None and appeared.for_ is not None
+    assert "toast" in str(appeared.for_) or appeared.for_.label == "Saved"
+
+    cleared = sc.steps[submit + 2].wait
+    assert cleared is not None and isinstance(cleared.until, Gone)
+
+    # The request wait sits after the pair, where it costs the toast nothing: the toast only appears
+    # once the response has landed, so by the time it runs it is already satisfied.
+    observed = sc.steps[submit + 3].wait
+    assert observed is not None and isinstance(observed.until, WaitRequest)
+
+
+def test_the_toast_waits_are_armed_on_the_step_right_after_the_submit_tap() -> None:
+    _assert_toast_waits_follow_the_submit_tap(_sole_scenario("network_mock.yaml"))
+    # The -noax twin drives the same screen by label and is kept in step with it deliberately.
+    _assert_toast_waits_follow_the_submit_tap(_sole_scenario("network_mock.yaml", _NOAX_SCENARIOS))
+
+
+def test_the_app_dismisses_the_toast_slower_than_a_step_boundary() -> None:
+    delay = re.search(r"Task\.sleep\(for: \.milliseconds\((\d+)\)\)", _log_view_source())
+    assert delay is not None, "the toast's auto-dismiss delay moved out of LogView.swift"
+    assert int(delay.group(1)) >= _TOAST_DISMISS_FLOOR_MS
 
 
 def test_live_scenario_asserts_only_that_the_catalog_request_was_observed() -> None:
