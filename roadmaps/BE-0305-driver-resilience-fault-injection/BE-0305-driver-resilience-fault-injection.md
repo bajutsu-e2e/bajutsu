@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0305](BE-0305-driver-resilience-fault-injection.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0305") |
-| Implementing PR | [#1461](https://github.com/bajutsu-e2e/bajutsu/pull/1461) |
+| Implementing PR | [#1461](https://github.com/bajutsu-e2e/bajutsu/pull/1461), [#1724](https://github.com/bajutsu-e2e/bajutsu/pull/1724) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0254](../BE-0254-coordinate-tree-driver-base/BE-0254-coordinate-tree-driver-base.md), [BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md), [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) |
 <!-- /BE-METADATA -->
@@ -77,7 +77,7 @@ Proposal altitude. The work is MECE along the units below.
 
 - [x] Add real transient-empty fault injection for idb/adb, non-gating first.
 - [x] Add real crash-recovery fault injection for XCUITest, non-gating first.
-- [ ] Promote each to required once stable.
+- [x] Promote each to required once stable.
 - [x] Keep the existing synthetic-fixture unit tests as the fast, deterministic control-flow check.
 
 Log:
@@ -101,6 +101,49 @@ Log:
   killed host process — so the diagnosis is correct but arrives after the full 60s recovery window
   rather than immediately. Left as-is here (the verdict is right and loud); a tighter liveness check is
   a separate item.
+- [#1724](https://github.com/bajutsu-e2e/bajutsu/pull/1724) — promoted both lanes into their lanes'
+  required aggregate checks, closing the item. The promotion condition was "once stable", and the
+  first attempt to settle it by counting got the answer wrong in an instructive way: `gh run list
+  --limit 150` returns the newest 150 runs, which at this repository's run density reaches back only
+  about four days, so a `--jq 'select(.createdAt > "2026-08-04")'` filter matched every row and
+  bounded nothing. Those four days happened to fall entirely on the clean side of a regime change,
+  which is how the lanes came to look flawless. Re-measured by paginating the Actions API over every
+  run from 2026-08-04 to 2026-08-22, the record is `fault-injection (xcuitest)` 116 passes against
+  **78 failures**, and `fault-injection (adb)` 378 against 4.
+- What justifies the promotion is therefore not a low rate but a found cause. Every one of those 78
+  iOS failures precedes 2026-08-13T12:58Z, when [#1609](https://github.com/bajutsu-e2e/bajutsu/pull/1609)
+  merged `fix(xcuitest): keep the runner HTTP server alive through abandoned connections` — the last
+  failure landing 30 minutes before it. The lane holds the runner under `SIGSTOP`, which is exactly
+  how a connection comes to be abandoned, so it was tripping that SIGPIPE far more often than any
+  suite driving a healthy runner: the lane finding a real runner-channel defect, which is what it is
+  for. Since that commit the lane has run 64 times without a failure, against
+  `conformance (xcuitest)`'s 58-and-2 over the same span; `fault-injection (adb)` ran 73 for one
+  failure, and that one was the emulator never coming up (`Unable to connect to adb daemon on port:
+  5037`) rather than anything the lane asserts, against `conformance (adb)`'s four in 67. Both lanes
+  now sit at or better than a suite that has been on the gate throughout, which is the comparison the
+  promotion rests on.
+- Promotion costs the gate no wall clock: each lane's fault-injection job finishes well inside its
+  `conformance` sibling (3min vs 6min on adb, 9min vs 22min on xcuitest), so neither is on the
+  critical path. No branch-protection change was needed — the ruleset pins the `E2E (iOS)` /
+  `E2E (android)` aggregators, so promotion is a `needs:` edit.
+- `tests/test_e2e_gate_needs.py` is the new regression net, in three layers, because the first two
+  proved insufficient on their own. It pins which jobs each gate depends on; that every one of them
+  has its result read; and — by running the verdict script under `bash`, once per dependency per
+  result — that each of those results actually reddens the check. The middle layer alone found a live
+  defect while being written: `E2E (iOS)` listed `changes` in `needs:` but never read
+  `needs.changes.result`, so a failed `changes` job would skip every macOS job as a *dependency*
+  failure and the required check would count it as the path-skip pass, reporting green having run
+  nothing. Android and web both guarded it; iOS did not. Fixed in the same change, since the fix and
+  the promotion edit the same handful of lines in that one job. The outer layers exist because a
+  review pass showed that agreement between `needs:` and the step reads survives dropping a job from
+  both — reinstating that same defect — and that rewriting the loop to compare against a value no job
+  reports leaves a permanently green required check. All three layers were mutation-checked: removing
+  `changes` from every half, narrowing a gate, dropping the `cancelled` arm, and neutering the verdict
+  each redden. Reviewing the net itself added two pins beside those three layers, for the routes an
+  addition rather than an edit opens: a lane whose aggregator this file never reads, and a
+  `continue-on-error` that disarms a red — on a gated job, where it hands `needs:` a `success` its job
+  never earned, or on the aggregator's own verdict step, where it reports the required check green over
+  a script that exited non-zero.
 
 ## References
 
