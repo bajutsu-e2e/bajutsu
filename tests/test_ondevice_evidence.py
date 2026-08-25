@@ -16,6 +16,7 @@ from pathlib import Path
 import ondevice_evidence
 import pytest
 
+from bajutsu.drivers import adb
 from bajutsu.evidence import intervals
 
 # The inner conftest registers the real plugin, the same way the real on-device suites' own
@@ -588,7 +589,7 @@ def test_android_screenrecord_forwards_this_modules_pinned_bounds(
         return "sentinel"
 
     monkeypatch.setattr(intervals, "start_screenrecord", fake_start_screenrecord)
-    monkeypatch.setattr(ondevice_evidence.adb, "_real_run", lambda cmd: "")
+    monkeypatch.setattr(adb, "_real_run", lambda cmd: "")
     result = ondevice_evidence.android_screenrecord("serial-1", Path("video.mp4"))
     assert result == "sentinel"
     assert calls == [
@@ -611,7 +612,7 @@ def test_android_screenrecord_clears_the_stale_device_side_file_first(
     # left behind by a swallowed pull failure could otherwise be pulled in as this test's own
     # evidence. Clearing it first, before every spawn, is what closes that.
     run_calls = []
-    monkeypatch.setattr(ondevice_evidence.adb, "_real_run", lambda cmd: run_calls.append(cmd))
+    monkeypatch.setattr(adb, "_real_run", lambda cmd: run_calls.append(cmd))
     monkeypatch.setattr(intervals, "start_screenrecord", lambda *a, **kw: "sentinel")
     result = ondevice_evidence.android_screenrecord("serial-1", Path("video.mp4"))
     assert result == "sentinel"
@@ -629,7 +630,7 @@ def test_android_screenrecord_tolerates_a_failed_device_side_clear(
     def _raises(cmd):
         raise subprocess.CalledProcessError(1, cmd)
 
-    monkeypatch.setattr(ondevice_evidence.adb, "_real_run", _raises)
+    monkeypatch.setattr(adb, "_real_run", _raises)
     monkeypatch.setattr(intervals, "start_screenrecord", lambda *a, **kw: "sentinel")
     result = ondevice_evidence.android_screenrecord("serial-1", Path("video.mp4"))
     assert result == "sentinel"

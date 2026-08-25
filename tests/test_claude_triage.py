@@ -32,7 +32,7 @@ def _el(identifier: str, label: str) -> base.Element:
 
 
 def _ctx(**over: Any) -> TriageContext:
-    base_ctx = {
+    base_ctx: dict[str, Any] = {
         "scenario": "s",
         "failure": "step0 tap: 一致なし",
         "failed_step": FailedStep(0, "tap", "一致なし: home.titel"),
@@ -273,7 +273,7 @@ def _ev(ok: bool, **over: Any) -> RunEvidence:
 
 
 def _cross_ctx(**over: Any) -> CrossRunTriageContext:
-    base_ctx = {
+    base_ctx: dict[str, Any] = {
         "scenario": "s",
         "scenario_hash": "abc",
         "scenario_yaml": "- name: s\n  steps:\n    - tap: { id: home.titel }\n",

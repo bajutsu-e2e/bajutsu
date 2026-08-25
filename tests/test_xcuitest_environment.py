@@ -21,9 +21,10 @@ from typing import Any
 
 import pytest
 
-from bajutsu import backends, simctl
+from bajutsu import backends, simctl, stall_diagnostics
 from bajutsu.config import Effective, load_config, resolve
 from bajutsu.device_os import DeviceOS
+from bajutsu.drivers.fake import FakeDriver
 from bajutsu.drivers.xcuitest import XcuitestChannelError
 from bajutsu.platform_lifecycle.environments import xcuitest as xcuitest_env
 from bajutsu.platform_lifecycle.environments.xcuitest import (
@@ -64,6 +65,15 @@ def _device_eff(*, app_path: str | None = None, test_runner: str | None = None) 
 
 
 # --- the destination string (pure) --- #
+
+
+class _NamedDriver(FakeDriver):
+    """A `FakeDriver` carrying a name, so a retry test can assert *which* attempt's driver came back
+    without standing a bare string in a `Driver` slot (BE-0388)."""
+
+    def __init__(self, name: str = "spawned") -> None:
+        super().__init__([])
+        self.name = name
 
 
 def test_destination_targets_the_simulator_by_default() -> None:
@@ -117,9 +127,9 @@ def test_start_on_a_real_device_targets_the_device_and_skips_simctl(
 
     simctl_calls: list[list[str]] = []
 
-    def _record_run(argv: list[str]) -> subprocess.CompletedProcess[bytes]:
+    def _record_run(argv: list[str], extra_env: Mapping[str, str] | None = None) -> str:
         simctl_calls.append(argv)
-        return subprocess.CompletedProcess(argv, 0, b"", b"")
+        return ""
 
     captured: dict[str, list[str]] = {}
 
@@ -162,7 +172,7 @@ def test_a_real_device_never_enters_the_recovery_ladder(
     # target never named. The ladder is Simulator-only, and this is what says so.
     simctl_calls: list[list[str]] = []
 
-    def _run(argv: list[str], env: object = None) -> str:
+    def _run(argv: list[str], env: Mapping[str, str] | None = None) -> str:
         simctl_calls.append(argv)
         return ""
 
@@ -369,7 +379,7 @@ def _fake_toolchain(
         def health_ready(self) -> bool:
             return True  # the cold runner answers /health at once (BE-0319 unit 3)
 
-    def _run(argv: list[str], env: object = None) -> str:
+    def _run(argv: list[str], env: Mapping[str, str] | None = None) -> str:
         simctl_calls.append(argv)
         if argv[2:3] == ["erase"]:
             domain["v"] = None  # a real erase wipes the device's preferences with everything else
@@ -524,7 +534,7 @@ def test_a_pin_that_does_not_take_fails_loudly(
 ) -> None:
     # A device that reads back another locale after the write and reboot would run the scenario
     # against an alert language nothing predicts — fail rather than proceed (determinism first).
-    def run(argv: list[str], env: object = None) -> str:
+    def run(argv: list[str], env: Mapping[str, str] | None = None) -> str:
         return _globals_plist("en_US") if "export" in argv else ""
 
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
@@ -613,7 +623,7 @@ def test_a_boot_that_never_completes_fails_the_run_loudly(
 ) -> None:
     # The wait is the only step that can report a device which never finishes booting, so a
     # `bootstatus` that fails must surface as a device fault rather than a raw subprocess error.
-    def run(argv: list[str], env: object = None) -> str:
+    def run(argv: list[str], env: Mapping[str, str] | None = None) -> str:
         if argv[2:3] == ["bootstatus"]:
             raise subprocess.CalledProcessError(1, argv, stderr="Unable to boot device")
         return ""
@@ -709,7 +719,7 @@ def test_end_lease_keeps_the_runner_but_teardown_terminates_it(
 
     simctl_calls.clear()
     env.end_lease(driver, eff)
-    assert env._runner_proc is proc and proc is not None and proc.alive  # runner untouched
+    assert env._runner_proc is proc and isinstance(proc, _FakeProc) and proc.alive  # untouched
     assert env.has_reusable_resident()
     assert any(
         c[:3] == ["xcrun", "simctl", "terminate"] for c in simctl_calls
@@ -1054,7 +1064,7 @@ def test_a_real_device_discard_never_terminates_through_simctl(
     # scoped to the Simulator exactly like the app-under-test one: a discard there stays silent.
     simctl_calls: list[list[str]] = []
 
-    def _run(argv: list[str], env: object = None) -> str:
+    def _run(argv: list[str], env: Mapping[str, str] | None = None) -> str:
         simctl_calls.append(argv)
         return ""
 
@@ -1127,11 +1137,9 @@ def test_the_spawn_hands_the_channel_a_stall_capture_bound_to_this_device(
     captured: list[tuple[str, str | None]] = []
     # `simulator_probes` hands back its udid, so the recorded pair names the device the probes would
     # have screenshotted as well as the trigger that fired.
-    monkeypatch.setattr(xcuitest_env.stall_diagnostics, "simulator_probes", lambda udid=None: udid)
+    monkeypatch.setattr(stall_diagnostics, "simulator_probes", lambda udid=None: udid)
     monkeypatch.setattr(
-        xcuitest_env.stall_diagnostics,
-        "capture",
-        lambda reason, probes: captured.append((reason, probes)),
+        stall_diagnostics, "capture", lambda reason, probes: captured.append((reason, probes))
     )
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
@@ -1402,7 +1410,7 @@ def test_a_repeatable_cold_spawn_failure_fails_loudly_and_keeps_the_logs(
 
         def await_ready(self, timeout: float = 10.0) -> None: ...
 
-    def _run(argv: list[str], env: object = None) -> str:
+    def _run(argv: list[str], env: Mapping[str, str] | None = None) -> str:
         # A device already on the configured locale, so the BE-0320 pin is a no-op here and this
         # test still exercises only the cold-spawn retry it is about.
         return _globals_plist("en_US") if "export" in argv else ""
@@ -1444,7 +1452,7 @@ def _fake_spawned(
     run_ended: Any = lambda: None,
 ) -> _Spawned:
     return _Spawned(
-        driver=object(),
+        driver=_NamedDriver(),
         ready=ready,
         poll=poll,
         log_tail=lambda: tail,
@@ -1718,7 +1726,7 @@ def test_spawn_cold_retries_once_then_succeeds() -> None:
         n = spawns
         first = n == 1
         return _Spawned(
-            driver=f"driver-{n}",
+            driver=_NamedDriver(f"driver-{n}"),
             ready=(lambda: not first),  # first attempt never becomes ready
             poll=(lambda: 1 if first else None),  # first attempt's process died
             log_tail=lambda: "",
@@ -1728,7 +1736,7 @@ def test_spawn_cold_retries_once_then_succeeds() -> None:
     result = _spawn_cold_with_retry(
         spawn, timeout=1.0, poll=0.0, sleep=lambda _s: None, clock=lambda: 0.0
     )
-    assert result.driver == "driver-2"
+    assert result.driver.name == "driver-2"
     assert spawns == 2 and discards == [
         1
     ]  # the failed first attempt discarded, the live second kept
@@ -1747,7 +1755,7 @@ def test_spawn_cold_does_not_retry_after_a_timeout() -> None:
         nonlocal spawns
         spawns += 1
         return _Spawned(
-            driver=f"driver-{spawns}",
+            driver=_NamedDriver(f"driver-{spawns}"),
             ready=lambda: False,  # never binds its port
             poll=lambda: None,  # the process stays alive — the timeout path, not fail-fast
             log_tail=lambda: "",
@@ -1777,7 +1785,7 @@ def test_spawn_cold_retries_after_an_ended_run_because_it_leaves_budget() -> Non
         spawns += 1
         first = spawns == 1
         return _Spawned(
-            driver=f"driver-{spawns}",
+            driver=_NamedDriver(f"driver-{spawns}"),
             ready=(lambda: not first),
             poll=lambda: None,  # the process lingers throughout: only the marker ends attempt 1
             log_tail=lambda: "",
@@ -1799,7 +1807,7 @@ def test_spawn_cold_retries_after_an_ended_run_because_it_leaves_budget() -> Non
     result = _spawn_cold_with_retry(
         spawn, timeout=300.0, poll=0.0, sleep=lambda _s: None, clock=clock
     )
-    assert result.driver == "driver-2" and spawns == 2
+    assert result.driver.name == "driver-2" and spawns == 2
 
 
 def test_spawn_cold_fails_loudly_after_exactly_two_attempts_with_both_tails() -> None:
@@ -1813,7 +1821,7 @@ def test_spawn_cold_fails_loudly_after_exactly_two_attempts_with_both_tails() ->
         spawns += 1
         n = spawns
         return _Spawned(
-            driver=None,
+            driver=_NamedDriver(),
             ready=lambda: False,
             poll=lambda: 65,  # xcodebuild exited on every attempt
             log_tail=lambda: f"\n<<tail-{n}>>",
@@ -1851,7 +1859,7 @@ def test_a_wedged_discard_never_replaces_the_exception_in_flight(
             raise ValueError("<<the original failure>>")
 
         return _Spawned(
-            driver=None,
+            driver=_NamedDriver(),
             ready=ready,
             poll=lambda: None,
             log_tail=lambda: "",
@@ -1880,7 +1888,7 @@ def test_a_wedged_discard_between_attempts_keeps_every_attempt_s_diagnostic() ->
             )
 
         return _Spawned(
-            driver=None,
+            driver=_NamedDriver(),
             ready=lambda: False,
             poll=lambda: 65,  # xcodebuild exited: a classified failure with a tail to preserve
             log_tail=lambda: "\n<<tail-1>>",
@@ -1910,7 +1918,7 @@ def _failing_spawn(counter: list[int], *, ready_on: int | None = None) -> Callab
         counter.append(1)
         n = len(counter)
         return _Spawned(
-            driver=f"driver-{n}",
+            driver=_NamedDriver(f"driver-{n}"),
             ready=lambda: n == ready_on,
             poll=lambda: None,  # alive throughout: the ended run is what fails each attempt
             log_tail=lambda: "",
@@ -1945,7 +1953,7 @@ def test_recovery_gets_the_classified_failure_and_runs_between_attempts() -> Non
         sleep=lambda _s: None,
         clock=lambda: 0.0,
     )
-    assert result.driver == "driver-2"
+    assert result.driver.name == "driver-2"
     assert seen == ["run-ended"]  # recovery ran once, between the two attempts
 
 
@@ -1970,7 +1978,7 @@ def test_a_repaired_device_earns_a_fresh_ceiling_even_after_a_spent_budget() -> 
         sleep=lambda _s: None,
         clock=clock,
     )
-    assert result.driver == "driver-2" and len(spawns) == 2
+    assert result.driver.name == "driver-2" and len(spawns) == 2
 
 
 def test_a_recovery_that_changed_nothing_keeps_the_shared_budget() -> None:
@@ -2112,7 +2120,7 @@ def _ladder_run(
     devicetypes: list[dict[str, str]] | None = None,
     stays_booted_after_shutdown: bool = False,
     booted_listing_fails: bool = False,
-) -> tuple[list[list[str]], Any]:
+) -> tuple[list[list[str]], simctl.RunFn]:
     """A fake simctl that lists `present` as available and mints `created` on `simctl create`.
 
     `devicetypes` overrides the fake `list devicetypes` response — the default holds only
@@ -2140,7 +2148,7 @@ def _ladder_run(
         }
     ]
 
-    def run(argv: list[str], env: object = None) -> str:
+    def run(argv: list[str], env: Mapping[str, str] | None = None) -> str:
         calls.append(argv)
         verb = argv[2:3]
         if verb == ["list"] and argv[3:4] == ["devicetypes"]:
@@ -2374,7 +2382,7 @@ def test_a_probe_that_could_not_run_changes_nothing() -> None:
     # A host too sick to list its devices must not have a device replaced on that evidence.
     calls: list[list[str]] = []
 
-    def run(argv: list[str], env: object = None) -> str:
+    def run(argv: list[str], env: Mapping[str, str] | None = None) -> str:
         calls.append(argv)
         raise OSError("xcrun unavailable")
 
@@ -2398,7 +2406,7 @@ def test_a_vanished_device_with_no_replaceable_type_fails_loudly(tmp_path: Path)
     app = tmp_path / "App.app"
     app.mkdir()
 
-    def run(argv: list[str], env: object = None) -> str:
+    def run(argv: list[str], env: Mapping[str, str] | None = None) -> str:
         if argv[2:4] == ["list", "devicetypes"]:
             return json.dumps({"devicetypes": []})  # no iPhone type at all
         if argv[2:3] == ["list"]:
@@ -2595,7 +2603,7 @@ def test_a_degraded_device_whose_shutdown_hangs_is_still_replaced(
     _fake_toolchain(monkeypatch)
     calls, run = _ladder_run(["UDID"])
 
-    def hanging_shutdown(argv: list[str], env: object = None) -> str:
+    def hanging_shutdown(argv: list[str], env: Mapping[str, str] | None = None) -> str:
         if argv[2:4] == ["shutdown", "UDID"]:
             calls.append(argv)
             raise simctl.DeviceTimeout("device operation timed out after 60s: " + " ".join(argv))
@@ -2623,7 +2631,7 @@ def test_a_degraded_device_whose_discard_hangs_is_still_replaced(
     _fake_toolchain(monkeypatch)
     calls, run = _ladder_run(["UDID"])
 
-    def hanging_terminate(argv: list[str], env: object = None) -> str:
+    def hanging_terminate(argv: list[str], env: Mapping[str, str] | None = None) -> str:
         if argv[2:4] == ["terminate", "UDID"]:
             calls.append(argv)
             raise simctl.DeviceTimeout("device operation timed out after 60s: " + " ".join(argv))
@@ -2688,7 +2696,7 @@ def test_a_real_device_start_clears_a_replacement_request_without_serving_it(
     # A real device is powered on out of band and has no simctl to mint through, so the request must
     # not survive into a later `start` that could act on it.
     _fake_toolchain(monkeypatch)
-    env = XcuitestEnvironment("xcuitest", "UDID", env_run=lambda argv, e=None: "")
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=lambda argv, e: "")
     cfg = (
         "targets:\n  s:\n    bundleId: com.x\n"
         "    xcuitest:\n      deviceType: device\n"
@@ -2732,7 +2740,7 @@ def test_the_recovery_bound_excludes_the_unbounded_reprep(monkeypatch: pytest.Mo
     boots_seen = {"n": 0}
     _calls, base_run = _ladder_run(["UDID"])
 
-    def run(argv: list[str], env: object = None) -> str:
+    def run(argv: list[str], env: Mapping[str, str] | None = None) -> str:
         out = base_run(argv, env)
         if argv[2:3] == ["boot"]:
             boots_seen["n"] += 1
@@ -2814,7 +2822,7 @@ def test_the_recovery_bound_covers_a_rung_that_changes_nothing(
 def test_an_unknown_probe_is_still_reported_within_the_bound() -> None:
     # The same do-nothing rung, on a host answering promptly: it reports its note and no fresh budget
     # rather than failing, so the bound above is what distinguishes a sick host from a quiet one.
-    def run(argv: list[str], env: object = None) -> str:
+    def run(argv: list[str], env: Mapping[str, str] | None = None) -> str:
         raise OSError("xcrun unavailable")
 
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)

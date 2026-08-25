@@ -88,8 +88,14 @@ class _Keyboard(Protocol):
 
 
 class _Page(Protocol):
-    mouse: _Mouse
-    keyboard: _Keyboard
+    # Read-only members: the driver only ever calls through them, never rebinds them. A mutable
+    # attribute would be invariant, which would reject any page whose own handles are typed more
+    # precisely than the protocol (BE-0388).
+    @property
+    def mouse(self) -> _Mouse: ...
+
+    @property
+    def keyboard(self) -> _Keyboard: ...
 
     def evaluate(self, expression: str) -> Any:
         pass

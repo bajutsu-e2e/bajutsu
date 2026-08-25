@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 
 import bajutsu.drivers.adb as adb_driver_mod
-from bajutsu import adb
+from bajutsu import adb, stall_diagnostics
 from bajutsu.drivers import base
 from bajutsu.drivers.actuation import Actuation
 from bajutsu.drivers.adb import (
@@ -558,7 +558,7 @@ def _recording_stall_capture(
     would let the driver address the wrong emulator with no test noticing.
     """
     captured: list[tuple[str, str]] = []
-    monkeypatch.setattr(adb_driver_mod.stall_diagnostics, "device_probes", lambda serial: serial)
+    monkeypatch.setattr(stall_diagnostics, "device_probes", lambda serial: serial)
     monkeypatch.setattr(
         adb_driver_mod.stall_diagnostics,
         "capture",

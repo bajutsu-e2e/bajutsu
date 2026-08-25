@@ -16,6 +16,21 @@ from bajutsu.orchestrator import run_scenario
 from bajutsu.scenario import load_scenarios
 
 
+def _points(arg: object) -> tuple[base.Point, base.Point]:
+    """One logged gesture's (from, to) points."""
+    assert isinstance(arg, tuple) and len(arg) == 2
+    return arg
+
+
+def _scroll_points(driver: FakeDriver) -> tuple[base.Point, base.Point]:
+    """The (from, to) points of the driver's first scroll.
+
+    `FakeDriver.actions` logs `(kind, arg)` with `arg` typed `object`, so the read asserts the shape
+    rather than casting it away (BE-0388).
+    """
+    return _points(next(arg for kind, arg in driver.actions if kind == "scroll"))
+
+
 def _el(identifier: str) -> base.Element:
     return {
         "identifier": identifier,
@@ -130,8 +145,7 @@ def _swipe_points(spec: str) -> tuple[base.Point, base.Point]:
     driver = FakeDriver(screen=[win, lst])
     result = run_scenario(driver, load_scenarios(f"- name: s\n  steps:\n    - {spec}\n")[0])
     assert result.ok, result.failure
-    frm, to = next(arg for kind, arg in driver.actions if kind == "scroll")
-    return frm, to
+    return _scroll_points(driver)
 
 
 def _swipe_travel(spec: str) -> float:
@@ -156,7 +170,7 @@ def _swipe_travel_on(screen_h: float, spec: str) -> float:
     driver = FakeDriver(screen=[win, lst])
     result = run_scenario(driver, load_scenarios(f"- name: s\n  steps:\n    - {spec}\n")[0])
     assert result.ok, result.failure
-    frm, to = next(arg for kind, arg in driver.actions if kind == "scroll")
+    frm, to = _scroll_points(driver)
     return abs(frm[1] - to[1])
 
 
@@ -234,8 +248,9 @@ def test_a_directional_swipe_anchors_on_the_settled_read_where_a_backend_offers_
         )[0],
     )
     assert result.ok, result.failure
-    [(kind, (frm, _to))] = driver.actions
+    [(kind, arg)] = driver.actions
     assert kind == "scroll"
+    frm, _to = _points(arg)
     assert frm == (200.0, 327.0)  # the settled centre, not the stale 400.0
 
 
@@ -251,7 +266,8 @@ def test_a_backend_that_reports_no_settled_read_keeps_its_single_query() -> None
         )[0],
     )
     assert result.ok, result.failure
-    [(_, (frm, _to))] = driver.actions
+    [(_, arg)] = driver.actions
+    frm, _to = _points(arg)
     assert frm == (200.0, 400.0)
 
 
@@ -273,8 +289,9 @@ def test_drag_is_a_real_pointer_drag_not_a_scroll() -> None:
         )[0],
     )
     assert result.ok, result.failure
-    [(kind, (frm, to))] = driver.actions
+    [(kind, arg)] = driver.actions
     assert kind == "swipe"  # a pointer drag, not a scroll
+    frm, to = _points(arg)
     assert to[0] > frm[0] and to[1] == frm[1]  # travels right, level
 
 

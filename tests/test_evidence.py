@@ -11,6 +11,7 @@ import pytest
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import FileSink, capture, write_elements, write_raw_tree, write_screenshot
+from bajutsu.evidence.intervals import Interval
 from bajutsu.evidence.redaction import PLACEHOLDER, Redactor
 from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.scenario import Redact
@@ -21,14 +22,15 @@ def _writer(run_dir: Path, redactor: Redactor | None = None) -> RunArtifactWrite
     return RunArtifactWriter(run_dir, redactor if redactor is not None else Redactor(None))
 
 
-class _StubInterval:
+class _StubInterval(Interval):
     """A finished recording, standing in for the subprocess-backed `Interval` (an external
-    boundary): `finish_scenario_intervals` only needs `stop()` / `kind` / `provider`."""
+    boundary): `finish_scenario_intervals` only needs `stop()` / `kind` / `provider`. It subclasses
+    the real `Interval` so it fits the seam's own type, and overrides `stop()` to skip the
+    subprocess."""
 
     def __init__(self, path: Path, kind: str = "deviceLog", provider: str = "xcuitest") -> None:
+        super().__init__(kind=kind, path=path, provider=provider)
         self._path = path
-        self.kind = kind
-        self.provider = provider
 
     def stop(self) -> Path:
         return self._path
@@ -84,11 +86,13 @@ def test_capture_elements_and_screenshot(tmp_path: Path) -> None:
     assert ("screenshot", str(tmp_path / "step0" / "after.png")) in driver.actions
 
 
-class _RawSourceStub:
-    """The narrowest possible `base.RawSourceProvider` — no other `Driver` method needed for
-    `isinstance` to recognize it, since the protocol is `@runtime_checkable` and structural."""
+class _RawSourceStub(FakeDriver):
+    """A driver whose only addition is `last_raw_source` — nothing else is needed for `isinstance`
+    to recognize it as a `base.RawSourceProvider`, since the protocol is `@runtime_checkable` and
+    structural, and `FakeDriver` itself implements no part of it."""
 
     def __init__(self, raw: base.RawSource | None) -> None:
+        super().__init__([])
         self._raw = raw
 
     def last_raw_source(self) -> base.RawSource | None:
@@ -196,11 +200,12 @@ def test_capture_raw_tree_kind_on_an_unsupported_backend_produces_nothing(tmp_pa
     assert not (tmp_path / "step0").exists()  # write_raw_tree's own no-op never mkdirs either
 
 
-class _RawSourceQueryStub:
+class _RawSourceQueryStub(FakeDriver):
     """A driver whose raw source updates on `query()`, mirroring how AdbDriver/XcuitestDriver's
     `last_raw_source()` always reflects whichever read happened most recently."""
 
     def __init__(self) -> None:
+        super().__init__([])
         self.reads = 0
 
     def query(self) -> list[base.Element]:
@@ -525,7 +530,7 @@ def test_finish_scenario_intervals_drops_a_failed_stop_but_finishes_the_rest(
 
     good = tmp_path / "device.log"
     good.write_text("log", encoding="utf-8")
-    started = [
+    started: list[Interval] = [
         _Recording(tmp_path / "scenario.mp4", "video", fail=True),
         _Recording(good, "deviceLog", fail=False),
     ]

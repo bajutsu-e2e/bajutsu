@@ -1231,10 +1231,12 @@ def test_serve_upload_exec_env_mirror_and_flag_precedence(monkeypatch: pytest.Mo
     monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))
     monkeypatch.setenv("BAJUTSU_UPLOAD_EXEC", "deny")
     r = runner.invoke(app, ["serve", "--config", "bajutsu.config.yaml"])
-    assert r.exit_code == 0 and captured["upload_exec"] == "deny"  # env honoured when no flag
+    from_env = captured["upload_exec"]
+    assert r.exit_code == 0 and from_env == "deny"  # env honoured when no flag
     captured.clear()
     r = runner.invoke(app, ["serve", "--upload-exec", "reuse", "--config", "bajutsu.config.yaml"])
-    assert r.exit_code == 0 and captured["upload_exec"] == "reuse"  # flag wins over env
+    from_flag = captured["upload_exec"]
+    assert r.exit_code == 0 and from_flag == "reuse"  # flag wins over env
 
 
 def test_serve_themes_flag_and_default_theme(
@@ -1660,7 +1662,9 @@ def test_touch_markers_skips_a_scenario_that_compares_a_screenshot() -> None:
 
 def test_touch_markers_skips_a_step_level_visual_assertion() -> None:
     scenario = _touch_marker_scenario()
-    scenario.steps = [Step(**{"assert": [Assertion(visual=VisualMatch(baseline="home.png"))]})]
+    scenario.steps = [
+        Step.model_validate({"assert": [Assertion(visual=VisualMatch(baseline="home.png"))]})
+    ]
     _apply_touch_markers([scenario], True)
     assert "BAJUTSU_TOUCH_MARKERS" not in scenario.preconditions.launch_env
 

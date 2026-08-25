@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu import simctl
+from bajutsu import simctl, stall_diagnostics
 from bajutsu.evidence import intervals
 
 
@@ -224,7 +224,7 @@ def test_a_recording_that_never_produces_bytes_captures_the_stall(
     captured: list[tuple[str, str | None]] = []
     # `simulator_probes` hands back its udid, so the recorded pair names the device the probes would
     # have screenshotted as well as the trigger that fired.
-    monkeypatch.setattr(intervals.stall_diagnostics, "simulator_probes", lambda udid=None: udid)
+    monkeypatch.setattr(stall_diagnostics, "simulator_probes", lambda udid=None: udid)
     monkeypatch.setattr(
         intervals.stall_diagnostics,
         "capture",
@@ -593,7 +593,7 @@ def test_start_screenrecord_warns_and_captures_when_the_recording_never_grows(
     captured: list[tuple[str, str]] = []
     # `device_probes` hands back its serial, so the recorded pair names the device the probes would
     # have read as well as the trigger that fired.
-    monkeypatch.setattr(intervals.stall_diagnostics, "device_probes", lambda serial: serial)
+    monkeypatch.setattr(stall_diagnostics, "device_probes", lambda serial: serial)
     monkeypatch.setattr(
         intervals.stall_diagnostics,
         "capture",
@@ -627,7 +627,7 @@ def test_start_screenrecord_growth_is_confirmed_only_past_the_pre_spawn_baseline
     # would confirm growth that never happened — the same trap the iOS video baseline guards.
     monkeypatch.setenv(intervals._VIDEO_START_TIMEOUT_ENV, "0.01")
     monkeypatch.setattr(time, "sleep", lambda _s: None)
-    monkeypatch.setattr(intervals.stall_diagnostics, "capture", lambda reason, probes: None)
+    monkeypatch.setattr(stall_diagnostics, "capture", lambda reason, probes: None)
     device = FakeDevice(pids=["", "1234"], sizes=["4096"])  # leftover bytes, never growing
 
     with caplog.at_level("WARNING"):
