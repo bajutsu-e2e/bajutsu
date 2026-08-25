@@ -99,9 +99,24 @@ grep -ril "<keyword>" roadmaps/
 
 Run the metadata pass first all the same. It answers with the id, title, `Topic`, and status of each
 match in one small table, so a hit there is already actionable, while the grep answers with paths
-still to open. Close to 400 items live under `roadmaps/` and their files run past 127,000 lines, but
-`grep -ril` returns one path per matching file rather than the prose, so the second pass stays cheap
-enough to run every time — which is what lets the coverage below hold.
+still to open.
+
+**Narrow the keyword until the grep discriminates**, before carrying its hits into the choices
+below. Close to 400 items live under `roadmaps/`, across some 770 files and more than 127,000 lines,
+so a common word matches nearly all of them — `grep -ril issue roadmaps/` returns essentially every
+file there, and a list that size filters nothing. When a flood comes back, re-run with a more
+distinctive phrase rather than putting the roadmap itself in front of the invoker. A keyword narrow
+enough to discriminate returns a short list of paths rather than the prose behind them, which is
+what keeps the second pass cheap enough to run every time.
+
+Some findings sit in the roadmap's own core vocabulary, though, where even a phrase faithful to the
+finding still returns dozens of paths. **Never narrow past the finding's own wording to force a
+short list.** An over-narrowed grep that comes back empty is a manufactured miss, indistinguishable
+from real absence, and catching the item a duplicate would re-file is the whole point of this pass.
+When no keyword both stays faithful and discriminates, report the grep pass as **inconclusive**:
+give the invoker the keywords tried and how many paths each returned, never a subset of the paths
+you picked, and let the metadata pass's hits plus that note carry the choices below. A truncated
+list would settle a choice the invoker owns, on evidence the invoker never saw.
 
 Both passes cover **all five statuses**, `Deferred` and `Rejected` included — the two a
 status-scoped survey would miss, and the two that matter most here: an item the roadmap deliberately
@@ -202,7 +217,9 @@ Three rules keep the unattended path honest:
   an otherwise-healthy follow-up loop. The pending-draft field stays distinct from the escalation
   field for that reason.
 - **Defer step 2's choices rather than settling them.** Draft for a **new issue**, and carry every
-  candidate the search found — issue matches and any roadmap-filter hit — beside the draft. The
+  candidate the search found — issue matches and every roadmap hit, from the metadata pass and the
+  grep alike — beside the draft. An inconclusive grep contributes its keywords-and-counts note in
+  place of hits, for the same reason it does on an attended turn. The
   human then decides whether to approve the draft, comment on a candidate by hand instead, or
   discard the finding. Approval resumes this skill at step 5 against the draft the human actually
   saw, rather than re-drafting it.

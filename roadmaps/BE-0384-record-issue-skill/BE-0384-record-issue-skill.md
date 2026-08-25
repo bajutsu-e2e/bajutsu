@@ -110,9 +110,18 @@ since an item's coverage of a small finding usually lives in its `Detailed desig
 greps the item files themselves (`grep -ril "<keyword>" roadmaps/`) — every time, not only when the
 cheap pass came back empty, since a coarse hit on one item says nothing about another item's
 `Detailed design`. The metadata pass still runs first, because it answers with each match's id,
-title, `Topic`, and status rather than a path still to open; the grep stays affordable as a second
-pass because it returns one path per matching file, not the prose of the 400-odd items and 127,000
-lines under `roadmaps/`. Both passes
+title, `Topic`, and status rather than a path still to open. The grep's keyword has to be narrowed
+until it discriminates before its hits reach the choices below: `roadmaps/` holds close to 400 items
+across some 770 files and 127,000-plus lines, so a common word matches nearly all of them —
+`grep -ril issue roadmaps/` returns essentially every file there — and a list that size filters
+nothing. A keyword narrow enough to discriminate returns a short list of paths rather than the prose
+behind them, which is what keeps the second pass affordable every time. Some findings sit in the
+roadmap's own core vocabulary, though, where even a faithful phrase returns dozens of paths, and
+narrowing past the finding's own wording is not the answer: an over-narrowed grep that comes back
+empty is a manufactured miss, indistinguishable from real absence. There the grep pass is reported
+**inconclusive** — the keywords tried and their hit counts, never a subset of paths the skill picked
+— and the metadata pass's hits plus that note carry the choices, since a truncated list would settle
+a choice the invoker owns on evidence the invoker never saw. Both passes
 span all five statuses, `Deferred` and `Rejected` included: an item the roadmap deliberately parked,
 or decided against with no condition expected to reopen it, is the last thing to re-file as an
 issue, and a status-scoped survey is exactly what would miss it. Neither pass proves absence,
@@ -175,9 +184,10 @@ the drafts earlier iterations already returned, because each iteration is a fres
 re-notices the same finding. The report therefore holds one entry per finding rather than one per
 iteration, and a draft returned early survives to the report the human reads.
 Step 2's new-issue-or-comment choice, and a
-roadmap-filter hit's stop-or-proceed choice, defer the same way rather than being settled
+roadmap hit's stop-or-proceed choice, defer the same way rather than being settled
 unattended: the skill drafts for a new issue and carries every candidate it found — issue matches
-and any roadmap-filter hit — beside the draft, so the human decides whether to approve it, comment
+and every roadmap hit, from the metadata pass and the grep alike (an inconclusive grep contributing
+its keywords-and-counts note in place of hits) — beside the draft, so the human decides whether to approve it, comment
 on a candidate by hand instead, or discard the finding. Approval of the drafted issue resumes the
 skill directly at step 5 against the draft the human actually saw, rather than re-drafting it. A
 step 1 escalation entry carries no issue draft, so it is not resumable at all: approving it starts
