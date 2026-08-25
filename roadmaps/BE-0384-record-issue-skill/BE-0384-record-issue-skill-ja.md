@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0384") |
-| 実装 PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
+| 実装 PR | [#1748](https://github.com/bajutsu-e2e/bajutsu/pull/1748) |
 | トピック | コントリビューターワークフロー |
 <!-- /BE-METADATA -->
 
@@ -227,7 +227,7 @@ BE-0230のエスカレーション一覧の各項目はどれもループを停�
 - スキル本体、`pr-followup` と `implement-be` への組み込み、ドキュメントを出荷しました。スキルは
   散文なので、動かして確かめられるランタイムはありません。そこで最後の確認は、組み込んだ 3 つの
   文書を突き合わせて行いました。見たのは次の 4 点です
-  （[#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN)）。
+  （[#1748](https://github.com/bajutsu-e2e/bajutsu/pull/1748)）。
   - 承認の手順を呼び出し元が省けないこと。
   - 人がターンにいるかどうかの申告が `pr-followup` を経て `record-issue` まで変わらずに届くこと。
   - pending-draft のフィールドが 3 つの文書すべてで名前を持ち、エスカレーション用フィールドと

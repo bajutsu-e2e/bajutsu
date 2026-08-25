@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0384") |
-| Implementing PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
+| Implementing PR | [#1748](https://github.com/bajutsu-e2e/bajutsu/pull/1748) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -227,7 +227,7 @@ would add process without adding information.
 
 - Shipped the skill, its `pr-followup` and `implement-be` wiring, and the documentation. A skill is
   prose with no runtime to exercise, so the last box was checked by reading the three wired texts
-  against each other ([#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN)). Four things had to
+  against each other ([#1748](https://github.com/bajutsu-e2e/bajutsu/pull/1748)). Four things had to
   hold:
   - the confirmation step admits no caller-side waiver;
   - the human-in-the-turn statement reaches `record-issue` unchanged, through `pr-followup`;
