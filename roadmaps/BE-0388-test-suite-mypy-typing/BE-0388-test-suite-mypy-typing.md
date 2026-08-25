@@ -190,8 +190,8 @@ The pydantic-plugin question stays out of this item's scope; see *Alternatives c
 
   One fake had drifted rather than merely being partial. `test_http_auth.py`'s `_FakeOAuth` declared
   a `fetch_login` the `OAuthClient` protocol no longer has, and lacked the `fetch_identity` that
-  replaced it. Nothing failed, because those tests exercise only the redirect leg — which is the
-  kind of drift review did not catch and this item's baseline did.
+  replaced it. Nothing failed, because those tests exercise only the redirect leg. Review alone did
+  not catch the drift; this item's baseline did.
 
 ## References
 
