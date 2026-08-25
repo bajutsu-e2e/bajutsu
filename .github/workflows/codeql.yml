@@ -56,9 +56,14 @@ jobs:
         id: filter
         with:
           filters: |
+            # Scoped to what the Swift job actually builds (`swift build --package-path BajutsuKit`),
+            # not to every Swift file in the tree. A `**/*.swift` filter also fired on the showcase
+            # demo apps under demos/showcase/ios, whose sources the BajutsuKit-only build never
+            # extracts — so such a change bought a full BajutsuKit analysis that examined none of it,
+            # and that analysis runs long enough to hit this job's `timeout-minutes` (measured twice
+            # at just over 30 minutes), turning an unrelated edit into a cancelled required check.
             swift:
               - "BajutsuKit/**"
-              - "**/*.swift"
               - ".github/workflows/codeql.yml"
             android:
               - "demos/showcase/android/**"
