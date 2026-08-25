@@ -30,6 +30,9 @@ final class AppModel {
     let animationsDisabled: Bool
     let apiBase: String
     let httpBase: String
+    /// The page the in-app browser opens (SPEC §5.4). `browser.yaml` points this at a page its own
+    /// Makefile lane serves, so the scenario asserts fixed content rather than a live site's.
+    let browserURL: String
 
     /// The offline catalog. Fixed at launch — no launch-env seed knob (BE-0079): a scenario
     /// cannot inject a data state, only observe the app's own. Network rows would extend this.
@@ -42,5 +45,6 @@ final class AppModel {
         animationsDisabled = env["SHOWCASE_UITEST"] != nil
         apiBase = env["SHOWCASE_API_URL"] ?? "https://example.com"
         httpBase = env["SHOWCASE_HTTP_BASE"] ?? "https://httpbin.org"
+        browserURL = env["SHOWCASE_BROWSER_URL"] ?? "https://example.com"
     }
 }

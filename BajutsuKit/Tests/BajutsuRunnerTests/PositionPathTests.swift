@@ -71,6 +71,54 @@ final class PositionPathTests: XCTestCase {
         XCTAssertEqual(recorded.frame.width, 3)
     }
 
+    func testFlattenDefaultsEveryBackingToTheAppRoot() {
+        let tree = FakeNode(children: [FakeNode(id: "A", children: [FakeNode(id: "A1")])])
+
+        let flat = flattenSnapshot(root: tree)
+
+        XCTAssertTrue(flat.allSatisfy { backing($0).root == .app })
+    }
+
+    func testFlattenRecordsTheRootTheTreeWasReadFrom() {
+        // The browser's tree comes from com.apple.SafariViewService, and every element off it has to
+        // say so — actuation re-derives the path against that same handle (BE-XXXX).
+        let tree = FakeNode(children: [FakeNode(id: "Close", children: [FakeNode(id: "URL")])])
+
+        let flat = flattenSnapshot(root: tree, in: .safariViewService)
+
+        XCTAssertEqual(flat.map(\.identifier), ["Close", "URL"])
+        XCTAssertTrue(flat.allSatisfy { backing($0).root == .safariViewService })
+    }
+
+    func testFlattenPrunesTheMatchedNodeAndItsDescendants() {
+        // The app's own snapshot mirrors the browser subtree through iOS 18; it is pruned there so
+        // the copy read from the service root is the only one reported (BE-XXXX).
+        let tree = FakeNode(children: [
+            FakeNode(id: "A"),
+            FakeNode(id: "BrowserView?IsPageLoaded=true", children: [FakeNode(id: "Close")]),
+            FakeNode(id: "B"),
+        ])
+
+        let flat = flattenSnapshot(root: tree) { ($0.nodeIdentifier ?? "").hasPrefix("BrowserView") }
+
+        XCTAssertEqual(flat.map(\.identifier), ["A", "B"])
+    }
+
+    func testPruningLeavesSurvivingSiblingsOnTheirOriginalPaths() {
+        // A pruned child still consumes its index, so a live re-derivation of a later sibling
+        // descends the same child indices the untouched tree would have given it.
+        let tree = FakeNode(children: [
+            FakeNode(id: "A"),
+            FakeNode(id: "drop", children: [FakeNode(id: "dropped")]),
+            FakeNode(id: "B", children: [FakeNode(id: "B1")]),
+        ])
+
+        let flat = flattenSnapshot(root: tree) { $0.nodeIdentifier == "drop" }
+
+        XCTAssertEqual(flat.map(\.identifier), ["A", "B", "B1"])
+        XCTAssertEqual(flat.map { backing($0).path }, [[0], [2], [2, 0]])
+    }
+
     func testEmptyTreeFlattensToNothing() {
         XCTAssertTrue(flattenSnapshot(root: FakeNode()).isEmpty)
     }

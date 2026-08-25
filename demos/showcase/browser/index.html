@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bajutsu Showcase Browser Fixture</title>
+    <style>
+      body { font-family: -apple-system, system-ui, sans-serif; margin: 2rem 1rem; }
+      button { font-size: 1.1rem; padding: 0.6rem 1.2rem; }
+      p { font-size: 1.1rem; }
+    </style>
+  </head>
+  <body>
+    <!--
+      The page demos/showcase/scenarios/browser.yaml loads in SFSafariViewController.
+      Served locally by `make -C demos/showcase e2e-browser` (SPEC §5.4) so the scenario asserts
+      fixed content rather than a live site's. The browser exposes this page to the backend as an
+      accessibility tree, not as a DOM, so the scenario addresses these by their visible text — an
+      `id` attribute would never reach it.
+    -->
+    <h1>Bajutsu Browser Fixture</h1>
+    <p id="status">not clicked</p>
+    <button onclick="document.getElementById('status').textContent = 'clicked'">
+      Confirm
+    </button>
+  </body>
+</html>
