@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ai-provider-none-kill-switch-ja.md)
+**English** · [日本語](BE-0394-ai-provider-none-kill-switch-ja.md)
 
-# BE-XXXX — Add a none provider that disables every AI path, including the vision alert guard
+# BE-0394 — Add a none provider that disables every AI path, including the vision alert guard
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ai-provider-none-kill-switch.md) |
+| Proposal | [BE-0394](BE-0394-ai-provider-none-kill-switch.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0394") |
 | Topic | AI provider configuration |
 | Related | [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md), [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules.md) |
 <!-- /BE-METADATA -->

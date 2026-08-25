@@ -1,14 +1,14 @@
-[English](BE-XXXX-ai-provider-none-kill-switch.md) · **日本語**
+[English](BE-0394-ai-provider-none-kill-switch.md) · **日本語**
 
-# BE-XXXX — AI 経路をすべて無効化するプロバイダ none を追加する
+# BE-0394 — AI 経路をすべて無効化するプロバイダ none を追加する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-ai-provider-none-kill-switch-ja.md) |
+| 提案 | [BE-0394](BE-0394-ai-provider-none-kill-switch-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0394") |
 | トピック | AI プロバイダ設定 |
 | 関連 | [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md), [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules-ja.md) |
 <!-- /BE-METADATA -->
