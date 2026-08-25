@@ -121,10 +121,10 @@ tenant all week wants.
 
 One new endpoint, `POST /api/org`, taking the target slug. It authorizes the switch against the
 `user_orgs` rows written at sign-in: a slug with no row for this user is refused with 403, and a
-missing row set refuses everything rather than defaulting to permissive — for everyone but an
-admin-Team member, whose eligible set unit 4 computes at read time instead of storing. On success it writes both
-`users.org_id` and `users.role` from the row, so the role follows the tenant the way it does at
-sign-in.
+missing row set refuses everything rather than defaulting to permissive. The exception is an
+admin-Team member, whose eligible set unit 4 computes at read time instead of storing it as rows. On
+success it writes both `users.org_id` and `users.role` from the row, so the role follows the tenant
+the way it does at sign-in.
 
 The switch is an ordinary authenticated action, not an admin one: it moves the caller between orgs
 that already admit them, and grants nothing their last sign-in did not already establish. It inherits
