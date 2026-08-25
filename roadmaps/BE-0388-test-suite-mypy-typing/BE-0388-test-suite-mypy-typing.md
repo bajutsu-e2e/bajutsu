@@ -88,8 +88,18 @@ because `*` must stand for a whole dotted component. Relaxing the two settings g
 re-tightening them for the gate's existing targets fails for the same reason: mypy names the modules
 under `demos/` and `scripts/` by basename too, so re-tightening would have to list every one.
 
-A second invocation costs little, because both runs share mypy's incremental cache. The two runs
-differ in their flags alone — the strict `[tool.mypy]` configuration is the same one the gate
+Basename naming carries a second consequence, recorded here because it becomes a hard failure once
+`tests` joins the gate: no two files under `tests/` may share a name. mypy aborts a run with
+`Duplicate module named …` and reports no errors at all, so an ordinary new test file could turn
+`make check` red with a message that points nowhere near its cause. No collision exists today, and
+nothing but this note keeps it that way.
+
+The second invocation gets its own `--cache-dir`. Both relaxed settings are per-module, and mypy
+records the options in every module's cache metadata, so two runs sharing one directory each abandon
+the other's metadata — "options differ" — and re-analyse from source. That covers all of `bajutsu/`
+as well, which `tests` imports, so a shared cache would make the pair pay two cold analyses and the
+next strict run a third. With separate directories both stay incremental. The two runs differ in
+their flags and their cache alone; the strict `[tool.mypy]` configuration is the one the gate
 already applies to `bajutsu demos scripts`.
 
 Once every directory in `tests/` is clean, fold `typecheck-tests` into the `typecheck` target with
@@ -109,7 +119,8 @@ The pydantic-plugin question stays out of this item's scope; see *Alternatives c
   item does not depend on it.
 - **Exclude the noisiest files from mypy permanently** — rejected: a per-file exclusion decays
   silently, since a new test added to an excluded file inherits the exclusion without anyone
-  deciding that. A per-directory override with the *Progress* checklist below stays visible instead.
+  deciding that. The per-directory rollout in *Detailed design*, tracked by the *Progress* checklist
+  below, stays visible instead.
 - **Leave `tests/` untyped and rely on code review** — the status quo; rejected because it was already
   the status quo BE-0067 flagged as a gap, and review alone did not catch the `attr-defined` /
   `arg-type` classes of drift this baseline run surfaced.

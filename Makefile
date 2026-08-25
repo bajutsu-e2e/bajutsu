@@ -129,10 +129,18 @@ typecheck:
 # block because `tests/` has no `__init__.py` — its helper modules are imported by bare name, the way
 # pytest's prepend import mode puts `tests/` on `sys.path` — so mypy names every module under it by
 # basename, and a per-module pattern cannot select them (mypy requires `*` to be a whole component,
-# so neither `tests.*` nor `test_*` matches). Not in `check` yet: it joins `typecheck` once every
-# directory is clean.
+# so neither `tests.*` nor `test_*` matches). Basename naming has a second consequence: no two files
+# under `tests/` may share a name, because a collision aborts the whole run with `Duplicate module
+# named …` and reports no errors at all.
+#
+# `--cache-dir` keeps the two runs off each other's cache. Both relaxed settings are per-module, and
+# mypy stores the options in every module's cache metadata, so a shared directory makes each run
+# abandon the other's metadata ("options differ") and re-analyse from source — over all of `bajutsu/`
+# too, which `tests` imports. Nesting the second cache under `.mypy_cache/` keeps `.gitignore` as is.
+#
+# Not in `check` yet: it joins `typecheck` once every directory is clean.
 typecheck-tests:
-	uv run mypy --allow-untyped-defs --no-warn-unused-ignores tests
+	uv run mypy --cache-dir=.mypy_cache/tests --allow-untyped-defs --no-warn-unused-ignores tests
 
 # The committed uv.lock must already satisfy pyproject — a dependency edit that forgets
 # to re-lock fails here instead of silently resolving something else in CI.
