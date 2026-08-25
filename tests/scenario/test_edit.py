@@ -9,18 +9,22 @@ result always re-parses.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from bajutsu.scenario import load_scenario_file, load_scenarios
 from bajutsu.scenario.edit import EditError, apply_enrichment, apply_selector
 
 
-def _step_action(text: str, scenario: str, index: int) -> tuple[str, object]:
+def _step_action(text: str, scenario: str, index: int) -> tuple[str, dict[str, Any]]:
     """The (alias, fields) of the index-th step of the named scenario, via the model."""
     scn = next(s for s in load_scenarios(text) if s.name == scenario)
     dumped = scn.steps[index].model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)
     alias = next(iter(dumped))
-    return alias, dumped[alias]
+    fields = dumped[alias]
+    assert isinstance(fields, dict)
+    return alias, fields
 
 
 # --- apply_selector ---------------------------------------------------------------------------
@@ -214,7 +218,9 @@ def test_enrichment_settle_ordered_before_existing_expect() -> None:
     assert len(scn.steps) == 2
     assert scn.steps[1].wait is not None
     assert len(scn.expect) == 1
-    assert scn.expect[0].exists.sel.first_id() == "z"
+    exists = scn.expect[0].exists
+    assert exists is not None
+    assert exists.sel.first_id() == "z"
 
 
 def test_enrichment_rejects_unknown_scenario() -> None:

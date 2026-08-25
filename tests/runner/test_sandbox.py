@@ -8,6 +8,7 @@ the real `docker run` / `docker build` is exercised outside this gate.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import pytest
@@ -192,7 +193,7 @@ def test_reuse_short_circuits_the_container(monkeypatch: pytest.MonkeyPatch) -> 
 def test_docker_image_runs_hardened_container(monkeypatch: pytest.MonkeyPatch) -> None:
     probes = iter([False, True])  # reuse-check down, then ready
     monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: next(probes))
-    monkeypatch.setattr(sandbox.time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
     rec = _Recorder(_FakeProc(code=None))
     stop, decision = sandbox.start_sandboxed_server(
         _eff("cmd: 'serve', port: 8080, dockerImage: 'img'"), run_fn=rec.run_fn, exec_fn=rec.exec_fn
@@ -211,7 +212,7 @@ def test_sandbox_binds_the_trusted_bundle_root_not_config_cwd(
     # untrusted config `cwd` — so a hostile `cwd: /` cannot expose the host to the container.
     probes = iter([False, True])
     monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: next(probes))
-    monkeypatch.setattr(sandbox.time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
     rec = _Recorder(_FakeProc(code=None))
     sandbox.start_sandboxed_server(
         _eff("cmd: 'serve', port: 8080, dockerImage: 'img', cwd: '/'"),
@@ -226,7 +227,7 @@ def test_sandbox_binds_the_trusted_bundle_root_not_config_cwd(
 def test_dockerfile_builds_then_runs(monkeypatch: pytest.MonkeyPatch) -> None:
     probes = iter([False, True])
     monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: next(probes))
-    monkeypatch.setattr(sandbox.time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
     rec = _Recorder(_FakeProc(code=None))
     _stop, decision = sandbox.start_sandboxed_server(
         _eff("cmd: 'serve', port: 8080, dockerfile: 'Dockerfile'"),
@@ -240,8 +241,8 @@ def test_dockerfile_builds_then_runs(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_container_exits_before_ready_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: False)
-    monkeypatch.setattr(sandbox.time, "sleep", lambda s: None)
-    monkeypatch.setattr(sandbox.time, "monotonic", iter([0.0, 0.0]).__next__)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "monotonic", iter([0.0, 0.0]).__next__)
     rec = _Recorder(_FakeProc(code=1))  # container dies immediately
     with pytest.raises(sandbox.SandboxError, match="exited"):
         sandbox.start_sandboxed_server(
@@ -254,9 +255,9 @@ def test_container_exits_before_ready_fails_loud(monkeypatch: pytest.MonkeyPatch
 
 def test_readiness_timeout_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: False)
-    monkeypatch.setattr(sandbox.time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
     times = iter([100.0, 100.0, 200.0])  # deadline ~101; enter once, then past it
-    monkeypatch.setattr(sandbox.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(time, "monotonic", lambda: next(times))
     rec = _Recorder(_FakeProc(code=None))
     with pytest.raises(sandbox.SandboxError, match="not ready"):
         sandbox.start_sandboxed_server(
@@ -272,7 +273,7 @@ def test_teardown_tolerates_an_already_removed_container(monkeypatch: pytest.Mon
     # "No such container" — that is success for teardown and must not raise.
     probes = iter([False, True])
     monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: next(probes))
-    monkeypatch.setattr(sandbox.time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
     rec = _Recorder(_FakeProc(code=None), rm_error=True)
     stop, _decision = sandbox.start_sandboxed_server(
         _eff("cmd: 'serve', port: 8080, dockerImage: 'img'"), run_fn=rec.run_fn, exec_fn=rec.exec_fn
@@ -284,8 +285,8 @@ def test_early_exit_error_is_not_masked_by_teardown(monkeypatch: pytest.MonkeyPa
     # The container exits early AND teardown's rm fails (already auto-removed): the actionable
     # "container exited" error must still surface, not the rm failure.
     monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: False)
-    monkeypatch.setattr(sandbox.time, "sleep", lambda s: None)
-    monkeypatch.setattr(sandbox.time, "monotonic", iter([0.0, 0.0]).__next__)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "monotonic", iter([0.0, 0.0]).__next__)
     rec = _Recorder(_FakeProc(code=1), rm_error=True)
     with pytest.raises(sandbox.SandboxError, match="exited"):
         sandbox.start_sandboxed_server(

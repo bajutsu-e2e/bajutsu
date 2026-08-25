@@ -10,13 +10,15 @@ from __future__ import annotations
 
 import plistlib
 import subprocess
+import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 from _runner import _el, _ios_eff
 
 from bajutsu import simctl
-from bajutsu.config import XcuitestConfig, require_ios
+from bajutsu.config import Effective, XcuitestConfig, require_ios
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence.network import ScreenTransition
@@ -27,7 +29,7 @@ from bajutsu.runner import (
 from bajutsu.scenario import Preconditions
 
 
-def _recording_run(calls: list[list[str]]):
+def _recording_run(calls: list[list[str]]) -> simctl.RunFn:
     def fake_run(args: list[str], extra_env: object = None) -> str:
         calls.append(args)
         return ""
@@ -35,12 +37,12 @@ def _recording_run(calls: list[list[str]]):
     return fake_run
 
 
-def _xcuitest_eff(tmp_path: Path, **ios_kwargs: object) -> object:
+def _xcuitest_eff(tmp_path: Path, **ios_kwargs: object) -> Effective:
     """An iOS `Effective` wired to a real (empty) `.xctestrun` so `start` gets past its runner check."""
     runner = tmp_path / "Runner.xctestrun"
     with runner.open("wb") as f:
         plistlib.dump({"__xctestrun_metadata__": {"FormatVersion": 1}, "T": {}}, f)
-    return _ios_eff(xcuitest=XcuitestConfig(test_runner=str(runner)), **ios_kwargs)
+    return _ios_eff(xcuitest=XcuitestConfig(testRunner=str(runner)), **ios_kwargs)
 
 
 def _mock_runner_spawn(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -79,7 +81,7 @@ def _mock_runner_spawn(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _launch_recording(
-    monkeypatch: pytest.MonkeyPatch, eff: object, pre: Preconditions, **kwargs: object
+    monkeypatch: pytest.MonkeyPatch, eff: Effective, pre: Preconditions, **kwargs: Any
 ) -> list[list[str]]:
     _mock_runner_spawn(monkeypatch)
     calls: list[list[str]] = []
@@ -278,25 +280,16 @@ def test_await_ready_uses_exponential_backoff(monkeypatch: pytest.MonkeyPatch) -
     assert all(s <= 1.0 for s in sleeps), f"sleep exceeded cap: {sleeps}"
 
 
-def test_await_ready_returns_immediately_when_already_ready() -> None:
+def test_await_ready_returns_immediately_when_already_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """If the app is already rendered (>=2 elements), no sleep at all."""
     sleeps: list[float] = []
 
-    class ReadyDriver:
-        name = "ready"
-
-        def query(self) -> list[base.Element]:
-            return [_el("a", "A"), _el("b", "B")]
-
-    # The shared deadline loop (base.deadline_ticks) owns the sleep now (BE-0256); patch it there.
-    from bajutsu.drivers import base as base_mod
-
-    orig_sleep = base_mod.time.sleep
-    base_mod.time.sleep = lambda s: sleeps.append(s)
-    try:
-        _await_ready(ReadyDriver())  # type: ignore[arg-type]
-    finally:
-        base_mod.time.sleep = orig_sleep
+    # The shared deadline loop (base.deadline_ticks) owns the sleep now (BE-0256); it calls
+    # `time.sleep` through its module import, which is this very object.
+    monkeypatch.setattr(time, "sleep", sleeps.append)
+    _await_ready(FakeDriver([_el("a", "A"), _el("b", "B")]))
 
     assert sleeps == []
 
