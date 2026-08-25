@@ -118,8 +118,8 @@ XCUITest で実行します（`make -C demos/showcase run-swiftui-noax` / `run-u
   の対応物ですでに覆われています。
 - **`visual.yaml` / `golden/`**：ピクセルやツリーの baseline は id と画像に固有で、別の関心事です。
 - **`browser.yaml`**：`SFSafariViewController` のフロー。アサート対象のページを描くのはアプリではなく
-  ブラウザなので、`-noax` ビルドでもツリーは同一になり、twin は a11y 版と同じことしか確かめられない。
-  アプリ側の id は 2 つで、どちらもページを配信するレーンの下にある。
+  ブラウザなので、`-noax` ビルドでもツリーは同一になり、twin は a11y 版と同じことしか確かめられません。
+  アプリ側の id は 2 つで、どちらもページを配信するレーンの下にあります。
 - **`text_editing.yaml`**：テキストを入力すると Search フィールドは placeholder を失うため、`-noax`
   実行では後続の `select`／`clear`／`delete` でフィールドを可視ラベル「Search horses」で再指定できません。
   また（`push.yaml` と同様に）iOS 専用です。Compose／Views のツリーは編集可能フィールドのテキストを

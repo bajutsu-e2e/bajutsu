@@ -249,10 +249,11 @@ the fixture for out-of-process UI a scenario must still drive.
 [`browser.yaml`](scenarios/browser.yaml) is this fixture's scenario. Its own lane,
 `make -C demos/showcase e2e-browser`, serves the page the browser loads.
 - `sys.openBrowser` — button that presents the browser on `SHOWCASE_BROWSER_URL`
-- `sys.browser.value` — `idle`/`loaded`/`loadFailed`. The value mirrors the one fact the app
-  observes: whether the page finished loading. `SFSafariViewControllerDelegate` reports that
-  outcome. A scenario reads the mirror after dismissing the browser, once this screen is back in
-  the tree
+- `sys.browser.value` — `idle`/`loaded`/`loadFailed`. A `SHOWCASE_BROWSER_URL` that does not parse
+  as a URL opens no browser and publishes `badURL`. The value mirrors the one fact the app observes:
+  whether the page finished loading. `SFSafariViewControllerDelegate` reports that outcome. Opening
+  the browser resets the value to `idle`, so a wait for `loaded` never reads an earlier one. A
+  scenario reads the mirror after dismissing the browser, once this screen is back in the tree
 
 ### 5.5 Tab: Notices — `notice` namespace (long list → detail, scroll-to-element)
 

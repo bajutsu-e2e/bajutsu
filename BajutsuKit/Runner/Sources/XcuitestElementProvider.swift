@@ -59,7 +59,13 @@ final class XcuitestElementProvider: ElementProviding {
         let appElements = flattenSnapshot(root: SnapshotNodeAdapter(root)) {
             ($0.nodeIdentifier ?? "").hasPrefix(BrowserChrome.browserViewIDPrefix)
         }
-        guard let browserRoot = try? safariViewService.snapshot() else { return appElements }
+        guard let browserRoot = try? safariViewService.snapshot() else {
+            // The prune only pays off when the service's own tree replaces the mirror. Without that
+            // tree in hand, report the app's own walk whole: on the iOS versions that do mirror the
+            // browser, returning the pruned walk would hand back a screen the browser was cut out
+            // of, and a scenario would time out on elements the app was still carrying.
+            return flattenSnapshot(root: SnapshotNodeAdapter(root))
+        }
         // The two versions also name the browser's own chrome differently in one place, which
         // `normalizeBrowserChrome` repairs so a scenario's selector travels between them (BE-XXXX).
         let browser = SnapshotNodeAdapter(browserRoot)

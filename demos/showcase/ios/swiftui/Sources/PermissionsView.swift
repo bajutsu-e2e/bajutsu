@@ -145,6 +145,9 @@ private final class BrowserPresenter: NSObject, ObservableObject, SFSafariViewCo
     @Published var status = "idle"
 
     func open(_ raw: String, animated: Bool) {
+        // Reset first: a second presentation must not let a wait for `loaded` be satisfied by the
+        // previous one's outcome, before this page has loaded at all.
+        status = "idle"
         guard let url = URL(string: raw) else {
             status = "badURL"
             return

@@ -245,8 +245,10 @@ Log から到達するモーダル（5 つの提示様式）：
 シナリオは [`browser.yaml`](scenarios/browser.yaml)、専用のレーンは
 `make -C demos/showcase e2e-browser` です。このレーンがブラウザの読み込むページを配信します。
 - `sys.openBrowser` — `SHOWCASE_BROWSER_URL` をブラウザで開くボタン
-- `sys.browser.value` — `idle`/`loaded`/`loadFailed`。アプリ自身がブラウザについて観測できる唯一の事実、
+- `sys.browser.value` — `idle`/`loaded`/`loadFailed`。`SHOWCASE_BROWSER_URL` を URL として解釈できない
+  ときはブラウザを開かず、`badURL` を公開する。アプリ自身がブラウザについて観測できる唯一の事実、
   つまりページの読み込みが完了したかどうかを `SFSafariViewControllerDelegate` の通知でミラーした値。
+  ブラウザを開くたびに `idle` へ戻すので、前回の結果で `loaded` の待機が満たされることはない。
   読めるのはブラウザを閉じてこの画面がツリーに戻ってからで、シナリオもそこでアサートする
 
 ### 5.5 タブ：Notices（`notice` 名前空間。長いリスト → 詳細、スクロール先の要素）

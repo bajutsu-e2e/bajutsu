@@ -183,6 +183,9 @@ final class PermissionsController: UIViewController, CLLocationManagerDelegate,
     // is deliberately narrow, and it is readable again only once the browser has been dismissed and
     // this screen is back in the tree.
     private func openBrowser() {
+        // Reset first: a second presentation must not let a wait for `loaded` be satisfied by the
+        // previous one's outcome, before this page has loaded at all.
+        setBrowserValue("idle")
         guard let url = URL(string: model.browserURL) else {
             setBrowserValue("badURL")
             return

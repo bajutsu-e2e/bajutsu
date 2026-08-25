@@ -317,19 +317,29 @@ e2e-network: swiftui-build runner-build
 # scenarios/browser.yaml on its own, with the fixture page it loads served for the length of the run.
 # A Simulator reaches the host's loopback, so a plain `python3 -m http.server` is all the browser
 # needs — the same shape demos/web/Makefile uses for its own app, including the readiness poll
-# (never a fixed sleep, matching the runner's own discipline). Keep BROWSER_PORT in step with the
-# SHOWCASE_BROWSER_URL in that scenario's `launchEnv`. Simulator-only: a real device cannot reach a
-# server on the host's loopback. Runs against both toolkits, which expose the same ids for it.
+# (never a fixed sleep, matching the runner's own discipline). The scenario's `launchEnv` carries the
+# same port, which no `make` override can reach, so the first line checks the two agree rather than
+# asking a reader to keep them in step: a mismatch would otherwise surface only as the page-content
+# `wait` timing out. The poll asks for the fixture page's own heading rather than for any 200,
+# because a port already in use kills `http.server` at once while curl keeps answering from whatever
+# else holds it: the lane would then drive the scenario against unknown content, with nothing for
+# the trap to kill. Testing the content settles that regardless of how fast the losing server dies,
+# which a liveness check on its process id cannot — the first poll can beat the exit.
+# Simulator-only: a real device cannot reach a server on the host's loopback. Runs against both
+# toolkits, which expose the same ids for it.
 BROWSER_PORT ?= 8799
 
 e2e-browser: swiftui-build uikit-build runner-build
-	cd $(HERE)/browser && python3 -m http.server $(BROWSER_PORT) >/dev/null 2>&1 & srv=$$!; \
+	@grep -q "http://localhost:$(BROWSER_PORT)/" $(HERE)/scenarios/browser.yaml || \
+	  { echo "BROWSER_PORT=$(BROWSER_PORT) does not match SHOWCASE_BROWSER_URL in scenarios/browser.yaml" >&2; exit 1; }
+	python3 -m http.server --directory $(HERE)/browser $(BROWSER_PORT) >/dev/null 2>&1 & srv=$$!; \
 	trap 'kill $$srv 2>/dev/null' EXIT; \
 	ready=0; for i in $$(seq 1 100); do \
-	  if curl -sf --max-time 2 -o /dev/null "http://localhost:$(BROWSER_PORT)/"; then ready=1; break; fi; \
+	  if curl -sf --max-time 2 "http://localhost:$(BROWSER_PORT)/" | grep -q "Bajutsu Browser Fixture"; then ready=1; break; fi; \
 	  sleep 0.1; \
 	done; \
-	if [ "$$ready" -ne 1 ]; then echo "fixture server did not answer on port $(BROWSER_PORT) within the readiness timeout" >&2; exit 1; fi; \
+	if [ "$$ready" -ne 1 ]; then \
+	  echo "port $(BROWSER_PORT) never served the fixture page (already held by another server?)" >&2; exit 1; fi; \
 	cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/browser.yaml \
 		--target showcase-swiftui --udid $(SIM) --backend ios --config $(CONFIG) && \
 	cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/browser.yaml \
