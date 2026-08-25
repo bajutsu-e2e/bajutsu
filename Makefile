@@ -1,4 +1,4 @@
-.PHONY: setup hooks install deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck \
+.PHONY: setup hooks install deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck typecheck-tests \
         lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr lint-secrets skills lint-skills \
         check new-roadmap-item \
         roadmap-status roadmap-dashboard docs docs-serve docs-diagrams runner-bundle
@@ -121,6 +121,18 @@ format-check:
 
 typecheck:
 	uv run mypy bajutsu demos scripts
+
+# BE-0388: the same strict mypy, over `tests/`, with the two settings a pytest suite conventionally
+# needs relaxed. A bare `def test_x():` carries no return annotation because pytest never inspects
+# one, and `--no-warn-unused-ignores` holds only while the existing `# type: ignore` comments are
+# swept directory by directory. It is a second invocation rather than a `[[tool.mypy.overrides]]`
+# block because `tests/` has no `__init__.py` — its helper modules are imported by bare name, the way
+# pytest's prepend import mode puts `tests/` on `sys.path` — so mypy names every module under it by
+# basename, and a per-module pattern cannot select them (mypy requires `*` to be a whole component,
+# so neither `tests.*` nor `test_*` matches). Not in `check` yet: it joins `typecheck` once every
+# directory is clean.
+typecheck-tests:
+	uv run mypy --allow-untyped-defs --no-warn-unused-ignores tests
 
 # The committed uv.lock must already satisfy pyproject — a dependency edit that forgets
 # to re-lock fails here instead of silently resolving something else in CI.
