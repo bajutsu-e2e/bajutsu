@@ -40,7 +40,7 @@ class EnvSecretStore:
     def __init__(self, env_var_for: Callable[[str], str]) -> None:
         self._env_var_for = env_var_for
 
-    def set(self, name: str, value: str, *, updated_by: str | None = None) -> str | None:
+    def set(self, name: str, value: str, *, updated_by: str | None = None) -> str | None:  # noqa: ARG002  # SecretStore shape
         var = self._env_var_for(name)
         if value:
             os.environ[var] = value

@@ -29,7 +29,7 @@ def _web_relauncher(
 ) -> RelaunchFn:
     """Web `relaunch`: re-navigate to the base URL and wait until ready (no device restart)."""
 
-    def relaunch(opts: Relaunch) -> None:
+    def relaunch(opts: Relaunch) -> None:  # noqa: ARG001  # RelaunchFn shape; web ignores the opts
         cast(base.BackendLifecycle, driver).navigate()  # web-only lifecycle
         readiness.await_ready(driver, ready_sel=ready_sel, id_namespaces=id_namespaces)
 

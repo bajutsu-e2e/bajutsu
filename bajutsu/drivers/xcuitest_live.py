@@ -431,7 +431,7 @@ class XcuitestLiveDriver:
     def capabilities(self) -> set[str]:
         return set(self.CAPABILITIES)
 
-    def driver_interval(self, kind: str, path: Path) -> intervals.Interval | None:
+    def driver_interval(self, kind: str, path: Path) -> intervals.Interval | None:  # noqa: ARG002  # Driver shape
         # Returning None for every kind routes the evidence FileSink through the driver path rather
         # than the simctl path (which calls `simctl.validated_udid(endpoint)` and crashes on a URL).
         # In-driver recording over WebDriver actions is Slice B (BE-0238).
@@ -554,10 +554,10 @@ class XcuitestLiveDriver:
             "first-class XCUITest command"
         )
 
-    def select_option(self, sel: base.Selector, option: str) -> None:
+    def select_option(self, sel: base.Selector, option: str) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction("selectOption is web-only; iOS has no native <select>")
 
-    def set_picker_value(self, sel: base.Selector, value: str) -> None:
+    def set_picker_value(self, sel: base.Selector, value: str) -> None:  # noqa: ARG002  # Driver shape
         # The same platform as the resident runner, so a live-route implementation through Appium's
         # XCUITest driver may well be possible — but that is its own evaluation, and BE-0356 does not
         # commit to it. Refuse loudly meanwhile rather than silently doing nothing.
@@ -565,7 +565,7 @@ class XcuitestLiveDriver:
             "setPickerValue is not implemented on the XCUITest live route (BE-0356)"
         )
 
-    def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+    def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:  # noqa: ARG002  # Driver shape
         # BE-0316 targets the resident-runner XCUITest backend's SpringBoard query channel, which a
         # live Appium / WebDriver grid does not expose here; this backend does not advertise the
         # capability, so preflight rejects the step and this is only the mid-run backstop.
@@ -578,7 +578,7 @@ class XcuitestLiveDriver:
         # this backend does not advertise HANDLE_SYSTEM_ALERT, so the reactive native path never runs.
         return []
 
-    def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:
+    def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:  # noqa: ARG002  # Driver shape
         # This backend does not advertise HANDLE_TIPKIT_TIP, so neither guard calls it.
         return False
 

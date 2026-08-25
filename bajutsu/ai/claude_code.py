@@ -380,11 +380,11 @@ class ClaudeCodeBackend:
         return _response(stdout, forced_name)
 
 
-def factory(ai: AiConfig | None = None) -> ClaudeCodeBackend:
+def factory(ai: AiConfig | None = None) -> ClaudeCodeBackend:  # noqa: ARG001  # registry factory shape
     """Build the Claude Code backend — the registry's adapter factory for `claude-code`."""
     return ClaudeCodeBackend()
 
 
-def credential_gap(ai: AiConfig | None = None) -> str | None:
+def credential_gap(ai: AiConfig | None = None) -> str | None:  # noqa: ARG001  # registry probe shape
     """`CLI_MISSING` when the `claude` binary is absent, else ``None`` (BE-0047)."""
     return None if shutil.which(BINARY) is not None else CLI_MISSING

@@ -803,7 +803,6 @@ def _tip_poll_hook(
 def _run_if(
     driver: base.Driver,
     if_block: If,
-    clock: Clock,
     network: NetworkSource,
     bindings: dict[str, str],
     exec_steps: _ExecSteps,
@@ -980,7 +979,6 @@ class _StepRunner:
         ok, reason = _run_if(
             active_driver,
             step.if_,
-            self.cfg.clock,
             self.cfg.network,
             self.state.bindings,
             self.exec_steps,

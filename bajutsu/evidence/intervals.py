@@ -182,7 +182,7 @@ def spawn(argv: list[str], stdout_path: Path | None) -> Proc:
 class _NullProc:
     """A no-op process (the default so constructing an Interval has no side effects)."""
 
-    def stop(self, sig: int, timeout: float) -> None:
+    def stop(self, sig: int, timeout: float) -> None:  # noqa: ARG002  # Proc shape
         return None
 
 

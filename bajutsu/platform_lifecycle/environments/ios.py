@@ -69,7 +69,7 @@ class _DeviceEnvironment:
     def hook_collector(self, driver: base.Driver, scenario: Scenario) -> Collector:
         raise NotImplementedError("device backends observe network via an external receiver")
 
-    def bridge_collector(self, port: int) -> Callable[[], None]:
+    def bridge_collector(self, port: int) -> Callable[[], None]:  # noqa: ARG002  # Environment shape
         return lambda: None  # the Simulator shares the Mac's loopback; nothing to bridge
 
     def relauncher(
@@ -85,7 +85,7 @@ class _DeviceEnvironment:
     def controller(self, eff: Effective) -> DeviceControl | None:
         return device_control(self._udid, require_ios(eff).bundle_id, self._run)
 
-    def teardown(self, driver: base.Driver, eff: Effective) -> None:
+    def teardown(self, driver: base.Driver, eff: Effective) -> None:  # noqa: ARG002  # Environment shape
         simctl.Env(self._udid, run=self._run).terminate(require_ios(eff).bundle_id)
 
     def has_reusable_resident(self) -> bool:

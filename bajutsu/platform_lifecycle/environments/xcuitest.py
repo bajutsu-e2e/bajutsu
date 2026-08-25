@@ -432,7 +432,7 @@ class _Recovery:
     fresh_budget: float | None = None
 
 
-def _no_recovery(failure: _AttemptFailure) -> _Recovery | None:
+def _no_recovery(failure: _AttemptFailure) -> _Recovery | None:  # noqa: ARG001  # _RecoverFn shape
     """The neutral recovery: nothing to repair (a real device, or a caller that opts out)."""
     return None
 
@@ -648,7 +648,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         pre: Preconditions,
         *,
         extra_env: Mapping[str, str] | None = None,
-        record_video_dir: Path | None = None,
+        record_video_dir: Path | None = None,  # noqa: ARG002  # Environment shape
         permissions: Mapping[str, str] | None = None,
     ) -> base.Driver:
         ios = require_ios(eff)
@@ -1081,7 +1081,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             )
         return device_type
 
-    def _create_replacement(self, eff: Effective, device_type: str) -> str:
+    def _create_replacement(self, eff: Effective, device_type: str) -> str:  # noqa: ARG002  # Environment shape
         """Create, boot, and adopt a fresh Simulator of `device_type`; the diagnostic note.
 
         Shared by both rungs that replace a device — the vanished-device rung of a failed cold spawn

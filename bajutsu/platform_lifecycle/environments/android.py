@@ -355,7 +355,7 @@ class AndroidEnvironment:
         # app under test, so the package is threaded through.
         return android_device_control(self._serial, require_android(eff).package, self._run)
 
-    def teardown(self, driver: base.Driver, eff: Effective) -> None:
+    def teardown(self, driver: base.Driver, eff: Effective) -> None:  # noqa: ARG002  # Environment shape
         # Stop the resident server first (BE-0245) so no instrumentation is left running on the device,
         # then force-stop the app — this runs in the run's finally, so it fires on failure/interrupt too.
         if self._resident is not None:

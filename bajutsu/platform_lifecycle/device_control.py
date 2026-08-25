@@ -97,7 +97,7 @@ def android_device_control(
         def clear_clipboard(self) -> None:
             e.clear_clipboard(package)
 
-        def push(self, payload: dict[str, object]) -> None:
+        def push(self, payload: dict[str, object]) -> None:  # noqa: ARG002  # DeviceControl shape
             raise _unsupported("push")
 
         def clear_keychain(self) -> None:
@@ -109,7 +109,7 @@ def android_device_control(
         def foreground(self) -> None:
             raise _unsupported("foreground")
 
-        def override_status_bar(self, **kwargs: str | int) -> None:
+        def override_status_bar(self, **kwargs: str | int) -> None:  # noqa: ARG002  # DeviceControl shape
             raise _unsupported("overrideStatusBar")
 
         def clear_status_bar(self) -> None:

@@ -305,7 +305,7 @@ def git_show(base_sha: str, path: str) -> str | None:
     return result.stdout if result.returncode == 0 else None
 
 
-def main(argv: list[str]) -> int:
+def main(argv: list[str]) -> int:  # noqa: ARG001  # uniform script entry point
     base_sha = os.environ.get("BASE_SHA", "")
     current = parse_current_labels(os.environ.get("CURRENT_TOPIC_LABELS", ""))
     entries = parse_changed_files(sys.stdin.read())
