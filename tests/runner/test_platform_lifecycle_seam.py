@@ -139,7 +139,7 @@ def test_web_relaunch_forwards_id_namespaces_to_await_ready(
 
     eff = dc_replace(_web_eff(base_url="https://app.test"), id_namespaces=["app"])
     scn = Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})
-    relaunch = WebEnvironment("playwright").relauncher(eff, scn, _WebDriver())  # type: ignore[arg-type]
+    relaunch = WebEnvironment("playwright").relauncher(eff, scn, _WebDriver())
     relaunch(Relaunch())
     assert seen.get("id_namespaces") == ["app"]
 
@@ -284,7 +284,7 @@ def test_web_controller_is_none_and_teardown_closes_the_browser() -> None:
     web = WebEnvironment("playwright")
     assert web.controller(_eff()) is None  # no simctl device control on web
     driver = _WebDriver()
-    web.teardown(driver, _eff())  # type: ignore[arg-type]
+    web.teardown(driver, _eff())
     assert driver.closed == 1  # release tears the browser down
 
 
@@ -344,11 +344,11 @@ def test_web_crawl_seams_drive_the_web_driver() -> None:
 
     clear = web.crawl_dialog_clearer()
     assert clear is not None
-    assert clear(driver) == ["alert: hi"]  # type: ignore[arg-type]  # delegates to pop_dialogs
+    assert clear(driver) == ["alert: hi"]  # delegates to pop_dialogs
 
     recover = web.crawl_recover()
     assert recover is not None
-    recover(driver)  # type: ignore[arg-type]
+    recover(driver)
     assert driver.relaunched == 1  # delegates to the driver's relaunch
 
     alive = web.crawl_aliveness()
@@ -382,7 +382,7 @@ def test_web_crawl_reset_makes_a_fresh_context(monkeypatch: pytest.MonkeyPatch) 
             self.reset += 1
 
     driver = _WebDriver()
-    WebEnvironment("playwright").crawl_reset(_eff())(driver)  # type: ignore[arg-type]
+    WebEnvironment("playwright").crawl_reset(_eff())(driver)
     assert driver.reset == 1
 
 
@@ -872,7 +872,7 @@ def test_xcuitest_environment_forwards_preconditions_to_runner_env(
 
     # xcodebuild does not forward its env into the Simulator, so the forwarded vars are read
     # from the patched .xctestrun's per-target TestingEnvironmentVariables.
-    cmd: list[str] = popen_calls[0]["cmd"]  # type: ignore[assignment]
+    cmd: list[str] = popen_calls[0]["cmd"]
     patched = Path(cmd[cmd.index("-xctestrun") + 1])
     with patched.open("rb") as pf:
         target_env = plistlib.load(pf)["RunnerUITests"]["TestingEnvironmentVariables"]

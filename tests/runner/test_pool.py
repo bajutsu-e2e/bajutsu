@@ -2295,7 +2295,7 @@ def test_device_pool_leaves_every_key_alone_when_no_device_was_replaced(
     created: list[_RecordingEnv] = []
     monkeypatch.setattr(
         "bajutsu.runner.pool.environment_for",
-        _replacing_env_factory(created, replacement=None),  # type: ignore[arg-type]
+        _replacing_env_factory(created, replacement=None),
     )
     lease, shutdown = device_pool(
         ["UDID-A"],
