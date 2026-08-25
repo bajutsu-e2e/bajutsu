@@ -268,7 +268,7 @@ def test_start_enrich_refuses_under_provider_none(
             "a driver was built despite ai.provider: none"
         ),
     )
-    assert status == 400 and "ai-disabled" in payload["error"]
+    assert status == 400 and "ai.provider: none" in payload["error"]
 
 
 def test_start_enrich_requires_config(tmp_path: Path) -> None:

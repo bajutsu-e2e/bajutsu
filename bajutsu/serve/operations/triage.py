@@ -67,12 +67,17 @@ def start_triage(
     if ai:
         # Gate before dispatch so a missing credential is a clean 400, not a job that fails mid-stream.
         # The `--ai` path is opt-in and only an investigator; the run's verdict is already decided.
+        from bajutsu.agents import availability as ai_availability
         from bajutsu.ai import credential_gap
 
         config = load_config(cfg.read_text(encoding="utf-8"))
-        gap = credential_gap(resolve(config, target).ai)
+        ai_config = resolve(config, target).ai
+        gap = credential_gap(ai_config)
         if gap:
-            return {"error": f"AI triage requires an AI credential ({gap})"}, 400
+            # The phrased message, not the raw token — see the same guard in `enrich.py` (BE-0394).
+            return {
+                "error": f"AI triage cannot run: {ai_availability.message(gap, ai_config)}"
+            }, 400
     cmd = triage_command(
         str(run_dir),
         # --target carries the target's `ai` config + redaction rules for the AI path (BE-0047); the

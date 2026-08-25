@@ -90,13 +90,14 @@ def test_start_triage_run_not_found(tmp_path: Path) -> None:
 def test_start_triage_ai_requires_a_credential(tmp_path: Path, monkeypatch: Any) -> None:
     import bajutsu.ai as ai
 
-    monkeypatch.setattr(ai, "credential_gap", lambda _ai: "set ANTHROPIC_API_KEY")
+    monkeypatch.setattr(ai, "credential_gap", lambda _ai: "anthropic-key")
     state = _state(tmp_path)
     run_id = _write_run(state, "20260101-000000")
     payload, status = ops.start_triage(
         state, {"runId": run_id, "target": "demo", "scenario": "smoke.yaml", "ai": True}
     )
-    assert status == 400 and "credential" in payload["error"]
+    # The phrased, actionable message rather than the raw gap token (BE-0394).
+    assert status == 400 and "ANTHROPIC_API_KEY" in payload["error"]
 
 
 def test_start_triage_ai_refuses_under_provider_none(tmp_path: Path, monkeypatch: Any) -> None:
@@ -127,7 +128,7 @@ def test_start_triage_ai_refuses_under_provider_none(tmp_path: Path, monkeypatch
     payload, status = ops.start_triage(
         state, {"runId": run_id, "target": "demo", "scenario": "smoke.yaml", "ai": True}
     )
-    assert status == 400 and "ai-disabled" in payload["error"]
+    assert status == 400 and "ai.provider: none" in payload["error"]
 
 
 def test_start_triage_dispatches_a_heuristic_job(tmp_path: Path) -> None:

@@ -133,7 +133,7 @@ provider gives each surface the right behavior without a new branch of its own.
 | `_require_ai_credential` (`bajutsu/cli/_shared.py:172`) | a clean exit 2, so `record`, `crawl`, and `triage --ai` refuse to start rather than degrading |
 | `doctor`'s `_claude_readiness` (`bajutsu/cli/commands/doctor.py:286`) | the optional Claude line reads as not configured, never the ✗ of a broken environment |
 | `serve` settings (`bajutsu/serve/operations/config.py:508`) | unchanged — `provider_info` resolves the provider from the organization's saved selection rather than the target config, so `claudeAvailable` never sees this setting (see *`serve`* below) |
-| `serve` enrichment and triage (`bajutsu/serve/operations/enrich.py:64`, `bajutsu/serve/operations/triage.py:73`) | HTTP 400 before the job is dispatched |
+| `serve` enrichment and triage (`bajutsu/serve/operations/enrich.py:64`, `bajutsu/serve/operations/triage.py:73`) | HTTP 400 before the job is dispatched, phrased through `availability.message` rather than interpolating the raw gap token — both strings reach the web UI, so "requires a credential" would send the reader to Settings to save a key that can never lift the switch |
 
 An `ai.enabled: false` field would have to be read at each of those sites in addition to the gap, and
 would admit the contradictory configuration `{ enabled: false, provider: api-key }`. The provider

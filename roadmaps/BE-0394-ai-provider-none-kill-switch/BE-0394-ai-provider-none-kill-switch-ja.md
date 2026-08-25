@@ -127,7 +127,7 @@ defaults:
 | `_require_ai_credential`（`bajutsu/cli/_shared.py:172`） | 終了コード 2 で止まり、`record`、`crawl`、`triage --ai` は機能を落として動くのではなく起動を拒む |
 | `doctor` の `_claude_readiness`（`bajutsu/cli/commands/doctor.py:286`） | 任意項目としての Claude の行が未設定と読める。環境の故障を示す ✗ にはならない |
 | `serve` の設定（`bajutsu/serve/operations/config.py:508`） | 変化なし。`provider_info` はターゲットの設定ではなく組織の保存済み選択からプロバイダを解決するため、`claudeAvailable` はこの設定を見ない（後述の *`serve`* を参照） |
-| `serve` の enrich と triage（`bajutsu/serve/operations/enrich.py:64`、`bajutsu/serve/operations/triage.py:73`） | ジョブを起動する前に HTTP 400 を返す |
+| `serve` の enrich と triage（`bajutsu/serve/operations/enrich.py:64`、`bajutsu/serve/operations/triage.py:73`） | ジョブを起動する前に HTTP 400 を返す。生のトークンを埋め込まず `availability.message` の文言を通す。どちらの文字列も Web UI に届くため、「認証情報が必要」と告げると、このスイッチを解除できない鍵を Settings で保存させてしまう |
 
 `ai.enabled: false` というフィールドを足す場合、認証ギャップを読むすべての箇所で、ギャップに加えて
 そのフィールドも読む必要が生じます。しかも `{ enabled: false, provider: api-key }` という、答えが
