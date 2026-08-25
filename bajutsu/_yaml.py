@@ -20,10 +20,13 @@ class _Loader(yaml.SafeLoader):
 
 
 def _restrict_bool_to_true_false() -> None:
-    for char, resolvers in list(_Loader.yaml_implicit_resolvers.items()):
-        _Loader.yaml_implicit_resolvers[char] = [
-            (tag, regexp) for tag, regexp in resolvers if tag != _BOOL_TAG
-        ]
+    # `yaml_implicit_resolvers` is inherited from `yaml.resolver.Resolver` and shared with every
+    # other loader, so mutating it in place would strip bool resolution from `yaml.safe_load`
+    # process-wide. Copy it into `_Loader.__dict__` first and edit only our own mapping.
+    _Loader.yaml_implicit_resolvers = {
+        char: [(tag, regexp) for tag, regexp in resolvers if tag != _BOOL_TAG]
+        for char, resolvers in _Loader.yaml_implicit_resolvers.items()
+    }
     _Loader.add_implicit_resolver(  # type: ignore[no-untyped-call]
         _BOOL_TAG,
         re.compile(r"^(?:true|True|TRUE|false|False|FALSE)$"),

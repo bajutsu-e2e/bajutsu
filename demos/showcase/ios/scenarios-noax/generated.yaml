@@ -5,7 +5,7 @@
     - on: { action: tap }
       capture: [screenshot.after, video]
   preconditions:
-    erase: !!bool 'false'
+    erase: false
     reinstall: clean
   steps:
   - tapPoint:
@@ -32,12 +32,12 @@
   - exists:
       sel:
         label: 'Segment: two'
-      negate: !!bool 'false'
+      negate: false
     from: the selection in the Controls section is Two
   - exists:
       sel:
         label: Two
         traits:
         - button
-      negate: !!bool 'false'
+      negate: false
     from: the 'Two' option exists in the Controls section
