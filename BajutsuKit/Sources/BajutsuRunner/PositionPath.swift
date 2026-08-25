@@ -41,15 +41,31 @@ public struct RecordedAttributes {
     }
 }
 
+/// Which XCUITest application root an element's position path is relative to.
+///
+/// Almost every element belongs to the app under test. `SFSafariViewController` is the exception
+/// (BE-XXXX): its UI is drawn by the out-of-process `com.apple.SafariViewService`, so from iOS 26
+/// `app.snapshot()` stops at the remote-view boundary and the browser's own tree — chrome *and*
+/// rendered page content — is reachable only through that service's own application handle. An
+/// element read from there must also be re-derived and actuated there, so the backing records which
+/// root it came from rather than leaving the actuation side to guess.
+public enum ElementRoot {
+    case app
+    case safariViewService
+}
+
 /// The opaque `ElementSnapshot.backingElement` payload (BE-0105): where the element is (its position
 /// path) plus what it was (the recorded attributes) so a re-derivation can be verified before acting.
 public final class PositionPathBacking {
     public let path: PositionPath
     public let recorded: RecordedAttributes
+    /// The application root `path` is relative to; `.app` for everything but a presented browser.
+    public let root: ElementRoot
 
-    public init(path: PositionPath, recorded: RecordedAttributes) {
+    public init(path: PositionPath, recorded: RecordedAttributes, root: ElementRoot = .app) {
         self.path = path
         self.recorded = recorded
+        self.root = root
     }
 }
 
@@ -71,10 +87,22 @@ public protocol SnapshotNode {
 /// root — matching BE-0019's `descendants(matching: .any)` shape so the `/elements` contract is
 /// unchanged. Each element carries a `PositionPathBacking` with its root-relative index path and the
 /// attributes recorded here, so a later tap re-derives exactly this node and verifies it.
-public func flattenSnapshot(root: SnapshotNode) -> [ElementSnapshot] {
+///
+/// - Parameters:
+///   - elementRoot: recorded on every backing, so actuation re-derives the path against the same
+///     application handle the tree was read from (BE-XXXX).
+///   - prune: a node this answers `true` for contributes neither itself nor its descendants. It
+///     drops a subtree one root reports that another root reports in full, without disturbing the
+///     paths of anything else: a pruned child still consumes its own index, so its siblings keep
+///     theirs.
+public func flattenSnapshot(
+    root: SnapshotNode,
+    in elementRoot: ElementRoot = .app,
+    prune: (SnapshotNode) -> Bool = { _ in false }
+) -> [ElementSnapshot] {
     var out: [ElementSnapshot] = []
     func appendDescendants(of node: SnapshotNode, at path: PositionPath) {
-        for (index, child) in node.nodeChildren.enumerated() {
+        for (index, child) in node.nodeChildren.enumerated() where !prune(child) {
             let childPath = path + [index]
             let recorded = RecordedAttributes(
                 identifier: child.nodeIdentifier,
@@ -90,7 +118,9 @@ public func flattenSnapshot(root: SnapshotNode) -> [ElementSnapshot] {
                     value: recorded.value,
                     traits: recorded.traits,
                     frame: recorded.frame,
-                    backingElement: PositionPathBacking(path: childPath, recorded: recorded)
+                    backingElement: PositionPathBacking(
+                        path: childPath, recorded: recorded, root: elementRoot
+                    )
                 )
             )
             appendDescendants(of: child, at: childPath)
