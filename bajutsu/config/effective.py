@@ -22,7 +22,7 @@ from bajutsu.config.schema import (
     XcuitestConfig,
 )
 from bajutsu.drivers import base
-from bajutsu.scenario import Interrupt, Redact, SystemAlertHandling
+from bajutsu.scenario import AfterRule, Interrupt, Redact, Step, SystemAlertHandling
 
 
 @dataclass(frozen=True)
@@ -135,6 +135,11 @@ class RunDefaults:
     # App-wide interstitial-screen handlers (BE-0314), prepended to a scenario's own `interrupts`.
     # Empty when the target config declares none.
     interrupts: list[Interrupt] = field(default_factory=list)
+    # App-wide setup/teardown phases (BE-0392). `before` is prepended to a scenario's own, `after`
+    # appended after it — the merge orders `pipeline.py` applies at the `run_scenario` call site.
+    # Empty when the target config declares neither.
+    before: list[Step] = field(default_factory=list)
+    after: list[AfterRule] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

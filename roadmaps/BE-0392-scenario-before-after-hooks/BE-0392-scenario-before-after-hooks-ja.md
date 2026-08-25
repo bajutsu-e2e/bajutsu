@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0392](BE-0392-scenario-before-after-hooks-ja.md) |
 | 提案者 | [@akira-matsuda](https://github.com/akira-matsuda) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0392") |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps-ja.md)、[BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md)、[BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers-ja.md) |
@@ -269,18 +269,32 @@ JSON レスポンスから1つのフィールドだけを取り出す仕組み�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] Unit 1 — `Scenario` と `TargetConfig` への `before: list[Step]` / `after: list[AfterRule]`
+- [x] Unit 1 — `Scenario` と `TargetConfig` への `before: list[Step]` / `after: list[AfterRule]`
       スキーマ。
-- [ ] Unit 2 — `before` の config・シナリオ順の合成、`after` のシナリオ・config 順の合成。
-- [ ] Unit 3 — `run_scenario` へのランナー組み込み(before 段階のゲート、after 段階の結果に応じた
+- [x] Unit 2 — `before` の config・シナリオ順の合成、`after` のシナリオ・config 順の合成。
+- [x] Unit 3 — `run_scenario` へのランナー組み込み(before 段階のゲート、after 段階の結果に応じた
       ディスパッチ、`failure` 文字列の合成)。
-- [ ] Unit 4 — `RunResult` への `before_outcomes` / `after_outcomes`、レポートレンダラーの区画、
+- [x] Unit 4 — `RunResult` への `before_outcomes` / `after_outcomes`、レポートレンダラーの区画、
       JUnit の `_details` 本文と CTRF の手順リスト。
-- [ ] Unit 5 — codegen の対応付け(対応可能なバックエンドでの `beforeEach`/`afterEach` と結果に応じた
+- [x] Unit 5 — codegen の対応付け(対応可能なバックエンドでの `beforeEach`/`afterEach` と結果に応じた
       出力、それ以外での TODO フォールバック)。
-- [ ] Unit 6 — ドキュメント(scenarios.md と日本語訳)の比較表、showcase フィクスチャ。
-- [ ] Unit 7 — テスト(スキーマ、両方向の合成順序、結果判定の組み合わせ、`vars.*` の共有、レポート
+- [x] Unit 6 — ドキュメント(scenarios.md と日本語訳)の比較表、showcase フィクスチャ。
+- [x] Unit 7 — テスト(スキーマ、両方向の合成順序、結果判定の組み合わせ、`vars.*` の共有、レポート
       フィールド)。
+
+実装したもののうち 2 点は、上の詳細設計と異なります。どちらも実装中に判断しました。
+
+- **`RunResult` には 3 つ目の新フィールド `after_verdict` を持たせました。** レポートは After の
+  区画を、各結果とそれを宣言したルールを対応付けて描画します。しかし run がどのルールを実行したかは、
+  後片付けのステップ自身の理由が `failure` に折り込まれたあとでは復元できません。段階が振り分けに
+  使った判定を記録することが、この対応付けを正確にします。
+- **`// TODO` フォールバックを必要とした codegen ターゲットはありませんでした。** すべての
+  ターゲットがこの段階をネイティブに表現できます。Playwright と UI Automator は
+  `beforeEach`/`afterEach` の組ではなく、テスト本体を `try` / `catch` / `finally` で包みます。
+  フレームワークのフックは describe ブロックまたはクラス単位で登録するのに対し、`before`/`after` は
+  シナリオ単位であり、かつ両ターゲットのアサーションは例外を投げるため `catch` が判定をそのまま
+  観測できるからです。XCUITest は `addTeardownBlock` を 1 つだけ登録し、`testRun?.hasSucceeded` を
+  読みます。`XCTAssert` は例外を投げずに失敗を記録するためです。
 
 ## 参考
 

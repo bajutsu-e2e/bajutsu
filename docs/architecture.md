@@ -555,6 +555,14 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   `prev_after` (BE-0234) included. On a match, the runner runs the entry's `steps` and then resumes
   the interrupted step (a `wait` keeps its original deadline; an act step retries once), with a
   re-entrancy cap falling back to the step's ordinary outcome
+- DSL `before` / `after` (BE-0392): a scenario's setup and teardown as their own phases, tracked
+  apart from `steps` rather than spliced into it. `before` is an ordered step list that runs first
+  and aborts the scenario when it fails; `after` is a list of `{ on, steps }` rules keyed to the
+  run's own machine-checked verdict (`always` / `success` / `error`), reached on every path out of
+  `steps` — including the failing one a trailing cleanup step could never reach, and a cancelled one,
+  where the phase runs under a slice of the cancellation grace window instead of the latched cancel
+  source. Both fields also exist on the target config, merging config-then-scenario for `before` and
+  scenario-then-config for `after`; both phases report as their own blocks and reach every export
 
 #### DSL gestures, text entry, and device actions
 

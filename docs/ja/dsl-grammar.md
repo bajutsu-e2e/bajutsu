@@ -47,6 +47,9 @@ graph LR
   SC -->|mocks| MK["Mock"]
   SC -->|redact| RD["Redact"]
   SC -->|interrupts| IR["Interrupt"]
+  SC -->|before| ST
+  SC -->|after| AR["AfterRule"]
+  AR -->|steps| ST
 
   ST -->|"tap·doubleTap·longPress·<br/>type·swipe·pinch·rotate"| SEL["Selector"]
   ST -->|wait| WT["Wait"]
@@ -99,8 +102,10 @@ Scenario ::= {
   data?:           list(map(string,string)),# インライン行  ┐ XOR
   dataFile?:       string,                  # CSV パス      ┘ （§6.3）
   preconditions?:  <Preconditions>,         # 既定 {}
+  before?:         list(<Step>),            # 既定 []  — steps の前に独立したフェーズとして走るセットアップ（BE-0392）。target config 自身のものの後に連結される
   steps:           list(<Step>),            # 必須
   expect?:         list(<Assertion>),       # 既定 []  — 最終チェック
+  after?:          list(<AfterRule>),       # 既定 []  — 判定が出たあとに走るティアダウンのルール（BE-0392）。target config 自身のものはこの後に続く
   capturePolicy?:  list(<CaptureRule>),     # 既定 []
   network?:        <Network>,
   mocks?:          list(<Mock>),            # 既定 []
@@ -117,6 +122,10 @@ Component ::= { params?: list(string), steps: list(<Step>) }
 # 機会をとらえて `condition` をチェックし、`steps` で解消します（BE-0314）。`wait` のポーリングの各回は
 # 無料で済みますが、残りの `wait` 以外のステップは読み取りを 1 回余分に払います。
 Interrupt ::= { condition: <Assertion>, steps: list(<Step>) }
+
+# ティアダウンのルール 1 件です（BE-0392）。答える結末と、その結末のときに走らせるステップを組にします。
+# 結末はシナリオ自身のマシンチェックされた判定であり、モデル呼び出しではありません。
+AfterRule ::= { on: "always" | "success" | "error", steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
 Preconditions ::= {
@@ -366,7 +375,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 
 | フィールド | 既定値 |
 |---|---|
-| `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` | `[]` |
+| `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` / `before` / `after` | `[]` |
 | `Scenario.preconditions` | `{}`（= `erase` は未設定 — target config が指定しない限りオフ、`reinstall: clean`） |
 | `Scenario.systemAlertHandling` | 未指定（アラートガード ON; プロンプトを dismiss） |
 | `Scenario.iosTipKitHandling` | 未指定（OFF — tip 自体が検証対象になる場合があるため。iOS のみ） |

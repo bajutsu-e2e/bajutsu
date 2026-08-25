@@ -179,13 +179,26 @@ def _scenario_dict(r: RunResult) -> dict[str, object]:
 
 
 def _details(r: RunResult) -> str:
+    """The failure body: every phase's outcomes in the order they ran.
+
+    The lifecycle phases (BE-0392) are labeled rather than merged into the numbered `steps` — each
+    counts from zero, so an unlabeled line would read as a second `step 0`. Without them a run that
+    failed only in `before` or `after` would carry an empty `<failure>` body, since neither phase's
+    outcomes live in `steps`.
+    """
     lines: list[str] = []
+    for s in r.before_outcomes:
+        status = "ok" if s.ok else "FAIL"
+        lines.append(f"before step {s.index} {s.action}: {status} {s.reason}".rstrip())
     for s in r.steps:
         status = "ok" if s.ok else "FAIL"
         lines.append(f"step {s.index} {s.action}: {status} {s.reason}".rstrip())
     for a in r.expect_results:
         status = "ok" if a.ok else "FAIL"
         lines.append(f"expect {a.kind}: {status} {a.reason}".rstrip())
+    for s in r.after_outcomes:
+        status = "ok" if s.ok else "FAIL"
+        lines.append(f"after step {s.index} {s.action}: {status} {s.reason}".rstrip())
     return "\n".join(lines)
 
 

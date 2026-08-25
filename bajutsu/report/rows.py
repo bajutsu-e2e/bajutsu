@@ -388,6 +388,85 @@ def _merged_rows(
     return [row for _, _, row in timed] + skipped
 
 
+def _phase_rows(
+    outcomes: list[Any],
+    plan: list[dict[str, Any]],
+    video_anchor_s: float,
+    run_dir: Path | None,
+) -> list[dict[str, Any]]:
+    """A `before` / `after` phase's step rows (BE-0392), in the order the phase ran them.
+
+    A plain list, not `_merged_rows`: the network exchanges are interleaved into the scenario's own
+    timeline once, and repeating them beside setup and teardown would double-count them. Rows pair
+    with their definition by the outcome's own `index`, the same way `_merged_rows` does, so a
+    container step (`if` / `forEach` / `web`) — which records its nested steps' outcomes alongside
+    its own — does not shift every row after it onto the wrong definition. Not-run steps trail in
+    plan order, the same disclosure `_merged_rows` gives: a phase that stopped partway through must
+    show which steps never started rather than an unexplained short list.
+    """
+    shown_from = grouped_provenance([d.get("from") for d in plan])
+    by_index = {out.index: out for out in outcomes}
+    rows: list[dict[str, Any]] = []
+    for i in range(max(len(plan), len(outcomes))):
+        step_def = plan[i] if i < len(plan) else None
+        from_ = shown_from[i] if i < len(shown_from) else None
+        out = by_index.get(i)
+        if out is None:
+            rows.append(_step_skip_row(i, step_def, from_))
+            continue
+        at = video_seconds(out.started_at, video_anchor_s=video_anchor_s)
+        rows.append(_step_run_row(i, step_def, out, run_dir, at, from_))
+    return rows
+
+
+def _after_rows(
+    r: RunResult,
+    rules: list[dict[str, Any]],
+    run_dir: Path | None,
+) -> list[dict[str, Any]]:
+    """The `after` phase's step rows (BE-0392), each lined up with the rule that declared it.
+
+    Only the rules the run dispatched contribute — `r.after_verdict` says which, since the failure
+    string can no longer say once a cleanup step's own reason has been folded into it. Within a
+    dispatched rule the outcomes are consumed in order, and the phase stops a rule at its first
+    failing step, so the rest of that rule's steps (and every rule left when a cancelled run's
+    teardown budget ran out) show as not-run rather than silently vanishing.
+
+    One shape this ordering cannot resolve: a container step (`if` / `forEach` / `web`) inside a rule
+    records its nested steps' outcomes in the same list, so the rows after it in that rule pair with
+    the wrong definition. `_phase_rows` avoids this by pairing on the outcome's own `index`, which
+    the per-rule walk here cannot do — a rule's steps have no plan-wide index to key on. The verdict,
+    the JUnit body, and the CTRF record are unaffected; only this block's attribution is.
+    """
+    rows: list[dict[str, Any]] = []
+    cursor = 0
+    for rule in rules:
+        on = str(rule.get("on") or "")
+        if on != "always" and on != r.after_verdict:
+            continue
+        steps = rule.get("steps") or []
+        shown_from = grouped_provenance([d.get("from") for d in steps])
+        stopped = False
+        for i, step_def in enumerate(steps):
+            # The `#` cell carries the rule's outcome word, so a reader can tell teardown that ran
+            # unconditionally from teardown this run's verdict selected without a second table. An
+            # executed step is numbered by its own outcome index — the phase numbers its steps once
+            # across every rule — so the HTML, the JUnit body, and the evidence directory name the
+            # same step. A step that never ran has no such number, and says so.
+            if stopped or cursor >= len(r.after_outcomes):
+                row = _step_skip_row(i, step_def, shown_from[i])
+                row["num"] = f"{on}·—"
+            else:
+                out = r.after_outcomes[cursor]
+                cursor += 1
+                at = video_seconds(out.started_at, video_anchor_s=r.video_anchor_s)
+                row = _step_run_row(i, step_def, out, run_dir, at, shown_from[i])
+                row["num"] = f"{on}·{out.index}"
+                stopped = not out.ok
+            rows.append(row)
+    return rows
+
+
 def _preconditions_rows(definition: dict[str, Any] | None) -> list[tuple[str, str]]:
     pre = (definition or {}).get("preconditions") or {}
     rows: list[tuple[str, str]] = []

@@ -712,6 +712,33 @@ class _ScenarioRunner:
             lz.release()
 
 
+def with_lifecycle_phases(eff: Effective, scenarios: list[Scenario]) -> list[Scenario]:
+    """Fold the target config's `before` / `after` into each scenario's own (BE-0392).
+
+    The two merge in opposite orders. `before` is config-then-scenario, like `interrupts`: the
+    app-wide prelude seeds the state this scenario's own setup then builds on. `after` is
+    scenario-then-config, so this scenario releases the record it created before the app-wide
+    teardown closes around it — the last-acquired-first-released order a fixture-based teardown pair
+    gives.
+
+    Applied to the scenario itself rather than passed beside it, so the scenario the runner executes
+    and the scenario whose Before / After blocks the report renders are one object. Handing the
+    merged lists to the runner separately would leave the report pairing an app-wide step's outcome
+    with the scenario's own step definition, and drop an app-wide `after` rule's outcomes entirely.
+    """
+    if not eff.run_defaults.before and not eff.run_defaults.after:
+        return scenarios  # nothing app-wide to fold in; keep the caller's own objects
+    return [
+        s.model_copy(
+            update={
+                "before": [*eff.run_defaults.before, *s.before],
+                "after": [*s.after, *eff.run_defaults.after],
+            }
+        )
+        for s in scenarios
+    ]
+
+
 def run_all(
     eff: Effective,
     scenarios: list[Scenario],
@@ -828,6 +855,10 @@ def run_all(
     # the resolver win and discarding the fixed actuator/caps (prime directive 2).
     if actuator is not None and resolve_actuator is not None:
         raise ValueError("pass either actuator or resolve_actuator to run_all, not both")
+    # The target config's own lifecycle phases, folded in once here (BE-0392). `run_and_report` and
+    # `run_matrix_and_report` apply the same helper to what they hand the report, so the run and the
+    # report read one effective scenario rather than two lists that could drift.
+    scenarios = with_lifecycle_phases(eff, scenarios)
     redactor = Redactor(eff.redact, values=secret_values)
     # One mailbox reader for the whole run (it's per-target, not per-device): the `email` step polls
     # it, with ${secrets.*} in the url/headers resolved from the same secret bindings (BE-0046).
@@ -957,7 +988,7 @@ def run_and_report(
         cancelled=cancelled,
     )
     manifest = _assemble_report(
-        scenarios,
+        with_lifecycle_phases(eff, scenarios),
         results,
         run_dir,
         run_id,
@@ -1033,7 +1064,7 @@ def run_matrix_and_report(
             _reroot_evidence(r, engine)  # its evidence lives under <engine>/ in the one report
         results.extend(passed)
     manifest = _assemble_report(
-        scenarios,
+        with_lifecycle_phases(eff, scenarios),
         results,
         run_dir,
         run_id,
