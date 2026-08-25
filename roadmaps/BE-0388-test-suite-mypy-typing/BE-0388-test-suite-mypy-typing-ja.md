@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0388") |
-| 実装 PR | [#PR1](https://github.com/bajutsu-e2e/bajutsu/pull/PR1) |
+| 実装 PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760) |
 | トピック | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -140,7 +140,7 @@ pydantic プラグインをどうするかは、本項目の範囲には含め�
 **ログ**
 
 - `typecheck-tests` ターゲットを追加しました
-  （[#PR1](https://github.com/bajutsu-e2e/bajutsu/pull/PR1)）。緩めた設定は、本項目が当初提案した
+  （[#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760)）。緩めた設定は、本項目が当初提案した
   `[[tool.mypy.overrides]]` ではなく、2回目の mypy 実行へのコマンドラインフラグになりました。mypy が
   `tests/` 配下のモジュールをファイル名だけで命名するため、モジュール単位のパターンではスイートを
   選べないからです。その経緯は上記の *詳細設計* に記録しました。この時点で測り直した緩めた実行の

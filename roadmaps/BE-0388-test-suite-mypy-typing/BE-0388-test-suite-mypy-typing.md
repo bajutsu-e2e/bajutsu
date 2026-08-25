@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0388") |
-| Implementing PR | [#PR1](https://github.com/bajutsu-e2e/bajutsu/pull/PR1) |
+| Implementing PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -135,7 +135,7 @@ The pydantic-plugin question stays out of this item's scope; see *Alternatives c
 
 **Log**
 
-- Landed the `typecheck-tests` target ([#PR1](https://github.com/bajutsu-e2e/bajutsu/pull/PR1)). The
+- Landed the `typecheck-tests` target ([#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760)). The
   relaxed settings became command-line flags on a second mypy invocation rather than the
   `[[tool.mypy.overrides]]` block this item first proposed, because mypy names every module under
   `tests/` by basename and so no per-module pattern selects the suite; *Detailed design* above
