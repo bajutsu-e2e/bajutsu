@@ -523,13 +523,13 @@ def test_upload_evidence_puts_each_file_with_its_content_type(tmp_path: Path) ->
     _run_tree(tmp_path, "r1")
     with _evidence_server() as (httpd, base):
         _upload_evidence(tmp_path, "r1", url=base, auth_token=None, evidence_prefix="main/")
-    puts = httpd.puts  # type: ignore[attr-defined]
+    puts = httpd.puts
     assert set(puts) == {"00-login/after.png", "manifest.json"}
     assert puts["00-login/after.png"]["body"] == b"\x89PNG"
     assert puts["00-login/after.png"]["content_type"] == "image/png"
     assert puts["manifest.json"]["content_type"] == "application/json"
     # The worker relays the run's file list and the per-run prefix to the endpoint.
-    req = httpd.url_requests[0]  # type: ignore[attr-defined]
+    req = httpd.url_requests[0]
     assert req["evidence_prefix"] == "main/"
     assert sorted(req["files"]) == ["00-login/after.png", "manifest.json"]
 
@@ -537,7 +537,7 @@ def test_upload_evidence_puts_each_file_with_its_content_type(tmp_path: Path) ->
 def test_upload_evidence_is_a_noop_without_a_run_dir(tmp_path: Path) -> None:
     with _evidence_server() as (httpd, base):
         _upload_evidence(tmp_path, "missing", url=base, auth_token=None, evidence_prefix="")
-    assert httpd.url_requests == []  # type: ignore[attr-defined]
+    assert httpd.url_requests == []
 
 
 def test_upload_evidence_survives_a_per_file_put_failure(tmp_path: Path) -> None:
@@ -545,7 +545,7 @@ def test_upload_evidence_survives_a_per_file_put_failure(tmp_path: Path) -> None
     _run_tree(tmp_path, "r1")
     with _evidence_server(put_fail={"00-login/after.png"}) as (httpd, base):
         _upload_evidence(tmp_path, "r1", url=base, auth_token=None, evidence_prefix="")
-    puts = httpd.puts  # type: ignore[attr-defined]
+    puts = httpd.puts
     assert set(puts) == {"manifest.json"}  # the good file still uploaded
 
 
@@ -562,19 +562,19 @@ def test_upload_evidence_ignores_a_non_dict_urls_response(tmp_path: Path) -> Non
     _run_tree(tmp_path, "r1")
     with _evidence_server(urls_response=["nope"]) as (httpd, base):
         _upload_evidence(tmp_path, "r1", url=base, auth_token=None, evidence_prefix="")
-    assert httpd.puts == {}  # type: ignore[attr-defined]
+    assert httpd.puts == {}
 
 
 def test_upload_evidence_skips_a_key_that_escapes_the_run_dir(tmp_path: Path) -> None:
     # A returned key that resolves outside the run dir must be skipped, never PUT.
     _run_tree(tmp_path, "r1")
     with _evidence_server() as (httpd, base):
-        httpd.urls_response = {  # type: ignore[attr-defined]
+        httpd.urls_response = {
             "../../escape.txt": f"{base}/put/escape",
             "manifest.json": f"{base}/put/manifest.json",
         }
         _upload_evidence(tmp_path, "r1", url=base, auth_token=None, evidence_prefix="")
-    puts = httpd.puts  # type: ignore[attr-defined]
+    puts = httpd.puts
     assert set(puts) == {"manifest.json"}  # the escaping key was skipped
 
 
@@ -675,8 +675,8 @@ def test_presigned_io_uploads_the_run_tree_over_signed_urls(tmp_path: Path) -> N
     _run_tree(tmp_path, "r1")
     with _worker_io_server() as (httpd, base):
         _io(base).upload_run(tmp_path, "r1")
-    assert set(httpd.puts) == {"00-login/after.png", "manifest.json"}  # type: ignore[attr-defined]
-    path, body = httpd.requests[0]  # type: ignore[attr-defined]
+    assert set(httpd.puts) == {"00-login/after.png", "manifest.json"}
+    path, body = httpd.requests[0]
     assert path == "/api/worker/artifact-urls"
     assert body["job_id"] == "j1" and body["run_id"] == "r1"
     assert sorted(body["files"]) == ["00-login/after.png", "manifest.json"]
@@ -694,7 +694,7 @@ def test_presigned_io_upload_run_raises_on_a_put_failure(tmp_path: Path) -> None
 def test_presigned_io_upload_run_is_a_noop_without_a_run_dir(tmp_path: Path) -> None:
     with _worker_io_server() as (httpd, base):
         _io(base).upload_run(tmp_path, "missing")
-    assert httpd.requests == []  # type: ignore[attr-defined]
+    assert httpd.requests == []
 
 
 def test_presigned_io_upload_run_raises_on_a_non_200_urls_response(tmp_path: Path) -> None:
@@ -710,8 +710,8 @@ def test_presigned_io_saves_the_authored_scenario(tmp_path: Path) -> None:
     out.write_text("- name: login\n  steps: []\n", encoding="utf-8")
     with _worker_io_server() as (httpd, base):
         _io(base).save_scenario(tmp_path, "scenarios/login.yaml", "demo", "login.yaml")
-    assert httpd.puts["demo/login.yaml"] == b"- name: login\n  steps: []\n"  # type: ignore[attr-defined]
-    path, body = httpd.requests[0]  # type: ignore[attr-defined]
+    assert httpd.puts["demo/login.yaml"] == b"- name: login\n  steps: []\n"
+    path, body = httpd.requests[0]
     assert path == "/api/worker/scenario-url"
     assert body == {"job_id": "j1", "worker_id": "w1", "app": "demo", "ref": "login.yaml"}
 
@@ -724,7 +724,7 @@ def test_presigned_io_save_scenario_confines_to_the_workspace(tmp_path: Path) ->
     ws.mkdir()
     with _worker_io_server() as (httpd, base):
         _io(base).save_scenario(ws, "../secret.yaml", "demo", "stolen.yaml")
-    assert httpd.requests == []  # type: ignore[attr-defined]  # nothing requested or uploaded
+    assert httpd.requests == []  # nothing requested or uploaded
 
 
 def test_presigned_io_save_scenario_raises_when_the_authored_file_is_missing(
@@ -736,7 +736,7 @@ def test_presigned_io_save_scenario_raises_when_the_authored_file_is_missing(
         pytest.raises(RuntimeError, match="authored no scenario"),
     ):
         _io(base).save_scenario(tmp_path, "scenarios/login.yaml", "demo", "login.yaml")
-    assert httpd.requests == []  # type: ignore[attr-defined]  # no URL requested for a phantom file
+    assert httpd.requests == []  # no URL requested for a phantom file
 
 
 def test_presigned_io_save_scenario_raises_on_a_non_200(tmp_path: Path) -> None:
@@ -758,7 +758,7 @@ def test_presigned_io_save_scenario_raises_when_no_url_returned(tmp_path: Path) 
 
 def test_presigned_io_downloads_baselines_and_clears_stale(tmp_path: Path) -> None:
     with _worker_io_server() as (httpd, base):
-        httpd.gets["home.png"] = b"\x89PNG"  # type: ignore[attr-defined]
+        httpd.gets["home.png"] = b"\x89PNG"
         # A stale baseline from a previous job in the reused workspace must be cleared first.
         (tmp_path / "baselines").mkdir()
         (tmp_path / "baselines" / "stale.png").write_bytes(b"old")
@@ -771,7 +771,7 @@ def test_download_baselines_raises_on_a_name_that_escapes_the_dir(tmp_path: Path
     # A hostile baseline name resolving outside work/baselines is a broken/hostile lease: fail loud
     # and never write outside the dir (the control plane only ever signs safe names).
     with _worker_io_server() as (httpd, base):
-        httpd.gets["escape"] = b"nope"  # type: ignore[attr-defined]
+        httpd.gets["escape"] = b"nope"
         with pytest.raises(RuntimeError, match="escapes"):
             _download_baselines(tmp_path, {"../../escape.png": f"{base}/get/escape"})
     assert not (tmp_path.parent / "escape.png").exists()  # confinement held

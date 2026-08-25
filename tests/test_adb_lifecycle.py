@@ -178,7 +178,7 @@ def test_pm_revoke_cmd() -> None:
 
 def test_env_apply_permissions_grants_and_revokes_by_service(
     monkeypatch: pytest.MonkeyPatch,
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     # location splits into two android.permission.* names (fine + coarse); each runs its own
     # pm grant/revoke, in the mapped order (BE-0276).
     calls: list[list[str]] = []
@@ -385,7 +385,7 @@ def test_android_environment_starts_screenrecord_before_launching_the_app(tmp_pa
         events.append("record")
         return _Proc()
 
-    env = AndroidEnvironment("adb", "emulator-5554", adb_run=run, spawn=spawn)  # type: ignore[arg-type]
+    env = AndroidEnvironment("adb", "emulator-5554", adb_run=run, spawn=spawn)
     env.start(_eff(), Preconditions(), record_video_dir=tmp_path)
 
     assert events == ["record", "launch"]  # recording began before the app launched
@@ -426,7 +426,7 @@ def test_android_environment_stops_the_prestarted_video_when_launch_fails(tmp_pa
         spawned = True
         return _Proc()
 
-    env = AndroidEnvironment("adb", "emulator-5554", adb_run=run, spawn=spawn)  # type: ignore[arg-type]
+    env = AndroidEnvironment("adb", "emulator-5554", adb_run=run, spawn=spawn)
     with pytest.raises(adb.DeviceError):
         env.start(_eff(), Preconditions(), record_video_dir=tmp_path)
 
@@ -497,7 +497,7 @@ class _FakeResident:
         self._error = error
         self.stopped = False
 
-    def start(self):  # type: ignore[no-untyped-def]
+    def start(self):
         if self._error is not None:
             raise self._error
         return ResidentChannel(self._fetch, self._clock, lambda _r: True)  # type: ignore[arg-type]
@@ -776,7 +776,7 @@ def test_android_environment_preinstalled_skip_is_about_the_app_not_the_resident
         """A resident server that installs its own APKs over the environment's adb, as the real
         one does."""
 
-        def start(self):  # type: ignore[no-untyped-def]
+        def start(self):
             run(adb.install_cmd("S", "/built/server-debug.apk"))
             return ResidentChannel(
                 lambda _since: HierarchyRead("<hierarchy/>"), lambda: None, lambda _r: True

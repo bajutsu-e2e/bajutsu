@@ -427,7 +427,7 @@ def _scripted(responses: list[str]) -> tuple[object, list[int]]:
 
 
 def test_last_raw_source_is_none_before_the_first_read() -> None:
-    driver = AdbDriver("U", run=lambda args: "")  # type: ignore[arg-type]
+    driver = AdbDriver("U", run=lambda args: "")
     assert driver.last_raw_source() is None
 
 
@@ -570,9 +570,7 @@ def _recording_stall_capture(
     captured: list[tuple[str, str]] = []
     monkeypatch.setattr(stall_diagnostics, "device_probes", lambda serial: serial)
     monkeypatch.setattr(
-        adb_driver_mod.stall_diagnostics,
-        "capture",
-        lambda reason, probes: captured.append((probes, reason)),
+        stall_diagnostics, "capture", lambda reason, probes: captured.append((probes, reason))
     )
     return captured
 
@@ -1366,7 +1364,7 @@ def test_settle_gives_up_at_the_wall_clock_deadline_when_never_stable(
             return _moved(100 + reads[0] * 5)  # every read is a new frame — never settles
         return ""
 
-    driver = AdbDriver("U", run=run)  # type: ignore[arg-type]
+    driver = AdbDriver("U", run=run)
     driver._SETTLE_POLL_S = 0.1
     driver._SETTLE_DEADLINE_S = 0.5
     driver.query()  # cache the first frame
@@ -1429,7 +1427,7 @@ def test_settled_key_resets_when_the_poll_never_converges(
             return _moved(100 + reads[0] * 5)  # every read is a new frame — never settles
         return ""
 
-    driver = AdbDriver("U", run=run)  # type: ignore[arg-type]
+    driver = AdbDriver("U", run=run)
     driver._SETTLE_POLL_S = 0.1
     driver._SETTLE_DEADLINE_S = 0.5
     driver.query()

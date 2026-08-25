@@ -689,7 +689,7 @@ def test_within_anchors_the_gesture_on_the_container() -> None:
         driver,
         Step(scroll=Scroll.model_validate({"to": {"id": "c.19"}, "within": {"id": "list"}})),
     )
-    scrolls = [arg for kind, arg in driver.actions if kind == "scroll"]
+    scrolls = _scroll_gestures(driver)
     assert scrolls, "expected at least one scroll"
     (from_x, _from_y), _ = scrolls[0]
     assert from_x == 300.0  # the container's center x (200 + 200/2), not the screen center (200)
@@ -744,7 +744,7 @@ def test_a_lazy_tree_shows_its_motion_through_the_rows_it_drops() -> None:
     # shared across a step and the identity multiset is what carries the motion.
     class _LazyDriver(FakeDriver):
         def query(self) -> list[base.Element]:
-            viewport = base.Frame((0.0, 0.0, _VIEWPORT[0], _VIEWPORT[1]))
+            viewport: base.Frame = (0.0, 0.0, _VIEWPORT[0], _VIEWPORT[1])
             return [el for el in super().query() if base._contains(viewport, el["frame"])]
 
     driver = _LazyDriver(screen=[_row(i) for i in range(20)], viewport=_VIEWPORT)

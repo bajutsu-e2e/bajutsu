@@ -125,7 +125,7 @@ def test_random_uuid_is_version_4() -> None:
 
 def test_two_draws_of_the_same_step_differ() -> None:
     # The motivation for the step: a value no earlier run already took.
-    payload = {"random": {"string": {"length": 16}}}
+    payload: dict[str, object] = {"random": {"string": {"length": 16}}}
     assert len({_produce(payload) for _ in range(20)}) > 1
 
 
@@ -174,14 +174,15 @@ def test_generate_without_bindings_is_a_noop() -> None:
 
 def test_every_accepted_step_produces_a_value() -> None:
     # Directive 2, flow determinism: a step the validator accepted always executes and succeeds.
-    for payload in (
+    payloads: tuple[dict[str, object], ...] = (
         {"random": {"string": {"length": 1}}},
         {"random": {"int": {"min": -5, "max": -1}}},
         {"random": {"float": {"min": -1.5, "max": 1.5, "precision": 0}}},
         {"random": {"uuid": {}}},
         {"datetime": {}},
         {"datetime": {"format": "%H:%M:%S", "offsetSeconds": 90, "offsetMinutes": -1}},
-    ):
+    )
+    for payload in payloads:
         step = _step(payload)
         assert step.generate is not None
         assert generated_value(step.generate)

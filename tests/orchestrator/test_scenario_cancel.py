@@ -99,7 +99,7 @@ def test_cancel_inside_a_settled_wait_ends_the_settle() -> None:
     assert clock.now() < 1.0
 
 
-def test_cancel_inside_an_assert_poll_ends_the_poll(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+def test_cancel_inside_an_assert_poll_ends_the_poll(monkeypatch: pytest.MonkeyPatch) -> None:
     # A step-level `assert` is a condition wait too (BE-0299), and the wait floor gives it a real
     # budget on the lane that sets one — so it honors a cancel the same way `wait` does.
     monkeypatch.setenv("BAJUTSU_MIN_WAIT_TIMEOUT", "100")

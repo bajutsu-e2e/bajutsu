@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0388](BE-0388-test-suite-mypy-typing-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0388") |
-| 実装 PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760)、[#1763](https://github.com/bajutsu-e2e/bajutsu/pull/1763)、[#1766](https://github.com/bajutsu-e2e/bajutsu/pull/1766) |
+| 実装 PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760)、[#1763](https://github.com/bajutsu-e2e/bajutsu/pull/1763)、[#1766](https://github.com/bajutsu-e2e/bajutsu/pull/1766)、[#PR4](https://github.com/bajutsu-e2e/bajutsu/pull/PR4) |
 | トピック | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -141,10 +141,10 @@ pydantic プラグインをどうするかは、本項目の範囲には含め�
 - [x] `tests/report/`（14件）と `tests/orchestrator/`（79件）を解消する。
 - [x] `tests/runner/`（126件）を解消する。
 - [x] `tests/serve/`（196件、124ファイルと最大のディレクトリ）を解消する。
-- [ ] `tests/` 直下のフラットなファイル群（197ファイルで880件）を、`test_crawl.py`（200件）、
+- [x] `tests/` 直下のフラットなファイル群（197ファイルで880件）を、`test_crawl.py`（200件）、
   `test_record.py`（75件）、`test_intervals.py`（48件）から解消する。
-- [ ] 残るすべての `unused-ignore` を一掃し、各 `# type: ignore` を削除するか理由を明記する。
-- [ ] `typecheck-tests` を `typecheck` の Makefile ターゲットへ統合し、上記の一掃が終わった時点で
+- [x] 残るすべての `unused-ignore` を一掃し、各 `# type: ignore` を削除するか理由を明記する。
+- [x] `typecheck-tests` を `typecheck` の Makefile ターゲットへ統合し、上記の一掃が終わった時点で
   `--no-warn-unused-ignores` を外す。
 
 **ログ**
@@ -196,6 +196,25 @@ pydantic プラグインをどうするかは、本項目の範囲には含め�
   `_FakeOAuth` は、`OAuthClient` プロトコルにもう存在しない `fetch_login` を持ち、代わりに
   加わった `fetch_identity` を持っていませんでした。該当するテストはリダイレクト側しか通らない
   ため何も失敗しておらず、レビューでは捕まらず本項目のベースラインが捕まえたずれです。
+- `tests/` 直下のフラットなファイル群の880件を解消し、その過程で古くなった164件の
+  `# type: ignore` を一掃し、実行を `typecheck` へ統合しました。`make check` と CI の毎回の実行が
+  `tests` を含むようになっています（[#PR4](https://github.com/bajutsu-e2e/bajutsu/pull/PR4)）。
+  本項目はこれで完了です。`mypy --allow-untyped-defs tests` は372ファイルに対して指摘ゼロであり、
+  スイートの6610件のテストはそのまま通ります。
+
+  移行中に緩めた設定は2つでしたが、残ったのは1つだけです。`--no-warn-unused-ignores` は、
+  一掃のために開けていた設定なので外しました。`--allow-untyped-defs` は *詳細設計* に述べた理由で
+  残します。`disallow_incomplete_defs` はあえて緩めませんでした。引数の一部だけに注釈が付いた
+  テストは、本項目が受け入れようとした慣習的な書き方ではないからです。該当する106件は注釈を
+  補いました。その多くは、作者が書いていなかっただけのフィクスチャの型でした
+  （`capsys: pytest.CaptureFixture[str]` など）。
+
+  フラットなファイル群で目立った形は、ディレクトリ側と同じで、本項目の予測どおりでした。この規模で
+  新たに2つ加わりました。1つは、シームが `Callable[[Driver], None]` を取る場所へ
+  `Callable[[FakeDriver], None]` を渡していたコールバックです。反変性により受け付けられません。
+  `test_crawl.py` だけで41件あり、いずれもシーム自身の引数型を宣言して内側で絞り込む形に直しました。
+  もう1つは、デフォルト引数を持つラムダです。mypy は対象のシグネチャに対して型を推論できないため、
+  型付きのクロージャに置き換えるか、シームが省略しないデフォルトを外しました。
 
 ## 参考
 

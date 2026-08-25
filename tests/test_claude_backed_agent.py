@@ -20,7 +20,7 @@ class _Probe(ClaudeBackedAgent):
 
 
 def _probe(**kwargs: Any) -> _Probe:
-    return _Probe(default_model="probe-model", **kwargs)  # type: ignore[arg-type]
+    return _Probe(default_model="probe-model", **kwargs)
 
 
 def test_resolved_model_defaults_from_the_constant() -> None:

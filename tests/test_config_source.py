@@ -129,7 +129,7 @@ class _FakeTransport:
         return self.tarball
 
 
-def test_materialize_extracts_tree_and_locates_config(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_materialize_extracts_tree_and_locates_config(tmp_path: Path) -> None:
     sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
     tb = _tarball(
         sha, {"bajutsu.config.yaml": "defaults: {}\n", "scenarios/smoke.yaml": "- name: s\n"}
@@ -146,7 +146,7 @@ def test_materialize_extracts_tree_and_locates_config(tmp_path: Path) -> None:  
     assert (mat.root / "scenarios" / "smoke.yaml").exists()
 
 
-def test_materialize_is_cached_by_sha(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_materialize_is_cached_by_sha(tmp_path: Path) -> None:
     sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
     tb = _tarball(sha, {"bajutsu.config.yaml": "defaults: {}\n"})
     transport = _FakeTransport(sha, tb)
@@ -159,7 +159,7 @@ def test_materialize_is_cached_by_sha(tmp_path: Path) -> None:  # type: ignore[n
     assert transport.tarball_calls == 1
 
 
-def test_materialize_pinned_sha_skips_the_commits_api(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_materialize_pinned_sha_skips_the_commits_api(tmp_path: Path) -> None:
     # A full 40-hex SHA is already the immutable id, so no commits-API call is needed; a cache hit
     # is then fully offline (the determinism anchor the design promises).
     sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
@@ -175,7 +175,7 @@ def test_materialize_pinned_sha_skips_the_commits_api(tmp_path: Path) -> None:  
 
 def test_materialize_pinned_cache_hit_resolves_no_credential(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     # The credential is resolved (and a GitHub App token possibly minted) only when a network op is
     # needed — never on a pinned-SHA cache hit — so re-serving a cached config does no auth work and
     # `--config-offline` stays truly offline (BE-0224). The real path is exercised (transport=None).
@@ -184,7 +184,7 @@ def test_materialize_pinned_cache_hit_resolves_no_credential(
     root.mkdir(parents=True)
     (root / "bajutsu.config.yaml").write_text("defaults: {}\n", encoding="utf-8")
 
-    def fail(spec):  # type: ignore[no-untyped-def]
+    def fail(spec):
         raise AssertionError("credential must not be resolved on a cache hit")
 
     monkeypatch.setattr("bajutsu.config_source.resolve_github_credential", fail)
@@ -194,7 +194,7 @@ def test_materialize_pinned_cache_hit_resolves_no_credential(
     assert mat.sha == sha and mat.config_path.read_text(encoding="utf-8") == "defaults: {}\n"
 
 
-def test_materialize_offline_uses_a_cached_pinned_sha_without_network(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_materialize_offline_uses_a_cached_pinned_sha_without_network(tmp_path: Path) -> None:
     # --config-offline: a pinned SHA already in the cache runs with no transport calls at all.
     sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
     transport = _FakeTransport(sha, _tarball(sha, {"bajutsu.config.yaml": "x\n"}))
@@ -206,7 +206,7 @@ def test_materialize_offline_uses_a_cached_pinned_sha_without_network(tmp_path: 
     assert mat.sha == sha and transport.tarball_calls == 0 and transport.commit_calls == 0
 
 
-def test_materialize_offline_cache_miss_fails(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_materialize_offline_cache_miss_fails(tmp_path: Path) -> None:
     sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
     transport = _FakeTransport(sha, _tarball(sha, {"bajutsu.config.yaml": "x\n"}))
     spec = parse_config_spec(f"github:acme/mobile-tests@{sha}")
@@ -215,7 +215,7 @@ def test_materialize_offline_cache_miss_fails(tmp_path: Path) -> None:  # type: 
         materialize(spec, transport=transport, cache_root=tmp_path, offline=True)
 
 
-def test_materialize_offline_branch_ref_fails(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_materialize_offline_branch_ref_fails(tmp_path: Path) -> None:
     # A branch can't be resolved to a SHA without the network, so offline refuses it before any call.
     transport = _FakeTransport("deadbeef", b"")
     spec = parse_config_spec("github:acme/mobile-tests@main")
@@ -225,7 +225,7 @@ def test_materialize_offline_branch_ref_fails(tmp_path: Path) -> None:  # type: 
     assert transport.commit_calls == 0
 
 
-def test_materialize_rejects_non_github_host(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_materialize_rejects_non_github_host(tmp_path: Path) -> None:
     # The git+https form parses for any host, but only GitHub is implemented — fail clearly rather
     # than silently hitting github.com (default transport only).
     spec = parse_config_spec("git+https://gitlab.example.com/acme/repo.git@main")
@@ -234,7 +234,7 @@ def test_materialize_rejects_non_github_host(tmp_path: Path) -> None:  # type: i
         materialize(spec, cache_root=tmp_path)
 
 
-def test_materialize_refuses_a_path_escaping_the_cache(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_materialize_refuses_a_path_escaping_the_cache(tmp_path: Path) -> None:
     # A spec component or in-repo path that climbs out of the cache (`..`) is refused before any fetch.
     sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
     transport = _FakeTransport(sha, _tarball(sha, {"bajutsu.config.yaml": "x\n"}))
@@ -244,7 +244,7 @@ def test_materialize_refuses_a_path_escaping_the_cache(tmp_path: Path) -> None: 
     assert transport.tarball_calls == 0  # refused before fetching
 
 
-def test_materialize_corrupt_tarball_raises_value_error(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_materialize_corrupt_tarball_raises_value_error(tmp_path: Path) -> None:
     # A truncated/corrupt body (a rate-limit page, a proxy interstitial) is a clean ValueError, not a
     # bare tarfile.ReadError — so callers' fetch-error handling catches it instead of a traceback.
     sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
@@ -315,10 +315,10 @@ def test_rate_limit_403_is_not_reported_as_missing_access() -> None:
     assert "Contents: read" not in msg
 
 
-def test_transport_get_wraps_httperror_as_access_error(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+def test_transport_get_wraps_httperror_as_access_error(monkeypatch: pytest.MonkeyPatch) -> None:
     # A raw HTTPError from urllib becomes a GitHubAccessError carrying the cause-naming message, so a
     # private-repo 404 never reaches a caller as a bare traceback.
-    def raise_404(req, timeout):  # type: ignore[no-untyped-def]
+    def raise_404(req, timeout):
         raise urllib.error.HTTPError(req.full_url, 404, "Not Found", _headers(), None)
 
     monkeypatch.setattr("urllib.request.urlopen", raise_404)
@@ -326,14 +326,14 @@ def test_transport_get_wraps_httperror_as_access_error(monkeypatch: pytest.Monke
         _GitHubTransport("tok").commit_sha(_SPEC, "main")
 
 
-def test_resolve_credential_prefers_env_token_when_no_app(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+def test_resolve_credential_prefers_env_token_when_no_app(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("BAJUTSU_GITHUB_APP_ID", raising=False)
     monkeypatch.delenv("BAJUTSU_GIT_CONFIG_TOKEN", raising=False)
     monkeypatch.setenv("GITHUB_TOKEN", "tok-env")
     assert resolve_github_credential(_SPEC) == "tok-env"
 
 
-def test_resolve_credential_ui_token_wins_over_ambient(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+def test_resolve_credential_ui_token_wins_over_ambient(monkeypatch: pytest.MonkeyPatch) -> None:
     # The bajutsu-owned var (a UI-entered credential) is checked before an operator's ambient token,
     # so a serve-entered credential wins and clearing it never touches GITHUB_TOKEN (BE-0224).
     monkeypatch.delenv("BAJUTSU_GITHUB_APP_ID", raising=False)
@@ -344,7 +344,7 @@ def test_resolve_credential_ui_token_wins_over_ambient(monkeypatch: pytest.Monke
 
 def test_resolve_credential_ignores_stale_app_key_file_without_id(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     # A leftover key-file var without an App id must NOT trigger the App path (no file read, no
     # cryptography import) — it falls through to the env token (BE-0224 review fix).
     monkeypatch.delenv("BAJUTSU_GITHUB_APP_ID", raising=False)
@@ -356,7 +356,7 @@ def test_resolve_credential_ignores_stale_app_key_file_without_id(
 
 def test_resolve_credential_app_missing_key_file_is_a_clean_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     # With the App id set but the key file unreadable, the error names the cause instead of leaking a
     # raw OSError traceback.
     monkeypatch.setenv("BAJUTSU_GITHUB_APP_ID", "123")
@@ -368,7 +368,7 @@ def test_resolve_credential_app_missing_key_file_is_a_clean_error(
 
 def test_resolve_credential_app_id_without_key_falls_through(
     monkeypatch: pytest.MonkeyPatch,
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     # An App id with no key at all is not a half-attempt — it falls through to the env token.
     monkeypatch.setenv("BAJUTSU_GITHUB_APP_ID", "123")
     monkeypatch.delenv("BAJUTSU_GITHUB_APP_PRIVATE_KEY", raising=False)
@@ -380,7 +380,7 @@ def test_resolve_credential_app_id_without_key_falls_through(
 
 def test_resolve_credential_prefers_a_configured_github_app(
     monkeypatch: pytest.MonkeyPatch,
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     # An App credential wins over a PAT in the env (the documented precedence, BE-0224 #2); the App
     # module is only reached when both an id and a key are present.
     monkeypatch.setenv("BAJUTSU_GITHUB_APP_ID", "123")
@@ -388,7 +388,7 @@ def test_resolve_credential_prefers_a_configured_github_app(
     monkeypatch.setenv("GITHUB_TOKEN", "tok-env")
     seen = {}
 
-    def fake_installation_token(app_id, key, spec, *, installation_id=None):  # type: ignore[no-untyped-def]
+    def fake_installation_token(app_id, key, spec, *, installation_id=None):
         seen["app_id"], seen["key"] = app_id, key
         return "ghs_apptoken"
 
@@ -399,7 +399,7 @@ def test_resolve_credential_prefers_a_configured_github_app(
 
 def test_resolve_credential_app_key_from_a_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     key_file = tmp_path / "app.pem"
     key_file.write_text("----FILE-KEY----", encoding="utf-8")
     monkeypatch.setenv("BAJUTSU_GITHUB_APP_ID", "123")
@@ -412,14 +412,14 @@ def test_resolve_credential_app_key_from_a_file(
     assert resolve_github_credential(_SPEC) == "tok:----FILE-KEY----"
 
 
-def test_load_effective_git_access_error_exits_cleanly(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+def test_load_effective_git_access_error_exits_cleanly(monkeypatch: pytest.MonkeyPatch) -> None:
     # A private-repo access/auth failure gets the same friendly exit-2 as a missing config, with the
     # cause message rather than a raw HTTPError traceback (BE-0224 #4).
     import typer
 
     from bajutsu.cli import _shared
 
-    def boom(spec, *, offline=False):  # type: ignore[no-untyped-def]
+    def boom(spec, *, offline=False):
         raise GitHubAccessError("cannot access acme/repo (404): ... provide Contents: read")
 
     monkeypatch.setattr(_shared, "materialize", boom)
@@ -433,7 +433,7 @@ def test_load_effective_git_access_error_exits_cleanly(monkeypatch: pytest.Monke
 
 def test_load_effective_rebases_paths_against_git_checkout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     from bajutsu.cli import _shared
 
     # A materialized checkout: the config plus its relative scenarios/appPath, as they'd sit in a repo.
@@ -445,7 +445,7 @@ def test_load_effective_rebases_paths_against_git_checkout(
         encoding="utf-8",
     )
 
-    def fake_materialize(spec, *, offline=False):  # type: ignore[no-untyped-def]
+    def fake_materialize(spec, *, offline=False):
         return Materialized(root / "e2e" / "bajutsu.config.yaml", root, "deadbeef")
 
     monkeypatch.setattr(_shared, "materialize", fake_materialize)
@@ -459,7 +459,7 @@ def test_load_effective_rebases_paths_against_git_checkout(
 
 def test_load_effective_local_config_rebases_against_the_config_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     # A local config's relative paths resolve against the config file's own directory, independent of
     # the caller's cwd (BE-0242) — chdir elsewhere and the resolution must not move with it.
     from bajutsu.cli import _shared
@@ -480,7 +480,7 @@ def test_load_effective_local_config_rebases_against_the_config_dir(
     assert eff.platform_config.app_path == str(cfg_dir / "build/Demo.app")
 
 
-def test_load_effective_local_config_allows_a_path_outside_its_dir(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_load_effective_local_config_allows_a_path_outside_its_dir(tmp_path: Path) -> None:
     # A local file is operator-trusted (BE-0121), so — unlike a fetched Git config — it may point at a
     # sibling outside its own directory: the `..` resolves, it is not a confinement exit-2 (BE-0242).
     from bajutsu.cli import _shared
@@ -495,7 +495,7 @@ def test_load_effective_local_config_allows_a_path_outside_its_dir(tmp_path: Pat
     assert Path(eff.evidence_dirs.scenarios or "").resolve() == (tmp_path / "shared" / "scn")
 
 
-def test_load_effective_local_config_returns_no_checkout_root(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_load_effective_local_config_returns_no_checkout_root(tmp_path: Path) -> None:
     # The rebase anchor must not leak into the third tuple element: `checkout_root` stays None for a
     # local config so it keeps reading as "local, not a read-only Git checkout" — otherwise `run`'s
     # on-demand build_if_missing and record/crawl's _refuse_out_in_checkout would switch on (BE-0242).
@@ -515,7 +515,7 @@ def test_load_effective_local_config_returns_no_checkout_root(tmp_path: Path) ->
 
 def test_load_effective_git_wrong_path_exits_cleanly(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     # A materialized tree that doesn't hold the requested config path gets the same friendly exit-2
     # as a missing local config — not a raw FileNotFoundError.
     import typer
@@ -537,7 +537,7 @@ def test_load_effective_git_wrong_path_exits_cleanly(
 
 def test_require_pinned_rejects_a_non_sha_ref(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     # --require-pinned-config: a gate must run an immutable commit. A branch/tag/default ref is
     # refused before any fetch; only a full commit SHA is accepted.
     import typer
@@ -546,7 +546,7 @@ def test_require_pinned_rejects_a_non_sha_ref(
 
     called = False
 
-    def must_not_materialize(spec, *, offline=False):  # type: ignore[no-untyped-def]
+    def must_not_materialize(spec, *, offline=False):
         nonlocal called
         called = True
         raise AssertionError("materialize must not run when the ref is rejected")
@@ -557,7 +557,7 @@ def test_require_pinned_rejects_a_non_sha_ref(
     assert exc.value.exit_code == 2 and not called
 
 
-def test_require_pinned_allows_a_full_sha(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+def test_require_pinned_allows_a_full_sha(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from bajutsu.cli import _shared
 
     sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
@@ -580,7 +580,7 @@ def test_require_pinned_allows_a_full_sha(tmp_path: Path, monkeypatch: pytest.Mo
 
 def test_load_effective_git_config_escaping_path_exits_cleanly(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     # A Git config whose scenarios path climbs out of the checkout is refused with a clean exit-2,
     # not a traceback (confinement, BE-0051).
     import typer
@@ -605,7 +605,7 @@ def test_load_effective_git_config_escaping_path_exits_cleanly(
 
 def test_run_builds_a_git_sourced_app_from_the_checkout_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     # A Git-sourced run builds the missing binary on demand, with the checkout root as the working
     # directory — the config's `build` and relative `appPath` are rooted there (BE-0063).
     from typer.testing import CliRunner

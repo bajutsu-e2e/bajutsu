@@ -1146,7 +1146,7 @@ def test_serve_emit_launchagent_prints_plist_and_exits() -> None:
 
 def test_serve_config_from_git_binds_checkout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     # `serve --config github:…` materializes the checkout at startup and serves from its root, so
     # the config's relative paths resolve against the fetched tree (BE-0063).
     import bajutsu.config_source as cs
@@ -1169,7 +1169,7 @@ def test_serve_config_from_git_binds_checkout(
 
 def test_serve_local_config_binds_the_config_directory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     # A local `--config` in a subdirectory anchors serve's cwd at the config's own directory, not the
     # launch dir, so its relative paths resolve the same wherever serve was started (BE-0242) — the
     # local-config counterpart of the Git bind above. The config lives under a subdir so the config
@@ -1190,7 +1190,7 @@ def test_serve_local_config_binds_the_config_directory(
 
 def test_serve_local_relative_config_is_resolved_to_absolute(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     # A relative `--config` must reach srv.serve as an absolute path: a run job passes it as `--config`
     # to a subprocess launched with cwd=<config's dir>, so a path left relative to serve's launch dir
     # would no longer resolve once cwd moves. Launch from a directory *other* than the config's so a
@@ -1223,7 +1223,7 @@ def test_serve_rejects_invalid_upload_exec() -> None:
     assert "upload-exec" in r.output
 
 
-def test_serve_upload_exec_env_mirror_and_flag_precedence(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+def test_serve_upload_exec_env_mirror_and_flag_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
     # The flag wins; absent a flag the BAJUTSU_UPLOAD_EXEC env var is honoured (hosted backend).
     import bajutsu.serve as srv
 

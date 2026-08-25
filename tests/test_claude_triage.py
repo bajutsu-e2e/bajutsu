@@ -259,7 +259,7 @@ def test_tool_schema_exposes_optional_fix() -> None:
 
 
 def _ev(ok: bool, **over: Any) -> RunEvidence:
-    base_ev = {
+    base_ev: dict[str, Any] = {
         "run_id": "r",
         "ok": ok,
         "failure": "" if ok else "step0 tap: 一致なし",

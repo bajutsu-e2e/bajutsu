@@ -45,6 +45,7 @@ from __future__ import annotations
 import math
 import time
 from collections import Counter
+from collections.abc import Callable
 from typing import Protocol, runtime_checkable
 
 import pytest
@@ -385,7 +386,7 @@ class DriverConformanceContract:
         # one refuses loudly (UnsupportedAction) instead of silently no-op'ing.
         driver = harness.with_screen([element(identifier="g")])
         supports_multi_touch = base.Capability.MULTI_TOUCH in driver.capabilities()
-        gestures = (
+        gestures: tuple[Callable[[], None], ...] = (
             lambda: driver.pinch({"id": "g"}, 2.0),
             lambda: driver.rotate({"id": "g"}, 1.0),
         )

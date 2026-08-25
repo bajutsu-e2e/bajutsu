@@ -170,7 +170,7 @@ def test_http_open_local_config_from_subdir_binds_config_dir(tmp_path: Path) -> 
 
 def test_http_open_config_from_git_binds_checkout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     # The "from Git" picker: a github: spec materializes a checkout, binds its config, and repoints
     # state.cwd to the checkout root so build/scenarios resolve there (BE-0063).
     import bajutsu.serve.operations.config as ops  # bind_git_config resolves `materialize` here
@@ -278,7 +278,7 @@ def test_http_config_content_404_when_no_config_bound(tmp_path: Path) -> None:
 
 def test_http_git_config_with_escaping_path_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     # A fetched config whose path field climbs out of the checkout is rejected at bind, so serve's
     # (unconfined) scenario/build resolution never sees a host path outside the tree (BE-0063/BE-0051).
     import bajutsu.serve.operations.config as ops  # bind_git_config resolves `materialize` here
@@ -412,7 +412,7 @@ def test_http_config_sources_hosted_omits_fs_and_root(tmp_path: Path) -> None:
 
 def test_http_hosted_refuses_path_bind_but_git_still_binds(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     # Server-side enforcement (defense in depth): when hosted, the path branch of POST /api/config is
     # refused even by a hand-crafted request, while the Git branch is unaffected (BE-0108).
     import bajutsu.serve.operations.config as ops

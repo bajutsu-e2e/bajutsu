@@ -2334,7 +2334,7 @@ def test_a_replacement_clones_the_type_captured_while_the_device_was_healthy(
     app = tmp_path / "App.app"
     app.mkdir()
     calls, replace_run = _ladder_run([])
-    env._run = replace_run  # type: ignore[assignment]
+    env._run = replace_run
     env._recover_between_attempts(
         _AttemptFailure("run-ended", "ended"),
         _eff_for_ladder(app_path=str(app)),
@@ -2551,7 +2551,7 @@ def test_a_replacement_bring_up_never_resumes_the_warm_runner(
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)), app_path=str(app))
     env.start(eff, Preconditions())
     env.request_device_replacement()
-    env._run = ladder_run  # type: ignore[assignment]  # the ladder's simctl can mint a device
+    env._run = ladder_run  # the ladder's simctl can mint a device
     env.start(eff, Preconditions())
     assert len(popen_argvs) == 2  # a second `xcodebuild`, not a warm resume
     assert env._udid == "UDID-NEW"

@@ -132,7 +132,7 @@ def test_render_html_empty_map_is_valid() -> None:
     assert "0 screens" in html
 
 
-def test_write_html_writes_report_next_to_screens(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_write_html_writes_report_next_to_screens(tmp_path: Path) -> None:
     out_dir = tmp_path / "20260101-000000"
     (out_dir / "screens").mkdir(parents=True)
     (out_dir / "screens" / "abc1234.png").write_bytes(b"\x89PNG")  # a captured screenshot

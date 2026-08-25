@@ -86,7 +86,7 @@ def test_record_is_best_effort_with_none_and_missing_fields() -> None:
 
 def test_record_ignores_non_numeric_and_negative_counts() -> None:
     before = usage.snapshot()
-    usage.record(FakeUsage(input_tokens=-5, output_tokens=0))  # type: ignore[arg-type]
+    usage.record(FakeUsage(input_tokens=-5, output_tokens=0))
     spent = usage.snapshot() - before
     assert spent.calls == 1 and spent.total_tokens == 3  # only the default cache_read=3 survives
 

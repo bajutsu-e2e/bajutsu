@@ -7,7 +7,8 @@ This is the MECE guard: the classification is only a trustworthy source of truth
 
 from __future__ import annotations
 
-import click
+import typer
+import typer.core
 import typer.main
 
 from bajutsu import capabilities
@@ -16,7 +17,7 @@ from bajutsu.cli import app
 
 def _registered_commands() -> set[str]:
     group = typer.main.get_command(app)
-    assert isinstance(group, click.Group)
+    assert isinstance(group, typer.core.TyperGroup)
     return set(group.commands)
 
 

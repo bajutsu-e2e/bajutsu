@@ -752,7 +752,7 @@ def _cross_context() -> triage.CrossRunTriageContext:
                 "label": "Home",
                 "traits": ["button"],
                 "value": None,
-                "frame": [0, 0, 1, 1],
+                "frame": (0.0, 0.0, 1.0, 1.0),
                 "nativeZ": None,
             }
         ],
@@ -769,7 +769,7 @@ def _cross_context() -> triage.CrossRunTriageContext:
                 "label": "Home",
                 "traits": ["button"],
                 "value": None,
-                "frame": [0, 0, 1, 1],
+                "frame": (0.0, 0.0, 1.0, 1.0),
                 "nativeZ": None,
             }
         ],
@@ -829,7 +829,7 @@ def _write_flaky_run(
                     "label": "Home",
                     "traits": ["button"],
                     "value": None,
-                    "frame": [0, 0, 1, 1],
+                    "frame": (0.0, 0.0, 1.0, 1.0),
                     "nativeZ": None,
                 }
             ]

@@ -78,7 +78,7 @@ def test_env_foreground_runs_command() -> None:
     assert calls == [["xcrun", "simctl", "launch", "U", "com.demo"]]
 
 
-def test_env_set_clipboard_seeds_pasteboard_with_text(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+def test_env_set_clipboard_seeds_pasteboard_with_text(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
     def fake_pbcopy(cmd: list[str], text: str = "") -> None:

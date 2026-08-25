@@ -38,7 +38,7 @@ def test_governed_build_runs_api_bound_git_build_with_opt_in(tmp_path: Path) -> 
 
 def test_api_bound_git_config_is_marked_untrusted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     # Binding a Git config through /api/config marks it untrusted; binding a local config after
     # clears the flag, so the trust boundary tracks whichever source is currently active.
     import bajutsu.serve.operations.config as ops

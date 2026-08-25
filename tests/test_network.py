@@ -321,13 +321,13 @@ def _schemas_dir(tmp_path: object, name: str, schema: dict[str, object]):  # typ
     return d
 
 
-def _rs(schema_path: str, **req: object) -> Assertion:
+def _rs(schema_path: str, **req: Any) -> Assertion:
     return Assertion(
         responseSchema=ResponseSchemaMatch(request=RequestMatch(**req), schema=schema_path)
     )
 
 
-def test_response_schema_passes_for_conforming_body(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_response_schema_passes_for_conforming_body(tmp_path: Path) -> None:
     from bajutsu.assertions import SchemaContext
 
     d = _schemas_dir(
@@ -345,7 +345,7 @@ def test_response_schema_passes_for_conforming_body(tmp_path: Path) -> None:  # 
     assert r.ok, r.reason
 
 
-def test_response_schema_fails_for_nonconforming_body(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_response_schema_fails_for_nonconforming_body(tmp_path: Path) -> None:
     from bajutsu.assertions import SchemaContext
 
     d = _schemas_dir(
@@ -363,7 +363,7 @@ def test_response_schema_fails_for_nonconforming_body(tmp_path: Path) -> None:  
     assert not r.ok and r.reason
 
 
-def test_response_schema_no_matching_exchange(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_response_schema_no_matching_exchange(tmp_path: Path) -> None:
     from bajutsu.assertions import SchemaContext
 
     d = _schemas_dir(tmp_path, "x.json", {"type": "object"})
@@ -376,7 +376,7 @@ def test_response_schema_no_matching_exchange(tmp_path: Path) -> None:  # type: 
     assert not r.ok and "exchange" in r.reason
 
 
-def test_response_schema_missing_schema_file(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_response_schema_missing_schema_file(tmp_path: Path) -> None:
     from bajutsu.assertions import SchemaContext
 
     (tmp_path / "schemas").mkdir()
@@ -390,7 +390,7 @@ def test_response_schema_missing_schema_file(tmp_path: Path) -> None:  # type: i
     assert not r.ok and "schema" in r.reason.lower()
 
 
-def test_response_schema_non_json_body(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_response_schema_non_json_body(tmp_path: Path) -> None:
     from bajutsu.assertions import SchemaContext
 
     d = _schemas_dir(tmp_path, "x.json", {"type": "object"})
@@ -404,7 +404,7 @@ def test_response_schema_non_json_body(tmp_path: Path) -> None:  # type: ignore[
     assert not r.ok and r.reason
 
 
-def test_response_schema_malformed_schema_fails_cleanly(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_response_schema_malformed_schema_fails_cleanly(tmp_path: Path) -> None:
     from bajutsu.assertions import SchemaContext
 
     # An unresolvable $ref must fail the assertion loudly, not crash the run.
@@ -425,7 +425,7 @@ def test_response_schema_without_context_fails() -> None:
     assert not r.ok and r.reason
 
 
-def test_response_schema_rejects_path_traversal(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_response_schema_rejects_path_traversal(tmp_path: Path) -> None:
     from bajutsu.assertions import SchemaContext
 
     # a `..` escape (or an absolute path) must be rejected, not read outside the schemas dir

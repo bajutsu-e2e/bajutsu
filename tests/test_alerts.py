@@ -177,7 +177,7 @@ def test_end_of_step_alert_guard_retry_preserves_correct_before_after_evidence(
     non-regression): every step's recorded tree is the settled post-action one, so neither the
     retried step nor the one after it is left describing the screen the failed first attempt
     found."""
-    go = {
+    go: base.Element = {
         "identifier": "go",
         "label": "Go",
         "traits": ["button"],
@@ -185,7 +185,7 @@ def test_end_of_step_alert_guard_retry_preserves_correct_before_after_evidence(
         "frame": (0.0, 0.0, 10.0, 10.0),
         "nativeZ": None,
     }
-    nxt = {
+    nxt: base.Element = {
         "identifier": "next",
         "label": "Next",
         "traits": ["button"],
@@ -212,7 +212,9 @@ def test_end_of_step_alert_guard_retry_preserves_correct_before_after_evidence(
 
     def _els(step_index: int) -> list[dict[str, object]]:
         art = next(a for a in result.steps[step_index].artifacts if a.kind == "elements")
-        return json.loads((run_dir / art.name).read_text(encoding="utf-8"))
+        els = json.loads((run_dir / art.name).read_text(encoding="utf-8"))
+        assert isinstance(els, list)
+        return els
 
     # step0's tree is its post-action one: the screen the retried tap actually left behind, with
     # both targets present — never the empty screen its failed first attempt found.
@@ -229,7 +231,7 @@ def test_end_of_step_alert_guard_retry_on_the_last_step_still_gets_a_final_captu
     """The scenario's last step still gets its post-action screenshot after an end-of-step
     alert-guard retry — reflecting the retried, successful attempt, not the failed first one — and
     its `elements.json` describes that same settled screen (BE-0341)."""
-    go = {
+    go: base.Element = {
         "identifier": "go",
         "label": "Go",
         "traits": ["button"],
@@ -336,11 +338,11 @@ def test_record_guard_clears_blocking_before_agent_acts() -> None:
     driver = FakeDriver([_window()])  # blocked: a prompt collapsed the tree
     calls = {"n": 0}
 
-    def guard(d: base.Driver) -> bool:
+    def guard(d: base.Driver) -> AlertEvent | None:
         calls["n"] += 1
         assert isinstance(d, FakeDriver)
         d.screen = [_el("go")]  # dismissing the prompt reveals the app
-        return True
+        return AlertEvent(label="Not Now")
 
     agent = _ScriptAgent(
         Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]),
@@ -358,9 +360,9 @@ def test_record_guard_not_called_when_app_is_visible() -> None:
     driver = FakeDriver([_el("go")])  # actionable already; nothing blocking
     calls = {"n": 0}
 
-    def guard(d: base.Driver) -> bool:
+    def guard(d: base.Driver) -> AlertEvent | None:
         calls["n"] += 1
-        return False
+        return None  # the guard looked but found nothing dismissible
 
     agent = _ScriptAgent(
         Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]),

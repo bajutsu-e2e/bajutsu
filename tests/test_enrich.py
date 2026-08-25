@@ -43,6 +43,9 @@ def _scenario(steps: list[Step], expect: list[Assertion] | None = None) -> Scena
 
 
 class _NoSleep:
+    def now(self) -> float:
+        return 0.0  # the enrich loop only sleeps here; time never advances
+
     def sleep(self, _seconds: float) -> None:
         return None
 
@@ -234,7 +237,7 @@ def test_enrich_streams_progress_to_reporter() -> None:
 def test_enrich_uses_alert_guard_during_replay() -> None:
     from bajutsu.orchestrator import AlertEvent
 
-    app = {
+    app: base.Element = {
         "identifier": "App",
         "label": "App",
         "traits": ["application"],

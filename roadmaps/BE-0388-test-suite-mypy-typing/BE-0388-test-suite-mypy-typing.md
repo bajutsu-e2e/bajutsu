@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0388](BE-0388-test-suite-mypy-typing.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0388") |
-| Implementing PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760), [#1763](https://github.com/bajutsu-e2e/bajutsu/pull/1763), [#1766](https://github.com/bajutsu-e2e/bajutsu/pull/1766) |
+| Implementing PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760), [#1763](https://github.com/bajutsu-e2e/bajutsu/pull/1763), [#1766](https://github.com/bajutsu-e2e/bajutsu/pull/1766), [#PR4](https://github.com/bajutsu-e2e/bajutsu/pull/PR4) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -138,10 +138,10 @@ The pydantic-plugin question stays out of this item's scope; see *Alternatives c
 - [x] Clear `tests/report/` (14 errors) and `tests/orchestrator/` (79 errors).
 - [x] Clear `tests/runner/` (126 errors).
 - [x] Clear `tests/serve/` (196 errors, 124 files — the largest single directory).
-- [ ] Clear the flat files directly under `tests/` (880 errors across 197 files), starting with
+- [x] Clear the flat files directly under `tests/` (880 errors across 197 files), starting with
   `test_crawl.py` (200), `test_record.py` (75), and `test_intervals.py` (48).
-- [ ] Sweep every remaining `unused-ignore` finding; remove or justify each `# type: ignore`.
-- [ ] Fold `typecheck-tests` into the `typecheck` Makefile target and drop
+- [x] Sweep every remaining `unused-ignore` finding; remove or justify each `# type: ignore`.
+- [x] Fold `typecheck-tests` into the `typecheck` Makefile target and drop
   `--no-warn-unused-ignores` now that the sweep above is complete.
 
 **Log**
@@ -192,6 +192,26 @@ The pydantic-plugin question stays out of this item's scope; see *Alternatives c
   a `fetch_login` the `OAuthClient` protocol no longer has, and lacked the `fetch_identity` that
   replaced it. Nothing failed, because those tests exercise only the redirect leg — which is the
   kind of drift review did not catch and this item's baseline did.
+- Cleared the 880 findings in the flat files under `tests/`, swept the 164 `# type: ignore` comments
+  the clean-up left stale, and folded the run into `typecheck`, which now covers `tests` on every
+  `make check` and every CI run ([#PR4](https://github.com/bajutsu-e2e/bajutsu/pull/PR4)). The item
+  is complete: `mypy --allow-untyped-defs tests` reports zero findings across 372 source files, and
+  the suite's 6,610 tests pass unchanged.
+
+  Two settings were relaxed while the migration ran; only one survives it.
+  `--no-warn-unused-ignores` is gone, because the sweep is what it was holding open.
+  `--allow-untyped-defs` stays, for the reason *Detailed design* gives. `disallow_incomplete_defs`
+  was deliberately **not** relaxed: a test that annotates some of its parameters and not the rest
+  is not the conventional pattern this item set out to accommodate, and the 106 instances were
+  annotated instead — mostly a fixture whose type the author had not yet written
+  (`capsys: pytest.CaptureFixture[str]`).
+
+  The flat files' dominant shapes matched the directories' and the item's prediction. Two more
+  emerged at this scale: a callback declared `Callable[[FakeDriver], None]` where the seam takes
+  `Callable[[Driver], None]`, which contravariance rules out — 41 in `test_crawl.py` alone,
+  each now declaring the seam's own parameter type and narrowing inside; and a lambda carrying a
+  default argument, which mypy cannot infer against a target signature, replaced by a typed closure
+  or by dropping the default the seam never omits.
 
 ## References
 

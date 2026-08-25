@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from conftest import json_list
+
 from bajutsu import _yaml
 from bajutsu.config import AndroidConfig, Config, IosConfig, load_config, resolve
 from bajutsu.scenario import load_scenarios
@@ -186,9 +188,10 @@ def test_extract_scenario_counter_arithmetic_holds_on_every_target() -> None:
         assert found.group(1) == "1", f"{relative} starts log.count at {found.group(1)}, not 1"
 
     scenario = _load_yaml(SCENARIO_DIR / "extract.yaml")[0]
-    taps = sum(1 for step in scenario["steps"] if "log.count" in _selector_ids(step.get("tap")))
+    steps = json_list(scenario["steps"])
+    taps = sum(1 for step in steps if "log.count" in _selector_ids(step.get("tap")))
     assert taps, "extract.yaml no longer taps log.count"
-    assert int(scenario["expect"][0]["value"]["equals"]) == 1 + taps
+    assert int(json_list(scenario["expect"])[0]["value"]["equals"]) == 1 + taps
 
 
 def _selector_ids(selector: object) -> list[str]:

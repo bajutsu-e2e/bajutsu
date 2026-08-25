@@ -16,6 +16,7 @@ from typer.testing import CliRunner
 
 from bajutsu.cli import app
 from bajutsu.config import AndroidConfig, DeviceProvider, Effective
+from bajutsu.github import actions as github_actions
 from bajutsu.platform_lifecycle import ProvisionProfile
 from bajutsu.runner import device_provider as dp
 from bajutsu.scenario import Redact
@@ -199,7 +200,7 @@ def test_run_warns_and_keeps_its_verdict_when_release_raises(
         result_row = RunResult(scenario="demo", ok=True, steps=[])
         monkeypatch.setattr(run_cmd, "_dispatch", lambda plan: ([result_row], manifest))
         # No CI annotations off a fake manifest (patch the name run.py's `_finish` actually calls).
-        monkeypatch.setattr(run_cmd.github_actions, "emit", lambda *a, **k: None)
+        monkeypatch.setattr(github_actions, "emit", lambda *a, **k: None)
 
         scn = tmp_path / "s.yaml"
         scn.write_text("- name: demo\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")

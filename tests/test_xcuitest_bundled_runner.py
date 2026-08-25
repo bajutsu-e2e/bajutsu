@@ -14,6 +14,7 @@ import os
 import plistlib
 import subprocess
 import time
+from collections.abc import Buffer
 from pathlib import Path
 from typing import Any
 
@@ -140,7 +141,7 @@ def test_materialize_copies_once_and_reuses(
     copies = {"n": 0}
     real_replace = os.replace
 
-    def _counting_replace(src: object, dst: object) -> object:
+    def _counting_replace(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> None:
         copies["n"] += 1
         return real_replace(src, dst)
 
@@ -190,9 +191,9 @@ def test_products_digest_skips_rehashing_an_unchanged_tree(
     calls = {"n": 0}
     real_sha256 = hashlib.sha256
 
-    def _counting_sha256(*args: object, **kwargs: Any) -> object:
+    def _counting_sha256(data: Buffer = b"", **kwargs: Any) -> hashlib._Hash:
         calls["n"] += 1
-        return real_sha256(*args, **kwargs)
+        return real_sha256(data, **kwargs)
 
     monkeypatch.setattr(hashlib, "sha256", _counting_sha256)
 

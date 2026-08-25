@@ -111,7 +111,7 @@ def test_read_messages_with_path_and_field_mapping() -> None:
 
 def test_read_messages_unexpected_shape_is_empty() -> None:
     assert read_messages({"items": "nope"}, messages_path="items", fields={}) == []
-    assert read_messages(42, messages_path="", fields={}) == []  # type: ignore[arg-type]
+    assert read_messages(42, messages_path="", fields={}) == []
 
 
 def test_read_messages_synthesizes_id_when_absent() -> None:
@@ -183,7 +183,7 @@ class _FakeMailbox:
         return r  # type: ignore[return-value]
 
 
-def _email_step(**kw: Any) -> Email:  # type: ignore[name-defined]
+def _email_step(**kw: Any) -> Email:
     from bajutsu.scenario import Email
 
     return Email.model_validate(kw)

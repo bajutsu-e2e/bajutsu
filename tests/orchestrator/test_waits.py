@@ -415,7 +415,7 @@ def _slow_render_driver(clock: _LogicalClock, reveal_at: float) -> base.Driver:
     return SlowRenderDriver()  # type: ignore[return-value]
 
 
-def test_run_scenario_writes_wait_diagnostic_on_first_wait_timeout(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_run_scenario_writes_wait_diagnostic_on_first_wait_timeout(tmp_path: Path) -> None:
     """BE-0231 Unit 1 end to end: a first `wait` that times out writes wait-timeout.json into the run
     dir via the sink — unconditionally, regardless of capturePolicy — carrying the readiness signal
     and provenance the pool folded in, so the failure is decidable from artifacts."""
@@ -445,7 +445,7 @@ def test_run_scenario_writes_wait_diagnostic_on_first_wait_timeout(tmp_path: Pat
     assert [e["identifier"] for e in doc["elements"]] == ["a", "b"]
 
 
-def test_no_wait_diagnostic_when_wait_succeeds_or_is_not_a_for_wait(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_no_wait_diagnostic_when_wait_succeeds_or_is_not_a_for_wait(tmp_path: Path) -> None:
     """The diagnostic fires only on a `for`-wait timeout: a satisfied wait and a timed-out `until`
     wait (which the trace does not record) both leave no waitDiagnostic artifact."""
     from bajutsu.evidence import FileSink
@@ -475,7 +475,7 @@ def test_no_wait_diagnostic_when_wait_succeeds_or_is_not_a_for_wait(tmp_path: Pa
     assert not any(a.kind == "waitDiagnostic" for a in gone_result.steps[0].artifacts)
 
 
-def test_wait_diagnostic_written_once_after_on_blocked_retry(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_wait_diagnostic_written_once_after_on_blocked_retry(tmp_path: Path) -> None:
     """When a first wait times out, on_blocked clears the block, and the retry times out too, exactly
     one diagnostic is written — from the retry's own (fresh) trace, not the first attempt's."""
     from bajutsu.evidence import FileSink
@@ -557,7 +557,7 @@ def test_wait_trace_stays_empty_when_tree_never_renders() -> None:
     assert trace.elements_at_timeout == 0
 
 
-def test_wait_floor_env_extends_the_ceiling(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+def test_wait_floor_env_extends_the_ceiling(monkeypatch: pytest.MonkeyPatch) -> None:
     """BAJUTSU_MIN_WAIT_TIMEOUT raises a wait's ceiling so a slow renderer has time to present,
     without editing the shared scenario (its `timeout: 5` is the same across every backend)."""
     from bajutsu.orchestrator import _wait
@@ -583,7 +583,7 @@ def test_wait_floor_env_extends_the_ceiling(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_wait_floor_never_shrinks_a_larger_scenario_timeout(
     monkeypatch: pytest.MonkeyPatch,
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     """The floor is a minimum, not an override: a scenario asking for more than the floor keeps it."""
     from bajutsu.orchestrator import _wait
     from bajutsu.scenario import Wait
@@ -597,7 +597,7 @@ def test_wait_floor_never_shrinks_a_larger_scenario_timeout(
     assert reason == ""
 
 
-def test_wait_floor_raises_on_malformed_env(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+def test_wait_floor_raises_on_malformed_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """A malformed BAJUTSU_MIN_WAIT_TIMEOUT (e.g. '15s') must raise ValueError immediately,
     not silently fall back to 0 — a silent fallback would quietly disable the floor and
     reintroduce the very timeout flakiness the env var is meant to prevent."""
@@ -610,7 +610,7 @@ def test_wait_floor_raises_on_malformed_env(monkeypatch: pytest.MonkeyPatch) -> 
         _timeout_floor()
 
 
-def test_wait_floor_clamps_a_negative_env_to_zero(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+def test_wait_floor_clamps_a_negative_env_to_zero(monkeypatch: pytest.MonkeyPatch) -> None:
     """A negative floor is meaningless as a minimum, so it clamps to 0 rather than raising or, worse,
     shrinking a wait below its scenario timeout — a negative `max()` argument would silently shorten
     every wait's ceiling. Distinct from the malformed case above: '-5' parses as a float, so it is a
@@ -1080,7 +1080,7 @@ def test_wait_guard_fires_without_an_alerts_list() -> None:
     assert calls["n"] == 1
 
 
-def test_wait_guard_warns_once_when_it_gives_up(caplog: pytest.LogCaptureFixture) -> None:  # type: ignore[no-untyped-def]
+def test_wait_guard_warns_once_when_it_gives_up(caplog: pytest.LogCaptureFixture) -> None:
     """BE-0269: when the guard exhausts its attempts on a still-collapsed screen, it logs exactly
     once — so the ensuing bare `wait timeout` is not a silent failure that hides the guard having
     stepped in and given up (determinism first, fail loudly)."""

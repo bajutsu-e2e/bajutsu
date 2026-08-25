@@ -50,7 +50,7 @@ class RecordingBackend:
             if self._tool_use is not None
             else []
         )
-        return MessageResponse(content=content)
+        return MessageResponse(content=list(content))
 
 
 @pytest.fixture

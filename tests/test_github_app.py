@@ -124,11 +124,11 @@ def test_installation_token_maps_a_malformed_body() -> None:
 )
 def test_fetch_maps_app_api_errors(
     monkeypatch: pytest.MonkeyPatch, status: int, needle: str
-) -> None:  # type: ignore[no-untyped-def]
+) -> None:
     import urllib.error
     from email.message import Message
 
-    def raise_error(req, timeout):  # type: ignore[no-untyped-def]
+    def raise_error(req, timeout):
         raise urllib.error.HTTPError(req.full_url, status, "err", Message(), None)
 
     monkeypatch.setattr("urllib.request.urlopen", raise_error)

@@ -41,7 +41,7 @@ def test_a_cancel_mid_run_keeps_the_verdicts_already_reached() -> None:
     def cancelled() -> bool:
         return state["cancelled"]
 
-    def lease(eff, scenario):  # type: ignore[no-untyped-def]
+    def lease(eff, scenario):
         lz = _lease(eff, scenario)
         if scenario.name != "a":
             return lz
@@ -107,7 +107,7 @@ def test_a_cancel_stops_backend_crash_recovery_instead_of_leasing_again() -> Non
     state = {"cancelled": False}
     leases = 0
 
-    def lease(eff, scenario):  # type: ignore[no-untyped-def]
+    def lease(eff, scenario):
         nonlocal leases
         leases += 1
         state["cancelled"] = True  # the cancel lands while the scenario is on its device
