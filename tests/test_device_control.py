@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 
 import pytest
 
@@ -12,6 +13,16 @@ from bajutsu.orchestrator import AlertGuardConfig, run_scenario
 from bajutsu.scenario import Foreground, Push, Scenario, SetClipboard, SetLocation, Step
 
 # --- pure command builders ---
+
+
+def _recorder(calls: list[list[str]]) -> simctl.RunFn:
+    """A `simctl` RunFn that records each argv and returns empty output."""
+
+    def run(argv: list[str], extra_env: Mapping[str, str] | None = None) -> str:
+        calls.append(argv)
+        return ""
+
+    return run
 
 
 def test_location_and_push_command_builders() -> None:
@@ -52,7 +63,7 @@ def test_env_push_writes_payload_and_runs() -> None:
 
 def test_env_set_location_runs_command() -> None:
     calls: list[list[str]] = []
-    simctl.Env("U", run=lambda a, _e=None: calls.append(a) or "").set_location(1.0, 2.0)
+    simctl.Env("U", run=_recorder(calls)).set_location(1.0, 2.0)
     assert calls == [["xcrun", "simctl", "location", "U", "set", "1.0,2.0"]]
 
 
@@ -63,7 +74,7 @@ def test_foreground_command_builder() -> None:
 
 def test_env_foreground_runs_command() -> None:
     calls: list[list[str]] = []
-    simctl.Env("U", run=lambda a, _e=None: calls.append(a) or "").foreground("com.demo")
+    simctl.Env("U", run=_recorder(calls)).foreground("com.demo")
     assert calls == [["xcrun", "simctl", "launch", "U", "com.demo"]]
 
 
@@ -96,7 +107,7 @@ def test_privacy_command_builder() -> None:
 
 def test_env_apply_permissions_runs_privacy_per_entry() -> None:
     calls: list[list[str]] = []
-    simctl.Env("U", run=lambda a, _e=None: calls.append(a) or "").apply_permissions(
+    simctl.Env("U", run=_recorder(calls)).apply_permissions(
         "com.demo", {"camera": "grant", "location": "revoke"}
     )
     assert calls == [
@@ -109,7 +120,7 @@ def test_env_apply_permissions_fails_clean_on_notifications() -> None:
     # No TCC service backs iOS notification authorization; preflight rejects this per-service
     # before any device work, but the Env method is the runtime backstop.
     with pytest.raises(simctl.DeviceError, match="notifications"):
-        simctl.Env("U", run=lambda a, _e=None: "").apply_permissions(
+        simctl.Env("U", run=lambda a, _e: "").apply_permissions(
             "com.demo", {"notifications": "grant"}
         )
 
@@ -119,7 +130,7 @@ def test_env_apply_permissions_validates_before_touching_the_device() -> None:
     # never partway through, leaving some services already mutated (BE-0276).
     calls: list[list[str]] = []
     with pytest.raises(simctl.DeviceError, match="notifications"):
-        simctl.Env("U", run=lambda a, _e=None: calls.append(a) or "").apply_permissions(
+        simctl.Env("U", run=_recorder(calls)).apply_permissions(
             "com.demo", {"camera": "grant", "notifications": "grant"}
         )
     assert calls == []
@@ -131,7 +142,7 @@ def test_env_apply_permissions_validates_action_before_touching_the_device() -> 
     # mutated ahead of a later entry's bad action (BE-0276).
     calls: list[list[str]] = []
     with pytest.raises(simctl.DeviceError, match="unknown simctl privacy action"):
-        simctl.Env("U", run=lambda a, _e=None: calls.append(a) or "").apply_permissions(
+        simctl.Env("U", run=_recorder(calls)).apply_permissions(
             "com.demo", {"camera": "grant", "microphone": "bogus"}
         )
     assert calls == []

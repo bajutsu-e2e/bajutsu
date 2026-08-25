@@ -16,7 +16,7 @@ from pathlib import Path
 import ondevice_evidence
 import pytest
 
-from bajutsu.drivers import adb
+from bajutsu import adb
 from bajutsu.evidence import intervals
 
 # The inner conftest registers the real plugin, the same way the real on-device suites' own
@@ -55,6 +55,9 @@ def _evidence(request):
 """
 
 _IMPORTS = "import ondevice_evidence\nimport pytest\n\n\n"
+
+
+_SENTINEL = intervals.Interval(kind="video", path=Path("video.mp4"))
 
 
 def test_discards_the_capture_when_the_test_passes(pytester: pytest.Pytester) -> None:
@@ -274,7 +277,7 @@ class _FakeRequest:
 
 
 def test_warns_and_still_yields_when_the_evidence_directory_cannot_be_prepared(
-    caplog, monkeypatch: pytest.MonkeyPatch, tmp_path
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # A stale `runs/<lane>/<slug>` left behind as a *file*, not a directory — `rmtree(ignore_errors=
     # True)` leaves it in place, and `mkdir(exist_ok=True)` then raises `FileExistsError` — must not
@@ -286,7 +289,7 @@ def test_warns_and_still_yields_when_the_evidence_directory_cannot_be_prepared(
     dest.parent.mkdir(parents=True)
     dest.write_text("a stale file standing where the evidence directory belongs")
 
-    def _fail_if_called(serial: str, path: Path):
+    def _fail_if_called(serial: str, path: Path) -> intervals.Interval:
         raise AssertionError("must not be called once directory preparation has failed")
 
     caplog.set_level(logging.WARNING)
@@ -313,12 +316,12 @@ def test_warns_about_a_missing_or_empty_artifact(
     # only needs to inspect the emitted warnings, not a whole inner pytest session.
     monkeypatch.chdir(tmp_path)
 
-    class _NullInterval:
-        def stop(self) -> None:
-            return None
+    class _NullInterval(intervals.Interval):
+        def stop(self) -> Path:
+            return self.path  # nothing ever wrote to it, so the sweep drops it
 
-    def start_records_nothing(serial: str, path: Path) -> _NullInterval:
-        return _NullInterval()  # nothing ever writes to `path`
+    def start_records_nothing(serial: str, path: Path) -> intervals.Interval:
+        return _NullInterval(kind="video", path=path)
 
     gen = ondevice_evidence.capture(
         "fake-serial",
@@ -337,7 +340,7 @@ def test_warns_about_a_missing_or_empty_artifact(
 
 
 def test_warns_about_missing_evidence_even_when_a_stop_failure_reraises(
-    monkeypatch, tmp_path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # The missing/empty check used to be plain trailing code after the stop try/except, so the
     # `raise` on an already-failing attempt jumped straight past it — exactly the path whose
@@ -345,12 +348,12 @@ def test_warns_about_missing_evidence_even_when_a_stop_failure_reraises(
     # Moved into a `finally` so it always runs, including here.
     monkeypatch.chdir(tmp_path)
 
-    class _RaisesOnStop:
-        def stop(self) -> None:
+    class _RaisesOnStop(intervals.Interval):
+        def stop(self) -> Path:
             raise RuntimeError("adb pull failed")
 
-    def start_raises_on_stop(serial: str, path: Path) -> _RaisesOnStop:
-        return _RaisesOnStop()  # never writes to `path`
+    def start_raises_on_stop(serial: str, path: Path) -> intervals.Interval:
+        return _RaisesOnStop(kind="video", path=path)  # never writes to `path`
 
     request = _FakeRequest("fake::test")
     request.node.stash[ondevice_evidence._FAILED] = True  # the attempt is already failing
@@ -502,7 +505,7 @@ def test_keeps_evidence_when_a_sibling_fixtures_teardown_fails_after_a_passing_t
 
 
 def test_discards_evidence_once_a_crashed_attempt_recovers_and_passes(
-    monkeypatch, pytester
+    monkeypatch: pytest.MonkeyPatch, pytester: pytest.Pytester
 ) -> None:
     # `backend_crash_recovery` (BE-0334, used by the iOS conformance suite) re-runs a WHOLE item via
     # `_initrequest()` on an infra-fault retry, reusing the same `pytest.Item` — so `item.stash`
@@ -583,15 +586,21 @@ def test_android_screenrecord_forwards_this_modules_pinned_bounds(
     calls = []
 
     def fake_start_screenrecord(
-        serial, path, *, time_limit=None, size=None, bit_rate=None, confirm_started=False
-    ):
+        serial: str,
+        path: Path,
+        *,
+        time_limit: int | None = None,
+        size: str | None = None,
+        bit_rate: int | None = None,
+        confirm_started: bool = False,
+    ) -> intervals.Interval:
         calls.append((serial, path, time_limit, size, bit_rate, confirm_started))
-        return "sentinel"
+        return _SENTINEL
 
     monkeypatch.setattr(intervals, "start_screenrecord", fake_start_screenrecord)
     monkeypatch.setattr(adb, "_real_run", lambda cmd: "")
     result = ondevice_evidence.android_screenrecord("serial-1", Path("video.mp4"))
-    assert result == "sentinel"
+    assert result is _SENTINEL
     assert calls == [
         (
             "serial-1",
@@ -613,12 +622,10 @@ def test_android_screenrecord_clears_the_stale_device_side_file_first(
     # evidence. Clearing it first, before every spawn, is what closes that.
     run_calls = []
     monkeypatch.setattr(adb, "_real_run", lambda cmd: run_calls.append(cmd))
-    monkeypatch.setattr(intervals, "start_screenrecord", lambda *a, **kw: "sentinel")
+    monkeypatch.setattr(intervals, "start_screenrecord", lambda *a, **kw: _SENTINEL)
     result = ondevice_evidence.android_screenrecord("serial-1", Path("video.mp4"))
-    assert result == "sentinel"
-    assert run_calls == [
-        ondevice_evidence.adb.rm_cmd("serial-1", ondevice_evidence.adb.VIDEO_DEVICE_PATH)
-    ]
+    assert result is _SENTINEL
+    assert run_calls == [adb.rm_cmd("serial-1", adb.VIDEO_DEVICE_PATH)]
 
 
 def test_android_screenrecord_tolerates_a_failed_device_side_clear(
@@ -631,24 +638,26 @@ def test_android_screenrecord_tolerates_a_failed_device_side_clear(
         raise subprocess.CalledProcessError(1, cmd)
 
     monkeypatch.setattr(adb, "_real_run", _raises)
-    monkeypatch.setattr(intervals, "start_screenrecord", lambda *a, **kw: "sentinel")
+    monkeypatch.setattr(intervals, "start_screenrecord", lambda *a, **kw: _SENTINEL)
     result = ondevice_evidence.android_screenrecord("serial-1", Path("video.mp4"))
-    assert result == "sentinel"
+    assert result is _SENTINEL
 
 
 def test_xcuitest_video_confirms_it_actually_started(monkeypatch: pytest.MonkeyPatch) -> None:
     # A bare spawn only proves the process started, not that it wrote a frame yet — a fast failing
     # case can tear down before it does, shipping an absent or unplayable mp4 for exactly the
     # failure this module's evidence exists to explain.
-    calls = []
+    calls: list[tuple[str, Path, bool]] = []
 
-    def fake_start_video(udid, path, *, confirm_started=False):
+    def fake_start_video(
+        udid: str, path: Path, *, confirm_started: bool = False
+    ) -> intervals.Interval:
         calls.append((udid, path, confirm_started))
-        return "sentinel"
+        return _SENTINEL
 
     monkeypatch.setattr(intervals, "start_video", fake_start_video)
     result = ondevice_evidence.xcuitest_video("udid-1", Path("video.mp4"))
-    assert result == "sentinel"
+    assert result is _SENTINEL
     assert calls == [("udid-1", Path("video.mp4"), True)]
 
 
