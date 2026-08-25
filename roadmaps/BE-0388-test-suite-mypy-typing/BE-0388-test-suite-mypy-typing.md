@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0388") |
-| Implementing PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760), [#1763](https://github.com/bajutsu-e2e/bajutsu/pull/1763), [#PR3](https://github.com/bajutsu-e2e/bajutsu/pull/PR3) |
+| Implementing PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760), [#1763](https://github.com/bajutsu-e2e/bajutsu/pull/1763), [#1766](https://github.com/bajutsu-e2e/bajutsu/pull/1766) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -178,7 +178,7 @@ The pydantic-plugin question stays out of this item's scope; see *Alternatives c
   `list[ExcludeRegion | SelectorRegion]` and read `.w`, a field only `ExcludeRegion` carries, and
   now asserts that variant before reading it.
 - Cleared `tests/serve/` — 196 findings, leaving 880 in the flat files under `tests/`
-  ([#PR3](https://github.com/bajutsu-e2e/bajutsu/pull/PR3)). The directory's dominant shape was a
+  ([#1766](https://github.com/bajutsu-e2e/bajutsu/pull/1766)). The directory's dominant shape was a
   partial fake of a seam protocol, redefined once per file: nine near-identical in-memory
   `ObjectStore` fakes, each implementing a different four or five of the protocol's nine methods.
   `tests/serve/_shared.py`'s `FakeObjectStore` now implements the whole protocol, and the nine
