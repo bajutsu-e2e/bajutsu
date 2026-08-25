@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Implementing PR | TBD (filled in once the PR exists) |
+| Implementing PR | [#1742](https://github.com/bajutsu-e2e/bajutsu/pull/1742) |
 | Topic | Platform support |
 | Related | [BE-0037](../BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md), [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) |
 <!-- /BE-METADATA -->
