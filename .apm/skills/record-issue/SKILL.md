@@ -88,20 +88,23 @@ and `## Introduction` excerpt of every item, across all five statuses:
 make roadmap-find ARGS="--grep <keyword>"
 ```
 
-That pass reaches `Deferred` and `Rejected` items too, so the skill never files an issue for a
-finding the roadmap already parked or decided against. A title-and-introduction match is still a
-coarse filter — an item usually covers a small finding in its `Detailed design` — so when the pass
-returns nothing, fall back to the open statuses and grep their item files, named by the table's
-`Path` column, for the same keywords:
+A title-and-introduction match is a coarse filter, and an item usually covers a small finding in its
+`Detailed design`, so when that pass returns nothing, grep the item files themselves (a `-ja.md` hit
+names the same item as its English sibling):
 
 ```bash
-make roadmap-status STATUS="Proposal"
-make roadmap-status STATUS="In progress"
+grep -ril "<keyword>" roadmaps/
 ```
 
-Keep the fallback second, not first: close to 400 items live under `roadmaps/`, and their files run
-past 127,000 lines, so grepping them is the expensive pass — and inside `implement-be`'s hands-free
-loop it would repeat once per finding per iteration.
+Keep the grep second, not first: close to 400 items live under `roadmaps/`, and their files run past
+127,000 lines, so grepping them is the expensive pass — and inside `implement-be`'s hands-free loop
+it would repeat once per finding per iteration.
+
+Both passes cover **all five statuses**, `Deferred` and `Rejected` included — the two a
+status-scoped survey would miss, and the two that matter most here: an item the roadmap deliberately
+parked, or decided against with no condition expected to reopen it, is the last thing to re-file as
+an issue. Neither pass proves absence, though. A keyword search finds only the wording it was given,
+so a hit is a reason to stop and ask the invoker, and a miss is not a licence to skip that judgment.
 
 Two choices come out of this step, and the invoker makes both:
 
@@ -152,14 +155,17 @@ not only the first time a session uses the skill, and no calling skill may waive
 
 ### 5. Create and report
 
-On approval, file the new issue:
+On approval, write the drafted body to `tmp/record-issue-body.md` — gitignored, and overwritten
+fresh for each finding, so a stale body from an earlier finding can never be filed — then file the
+new issue:
 
 ```bash
 gh issue create --title "<title>" --body-file tmp/record-issue-body.md --label <label>
 ```
 
-Or, for a comment on the match step 2 picked, post the comment and add the label only when step 4
-approved one:
+Or, for a comment on the match step 2 picked, write the drafted comment body to
+`tmp/record-issue-comment.md` the same way, post it, and add the label only when step 4 approved
+one:
 
 ```bash
 gh issue comment <number> --body-file tmp/record-issue-comment.md
@@ -178,7 +184,9 @@ is the case that matters. There the skill **files nothing and stalls nothing**: 
 draft and returns the draft in the **pending-draft** field of that iteration's structured summary.
 A step 1 escalation takes the same route rather than ending the finding: a finding too substantial
 for an issue returns as a pending draft marked for `ideation` or `propose-and-build`, so the
-classification's one judgment call never costs the whole finding.
+classification's one judgment call never costs the whole finding. That entry carries no issue
+draft, so it is **not a resumable invocation**: approving it starts `ideation` or
+`propose-and-build` on the finding, and never re-enters this skill at step 5.
 
 Entering step 5 from a resumed invocation is not a skip of step 4's gate. The confirmation already
 ran, on the attended turn where the human approved the exact draft the loop's report showed, so

@@ -105,14 +105,16 @@ exclusion also removes the only signal that a BE item already covers the finding
 checks the roadmap itself, cheap pass first. The cheap pass is the keyword lookup
 [`roadmap-filter`](../../.apm/skills/roadmap-filter/SKILL.md) exists for, `make roadmap-find
 ARGS="--grep <keyword>"`, which matches the id, title, `Topic`, and `## Introduction` excerpt of
-every item in one run, across all five statuses — reaching the `Deferred` and `Rejected` items a
-status-scoped survey would miss, so the skill never files an issue for a finding the roadmap already
-parked or decided against. A title-and-introduction match is still coarse, since an item's coverage
-of a small finding usually lives in its `Detailed design`, so when the cheap pass returns nothing,
-fall back to the open statuses (`make roadmap-status STATUS="Proposal"`, then `"In progress"`) and
-grep every returned item's file (the `Path` column names it) for the same keywords. The fallback
-stays second because it is the expensive pass — close to 400 items, past 127,000 lines — and inside
-the hands-free loop it would otherwise repeat once per finding per iteration. On a hit,
+every item in one run, across all five statuses. A title-and-introduction match is still coarse,
+since an item's coverage of a small finding usually lives in its `Detailed design`, so when the
+cheap pass returns nothing, grep the item files themselves (`grep -ril "<keyword>" roadmaps/`). The
+grep stays second because it is the expensive pass — close to 400 items, past 127,000 lines — and
+inside the hands-free loop it would otherwise repeat once per finding per iteration. Both passes
+span all five statuses, `Deferred` and `Rejected` included: an item the roadmap deliberately parked,
+or decided against with no condition expected to reopen it, is the last thing to re-file as an
+issue, and a status-scoped survey is exactly what would miss it. Neither pass proves absence,
+though — a keyword search finds only the wording it was given — so a miss never substitutes for the
+invoker's judgment. On a hit,
 title or body, show the invoker that item and ask whether to stop there instead of drafting
 anything — when the item already covers the finding, an issue would only duplicate it — or to
 proceed anyway: a keyword match, in a title or an item's body, is not proof of coverage, and only
@@ -175,6 +177,8 @@ unattended: the skill drafts for a new issue and carries every candidate it foun
 and any roadmap-filter hit — beside the draft, so the human decides whether to approve it, comment
 on a candidate by hand instead, or discard the finding. Approval of the drafted issue resumes the
 skill directly at step 5 against the draft the human actually saw, rather than re-drafting it. A
+step 1 escalation entry carries no issue draft, so it is not resumable at all: approving it starts
+`ideation` or `propose-and-build` on the finding, never a re-entry at step 5. A
 pending draft
 is deliberately not an escalation: every entry in BE-0230's escalation list stops the loop and
 hands the PR to the human, which an incidental out-of-scope note should never do to an
