@@ -437,7 +437,7 @@ def test_a_pinned_accessibility_read_cannot_spend_a_whole_wait() -> None:
     # recovering nothing, which is precisely what device.wait() already did.
     assert (
         body.index("while (true) {")
-        < body.index("poll(remaining.coerceAtMost(CACHE_REREAD_SLICE_MS))")
+        < body.index("poll(remaining.coerceIn(0L, CACHE_REREAD_SLICE_MS))")
         < body.index("clearAccessibilityCache()")
     )
     # The slices share the caller's one timeout rather than extending it: a deadline taken once up
@@ -445,8 +445,25 @@ def test_a_pinned_accessibility_read_cannot_spend_a_whole_wait() -> None:
     # silently multiply every wait in the file by however many slices it took.
     assert "val deadline = SystemClock.uptimeMillis() + timeoutMs" in body
     assert "val remaining = deadline - SystemClock.uptimeMillis()" in body
-    assert "if (remaining <= 0L) return false" in body
     assert "import android.os.SystemClock" in code
+
+
+def test_a_zero_timeout_still_reads_the_tree_once() -> None:
+    # `device.wait` evaluates its condition once before it consults the clock, so `device.wait(c, 0)`
+    # can still pass — and the pre-34 branch, which calls it with the whole budget, keeps that floor.
+    # Testing the deadline before the first poll would drop it on API 34 and up, failing such a step
+    # against a screen it never looked at while the same scenario passed on an older device.
+    code = _gen("- name: x\n  steps:\n    - wait: { for: { id: a }, timeout: 0 }\n")
+    # Reachable, not hypothetical: `Wait.timeout` is an unconstrained float and `ms()` truncates, so
+    # `timeout: 0` — and anything under a millisecond — emits a 0ms budget.
+    assert 'awaitPresent(byId("a"), 0L)' in code
+    body = _fn_body(code, "waitSliced", "waitPresent")
+    lines = [ln.strip() for ln in body.splitlines() if not ln.lstrip().startswith("//")]
+    poll_idx = lines.index("if (poll(remaining.coerceIn(0L, CACHE_REREAD_SLICE_MS))) return true")
+    assert poll_idx < lines.index("if (SystemClock.uptimeMillis() >= deadline) return false")
+    # The expiry test re-reads the clock rather than reusing `remaining`, so a slice that spent the
+    # rest of the budget ends the wait instead of paying one more cache drop and an empty poll.
+    assert "if (remaining <= 0L) return false" not in body
 
 
 def test_the_cache_drop_is_confined_to_the_api_that_offers_one() -> None:
@@ -488,6 +505,15 @@ def test_every_condition_wait_goes_through_the_sliced_helpers() -> None:
     assert "waitSliced(timeoutMs) { device.wait(Until.gone(by), it) }" in emitted
     assert "if (waitPresent(by, LAUNCH_TIMEOUT_MS)) {" in emitted
     assert "if (!waitPresent(by, ACT_TIMEOUT_MS)) {" in emitted
+    # …and each throwing wrapper reaches the helper that matches its own condition. Pointing
+    # awaitGone at waitPresent would keep the count at two, keep both failure messages intact, and
+    # satisfy every assertion above — while making the gone wait succeed on its first poll against
+    # the very element it wants gone. In codegen_android.yaml that wait is the only synchronization
+    # after `type`, so the result would be an intermittently red `uiautomator (codegen)` job: the
+    # exact failure this file's slicing exists to remove, and one the fast gate is the only cheap
+    # place to catch, since `make check` never compiles the Kotlin.
+    assert "if (waitPresent(by, timeoutMs)) return" in _fn_body(code, "awaitPresent", "awaitGone")
+    assert "if (waitGone(by, timeoutMs)) return" in emitted
 
 
 def test_a_wait_step_fails_naming_what_it_searched_for() -> None:

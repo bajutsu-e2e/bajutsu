@@ -341,9 +341,18 @@ class CodegenandroiduitestUITest {
     }
     val deadline = SystemClock.uptimeMillis() + timeoutMs
     while (true) {
+      // Poll first, then test the deadline. device.wait evaluates its condition once before
+      // consulting the clock, so a 0ms budget still reads the tree there — and a scenario can
+      // ask for one, since `timeout` is an unconstrained float that `ms()` truncates. Testing
+      // the deadline first would fail such a step against a screen it never looked at on API
+      // 34 while the branch above still passed it, splitting one scenario's verdict by API
+      // level. Costs a read, never a sleep, so this stays a condition wait.
       val remaining = deadline - SystemClock.uptimeMillis()
-      if (remaining <= 0L) return false
-      if (poll(remaining.coerceAtMost(CACHE_REREAD_SLICE_MS))) return true
+      if (poll(remaining.coerceIn(0L, CACHE_REREAD_SLICE_MS))) return true
+      // Re-read the clock rather than reusing `remaining`: the poll just spent part of the
+      // budget, and a slice that consumed the rest must end the wait here instead of paying
+      // one more cache drop and an empty final poll.
+      if (SystemClock.uptimeMillis() >= deadline) return false
       clearAccessibilityCache()
     }
   }

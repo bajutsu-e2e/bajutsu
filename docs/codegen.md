@@ -405,9 +405,10 @@ class ComponentsUITest {
     }
     val deadline = SystemClock.uptimeMillis() + timeoutMs
     while (true) {
+      // Poll before testing the deadline, so a 0ms budget still reads the tree once
       val remaining = deadline - SystemClock.uptimeMillis()
-      if (remaining <= 0L) return false
-      if (poll(remaining.coerceAtMost(CACHE_REREAD_SLICE_MS))) return true
+      if (poll(remaining.coerceIn(0L, CACHE_REREAD_SLICE_MS))) return true
+      if (SystemClock.uptimeMillis() >= deadline) return false
       clearAccessibilityCache()
     }
   }
@@ -481,7 +482,8 @@ class ComponentsUITest {
   on its own, the same shape as the wedged window list above. `waitSliced` therefore caps each
   `device.wait` at `CACHE_REREAD_SLICE_MS` and calls `clearAccessibilityCache` between slices. The
   slices share the caller's single timeout rather than extending it, and a slice returns the instant
-  its condition holds, so a healthy wait finishes exactly when it did before and pays only a couple
+  its condition holds — and each slice polls before testing the deadline, so a `timeout: 0` step
+  still reads the tree once, as `device.wait(condition, 0)` does on its own, so a healthy wait finishes exactly when it did before and pays only a couple
   of cache drops per second — this stays a condition wait, never a fixed sleep.
 
   The cache drop is confined to API 34 and up, because that is where the lever exists.

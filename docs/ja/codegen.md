@@ -399,9 +399,10 @@ class ComponentsUITest {
     }
     val deadline = SystemClock.uptimeMillis() + timeoutMs
     while (true) {
+      // 先に読み、そのあとで期限を見ます。待機時間が 0 ミリ秒でも 1 回は木を読むためです
       val remaining = deadline - SystemClock.uptimeMillis()
-      if (remaining <= 0L) return false
-      if (poll(remaining.coerceAtMost(CACHE_REREAD_SLICE_MS))) return true
+      if (poll(remaining.coerceIn(0L, CACHE_REREAD_SLICE_MS))) return true
+      if (SystemClock.uptimeMillis() >= deadline) return false
       clearAccessibilityCache()
     }
   }
@@ -472,6 +473,8 @@ class ComponentsUITest {
   変わらない読み取りは、待機時間を延ばしても回復しません。上のウィンドウ一覧が詰まる場合と同じ形です。
   そこで `waitSliced` は 1 回の `device.wait` を `CACHE_REREAD_SLICE_MS` で区切り、区切りの合間に
   `clearAccessibilityCache` を呼びます。区切りは呼び出し側の待機時間を分け合うだけで、延長はしません。
+  各区切りは、期限を見る前にまず読みます。`timeout: 0` のステップでも木を 1 回は読むためです。
+  `device.wait(condition, 0)` 自体も、そのように振る舞います。
   条件が成立した瞬間に返るので、健全な待機の所要時間はこれまでと変わりません。増える費用は毎秒数回の
   キャッシュ破棄だけです。固定スリープではなく、あくまで条件待機のままです。
 
