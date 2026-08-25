@@ -503,7 +503,7 @@ def test_run_pbcopy_retries_transient_timeout(monkeypatch: pytest.MonkeyPatch) -
 
     slept: list[float] = []
     monkeypatch.setattr(simctl.subprocess, "run", flaky_run)
-    monkeypatch.setattr(simctl.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(simctl.time, "sleep", slept.append)
 
     simctl.Env("UDID").set_clipboard("x")  # succeeds on the third attempt, no raise
 
@@ -558,7 +558,7 @@ def test_run_pbcopy_fast_fails_non_transient_error(monkeypatch: pytest.MonkeyPat
 
     slept: list[float] = []
     monkeypatch.setattr(simctl.subprocess, "run", bad_device)
-    monkeypatch.setattr(simctl.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(simctl.time, "sleep", slept.append)
 
     with pytest.raises(subprocess.CalledProcessError):
         simctl.Env("UDID").set_clipboard("x")

@@ -285,7 +285,7 @@ _ACTIVE_PRICING: PricingTable = {}
 
 def configure(ledger: JsonlLedger | None, pricing: PricingTable) -> None:
     """Install the active ledger sink and pricing table for this process."""
-    global _ACTIVE_LEDGER, _ACTIVE_PRICING
+    global _ACTIVE_LEDGER, _ACTIVE_PRICING  # noqa: PLW0603  # the process-wide sink is the point
     _ACTIVE_LEDGER = ledger
     _ACTIVE_PRICING = pricing
 
@@ -296,7 +296,7 @@ def reset() -> None:
     Clears the attribution too so `bind_command` (which sets the contextvar without a scope, for a
     one-shot CLI process) cannot leak a binding from one test into the next in the same worker.
     """
-    global _ACTIVE_LEDGER, _ACTIVE_PRICING
+    global _ACTIVE_LEDGER, _ACTIVE_PRICING  # noqa: PLW0603  # detaches what `configure` installed
     _ACTIVE_LEDGER = None
     _ACTIVE_PRICING = {}
     _ATTRIBUTION.set(None)

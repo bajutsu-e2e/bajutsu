@@ -60,6 +60,7 @@ def _ant_token_result() -> tuple[int, str, str]:
         capture_output=True,
         text=True,
         timeout=30,
+        check=False,
     )
     return result.returncode, result.stdout.strip(), result.stderr.strip()
 

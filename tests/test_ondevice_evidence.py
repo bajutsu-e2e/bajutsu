@@ -603,7 +603,7 @@ def test_android_screenrecord_clears_the_stale_device_side_file_first(monkeypatc
     # left behind by a swallowed pull failure could otherwise be pulled in as this test's own
     # evidence. Clearing it first, before every spawn, is what closes that.
     run_calls = []
-    monkeypatch.setattr(ondevice_evidence.adb, "real_run", lambda cmd: run_calls.append(cmd))
+    monkeypatch.setattr(ondevice_evidence.adb, "real_run", run_calls.append)
     monkeypatch.setattr(intervals, "start_screenrecord", lambda *a, **kw: "sentinel")
     result = ondevice_evidence.android_screenrecord("serial-1", Path("video.mp4"))
     assert result == "sentinel"

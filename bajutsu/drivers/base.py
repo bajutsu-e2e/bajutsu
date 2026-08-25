@@ -660,7 +660,7 @@ def _id_index(elements: list[Element]) -> dict[str | None, list[Element]]:
     Multiple ``find_all`` calls on the same query() result (e.g. a multi-assertion step)
     share a single O(n) build and then do O(1) lookups.
     """
-    global _cached_index
+    global _cached_index  # noqa: PLW0603  # the single-entry memo is module state by design
     if _cached_index is not None and _cached_index[0] == id(elements):
         return _cached_index[2]
     idx: dict[str | None, list[Element]] = {}

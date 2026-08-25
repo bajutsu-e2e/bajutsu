@@ -107,7 +107,7 @@ def _runner_pids() -> list[str]:
     other status means the search itself broke, and reporting that as "no runner" would send the reader
     hunting for a dead lease instead of a broken command.
     """
-    found = subprocess.run(["pgrep", "-fl", UDID], capture_output=True, text=True)
+    found = subprocess.run(["pgrep", "-fl", UDID], capture_output=True, text=True, check=False)
     if found.returncode not in (0, 1):
         pytest.fail(f"pgrep failed ({found.returncode}): {found.stderr.strip()}")
     return [

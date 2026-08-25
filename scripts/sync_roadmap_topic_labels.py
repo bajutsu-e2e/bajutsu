@@ -300,7 +300,7 @@ def git_show(base_sha: str, path: str) -> str | None:
     if not base_sha:
         return None
     result = subprocess.run(
-        ["git", "show", f"{base_sha}:{path}"], capture_output=True, encoding="utf-8"
+        ["git", "show", f"{base_sha}:{path}"], capture_output=True, encoding="utf-8", check=False
     )
     return result.stdout if result.returncode == 0 else None
 

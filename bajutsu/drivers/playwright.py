@@ -199,7 +199,7 @@ _UNIT = "cssPixel"
 
 
 def _playwright_error_types() -> tuple[type[BaseException], ...]:
-    global _PW_ERRORS
+    global _PW_ERRORS  # noqa: PLW0603  # memoizes the optional import once per process
     if _PW_ERRORS is None:
         try:
             from playwright.sync_api import Error

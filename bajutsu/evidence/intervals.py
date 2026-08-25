@@ -671,8 +671,8 @@ def parse_app_trace(ndjson_text: str) -> list[dict[str, object]]:
     """Pair '<name> started' / '<name> finished' log lines into timed intervals."""
     begins: dict[str, datetime] = {}
     out: list[dict[str, object]] = []
-    for line in ndjson_text.splitlines():
-        line = line.strip()
+    for raw in ndjson_text.splitlines():
+        line = raw.strip()
         if not line:
             continue
         try:

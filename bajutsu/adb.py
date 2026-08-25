@@ -793,8 +793,8 @@ def parse_clipboard_result(out: str) -> str:
 def _parse_devices(text: str) -> list[str]:
     """Serials in the `device` state from `adb devices` output (offline/unauthorized excluded)."""
     serials: list[str] = []
-    for line in text.splitlines():
-        line = line.strip()
+    for raw in text.splitlines():
+        line = raw.strip()
         if not line or line.startswith("List of devices"):
             continue
         parts = line.split()
@@ -955,8 +955,8 @@ class Env:
                 launcher intent) — surfaced cleanly rather than launching an empty component.
         """
         out = self._run(resolve_activity_cmd(self.serial, package))
-        for line in reversed(out.splitlines()):
-            line = line.strip()
+        for raw in reversed(out.splitlines()):
+            line = raw.strip()
             # A launcher component is `<package>/<activity>`: a `/` with a non-empty left side and
             # no spaces. Requiring a non-empty left side rejects a stray absolute path (`/data/…`)
             # in the manager's chatter that would otherwise be launched as a bogus component.

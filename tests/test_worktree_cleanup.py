@@ -106,6 +106,7 @@ def _run(
         text=True,
         env=env if env is not None else _clean_env(),
         cwd=str(cwd) if cwd is not None else None,
+        check=False,
     )
 
 

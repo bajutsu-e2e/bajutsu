@@ -297,6 +297,7 @@ def _default_runner(
             cwd=cwd,
             env=_child_env(),
             timeout=timeout,
+            check=False,
         )
     except FileNotFoundError as exc:
         raise RuntimeError(

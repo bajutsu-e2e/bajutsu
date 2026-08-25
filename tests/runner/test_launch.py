@@ -292,7 +292,7 @@ def test_await_ready_returns_immediately_when_already_ready() -> None:
     from bajutsu.drivers import base as base_mod
 
     orig_sleep = base_mod.time.sleep
-    base_mod.time.sleep = lambda s: sleeps.append(s)
+    base_mod.time.sleep = sleeps.append
     try:
         await_ready(ReadyDriver())  # type: ignore[arg-type]
     finally:
