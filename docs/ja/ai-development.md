@@ -307,6 +307,11 @@ Claude Codeのハーネスはスキル実行時にこれを読み、正しいモ
 - [`document-writing`](../../.claude/skills/document-writing/SKILL.md)：`sonnet`（中）
 - [`english-document-writing`](../../.claude/skills/english-document-writing/SKILL.md)：`sonnet`（中）
 - [`japanese-document-writing`](../../.claude/skills/japanese-document-writing/SKILL.md)：`sonnet`（中）
+- [`record-issue`](../../.claude/skills/record-issue/SKILL.md)：`sonnet`（中）。軽微な気づきをGitHub Issueと
+  して起票するスキルです
+  （[BE-0384](../../roadmaps/BE-0384-record-issue-skill/BE-0384-record-issue-skill-ja.md)）。気づきの分類、
+  重複検索で挙がった候補の見極め、Issueテンプレートに沿った本文の下書きは、いずれも文章の判断なので
+  軽段階では力不足です。一方でプロダクトコードは 1 行も書かないので、重段階は無駄になります。
 - [`roadmap-filter`](../../.claude/skills/roadmap-filter/SKILL.md)：`haiku`（軽）。`Status` で
   ロードマップを見渡す読み取り専用のスキルです（BE-0162）。`make roadmap-status STATUS="…"` を包み、
   ある状態の項目だけ（たとえば未着手の `Proposal` すべて）を、次に開くファイルパス付きで一覧します。
@@ -407,6 +412,20 @@ Assignee欄で確保し、Issueを閉じるのは `Status` の切り替えでは
 ロードマップ項目に
 するかどうかの境界も `fix-issue` 自身が判断し、設計の判断が必要だとわかった修正は、出荷せずに
 `ideation` か `propose-and-build` へ委ねます。
+
+**まだIssueにもなっていない気づき**には、その一歩手前の入口として
+[`record-issue`](../../.apm/skills/record-issue/SKILL.md) があります
+（[BE-0384](../../roadmaps/BE-0384-record-issue-skill/BE-0384-record-issue-skill-ja.md)）。このスキルが
+やるのは起票だけです。軽微な不具合や範囲の定まった小さな改善を分類し、既存のIssueとロードマップに重複が
+ないかを検索します。そのうえでリポジトリ自身のIssueテンプレートに沿って本文を下書きし、起票者が明示的に
+承認してからIssueを作ります。修正は出荷せず、ブランチも切りません。`record-issue` が起票したIssueは、のちに
+`task-select` が候補として並べ、`fix-issue` が出荷します。つまり 3 つのスキルが、作業の合間の気づきを
+マージされた修正まで運びます。取りこぼすことも、目の前の変更を膨らませることもありません。`record-issue` はどのスキルからでも
+サブステップとして呼べます。現在配線されている呼び出し元は
+[`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) で、承認の手順はどの呼び出し元も省けません。
+`implement-be` の無人ループのなかでこの呼び出しが起きたときは、`record-issue` は何も起票せず、できあがった
+下書きをそのイテレーションのサマリーに返します。下書きを置く欄はエスカレーションの欄と別なのでループは
+止まらず、人間はあとのターンで下書きを承認します。
 
 ## プルリクエスト: タイトルと本文
 

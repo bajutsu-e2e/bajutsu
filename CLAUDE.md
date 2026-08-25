@@ -138,7 +138,11 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   (BE-0069) does this and runs the gate, then prints the "definition of done" reminder — the
   advisory, run-it-early version of the pre-push gate.
 - **Stay in your lane.** Touch only the files your task needs. If a change must cut across many
-  modules (e.g. a driver-API change), say so up front so others can avoid that surface.
+  modules (e.g. a driver-API change), say so up front so others can avoid that surface. A minor
+  defect or small improvement you notice *outside* that lane goes to
+  [`record-issue`](.apm/skills/record-issue/SKILL.md) (BE-0384), which files it as a GitHub Issue
+  once you approve the draft — so the finding outlives the session without widening the change in
+  hand.
 - **Isolate concurrent sessions with worktrees.** Run each session in its own
   `git worktree` + branch so two agents never edit the same checkout. Outside Claude Code, create
   that worktree with `make worktree TOPIC=<topic>` (BE-0069). Pass `PREFIX=<user>` for a human

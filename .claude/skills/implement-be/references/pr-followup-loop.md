@@ -30,6 +30,21 @@ When all three hold, **report that the PR is quiet-and-green, and stop — do no
 confirms no subtle concern was left unaddressed, and marks it ready. "Hands-free" covers the
 mechanical tail (CI fixes, replies), not the merge decision or a rebase.
 
+## Carry every pending draft into the final report
+
+An iteration's summary may carry a **pending draft** — a GitHub Issue that
+[`record-issue`](../../../../.apm/skills/record-issue/SKILL.md) drafted for an out-of-scope finding but could not
+file, because no human was in the turn to approve it
+([BE-0384](../../../../roadmaps/BE-0384-record-issue-skill/BE-0384-record-issue-skill.md)). A
+pending draft is **not** an escalation and never stops the loop. The loop only collects it.
+
+Collect the drafts as the iterations return them, and carry every one into the loop's own final
+report, **deduplicated against the drafts earlier iterations already returned**. Each iteration is a
+fresh subagent that re-notices the same finding, so the same draft arrives again and again. The
+report therefore holds one entry per finding rather than one per iteration, and a draft returned
+early in a long run still reaches the human. Approving one resumes `record-issue` at its step 5
+against the draft the human actually saw, rather than re-drafting the issue.
+
 ## Escalate (stop and hand to the human) on any of
 
 - a `pr-followup` comment that needs a **design or spec change** (its existing, unchanged
