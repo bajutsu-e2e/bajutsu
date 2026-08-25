@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0388") |
-| Implementing PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760), [#1763](https://github.com/bajutsu-e2e/bajutsu/pull/1763), [#1766](https://github.com/bajutsu-e2e/bajutsu/pull/1766), [#PR4](https://github.com/bajutsu-e2e/bajutsu/pull/PR4) |
+| Implementing PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760), [#1763](https://github.com/bajutsu-e2e/bajutsu/pull/1763), [#1766](https://github.com/bajutsu-e2e/bajutsu/pull/1766), [#1768](https://github.com/bajutsu-e2e/bajutsu/pull/1768) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -194,7 +194,7 @@ The pydantic-plugin question stays out of this item's scope; see *Alternatives c
   kind of drift review did not catch and this item's baseline did.
 - Cleared the 880 findings in the flat files under `tests/`, swept the 164 `# type: ignore` comments
   the clean-up left stale, and folded the run into `typecheck`, which now covers `tests` on every
-  `make check` and every CI run ([#PR4](https://github.com/bajutsu-e2e/bajutsu/pull/PR4)). The item
+  `make check` and every CI run ([#1768](https://github.com/bajutsu-e2e/bajutsu/pull/1768)). The item
   is complete: `mypy --allow-untyped-defs tests` reports zero findings across 372 source files, and
   the suite's 6,610 tests pass unchanged.
 

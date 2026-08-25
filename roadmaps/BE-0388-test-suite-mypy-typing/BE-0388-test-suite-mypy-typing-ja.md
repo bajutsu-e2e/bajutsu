@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0388") |
-| 実装 PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760)、[#1763](https://github.com/bajutsu-e2e/bajutsu/pull/1763)、[#1766](https://github.com/bajutsu-e2e/bajutsu/pull/1766)、[#PR4](https://github.com/bajutsu-e2e/bajutsu/pull/PR4) |
+| 実装 PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760)、[#1763](https://github.com/bajutsu-e2e/bajutsu/pull/1763)、[#1766](https://github.com/bajutsu-e2e/bajutsu/pull/1766)、[#1768](https://github.com/bajutsu-e2e/bajutsu/pull/1768) |
 | トピック | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -198,7 +198,7 @@ pydantic プラグインをどうするかは、本項目の範囲には含め�
   ため何も失敗しておらず、レビューでは捕まらず本項目のベースラインが捕まえたずれです。
 - `tests/` 直下のフラットなファイル群の880件を解消し、その過程で古くなった164件の
   `# type: ignore` を一掃し、実行を `typecheck` へ統合しました。`make check` と CI の毎回の実行が
-  `tests` を含むようになっています（[#PR4](https://github.com/bajutsu-e2e/bajutsu/pull/PR4)）。
+  `tests` を含むようになっています（[#1768](https://github.com/bajutsu-e2e/bajutsu/pull/1768)）。
   本項目はこれで完了です。`mypy --allow-untyped-defs tests` は372ファイルに対して指摘ゼロであり、
   スイートの6610件のテストはそのまま通ります。
 
