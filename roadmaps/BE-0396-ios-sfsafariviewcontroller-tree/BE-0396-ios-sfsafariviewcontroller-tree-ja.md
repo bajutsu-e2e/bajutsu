@@ -1,14 +1,14 @@
-[English](BE-XXXX-ios-sfsafariviewcontroller-tree.md) · **日本語**
+[English](BE-0396-ios-sfsafariviewcontroller-tree.md) · **日本語**
 
-# BE-XXXX — SFSafariViewController の要素ツリーを、それを描くプロセスから読む
+# BE-0396 — SFSafariViewController の要素ツリーを、それを描くプロセスから読む
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-ios-sfsafariviewcontroller-tree-ja.md) |
+| 提案 | [BE-0396](BE-0396-ios-sfsafariviewcontroller-tree-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0396") |
 | 実装 PR | [#1742](https://github.com/bajutsu-e2e/bajutsu/pull/1742) |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0037](../BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)、[BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query-ja.md)、[BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md)、[BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md) |
