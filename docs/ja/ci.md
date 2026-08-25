@@ -257,6 +257,19 @@ CoreSimulator、macOS の unified log を読みます。`collect-android-diagnos
 での分岐になります。両者が共有しているのは設計、すなわち軽い段と重い段の分割、`start` と `collect` の
 テレメトリのフェーズです。そして `bajutsu` の内側では、捕捉そのものを共有しています。
 
+**赤くなったレーンが集めた証跡を読む。** ここまでの証跡は `gh run view --log-failed` には現れません。
+失敗したジョブ自身の `runs/` アーティファクトの中にアップロードされます。そのため、ログだけで
+診断するセッションからは見えないままです。
+
+エージェントスキル
+[`investigate-ci-failure`](../../.apm/skills/investigate-ci-failure/SKILL.md) は、そのアーティファクト
+を取得します。そして中身を
+[`known-ci-failure-patterns.md`](../../.apm/skills/investigate-ci-failure/references/known-ci-failure-patterns.md)
+に記録された症状と突き合わせます。そのうえで、失敗を既知のインフラ由来の揺れ、実際の欠陥、未分類の
+いずれかに分類します。[`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) は修正に手をつける前に
+これを実行します。ホスト由来の揺れにコード修正で答える事態を避け、回帰を揺れとして見送る事態も
+避けるためです。このスキルは報告するだけで、編集や push や再実行はしません。
+
 ## あなたのアプリの CI で回す
 
 > bajutsu はプレリリース（未公開）です。PyPI 公開までは vendor（submodule / checkout）して、その

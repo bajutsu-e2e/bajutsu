@@ -1,6 +1,6 @@
 # シナリオの不安定性調査スキル
 
-> ステータス: ドラフト
+> ステータス: 実装完了
 > 対象: `.apm/skills/investigate-scenario-flakiness/`
 > 関連: [BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)、
 > [BE-0220](../../roadmaps/BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md)、
@@ -118,4 +118,4 @@
 | 1 [x] | `.apm/skills/investigate-scenario-flakiness/SKILL.md` を新規作成し、3章の手順を書きます | `.apm/skills/investigate-scenario-flakiness/SKILL.md` | `make lint-skills` が通ります | なし |
 | 2 [x] | `make skills` を実行し、`.claude/skills/` 側へデプロイします | `.claude/skills/investigate-scenario-flakiness/SKILL.md`（生成）、`apm.lock.yaml` | `apm audit --ci` が通り、`git diff` がSKILL.mdとlockファイルだけになります | 1 |
 | 3 [x] | 手元の複数run履歴（`fake` バックエンドで同じシナリオを複数回runして作れます）に対して手順1から5を人手でなぞり、`bajutsu flakiness --history` と `bajutsu triage --flaky --history` が想定通りの出力を返すことを確認します | なし | 手順に書いたコマンド列がエラーなく完走し、レポートの生成手順に矛盾がありません | 1 |
-| 4 | `make check` を実行します | なし | 全ステップがgreenになります | 1から3 |
+| 4 [x] | `make check` を実行します | なし | 全ステップがgreenになります | 1から3 |

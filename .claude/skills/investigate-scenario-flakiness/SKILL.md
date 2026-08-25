@@ -18,7 +18,7 @@ report.
 It is **read-only**. It ranks, it reports, and it stops there — it never applies a fix, rewrites a
 scenario, or re-runs anything. `bajutsu triage`'s `--apply` / `--write` / `--rerun` are out of
 bounds. Acting on the report is the caller's decision, whether that caller is a person or
-[`investigate-ci-failure`](../investigate-ci-failure/SKILL.md).
+[`investigate-ci-failure`](../../../.apm/skills/investigate-ci-failure/SKILL.md).
 
 Nothing here reaches a pass/fail verdict. The classification is read from verdicts already recorded
 by the deterministic runner (`classify_stability` in
@@ -36,7 +36,7 @@ advisory diagnosis, never a judgment. Prime directive 1 holds.
 
 This skill does **not** assemble the history. It reads a directory (or database) that already
 exists. A caller that must first collect runs — for example
-[`investigate-ci-failure`](../investigate-ci-failure/SKILL.md), which downloads them from CI
+[`investigate-ci-failure`](../../../.apm/skills/investigate-ci-failure/SKILL.md), which downloads them from CI
 artifacts — does that assembly itself and hands over the finished directory.
 
 ### Why `use_ai` defaults to false
