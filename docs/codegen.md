@@ -473,7 +473,7 @@ class ComponentsUITest {
   also keeps `launchEnv` arriving through `onCreate`; resuming the existing task instead would route
   the extras to `onNewIntent`.
 - **A `wait` spends its budget across several reads, dropping the accessibility cache between
-  them.** `hasObject`, `findObject` and every `Until` condition built on them resolve through the
+  them.** `hasObject`, `findObject`, and every `Until` condition built on them resolve through the
   platform's per-connection `AccessibilityNodeInfo` cache, and only an accessibility event
   invalidates it. A dropped event therefore does not merely delay a read — it pins it, so every poll
   inside one `device.wait` re-reads the same stale tree and the timeout expires against a screen
@@ -492,8 +492,8 @@ class ComponentsUITest {
   change nothing.
 
   One CI run on an API 34 emulator failed exactly this way: `Until.gone` polled a filtered-out row
-  for its whole 5 seconds, while the screenshot and the hierarchy dump the failure rule took 100 ms
-  later both showed the row already gone and the screen in the state the assertion wanted.
+  for its whole 5 seconds, while the failure rule's screenshot and hierarchy dump, captured 100 ms
+  later, both showed the row already gone and the screen in the state the assertion wanted.
 
 - **Both failures name the windows they searched**, because "no element matched" cannot distinguish
   an id that has not rendered from an app whose window is absent from the tree altogether. The two
@@ -531,7 +531,7 @@ class ComponentsUITest {
   one. `launch`'s own retry loop already reports the failure, naming the window list, if starting the
   activity does not help either.
 - **Every accessibility read goes through one `Configurator`-flagged accessor.** `windowSummary`,
-  `reportsWindows` and `clearAccessibilityCache` reach the connection through the flags `UiDevice`
+  `reportsWindows`, and `clearAccessibilityCache` reach the connection through the flags `UiDevice`
   itself uses, taken from
   `Configurator.getInstance()`, rather than through the flag-less
   `Instrumentation.getUiAutomation()` overload — which, on a target that sets non-default flags,
