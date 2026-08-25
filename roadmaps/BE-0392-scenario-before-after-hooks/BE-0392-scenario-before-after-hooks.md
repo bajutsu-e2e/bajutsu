@@ -9,6 +9,7 @@
 | Author | [@akira-matsuda](https://github.com/akira-matsuda) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0392") |
+| Implementing PR | [#1762](https://github.com/bajutsu-e2e/bajutsu/pull/1762) |
 | Topic | Scenario authoring features |
 | Related | [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md), [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers.md) |
 <!-- /BE-METADATA -->
