@@ -406,6 +406,21 @@ class TargetConfig(_Model):
     # handler.
     interrupts: list[Interrupt] = Field(default_factory=list)
 
+    @field_validator("interrupts")
+    @classmethod
+    def _no_component_use(cls, v: list[Interrupt]) -> list[Interrupt]:
+        # `use` is a compile-time macro `expand_components` resolves over *scenarios*; a target
+        # config never passes through that pass, so a `use` here would survive to the run loop as
+        # an action-less step and abort the run. Reject it at load time, where the author can act
+        # on it — a shared recovery flow belongs in the scenario's own `interrupts`.
+        for i, entry in enumerate(v):
+            if any(st.use is not None for st in entry.steps):
+                raise ValueError(
+                    f"interrupts[{i}]: `use` is not supported in a target's interrupts; "
+                    "inline the steps or declare the handler on the scenario"
+                )
+        return v
+
     @model_validator(mode="before")
     @classmethod
     def _warn_deprecated_alert_key(cls, data: Any) -> Any:
