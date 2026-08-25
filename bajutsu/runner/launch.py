@@ -97,7 +97,6 @@ def launch_driver(
             permissions=permissions,
         )
         readiness = await_ready(driver, ready_sel=eff.ready_when, transitions=transitions)
-        return driver, readiness
     except BaseException:
         if driver is not None:
             started = driver
@@ -107,3 +106,5 @@ def launch_driver(
                 what=f"tearing down the environment on {udid} after a failed launch",
             )
         raise
+    else:
+        return driver, readiness

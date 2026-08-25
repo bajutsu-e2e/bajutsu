@@ -713,7 +713,6 @@ class AdbDriver(CoordinateTreeDriver):
                     suffix=".xml",
                     parsed_input=read.text if read.raw is not None else None,
                 )
-                return read.text
             except AdbResidentError as exc:
                 logger.warning(
                     "resident hierarchy read failed (%s); falling back to `uiautomator dump` for "
@@ -735,6 +734,8 @@ class AdbDriver(CoordinateTreeDriver):
                 stall_diagnostics.capture(
                     "resident-read", stall_diagnostics.device_probes(self.serial)
                 )
+            else:
+                return read.text
         # The dump subprocess carries no event mark, so the barrier reverts to its wall-clock budget,
         # and no measured position either, so every element reports the honest absence.
         self._read_mark = None

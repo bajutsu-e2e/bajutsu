@@ -45,7 +45,7 @@ def _command(name: Command) -> TyperCommand:
     # stripped under `python -O`, taking the guard with it — so raise, to fail loudly if a future
     # typer change ever wraps it in a group (which would silently mis-read the flag surface).
     if not isinstance(cmd, TyperCommand):
-        raise RuntimeError(f"expected a single command for `bajutsu {name}`, got {type(cmd)!r}")
+        raise RuntimeError(f"expected a single command for `bajutsu {name}`, got {type(cmd)!r}")  # noqa: TRY004  # invalid external payload, not a caller type error
     return cmd
 
 

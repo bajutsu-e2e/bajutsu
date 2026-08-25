@@ -196,8 +196,8 @@ def worker(
                 {"job_id": job_id, "result": result, "worker_id": wid},
                 token=auth_token,
             )
-        except (URLError, OSError) as e:
-            _logger.error("result post failed for job %s: %s", job_id, e)
+        except (URLError, OSError):
+            _logger.exception("result post failed for job %s", job_id)
 
         # Upload the run's evidence via presigned URLs the control plane signs (BE-0110): the worker
         # holds no cloud credentials of its own. Runs *after* the result is posted — heartbeats stop
@@ -353,7 +353,7 @@ def _request_upload_urls(
         raise RuntimeError(f"{endpoint} returned {code}")
     urls = resp.get("urls")
     if not isinstance(urls, dict):
-        raise RuntimeError(f"{endpoint} returned an unexpected response shape")
+        raise RuntimeError(f"{endpoint} returned an unexpected response shape")  # noqa: TRY004  # invalid external payload, not a caller type error
     return urls
 
 
@@ -408,7 +408,7 @@ def _download_baselines(work: Path, baseline_urls: dict[str, Any]) -> None:
         # would leave the run comparing against nothing). Validate the types before the path-join so
         # a bad name raises this RuntimeError, not a TypeError, and never place a file outside the dir.
         if not isinstance(name, str) or not isinstance(get_url, str):
-            raise RuntimeError(f"baseline {name!r} has a non-string name or URL")
+            raise RuntimeError(f"baseline {name!r} has a non-string name or URL")  # noqa: TRY004  # invalid external payload, not a caller type error
         dest = (baselines / name).resolve()
         if base not in dest.parents:
             raise RuntimeError(f"baseline {name!r} escapes the baselines dir")
@@ -477,7 +477,7 @@ class PresignedWorkerIO:
             raise RuntimeError(f"scenario-url returned {code}")
         put_url = resp.get("url")
         if not isinstance(put_url, str):
-            raise RuntimeError("scenario-url returned no URL")
+            raise RuntimeError("scenario-url returned no URL")  # noqa: TRY004  # invalid external payload, not a caller type error
         _put_file(put_url, src, content_type_for(ref), timeout=_UPLOAD_HTTP_TIMEOUT)
 
 

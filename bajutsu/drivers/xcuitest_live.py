@@ -112,13 +112,14 @@ def _raw_wd_transport(endpoint: str) -> WdTransportFn:
             resp = conn.getresponse()
             raw = resp.read()
             data = json.loads(raw) if raw else {}
-            return resp.status, data
         except (
             OSError,
             http.client.HTTPException,
             json.JSONDecodeError,
         ) as exc:  # pragma: no cover - see above
             raise WebDriverError(f"WebDriver {method} {path} failed: {exc}") from exc
+        else:
+            return resp.status, data
         finally:
             conn.close()
 

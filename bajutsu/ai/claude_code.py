@@ -348,7 +348,7 @@ def _response(stdout: str, forced_name: str | None) -> MessageResponse:
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"claude -p returned non-JSON output: {stdout[:200]!r}") from exc
     if not isinstance(envelope, dict):
-        raise RuntimeError(f"claude -p returned non-object JSON: {stdout[:200]!r}")
+        raise RuntimeError(f"claude -p returned non-object JSON: {stdout[:200]!r}")  # noqa: TRY004  # invalid external payload, not a caller type error
     if envelope.get("is_error"):
         raise RuntimeError(f"claude -p reported an error: {envelope.get('result')!r}")
     content: list[ContentBlock] = list(_tool_uses(envelope.get("structured_output"), forced_name))

@@ -772,7 +772,6 @@ class SqlRepository:
                 )
                 try:
                     session.commit()
-                    return True
                 except IntegrityError:
                     # A concurrent sign-in inserted the passive row first; fall through and fill it.
                     session.rollback()
@@ -785,6 +784,8 @@ class SqlRepository:
                         or row.deleted_at is not None
                     ):
                         return False
+                else:
+                    return True
             row.members, row.github_orgs = members, github_orgs
             row.github_teams, row.editor_teams = github_teams, editor_teams
             row.membership_seeded_at = seeded_at
@@ -836,12 +837,13 @@ class SqlRepository:
                 )
                 try:
                     session.commit()
-                    return
                 except IntegrityError:
                     # A concurrent OAuth callback inserted the same user first; fall through to
                     # update the now-existing row instead of failing the login.
                     session.rollback()
                     user = session.get(User, user_id)
+                else:
+                    return
             if user is not None:  # update in place (a re-login) without disturbing created_at
                 if user.org_id != org_id:
                     # This sign-in moved the user to a different org, so any org they had picked
@@ -993,10 +995,11 @@ class SqlRepository:
                 session.add(WorkerRecord(id=worker_id, capabilities=caps, last_seen=now))
                 try:
                     session.commit()
-                    return
                 except IntegrityError:
                     session.rollback()
                     row = session.get(WorkerRecord, worker_id)
+                else:
+                    return
             if row is not None:  # update in place (last-writer-wins on caps + last_seen)
                 row.capabilities = caps
                 row.last_seen = now

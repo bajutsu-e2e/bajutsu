@@ -768,12 +768,13 @@ class Env:
     def is_installed(self, bundle_id: str) -> bool:
         try:
             self._run(get_app_container_cmd(self.udid, bundle_id), None)
-            return True
         except DeviceTimeout as exc:
             _probe_timed_out(exc, "not installed")
             return False
         except subprocess.CalledProcessError:
             return False
+        else:
+            return True
 
     def install(self, app_path: str) -> None:
         self._run(install_cmd(self.udid, app_path), None)
@@ -857,7 +858,6 @@ class Env:
                     check=True,
                     timeout=_PBCOPY_TIMEOUT_S,
                 )
-                return
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
                 last = exc
                 # Only the transient exit-60 timeout (and a Python-side hang, which has no
@@ -871,6 +871,8 @@ class Env:
                     raise
                 if attempt + 1 < _PBCOPY_MAX_ATTEMPTS:
                     time.sleep(_PBCOPY_RETRY_DELAY_S * (attempt + 1))
+            else:
+                return
         assert last is not None  # the loop runs at least once, so a failure sets `last`
         raise last
 

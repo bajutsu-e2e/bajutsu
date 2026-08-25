@@ -257,7 +257,7 @@ def parse_orgs(orgs_block: object) -> dict[str, OrgConfig]:
     if orgs_block is None:
         return {}
     if not isinstance(orgs_block, dict):
-        raise ValueError("orgs: must be a mapping of org name to its config")
+        raise ValueError("orgs: must be a mapping of org name to its config")  # noqa: TRY004  # invalid external payload, not a caller type error
     return {name: OrgConfig.model_validate(body or {}) for name, body in orgs_block.items()}
 
 

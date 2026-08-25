@@ -465,7 +465,6 @@ class ResidentServer:
         while True:
             try:
                 self._fetch(self._host_port, None)  # a readiness probe waits past no mark
-                return
             except AdbResidentError:
                 # The polled fetch failing is the expected not-up-yet signal, not a cause to chain;
                 # these raises are the terminal startup verdict, so break the exception chain.
@@ -480,6 +479,8 @@ class ResidentServer:
                         f"resident server did not answer within {self._READY_TIMEOUT_S:.0f}s"
                     ) from None
                 time.sleep(self._READY_POLL_S)
+            else:
+                return
 
 
 def _parse_forward_port(stdout: str) -> int:
