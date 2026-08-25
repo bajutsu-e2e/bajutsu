@@ -135,6 +135,29 @@ def el(
     }
 
 
+# Several public helpers return `dict[str, object]` — an honest type for a JSON document, and one an
+# assertion cannot index into. These narrow a value out of such a document with a real runtime check,
+# so a malformed document fails the test loudly instead of being cast away (BE-0388).
+
+
+def json_obj(value: object) -> dict[str, Any]:
+    """One nested object out of a JSON document."""
+    assert isinstance(value, dict)
+    return value
+
+
+def json_list(value: object) -> list[Any]:
+    """One nested array out of a JSON document."""
+    assert isinstance(value, list)
+    return value
+
+
+def json_str(value: object) -> str:
+    """One string value out of a JSON document."""
+    assert isinstance(value, str)
+    return value
+
+
 class FakeBlock:
     """A single Anthropic `tool_use` content block."""
 

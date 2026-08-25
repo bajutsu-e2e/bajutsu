@@ -6,8 +6,10 @@ import logging
 import plistlib
 import subprocess
 import sys
+import time
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -477,11 +479,11 @@ def test_device_error_keeps_command_and_simctl_stderr() -> None:
 def test_run_pbcopy_passes_stdin_and_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[dict[str, object]] = []
 
-    def fake_run(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(cmd: list[str], **kw: Any) -> subprocess.CompletedProcess[str]:
         calls.append({"cmd": cmd, **kw})
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
-    monkeypatch.setattr(simctl.subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess, "run", fake_run)
     simctl.Env("UDID").set_clipboard("hello")
 
     assert len(calls) == 1  # first attempt succeeds, no retry
@@ -495,15 +497,15 @@ def test_run_pbcopy_retries_transient_timeout(monkeypatch: pytest.MonkeyPatch) -
     # simctl exits 60 (ETIMEDOUT) on a flaky pasteboard sync; a re-run clears it.
     attempts = {"n": 0}
 
-    def flaky_run(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+    def flaky_run(cmd: list[str], **kw: Any) -> subprocess.CompletedProcess[str]:
         attempts["n"] += 1
         if attempts["n"] < 3:
             raise subprocess.CalledProcessError(60, cmd, output="", stderr="")
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     slept: list[float] = []
-    monkeypatch.setattr(simctl.subprocess, "run", flaky_run)
-    monkeypatch.setattr(simctl.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(subprocess, "run", flaky_run)
+    monkeypatch.setattr(time, "sleep", lambda s: slept.append(s))
 
     simctl.Env("UDID").set_clipboard("x")  # succeeds on the third attempt, no raise
 
@@ -517,14 +519,14 @@ def test_run_pbcopy_recovers_past_three_attempts(monkeypatch: pytest.MonkeyPatch
     assert simctl._PBCOPY_MAX_ATTEMPTS >= 4
     attempts = {"n": 0}
 
-    def flaky_run(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+    def flaky_run(cmd: list[str], **kw: Any) -> subprocess.CompletedProcess[str]:
         attempts["n"] += 1
         if attempts["n"] < 4:
             raise subprocess.CalledProcessError(60, cmd, output="", stderr="")
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
-    monkeypatch.setattr(simctl.subprocess, "run", flaky_run)
-    monkeypatch.setattr(simctl.time, "sleep", lambda s: None)
+    monkeypatch.setattr(subprocess, "run", flaky_run)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     simctl.Env("UDID").set_clipboard("x")  # succeeds on the fourth attempt, no raise
 
@@ -534,12 +536,12 @@ def test_run_pbcopy_recovers_past_three_attempts(monkeypatch: pytest.MonkeyPatch
 def test_run_pbcopy_reraises_after_exhausting_retries(monkeypatch: pytest.MonkeyPatch) -> None:
     attempts = {"n": 0}
 
-    def always_timeout(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+    def always_timeout(cmd: list[str], **kw: Any) -> subprocess.CompletedProcess[str]:
         attempts["n"] += 1
         raise subprocess.CalledProcessError(60, cmd, output="", stderr="")
 
-    monkeypatch.setattr(simctl.subprocess, "run", always_timeout)
-    monkeypatch.setattr(simctl.time, "sleep", lambda s: None)
+    monkeypatch.setattr(subprocess, "run", always_timeout)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     with pytest.raises(subprocess.CalledProcessError):
         simctl.Env("UDID").clear_clipboard()
@@ -552,13 +554,13 @@ def test_run_pbcopy_fast_fails_non_transient_error(monkeypatch: pytest.MonkeyPat
     # surfaces on the first attempt — no retry, no backoff.
     attempts = {"n": 0}
 
-    def bad_device(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+    def bad_device(cmd: list[str], **kw: Any) -> subprocess.CompletedProcess[str]:
         attempts["n"] += 1
         raise subprocess.CalledProcessError(149, cmd, output="", stderr="Invalid device")
 
     slept: list[float] = []
-    monkeypatch.setattr(simctl.subprocess, "run", bad_device)
-    monkeypatch.setattr(simctl.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(subprocess, "run", bad_device)
+    monkeypatch.setattr(time, "sleep", lambda s: slept.append(s))
 
     with pytest.raises(subprocess.CalledProcessError):
         simctl.Env("UDID").set_clipboard("x")
@@ -571,14 +573,14 @@ def test_run_pbcopy_retries_python_side_hang(monkeypatch: pytest.MonkeyPatch) ->
     # A hang (no simctl exit) surfaces as TimeoutExpired from the subprocess bound; retry it too.
     attempts = {"n": 0}
 
-    def hang_then_ok(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+    def hang_then_ok(cmd: list[str], **kw: Any) -> subprocess.CompletedProcess[str]:
         attempts["n"] += 1
         if attempts["n"] == 1:
             raise subprocess.TimeoutExpired(cmd, simctl._PBCOPY_TIMEOUT_S)
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
-    monkeypatch.setattr(simctl.subprocess, "run", hang_then_ok)
-    monkeypatch.setattr(simctl.time, "sleep", lambda s: None)
+    monkeypatch.setattr(subprocess, "run", hang_then_ok)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     simctl.Env("UDID").set_clipboard("x")
 
@@ -788,11 +790,11 @@ def test_the_bound_is_chosen_from_the_subcommand() -> None:
 def test_every_call_carries_its_bound(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[dict[str, object]] = []
 
-    def fake_run(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(cmd: list[str], **kw: Any) -> subprocess.CompletedProcess[str]:
         calls.append({"cmd": cmd, **kw})
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
-    monkeypatch.setattr(simctl.subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess, "run", fake_run)
     simctl._real_run(simctl.list_booted_cmd())
     simctl._real_run(simctl.bootstatus_cmd("UDID"))
 

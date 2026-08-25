@@ -33,12 +33,18 @@ class FakeAgent:
         self._i += 1
         return proposal
 
+    def plan(self, goal: str) -> list[str]:
+        return []  # scripted: no up-front plan, which the loop reads as "none"
+
 
 class LoopAgent:
     """Always proposes tapping `a` (never done) — for max_steps testing."""
 
     def next_action(self, observation: Observation) -> Proposal:
         return Proposal(steps=[Step.model_validate({"tap": {"id": "a"}})])
+
+    def plan(self, goal: str) -> list[str]:
+        return []
 
 
 class SeenAgent(FakeAgent):

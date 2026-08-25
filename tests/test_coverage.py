@@ -9,6 +9,7 @@ never runs a scenario and never decides pass/fail.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -125,7 +126,7 @@ def test_render_reports_coverage_gaps_and_off_namespace() -> None:
     assert "off-namespace" in text and "legacy.x" in text
 
 
-def test_cli_reports_coverage_for_an_app(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_cli_reports_coverage_for_an_app(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(
@@ -143,7 +144,7 @@ def test_cli_reports_coverage_for_an_app(tmp_path) -> None:  # type: ignore[no-u
     assert "auth" in result.stdout  # the gap
 
 
-def test_cli_json_output(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_cli_json_output(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(
@@ -163,7 +164,7 @@ def test_cli_json_output(tmp_path) -> None:  # type: ignore[no-untyped-def]
     assert data["namespaces"][0]["namespace"] == "home"
 
 
-def test_cli_app_without_scenarios_dir_exits_2(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_cli_app_without_scenarios_dir_exits_2(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
         "targets:\n  demo:\n    bundleId: com.example.demo\n    idNamespaces: [home]\n",
@@ -173,7 +174,7 @@ def test_cli_app_without_scenarios_dir_exits_2(tmp_path) -> None:  # type: ignor
     assert result.exit_code == 2
 
 
-def test_cli_malformed_scenario_exits_2_and_names_the_file(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_cli_malformed_scenario_exits_2_and_names_the_file(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     # `coverage` shares load_expanded_scenarios and the same `except (OSError, ValueError)` guard, so
     # a scenario that does not parse as YAML must fail with a clean exit 2 naming the offending file —
     # not an uncaught yaml.YAMLError traceback (BE-0150).
@@ -285,7 +286,9 @@ def test_body_only_event_contributes_no_endpoint_matcher() -> None:
         ("elements.json", "{not json"),  # invalid JSON (JSONDecodeError is a ValueError)
     ],
 )
-def test_cli_skips_a_malformed_run_file_and_still_reports(tmp_path, filename, content) -> None:  # type: ignore[no-untyped-def]
+def test_cli_skips_a_malformed_run_file_and_still_reports(
+    tmp_path: Path, filename, content
+) -> None:  # type: ignore[no-untyped-def]
     # A malformed run-evidence file must be skipped without crashing — and the rest of the report
     # must still compute (the static namespace coverage), so this proves a graceful skip, not just
     # a non-crashing exit.
@@ -321,7 +324,7 @@ def test_cli_skips_a_malformed_run_file_and_still_reports(tmp_path, filename, co
     assert data["total"] == 2 and data["covered"] == 1 and data["gaps"] == ["auth"]
 
 
-def test_cli_runs_path_missing_warns_and_proceeds(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_cli_runs_path_missing_warns_and_proceeds(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(
@@ -351,7 +354,7 @@ def test_cli_runs_path_missing_warns_and_proceeds(tmp_path) -> None:  # type: ig
     assert "skipping run-evidence coverage" in result.stderr  # but the flag wasn't ignored silently
 
 
-def test_cli_endpoint_coverage_with_runs(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_cli_endpoint_coverage_with_runs(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(
@@ -388,7 +391,7 @@ def test_cli_endpoint_coverage_with_runs(tmp_path) -> None:  # type: ignore[no-u
     assert data["endpoints"]["unasserted"] == ["POST /b"]
 
 
-def test_cli_without_runs_omits_endpoint_section(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_cli_without_runs_omits_endpoint_section(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(
@@ -471,7 +474,7 @@ def _write_elements(step_dir, identifiers) -> None:  # type: ignore[no-untyped-d
     (step_dir / "elements.json").write_text(json.dumps(els), encoding="utf-8")
 
 
-def test_cli_observed_id_coverage_with_runs(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_cli_observed_id_coverage_with_runs(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(
@@ -507,7 +510,7 @@ def test_cli_observed_id_coverage_with_runs(tmp_path) -> None:  # type: ignore[n
     assert obs["namespaces"][0]["ids"] == ["home.start"]  # null identifiers ignored
 
 
-def test_cli_observed_id_coverage_ignores_empty_identifiers(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_cli_observed_id_coverage_ignores_empty_identifiers(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(
@@ -540,7 +543,7 @@ def test_cli_observed_id_coverage_ignores_empty_identifiers(tmp_path) -> None:  
     assert obs["off_namespace"] == []  # an empty id must not become an off-namespace ("") entry
 
 
-def test_cli_observed_id_coverage_text_output(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_cli_observed_id_coverage_text_output(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(
@@ -562,7 +565,7 @@ def test_cli_observed_id_coverage_text_output(tmp_path) -> None:  # type: ignore
     assert "auth" in result.stdout  # the unobserved namespace
 
 
-def test_cli_skips_malformed_elements_json(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_cli_skips_malformed_elements_json(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: a }\n", "utf-8")
@@ -600,7 +603,7 @@ def test_cli_skips_malformed_elements_json(tmp_path) -> None:  # type: ignore[no
     )
 
 
-def test_cli_without_runs_omits_observed_id_section(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_cli_without_runs_omits_observed_id_section(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(
@@ -661,7 +664,7 @@ def test_render_html_escapes_ids() -> None:
     assert "&lt;svg&gt;.x" in html
 
 
-def test_cli_writes_html_file(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_cli_writes_html_file(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(
@@ -685,7 +688,7 @@ def test_cli_writes_html_file(tmp_path) -> None:  # type: ignore[no-untyped-def]
     assert "home.start" in body and "auth" in body  # a covered id and the gap
 
 
-def _html_only_config(tmp_path):  # type: ignore[no-untyped-def]
+def _html_only_config(tmp_path: Path):  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
@@ -698,7 +701,7 @@ def _html_only_config(tmp_path):  # type: ignore[no-untyped-def]
     return config
 
 
-def test_cli_html_creates_missing_parent_dirs(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_cli_html_creates_missing_parent_dirs(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     config = _html_only_config(tmp_path)
     out = tmp_path / "nested" / "dir" / "coverage.html"  # parents do not exist yet
     result = runner.invoke(
@@ -708,7 +711,7 @@ def test_cli_html_creates_missing_parent_dirs(tmp_path) -> None:  # type: ignore
     assert out.is_file()  # the parent dirs were created for the user-requested output
 
 
-def test_cli_html_unwritable_path_exits_2_cleanly(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_cli_html_unwritable_path_exits_2_cleanly(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     config = _html_only_config(tmp_path)
     blocker = tmp_path / "blocker"
     blocker.write_text("not a dir", encoding="utf-8")  # a file where a parent dir would need to be
@@ -779,7 +782,7 @@ def _screenmap(path, nodes) -> None:  # type: ignore[no-untyped-def]
     )
 
 
-def test_cli_screen_coverage_with_crawl_and_runs(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_cli_screen_coverage_with_crawl_and_runs(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
@@ -842,7 +845,7 @@ def test_cli_screen_coverage_with_crawl_and_runs(tmp_path) -> None:  # type: ign
     assert screens["unvisited"][0]["label"] == "secret.panel"  # the discovered, unreached screen
 
 
-def test_cli_accepts_a_crawl_run_dir_for_screenmap(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_cli_accepts_a_crawl_run_dir_for_screenmap(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
@@ -876,7 +879,7 @@ def test_cli_accepts_a_crawl_run_dir_for_screenmap(tmp_path) -> None:  # type: i
     assert json.loads(result.stdout)["screens"]["total"] == 1  # screenmap.json found inside the dir
 
 
-def test_cli_crawl_without_runs_warns_and_skips(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_cli_crawl_without_runs_warns_and_skips(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
@@ -907,7 +910,7 @@ def test_cli_crawl_without_runs_warns_and_skips(tmp_path) -> None:  # type: igno
     assert "needs --runs" in result.stderr
 
 
-def test_cli_malformed_screenmap_warns_and_skips(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_cli_malformed_screenmap_warns_and_skips(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
@@ -940,7 +943,7 @@ def test_cli_malformed_screenmap_warns_and_skips(tmp_path) -> None:  # type: ign
     assert "screenmap" in result.stderr  # warned, not silent
 
 
-def test_cli_screenmap_unexpected_shape_skips_bad_nodes(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_cli_screenmap_unexpected_shape_skips_bad_nodes(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
@@ -974,7 +977,7 @@ def test_cli_screenmap_unexpected_shape_skips_bad_nodes(tmp_path) -> None:  # ty
     assert r2.exit_code == 0 and json.loads(r2.stdout)["screens"]["total"] == 1  # bad node skipped
 
 
-def test_cli_without_crawl_omits_screen_section(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_cli_without_crawl_omits_screen_section(tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")

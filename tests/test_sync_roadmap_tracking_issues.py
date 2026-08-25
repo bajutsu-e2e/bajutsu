@@ -179,7 +179,7 @@ def test_ensure_label_tolerates_already_exists(monkeypatch: pytest.MonkeyPatch) 
             args=["gh"], returncode=1, stdout="", stderr="label already exists; ..."
         )
 
-    monkeypatch.setattr(sync.subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess, "run", fake_run)
     sync.ensure_label()  # must not raise
 
 
@@ -189,7 +189,7 @@ def test_ensure_label_reraises_other_failures(monkeypatch: pytest.MonkeyPatch) -
             args=["gh"], returncode=1, stdout="", stderr="HTTP 403: forbidden"
         )
 
-    monkeypatch.setattr(sync.subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess, "run", fake_run)
     with pytest.raises(subprocess.CalledProcessError):
         sync.ensure_label()
 

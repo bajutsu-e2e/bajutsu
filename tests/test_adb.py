@@ -12,6 +12,7 @@ import math
 import re
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -372,7 +373,7 @@ def test_driver_interval_routes_video_and_devicelog_to_adb_starters(
     # runner, so the screenrecord pull/rm go through the same injected run).
     seen: dict[str, tuple[object, ...]] = {}
 
-    def fake_screenrecord(serial: str, path: Path, run: object = None, **kw: object) -> object:
+    def fake_screenrecord(serial: str, path: Path, run: object = None, **kw: Any) -> object:
         seen["video"] = (serial, path, run, kw.get("confirm_started"))
         return intervals.Interval(kind="video", path=path, provider="adb")
 
@@ -991,7 +992,7 @@ def test_select_option_unsupported() -> None:
         driver.select_option({"id": "nav.theme-picker"}, "midnight")
 
 
-def test_screenshot_writes_capture_bytes(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_screenshot_writes_capture_bytes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[list[str]] = []
 
     def fake_capture(cmd: list[str], path: str) -> None:

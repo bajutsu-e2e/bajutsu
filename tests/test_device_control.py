@@ -67,7 +67,7 @@ def test_env_foreground_runs_command() -> None:
     assert calls == [["xcrun", "simctl", "launch", "U", "com.demo"]]
 
 
-def test_env_set_clipboard_seeds_pasteboard_with_text(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_env_set_clipboard_seeds_pasteboard_with_text(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
     captured: dict[str, object] = {}
 
     def fake_pbcopy(cmd: list[str], text: str = "") -> None:
@@ -187,7 +187,7 @@ def test_steps_dispatch_to_control() -> None:
     scn = Scenario(
         name="s",
         steps=[
-            Step(set_location=SetLocation(lat=35.6, lon=139.7)),
+            Step(setLocation=SetLocation(lat=35.6, lon=139.7)),
             Step(push=Push(payload={"aps": {"alert": "ping"}})),
         ],
     )
@@ -213,7 +213,7 @@ def test_override_status_bar_dispatches_to_control() -> None:
     ctrl = _RecordingControl()
     scn = Scenario(
         name="s",
-        steps=[Step(override_status_bar=OverrideStatusBar(time="9:41", battery_level=100))],
+        steps=[Step(overrideStatusBar=OverrideStatusBar(time="9:41", batteryLevel=100))],
     )
     result = run_scenario(FakeDriver(), scn, control=ctrl)
     assert result.ok
@@ -224,7 +224,7 @@ def test_clear_status_bar_dispatches_to_control() -> None:
     from bajutsu.scenario import ClearStatusBar
 
     ctrl = _RecordingControl()
-    scn = Scenario(name="s", steps=[Step(clear_status_bar=ClearStatusBar())])
+    scn = Scenario(name="s", steps=[Step(clearStatusBar=ClearStatusBar())])
     result = run_scenario(FakeDriver(), scn, control=ctrl)
     assert result.ok
     assert ctrl.clear_status_bar_calls == 1
@@ -232,7 +232,7 @@ def test_clear_status_bar_dispatches_to_control() -> None:
 
 def test_set_clipboard_dispatches_to_control() -> None:
     ctrl = _RecordingControl()
-    scn = Scenario(name="s", steps=[Step(set_clipboard=SetClipboard(text="COUPON123"))])
+    scn = Scenario(name="s", steps=[Step(setClipboard=SetClipboard(text="COUPON123"))])
     result = run_scenario(FakeDriver(), scn, control=ctrl)
     assert result.ok
     assert ctrl.clipboards == ["COUPON123"]
@@ -252,7 +252,7 @@ def test_foreground_dispatches_to_control() -> None:
 
 
 def test_device_step_without_control_fails_cleanly() -> None:
-    scn = Scenario(name="s", steps=[Step(set_location=SetLocation(lat=1.0, lon=2.0))])
+    scn = Scenario(name="s", steps=[Step(setLocation=SetLocation(lat=1.0, lon=2.0))])
     result = run_scenario(FakeDriver(), scn)
     assert not result.ok
     assert "setLocation" in (result.failure or "")
@@ -356,7 +356,7 @@ def test_clipboard_expect_retry_rereads_after_on_blocked() -> None:
 
 
 def test_set_clipboard_without_control_fails_cleanly() -> None:
-    scn = Scenario(name="s", steps=[Step(set_clipboard=SetClipboard(text="x"))])
+    scn = Scenario(name="s", steps=[Step(setClipboard=SetClipboard(text="x"))])
     result = run_scenario(FakeDriver(), scn)
     assert not result.ok
     assert "setClipboard" in (result.failure or "")

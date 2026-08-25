@@ -56,7 +56,7 @@ def _evidence(request):
 _IMPORTS = "import ondevice_evidence\nimport pytest\n\n\n"
 
 
-def test_discards_the_capture_when_the_test_passes(pytester) -> None:
+def test_discards_the_capture_when_the_test_passes(pytester: pytest.Pytester) -> None:
     pytester.makeconftest(_INNER_CONFTEST)
     pytester.makepyfile(
         _IMPORTS + _FAKE_STARTERS + _EVIDENCE_FIXTURE + "def test_ok():\n    assert True\n"
@@ -67,7 +67,7 @@ def test_discards_the_capture_when_the_test_passes(pytester) -> None:
     assert not (pytester.path / "runs" / "fake-lane" / slug).exists()
 
 
-def test_keeps_the_capture_when_the_test_fails(pytester) -> None:
+def test_keeps_the_capture_when_the_test_fails(pytester: pytest.Pytester) -> None:
     pytester.makeconftest(_INNER_CONFTEST)
     pytester.makepyfile(
         _IMPORTS + _FAKE_STARTERS + _EVIDENCE_FIXTURE + "def test_broken():\n    assert False\n"
@@ -80,7 +80,7 @@ def test_keeps_the_capture_when_the_test_fails(pytester) -> None:
     assert (kept / "device.log").read_text() == "captured"
 
 
-def test_keeps_the_capture_when_setup_fails(pytester) -> None:
+def test_keeps_the_capture_when_setup_fails(pytester: pytest.Pytester) -> None:
     # A failure in another fixture's setup — before the test body ever runs — must still tag the
     # item's stash: `report.failed` covers the "setup" phase report too, not only "call". Realistic
     # for the fault-injection suite, whose per-test `driver` fixture can itself fail waking the
@@ -102,7 +102,7 @@ def test_keeps_the_capture_when_setup_fails(pytester) -> None:
     assert (kept / "video.mp4").read_text() == "captured"
 
 
-def test_clears_a_stale_directory_before_recording(pytester) -> None:
+def test_clears_a_stale_directory_before_recording(pytester: pytest.Pytester) -> None:
     # simctl `recordVideo` (no `--force`) refuses to overwrite an existing file — silently, since
     # its stderr is discarded — so a leftover clip from a crashed attempt, or from an earlier local
     # run of the same test, must never still be there when the next attempt's `start_video` runs.
@@ -152,7 +152,7 @@ def test_clears_a_stale_directory_before_recording(pytester) -> None:
     assert (kept / "video.mp4").read_text() == "fresh"
 
 
-def test_stops_the_started_video_when_start_log_raises(pytester) -> None:
+def test_stops_the_started_video_when_start_log_raises(pytester: pytest.Pytester) -> None:
     # `start_video` can succeed (spawning a real device-side `screenrecord`) and then `start_log`
     # raise — a transient adb hiccup starting the second process must neither orphan the first nor
     # fail a test the driver contract never touched: starting the capture is itself best-effort.
@@ -206,7 +206,7 @@ def test_stops_the_started_video_when_start_log_raises(pytester) -> None:
     assert not (pytester.path / "runs" / "fake-lane" / slug).exists()
 
 
-def test_still_starts_the_log_when_start_video_raises(pytester) -> None:
+def test_still_starts_the_log_when_start_video_raises(pytester: pytest.Pytester) -> None:
     # The reverse order: a `start_video` failure (a fork failure, `xcrun`/`adb` transiently missing)
     # must not suppress `start_log` too. The two are independent processes failing for independent
     # reasons, and the device log is the cheaper, more diagnostic artifact of the two — losing it
@@ -273,7 +273,7 @@ class _FakeRequest:
 
 
 def test_warns_and_still_yields_when_the_evidence_directory_cannot_be_prepared(
-    caplog, monkeypatch, tmp_path
+    caplog, monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     # A stale `runs/<lane>/<slug>` left behind as a *file*, not a directory — `rmtree(ignore_errors=
     # True)` leaves it in place, and `mkdir(exist_ok=True)` then raises `FileExistsError` — must not
@@ -302,7 +302,9 @@ def test_warns_and_still_yields_when_the_evidence_directory_cannot_be_prepared(
     assert any("could not prepare the evidence directory" in r.message for r in caplog.records)
 
 
-def test_warns_about_a_missing_or_empty_artifact(monkeypatch, tmp_path) -> None:
+def test_warns_about_a_missing_or_empty_artifact(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     # `_spawn` discards the child's stderr, so a `recordVideo`/`screenrecord` that refused to start
     # or died leaves no other trace, and `if-no-files-found: ignore` on the CI upload step would let
     # an entirely blind capture pass for a clean one. Drive `capture()` directly as a plain generator
@@ -368,7 +370,7 @@ def test_warns_about_missing_evidence_even_when_a_stop_failure_reraises(
     assert len(missing_warnings) == 2  # video.mp4 and device.log, both never written
 
 
-def test_stops_the_log_even_when_stopping_the_video_raises(pytester) -> None:
+def test_stops_the_log_even_when_stopping_the_video_raises(pytester: pytest.Pytester) -> None:
     # `start_screenrecord`'s own transform deliberately lets a failed `adb pull` propagate out of
     # `stop()` (its own docstring: swallowing it would turn a real problem into a silent one) — that
     # must not skip stopping the logcat process alongside it. The test body itself passed, and the
@@ -422,7 +424,9 @@ def test_stops_the_log_even_when_stopping_the_video_raises(pytester) -> None:
     assert not (pytester.path / "runs" / "fake-lane" / slug).exists()
 
 
-def test_a_stop_failure_still_raises_when_the_test_already_failed(pytester) -> None:
+def test_a_stop_failure_still_raises_when_the_test_already_failed(
+    pytester: pytest.Pytester,
+) -> None:
     # The other half of the same fix: a stop failure is only ever *swallowed* because the attempt is
     # already clean and the evidence was going to be discarded regardless. When the test itself
     # already failed, the lane is already red, and swallowing here would just hide a second, distinct
@@ -465,7 +469,7 @@ def test_a_stop_failure_still_raises_when_the_test_already_failed(pytester) -> N
 
 
 def test_keeps_evidence_when_a_sibling_fixtures_teardown_fails_after_a_passing_test(
-    pytester,
+    pytester: pytest.Pytester,
 ) -> None:
     # The exact gap a review found: `_evidence` is autouse, so it is set up first and torn down
     # LAST. pytest builds the "teardown" `TestReport` only after every finalizer for the item has
@@ -572,7 +576,9 @@ def test_the_real_starters_accept_captures_two_argument_call() -> None:
     )
 
 
-def test_android_screenrecord_forwards_this_modules_pinned_bounds(monkeypatch) -> None:
+def test_android_screenrecord_forwards_this_modules_pinned_bounds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls = []
 
     def fake_start_screenrecord(
@@ -597,7 +603,9 @@ def test_android_screenrecord_forwards_this_modules_pinned_bounds(monkeypatch) -
     ]
 
 
-def test_android_screenrecord_clears_the_stale_device_side_file_first(monkeypatch) -> None:
+def test_android_screenrecord_clears_the_stale_device_side_file_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # `start_screenrecord` always records to one fixed device-side path and pulls whatever is there
     # unconditionally on stop — both Android suites reuse it once per test, so a prior test's clip
     # left behind by a swallowed pull failure could otherwise be pulled in as this test's own
@@ -612,7 +620,9 @@ def test_android_screenrecord_clears_the_stale_device_side_file_first(monkeypatc
     ]
 
 
-def test_android_screenrecord_tolerates_a_failed_device_side_clear(monkeypatch) -> None:
+def test_android_screenrecord_tolerates_a_failed_device_side_clear(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # A transient failure to remove the stale file (device briefly unresponsive, nothing there to
     # remove) must not stop the recording it precedes: the very next `screenrecord` spawn overwrites
     # the same path regardless, so the clear is best-effort, not load-bearing.
@@ -625,7 +635,7 @@ def test_android_screenrecord_tolerates_a_failed_device_side_clear(monkeypatch) 
     assert result == "sentinel"
 
 
-def test_xcuitest_video_confirms_it_actually_started(monkeypatch) -> None:
+def test_xcuitest_video_confirms_it_actually_started(monkeypatch: pytest.MonkeyPatch) -> None:
     # A bare spawn only proves the process started, not that it wrote a frame yet — a fast failing
     # case can tear down before it does, shipping an absent or unplayable mp4 for exactly the
     # failure this module's evidence exists to explain.

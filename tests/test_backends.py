@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from bajutsu.backends import (
@@ -295,7 +297,7 @@ def test_make_driver_forwards_browser_engine(monkeypatch: pytest.MonkeyPatch) ->
     captured: dict[str, object] = {}
 
     class _Recorder:
-        def __init__(self, base_url: str, **kwargs: object) -> None:
+        def __init__(self, base_url: str, **kwargs: Any) -> None:
             captured["base_url"] = base_url
             captured.update(kwargs)
 
@@ -310,7 +312,7 @@ def test_make_driver_browser_defaults_to_chromium(monkeypatch: pytest.MonkeyPatc
     captured: dict[str, object] = {}
 
     class _Recorder:
-        def __init__(self, base_url: str, **kwargs: object) -> None:
+        def __init__(self, base_url: str, **kwargs: Any) -> None:
             captured.update(kwargs)
 
     monkeypatch.setattr(pw_mod, "PlaywrightDriver", _Recorder)
@@ -337,7 +339,7 @@ def test_make_driver_forwards_the_xcuitest_diagnostics_hook(
     captured: dict[str, object] = {}
 
     class _Recorder:
-        def __init__(self, **kwargs: object) -> None:
+        def __init__(self, **kwargs: Any) -> None:
             captured.update(kwargs)
 
     # Patched by name so this file keeps one import form for the driver module — `make_driver` imports
@@ -485,7 +487,7 @@ def test_capabilities_for_run_drops_simctl_backed_caps_on_a_real_ios_device() ->
     # A real device is not managed through simctl, so the whole simctl-backed DeviceControl family
     # and the simctl-privacy permission grants do not apply (BE-0238 Unit 3): preflight must not
     # advertise them, or a scenario needing one fails late with a simctl error instead of up front.
-    eff = _ios_eff(xcuitest=XcuitestConfig(test_runner="Runner.xctestrun", device_type="device"))
+    eff = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="device"))
     caps = capabilities_for_run("xcuitest", eff)
     assert base.DEVICE_CONTROL_ALL.isdisjoint(caps)
     assert base.IOS_PERMISSION_CAPABILITIES.isdisjoint(caps)
@@ -505,7 +507,7 @@ def test_capabilities_for_run_keeps_the_full_set_on_the_simulator() -> None:
     # simctl reaches the Simulator, so DeviceControl / permissions still apply.
     from bajutsu.backends import capabilities_for
 
-    for xcfg in (None, XcuitestConfig(test_runner="Runner.xctestrun", device_type="simulator")):
+    for xcfg in (None, XcuitestConfig(testRunner="Runner.xctestrun", deviceType="simulator")):
         assert capabilities_for_run("xcuitest", _ios_eff(xcuitest=xcfg)) == capabilities_for(
             "xcuitest"
         )
@@ -516,7 +518,7 @@ def test_capabilities_for_run_is_a_noop_for_non_xcuitest_backends() -> None:
     # (unrelated) target config would look like a real device to a careless check.
     from bajutsu.backends import capabilities_for
 
-    eff = _ios_eff(xcuitest=XcuitestConfig(test_runner="Runner.xctestrun", device_type="device"))
+    eff = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="device"))
     assert capabilities_for_run("adb", eff) == capabilities_for("adb")
     web = Effective(
         target="w",
@@ -544,8 +546,8 @@ def test_real_device_narrowing_makes_a_device_control_scenario_unsupported() -> 
     scenario = Scenario.model_validate(
         {"name": "loc", "steps": [{"setLocation": {"lat": 1.0, "lon": 2.0}}]}
     )
-    sim = _ios_eff(xcuitest=XcuitestConfig(test_runner="Runner.xctestrun", device_type="simulator"))
-    dev = _ios_eff(xcuitest=XcuitestConfig(test_runner="Runner.xctestrun", device_type="device"))
+    sim = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="simulator"))
+    dev = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="device"))
     assert capability_preflight.unsupported(scenario, capabilities_for_run("xcuitest", sim)) == []
     assert capability_preflight.unsupported(scenario, capabilities_for_run("xcuitest", dev))
 
@@ -614,7 +616,7 @@ def test_live_route_narrowing_makes_a_copy_selection_scenario_unsupported() -> N
     scenario = Scenario.model_validate(
         {"name": "cp", "steps": [{"select": {"into": {"id": "field"}}}, {"copy": {}}]}
     )
-    sim = _ios_eff(xcuitest=XcuitestConfig(test_runner="Runner.xctestrun", device_type="simulator"))
+    sim = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="simulator"))
     assert capability_preflight.unsupported(scenario, capabilities_for_run("xcuitest", sim)) == []
     assert capability_preflight.unsupported(
         scenario, capabilities_for_run("xcuitest", _ios_eff(), _LIVE_ENDPOINT)

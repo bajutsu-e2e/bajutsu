@@ -391,7 +391,7 @@ def _fake_toolchain(
             domain["v"] = argv[-1]
         return ""
 
-    def _make_driver(*_a: object, **kwargs: object) -> _Driver:
+    def _make_driver(*_a: object, **kwargs: Any) -> _Driver:
         # Recorded, not discarded: the environment injects `runner_alive` and BE-0361's `on_stall`
         # here, and a swallowed **kwargs would let either wiring be deleted with the suite still green.
         DRIVER_KWARGS.append(kwargs)
@@ -2292,7 +2292,7 @@ def test_both_driver_construction_sites_hand_over_the_parsed_device_os(
         def health_ready(self) -> bool:
             return True
 
-    def _make_driver(*_a: object, **kwargs: object) -> _Driver:
+    def _make_driver(*_a: object, **kwargs: Any) -> _Driver:
         handed.append(kwargs.get("device_os"))
         return _Driver()
 

@@ -6,6 +6,8 @@ here a minimal subclass exercises that plumbing directly, with the real usage tr
 
 from __future__ import annotations
 
+from typing import Any
+
 from conftest import FAKE_USAGE_PER_CALL, FakeBackend, FakeUsage
 
 from bajutsu.agents.claude_backed import ClaudeBackedAgent
@@ -17,7 +19,7 @@ class _Probe(ClaudeBackedAgent):
     """Minimal concrete subclass — inherits the base plumbing unchanged."""
 
 
-def _probe(**kwargs: object) -> _Probe:
+def _probe(**kwargs: Any) -> _Probe:
     return _Probe(default_model="probe-model", **kwargs)  # type: ignore[arg-type]
 
 

@@ -64,7 +64,9 @@ def test_refuse_out_in_checkout_allows_local_and_no_source(tmp_path: Path) -> No
     assert exc.value.exit_code == 2  # the exit-2 CLI contract used across this file
 
 
-def test_record_auto_name_inside_the_checkout_is_refused(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_record_auto_name_inside_the_checkout_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:  # type: ignore[no-untyped-def]
     # If `record` is run from inside the materialized checkout (cwd under it), even the auto-named
     # (no --out) path would land in the read-only cache — it is refused, not silently written.
     checkout = tmp_path / "co"
@@ -83,7 +85,7 @@ def _eff_with_secrets(*names: str):  # type: ignore[no-untyped-def]
     return resolve(load_config(f"targets:\n  x:\n    bundleId: com.x\n    secrets:\n{decl}"), "x")
 
 
-def test_secret_tokens_maps_set_env_vars_to_their_tokens(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_secret_tokens_maps_set_env_vars_to_their_tokens(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("PASSWORD", "hunter2")
     monkeypatch.delenv("API_KEY", raising=False)  # declared but unset: not bindable, so skipped
     assert _secret_tokens(_eff_with_secrets("PASSWORD", "API_KEY")) == [
@@ -91,7 +93,7 @@ def test_secret_tokens_maps_set_env_vars_to_their_tokens(monkeypatch) -> None:  
     ]
 
 
-def test_secret_tokens_skips_an_empty_value(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_secret_tokens_skips_an_empty_value(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
     # An empty env value has no literal to tokenize, and matching "" would splice the token
     # between every character — so a present-but-empty secret is skipped, not bound.
     monkeypatch.setenv("EMPTY", "")
@@ -99,7 +101,7 @@ def test_secret_tokens_skips_an_empty_value(monkeypatch) -> None:  # type: ignor
     assert _secret_tokens(_eff_with_secrets("EMPTY", "REAL")) == [("hunter2", "${secrets.REAL}")]
 
 
-def test_secret_tokens_orders_longest_value_first(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_secret_tokens_orders_longest_value_first(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
     # Longest value first so a value that is a substring of another is substituted before it.
     monkeypatch.setenv("SHORT", "abc")
     monkeypatch.setenv("LONG", "abcdef")

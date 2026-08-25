@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -302,7 +303,7 @@ def test_worker_idle_polls_when_no_job(monkeypatch: pytest.MonkeyPatch) -> None:
     def stop_sleep(_seconds: float) -> None:
         raise _StopLoop
 
-    monkeypatch.setattr(worker_mod.time, "sleep", stop_sleep)
+    monkeypatch.setattr(time, "sleep", stop_sleep)
     with pytest.raises(_StopLoop):
         worker(server_url="http://cp", poll_interval=1, heartbeat_interval=1)
 
@@ -316,7 +317,7 @@ def test_worker_retries_after_lease_failure(monkeypatch: pytest.MonkeyPatch) -> 
     def stop_sleep(_seconds: float) -> None:
         raise _StopLoop
 
-    monkeypatch.setattr(worker_mod.time, "sleep", stop_sleep)
+    monkeypatch.setattr(time, "sleep", stop_sleep)
     with pytest.raises(_StopLoop):
         worker(server_url="http://cp", poll_interval=1, heartbeat_interval=1)
 

@@ -769,13 +769,13 @@ def test_live_environment_start_raises_on_deeplink() -> None:
 def test_live_environment_start_raises_on_launch_args() -> None:
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
-        env.start(_live_eff(), Preconditions(launch_args=["--reset"]))
+        env.start(_live_eff(), Preconditions(launchArgs=["--reset"]))
 
 
 def test_live_environment_start_raises_on_launch_env() -> None:
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
-        env.start(_live_eff(), Preconditions(launch_env={"MODE": "test"}))
+        env.start(_live_eff(), Preconditions(launchEnv={"MODE": "test"}))
 
 
 def test_live_environment_start_raises_on_eff_launch_args() -> None:

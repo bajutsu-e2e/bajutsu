@@ -152,7 +152,7 @@ def test_snapshot_timed_and_clear() -> None:
 def test_mock_fulfills_a_matching_request_and_marks_it_mocked() -> None:
     page = _FakePage()
     mock = Mock(
-        match=RequestMatch(method="POST", url_matches="api.test/login"),
+        match=RequestMatch(method="POST", urlMatches="api.test/login"),
         respond=MockResponse(status=418, headers={"X-T": "1"}, body="no"),
     )
     collector = WebNetworkCollector(page, mocks=[mock])
@@ -200,7 +200,7 @@ def test_mock_honors_delay_ms_before_fulfilling() -> None:
     # The sleep is injected so the test asserts the delay without actually waiting.
     sleeps: list[float] = []
     page = _FakePage()
-    mock = Mock(match=RequestMatch(path="/slow"), respond=MockResponse(delay_ms=50.0))
+    mock = Mock(match=RequestMatch(path="/slow"), respond=MockResponse(delayMs=50.0))
     WebNetworkCollector(page, mocks=[mock], sleep=sleeps.append)
     route = _FakeRoute(_FakeRequest("GET", "https://api.test/slow"))
     page.route_request(route)
@@ -213,6 +213,6 @@ def test_request_assertion_passes_over_web_collected_exchanges() -> None:
     page = _FakePage()
     collector = WebNetworkCollector(page)
     page.finish(_FakeRequest("POST", "https://api.test/login", response=_FakeResponse(200)))
-    assertion = Assertion(request=RequestMatch(method="POST", path_matches="login", count=1))
+    assertion = Assertion(request=RequestMatch(method="POST", pathMatches="login", count=1))
     result = evaluate_one([], assertion, collector.snapshot())
     assert result.ok is True

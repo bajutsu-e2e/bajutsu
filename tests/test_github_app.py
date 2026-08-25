@@ -121,7 +121,9 @@ def test_installation_token_maps_a_malformed_body() -> None:
     ("status", "needle"),
     [(401, "App JWT was rejected"), (404, "not installed"), (500, "returned 500")],
 )
-def test_fetch_maps_app_api_errors(monkeypatch, status: int, needle: str) -> None:  # type: ignore[no-untyped-def]
+def test_fetch_maps_app_api_errors(
+    monkeypatch: pytest.MonkeyPatch, status: int, needle: str
+) -> None:  # type: ignore[no-untyped-def]
     import urllib.error
     from email.message import Message
 

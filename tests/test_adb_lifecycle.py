@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -165,7 +166,9 @@ def test_pm_revoke_cmd() -> None:
     ]  # fmt: skip
 
 
-def test_env_apply_permissions_grants_and_revokes_by_service(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_env_apply_permissions_grants_and_revokes_by_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # type: ignore[no-untyped-def]
     # location splits into two android.permission.* names (fine + coarse); each runs its own
     # pm grant/revoke, in the mapped order (BE-0276).
     calls: list[list[str]] = []
@@ -344,7 +347,7 @@ def test_android_environment_start_runs_the_adb_sequence() -> None:
     assert any("action.VIEW -d showcasecompose://permissions" in j for j in joined)
 
 
-def test_android_environment_starts_screenrecord_before_launching_the_app(tmp_path) -> None:
+def test_android_environment_starts_screenrecord_before_launching_the_app(tmp_path: Path) -> None:
     # The video must begin before `am start` so the app's cold start is recorded; the running
     # screenrecord is exposed for the sink to adopt rather than started on demand after launch.
     events: list[str] = []
@@ -385,7 +388,7 @@ def test_android_environment_starts_screenrecord_before_launching_the_app(tmp_pa
     assert started[0].true_start is not None
 
 
-def test_android_environment_stops_the_prestarted_video_when_launch_fails(tmp_path) -> None:
+def test_android_environment_stops_the_prestarted_video_when_launch_fails(tmp_path: Path) -> None:
     # A launch failure after the recording started must finalize it, not leak the local `adb shell`
     # client and the device-side `screenrecord` (which would otherwise run to its ~180s cap).
     stopped: list[int] = []

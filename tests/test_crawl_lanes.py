@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 import typer
@@ -401,7 +402,7 @@ def test_build_lane_gives_the_launch_and_the_reset_one_environment(
 
     launched: list[object] = []
 
-    def fake_launch_driver(udid: str, *a: object, **kw: object) -> tuple[object, None]:
+    def fake_launch_driver(udid: str, *a: object, **kw: Any) -> tuple[object, None]:
         launched.append(kw.get("environment"))
         order.append("launch")
         return object(), None

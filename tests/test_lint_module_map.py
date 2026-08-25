@@ -105,7 +105,9 @@ def test_undocumented_packages_skips_a_directory_without_modules(tmp_path: Path)
     assert lmm.undocumented_packages(set(), pkg) == []
 
 
-def test_undocumented_modules_honours_the_allowlist(tmp_path: Path, monkeypatch) -> None:
+def test_undocumented_modules_honours_the_allowlist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A grandfathered module stays quiet; a new one fails until its row lands."""
     pkg = _package(tmp_path, "old.py", "brand_new.py", "documented.py")
     monkeypatch.setattr(lmm, "GRANDFATHERED", frozenset({"old.py"}))
@@ -120,7 +122,9 @@ def test_undocumented_modules_skips_dunder_modules(tmp_path: Path) -> None:
     assert lmm.undocumented_modules(set(), pkg) == []
 
 
-def test_stale_grandfathered_reports_a_vanished_entry(tmp_path: Path, monkeypatch) -> None:
+def test_stale_grandfathered_reports_a_vanished_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The allowlist must not outlive the modules it excuses."""
     pkg = _package(tmp_path, "still_here.py")
     monkeypatch.setattr(lmm, "GRANDFATHERED", frozenset({"still_here.py", "long_gone.py"}))
@@ -138,7 +142,9 @@ def test_stale_grandfathered_reports_an_entry_the_table_now_documents(
     assert lmm.stale_grandfathered(pkg, {"documented.py"}) == ["documented.py"]
 
 
-def test_main_passes_on_a_matching_tree(tmp_path: Path, capsys, monkeypatch) -> None:
+def test_main_passes_on_a_matching_tree(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A table that covers the tree exits zero and says how much it checked."""
     monkeypatch.setattr(lmm, "GRANDFATHERED", frozenset())
     pkg = _package(tmp_path, "drivers/", "doctor.py")
@@ -153,7 +159,9 @@ def test_main_passes_on_a_matching_tree(tmp_path: Path, capsys, monkeypatch) -> 
     assert "2 table entries" in capsys.readouterr().out
 
 
-def test_main_fails_and_names_every_offender(tmp_path: Path, capsys, monkeypatch) -> None:
+def test_main_fails_and_names_every_offender(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A failure names each gap and the remedy, so the message is actionable on its own."""
     monkeypatch.setattr(lmm, "GRANDFATHERED", frozenset())
     pkg = _package(tmp_path, "undocumented.py")
@@ -168,7 +176,9 @@ def test_main_fails_and_names_every_offender(tmp_path: Path, capsys, monkeypatch
     assert "2 problem(s)" in err
 
 
-def test_main_reports_a_missing_package_without_a_traceback(tmp_path: Path, capsys) -> None:
+def test_main_reports_a_missing_package_without_a_traceback(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """A bad --package path fails with a message rather than an unhandled exception."""
     page = _architecture(tmp_path, "| `doctor.py` | Score | — |\n")
 

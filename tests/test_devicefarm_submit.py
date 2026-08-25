@@ -14,6 +14,7 @@ from __future__ import annotations
 import io
 import json
 import stat
+import time
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -21,7 +22,6 @@ from typing import Any
 import pytest
 import yaml
 
-from bajutsu.cloud import devicefarm
 from bajutsu.cloud.devicefarm import (
     _POLL_INITIAL_SECONDS,
     _POLL_INTERVAL_SECONDS,
@@ -733,7 +733,7 @@ def test_wait_run_still_raises_at_the_hard_cap(monkeypatch: pytest.MonkeyPatch) 
     # Backing off must not weaken the 150-minute hard cap. A run that never COMPLETEs still raises
     # once the deadline passes; the fake clock advances by each backed-off sleep so no real waiting.
     clock = {"t": 0.0}
-    monkeypatch.setattr(devicefarm.time, "monotonic", lambda: clock["t"])
+    monkeypatch.setattr(time, "monotonic", lambda: clock["t"])
 
     def advance(seconds: float) -> None:
         clock["t"] += seconds

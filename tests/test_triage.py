@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
@@ -947,7 +948,7 @@ def test_cli_flaky_requires_ai() -> None:
 
 def _fake_cross_run_agent(fix: Fix | None) -> type:
     class _FakeAgent:
-        def __init__(self, *args: object, **kwargs: object) -> None:
+        def __init__(self, *args: object, **kwargs: Any) -> None:
             pass
 
         def triage_flaky(self, context: triage.CrossRunTriageContext) -> triage.Triage:

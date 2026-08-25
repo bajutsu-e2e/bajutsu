@@ -328,6 +328,9 @@ class _ScriptAgent:
         self._i += 1
         return proposal
 
+    def plan(self, goal: str) -> list[str]:
+        return []
+
 
 def test_record_guard_clears_blocking_before_agent_acts() -> None:
     driver = FakeDriver([_window()])  # blocked: a prompt collapsed the tree

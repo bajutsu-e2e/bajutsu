@@ -176,7 +176,7 @@ def test_relative_app_path_resolves_against_the_config_dir(tmp_path: Path) -> No
         "    package: com.example.demo\n"
         f"    scenarios: {scn_dir}\n"
         "    cloudBatch: devicefarm\n"
-        "    appPath: app.apk\n",  # relative to the config's own directory (tmp_path)
+        "    appPath: app.apk\n",  # relative to the config's own directory (tmp_path: Path)
         encoding="utf-8",
     )
     _register_devicefarm(manifest_ok=True)

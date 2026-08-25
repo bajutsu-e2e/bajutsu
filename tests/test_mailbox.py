@@ -8,6 +8,8 @@ reading, and after-start selection are pure deterministic functions tested here;
 
 from __future__ import annotations
 
+from typing import Any
+
 from bajutsu.mailbox import MailboxMessage, extract_value, match_message, read_messages, select
 from bajutsu.scenario import EmailExtract, EmailMatch
 
@@ -181,7 +183,7 @@ class _FakeMailbox:
         return r  # type: ignore[return-value]
 
 
-def _email_step(**kw: object) -> Email:  # type: ignore[name-defined]
+def _email_step(**kw: Any) -> Email:  # type: ignore[name-defined]
     from bajutsu.scenario import Email
 
     return Email.model_validate(kw)

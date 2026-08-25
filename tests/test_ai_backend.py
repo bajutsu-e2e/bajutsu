@@ -8,6 +8,7 @@ built-in Anthropic registration.
 
 from __future__ import annotations
 
+import shutil
 from collections.abc import Iterator
 from typing import Any
 
@@ -164,12 +165,12 @@ def test_credential_gap_dispatches_to_the_resolved_provider(monkeypatch: Any) ->
     monkeypatch.delenv("BAJUTSU_BEDROCK_MODEL", raising=False)
     assert credential_gap(AiConfig(provider="bedrock")) == "bedrock-model"
     # `ant` (BE-0163) dispatches through the same shared adapter to the CLI credential probe.
-    monkeypatch.setattr(anthropic_client.shutil, "which", lambda _exe: None)
+    monkeypatch.setattr(shutil, "which", lambda _exe: None)
     assert credential_gap(AiConfig(provider="ant")) == anthropic_client.ANT_CLI_MISSING
     # `claude-code` (BE-0176) dispatches to its own adapter's gap: the `claude` binary is absent.
     from bajutsu.ai import claude_code
 
-    monkeypatch.setattr(claude_code.shutil, "which", lambda _exe: None)
+    monkeypatch.setattr(shutil, "which", lambda _exe: None)
     assert credential_gap(AiConfig(provider="claude-code")) == claude_code.CLI_MISSING
 
 

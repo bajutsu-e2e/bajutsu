@@ -328,7 +328,7 @@ def _run_writer(tmp_path: Path):
     return RunArtifactWriter(tmp_path, Redactor(None))
 
 
-def test_visual_assertion_pass(tmp_path):
+def test_visual_assertion_pass(tmp_path: Path):
     from PIL import Image
 
     from bajutsu.assertions import VisualContext
@@ -361,7 +361,7 @@ def test_visual_assertion_pass(tmp_path):
     assert (tmp_path / result.visual.baseline).is_file()
 
 
-def test_visual_assertion_fail(tmp_path):
+def test_visual_assertion_fail(tmp_path: Path):
     from PIL import Image
 
     from bajutsu.assertions import VisualContext
@@ -390,7 +390,7 @@ def test_visual_assertion_fail(tmp_path):
     assert not result.visual.missing
 
 
-def test_visual_assertion_missing_baseline(tmp_path):
+def test_visual_assertion_missing_baseline(tmp_path: Path):
     from bajutsu.assertions import VisualContext
 
     vc = VisualContext(
@@ -417,7 +417,7 @@ def test_visual_assertion_no_context():
     assert "no visual context" in result.reason
 
 
-def test_visual_pixelmatch_fields_with_resolved_exact_fails(tmp_path):
+def test_visual_pixelmatch_fields_with_resolved_exact_fails(tmp_path: Path):
     """Explicit pixelmatch fields + resolved engine exact → clean failure."""
     from PIL import Image
 
@@ -446,7 +446,7 @@ def test_visual_pixelmatch_fields_with_resolved_exact_fails(tmp_path):
     assert "resolved engine is 'exact'" in result.reason
 
 
-def test_visual_evidence_records_engine(tmp_path):
+def test_visual_evidence_records_engine(tmp_path: Path):
     """VisualEvidence.engine reflects the resolved compare engine."""
     from PIL import Image
 
@@ -473,7 +473,7 @@ def test_visual_evidence_records_engine(tmp_path):
     assert result.visual.engine == "exact"
 
 
-def test_visual_evidence_records_pixelmatch(tmp_path):
+def test_visual_evidence_records_pixelmatch(tmp_path: Path):
     from PIL import Image
 
     from bajutsu.assertions import VisualContext
@@ -501,7 +501,7 @@ def test_visual_evidence_records_pixelmatch(tmp_path):
     assert result.visual.engine == "pixelmatch"
 
 
-def test_visual_context_default_compare_fallback(tmp_path):
+def test_visual_context_default_compare_fallback(tmp_path: Path):
     """When the assertion has no compare, VisualContext.default_compare is used."""
     from PIL import Image
 
