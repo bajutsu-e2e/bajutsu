@@ -107,7 +107,11 @@ jobs:
       needs.changes.outputs.swift == 'true' ||
       github.event_name != 'pull_request'
     runs-on: macos-latest
-    timeout-minutes: 30
+    # Raised from the 30 the other analysis jobs keep: the BajutsuKit build plus extraction has been
+    # measured at 30m19s, 30m43s, and 30m58s on consecutive runs of one head, so 30 cancelled the job
+    # every time and failed the aggregation gate below with it. The trend is upward as the package
+    # grows, so this carries margin rather than tracking the last measurement.
+    timeout-minutes: 45
     permissions:
       security-events: write
       packages: read
