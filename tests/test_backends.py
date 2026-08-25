@@ -81,7 +81,11 @@ def test_resolve_picks_the_first_same_platform_provider_for_the_gap() -> None:
 
 def test_resolve_skips_the_gap_when_no_same_platform_provider() -> None:
     # Only a cross-platform backend has network -> recorded as skipped, never a cross-platform pick.
-    plats = {"multi": ("lean",), "web": ("playwright",), "fake": ("fake",)}
+    plats: dict[str, tuple[str, ...]] = {
+        "multi": ("lean",),
+        "web": ("playwright",),
+        "fake": ("fake",),
+    }
     chosen, skipped = resolve_evidence_providers(
         ["multi", "web"], "lean", available=lambda b: True, caps=_caps, platforms=plats
     )
@@ -137,7 +141,8 @@ def test_backend_lifecycle_is_runtime_checkable() -> None:
         def close(self) -> None: ...
         def reset_context(self) -> None: ...
         def await_ready(self, timeout: float = 10.0, poll: float = 0.1) -> None: ...
-        def health_ready(self) -> bool: ...
+        def health_ready(self) -> bool:
+            return True
 
     class PartialLifecycle:
         def navigate(self) -> None: ...

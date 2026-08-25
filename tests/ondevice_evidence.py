@@ -44,7 +44,7 @@ import re
 import shutil
 import subprocess
 import warnings
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator, Iterator
 from pathlib import Path
 from typing import Protocol
 
@@ -113,7 +113,9 @@ def xcuitest_video(udid: str, path: Path) -> intervals.Interval:
 
 
 @pytest.hookimpl(wrapper=True)
-def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]) -> Iterator[None]:
+def pytest_runtest_makereport(
+    item: pytest.Item, call: pytest.CallInfo[None]
+) -> Generator[None, pytest.TestReport, pytest.TestReport]:
     """Track this attempt's outcome, and sweep its pending evidence once teardown is the last word.
 
     Deferred to the "teardown" report specifically: by the time it exists, every finalizer for this

@@ -10,9 +10,10 @@ from __future__ import annotations
 import pytest
 
 from bajutsu.drivers import base
+from bajutsu.drivers.fake import FakeDriver
 
 
-class LateDriver:
+class LateDriver(FakeDriver):
     """A stub driver whose selector matches only after `appear_after` single-shot checks.
 
     Simulates an element that renders slightly after the call — the case the base settle

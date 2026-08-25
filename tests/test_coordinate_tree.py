@@ -13,6 +13,7 @@ from collections.abc import Callable
 
 import pytest
 
+from bajutsu.drivers import base
 from bajutsu.drivers.adb import AdbDriver
 from bajutsu.drivers.coordinate_tree import CoordinateTreeDriver
 
@@ -190,7 +191,7 @@ def test_stable_key_ignores_volatile_fields_and_updates_cache(backend: BackendFa
     assert driver._last_stable_key == type(driver)._stable_key(tree)
 
     # Volatile value/traits/label do not move the key; identifier or frame does.
-    a: list = [
+    a: list[base.Element] = [
         {
             "identifier": "x",
             "label": "A",
@@ -200,7 +201,7 @@ def test_stable_key_ignores_volatile_fields_and_updates_cache(backend: BackendFa
             "nativeZ": None,
         }
     ]
-    b: list = [
+    b: list[base.Element] = [
         {
             "identifier": "x",
             "label": "B",
@@ -210,7 +211,7 @@ def test_stable_key_ignores_volatile_fields_and_updates_cache(backend: BackendFa
             "nativeZ": None,
         }
     ]
-    c: list = [
+    c: list[base.Element] = [
         {
             "identifier": "x",
             "label": "A",

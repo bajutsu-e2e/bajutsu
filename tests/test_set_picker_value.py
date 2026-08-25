@@ -22,6 +22,21 @@ from bajutsu.orchestrator import _action_of, run_scenario
 from bajutsu.scenario import load_scenarios
 
 
+def _picked_values(driver: FakeDriver) -> list[str]:
+    """The value each `setPickerValue` chose, in order.
+
+    `FakeDriver.actions` logs `(kind, arg)` with `arg` typed `object`, so the read asserts the shape
+    rather than casting it away (BE-0388).
+    """
+    values: list[str] = []
+    for _kind, arg in driver.actions:
+        assert isinstance(arg, tuple) and len(arg) == 2
+        value = arg[1]
+        assert isinstance(value, str)
+        values.append(value)
+    return values
+
+
 def _wheel(value: str, *, identifier: str | None = None, y: float = 0.0) -> base.Element:
     """One `pickerWheel` component showing `value`. A sibling component carries no id of its own."""
     return {"identifier": identifier, "label": None, "traits": ["pickerWheel"],
@@ -126,7 +141,7 @@ def test_multi_component_picker_addresses_each_wheel_by_index() -> None:
     )[0]
     result = run_scenario(driver, scenario)
     assert result.ok, result.failure
-    assert [value for _, (_, value) in driver.actions] == ["2016年", "5月"]
+    assert _picked_values(driver) == ["2016年", "5月"]
 
 
 def test_a_sibling_wheels_options_do_not_leak_to_the_other() -> None:

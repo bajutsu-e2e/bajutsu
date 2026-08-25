@@ -14,7 +14,7 @@ import io
 import json
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -57,7 +57,7 @@ def _changed(status: str, filename: str, previous_filename: str | None = None) -
         status=status, filename=filename, previous_filename=previous_filename
     )
     assert isinstance(changed, labels.ChangedFile)
-    return changed
+    return cast("ChangedFile", changed)
 
 
 # --- scope ------------------------------------------------------------------------
@@ -154,7 +154,7 @@ def _actions(
         entries, lambda p: head.get(p), lambda p: base.get(p), current or set()
     )
     assert isinstance(plan, labels.Plan)
-    return plan
+    return cast("Plan", plan)
 
 
 def test_added_item_emits_a_single_add() -> None:

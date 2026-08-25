@@ -36,6 +36,16 @@ def _ok_reply(data: str | None = None) -> str:
 # --- pure command builders ---
 
 
+def _recorder(calls: list[list[str]]) -> adb.RunFn:
+    """An `adb` RunFn that records each argv and returns empty output."""
+
+    def run(argv: list[str]) -> str:
+        calls.append(argv)
+        return ""
+
+    return run
+
+
 def test_geo_fix_command_builder_puts_longitude_before_latitude() -> None:
     # `emu geo fix` takes <longitude> <latitude>, the reverse of DeviceControl.set_location(lat, lon).
     assert adb.geo_fix_cmd("emulator-5554", 35.6, 139.7) == [
@@ -94,7 +104,7 @@ def test_parse_clipboard_result_decodes_and_loud_fails() -> None:
 
 def test_env_set_location_runs_geo_fix() -> None:
     calls: list[list[str]] = []
-    adb.Env("E", run=lambda a: calls.append(a) or "").set_location(1.0, 2.0)
+    adb.Env("E", run=_recorder(calls)).set_location(1.0, 2.0)
     assert calls == [["adb", "-s", "E", "emu", "geo", "fix", "2.0", "1.0"]]
 
 
@@ -131,9 +141,7 @@ def test_env_clipboard_raises_loudly_when_the_app_has_no_receiver() -> None:
 
 def test_android_control_set_location_delegates_with_longitude_first() -> None:
     calls: list[list[str]] = []
-    ctrl = platform_lifecycle.android_device_control(
-        "E", _PKG, env_run=lambda a: calls.append(a) or ""
-    )
+    ctrl = platform_lifecycle.android_device_control("E", _PKG, env_run=_recorder(calls))
     ctrl.set_location(35.6, 139.7)
     assert calls == [["adb", "-s", "E", "emu", "geo", "fix", "139.7", "35.6"]]
 

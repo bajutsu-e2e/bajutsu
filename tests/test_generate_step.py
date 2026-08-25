@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
+from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator.actions.handlers.generate import (
     _datetime_value,
     _do_generate,
@@ -26,7 +27,7 @@ def _step(payload: dict[str, object], var: str = "v") -> Step:
 
 def _produce(payload: dict[str, object]) -> str:
     bindings: dict[str, str] = {}
-    _do_generate(None, _step(payload), None, None, bindings)
+    _do_generate(FakeDriver([]), _step(payload), None, None, bindings)
     return bindings["vars.v"]
 
 
@@ -42,7 +43,8 @@ def test_generate_is_an_exclusive_action() -> None:
 
 
 def test_exactly_one_generator_kind_is_required() -> None:
-    for payload in ({}, {"random": {"uuid": {}}, "datetime": {}}):
+    payloads: list[dict[str, object]] = [{}, {"random": {"uuid": {}}, "datetime": {}}]
+    for payload in payloads:
         with pytest.raises(ValidationError):
             _step(payload)
 
@@ -159,13 +161,15 @@ def test_datetime_offset_is_applied_after_the_zone_conversion() -> None:
 
 def test_the_value_lands_in_the_named_var() -> None:
     bindings: dict[str, str] = {}
-    _do_generate(None, _step({"random": {"uuid": {}}}, var="orderRef"), None, None, bindings)
+    _do_generate(
+        FakeDriver([]), _step({"random": {"uuid": {}}}, var="orderRef"), None, None, bindings
+    )
     assert list(bindings) == ["vars.orderRef"]
 
 
 def test_generate_without_bindings_is_a_noop() -> None:
     # No var scope (e.g. a bare condition eval): nothing to write, and it must not crash.
-    _do_generate(None, _step({"random": {"uuid": {}}}), None, None, None)
+    _do_generate(FakeDriver([]), _step({"random": {"uuid": {}}}), None, None, None)
 
 
 def test_every_accepted_step_produces_a_value() -> None:

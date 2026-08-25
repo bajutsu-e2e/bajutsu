@@ -33,7 +33,7 @@ from bajutsu.platform_lifecycle.environments.xcuitest_live import (
     is_webdriver_endpoint,
 )
 from bajutsu.platform_lifecycle.factories import environment_for
-from bajutsu.scenario import Preconditions
+from bajutsu.scenario import Preconditions, Relaunch
 from bajutsu.scenario.models.scenario import Scenario
 
 _ENDPOINT = "http://grid.local:4723"
@@ -601,7 +601,9 @@ def _live_eff_with(**kwargs: str) -> Any:
     if "launch_args" in kwargs:
         extra += f'    launchArgs: ["{kwargs["launch_args"]}"]\n'
     if "launch_env" in kwargs:
-        k, v = next(iter(kwargs["launch_env"].items()))
+        launch_env = kwargs["launch_env"]
+        assert isinstance(launch_env, dict)
+        k, v = next(iter(launch_env.items()))
         extra += f"    launchEnv:\n      {k}: {v}\n"
     return resolve(
         load_config(
@@ -699,7 +701,7 @@ def test_live_environment_relauncher_raises_unsupported_action() -> None:
     driver = XcuitestLiveDriver(WebDriverClient(_FakeGrid([])))
     relaunch = env.relauncher(eff, Scenario(name="t", steps=[]), driver)
     with pytest.raises(base.UnsupportedAction):
-        relaunch(None)
+        relaunch(Relaunch())
 
 
 def test_find_elements_raises_on_non_list_response() -> None:

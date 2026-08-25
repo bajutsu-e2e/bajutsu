@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 
 import pytest
 
 from bajutsu.config import load_config, resolve
 from bajutsu.doctor import DoctorProbeError, probe_screen, render, score
 from bajutsu.drivers import base
+from bajutsu.drivers.fake import FakeDriver
 
 
 def _el(identifier: str | None, traits: list[str], label: str = "x") -> base.Element:
@@ -20,6 +22,18 @@ def _el(identifier: str | None, traits: list[str], label: str = "x") -> base.Ele
         "frame": (0.0, 0.0, 10.0, 10.0),
         "nativeZ": None,
     }
+
+
+def _recording_make_driver(
+    made: list[tuple[str, str]],
+) -> Callable[..., base.Driver]:
+    """A `make_driver` stand-in that records the (actuator, udid) it was asked for."""
+
+    def make(actuator: str, udid: str, **kw: object) -> base.Driver:
+        made.append((actuator, udid))
+        return _RecordingDriver()
+
+    return make
 
 
 def test_ready() -> None:
@@ -224,7 +238,7 @@ def test_android_clickable_trait_is_actionable() -> None:
 # --- shared screen probe (BE-0199) ---
 
 
-class _RecordingDriver:
+class _RecordingDriver(FakeDriver):
     """A driver whose query() returns one fixed element, recording nothing itself."""
 
     def query(self) -> list[base.Element]:
@@ -291,7 +305,7 @@ def test_probe_screen_routes_udid_resolution_through_injected_simctl(
     torn: list[str] = []
     _patch_read_env(monkeypatch, built, torn)
     eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
-    probe_screen("xcuitest", "booted", eff, simctl_run=lambda _c, _e=None: _booted_json("BOOTED-9"))
+    probe_screen("xcuitest", "booted", eff, simctl_run=lambda _c, _e: _booted_json("BOOTED-9"))
     assert built == ["BOOTED-9"]
 
 
@@ -303,7 +317,7 @@ def test_probe_screen_takes_the_first_udid_of_a_comma_list(
     made: list[tuple[str, str]] = []
     monkeypatch.setattr(
         "bajutsu.doctor.make_driver",
-        lambda actuator, udid, **kw: made.append((actuator, udid)) or _RecordingDriver(),
+        _recording_make_driver(made),
     )
     monkeypatch.setattr(
         "bajutsu.platform_lifecycle.environments.android.AndroidEnvironment.resolve_device",

@@ -74,6 +74,16 @@ def _by_id(els: list[base.Element], ident: str) -> base.Element:
     return next(e for e in els if e["identifier"] == ident)
 
 
+def _recorder(calls: list[list[str]]) -> adb.RunFn:
+    """An `adb` RunFn that records each argv and returns empty output."""
+
+    def run(argv: list[str]) -> str:
+        calls.append(argv)
+        return ""
+
+    return run
+
+
 def test_parse_hierarchy_selector_mapping() -> None:
     els = parse_hierarchy(FIXTURE)
     assert len(els) == FIXTURE_ELEMENT_COUNT
@@ -2396,7 +2406,7 @@ def test_uninstall_precedes_a_showcase_install() -> None:
     # succeeds it keeps components the new build renamed — leaving the device running a mix of two
     # builds. Removing first makes the install describe the APK alone.
     calls: list[list[str]] = []
-    adb.Env("U", run=lambda a: calls.append(a) or "").uninstall("com.example.app")
+    adb.Env("U", run=_recorder(calls)).uninstall("com.example.app")
     assert calls[-1] == adb.uninstall_cmd("U", "com.example.app")
 
 

@@ -138,7 +138,7 @@ def test_materialize_copies_once_and_reuses(
     # Count actual copies by the single os.replace each materialize does (copytree recurses into
     # subdirectories, so counting it would over-count a multi-file bundle).
     copies = {"n": 0}
-    real_replace = _bundled_runner.os.replace
+    real_replace = os.replace
 
     def _counting_replace(src: object, dst: object) -> object:
         copies["n"] += 1
@@ -188,7 +188,7 @@ def test_products_digest_skips_rehashing_an_unchanged_tree(
     source = _products(tmp_path / "bundle")
 
     calls = {"n": 0}
-    real_sha256 = _bundled_runner.hashlib.sha256
+    real_sha256 = hashlib.sha256
 
     def _counting_sha256(*args: object, **kwargs: Any) -> object:
         calls["n"] += 1

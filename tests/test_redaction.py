@@ -31,7 +31,7 @@ TYPED_PASSWORD = "Passw0rd!2026"
 
 
 def _r(**kw: list[str]) -> Redactor:
-    return Redactor(Redact(**kw))
+    return Redactor(Redact.model_validate(kw))
 
 
 def test_redact_text_masks_known_keys() -> None:

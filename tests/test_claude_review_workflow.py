@@ -32,7 +32,7 @@ def _workflow() -> dict[str, Any]:
     return parsed
 
 
-def _triggers(doc: dict[str, Any]) -> dict[str, Any]:
+def _triggers(doc: dict[Any, Any]) -> dict[str, Any]:
     """The `on:` block, which YAML resolves to the boolean ``True`` rather than the string "on"."""
     triggers = doc[True] if True in doc else doc["on"]
     assert isinstance(triggers, dict)

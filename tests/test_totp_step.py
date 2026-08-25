@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator.actions.handlers.totp import _do_totp
 from bajutsu.orchestrator.substitution import _interp_step
 from bajutsu.scenario import Step
@@ -30,7 +31,7 @@ def test_totp_step_is_an_exclusive_action() -> None:
 def test_totp_step_writes_a_six_digit_code_into_vars() -> None:
     step = Step.model_validate({"totp": {"secret": _SECRET, "into": {"var": "code"}}})
     bindings: dict[str, str] = {}
-    _do_totp(None, step, None, None, bindings)
+    _do_totp(FakeDriver([]), step, None, None, bindings)
     assert bindings["vars.code"].isdigit() and len(bindings["vars.code"]) == 6
 
 
@@ -39,7 +40,7 @@ def test_totp_code_matches_the_pure_function(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr("bajutsu.orchestrator.actions.handlers.totp.time.time", lambda: 1111111109)
     step = Step.model_validate({"totp": {"secret": _SECRET, "into": {"var": "code"}}})
     bindings: dict[str, str] = {}
-    _do_totp(None, step, None, None, bindings)
+    _do_totp(FakeDriver([]), step, None, None, bindings)
     assert bindings["vars.code"] == totp(_SECRET, now=1111111109)
 
 
@@ -54,7 +55,7 @@ def test_totp_secret_is_interpolated_before_the_handler() -> None:
 def test_totp_without_bindings_is_a_noop() -> None:
     # No var scope (e.g. a bare condition eval): nothing to write, and it must not crash.
     step = Step.model_validate({"totp": {"secret": _SECRET, "into": {"var": "code"}}})
-    _do_totp(None, step, None, None, None)
+    _do_totp(FakeDriver([]), step, None, None, None)
 
 
 def test_totp_step_invalid_secret_fails_the_step_cleanly() -> None:
@@ -68,6 +69,6 @@ def test_totp_step_invalid_secret_fails_the_step_cleanly() -> None:
     step = Step.model_validate({"totp": {"secret": secret, "into": {"var": "code"}}})
     bindings: dict[str, str] = {}
     with pytest.raises(base.SelectorError) as exc:
-        _do_totp(None, step, None, None, bindings)
+        _do_totp(FakeDriver([]), step, None, None, bindings)
     assert secret not in str(exc.value)
     assert "base32" in str(exc.value)
