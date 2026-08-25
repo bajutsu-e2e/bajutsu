@@ -148,6 +148,7 @@ select = [
     "N",
     "PERF",
     "PIE",
+    "PLE",
     "PT",
     "RUF",
     "S",
