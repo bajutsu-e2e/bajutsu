@@ -148,11 +148,18 @@ JSON レスポンスから1つのフィールドだけを取り出す仕組み�
    同じ形です)。上記のいずれかの理由ですでに失敗していた場合は、`after` エントリの失敗は既存の
    `failure` 文字列を置き換えるのではなく、そこに追記します。読み手がまず目にする理由が、後片付けの
    副作用ではなく元の原因のままであるようにするためです。
-4. `after` 段階も、`steps` がすでに各境界と待機のポーリングのたびに読んでいる同じ `cancelled` を
-   読みます。`after` の実行中に新たなキャンセルが発生すれば、通常の手順と同じように、その場で `after`
-   を打ち切ります。後片付けが2回目のキャンセル要求を無視していつまでも走り続けることはありません。
-   どちらの段階も、`steps`/`expect` から抜けるすべての経路——`RunCancelled` がすでにたどる経路を
-   含めて——で到達するため、`after` は無条件に終了処理を行う既存の
+4. `after` 段階は、`cancelled` をそのまま読むわけにはいきません。`CancelSource` はラッチされた
+   `threading.Event.is_set` であり（[`bajutsu/cancellation.py:147`](../../bajutsu/cancellation.py)）、
+   猶予時間内の2回目の `SIGTERM` は意図的に何もしないためです。つまり、`after` を `error` として
+   ディスパッチするまさにその経路で、`after` の内側の最初のキャンセル判定がふたたび `RunCancelled` を
+   送出し、後片付けの手順が1つも実行されないことになります。代わりに、この段階は時間で区切ります。
+   キャンセルされた実行では、`after` は `cancelled` を読むのをやめ、`grace_seconds()`
+   （[`bajutsu/cancellation.py:76`](../../bajutsu/cancellation.py)）から切り出した独自の期限のもとで
+   実行し、その期限を過ぎた時点で残りのエントリを放棄します。こうすれば、`serve` が無条件の強制終了
+   までに待つ猶予時間を終了処理がはみ出すことなく、後片付けに時間を区切った実行機会を与えられます。
+   キャンセルされていない実行では、`after` は他のどの手順とも同じように各境界で `cancelled` を読みます。
+   いずれの場合も、この段階は `steps`/`expect` から抜けるすべての経路——`RunCancelled` がすでにたどる
+   経路を含めて——で到達するため、`after` は無条件に終了処理を行う既存の
    `finally: artifacts = sink.finish_scenario_intervals(...)` より前に実行されます。
 
 ### レポート
@@ -203,9 +210,9 @@ JSON レスポンスから1つのフィールドだけを取り出す仕組み�
    (`before` の失敗が `steps`/`expect` を飛ばし `after` を `error` としてディスパッチすること、
    `always` が結果に関わらず実行されること、`error` ルール自身の失敗が元の `failure` を置き換えず
    追記されること、他が成功しているときの `success` ルールの失敗がそのまま唯一の `failure` になること、
-   キャンセルされた実行が `after` を `error` としてディスパッチし、`after` 自体の実行中の新たな
-   キャンセルが通常の手順と同じようにその場で段階を打ち切ること)、両段階への・からの `vars.*` の共有、
-   新しい `RunResult` フィールド。
+   キャンセルされた実行が `after` を `error` としてディスパッチしたうえで後片付けのエントリを実際に
+   実行し(その経路ではラッチされた `cancelled` を読まない)、段階自身の期限を過ぎた時点で残りを
+   放棄すること)、両段階への・からの `vars.*` の共有、新しい `RunResult` フィールド。
 
 ### prime directive との整合性
 
@@ -271,6 +278,10 @@ JSON レスポンスから1つのフィールドだけを取り出す仕組み�
 - [`bajutsu/orchestrator/loop.py:635`](../../bajutsu/orchestrator/loop.py) — `_ExecSteps`。
   `if`/`forEach`/`interrupts` がすでに共有している再帰的な手順実行クロージャで、`before`/`after` は
   これを複製せずそのまま再利用します。
+- [`bajutsu/cancellation.py:147`](../../bajutsu/cancellation.py) — ラッチされた
+  `threading.Event.is_set` としての `CancelSource` と、その上にある `grace_seconds()` の見積もり
+  (最悪 60 秒の driver 呼び出しと 30 秒の終了処理)。時間の余裕がない後処理の段階を許さないこの2つが、
+  `after` 段階をキャンセルのラッチではなく独自の期限で区切る理由です。
 - [`bajutsu/scenario/models/evidence.py:22`](../../bajutsu/scenario/models/evidence.py) —
   `Trigger.result: Literal["error"]`。既存の `capturePolicy` の結果語で、この項目の `after` ルールは
   これを置き換えるのではなく `success` を加えて拡張します。

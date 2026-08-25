@@ -155,11 +155,18 @@ same way those existing users do:
    already failed for any reason above, an `after` entry's failure is appended to the existing
    `failure` string instead of replacing it, so the reason a reader sees first is still the original
    cause, not a symptom of cleanup that ran because of it.
-4. The `after` phase reuses the same `cancelled` source `steps` already reads at every boundary and
-   wait-poll tick, so a fresh cancellation asserted while `after` itself is running cuts it short the
-   same way it would a step — cleanup does not get to run unbounded past a second cancel request.
-   Both phases are reached on every path out of `steps`/`expect`, including the one `RunCancelled`
-   already takes, so `after` runs before the existing
+4. The `after` phase cannot simply reuse the `cancelled` source: `CancelSource` is a latched
+   `threading.Event.is_set` ([`bajutsu/cancellation.py:147`](../../bajutsu/cancellation.py)), and a
+   second `SIGTERM` inside the grace window is a deliberate no-op — so on the very path that
+   dispatches `after` as `error`, the first cancellation check inside `after` would raise
+   `RunCancelled` again and no cleanup step would run at all. Bound the phase by time instead: on a
+   cancelled run `after` stops reading `cancelled` and runs under its own deadline carved out of
+   `grace_seconds()` ([`bajutsu/cancellation.py:76`](../../bajutsu/cancellation.py)), abandoning the
+   remaining entries once that deadline passes — so cleanup gets a bounded chance to run without
+   pushing the shutdown tail past the window `serve` waits before an unconditional kill. On an
+   uncancelled run `after` reads `cancelled` at each boundary the way any step does. Either way the
+   phase is reached on every path out of `steps`/`expect`, including the one `RunCancelled` already
+   takes, so `after` runs before the existing
    `finally: artifacts = sink.finish_scenario_intervals(...)`, which already finalizes
    unconditionally for the same reason.
 
@@ -211,8 +218,9 @@ already use elsewhere for a target that does not yet.
    matrix: a failing `before` skips `steps`/`expect` and dispatches `after` as `error`; `always`
    runs regardless of the outcome; an `error` rule's own failure is appended rather than replacing
    the original `failure`; a `success` rule's failure becomes the sole `failure` on an
-   otherwise-passing run; a cancelled run dispatches `after` as `error` and a fresh cancellation
-   during `after` itself cuts the phase short the same way it would an ordinary step.
+   otherwise-passing run; a cancelled run dispatches `after` as `error` and still runs its cleanup
+   entries (the latched `cancelled` source is not read on that path), abandoning the remaining ones
+   once the phase's own deadline passes.
 
 ### Prime directives preserved
 
@@ -280,6 +288,10 @@ already use elsewhere for a target that does not yet.
 - [`bajutsu/orchestrator/loop.py:635`](../../bajutsu/orchestrator/loop.py) — `_ExecSteps`, the
   recursive step-execution closure `if`/`forEach`/`interrupts` already share, and that `before`/
   `after` reuse rather than duplicate.
+- [`bajutsu/cancellation.py:147`](../../bajutsu/cancellation.py) — `CancelSource` as a latched
+  `threading.Event.is_set`, and the `grace_seconds()` budget above it (60s worst-case driver call
+  plus a 30s shutdown tail) that leaves no room for an unbounded teardown phase — together the
+  reason the `after` phase is bounded by its own deadline rather than by the cancel latch.
 - [`bajutsu/scenario/models/evidence.py:22`](../../bajutsu/scenario/models/evidence.py) —
   `Trigger.result: Literal["error"]`, the existing `capturePolicy` outcome word this item's `after`
   rules extend with `success` rather than replace.
