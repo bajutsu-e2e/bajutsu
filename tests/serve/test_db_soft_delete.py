@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import Engine
 
@@ -31,7 +32,7 @@ def _run(repo: SqlRepository, run_id: str, org: str = "acme") -> None:
     repo.record_run(RunRecord(id=run_id, org_id=org, status="done", ok=True))
 
 
-def _ids(repo: SqlRepository, org: str = "acme", **kw) -> list[str]:
+def _ids(repo: SqlRepository, org: str = "acme", **kw: Any) -> list[str]:
     return [r.id for r in repo.list_runs(org_id=org, **kw)]
 
 
@@ -85,7 +86,8 @@ def test_record_run_does_not_resurrect_or_clobber_the_marker(
     repo.soft_delete_run("r1", org_id="acme", deleted_by="alice", at=datetime.now(UTC))
     repo.record_run(RunRecord(id="r1", org_id="acme", status="done", ok=False))
     assert _ids(repo) == []  # still hidden
-    assert repo.get_run("r1").deleted_at is not None
+    record = repo.get_run("r1")
+    assert record is not None and record.deleted_at is not None
 
 
 def test_purge_deletes_the_row(serve_engine: Callable[..., Engine]) -> None:

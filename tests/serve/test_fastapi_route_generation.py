@@ -15,6 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from _shared import project, write_run
+from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from starlette.requests import Request
@@ -40,15 +41,15 @@ def _state(tmp_path: Path, **kw: object) -> srv.ServeState:
     )
 
 
-def _exposed(app: object) -> set[tuple[str, str]]:
+def _exposed(app: FastAPI) -> set[tuple[str, str]]:
     """Every (method, path) the FastAPI app actually serves — the generated routes plus the bespoke
     off_loop handlers. Starlette adds HEAD to GET routes, so a per-method flatten is fine; the
     assertions below only ever test membership of a specific (method, path)."""
     return {
         (method, route.path)
-        for route in app.routes  # type: ignore[attr-defined]
+        for route in app.routes
         if isinstance(route, APIRoute)
-        for method in route.methods
+        for method in route.methods or ()
     }
 
 

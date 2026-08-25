@@ -42,7 +42,7 @@ def _repo_and_registry(
 
 def test_add_then_get_and_list_a_project(serve_engine: Callable[..., Engine]) -> None:
     reg = _registry(serve_engine)
-    source = {"kind": "file", "locator": {"path": "checkout.yaml"}}
+    source: dict[str, object] = {"kind": "file", "locator": {"path": "checkout.yaml"}}
 
     added = reg.add(org_id="default", name="checkout", source=source)
 

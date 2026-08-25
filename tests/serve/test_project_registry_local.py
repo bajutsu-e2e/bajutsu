@@ -15,7 +15,7 @@ from bajutsu.serve.project_registry import LocalProjectRegistry
 
 def test_add_then_get_and_list_a_project(tmp_path: Path) -> None:
     reg = LocalProjectRegistry(tmp_path / "projects.json")
-    source = {"kind": "file", "locator": {"path": "checkout.yaml"}}
+    source: dict[str, object] = {"kind": "file", "locator": {"path": "checkout.yaml"}}
 
     added = reg.add(org_id="default", name="checkout", source=source)
 

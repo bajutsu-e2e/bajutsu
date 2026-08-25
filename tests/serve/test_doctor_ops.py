@@ -251,7 +251,7 @@ def test_ios_reports_booted_simulator_check(tmp_path: Path) -> None:
         tmp_path,
         "defaults: { backend: [xcuitest] }\ntargets:\n  demo: { bundleId: com.demo }\n",
     )
-    state.simctl = lambda args, extra_env=None: '{"devices": {}}'  # no booted device
+    state.simctl = lambda args, extra_env: '{"devices": {}}'  # no booted device
     payload, status = ops.doctor_check(state, {"target": "demo"})
     assert status == 200
     booted = [c for c in payload["checks"] if c["name"] == "Simulator booted"]

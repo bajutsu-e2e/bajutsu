@@ -22,7 +22,7 @@ from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
 from bajutsu.serve.server.db import SqlRepository
 from bajutsu.serve.server.models import Base
-from bajutsu.serve.state import Job
+from bajutsu.serve.state import Job, SessionManager
 
 
 def _repo(serve_engine: Callable[..., Engine]) -> SqlRepository:
@@ -116,7 +116,7 @@ def test_metrics_never_leak_secrets(serve_engine: Callable[..., Engine], tmp_pat
     state = srv.ServeState(
         runs_dir=tmp_path / "runs",
         repository=repo,
-        auth=srv.SessionManager(token="operator-token-XYZ"),
+        auth=SessionManager(token="operator-token-XYZ"),
     )
 
     text, _ = ops.render_metrics(state)
@@ -162,7 +162,7 @@ def _request(port: int, path: str, headers: dict[str, str] | None = None) -> tup
 
 def test_metrics_requires_auth_when_token_set(tmp_path: Path) -> None:
     _, cfg, runs = project(tmp_path)
-    state = srv.ServeState(runs_dir=runs, config=cfg, auth=srv.SessionManager(token="s3cret"))
+    state = srv.ServeState(runs_dir=runs, config=cfg, auth=SessionManager(token="s3cret"))
     server, port = _serve(state)
     try:
         unauth, _ = _request(port, "/metrics")

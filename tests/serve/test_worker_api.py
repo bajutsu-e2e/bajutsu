@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from _shared import FakeObjectStore
 from sqlalchemy import Engine
 
 from bajutsu import serve as srv
@@ -69,15 +70,9 @@ def test_worker_lease_returns_503_without_repository(tmp_path: Path) -> None:
     assert code == 503
 
 
-class _FakeStore:
-    """In-memory `ObjectStore` slice for the baseline-URL lease tests (BE-0160): a signed GET URL
-    per key and a prefix listing, so the gate needs no cloud SDK."""
-
-    def __init__(self) -> None:
-        self.objects: dict[str, bytes] = {}
-
-    def put_bytes(self, key: str, data: bytes, *, content_type: str = "") -> None:
-        self.objects[key] = data
+class _FakeStore(FakeObjectStore):
+    """The shared in-memory store for the baseline-URL lease tests (BE-0160): a GET URL namespaced
+    for this suite, and a listing in a stable order so an assertion can compare it directly."""
 
     def presigned_url(self, key: str) -> str:
         return f"https://signed.example/get/{key}"

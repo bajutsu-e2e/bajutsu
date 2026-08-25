@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -377,11 +378,12 @@ def test_run_command_parallel_pool() -> None:
 
 def test_command_builders_pass_upload_exec_only_when_set() -> None:
     # The flag is set by serve only for an upload-sourced config (BE-0090); empty omits it.
-    for build in (
+    builders: tuple[Callable[..., list[str]], ...] = (
         lambda **k: srv.run_command("s.yaml", "demo", **k),
         lambda **k: srv.record_command("o.yaml", "demo", "goal", **k),
         lambda **k: srv.crawl_command("demo", out="o", **k),
-    ):
+    )
+    for build in builders:
         assert "--upload-exec" not in build()  # default empty: ungoverned
         sandboxed = build(upload_exec="sandbox")
         assert sandboxed[sandboxed.index("--upload-exec") + 1] == "sandbox"
@@ -614,7 +616,7 @@ def test_list_simulators_parses_and_orders() -> None:
             }
         }
     )
-    sims = srv.list_simulators(simctl=lambda args, e=None: payload)
+    sims = srv.list_simulators(simctl=lambda args, e: payload)
     assert [s["udid"] for s in sims] == ["A1", "B1"]  # booted first, then by name
     assert sims[0] == {"udid": "A1", "name": "iPhone 17 Pro", "runtime": "iOS 26.5", "booted": True}
     assert srv.list_simulators(simctl=_boom) == []  # failure -> empty, never raises

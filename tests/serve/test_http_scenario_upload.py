@@ -177,7 +177,10 @@ def test_scenarios_upload_wire_cap_is_smaller_than_the_bundle_cap(
     # configured, anyone on loopback) stream far more to a server temp file than the scenario-sized
     # bounds are meant to allow. Shrink the cap this route actually reads (handler.py's own imported
     # name — read_scenario_zip's separate, similarly-named bound is not what's under test here).
-    assert handler_mod.MAX_SCENARIO_ZIP_TOTAL_BYTES < handler_mod.MAX_UPLOAD_BYTES
+    assert (
+        handler_mod.MAX_SCENARIO_ZIP_TOTAL_BYTES  # type: ignore[attr-defined]
+        < handler_mod.MAX_UPLOAD_BYTES  # type: ignore[attr-defined]
+    )
     monkeypatch.setattr(handler_mod, "MAX_SCENARIO_ZIP_TOTAL_BYTES", 4)
     scn_dir, cfg, runs = project(tmp_path)
     server, port = _serve(

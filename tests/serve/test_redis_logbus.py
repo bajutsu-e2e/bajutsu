@@ -26,7 +26,7 @@ class FakeRedis:
         self._lists.setdefault(key, []).append(value)
         return len(self._lists[key])
 
-    def lrange(self, key: str, start: int, end: int) -> list[bytes]:
+    def lrange(self, key: str, start: int, end: int) -> list[object]:
         items = self._lists.get(key, [])
         stop = len(items) if end == -1 else end + 1
         return [s.encode() for s in items[start:stop]]
@@ -76,7 +76,7 @@ def test_replays_backlog_then_ends_on_close() -> None:
 
 def test_streams_live_lines() -> None:
     bus = RedisLogBus(FakeRedis(), poll_interval=0.01)
-    got: list[str] = []
+    got: list[str | None] = []
 
     def consume() -> None:
         got.extend(bus.stream("j2"))
