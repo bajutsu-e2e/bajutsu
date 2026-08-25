@@ -705,6 +705,38 @@ Which targets an org owns still comes from the `orgs:` block above, so an org cr
 none until an entry there names some. Two orgs may each claim a target of the same name, and each is
 authorized for it.
 
+### Members of several orgs
+
+A GitHub login that the membership above admits to more than one org acts as one of them at a time,
+and chooses which. Sign-in records every org the login may act as, together with the role it holds in
+each — an org's `editorTeams` promotes a member inside that org alone, so the role travels with the
+tenant — and the web UI header offers them as a dropdown in place of the read-only org badge. One
+endpoint backs it, and unlike the four above it is not admin-only: it moves the caller between orgs
+that already admit them, and grants nothing their last sign-in did not already establish.
+
+| Request | What it does |
+|---|---|
+| `POST /api/org` | Make `{"org": "<slug>"}` the caller's active org, with the role they hold there. Refused with a 403 for any org the caller is not a member of — the same answer a nonexistent slug gets, so the refusal discloses no tenant they may not act as. |
+
+The audit log records the move against the destination org, with the origin in the entry's detail.
+The choice survives later sign-ins: a login that picked an org lands there again rather than being
+re-resolved to the best match, which is the difference between a choice and a tie-break. It stops
+surviving only when the org stops admitting the login, and then the next sign-in relocates them
+exactly as it relocates a login that never picked anything. An admin admitted by one of the Teams in
+`BAJUTSU_OAUTH_ADMIN_TEAMS` may act as every live org, including one created after they signed in:
+no org's membership names them, so a set stored at sign-in would be empty and one stored later would
+go stale on the next `POST /api/orgs`.
+
+A membership you revoke through `POST /api/orgs/<slug>/membership` keeps admitting a switch into that
+org until the login next signs in — the same next-sign-in latency every membership change already
+has, and the same one that keeps them acting as the org they are already in. Revoke their sessions if
+you need it to take effect at once; retiring an org (`DELETE /api/orgs/<slug>`) already does that for
+you.
+
+A switch repoints only what the caller does next. A run keeps the org it was enqueued under, all the
+way to a remote worker, so its evidence and its database row land in the org that started it even if
+the caller switches while it runs.
+
 **Upgrading a database-backed deployment.** Run the Alembic migration as usual; it adds columns and
 seeds nothing. `serve` itself copies the bound config's `orgs:` membership into the database on its
 next start, once per org, so an existing deployment keeps admitting the same people it did before. From

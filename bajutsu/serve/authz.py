@@ -22,9 +22,10 @@ from bajutsu.serve.orgs import (
     OrgConfig,
     identity_matches_org,
     in_teams,
-    org_for_identity,
     orgs_declaring_membership,
+    orgs_for_identity,
     orgs_from_db,
+    preferred_org,
 )
 from bajutsu.serve.state import ServeState
 
@@ -274,7 +275,20 @@ def oauth_callback(
         # org placement, so no config load can misplace anyone. `orgs_from_db` raises rather than
         # presenting an empty roster, so there is no silent "everything is empty" state left to
         # mistake for a real one.
-        org = org_for_identity(orgs, login, identity.orgs, identity.teams)
+        eligible = orgs_for_identity(orgs, login, identity.orgs, identity.teams)
+        # Every org this login may act as, each with the role it resolves to there — the set the
+        # header's selector offers and the switch endpoint authorizes against. Recomputed here on
+        # every sign-in for the same reason the role is: this is the only moment the login's GitHub
+        # organization and Team memberships are known, since no GitHub token is kept afterwards.
+        memberships = {
+            candidate: role_for(
+                teams=identity.teams,
+                editor_teams=orgs[candidate].editor_teams,
+                admin_teams=admin_teams,
+            )
+            for candidate in eligible
+        }
+        org = _active_org(state, login, eligible, is_admin_team_member)
         oc = orgs.get(org)
         editor_teams = oc.editor_teams if oc is not None else []
         state.repository.ensure_org(org, slug=org, name=org)
@@ -291,6 +305,8 @@ def oauth_callback(
                 admin_teams=admin_teams,
             ),
         )
+        # After `upsert_user`, so the row these rows reference exists on a first sign-in.
+        state.repository.set_user_orgs(login, memberships)
     # Record every successful sign-in through oplog (not a bare logging call) so it carries the
     # registered `event` name, redaction, and correlation fields every other
     # operationally-significant record in serve already does. `bypass` says which gate admitted
@@ -326,6 +342,33 @@ def oauth_callback(
         actor=login,
     )
     return {"ok": True, "user": login}, 200, state.auth.issue_session(identity=login)
+
+
+def _active_org(
+    state: ServeState, login: str, eligible: list[str], is_admin_team_member: bool
+) -> str:
+    """The org this sign-in lands *login* in: their own pick when it still holds, else the ranking's.
+
+    A user who picked an org from the header selector keeps it across sign-ins, which is the whole
+    point of letting them pick — re-resolving on every sign-in would undo the choice on the next
+    login. A pick holds only while the org is still one they may act as: an org's membership is the
+    deployment's to decide, so losing it must relocate them, exactly as it does for a user who never
+    picked anything. An admin admitted by their admin Team may act as any live org (BE-0352 admits
+    them without an org's membership, so `eligible` is routinely empty for them), which is why the
+    two cases are asked separately here rather than both read off `eligible`.
+
+    An org merely *resolved* for the user at an earlier sign-in is not a pick and gets no such
+    protection: `user_selected_org` answers only for a deliberate choice, so a login whose
+    `githubOrgs` entry was revoked still re-resolves the way it does today (BE-0015 7c-2).
+    """
+    repository = state.repository
+    assert repository is not None  # the caller's `state.repository is not None` branch
+    picked = repository.user_selected_org(login)
+    if picked is not None and (
+        picked in eligible or (is_admin_team_member and repository.get_org(picked) is not None)
+    ):
+        return picked
+    return preferred_org(eligible)
 
 
 def _target_forbidden(state: ServeState, org: str, target: str) -> bool:

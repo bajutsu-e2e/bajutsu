@@ -121,6 +121,11 @@ def test_required_role_maps_endpoints() -> None:
     assert ops.required_role("DELETE", "/api/projects/checkout") == "admin"
     assert ops.required_role("POST", "/api/projects/checkout/run") == "editor"
     assert ops.required_role("POST", "/api/projects/checkout/activate") == "admin"
+    # Choosing which org you act as is nobody's admin action: it moves the caller between orgs that
+    # already admit them, and `set_active_org` refuses a non-member itself. Pinned because the
+    # org-lifecycle branch one line away matches `/api/orgs` by prefix — narrowing that to
+    # `/api/org` would admin-gate the switch and hide the header switcher from every non-admin.
+    assert ops.required_role("POST", "/api/org") is None
     # Run lifecycle (BE-0239): soft-delete (DELETE), restore, and bulk-delete are editor actions;
     # permanent purge (?purge=true) is admin, but the query isn't in `path`, so its gate lives in the
     # operation, not here. The worker upload-urls POST keeps its own no-role handling.
