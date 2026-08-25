@@ -1,14 +1,14 @@
-[English](BE-XXXX-serve-active-org-selection.md) · **日本語**
+[English](BE-0395-serve-active-org-selection.md) · **日本語**
 
-# BE-XXXX — 複数の org に所属するログインが serve で操作する org を選べるようにする
+# BE-0395 — 複数の org に所属するログインが serve で操作する org を選べるようにする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-serve-active-org-selection-ja.md) |
+| 提案 | [BE-0395](BE-0395-serve-active-org-selection-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0395") |
 | 実装 PR | [#1749](https://github.com/bajutsu-e2e/bajutsu/pull/1749) |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md)、[BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass-ja.md)、[BE-0375](../BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management-ja.md)、[BE-0393](../BE-0393-per-org-config-memory/BE-0393-per-org-config-memory-ja.md)、[BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md) |
