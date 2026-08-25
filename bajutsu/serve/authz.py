@@ -19,13 +19,13 @@ from typing import TYPE_CHECKING, Any
 from bajutsu.serve import oplog
 from bajutsu.serve.helpers import load_serve_config_file
 from bajutsu.serve.orgs import (
-    DEFAULT_ORG,
     OrgConfig,
     identity_matches_org,
     in_teams,
     orgs_declaring_membership,
     orgs_for_identity,
     orgs_from_db,
+    preferred_org,
 )
 from bajutsu.serve.state import ServeState
 
@@ -368,7 +368,7 @@ def _active_org(
         picked in eligible or (is_admin_team_member and repository.get_org(picked) is not None)
     ):
         return picked
-    return eligible[0] if eligible else DEFAULT_ORG
+    return preferred_org(eligible)
 
 
 def _target_forbidden(state: ServeState, org: str, target: str) -> bool:

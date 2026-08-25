@@ -125,7 +125,10 @@ def test_switching_org_reloads_the_page(tmp_path: Path) -> None:
     body = core.split("async function switchOrg")[1].split("\n}")[0]
     assert "postJSON('/api/org'" in body
     assert "location.reload()" in body
-    assert "await loadConfig()" in body  # a refusal re-syncs the select instead of leaving it lying
+    # A refusal re-syncs the select instead of leaving it lying — by re-rendering the header alone,
+    # not by re-running `loadConfig`, whose tail pops the "Open config" modal with no config bound.
+    assert "setOrgBadge(c.actor,c.org,c.orgs)" in body
+    assert "loadConfig()" not in body
 
 
 def test_show_view_toggles_every_declared_view(tmp_path: Path) -> None:

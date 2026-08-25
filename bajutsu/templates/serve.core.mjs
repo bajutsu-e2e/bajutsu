@@ -506,7 +506,10 @@ function setOrgBadge(actor,org,orgs){
 // the org still in force instead of showing one the server rejected.
 async function switchOrg(slug){
   const d=await postJSON('/api/org',{org:slug},{error:'switch failed'});
-  if(d.error){alert(d.error);await loadConfig();return}
+  // Re-read the boot payload and re-render the header alone, rather than re-running `loadConfig`:
+  // its tail opens the "Open config" modal when no config is bound, so a refused switch would pop a
+  // dialog over whatever the user was doing.
+  if(d.error){alert(d.error);const c=await getJSON('/api/config',{hasConfig:false});setOrgBadge(c.actor,c.org,c.orgs);return}
   location.reload();
 }
 // Set the nav's config-name label and reveal the "View" button only when a config is actually bound.

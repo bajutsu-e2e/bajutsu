@@ -182,6 +182,15 @@ def orgs_for_identity(
     return _match_orgs(orgs, login, github_orgs, teams)
 
 
+def preferred_org(eligible: Sequence[str]) -> str:
+    """The org a login lands in when it has picked none: the best match, else `DEFAULT_ORG`.
+
+    The one place the "head of the ranking, else the fallback" rule lives, so the sign-in placement
+    and `org_for_identity` cannot come to disagree about what an empty eligible set means.
+    """
+    return eligible[0] if eligible else DEFAULT_ORG
+
+
 def org_for_identity(
     orgs: dict[str, OrgConfig], login: str, github_orgs: list[str], teams: Sequence[str]
 ) -> str:
@@ -199,9 +208,12 @@ def org_for_identity(
     the tie-break move once, at the conversion to the database (BE-0375). The tie-break decides only
     where such a login *starts*: `orgs_for_identity` hands back the whole ranked list, and a user who
     picks another org from it keeps that pick across sign-ins.
+
+    Sign-in composes the same two steps itself — `orgs_for_identity` for the list it stores, then
+    `preferred_org` for the placement — because it needs the list either way. This is the one-call
+    form of that answer, for a caller holding an identity and wanting only the org.
     """
-    matched = _match_orgs(orgs, login, github_orgs, teams)
-    return matched[0] if matched else DEFAULT_ORG
+    return preferred_org(_match_orgs(orgs, login, github_orgs, teams))
 
 
 def targets_for_org(
