@@ -102,7 +102,18 @@ jobs:
       needs.changes.outputs.swift == 'true' ||
       github.event_name != 'pull_request'
     runs-on: macos-latest
-    timeout-minutes: 30
+    # 45, not the 30 the other jobs in this workflow use: this one builds BajutsuKit from a cold
+    # SwiftPM checkout under CodeQL tracing, which is slower and far more variable than any of them.
+    # A passing run on `main` took 27m14s — 91% of a 30-minute cap — and PR #1744 was cancelled twice
+    # in a row at 30m33s and 30m25s while its Swift diff was one comment and one numeric literal.
+    # The cap still backs a genuine hang; it just stops sitting inside the build's own spread.
+    #
+    # Caching is the tempting fix and is deliberately not taken: `build-mode: manual` means CodeQL
+    # extracts what it *watches* compile, so restoring a warm `.build` would leave it seeing no
+    # source and failing the analysis instead of the timeout. Cutting the ~6.5-minute dependency
+    # resolution that opens the build would mean caching only SwiftPM's clones, which is its own
+    # change with its own correctness argument to make.
+    timeout-minutes: 45
     permissions:
       security-events: write
       packages: read
