@@ -184,6 +184,24 @@ deployments:
   content_hash: sha256:568d3025ad71272d01f2d0a8dbd23a39ddb1f40f8d0534628e5306dc4ad3e597
 - kind: project-relative
   target: claude
+  value: .claude/skills/investigate-scenario-flakiness
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/investigate-scenario-flakiness/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:87113925ce6df9d88a2befb41fe0bcfb84ddd4fd69854ef2dc2499135cc1b1b6
+- kind: project-relative
+  target: claude
   value: .claude/skills/japanese-document-writing
   runtime: null
   scope: project
@@ -338,6 +356,8 @@ local_deployed_files:
 - .claude/skills/implement-be/SKILL.md
 - .claude/skills/implement-be/references/pr-followup-loop.md
 - .claude/skills/implement-be/references/self-review.md
+- .claude/skills/investigate-scenario-flakiness
+- .claude/skills/investigate-scenario-flakiness/SKILL.md
 - .claude/skills/japanese-document-writing
 - .claude/skills/japanese-document-writing/SKILL.md
 - .claude/skills/japanese-document-writing/references/argument.md
@@ -365,6 +385,7 @@ local_deployed_file_hashes:
   .claude/skills/implement-be/SKILL.md: sha256:533236251297a12559688db0bac3f54cd666b21226ec04f17acca75b9d83162e
   .claude/skills/implement-be/references/pr-followup-loop.md: sha256:ec348d5744e26d9641bfbb015a2811da6cdfaef90280beabf618fdfe4c2516d6
   .claude/skills/implement-be/references/self-review.md: sha256:568d3025ad71272d01f2d0a8dbd23a39ddb1f40f8d0534628e5306dc4ad3e597
+  .claude/skills/investigate-scenario-flakiness/SKILL.md: sha256:87113925ce6df9d88a2befb41fe0bcfb84ddd4fd69854ef2dc2499135cc1b1b6
   .claude/skills/japanese-document-writing/SKILL.md: sha256:c4553cc7b7f77ed5e218bf29b4eef0e52192c88232ca7fcebdee345d330dc2c7
   .claude/skills/japanese-document-writing/references/argument.md: sha256:34a642cd51b155203f6be2342db2b6ae5a96a7a40ee7c400001560f16d89a3cf
   .claude/skills/japanese-document-writing/references/expression.md: sha256:a9868652cdd9fcf00a2604b1536b0876795709b779523acd9b0522b979ffa9ae
