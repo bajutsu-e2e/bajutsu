@@ -16,6 +16,7 @@ import subprocess
 import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 
 from bajutsu import device_errors
 from bajutsu.device_id import is_valid_device_id
@@ -897,4 +898,4 @@ class Env:
         try:
             self._run(push_cmd(self.udid, bundle_id, path), None)
         finally:
-            os.unlink(path)
+            Path(path).unlink()

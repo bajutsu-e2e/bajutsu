@@ -50,6 +50,6 @@ def emit(
             reason = "" if r.ok else _one_line(r.failure or "").replace("|", "\\|")
             rows.append(f"| {'✅' if r.ok else '❌'} | {r.scenario} | {reason} |")
         rows += ["", f"Report: `{report}`"]
-        with open(summary, "a", encoding="utf-8") as handle:
+        with Path(summary).open("a", encoding="utf-8") as handle:
             handle.write("\n".join(rows) + "\n")
     return True

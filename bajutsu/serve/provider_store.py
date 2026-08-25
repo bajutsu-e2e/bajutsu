@@ -97,9 +97,9 @@ class LocalProviderSettingsStore:
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(json.dumps(payload, indent=2))
-            os.replace(tmp_name, self._path)
+            Path(tmp_name).replace(self._path)
         except OSError:
-            os.unlink(tmp_name)
+            Path(tmp_name).unlink()
             raise
 
 

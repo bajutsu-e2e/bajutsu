@@ -21,6 +21,7 @@ import shlex
 import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
 from bajutsu import device_errors
 from bajutsu.device_id import is_valid_device_id
@@ -982,7 +983,7 @@ class Env:
     @staticmethod
     def _run_capture(cmd: list[str], path: str) -> None:
         out = subprocess.run(cmd, capture_output=True, check=True).stdout
-        with open(path, "wb") as f:
+        with Path(path).open("wb") as f:
             f.write(out)
 
     # Device control: the subset the emulator can honor, the Android peer of simctl's setLocation /
