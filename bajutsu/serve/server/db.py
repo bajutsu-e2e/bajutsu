@@ -272,13 +272,42 @@ class Repository(Protocol):
         self, user_id: str, *, org_id: str, github_login: str, email: str, role: str = "editor"
     ) -> None:
         """Insert the user, or update it in place when its id already exists (an OAuth re-login),
-        setting its *role* (recomputed from policy each login, BE-0015 7c-2)."""
+        setting its *role* (recomputed from policy each login, BE-0015 7c-2).
+
+        A re-login that lands the user in a *different* org also clears the marker saying they picked
+        their active org themselves: the pick was for the org they have left.
+        """
 
     def user_role(self, user_id: str) -> str | None:
         """The user's role (viewer/editor/admin), or None if there is no such user."""
 
     def user_org(self, user_id: str) -> str | None:
         """The user's org id, or None if there is no such user (BE-0015 multi-tenancy)."""
+
+    def set_user_orgs(self, user_id: str, memberships: dict[str, str]) -> None:
+        """Replace the set of orgs *user_id* may act as, mapping each org id to its role.
+
+        A wholesale replacement rather than a merge, so losing a GitHub organization or Team takes
+        effect on the next sign-in with no data migration — the same self-healing rule the role
+        itself follows (BE-0313). An empty mapping clears the set.
+        """
+
+    def list_user_orgs(self, user_id: str) -> dict[str, str]:
+        """The orgs *user_id* may act as, each mapped to the role held there. Empty for an unknown
+        user, and for one whose only admission came from the admin-Team bypass (BE-0352), which no
+        org's membership records."""
+
+    def user_selected_org(self, user_id: str) -> str | None:
+        """The org *user_id* picked themselves, or None when the active org was merely resolved for
+        them at sign-in. Sign-in preserves a picked org and re-resolves an unpicked one, so the two
+        cases must stay distinguishable."""
+
+    def select_active_org(self, user_id: str, org_id: str, *, role: str) -> bool:
+        """Make *org_id* the user's active org with *role*, and mark the choice as theirs.
+
+        False when there is no such user. Authorization is the caller's: this writes the choice it
+        is given, the way `upsert_user` writes the role it is given.
+        """
 
     def record_audit(
         self, *, org_id: str, actor_id: str | None, action: str, target: str, detail: dict[str, Any]
@@ -814,6 +843,11 @@ class SqlRepository:
                     session.rollback()
                     user = session.get(User, user_id)
             if user is not None:  # update in place (a re-login) without disturbing created_at
+                if user.org_id != org_id:
+                    # This sign-in moved the user to a different org, so any org they had picked
+                    # themselves is no longer the one they are in — the marker would otherwise
+                    # claim the new org as their choice and pin them to it on every later sign-in.
+                    user.org_selected_at = None
                 user.org_id, user.github_login, user.email, user.role = (
                     org_id,
                     github_login,
@@ -839,6 +873,73 @@ class SqlRepository:
         with Session(self._engine) as session:
             user = session.get(User, user_id)
             return user.org_id if user is not None else None
+
+    def set_user_orgs(self, user_id: str, memberships: dict[str, str]) -> None:
+        from sqlalchemy import delete
+        from sqlalchemy.exc import IntegrityError
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import UserOrg
+
+        with Session(self._engine) as session:
+            session.execute(delete(UserOrg).where(UserOrg.user_id == user_id))
+            session.add_all(
+                UserOrg(user_id=user_id, org_id=org_id, role=role)
+                for org_id, role in memberships.items()
+            )
+            # One transaction, so a concurrent read never sees the gap between the clear and the
+            # rewrite — which would be an empty eligible set, and so a refused switch.
+            try:
+                session.commit()
+            except IntegrityError:
+                # A concurrent sign-in for the same login committed the same rows first (two tabs,
+                # or two replicas over one database). They come from the same GitHub identity
+                # moments apart, so letting theirs stand is the idempotent outcome — the same race
+                # `ensure_org` and `upsert_user` already swallow on this path.
+                session.rollback()
+
+    def list_user_orgs(self, user_id: str) -> dict[str, str]:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Org, UserOrg
+
+        # Joined against `orgs` so a retired tenant drops out of the eligible set the same way it
+        # drops out of sign-in resolution, and ordered by slug so the selector's order is stable.
+        stmt = (
+            select(UserOrg.org_id, UserOrg.role)
+            .join(Org, Org.id == UserOrg.org_id)
+            .where(UserOrg.user_id == user_id, Org.deleted_at.is_(None))
+            .order_by(Org.slug)
+        )
+        with Session(self._engine) as session:
+            # A `Row` unpacks like the 2-tuple it is, which `dict` accepts and mypy's stub for
+            # `Sequence[Row[...]]` does not describe.
+            return dict(session.execute(stmt).all())  # type: ignore[arg-type]
+
+    def user_selected_org(self, user_id: str) -> str | None:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import User
+
+        with Session(self._engine) as session:
+            user = session.get(User, user_id)
+            if user is None or user.org_selected_at is None:
+                return None
+            return user.org_id
+
+    def select_active_org(self, user_id: str, org_id: str, *, role: str) -> bool:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import User
+
+        with Session(self._engine) as session:
+            user = session.get(User, user_id)
+            if user is None:
+                return False
+            user.org_id, user.role, user.org_selected_at = org_id, role, datetime.now(UTC)
+            session.commit()
+            return True
 
     def record_audit(
         self, *, org_id: str, actor_id: str | None, action: str, target: str, detail: dict[str, Any]

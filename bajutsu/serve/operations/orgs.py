@@ -11,12 +11,16 @@ it is the same machine-checkable comparison it was; no LLM enters the path.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
+from bajutsu.serve import oplog
 from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.state import ServeState
+
+_logger = logging.getLogger(__name__)
 
 # A database is what makes an org more than a name, so every operation here needs one. 400 rather
 # than 404: the endpoint exists, this deployment just isn't shaped to serve it — the same shape
@@ -244,3 +248,53 @@ def delete_org(state: ServeState, slug: str, *, actor: str | None = None) -> tup
         state, actor, state.org_of(actor), "org.delete", slug, {"sessionsRevoked": revoked}
     )
     return {"ok": True, "slug": slug, "sessionsRevoked": revoked}, 200
+
+
+def set_active_org(
+    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+) -> tuple[Any, int]:
+    """Make ``{org}`` the caller's active org — the tenant every other tab is scoped to.
+
+    A login whose GitHub memberships match several orgs is offered all of them in the header, and
+    this is how it picks one. Unlike the three operations above it is not an admin action: it moves
+    the caller between orgs that already admit them, and grants nothing their last sign-in did not
+    already establish. Like every membership change (BE-0313 recomputes on each login), a revocation
+    since then takes effect at their next sign-in — so until then a switch into the revoked org is
+    still admitted, the same latency `update_org_membership` already documents.
+
+    Authorized against the set written at sign-in (`ServeState.eligible_orgs`), so an org the caller
+    is not a member of is refused rather than silently ignored, and an empty set refuses everything.
+    The role travels with the tenant, because a role is per-org: an org's `editorTeams` promotes a
+    member inside that org alone. The choice survives later sign-ins, which is what distinguishes it
+    from the org the membership ranking resolves.
+    """
+    if state.repository is None:
+        return _NO_ORG_STORE
+    if not actor:
+        # No signed-in identity: a local or shared-token session acts as `default` for everything,
+        # so there is no per-user row to move and nothing a switch could mean.
+        return {"error": "switching orgs needs a signed-in identity"}, 403
+    slug = str(body.get("org") or "").strip()
+    if not slug:
+        return {"error": "org is required"}, 400
+    eligible = state.eligible_orgs(actor)
+    if slug not in eligible:
+        # Deliberately the same answer for "no such org" and "not a member of it": the caller may
+        # not act as either, and distinguishing them would disclose which tenants a deployment has
+        # to someone with no business knowing — the reason the roster itself is admin-only.
+        return {"error": f"you are not a member of org {slug!r}"}, 403
+    previous = state.org_of(actor)
+    if not state.repository.select_active_org(actor, slug, role=eligible[slug]):
+        return {"error": f"no user record for {actor!r}"}, 404
+    oplog.log_event(
+        _logger,
+        "org.switch",
+        f"{actor} switched from {previous} to {slug}",
+        actor=actor,
+        level=logging.INFO,
+    )
+    # Recorded against the destination, which is the tenant the actor's next action lands in — the
+    # question a later reader of the audit log is asking. The origin travels in the detail, so the
+    # move is reconstructable from either side.
+    _record_audit(state, actor, slug, "org.switch", slug, {"from": previous})
+    return {"ok": True, "org": slug, "role": eligible[slug]}, 200

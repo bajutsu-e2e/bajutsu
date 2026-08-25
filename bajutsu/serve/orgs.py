@@ -116,10 +116,10 @@ def in_teams(teams: Sequence[str], wanted: Iterable[str]) -> bool:
     return any(team.lower() in lowered for team in teams)
 
 
-def _match_org(
+def _match_orgs(
     orgs: dict[str, OrgConfig], login: str, github_orgs: list[str], teams: Sequence[str]
-) -> str | None:
-    """The org *login* belongs to, or None when no declared org admits it.
+) -> list[str]:
+    """Every org *login* belongs to, best match first — empty when no declared org admits it.
 
     The one place the three membership axes are ranked, so the sign-in gate and the placement below
     can never admit a login into one org while resolving it to another. An explicit `members` entry
@@ -127,22 +127,25 @@ def _match_org(
     org's admitting Teams (`githubTeams` or its `editorTeams`). Teams rank last so that adding one to
     an org never relocates a login an existing `members`/`githubOrgs` entry already placed.
 
-    "First" within an axis is deterministic but source-dependent; see `org_for_identity`.
+    Order within an axis is deterministic but source-dependent; see `org_for_identity`. An org
+    matching on two axes appears once, at its best rank.
 
-    Returns None rather than `DEFAULT_ORG` for "matched nothing", so a login no entry lists stays
+    Empty rather than `[DEFAULT_ORG]` for "matched nothing", so a login no entry lists stays
     distinguishable from one an org literally named `default` lists as a member.
     """
-    for org, oc in orgs.items():
-        if login in oc.members:
-            return org
     user_orgs = set(github_orgs)
-    for org, oc in orgs.items():
-        if user_orgs.intersection(oc.github_orgs):
-            return org
-    for org, oc in orgs.items():
-        if in_teams(teams, oc.admitting_teams()):
-            return org
-    return None
+    matched: list[str] = [org for org, oc in orgs.items() if login in oc.members]
+    matched += [
+        org
+        for org, oc in orgs.items()
+        if org not in matched and user_orgs.intersection(oc.github_orgs)
+    ]
+    matched += [
+        org
+        for org, oc in orgs.items()
+        if org not in matched and in_teams(teams, oc.admitting_teams())
+    ]
+    return matched
 
 
 def identity_matches_org(
@@ -163,7 +166,20 @@ def identity_matches_org(
     Team axis is exactly how the gate and the placement would come to consult different axes again,
     and it would type-check clean while silently denying or misplacing a Team-admitted login.
     """
-    return _match_org(orgs, login, github_orgs, teams) is not None
+    return bool(_match_orgs(orgs, login, github_orgs, teams))
+
+
+def orgs_for_identity(
+    orgs: dict[str, OrgConfig], login: str, github_orgs: list[str], teams: Sequence[str]
+) -> list[str]:
+    """Every org a user logging in as *login* may act as, best match first.
+
+    The full ranked list behind `org_for_identity`'s single answer, so a login belonging to several
+    orgs can be offered the choice between them instead of being pinned to the head. Empty for a
+    login no declared org admits — including one admitted by the admin-Team bypass, whose eligible
+    set is decided by that bypass rather than by any org's membership.
+    """
+    return _match_orgs(orgs, login, github_orgs, teams)
 
 
 def org_for_identity(
@@ -180,11 +196,12 @@ def org_for_identity(
     GitHub organization or Team: `parse_orgs` preserves the order the `orgs:` block declares them in,
     while `orgs_from_db` iterates slug order (`list_orgs` sorts by it). Both are stable — the same
     login resolves the same way on every sign-in — but a deployment holding such an overlap can see
-    the tie-break move once, at the conversion to the database (BE-0375). A login that belongs to
-    more than one org has no way to say which it means today; letting them choose is a separate item.
+    the tie-break move once, at the conversion to the database (BE-0375). The tie-break decides only
+    where such a login *starts*: `orgs_for_identity` hands back the whole ranked list, and a user who
+    picks another org from it keeps that pick across sign-ins.
     """
-    matched = _match_org(orgs, login, github_orgs, teams)
-    return matched if matched is not None else DEFAULT_ORG
+    matched = _match_orgs(orgs, login, github_orgs, teams)
+    return matched[0] if matched else DEFAULT_ORG
 
 
 def targets_for_org(
