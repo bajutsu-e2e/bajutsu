@@ -125,7 +125,7 @@ defaults:
 | `_build_alert_locator`（`bajutsu/cli/_shared.py:450`） | `None` を返し、vision フォールバックは何もしない。ネイティブ経路には触れない |
 | `_require_ai_credential`（`bajutsu/cli/_shared.py:172`） | 終了コード 2 で止まり、`record`、`crawl`、`triage --ai` は機能を落として動くのではなく起動を拒む |
 | `doctor` の `_claude_readiness`（`bajutsu/cli/commands/doctor.py:286`） | 任意項目としての Claude の行が未設定と読める。環境の故障を示す ✗ にはならない |
-| `serve` の設定（`bajutsu/serve/operations/config.py:508`） | `claudeAvailable: false` とヒントを返し、フロントエンドが record と crawl のタブを無効化する |
+| `serve` の設定（`bajutsu/serve/operations/config.py:508`） | 変化なし。`provider_info` はターゲットの設定ではなく組織の保存済み選択からプロバイダを解決するため、`claudeAvailable` はこの設定を見ない（後述の *`serve`* を参照） |
 | `serve` の enrich と triage（`bajutsu/serve/operations/enrich.py:64`、`bajutsu/serve/operations/triage.py:73`） | ジョブを起動する前に HTTP 400 を返す |
 
 `ai.enabled: false` というフィールドを足す場合、認証ギャップを読むすべての箇所で、ギャップに加えて
@@ -140,7 +140,7 @@ defaults:
 | 箇所 | 文言 |
 |---|---|
 | `bajutsu/agents/availability.py` の `message()`（`doctor` と `serve` が描画） | このターゲットでは AI が無効です（`ai.provider: none`）。AI 経路を使うにはプロバイダを選んでください |
-| `_credential_gap_message`（`bajutsu/cli/_shared.py:147`。`record`、`crawl`、`triage --ai` が終了前に表示） | 同じ設定名と、その設定が書かれているファイルを挙げる |
+| `_credential_gap_message`（`bajutsu/cli/_shared.py:147`。`record`、`crawl`、`triage --ai` が終了前に表示） | 設定名（`ai.provider: none`）と、AI 経路を再び使うための手順。設定が書かれた*ファイル*まで挙げるには `--config` のパスをメッセージまで引き回す必要がある。`Effective`（`bajutsu/config/effective.py:153`）は解決済みの設定だけを持ち、出所への参照を持たないため、本項目では扱わない |
 | `_build_alert_locator` の注記（鍵が未設定である旨の現在の文と置き換え） | vision アラートガードは無効です（`ai.provider: none`）。iOS XCUITest バックエンドではネイティブ経路が一般的なプロンプトを処理し続けます |
 
 ### 優先順位
@@ -155,6 +155,34 @@ defaults:
 単位で統合し、ターゲット側を優先します。新しいプロバイダに、この規則の例外は要りません。リポジトリ
 は `defaults` で AI を無効にしたうえで、あるターゲットだけ有効に戻せます。戻す判断は、誰にも見えない
 環境変数ではなく、同じファイルの中でレビュアーが読める 1 行になります。
+
+### `serve`
+
+`serve` にだけは例外が要ります。とはいえ特別扱いを足すのではなく、選択肢から差し引く形の例外です。
+`none` を登録はしますが、**選択可能にはしません**。レジストリに `selectable_providers()` を足します。
+`known_providers()` から無効化用のプロバイダを除いたものです。`serve` が現在 `known_providers()` を
+読んでいるのは 3 箇所あります。`bajutsu/serve/operations/config.py:378` と `:392` の読み込み経路、
+`:864` の `set_provider` の書き込み経路です。この 3 箇所を、そちらへ向けます。Settings のドロップダウンに `none` は並びません。
+
+理由は、組織の Settings での選択がジョブへ届く経路が環境変数だけだからです。`provider_env`
+（`bajutsu/serve/operations/config.py:456`）は、選択した名前を `BAJUTSU_AI_PROVIDER` として出します。
+dispatch は、その辞書をジョブの環境オーバーレイとして渡します。`resolve_provider` は設定を先に読むので、
+ドロップダウンで `none` を選んだ運用者は、`ai.provider` を設定に書いているプロジェクトに対して何の
+効果も得られません。ジョブはモデルを呼び続け、そのことは誰にも知らされません。「オフ」と書かれた
+スイッチが黙って入ったままである状態は、鍵を設定しない運用について *動機* が批判した失敗そのもので、
+ドロップダウンへ並べれば気づきにくさが増すだけです。このキルスイッチは、リポジトリがコミットする
+表明であって、組織ごとのトグルではありません。
+
+ここから制限が 1 つ残ります。本項目は、その制限を閉じずに受け入れます。`provider_info`
+（`bajutsu/serve/operations/config.py:491`）が読むのは、組織の保存済み選択です。選択が無ければ、
+`AiConfig` を渡さない `resolved_provider()` へ落ちます。enrich と triage のハンドラとは違い、
+`resolve(config, target).ai` を読みません。したがって `ai.provider: none` を設定したリポジトリでも
+`claudeAvailable: true` が返り、Web UI の record と crawl のタブは有効なままです。キルスイッチ自体は
+効いています。タブから起動したジョブはコマンドラインの呼び出しであり、リポジトリの設定を自分で解決
+して、モデルへ届く前に終了コード 2 で止まります。欠けているのは、タブをあらかじめ灰色にするための
+事前の合図だけです。`provider_info` にターゲットの `ai` を読ませる変更は、`serve` がすべての
+プロバイダについて到達性を報告する仕方を変えます。本項目の継ぎ目からは導かれないため、後続の項目に
+委ねます。
 
 ### 本提案が変えないこと
 
@@ -179,17 +207,22 @@ triage は到達可能なまま残ります。スクリーンショットを送�
    `_ensure_builtins` への登録（`known_providers()` から見えるようにするため）。ユニットテストで
    確かめるのは、`credential_gap` がトークンを返すこと、`create_backend` が例外を送出すること、
    `known_providers()` が名前を含むことの 3 点。
-2. **メッセージ。** `bajutsu/agents/availability.py` と `_credential_gap_message` への
+2. **`serve` からの除外。** `bajutsu/ai/registry.py` への `selectable_providers()` の追加と、
+   `bajutsu/serve/operations/config.py` にある 3 箇所の `known_providers()` の読み替え。テストでは、
+   `set_provider` が `none` を 400 で拒むことの確認。環境変数としてしかジョブへ届かないスイッチを、
+   ドロップダウンが差し出さないようにするため。
+3. **メッセージ。** `bajutsu/agents/availability.py` と `_credential_gap_message` への
    `"ai-disabled"` の分岐の追加、および `_build_alert_locator` の注記の書き換え。
-3. **実行経路のテスト。** 環境に鍵があり、設定が `provider: none` のときの確認。`run` がロケータを
+4. **実行経路のテスト。** 環境に鍵があり、設定が `provider: none` のときの確認。`run` がロケータを
    構築しないこと、ガードの `vision` ハンドラが何もしないこと、ネイティブ経路がアラートを処理する
    こと、使用量台帳が空のままであること。
-4. **拒否のテスト。** 対象は 3 つ。`record`、`crawl`、`triage --ai` の終了コード 2 での停止と設定名
-   の表示。`serve` の設定エンドポイントが返す `claudeAvailable: false`。enrich と triage が返す
-   HTTP 400。
-5. **ドキュメント。** `docs/configuration.md` と `docs/ja/configuration.md` の `ai:` の節への、
-   プロバイダと優先順位の規則の追記。`docs/ai-boundary.md` と `docs/ja/ai-boundary.md` への、AI 経路
-   を走らせないと 1 行で表明できるようになった旨の記録。
+5. **拒否のテスト。** `record`、`crawl`、`triage --ai` の終了コード 2 での停止と設定名の表示。
+   enrich と triage がジョブの起動前に返す HTTP 400。加えて、ターゲット設定が `provider: none` の
+   ときの `serve` の設定エンドポイントの `claudeAvailable: true` での固定。*`serve`* の節が記録した
+   制限を、偽の主張へ変わらないよう据え置くため。
+6. **ドキュメント。** `docs/configuration.md` の `ai:` の節と `docs/ja/` 側への、プロバイダ、
+   優先順位の規則、`serve` からの除外の追記。あわせて、AI 経路を走らせない旨を 1 行で表明できる
+   ようになったことの、`docs/ai-boundary.md` と `docs/ja/ai-boundary.md` への記録。
 
 ## 検討した代替案
 
@@ -208,9 +241,10 @@ triage は到達可能なまま残ります。スクリーンショットを送�
 > ともに記録します。
 
 - [ ] `none` アダプタと登録、ユニットテスト
+- [ ] `selectable_providers()` と `serve` からの除外、`set_provider` が拒むことのテスト
 - [ ] `"ai-disabled"` のメッセージ分岐と、アラートガードの注記の書き換え
 - [ ] 実行経路のテスト（ロケータを構築しない、台帳にイベントが残らない、ネイティブ経路は不変）
-- [ ] `record`、`crawl`、`triage --ai`、`serve` の設定、enrich の拒否テスト
+- [ ] `record`、`crawl`、`triage --ai`、enrich の拒否テストと、`claudeAvailable: true` の固定
 - [ ] `docs/configuration.md` と `docs/ai-boundary.md` の両言語での記述
 - [ ] BE-0047、BE-0104、BE-0315 への相互の `関連` 行の追加（CI が本項目の ID を採番したあと）
 

@@ -131,7 +131,7 @@ provider gives each surface the right behavior without a new branch of its own.
 | `_build_alert_locator` (`bajutsu/cli/_shared.py:450`) | returns `None`, so the vision fallback no-ops and the native path is untouched |
 | `_require_ai_credential` (`bajutsu/cli/_shared.py:172`) | a clean exit 2, so `record`, `crawl`, and `triage --ai` refuse to start rather than degrading |
 | `doctor`'s `_claude_readiness` (`bajutsu/cli/commands/doctor.py:286`) | the optional Claude line reads as not configured, never the ✗ of a broken environment |
-| `serve` settings (`bajutsu/serve/operations/config.py:508`) | `claudeAvailable: false` with a hint, so the front end disables the record and crawl tabs |
+| `serve` settings (`bajutsu/serve/operations/config.py:508`) | unchanged — `provider_info` resolves the provider from the organization's saved selection rather than the target config, so `claudeAvailable` never sees this setting (see *`serve`* below) |
 | `serve` enrichment and triage (`bajutsu/serve/operations/enrich.py:64`, `bajutsu/serve/operations/triage.py:73`) | HTTP 400 before the job is dispatched |
 
 An `ai.enabled: false` field would have to be read at each of those sites in addition to the gap, and
@@ -146,7 +146,7 @@ send the reader to fix an environment that is not broken.
 | Site | Wording |
 |---|---|
 | `bajutsu/agents/availability.py`'s `message()`, rendered by `doctor` and `serve` | AI is disabled for this target (`ai.provider: none`) — select a provider to use the AI paths |
-| `_credential_gap_message` (`bajutsu/cli/_shared.py:147`), printed by `record`, `crawl`, and `triage --ai` before they exit | the same setting, and the file that sets it |
+| `_credential_gap_message` (`bajutsu/cli/_shared.py:147`), printed by `record`, `crawl`, and `triage --ai` before they exit | the setting (`ai.provider: none`) and how to re-enable an AI path. Naming the *file* that sets it would need the `--config` path threaded into the message, because `Effective` (`bajutsu/config/effective.py:153`) carries the resolved config and no path back to its source; this item leaves that out |
 | `_build_alert_locator`'s note, replacing the note about an unset key | the vision alert guard is off (`ai.provider: none`); on the iOS XCUITest backend the native path still clears common prompts |
 
 ### Precedence
@@ -162,6 +162,35 @@ nothing.
 field, target winning, and the new provider needs no exception to that rule. A repository can
 disable AI in `defaults` and re-enable it for one target, and the re-enabling is a line a reviewer
 reads in the same file rather than an environment variable nobody sees.
+
+### `serve`
+
+`serve` needs one exception, and it is a subtraction rather than a special case: `none` is registered
+but not **selectable**. The registry gains a `selectable_providers()` — `known_providers()` minus the
+disabled provider — and `serve` validates against it at the three points that read `known_providers()`
+today (`bajutsu/serve/operations/config.py:378` and `:392` on the load path, and the `set_provider`
+write path at `:864`), so the Settings dropdown never offers it.
+
+The reason is that an organization's Settings selection reaches a job only as an environment
+variable. `provider_env` (`bajutsu/serve/operations/config.py:456`) emits `BAJUTSU_AI_PROVIDER` set to
+the selection, and dispatch attaches that dict as the job's environment overlay. Because
+`resolve_provider` reads the configuration first, an operator who picked `none` in the dropdown would
+get no effect at all on a project whose configuration names an `ai.provider`: the jobs would keep
+calling the model, and nothing would say so. A switch labeled off that silently stays on is the
+failure mode the *Motivation* argues against for an unset key, and putting it in a dropdown would only
+make it harder to notice. The kill switch is a statement a repository commits, not a per-organization
+toggle.
+
+One limitation follows, and this item accepts it rather than closing it. `provider_info`
+(`bajutsu/serve/operations/config.py:491`) resolves the provider as the organization's saved selection
+or, failing that, `resolved_provider()` with no `AiConfig` at all, and never reads `resolve(config,
+target).ai` — unlike the enrichment and triage handlers, which do. A repository that sets
+`ai.provider: none` therefore still reports `claudeAvailable: true`, and the web UI leaves the record
+and crawl tabs enabled. The kill switch itself holds: a job started from one of those tabs is a
+command-line invocation that resolves the repository configuration itself and exits 2 before reaching
+a model. What is missing is only the pre-flight signal that would grey the tab out first. Teaching
+`provider_info` to read the target's `ai` changes how `serve` reports reachability for every provider,
+which this item's seam does not imply, so it belongs to a follow-up item.
 
 ### What this proposal does not change
 
@@ -186,16 +215,22 @@ mirrors them one for one.
    `_ensure_builtins` (`bajutsu/ai/registry.py`) so `known_providers()` reports it. Unit tests:
    `credential_gap` returns the token, `create_backend` raises, and `known_providers()` contains the
    name.
-2. **The messages.** The `"ai-disabled"` branch in `bajutsu/agents/availability.py` and in
+2. **The `serve` exclusion.** `selectable_providers()` in `bajutsu/ai/registry.py`, and the three
+   `known_providers()` call sites in `bajutsu/serve/operations/config.py` reading it instead. A test
+   that `set_provider` rejects `none` with a 400, so the dropdown cannot offer a switch that would
+   reach a job only as an environment variable.
+3. **The messages.** The `"ai-disabled"` branch in `bajutsu/agents/availability.py` and in
    `_credential_gap_message`, plus the reworded note in `_build_alert_locator`.
-3. **The run-path test.** With the key present in the environment and `provider: none` in the
+4. **The run-path test.** With the key present in the environment and `provider: none` in the
    configuration, `run` builds no locator, the guard's `vision` handler no-ops, the native path still
    clears an alert, and the usage ledger stays empty.
-4. **The refusal test.** `record`, `crawl`, and `triage --ai` exit 2 naming the setting; `serve`'s
-   settings endpoint reports `claudeAvailable: false`; enrichment and triage return HTTP 400.
-5. **Documentation.** The `ai:` section of `docs/configuration.md` and its `docs/ja/` mirror gain the
-   provider and the precedence rule; `docs/ai-boundary.md` and its mirror record that a repository
-   can now state "no AI path runs here" in one line.
+5. **The refusal test.** `record`, `crawl`, and `triage --ai` exit 2 naming the setting, and
+   enrichment and triage return HTTP 400 before dispatch. The same test pins `serve`'s settings
+   endpoint at `claudeAvailable: true` under a target config of `provider: none`, so the limitation
+   the *`serve`* section records stays a documented fact rather than drifting into a false claim.
+6. **Documentation.** The `ai:` section of `docs/configuration.md` and its `docs/ja/` mirror gain the
+   provider, the precedence rule, and the `serve` exclusion; `docs/ai-boundary.md` and its mirror
+   record that a repository can now state "no AI path runs here" in one line.
 
 ## Alternatives considered
 
@@ -214,9 +249,11 @@ mirrors them one for one.
 > (oldest first), linking the PRs.
 
 - [ ] The `none` adapter and its registration, with unit tests
+- [ ] `selectable_providers()` and the `serve` exclusion, with a rejected `set_provider` test
 - [ ] The `"ai-disabled"` message branches and the reworded alert-guard note
 - [ ] The `run`-path test: no locator, no ledger event, native path unaffected
-- [ ] The refusal tests for `record`, `crawl`, `triage --ai`, `serve` settings, and enrichment
+- [ ] The refusal tests for `record`, `crawl`, `triage --ai`, and enrichment, plus the pinned
+      `claudeAvailable: true` limitation
 - [ ] Documentation in `docs/configuration.md` and `docs/ai-boundary.md`, both languages
 - [ ] Reciprocal `Related` rows in BE-0047, BE-0104, and BE-0315, once CI allocates this item's id
 
