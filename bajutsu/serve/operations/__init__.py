@@ -75,6 +75,7 @@ from bajutsu.serve.operations.orgs import (
     create_org,
     delete_org,
     list_orgs_view,
+    set_active_org,
     update_org_membership,
 )
 from bajutsu.serve.operations.project_comparison import project_metrics_view
@@ -239,6 +240,7 @@ __all__ = [
     "server_checkout",
     "server_settings",
     "server_version",
+    "set_active_org",
     "set_api_key",
     "set_claude_code_token",
     "set_git_credential",

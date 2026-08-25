@@ -652,6 +652,24 @@ class ServeState:
             return _DEFAULT_ORG
         return self.repository.user_org(actor) or _DEFAULT_ORG
 
+    def eligible_orgs(self, actor: str | None) -> dict[str, str]:
+        """Every org *actor* may act as, each mapped to the role they hold there.
+
+        The set the header's org selector offers and the switch endpoint authorizes against. Written
+        at sign-in from the login's GitHub memberships, except for a server-wide admin, whose set is
+        every live org: an admin is admitted by their admin Team rather than by any org's membership
+        (BE-0352), so a stored set would be empty, and one stored at sign-in would miss an org they
+        create afterwards on the Orgs page. Empty without a database, without an identity, and for a
+        user no org's membership admits — the fail-closed answer, since a caller that cannot tell
+        which orgs are allowed must allow none.
+        """
+        if self.repository is None or not actor:
+            return {}
+        repository = self.repository
+        if repository.user_role(actor) == "admin":
+            return {org.id: "admin" for org in repository.list_orgs()}
+        return repository.list_user_orgs(actor)
+
     def _env_var_for_secret(self, name: str) -> str:
         """The env var the local secret store reads/writes for logical secret *name* (BE-0136).
 

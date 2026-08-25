@@ -101,7 +101,34 @@ def test_header_carries_an_org_badge_fed_by_the_config_read(tmp_path: Path) -> N
     assert 'id="orgbadge"' in index and "hidden>" in index.split('id="orgbadge"')[1][:80]
     body = core.split("function setOrgBadge")[1].split("\n}")[0]
     assert "el.hidden=!show" in body  # hidden unless both fields came back
-    assert "setOrgBadge(c.actor,c.org)" in core  # fed by the /api/config boot read
+    assert "setOrgBadge(c.actor,c.org,c.orgs)" in core  # fed by the /api/config boot read
+
+
+def test_header_switches_org_only_when_there_is_more_than_one(tmp_path: Path) -> None:
+    # The switcher ships hidden and stays hidden for a single-org session: with nothing to choose,
+    # the header keeps the read-only badge it has always had. Both controls are driven from the one
+    # boot read, so exactly one of them is ever visible.
+    index, core = _fetch_many(tmp_path, "/", "/serve.core.mjs")
+    assert 'data-testid="nav.org-switch"' in index
+    assert 'id="orgsw"' in index and "hidden>" in index.split('id="orgsw"')[1][:120]
+    body = core.split("function setOrgBadge")[1].split("\n}")[0]
+    assert "choices.length>1" in body  # one org offers no choice
+    assert "el.hidden=!show||pick" in body  # the badge gives way to the switcher, never both
+    assert "sw.hidden=!pick" in body
+    assert "$('#orgsw').addEventListener" in core  # the select is actually wired
+
+
+def test_switching_org_reloads_the_page(tmp_path: Path) -> None:
+    # Every tab is silently scoped to the active org, so a partial refresh would leave
+    # already-rendered views showing the previous tenant's runs and projects.
+    core = _fetch(tmp_path, "/serve.core.mjs")
+    body = core.split("async function switchOrg")[1].split("\n}")[0]
+    assert "postJSON('/api/org'" in body
+    assert "location.reload()" in body
+    # A refusal re-syncs the select instead of leaving it lying — by re-rendering the header alone,
+    # not by re-running `loadConfig`, whose tail pops the "Open config" modal with no config bound.
+    assert "setOrgBadge(c.actor,c.org,c.orgs)" in body
+    assert "loadConfig()" not in body
 
 
 def test_show_view_toggles_every_declared_view(tmp_path: Path) -> None:

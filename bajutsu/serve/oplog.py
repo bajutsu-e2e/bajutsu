@@ -58,6 +58,10 @@ EVENTS: frozenset[str] = frozenset(
         # not `oauth.denied`: that event means a login was turned away, and an operator alerting on
         # its WARNING is watching for a total admin lockout, not for a transient store outage.
         "oauth.store_unavailable",
+        # A user moved themselves between two orgs their memberships admit them to. Its own name
+        # rather than a second `oauth.login`: no authentication happened, and an operator
+        # reconstructing which tenant an actor was acting as needs the moves as well as the sign-ins.
+        "org.switch",
         "server.startup_warning",
         "quota.rejected",
         "worker.job.started",
