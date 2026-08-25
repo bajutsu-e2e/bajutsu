@@ -52,7 +52,7 @@ def device_error(exc: subprocess.CalledProcessError) -> DeviceError:
     return DeviceError(f"{msg}\n{detail}" if detail else msg)
 
 
-def _real_run(args: list[str]) -> str:
+def real_run(args: list[str]) -> str:
     return subprocess.run(args, capture_output=True, text=True, check=True).stdout
 
 
@@ -64,14 +64,14 @@ def _num(v: float) -> str:
 # which adb would read as an option). Every command builder validates the serial through `_adb`,
 # so an id from `--udid` / config can neither inject an adb option nor reach a subprocess argv
 # unchecked. Raises adb's `DeviceError` so a bad serial surfaces as the CLI's clean exit-2.
-def _checked_serial(serial: str) -> str:
+def checked_serial(serial: str) -> str:
     if not is_valid_device_id(serial):
         raise DeviceError(f"invalid device serial: {serial!r}")
     return serial
 
 
 def _adb(serial: str, *rest: str) -> list[str]:
-    return ["adb", "-s", _checked_serial(serial), *rest]
+    return ["adb", "-s", checked_serial(serial), *rest]
 
 
 # --- command builders ---
@@ -803,7 +803,7 @@ def _parse_devices(text: str) -> list[str]:
     return serials
 
 
-def booted_serials(run: RunFn = _real_run) -> list[str]:
+def booted_serials(run: RunFn = real_run) -> list[str]:
     """Serials of the currently-attached, ready devices/emulators (empty on any failure)."""
     try:
         return _parse_devices(run(devices_cmd()))
@@ -811,7 +811,7 @@ def booted_serials(run: RunFn = _real_run) -> list[str]:
         return []
 
 
-def resolve_serial(serial: str, run: RunFn = _real_run) -> str:
+def resolve_serial(serial: str, run: RunFn = real_run) -> str:
     """Resolve the alias "booted" to a concrete serial (the first ready device).
 
     A concrete serial passes through unchanged; "booted" picks the single ready device (the first
@@ -824,7 +824,7 @@ def resolve_serial(serial: str, run: RunFn = _real_run) -> str:
     return found[0] if found else serial
 
 
-def device_catalog(run: RunFn = _real_run) -> dict[str, dict[str, str]]:
+def device_catalog(run: RunFn = real_run) -> dict[str, dict[str, str]]:
     """Map serial -> {'name', 'runtime'} for the attached devices (best-effort, {} on any failure).
 
     Lets a run label which emulator (device model + Android version) each scenario ran on, the
@@ -844,10 +844,10 @@ def device_catalog(run: RunFn = _real_run) -> dict[str, dict[str, str]]:
 class Env:
     """Thin adb front end for one device/emulator."""
 
-    def __init__(self, serial: str, run: RunFn = _real_run) -> None:
+    def __init__(self, serial: str, run: RunFn = real_run) -> None:
         # Validate at construction (like AdbDriver): Env is what AndroidEnvironment.start drives
         # for the real device-lifecycle path, so a bad serial fails here, not deep in a command.
-        self.serial = _checked_serial(serial)
+        self.serial = checked_serial(serial)
         self._run = run
 
     def boot_completed(self) -> bool:

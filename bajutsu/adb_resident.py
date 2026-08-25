@@ -341,7 +341,7 @@ class ResidentServer:
         self,
         serial: str,
         *,
-        run: adb.RunFn = adb._real_run,
+        run: adb.RunFn = adb.real_run,
         spawn: Spawn = _default_spawn,
         fetch: Fetch = fetch_source,
         clock: ClockProbe = fetch_clock,
@@ -349,7 +349,7 @@ class ResidentServer:
         server_apk: Path = _SERVER_APK,
         test_apk: Path = _TEST_APK,
     ) -> None:
-        self._serial = adb._checked_serial(serial)
+        self._serial = adb.checked_serial(serial)
         self._run = run
         self._spawn = spawn
         self._fetch = fetch

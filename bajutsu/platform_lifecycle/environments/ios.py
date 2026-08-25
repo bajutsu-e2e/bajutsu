@@ -33,7 +33,7 @@ class _DeviceEnvironment:
         self,
         actuator: str,
         udid: str,
-        env_run: simctl.RunFn = simctl._real_run,
+        env_run: simctl.RunFn = simctl.real_run,
     ) -> None:
         self._actuator = actuator
         self._udid = udid
@@ -123,9 +123,7 @@ class _DeviceEnvironment:
         def reset(driver: base.Driver) -> None:
             e.terminate(bundle_id)
             e.launch(bundle_id, [*eff.launch_args, *simctl.locale_args(eff.locale)], eff.launch_env)
-            readiness._await_ready(
-                driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces
-            )
+            readiness.await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
 
         return reset
 

@@ -23,10 +23,10 @@ def test_on_off_yes_no_stay_strings() -> None:
 
 
 def test_loader_owns_its_resolver_mapping() -> None:
-    # The customisation must land in `_Loader.__dict__`; the mapping it starts from is inherited
+    # The customisation must land in `Loader.__dict__`; the mapping it starts from is inherited
     # from `yaml.resolver.Resolver` and shared with every other loader in the process.
     assert (
-        _yaml._Loader.yaml_implicit_resolvers is not yaml.resolver.Resolver.yaml_implicit_resolvers
+        _yaml.Loader.yaml_implicit_resolvers is not yaml.resolver.Resolver.yaml_implicit_resolvers
     )
 
 

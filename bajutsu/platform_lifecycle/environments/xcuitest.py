@@ -577,7 +577,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         self,
         actuator: str,
         udid: str,
-        env_run: simctl.RunFn = simctl._real_run,
+        env_run: simctl.RunFn = simctl.real_run,
         *,
         respawn: bool = False,
     ) -> None:

@@ -684,7 +684,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   appearance to the collector's `/transitions` endpoint (UIKit and SwiftUI alike, since
   every `NavigationStack` push, sheet presentation, and tab switch is `UIHostingController`-backed),
   independent of the network-exchange store it shares a process with. The
-  post-launch readiness gate (`_await_ready`) consults it as a new rung above the BE-0218
+  post-launch readiness gate (`await_ready`) consults it as a new rung above the BE-0218
   namespace/count heuristics (an explicit `readyWhen` still outranks it, so a base-screen transition
   never preempts the modal `readyWhen` waits for), and the `settled` wait consults it as a
   quiescence-window debounce, in place of tree-diff polling; a target that doesn't link the observer

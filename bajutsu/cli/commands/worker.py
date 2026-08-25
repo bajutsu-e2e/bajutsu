@@ -82,7 +82,7 @@ def _advertised_capabilities(platform: str, capabilities: str) -> list[str]:
         worker_capabilities(
             platforms,
             override=capabilities or os.environ.get(WORKER_CAPABILITIES_ENV),
-            run=simctl._real_run if "ios" in platforms else None,
+            run=simctl.real_run if "ios" in platforms else None,
         )
     )
 
@@ -241,7 +241,7 @@ def _run_with_heartbeat(
             job = execute_job_spec(
                 spec,
                 popen=subprocess.Popen,
-                simctl=simctl._real_run,
+                simctl=simctl.real_run,
                 cwd=work,
                 bus=bus,
                 io=io,

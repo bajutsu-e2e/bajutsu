@@ -516,14 +516,14 @@ class AdbDriver(CoordinateTreeDriver):
     def __init__(
         self,
         serial: str,
-        run: RunFn = adb._real_run,
+        run: RunFn = adb.real_run,
         *,
         fetch_hierarchy: HierarchyFetch | None = None,
         fetch_clock: ClockFetch | None = None,
         act: ActFn | None = None,
     ) -> None:
         super().__init__()
-        self.serial = adb._checked_serial(serial)
+        self.serial = adb.checked_serial(serial)
         self._run = run
         # When set, reads go through the resident channel and fall back to `uiautomator dump` only on
         # failure (BE-0245). Unset (the default) keeps today's dump-every-read behavior exactly.

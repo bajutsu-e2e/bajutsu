@@ -1,6 +1,6 @@
 """The two post-launch readiness waits the environments share, over one deadline skeleton (BE-0256).
 
-`_await_ready` (the device/web families) and `_await_boot` (Android) are both condition waits — no
+`await_ready` (the device/web families) and `await_boot` (Android) are both condition waits — no
 fixed up-front sleep — built on `base.deadline_ticks`, the same monotonic-deadline/exponential-backoff
 loop `base.wait_until` runs (BE-0118). Each keeps its own poll body and return type; only the loop
 skeleton is shared, so there is no second hand-rolled deadline implementation to drift.
@@ -27,7 +27,7 @@ _logger = logging.getLogger(__name__)
 _READY_MATCH_KEYS = ("id", "idMatches", "label", "labelMatches", "traits", "value")
 
 
-def _await_boot(env: adb.Env, timeout: float = 60.0, poll: float = 0.5) -> None:
+def await_boot(env: adb.Env, timeout: float = 60.0, poll: float = 0.5) -> None:
     """Wait until the device reports `sys.boot_completed`, polling to a bounded deadline (a condition wait at `poll` intervals, not a fixed up-front sleep).
 
     The Android peer of `simctl bootstatus`: `getprop sys.boot_completed` is polled to a bounded
@@ -42,7 +42,7 @@ def _await_boot(env: adb.Env, timeout: float = 60.0, poll: float = 0.5) -> None:
             return
 
 
-def _await_ready(
+def await_ready(
     driver: base.Driver,
     timeout: float = 10.0,
     poll_init: float = 0.1,

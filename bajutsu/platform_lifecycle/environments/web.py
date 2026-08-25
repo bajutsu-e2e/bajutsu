@@ -132,9 +132,7 @@ class WebEnvironment:
         # carried across visits, so a path recorded in one worker's browser replays in another.
         def reset(driver: base.Driver) -> None:
             cast(base.BackendLifecycle, driver).reset_context()  # web-only (fresh context)
-            readiness._await_ready(
-                driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces
-            )
+            readiness.await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
 
         return reset
 

@@ -13,7 +13,7 @@ from bajutsu.orchestrator import DeviceControl
 
 
 def device_control(
-    udid: str, bundle_id: str, env_run: simctl.RunFn = simctl._real_run
+    udid: str, bundle_id: str, env_run: simctl.RunFn = simctl.real_run
 ) -> DeviceControl:
     """A `DeviceControl` bound to one device.
 
@@ -63,7 +63,7 @@ def device_control(
 
 
 def android_device_control(
-    serial: str, package: str, env_run: adb.RunFn = adb._real_run
+    serial: str, package: str, env_run: adb.RunFn = adb.real_run
 ) -> DeviceControl:
     """A `DeviceControl` for the Android emulator, backing only the operations it can honor.
 

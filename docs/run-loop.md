@@ -152,10 +152,10 @@ erase (if pre.erase: shutdown → erase) → boot → bootstatus -b (wait out th
   → terminate(bundle) (for a clean launch state)
   → launch(bundle, [launchArgs, *locale_args(locale)], {**config.launchEnv, **pre.launchEnv})
   → openurl(deeplink) (if any) → make_driver(actuator, udid)
-  → _await_ready (poll until query() returns 2+ elements, up to 10s)
+  → await_ready (poll until query() returns 2+ elements, up to 10s)
 ```
 
-> `_await_ready` polls for the strongest readiness signal available, in order: an explicit `readyWhen`
+> `await_ready` polls for the strongest readiness signal available, in order: an explicit `readyWhen`
 > selector, then an app-reported screen-transition event ([BE-0310](../roadmaps/BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md), opt-in via `BajutsuKit`), then any
 > element whose id belongs to a declared `idNamespaces`, falling back to "the app has rendered a UI
 > (more than the root element)" — up to 10s ([configuration](configuration.md) documents each rung in

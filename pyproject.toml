@@ -155,6 +155,7 @@ select = [
     "RUF",
     "S",
     "SIM",
+    "SLF",
     "T20",
     "UP",
     "W",
@@ -174,7 +175,9 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "demos/**" = ["ANN", "T20", "S"]
-"tests/**" = ["ANN", "T20", "S"]
+# A test reaching into a fixture's or a fake's private state to assert on it is a normal
+# pattern, not a smell (SLF).
+"tests/**" = ["ANN", "SLF", "T20", "S"]
 # Dev helper scripts print progress (T20) and invoke git/uv via PATH (S607).
 "scripts/**" = ["T20", "S607"]
 # `_Loader` subclasses SafeLoader (it only tweaks on/off/yes/no resolving), so its `yaml.load`

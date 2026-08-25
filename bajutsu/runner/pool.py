@@ -98,7 +98,7 @@ def device_pool(
     secret_values: list[str] | None = None,
     provision: ProvisionProfile | None = None,
     available: Callable[[str], bool] = default_available,
-    env_run: simctl.RunFn = simctl._real_run,
+    env_run: simctl.RunFn = simctl.real_run,
     make_driver: Callable[..., base.Driver] = _make_driver,
     evidence_providers: Callable[
         [list[str], str, Callable[[str], bool]], tuple[dict[str, str], dict[str, str]]

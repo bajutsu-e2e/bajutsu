@@ -444,7 +444,7 @@ class _AndroidishDriver(FakeDriver):
         if self._reveal_at is not None and self._scroll_offset[1] >= self._reveal_at:
             tree.append(_el("target", (10.0, 300.0, 200.0, 90.0)))
         if self._expose_rows:
-            tree += [el for el in super().query() if base._contains(self._LIST, el["frame"])]
+            tree += [el for el in super().query() if base.contains(self._LIST, el["frame"])]
         return tree
 
     def screenshot(self, path: str) -> None:
@@ -730,7 +730,7 @@ def test_a_lazy_tree_shows_its_motion_through_the_rows_it_drops() -> None:
     class _LazyDriver(FakeDriver):
         def query(self) -> list[base.Element]:
             viewport = base.Frame((0.0, 0.0, _VIEWPORT[0], _VIEWPORT[1]))
-            return [el for el in super().query() if base._contains(viewport, el["frame"])]
+            return [el for el in super().query() if base.contains(viewport, el["frame"])]
 
     driver = _LazyDriver(screen=[_row(i) for i in range(20)], viewport=_VIEWPORT)
     _do_action(driver, Step(scroll=Scroll.model_validate({"to": {"id": "row.19"}})))

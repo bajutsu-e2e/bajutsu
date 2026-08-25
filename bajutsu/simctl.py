@@ -68,13 +68,13 @@ def validated_udid(udid: str) -> str:
     The shared entry point for the simctl family of argv builders — this module's own builders,
     plus the simctl argv assembled in `intervals.py` (evidence capture) and
     `platform_lifecycle.environments.xcuitest` (the xcodebuild destination). Public (unlike adb's
-    per-module `_checked_serial`) precisely
+    per-module `checked_serial`) precisely
     because that argv-building is spread across modules. The check is the shared `device_id` policy — chiefly that an id never leads with `-`,
     which simctl would read as an option (argv option injection from an untrusted `--udid` / config).
 
     Raises:
         DeviceError: if `udid` violates the policy — so a bad `--udid` surfaces as the CLI's clean
-            exit-2 device fault, the same boundary adb's `_checked_serial` uses.
+            exit-2 device fault, the same boundary adb's `checked_serial` uses.
     """
     if is_valid_device_id(udid):
         return udid
@@ -376,7 +376,7 @@ def validated_device_arg(value: str) -> str:
     raise DeviceError(f"invalid simctl device argument: {value!r}")
 
 
-# Every simctl call that goes through `_real_run` carries a deadline (BE-0363), so a wedged
+# Every simctl call that goes through `real_run` carries a deadline (BE-0363), so a wedged
 # CoreSimulator surfaces as a named device fault rather than hanging until CI cancels the whole job
 # — a cancelled job names no cause at all. One value cannot serve every command, which is why there
 # are two below and why the helper picks between them from the command itself: `bootstatus` waits
@@ -407,7 +407,7 @@ _SIMCTL_TIMEOUT_S = 60.0
 def _subcommand_of(args: list[str]) -> str:
     """The token `args` names after `simctl`, or "" when it names none.
 
-    Read structurally rather than by position because `RunFn` is public and `_real_run` is a
+    Read structurally rather than by position because `RunFn` is public and `real_run` is a
     default nine other modules import, so an argv with a different prefix must not silently take
     the wrong bound.
     """
@@ -429,7 +429,7 @@ def _timeout_for(args: list[str]) -> float:
     return _SIMCTL_TIMEOUT_S
 
 
-def _real_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
+def real_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
     full_env = {**os.environ, **(extra_env or {})}
     timeout = _timeout_for(args)
     try:
@@ -454,7 +454,7 @@ def _probe_timed_out(exc: DeviceTimeout, fallback: str) -> None:
     _logger.warning("%s; reporting %s instead", exc, fallback)
 
 
-def resolve_udid(udid: str, run: RunFn = _real_run) -> str:
+def resolve_udid(udid: str, run: RunFn = real_run) -> str:
     """Resolve the simctl alias "booted" to a concrete UDID.
 
     simctl accepts "booted", but downstream steps need a concrete
@@ -478,7 +478,7 @@ def resolve_udid(udid: str, run: RunFn = _real_run) -> str:
     return udid
 
 
-def booted_udids(run: RunFn = _real_run) -> list[str]:
+def booted_udids(run: RunFn = real_run) -> list[str]:
     """UDIDs of the currently-booted Simulators (empty on any failure)."""
     try:
         data = json.loads(run(list_booted_cmd(), None))
@@ -495,7 +495,7 @@ def booted_udids(run: RunFn = _real_run) -> list[str]:
     ]
 
 
-def device_booted(udid: str, run: RunFn = _real_run) -> bool | None:
+def device_booted(udid: str, run: RunFn = real_run) -> bool | None:
     """Whether `udid` is currently booted, or None when the listing itself failed.
 
     Three-valued for the same reason `device_available` is: a CoreSimulator wedged enough that
@@ -533,7 +533,7 @@ def device_type_label(device_type: str) -> str:
     return device_type.rsplit(".", 1)[-1].replace("-", " ")
 
 
-def device_catalog(run: RunFn = _real_run) -> dict[str, dict[str, str]]:
+def device_catalog(run: RunFn = real_run) -> dict[str, dict[str, str]]:
     """Map udid -> {'name', 'runtime'} for the available simulators (best-effort, {} on any
     failure). Lets a run label which simulator (device model + OS) each scenario ran on."""
     try:
@@ -553,7 +553,7 @@ def device_catalog(run: RunFn = _real_run) -> dict[str, dict[str, str]]:
     return catalog
 
 
-def device_available(udid: str, run: RunFn = _real_run) -> bool | None:
+def device_available(udid: str, run: RunFn = real_run) -> bool | None:
     """Whether simctl still lists `udid` as available, or None when the probe itself failed.
 
     The three-valued result is the point: device recovery creates a replacement only on a definite
@@ -574,7 +574,7 @@ def device_available(udid: str, run: RunFn = _real_run) -> bool | None:
     )
 
 
-def device_type_of(udid: str, run: RunFn = _real_run) -> tuple[str, str] | None:
+def device_type_of(udid: str, run: RunFn = real_run) -> tuple[str, str] | None:
     """The device's (`deviceTypeIdentifier`, runtime identifier), so a replacement can clone both.
 
     None when unresolvable. Reads the unfiltered listing: this is captured while the device is
@@ -597,7 +597,7 @@ def device_type_of(udid: str, run: RunFn = _real_run) -> tuple[str, str] | None:
     return None
 
 
-def device_type_identifier(name: str, run: RunFn = _real_run) -> str | None:
+def device_type_identifier(name: str, run: RunFn = real_run) -> str | None:
     """The devicetype identifier a human device name resolves to ('iPhone 17 Pro' -> com.apple…).
 
     None when this host's Xcode ships no such type — the caller then falls back rather than failing,
@@ -616,7 +616,7 @@ def device_type_identifier(name: str, run: RunFn = _real_run) -> str | None:
     return None
 
 
-def newest_iphone_device_type(run: RunFn = _real_run) -> str | None:
+def newest_iphone_device_type(run: RunFn = real_run) -> str | None:
     """The last iPhone devicetype simctl lists (None when it lists none).
 
     simctl orders devicetypes oldest to newest, so the last iPhone is the newest one installed —
@@ -640,7 +640,7 @@ def newest_iphone_device_type(run: RunFn = _real_run) -> str | None:
 
 def create_device(
     device_type: str,
-    run: RunFn = _real_run,
+    run: RunFn = real_run,
     *,
     name: str = "bajutsu-recovered",
     runtime: str | None = None,
@@ -686,7 +686,7 @@ def create_device(
 class Env:
     """Thin simctl front end for one device."""
 
-    def __init__(self, udid: str, run: RunFn = _real_run) -> None:
+    def __init__(self, udid: str, run: RunFn = real_run) -> None:
         # Validate at construction so a bad --udid fails fast at the object boundary (the builders
         # below also validate, so this is belt-and-suspenders — the same posture the device drivers
         # take for their own udid).

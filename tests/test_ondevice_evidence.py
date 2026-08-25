@@ -303,7 +303,7 @@ def test_warns_and_still_yields_when_the_evidence_directory_cannot_be_prepared(
 
 
 def test_warns_about_a_missing_or_empty_artifact(monkeypatch, tmp_path) -> None:
-    # `_spawn` discards the child's stderr, so a `recordVideo`/`screenrecord` that refused to start
+    # `spawn` discards the child's stderr, so a `recordVideo`/`screenrecord` that refused to start
     # or died leaves no other trace, and `if-no-files-found: ignore` on the CI upload step would let
     # an entirely blind capture pass for a clean one. Drive `capture()` directly as a plain generator
     # (it is one; only its callers wrap it as a fixture) rather than through `pytester`, since this
@@ -582,7 +582,7 @@ def test_android_screenrecord_forwards_this_modules_pinned_bounds(monkeypatch) -
         return "sentinel"
 
     monkeypatch.setattr(intervals, "start_screenrecord", fake_start_screenrecord)
-    monkeypatch.setattr(ondevice_evidence.adb, "_real_run", lambda cmd: "")
+    monkeypatch.setattr(ondevice_evidence.adb, "real_run", lambda cmd: "")
     result = ondevice_evidence.android_screenrecord("serial-1", Path("video.mp4"))
     assert result == "sentinel"
     assert calls == [
@@ -603,7 +603,7 @@ def test_android_screenrecord_clears_the_stale_device_side_file_first(monkeypatc
     # left behind by a swallowed pull failure could otherwise be pulled in as this test's own
     # evidence. Clearing it first, before every spawn, is what closes that.
     run_calls = []
-    monkeypatch.setattr(ondevice_evidence.adb, "_real_run", lambda cmd: run_calls.append(cmd))
+    monkeypatch.setattr(ondevice_evidence.adb, "real_run", lambda cmd: run_calls.append(cmd))
     monkeypatch.setattr(intervals, "start_screenrecord", lambda *a, **kw: "sentinel")
     result = ondevice_evidence.android_screenrecord("serial-1", Path("video.mp4"))
     assert result == "sentinel"
@@ -619,7 +619,7 @@ def test_android_screenrecord_tolerates_a_failed_device_side_clear(monkeypatch) 
     def _raises(cmd):
         raise subprocess.CalledProcessError(1, cmd)
 
-    monkeypatch.setattr(ondevice_evidence.adb, "_real_run", _raises)
+    monkeypatch.setattr(ondevice_evidence.adb, "real_run", _raises)
     monkeypatch.setattr(intervals, "start_screenrecord", lambda *a, **kw: "sentinel")
     result = ondevice_evidence.android_screenrecord("serial-1", Path("video.mp4"))
     assert result == "sentinel"

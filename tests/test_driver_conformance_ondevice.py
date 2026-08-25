@@ -115,7 +115,7 @@ def _spec_path(eff: Effective, node: Node) -> Path:
     container = read_data_container(
         UDID,
         ios_bundle_id(eff),
-        simctl._real_run,
+        simctl.real_run,
         lambda reason: record_absorbed_stall(node, reason),
     )
     return Path(container) / "Documents" / "conformance-spec.txt"

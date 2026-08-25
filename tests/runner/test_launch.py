@@ -1,4 +1,4 @@
-"""Tests for device bring-up (launch_driver) and readiness polling (_await_ready).
+"""Tests for device bring-up (launch_driver) and readiness polling (await_ready).
 
 The iOS bring-up drives XCUITest, the sole iOS backend (BE-0290): a run does
 the simctl device prep (shutdown / erase / boot / install / permissions) and then launches the app
@@ -21,7 +21,7 @@ from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence.network import ScreenTransition
 from bajutsu.runner import (
-    _await_ready,
+    await_ready,
     launch_driver,
 )
 from bajutsu.scenario import Preconditions
@@ -67,7 +67,7 @@ def _mock_runner_spawn(monkeypatch: pytest.MonkeyPatch) -> None:
     class _ReadyFake(FakeDriver):
         # The cold spawn probes the runner via `health_ready` before returning (BE-0319); the fake
         # has no runner, so it just reports ready. `query()` still returns the ready screen for
-        # `_await_ready`.
+        # `await_ready`.
         def health_ready(self) -> bool:
             return True
 
@@ -189,7 +189,7 @@ def test_launch_driver_tears_down_when_await_ready_raises(
     def _boom(*args: object, **kwargs: object) -> object:
         raise drivers_base.BackendCrashError("died during readiness")
 
-    monkeypatch.setattr("bajutsu.runner.launch._await_ready", _boom)
+    monkeypatch.setattr("bajutsu.runner.launch.await_ready", _boom)
     with pytest.raises(drivers_base.BackendCrashError, match="died during readiness"):
         launch_driver("UDID-1", _xcuitest_eff(tmp_path), "xcuitest", environment=_Env())  # type: ignore[arg-type]
     assert torn == [driver]
@@ -244,7 +244,7 @@ def test_launch_driver_surfaces_failing_erase_as_device_error(
 
 
 def test_await_ready_uses_exponential_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
-    """_await_ready should use exponential backoff rather than a fixed poll interval,
+    """await_ready should use exponential backoff rather than a fixed poll interval,
     so early polls are short and later polls grow up to a cap."""
     sleeps: list[float] = []
     clock = 0.0
@@ -269,7 +269,7 @@ def test_await_ready_uses_exponential_backoff(monkeypatch: pytest.MonkeyPatch) -
                 return [_el("a", "A"), _el("b", "B")]
             return [_el("a", "A")]  # only 1 element — not ready
 
-    _await_ready(SlowStartDriver())  # type: ignore[arg-type]
+    await_ready(SlowStartDriver())  # type: ignore[arg-type]
 
     # Sleep intervals should increase (exponential backoff).
     assert len(sleeps) >= 3
@@ -294,7 +294,7 @@ def test_await_ready_returns_immediately_when_already_ready() -> None:
     orig_sleep = base_mod.time.sleep
     base_mod.time.sleep = lambda s: sleeps.append(s)
     try:
-        _await_ready(ReadyDriver())  # type: ignore[arg-type]
+        await_ready(ReadyDriver())  # type: ignore[arg-type]
     finally:
         base_mod.time.sleep = orig_sleep
 
@@ -320,7 +320,7 @@ def test_await_ready_respects_timeout_on_sleep(monkeypatch: pytest.MonkeyPatch) 
         def query(self) -> list[base.Element]:
             return [_el("a", "A")]
 
-    _await_ready(NeverReadyDriver(), timeout=1.0)  # type: ignore[arg-type]
+    await_ready(NeverReadyDriver(), timeout=1.0)  # type: ignore[arg-type]
 
     total_slept = sum(sleeps)
     assert total_slept <= 1.0, f"slept {total_slept}s which exceeds timeout 1.0s"
@@ -351,7 +351,7 @@ def test_await_ready_caps_poll_init_to_poll_max(monkeypatch: pytest.MonkeyPatch)
                 return [_el("a", "A"), _el("b", "B")]
             return [_el("a", "A")]
 
-    _await_ready(SlowDriver(), poll_init=2.0, poll_max=0.3)  # type: ignore[arg-type]
+    await_ready(SlowDriver(), poll_init=2.0, poll_max=0.3)  # type: ignore[arg-type]
 
     assert all(s <= 0.3 for s in sleeps), f"sleep exceeded poll_max: {sleeps}"
 
@@ -372,7 +372,7 @@ class _ScriptedDriver:
 
 
 def _install_bounded_clock(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Advance a local clock from the fake sleep so the loop is bounded by _await_ready's timeout —
+    # Advance a local clock from the fake sleep so the loop is bounded by await_ready's timeout —
     # a regression that never reaches readiness exits at the deadline (fails) instead of hanging.
     clock = 0.0
 
@@ -391,7 +391,7 @@ def test_await_ready_waits_for_ready_selector(monkeypatch: pytest.MonkeyPatch) -
     chrome = [_el("home.title", "H"), _el("tab", "T")]  # 2 elements -> the old gate would return
     target = _el("onboarding.start", "Start")
     driver = _ScriptedDriver([chrome, chrome, [*chrome, target]])  # modal appears on the 3rd read
-    _await_ready(driver, ready_sel={"id": "onboarding.start"})  # type: ignore[arg-type]
+    await_ready(driver, ready_sel={"id": "onboarding.start"})  # type: ignore[arg-type]
     assert driver.calls >= 3  # did not settle on chrome-only; waited for the modal element
 
 
@@ -401,7 +401,7 @@ def test_await_ready_without_selector_returns_on_element_count(
     # No ready selector: the existing "any 2 elements" heuristic still applies (unchanged default).
     _install_bounded_clock(monkeypatch)
     driver = _ScriptedDriver([[_el("home.title", "H"), _el("tab", "T")]])
-    _await_ready(driver)  # type: ignore[arg-type]
+    await_ready(driver)  # type: ignore[arg-type]
     assert driver.calls == 1
 
 
@@ -410,7 +410,7 @@ def test_await_ready_empty_selector_falls_back_to_count(monkeypatch: pytest.Monk
     # everything); it falls back to the 2+ count heuristic.
     _install_bounded_clock(monkeypatch)
     driver = _ScriptedDriver([[_el("only", "O")], [_el("only", "O"), _el("second", "S")]])
-    _await_ready(driver, ready_sel={})  # type: ignore[arg-type]
+    await_ready(driver, ready_sel={})  # type: ignore[arg-type]
     assert driver.calls >= 2  # did not return on the single-element tree
 
 
@@ -421,7 +421,7 @@ def test_await_ready_positional_only_selector_falls_back_to_count(
     # readiness on a single element — it falls back to the 2+ count heuristic.
     _install_bounded_clock(monkeypatch)
     driver = _ScriptedDriver([[_el("only", "O")], [_el("only", "O"), _el("second", "S")]])
-    _await_ready(driver, ready_sel={"index": 0})  # type: ignore[arg-type]
+    await_ready(driver, ready_sel={"index": 0})  # type: ignore[arg-type]
     assert driver.calls >= 2  # ignored the index-only selector; waited for 2+ elements
 
 
@@ -437,7 +437,7 @@ def test_await_ready_ignores_off_namespace_home_screen(monkeypatch: pytest.Monke
     ]  # Home screen, off-namespace
     app_row = _el("stable.row.1", "Row 1")
     driver = _ScriptedDriver([springboard, springboard, [*springboard, app_row]])
-    _await_ready(driver, id_namespaces=["stable"])  # type: ignore[arg-type]
+    await_ready(driver, id_namespaces=["stable"])  # type: ignore[arg-type]
     assert (
         driver.calls >= 3
     )  # did not settle on the Home screen; waited for an in-namespace element
@@ -450,7 +450,7 @@ def test_await_ready_returns_on_a_single_in_namespace_element(
     # below the 2+ count — the namespace signal is stronger evidence than raw element count.
     _install_bounded_clock(monkeypatch)
     driver = _ScriptedDriver([[_el("stable.row.1", "Row 1")]])
-    _await_ready(driver, id_namespaces=["stable"])  # type: ignore[arg-type]
+    await_ready(driver, id_namespaces=["stable"])  # type: ignore[arg-type]
     assert driver.calls == 1
 
 
@@ -461,7 +461,7 @@ def test_await_ready_without_namespaces_keeps_count_heuristic(
     # is unchanged, so behavior for those targets is exactly as before.
     _install_bounded_clock(monkeypatch)
     driver = _ScriptedDriver([[_el("Safari", "S"), _el("Messages", "M")]])
-    _await_ready(driver, id_namespaces=[])  # type: ignore[arg-type]
+    await_ready(driver, id_namespaces=[])  # type: ignore[arg-type]
     assert driver.calls == 1
 
 
@@ -474,7 +474,7 @@ def test_await_ready_selector_takes_precedence_over_namespaces(
     chrome = [_el("stable.row.1", "Row 1")]  # in-namespace, but not the awaited modal
     target = _el("onboarding.start", "Start")
     driver = _ScriptedDriver([chrome, chrome, [*chrome, target]])
-    _await_ready(driver, ready_sel={"id": "onboarding.start"}, id_namespaces=["stable"])  # type: ignore[arg-type]
+    await_ready(driver, ready_sel={"id": "onboarding.start"}, id_namespaces=["stable"])  # type: ignore[arg-type]
     assert driver.calls >= 3  # waited for the selector despite an in-namespace element present
 
 
@@ -487,7 +487,7 @@ def test_await_ready_reports_the_readywhen_signal(monkeypatch: pytest.MonkeyPatc
     # races if it later flaps.
     _install_bounded_clock(monkeypatch)
     driver = _ScriptedDriver([[_el("onboarding.start", "Start"), _el("chrome", "C")]])
-    result = _await_ready(driver, ready_sel={"id": "onboarding.start"})  # type: ignore[arg-type]
+    result = await_ready(driver, ready_sel={"id": "onboarding.start"})  # type: ignore[arg-type]
     assert result.ready is True
     assert result.signal == "readyWhen"
     assert result.elapsed_s >= 0.0
@@ -498,7 +498,7 @@ def test_await_ready_reports_the_namespace_signal(monkeypatch: pytest.MonkeyPatc
     # ready — the diagnostic distinguishes this weaker signal from a readyWhen match.
     _install_bounded_clock(monkeypatch)
     driver = _ScriptedDriver([[_el("stable.row.1", "Row 1")]])
-    result = _await_ready(driver, id_namespaces=["stable"])  # type: ignore[arg-type]
+    result = await_ready(driver, id_namespaces=["stable"])  # type: ignore[arg-type]
     assert result.ready is True
     assert result.signal == "namespace"
 
@@ -508,7 +508,7 @@ def test_await_ready_reports_the_count_signal(monkeypatch: pytest.MonkeyPatch) -
     # count-signal readiness is the classic "gate returned before the content" hypothesis.
     _install_bounded_clock(monkeypatch)
     driver = _ScriptedDriver([[_el("a", "A"), _el("b", "B")]])
-    result = _await_ready(driver)  # type: ignore[arg-type]
+    result = await_ready(driver)  # type: ignore[arg-type]
     assert result.ready is True
     assert result.signal == "count"
 
@@ -518,7 +518,7 @@ def test_await_ready_reports_timeout_when_never_ready(monkeypatch: pytest.Monkey
     # a distinct hypothesis from "ready passed but the awaited element then didn't render".
     _install_bounded_clock(monkeypatch)
     driver = _ScriptedDriver([[]])  # always empty
-    result = _await_ready(driver, timeout=1.0)  # type: ignore[arg-type]
+    result = await_ready(driver, timeout=1.0)  # type: ignore[arg-type]
     assert result.ready is False
     assert result.signal == "timeout"
 
@@ -533,7 +533,7 @@ def test_await_ready_screenchanged_signal_beats_the_ladder(monkeypatch: pytest.M
     _install_bounded_clock(monkeypatch)
     driver = _ScriptedDriver([[]])  # always empty; the ladder alone would time out
     live = [(ScreenTransition(kind="screenChanged"), 0.0)]  # received at/after this wait's start
-    result = _await_ready(driver, timeout=1.0, transitions=lambda: live)  # type: ignore[arg-type]
+    result = await_ready(driver, timeout=1.0, transitions=lambda: live)  # type: ignore[arg-type]
     assert result.ready is True
     assert result.signal == "screenChanged"
     assert driver.calls == 0  # satisfied before ever needing a tree read
@@ -551,7 +551,7 @@ def test_await_ready_readywhen_outranks_the_screenchanged_signal(
     target = _el("onboarding.start", "Start")
     driver = _ScriptedDriver([chrome, chrome, [*chrome, target]])  # modal appears on the 3rd read
     live = [(ScreenTransition(kind="screenChanged"), 0.0)]  # a base-screen transition, since start
-    result = _await_ready(driver, ready_sel={"id": "onboarding.start"}, transitions=lambda: live)  # type: ignore[arg-type]
+    result = await_ready(driver, ready_sel={"id": "onboarding.start"}, transitions=lambda: live)  # type: ignore[arg-type]
     assert result.ready is True
     assert result.signal == "readyWhen"  # held for the modal, did not fire on the base transition
     assert driver.calls >= 3
@@ -566,7 +566,7 @@ def test_await_ready_ignores_a_transition_that_predates_this_wait(
     _install_bounded_clock(monkeypatch)
     driver = _ScriptedDriver([[_el("a", "A"), _el("b", "B")]])  # 2+ elements -> count heuristic
     stale = [(ScreenTransition(kind="screenChanged"), -5.0)]  # received well before start (t=0)
-    result = _await_ready(driver, transitions=lambda: stale)  # type: ignore[arg-type]
+    result = await_ready(driver, transitions=lambda: stale)  # type: ignore[arg-type]
     assert result.ready is True
     assert result.signal == "count"  # fell through to the ladder, not the stale signal
 
@@ -587,7 +587,7 @@ def test_await_ready_catches_a_transition_that_arrives_mid_poll(
             return []
         return [(ScreenTransition(kind="screenChanged"), 0.0)]
 
-    result = _await_ready(driver, timeout=1.0, transitions=transitions)  # type: ignore[arg-type]
+    result = await_ready(driver, timeout=1.0, transitions=transitions)  # type: ignore[arg-type]
     assert result.ready is True
     assert result.signal == "screenChanged"
     assert calls["n"] >= 3  # took more than one poll for the signal to appear
@@ -600,6 +600,6 @@ def test_await_ready_with_no_transitions_keeps_the_ladder_unchanged(
     # same unchanged behavior as before this item — a non-regression check for the default.
     _install_bounded_clock(monkeypatch)
     driver = _ScriptedDriver([[_el("a", "A"), _el("b", "B")]])
-    result = _await_ready(driver, transitions=list)  # type: ignore[arg-type]
+    result = await_ready(driver, transitions=list)  # type: ignore[arg-type]
     assert result.ready is True
     assert result.signal == "count"

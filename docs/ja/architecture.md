@@ -334,7 +334,7 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   `UIViewController.viewDidAppear(_:)` を swizzle し、完了したビューコントローラの出現をそれぞれ
   コレクタの `/transitions` エンドポイントへ報告します。`NavigationStack` の push、シートの提示、タブの
   切り替えはいずれも `UIHostingController` に支えられているため、UIKit と SwiftUI のどちらも同じように覆います。
-  同じプロセスにあるネットワーク通信のストアとは独立しています。起動直後の readiness ゲート（`_await_ready`）は、
+  同じプロセスにあるネットワーク通信のストアとは独立しています。起動直後の readiness ゲート（`await_ready`）は、
   BE-0218 の namespace／要素数のヒューリスティックの上に新設した段として、このシグナルを参照します。ただし明示的な
   `readyWhen` はそれより上位で、base 画面の遷移が `readyWhen` の待つモーダルを先取りすることはありません。`settled`
   待ちは、ツリー差分のポーリングに代えて、このシグナルを静止の窓によるデバウンスとして参照します。observer を
