@@ -89,16 +89,19 @@ make roadmap-find ARGS="--grep <keyword>"
 ```
 
 A title-and-introduction match is a coarse filter, and an item usually covers a small finding in its
-`Detailed design`, so when that pass returns nothing, grep the item files themselves (a `-ja.md` hit
-names the same item as its English sibling):
+`Detailed design`, so run the grep pass as well, not only when the first pass came back empty — a
+coarse hit on one item says nothing about another item's `Detailed design` (a `-ja.md` hit names the
+same item as its English sibling):
 
 ```bash
 grep -ril "<keyword>" roadmaps/
 ```
 
-Keep the grep second, not first: close to 400 items live under `roadmaps/`, and their files run past
-127,000 lines, so grepping them is the expensive pass — and inside `implement-be`'s hands-free loop
-it would repeat once per finding per iteration.
+Run the metadata pass first all the same. It answers with the id, title, `Topic`, and status of each
+match in one small table, so a hit there is already actionable, while the grep answers with paths
+still to open. Close to 400 items live under `roadmaps/` and their files run past 127,000 lines, but
+`grep -ril` returns one path per matching file rather than the prose, so the second pass stays cheap
+enough to run every time — which is what lets the coverage below hold.
 
 Both passes cover **all five statuses**, `Deferred` and `Rejected` included — the two a
 status-scoped survey would miss, and the two that matter most here: an item the roadmap deliberately

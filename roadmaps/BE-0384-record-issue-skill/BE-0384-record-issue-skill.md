@@ -106,10 +106,13 @@ checks the roadmap itself, cheap pass first. The cheap pass is the keyword looku
 [`roadmap-filter`](../../.apm/skills/roadmap-filter/SKILL.md) exists for, `make roadmap-find
 ARGS="--grep <keyword>"`, which matches the id, title, `Topic`, and `## Introduction` excerpt of
 every item in one run, across all five statuses. A title-and-introduction match is still coarse,
-since an item's coverage of a small finding usually lives in its `Detailed design`, so when the
-cheap pass returns nothing, grep the item files themselves (`grep -ril "<keyword>" roadmaps/`). The
-grep stays second because it is the expensive pass — close to 400 items, past 127,000 lines — and
-inside the hands-free loop it would otherwise repeat once per finding per iteration. Both passes
+since an item's coverage of a small finding usually lives in its `Detailed design`, so the step also
+greps the item files themselves (`grep -ril "<keyword>" roadmaps/`) — every time, not only when the
+cheap pass came back empty, since a coarse hit on one item says nothing about another item's
+`Detailed design`. The metadata pass still runs first, because it answers with each match's id,
+title, `Topic`, and status rather than a path still to open; the grep stays affordable as a second
+pass because it returns one path per matching file, not the prose of the 400-odd items and 127,000
+lines under `roadmaps/`. Both passes
 span all five statuses, `Deferred` and `Rejected` included: an item the roadmap deliberately parked,
 or decided against with no condition expected to reopen it, is the last thing to re-file as an
 issue, and a status-scoped survey is exactly what would miss it. Neither pass proves absence,
