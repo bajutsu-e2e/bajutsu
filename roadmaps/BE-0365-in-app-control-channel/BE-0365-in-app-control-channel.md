@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0365") |
-| Implementing PR | [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699) (unit 1) |
+| Implementing PR | [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699) (unit 1), [#1788](https://github.com/bajutsu-e2e/bajutsu/pull/1788) (unit 2) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0364](../BE-0364-in-app-control-channel/BE-0364-in-app-control-channel.md) |
 <!-- /BE-METADATA -->
@@ -166,7 +166,7 @@ tested and splitting it changes what is under test.
 > (oldest first), linking the PRs.
 
 - [x] Unit 1 — the collector's command queue, authenticated drain, and acknowledgement endpoint
-- [ ] Unit 2 — the app-side poll loop and command dispatch, env-gated and inert by default
+- [x] Unit 2 — the app-side poll loop and command dispatch, env-gated and inert by default
 - [ ] Unit 3 — the acknowledgement condition wait, and the touch-visualization toggle as the first command
 - [ ] Unit 4 — mid-scenario stub-table replacement as the second command
 - [ ] Unit 5 — bilingual documentation, including the release-build gating this makes mandatory
@@ -181,6 +181,17 @@ Log:
   now answers 404 rather than an empty 200. Rejected BE-0364 as a duplicate of this item in the same
   change, folding its two sharper points into units 1 and 2, and retired this item's stale claim that
   BE-0371's touch visualization was not yet on `main`.
+
+- [#1788](https://github.com/bajutsu-e2e/bajutsu/pull/1788) — unit 2: the app-side poll loop and command
+  dispatch in `BajutsuKit`. A compilation condition, `BAJUTSU_ENABLE_CONTROL_CHANNEL`, has to select the
+  channel before its launch-env key `BAJUTSU_CONTROL_CHANNEL` can reach it, so the launch environment
+  never guards it alone. The app reads a command's capability as the string bajutsu sent rather than as
+  an enum case: an app older than the bajutsu driving it then refuses an unsupported capability by name,
+  instead of dropping the command and leaving unit 3's wait to time out with nothing to say about why.
+  Unit 4's stub table, a sibling shape carrying no `enabled`, already survives that decoding. An empty
+  drain schedules no main-thread work, and a drain answered `401` or `404` ends the loop rather than
+  leaving a timer running in the app for the rest of the process's life. The Swift gate now builds and
+  tests both configurations, the unflagged one first, since that is what an adopter links.
 
 ## References
 
