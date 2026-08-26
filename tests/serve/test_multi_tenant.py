@@ -12,6 +12,8 @@ from pathlib import Path
 from sqlalchemy import Engine, select
 
 from bajutsu import serve as srv
+from bajutsu.analytics.ledger import JsonlLedger, UsageEvent
+from bajutsu.analytics.usage import TokenUsage
 from bajutsu.serve import operations as ops
 from bajutsu.serve.operations.config import seed_orgs_from_bound_config
 from bajutsu.serve.server.db import SqlRepository
@@ -327,3 +329,44 @@ def test_request_resolves_the_org_once(serve_engine: Callable[..., Engine], tmp_
 
     ops.list_scenarios(state, "demo", actor="alice")
     assert repo.user_org_calls == 1
+
+
+def test_usage_dashboard_reads_only_the_actors_orgs_ledgers(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # `/usage` resolves a ledger per target (issue #1717), and targets are org-partitioned, so the
+    # walk goes through `targets_for`: without it each org's dashboard would fold in the other's
+    # ledger. The aggregate still is not an org's own usage — two targets may share one file — but
+    # reading a ledger no target of this org names would cross the boundary `read_scenario` holds.
+    acme_ledger, globex_ledger = tmp_path / "acme.jsonl", tmp_path / "globex.jsonl"
+    for ledger, scenario in ((acme_ledger, "acme-checkout"), (globex_ledger, "globex-login")):
+        JsonlLedger(ledger).append(
+            UsageEvent(
+                ts="2026-07-08T00:00:00+00:00",
+                command="run",
+                provider="api-key",
+                model="claude-opus-4",
+                scenario=scenario,
+                step=None,
+                usage=TokenUsage(input_tokens=100, output_tokens=20, calls=1),
+                cost=0.01,
+            )
+        )
+    state = _state(
+        serve_engine,
+        tmp_path,
+        "targets:\n"
+        f"  demo: {{ bundleId: com.example.demo, ai: {{ usageLedger: {acme_ledger} }} }}\n"
+        f"  other: {{ bundleId: com.example.other, ai: {{ usageLedger: {globex_ledger} }} }}\n"
+        "\norgs:\n"
+        "  acme:\n    members: [alice]\n    targets: [demo]\n"
+        "  globex:\n    members: [bob]\n    targets: [other]\n",
+    )
+
+    alice_html, code = ops.usage_html(state, actor="alice")
+    assert code == 200
+    assert "acme-checkout" in alice_html and "globex-login" not in alice_html
+
+    bob_html, code = ops.usage_html(state, actor="bob")
+    assert code == 200
+    assert "globex-login" in bob_html and "acme-checkout" not in bob_html

@@ -316,12 +316,13 @@ def usage_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int
     Reads the same attributed ledgers the serve process's AI subprocesses append to and aggregates
     them deterministically: read-only, no verdict, no LLM. A disabled or absent ledger is not an
     error — it aggregates to the empty state, which explains how recording is enabled (graceful
-    degradation, like the readiness panels). The ledgers are per-process files, not org-scoped, so
-    the view is not filtered by *actor* (a per-org ledger would follow the ledger becoming
-    org-scoped).
+    degradation, like the readiness panels). A ledger file is shared by every writer that resolves to
+    it, so the aggregate is not an org's own usage and *actor* narrows only which ledgers are read,
+    never which events within one count (org-scoping the ledger itself is a design change, tracked
+    apart from issue #1717).
     """
     events: list[_usage_ledger.UsageEvent] = []
-    for path in _usage_ledger_paths(state):
+    for path in _usage_ledger_paths(state, actor):
         try:
             events.extend(_usage_ledger.read_events(path))
         except OSError:
@@ -331,7 +332,7 @@ def usage_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int
     return _usage_stats.render_html(_usage_stats.aggregate_usage(events)), 200
 
 
-def _usage_ledger_paths(state: ServeState) -> list[Path]:
+def _usage_ledger_paths(state: ServeState, actor: str | None) -> list[Path]:
     """Every ledger file the dashboard reads — resolved as the AI subprocesses serve spawns do.
 
     AI work in serve runs as subprocesses that call `usage_ledger.configure_from_ai_config` with the
@@ -342,11 +343,15 @@ def _usage_ledger_paths(state: ServeState) -> list[Path]:
     #1717).
 
     Every such subprocess names a target (`resolve` rejects an unknown one), so the set of files it
-    can append to is the union over the config's targets — the dashboard is process-wide, not
-    target-scoped, so it reads all of them. A config that declares no targets can have no such
-    writer; the dashboard falls back to `defaults.ai` — the config's only statement of where a
-    ledger would live, and what a writer would inherit once a target exists — rather than reading
-    nothing at all. An explicit empty `usageLedger` disables persistence, contributing no path.
+    can append to is the union over the targets — the dashboard is process-wide, not target-scoped,
+    so it reads all of them. Which targets those are is the same question `list_targets_payload` and
+    `read_scenario` answer: on a server backend the actor's org owns a subset of them (BE-0015 /
+    BE-0375), and walking every entry would merge another org's ledger into this view, so the walk
+    goes through `targets_for`. Local serve / token mode ignores `orgs:` and walks them all, exactly
+    as the target list does. A config that declares no targets can have no such writer; the dashboard
+    falls back to `defaults.ai` — the config's only statement of where a ledger would live, and what
+    a writer would inherit once a target exists — rather than reading nothing at all. An explicit
+    empty `usageLedger` disables persistence, contributing no path.
 
     Two writers stay outside that union by construction, both pre-existing and neither this
     dashboard's to reach: a job carrying its own `cwd` (a remote worker's workspace, which serve
@@ -361,8 +366,15 @@ def _usage_ledger_paths(state: ServeState) -> list[Path]:
         defaults = config.defaults.ai
         ledger = defaults.usage_ledger if defaults is not None else None
         return _absolute_ledger_paths(state, [ledger])
+    # Org scoping applies only on a server backend with a system of record, mirroring
+    # `list_targets_payload` — the one place target ownership is decided (BE-0015 multi-tenancy).
+    names = (
+        sorted(config.targets)
+        if state.repository is None
+        else state.targets_for(state.org_of(actor))
+    )
     configured: list[str | None] = []
-    for target in sorted(config.targets):
+    for target in sorted(names):
         try:
             merged = resolve(config, target).ai
         except (ValueError, KeyError):
