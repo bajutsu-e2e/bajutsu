@@ -124,8 +124,24 @@ def simulators_payload(state: ServeState) -> tuple[Any, int]:
 RUN_WINDOW = 200
 
 
+def _target_scenario_names(state: ServeState, org: str, target: str) -> set[str]:
+    """Every scenario name declared in *target*'s suite, as the run picker's scoping key.
+
+    An empty set when the target is another org's (non-leaky, like `list_scenarios`) or has no
+    scenarios dir — the caller then offers no run, rather than falling back to the whole history.
+    """
+    if _target_forbidden(state, org, target):
+        return set()
+    scope = state.for_org(org).scenarios.scope(target)
+    return {n for f in (scope.list() if scope else []) for n in f.get("names") or []}
+
+
 def runs_payload(
-    state: ServeState, *, actor: str | None = None, scenario: str | None = None
+    state: ServeState,
+    *,
+    actor: str | None = None,
+    scenario: str | None = None,
+    target: str | None = None,
 ) -> tuple[Any, int]:
     # Opportunistically purge trash past the retention window before listing (BE-0239) — the lazy
     # sweep, on the history read rather than a background daemon (SqlSessionStore's expiry-on-read
@@ -140,11 +156,10 @@ def runs_payload(
     # name lives in the JSON summary, not an indexed column, so it can't push into the query — list
     # unbounded and cap after filtering, or a run of the loaded scenario that falls outside the
     # newest-N global window is silently dropped and the picker can't reach it (BE-0262 follow-up).
+    org = state.org_of(actor)
     if state.repository is not None:
-        limit = None if scenario is not None else RUN_WINDOW
-        runs = [
-            r.summary for r in state.repository.list_runs(org_id=state.org_of(actor), limit=limit)
-        ]
+        limit = None if scenario is not None or target is not None else RUN_WINDOW
+        runs = [r.summary for r in state.repository.list_runs(org_id=org, limit=limit)]
     else:
         runs = state.artifacts.list_runs()
     # Scope the Author run picker to the loaded scenario (BE-0262): a chosen run's step ids only line
@@ -157,8 +172,15 @@ def runs_payload(
     # unscoped — gate the re-cap to the DB path so local/dev serve stays symmetric.
     if scenario is not None:
         runs = [r for r in runs if scenario in (r.get("scenarios") or [])]
-        if state.repository is not None:
-            runs = runs[:RUN_WINDOW]
+    # Scope the Coverage run picker to the selected target (BE-0146 follow-up): the coverage map is
+    # built from *that* target's suite, so a run of another target's scenarios contributes evidence
+    # the map cannot place. Scenario name is the same compatibility key the scoping just above uses —
+    # a run summary records the names it ran, and no target field — so the two filters compose.
+    if target is not None:
+        names = _target_scenario_names(state, org, target)
+        runs = [r for r in runs if names.intersection(r.get("scenarios") or [])]
+    if (scenario is not None or target is not None) and state.repository is not None:
+        runs = runs[:RUN_WINDOW]
     return runs, 200
 
 

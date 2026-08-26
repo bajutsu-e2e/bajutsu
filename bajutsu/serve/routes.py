@@ -33,7 +33,7 @@ from typing import Any, Protocol
 from bajutsu.serve import operations as ops
 from bajutsu.serve.state import ServeState
 
-# Content type for the HTML dashboard routes (/stats, /flakiness, /usage); /metrics uses the
+# Content type for the HTML dashboard routes (/stats, /flakiness, /usage, /coverage); /metrics uses the
 # Prometheus type. Both drive `_text` instead of the JSON writer.
 _HTML = "text/html; charset=utf-8"
 
@@ -192,7 +192,10 @@ ROUTES: tuple[Route, ...] = (
         "GET",
         "/api/runs",
         lambda state, ctx: ops.runs_payload(
-            state, actor=ctx.actor(), scenario=ctx.query("scenario")
+            state,
+            actor=ctx.actor(),
+            scenario=ctx.query("scenario"),
+            target=ctx.query("target"),
         ),
     ),
     Route(
@@ -278,6 +281,17 @@ ROUTES: tuple[Route, ...] = (
         "GET",
         "/usage",
         lambda state, ctx: ops.usage_html(state, actor=ctx.actor()),
+        content_type=_HTML,
+    ),
+    # Unlike its three siblings the coverage map needs a target (and, for the evidence dimensions, a
+    # run set and a crawl), so this route reads them from the query string — the linkable twin of the
+    # view's `POST /api/coverage`.
+    Route(
+        "GET",
+        "/coverage",
+        lambda state, ctx: ops.coverage_html(
+            state, ctx.query("target"), ctx.query("runs"), ctx.query("crawl"), actor=ctx.actor()
+        ),
         content_type=_HTML,
     ),
     # --- GET: OAuth round-trip (off_loop) ---

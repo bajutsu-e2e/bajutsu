@@ -56,7 +56,7 @@ from bajutsu.serve.operations.config import (
     set_provider,
     set_scenario_secret,
 )
-from bajutsu.serve.operations.coverage import coverage_view
+from bajutsu.serve.operations.coverage import coverage_html, coverage_view
 from bajutsu.serve.operations.dispatch import (
     _bool_flag,
     _boot_targets,
@@ -190,6 +190,7 @@ __all__ = [
     "compose_current",
     "config_content",
     "config_info",
+    "coverage_html",
     "coverage_view",
     "crawl_runs_payload",
     "create_org",

@@ -16,13 +16,17 @@ import json
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 
 from jinja2 import Environment, FileSystemLoader
 
 from bajutsu.analysis.audit import referenced_ids
 from bajutsu.assertions import match_request, request_label
+from bajutsu.crawl import fingerprint
 from bajutsu.doctor import namespace_of
+from bajutsu.drivers import base
 from bajutsu.evidence.network import NetworkExchange
+from bajutsu.interp import find_tokens
 from bajutsu.scenario import Assertion, RequestMatch, Scenario, Step, WaitRequest
 
 
@@ -48,11 +52,25 @@ class Coverage:
     coverage: float  # covered / total (1.0 when no namespaces are declared)
 
 
+def _is_literal_id(rid: str) -> bool:
+    """Whether *rid* is a real id rather than a placeholder bound at run time.
+
+    The loader has already expanded components (`params.*`) and data rows (`row.*`), so a `${...}`
+    left in a selector is a runtime binding — `vars.*` (a `totp` / `email` step's output, BE-0046) or
+    `secrets.*`. Its text names no element, so counting it would put a token like `${vars.otp}` in
+    the map as if it were an id and, since `namespace_of` reads up to the first `.`, invent an
+    `${vars` namespace among the off-namespace gaps.
+    """
+    return not find_tokens(rid)
+
+
 def coverage(scenarios: list[Scenario], id_namespaces: list[str]) -> Coverage:
     """Measure a suite's stable-id references against the app's declared namespaces. Pure."""
     declared = list(dict.fromkeys(id_namespaces))  # de-dupe, keep declared order
     declared_set = set(declared)
-    referenced = sorted({rid for s in scenarios for rid in referenced_ids(s)})
+    referenced = sorted(
+        {rid for s in scenarios for rid in referenced_ids(s) if _is_literal_id(rid)}
+    )
 
     by_namespace: dict[str, list[str]] = {}
     off_namespace: list[str] = []
@@ -316,6 +334,41 @@ def screen_coverage(discovered: list[ScreenRef], visited: frozenset[str]) -> Scr
         total=len(refs),
         covered=len(seen),
         coverage=len(seen) / len(refs) if refs else 1.0,
+    )
+
+
+def screen_refs(screenmap: dict[str, Any]) -> list[ScreenRef]:
+    """The screens a crawl discovered, from a parsed ``screenmap.json``'s nodes. Pure.
+
+    Each node's label is its first stable id, or the short fingerprint when the screen carries none.
+    A node that isn't a dict or carries no ``fingerprint`` is skipped, and an unexpected top-level
+    shape yields no screens — so a hand-corrupted map degrades to an empty denominator rather than
+    raising. Shared by the CLI's ``--crawl`` and the serve Coverage view so the two read one map the
+    same way.
+    """
+    nodes = screenmap.get("nodes")
+    refs: list[ScreenRef] = []
+    for n in nodes if isinstance(nodes, list) else []:
+        if not isinstance(n, dict) or not n.get("fingerprint"):
+            continue
+        fp = str(n["fingerprint"])
+        ids = n.get("ids") or []
+        refs.append(ScreenRef(fingerprint=fp, label=str(ids[0]) if ids else fp[:7]))
+    return refs
+
+
+def screen_fingerprints(rendered: Iterable[list[Any]]) -> frozenset[str]:
+    """The screen fingerprints a run set rendered, one per parsed ``elements.json``. Pure.
+
+    Each per-step element list is one rendered screen, fingerprinted with the same
+    `crawl.fingerprint` the crawl uses — that shared reduction is what makes a visited screen
+    comparable to a discovered one. A list holding no element dicts contributes nothing, so a
+    partial capture narrows the numerator instead of inventing a screen.
+    """
+    return frozenset(
+        fingerprint(cast(list[base.Element], elements)).value
+        for data in rendered
+        if (elements := [e for e in data if isinstance(e, dict)])
     )
 
 

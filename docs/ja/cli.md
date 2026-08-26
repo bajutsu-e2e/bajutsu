@@ -134,7 +134,7 @@ bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--crawl <screenm
 ```
 
 - **カバレッジの割合**（スイートが参照する宣言済み namespace 数 / 宣言済み namespace 数）、各 namespace に触れる **namespace ごとの id**、**gap 一覧**（どのシナリオも参照しない宣言済み namespace。すなわち未テストの範囲）、**off-namespace な id**（参照されているが宣言されていない namespace の id）を報告します。テキスト、または `--json` で機械可読に出せます。
-- 参照している id とは、シナリオが指定する `id` / `idMatches` のすべてです。ステップ、入れ子の制御フロー、`within` スコープ、アサーションを横断して集めます。
+- 参照している id とは、シナリオが指定する `id` / `idMatches` のすべてです。ステップ、入れ子の制御フロー、`within` スコープ、アサーションを横断して集めます。run が後から束縛するプレースホルダは含みません。components（`params.*`）とデータ行（`row.*`）はマップを組み立てる前に展開されており、展開後に残る `${vars.*}` や `${secrets.*}` のトークンはどの要素も指していないので、マップはトークンの文字列を id として数えず対象から外します。
 - **`--runs <dir>`** を渡すと、run の証跡に基づく次元が2つ加わります。
   - **エンドポイントカバレッジ**: runs ディレクトリ配下のすべての `network.json`（観測した通信の和集合）を読み、**観測したエンドポイント**（`METHOD path`）のうちスイートのネットワークアサーション（`request` / `event` / `requestSequence`）がカバーしている割合を測ります。アサート済みの割合、**未アサートの観測エンドポイント**（スイートが一度もアサートしないトラフィック）、どの run でも**観測されなかった宣言マッチャ**を報告します。
   - **観測 id カバレッジ**: runs ディレクトリ配下のステップごとの `elements.json` をすべて読み、run が実際に**描画した**安定 id（各要素の `identifier`。null や空文字の id は除く）を集め、宣言済みの namespace ごとにまとめます。静的な id マップに対する、run の証跡側の対応物です。namespace ごとの観測 id、**どの run でも描画されなかった** namespace、宣言されていない namespace に属する観測 id（**off-namespace**）を報告します。

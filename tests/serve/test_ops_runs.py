@@ -368,3 +368,61 @@ def test_sweep_purges_a_db_only_trashed_run(
     assert state.artifacts.list_trashed_runs() == []  # nothing in the store's trash
     assert ops.sweep_expired_trash(state, actor="editor", now=datetime.now(UTC)) == 1
     assert repo.get_run("r1") is None  # the DB-only-trashed run was purged
+
+
+# --- target-scoped listing (the Coverage run picker, BE-0146) ---
+
+
+def _target_state(tmp_path: Path) -> ServeState:
+    """A local state whose `demo` target declares a suite of `login` + `checkout`, and whose `other`
+    target declares a suite of `settings` alone — so a run is offered to one picker, not both."""
+    for target, names in (("demo", ("login", "checkout")), ("other", ("settings",))):
+        d = tmp_path / target
+        d.mkdir()
+        (d / "suite.yaml").write_text(
+            "".join(f"- name: {n}\n  steps:\n    - tap: {{ id: home.title }}\n" for n in names),
+            encoding="utf-8",
+        )
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [fake] }\ntargets:\n"
+        f"  demo: {{ bundleId: com.example.demo, scenarios: {tmp_path / 'demo'} }}\n"
+        f"  other: {{ bundleId: com.example.other, scenarios: {tmp_path / 'other'} }}\n"
+        "  bare: { bundleId: com.example.bare }\n",
+        encoding="utf-8",
+    )
+    return ServeState(runs_dir=tmp_path / "runs", config=cfg, cwd=tmp_path)
+
+
+def test_runs_payload_target_scoped_excludes_another_targets_runs(tmp_path: Path) -> None:
+    # The coverage map is built from the selected target's suite, so a run of another target's
+    # scenarios carries evidence the map cannot place — the picker must not offer it.
+    state = _target_state(tmp_path)
+    _run_dir_for(state, "r1", "login")
+    _run_dir_for(state, "r2", "settings")
+    assert [r["id"] for r in ops.runs_payload(state, target="demo")[0]] == ["r1"]
+    assert [r["id"] for r in ops.runs_payload(state, target="other")[0]] == ["r2"]
+
+
+def test_runs_payload_target_scoped_keeps_a_run_matching_any_declared_scenario(
+    tmp_path: Path,
+) -> None:
+    state = _target_state(tmp_path)
+    _run_dir_for(state, "r1", "checkout", "settings")
+    assert [r["id"] for r in ops.runs_payload(state, target="demo")[0]] == ["r1"]
+
+
+def test_runs_payload_target_without_a_scenarios_dir_offers_no_run(tmp_path: Path) -> None:
+    # No suite means no scoping key, so the picker offers nothing rather than falling back to the
+    # whole history — a run it cannot vouch for is worse than an empty list.
+    state = _target_state(tmp_path)
+    _run_dir_for(state, "r1", "login")
+    assert ops.runs_payload(state, target="bare")[0] == []
+
+
+def test_runs_payload_target_and_scenario_scopes_compose(tmp_path: Path) -> None:
+    state = _target_state(tmp_path)
+    _run_dir_for(state, "r1", "login")
+    _run_dir_for(state, "r2", "checkout")
+    scoped = ops.runs_payload(state, target="demo", scenario="checkout")[0]
+    assert [r["id"] for r in scoped] == ["r2"]

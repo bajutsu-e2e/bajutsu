@@ -189,7 +189,10 @@ bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--crawl <screenm
   references — what is untested), and **off-namespace ids** (referenced ids whose namespace was never
   declared). As text, or `--json` for tooling.
 - A referenced id is any `id` / `idMatches` a scenario addresses — across steps, nested control flow,
-  `within` scopes, and assertions.
+  `within` scopes, and assertions. A placeholder the run binds later is not one: components
+  (`params.*`) and data rows (`row.*`) are expanded before the map is built, and a `${vars.*}` or
+  `${secrets.*}` token left after that expansion names no element, so the map excludes it rather than
+  counting the token's own text as an id.
 - **`--runs <dir>`** folds in two **run-evidence** dimensions:
   - **Endpoint coverage**: it reads every `network.json` under the runs dir (the union of observed
     exchanges) and measures how many **observed endpoints** (`METHOD path`) the suite's network

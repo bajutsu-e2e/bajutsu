@@ -65,6 +65,7 @@ _EXPECTED: frozenset[tuple[str, str]] = frozenset(
         ("GET", "/stats"),
         ("GET", "/flakiness"),
         ("GET", "/usage"),
+        ("GET", "/coverage"),
         # --- GET: oauth round-trip (off_loop) ---
         ("GET", "/api/oauth/login"),
         ("GET", "/api/oauth/callback"),
@@ -154,13 +155,14 @@ def test_off_loop_routes_have_no_handle_and_others_do() -> None:
             assert r.handle is not None, f"{r.method} {r.path} is uniform but has no handle"
 
 
-def test_content_type_only_on_the_four_text_routes() -> None:
+def test_content_type_only_on_the_text_routes() -> None:
     typed = {(r.method, r.path) for r in ROUTES if r.content_type is not None}
     assert typed == {
         ("GET", "/metrics"),
         ("GET", "/stats"),
         ("GET", "/flakiness"),
         ("GET", "/usage"),
+        ("GET", "/coverage"),
     }
     # Text routes are driven (uniform tuple), not off_loop.
     for r in ROUTES:
