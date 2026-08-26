@@ -990,7 +990,6 @@ def test_build_state_server_wires_a_gcs_object_store_from_a_gs_uri(
     )
     assert isinstance(state.artifacts, ObjectStorageArtifactStore)
     assert isinstance(state.artifacts._store, GCSObjectStore)
-    assert isinstance(state.artifacts, ObjectStorageArtifactStore)
     assert state.artifacts._key("r1/report.html") == "tenant/artifacts/r1/report.html"
 
 

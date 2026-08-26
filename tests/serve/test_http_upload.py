@@ -115,8 +115,8 @@ def _extracted_dirs(tmp_path: Path) -> list[Path]:
 def _wait_done(port: int, job_id: str) -> dict[str, Any]:
     for _ in range(200):
         j = _get_json(port, "/api/jobs/" + job_id)
+        assert isinstance(j, dict)
         if j["status"] == "done":
-            assert isinstance(j, dict)
             return j
         time.sleep(0.02)
     raise AssertionError("job did not finish")
