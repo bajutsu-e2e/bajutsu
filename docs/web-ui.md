@@ -603,14 +603,31 @@ is involved.
 **What it does.** Renders the E2E coverage map for a target — the `coverage` command in the browser.
 It measures the scenario suite's stable-id references against the app's declared `idNamespaces`,
 showing per-namespace coverage, the gap list (declared namespaces no scenario touches), and
-off-namespace ids. When you select one or more past runs, it folds in the run-evidence dimensions:
-endpoints observed vs asserted (the union of those runs' `network.json` against the suite's network
-assertions) and observed ids vs declared namespaces (from each run's `elements.json`). Like Stats it
-is **read-only and advisory, never a verdict or a gate** — every figure is a deterministic count, no
-model is consulted.
+off-namespace ids. A selector the run binds later — a `${vars.*}` placeholder carrying a `totp` or
+`email` step's output — names no element, so the map leaves the placeholder out instead of counting
+its text as an id.
 
-**How to use it.** Pick a target, optionally select runs to add the run-evidence dimensions, and
-press **Compute** to render the map. No device, AI, or run is involved.
+Selecting one or more past runs folds in the run-evidence dimensions: endpoints observed vs asserted
+(the union of those runs' `network.json` against the suite's network assertions) and observed ids vs
+declared namespaces (from each run's `elements.json`). Selecting a crawl alongside those runs adds
+the screens-visited dimension — how many of the screens that crawl discovered, in its
+`screenmap.json`, the selected runs actually reached. A dimension with nothing to measure says so
+rather than drawing a full bar: a target declaring no namespaces has an empty denominator, and
+drawing that as complete coverage would tell the reader the opposite of the truth. Like Stats, the
+whole view is **read-only and advisory, never a verdict or a gate** — every figure is a
+deterministic count, no model is consulted.
+
+**How to use it.** Pick a target and press **Compute** to render the map. The run picker offers only
+runs of that target's own scenarios, since a run of another target's scenarios carries evidence this
+map cannot place. Selecting runs adds the run-evidence dimensions, and selecting a crawl alongside
+them adds the screens-visited dimension. The crawl list is **not** scoped that way — a crawl records
+no target to scope on — so pick one of the same app's crawls; a crawl of another app measures as
+every screen unvisited. No device, AI, or run is involved.
+
+**Opening it directly.** `GET /coverage?target=<name>` renders the same map as a standalone page, so
+you can link or bookmark a coverage map the way `/stats`, `/flakiness`, and `/usage` already allow.
+Add `&runs=<id>,<id>` for the run-evidence dimensions and `&crawl=<id>` for the screens-visited
+dimension.
 
 ## Security and hosting
 

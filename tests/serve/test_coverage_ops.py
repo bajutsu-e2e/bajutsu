@@ -1,7 +1,8 @@
 """Tests for the coverage operations layer (BE-0146).
 
-Operations-level tests for the `POST /api/coverage` endpoint that surfaces the deterministic
-`bajutsu coverage` aggregation (BE-0050) in the serve Web UI — no HTTP, no Simulator, no AI.
+Operations-level tests for the `POST /api/coverage` endpoint and the `GET /coverage` page that
+surface the deterministic `bajutsu coverage` aggregation (BE-0050) in the serve Web UI — no HTTP,
+no Simulator, no AI.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from typing import Any
 
 from _shared import FakeObjectStore
 
+from bajutsu.crawl import fingerprint as screen_fingerprint
 from bajutsu.serve import operations as ops
 from bajutsu.serve.operations.coverage import read_exchanges_via_store
 from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
@@ -243,3 +245,140 @@ def test_runs_must_be_a_list(tmp_path: Path) -> None:
     payload, status = ops.coverage_view(state, {"target": "demo", "runs": "r1"})
     assert status == 400
     assert "list" in payload["error"]
+
+
+# --- screens dimension: a crawl's discovered screens vs the ones the run set reached (issue #1719) ---
+
+
+def _write_crawl(runs: Path, run_id: str, nodes: list[dict[str, Any]]) -> None:
+    """A crawl run's `screenmap.json` — the discovered denominator the screens dimension measures."""
+    d = runs / run_id
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "screenmap.json").write_text(json.dumps({"nodes": nodes}), encoding="utf-8")
+
+
+def test_crawl_folds_in_the_screens_dimension(tmp_path: Path) -> None:
+    state = _state(tmp_path, id_namespaces=["home"])
+    elements = [{"identifier": "home.title"}]
+    _write_run(state.runs_dir, "r1", "s1", network=[], elements=elements)
+    visited = screen_fingerprint(elements).value  # type: ignore[arg-type]
+    _write_crawl(
+        state.runs_dir,
+        "c1",
+        [{"fingerprint": visited, "ids": ["home.title"]}, {"fingerprint": "nevervisited"}],
+    )
+    payload, status = ops.coverage_view(state, {"target": "demo", "runs": ["r1"], "crawl": "c1"})
+    assert status == 200
+    screens = payload["screens"]
+    assert screens["total"] == 2 and screens["covered"] == 1
+    assert [s["label"] for s in screens["unvisited"]] == ["nevervi"]
+
+
+def test_no_crawl_leaves_the_screens_dimension_out(tmp_path: Path) -> None:
+    state = _state(tmp_path, id_namespaces=["home"])
+    _write_run(state.runs_dir, "r1", "s1", network=[], elements=[{"identifier": "home.title"}])
+    payload, status = ops.coverage_view(state, {"target": "demo", "runs": ["r1"]})
+    assert status == 200
+    assert "screens" not in payload
+
+
+def test_selecting_a_crawl_reads_each_elements_artifact_once(tmp_path: Path) -> None:
+    """The observed-id and screens dimensions reduce the same per-step `elements.json` set. On a
+    server backend each artifact is an object-store GET, one per step, so reading it twice would
+    double a whole run set's fetches purely because a crawl was picked."""
+    state = _state(tmp_path, id_namespaces=["home"])
+    _write_run(state.runs_dir, "r1", "s1", network=[], elements=[{"identifier": "home.title"}])
+    _write_crawl(state.runs_dir, "c1", [{"fingerprint": "nevervisited"}])
+    fetched: list[str] = []
+    real = state.artifacts.open_bytes
+
+    def counting(rel: str) -> bytes | None:
+        fetched.append(rel)
+        return real(rel)
+
+    state.artifacts.open_bytes = counting  # type: ignore[method-assign]
+    payload, status = ops.coverage_view(state, {"target": "demo", "runs": ["r1"], "crawl": "c1"})
+    assert status == 200 and "screens" in payload
+    assert fetched.count("r1/s1/step0/elements.json") == 1
+
+
+def test_a_crawl_node_with_a_corrupt_ids_field_labels_by_fingerprint(tmp_path: Path) -> None:
+    """A screen map can arrive from outside the process (an uploaded run bundle, BE-0073), so a node
+    whose `ids` is not a list must fall back to the fingerprint label rather than raise — an
+    unhandled raise here would reach the client as a 500, not the readable error every other bad
+    crawl input gets."""
+    state = _state(tmp_path, id_namespaces=["home"])
+    _write_run(state.runs_dir, "r1", "s1", network=[], elements=[{"identifier": "home.title"}])
+    _write_crawl(state.runs_dir, "c1", [{"fingerprint": "nevervisited", "ids": {"a": 1}}])
+    payload, status = ops.coverage_view(state, {"target": "demo", "runs": ["r1"], "crawl": "c1"})
+    assert status == 200
+    assert [s["label"] for s in payload["screens"]["unvisited"]] == ["nevervi"]
+
+
+def test_crawl_without_runs_returns_400(tmp_path: Path) -> None:
+    """The crawl supplies only the denominator; with no run there is no visited evidence, so the
+    dimension would read as a silent 0% rather than a measurement."""
+    state = _state(tmp_path, id_namespaces=["home"])
+    _write_crawl(state.runs_dir, "c1", [{"fingerprint": "aaa"}])
+    payload, status = ops.coverage_view(state, {"target": "demo", "crawl": "c1"})
+    assert status == 400
+    assert "run" in payload["error"]
+
+
+def test_crawl_without_a_readable_screen_map_returns_400(tmp_path: Path) -> None:
+    """The caller picked the crawl from the history, so dropping the dimension silently would read
+    as the feature being broken."""
+    state = _state(tmp_path, id_namespaces=["home"])
+    _write_run(state.runs_dir, "r1", "s1", network=[], elements=[{"identifier": "home.title"}])
+    payload, status = ops.coverage_view(
+        state, {"target": "demo", "runs": ["r1"], "crawl": "missing"}
+    )
+    assert status == 400
+    assert "screen map" in payload["error"]
+
+
+def test_crawl_ids_are_confined_to_single_segments(tmp_path: Path) -> None:
+    state = _state(tmp_path, id_namespaces=["home"])
+    _write_run(state.runs_dir, "r1", "s1", network=[], elements=[{"identifier": "home.title"}])
+    payload, status = ops.coverage_view(
+        state, {"target": "demo", "runs": ["r1"], "crawl": "../../etc"}
+    )
+    assert status == 400
+    assert "crawl" in payload["error"]
+
+
+# --- GET /coverage: the linkable page (issue #1719) ---
+
+
+def test_coverage_html_renders_the_same_map_as_the_view(tmp_path: Path) -> None:
+    state = _state(tmp_path, id_namespaces=["home", "cart", "settings"])
+    page, status = ops.coverage_html(state, "demo", None, None)
+    assert status == 200
+    assert page == ops.coverage_view(state, {"target": "demo"})[0]["html"]
+
+
+def test_coverage_html_reads_its_run_set_from_a_comma_separated_query(tmp_path: Path) -> None:
+    """A query parameter carries no list, so the run set is spelled the way a URL can."""
+    state = _state(tmp_path, id_namespaces=["home"])
+    _write_run(state.runs_dir, "r1", "s1", network=[], elements=[{"identifier": "home.title"}])
+    _write_run(state.runs_dir, "r2", "s2", network=[], elements=[{"identifier": "home.cta"}])
+    page, status = ops.coverage_html(state, "demo", "r1, r2", None)
+    assert status == 200
+    assert "Observed ids" in page and "home.cta" in page
+
+
+def test_coverage_html_reports_a_bad_input_as_a_page_not_raw_json(tmp_path: Path) -> None:
+    state = _state(tmp_path, id_namespaces=["home"])
+    page, status = ops.coverage_html(state, None, None, None)
+    assert status == 400
+    assert page.lower().startswith("<!doctype html>")
+    assert "target is required" in page
+
+
+def test_coverage_html_escapes_the_message_it_reports(tmp_path: Path) -> None:
+    """The unknown-target error quotes the caller's own string, so it must not reach the page raw."""
+    state = _state(tmp_path, id_namespaces=["home"])
+    page, status = ops.coverage_html(state, "<script>alert(1)</script>", None, None)
+    assert status == 400
+    assert "<script>alert(1)</script>" not in page
+    assert "&lt;script&gt;" in page

@@ -12,60 +12,52 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from collections.abc import Iterator
 from pathlib import Path
-from typing import cast
+from typing import Any
 
 import typer
 
-from bajutsu import crawl as _crawl
 from bajutsu.analysis import coverage as _coverage
 from bajutsu.cli._shared import DEFAULT_CONFIG, _load_effective
-from bajutsu.drivers import base
 from bajutsu.scenario import load_scenarios_dir
 
 
 def _visited_screens(runs_dir: Path) -> frozenset[str]:
     """The screen fingerprints the run set rendered.
 
-    Each per-step `elements.json` is one rendered screen; fingerprint it with the same
-    `crawl.fingerprint` the crawl uses, so a visited screen matches a discovered one. Read-only; a
+    Each per-step `elements.json` under *runs_dir* is one rendered screen. Read-only; a
     malformed/partial file is skipped, not fatal.
     """
-    seen: set[str] = set()
+    return _coverage.screen_fingerprints(_element_lists(runs_dir))
+
+
+def _element_lists(runs_dir: Path) -> Iterator[list[Any]]:
+    """Each per-step `elements.json` under *runs_dir*, parsed as a JSON list.
+
+    An unreadable file, or one whose top level isn't a list, is skipped.
+    """
     for els in sorted(runs_dir.glob("*/*/elements.json")):
         try:
             data = json.loads(els.read_text(encoding="utf-8"))
-            if not isinstance(data, list):
-                continue
         except (OSError, ValueError):
             continue
-        elements = [e for e in data if isinstance(e, dict)]
-        if elements:
-            seen.add(_crawl.fingerprint(cast(list[base.Element], elements)).value)
-    return frozenset(seen)
+        if isinstance(data, list):
+            yield data
 
 
 def _discovered_screens(screenmap_path: Path) -> list[_coverage.ScreenRef] | None:
     """The screens a crawl discovered, from its `screenmap.json` nodes.
 
-    Each node's label is its first stable id, or the short fingerprint when the screen carries none.
-    Returns None when the file can't be read as JSON (so the caller skips the dimension with a
-    warning, like the other evidence readers); a node that isn't a dict or carries no `fingerprint`
-    is skipped, and an unexpected top-level shape yields no nodes — read-only, never fatal.
+    Returns None when the file can't be read as JSON, so the caller skips the dimension with a
+    warning like the other evidence readers; the node walk itself is `coverage.screen_refs`, shared
+    with the serve Coverage view (BE-0146) so the two read one map the same way.
     """
     try:
         data = json.loads(screenmap_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    nodes = data.get("nodes") if isinstance(data, dict) else None
-    refs: list[_coverage.ScreenRef] = []
-    for n in nodes or []:
-        if not isinstance(n, dict) or not n.get("fingerprint"):
-            continue
-        fp = str(n["fingerprint"])
-        ids = n.get("ids") or []
-        refs.append(_coverage.ScreenRef(fingerprint=fp, label=ids[0] if ids else fp[:7]))
-    return refs
+    return _coverage.screen_refs(data) if isinstance(data, dict) else []
 
 
 def coverage(
