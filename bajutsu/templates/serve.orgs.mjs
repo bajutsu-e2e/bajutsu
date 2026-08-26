@@ -4,10 +4,11 @@
 // that page manages what a tenant tests, this one manages the tenant itself: which GitHub login,
 // GitHub organization, or flat GitHub Team signs in as this org, and which Team its editors belong
 // to. All
-// four endpoints behind it are admin-only and need a database, so a viewer/editor and a
-// database-less serve both get a non-list answer from `/api/orgs` — which is exactly what hides the
-// tab, without the page having to be told a role. The body only defines; the entry module
-// (serve.author.mjs) calls initOrgsView() once every section has evaluated.
+// four endpoints behind it are admin-only and need a database. The boot read's capability block
+// reports both conditions, so the page asks for the roster only where there is one to ask for and
+// hides the tab otherwise; a non-list answer from `/api/orgs` stays the fallback for a role that
+// changed after boot (issue 1721). The body only defines; the entry module (serve.author.mjs)
+// calls initOrgsView() once every section has evaluated.
 import {$, esc, postJSON, setStatus, getJSON, unavailableReason} from './serve.core.mjs';
 
 // The last list `/api/orgs` returned, so the edit form can prefill from what the server actually

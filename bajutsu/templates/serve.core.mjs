@@ -510,7 +510,10 @@ export let fsSourceEnabled=true;
 async function loadConfig(){
   const c=await getJSON('/api/config',{hasConfig:false});
   if(typeof c.retentionDays==='number')retentionDays=c.retentionDays;  // BE-0239: trash window for the delete confirms
-  capabilities=c.capabilities&&typeof c.capabilities==='object'?c.capabilities:{};
+  // Keep the last block on a failed re-read, like retentionDays above: loadConfig runs again on a
+  // rebind or a project switch, and resetting to {} would read as "unknown", which means available
+  // — re-enabling Capture on a deployment that 404s it until the next successful read.
+  if(c.capabilities&&typeof c.capabilities==='object')capabilities=c.capabilities;
   fsSourceEnabled=!c.configSources||c.configSources.includes('fs');
   $('#fssrc').hidden=!fsSourceEnabled;
   setCfgName(c.hasConfig?c.config:'no config bound — open one →',c.hasConfig);
