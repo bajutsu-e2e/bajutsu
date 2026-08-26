@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0329") |
-| 実装 PR | [#1460](https://github.com/bajutsu-e2e/bajutsu/pull/1460)（判定、取り戻し、描画された画面による確認） |
+| 実装 PR | [#1460](https://github.com/bajutsu-e2e/bajutsu/pull/1460)（判定、取り戻し、描画された画面による確認）, [#1787](https://github.com/bajutsu-e2e/bajutsu/pull/1787)（conformance の重なりの検査と driver 契約への記載） |
 | トピック | Scenario authoring features |
 | 関連 | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md), [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md), [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse-ja.md), [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element-ja.md) |
 <!-- /BE-METADATA -->
@@ -452,6 +452,12 @@ driver conformance suite
   「動いた要素」になる、空の読み取りが根拠になる、一度に 1 要素だけ見せる画面が行き過ぎと読まれる）。
   それぞれに必要なただし書きを設計に記録しています。conformance の重なりの検査（Unit 6）と driver の
   契約への記載は持ち越します。
+- [#1787](https://github.com/bajutsu-e2e/bajutsu/pull/1787) — conformance の重なりの検査（Unit 6）を
+  加えました。`docs/architecture.md` と日本語ミラーの driver conformance suite の節にも、重なりの要求を
+  記載しています（Unit 9）。これで本項目は完了です。検査は conformance のスクロール画面で 1 ステップ
+  だけ進めます。ステップの前後の読み取りが、領域の枠に切り取られていない要素を少なくとも 1 つ共有する
+  ことを表明します。勢いを残すジェスチャを持つバックエンドは、実行時に対象を飛ばす前に、このスイートで
+  落ちます。
 
 ## 参考
 
