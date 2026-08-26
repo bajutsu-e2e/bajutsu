@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
 
 // Tab: Log (SPEC §5.3) — a training-log composer exercising every input control, dedicated gesture
 // targets, and all four modal styles: bottom sheet, full-screen cover, a custom action-sheet overlay,
-// and an auto-dismissing toast (~1.2 s → exercises `wait until gone`). Each control mirrors its
+// and an auto-dismissing toast (~3 s → exercises `wait until gone`). Each control mirrors its
 // result so a scenario can assert it landed.
 @SuppressLint("ClickableViewAccessibility")
 class LogTab(
@@ -241,7 +241,7 @@ class LogTab(
         overlay.addView(scrim, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
     }
 
-    // The transient toast (~1.2 s auto-dismiss → exercises `wait until gone`). Only one toast is ever
+    // The transient toast (~3 s auto-dismiss → exercises `wait until gone`). Only one toast is ever
     // present: a rapid second submit removes the previous one before adding a new one, so log_toast
     // never resolves to two nodes (an ambiguous selector the runner would fail fast on).
     private fun showToast() {
@@ -259,6 +259,6 @@ class LogTab(
                 overlay.removeView(toast)
                 toastView = null
             }
-        }, 1200)
+        }, 3000)
     }
 }
