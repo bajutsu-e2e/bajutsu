@@ -3,7 +3,7 @@
 // largest section — the ~400-line graph lives here, kept together with its panel. Its body only
 // defines; every top-level listener (the form, the graph interaction, the lightbox) is wired by
 // initCrawl(), which the entry module (serve.author.mjs) calls after all sections evaluate.
-import {$, esc, getJSON, setStatus, setBusy, streamJob, cancelJob, appendLine, startJob, openModal, closeModal, loadSims, wireHistoryList} from './serve.core.mjs';
+import {$, esc, getJSON, isFetchError, FETCH_ERROR, setStatus, setBusy, streamJob, cancelJob, appendLine, startJob, openModal, closeModal, loadSims, wireHistoryList} from './serve.core.mjs';
 
 // ---- Crawl: explore the app and watch the screen map grow live ----
 let crawlPoll=null,crawlJobId=null,crawlRunId=null;
@@ -25,7 +25,18 @@ function setCrawlFormDisabled(on){
 // selector wireHistoryList returns (assigned in initCrawl), re-synced by loadCrawlHistory.
 let crawlSel=null,crawlHistRuns=[];
 async function loadCrawlHistory(){
-  const runs=await getJSON('/api/crawl/runs',null);if(!runs)return;
+  // FETCH_ERROR, the same as the Replay history this list is wired alongside (#1716): an early
+  // return left the list showing whatever was there — at boot, the "no crawls yet" placeholder —
+  // so a failed read was indistinguishable from an empty history. `crawlHistRuns` keeps its last
+  // good rows, since the delegated open handler still resolves ids against them on a retry.
+  const runs=await getJSON('/api/crawl/runs',FETCH_ERROR);
+  if(isFetchError(runs)){
+    $('#crawl-history').innerHTML='<li class="muted" data-testid="crawl.history-error">Couldn\u2019t load the crawl history. Refresh to retry.</li>';
+    const tab=$('#crawl-histtab');if(tab)tab.textContent='History';  // the "(N)" came from the last good read
+    if(crawlSel)crawlSel.sync();
+    return;
+  }
+  if(!runs)return;
   crawlHistRuns=runs;
   const tab=$('#crawl-histtab');if(tab)tab.textContent='History'+(runs.length?` (${runs.length})`:'');
   const ul=$('#crawl-history');
