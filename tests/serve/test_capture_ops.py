@@ -59,8 +59,7 @@ def _screen() -> list[base.Element]:
 def _state_with_config(tmp_path: Path) -> ServeState:
     """Build a ServeState with a bound config (needed for capture operations)."""
     scn_dir, cfg, runs = project(tmp_path)
-    state = ServeState(runs_dir=runs, config=cfg, scenarios_dir=scn_dir, cwd=tmp_path)
-    return state
+    return ServeState(runs_dir=runs, config=cfg, scenarios_dir=scn_dir, cwd=tmp_path)
 
 
 # ---------------------------------------------------------------------------

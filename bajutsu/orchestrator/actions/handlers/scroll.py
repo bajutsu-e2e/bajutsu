@@ -152,7 +152,7 @@ def _region(
     container = containers[0]
     bounds = container["frame"]
     return [
-        el for el in elements if el is not container and base._contains(bounds, el["frame"])
+        el for el in elements if el is not container and base.contains(bounds, el["frame"])
     ], bounds
 
 
@@ -273,7 +273,7 @@ def _stopped(before: _RegionView, after: _RegionView, movers: set[_Key]) -> str 
     size = before.axis + 2
     for key in movers & (before.in_view.keys() & after.in_view.keys()):
         frame = before.in_view[key]
-        if all(c[size] <= frame[size] or base._contains(c, frame) for c in before.cut_off):
+        if all(c[size] <= frame[size] or base.contains(c, frame) for c in before.cut_off):
             return "an element the loop had watched move is still there and has stopped"
     return None
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 from bajutsu.cloud.devicefarm import Platform
@@ -341,7 +342,7 @@ def start_run_set(
     # reads the APK/IPA in-process, against the process cwd, so resolve it to an absolute path here —
     # otherwise a relative appPath is read from serve's launch dir and the upload fails opaquely on
     # the cloud host with "No such file". An absolute appPath is left as the operator wrote it.
-    app_path = app_path if os.path.isabs(app_path) else os.path.join(state.cwd, app_path)
+    app_path = app_path if Path(app_path).is_absolute() else str(state.cwd / app_path)
     config_arg = os.path.relpath(cfg, work_dir)
     if _escapes(config_arg):
         # The provider packages work_dir at the package root, so a config outside it would travel as

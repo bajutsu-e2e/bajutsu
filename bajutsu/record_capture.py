@@ -64,7 +64,7 @@ def hit_test(elements: list[base.Element], point: tuple[float, float]) -> base.E
     for el in elements:
         if not set(el["traits"]) & doctor.ACTIONABLE_TRAITS:
             continue
-        if not base._contains(el["frame"], inner):
+        if not base.contains(el["frame"], inner):
             continue
         _, _, w, h = el["frame"]
         area = w * h

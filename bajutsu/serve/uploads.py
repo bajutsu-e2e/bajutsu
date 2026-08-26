@@ -17,6 +17,7 @@ for config/baseline paths (`_confined_config_path`) to archive entries.
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import stat
 import tempfile
@@ -78,7 +79,7 @@ class BoundedZipReceiver:
         self._digest = hashlib.sha256()
         self.received = 0
         fd, name = tempfile.mkstemp(suffix=".zip")
-        self._file = open(fd, "wb")  # noqa: SIM115
+        self._file = os.fdopen(fd, "wb")
         self.path = Path(name)
 
     def write(self, chunk: bytes) -> None:

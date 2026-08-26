@@ -437,7 +437,7 @@ class _ScenarioRunner:
                 forced_erase = retry_scenario is not s
                 # Lease *inside* the try so a crash during bring-up — the launch/readiness gate, not only a
                 # scenario step — is caught by the same recovery. `self.lease` runs launch_driver, whose
-                # `_await_ready` surfaces a BackendCrashError when the resident runner answers /health at
+                # `await_ready` surfaces a BackendCrashError when the resident runner answers /health at
                 # cold spawn and then crashes on the first readiness query, before any step runs; without
                 # this, that crash escaped the loop and failed the whole run. `_run_on_lease` releases the
                 # lease in its own `finally` (on a mid-step crash too, so the dead lease is never leaked); a
@@ -1002,7 +1002,7 @@ def run_and_report(
 
 
 def run_matrix_and_report(
-    eff: Effective,
+    eff: Effective,  # noqa: ARG001  # positional parity with run_and_report
     scenarios: list[Scenario],
     engines: list[str],
     run_pass: Callable[[str, Path], list[RunResult]],

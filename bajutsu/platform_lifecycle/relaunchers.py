@@ -29,15 +29,15 @@ def _web_relauncher(
 ) -> RelaunchFn:
     """Web `relaunch`: re-navigate to the base URL and wait until ready (no device restart)."""
 
-    def relaunch(opts: Relaunch) -> None:
+    def relaunch(opts: Relaunch) -> None:  # noqa: ARG001  # RelaunchFn shape; web ignores the opts
         cast(base.BackendLifecycle, driver).navigate()  # web-only lifecycle
-        readiness._await_ready(driver, ready_sel=ready_sel, id_namespaces=id_namespaces)
+        readiness.await_ready(driver, ready_sel=ready_sel, id_namespaces=id_namespaces)
 
     return relaunch
 
 
 def device_relauncher(
-    udid: str, env_run: simctl.RunFn = simctl._real_run, extra_env: Mapping[str, str] | None = None
+    udid: str, env_run: simctl.RunFn = simctl.real_run, extra_env: Mapping[str, str] | None = None
 ) -> RelaunchFactory:
     """A relauncher factory for the `relaunch` step.
 
@@ -76,9 +76,7 @@ def device_relauncher(
                 *simctl.locale_args(locale),
             ]
             e.launch(bundle_id, launch_args, launch_env)
-            readiness._await_ready(
-                driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces
-            )
+            readiness.await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
 
         return relaunch
 

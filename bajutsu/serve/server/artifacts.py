@@ -68,7 +68,7 @@ class ObjectStorageArtifactStore:
         key = self._key(rel)
         return key is not None and self._store.exists(key)
 
-    def render_report(self, run_id: str) -> Artifact | None:
+    def render_report(self, run_id: str) -> Artifact | None:  # noqa: ARG002  # ArtifactStore shape
         # Render-on-view (BE-0068) is a filesystem path for now: it loads the run dir's model with
         # the local renderer. The object store keeps the run in storage, not on disk, so serve the
         # baked report.html (via `get`) here — dynamic render on the hosted backend is BE-0015 scope.

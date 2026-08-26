@@ -428,7 +428,6 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json({"error": "upload incomplete (body ended early)"}, 400)
                     receiver.cleanup()
                     return None
-                return receiver
             except UploadTooLarge:
                 # Belt-and-suspenders: length <= effective_cap is checked above, so this loop never
                 # actually exceeds the cap — kept only so the shared receiver's contract holds for
@@ -438,6 +437,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             except OSError:
                 self.close_connection = True
                 self._json({"error": "upload interrupted"}, 400)
+            else:
+                return receiver
             receiver.cleanup()
             return None
 

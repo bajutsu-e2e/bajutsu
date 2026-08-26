@@ -106,7 +106,7 @@ class _AndroidHarness(OnDeviceConformanceHarness):
     def _realize(self, ids: list[str]) -> None:
         # `am start -n <component> --es SHOWCASE_CONFORMANCE <wire>` delivers the spec to the running
         # activity via onNewIntent (BE-0270) — no relaunch, no file inside the app sandbox.
-        adb._real_run(
+        adb.real_run(
             adb.launch_cmd(self._serial, self._component, {"SHOWCASE_CONFORMANCE": _wire(ids)})
         )
 

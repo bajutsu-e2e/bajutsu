@@ -13,7 +13,7 @@ from bajutsu.orchestrator import DeviceControl
 
 
 def device_control(
-    udid: str, bundle_id: str, env_run: simctl.RunFn = simctl._real_run
+    udid: str, bundle_id: str, env_run: simctl.RunFn = simctl.real_run
 ) -> DeviceControl:
     """A `DeviceControl` bound to one device.
 
@@ -63,7 +63,7 @@ def device_control(
 
 
 def android_device_control(
-    serial: str, package: str, env_run: adb.RunFn = adb._real_run
+    serial: str, package: str, env_run: adb.RunFn = adb.real_run
 ) -> DeviceControl:
     """A `DeviceControl` for the Android emulator, backing only the operations it can honor.
 
@@ -97,7 +97,7 @@ def android_device_control(
         def clear_clipboard(self) -> None:
             e.clear_clipboard(package)
 
-        def push(self, payload: dict[str, object]) -> None:
+        def push(self, payload: dict[str, object]) -> None:  # noqa: ARG002  # DeviceControl shape
             raise _unsupported("push")
 
         def clear_keychain(self) -> None:
@@ -109,7 +109,7 @@ def android_device_control(
         def foreground(self) -> None:
             raise _unsupported("foreground")
 
-        def override_status_bar(self, **kwargs: str | int) -> None:
+        def override_status_bar(self, **kwargs: str | int) -> None:  # noqa: ARG002  # DeviceControl shape
             raise _unsupported("overrideStatusBar")
 
         def clear_status_bar(self) -> None:

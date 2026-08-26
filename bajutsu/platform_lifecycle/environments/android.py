@@ -64,11 +64,11 @@ class AndroidEnvironment:
         self,
         actuator: str,
         serial: str,
-        adb_run: adb.RunFn = adb._real_run,
+        adb_run: adb.RunFn = adb.real_run,
         *,
         resident_factory: Callable[[], ResidentServerLike] | None = None,
         provision: ProvisionProfile | None = None,
-        spawn: intervals.Spawn = intervals._spawn,
+        spawn: intervals.Spawn = intervals.spawn,
     ) -> None:
         self._actuator = actuator
         self._serial = serial
@@ -110,7 +110,7 @@ class AndroidEnvironment:
             # activity, so `am start` → `resolve_activity` raises a clean DeviceError — a false profile
             # never degrades into a silent pass.
             if not self._provision.boot_ready:
-                readiness._await_boot(e)
+                readiness.await_boot(e)
             if android.app_path and not self._provision.app_preinstalled:
                 if not Path(android.app_path).exists():
                     raise adb.DeviceError(
@@ -344,9 +344,7 @@ class AndroidEnvironment:
             # cannot close themselves (`base.SettledCacheInvalidator`, BE-0351).
             if isinstance(driver, base.SettledCacheInvalidator):
                 driver.invalidate_settled_cache()
-            readiness._await_ready(
-                driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces
-            )
+            readiness.await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
 
         return relaunch
 
@@ -357,7 +355,7 @@ class AndroidEnvironment:
         # app under test, so the package is threaded through.
         return android_device_control(self._serial, require_android(eff).package, self._run)
 
-    def teardown(self, driver: base.Driver, eff: Effective) -> None:
+    def teardown(self, driver: base.Driver, eff: Effective) -> None:  # noqa: ARG002  # Environment shape
         # Stop the resident server first (BE-0245) so no instrumentation is left running on the device,
         # then force-stop the app — this runs in the run's finally, so it fires on failure/interrupt too.
         if self._resident is not None:
@@ -402,9 +400,7 @@ class AndroidEnvironment:
             # Same gap as `relauncher` above: this replaces the screen outside the driver's actuators.
             if isinstance(driver, base.SettledCacheInvalidator):
                 driver.invalidate_settled_cache()
-            readiness._await_ready(
-                driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces
-            )
+            readiness.await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
 
         return reset
 

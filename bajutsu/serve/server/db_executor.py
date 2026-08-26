@@ -22,7 +22,7 @@ class DbQueueExecutor:
     def __init__(self, repository: Repository) -> None:
         self._repo = repository
 
-    def dispatch(self, state: ServeState, job: Job) -> None:
+    def dispatch(self, state: ServeState, job: Job) -> None:  # noqa: ARG002  # RunExecutor shape
         self._repo.enqueue_job(
             job.id, org_id=job.org or "", spec=job_spec(job), capabilities=job.capabilities
         )

@@ -297,6 +297,7 @@ def _default_runner(
             cwd=cwd,
             env=_child_env(),
             timeout=timeout,
+            check=False,
         )
     except FileNotFoundError as exc:
         raise RuntimeError(
@@ -348,7 +349,7 @@ def _response(stdout: str, forced_name: str | None) -> MessageResponse:
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"claude -p returned non-JSON output: {stdout[:200]!r}") from exc
     if not isinstance(envelope, dict):
-        raise RuntimeError(f"claude -p returned non-object JSON: {stdout[:200]!r}")
+        raise RuntimeError(f"claude -p returned non-object JSON: {stdout[:200]!r}")  # noqa: TRY004  # invalid external payload, not a caller type error
     if envelope.get("is_error"):
         raise RuntimeError(f"claude -p reported an error: {envelope.get('result')!r}")
     content: list[ContentBlock] = list(_tool_uses(envelope.get("structured_output"), forced_name))
@@ -380,11 +381,11 @@ class ClaudeCodeBackend:
         return _response(stdout, forced_name)
 
 
-def factory(ai: AiConfig | None = None) -> ClaudeCodeBackend:
+def factory(ai: AiConfig | None = None) -> ClaudeCodeBackend:  # noqa: ARG001  # registry factory shape
     """Build the Claude Code backend — the registry's adapter factory for `claude-code`."""
     return ClaudeCodeBackend()
 
 
-def credential_gap(ai: AiConfig | None = None) -> str | None:
+def credential_gap(ai: AiConfig | None = None) -> str | None:  # noqa: ARG001  # registry probe shape
     """`CLI_MISSING` when the `claude` binary is absent, else ``None`` (BE-0047)."""
     return None if shutil.which(BINARY) is not None else CLI_MISSING

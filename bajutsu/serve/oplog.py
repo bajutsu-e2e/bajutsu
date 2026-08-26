@@ -228,7 +228,9 @@ def make_handler(
     handler.setFormatter(_JsonFormatter(static) if normalized == "json" else _TextFormatter(static))
     handler.addFilter(_ContextFilter())
     handler.addFilter(_NameMaskFilter())
-    handler._bajutsu_oplog = True  # type: ignore[attr-defined]  # marks ours, so reset() finds it
+    # A namespaced marker on a stdlib Handler, not a reach into someone's private state: the
+    # underscore keeps it from colliding with logging's own attributes (SLF001).
+    handler._bajutsu_oplog = True  # type: ignore[attr-defined]  # noqa: SLF001  # reset() finds it
     return handler
 
 

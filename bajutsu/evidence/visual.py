@@ -165,7 +165,7 @@ def _compare_pixelmatch(
         diff_pixels.append(i)
 
     if diff_pixels and diff_path is not None:
-        _write_pixelmatch_diff(baseline, diff_pixels, w, h, diff_path)
+        _write_pixelmatch_diff(baseline, diff_pixels, w, diff_path)
 
     return _verdict(len(diff_pixels), total, threshold)
 
@@ -259,7 +259,7 @@ def _is_antialiased(
 
 
 def _write_pixelmatch_diff(
-    baseline: Image.Image, diff_pixels: list[int], w: int, h: int, diff_path: Path
+    baseline: Image.Image, diff_pixels: list[int], w: int, diff_path: Path
 ) -> None:
     gray = baseline.convert("L")
     dimmed = gray.point(lambda p: int(p * 0.7))

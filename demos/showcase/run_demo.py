@@ -93,7 +93,7 @@ def demo_shared_steps() -> None:
 
 def demo_data_driven() -> None:
     print("\n=== Phase 3: data-driven scenarios ===")
-    scns = expand_data(_load("data_driven.yaml"), lambda ref: [])
+    scns = expand_data(_load("data_driven.yaml"), lambda _ref: [])
     print(f"  expanded to {len(scns)} runs:")
     for s in scns:
         r = _run(s)

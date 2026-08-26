@@ -291,8 +291,7 @@ def _concrete_path(path: str) -> str:
     so the bespoke handlers return actual content instead of their own artifact-not-found 404."""
     path = re.sub(r"\{run_id\}", "r1", path)
     path = re.sub(r"\{rel:path\}", "r1/report.html", path)
-    path = re.sub(r"\{[^}]+\}", "no-such-id", path)
-    return path
+    return re.sub(r"\{[^}]+\}", "no-such-id", path)
 
 
 def _raw_request(method: str, url: str) -> tuple[int, bytes]:

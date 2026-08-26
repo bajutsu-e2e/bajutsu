@@ -60,11 +60,12 @@ def _ant_token_result() -> tuple[int, str, str]:
         capture_output=True,
         text=True,
         timeout=30,
+        check=False,
     )
     return result.returncode, result.stdout.strip(), result.stderr.strip()
 
 
-def _ant_access_token(ai: AiConfig | None = None) -> str:
+def _ant_access_token(ai: AiConfig | None = None) -> str:  # noqa: ARG001  # provider-probe shape
     """The bearer token for the `ant` provider, read from the Anthropic CLI (BE-0163).
 
     Raises:

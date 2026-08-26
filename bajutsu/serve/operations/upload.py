@@ -10,6 +10,7 @@ unchanged — the bundle stays exactly as ephemeral as BE-0073 shipped it.
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import tempfile
 import zipfile
@@ -362,7 +363,7 @@ def _fetch_artifact(
     fd, tmp_name = tempfile.mkstemp(prefix=f"{kind}-")
     tmp = Path(tmp_name)
     try:
-        with open(fd, "wb") as f:
+        with os.fdopen(fd, "wb") as f:
             f.write(data)
         dest = materialize_artifact(tmp, _artifacts_dir(state), org, kind, sha256)
     except OSError as e:  # disk full, permission error, etc. — a clean 400 like the sibling paths
@@ -642,7 +643,7 @@ def activate_uploaded_project(
         fd, tmp_name = tempfile.mkstemp(suffix=".zip")
         tmp_zip = Path(tmp_name)
         try:
-            with open(fd, "wb") as f:
+            with os.fdopen(fd, "wb") as f:
                 f.write(data)
             dest, status = _materialize_or_error(tmp_zip, uploads_dir, sha256)
         finally:

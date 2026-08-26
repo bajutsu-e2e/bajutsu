@@ -814,7 +814,7 @@ def test_wait_guard_is_capped_then_falls_back_to_timeout() -> None:
 
     def on_blocked(_d: object) -> None:
         calls["n"] += 1
-        return None  # the guard looked but nothing was dismissible
+        return  # the guard looked but nothing was dismissible
 
     clock = _LogicalClock()
     w = Wait.model_validate({"for": {"id": "never"}, "timeout": 30.0})
@@ -1001,7 +1001,7 @@ def test_wait_guard_cooldown_spaces_out_attempts() -> None:
 
     def on_blocked(_d: object) -> None:
         fire_times.append(clock.now())
-        return None
+        return
 
     w = Wait.model_validate({"for": {"id": "never"}, "timeout": 30.0})
     _wait(NeverClears(), w, clock, alert_guard=AlertGuardConfig(vision=on_blocked), alerts=[])  # type: ignore[arg-type]

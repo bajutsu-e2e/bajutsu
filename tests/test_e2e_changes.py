@@ -1299,7 +1299,7 @@ def test_no_ios_declared_scenario_includes_another_declared_scenario() -> None:
     for scenario in declared:
         scenario_path = repo_root / scenario
         for ref in component_ref.findall(scenario_path.read_text(encoding="utf-8")):
-            resolved = os.path.normpath(os.path.join(os.path.dirname(scenario), ref))
+            resolved = os.path.normpath(Path(scenario).parent / ref)
             assert resolved not in declared, (
                 f"{scenario} includes CI-declared scenario {resolved} via `use` — editing "
                 f"{resolved} would not fire {scenario}'s job. Move the shared steps into a "
