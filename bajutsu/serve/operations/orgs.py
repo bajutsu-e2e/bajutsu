@@ -24,8 +24,11 @@ _logger = logging.getLogger(__name__)
 
 # A database is what makes an org more than a name, so every operation here needs one. 400 rather
 # than 404: the endpoint exists, this deployment just isn't shaped to serve it — the same shape
-# `projects` uses for a serve with no project hub.
-_NO_ORG_STORE = ({"error": "org management needs a database"}, 400)
+# `projects` uses for a serve with no project hub. The reason is named separately because the boot
+# read reports it too, as the `orgs` capability's reason (#1721) — one string, so the flag the UI
+# gates on and the answer it would have got can never say different things.
+NO_ORG_STORE_ERROR = "org management needs a database"
+_NO_ORG_STORE = ({"error": NO_ORG_STORE_ERROR}, 400)
 
 # `slug` is the org's id, and that id is already carried as `org_id` on every user, run, secret, and
 # audit row — so it goes in URLs and object-storage key prefixes. Keep it to what is safe in both.

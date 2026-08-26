@@ -37,10 +37,12 @@ from bajutsu.platform_lifecycle.environments import (
     bundled_runner_build_info,
 )
 from bajutsu.serve import oplog
+from bajutsu.serve.authz import forbidden_for_role
 from bajutsu.serve.helpers import (
     list_targets,
     load_serve_config_file,
 )
+from bajutsu.serve.operations.orgs import NO_ORG_STORE_ERROR
 from bajutsu.serve.orgs import (
     DEFAULT_ORG,
     orgs_declaring_membership,
@@ -134,6 +136,78 @@ def config_sources(state: ServeState) -> list[str]:
     return ["git", "upload"] if state.hosted else ["git", "upload", "fs"]
 
 
+# Why a hosted deployment cannot capture: a capture session drives a device from the serve process
+# itself, and hosted the devices sit on the workers a browser never talks to. Every
+# `/api/capture/*` route is `local_only` in consequence, so the mode used to be offered and then
+# 404 on its first call (#1721).
+CAPTURE_HOSTED_REASON = (
+    "capture drives a device from the serve process itself, which a hosted deployment has none of "
+    "— capture from a local serve instead"
+)
+
+# Why a local deployment that nonetheless serves no `local_only` route cannot capture: `serve
+# --asgi` runs the FastAPI transport with the local backend, and that transport registers no
+# `local_only` route (`serve.server.app.make_app`). The devices are right there, so the reason names
+# the transport rather than the deployment.
+CAPTURE_NO_LOCAL_ROUTES_REASON = "this server does not serve the capture routes — run `bajutsu serve` without `--asgi` to capture"
+
+# Why a caller cannot administer orgs on a deployment that does have a database: the roster
+# discloses one tenant's membership to another, so every `/api/orgs` verb is admin-only.
+ORGS_ADMIN_ONLY_REASON = "org management is admin-only"
+
+
+def _capability(reason: str | None) -> dict[str, Any]:
+    """One capability entry: available when nothing blocks it, else the reason a disabled control
+    shows. Always both fields, so the UI reads one shape whichever way the answer falls."""
+    return {"available": reason is None, "reason": reason}
+
+
+def _capture_unavailable(state: ServeState) -> str | None:
+    """Why capture is unavailable here, or None when it is available.
+
+    Keyed to whether the transport serves the `local_only` routes, not to `hosted`: both hosted and
+    a local `serve --asgi` go through `make_app` and so serve none of them. Hosted is reported
+    first, since there the devices really are elsewhere and the transport is beside the point.
+    """
+    if state.hosted:
+        return CAPTURE_HOSTED_REASON
+    if not state.serves_local_routes:
+        return CAPTURE_NO_LOCAL_ROUTES_REASON
+    return None
+
+
+def _orgs_unavailable(state: ServeState, actor: str | None) -> str | None:
+    """Why *actor* cannot administer orgs here, or None when they can.
+
+    `forbidden_for_role` is the same gate the transport applies to `GET /api/orgs`, so the flag and
+    the endpoint cannot disagree. It gates an OAuth-authenticated session: without an identity (a
+    local serve, a shared-token session) there is no role to fail, exactly as the transport has it.
+    """
+    if state.repository is None:
+        return NO_ORG_STORE_ERROR
+    if actor and forbidden_for_role(state, actor, "GET", "/api/orgs"):
+        return ORGS_ADMIN_ONLY_REASON
+    return None
+
+
+def serve_capabilities(state: ServeState, actor: str | None = None) -> dict[str, Any]:
+    """What this deployment can serve *this* caller, for the UI to gate its own surface on (#1721).
+
+    Offering a mode whose every call 404s (Capture on a hosted serve) or probing an endpoint that
+    can only answer 400 (the org roster without a database) spends the user's attention on a
+    failure the server already knew about. Reporting availability up front lets the UI disable the
+    one and skip the other — and each reason is carried alongside, since a control the user cannot
+    use should say why rather than just going grey.
+
+    Purely a report: every endpoint still refuses the call on its own, so a flag read at boot and
+    since gone stale widens no gate.
+    """
+    return {
+        "capture": _capability(_capture_unavailable(state)),
+        "orgs": _capability(_orgs_unavailable(state, actor)),
+    }
+
+
 def config_info(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
     """The boot read every tab starts from: what config is bound, what this deployment offers, and
     who the caller is (BE-0375).
@@ -170,6 +244,9 @@ def config_info(state: ServeState, *, actor: str | None = None) -> tuple[Any, in
         # why the full roster stays behind the admin-only `GET /api/orgs`. One entry (or none) means
         # there is nothing to choose and the header keeps the read-only badge.
         "orgs": sorted(state.eligible_orgs(actor)) if actor else [],
+        # What this deployment can actually serve, so the UI disables Capture where the routes are
+        # not served and asks for the org roster only where there is one to ask for (#1721).
+        "capabilities": serve_capabilities(state, actor),
     }, 200
 
 

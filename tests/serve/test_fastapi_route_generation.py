@@ -22,6 +22,7 @@ from starlette.requests import Request
 
 from bajutsu import serve as srv
 from bajutsu.serve.handler import _StdlibCtx
+from bajutsu.serve.operations import config as ops_config
 from bajutsu.serve.project_registry import LocalProjectRegistry
 from bajutsu.serve.routes import ROUTES
 from bajutsu.serve.server.app import _FastapiCtx, make_app
@@ -69,6 +70,21 @@ def test_fastapi_app_skips_local_only_registry_routes(tmp_path: Path) -> None:
     exposed = _exposed(make_app(_state(tmp_path)))
     leaked = [(r.method, r.path) for r in ROUTES if r.local_only and (r.method, r.path) in exposed]
     assert leaked == []
+
+
+def test_make_app_declares_that_it_serves_no_local_only_route(tmp_path: Path) -> None:
+    # The boot read's `capture` capability is keyed to this field, so the UI can disable Capture on
+    # a transport whose capture routes 404 (issue 1721). It has to follow the loop above rather than
+    # `hosted`: a local `serve --asgi` keeps `hosted` False and still reaches `make_app`, and the
+    # `/api/config` answer would otherwise offer a mode this app never registered.
+    state = _state(tmp_path)
+    assert state.serves_local_routes is True  # the stdlib server's default, before make_app
+    make_app(state)
+    assert state.serves_local_routes is False
+    capture = ops_config.serve_capabilities(state)["capture"]
+    assert capture["available"] is False and capture["reason"]
+    # The flag reports; it never widens. Every local-only route stays absent from the app either way.
+    assert TestClient(make_app(state)).post("/api/capture/start", json={}).status_code == 404
 
 
 def test_local_only_routes_are_not_found_on_the_hosted_backend(tmp_path: Path) -> None:
