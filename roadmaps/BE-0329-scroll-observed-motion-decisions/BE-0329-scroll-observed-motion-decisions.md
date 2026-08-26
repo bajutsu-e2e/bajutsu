@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0329](BE-0329-scroll-observed-motion-decisions.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0329") |
 | Implementing PR | [#1460](https://github.com/bajutsu-e2e/bajutsu/pull/1460) (decisions, recovery, and the rendered-screen confirmation) |
 | Topic | Scenario authoring features |
@@ -450,11 +450,10 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 - [x] Unit 3 — the end-of-content decision
 - [x] Unit 4 — the rendered-screen confirmation
 - [x] Unit 5 — skip detection, step shrinking, and the reversing step
-- [ ] Unit 6 — conformance overlap check
+- [x] Unit 6 — conformance overlap check
 - [x] Unit 7 — reconciliation with the read-lag re-query
 - [x] Unit 8 — tests over `FakeDriver`
-- [ ] Unit 9 — docs for the new failure and the overlap requirement (the `scroll` authoring docs are
-      updated in both languages; the driver-contract note waits on unit 6)
+- [x] Unit 9 — docs for the new failure and the overlap requirement
 
 Log:
 

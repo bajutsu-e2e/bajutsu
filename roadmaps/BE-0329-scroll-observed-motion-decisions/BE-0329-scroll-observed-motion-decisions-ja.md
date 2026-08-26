@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0329](BE-0329-scroll-observed-motion-decisions-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0329") |
 | 実装 PR | [#1460](https://github.com/bajutsu-e2e/bajutsu/pull/1460)（判定、取り戻し、描画された画面による確認） |
 | トピック | Scenario authoring features |
@@ -437,11 +437,10 @@ driver conformance suite
 - [x] Unit 3 — コンテンツ末尾の判定
 - [x] Unit 4 — 描画された画面による確認
 - [x] Unit 5 — 飛ばしの検出、ステップの縮小、戻りのステップ
-- [ ] Unit 6 — conformance の重なりの検査
+- [x] Unit 6 — conformance の重なりの検査
 - [x] Unit 7 — 読み取り遅延の再取得との調停
 - [x] Unit 8 — `FakeDriver` に対するテスト
-- [ ] Unit 9 — 新しい失敗と重なりの要求のドキュメント（`scroll` の作成者向けドキュメントは両言語で
-      更新済み。driver の契約への記載は Unit 6 を待ちます）
+- [x] Unit 9 — 新しい失敗と重なりの要求のドキュメント
 
 ログ:
 
