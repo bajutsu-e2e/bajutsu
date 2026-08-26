@@ -478,13 +478,67 @@ def test_dismiss_from_tree_retries_a_delivered_tap_that_did_not_clear_the_prompt
         )
     assert not ok  # "ready" never appears either way, so the wait still times out on its own
     assert driver.tap_calls == _TREE_DISMISS_MAX_TAPS
-    # One prompt showing that was never actually cleared must not read as several dismissals; the
-    # retried actuations stay visible in the driver's own log (`tap_calls` above).
-    assert alerts == [AlertEvent(label="今はしない")]
+    # The dismissal is recorded on the tap — the only moment it can be, since nothing there tells a
+    # tap that lands from one the app never acts on — then withdrawn once the ceiling proves the
+    # prompt never cleared. `AlertEvent` means a prompt the guard *dismissed*, so leaving it would
+    # make the report contradict the warning below: timed out with the sheet still up, reported as
+    # cleared. The retried actuations stay visible in the driver's own log (`tap_calls` above).
+    assert alerts == []
     # Disclosed once, not silently: the wait is about to burn its whole budget, and without this the
     # timeout would read as "the awaited element never rendered" rather than "the prompt never left".
     gave_up = [r for r in caplog.records if "in-tree alert dismiss gave up" in r.message]
     assert len(gave_up) == 1
+
+
+def test_dismiss_from_tree_records_a_second_showing_after_an_untapped_other_label() -> None:
+    # A second label can appear and go without ever being tapped — here it collides with an
+    # identically labelled in-app button, so the uniqueness pre-check declines before any tap. That
+    # showing must not leave the *first* label pending: if it did, the first label reappearing would
+    # compare equal to the stale pending, `first_tap` would be False, and a genuine second dismissal
+    # would be tapped but never recorded — under-reporting the run's prompts.
+    from bajutsu.orchestrator.waits import _wait
+
+    target = _button("R")
+    target["identifier"] = "ready"
+    save = _button("今はしない")
+    other = _button("あとで")  # system-owned, but collides with the app button below
+    app_other = _button("あとで")
+    app_other["identifier"] = "screen.home.button.later"
+
+    class _TwoShowings(FakeDriver):
+        """`今はしない` → an untappable `あとで` → `今はしない` again, then the awaited screen."""
+
+        def __init__(self) -> None:
+            super().__init__([save])
+            self.taps: list[str] = []
+
+        def tap(self, sel: base.Selector) -> None:
+            super().tap(sel)
+            label = str(sel["label"])
+            self.taps.append(label)
+            # Each dismissal of the save sheet reveals the next screen in the sequence.
+            self.screen = [other, app_other] if len(self.taps) == 1 else [target]
+
+        def query(self) -> list[base.Element]:
+            # The colliding pair clears on its own after a poll, putting the save sheet back up —
+            # a second, genuine showing that was never tapped in between.
+            if self.screen and self.screen[0] is other:
+                self.screen = [save]
+                return [other, app_other]
+            return list(self.screen)
+
+    driver = _TwoShowings()
+    guard = AlertGuardConfig(
+        vision=_never_vision, labels=["今はしない", "あとで"], poll_interval=1.0
+    )
+    alerts: list[AlertEvent] = []
+    ok, _reason, _tree = _wait(
+        driver, _for_wait("ready", 5.0), _LogicalClock(), alert_guard=guard, alerts=alerts
+    )
+    assert ok
+    assert driver.taps == ["今はしない", "今はしない"]  # the ambiguous `あとで` was never tapped
+    # Both showings recorded — the second is a distinct prompt, not a retry of the first.
+    assert alerts == [AlertEvent(label="今はしない"), AlertEvent(label="今はしない")]
 
 
 def test_dismiss_from_tree_declines_on_not_yet_tappable_then_dismisses() -> None:

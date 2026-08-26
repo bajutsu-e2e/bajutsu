@@ -204,6 +204,7 @@ class _AlertGuardGate:
     _gave_up: bool = False
     _tree_dismiss_pending: str | None = None
     _tree_tapped_at: float | None = None
+    _tree_event: AlertEvent | None = None
     _tree_taps: int = 0
     _tree_gave_up: bool = False
     _tree_not_tappable_label: str | None = None
@@ -332,7 +333,9 @@ class _AlertGuardGate:
         confirmed, app unmoved), and a prompt that stays up is indistinguishable at the next poll from
         one merely fading out. Past that delay the animation is over, so the tap plainly did not land
         and is retried, `_TREE_DISMISS_MAX_TAPS` per showing. Only the first tap of a showing reports
-        an `AlertEvent`, so a retry does not inflate one dismissal into several.
+        an `AlertEvent`, so a retry does not inflate one dismissal into several — and if the ceiling
+        is reached, `_withdraw_tree_event` takes that event back, since the prompt is then known never
+        to have cleared.
 
         A not-yet-reachable button (`ElementNotTappable`) gets a per-showing bound the two decline
         branches below it do not need, `_TREE_DISMISS_MAX_DECLINES` deep: unlike a vanished button
@@ -350,8 +353,11 @@ class _AlertGuardGate:
         ]
         label = pick_alert_label(candidates, buttons)
         if label is None:
+            # The tree stopped matching: the showing ended, so its recorded event stands as the real
+            # dismissal it was — only the reference is dropped, so a later give-up cannot withdraw it.
             self._tree_dismiss_pending = None
             self._tree_tapped_at = None
+            self._tree_event = None
             self._tree_taps = 0
             self._tree_gave_up = False
             self._tree_not_tappable_label = None
@@ -372,6 +378,7 @@ class _AlertGuardGate:
                 # leave the eventual timeout looking like the awaited element simply never rendered.
                 if not self._tree_gave_up:
                     self._tree_gave_up = True
+                    self._withdraw_tree_event()
                     _logger.warning(
                         "in-tree alert dismiss gave up after %d taps on %r; the prompt is still "
                         "showing — falling back to the wait's own timeout",
@@ -380,7 +387,15 @@ class _AlertGuardGate:
                     )
                 return None
         else:
-            # A different label: its own showing, with its own tap budget and give-up disclosure.
+            # A different label: its own showing, with its own tap budget and give-up disclosure. The
+            # previous showing's pending state goes with it, so `first_tap` below is decided against
+            # this showing rather than against a label left pending that was never re-tapped — which
+            # would silently drop a genuine second dismissal of that label from `alerts`. The event
+            # the previous showing already recorded stays: it was a real dismissal, and this different
+            # label is often exactly what it revealed.
+            self._tree_dismiss_pending = None
+            self._tree_tapped_at = None
+            self._tree_event = None
             self._tree_taps = 0
             self._tree_gave_up = False
         if label != self._tree_not_tappable_label:
@@ -429,7 +444,31 @@ class _AlertGuardGate:
         self._tree_taps += 1
         self._tree_not_tappable_label = None
         self._tree_not_tappable_declines = 0
-        return AlertEvent(label=label) if first_tap else None
+        if not first_tap:
+            return None
+        # Held by identity so the give-up path can withdraw this exact event — two showings of the
+        # same label compare equal, and withdrawing the wrong one would misreport a real dismissal.
+        self._tree_event = AlertEvent(label=label)
+        return self._tree_event
+
+    def _withdraw_tree_event(self) -> None:
+        """Un-record this showing's dismissal once the prompt is known to still be up.
+
+        The `AlertEvent` is recorded on the tap, which is the only moment it *can* be — nothing at
+        that point distinguishes a tap that lands from one the app never acts on. Reaching the tap
+        ceiling is where that becomes knowable, and `AlertEvent`'s own contract is a prompt the guard
+        *dismissed*, so leaving it would make the report contradict the warning beside it: the step
+        times out with the sheet still up while the report says it was cleared. Removed by identity,
+        not equality, so an earlier showing of the same label keeps its own genuine record.
+        """
+        event = self._tree_event
+        self._tree_event = None
+        if event is None:
+            return
+        for i, recorded in enumerate(self.alerts):
+            if recorded is event:
+                del self.alerts[i]
+                return
 
 
 def _wait(
