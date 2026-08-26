@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0146") |
-| 実装 PR | [#702](https://github.com/bajutsu-e2e/bajutsu/pull/702) |
+| 実装 PR | [#702](https://github.com/bajutsu-e2e/bajutsu/pull/702)、[#1784](https://github.com/bajutsu-e2e/bajutsu/pull/1784) |
 | トピック | serve Web UI への CLI 機能の取り込み |
 <!-- /BE-METADATA -->
 
@@ -95,7 +95,7 @@ Tier 1 の読み取り専用です。UI は既存の集計を起動するだけ�
   シナリオローダを `bajutsu/scenario` へ移し、run の証跡リーダを（run id フィルタ付きで）
   `bajutsu/analysis/coverage.py` に共有化して、CLI と serve が同じ読み方をするようにしました。選んだ run の
   集合については、エンドポイントに加えて観測 id の次元も組み込みます。
-* PR pending — 先行していた3つの分析ダッシュボードに追いつかせ、このビューを仕上げました。リンクできる
+* [#1784](https://github.com/bajutsu-e2e/bajutsu/pull/1784) — 先行していた3つの分析ダッシュボードに追いつかせ、このビューを仕上げました。リンクできる
   `GET /coverage` ページを追加し、run のピッカーを選んだターゲット自身のシナリオに絞り込み、訪問画面の
   次元をクロールのピッカーに配線しました。欠けていただけでなく誤っていた数字も2つあります。`${vars.*}` の
   プレースホルダが参照済み id として数えられていたことと、0/0 の次元が満たされたバーとともに

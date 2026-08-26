@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0146") |
-| Implementing PR | [#702](https://github.com/bajutsu-e2e/bajutsu/pull/702) |
+| Implementing PR | [#702](https://github.com/bajutsu-e2e/bajutsu/pull/702), [#1784](https://github.com/bajutsu-e2e/bajutsu/pull/1784) |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 
@@ -101,7 +101,7 @@ Tier-1, read-only; the UI only shells out to the existing aggregation.
   device-free scenario loader moved to `bajutsu/scenario` and the run-evidence readers were shared
   into `bajutsu/analysis/coverage.py` (with a run-id filter) so the CLI and serve read the same way.
   Also folds in the observed-id dimension alongside endpoints for a selected run set.
-* PR pending — Finished the view against the three
+* [#1784](https://github.com/bajutsu-e2e/bajutsu/pull/1784) — Finished the view against the three
   analytics dashboards it had fallen behind: added the linkable `GET /coverage` page, scoped the run
   picker to the selected target's own scenarios, and wired the screens-visited dimension to a crawl
   picker. Two figures were also wrong rather than missing — a `${vars.*}` placeholder counted as a
