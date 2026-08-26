@@ -96,12 +96,29 @@ def test_check_passes_when_coverage_rose_without_the_snapshot_moving(tmp_path: P
     assert cf.main(["--coverage", str(coverage), "--snapshot", str(snapshot)]) == 0
 
 
-def test_check_passes_with_no_snapshot_yet(
+def test_check_fails_when_the_snapshot_is_missing(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    # Deleting the snapshot must not read as "every file passes" — there would be no floor at all.
     coverage = _write(tmp_path / "coverage.json", _report({"a.py": (10.0, 40)}))
-    assert cf.main(["--coverage", str(coverage), "--snapshot", str(tmp_path / "absent.json")]) == 0
-    assert "no recorded floor yet" in capsys.readouterr().out
+    assert cf.main(["--coverage", str(coverage), "--snapshot", str(tmp_path / "absent.json")]) == 1
+    assert "unenforceable" in capsys.readouterr().err
+
+
+def test_check_notes_a_file_the_snapshot_has_not_recorded_yet(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    coverage = _write(tmp_path / "coverage.json", _report({"a.py": (10.0, 40), "b.py": (95.0, 40)}))
+    snapshot = _snapshot(tmp_path / "floors.json", {"a.py": 10.0})
+    assert cf.main(["--coverage", str(coverage), "--snapshot", str(snapshot)]) == 0
+    assert "b.py: no recorded floor yet" in capsys.readouterr().out
+
+
+def test_write_seeds_a_snapshot_that_does_not_exist_yet(tmp_path: Path) -> None:
+    coverage = _write(tmp_path / "coverage.json", _report({"a.py": (88.0, 40)}))
+    snapshot = tmp_path / "floors.json"
+    assert cf.main(["--coverage", str(coverage), "--snapshot", str(snapshot), "--write"]) == 0
+    assert json.loads(snapshot.read_text())["files"] == {"a.py": 88.0}
 
 
 def test_write_rewrites_the_snapshot_and_reports_rises_and_drops(

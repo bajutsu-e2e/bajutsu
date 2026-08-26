@@ -105,7 +105,12 @@ def render(current: dict[str, float], floors: dict[str, float]) -> list[str]:
 
 
 def load_snapshot(path: Path) -> dict[str, float]:
-    """The recorded floors, or an empty mapping when the snapshot does not exist yet."""
+    """The recorded floors, or an empty mapping when the snapshot does not exist yet.
+
+    Only ``--write`` may act on the empty mapping, seeding the snapshot from scratch. ``--check``
+    refuses it (see `main`): a missing snapshot there would let every file through with no floor,
+    turning a deleted file into a silently disabled gate.
+    """
     if not path.exists():
         return {}
     data = json.loads(path.read_text())
@@ -141,6 +146,16 @@ def main(argv: list[str] | None = None) -> int:
     except (AttributeError, KeyError, TypeError, ValueError) as exc:
         print(
             f"coverage-floors: unreadable coverage report {args.coverage}: {exc}", file=sys.stderr
+        )
+        return 1
+
+    if not args.write and not args.snapshot.exists():
+        # Failing loudly beats passing 278 unchecked files: without the snapshot there is no floor
+        # to enforce, and a green gate would report otherwise.
+        print(
+            f"coverage-floors: no snapshot at {args.snapshot} — the per-file floors are "
+            "unenforceable. Restore the committed file, or seed one with `make coverage-floors`.",
+            file=sys.stderr,
         )
         return 1
 
