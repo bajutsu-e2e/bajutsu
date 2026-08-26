@@ -13,9 +13,11 @@
     - tap: { label: "Log", traits: [button] }
     - wait: { for: { label: "Submit", traits: [button] }, timeout: 10 }
     - tap: { label: "Submit", traits: [button] }
-    - wait: { until: { request: { method: POST, path: /post, status: 201 } }, timeout: 6 }
+    # Same step order as the id-based twin, for the same reason: the toast wait is armed on the
+    # step right after the tap so a boundary's evidence capture cannot consume the toast's life.
     - wait: { for: { label: "Saved" }, timeout: 4 }
     - wait: { until: { gone: { label: "Saved" } }, timeout: 5 }
+    - wait: { until: { request: { method: POST, path: /post, status: 201 } }, timeout: 6 }
   expect:
     - request: { method: POST, path: /post, status: 201 }
     - exists: { label: "Status: done" }

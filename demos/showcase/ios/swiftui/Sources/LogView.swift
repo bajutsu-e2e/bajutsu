@@ -25,6 +25,7 @@ struct LogView: View {
     @State private var showSheet = false
     @State private var showCover = false
     @State private var showDialog = false
+    @State private var showPopoverDialog = false
     @State private var dialogResult = "none"
     @State private var showAlert = false
     @State private var alertResult = "none"
@@ -75,6 +76,10 @@ struct LogView: View {
                         .accessibilityID("log.openGallery")
                     Button("Open Delete") { showDialog = true }
                         .accessibilityID("log.openDelete")
+                    // Opens the TipKit guard's counter-fixture; the dialog itself is attached at the
+                    // NavigationStack level below, beside the other four presentations.
+                    Button("Open Popover Dialog") { showPopoverDialog = true }
+                        .accessibilityID("log.openPopoverDialog")
                     Text("Dialog: \(dialogResult)")
                         .foregroundStyle(.secondary)
                         .accessibilityID("log.dialog.value")
@@ -203,6 +208,25 @@ struct LogView: View {
         // "OK", each carrying an `id` in the a11y build. Result mirrors to log.alert.value
         // (`none`/`cancel`/`ok`), so a scenario can tell the two actions apart by which value
         // lands.
+        // The fixture for the TipKit guard's other direction: a real SwiftUI confirmationDialog
+        // installs the SAME `PopoverDismissRegion` scrim a TipKit tip does — measured on-device,
+        // identical identifier, label, and full-screen frame — so it is what proves the guard leaves
+        // an app's own popover alone. The duplicate-element problem noted above rules the dialog out
+        // as a *tap* fixture, not as this one: the guard's detection never taps its buttons.
+        //
+        // Attached here rather than on its row: `Form` is a lazy, cell-reusing collection, so a
+        // presentation hanging off a row is installed only while that row is realized. This row sits
+        // below the fold, and the scenario scrolls to reach it, so a recycled row would drop the
+        // dialog and the scenario would pin the guard against a dialog that never presented.
+        .confirmationDialog(
+            "Remove this note?",
+            isPresented: $showPopoverDialog,
+            titleVisibility: .visible
+        ) {
+            Button("Copy note") { dialogResult = "copy-note" }
+            Button("Remove note", role: .destructive) { dialogResult = "remove-note" }
+            Button("Cancel", role: .cancel) {}
+        }
         .alert("Sample Alert", isPresented: $showAlert) {
             Button("Cancel", role: .cancel) { alertResult = "cancel" }
                 .accessibilityID("log.alert.cancel")
@@ -215,7 +239,7 @@ struct LogView: View {
 
     // POST SHOWCASE_HTTP_BASE/post with the note/count as JSON. Carries a secret header
     // (Authorization: Bearer …) and a password body field so redaction has something to
-    // mask (SPEC §6). On success: toast (~1.2s auto-dismiss) and a new row.
+    // mask (SPEC §6). On success: toast (~3s auto-dismiss) and a new row.
     private func submit() {
         status = "loading"
         guard let url = URL(string: model.httpBase + "/post") else { status = "error"; return }
@@ -246,7 +270,10 @@ struct LogView: View {
         rows.append((rows.last ?? 0) + 1)
         showToast = true
         Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(1200))
+            // 3s, an ordinary toast duration (Android's LENGTH_LONG is 3.5s): a scenario has to
+            // observe this appear and go across a step boundary, and evidence capture alone can
+            // cost 1.2s of a transient's life on a CI Simulator (scenarios/network_mock.yaml).
+            try? await Task.sleep(for: .milliseconds(3000))
             showToast = false
         }
     }
