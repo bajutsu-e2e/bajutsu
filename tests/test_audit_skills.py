@@ -182,6 +182,19 @@ def test_an_audit_a_manifest_never_reached_is_refused(
     assert not record.exists()
 
 
+def test_a_source_export_missing_a_manifest_is_refused_too(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The in-place branch a source export takes needs the same guard the mirror gets."""
+    root = tmp_path / "export"
+    root.mkdir()
+    record = tmp_path / "record.json"
+    _stub_apm(monkeypatch, tmp_path / "bin", record, exit_code=0)
+
+    assert audit_skills.main(["--root", str(root)]) == 1
+    assert not record.exists()
+
+
 def test_a_broken_git_is_not_read_as_a_missing_checkout(tmp_path: Path) -> None:
     """A corrupt index is git failing, not the absence of a repository."""
     root = _checkout(tmp_path / "repo")

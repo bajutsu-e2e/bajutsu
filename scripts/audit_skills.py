@@ -124,13 +124,30 @@ def build_mirror(root: Path, files: Iterable[str], dest: Path) -> int:
     return copied
 
 
+def _audit(apm: str, directory: Path, label: str) -> int:
+    """Audit *directory*, refusing to run at all rather than report on a manifest that is not there."""
+    for manifest in MANIFESTS:
+        if (directory / manifest).is_file():
+            continue
+        # Either absence exits 0 having audited nothing: without `apm.yml` APM reports nothing to
+        # check, and without the lockfile it declares no dependencies and runs one check of ten,
+        # neither of them content-integrity or drift. That green is the one outcome this gate must
+        # never produce — in the mirror and, for a source export, in the tree itself.
+        print(
+            f"lint-skills: {manifest} is missing from {label} — refusing a vacuous audit",
+            file=sys.stderr,
+        )
+        return 1
+    return subprocess.run([apm, *AUDIT_ARGS], cwd=directory, check=False).returncode
+
+
 def main(argv: list[str]) -> int:
     """Mirror the audited paths into a scratch tree and run APM's audit there."""
     parser = argparse.ArgumentParser(description="Audit the deployed agent skills (BE-0390).")
     parser.add_argument(
         "--root",
         type=Path,
-        default=Path("."),
+        default=Path(),
         help="project root to audit (default: the working directory)",
     )
     args = parser.parse_args(argv)
@@ -154,24 +171,12 @@ def main(argv: list[str]) -> int:
         # No git checkout carries `.claude/worktrees/` — a source export has none — so auditing the
         # tree in place is both correct there and the only thing left to do. Never a skip.
         print("lint-skills: not a git checkout — auditing the project tree in place")
-        return subprocess.run([apm, *AUDIT_ARGS], cwd=root).returncode
+        return _audit(apm, root, "the project tree")
 
     with tempfile.TemporaryDirectory(prefix="bajutsu-apm-audit-") as scratch:
         mirror = Path(scratch)
         print(f"lint-skills: auditing {build_mirror(root, files, mirror)} git-visible file(s)")
-        for manifest in MANIFESTS:
-            if (mirror / manifest).is_file():
-                continue
-            # Either absence exits 0 having audited nothing: without `apm.yml` APM reports nothing
-            # to check, and without the lockfile it declares no dependencies and runs one check of
-            # ten, neither of them content-integrity or drift. That green is the one outcome this
-            # gate must never produce.
-            print(
-                f"lint-skills: {manifest} did not reach the audit mirror — refusing a vacuous audit",
-                file=sys.stderr,
-            )
-            return 1
-        return subprocess.run([apm, *AUDIT_ARGS], cwd=mirror).returncode
+        return _audit(apm, mirror, "the audit mirror")
 
 
 if __name__ == "__main__":
