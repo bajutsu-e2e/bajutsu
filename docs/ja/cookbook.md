@@ -130,16 +130,21 @@ uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend
     - tap: { label: "Log", traits: [button] }
     - wait: { for: { id: log.submit }, timeout: 10 }
     - tap: { id: log.submit }
-    - wait: { until: { request: { method: POST, path: /post, status: 201 } }, timeout: 6 }
     - wait: { for: { id: log.toast }, timeout: 4 }
     - wait: { until: { gone: { id: log.toast } }, timeout: 5 }
+    - wait: { until: { request: { method: POST, path: /post, status: 201 } }, timeout: 6 }
   expect:
     - request: { method: POST, path: /post, status: 201 }
     - value: { sel: { id: log.status }, equals: "done" }
 ```
 
 `wait: { until: { gone: … } }` は要素が**消える**までポーリングします。こういう一時的なトースト
-通知の検証に使えます。このリクエストは `Authorization` ヘッダも運びます。このシナリオ自体は `redact`
+通知の検証に使えます。一時的な要素を待つときは、上のように、それを生じさせる操作の**直後**の
+ステップで待ちを構えてください。ステップの境目では証跡の取得（スクリーンショットとツリーの読み取り）に
+時間がかかり、負荷の高い CI の端末では 1 秒を超えることもあります。1 ステップ遅れて到達した待ちは、
+トーストがすでに消えたあとの画面を見ることになります。`until: { request: … }` の待ちを最後に置いて
+いるのはそのためです。トーストはレスポンスが届いてはじめて現れるので、この待ちが走る時点では
+すでに条件を満たしています。このリクエストは `Authorization` ヘッダも運びます。このシナリオ自体は `redact`
 ポリシーを設定していませんが、機密ヘッダは既定でマスクされるため、このヘッダは証跡上でマスクされます。
 全文は
 [`demos/showcase/scenarios/network_mock.yaml`](../../demos/showcase/scenarios/network_mock.yaml) に

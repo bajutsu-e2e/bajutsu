@@ -134,7 +134,7 @@ class _LogScreenState extends State<LogScreen> {
             ],
           ),
         ),
-        // The transient toast (~1.2 s auto-dismiss → exercises `wait until gone`).
+        // The transient toast (~3 s auto-dismiss → exercises `wait until gone`).
         if (model.logShowToast)
           Positioned(
             top: 60,
@@ -174,7 +174,7 @@ class _LogScreenState extends State<LogScreen> {
   void _showToast(AppModel model) {
     model.logShowToast = true;
     _toastTimer?.cancel();
-    _toastTimer = Timer(const Duration(milliseconds: 1200), () => model.logShowToast = false);
+    _toastTimer = Timer(const Duration(milliseconds: 3000), () => model.logShowToast = false);
   }
 
   /// Bottom sheet with detents (SPEC §5.3).

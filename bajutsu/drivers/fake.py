@@ -79,10 +79,13 @@ class FakeDriver:
         # are told apart by `within` / `traits` / `index` — so an identifier key could not separate
         # them. Seeded after construction, like `system_alert_buttons`.
         self.picker_wheel_options: dict[int, list[str]] = {}
-        # Identifier of the TipKit dismiss region `dismiss_blocking_tip` looks for in `screen`. The
-        # real name is the XCUITest driver's business, so a test seeds whatever it put in the tree
-        # rather than this fake hardcoding an iOS identifier of its own.
+        # Identifiers of the two nodes `dismiss_blocking_tip` looks for in `screen`: the dismiss
+        # region it taps, and the tip container it requires alongside it so an app's own popover —
+        # which installs the same region — is left alone. Both are needed for a dismiss, exactly as
+        # in the real driver; the real names are the XCUITest driver's business, so a test seeds
+        # whatever it put in the tree rather than this fake hardcoding iOS identifiers of its own.
         self.tipkit_dismiss_id: str | None = None
+        self.tipkit_container_id: str | None = None
         self._react = react
         self.actions: list[tuple[str, object]] = []  # log of performed actions
         # The concrete actuations this driver performed, drained per step by the run loop. The fake
@@ -263,20 +266,36 @@ class FakeDriver:
         return [label for b in self.system_alert_buttons if (label := b["label"])]
 
     def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:
-        # Mirrors the real driver: absence is False, an ambiguous match still raises, and the
-        # dismiss goes through `tap` so a `react` callback can script the tip leaving the tree.
-        # `tree` rules a tip out without consulting `screen`, the same short-circuit the real driver
-        # uses to keep a guarded wait's query count unchanged.
+        # Mirrors the real driver: a tip is the region *and* the container together, absence is
+        # False, an ambiguous region still raises, and the dismiss goes through `tap` so a `react`
+        # callback can script the tip leaving the tree. `tree` rules a tip out without consulting
+        # `screen`, the same short-circuit the real driver uses to keep a guarded wait's query count
+        # unchanged.
         if self.tipkit_dismiss_id is None:
             return False
         sel: base.Selector = {"id": self.tipkit_dismiss_id}
-        if tree is not None and not base.find_all(tree, sel):
+        if tree is not None and not self._tip_is_up(tree):
             return False
-        if not base.find_all(self.screen, sel):
+        if not self._tip_is_up(self.screen):
             return False
         base.resolve_unique(self.screen, sel)
         self.tap(sel)
         return True
+
+    def _tip_is_up(self, tree: list[base.Element]) -> bool:
+        """Both seeded identifiers present, the pair the real driver requires before it dismisses."""
+        dismiss, container = self.tipkit_dismiss_id, self.tipkit_container_id
+        if dismiss is None:
+            return False
+        if container is None:
+            # A seeded region with no container is a broken fixture, not a tip-free screen — the real
+            # driver needs the pair, so a silent False would let a "left alone" test pass because the
+            # seeding was half-done rather than because the pairing works. Loud, like the picker
+            # wheel's own missing-seed above.
+            raise LookupError("fixture error: tipkit_dismiss_id seeded without tipkit_container_id")
+        return bool(base.find_all(tree, {"id": dismiss})) and bool(
+            base.find_all(tree, {"id": container})
+        )
 
     def wait_for(self, sel: base.Selector) -> bool:
         return len(base.find_all(self.screen, sel)) >= 1
