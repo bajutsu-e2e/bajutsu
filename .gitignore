@@ -71,6 +71,9 @@ DerivedData/
 *.xcuserstate
 
 **/.build/**
+# The control channel's own scratch directory (BE-0365): its `-D` build cannot share `.build`,
+# because a compile-flag change invalidates every module in a scratch path.
+**/.build-control-channel/**
 **/.swiftpm/**
 
 worktree

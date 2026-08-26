@@ -55,6 +55,14 @@ public enum BajutsuNet {
             collectorURL = url
             collectorToken = environment["BAJUTSU_COLLECTOR_TOKEN"]
         }
+        #if BAJUTSU_ENABLE_CONTROL_CHANNEL
+        // The one inbound direction (BE-0365), and the only feature here that a compilation
+        // condition has to select before its launch-env key can reach it. It polls the collector
+        // resolved just above, so it is started after that and is inert without it.
+        BajutsuControlChannel.startIfEnabled(
+            environment: environment, collector: collectorURL, token: collectorToken
+        )
+        #endif
         // Register the interceptor if there is anything to do: observe and/or stub.
         guard collectorURL != nil || !BajutsuMocks.shared.rules.isEmpty else { return }
         URLProtocol.registerClass(BajutsuURLProtocol.self)

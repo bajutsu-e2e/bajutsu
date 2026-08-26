@@ -37,6 +37,11 @@ public enum BajutsuTouch {
 
     private static var installed = false
 
+    /// Whether the marks are currently drawn. Toggled through the control channel (BE-0365) so a
+    /// step whose verdict compares a screenshot can hide them for that one capture, rather than the
+    /// whole scenario giving the visualization up as it does today.
+    static private(set) var markersVisible = true
+
     /// Install the touch hook if `BAJUTSU_TOUCH_MARKERS` is `1`. Called from
     /// `BajutsuNet.startIfEnabled()` *before* its collector/mocks guard: touch visualization needs
     /// neither a collector nor a mock rule, and a plain recorded run with no network features at
@@ -49,6 +54,22 @@ public enum BajutsuTouch {
         guard environment[activationKey] == "1" else { return }
         installed = true
         UIWindow.bajutsu_installTouchHook()
+        #endif
+    }
+
+    /// Show or hide the marks, leaving the model that tracks the touches alone (BE-0365).
+    ///
+    /// Hiding stops the drawing, not the tracking: the model keeps following every touch while the
+    /// marks are away, so restoring them shows the gesture happening at that moment rather than the
+    /// one that was live when they went. Call on the main thread, where `handle(_:in:)` runs.
+    ///
+    /// A build that never installed the hook has nothing to hide, and the state is still recorded —
+    /// the requested visibility holds either way, which is what lets the caller treat the command as
+    /// applied rather than having to know whether the app links the visualization at all.
+    static func setMarkersVisible(_ visible: Bool) {
+        markersVisible = visible
+        #if canImport(UIKit)
+        for marks in layers.values { marks.setHidden(!visible) }
         #endif
     }
 
@@ -73,6 +94,11 @@ public enum BajutsuTouch {
         func removeFromSuperlayer() {
             contact.removeFromSuperlayer()
             trail.removeFromSuperlayer()
+        }
+
+        func setHidden(_ hidden: Bool) {
+            contact.isHidden = hidden
+            trail.isHidden = hidden
         }
     }
 
@@ -130,6 +156,9 @@ public enum BajutsuTouch {
         // finger by Core Animation's default duration instead of tracking it.
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        // Applied on every event, not only when the visibility changes: a layer made after the
+        // marks were hidden would otherwise appear on its own, one gesture at a time.
+        marks.setHidden(!markersVisible)
         marks.contact.position = CGPoint(x: mark.point.x, y: mark.point.y)
         // Green while the touch is down, red once it has lifted. Colour, not opacity alone, carries
         // the distinction: a still frame of the recording then says on its own whether the contact

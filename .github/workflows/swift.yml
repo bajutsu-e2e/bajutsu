@@ -73,8 +73,37 @@ jobs:
             swiftpm-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.swiftver.outputs.v }}-${{ hashFiles('BajutsuKit/Package.resolved', 'BajutsuKit/Package.swift', 'BajutsuKit/Sources/BajutsuRunner/openapi.yaml', 'BajutsuKit/Sources/BajutsuRunner/openapi-generator-config.yaml') }}-
             swiftpm-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.swiftver.outputs.v }}-
 
+      # The control channel (BE-0365) is the one feature a compilation condition has to select
+      # before its launch-env key can reach it, so it needs its own scratch directory: a `-D`
+      # change invalidates every module in a scratch path, and sharing `.build` would leave the
+      # two steps below rebuilding the whole dependency graph on every run. Keyed like the cache
+      # above so both configurations stay warm.
+      - name: Cache SwiftPM build products (control channel)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: BajutsuKit/.build-control-channel
+          key: swiftpm-build-cc-${{ runner.os }}-${{ runner.arch }}-${{ steps.swiftver.outputs.v }}-${{ hashFiles('BajutsuKit/Package.resolved', 'BajutsuKit/Package.swift', 'BajutsuKit/Sources/BajutsuRunner/openapi.yaml', 'BajutsuKit/Sources/BajutsuRunner/openapi-generator-config.yaml') }}-${{ hashFiles('BajutsuKit/Sources/**/*.swift', 'BajutsuKit/Tests/**/*.swift') }}
+          restore-keys: |
+            swiftpm-build-cc-${{ runner.os }}-${{ runner.arch }}-${{ steps.swiftver.outputs.v }}-${{ hashFiles('BajutsuKit/Package.resolved', 'BajutsuKit/Package.swift', 'BajutsuKit/Sources/BajutsuRunner/openapi.yaml', 'BajutsuKit/Sources/BajutsuRunner/openapi-generator-config.yaml') }}-
+            swiftpm-build-cc-${{ runner.os }}-${{ runner.arch }}-${{ steps.swiftver.outputs.v }}-
+
+      # Unflagged, and deliberately first: this is what an adopter links, so it is what the gate
+      # has to build. It also proves the compile-out is clean — the channel's own sources and
+      # tests compile to nothing here.
       - name: Build
         run: swift build --package-path BajutsuKit
 
       - name: Test
         run: swift test --package-path BajutsuKit
+
+      - name: Build (control channel)
+        run: >-
+          swift build --package-path BajutsuKit
+          --scratch-path BajutsuKit/.build-control-channel
+          -Xswiftc -DBAJUTSU_ENABLE_CONTROL_CHANNEL
+
+      - name: Test (control channel)
+        run: >-
+          swift test --package-path BajutsuKit
+          --scratch-path BajutsuKit/.build-control-channel
+          -Xswiftc -DBAJUTSU_ENABLE_CONTROL_CHANNEL
