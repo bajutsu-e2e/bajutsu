@@ -305,18 +305,24 @@ def _device_control_todo(step: Step) -> str:
 
 
 def _emit_wait(w: Wait) -> list[str]:
-    """The lines for a `wait` step: an existence / gone poll to the step's timeout, or a comment."""
+    """The lines for a `wait` step: an existence / gone poll to the step's timeout, or a comment.
+
+    Both polls go through the `awaitPresent` / `awaitGone` helpers in the file preamble rather than
+    a bare `device.wait(...)`: the helpers slice the budget so a pinned accessibility read cannot
+    consume it whole, and they fail naming the selector and the timeout instead of raising an
+    unlabeled `AssertionError`.
+    """
     timeout = ms(w.timeout)
     if w.for_ is not None:
         by = _by(w.for_.as_selector())
         if by is None:
             return [_unsupported_selector_todo(w.for_.as_selector())]
-        return [f"assertTrue(device.wait(Until.hasObject({by}), {timeout}L))"]
+        return [f"awaitPresent({by}, {timeout}L)"]
     if isinstance(w.until, Gone):
         by = _by(w.until.gone.as_selector())
         if by is None:
             return [_unsupported_selector_todo(w.until.gone.as_selector())]
-        return [f"assertTrue(device.wait(Until.gone({by}), {timeout}L))"]
+        return [f"awaitGone({by}, {timeout}L)"]
     if isinstance(w.until, WaitRequest):
         return [f"// TODO: wait until request ({request_label(w.until.request)}) — {_NO_NETWORK}"]
     # "screenChanged" / "settled" — `findObject` does not auto-wait (unlike Playwright/XCUITest), so
@@ -403,6 +409,7 @@ class _UiAutomatorGen:
             "import android.content.Context",
             "import android.content.Intent",
             "import android.os.Build",
+            "import android.os.SystemClock",
             "import android.util.Log",
             "import android.view.KeyEvent",
             "import androidx.test.core.app.ApplicationProvider",
@@ -446,6 +453,13 @@ class _UiAutomatorGen:
             # launching anyway. Each kick is bounded by the key press's own wait for the events it
             # produces, so the count is the whole budget — there is no interval to tune.
             "private const val TRACKING_KICK_ATTEMPTS = 3",
+            # How long a single accessibility read may be believed before the cache behind it is
+            # dropped and the condition re-read (`waitSliced` below). Not an interval anything
+            # sleeps for: a slice ends the instant its condition holds, so this only bounds how
+            # long a *pinned* read can keep a wait from seeing the screen — a cost paid on the
+            # stale path alone. Small enough that a wedged read loses a fraction of a second,
+            # large enough that a healthy wait pays only a couple of cache drops per second.
+            "private const val CACHE_REREAD_SLICE_MS = 500L",
             # Where the on-device failure evidence lands, inside the directory the Android Gradle
             # Plugin names with the `additionalTestOutputDir` instrumentation argument and copies off
             # the device after the run (build/outputs/connected_android_test_additional_output),
@@ -480,9 +494,10 @@ class _UiAutomatorGen:
             "    }",
             "  }",
             "",
-            "  // UiDevice reads the window list through Instrumentation.getUiAutomation(flags),"
-            + " using whatever",
-            "  // flags Configurator carries — the usual reason a target sets one is",
+            "  // UiDevice reaches the accessibility connection through"
+            + " Instrumentation.getUiAutomation(flags),",
+            "  // using whatever flags Configurator carries — the usual reason a target sets one"
+            + " is",
             "  // FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES. The flag-less overload instead"
             + " disconnects and",
             "  // reconnects that same UiAutomation on any target whose flags differ, so calling"
@@ -497,15 +512,18 @@ class _UiAutomatorGen:
             "  // check, falling back to the flag-less read below it — mirrored here rather than"
             + " raising",
             "  // the API floor a UI Automator target can run on.",
-            "  private fun accessibilityWindows() =",
+            "  private fun uiAutomation() =",
             "    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {",
             "      InstrumentationRegistry.getInstrumentation()",
-            "        .getUiAutomation(Configurator.getInstance().uiAutomationFlags).windows",
+            "        .getUiAutomation(Configurator.getInstance().uiAutomationFlags)",
             "    } else {",
             "      // Custom flags reached Instrumentation only in N; UiDevice falls back the"
             + " same way.",
-            "      InstrumentationRegistry.getInstrumentation().uiAutomation.windows",
+            "      InstrumentationRegistry.getInstrumentation().uiAutomation",
             "    }",
+            "",
+            "  // The window list, read through the one accessor above.",
+            "  private fun accessibilityWindows() = uiAutomation().windows",
             "",
             "  // Every window the accessibility read channel reports, with the package its root"
             + " belongs",
@@ -747,7 +765,7 @@ class _UiAutomatorGen:
             "      for ((k, v) in extras) intent.putExtra(k, v)",
             "      context.startActivity(intent)",
             "      val by = By.pkg(PACKAGE).depth(0)",
-            "      if (device.wait(Until.hasObject(by), LAUNCH_TIMEOUT_MS)) {",
+            "      if (waitPresent(by, LAUNCH_TIMEOUT_MS)) {",
             "        // The window wait proves a window from the package exists, not that it"
             + " finished",
             "        // drawing its first frame, so let the tree settle before any per-action clock"
@@ -804,13 +822,127 @@ class _UiAutomatorGen:
             + " id and",
             "  // a missing app window are told apart from the message alone.",
             "  private fun act(by: BySelector): UiObject2 {",
-            "    if (!device.wait(Until.hasObject(by), ACT_TIMEOUT_MS)) {",
+            "    if (!waitPresent(by, ACT_TIMEOUT_MS)) {",
             "      throw AssertionError(",
             '        "act: no element matched $by within ${ACT_TIMEOUT_MS}ms; windows:\\n" +'
             + " windowSummary()",
             "      )",
             "    }",
             "    return device.findObject(by)",
+            "  }",
+            "",
+            "  // Drop the accessibility node cache every selector read above goes through, so the"
+            + " next one",
+            "  // re-fetches from the app instead of re-reading what the last event left behind.",
+            "  //",
+            "  // hasObject / findObject / every Until condition built on them resolve through"
+            + " the platform's",
+            "  // per-connection AccessibilityNodeInfo cache, and only an accessibility event"
+            + " invalidates it. A",
+            "  // dropped event therefore does not merely delay a read — it pins it, and no"
+            + " timeout recovers a",
+            "  // read that will not change on its own (the same shape as the wedged window list"
+            + " kicked above).",
+            "  //",
+            "  // androidx.test.uiautomator 2.3.0 cannot clear that cache itself past API 32 —"
+            + " it reaches",
+            '  // AccessibilityInteractionClient#clearCache() by reflection and logs "clearCache()'
+            + " reflection is",
+            '  // not available on API >= 33" instead. UiAutomation.clearCache(), the supported'
+            + " replacement it",
+            "  // predates, arrived in API 34, so below that there is no lever at all and callers"
+            + " skip the",
+            "  // re-read rather than pay for a call that does nothing.",
+            "  //",
+            "  // Reads through the one accessor above, for the reason recorded there. Never"
+            + " throws: this runs",
+            "  // to rescue a wait, so a fault here must cost the rescue and not the wait's own"
+            + " verdict.",
+            "  private fun clearAccessibilityCache() {",
+            "    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return",
+            "    try {",
+            "      uiAutomation().clearCache()",
+            "    } catch (e: RuntimeException) {",
+            '      Log.w(LOG_TAG, "could not clear the accessibility cache", e)',
+            "    }",
+            "  }",
+            "",
+            "  // Spend one wait's budget across several reads, dropping the cache between them, so"
+            + " a pinned",
+            "  // read cannot spend the whole timeout and be reported as the app's own failure.",
+            "  //",
+            "  // Still one condition wait, never a fixed sleep (prime directive #2): a slice"
+            + " returns the",
+            "  // instant its condition holds, the slices share the caller's single timeout rather"
+            + " than",
+            "  // extending it, and CACHE_REREAD_SLICE_MS bounds only how long a stale read stays"
+            + " believed. A",
+            "  // healthy wait therefore finishes exactly when it did before, paying at most a few"
+            + " cache drops.",
+            "  //",
+            "  // Below API 34 the cache cannot be dropped, so slicing would add re-reads that"
+            + " change nothing:",
+            "  // spend the whole budget in one wait there, exactly as this file did before.",
+            "  private fun waitSliced(timeoutMs: Long, poll: (Long) -> Boolean): Boolean {",
+            "    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {",
+            "      return poll(timeoutMs)",
+            "    }",
+            "    val deadline = SystemClock.uptimeMillis() + timeoutMs",
+            "    while (true) {",
+            "      // Poll first, then test the deadline. device.wait evaluates its condition once"
+            + " before",
+            "      // consulting the clock, so a 0ms budget still reads the tree there — and a"
+            + " scenario can",
+            "      // ask for one, since `timeout` is an unconstrained float that `ms()` truncates."
+            + " Testing",
+            "      // the deadline first would fail such a step against a screen it never looked at"
+            + " on API",
+            "      // 34 while the branch above still passed it, splitting one scenario's verdict by"
+            + " API",
+            "      // level. Costs a read, never a sleep, so this stays a condition wait.",
+            "      val remaining = deadline - SystemClock.uptimeMillis()",
+            "      if (poll(remaining.coerceIn(0L, CACHE_REREAD_SLICE_MS))) return true",
+            "      // Re-read the clock rather than reusing `remaining`: the poll just spent part of"
+            + " the",
+            "      // budget, and a slice that consumed the rest must end the wait here instead of"
+            + " paying",
+            "      // one more cache drop and an empty final poll.",
+            "      if (SystemClock.uptimeMillis() >= deadline) return false",
+            "      clearAccessibilityCache()",
+            "    }",
+            "  }",
+            "",
+            "  // The two condition waits every generated step is built from, both sliced.",
+            "  private fun waitPresent(by: BySelector, timeoutMs: Long): Boolean =",
+            "    waitSliced(timeoutMs) { device.wait(Until.hasObject(by), it) }",
+            "",
+            "  private fun waitGone(by: BySelector, timeoutMs: Long): Boolean =",
+            "    waitSliced(timeoutMs) { device.wait(Until.gone(by), it) }",
+            "",
+            "  // A `wait` step, failing by what it searched for rather than as a bare"
+            + " AssertionError.",
+            "  //",
+            "  // assertTrue(device.wait(...)) used to be emitted directly, and a CI run showed"
+            + " what that",
+            '  // costs: "java.lang.AssertionError" and a line number, with no selector, no'
+            + " timeout, and",
+            "  // nothing to separate an element that never appeared from a read that never"
+            + " caught up. The",
+            "  // window summary is the same evidence act() attaches, for the same reason.",
+            "  private fun awaitPresent(by: BySelector, timeoutMs: Long) {",
+            "    if (waitPresent(by, timeoutMs)) return",
+            "    throw AssertionError(",
+            '      "wait: no element matched $by within ${timeoutMs}ms; windows:\\n" +'
+            + " windowSummary()",
+            "    )",
+            "  }",
+            "",
+            "  private fun awaitGone(by: BySelector, timeoutMs: Long) {",
+            "    if (waitGone(by, timeoutMs)) return",
+            "    throw AssertionError(",
+            '      "wait: an element still matched $by after ${timeoutMs}ms; windows:\\n" +'
+            + " windowSummary()",
+            "    )",
             "  }",
             "",
         ]
