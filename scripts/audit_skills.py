@@ -30,6 +30,7 @@ file copy, and APM's own offline audit — no network and no large language mode
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -53,6 +54,9 @@ GOVERNED_PATHS: tuple[str, ...] = (
 # --no-policy for the reason the Makefile documents: org-policy discovery would reach
 # api.github.com, which only warns when it fails but leaves this offline audit needing the network.
 AUDIT_ARGS: tuple[str, ...] = ("audit", "--ci", "--no-policy")
+
+# Both have to reach the mirror for the audit to mean anything; see the guard in `main`.
+MANIFESTS: tuple[str, ...] = ("apm.yml", "apm.lock.yaml")
 
 
 def git_visible_files(root: Path, paths: Sequence[str] = GOVERNED_PATHS) -> list[str] | None:
@@ -82,6 +86,8 @@ def git_visible_files(root: Path, paths: Sequence[str] = GOVERNED_PATHS) -> list
             capture_output=True,
             check=True,
             text=True,
+            # git translates its own messages, and the classification below reads one of them.
+            env={**os.environ, "LC_ALL": "C"},
         )
     except OSError:
         # No git binary at all: a source export, where nothing is enumerable and nothing is wrong.
@@ -153,11 +159,15 @@ def main(argv: list[str]) -> int:
     with tempfile.TemporaryDirectory(prefix="bajutsu-apm-audit-") as scratch:
         mirror = Path(scratch)
         print(f"lint-skills: auditing {build_mirror(root, files, mirror)} git-visible file(s)")
-        if not (mirror / "apm.yml").is_file():
-            # Without the manifest APM reports "nothing to check" and exits 0 — a green step that
-            # audited nothing, the one outcome this gate must never produce.
+        for manifest in MANIFESTS:
+            if (mirror / manifest).is_file():
+                continue
+            # Either absence exits 0 having audited nothing: without `apm.yml` APM reports nothing
+            # to check, and without the lockfile it declares no dependencies and runs one check of
+            # ten, neither of them content-integrity or drift. That green is the one outcome this
+            # gate must never produce.
             print(
-                "lint-skills: apm.yml did not reach the audit mirror — refusing a vacuous audit",
+                f"lint-skills: {manifest} did not reach the audit mirror — refusing a vacuous audit",
                 file=sys.stderr,
             )
             return 1

@@ -66,6 +66,7 @@ def _checkout(root: Path) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
     (root / "apm.yml").write_text("name: test\n", encoding="utf-8")
+    (root / "apm.lock.yaml").write_text("packages: []\n", encoding="utf-8")
     (root / ".apm" / "skills" / "demo").mkdir(parents=True)
     (root / ".apm" / "skills" / "demo" / "SKILL.md").write_text("source\n", encoding="utf-8")
     (root / ".claude" / "skills" / "demo").mkdir(parents=True)
@@ -166,13 +167,14 @@ def test_the_audit_runs_in_the_mirror_and_carries_apms_verdict(
     assert ".claude/skills/demo/SKILL.md" in seen["files"]
 
 
-def test_an_audit_the_manifest_never_reached_is_refused(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("manifest", ["apm.yml", "apm.lock.yaml"])
+def test_an_audit_a_manifest_never_reached_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, manifest: str
 ) -> None:
-    """Without `apm.yml` APM finds nothing to check and exits 0 — a pass that audited nothing."""
+    """Either manifest missing makes APM exit 0 having audited nothing — a pass, on nothing."""
     root = _checkout(tmp_path / "repo")
     # Tracked but deleted from the working tree: `--cached` still lists it, the mirror skips it.
-    (root / "apm.yml").unlink()
+    (root / manifest).unlink()
     record = tmp_path / "record.json"
     _stub_apm(monkeypatch, tmp_path / "bin", record, exit_code=0)
 
