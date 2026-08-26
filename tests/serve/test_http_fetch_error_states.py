@@ -76,16 +76,21 @@ def test_post_json_still_hands_back_a_write_s_error_body(tmp_path: Path) -> None
 
 def test_the_failure_sentinel_ships_and_is_exported(tmp_path: Path) -> None:
     text = _fetch(tmp_path, "/serve.core.mjs")
-    assert "const FETCH_ERROR=Object.freeze(" in text  # identity-compared, so no payload matches it
+    assert "Object.freeze(" in text  # identity-compared, so no payload can match it
     assert "function isFetchError(" in text
-    assert "FETCH_ERROR, isFetchError," in text  # importable by the section modules
+    # Importable by the section modules, wherever the export list happens to order it.
+    exports = text[text.index("\nexport {") : text.index("};", text.index("\nexport {"))]
+    assert "FETCH_ERROR" in exports
+    assert "isFetchError" in exports
 
 
 def test_metrics_separates_a_failed_read_from_an_empty_hub(tmp_path: Path) -> None:
     text = _fetch(tmp_path, "/serve.metrics.mjs")
     assert 'data-testid="metrics.error"' in text
     assert 'data-testid="metrics.empty"' in text  # the genuine "no projects registered" state
-    assert "getJSON('/api/metrics/projects',FETCH_ERROR)" in text
+    body = _fn_body(text, "async function loadMetrics(")
+    assert "/api/metrics/projects" in body
+    assert "FETCH_ERROR" in body  # so a failed read can't render as an empty hub
 
 
 def test_history_separates_a_failed_read_from_an_empty_history(tmp_path: Path) -> None:

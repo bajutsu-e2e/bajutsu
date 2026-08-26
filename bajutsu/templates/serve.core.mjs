@@ -91,7 +91,7 @@ function isFetchError(v){return v===FETCH_ERROR}
 // specific reason beats a generic stand-in. Every other shape (an empty list, null, FETCH_ERROR)
 // passes straight back, so an error body can never reach a caller as data.
 function failedJSON(fallback,body){
-  return fallback&&typeof fallback.error==='string'&&body&&typeof body.error==='string'
+  return fallback&&typeof fallback.error==='string'&&body&&typeof body.error==='string'&&body.error
     ?{...fallback,error:body.error}
     :fallback;
 }
@@ -541,9 +541,9 @@ async function switchOrg(slug){
 function setCfgName(text,hasConfig){$('#cfgname').textContent=text;$('#viewcfg').hidden=!hasConfig}
 // Running-tool identity badge (BE-0272): "which build of bajutsu am I looking at". Version is
 // always shown once the endpoint answers; commit/branch/dirty are appended only when serve runs
-// from a Git checkout AND the caller may see them — the checkout read is admin-gated; a 403 still
-// resolves as JSON (`{error: "forbidden"}`, which lacks `.commit`), so only a network/parse failure
-// actually falls back to {}. Either way a hosted/non-admin/pip-install serve shows the version alone.
+// from a Git checkout AND the caller may see them — the checkout read is admin-gated, and getJSON's
+// `res.ok` check turns its 403 into the `{}` fallback (no `.commit`), the same as a network failure.
+// Either way a hosted/non-admin/pip-install serve shows the version alone.
 // Read on boot; not polled — the running build doesn't change.
 async function loadVersion(){
   const v=await getJSON('/api/version',{});

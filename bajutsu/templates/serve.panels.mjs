@@ -426,6 +426,10 @@ async function loadHistory(){
   const runs=await getJSON('/api/runs',FETCH_ERROR);
   if(isFetchError(runs)){
     $('#history').innerHTML='<li class="muted" data-testid="replay.history-error">Couldn\u2019t load the run history. Refresh to retry.</li>';
+    // Hide the drilldown banner rather than re-render it: its "(N runs)" count came from the last
+    // good read, and leaving it above a load failure states a number nothing here backs. The filter
+    // itself stays set, so a retry restores the banner with a count it can stand behind.
+    const box=$('#histfilter');if(box)box.hidden=true;
     if(histSel)histSel.sync();
     return;
   }
