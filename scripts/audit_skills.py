@@ -67,7 +67,13 @@ def git_visible_files(root: Path, paths: Sequence[str] = GOVERNED_PATHS) -> list
         paths: Pathspecs to limit the enumeration to.
 
     Returns:
-        Sorted repository-relative paths, or None when git is unavailable or *root* is untracked.
+        Sorted repository-relative paths, or None when git is absent or *root* is not a git
+        checkout.
+
+    Raises:
+        subprocess.CalledProcessError: git ran and failed for some other reason — a `safe.directory`
+            ownership refusal, a corrupt index. Such a failure says nothing about the scope, so the
+            caller must not read it as "no checkout here" and fall back to the broad audit.
     """
     try:
         completed = subprocess.run(
@@ -77,8 +83,13 @@ def git_visible_files(root: Path, paths: Sequence[str] = GOVERNED_PATHS) -> list
             check=True,
             text=True,
         )
-    except (OSError, subprocess.CalledProcessError):
+    except OSError:
+        # No git binary at all: a source export, where nothing is enumerable and nothing is wrong.
         return None
+    except subprocess.CalledProcessError as error:
+        if error.returncode == 128 and "not a git repository" in (error.stderr or "").lower():
+            return None
+        raise
     return sorted({entry for entry in completed.stdout.split("\0") if entry})
 
 
@@ -124,7 +135,15 @@ def main(argv: list[str]) -> int:
         print("lint-skills: apm is not on PATH — run `uv sync --group dev`", file=sys.stderr)
         return 1
 
-    files = git_visible_files(root)
+    try:
+        files = git_visible_files(root)
+    except subprocess.CalledProcessError as error:
+        # git is here and broke: only its own stderr explains why, and the in-place audit would
+        # scan the very worktrees this script exists to keep out. Report and stop.
+        print("lint-skills: git could not enumerate the audited paths", file=sys.stderr)
+        sys.stderr.write(error.stderr or "")
+        return error.returncode or 1
+
     if files is None:
         # No git checkout carries `.claude/worktrees/` — a source export has none — so auditing the
         # tree in place is both correct there and the only thing left to do. Never a skip.
@@ -134,6 +153,14 @@ def main(argv: list[str]) -> int:
     with tempfile.TemporaryDirectory(prefix="bajutsu-apm-audit-") as scratch:
         mirror = Path(scratch)
         print(f"lint-skills: auditing {build_mirror(root, files, mirror)} git-visible file(s)")
+        if not (mirror / "apm.yml").is_file():
+            # Without the manifest APM reports "nothing to check" and exits 0 — a green step that
+            # audited nothing, the one outcome this gate must never produce.
+            print(
+                "lint-skills: apm.yml did not reach the audit mirror — refusing a vacuous audit",
+                file=sys.stderr,
+            )
+            return 1
         return subprocess.run([apm, *AUDIT_ARGS], cwd=mirror).returncode
 
 

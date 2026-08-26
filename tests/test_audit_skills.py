@@ -4,12 +4,17 @@ The audit's scope is the whole point: APM's `claude` target governs `.claude/` e
 also where Claude Code parks one full checkout per concurrent session, so the content scan reached
 into other sessions' `.venv` and `node_modules` and reddened the local gate over files CI never
 sees (issue #1775). These tests build throwaway git checkouts and pin the two halves of the
-narrowing — that an ignored path never reaches the mirror, and that everything git does see does.
+narrowing — that an ignored path never reaches the mirror, and that everything git does see does —
+then pin the wiring around them: that the audit really runs in the mirror rather than in place,
+that it refuses to pass having audited nothing, and that a broken git stops the gate instead of
+posing as a missing checkout.
 """
 
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -22,6 +27,38 @@ assert _spec and _spec.loader
 audit_skills = importlib.util.module_from_spec(_spec)
 sys.modules[_spec.name] = audit_skills
 _spec.loader.exec_module(audit_skills)
+
+
+# A fake `apm`, written out and put first on PATH. The mirror is a TemporaryDirectory `main`
+# deletes on return, so the stub has to capture the tree while it still stands.
+_STUB_APM = '''#!{python}
+"""Record where `apm` was run and what it could see there, then exit with a chosen code."""
+
+import json
+import pathlib
+import sys
+
+cwd = pathlib.Path.cwd()
+payload = {{
+    "cwd": str(cwd),
+    "files": sorted(p.relative_to(cwd).as_posix() for p in cwd.rglob("*") if p.is_file()),
+    "argv": sys.argv[1:],
+}}
+pathlib.Path({record!r}).write_text(json.dumps(payload), encoding="utf-8")
+sys.exit({exit_code})
+'''
+
+
+def _stub_apm(monkeypatch: pytest.MonkeyPatch, bin_dir: Path, record: Path, exit_code: int) -> None:
+    """Install the stub as the `apm` the script resolves, recording its run into *record*."""
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    stub = bin_dir / "apm"
+    stub.write_text(
+        _STUB_APM.format(python=sys.executable, record=str(record), exit_code=exit_code),
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
 
 
 def _checkout(root: Path) -> Path:
@@ -111,3 +148,56 @@ def test_mirror_skips_what_an_in_place_audit_would_not_read(tmp_path: Path, rel:
 
     assert audit_skills.build_mirror(root, [rel], dest) == 0
     assert not (dest / rel).exists()
+
+
+def test_the_audit_runs_in_the_mirror_and_carries_apms_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """APM has to run *in* the mirror, and its verdict has to become the gate's."""
+    root = _checkout(tmp_path / "repo")
+    record = tmp_path / "record.json"
+    _stub_apm(monkeypatch, tmp_path / "bin", record, exit_code=3)
+
+    assert audit_skills.main(["--root", str(root)]) == 3
+
+    seen = json.loads(record.read_text(encoding="utf-8"))
+    assert Path(seen["cwd"]).resolve() != root.resolve()
+    assert ".claude/worktrees/other-session/.venv/lib/vendored.py" not in seen["files"]
+    assert ".claude/skills/demo/SKILL.md" in seen["files"]
+
+
+def test_an_audit_the_manifest_never_reached_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without `apm.yml` APM finds nothing to check and exits 0 — a pass that audited nothing."""
+    root = _checkout(tmp_path / "repo")
+    # Tracked but deleted from the working tree: `--cached` still lists it, the mirror skips it.
+    (root / "apm.yml").unlink()
+    record = tmp_path / "record.json"
+    _stub_apm(monkeypatch, tmp_path / "bin", record, exit_code=0)
+
+    assert audit_skills.main(["--root", str(root)]) == 1
+    assert not record.exists()
+
+
+def test_a_broken_git_is_not_read_as_a_missing_checkout(tmp_path: Path) -> None:
+    """A corrupt index is git failing, not the absence of a repository."""
+    root = _checkout(tmp_path / "repo")
+    (root / ".git" / "index").write_bytes(b"garbage")
+
+    with pytest.raises(subprocess.CalledProcessError):
+        audit_skills.git_visible_files(root)
+
+
+def test_a_broken_git_stops_the_gate_instead_of_auditing_in_place(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Auditing in place there would scan the worktrees this script exists to keep out."""
+    root = _checkout(tmp_path / "repo")
+    (root / ".git" / "index").write_bytes(b"garbage")
+    record = tmp_path / "record.json"
+    _stub_apm(monkeypatch, tmp_path / "bin", record, exit_code=0)
+
+    assert audit_skills.main(["--root", str(root)]) != 0
+    assert not record.exists()
+    assert "fatal:" in capsys.readouterr().err
