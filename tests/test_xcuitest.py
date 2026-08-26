@@ -1501,6 +1501,26 @@ def _tip_wire(handle: str, identifier: str) -> dict[str, Any]:
     return _el_wire(handle, identifier, frame=(0.0, 0.0, 402.0, 874.0))
 
 
+def _tip_container_wire(handle: str = "h-tipview") -> dict[str, Any]:
+    # The tip's own container, anchored to its element rather than full-screen. The guard requires it
+    # alongside the scrim, so every tree standing for a showing tip carries both — a scrim on its own
+    # is what an app's `confirmationDialog` looks like, and must be left alone.
+    return _el_wire(handle, "TipView", frame=(72.0, 101.0, 320.0, 95.0))
+
+
+def _tip_element(identifier: str, frame: tuple[float, float, float, float]) -> base.Element:
+    # A caller's-tree node: the mid-wait gate hands the guard a tree it already holds, so these
+    # stand in for what a poll tick saw rather than for a wire reply.
+    return base.Element(
+        identifier=identifier,
+        label=None,
+        value=None,
+        traits=["other"],
+        frame=frame,
+        nativeZ=None,
+    )
+
+
 def test_dismiss_blocking_tip_taps_the_dismiss_region_and_reports_it() -> None:
     sent: list[tuple[str, Mapping[str, Any] | None]] = []
 
@@ -1508,6 +1528,7 @@ def test_dismiss_blocking_tip_taps_the_dismiss_region_and_reports_it() -> None:
         if path == "/elements":
             return _elements(
                 _tip_wire("h-scrim", "PopoverDismissRegion"),
+                _tip_container_wire(),
                 _el_wire("h-refresh", "stable.refresh", "Refresh", traits=["button"]),
             )
         sent.append((path, body))
@@ -1540,7 +1561,7 @@ def test_dismiss_blocking_tip_reports_false_when_the_tip_closes_itself_mid_dismi
     # about, so it reads as no dismissal.
     def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
-            return _elements(_tip_wire("h-scrim", "PopoverDismissRegion"))
+            return _elements(_tip_wire("h-scrim", "PopoverDismissRegion"), _tip_container_wire())
         return _Reply(status="not-found")  # the scrim went between the query and the tap
 
     assert _driver(transport).dismiss_blocking_tip() is False
@@ -1554,6 +1575,7 @@ def test_dismiss_blocking_tip_fails_loudly_on_two_dismiss_regions() -> None:
         return _elements(
             _el_wire("h-a", "PopoverDismissRegion", frame=(0.0, 0.0, 402.0, 874.0)),
             _el_wire("h-b", "PopoverDismissRegion", frame=(0.0, 0.0, 100.0, 100.0)),
+            _tip_container_wire(),
         )
 
     with pytest.raises(base.AmbiguousSelector):
@@ -1590,22 +1612,52 @@ def test_dismiss_blocking_tip_still_queries_when_the_hint_shows_a_tip() -> None:
 
     def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
-            return _elements(_tip_wire("h-scrim", "PopoverDismissRegion"))
+            return _elements(_tip_wire("h-scrim", "PopoverDismissRegion"), _tip_container_wire())
         sent.append((path, body))
         return _Reply(status="ok")
 
     hint = [
-        base.Element(
-            identifier="PopoverDismissRegion",
-            label="dismiss popup",
-            value=None,
-            traits=["other"],
-            frame=(0.0, 0.0, 402.0, 874.0),
-            nativeZ=None,
-        )
+        _tip_element("PopoverDismissRegion", (0.0, 0.0, 402.0, 874.0)),
+        _tip_element("TipView", (72.0, 101.0, 320.0, 95.0)),
     ]
     assert _driver(transport).dismiss_blocking_tip(hint) is True
     assert sent == [("/tap", {"handle": "h-scrim"})]
+
+
+def test_dismiss_blocking_tip_leaves_an_app_popover_alone() -> None:
+    # The scrim without the tip container is what a SwiftUI `confirmationDialog` looks like, measured
+    # on-device: same identifier, same label, same full-screen frame. Tapping it would close the
+    # app's own dialog, and the scenario would then fail on a missing button with no mention of the
+    # guard, so the pair is what the guard requires before it acts.
+    sent: list[tuple[str, Mapping[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(
+                _tip_wire("h-scrim", "PopoverDismissRegion"),
+                _el_wire("h-delete", "log.dialog.delete", "Delete", traits=["button"]),
+            )
+        sent.append((path, body))
+        return _Reply(status="ok")
+
+    assert _driver(transport).dismiss_blocking_tip() is False
+    assert sent == []
+
+
+def test_dismiss_blocking_tip_rules_an_app_popover_out_from_the_callers_tree_without_querying() -> (
+    None
+):
+    # The short-circuit applies the pair too, not only the scrim: a wait polling while the app's own
+    # dialog is up must not pay a query per tick for a dismiss that will never fire.
+    calls: list[str] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        calls.append(path)
+        return _elements()
+
+    tree = [_tip_element("PopoverDismissRegion", (0.0, 0.0, 402.0, 874.0))]
+    assert _driver(transport).dismiss_blocking_tip(tree) is False
+    assert calls == []
 
 
 def test_xcuitest_advertises_the_tipkit_capability() -> None:

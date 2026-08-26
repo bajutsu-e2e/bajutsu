@@ -78,9 +78,11 @@ def test_fan_out_registers_one_batch_job_per_scenario(tmp_path: Path) -> None:
     assert status == 200
     assert len(payload["jobIds"]) == 3
     # Every dispatched job carries a per-scenario BatchRequest — one scenario each, not the whole set.
+    dispatched: list[str] = []
     for job in executor.jobs:
         assert job.batch is not None
-    scenarios = sorted(job.batch.scenario for job in executor.jobs if job.batch is not None)
+        dispatched.append(job.batch.scenario)
+    scenarios = sorted(dispatched)
     assert scenarios == [
         "scenarios/one.yaml",
         "scenarios/three.yaml",

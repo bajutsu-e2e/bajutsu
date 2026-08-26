@@ -43,3 +43,37 @@
     - wait: { for: { id: TipView }, timeout: 10 }
   expect:
     - exists: { id: TipView }
+
+# The guard's other direction: a popover that is NOT a tip must be left alone. A SwiftUI
+# confirmationDialog installs the same `PopoverDismissRegion` scrim a tip does — measured on-device,
+# identical identifier, label, and full-screen frame — so before the guard required the tip's own
+# container alongside that scrim, an opted-in scenario had its own dialogs dismissed under it. Tagged
+# `swiftui` as well: the fixture is a SwiftUI confirmationDialog, with no UIKit twin.
+- name: an app's own confirmation dialog is left alone by the guard
+  tags: [tipkit, swiftui]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  iosTipKitHandling: true
+  steps:
+    - tap: { label: "Log", traits: [button] }
+    - wait: { for: { id: log.submit }, timeout: 10 }
+    # The Modals section's lower controls start behind the floating tab bar (modals.yaml and
+    # alert.yaml both scroll for the same reason), and log.openPopoverDialog sits below
+    # log.openDelete — so aim the scroll past it. Without this the button resolves in the tree at the
+    # very bottom of the screen and the tap only lands because the driver recovers with a scroll of
+    # its own, which makes the fixture depend on where the fold happens to fall.
+    - scroll: { to: { id: log.dialog.value }, direction: down }
+    - wait: { for: { id: log.openPopoverDialog }, timeout: 5 }
+    - tap: { id: log.openPopoverDialog }
+    # A settle, deliberately not `wait: { for: <the dialog's own button> }`: the mid-wait dismiss hook
+    # is called only while a wait is still *blocked*, so waiting on a button that is already there
+    # succeeds on the first tick and never asks the guard anything. `settled` polls repeatedly with
+    # the dialog up, which is what exposes it to the dismiss.
+    - wait: { until: settled, timeout: 5 }
+    # The dialog's buttons carry no identifier of their own (SwiftUI surfaces none for a
+    # confirmationDialog's actions), so they are addressed by label. Their still being here is the
+    # assertion: with the guard keyed on the scrim alone, the settle's ticks dismissed the dialog.
+    - assert:
+        - exists: { label: "Remove note", traits: [button] }
+  expect:
+    - exists: { label: "Remove note", traits: [button] }

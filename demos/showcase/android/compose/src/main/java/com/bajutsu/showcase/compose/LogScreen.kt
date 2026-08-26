@@ -139,10 +139,10 @@ fun LogScreen(model: AppModel) {
             }
         }
 
-        // The transient toast (~1.2 s auto-dismiss → exercises `wait until gone`).
+        // The transient toast (~3 s auto-dismiss → exercises `wait until gone`).
         if (model.logShowToast) {
             LaunchedEffect(model.logRows.size) {
-                delay(1200)
+                delay(3000)
                 model.logShowToast = false
             }
             Surface(
