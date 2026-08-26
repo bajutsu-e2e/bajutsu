@@ -584,7 +584,11 @@ consulted. A subscription provider or an unknown model records tokens without a 
 those calls are shown as unpriced (a "—") rather than a fabricated `$0.00`.
 
 **How to use it.** Open the tab to load the dashboard; use the refresh button to recompute it over
-the current ledger. When no usage has been recorded yet — the AI paths never ran, or persistence is
+the current ledger. The dashboard resolves the ledger from the target-merged `ai` block, as the AI
+paths do. A `targets.<name>.ai.usageLedger` overrides the team-wide `defaults.ai.usageLedger`. The
+dashboard covers the serve process as a whole rather than a single target. A config whose targets
+name different ledgers has every one of them read and summed.
+When no usage has been recorded yet — the AI paths never ran, or persistence is
 disabled — the tab shows an empty state explaining how recording is enabled (the ledger defaults to
 `runs/usage.jsonl`; `ai.usageLedger` moves it, an empty string disables it). No device, AI, or run
 is involved.
