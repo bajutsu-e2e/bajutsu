@@ -42,9 +42,9 @@ def credential_gap(ai: AiConfig | None = None) -> str | None:  # noqa: ARG001  #
 
 
 def announce(
-    ai: AiConfig | None,  # noqa: ARG001  # registry announce shape
+    ai: AiConfig | None,  # noqa: ARG001  # announce shape
     provider: str,
-    default_model: str,  # noqa: ARG001  # registry announce shape
+    default_model: str,  # noqa: ARG001  # announce shape
 ) -> list[str]:
     """This provider's startup disclosure — no model name, since none will ever be used.
 
