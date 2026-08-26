@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0329](BE-0329-scroll-observed-motion-decisions.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0329") |
-| Implementing PR | [#1460](https://github.com/bajutsu-e2e/bajutsu/pull/1460) (decisions, recovery, and the rendered-screen confirmation) |
+| Implementing PR | [#1460](https://github.com/bajutsu-e2e/bajutsu/pull/1460) (decisions, recovery, and the rendered-screen confirmation), [#1787](https://github.com/bajutsu-e2e/bajutsu/pull/1787) (the conformance overlap check and the driver-contract note) |
 | Topic | Scenario authoring features |
 | Related | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md), [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md), [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md), [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element.md) |
 <!-- /BE-METADATA -->
@@ -450,11 +450,10 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 - [x] Unit 3 — the end-of-content decision
 - [x] Unit 4 — the rendered-screen confirmation
 - [x] Unit 5 — skip detection, step shrinking, and the reversing step
-- [ ] Unit 6 — conformance overlap check
+- [x] Unit 6 — conformance overlap check
 - [x] Unit 7 — reconciliation with the read-lag re-query
 - [x] Unit 8 — tests over `FakeDriver`
-- [ ] Unit 9 — docs for the new failure and the overlap requirement (the `scroll` authoring docs are
-      updated in both languages; the driver-contract note waits on unit 6)
+- [x] Unit 9 — docs for the new failure and the overlap requirement
 
 Log:
 
@@ -467,6 +466,11 @@ Log:
   evidence, and a one-element-at-a-time screen read as an overshoot — and the design records the
   qualification each one needed. The conformance overlap check (unit 6) and its driver-contract note are
   deferred.
+- [#1787](https://github.com/bajutsu-e2e/bajutsu/pull/1787) — added the conformance overlap check (unit 6) and recorded the requirement in the
+  driver conformance section of `docs/architecture.md` and its Japanese mirror (unit 9), which
+  completes the item. The check takes one step on the conformance scroll screen and asserts the reads
+  before and after share at least one element the region bounds do not clip, so a backend whose
+  gesture flings fails the suite rather than skipping targets during a run.
 
 ## References
 
