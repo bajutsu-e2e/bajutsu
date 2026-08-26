@@ -8,8 +8,10 @@ never a model call (prime directive 1) — so the whole feature is covered here 
 
 from __future__ import annotations
 
+import pytest
 from _orch import FakeClock, _scenario, _tap_ids
 from conftest import el
+from pydantic import ValidationError
 
 from bajutsu.config import load_config, resolve
 from bajutsu.drivers import base
@@ -106,6 +108,24 @@ def test_config_interrupts_resolve() -> None:
     eff = resolve(cfg, "myapp")
     assert len(eff.run_defaults.interrupts) == 1
     assert eff.run_defaults.interrupts[0].condition.exists is not None
+
+
+def test_config_interrupts_reject_component_use() -> None:
+    # `use` is expanded over scenarios only, and a target config never goes through that pass — so
+    # it is rejected at load time rather than reaching the run loop as an action-less step.
+    with pytest.raises(ValidationError, match="interrupts cannot use a component"):
+        load_config(
+            """
+            defaults: { backend: [web] }
+            targets:
+              myapp:
+                baseUrl: http://x
+                interrupts:
+                  - condition: { exists: { id: onboarding.title } }
+                    steps:
+                      - use: { component: skip-onboarding.yaml }
+            """
+        )
 
 
 # --- opportunistic check + resume (Units 2/3) ---------------------------------------------------

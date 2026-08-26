@@ -415,17 +415,23 @@ class TargetConfig(_Model):
     after: list[AfterRule] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _no_component_in_lifecycle_phases(self) -> Self:
+    def _no_component_in_target_steps(self) -> Self:
         # `use` is expanded when a *scenario* file loads, which a target config never passes through:
         # an app-wide `use` would reach the step loop with no action on it and abort the whole run
         # with an `AssertionError` rather than fail one scenario. Reject it here, loudly and at load
-        # time, until config-level component resolution exists.
-        phases = [*self.before, *(s for rule in self.after for s in rule.steps)]
-        if any(s.use is not None for s in phases):
-            raise ValueError(
-                "targets.<name>.before / after cannot use a component (`use`): components are "
-                "expanded per scenario file, so an app-wide one is never resolved"
-            )
+        # time, until config-level component resolution exists. Every field that takes the step
+        # grammar is covered, not only the lifecycle phases (BE-0392): `interrupts` (BE-0314) skips
+        # the same expansion pass for the same reason.
+        groups = {
+            "before / after": [*self.before, *(s for rule in self.after for s in rule.steps)],
+            "interrupts": [s for entry in self.interrupts for s in entry.steps],
+        }
+        for field, steps in groups.items():
+            if any(s.use is not None for s in steps):
+                raise ValueError(
+                    f"targets.<name>.{field} cannot use a component (`use`): components are "
+                    "expanded per scenario file, so an app-wide one is never resolved"
+                )
         return self
 
     @model_validator(mode="before")
