@@ -163,7 +163,11 @@ def await_ready(
             # yet / empty tree / CLI hiccup). These are expected transient startup errors —
             # swallow them and keep polling until the deadline.
             pass
-    return ReadinessResult(False, "timeout", time.monotonic() - start)
+    # Explicit rather than the field's `True` default: a gate that never became ready observed no
+    # settled screen either, and `launch_driver` carries this result through to the first-wait
+    # diagnostic — where `ready: false, settled: true` would read as reassurance in exactly the case
+    # the preceding actuation is most suspect.
+    return ReadinessResult(False, "timeout", time.monotonic() - start, settled=False)
 
 
 def _await_settled(
@@ -179,8 +183,9 @@ def _await_settled(
 
     The second half of the readiness gate: the signal says the app's content is on screen, this says
     the screen has stopped moving, so the first actuation is not synthesized into a transition. A
-    query that raises is "couldn't observe", never "unchanged" — it drops the pair being built rather
-    than confirming one, the same rule `GestureRetry`'s `nil` sample follows on the runner side.
+    query that raises — or returns nothing — is "couldn't observe", never "unchanged": it drops the
+    pair being built rather than confirming one, the same rule `GestureRetry`'s `nil` sample follows
+    on the runner side.
 
     Shares the caller's readiness deadline as a ceiling, so a settle can never push the gate past the
     timeout its caller asked for; `_SETTLE_POLLS` bounds it well below that in the normal case.
@@ -198,9 +203,16 @@ def _await_settled(
         except (OSError, subprocess.CalledProcessError, ValueError):
             previous = None
         else:
-            if previous is not None and current == previous:
+            # An empty tree is the same "couldn't observe" the readiness loop above swallows (no
+            # device yet / empty tree / CLI hiccup), not a screen holding still — and two empty
+            # signatures compare equal, so without this a launch that never rendered anything would
+            # confirm a settle. It drops the pair rather than confirming one, like a raising query.
+            if not current:
+                previous = None
+            elif previous is not None and current == previous:
                 return True
-            previous = current
+            else:
+                previous = current
         if samples >= _SETTLE_POLLS:
             break
     _logger.debug("readiness returned before the tree settled; the first actuation may race it")

@@ -187,11 +187,12 @@ erase (if pre.erase: shutdown → erase) → boot → bootstatus -b (wait out th
 > element whose id belongs to a declared `idNamespaces`, falling back to "the app has rendered a UI
 > (more than the root element)" — up to 10s ([configuration](configuration.md) documents each rung in
 > full). Whichever rung fires, the gate then waits for the screen to **stop moving**: it returns once
-> two consecutive queries report the same element identities and frames. Every rung answers "the
-> app's first content is on screen", which a screen mid-transition satisfies — and a touch
+> two consecutive queries report the same element identifiers, labels, and frames. Every rung answers
+> "the app's first content is on screen", which a screen mid-transition satisfies — and a touch
 > synthesized into a moving screen is one the Simulator can drop, leaving the actuation reported as
 > delivered while the failure surfaces much later, at an unrelated step's `wait` timeout. The
-> confirmation costs one extra poll in the common case and is capped at three, after which the gate
+> confirmation costs one extra poll where the rung's own tree read seeds the comparison, and two on
+> the `screenChanged` rung, which has none of its own; it is capped at three, after which the gate
 > returns ready anyway and records `settled: false` in the first-wait diagnostic rather than holding
 > a screen that never holds still. It never turns a ready app into a timeout. `locale` **is**
 > applied at launch (the scenario's `preconditions.locale` overrides the config default, passed as

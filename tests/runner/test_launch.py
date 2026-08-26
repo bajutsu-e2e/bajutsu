@@ -529,6 +529,34 @@ def test_await_ready_settle_ignores_a_value_only_change(monkeypatch: pytest.Monk
     assert result.settled is True
 
 
+def test_await_ready_settle_never_confirms_on_an_empty_tree(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Two empty signatures compare equal, so without a guard a launch that rendered nothing would
+    # confirm a settle. An empty tree is the same "couldn't observe" the readiness loop swallows, and
+    # this is reachable through the one rung that reads no tree of its own: `screenChanged` seeds no
+    # first sample, so an always-empty driver would otherwise report the most raced launch as settled.
+    _install_bounded_clock(monkeypatch)
+    driver = _ScriptedDriver([[]])  # always empty
+    live = [(ScreenTransition(kind="screenChanged"), 0.0)]
+    result = await_ready(driver, timeout=1.0, transitions=lambda: live)  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.signal == "screenChanged"
+    assert result.settled is False
+
+
+def test_await_ready_timeout_is_never_recorded_as_settled(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A gate that never became ready observed no settled screen either. The result reaches the
+    # first-wait diagnostic, where `ready: false, settled: true` would read as reassurance in exactly
+    # the case the preceding actuation is most suspect.
+    _install_bounded_clock(monkeypatch)
+    driver = _ScriptedDriver([[_placed("only", "O")]])  # one element: never satisfies the 2+ count
+    result = await_ready(driver, timeout=1.0)  # type: ignore[arg-type]
+    assert result.ready is False
+    assert result.signal == "timeout"
+    assert result.settled is False
+
+
 def test_await_ready_settle_treats_an_unreadable_query_as_not_settled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
