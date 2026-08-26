@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from _shared import _serve, project, write_run
+from _shared import StubArtifactStore, _serve, project, write_run
 
 from bajutsu import serve as srv
 
@@ -98,7 +98,7 @@ def test_archive_endpoint_rejects_a_nested_run_id(tmp_path: Path) -> None:
         server.server_close()
 
 
-class _RedirectStore:
+class _RedirectStore(StubArtifactStore):
     """A stand-in server-style store that hands back a signed-URL redirect instead of bytes."""
 
     def get(self, rel: str) -> srv.Artifact:

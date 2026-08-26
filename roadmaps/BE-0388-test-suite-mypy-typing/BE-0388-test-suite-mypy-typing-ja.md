@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0388") |
-| 実装 PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760)、[#1763](https://github.com/bajutsu-e2e/bajutsu/pull/1763) |
+| 実装 PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760)、[#1763](https://github.com/bajutsu-e2e/bajutsu/pull/1763)、[#1766](https://github.com/bajutsu-e2e/bajutsu/pull/1766) |
 | トピック | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -140,7 +140,7 @@ pydantic プラグインをどうするかは、本項目の範囲には含め�
   十分か確認してから、より大きなディレクトリへ進む。
 - [x] `tests/report/`（14件）と `tests/orchestrator/`（79件）を解消する。
 - [x] `tests/runner/`（126件）を解消する。
-- [ ] `tests/serve/`（196件、124ファイルと最大のディレクトリ）を解消する。
+- [x] `tests/serve/`（196件、124ファイルと最大のディレクトリ）を解消する。
 - [ ] `tests/` 直下のフラットなファイル群（197ファイルで880件）を、`test_crawl.py`（200件）、
   `test_record.py`（75件）、`test_intervals.py`（48件）から解消する。
 - [ ] 残るすべての `unused-ignore` を一掃し、各 `# type: ignore` を削除するか理由を明記する。
@@ -180,6 +180,22 @@ pydantic プラグインをどうするかは、本項目の範囲には含め�
   `test_visual_assertion_with_exclude_and_threshold` は
   `list[ExcludeRegion | SelectorRegion]` を添字で取り出して `.w` を読んでいました。`.w` を
   持つのは `ExcludeRegion` だけなので、読む前にその型であることを確かめるようにしました。
+- `tests/serve/` を解消しました。196件を片付け、`tests/` 直下のフラットなファイル群に880件が
+  残っています（[#1766](https://github.com/bajutsu-e2e/bajutsu/pull/1766)）。このディレクトリで
+  目立ったのは、シームのプロトコルを部分的にしか実装しないフェイクを、ファイルごとに定義し直して
+  いた形です。メモリ上の `ObjectStore` フェイクがほぼ同じ内容で9個あり、それぞれがプロトコルの
+  9メソッドのうち別々の4つか5つだけを実装していました。`tests/serve/_shared.py` の
+  `FakeObjectStore` にプロトコル全体を実装し、9個はそれを継承して各自が特殊化する部分だけを
+  上書きする形にしました。11メソッドの `ArtifactStore` についても `StubArtifactStore` で同じ形に
+  しています。これで指摘だけでなく重複そのものが消えました。
+
+  スタブがプロトコルを満たすようになったことで14件の `# type: ignore` が不要になり、前のスライスに
+  記録した理由と同じ理由でまとめて削除しました。
+
+  1つだけ、部分実装ではなく実際にずれていたフェイクがありました。`test_http_auth.py` の
+  `_FakeOAuth` は、`OAuthClient` プロトコルにもう存在しない `fetch_login` を持ち、代わりに
+  加わった `fetch_identity` を持っていませんでした。該当するテストはリダイレクト側しか通らない
+  ため何も失敗しておらず、レビューでは捕まらず本項目のベースラインが捕まえたずれです。
 
 ## 参考
 

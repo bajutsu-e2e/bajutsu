@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from _shared import _post, _serve, project
+from _shared import FakeObjectStore, _post, _serve, project
 
 from bajutsu import serve as srv
 from bajutsu.object_store import EvidenceTarget
@@ -19,8 +19,9 @@ from bajutsu.serve import operations as ops
 from bajutsu.serve.state import ServeState
 
 
-class _FakeStore:
-    """The slice of `ObjectStore` the endpoint uses: a signed PUT URL per key."""
+class _FakeStore(FakeObjectStore):
+    """The slice of `ObjectStore` the endpoint uses: a signed PUT URL per key, carrying the bound
+    content type so a test can assert it reached the signature."""
 
     def presigned_put_url(self, key: str, *, content_type: str = "", ttl: int = 3600) -> str:
         return f"https://signed.example/{key}?ct={content_type}"

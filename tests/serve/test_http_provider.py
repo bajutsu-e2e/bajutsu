@@ -12,6 +12,7 @@ the process env is never written (the tenant-isolation guarantee).
 from __future__ import annotations
 
 import os
+import shutil
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -170,7 +171,7 @@ def test_http_provider_select_ant_and_back(tmp_path: Path, monkeypatch: pytest.M
     scn_dir, cfg, runs = project(tmp_path)
     _clean_provider_env(monkeypatch)
     # Deterministic: report the `ant` CLI absent regardless of the CI host (the probe is a subprocess).
-    monkeypatch.setattr(ac.shutil, "which", lambda _exe: None)
+    monkeypatch.setattr(shutil, "which", lambda _exe: None)
     state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
     server, port = _serve(state)
     try:

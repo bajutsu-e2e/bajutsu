@@ -9,38 +9,10 @@ in-memory fake, so no boto3 / real bucket touches the gate.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+
+from _shared import FakeObjectStore
 
 from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
-
-
-class FakeObjectStore:
-    """A mutable in-memory slice of the ObjectStore seam (exists/get/put/list/delete)."""
-
-    def __init__(self, objects: dict[str, bytes] | None = None) -> None:
-        self._objects = dict(objects or {})
-
-    def exists(self, key: str) -> bool:
-        return key in self._objects
-
-    def get_bytes(self, key: str) -> bytes | None:
-        return self._objects.get(key)
-
-    def put_bytes(self, key: str, data: bytes, *, content_type: str = "") -> None:
-        self._objects[key] = data
-
-    def presigned_url(self, key: str) -> str:
-        return f"https://signed.example/{key}"
-
-    def list_keys(self, prefix: str) -> list[str]:
-        return [k for k in self._objects if k.startswith(prefix)]
-
-    def delete_key(self, key: str) -> None:
-        self._objects.pop(key, None)
-
-    def delete_keys(self, keys: Iterable[str]) -> None:
-        for key in keys:
-            self._objects.pop(key, None)
 
 
 def _manifest(run_id: str) -> dict[str, bytes]:

@@ -16,7 +16,7 @@ from sqlalchemy import Engine
 from bajutsu import serve as srv
 from bajutsu.serve.operations.config import launch_project_identity, register_launch_project
 from bajutsu.serve.project_registry import LocalProjectRegistry, SqlProjectRegistry
-from bajutsu.serve.server.db import SqlRepository
+from bajutsu.serve.server.db import ProjectRecord, SqlRepository
 from bajutsu.serve.server.models import Base
 
 
@@ -106,7 +106,7 @@ def test_register_launch_project_never_crashes_boot_on_a_registry_error(tmp_path
     boot seam `restore_persisted_provider_settings`, not propagated out of the boot path."""
 
     class _FlakyRegistry(LocalProjectRegistry):
-        def add(self, *, org_id: str, name: str, source: dict[str, object] | None) -> None:  # type: ignore[override]
+        def add(self, *, org_id: str, name: str, source: dict[str, object] | None) -> ProjectRecord:
             raise RuntimeError("read-only runs dir")
 
     reg = _FlakyRegistry(tmp_path / "projects.json")

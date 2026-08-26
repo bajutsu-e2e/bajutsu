@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0388") |
-| Implementing PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760), [#1763](https://github.com/bajutsu-e2e/bajutsu/pull/1763) |
+| Implementing PR | [#1760](https://github.com/bajutsu-e2e/bajutsu/pull/1760), [#1763](https://github.com/bajutsu-e2e/bajutsu/pull/1763), [#1766](https://github.com/bajutsu-e2e/bajutsu/pull/1766) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -137,7 +137,7 @@ The pydantic-plugin question stays out of this item's scope; see *Alternatives c
   relaxed run is sufficient before touching a larger directory.
 - [x] Clear `tests/report/` (14 errors) and `tests/orchestrator/` (79 errors).
 - [x] Clear `tests/runner/` (126 errors).
-- [ ] Clear `tests/serve/` (196 errors, 124 files — the largest single directory).
+- [x] Clear `tests/serve/` (196 errors, 124 files — the largest single directory).
 - [ ] Clear the flat files directly under `tests/` (880 errors across 197 files), starting with
   `test_crawl.py` (200), `test_record.py` (75), and `test_intervals.py` (48).
 - [ ] Sweep every remaining `unused-ignore` finding; remove or justify each `# type: ignore`.
@@ -177,6 +177,21 @@ The pydantic-plugin question stays out of this item's scope; see *Alternatives c
   the `kind` field it meant. `test_visual_assertion_with_exclude_and_threshold` indexed a
   `list[ExcludeRegion | SelectorRegion]` and read `.w`, a field only `ExcludeRegion` carries, and
   now asserts that variant before reading it.
+- Cleared `tests/serve/` — 196 findings, leaving 880 in the flat files under `tests/`
+  ([#1766](https://github.com/bajutsu-e2e/bajutsu/pull/1766)). The directory's dominant shape was a
+  partial fake of a seam protocol, redefined once per file: nine near-identical in-memory
+  `ObjectStore` fakes, each implementing a different four or five of the protocol's nine methods.
+  `tests/serve/_shared.py`'s `FakeObjectStore` now implements the whole protocol, and the nine
+  become subclasses overriding only what they specialize; `StubArtifactStore` does the same for the
+  eleven-method `ArtifactStore`. That removed the duplication as well as the findings.
+
+  Fourteen `# type: ignore` comments went stale as the stubs came to satisfy their protocols, and
+  were dropped with them for the reason the previous slice records.
+
+  One fake had drifted rather than merely being partial. `test_http_auth.py`'s `_FakeOAuth` declared
+  a `fetch_login` the `OAuthClient` protocol no longer has, and lacked the `fetch_identity` that
+  replaced it. Nothing failed, because those tests exercise only the redirect leg. Review alone did
+  not catch the drift; this item's baseline did.
 
 ## References
 

@@ -22,6 +22,7 @@ from _shared import FakeObjectStore, FakeProc, _get_json, _post, _serve, fake_po
 
 from bajutsu import serve as srv
 from bajutsu.serve import handler as handler_mod
+from bajutsu.serve.state import SessionManager
 
 _CONFIG = (
     "defaults: { backend: [ios] }\n"
@@ -67,7 +68,7 @@ def _post_bytes(
     data: bytes,
     *,
     ctype: str = "application/zip",
-    headers: dict | None = None,
+    headers: dict[str, str] | None = None,
 ) -> tuple[int, Any]:
     req = urllib.request.Request(
         f"http://127.0.0.1:{port}{path}",
@@ -100,7 +101,7 @@ def _state(
         root=tmp_path,
         uploads_dir=tmp_path / "uploads",
         popen=popen or fake_popen(["PASS  runs/up-1/manifest.json\n"]),
-        auth=srv.SessionManager(token=token),
+        auth=SessionManager(token=token),
         object_store=object_store,
         object_store_prefix=object_store_prefix,
     )
@@ -114,6 +115,7 @@ def _extracted_dirs(tmp_path: Path) -> list[Path]:
 def _wait_done(port: int, job_id: str) -> dict[str, Any]:
     for _ in range(200):
         j = _get_json(port, "/api/jobs/" + job_id)
+        assert isinstance(j, dict)
         if j["status"] == "done":
             return j
         time.sleep(0.02)

@@ -18,9 +18,10 @@ from pathlib import Path
 
 import httpx
 import pytest
-from _shared import patch_gcs_client, project
+from _shared import log_field, patch_gcs_client, project
 
 from bajutsu import serve as srv
+from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
 
 
 def _free_port() -> int:
@@ -499,7 +500,7 @@ def test_build_state_server_warns_on_the_retired_singular_admin_team_var(
     assert all(r.levelno == logging.WARNING for r in records)
     # Each record carries its own stable `check`, distinct from the free-text message -- the field
     # an operator's alert should key on, per the record above.
-    assert {r.check for r in records} == checks
+    assert {log_field(r, "check") for r in records} == checks
 
 
 def test_emit_startup_warnings_reemits_each_entry_under_its_own_event_and_check(
@@ -522,7 +523,10 @@ def test_emit_startup_warnings_reemits_each_entry_under_its_own_event_and_check(
     records = [r for r in caplog.records if getattr(r, "event", None) == "server.startup_warning"]
     assert len(records) == 2
     assert all(r.levelno == logging.WARNING for r in records)
-    assert {r.check for r in records} == {"admin_teams_empty", "oauth_half_configured"}
+    assert {log_field(r, "check") for r in records} == {
+        "admin_teams_empty",
+        "oauth_half_configured",
+    }
     assert {r.getMessage() for r in records} == {
         "BAJUTSU_OAUTH_ADMIN_TEAMS is empty",
         "GitHub OAuth is only partly configured",
@@ -960,6 +964,7 @@ def test_build_state_server_normalizes_a_prefix_without_a_slash(
         backend="server",
     )
     # The artifact store keys a run-relative path under "<prefix>artifacts/", with the slash added.
+    assert isinstance(state.artifacts, ObjectStorageArtifactStore)
     assert state.artifacts._key("r1/report.html") == "tenant/artifacts/r1/report.html"
 
 
@@ -983,6 +988,7 @@ def test_build_state_server_wires_a_gcs_object_store_from_a_gs_uri(
         token=None,
         backend="server",
     )
+    assert isinstance(state.artifacts, ObjectStorageArtifactStore)
     assert isinstance(state.artifacts._store, GCSObjectStore)
     assert state.artifacts._key("r1/report.html") == "tenant/artifacts/r1/report.html"
 
