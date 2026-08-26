@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0394](BE-0394-ai-provider-none-kill-switch.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0394") |
+| Implementing PR | [#1755](https://github.com/bajutsu-e2e/bajutsu/pull/1755) |
 | Topic | AI provider configuration |
 | Related | [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md), [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules.md) |
 <!-- /BE-METADATA -->
@@ -132,7 +133,7 @@ provider gives each surface the right behavior without a new branch of its own.
 | `_require_ai_credential` (`bajutsu/cli/_shared.py:172`) | a clean exit 2, so `record`, `crawl`, and `triage --ai` refuse to start rather than degrading |
 | `doctor`'s `_claude_readiness` (`bajutsu/cli/commands/doctor.py:286`) | the optional Claude line reads as not configured, never the ✗ of a broken environment |
 | `serve` settings (`bajutsu/serve/operations/config.py:508`) | unchanged — `provider_info` resolves the provider from the organization's saved selection rather than the target config, so `claudeAvailable` never sees this setting (see *`serve`* below) |
-| `serve` enrichment and triage (`bajutsu/serve/operations/enrich.py:64`, `bajutsu/serve/operations/triage.py:73`) | HTTP 400 before the job is dispatched |
+| `serve` enrichment and triage (`bajutsu/serve/operations/enrich.py:64`, `bajutsu/serve/operations/triage.py:73`) | HTTP 400 before the job is dispatched, phrased through `availability.message` rather than interpolating the raw gap token — both strings reach the web UI, so "requires a credential" would send the reader to Settings to save a key that can never lift the switch |
 
 An `ai.enabled: false` field would have to be read at each of those sites in addition to the gap, and
 would admit the contradictory configuration `{ enabled: false, provider: api-key }`. The provider
@@ -248,14 +249,14 @@ mirrors them one for one.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] The `none` adapter and its registration, with unit tests
-- [ ] `selectable_providers()` and the `serve` exclusion, with a rejected `set_provider` test
-- [ ] The `"ai-disabled"` message branches and the reworded alert-guard note
-- [ ] The `run`-path test: no locator, no ledger event, native path unaffected
-- [ ] The refusal tests for `record`, `crawl`, `triage --ai`, and enrichment, plus the pinned
+- [x] The `none` adapter and its registration, with unit tests
+- [x] `selectable_providers()` and the `serve` exclusion, with a rejected `set_provider` test
+- [x] The `"ai-disabled"` message branches and the reworded alert-guard note
+- [x] The `run`-path test: no locator, no ledger event, native path unaffected
+- [x] The refusal tests for `record`, `crawl`, `triage --ai`, and enrichment, plus the pinned
       `claudeAvailable: true` limitation
-- [ ] Documentation in `docs/configuration.md` and `docs/ai-boundary.md`, both languages
-- [ ] Reciprocal `Related` rows in BE-0047, BE-0104, and BE-0315, once CI allocates this item's id
+- [x] Documentation in `docs/configuration.md` and `docs/ai-boundary.md`, both languages
+- [x] Reciprocal `Related` rows in BE-0047, BE-0104, and BE-0315
 
 ## References
 

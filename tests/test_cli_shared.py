@@ -49,6 +49,31 @@ def test_build_alert_guard_binds_dismiss_when_credential_present(
     assert callable(guard)
 
 
+def test_build_alert_guard_no_op_under_provider_none(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # BE-0394: the kill switch holds *with the key present in the environment* — the difference from
+    # the unset-key case above, and the whole point of committing the policy to the config. The note
+    # names the setting rather than an env var to export, and says the native path still clears prompts.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    eff = _eff("targets:\n  x:\n    bundleId: com.x\n    ai: { provider: none }\n")
+    assert _build_alert_locator(eff, _ai_redactor(eff)) is None
+    assert _build_alert_guard(eff, _ai_redactor(eff), "") is None
+    out = capsys.readouterr().out
+    assert "ai.provider: none" in out and "native path" in out
+
+
+def test_credential_gap_message_for_provider_none_names_the_setting() -> None:
+    # The message `record` / `crawl` / `triage --ai` print before exiting 2: the setting, and how to
+    # re-enable an AI path — never "set $ANTHROPIC_API_KEY", which would not lift the switch.
+    from bajutsu.ai.disabled import DISABLED
+    from bajutsu.cli._shared import _credential_gap_message
+
+    eff = _eff("targets:\n  x:\n    bundleId: com.x\n    ai: { provider: none }\n")
+    msg = _credential_gap_message(DISABLED, eff)
+    assert "ai.provider: none" in msg and "ANTHROPIC_API_KEY" not in msg
+
+
 def test_resolve_system_alert_handling_flag_canonical_wins() -> None:
     # --system-alert-handling takes precedence; the deprecated --alert-handling (originally
     # BE-0317's canonical name) fills in next, then the deprecated --dismiss-alerts.

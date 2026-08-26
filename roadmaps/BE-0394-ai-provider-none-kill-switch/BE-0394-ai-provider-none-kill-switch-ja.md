@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0394](BE-0394-ai-provider-none-kill-switch-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0394") |
+| 実装 PR | [#1755](https://github.com/bajutsu-e2e/bajutsu/pull/1755) |
 | トピック | AI プロバイダ設定 |
 | 関連 | [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md), [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules-ja.md) |
 <!-- /BE-METADATA -->
@@ -126,7 +127,7 @@ defaults:
 | `_require_ai_credential`（`bajutsu/cli/_shared.py:172`） | 終了コード 2 で止まり、`record`、`crawl`、`triage --ai` は機能を落として動くのではなく起動を拒む |
 | `doctor` の `_claude_readiness`（`bajutsu/cli/commands/doctor.py:286`） | 任意項目としての Claude の行が未設定と読める。環境の故障を示す ✗ にはならない |
 | `serve` の設定（`bajutsu/serve/operations/config.py:508`） | 変化なし。`provider_info` はターゲットの設定ではなく組織の保存済み選択からプロバイダを解決するため、`claudeAvailable` はこの設定を見ない（後述の *`serve`* を参照） |
-| `serve` の enrich と triage（`bajutsu/serve/operations/enrich.py:64`、`bajutsu/serve/operations/triage.py:73`） | ジョブを起動する前に HTTP 400 を返す |
+| `serve` の enrich と triage（`bajutsu/serve/operations/enrich.py:64`、`bajutsu/serve/operations/triage.py:73`） | ジョブを起動する前に HTTP 400 を返す。生のトークンを埋め込まず `availability.message` の文言を通す。どちらの文字列も Web UI に届くため、「認証情報が必要」と告げると、このスイッチを解除できない鍵を Settings で保存させてしまう |
 
 `ai.enabled: false` というフィールドを足す場合、認証ギャップを読むすべての箇所で、ギャップに加えて
 そのフィールドも読む必要が生じます。しかも `{ enabled: false, provider: api-key }` という、答えが
@@ -240,13 +241,13 @@ triage は到達可能なまま残ります。スクリーンショットを送�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `none` アダプタと登録、ユニットテスト
-- [ ] `selectable_providers()` と `serve` からの除外、`set_provider` が拒むことのテスト
-- [ ] `"ai-disabled"` のメッセージ分岐と、アラートガードの注記の書き換え
-- [ ] 実行経路のテスト（ロケータを構築しない、台帳にイベントが残らない、ネイティブ経路は不変）
-- [ ] `record`、`crawl`、`triage --ai`、enrich の拒否テストと、`claudeAvailable: true` の固定
-- [ ] `docs/configuration.md` と `docs/ai-boundary.md` の両言語での記述
-- [ ] BE-0047、BE-0104、BE-0315 への相互の `関連` 行の追加（CI が本項目の ID を採番したあと）
+- [x] `none` アダプタと登録、ユニットテスト
+- [x] `selectable_providers()` と `serve` からの除外、`set_provider` が拒むことのテスト
+- [x] `"ai-disabled"` のメッセージ分岐と、アラートガードの注記の書き換え
+- [x] 実行経路のテスト（ロケータを構築しない、台帳にイベントが残らない、ネイティブ経路は不変）
+- [x] `record`、`crawl`、`triage --ai`、enrich の拒否テストと、`claudeAvailable: true` の固定
+- [x] `docs/configuration.md` と `docs/ai-boundary.md` の両言語での記述
+- [x] BE-0047、BE-0104、BE-0315 への相互の `関連` 行の追加
 
 ## 参考
 

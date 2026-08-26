@@ -49,6 +49,10 @@ class Adapter:
     announce: Announce = _default_announce
 
 
+# The kill-switch provider's name (BE-0394). Named here because the registry is what decides which
+# names are *selectable*; the adapter behind it lives in `bajutsu.ai.disabled`.
+DISABLED_PROVIDER = "none"
+
 _ADAPTERS: dict[str, Adapter] = {}
 
 
@@ -58,15 +62,18 @@ def register(name: str, adapter: Adapter) -> None:
 
 
 def _ensure_builtins() -> None:
-    """Register the built-in Anthropic adapter on first use (lazy, to keep imports acyclic).
+    """Register the built-in adapters on first use (lazy, to keep imports acyclic).
 
     Keyed on the built-in names, not on the registry being empty: a third-party or test adapter
-    registering first must not suppress `api-key`/`bedrock`/`ant` (that would `KeyError` when they
-    later resolve). `setdefault` also leaves an earlier explicit registration for those names intact.
+    registering first must not suppress any of them (that would `KeyError` when they later resolve).
+    `setdefault` also leaves an earlier explicit registration for those names intact.
     """
-    if all(name in _ADAPTERS for name in ("api-key", "bedrock", "ant", "claude-code")):
+    if all(
+        name in _ADAPTERS
+        for name in ("api-key", "bedrock", "ant", "claude-code", DISABLED_PROVIDER)
+    ):
         return
-    from bajutsu.ai import anthropic, claude_code
+    from bajutsu.ai import anthropic, claude_code, disabled
 
     adapter = Adapter(factory=anthropic.factory, credential_gap=anthropic.credential_gap)
     # The direct Anthropic API (`api-key`), Amazon Bedrock, and the Anthropic CLI (`ant`, BE-0163)
@@ -86,12 +93,34 @@ def _ensure_builtins() -> None:
             announce=claude_code.announce,
         ),
     )
+    # `none` (BE-0394) is the kill switch: registered so the name resolves rather than failing as an
+    # unknown provider, but its factory raises, so no AI path can construct a backend at all.
+    _ADAPTERS.setdefault(
+        DISABLED_PROVIDER,
+        Adapter(
+            factory=disabled.factory,
+            credential_gap=disabled.credential_gap,
+            announce=disabled.announce,
+        ),
+    )
 
 
 def known_providers() -> tuple[str, ...]:
     """The registered provider names — the open, validated set for the `ai.provider` config (BE-0104)."""
     _ensure_builtins()
     return tuple(_ADAPTERS)
+
+
+def selectable_providers() -> tuple[str, ...]:
+    """The provider names a *user* may pick — `known_providers()` minus the disabled one (BE-0394).
+
+    `serve` validates its Settings dropdown against this rather than `known_providers()`. An
+    organization's selection reaches a job only as ``BAJUTSU_AI_PROVIDER``, and `resolve_provider`
+    reads the configuration first — so picking `none` there would leave a project whose config names
+    a provider calling the model with nothing saying so. A switch labeled off that silently stays on
+    is worse than no switch; the kill switch is a statement a repository commits, not a per-org toggle.
+    """
+    return tuple(p for p in known_providers() if p != DISABLED_PROVIDER)
 
 
 def _provider_name(ai: AiConfig | None) -> str:

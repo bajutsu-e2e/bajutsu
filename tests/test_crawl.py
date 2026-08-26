@@ -1514,6 +1514,28 @@ def test_cli_crawl_fails_closed_without_credential(
     assert "no AI credential" in r.output and "ANTHROPIC_API_KEY" in r.output
 
 
+def test_cli_crawl_refuses_under_provider_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # BE-0394: `crawl` authors with a model on every turn, so the kill switch has to refuse it too —
+    # a policy against sending screens to a third party that covered only `run` would not be one.
+    monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setattr(
+        "anthropic.Anthropic",
+        lambda *a, **k: pytest.fail("client constructed despite ai.provider: none"),
+    )
+    cfg = tmp_path / "kill-switch.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [fake], ai: { provider: none } }\n"
+        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        encoding="utf-8",
+    )
+    r = _cli.invoke(app, ["crawl", "--target", "demo", "--config", str(cfg)])
+    assert r.exit_code == 2
+    assert "ai.provider: none" in r.output
+
+
 # --- screen_identity: transition signature that ignores per-element state (BE-0178) ---
 
 

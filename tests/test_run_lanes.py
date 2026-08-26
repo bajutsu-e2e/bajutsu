@@ -362,6 +362,56 @@ def test_alert_guard_factory_vision_noop_without_credential(
     assert guard(FakeDriver([])) is None
 
 
+def test_alert_guard_factory_vision_noop_under_provider_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """BE-0394: `ai.provider: none` holds with the key present — the whole point of the kill switch.
+
+    The unset-key case above is an accident of the shell; this one is a committed policy, so the
+    assertions are what a reviewer reads it as: no locator is built, the vision fallback no-ops, the
+    deterministic native path (BE-0315) still clears a prompt, and no AI event reaches the ledger.
+    """
+    from bajutsu.analytics import ledger as usage_ledger
+    from bajutsu.drivers.fake import FakeDriver
+    from bajutsu.orchestrator import AlertGuardConfig
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
+    ledger_path = tmp_path / "usage.jsonl"
+    eff = _eff(ai=f"{{ provider: none, usageLedger: {ledger_path} }}")
+    usage_ledger.configure_from_ai_config(eff.ai)
+    try:
+        scenarios = load_scenarios(_one_scenario("a"))
+        factory = _alert_guard_factory(scenarios, eff, "")
+        assert factory is not None
+        guard = factory(scenarios[0])
+        assert isinstance(guard, AlertGuardConfig)
+
+        # No alert the native query can see → the guard routes to vision, which no-ops.
+        assert guard(FakeDriver([])) is None
+
+        # The native path is untouched — it needs no credential, so it still taps the prompt.
+        driver = FakeDriver([])
+        driver.system_alert_buttons = [
+            {
+                "identifier": None,
+                "label": label,
+                "traits": ["button"],
+                "value": None,
+                "frame": (0, 0, 10, 10),
+                "nativeZ": None,
+            }
+            for label in ("Don't Allow", "Allow")
+        ]
+        state, event = guard.probe_native(driver)
+        assert state == "dismissed" and event is not None
+
+        assert not ledger_path.exists()  # no AI call, so no attributed event
+        assert "ai.provider: none" in capsys.readouterr().out
+    finally:
+        usage_ledger.reset()
+
+
 def _tap_scenario(name: str, dismiss: dict[str, object] | None = None) -> Scenario:
     body: dict[str, object] = {"name": name, "steps": [{"tap": {"id": "x"}}]}
     if dismiss is not None:

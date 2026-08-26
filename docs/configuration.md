@@ -127,7 +127,7 @@ deterministic `run` gate still calls no model at all
 ```yaml
 defaults:
   ai:
-    provider: api-key                        # a registered provider name; api-key (default), bedrock, ant, or claude-code ship today
+    provider: api-key                        # a registered provider name; api-key (default), bedrock, ant, claude-code, or none (disables every AI path)
     model:    claude-opus-4-8                 # optional: override the path's default model (or the BAJUTSU_AI_MODEL env)
     effort:   high                            # optional: reasoning effort — low/medium/high/xhigh/max (or BAJUTSU_AI_EFFORT); claude-code
     language: auto                            # optional: AI output language for the generated prose — ja/en/auto (or BAJUTSU_AI_LANGUAGE)
@@ -177,7 +177,35 @@ defaults:
   ([BE-0112](../roadmaps/BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement.md)),
   so config accepts the name and the registry that owns the valid names rejects an unregistered one.)
   Adding a model family (e.g. an OpenAI-compatible endpoint) is *registering an adapter*, and it
-  inherits the redaction and fail-closed guarantees below by construction.
+  inherits the redaction and fail-closed guarantees below by construction. One further name,
+  `none`, is a switch rather than a vendor. The two bullets below cover it.
+- **`none` states that no AI path may run**
+  ([BE-0394](../roadmaps/BE-0394-ai-provider-none-kill-switch/BE-0394-ai-provider-none-kill-switch.md)).
+  The `none` provider's adapter does nothing at all, so writing `provider: none` disables every
+  AI path at once. The system-alert guard's vision fallback becomes a no-op while the deterministic
+  native path keeps clearing prompts; `record` / `crawl` / `triage --ai` exit 2 naming the setting;
+  and no code path can construct an AI backend, because the provider's factory raises instead of
+  returning one. Leaving the provider's key out of the environment already produces most of the same
+  behavior. What the setting adds is a policy a reviewer can read: an absent key records the intent
+  nowhere in the repository, and a key exported to author a scenario with `record` re-enables the
+  vision fallback for every `run` in the same shell, with nothing to say so. Because config wins
+  over the environment, a committed `provider: none` survives `BAJUTSU_AI_PROVIDER` on a
+  continuous-integration runner whose environment nobody controls. `BAJUTSU_AI_PROVIDER=none`
+  still works for a one-off run on a machine whose config names no provider. This provider changes
+  nothing about the `defaults` / `targets.<name>` merge rule, so a repository can disable AI in
+  `defaults` and re-enable it for one target — on a line a reviewer reads in the same file, rather
+  than an environment variable nobody sees.
+- **`serve` never offers `none` in its Settings dropdown.** The registry knows the provider but
+  never lists it as *selectable*, so `/api/provider` answers HTTP 400 for it. An organization's
+  Settings selection reaches a spawned job as `BAJUTSU_AI_PROVIDER`, which a project's own
+  `ai.provider` outranks. So a `none` picked there would have no effect at all on a repository whose
+  config names a provider: the jobs would keep calling the model behind a switch labeled off. One
+  limitation follows, and this design accepts it rather than closing it. The settings endpoint
+  resolves Claude reachability from the organization's saved selection rather than the target's `ai`
+  block, so a repository that sets `provider: none` still reports `claudeAvailable: true` and the
+  web UI leaves the record and crawl tabs enabled. The switch itself holds — a job started from one
+  of those tabs resolves the repository configuration itself and exits 2 before reaching a model —
+  but the pre-flight signal that would grey the tab out first is missing.
 - **Keys never live in config.** `keyEnv` names an environment variable; the value is read from the
   environment at call time, so a secret never lands in the repo or an uploaded bundle. `baseUrl`
   points the Anthropic SDK at a self-hosted gateway / proxy (`Anthropic(base_url=…,

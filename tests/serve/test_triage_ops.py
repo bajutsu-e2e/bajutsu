@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import pytest
 from _shared import FakeProc, project
 
 from bajutsu.serve import operations as ops
@@ -89,13 +90,45 @@ def test_start_triage_run_not_found(tmp_path: Path) -> None:
 def test_start_triage_ai_requires_a_credential(tmp_path: Path, monkeypatch: Any) -> None:
     import bajutsu.ai as ai
 
-    monkeypatch.setattr(ai, "credential_gap", lambda _ai: "set ANTHROPIC_API_KEY")
+    monkeypatch.setattr(ai, "credential_gap", lambda _ai: "anthropic-key")
     state = _state(tmp_path)
     run_id = _write_run(state, "20260101-000000")
     payload, status = ops.start_triage(
         state, {"runId": run_id, "target": "demo", "scenario": "smoke.yaml", "ai": True}
     )
-    assert status == 400 and "credential" in payload["error"]
+    # The phrased, actionable message rather than the raw gap token (BE-0394).
+    assert status == 400 and "ANTHROPIC_API_KEY" in payload["error"]
+
+
+def test_start_triage_ai_refuses_under_provider_none(tmp_path: Path, monkeypatch: Any) -> None:
+    # BE-0394: the real credential seam, not a stubbed gap — with the key present, `ai.provider: none`
+    # in the target config still returns 400 *before* dispatch, so no job ever reaches a model.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text(
+        "- name: alpha\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8"
+    )
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [ios], ai: { provider: none } }\n"
+        f"targets:\n  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",
+        encoding="utf-8",
+    )
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    state = ServeState(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=scn_dir,
+        cwd=tmp_path,
+        popen=lambda *a, **k: pytest.fail("a job was dispatched despite ai.provider: none"),
+    )
+    run_id = _write_run(state, "20260101-000000")
+    payload, status = ops.start_triage(
+        state, {"runId": run_id, "target": "demo", "scenario": "smoke.yaml", "ai": True}
+    )
+    assert status == 400 and "ai.provider: none" in payload["error"]
 
 
 def test_start_triage_dispatches_a_heuristic_job(tmp_path: Path) -> None:
