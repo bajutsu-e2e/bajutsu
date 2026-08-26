@@ -13,7 +13,7 @@ from bajutsu import device_os, handoff
 from bajutsu.analysis import stats as _stats
 from bajutsu.analytics import ledger as _usage_ledger
 from bajutsu.analytics import stats as _usage_stats
-from bajutsu.config import Config, load_config
+from bajutsu.config import Config, load_config, resolve
 from bajutsu.drivers import base as driver_base
 from bajutsu.evidence import displayed_screenshot
 from bajutsu.scenario import load_scenario_file
@@ -310,39 +310,99 @@ def run_set_manifests(store: ArtifactStore, run_ids: Iterable[Any]) -> list[dict
     return manifests
 
 
-def usage_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int]:  # noqa: ARG001  # uniform operation signature
+def usage_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int]:
     """The AI usage/cost dashboard (BE-0195) as a self-contained HTML page.
 
-    Reads the same attributed ledger the serve process's AI subprocesses append to and aggregates it
-    deterministically: read-only, no verdict, no LLM. A disabled or absent ledger is not an error —
-    it aggregates to the empty state, which explains how recording is enabled (graceful degradation,
-    like the readiness panels). The ledger is a single per-process file, not org-scoped, so the view
-    is not filtered by *actor* (a per-org ledger would follow the ledger becoming org-scoped).
+    Reads the same attributed ledgers the serve process's AI subprocesses append to and aggregates
+    them deterministically: read-only, no verdict, no LLM. A disabled or absent ledger is not an
+    error — it aggregates to the empty state, which explains how recording is enabled (graceful
+    degradation, like the readiness panels). A ledger file is shared by every writer that resolves to
+    it, so the aggregate is not an org's own usage and *actor* narrows only which ledgers are read,
+    never which events within one count (org-scoping the ledger itself is a design change, tracked
+    apart from issue #1717).
     """
-    path = _usage_ledger_path(state)
-    try:
-        events = _usage_ledger.read_events(path) if path is not None else []
-    except OSError:
-        # An unreadable ledger (a permission issue, a transient I/O error) degrades to the empty-state
-        # dashboard rather than a 500 — the same "skip what can't be read" promise `/stats` makes.
-        events = []
+    events: list[_usage_ledger.UsageEvent] = []
+    for path in _usage_ledger_paths(state, actor):
+        try:
+            events.extend(_usage_ledger.read_events(path))
+        except OSError:
+            # An unreadable ledger (a permission issue, a transient I/O error) degrades to skipping
+            # that file rather than a 500 — the same "skip what can't be read" promise `/stats` makes.
+            continue
     return _usage_stats.render_html(_usage_stats.aggregate_usage(events)), 200
 
 
-def _usage_ledger_path(state: ServeState) -> Path | None:
-    """The ledger file the dashboard reads — resolved exactly as the AI subprocesses resolve it.
+def _usage_ledger_paths(state: ServeState, actor: str | None) -> list[Path]:
+    """Every ledger file the dashboard reads — resolved as the AI subprocesses serve spawns do.
 
-    AI work in serve runs as subprocesses that call `usage_ledger.configure_from_ai_config`, writing
-    to the team-wide `defaults.ai.usageLedger` (else `DEFAULT_LEDGER_PATH`) relative to their cwd
-    (`state.cwd`). The dashboard points at that same file. An explicit empty string disables
-    persistence — None then, so there is nothing to read.
+    AI work in serve runs as subprocesses that call `usage_ledger.configure_from_ai_config` with the
+    *target-merged* `ai` block (`resolve`'s `Effective.ai`, so `targets.<name>.ai.usageLedger`
+    overrides `defaults.ai.usageLedger`), writing relative paths against their cwd — `state.cwd`,
+    the directory `jobs` spawns them in absent a per-job override. Resolving the read side any other
+    way is what left the dashboard reading an empty file while a per-target ledger filled up (issue
+    #1717).
+
+    Every such subprocess names a target (`resolve` rejects an unknown one), so the set of files it
+    can append to is the union over the targets — the dashboard is process-wide, not target-scoped,
+    so it reads all of them. Which targets those are is the same question `list_targets_payload` and
+    `read_scenario` answer: on a server backend the actor's org owns a subset of them (BE-0015 /
+    BE-0375), and walking every entry would merge another org's ledger into this view, so the walk
+    goes through `targets_for`. Local serve / token mode ignores `orgs:` and walks them all, exactly
+    as the target list does. A config that declares no targets can have no such writer; the dashboard
+    falls back to `defaults.ai` — the config's only statement of where a ledger would live, and what
+    a writer would inherit once a target exists — rather than reading nothing at all. An explicit
+    empty `usageLedger` disables persistence, contributing no path.
+
+    Two writers stay outside that union by construction, both pre-existing and neither this
+    dashboard's to reach: a job carrying its own `cwd` (a remote worker's workspace, which serve
+    cannot read at all), and a targetless `bajutsu triage --ai` launched beside serve, which resolves
+    no `ai` block of its own and so writes the built-in default rather than the configured ledger.
     """
     loaded = load_serve_config_file(state.config)  # cached parse; None when absent/unreadable
-    ai = loaded[0].defaults.ai if loaded is not None else None
-    path = _usage_ledger.resolve_ledger_path(ai.usage_ledger if ai is not None else None)
-    if path is None or path.is_absolute():
-        return path
-    return state.cwd / path
+    if loaded is None:
+        return _absolute_ledger_paths(state, [None])
+    config = loaded[0]
+    if not config.targets:
+        defaults = config.defaults.ai
+        ledger = defaults.usage_ledger if defaults is not None else None
+        return _absolute_ledger_paths(state, [ledger])
+    # Org scoping applies only on a server backend with a system of record, mirroring
+    # `list_targets_payload` — the one place target ownership is decided (BE-0015 multi-tenancy).
+    names = (
+        sorted(config.targets)
+        if state.repository is None
+        else state.targets_for(state.org_of(actor))
+    )
+    configured: list[str | None] = []
+    for target in sorted(names):
+        try:
+            merged = resolve(config, target).ai
+        except (ValueError, KeyError):
+            continue  # a target that won't resolve can't have run an AI path either
+        configured.append(merged.usage_ledger if merged is not None else None)
+    return _absolute_ledger_paths(state, configured)
+
+
+def _absolute_ledger_paths(state: ServeState, configured: Iterable[str | None]) -> list[Path]:
+    """The distinct absolute ledger files *configured* names, dropping the disabled ones.
+
+    Deduplication is on the resolved path, not the configured string: two targets naming the same
+    file differently (`runs/usage.jsonl` vs `./runs/usage.jsonl`) must be read once, or every event
+    in it would count twice.
+    """
+    paths: dict[Path, None] = {}
+    for value in configured:
+        path = _usage_ledger.resolve_ledger_path(value)
+        if path is None:  # persistence disabled for this target
+            continue
+        if not path.is_absolute():
+            path = state.cwd / path
+        try:
+            key = path.resolve()
+        except OSError:  # a symlink loop or an unreadable parent — dedupe on the unresolved path
+            key = path
+        paths.setdefault(key, None)
+    return list(paths)
 
 
 def read_scenario(

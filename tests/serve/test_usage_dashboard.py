@@ -42,6 +42,12 @@ def _state_with_ledger(tmp_path: Path, ledger: Path) -> srv.ServeState:
     return srv.ServeState(runs_dir=tmp_path / "runs", config=cfg)
 
 
+def _state_with_config(tmp_path: Path, yaml_text: str) -> srv.ServeState:
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(yaml_text, encoding="utf-8")
+    return srv.ServeState(runs_dir=tmp_path / "runs", config=cfg, cwd=tmp_path)
+
+
 def test_usage_dashboard_reports_recorded_events(tmp_path: Path) -> None:
     ledger_path = tmp_path / "usage.jsonl"
     sink = JsonlLedger(ledger_path)
@@ -117,3 +123,83 @@ def test_usage_dashboard_empty_when_persistence_disabled(tmp_path: Path) -> None
 
     assert code == 200
     assert "No AI usage recorded yet" in html
+
+
+# --- The ledger is resolved from the target-merged `ai` block, like the writer's (issue #1717) ---
+
+
+# The minimum a target needs to validate — the platform axis is irrelevant to the ledger.
+_WEB_TARGET = "    backend: [web]\n    baseUrl: http://localhost:9\n"
+
+
+def _targets_config(*, defaults_ledger: str | None = None, **per_target: str) -> str:
+    """A config whose targets each override `ai.usageLedger`, optionally over a `defaults` one."""
+    head = f'defaults:\n  ai:\n    usageLedger: "{defaults_ledger}"\n' if defaults_ledger else ""
+    targets = "targets:\n" + "".join(
+        f"  {name}:\n{_WEB_TARGET}" + f'    ai:\n      usageLedger: "{value}"\n'
+        for name, value in per_target.items()
+    )
+    return head + targets
+
+
+def test_usage_dashboard_reads_a_targets_own_ledger(tmp_path: Path) -> None:
+    # The writer resolves `usageLedger` from the target-merged `ai` block, so a target override is
+    # where the events actually land — before the fix the dashboard read `defaults` and showed none.
+    JsonlLedger(tmp_path / "web.jsonl").append(_event(model="claude-opus-4", scenario="checkout"))
+    state = _state_with_config(tmp_path, _targets_config(web="web.jsonl"))
+
+    html, code = ops.usage_html(state)
+
+    assert code == 200
+    assert "claude-opus-4" in html and "checkout" in html
+
+
+def test_usage_dashboard_sums_every_targets_ledger(tmp_path: Path) -> None:
+    # The dashboard is process-wide, not target-scoped: a writer runs under some target, so the set
+    # of files it can append to is the union over the targets — all of them are read.
+    JsonlLedger(tmp_path / "web.jsonl").append(_event(scenario="checkout", cost=0.05))
+    JsonlLedger(tmp_path / "ios.jsonl").append(_event(scenario="login", cost=0.03))
+    state = _state_with_config(tmp_path, _targets_config(web="web.jsonl", ios="ios.jsonl"))
+
+    html, code = ops.usage_html(state)
+
+    assert code == 200
+    assert "checkout" in html and "login" in html
+    assert "$0.0800" in html
+
+
+def test_usage_dashboard_inherits_the_defaults_ledger_per_target(tmp_path: Path) -> None:
+    # Only one target overrides the path; the other inherits `defaults`, so both files are read and
+    # the shared one is not double-counted just because two targets resolve to it.
+    JsonlLedger(tmp_path / "shared.jsonl").append(_event(scenario="login", cost=0.05))
+    JsonlLedger(tmp_path / "web.jsonl").append(_event(scenario="checkout", cost=0.03))
+    cfg = _targets_config(defaults_ledger="shared.jsonl", web="web.jsonl")
+    cfg += f"  ios:\n{_WEB_TARGET}"  # no `ai:` of its own — it inherits the defaults ledger
+    state = _state_with_config(tmp_path, cfg)
+
+    html, code = ops.usage_html(state)
+
+    assert code == 200
+    assert "$0.0800" in html  # 0.05 + 0.03 — the shared ledger counted once, not twice
+
+
+def test_usage_dashboard_counts_one_ledger_once_across_targets(tmp_path: Path) -> None:
+    # Two targets naming the same file differently must not turn every event into two.
+    JsonlLedger(tmp_path / "usage.jsonl").append(_event(cost=0.05))
+    state = _state_with_config(tmp_path, _targets_config(web="usage.jsonl", ios="./usage.jsonl"))
+
+    html, code = ops.usage_html(state)
+
+    assert code == 200
+    assert "$0.0500" in html
+
+
+def test_usage_dashboard_skips_a_target_with_persistence_disabled(tmp_path: Path) -> None:
+    # A target that disables its ledger contributes no path; the other target's events still show.
+    JsonlLedger(tmp_path / "web.jsonl").append(_event(scenario="checkout"))
+    state = _state_with_config(tmp_path, _targets_config(web="web.jsonl", ios=""))
+
+    html, code = ops.usage_html(state)
+
+    assert code == 200
+    assert "checkout" in html
