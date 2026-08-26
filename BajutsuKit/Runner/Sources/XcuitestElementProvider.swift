@@ -31,7 +31,7 @@ final class XcuitestElementProvider: ElementProviding {
     // A second, on-demand handle for SpringBoard — which owns the out-of-process permission prompt
     // (BE-0316) — built lazily so every other query and tap stays scoped to the app under test.
     private lazy var springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-    // A third handle for the process that draws `SFSafariViewController` (BE-XXXX), built lazily for
+    // A third handle for the process that draws `SFSafariViewController` (BE-0396), built lazily for
     // the same reason: a run that never opens a browser never touches it.
     private lazy var safariViewService = XCUIApplication(bundleIdentifier: Self.safariViewServiceID)
 
@@ -67,7 +67,7 @@ final class XcuitestElementProvider: ElementProviding {
             return flattenSnapshot(root: SnapshotNodeAdapter(root))
         }
         // The two versions also name the browser's own chrome differently in one place, which
-        // `normalizeBrowserChrome` repairs so a scenario's selector travels between them (BE-XXXX).
+        // `normalizeBrowserChrome` repairs so a scenario's selector travels between them (BE-0396).
         let browser = SnapshotNodeAdapter(browserRoot)
         return appElements + normalizeBrowserChrome(
             flattenSnapshot(root: browser, in: .safariViewService), root: browser
@@ -105,7 +105,7 @@ final class XcuitestElementProvider: ElementProviding {
         if centerIsOnScreen(el) {
             guard el.isHittable else { return .notHittable }
         }
-        // A browser element is actuated at its own point rather than through the element (BE-XXXX).
+        // A browser element is actuated at its own point rather than through the element (BE-0396).
         // `XCUIElement.tap()` reaches the page content across the process boundary but is silently
         // dropped by the browser's own chrome — a resolved, hittable Close button simply does not
         // dismiss — whereas the coordinate tap the element's frame yields lands on both. The frame
@@ -312,7 +312,7 @@ final class XcuitestElementProvider: ElementProviding {
         return uniquelyIdentifiedElement(matching: backing.recorded, in: root)
     }
 
-    /// The application handle an element's position path is relative to (BE-XXXX). Both recovery
+    /// The application handle an element's position path is relative to (BE-0396). Both recovery
     /// steps below must query the same one the snapshot was read from: the app's own tree does not
     /// carry the browser's elements from iOS 26, so resolving a browser element against it would
     /// report a perfectly live control as stale.
@@ -390,7 +390,7 @@ final class XcuitestElementProvider: ElementProviding {
 // MARK: - Actuation surface
 
 /// The tap operations `XCUIElement` and `XCUICoordinate` already share, so `tap` picks its target
-/// once — the element itself, or the point its frame yields for a browser element (BE-XXXX) — and
+/// once — the element itself, or the point its frame yields for a browser element (BE-0396) — and
 /// keeps one copy of the taps / duration branch rather than one per target kind.
 private protocol Tappable {
     func tap()

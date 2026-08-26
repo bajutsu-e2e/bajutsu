@@ -134,6 +134,19 @@ than resolving through frame-center coordinates. Needs Xcode's `xcodebuild`.
   snapshot **descends into group containers**, so — unlike a coordinate backend's flat frame dump —
   it renders a **fully-expanded element tree** (`AXLabel`/`AXValue`/accessibility identifier
   mapped to `label`/`value`/`id`).
+- `query()` also reads a presented **`SFSafariViewController`** — the in-app browser an app opens for
+  a sign-in page or a terms document — from `com.apple.SafariViewService`, the process that draws it,
+  the same way BE-0316 reads a SpringBoard prompt
+  ([BE-0396](../roadmaps/BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md)).
+  The app's own snapshot reports that browser differently per iOS version — through iOS 18 it mirrors
+  the whole subtree, from iOS 26 it stops at the process boundary and reports nothing below it — so
+  the mirror is **pruned** and the service's own tree merged in its place, leaving one tree that is
+  complete on both and reports nothing twice. The **dismiss control** is the one chrome identity the
+  versions disagree on (iOS 26 identifies it `Close`, iOS 18 leaves it unidentified with the label
+  `Done`), so the runner reports iOS 26's `Close` on both and a scenario addresses it with one
+  selector. A browser element **actuates at its frame centre**: `XCUIElement.tap()` reaches the page
+  content across the process boundary but is silently dropped by the browser's own chrome. iOS 18's
+  disabled `ForwardButton` has no iOS 26 counterpart at all, so a scenario cannot depend on it.
 - `tap(sel)`: `_resolve` confirms uniqueness (**retries not-found, fails ambiguity fast**: a
   real-device tree can be transiently empty during transitions), then taps the element **directly by
   its accessibility identifier** — a semantic tap, no coordinates (BE-0289 re-resolves a stale
