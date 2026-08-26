@@ -23,8 +23,10 @@ from __future__ import annotations
 
 from bajutsu.assertions import request_label
 from bajutsu.codegen.common import (
+    AfterEmission,
     class_name,
     ident,
+    indent_lines,
     interrupts_setup_lines,
     is_plain_substring,
     manual_todo,
@@ -33,7 +35,7 @@ from bajutsu.codegen.common import (
     render_test_file,
 )
 from bajutsu.drivers import base
-from bajutsu.scenario import Assertion, Gone, Scenario, Step, WaitRequest
+from bajutsu.scenario import AfterRule, Assertion, Gone, Scenario, Step, WaitRequest
 
 # XCUITest drives the UI on-device and has no network-interception surface, so a network `request`
 # assertion / `until: { request }` wait has no faithful translation — it stays a TODO, but a labeled
@@ -462,6 +464,31 @@ class _XcuitestGen:
     # `app` is the instance property; XCTest makes a fresh test-case instance per method.
     def scenario_open(self, name: str) -> str:
         return f"  func {ident(name)}() {{"
+
+    def after_lines(self, after: list[AfterRule]) -> AfterEmission:
+        # `XCTAssert` records a failure rather than throwing, so a `do`/`catch` around the body would
+        # never see one. XCTest's own per-test teardown does: `addTeardownBlock` runs after the test
+        # method whatever its outcome, and `testRun?.hasSucceeded` there *is* the verdict. One block
+        # holds every rule, because registered blocks run last-in-first-out — two blocks would invert
+        # the declaration order the runtime phase preserves. `[self]` lets the emitted step lines call
+        # the class's own `el` / `byLabel` helpers unqualified, as they do in the test body.
+        if not after:
+            return AfterEmission()
+        branching = any(rule.on != "always" for rule in after)
+        block = ["addTeardownBlock { [self] in"]
+        if branching:
+            block.extend(indent_lines(["let bajutsuPassed = testRun?.hasSucceeded == true"]))
+        for rule in after:
+            lines = [line for step in rule.steps for line in _emit_step(step)]
+            if rule.on == "always":
+                block.extend(indent_lines(lines))
+            else:
+                cond = "bajutsuPassed" if rule.on == "success" else "!bajutsuPassed"
+                block.extend(indent_lines([f"if {cond} {{"]))
+                block.extend(indent_lines(lines, 2))
+                block.extend(indent_lines(["}"]))
+        block.append("}")
+        return AfterEmission(prologue=block)
 
     def setup_lines(self, scenario: Scenario) -> list[str]:
         # XCUITest has no network-interception surface, so there is no pre-launch observer to

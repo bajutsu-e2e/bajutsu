@@ -49,6 +49,9 @@ graph LR
   SC -->|mocks| MK["Mock"]
   SC -->|redact| RD["Redact"]
   SC -->|interrupts| IR["Interrupt"]
+  SC -->|before| ST
+  SC -->|after| AR["AfterRule"]
+  AR -->|steps| ST
 
   ST -->|"tap·doubleTap·longPress·<br/>type·swipe·pinch·rotate"| SEL["Selector"]
   ST -->|wait| WT["Wait"]
@@ -101,8 +104,10 @@ Scenario ::= {
   data?:           list(map(string,string)),# inline rows   ┐ XOR
   dataFile?:       string,                  # CSV path      ┘ (§6.3)
   preconditions?:  <Preconditions>,         # default {}
+  before?:         list(<Step>),            # default []  — setup phase run ahead of `steps`, reported apart from it (BE-0392); the target config's own precede these
   steps:           list(<Step>),            # required
   expect?:         list(<Assertion>),       # default []  — final checks
+  after?:          list(<AfterRule>),       # default []  — teardown rules run once the verdict exists (BE-0392); the target config's own follow these
   capturePolicy?:  list(<CaptureRule>),     # default []
   network?:        <Network>,
   mocks?:          list(<Mock>),            # default []
@@ -119,6 +124,10 @@ Component ::= { params?: list(string), steps: list(<Step>) }
 # surfaces, running `steps` to clear it (BE-0314). Free on a `wait`'s poll tick; every other
 # non-`wait` step pays one extra read.
 Interrupt ::= { condition: <Assertion>, steps: list(<Step>) }
+
+# One teardown rule (BE-0392): the outcome it answers, and the steps to run for that outcome. The
+# outcome is the scenario's own machine-checked verdict, never a model call.
+AfterRule ::= { on: "always" | "success" | "error", steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
 Preconditions ::= {
@@ -378,7 +387,7 @@ Omitted optional keys take these values (so a minimal scenario is just `name` + 
 
 | Field | Default |
 |---|---|
-| `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` | `[]` |
+| `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` / `before` / `after` | `[]` |
 | `Scenario.preconditions` | `{}` (i.e. `erase` unset — off unless the target config says otherwise — and `reinstall: clean`) |
 | `Scenario.systemAlertHandling` | unset (alert guard on; dismiss the prompt) |
 | `Scenario.iosTipKitHandling` | unset (off — a tip is sometimes the assertion; iOS only) |

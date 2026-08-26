@@ -426,6 +426,14 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   package data, materialized into a content-hash-keyed writable cache on first use — an explicit
   `testRunner`/`build` still overrides it, and `deviceType: device` still requires an explicit signed
   runner (BE-0292)
+- Reading `SFSafariViewController`'s element tree from the process that draws it, `com.apple.SafariViewService`
+  (BE-0396): on iOS 26 the app's own XCTest snapshot stops at that process boundary, so the XCUITest
+  backend merges in a second snapshot taken from the service's own handle whenever it is foregrounded,
+  pruning the app-side mirror of the same subtree to avoid reporting it twice. `tap`/`doubleTap`/
+  `press(forDuration:)` actuate a browser element at its live frame center rather than through
+  `XCUIElement`'s own call, which the browser's chrome silently drops, and the dismiss control's
+  identifier is normalized to `Close` on the iOS versions that leave it unidentified — so a scenario
+  drives the in-app browser through `/elements` like any other screen, with no protocol change
 - The **Playwright web backend** (`drivers/playwright.py`): a deterministic `run` against a browser
   on the Linux gate (`demos/web`), raised to the rich end of the capability model (BE-0054) — native
   `network` observation + stubbing (`page.route()`), `video` and `deviceLog`-equivalent console /
@@ -555,6 +563,14 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   `prev_after` (BE-0234) included. On a match, the runner runs the entry's `steps` and then resumes
   the interrupted step (a `wait` keeps its original deadline; an act step retries once), with a
   re-entrancy cap falling back to the step's ordinary outcome
+- DSL `before` / `after` (BE-0392): a scenario's setup and teardown as their own phases, tracked
+  apart from `steps` rather than spliced into it. `before` is an ordered step list that runs first
+  and aborts the scenario when it fails; `after` is a list of `{ on, steps }` rules keyed to the
+  run's own machine-checked verdict (`always` / `success` / `error`), reached on every path out of
+  `steps` — including the failing one a trailing cleanup step could never reach, and a cancelled one,
+  where the phase runs under a slice of the cancellation grace window instead of the latched cancel
+  source. Both fields also exist on the target config, merging config-then-scenario for `before` and
+  scenario-then-config for `after`; both phases report as their own blocks and reach every export
 
 #### DSL gestures, text entry, and device actions
 
@@ -686,7 +702,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   appearance to the collector's `/transitions` endpoint (UIKit and SwiftUI alike, since
   every `NavigationStack` push, sheet presentation, and tab switch is `UIHostingController`-backed),
   independent of the network-exchange store it shares a process with. The
-  post-launch readiness gate (`_await_ready`) consults it as a new rung above the BE-0218
+  post-launch readiness gate (`await_ready`) consults it as a new rung above the BE-0218
   namespace/count heuristics (an explicit `readyWhen` still outranks it, so a base-screen transition
   never preempts the modal `readyWhen` waits for), and the `settled` wait consults it as a
   quiescence-window debounce, in place of tree-diff polling; a target that doesn't link the observer
@@ -711,6 +727,17 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 - Read-only advisory analysis commands (no device, no AI, never gate CI — only a missing/unreadable input exits non-zero): a determinism/flakiness **audit** with static, repeat-and-diff, and longitudinal modes (`audit`, BE-0049); a scenario id-namespace **coverage** map (`coverage`, BE-0050); **test impact analysis** — the affected scenario steps a `git` diff selects, by inverting the coverage index (`impact`, BE-0321); the aggregate run-stats dashboard as CLI/HTML output (`stats`, BE-0102); cross-run **flakiness** ranking, from a runs directory or the `serve` database (`flakiness`, BE-0220); a finished run's **export** as a portable `.zip` (`export`, BE-0060); and **report** re-rendering (`report.html`/`junit.xml`/`ctrf.json`) from stored run data with no re-run (`report`, BE-0068)
 - The **config project hub** (`project add`/`ls`/`use`/`rm` and `run --project`, BE-0225): a named registry binding a project name to a config source, shared between the CLI and the `serve` web UI (DB-backed when configured, on-disk JSON otherwise); `serve` carries a header **project switcher** plus a top-level **Projects** page (BE-0275) that lists, adds, removes, and switches projects, rebinding the active config with no restart
 - **Database-backed org lifecycle and membership** (BE-0375): once a database is wired, an org's `members` / `githubOrgs` / `githubTeams` / `editorTeams` live in the `orgs` table rather than in the config file's `orgs:` block — seeded from that block once per org at startup and at every config rebind, then owned by the database — so `serve` gains four admin-only `/api/orgs…` endpoints and an **Orgs** page that create, re-member, and soft-delete a tenant without a redeploy; sign-in resolves against the table alone there, so an unreadable config no longer denies every user and an unreadable database answers with a 5xx naming the store; a target's identity becomes `(org, target)`, so two orgs may each claim one name. Target ownership itself stays in configuration (prime directive 3), and a database-less deployment keeps reading `orgs:` unchanged
+- **Choosing the active org on sign-in** (BE-0395): a login whose GitHub memberships match more than
+  one org is no longer pinned to whichever the ranking put first — sign-in records every org a login
+  may act as, with the role held in each, and the header offers them through a selector in place of
+  the plain org badge; an admin admitted by their admin Team is the exception, offered every live org
+  read fresh rather than a set stored at sign-in, so an org they create afterwards needs no re-login.
+  The active org stays the single column `ServeState.org_of` reads, so every org-scoped read and
+  write goes through the same seam as before; a `users.org_selected_at` marker
+  distinguishes an org the user picked from one merely resolved for them, so sign-in keeps a pick
+  that is still eligible — a user removed from the org they picked lands on the head of their new
+  eligible list — and goes on re-resolving the rest. A single-org deployment renders the badge
+  exactly as before
 - The **cross-project metrics comparison dashboard** (BE-0226): a `serve` **Metrics** tab that ranks the registered projects side by side — pass-rate, flaky-rate, and p50/p95 run duration, plus a per-project trend sparkline — reusing BE-0102's per-config aggregation computed once per project (`GET /api/metrics/projects`); read-only and advisory, like BE-0102
 - AI **crawl** (`crawl/`): autonomous breadth-first exploration of an app → a screen map (`screenmap.json`)
 - The `serve` local web UI (Tier 1): author (`record` / `crawl`), edit, and run scenarios; **open a `.zip` bundle** of config + scenarios + the built app binary as the active config the tabs run from (BE-0073) — the server also accepts those same three pieces as independent content-addressed artifacts and composes them into that tree at bind time (`POST /api/artifacts/{config,scenarios,binary}`, BE-0268), with a **Compose & load** panel in the UI — a drop zone per artifact, each hashed in the browser and uploaded only on a content miss, composed into a bound config on demand, reopening the panel pre-fills each zone from the active composition (with a per-zone **Clear**) so only the legs that changed need re-uploading, while `POST /api/compose` stays a pure function of its request body (`GET /api/compose/current`, BE-0325); browse reports and evidence; a per-row or bulk **delete** on the Replay or Crawl history list moves a run to a shared **Trash**, restorable within a retention window before permanent removal (BE-0239); a past crawl's screen map can also be **resumed live** — continuing its remaining frontier with the same budget and worker controls, or re-exploring one pruned branch with the same budget (BE-0181); a read-only aggregate **run-stats dashboard** across the run history (BE-0102), with every axis — date, backend, scenario, and step/assertion hotspot — now a deep link into the matching runs in the history list (BE-0241); a pre-run **readiness panel** (`doctor`: environment runnability + the current screen's convention score) in the Record and Replay forms (BE-0148); a read-only **scenario viewer** in the Replay form that shows the selected scenario's raw YAML and its runner-parsed structured steps before a run — the scenario-level mirror of the config viewer, non-gating and AI-free (BE-0273); an **upload scenario** control in the same form that adds a local `.yaml` file (via the existing `POST /api/scenario`) or a `.zip` of more than one (`POST /api/scenarios/upload`) straight into the bound config's target scope with no config rebind — reporting a same-named file as overwritten rather than replacing it silently, and parsing every zip entry before writing any of them, so one bad entry aborts the whole upload rather than leaving a partial batch behind (BE-0340); a **scenario secrets** panel that provisions the bound config's declared `${secrets.X}` names as write-once values from the browser, inherited by a spawned Record / Replay / Crawl run (BE-0274); a read-only **Server** settings tab reporting the running server's resolved configuration (deployment mode, bound config provenance, backends, run-storage/retention/concurrency settings) plus whether this build ships the bundled iOS XCUITest Simulator runner and what toolchain it was built against (`GET /api/server`, BE-0318); a **pluggable theme system** — drop-in visual tokens + swappable transitions, a header picker, and an in-UI editor with live preview and local-draft/server-upload persistence (BE-0191); a header **version badge** reporting which build of bajutsu is serving the page — the version string always, plus a short commit SHA / branch / dirty flag when serve runs from a Git checkout, or a build-time-embedded commit (`BAJUTSU_BUILD_COMMIT`, surfaced with `source: "build-arg"`) for a self-hosted Docker image shipping no `.git` (the checkout detail admin-gated, since a branch name can encode an in-progress topic; `GET /api/version` open, `GET /api/version/checkout` admin, read fresh per request via `git` plumbing with an environment-variable fallback — no LLM; BE-0272, BE-0277); approve visual baselines; live job streaming — from a browser (not for CI)

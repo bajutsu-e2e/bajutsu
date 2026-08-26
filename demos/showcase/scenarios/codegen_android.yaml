@@ -19,7 +19,11 @@
     - wait: { for: { id: search.field }, timeout: 10 }
     - wait: { for: { id: search.row.1 }, timeout: 5 }
     - type: { text: "Horse 5", into: { id: search.field } }
-    - wait: { for: { id: search.row.5 }, timeout: 5 }
+    # Only the disappearance of row 1 tells the filter apart from the unfiltered catalog. Row 5 is
+    # in that catalog too, so a `wait for: search.row.5` here would hold before the query was typed
+    # — a CI run measured one at 6ms, off a tree that had not caught up yet — and would leave the
+    # gone wait below as the step's only synchronization while reading as if there were two.
+    # Row 5 is still checked, by `exists` under `expect`, once the waits have finished.
     - wait: { until: { gone: { id: search.row.1 } }, timeout: 5 }
   expect:
     - value: { sel: { id: search.count }, equals: "1" }

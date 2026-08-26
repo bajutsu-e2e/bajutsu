@@ -14,9 +14,10 @@ This is a pure, deterministic transform: no AI, no device. The per-line builders
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
 from typing import Protocol
 
-from bajutsu.scenario import Assertion, Scenario, Step
+from bajutsu.scenario import AfterRule, Assertion, Scenario, Step
 from bajutsu.scenario.models.actions import bypass_hint
 
 
@@ -36,6 +37,10 @@ class CodegenError(ValueError):
 # comment in C-style, so the `// expect` divider is shared.
 _BODY_INDENT = "    "
 _EXPECT_COMMENT = "// expect"
+# The `before` phase (BE-0392) needs no per-target construct: emitting its steps inline at the top of
+# the test body is exactly its runtime meaning — they run first, and a failure aborts the rest. The
+# divider is what keeps them readable as a phase rather than as more of the scenario's own steps.
+_BEFORE_COMMENT = "// before (bajutsu lifecycle phase)"
 
 # Regex metacharacters. A `labelMatches` value is a Python `re.search` pattern; only a
 # metacharacter-free one is a plain substring a black-box target can map faithfully (NSPredicate
@@ -171,6 +176,34 @@ def interrupts_setup_lines(scenario: Scenario) -> list[str]:
     ]
 
 
+def indent_lines(lines: list[str], levels: int = 1) -> list[str]:
+    """Indent `lines` by `levels` body levels, leaving blank lines blank.
+
+    The teardown emitters build nested blocks (a `finally`, an outcome `if`) whose contents must sit
+    one level in from the wrapped body the walk already indents — same unit, so the two agree.
+    """
+    pad = _BODY_INDENT * levels
+    return [f"{pad}{line}" if line else "" for line in lines]
+
+
+@dataclass(frozen=True)
+class AfterEmission:
+    """How one target renders a scenario's `after` rules (BE-0392).
+
+    Two shapes cover the three targets. A target whose teardown is *registered* (XCTest's
+    `addTeardownBlock`) fills `prologue` alone; one that must *wrap* the body in a
+    `try`/`catch`/`finally` to observe the outcome (Playwright, UI Automator) fills all three, and
+    `body_indent` is how many extra levels the wrapped body sits at. A target that can express
+    neither must still say so out loud: it returns the labeled `// TODO` lines as its `prologue`,
+    the convention BE-0026 and BE-0314 already use, never a silent skip. All three targets today
+    express the phase natively, so no such fallback is written yet.
+    """
+
+    prologue: list[str] = field(default_factory=list)
+    epilogue: list[str] = field(default_factory=list)
+    body_indent: int = 0
+
+
 class CodeGenerator(Protocol):
     """The target-specific parts of a generated test file.
 
@@ -183,6 +216,13 @@ class CodeGenerator(Protocol):
 
     def scenario_open(self, name: str) -> str:
         """The line opening one scenario's test function/case (carries its own indent)."""
+
+    def after_lines(self, after: list[AfterRule]) -> AfterEmission:
+        """How this target renders the scenario's `after` rules (BE-0392).
+
+        Called even for an empty list, so a target that always needs a wrapper can say so; the
+        default `AfterEmission()` renders nothing and leaves the body where it was.
+        """
 
     def setup_lines(self, scenario: Scenario) -> list[str]:
         """Per-scenario setup emitted before the launch (un-indented); empty when none is needed.
@@ -238,18 +278,35 @@ def _scenario_lines(
     scenario: Scenario, app_launch_env: dict[str, str], gen: CodeGenerator
 ) -> list[str]:
     env = {**app_launch_env, **scenario.preconditions.launch_env}
+    for rule in scenario.after:
+        for hook_step in rule.steps:
+            _reject_runtime_only(hook_step)
+    after = gen.after_lines(scenario.after)
     body: list[str] = list(gen.setup_lines(scenario))
     body.extend(gen.launch_env_line(k, v) for k, v in env.items())
     body.append(gen.launch_line())
     body.append("")
+    # Everything the teardown must observe sits inside the wrap — `before` included, since a failing
+    # `before` step dispatches `after` as an `error` outcome at run time too.
+    body.extend(after.prologue)
+    inner: list[str] = []
+    if scenario.before:
+        inner.append(_BEFORE_COMMENT)
+        for step in scenario.before:
+            _reject_runtime_only(step)
+            inner.extend(gen.step_lines(step))
+        inner.append("")
     for step in scenario.steps:
         _reject_runtime_only(step)
-        body.extend(gen.step_lines(step))
+        inner.extend(gen.step_lines(step))
     if scenario.expect:
-        body.append("")
-        body.append(_EXPECT_COMMENT)
+        inner.append("")
+        inner.append(_EXPECT_COMMENT)
         for assertion in scenario.expect:
-            body.extend(gen.assertion_lines(assertion))
+            inner.extend(gen.assertion_lines(assertion))
+    pad = _BODY_INDENT * after.body_indent
+    body.extend(f"{pad}{line}" if line else "" for line in inner)
+    body.extend(after.epilogue)
     return [
         gen.scenario_open(scenario.name),
         *(f"{_BODY_INDENT}{line}" if line else "" for line in body),

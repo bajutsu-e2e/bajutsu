@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from pathlib import Path
 
 import pytest
 
@@ -52,7 +53,7 @@ def test_env_push_writes_payload_and_runs() -> None:
     def fake_run(args: list[str], _extra: object = None) -> str:
         calls.append(args)
         # The payload file is the last arg; capture its contents before cleanup.
-        with open(args[-1], encoding="utf-8") as f:
+        with Path(args[-1]).open(encoding="utf-8") as f:
             written.update(json.load(f))
         return ""
 

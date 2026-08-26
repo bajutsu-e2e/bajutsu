@@ -1005,7 +1005,7 @@ def test_screenshot_writes_capture_bytes(tmp_path: Path, monkeypatch: pytest.Mon
 
     def fake_capture(cmd: list[str], path: str) -> None:
         captured.append(cmd)
-        with open(path, "wb") as f:
+        with Path(path).open("wb") as f:
             f.write(b"PNG")
 
     monkeypatch.setattr(adb.Env, "_run_capture", staticmethod(fake_capture))

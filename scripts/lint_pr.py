@@ -38,6 +38,7 @@ import os
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 # A conventional, scoped commit subject. The scope charset (lower-case words, digits, and
 # ``,_-``) covers a multi-area scope like ``feat(run,record): …``. ``docs`` may omit the scope
@@ -194,7 +195,7 @@ def _commit_msg(path: str) -> int:
     try:
         # errors="replace": a non-UTF-8 message file degrades to a pass-through rather than raising
         # UnicodeDecodeError out of the hook (an ASCII subject still validates intact).
-        with open(path, encoding="utf-8", errors="replace") as f:
+        with Path(path).open(encoding="utf-8", errors="replace") as f:
             message = f.read()
     except OSError:
         return 0

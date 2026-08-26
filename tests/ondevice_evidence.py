@@ -93,7 +93,7 @@ def android_screenrecord(serial: str, path: Path) -> intervals.Interval:
     exactly what the case above does not do.
     """
     with contextlib.suppress(subprocess.CalledProcessError, OSError):
-        adb._real_run(adb.rm_cmd(serial, adb.VIDEO_DEVICE_PATH))
+        adb.real_run(adb.rm_cmd(serial, adb.VIDEO_DEVICE_PATH))
     return intervals.start_screenrecord(
         serial,
         path,
@@ -272,7 +272,7 @@ def capture(
             # In a `finally`, not plain trailing code: the `except` above re-raises when the attempt
             # was already failing, and that is exactly the path whose directory the hook is about to
             # *keep* — a human downloading it deserves the same missing/empty signal as every discard
-            # path gets. The only remaining signal that a capture actually recorded: `_spawn` discards
+            # path gets. The only remaining signal that a capture actually recorded: `spawn` discards
             # the child's stderr, so a `recordVideo`/`screenrecord` that refused to start or died
             # leaves no other trace, and `if-no-files-found: ignore` on the CI upload step would let
             # the silence pass for a clean run.

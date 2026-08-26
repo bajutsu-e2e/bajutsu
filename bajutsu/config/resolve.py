@@ -184,6 +184,8 @@ def resolve(config: Config, target: str) -> Effective:
             if a.ios_tip_kit_handling is not None
             else False,
             interrupts=list(a.interrupts),
+            before=list(a.before),
+            after=list(a.after),
         ),
     )
 

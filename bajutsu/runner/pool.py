@@ -98,7 +98,7 @@ def device_pool(
     secret_values: list[str] | None = None,
     provision: ProvisionProfile | None = None,
     available: Callable[[str], bool] = default_available,
-    env_run: simctl.RunFn = simctl._real_run,
+    env_run: simctl.RunFn = simctl.real_run,
     make_driver: Callable[..., base.Driver] = _make_driver,
     evidence_providers: Callable[
         [list[str], str, Callable[[str], bool]], tuple[dict[str, str], dict[str, str]]
@@ -625,7 +625,9 @@ def device_pool(
                 if defect is None:
                     defect = exc
                 else:
-                    _logger.error("tearing down the warm runner on %s failed", udid, exc_info=exc)
+                    _logger.exception(
+                        "tearing down the warm runner on %s failed", udid, exc_info=exc
+                    )
         warm.clear()
         # A collector socket failing to stop is the same risk as a device's teardown failing: it must
         # not stop the sweep, and it must not silently swallow a defect already held from above. Also
@@ -642,7 +644,7 @@ def device_pool(
                 if defect is None:
                     defect = exc
                 else:
-                    _logger.error("stopping the collector on %s failed", udid, exc_info=exc)
+                    _logger.exception("stopping the collector on %s failed", udid, exc_info=exc)
         # A lease's own end-of-lease wiring defect happened before any of this sweep — `release()`
         # stashed it instead of raising it, so it is this run's *first* defect even though it is
         # checked last here; anything this sweep found is a later one, logged rather than dropped.

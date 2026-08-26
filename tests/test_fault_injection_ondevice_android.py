@@ -137,7 +137,7 @@ def _wakefulness() -> str:
             otherwise make every wait time out reading "the display would not sleep", when the truth
             is that the lane can no longer see the display state.
     """
-    out = adb._real_run(adb._adb(SERIAL, "shell", "dumpsys", "power"))
+    out = adb.real_run(adb._adb(SERIAL, "shell", "dumpsys", "power"))
     for line in out.splitlines():
         if "mWakefulness=" in line:
             return line.split("mWakefulness=", 1)[1].split()[0]
@@ -163,7 +163,7 @@ def _await_wakefulness(want: str, timeout: float = _WAKEFULNESS_TIMEOUT, poll: f
 
 def _sleep_display() -> None:
     """Inject the fault: with the display down, the real read source serves an empty tree."""
-    adb._real_run(adb.keyevent_cmd(SERIAL, _KEYCODE_SLEEP))
+    adb.real_run(adb.keyevent_cmd(SERIAL, _KEYCODE_SLEEP))
     _await_wakefulness("Asleep")  # confirm the fault landed before any case reads the tree
 
 
@@ -178,7 +178,7 @@ def _wake() -> None:
     the read and the app. A caller that needs the state settled — the fixture around each case — waits
     for it itself.
     """
-    adb._real_run(
+    adb.real_run(
         adb._adb(SERIAL, "shell", f"input keyevent {_KEYCODE_WAKEUP}; wm dismiss-keyguard")
     )
 

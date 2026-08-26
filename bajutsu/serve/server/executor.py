@@ -33,7 +33,7 @@ class QueueExecutor:
     def __init__(self, queue: Queue) -> None:
         self._queue = queue
 
-    def dispatch(self, state: ServeState, job: Job) -> None:
+    def dispatch(self, state: ServeState, job: Job) -> None:  # noqa: ARG002  # RunExecutor shape
         # The worker reconstructs the job from this spec and runs `run_job`; `state` stays on the
         # control plane (its popen/simctl/cwd are worker-side concerns).
         self._queue.enqueue(execute_job_spec, job_spec(job))

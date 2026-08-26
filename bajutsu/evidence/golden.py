@@ -17,7 +17,7 @@ from bajutsu.drivers.base import (
     Element,
     Frame,
     Selector,
-    _contains,
+    contains,
     native_z_from_json,
     wait_until,
 )
@@ -94,7 +94,7 @@ def frame_is_sane(frame: Frame, screen: Frame) -> bool:
     _x, _y, w, h = frame
     if w <= 0 or h <= 0:
         return False
-    return _contains(screen, frame)
+    return contains(screen, frame)
 
 
 def compare_golden(

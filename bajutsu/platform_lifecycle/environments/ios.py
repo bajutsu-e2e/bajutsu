@@ -33,7 +33,7 @@ class _DeviceEnvironment:
         self,
         actuator: str,
         udid: str,
-        env_run: simctl.RunFn = simctl._real_run,
+        env_run: simctl.RunFn = simctl.real_run,
     ) -> None:
         self._actuator = actuator
         self._udid = udid
@@ -69,7 +69,7 @@ class _DeviceEnvironment:
     def hook_collector(self, driver: base.Driver, scenario: Scenario) -> Collector:
         raise NotImplementedError("device backends observe network via an external receiver")
 
-    def bridge_collector(self, port: int) -> Callable[[], None]:
+    def bridge_collector(self, port: int) -> Callable[[], None]:  # noqa: ARG002  # Environment shape
         return lambda: None  # the Simulator shares the Mac's loopback; nothing to bridge
 
     def relauncher(
@@ -85,7 +85,7 @@ class _DeviceEnvironment:
     def controller(self, eff: Effective) -> DeviceControl | None:
         return device_control(self._udid, require_ios(eff).bundle_id, self._run)
 
-    def teardown(self, driver: base.Driver, eff: Effective) -> None:
+    def teardown(self, driver: base.Driver, eff: Effective) -> None:  # noqa: ARG002  # Environment shape
         simctl.Env(self._udid, run=self._run).terminate(require_ios(eff).bundle_id)
 
     def has_reusable_resident(self) -> bool:
@@ -123,9 +123,7 @@ class _DeviceEnvironment:
         def reset(driver: base.Driver) -> None:
             e.terminate(bundle_id)
             e.launch(bundle_id, [*eff.launch_args, *simctl.locale_args(eff.locale)], eff.launch_env)
-            readiness._await_ready(
-                driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces
-            )
+            readiness.await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
 
         return reset
 

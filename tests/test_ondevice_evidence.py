@@ -598,7 +598,7 @@ def test_android_screenrecord_forwards_this_modules_pinned_bounds(
         return _SENTINEL
 
     monkeypatch.setattr(intervals, "start_screenrecord", fake_start_screenrecord)
-    monkeypatch.setattr(adb, "_real_run", lambda cmd: "")
+    monkeypatch.setattr(adb, "real_run", lambda cmd: "")
     result = ondevice_evidence.android_screenrecord("serial-1", Path("video.mp4"))
     assert result is _SENTINEL
     assert calls == [
@@ -620,8 +620,8 @@ def test_android_screenrecord_clears_the_stale_device_side_file_first(
     # unconditionally on stop — both Android suites reuse it once per test, so a prior test's clip
     # left behind by a swallowed pull failure could otherwise be pulled in as this test's own
     # evidence. Clearing it first, before every spawn, is what closes that.
-    run_calls = []
-    monkeypatch.setattr(adb, "_real_run", lambda cmd: run_calls.append(cmd))
+    run_calls: list[list[str]] = []
+    monkeypatch.setattr(adb, "real_run", run_calls.append)
     monkeypatch.setattr(intervals, "start_screenrecord", lambda *a, **kw: _SENTINEL)
     result = ondevice_evidence.android_screenrecord("serial-1", Path("video.mp4"))
     assert result is _SENTINEL
@@ -637,7 +637,7 @@ def test_android_screenrecord_tolerates_a_failed_device_side_clear(
     def _raises(cmd):
         raise subprocess.CalledProcessError(1, cmd)
 
-    monkeypatch.setattr(adb, "_real_run", _raises)
+    monkeypatch.setattr(adb, "real_run", _raises)
     monkeypatch.setattr(intervals, "start_screenrecord", lambda *a, **kw: _SENTINEL)
     result = ondevice_evidence.android_screenrecord("serial-1", Path("video.mp4"))
     assert result is _SENTINEL

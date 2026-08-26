@@ -327,7 +327,6 @@ def make_app(state: ServeState) -> FastAPI:
             if receiver.received < length:
                 receiver.cleanup()
                 return {"error": "upload incomplete (body ended early)"}, 400
-            return receiver
         except UploadTooLarge:
             result = {"error": f"upload too large (max {effective_cap} bytes)"}, 413
         except ClientDisconnect:
@@ -338,6 +337,8 @@ def make_app(state: ServeState) -> FastAPI:
             # Mirrors the stdlib handler's `_handle_upload`, which returns the same 400 on a
             # write failure (e.g. disk full) instead of letting it surface as a 500.
             result = {"error": "upload interrupted"}, 400
+        else:
+            return receiver
         receiver.cleanup()
         return result
 

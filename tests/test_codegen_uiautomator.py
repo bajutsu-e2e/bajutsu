@@ -70,7 +70,7 @@ def test_launch_checks_its_window_wait_and_re_issues_the_intent() -> None:
     assert "private const val LAUNCH_TIMEOUT_MS" in code
     assert "private const val LAUNCH_ATTEMPTS" in code
     assert "for (attempt in 1..LAUNCH_ATTEMPTS) {" in code
-    assert "if (device.wait(Until.hasObject(by), LAUNCH_TIMEOUT_MS)) {" in code
+    assert "if (waitPresent(by, LAUNCH_TIMEOUT_MS)) {" in code
     assert (
         '"launch: no $PACKAGE window in the accessibility tree after $LAUNCH_ATTEMPTS attempt(s) "'
     ) in code
@@ -82,7 +82,7 @@ def test_launch_waits_for_the_window_then_for_it_to_settle() -> None:
     # It sits on the success path: running it after a wait that found no window settles nothing.
     code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
     lines = [line.strip() for line in code.splitlines()]
-    window_idx = lines.index("if (device.wait(Until.hasObject(by), LAUNCH_TIMEOUT_MS)) {")
+    window_idx = lines.index("if (waitPresent(by, LAUNCH_TIMEOUT_MS)) {")
     idle_idx = lines.index("device.waitForIdle(LAUNCH_TIMEOUT_MS)")
     assert window_idx < idle_idx < lines.index("return", idle_idx)
 
@@ -148,23 +148,27 @@ def test_the_window_list_is_read_through_the_flags_uidevice_itself_uses() -> Non
     # UiDevice depends on, turning a read into the connection churn this file exists to diagnose.
     # One accessor for both, so they cannot drift onto different flags.
     code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
-    accessor = _fn_body(code, "accessibilityWindows", "windowSummary")
+    accessor = _fn_body(code, "uiAutomation", "accessibilityWindows")
     assert "Configurator.getInstance().uiAutomationFlags" in accessor
     # getUiAutomation(flags) only exists from API 24 (N); UiDevice itself branches on the same
     # check and falls back to the flag-less read below it on older devices, so this accessor has
     # to mirror that branch rather than raising the API floor a UI Automator target can run on.
     assert "Build.VERSION.SDK_INT >= Build.VERSION_CODES.N" in accessor
-    assert "InstrumentationRegistry.getInstrumentation().uiAutomation.windows" in accessor
+    assert "InstrumentationRegistry.getInstrumentation().uiAutomation" in accessor
+    # …and the window list is one delegation away from it, not a second copy of the branch.
+    assert "private fun accessibilityWindows() = uiAutomation().windows" in code
     assert "accessibilityWindows()" in _fn_body(code, "windowSummary", "matchableIds")
     assert "accessibilityWindows()" in _fn_body(code, "reportsWindows", "ensureWindowTracking")
     # Neither of the next two is visible to the fast gate, which never compiles the output: the
     # flag-less overload must not reappear anywhere outside this accessor's own API-level
-    # fallback, and both imports have to be emitted or the generated Kotlin will not build.
+    # fallback (the flagged branch splits `getInstrumentation()` from `.getUiAutomation(flags)`
+    # across two lines, so only the fallback carries them adjacent), and both imports have to be
+    # emitted or the generated Kotlin will not build.
     # Comment lines are stripped so rewording the accessor's own rationale — which names the
     # flag-less overload — cannot redden the count on its own.
     emitted = "\n".join(ln for ln in code.splitlines() if not ln.lstrip().startswith("//"))
-    assert emitted.count(".uiAutomation.") == 1
-    assert ".uiAutomation." in "\n".join(
+    assert emitted.count("getInstrumentation().uiAutomation") == 1
+    assert "getInstrumentation().uiAutomation" in "\n".join(
         ln for ln in accessor.splitlines() if not ln.lstrip().startswith("//")
     )
     assert "import android.os.Build" in code
@@ -198,7 +202,7 @@ def test_a_wedged_window_list_is_kicked_rather_than_waited_out() -> None:
     # connection is not established, which is the fault being reported.
     assert "runCatching {" in _fn_body(code, "reportsWindows", "ensureWindowTracking")
 
-    accessor = _fn_body(code, "accessibilityWindows", "windowSummary")
+    accessor = _fn_body(code, "uiAutomation", "accessibilityWindows")
     # windowSummary() and reportsWindows() must read through the same flags UiDevice itself uses
     # (Configurator), not the flag-less Instrumentation.getUiAutomation() overload — which, on any
     # target that sets non-default flags, tears down and reconnects the very UiAutomation instance
@@ -208,7 +212,9 @@ def test_a_wedged_window_list_is_kicked_rather_than_waited_out() -> None:
     # check and falls back to the flag-less read below it on older devices, so this accessor has
     # to mirror that branch rather than raising the API floor a UI Automator target can run on.
     assert "Build.VERSION.SDK_INT >= Build.VERSION_CODES.N" in accessor
-    assert "InstrumentationRegistry.getInstrumentation().uiAutomation.windows" in accessor
+    assert "InstrumentationRegistry.getInstrumentation().uiAutomation" in accessor
+    # …and the window list is one delegation away from it, not a second copy of the branch.
+    assert "private fun accessibilityWindows() = uiAutomation().windows" in code
     assert "import android.os.Build" in code
     assert "accessibilityWindows()" in _fn_body(code, "windowSummary", "matchableIds")
     assert "accessibilityWindows()" in _fn_body(code, "reportsWindows", "ensureWindowTracking")
@@ -222,9 +228,11 @@ def test_a_wedged_window_list_is_kicked_rather_than_waited_out() -> None:
     # Neither of the next two is visible to the fast gate, which never compiles the output: the
     # flag-less overload must not reappear anywhere outside this accessor's own API-level
     # fallback, and the accessor's own import has to be emitted or the generated Kotlin will not
-    # build. (".uiAutomation." does not match ".uiAutomationFlags", so the flagged branch passes.)
-    assert emitted.count(".uiAutomation.") == 1
-    assert ".uiAutomation." in stripped_accessor
+    # build. (The flagged branch reads `getInstrumentation()` and `.getUiAutomation(flags)` on two
+    # lines, so only the fallback carries them adjacent — and `Configurator.getInstance()
+    # .uiAutomationFlags` is not preceded by `getInstrumentation()` either.)
+    assert emitted.count("getInstrumentation().uiAutomation") == 1
+    assert "getInstrumentation().uiAutomation" in stripped_accessor
     assert "import androidx.test.uiautomator.Configurator" in code
 
     kick = _fn_body(code, "kickWindowTracking", "reportsWindows")
@@ -409,8 +417,126 @@ def test_wait_for_and_until_gone() -> None:
         "    - wait: { for: { id: home.title }, timeout: 5 }\n"
         "    - wait: { until: { gone: { id: spinner } }, timeout: 3 }\n"
     )
-    assert 'assertTrue(device.wait(Until.hasObject(byId("home.title")), 5000L))' in code
-    assert 'assertTrue(device.wait(Until.gone(byId("spinner")), 3000L))' in code
+    assert 'awaitPresent(byId("home.title"), 5000L)' in code
+    assert 'awaitGone(byId("spinner"), 3000L)' in code
+
+
+def test_a_pinned_accessibility_read_cannot_spend_a_whole_wait() -> None:
+    # Selector reads resolve through the platform's per-connection AccessibilityNodeInfo cache,
+    # which only an accessibility event invalidates — so a dropped event does not delay a read, it
+    # pins it, and every poll inside one device.wait() re-reads the same stale tree. A CI run
+    # (uiautomator (codegen), 2026-08-25) failed exactly that way: `Until.gone` polled a filtered-
+    # out row for its whole 5s while the screenshot and the hierarchy dump taken 100ms later both
+    # showed the row already gone. Raising the timeout cannot help a read that will not change, so
+    # the budget is sliced and the cache dropped between slices instead.
+    code = _gen("- name: x\n  steps:\n    - wait: { for: { id: a }, timeout: 5 }\n")
+    assert "private const val CACHE_REREAD_SLICE_MS" in code
+    body = _fn_body(code, "waitSliced", "waitPresent")
+    # The drop is reached from inside the loop, after a slice that found nothing — a loop that only
+    # re-polled the same pinned cache would satisfy a mere "is the helper defined" assertion while
+    # recovering nothing, which is precisely what device.wait() already did.
+    assert (
+        body.index("while (true) {")
+        < body.index("poll(remaining.coerceIn(0L, CACHE_REREAD_SLICE_MS))")
+        < body.index("clearAccessibilityCache()")
+    )
+    # The slices share the caller's one timeout rather than extending it: a deadline taken once up
+    # front, and each slice capped by what is left of it. A per-slice timeout with no deadline would
+    # silently multiply every wait in the file by however many slices it took.
+    assert "val deadline = SystemClock.uptimeMillis() + timeoutMs" in body
+    assert "val remaining = deadline - SystemClock.uptimeMillis()" in body
+    assert "import android.os.SystemClock" in code
+
+
+def test_a_zero_timeout_still_reads_the_tree_once() -> None:
+    # `device.wait` evaluates its condition once before it consults the clock, so `device.wait(c, 0)`
+    # can still pass — and the pre-34 branch, which calls it with the whole budget, keeps that floor.
+    # Testing the deadline before the first poll would drop it on API 34 and up, failing such a step
+    # against a screen it never looked at while the same scenario passed on an older device.
+    code = _gen("- name: x\n  steps:\n    - wait: { for: { id: a }, timeout: 0 }\n")
+    # Reachable, not hypothetical: `Wait.timeout` is an unconstrained float and `ms()` truncates, so
+    # `timeout: 0` — and anything under a millisecond — emits a 0ms budget.
+    assert 'awaitPresent(byId("a"), 0L)' in code
+    body = _fn_body(code, "waitSliced", "waitPresent")
+    lines = [ln.strip() for ln in body.splitlines() if not ln.lstrip().startswith("//")]
+    poll_idx = lines.index("if (poll(remaining.coerceIn(0L, CACHE_REREAD_SLICE_MS))) return true")
+    assert poll_idx < lines.index("if (SystemClock.uptimeMillis() >= deadline) return false")
+    # The expiry test re-reads the clock rather than reusing `remaining`, so a slice that spent the
+    # rest of the budget ends the wait instead of paying one more cache drop and an empty poll.
+    assert "if (remaining <= 0L) return false" not in body
+
+
+def test_the_cache_drop_is_confined_to_the_api_that_offers_one() -> None:
+    # androidx.test.uiautomator 2.3.0 reaches AccessibilityInteractionClient#clearCache() by
+    # reflection and gives up past API 32 ("clearCache() reflection is not available on API >= 33");
+    # UiAutomation.clearCache(), the supported replacement, arrived only in API 34. Below that there
+    # is no lever, so the whole budget is spent in one wait — slicing would add re-reads that change
+    # nothing and cost a cache drop each.
+    code = _gen("- name: x\n  steps:\n    - wait: { for: { id: a }, timeout: 5 }\n")
+    drop = _fn_body(code, "clearAccessibilityCache", "waitSliced")
+    assert "if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return" in drop
+    # Through the one accessor, so this cannot drift onto different flags than the reads it rescues.
+    assert "uiAutomation().clearCache()" in drop
+    # Never throws: clearCache() raises when the connection is not established, which is the very
+    # fault this runs to recover — letting it out would replace the wait's own verdict with it.
+    assert "catch (e: RuntimeException)" in drop
+    sliced = _fn_body(code, "waitSliced", "waitPresent")
+    assert (
+        sliced.index("if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {")
+        < sliced.index("return poll(timeoutMs)")
+        < sliced.index("val deadline")
+    )
+
+
+def test_every_condition_wait_goes_through_the_sliced_helpers() -> None:
+    # The slicing is worth nothing if any call site keeps its own bare device.wait(): that one would
+    # still be pinnable for its whole timeout. Both remaining calls live in the two helpers, and
+    # every wait in the file — the launch window wait, act()'s, and each generated step's — reaches
+    # them. Not visible to the fast gate, which never compiles the output.
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - tap: { id: a }\n"
+        "    - wait: { for: { id: b }, timeout: 5 }\n"
+        "    - wait: { until: { gone: { id: c } }, timeout: 3 }\n"
+    )
+    emitted = "\n".join(ln for ln in code.splitlines() if not ln.lstrip().startswith("//"))
+    assert emitted.count("device.wait(") == 2
+    assert "waitSliced(timeoutMs) { device.wait(Until.hasObject(by), it) }" in emitted
+    assert "waitSliced(timeoutMs) { device.wait(Until.gone(by), it) }" in emitted
+    assert "if (waitPresent(by, LAUNCH_TIMEOUT_MS)) {" in emitted
+    assert "if (!waitPresent(by, ACT_TIMEOUT_MS)) {" in emitted
+    # …and each throwing wrapper reaches the helper that matches its own condition. Pointing
+    # awaitGone at waitPresent would keep the count at two, keep both failure messages intact, and
+    # satisfy every assertion above — while making the gone wait succeed on its first poll against
+    # the very element it wants gone. In codegen_android.yaml that wait is the only synchronization
+    # after `type`, so the result would be an intermittently red `uiautomator (codegen)` job: the
+    # exact failure this file's slicing exists to remove, and one the fast gate is the only cheap
+    # place to catch, since `make check` never compiles the Kotlin.
+    assert "if (waitPresent(by, timeoutMs)) return" in _fn_body(code, "awaitPresent", "awaitGone")
+    assert "if (waitGone(by, timeoutMs)) return" in emitted
+
+
+def test_a_wait_step_fails_naming_what_it_searched_for() -> None:
+    # `assertTrue(device.wait(...))` was emitted directly, and the CI run above showed the cost: a
+    # bare `java.lang.AssertionError` and a line number, with no selector, no timeout, and nothing
+    # separating an element that never appeared from a read that never caught up. Name all three,
+    # and attach the same window summary act() does.
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - wait: { for: { id: b }, timeout: 5 }\n"
+        "    - wait: { until: { gone: { id: c } }, timeout: 3 }\n"
+    )
+    emitted = "\n".join(ln for ln in code.splitlines() if not ln.lstrip().startswith("//"))
+    assert "assertTrue(device.wait(" not in emitted
+    present = _fn_body(code, "awaitPresent", "awaitGone")
+    assert (
+        '"wait: no element matched $by within ${timeoutMs}ms; windows:\\n" + windowSummary()'
+        in (present)
+    )
+    # The `gone` message must not read as the `for` one: the two failures point at opposite states,
+    # and one shared wording would send an investigator looking for a missing element that is in
+    # fact still there.
+    assert '"wait: an element still matched $by after ${timeoutMs}ms; windows:\\n"' in emitted
 
 
 def test_swipe_direction_and_from_to_todo() -> None:

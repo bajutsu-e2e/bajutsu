@@ -60,7 +60,7 @@ def load_cases(path: Path = CASES_YAML) -> list[Case]:
     """Parse `cases.yaml` into `Case` objects."""
     data = _yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
-        raise ValueError(f"{path} must be a list of cases")
+        raise ValueError(f"{path} must be a list of cases")  # noqa: TRY004  # invalid external payload, not a caller type error
     cases: list[Case] = []
     for raw in data:
         expected = [_op_of(e) for e in raw["expect"]]

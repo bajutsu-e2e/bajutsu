@@ -87,14 +87,30 @@ def _walk_steps(steps: list[Step], prefix: str = "") -> Iterator[tuple[str, Step
             yield from _walk_steps(step.for_each.steps, f"{path} > forEach")
 
 
+def _walk_scenario(sc: Scenario) -> Iterator[tuple[str, Step]]:
+    """Every step the run will execute, across all three phases (BE-0392).
+
+    The lifecycle phases take the full step grammar, so a construct in one needs the same capability
+    gate as one in `steps`. Missed here, an unsupported teardown step passes the preflight, a device
+    is leased, the whole scenario is driven, and only then does the step fail — and a failing `after`
+    rule on an otherwise-passing run *becomes* that run's failure. Late failure after full device
+    work is exactly what this module exists to prevent.
+    """
+    yield from _walk_steps(sc.before, "before ")
+    yield from _walk_steps(sc.steps)
+    for i, rule in enumerate(sc.after):
+        yield from _walk_steps(rule.steps, f"after[{i}] ")
+
+
 def _assertions_with_path(scenario: Scenario) -> Iterator[tuple[str, Assertion]]:
     """Every assertion with its path across the whole step tree.
 
-    Covers the scenario `expect`, each step's `assert`, and every `if` condition.
+    Covers the scenario `expect`, each step's `assert`, and every `if` condition — in the lifecycle
+    phases as well as in `steps`.
     """
     for i, a in enumerate(scenario.expect or []):
         yield f"expect[{i}]", a
-    for step_path, step in _walk_steps(scenario.steps):
+    for step_path, step in _walk_scenario(scenario):
         for j, a in enumerate(step.assert_ or []):
             yield f"{step_path} > assert[{j}]", a
         if step.if_ is not None:
@@ -105,14 +121,14 @@ def _multi_touch_locations(sc: Scenario) -> list[str]:
     """The paths where a two-finger gesture (pinch/rotate) appears."""
     return [
         path
-        for path, step in _walk_steps(sc.steps)
+        for path, step in _walk_scenario(sc)
         if step.pinch is not None or step.rotate is not None
     ]
 
 
 def _select_option_locations(sc: Scenario) -> list[str]:
     """The paths where a selectOption step appears."""
-    return [path for path, step in _walk_steps(sc.steps) if step.select_option is not None]
+    return [path for path, step in _walk_scenario(sc) if step.select_option is not None]
 
 
 def _text_selection_locations(sc: Scenario) -> list[str]:
@@ -123,7 +139,7 @@ def _text_selection_locations(sc: Scenario) -> list[str]:
     """
     return [
         path
-        for path, step in _walk_steps(sc.steps)
+        for path, step in _walk_scenario(sc)
         if step.select is not None or step.copy_ is not None
     ]
 
@@ -168,7 +184,7 @@ _DEVICE_CONTROL_OPS: tuple[tuple[str, str, Callable[[Step], bool]], ...] = (
 
 def _step_locations(matches: Callable[[Step], bool]) -> Callable[[Scenario], list[str]]:
     """The paths of every step (recursing into `if` / `forEach`) that `matches`."""
-    return lambda sc: [path for path, step in _walk_steps(sc.steps) if matches(step)]
+    return lambda sc: [path for path, step in _walk_scenario(sc) if matches(step)]
 
 
 # Capabilities every run needs regardless of which constructs it uses (the baseline read path).

@@ -167,7 +167,7 @@ def materialize(
             # `Versions/Current`-style symlink; copying it as a symlink preserves that structure
             # instead of dereferencing (and potentially duplicating or failing on) its target.
             shutil.copytree(source, tmp, dirs_exist_ok=True, symlinks=True)
-            os.replace(tmp, dest)
+            tmp.replace(dest)
         except Exception:
             shutil.rmtree(tmp, ignore_errors=True)
             # A concurrent winner may have already materialized this digest onto *dest* (the

@@ -131,11 +131,11 @@ def config_from_source(source: object) -> str:
             has no local checkout to point `--config` at.
     """
     if not isinstance(source, dict):
-        raise ValueError(f"config source is not a record: {source!r}")
+        raise ValueError(f"config source is not a record: {source!r}")  # noqa: TRY004  # invalid external payload, not a caller type error
     kind = source.get("kind")
     locator = source.get("locator")
     if not isinstance(locator, dict):
-        raise ValueError(f"config source has no locator: {source!r}")
+        raise ValueError(f"config source has no locator: {source!r}")  # noqa: TRY004  # invalid external payload, not a caller type error
     if kind == "file":
         path = locator.get("path")
         if path is None:

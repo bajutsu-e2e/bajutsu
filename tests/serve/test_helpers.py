@@ -87,7 +87,7 @@ def test_load_config_cached_keys_on_the_resolved_path(tmp_path: Path) -> None:
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text("targets:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
     # A relative path and the absolute path to the same file share one cache entry (same object).
-    cwd = os.getcwd()
+    cwd = Path.cwd()
     try:
         os.chdir(tmp_path)
         first = helpers._load_config_cached(Path("bajutsu.config.yaml"))

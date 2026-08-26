@@ -61,7 +61,7 @@ def test_showcase_config_resolves() -> None:
     assert set(eff.id_namespaces) == NAMESPACES
 
     # BE-0231: the smoke lane's target gates readiness on the very element its first `wait` needs
-    # (the first Stable row), so `_await_ready` can't return early on some other in-namespace node
+    # (the first Stable row), so `await_ready` can't return early on some other in-namespace node
     # and let the first scenario step race a not-yet-rendered row on a cold-boot CI Simulator. The
     # candidate list mirrors the scenario selector (BE-0221): dotted iOS form first, underscore form
     # second.

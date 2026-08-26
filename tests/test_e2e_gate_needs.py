@@ -274,6 +274,7 @@ def test_the_verdict_script_reddens_the_gate_for_every_dependency() -> None:
                     env=os.environ | env,
                     capture_output=True,
                     text=True,
+                    check=False,
                 )
                 assert (completed.returncode != 0) is must_redden, (
                     f"{lane}: with {var}={result} the gate exited {completed.returncode}, "

@@ -150,9 +150,7 @@ def _actions(
 ) -> Plan:
     """Run compute_actions with in-memory head/base reads and the PR's current topic labels."""
     base = base or {}
-    plan = labels.compute_actions(
-        entries, lambda p: head.get(p), lambda p: base.get(p), current or set()
-    )
+    plan = labels.compute_actions(entries, head.get, base.get, current or set())
     assert isinstance(plan, labels.Plan)
     return cast("Plan", plan)
 

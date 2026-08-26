@@ -38,14 +38,14 @@ def _do_push(_d: object, step: Step, _r: object, control: DeviceControl | None, 
 
 @_handler("clear_keychain")
 def _do_clear_keychain(
-    _d: object, step: Step, _r: object, control: DeviceControl | None, _b: object
+    _d: object, _step: Step, _r: object, control: DeviceControl | None, _b: object
 ) -> None:
     _need_control(control, "clearKeychain").clear_keychain()
 
 
 @_handler("clear_clipboard")
 def _do_clear_clipboard(
-    _d: object, step: Step, _r: object, control: DeviceControl | None, _b: object
+    _d: object, _step: Step, _r: object, control: DeviceControl | None, _b: object
 ) -> None:
     _need_control(control, "clearClipboard").clear_clipboard()
 
@@ -60,14 +60,14 @@ def _do_set_clipboard(
 
 @_handler("background")
 def _do_background(
-    _d: object, step: Step, _r: object, control: DeviceControl | None, _b: object
+    _d: object, _step: Step, _r: object, control: DeviceControl | None, _b: object
 ) -> None:
     _need_control(control, "background").home()
 
 
 @_handler("foreground")
 def _do_foreground(
-    _d: object, step: Step, _r: object, control: DeviceControl | None, _b: object
+    _d: object, _step: Step, _r: object, control: DeviceControl | None, _b: object
 ) -> None:
     _need_control(control, "foreground").foreground()
 
@@ -94,6 +94,6 @@ def _do_override_status_bar(
 
 @_handler("clear_status_bar")
 def _do_clear_status_bar(
-    _d: object, step: Step, _r: object, control: DeviceControl | None, _b: object
+    _d: object, _step: Step, _r: object, control: DeviceControl | None, _b: object
 ) -> None:
     _need_control(control, "clearStatusBar").clear_status_bar()

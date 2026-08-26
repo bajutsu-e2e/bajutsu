@@ -31,6 +31,30 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
   capped at two attempts per wait — so a blocked wait can recover before its own timeout elapses,
   independent of the end-of-step retry.
 
+### The lifecycle phases around the step loop
+
+A scenario's `before` / `after` fields ([scenarios](scenarios.md#before--after-setup-and-teardown-phases))
+wrap the step loop in two more phases, both driven by the same step runner, so a hook's steps are
+exactly as capable as any other step and share the run's `vars.*` bindings:
+
+1. **`before` runs first.** A failure there sets `failure = "before: …"` and skips `steps` and
+   `expect` entirely — `before` is a precondition for the scenario, not a step within it.
+2. **`steps` and `expect` run unchanged**, computing the verdict exactly as they did before.
+3. **`after` runs once a verdict exists**, on every path out of `steps` — the passing one, the
+   failing one, and the cancelled one. Each rule whose `on` matches `always` or that verdict runs, in
+   declaration order. A rule's own failure becomes the run's failure when the run was passing, and is
+   appended behind the existing failure otherwise.
+
+A cancelled run cannot bound the `after` phase with the cancel source: that source is a latched
+`threading.Event.is_set`, so its first read inside the phase would raise `RunCancelled` again and no
+cleanup step would run at all. The phase runs under its own deadline instead — a tenth of
+`grace_seconds()` — abandoning the remaining rules once the deadline passes, so cleanup gets a
+bounded chance to run without pushing the shutdown tail past the window `serve` waits before an
+unconditional kill.
+
+Each phase numbers its steps from zero and records them in its own `RunResult` list, so the report
+shows Before and After as blocks distinct from the scenario's numbered steps.
+
 ### The flow of one step
 
 For each step `i` (in `orchestrator/loop.py`):
@@ -132,6 +156,9 @@ class RunResult:
     steps: list[StepOutcome]
     expect_results: list[AssertionResult]  # evaluation of the final expect
     failure: str | None          # e.g. "step 3 (tap): no match: {...}"
+    before_outcomes: list[StepOutcome]  # the `before` phase's own steps
+    after_outcomes: list[StepOutcome]   # the `after` phase's own steps
+    after_verdict: str           # "success" / "error" — which `after` rules ran; "" when none
 ```
 
 `expect` is evaluated only after all steps pass. If `alert_guard` is present, expect is also
@@ -152,10 +179,10 @@ erase (if pre.erase: shutdown → erase) → boot → bootstatus -b (wait out th
   → terminate(bundle) (for a clean launch state)
   → launch(bundle, [launchArgs, *locale_args(locale)], {**config.launchEnv, **pre.launchEnv})
   → openurl(deeplink) (if any) → make_driver(actuator, udid)
-  → _await_ready (poll until query() returns 2+ elements, up to 10s)
+  → await_ready (poll until query() returns 2+ elements, up to 10s)
 ```
 
-> `_await_ready` polls for the strongest readiness signal available, in order: an explicit `readyWhen`
+> `await_ready` polls for the strongest readiness signal available, in order: an explicit `readyWhen`
 > selector, then an app-reported screen-transition event ([BE-0310](../roadmaps/BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md), opt-in via `BajutsuKit`), then any
 > element whose id belongs to a declared `idNamespaces`, falling back to "the app has rendered a UI
 > (more than the root element)" — up to 10s ([configuration](configuration.md) documents each rung in

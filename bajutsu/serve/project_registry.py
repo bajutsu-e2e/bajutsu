@@ -219,9 +219,9 @@ class LocalProjectRegistry:
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(json.dumps(self._data, indent=2))
-            os.replace(tmp_name, self._path)
+            Path(tmp_name).replace(self._path)
         except OSError:
-            os.unlink(tmp_name)
+            Path(tmp_name).unlink()
             raise
 
 
@@ -290,7 +290,7 @@ class SqlProjectRegistry:
             return
         self._active[org_id] = name
 
-    def tag_run(self, *, org_id: str, project_id: str, run_id: str) -> None:
+    def tag_run(self, *, org_id: str, project_id: str, run_id: str) -> None:  # noqa: ARG002  # ProjectRegistry shape
         # No-op: the DB path stamps runs.project_id when the run row is recorded (see jobs._persist_run),
         # so the partition is the column itself — there is no separate index to maintain here.
         return

@@ -660,7 +660,7 @@ def _id_index(elements: list[Element]) -> dict[str | None, list[Element]]:
     Multiple ``find_all`` calls on the same query() result (e.g. a multi-assertion step)
     share a single O(n) build and then do O(1) lookups.
     """
-    global _cached_index
+    global _cached_index  # noqa: PLW0603  # the single-entry memo is module state by design
     if _cached_index is not None and _cached_index[0] == id(elements):
         return _cached_index[2]
     idx: dict[str | None, list[Element]] = {}
@@ -670,7 +670,7 @@ def _id_index(elements: list[Element]) -> dict[str | None, list[Element]]:
     return idx
 
 
-def _contains(outer: Frame, inner: Frame) -> bool:
+def contains(outer: Frame, inner: Frame) -> bool:
     """Whether `inner`'s frame is spatially contained in `outer`'s (edges inclusive)."""
     ox, oy, ow, oh = outer
     ix, iy, iw, ih = inner
@@ -705,7 +705,7 @@ def find_all(elements: list[Element], sel: Selector) -> list[Element]:
         found = [el for el in elements if matches(el, base_sel)]
     if "within" in sel:
         scopes = [parent["frame"] for parent in find_all(elements, sel["within"])]
-        found = [el for el in found if any(_contains(scope, el["frame"]) for scope in scopes)]
+        found = [el for el in found if any(contains(scope, el["frame"]) for scope in scopes)]
     return found
 
 
@@ -715,7 +715,7 @@ def deadline_ticks(
     """Yield once per poll to a monotonic deadline, sleeping with capped backoff between ticks.
 
     The one deadline/backoff skeleton the condition waits share (BE-0118, BE-0256): `wait_until`
-    here and the platform-lifecycle readiness waits (`_await_ready` / `_await_boot`) each run their
+    here and the platform-lifecycle readiness waits (`await_ready` / `await_boot`) each run their
     own check body on every yield and decide what to return, while this owns only the monotonic
     deadline, the exponential backoff (`poll_init` doubling up to `poll_max`), and the
     never-sleep-past-the-deadline sleep — a condition wait with no fixed up-front sleep, so a
@@ -922,7 +922,7 @@ def topmost_at_point(elements: list[Element], point: Point, target: Element) -> 
     of resolving it wrong.
 
     A descendant (nested inside `target`'s own frame, e.g. an icon inside a button) is still excluded
-    by containment (`_contains(target frame, candidate frame)`) — tapping through it still taps
+    by containment (`contains(target frame, candidate frame)`) — tapping through it still taps
     `target`, and unlike an ancestor, a descendant always comes after `target`, so it is the one
     case this scan does need to filter out geometrically. This is a heuristic, not a real z-index:
     it can misjudge a layout whose actual paint order diverges from document order (e.g. an Android
@@ -939,7 +939,7 @@ def topmost_at_point(elements: list[Element], point: Point, target: Element) -> 
         x, y, w, h = el["frame"]
         if not (x <= px <= x + w and y <= py <= y + h):
             continue
-        if _contains(target["frame"], el["frame"]):
+        if contains(target["frame"], el["frame"]):
             continue
         return el
     return None
@@ -966,7 +966,7 @@ def redirect_candidates(elements: list[Element], target: Element) -> list[Elemen
       cannot tell a descendant from an ancestor or from an unrelated overlay that happens to enclose
       the same frame. A pre-order walk always emits an ancestor before its descendants, so the slice
       does the work no frame check can — the same reasoning `topmost_at_point` spells out.
-    - **Inside `target`'s frame** (`_contains`, edge-inclusive). An equal frame counts: a control
+    - **Inside `target`'s frame** (`contains`, edge-inclusive). An equal frame counts: a control
       registered twice at one place is a redirect target as legitimate as a smaller child, and it
       still has to satisfy the last condition.
     - **Carrying an identifier.** The offer is then always an element the caller could have named
@@ -984,7 +984,7 @@ def redirect_candidates(elements: list[Element], target: Element) -> list[Elemen
     return [
         el
         for el in elements[after_target:]
-        if el["identifier"] and _contains(target["frame"], el["frame"])
+        if el["identifier"] and contains(target["frame"], el["frame"])
     ]
 
 
