@@ -9,17 +9,18 @@
 import {
   $, esc, getJSON, renderGradeBadge, wireDoctor, NARROW_MQ, prefersReducedMotion, motionOff,
   initTheme, showView, loadConfig, loadVersion, loadProjects, loadSims, refreshAiAvailability, state,
+  unavailableReason,
 } from './serve.core.mjs';
 import {loadHistory, setHistoryFilter, showTab, initPanels} from './serve.panels.mjs';
 import {initCrawl} from './serve.crawl.mjs';
 import {initMetrics} from './serve.metrics.mjs';
 import {initProjectsView} from './serve.projects.mjs';
-import {initOrgsView, loadOrgs} from './serve.orgs.mjs';
+import {initOrgsView} from './serve.orgs.mjs';
 
-// authorInit / authorRefresh are assigned by the Author-tab IIFE below and imported by core's
-// showView / loadShared; declared here so they are real module exports (a live binding core reads at
-// call time) rather than the `window.*` globals BE-0202 used.
-let authorInit=()=>{}, authorRefresh=()=>{};
+// authorInit / authorRefresh / applyCaptureCapability are assigned by the Author-tab IIFE below and
+// imported by core's showView / loadShared / loadConfig; declared here so they are real module
+// exports (a live binding core reads at call time) rather than the `window.*` globals BE-0202 used.
+let authorInit=()=>{}, authorRefresh=()=>{}, applyCaptureCapability=()=>{};
 
 // Wire the section modules' listeners first — their bodies only define; this entry module owns the
 // explicit order. This must run before initTiling() below: the tiler rebuilds each view and detaches
@@ -369,6 +370,12 @@ if(!NARROW_MQ.matches)initTiling();
 
   // ---- mode switching ----
   function setMode(m){
+    // Never enter a mode this deployment cannot serve. The disabled tab below stops the click;
+    // this stops every other way in — the boot default, and a switch made before the boot read
+    // said capture was unavailable (#1721). Edit stands in: it is the mode Capture's own live
+    // picker belongs to, and the reason says why the page landed there.
+    const blocked=m==='capture'?unavailableReason('capture'):null;
+    if(blocked){$('#au-status').textContent=blocked;$('#au-status').className='status';m='edit';}
     mode=m;
     document.querySelectorAll('.modetab').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
     document.querySelectorAll('#view-author .au-cap').forEach(e=>e.hidden=m!=='capture');
@@ -384,6 +391,21 @@ if(!NARROW_MQ.matches)initTiling();
     if(m==='capture'){auCodegenReset();$('#au-codegen').disabled=true;}
   }
   document.querySelectorAll('.modetab').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
+
+  // Gate the two controls that need the `/api/capture/*` routes, from the boot read's capability
+  // block (#1721): Capture mode, and Edit's live picker, which boots into the same session slot.
+  // Disabled and carrying the server's reason rather than removed, so their absence reads as a
+  // property of this deployment instead of a feature that went missing. Called both from the boot
+  // read and from the tab's own lazy init, since either can be the one that happens first.
+  function applyCapture(){
+    const reason=unavailableReason('capture');
+    const tab=document.querySelector('.modetab[data-mode="capture"]');
+    if(tab){tab.disabled=Boolean(reason);tab.title=reason||'';}
+    const live=$('#au-live-start');
+    if(live){live.disabled=Boolean(reason);live.title=reason||'';}
+    if(reason&&mode==='capture')setMode('edit');  // the boot read landed after the default was set
+  }
+  applyCaptureCapability=applyCapture;
 
   // ---- Capture mode (BE-0012): record actions by clicking on a screenshot ----
   document.querySelectorAll('input[name="au-mode"]').forEach(r=>r.addEventListener('change',()=>{
@@ -1028,7 +1050,8 @@ if(!NARROW_MQ.matches)initTiling();
   authorInit=function(){
     if(auInited)return;
     auInited=true;
-    setMode('capture');
+    setMode('capture');  // self-correcting: falls back to Edit where capture is unavailable (#1721)
+    applyCapture();
     auLoadScenarios();
     auSyncEmit();
   };
@@ -1043,9 +1066,8 @@ initTheme();
 loadConfig();
 loadVersion();
 loadProjects();
-// Decides the Orgs tab's visibility as much as it fills the page: a non-list answer means this
-// deployment or this session cannot administer orgs (BE-0375).
-loadOrgs();
+// The orgs probe is no longer booted here: it needs the capability block to know whether this
+// deployment has orgs to administer at all, so loadConfig fires it once that has arrived (#1721).
 refreshAiAvailability();
 loadSims();
 // Stats drilldown (BE-0241): a deep link lands here as /?tab=history&runs=…&label=…. Read it before
@@ -1066,4 +1088,4 @@ setInterval(loadHistory,4000);
 
 // Imported by serve.core.mjs (and panels for replayCodegen) and called at runtime — the cycle is
 // safe because these bindings are only read after this entry module has finished evaluating.
-export {syncPlatform, replayCodegen, authorInit, authorRefresh};
+export {syncPlatform, replayCodegen, authorInit, authorRefresh, applyCaptureCapability};

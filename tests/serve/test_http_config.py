@@ -6,6 +6,7 @@ import json
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from _shared import (
@@ -16,6 +17,13 @@ from _shared import (
 )
 
 from bajutsu import serve as srv
+from bajutsu.serve.operations import config as config_ops
+from bajutsu.serve.operations import orgs as org_ops
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from sqlalchemy import Engine
 
 
 def test_http_scenario_save_validates_and_writes(tmp_path: Path) -> None:
@@ -451,3 +459,74 @@ def test_http_scenarios_by_app_from_config(tmp_path: Path) -> None:
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_http_config_capabilities_local_offers_capture(tmp_path: Path) -> None:
+    # The local backend serves every `/api/capture/*` route, so the boot read says Capture is
+    # available and the Author tab offers the mode (#1721).
+    _, _, runs = project(tmp_path)
+    server, port = _serve(srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path))
+    try:
+        capture = _get_json(port, "/api/config")["capabilities"]["capture"]
+        assert capture == {"available": True, "reason": None}
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_config_capabilities_hosted_withholds_capture_with_a_reason(tmp_path: Path) -> None:
+    # Every `/api/capture/*` route is `local_only`, so a hosted deployment would 404 the mode's
+    # first call. The flag says so up front, and carries the reason the disabled control shows —
+    # the UI must be able to explain the absence, not just grey a button out (#1721).
+    _, _, runs = project(tmp_path)
+    server, port = _serve(srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path, hosted=True))
+    try:
+        capture = _get_json(port, "/api/config")["capabilities"]["capture"]
+        assert capture["available"] is False
+        assert capture["reason"] == config_ops.CAPTURE_HOSTED_REASON
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_config_capabilities_withhold_orgs_without_a_database(tmp_path: Path) -> None:
+    # A database-less serve is single-user by construction and has no tenant to administer, so
+    # `GET /api/orgs` can only answer 400. The flag reports it with the endpoint's own wording, so
+    # the UI never makes the call it would lose (#1721).
+    _, _, runs = project(tmp_path)
+    server, port = _serve(srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path))
+    try:
+        orgs = _get_json(port, "/api/config")["capabilities"]["orgs"]
+        assert orgs["available"] is False
+        assert orgs["reason"] == org_ops.NO_ORG_STORE_ERROR
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_capabilities_track_the_role_gate_on_the_orgs_roster(
+    tmp_path: Path, serve_engine: Callable[..., Engine]
+) -> None:
+    # With a database wired, the roster is admin-only — the flag has to follow the caller, not just
+    # the deployment, or a viewer would be offered a tab whose every load 403s. Read through the
+    # same gate the transport applies, so the two cannot disagree (#1721).
+    from bajutsu.serve.operations.config import ORGS_ADMIN_ONLY_REASON, serve_capabilities
+    from bajutsu.serve.server.db import SqlRepository
+    from bajutsu.serve.server.models import Base
+
+    engine = serve_engine(foreign_keys=True)
+    Base.metadata.create_all(engine)
+    repository = SqlRepository(engine)
+    repository.ensure_org("acme", slug="acme", name="Acme")
+    repository.upsert_user("root", org_id="acme", github_login="root", email="root@x", role="admin")
+    repository.upsert_user(
+        "view", org_id="acme", github_login="view", email="view@x", role="viewer"
+    )
+    state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, repository=repository)
+
+    assert serve_capabilities(state, "root")["orgs"] == {"available": True, "reason": None}
+    viewer = serve_capabilities(state, "view")["orgs"]
+    assert viewer == {"available": False, "reason": ORGS_ADMIN_ONLY_REASON}
+    # No identity at all (a shared-token session) leaves no role to fail, exactly as the transport
+    # gate has it: it applies only to an OAuth-authenticated session.
+    assert serve_capabilities(state, None)["orgs"]["available"] is True

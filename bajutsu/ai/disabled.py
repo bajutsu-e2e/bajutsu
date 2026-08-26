@@ -24,7 +24,7 @@ from bajutsu.ai.base import AiBackend
 DISABLED = "ai-disabled"
 
 
-def factory(ai: AiConfig | None = None) -> AiBackend:
+def factory(ai: AiConfig | None = None) -> AiBackend:  # noqa: ARG001  # registry factory shape
     """Refuse to build a backend — the kill switch's fail-closed half (BE-0394).
 
     Raises:
@@ -36,12 +36,16 @@ def factory(ai: AiConfig | None = None) -> AiBackend:
     )
 
 
-def credential_gap(ai: AiConfig | None = None) -> str | None:
+def credential_gap(ai: AiConfig | None = None) -> str | None:  # noqa: ARG001  # registry probe shape
     """Always `DISABLED` — the provider can never authenticate, by construction (BE-0394)."""
     return DISABLED
 
 
-def announce(ai: AiConfig | None, provider: str, default_model: str) -> list[str]:
+def announce(
+    ai: AiConfig | None,  # noqa: ARG001  # registry announce shape
+    provider: str,
+    default_model: str,  # noqa: ARG001  # registry announce shape
+) -> list[str]:
     """This provider's startup disclosure — no model name, since none will ever be used.
 
     No command reaches it today: `record` and `crawl` are the only announcing paths, and both fail

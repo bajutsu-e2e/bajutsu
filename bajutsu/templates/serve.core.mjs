@@ -13,7 +13,7 @@ import {loadMetrics} from './serve.metrics.mjs';
 import {renderProjectsView} from './serve.projects.mjs';
 import {loadOrgs} from './serve.orgs.mjs';
 import {onCrawlSimChange} from './serve.crawl.mjs';
-import {authorInit, authorRefresh, syncPlatform, replayCodegen} from './serve.author.mjs';
+import {applyCaptureCapability, authorInit, authorRefresh, syncPlatform, replayCodegen} from './serve.author.mjs';
 
 // ---- login: a request 401s when the server requires auth. If GitHub OAuth is configured, send the
 // browser through it; otherwise prompt for the shared token, POST /api/login (which sets an HttpOnly
@@ -122,6 +122,17 @@ async function postJSON(url,body,fallback){
 // header can state how long a trashed run stays restorable. null until loadConfig runs; <=0 means
 // retention is disabled (trash kept until a manual purge).
 export let retentionDays=null;
+// What this deployment can serve this caller, from the same boot read (#1721): {name:{available,
+// reason}}. The UI gates its own surface on it instead of offering a mode whose every call 404s or
+// probing an endpoint that can only answer 400. Empty until loadConfig runs.
+let capabilities={};
+// The reason *name* is unavailable here, or null when it is available. Unknown to the server reads
+// as available, so a capability this build gates on but an older server never named keeps the
+// surface it had rather than losing it to a missing key.
+function unavailableReason(name){
+  const c=capabilities[name];
+  return c&&c.available===false?(c.reason||'this deployment does not offer it'):null;
+}
 // A human phrase for the trash window, used in confirms and the Trash header.
 function trashWindowNote(){
   if(retentionDays===null)return 'restorable from the Trash view';
@@ -499,10 +510,16 @@ export let fsSourceEnabled=true;
 async function loadConfig(){
   const c=await getJSON('/api/config',{hasConfig:false});
   if(typeof c.retentionDays==='number')retentionDays=c.retentionDays;  // BE-0239: trash window for the delete confirms
+  capabilities=c.capabilities&&typeof c.capabilities==='object'?c.capabilities:{};
   fsSourceEnabled=!c.configSources||c.configSources.includes('fs');
   $('#fssrc').hidden=!fsSourceEnabled;
   setCfgName(c.hasConfig?c.config:'no config bound — open one →',c.hasConfig);
   setOrgBadge(c.actor,c.org,c.orgs);
+  // Both capability consumers run from here, not from the entry module's boot, so each reads a
+  // block that has arrived (#1721). The Author tab may already have initialised — it re-applies on
+  // its own lazy init too, so whichever of the two happens first, the other still lands.
+  applyCaptureCapability();
+  loadOrgs();
   if(c.hasConfig){await loadShared()}else{openFs()}
 }
 // Show which org this session acts as, next to the config it acts on (BE-0375). Both come from the
@@ -1292,7 +1309,7 @@ if(window.__bajutsuThemesWritable){$('#themesave-upload').hidden=false;$('#theme
 // exported at their declarations above; everything here is a plain shared helper or orchestrator.
 export {
   $, setBusy, cancelJob, streamJob, appendLine, esc, setStatus, getJSON, postJSON, startJob,
-  FETCH_ERROR, isFetchError,
+  FETCH_ERROR, isFetchError, unavailableReason,
   renderGradeBadge, wireDoctor, NARROW_MQ, prefersReducedMotion, motionOff, initTheme,
   openModal, closeModal, showView, loadConfig, loadVersion, setCfgName, closeFs, loadProjects,
   switchProject, loadShared, loadScenarios, loadSims, refreshAiAvailability, storeGitCred,

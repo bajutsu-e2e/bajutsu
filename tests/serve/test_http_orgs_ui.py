@@ -162,3 +162,15 @@ def test_core_js_refreshes_the_orgs_page_on_entry(tmp_path: Path) -> None:
     # Another admin may have created or retired an org since this tab was last opened.
     text = _fetch(tmp_path, "/serve.core.mjs")
     assert "loadOrgs()" in text
+
+
+def test_js_asks_for_the_roster_only_where_the_server_offers_one(tmp_path: Path) -> None:
+    # The tab's visibility used to be decided purely by a non-list answer, which meant a
+    # database-less serve was asked on every load and answered 400 in the console. The boot read's
+    # capability block now decides whether to ask at all; the shape check stays as the fallback for
+    # a role that changed since boot (#1721).
+    text = _fetch(tmp_path, "/serve.orgs.mjs")
+    body = text.split("async function loadOrgs")[1].split("\n}")[0]
+    assert "unavailableReason('orgs')" in body
+    assert "blocked ? null : await getJSON('/api/orgs', null)" in body
+    assert "Array.isArray(list)" in body

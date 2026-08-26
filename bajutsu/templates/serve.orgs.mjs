@@ -8,7 +8,7 @@
 // database-less serve both get a non-list answer from `/api/orgs` — which is exactly what hides the
 // tab, without the page having to be told a role. The body only defines; the entry module
 // (serve.author.mjs) calls initOrgsView() once every section has evaluated.
-import {$, esc, postJSON, setStatus, getJSON} from './serve.core.mjs';
+import {$, esc, postJSON, setStatus, getJSON, unavailableReason} from './serve.core.mjs';
 
 // The last list `/api/orgs` returned, so the edit form can prefill from what the server actually
 // holds rather than from what the row happens to render.
@@ -84,14 +84,17 @@ function openMembership(slug) {
   form.querySelector('button[data-act="cancel"]').addEventListener('click', () => renderOrgsView());
 }
 
-// Fetch the roster. A non-array answer means this deployment or this user cannot administer orgs
-// (no database, or not an admin), which is also what decides whether the tab is offered at all —
-// the server stays the single authority on both, and the page never guesses a role.
+// Fetch the roster — but only where there is one to fetch. The boot read says whether this
+// deployment and this caller can administer orgs at all, so a database-less serve is never asked
+// and never answers the 400 that used to sit in the console on every load (#1721). Past that gate a
+// non-array answer still hides the tab: the flag was read at boot and a role can change under it,
+// and the server, not the page, stays the authority on what this caller may see.
 async function loadOrgs() {
-  const list = await getJSON('/api/orgs', null);
+  const tab = document.querySelector('.toptab[data-view="orgs"]');
+  const blocked = unavailableReason('orgs');
+  const list = blocked ? null : await getJSON('/api/orgs', null);
   const allowed = Array.isArray(list);
   orgsCache = allowed ? list : [];
-  const tab = document.querySelector('.toptab[data-view="orgs"]');
   if (tab) tab.hidden = !allowed;
   renderOrgsView();
 }

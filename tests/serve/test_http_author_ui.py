@@ -264,3 +264,37 @@ def test_author_is_block_level_for_tiling(tmp_path: Path) -> None:
     assert "#view-author:not([hidden])" in text
     # The old bespoke fixed-column grid must not linger.
     assert "#view-author{grid-template-columns" not in text
+
+
+# ---------------------------------------------------------------------------
+# Capability gating (#1721): Capture and Edit's live picker both need the
+# `local_only` /api/capture/* routes, so a deployment that does not serve them
+# offers neither — disabled, with the server's reason, rather than removed.
+# ---------------------------------------------------------------------------
+
+
+def test_author_gates_capture_on_the_boot_reads_capability(tmp_path: Path) -> None:
+    text = _author_js(tmp_path)
+    assert "unavailableReason('capture')" in text
+    # Both controls that would 404: the mode itself, and the live picker booting the same session.
+    assert """.modetab[data-mode="capture"]""" in text
+    assert "$('#au-live-start')" in text
+    # Disabled and explained, never removed — the reason is what a hosted user has to read.
+    assert "tab.disabled=Boolean(reason);tab.title=reason||''" in text
+
+
+def test_author_never_sits_in_a_mode_the_deployment_cannot_serve(tmp_path: Path) -> None:
+    # The boot default and the boot read race: whichever lands second must still leave the page in
+    # a usable mode, so setMode refuses Capture on its own and the applier re-checks afterwards.
+    text = _author_js(tmp_path)
+    body = text.split("function setMode(m)")[1].split("function ")[0]
+    assert "unavailableReason('capture')" in body and "m='edit'" in body
+    assert "if(reason&&mode==='capture')setMode('edit')" in text
+
+
+def test_author_boot_no_longer_probes_the_org_roster(tmp_path: Path) -> None:
+    # The probe moved behind the capability block, which only loadConfig has (#1721). Left in the
+    # entry module's boot it would fire in parallel with the config read and answer 400 on a
+    # database-less serve — the console error this fix removes.
+    text = _author_js(tmp_path)
+    assert "loadOrgs()" not in text
