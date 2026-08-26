@@ -90,6 +90,22 @@ def grace_seconds() -> float:
     return value if value > 0 else DEFAULT_GRACE_SECONDS
 
 
+# The share of the grace window a cancelled run's teardown phase (BE-0392 `after`) may spend before
+# it is abandoned. The phase cannot be bounded by the cancel source itself: that source is a latched
+# `Event.is_set`, so on the very path that dispatches `after` as a failed outcome its first check
+# would raise `RunCancelled` again and no cleanup step would run at all. A share rather than a fixed
+# number of seconds, so a deployment that widens `BAJUTSU_CANCEL_GRACE` widens the teardown budget
+# with it. A tenth of the window is small on purpose: the rest of it is already spoken for by the
+# worst-case in-flight driver call and the shutdown tail that writes the manifest, so teardown gets a
+# bounded chance to run rather than a claim on time the report needs.
+CANCELLED_TEARDOWN_SHARE = 0.1
+
+
+def cancelled_teardown_seconds(grace: float) -> float:
+    """The seconds a cancelled run's `after` phase may run for before it is abandoned."""
+    return grace * CANCELLED_TEARDOWN_SHARE
+
+
 def handler_deadline(grace: float) -> float:
     """The seconds the signal handler gives a graceful shutdown before it kills the process itself.
 

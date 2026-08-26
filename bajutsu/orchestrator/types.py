@@ -215,6 +215,17 @@ class RunResult:
     dropped_expect_actuations: int = 0
     # Evidence kinds the run couldn't supply (no eligible backend) — disclosed, not silent (BE-0020).
     skipped_captures: list[SkippedCapture] = field(default_factory=list)
+    # The lifecycle phases' own step outcomes (BE-0392), each numbered from zero and kept beside
+    # `steps` rather than folded into it — the separation `expect_results` already gets, and what
+    # lets a report show setup and teardown as their own blocks instead of merging them into the
+    # scenario's numbered sequence the way a `preconditions.setup` prelude does.
+    before_outcomes: list[StepOutcome] = field(default_factory=list)
+    after_outcomes: list[StepOutcome] = field(default_factory=list)
+    # The verdict the `after` phase dispatched on — "success" / "error", or "" when the scenario
+    # declared no `after` rules. Recorded rather than re-derived from `failure`, which by then may
+    # also carry a cleanup step's own reason: without it a report cannot tell which rules ran, and
+    # so cannot line an outcome up with the rule that produced it.
+    after_verdict: str = ""
 
 
 # on_blocked(driver) -> the AlertEvent it dismissed if it cleared a blocking condition

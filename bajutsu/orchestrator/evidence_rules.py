@@ -143,10 +143,20 @@ def requested_intervals(scenario: Scenario, config_capture: list[str] | None = N
     """The scenario-wide interval kinds (video / deviceLog / appTrace) the scenario actually
     asks for — via a `capturePolicy` rule, any step's inline `capture` (nested steps included), or
     the config's `defaults.capture` baseline (`config_capture`, BE-0028's third source). Empty by
-    default, so a scenario that requests no heavy capture records none."""
+    default, so a scenario that requests no heavy capture records none.
+
+    "Any step" spans the `before` / `after` lifecycle phases as well as `steps` (BE-0392). An
+    interval kind is opened once for the whole scenario and split back out of the per-step list
+    downstream, so a hook step naming one and not seen here records nothing at all — and appends no
+    `SkippedCapture` either, leaving the gap undisclosed (the opposite of BE-0020)."""
     requested = {_kind_of(token) for rule in scenario.capture_policy for token in rule.capture}
+    phase_steps = [
+        *scenario.before,
+        *scenario.steps,
+        *(s for rule in scenario.after for s in rule.steps),
+    ]
     requested.update(
-        _kind_of(token) for step in _all_steps(scenario.steps) for token in (step.capture or [])
+        _kind_of(token) for step in _all_steps(phase_steps) for token in (step.capture or [])
     )
     requested.update(_kind_of(token) for token in (config_capture or []))
     return [kind for kind in _SCENARIO_INTERVALS if kind in requested]

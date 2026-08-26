@@ -1,0 +1,38 @@
+# before / after (BE-0392): the scenario's setup and teardown as their own phases, tracked apart
+# from `steps`. `before` runs first and gates the scenario — a failure there skips `steps` and
+# `expect` outright — and `after` runs once a verdict exists, on every path out of `steps`,
+# including the failing one that a trailing cleanup step could never reach.
+#
+# The showcase has no test-record API to lease, so the state this scenario creates and releases is
+# the horse's Favorite flag rather than a row in a database: `before` sets it, the `success` rule
+# clears it again so a later run starts from the same screen, and the `always` rule pops back to the
+# catalog whichever way the run went. The shape is the one the roadmap item describes — create in
+# `before`, release in `after` — with UI state standing in for the record, so the fixture stays
+# offline and deterministic. Each id carries both its dotted SPEC form (iOS / Compose) and its
+# underscore Android Views form, so one scenario runs unchanged on every target (BE-0221).
+- name: a favorite set in before is released by the after rules
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  before:
+    - wait: { for: { id: [stable.row.2, stable_row_2] }, timeout: 10 }
+    - tap: { id: [stable.row.2, stable_row_2] }
+    - wait: { for: { id: [horse.favorite, horse_favorite] }, timeout: 5 }
+    - tap: { id: [horse.favorite, horse_favorite] }
+  steps:
+    - assert:
+        - value: { sel: { id: [horse.favorite.value, horse_favorite_value] }, equals: "on" }
+  expect:
+    - value: { sel: { id: [horse.favorite.value, horse_favorite_value] }, equals: "on" }
+  after:
+    # Scenario-then-config: this scenario's own release runs before any app-wide teardown the
+    # target config declares.
+    - on: success
+      steps:
+        - tap: { id: [horse.favorite, horse_favorite] }
+        - wait:
+            for: { id: [horse.favorite.value, horse_favorite_value] }
+            timeout: 5
+    - on: always
+      steps:
+        - back: {}
+        - wait: { for: { id: [stable.row.2, stable_row_2] }, timeout: 5 }

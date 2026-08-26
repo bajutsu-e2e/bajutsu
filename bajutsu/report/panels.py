@@ -23,8 +23,10 @@ from bajutsu.report.format import (
     video_seconds,
 )
 from bajutsu.report.rows import (
+    _after_rows,
     _expects_data,
     _merged_rows,
+    _phase_rows,
     _preconditions_rows,
 )
 
@@ -63,7 +65,14 @@ def _result_panel(
         "label": "Result",
         "source": source,
         "preconditions": _preconditions_rows(definition),
+        # The lifecycle phases render as their own blocks (BE-0392), never folded into the numbered
+        # steps: a reviewer can tell setup and teardown from the scenario under test at a glance,
+        # which a `preconditions.setup` prelude spliced into `steps` gives no way to do.
+        "beforerows": _phase_rows(
+            r.before_outcomes, (definition or {}).get("before") or [], r.video_anchor_s, run_dir
+        ),
         "steprows": _merged_rows(r, plan, exchanges, run_dir),
+        "afterrows": _after_rows(r, (definition or {}).get("after") or [], run_dir),
         "expects": _expects_data(r, definition),
     }
 

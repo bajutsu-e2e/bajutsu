@@ -24,6 +24,18 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
 - `sink`: 証跡の出力先（既定 `NullSink` は何も書かない）。詳細は [evidence](evidence.md)。
 - `alert_guard`: ステップ失敗時に「ブロッカー（システムアラート等）を片付けたら、その片付けたイベントを返す」ハンドラです。イベントを返した場合、**そのステップを 1 回だけ再試行します**（[recording の alert guard](recording.md#システムアラートの自動対処)）。`wait` ステップ（`for`/`settled`/`screenChanged`）では同じハンドラが **wait の途中でも**待ち構えています（BE-0269）。すでにポーリング済みの画面のツリーが崩壊して見えた時点で発火します（デバウンスとクールダウンを挟み、1 回の wait につき最大 2 回まで）。末尾の再試行とは独立に、wait 自体のタイムアウトを待たず回復できます。
 
+### ステップループを挟む 2 つのライフサイクルフェーズ
+
+シナリオの `before` / `after`（[scenarios](scenarios.md#before--afterセットアップとティアダウンのフェーズ)）は、ステップループの前後にもう 2 つのフェーズを足します。どちらも同じステップランナーが動かすので、フックのステップは他のステップとまったく同じことができ、run の `vars.*` バインディングを共有します。
+
+1. **`before` が最初に走ります。** ここで失敗すると `failure = "before: …"` を立て、`steps` と `expect` をまったく実行しません。`before` はシナリオ内部のステップではなく、シナリオの前提条件だからです。
+2. **`steps` と `expect` はそのまま走り**、判定はこれまでどおり計算されます。
+3. **判定が出てから `after` が走ります。** 成功した経路も、失敗した経路も、キャンセルされた経路も含め、`steps` を抜けるすべての経路で到達します。`on` が `always` かその判定に一致するルールが、宣言順に走ります。ルール自身の失敗は、run が成功していたならその run の failure になり、そうでなければ既存の failure の後ろに追記されます。
+
+キャンセルされた run では、キャンセル用のソースで `after` フェーズを縛れません。ソースはラッチされた `threading.Event.is_set` です。フェーズ内での最初の読み取りがふたたび `RunCancelled` を投げ、後片付けのステップが 1 つも走らなくなります。代わりにフェーズは専用の期限のもとで走ります。期限は `grace_seconds()` の 1 割で、これを過ぎると残りのルールを打ち切ります。後片付けに限られた実行機会を与えつつ、シャットダウンの後始末が `serve` の無条件 kill までの猶予時間を超えないようにするためです。
+
+各フェーズはステップを 0 から数え直し、それぞれ専用の `RunResult` のリストに記録します。そのためレポートは、シナリオの連番のステップとは別のブロックとして Before と After を表示します。
+
 ### 1 ステップの流れ
 
 各ステップ `i` について（`orchestrator/loop.py` 内）:
@@ -111,6 +123,9 @@ class RunResult:
     steps: list[StepOutcome]
     expect_results: list[AssertionResult]  # 最終 expect の評価
     failure: str | None          # 例: "step 3 (tap): 一致なし: {...}"
+    before_outcomes: list[StepOutcome]  # before フェーズ自身のステップ
+    after_outcomes: list[StepOutcome]   # after フェーズ自身のステップ
+    after_verdict: str           # "success" / "error" — どの after ルールが走ったか。なければ ""
 ```
 
 `expect` は全ステップ成功後にのみ評価されます。`alert_guard` があれば expect も 1 回だけ再評価します。これらはそのまま `report/` の `manifest.json` / JUnit / HTML になります（[reporting](reporting.md)）。

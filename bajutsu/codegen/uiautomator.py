@@ -26,8 +26,10 @@ import re
 
 from bajutsu.assertions import request_label
 from bajutsu.codegen.common import (
+    AfterEmission,
     class_name,
     ident,
+    indent_lines,
     interrupts_setup_lines,
     is_plain_substring,
     manual_todo,
@@ -37,7 +39,7 @@ from bajutsu.codegen.common import (
     render_test_file,
 )
 from bajutsu.drivers import base
-from bajutsu.scenario import Assertion, Gone, Scenario, Step, WaitRequest
+from bajutsu.scenario import AfterRule, Assertion, Gone, Scenario, Step, WaitRequest
 from bajutsu.scenario.models.assertions import CountMatch, TextMatch, Wait
 
 # The adb backend has no network-interception surface (drivers/adb.py CAPABILITIES), so a network
@@ -949,6 +951,36 @@ class _UiAutomatorGen:
 
     def scenario_open(self, name: str) -> str:
         return f"  @Test\n  fun {ident(name)}() {{"
+
+    def after_lines(self, after: list[AfterRule]) -> AfterEmission:
+        # JUnit4's `@After` is per class, and reading the test's outcome inside it needs a
+        # `TestWatcher` rule the generated class does not have. The language construct is per test
+        # and needs neither: an Espresso/UI Automator assertion throws, so a `catch` sees the very
+        # failure the verdict would have been and `finally` runs the cleanup on both paths.
+        if not after:
+            return AfterEmission()
+        branching = any(rule.on != "always" for rule in after)
+        prologue = (["var bajutsuFailed = false"] if branching else []) + ["try {"]
+        epilogue = (
+            [
+                "} catch (bajutsuError: Throwable) {",
+                *indent_lines(["bajutsuFailed = true", "throw bajutsuError"]),
+                "} finally {",
+            ]
+            if branching
+            else ["} finally {"]
+        )
+        for rule in after:
+            lines = [line for step in rule.steps for line in _emit_step(step)]
+            if rule.on == "always":
+                epilogue.extend(indent_lines(lines))
+            else:
+                cond = "!bajutsuFailed" if rule.on == "success" else "bajutsuFailed"
+                epilogue.extend(indent_lines([f"if ({cond}) {{"]))
+                epilogue.extend(indent_lines(lines, 2))
+                epilogue.extend(indent_lines(["}"]))
+        epilogue.append("}")
+        return AfterEmission(prologue, epilogue, 1)
 
     def setup_lines(self, scenario: Scenario) -> list[str]:
         # The mutable extras map the launch-env lines fill and `launch(extras)` consumes; always

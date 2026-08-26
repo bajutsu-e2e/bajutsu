@@ -23,6 +23,8 @@ import re
 
 from bajutsu.assertions import request_label
 from bajutsu.codegen.common import (
+    AfterEmission,
+    indent_lines,
     interrupts_setup_lines,
     manual_todo,
     ms,
@@ -30,7 +32,7 @@ from bajutsu.codegen.common import (
     render_test_file,
 )
 from bajutsu.drivers import base
-from bajutsu.scenario import Assertion, Gone, RequestMatch, Scenario, Step
+from bajutsu.scenario import AfterRule, Assertion, Gone, RequestMatch, Scenario, Step
 from bajutsu.scenario.models.assertions import CountMatch, TextMatch, Wait, WaitRequest
 
 # Wheel-scroll distance (px) a directional swipe emits — intrinsic to the gesture (BE-0227). The
@@ -530,6 +532,36 @@ class _PlaywrightGen:
 
     def scenario_open(self, name: str) -> str:
         return f"  test({_ts(name)}, async ({{ page }}) => {{"
+
+    def after_lines(self, after: list[AfterRule]) -> AfterEmission:
+        # Playwright registers `afterEach` on a describe block, not on one `test`, so a per-scenario
+        # teardown is the language construct instead: `expect` throws, so a `catch` sees the very
+        # failure the run's verdict would have been, and `finally` runs the cleanup on both paths —
+        # the case a trailing step could never cover.
+        if not after:
+            return AfterEmission()
+        branching = any(rule.on != "always" for rule in after)
+        prologue = (["let bajutsuFailed = false;"] if branching else []) + ["try {"]
+        epilogue = (
+            [
+                "} catch (bajutsuError) {",
+                *indent_lines(["bajutsuFailed = true;", "throw bajutsuError;"]),
+                "} finally {",
+            ]
+            if branching
+            else ["} finally {"]
+        )
+        for rule in after:
+            lines = [line for step in rule.steps for line in _emit_step(step)]
+            if rule.on == "always":
+                epilogue.extend(indent_lines(lines))
+            else:
+                cond = "!bajutsuFailed" if rule.on == "success" else "bajutsuFailed"
+                epilogue.extend(indent_lines([f"if ({cond}) {{"]))
+                epilogue.extend(indent_lines(lines, 2))
+                epilogue.extend(indent_lines(["}"]))
+        epilogue.append("}")
+        return AfterEmission(prologue, epilogue, 1)
 
     def setup_lines(self, scenario: Scenario) -> list[str]:
         # Install the network-exchange recorder before navigation, but only when the scenario asserts
