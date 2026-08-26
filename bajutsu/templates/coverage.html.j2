@@ -50,6 +50,12 @@ code { background: #f2f2f7; border-radius: 4px; padding: .1rem .35rem; font-size
 
 <section>
 <h2>Id namespaces (declared vs referenced)</h2>
+{#- A 0/0 dimension carries no fraction: `coverage` is 1.0 by the empty-denominator convention, so a
+    score line would read "100%" and the bar would fill for a target that declares nothing. Say that
+    instead, in every dimension below too. -#}
+{%- if not static.total %}
+<p class="empty">This target declares no id namespaces, so there is nothing to measure. Declare <code>idNamespaces</code> for the target to give this dimension a denominator.</p>
+{%- else %}
 <p class="score">{{ (static.coverage * 100) | round(1) }}% — {{ static.covered }}/{{ static.total }} namespaces referenced</p>
 {{ bar(static.coverage) }}
 {%- if static.namespaces %}
@@ -60,6 +66,7 @@ code { background: #f2f2f7; border-radius: 4px; padding: .1rem .35rem; font-size
 </tbody></table>
 {%- else %}
 <p class="empty">No declared namespace is referenced by any scenario.</p>
+{%- endif %}
 {%- endif %}
 {%- if static.gaps %}
 <p class="gap"><strong>Gaps</strong> (declared, no scenario references): {% for ns in static.gaps %}<span class="tag"><code>{{ ns }}</code></span>{% endfor %}</p>
@@ -72,16 +79,17 @@ code { background: #f2f2f7; border-radius: 4px; padding: .1rem .35rem; font-size
 {%- if endpoints is not none %}
 <section>
 <h2>Network endpoints (observed vs asserted)</h2>
+{%- if not endpoints.observed %}
+<p class="empty">No network traffic was observed across the selected runs, so there is nothing to measure.</p>
+{%- else %}
 <p class="score">{{ (endpoints.coverage * 100) | round(1) }}% — {{ endpoints.asserted | length }}/{{ endpoints.observed | length }} observed endpoints asserted</p>
 {{ bar(endpoints.coverage) }}
+{%- endif %}
 {%- if endpoints.unasserted %}
 <p class="gap"><strong>Unasserted</strong> (observed traffic no assertion covers): {{ idlist(endpoints.unasserted) }}</p>
 {%- endif %}
 {%- if endpoints.declared_unobserved %}
 <p><strong>Declared but not observed</strong> (matchers that hit no exchange): {{ idlist(endpoints.declared_unobserved) }}</p>
-{%- endif %}
-{%- if not endpoints.observed %}
-<p class="empty">No network traffic was observed across the run set.</p>
 {%- endif %}
 </section>
 {%- endif %}
@@ -89,6 +97,9 @@ code { background: #f2f2f7; border-radius: 4px; padding: .1rem .35rem; font-size
 {%- if observed is not none %}
 <section>
 <h2>Observed ids (rendered vs declared namespaces)</h2>
+{%- if not observed.total %}
+<p class="empty">This target declares no id namespaces, so there is nothing to measure the runs against.</p>
+{%- else %}
 <p class="score">{{ (observed.coverage * 100) | round(1) }}% — {{ observed.covered }}/{{ observed.total }} namespaces rendered in a run</p>
 {{ bar(observed.coverage) }}
 {%- if observed.namespaces %}
@@ -97,6 +108,7 @@ code { background: #f2f2f7; border-radius: 4px; padding: .1rem .35rem; font-size
 <tr><td><code>{{ ns.namespace }}</code></td><td>{{ idlist(ns.ids) }}</td></tr>
 {%- endfor %}
 </tbody></table>
+{%- endif %}
 {%- endif %}
 {%- if observed.unobserved %}
 <p class="gap"><strong>Unobserved</strong> (declared, rendered in no run): {% for ns in observed.unobserved %}<span class="tag"><code>{{ ns }}</code></span>{% endfor %}</p>
@@ -110,13 +122,14 @@ code { background: #f2f2f7; border-radius: 4px; padding: .1rem .35rem; font-size
 {%- if screens is not none %}
 <section>
 <h2>Screens visited (crawl-discovered vs reached)</h2>
+{%- if not screens.total %}
+<p class="empty">The crawl discovered no screens, so there is nothing to measure.</p>
+{%- else %}
 <p class="score">{{ (screens.coverage * 100) | round(1) }}% — {{ screens.covered }}/{{ screens.total }} discovered screens reached by a run</p>
 {{ bar(screens.coverage) }}
 {%- if screens.unvisited %}
 <p class="gap"><strong>Unvisited</strong> (the crawl discovered them, no run reached them): {% for s in screens.unvisited %}<span class="tag"><code>{{ s.label }}</code></span>{% endfor %}</p>
 {%- endif %}
-{%- if not screens.total %}
-<p class="empty">The crawl discovered no screens.</p>
 {%- endif %}
 </section>
 {%- endif %}

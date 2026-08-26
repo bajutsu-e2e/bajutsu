@@ -486,15 +486,25 @@ async function purgeTrashRun(id){
   loadTrash();
 }
 
-// Coverage (BE-0146): POST the target (+ optional run set) to /api/coverage and render the returned
-// self-contained report into a shadow root — the same isolation as loadStats. The aggregation stays
-// server-side (the CLI's `bajutsu coverage`), so nothing is recomputed in JS; the view only displays.
+// Coverage (BE-0146): POST the target (+ optional run set and crawl) to /api/coverage and render the
+// returned self-contained report into a shadow root — the same isolation as loadStats. The aggregation
+// stays server-side (the CLI's `bajutsu coverage`), so nothing is recomputed in JS; the view only displays.
 async function coverageInit(){
-  // Fill the run picker from the same history the Replay view lists; a target is already populated by
-  // loadShared. Selecting runs is optional — it folds in the endpoint / observed-id dimensions.
-  // FETCH_ERROR rather than an empty list (#1716): an empty picker reads as "this project has no
-  // runs", which would send you looking for the wrong problem when the read simply failed.
-  const runs=await getJSON('/api/runs',FETCH_ERROR);
+  // A target is already populated by loadShared; the crawl list is the Crawl tab's history, and its
+  // screenmap is the screens dimension's denominator. Both pickers are optional.
+  await loadCoverageRuns();
+  const crawls=await getJSON('/api/crawl/runs',[]);
+  $('#cov-crawl').innerHTML='<option value="">(none)</option>'+crawls.map(c=>`<option value="${esc(c.id)}">${esc(c.id)} · ${c.screens|0} screens</option>`).join('');
+}
+// Offer only runs of the selected target's scenarios: the map is built from that target's suite, so a
+// run of another target's scenarios carries evidence it cannot place. The server does the scoping —
+// it alone knows which scenario names the target declares.
+async function loadCoverageRuns(){
+  const target=$('#cov-target').value;
+  // FETCH_ERROR rather than an empty list (#1716): an empty picker reads as "this target has no
+  // runs", which would send you looking for the wrong problem when the read simply failed. No target
+  // selected is the one genuinely empty case, so it keeps the plain empty list.
+  const runs=target?await getJSON('/api/runs?target='+encodeURIComponent(target),FETCH_ERROR):[];
   if(isFetchError(runs)){
     $('#cov-runs').innerHTML='<option value="" disabled data-testid="coverage.runs-error">couldn\u2019t load runs — reopen to retry</option>';
     return;
@@ -509,8 +519,9 @@ async function loadCoverage(){
   const target=$('#cov-target').value;
   if(!target){fail('Open a config and pick a target first.');return}
   const runs=[...$('#cov-runs').selectedOptions].map(o=>o.value);
+  const crawl=$('#cov-crawl').value;
   let resp;
-  try{const r=await fetch('/api/coverage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,runs})});
+  try{const r=await fetch('/api/coverage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,runs,crawl})});
     resp=await r.json();if(!r.ok)throw new Error(resp.error||'coverage failed');}
   catch(e){fail(e.message||'coverage unavailable');return}
   renderReportInShadow(host,resp.html);
@@ -793,6 +804,7 @@ function initPanels(){
   $('#flaky-refresh').addEventListener('click',loadFlaky);
   $('#usage-refresh').addEventListener('click',loadUsage);
   $('#cov-go').addEventListener('click',loadCoverage);
+  $('#cov-target').addEventListener('change',loadCoverageRuns);
   document.querySelectorAll('#view-replay .tab').forEach(t=>t.addEventListener('click',()=>showTab(t.dataset.tab)));
   // Upload & compose file zones (BE-0073 bundle upload, BE-0268 compose-from-artifacts). Both go
   // through wireFileZone; every element may be absent in a hosted deployment, so each binding self-guards.

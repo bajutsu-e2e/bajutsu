@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0146") |
-| 実装 PR | [#702](https://github.com/bajutsu-e2e/bajutsu/pull/702) |
+| 実装 PR | [#702](https://github.com/bajutsu-e2e/bajutsu/pull/702)、[#1784](https://github.com/bajutsu-e2e/bajutsu/pull/1784) |
 | トピック | serve Web UI への CLI 機能の取り込み |
 <!-- /BE-METADATA -->
 
@@ -18,7 +18,8 @@
 E2E カバレッジマップ（[BE-0050](../BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md)）を
 `serve` Web UI に出します。シナリオスイートがアプリの表面をどれだけ動かしているかを、ブラウザで見せます
 （宣言済みの id 名前空間に対するカバー状況、不足の一覧、名前空間から外れた id、そして run の集合があれば
-観測されたエンドポイントとアサート済みのエンドポイントの比）。読み取り専用で AI を使わず、ゲートには決して
+観測されたエンドポイントとアサート済みのエンドポイントの比、観測された id と宣言済み名前空間の比、
+クロールが発見した画面のうちその run が到達したもの）。読み取り専用で AI を使わず、ゲートには決して
 なりません。
 
 ## 動機
@@ -27,7 +28,7 @@ E2E カバレッジマップ（[BE-0050](../BE-0050-e2e-coverage-map/BE-0050-e2e
 出荷しています。「自分たちの E2E テストは実際に何をカバーしているのか」に答える、読み取り専用で決定的な
 集計です。アプリの宣言済み `idNamespaces` に対する名前空間ごとの id カバレッジ、不足の一覧（どのシナリオも
 触れていない宣言済み名前空間）、名前空間から外れた id、そして `--runs` を付ければ観測 vs アサートの
-エンドポイント（`bajutsu/coverage.py`）を返します。チームが日常的に問い、UI だけの競合には答えられない
+エンドポイント（`bajutsu/analysis/coverage.py`）を返します。チームが日常的に問い、UI だけの競合には答えられない
 問いです。だがそれは CLI にあり、チームが自分のスイートと run を眺める場所はブラウザです。Replay／履歴
 ビューはすでに run を並べ、レポートを埋め込んでいます。そこにカバレッジマップを出せば、「この画面／名前空間
 はテストされているか」が、それを導いた run の隣で見えるようになります。
@@ -36,18 +37,38 @@ E2E カバレッジマップ（[BE-0050](../BE-0050-e2e-coverage-map/BE-0050-e2e
 
 Tier 1 の読み取り専用です。UI は既存の集計を起動するだけです。
 
-- **「Coverage」ビュー**を置き、`POST /api/coverage`（`{target, runs?}`）を叩きます。集計を実行し、名前空間
-  ごとの id カバレッジ、不足の一覧、名前空間から外れた id、そして run の集合が選ばれていれば、観測 vs
-  アサートのエンドポイント次元（それらの run にまたがる `network.json` の和集合）を返します。
+- **「Coverage」ビュー**を置き、`POST /api/coverage`（`{target, runs?, crawl?}`）を叩きます。集計を実行し、
+  名前空間ごとの id カバレッジ、不足の一覧、名前空間から外れた id、そして run の集合が選ばれていれば、観測 vs
+  アサートのエンドポイント次元（それらの run にまたがる `network.json` の和集合）と観測 id の次元を返します。
+- **リンクできる `GET /coverage` ページ**を置き、入力をクエリ文字列（`?target=&runs=&crawl=`）で受けます。
+  カバレッジマップを直接開いたりリンクしたりできます。`/stats`、`/flakiness`、`/usage` という
+  ほかの3つの分析ビューは、いずれもこうしたページを持っていました。カバレッジマップだけ遅れたのは、
+  ターゲットの指定を必要とするからです。
 - **読み取り専用で決定的、AI を使わない。** どの数字も、宣言済みの名前空間と捕捉したアーティファクトに対する
   決定的な数え上げです。モデルも判断もなく、ゲートにもなりません（チームが情報として CI で数字を追うのは
   自由で、この UI はそれを変えません）。
 - **次元をスライスで。** id 名前空間の次元が最初のスライスです（分母が完全に定義済みでディスク上にあります）。
-  エンドポイントの次元は run の集合を選んだときに加わります。訪問画面の次元は、crawl が発見する分母
-  （[BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)）の
-  背後で先送りのままです。CLI と同じです。
-- **アプリ非依存。** 分母（`idNamespaces`）と run は config と runs ディレクトリから来ます。ハードコードされた
-  知識ではありません。
+  エンドポイントと観測 id の次元は run の集合を選んだときに加わります。訪問画面の次元は、クロール
+  （[BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)）が
+  `screenmap.json` に持つ発見済みの分母を与えたときに加わります。CLI の `--crawl` が取る入力と同じものです。
+- **run は、それを実行したターゲットのもの。** run のピッカーには、選んだターゲット自身のシナリオを実行した
+  run だけを並べます。突き合わせの鍵となるのが、run のサマリに記録されたシナリオ名です。Author の
+  ピッカーが絞り込みに使う鍵と同じものです（[BE-0262](../BE-0262-serve-author-live-step-picker/BE-0262-serve-author-live-step-picker-ja.md)）。
+  別のターゲットのシナリオを実行した run が運んでくるのは、このマップが位置づけられない証跡です。
+  クロールのピッカーは同じようには絞り込みません。クロールは絞り込みの鍵となるターゲットを記録して
+  いないからです。`screenmap.json` とそこから作る履歴の項目が持つのは、画面、遷移、クラッシュ、
+  フロンティアであり、どのアプリを歩いたかを示す名前はありません。別のアプリのクロールを選ぶと
+  すべての画面が未訪問として測られるので、ピッカーは強制できない絞り込みをほのめかす代わりに、
+  その旨をヒントに書きます。
+- **プレースホルダを id として数えない。** スイートのローダは、マップを組み立てる前に components（`params.*`）と
+  データ行（`row.*`）を展開します。展開後に残る `${vars.*}` や `${secrets.*}` のトークンが束縛されるのは
+  実行時であり、どの要素も指していません。マップはトークンの文字列を数えず、対象から外します。数えてしまえば、
+  名前空間から外れた id のなかに `${vars` という名前空間を生み出してしまいます。
+- **分母が空なら空の状態を出す。** 各次元の `coverage` は、測る対象がないとき 1.0 になります。そのままでは、
+  名前空間を1つとして宣言していないターゲットが、満たされたバーとともに「0/0 でカバレッジ 100％」と
+  描かれてしまいます。どの次元も、測る対象がない旨を書くようにします。
+- **アプリ非依存。** 分母（`idNamespaces`）、run、クロールのいずれも、config と run の履歴から来ます。
+  ハードコードされた知識ではありません。
 
 ## 検討した代替案
 
@@ -68,20 +89,34 @@ Tier 1 の読み取り専用です。UI は既存の集計を起動するだけ�
       `POST /api/coverage`（`{target, runs?}`）エンドポイントを追加する
 - [x] その結果をブラウザに出す「Coverage」ビューを追加する
 - [x] run の集合が選ばれたときに、観測 vs アサートのエンドポイント次元を組み込む
+- [x] ほかの分析ビューがいずれも持つ、リンクできる `GET /coverage` ページを追加する
+- [x] run のピッカーを、選んだターゲット自身のシナリオに絞り込む
+- [x] 選んだクロールの `screenmap.json` から、訪問画面の次元を組み込む
+- [x] 実行時に束縛される `${vars.*}` / `${secrets.*}` のプレースホルダを id マップから外す
+- [x] 分母が空の次元を、満たされたバーではなく空の状態として描く
 
 * [#702](https://github.com/bajutsu-e2e/bajutsu/pull/702) — BE-0050 の集計とその自己完結 HTML レポートを再利用して `POST /api/coverage`（stdlib と
   FastAPI の両方の外殻で共有）を追加し、それを描く「Coverage」タブを設けました。デバイス不要の
   シナリオローダを `bajutsu/scenario` へ移し、run の証跡リーダを（run id フィルタ付きで）
-  `bajutsu/coverage.py` に共有化して、CLI と serve が同じ読み方をするようにしました。選んだ run の集合に
-  ついては、エンドポイントに加えて観測 id の次元も組み込みます。
+  `bajutsu/analysis/coverage.py` に共有化して、CLI と serve が同じ読み方をするようにしました。選んだ run の
+  集合については、エンドポイントに加えて観測 id の次元も組み込みます。
+* [#1784](https://github.com/bajutsu-e2e/bajutsu/pull/1784) — 先行していた3つの分析ダッシュボードに追いつかせ、このビューを仕上げました。リンクできる
+  `GET /coverage` ページを追加し、run のピッカーを選んだターゲット自身のシナリオに絞り込み、訪問画面の
+  次元をクロールのピッカーに配線しました。欠けていただけでなく誤っていた数字も2つあります。`${vars.*}` の
+  プレースホルダが参照済み id として数えられていたことと、0/0 の次元が満たされたバーとともに
+  「カバレッジ 100％」と描かれていたことです。集計は実行時に束縛されるプレースホルダを落とすようになり、どの次元も空の分母を
+  空の状態として描くようになりました。スクリーンマップのノード走査と訪問画面の指紋計算は
+  `bajutsu/analysis/coverage.py` へ移し、CLI の `--crawl` と serve のビューが1つのクロールを同じ読み方で
+  扱うようにしました。
 
 ## 参考
 
-* `bajutsu/coverage.py`、`bajutsu/cli/commands/coverage.py`（ここで露出する集計）。
+* `bajutsu/analysis/coverage.py`、`bajutsu/cli/commands/coverage.py`（ここで露出する集計）、
+  `bajutsu/serve/operations/coverage.py`（集計への serve 側の2つの入口）。
 * [BE-0050 — E2E カバレッジマップ](../BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md)
   （これがその Web UI 面となる機能）、
   [BE-0038 — 自律クロール探索](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)
-  （先送りの訪問画面の分母）、
+  （`screenmap.json` が訪問画面の分母となるクロール）、
   [BE-0048 — 振る舞い／プロトコルのアサーション](../BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions-ja.md)
   （エンドポイント次元の「宣言された」側の半分）。
 * [BE-0011 — ローカル Web UI（`bajutsu serve`）](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve-ja.md)、

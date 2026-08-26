@@ -27,6 +27,8 @@ from bajutsu.analysis.coverage import (
     render_observed_ids,
     render_screens,
     screen_coverage,
+    screen_fingerprints,
+    screen_refs,
 )
 from bajutsu.cli import app
 from bajutsu.crawl import fingerprint as screen_fingerprint
@@ -993,3 +995,109 @@ def test_cli_without_crawl_omits_screen_section(tmp_path: Path) -> None:
     result = runner.invoke(app, ["coverage", "--target", "demo", "--config", str(config), "--json"])
     assert result.exit_code == 0
     assert json.loads(result.stdout).get("screens") is None
+
+
+# --- runtime placeholders are not ids (issue #1719) ---
+
+
+def test_vars_placeholder_is_not_counted_as_a_referenced_id() -> None:
+    # A `${vars.*}` selector is bound at run time (a `totp` / `email` step's output, BE-0046), so its
+    # text names no element. Counting it would invent an `${vars` namespace among the gaps.
+    c = _cov(
+        "- name: login\n  steps:\n"
+        "    - tap: { id: auth.submit }\n"
+        "    - tap: { id: '${vars.otp_field}' }\n",
+        ["auth"],
+    )
+    assert [ns.ids for ns in c.namespaces] == [["auth.submit"]]
+    assert c.off_namespace == []
+
+
+def test_a_suite_of_only_placeholders_covers_nothing() -> None:
+    c = _cov("- name: login\n  steps:\n    - tap: { id: '${vars.target}' }\n", ["auth"])
+    assert c.covered == 0 and c.gaps == ["auth"] and c.off_namespace == []
+
+
+def test_a_literal_id_holding_a_placeholder_is_excluded_too() -> None:
+    # A spliced id (`cart.item-${vars.n}`) is as unresolvable as a whole-token one: the run binds it
+    # to something else entirely, so the text in the suite matches no element either way.
+    c = _cov(
+        "- name: cart\n  steps:\n    - tap: { id: 'cart.item-${vars.n}' }\n    - tap: { id: cart.pay }\n",
+        ["cart"],
+    )
+    assert [ns.ids for ns in c.namespaces] == [["cart.pay"]]
+
+
+# --- the shared screens-dimension parsers (also used by the serve Coverage view, BE-0146) ---
+
+
+def test_screen_refs_labels_a_node_by_its_first_id_and_falls_back_to_the_hash() -> None:
+    refs = screen_refs(
+        {
+            "nodes": [
+                {"fingerprint": "abcdefgh1", "ids": ["home.title"]},
+                {"fingerprint": "zyxwvuts2"},
+            ]
+        }
+    )
+    assert [(r.fingerprint, r.label) for r in refs] == [
+        ("abcdefgh1", "home.title"),
+        ("zyxwvuts2", "zyxwvut"),
+    ]
+
+
+@pytest.mark.parametrize("ids", [{"a": 1}, 5, "home.title", None, []])
+def test_screen_refs_falls_back_to_the_hash_when_ids_is_not_a_list(ids: object) -> None:
+    """A screen map can arrive from outside the process (an uploaded run bundle, BE-0073), so a
+    hand-corrupted `ids` must degrade to the fingerprint label — a raise would reach the serve
+    Coverage view as a 500 instead of its readable error, and a bare string would label the screen
+    with its first character."""
+    refs = screen_refs({"nodes": [{"fingerprint": "abcdefgh1", "ids": ids}]})
+    assert [(r.fingerprint, r.label) for r in refs] == [("abcdefgh1", "abcdefg")]
+
+
+def test_screen_refs_skips_nodes_without_a_fingerprint_and_a_non_list_nodes_field() -> None:
+    assert screen_refs({"nodes": [{"ids": ["home"]}, "not-a-node"]}) == []
+    assert screen_refs({"nodes": {"a": 1}}) == []
+    assert screen_refs({}) == []
+
+
+def test_screen_fingerprints_matches_the_crawl_reduction() -> None:
+    elements = [{"identifier": "home.title"}, {"identifier": "home.cta"}]
+    assert screen_fingerprints([elements]) == {screen_fingerprint(elements).value}  # type: ignore[arg-type]
+
+
+def test_screen_fingerprints_ignores_a_capture_holding_no_elements() -> None:
+    assert screen_fingerprints([[], ["not-an-element"]]) == frozenset()
+
+
+# --- a 0/0 dimension is an empty state, never a full bar (issue #1719) ---
+
+
+def test_render_html_renders_an_undeclared_namespace_set_as_an_empty_state() -> None:
+    # `coverage` is 1.0 by the empty-denominator convention, so without this the page would claim
+    # "100.0% — 0/0" and fill the bar for a target that declares nothing to measure.
+    html = render_html(_cov("- name: x\n  steps:\n    - tap: { id: home.a }\n", []))
+    assert "100.0%" not in html
+    assert "nothing to measure" in html
+    assert "idNamespaces" in html
+
+
+def test_render_html_still_lists_off_namespace_ids_with_no_declared_namespaces() -> None:
+    html = render_html(_cov("- name: x\n  steps:\n    - tap: { id: home.a }\n", []))
+    assert "home.a" in html
+
+
+def test_render_html_renders_an_empty_run_set_dimension_as_an_empty_state() -> None:
+    cov = _cov("- name: x\n  steps:\n    - tap: { id: home.a }\n", ["home"])
+    html = render_html(
+        cov,
+        endpoints=endpoint_coverage(load_scenarios("- name: x\n  steps: []\n"), []),
+        observed=observed_id_coverage([], []),
+        screens=screen_coverage([], frozenset()),
+    )
+    # Only the static dimension has a real denominator here (1/1), so it alone carries a score.
+    assert html.count("100.0% —") == 1
+    assert "No network traffic was observed" in html
+    assert "The crawl discovered no screens" in html
+    assert "nothing to measure the runs against" in html
