@@ -192,8 +192,14 @@ produces for other harnesses. `apm.lock.yaml` records a SHA-256 for every deploy
 
 ```bash
 make skills        # uv run apm install --no-policy — deploy .apm/skills/ to .claude/skills/
-make lint-skills   # uv run apm audit --ci --no-policy — fail on drift (part of `make check`)
+make lint-skills   # uv run python scripts/audit_skills.py — fail on drift (part of `make check`)
 ```
+
+`lint-skills` goes through a wrapper rather than calling `apm audit` directly. APM governs the
+whole of `.claude/`, which is also where Claude Code parks a concurrent session's worktree, so a
+direct audit walks every other session's checkout and fails over vendored files this repository
+never wrote. [`scripts/audit_skills.py`](../scripts/audit_skills.py) audits a scratch mirror of
+the files git sees instead — what a fresh clone holds plus the work in hand.
 
 **Both sides are committed** — the source and the deployed `.claude/skills/` tree — so a fresh
 clone has a working skill set before anyone installs APM. The cost is that each skill's bytes are

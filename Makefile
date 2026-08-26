@@ -269,13 +269,16 @@ skills:
 
 # Fail when a deployed skill file no longer matches its source. `apm audit --ci` replays the
 # install and compares against the lockfile's hashes, so it catches drift in both directions: a
-# deployed file edited by hand, and a source edit whose `make skills` was forgotten. --no-policy
-# keeps the check offline (org-policy discovery would otherwise reach api.github.com) and
-# deterministic — the same reason no LLM sits anywhere near this gate step. Unlike lint-actions and
-# lint-secrets there is no skip branch: apm-cli is a `dev` dependency (pyproject.toml), so uv
-# resolves the pinned version on any clone and this step cannot pass by not running.
+# deployed file edited by hand, and a source edit whose `make skills` was forgotten. Unlike
+# lint-actions and lint-secrets there is no skip branch: apm-cli is a `dev` dependency
+# (pyproject.toml), so uv resolves the pinned version on any clone and this step cannot pass by not
+# running. The audit goes through scripts/audit_skills.py, which first mirrors the paths APM reads
+# into a scratch tree holding only git-visible files: the `claude` target's governed prefix is
+# `.claude/` whole, which would otherwise pull every concurrent session's `.claude/worktrees/`
+# checkout — and its vendored `.venv` and `node_modules` — into the content scan, reddening the
+# local gate over files CI never sees (issue #1775).
 lint-skills:
-	uv run apm audit --ci --no-policy
+	uv run python scripts/audit_skills.py
 
 # Filter roadmap (BE) items by Status into one small table — ID / Item / Topic / Path — so an AI
 # session surveys just the rows it needs (e.g. every Proposal) without paging through the dashboard's

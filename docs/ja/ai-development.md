@@ -158,8 +158,15 @@ git worktree remove ../bajutsu-<topic>
 
 ```bash
 make skills        # uv run apm install --no-policy — .apm/skills/ を .claude/skills/ へ配備する
-make lint-skills   # uv run apm audit --ci --no-policy — ずれがあれば落とす（`make check` に含む）
+make lint-skills   # uv run python scripts/audit_skills.py — ずれがあれば落とす（`make check` に含む）
 ```
+
+`lint-skills` が `apm audit` を直接呼ばず、ラッパーを経由するのには理由があります。APM が統治する
+範囲は `.claude/` 全体であり、そこは Claude Code が並行セッションの worktree を置く場所でもあります。
+そのまま監査すると他のセッションのチェックアウトまで走査し、このリポジトリが書いたのではない
+第三者のファイルで落ちます。[`scripts/audit_skills.py`](../../scripts/audit_skills.py) は代わりに、
+git が見ているファイルだけを写した一時ツリーを監査します。クローンした直後の中身に、いま手を
+付けている分を足したものです。
 
 **ソースと配備先の両方をコミットします。** クローンした直後から、APM を入れる前に動くスキルセットが
 手に入ります。代償は、各スキルのバイト列を 2 度追跡することです。`SKILL.md` を APM のサイズ予算
