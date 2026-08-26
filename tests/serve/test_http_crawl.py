@@ -6,6 +6,7 @@ import json
 import time
 import urllib.error
 import urllib.request
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -141,7 +142,7 @@ def test_http_crawl_requires_app(tmp_path: Path) -> None:
         server.server_close()
 
 
-def _crawl_server(tmp_path: Path):  # type: ignore[no-untyped-def]
+def _crawl_server(tmp_path: Path) -> tuple[ThreadingHTTPServer, int]:
     scn_dir, cfg, runs = project(tmp_path)
     return _serve(
         srv.ServeState(

@@ -59,7 +59,7 @@ def test_scenario_parses_both_phases_and_round_trips() -> None:
       steps: [{ tap: { id: a } }]
 """
     s = load_scenarios(text)[0]
-    assert [st.tap.id for st in s.before if st.tap] == ["a"]  # type: ignore[union-attr]
+    assert [st.tap.id for st in s.before if st.tap] == ["a"]
     assert [r.on for r in s.after] == ["always", "error"]
     # `on` survives a dump: YAML 1.1 would resolve the bare key to True, so the dump quotes it and
     # `_yaml`'s restricted bool resolver reads it back as the string — the same round trip

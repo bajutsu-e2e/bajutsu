@@ -13,6 +13,7 @@ import http.client
 import io
 import json
 import urllib.error
+from email.message import Message
 from pathlib import Path
 from typing import Any
 from unittest import mock
@@ -297,7 +298,7 @@ def test_zorder_responder_keeps_asking_after_a_busy_main_thread() -> None:
 
     def busy(*_args: object, **_kwargs: object) -> None:
         calls[0] += 1
-        raise urllib.error.HTTPError("url", 503, "busy", {}, None)
+        raise urllib.error.HTTPError("url", 503, "busy", Message(), None)
 
     with mock.patch("urllib.request.urlopen", busy):
         assert responder.positions() == {}
@@ -313,7 +314,7 @@ def test_zorder_responder_latches_on_a_permanent_http_error() -> None:
 
     def unauthorized(*_args: object, **_kwargs: object) -> None:
         calls[0] += 1
-        raise urllib.error.HTTPError("url", 401, "unauthorized", {}, None)
+        raise urllib.error.HTTPError("url", 401, "unauthorized", Message(), None)
 
     with mock.patch("urllib.request.urlopen", unauthorized):
         assert responder.positions() == {}

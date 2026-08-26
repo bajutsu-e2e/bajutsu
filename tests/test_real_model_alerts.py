@@ -36,6 +36,7 @@ import re
 import struct
 import zlib
 from pathlib import Path
+from typing import Any
 
 import pytest
 from alert_fixture_support import (
@@ -435,7 +436,7 @@ def test_committed_fixtures_is_empty_when_the_directory_is_absent(tmp_path: Path
 
 # --- Committed-fixture ground-truth checks (no credential: run on every gate) ---------------------
 
-_NAMES: list[object] = committed_fixtures() or [
+_NAMES: list[Any] = committed_fixtures() or [
     pytest.param("", marks=pytest.mark.skip(reason="no captured alert fixture yet (BE-0308)"))
 ]
 

@@ -154,7 +154,7 @@ def test_run_tool_returns_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
 
     import subprocess as sp
 
-    def fake_run(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
+    def fake_run(*args: object, **kwargs: Any) -> sp.CompletedProcess[str]:
         return sp.CompletedProcess(
             args=[],
             returncode=0,
@@ -185,7 +185,7 @@ def test_run_tool_returns_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
 
     import subprocess as sp
 
-    def fake_run(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
+    def fake_run(*args: object, **kwargs: Any) -> sp.CompletedProcess[str]:
         return sp.CompletedProcess(
             args=[],
             returncode=1,
@@ -221,7 +221,7 @@ def test_run_tool_no_manifest_keeps_stderr_off_the_verdict_line(
 
     import subprocess as sp
 
-    def fake_run(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
+    def fake_run(*args: object, **kwargs: Any) -> sp.CompletedProcess[str]:
         return sp.CompletedProcess(
             args=[], returncode=1, stdout="", stderr="Traceback (most recent call last): boom\n"
         )

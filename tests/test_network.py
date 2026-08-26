@@ -9,6 +9,8 @@ import socket
 import threading
 import urllib.error
 import urllib.request
+from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -34,13 +36,11 @@ from bajutsu.scenario import (
 )
 
 
-def _ex(
-    method: str = "GET", path: str = "/items", status: int = 200, **kw: object
-) -> NetworkExchange:
+def _ex(method: str = "GET", path: str = "/items", status: int = 200, **kw: Any) -> NetworkExchange:
     return NetworkExchange(method=method, path=path, status=status, **kw)
 
 
-def _req(**kw: object) -> Assertion:
+def _req(**kw: Any) -> Assertion:
     return Assertion(request=RequestMatch(**kw))
 
 
@@ -101,7 +101,7 @@ def test_request_pathmatches_and_count() -> None:
 def test_request_matches_url_endpoint() -> None:
     exs = [_ex("GET", "/items", 200, url="https://api.example.com/items")]
     assert evaluate_one([], _req(url="https://api.example.com/items"), exs).ok  # exact endpoint
-    assert evaluate_one([], _req(url_matches="example.com"), exs).ok  # substring/regex
+    assert evaluate_one([], _req(urlMatches="example.com"), exs).ok  # substring/regex
     assert not evaluate_one([], _req(url="https://other.com/items"), exs).ok
 
 
@@ -132,7 +132,7 @@ def test_request_assignment_uses_augmenting_not_greedy() -> None:
     ]
     broad = Assertion(request=RequestMatch(method="GET"))  # matches both
     specific = Assertion(
-        request=RequestMatch(method="GET", url_matches="a\\.test")
+        request=RequestMatch(method="GET", urlMatches="a\\.test")
     )  # only the first
     assert all(r.ok for r in evaluate([], [broad, specific], exs))
 
@@ -186,7 +186,7 @@ def test_request_assignment_no_match_reason() -> None:
     assert not res[1].ok and "no matching exchange" in res[1].reason
 
 
-def _event(**kw: object) -> Assertion:
+def _event(**kw: Any) -> Assertion:
     return Assertion(event=EventMatch(**kw))
 
 
@@ -227,13 +227,13 @@ def test_event_count_operator() -> None:
         [], _event(path="/track", body={"name": "tap"}, count=CountOp(equals=1)), exs
     ).ok
     assert evaluate_one(
-        [], _event(path="/track", body={"name": "tap"}, count=CountOp(at_least=2)), exs
+        [], _event(path="/track", body={"name": "tap"}, count=CountOp(atLeast=2)), exs
     ).ok
     assert evaluate_one(
-        [], _event(path="/track", body={"name": "tap"}, count=CountOp(at_most=2)), exs
+        [], _event(path="/track", body={"name": "tap"}, count=CountOp(atMost=2)), exs
     ).ok
     assert not evaluate_one(
-        [], _event(path="/track", body={"name": "tap"}, count=CountOp(at_most=1)), exs
+        [], _event(path="/track", body={"name": "tap"}, count=CountOp(atMost=1)), exs
     ).ok
 
 
@@ -277,7 +277,7 @@ def test_event_interpolates_vars_in_body() -> None:
 
 
 def _seq(*reqs: RequestMatch) -> Assertion:
-    return Assertion(request_sequence=list(reqs))
+    return Assertion(requestSequence=list(reqs))
 
 
 def test_request_sequence_matches_in_order() -> None:
@@ -314,20 +314,20 @@ def test_request_sequence_empty_timeline_fails() -> None:
     assert not r.ok and r.reason
 
 
-def _schemas_dir(tmp_path: object, name: str, schema: dict[str, object]):  # type: ignore[no-untyped-def]
-    d = tmp_path / "schemas"  # type: ignore[operator]
+def _schemas_dir(tmp_path: Path, name: str, schema: dict[str, object]) -> Path:
+    d = tmp_path / "schemas"
     d.mkdir(exist_ok=True)
     (d / name).write_text(json.dumps(schema), encoding="utf-8")
     return d
 
 
-def _rs(schema_path: str, **req: object) -> Assertion:
+def _rs(schema_path: str, **req: Any) -> Assertion:
     return Assertion(
-        response_schema=ResponseSchemaMatch(request=RequestMatch(**req), schema_path=schema_path)
+        responseSchema=ResponseSchemaMatch(request=RequestMatch(**req), schema=schema_path)
     )
 
 
-def test_response_schema_passes_for_conforming_body(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_response_schema_passes_for_conforming_body(tmp_path: Path) -> None:
     from bajutsu.assertions import SchemaContext
 
     d = _schemas_dir(
@@ -345,7 +345,7 @@ def test_response_schema_passes_for_conforming_body(tmp_path) -> None:  # type: 
     assert r.ok, r.reason
 
 
-def test_response_schema_fails_for_nonconforming_body(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_response_schema_fails_for_nonconforming_body(tmp_path: Path) -> None:
     from bajutsu.assertions import SchemaContext
 
     d = _schemas_dir(
@@ -363,7 +363,7 @@ def test_response_schema_fails_for_nonconforming_body(tmp_path) -> None:  # type
     assert not r.ok and r.reason
 
 
-def test_response_schema_no_matching_exchange(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_response_schema_no_matching_exchange(tmp_path: Path) -> None:
     from bajutsu.assertions import SchemaContext
 
     d = _schemas_dir(tmp_path, "x.json", {"type": "object"})
@@ -376,7 +376,7 @@ def test_response_schema_no_matching_exchange(tmp_path) -> None:  # type: ignore
     assert not r.ok and "exchange" in r.reason
 
 
-def test_response_schema_missing_schema_file(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_response_schema_missing_schema_file(tmp_path: Path) -> None:
     from bajutsu.assertions import SchemaContext
 
     (tmp_path / "schemas").mkdir()
@@ -390,7 +390,7 @@ def test_response_schema_missing_schema_file(tmp_path) -> None:  # type: ignore[
     assert not r.ok and "schema" in r.reason.lower()
 
 
-def test_response_schema_non_json_body(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_response_schema_non_json_body(tmp_path: Path) -> None:
     from bajutsu.assertions import SchemaContext
 
     d = _schemas_dir(tmp_path, "x.json", {"type": "object"})
@@ -404,7 +404,7 @@ def test_response_schema_non_json_body(tmp_path) -> None:  # type: ignore[no-unt
     assert not r.ok and r.reason
 
 
-def test_response_schema_malformed_schema_fails_cleanly(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_response_schema_malformed_schema_fails_cleanly(tmp_path: Path) -> None:
     from bajutsu.assertions import SchemaContext
 
     # An unresolvable $ref must fail the assertion loudly, not crash the run.
@@ -425,7 +425,7 @@ def test_response_schema_without_context_fails() -> None:
     assert not r.ok and r.reason
 
 
-def test_response_schema_rejects_path_traversal(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_response_schema_rejects_path_traversal(tmp_path: Path) -> None:
     from bajutsu.assertions import SchemaContext
 
     # a `..` escape (or an absolute path) must be rejected, not read outside the schemas dir

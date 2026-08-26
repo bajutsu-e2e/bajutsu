@@ -43,8 +43,20 @@ def _scenario(steps: list[Step], expect: list[Assertion] | None = None) -> Scena
 
 
 class _NoSleep:
-    def sleep(self, _seconds: float) -> None:
-        return None
+    """Logical time: no real waiting, but a deadline wait still reaches its deadline.
+
+    `enrich()` passes this clock into `execute`, whose `wait` handling is `_wait`'s deadline loop
+    (`clock.now() >= deadline`), so a frozen `now()` would spin forever rather than fail.
+    """
+
+    def __init__(self) -> None:
+        self._t = 0.0
+
+    def now(self) -> float:
+        return self._t
+
+    def sleep(self, seconds: float) -> None:
+        self._t += seconds
 
 
 class _AdvancingClock:
@@ -234,7 +246,7 @@ def test_enrich_streams_progress_to_reporter() -> None:
 def test_enrich_uses_alert_guard_during_replay() -> None:
     from bajutsu.orchestrator import AlertEvent
 
-    app = {
+    app: base.Element = {
         "identifier": "App",
         "label": "App",
         "traits": ["application"],

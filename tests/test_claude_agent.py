@@ -495,7 +495,7 @@ def test_secret_in_element_value_is_masked_before_send() -> None:
     # part the model receives — what the model sees matches what evidence masks.
     backend = FakeBackend(FakeBlock("tap", {"id": "a"}))
     redactor = Redactor(Redact(labels=["カード番号"]), values=["sk-secret-token"])
-    screen = [
+    screen: list[base.Element] = [
         _el("card", "カード番号"),  # value masked because its label is configured
         {
             "identifier": "tok",
@@ -640,7 +640,8 @@ def test_multiple_tool_blocks_map_to_ordered_steps() -> None:
     )
     proposal = ClaudeAgent(backend=backend).next_action(_obs())
     assert not proposal.done and len(proposal.steps) == 3
-    assert [s.type.into.id for s in proposal.steps if s.type] == ["email", "pw"]
+    typed = [s.type for s in proposal.steps if s.type is not None]
+    assert [t.into.id for t in typed if t.into is not None] == ["email", "pw"]
     assert proposal.steps[2].tap is not None and proposal.steps[2].tap.id == "submit"
     # each step keeps its own reason as provenance; the turn-level note is the first action's
     assert proposal.steps[0].from_ == "email" and proposal.note == "email"

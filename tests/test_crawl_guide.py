@@ -23,6 +23,7 @@ from bajutsu.crawl.guide import (
     make_guide,
 )
 from bajutsu.crawl.serialize import action_to_dict
+from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence.redaction import PLACEHOLDER, Redactor
 from bajutsu.scenario import Redact
@@ -39,7 +40,7 @@ class _FakeProposer:
 
     def propose(
         self,
-        elements: list[dict],
+        elements: list[base.Element],
         screenshot: bytes | None,
         candidates: list[crawl.Action],
         dismissed: tuple[str, ...],

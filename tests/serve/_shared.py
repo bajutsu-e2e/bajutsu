@@ -7,29 +7,20 @@ file instead of appending to a 1000-line monolith)."""
 from __future__ import annotations
 
 import json
-import logging
 import threading
 import urllib.error
 import urllib.request
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterator
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import FakeObjectStore as FakeObjectStore
+from conftest import StubArtifactStore as StubArtifactStore
+from conftest import log_field as log_field
 
 from bajutsu import serve as srv
-from bajutsu.serve.artifacts import Artifact
-
-
-def log_field(record: logging.LogRecord, name: str) -> object:
-    """One structured `extra=` field off a log record.
-
-    `logging.LogRecord` declares no such attribute — the logging module sets it on the instance — so
-    the read goes through `getattr` rather than a suppression at every assertion (BE-0388).
-    """
-    return getattr(record, name)
-
 
 SCENARIO = "- name: alpha\n  steps:\n    - tap: { id: home.title }\n- name: beta\n  steps:\n    - tap: { id: x }\n"
 
@@ -80,7 +71,7 @@ class FakeProc:
         pass
 
 
-def fake_popen(lines: list[str], code: int = 0):  # type: ignore[no-untyped-def]
+def fake_popen(lines: list[str], code: int = 0) -> Callable[..., FakeProc]:
     def popen(_cmd: list[str], **_kw: Any) -> FakeProc:
         return FakeProc(lines, code)
 
@@ -149,107 +140,3 @@ def patch_gcs_client(monkeypatch: pytest.MonkeyPatch) -> None:
     from google.cloud import storage
 
     monkeypatch.setattr(storage, "Client", FakeGCSClient)
-
-
-class FakeObjectStore:
-    """An in-memory `ObjectStore` (BE-0204) for the uploaded-bundle durable-storage tests (BE-0243):
-    holds objects in a plain dict, and every method raises whatever `fail_with` is set to (if any) —
-    used to exercise a store failure (read or write) without a real S3/GCS client.
-
-    It implements the whole `ObjectStore` protocol, not just the slice one test needs, so a serve
-    test subclasses it for its own specialization instead of redefining a partial store that no
-    longer type-checks against the seam (BE-0388)."""
-
-    def __init__(self, objects: dict[str, bytes] | None = None) -> None:
-        self.objects: dict[str, bytes] = dict(objects or {})
-        self.put_calls: list[str] = []
-        self.fail_with: Exception | None = None
-
-    def _fail_if_armed(self) -> None:
-        """Raise the armed failure, when this store is armed to fail.
-
-        Read through a local so what is raised is unambiguously an exception, never the `None` the
-        attribute also admits.
-        """
-        failure = self.fail_with
-        if failure is not None:
-            raise failure
-
-    def exists(self, key: str) -> bool:
-        self._fail_if_armed()
-        return key in self.objects
-
-    def get_bytes(self, key: str) -> bytes | None:
-        self._fail_if_armed()
-        return self.objects.get(key)
-
-    def put_bytes(self, key: str, data: bytes, *, content_type: str = "") -> None:
-        self._fail_if_armed()
-        self.put_calls.append(key)
-        self.objects[key] = data
-
-    def put_file(self, key: str, path: Path, *, content_type: str = "") -> None:
-        self._fail_if_armed()
-        self.put_calls.append(key)
-        self.objects[key] = path.read_bytes()
-
-    def presigned_url(self, key: str) -> str:
-        self._fail_if_armed()
-        return f"https://signed.example/{key}"
-
-    def presigned_put_url(self, key: str, *, content_type: str = "", ttl: int = 900) -> str:
-        self._fail_if_armed()
-        return f"https://signed.example/put/{key}"
-
-    def list_keys(self, prefix: str) -> list[str]:
-        self._fail_if_armed()
-        return [k for k in self.objects if k.startswith(prefix)]
-
-    def delete_key(self, key: str) -> None:
-        self._fail_if_armed()
-        self.objects.pop(key, None)
-
-    def delete_keys(self, keys: Iterable[str]) -> None:
-        for key in keys:
-            self.delete_key(key)
-
-
-class StubArtifactStore:
-    """An `ArtifactStore` that answers "nothing here" to everything (BE-0388).
-
-    A serve test that needs one behavior subclasses this and overrides that method alone, rather
-    than defining a partial store that satisfies neither the protocol nor the next reader.
-    """
-
-    def get(self, rel: str) -> Artifact | None:
-        return None
-
-    def open_bytes(self, rel: str) -> bytes | None:
-        return None
-
-    def exists(self, rel: str) -> bool:
-        return False
-
-    def list_runs(self) -> list[dict[str, Any]]:
-        return []
-
-    def list_crawl_runs(self) -> list[dict[str, Any]]:
-        return []
-
-    def render_report(self, run_id: str) -> Artifact | None:
-        return None
-
-    def archive(self, run_id: str) -> Artifact | None:
-        return None
-
-    def soft_delete_run(self, run_id: str) -> bool:
-        return False
-
-    def restore_run(self, run_id: str) -> bool:
-        return False
-
-    def purge_run(self, run_id: str) -> bool:
-        return False
-
-    def list_trashed_runs(self) -> list[dict[str, Any]]:
-        return []

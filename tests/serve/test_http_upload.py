@@ -117,6 +117,7 @@ def _wait_done(port: int, job_id: str) -> dict[str, Any]:
         j = _get_json(port, "/api/jobs/" + job_id)
         assert isinstance(j, dict)
         if j["status"] == "done":
+            assert isinstance(j, dict)
             return j
         time.sleep(0.02)
     raise AssertionError("job did not finish")

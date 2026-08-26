@@ -7,8 +7,10 @@ an unknown backend explicitly rather than leaning on the host's toolchain.
 
 from __future__ import annotations
 
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
@@ -857,7 +859,7 @@ def test_xcuitest_runner_summary_reports_the_resolved_source(tmp_path: Path) -> 
         target="app",
         platform_config=IosConfig(
             bundle_id="com.example.demo",
-            xcuitest=XcuitestConfig(test_runner=str(runner)),
+            xcuitest=XcuitestConfig(testRunner=str(runner)),
         ),
         backend=["xcuitest"],
         device="",
@@ -891,29 +893,29 @@ def test_tool_version_degrades_on_failure_and_reads_stderr(
 
     from bajutsu.cli.commands import doctor
 
-    def _raise(*args: object, **kwargs: object) -> object:
+    def _raise(*args: object, **kwargs: Any) -> object:
         raise OSError("no such tool")
 
-    monkeypatch.setattr(doctor.subprocess, "run", _raise)
+    monkeypatch.setattr(subprocess, "run", _raise)
     assert doctor._tool_version(["missing-tool"]) is None
 
-    def _nonzero(*args: object, **kwargs: object) -> object:
+    def _nonzero(*args: object, **kwargs: Any) -> object:
         # check=True turns this into CalledProcessError; a stray "1.2" must NOT be read as a version.
         raise sp.CalledProcessError(1, "cmd", output="error near 1.2", stderr="")
 
-    monkeypatch.setattr(doctor.subprocess, "run", _nonzero)
+    monkeypatch.setattr(subprocess, "run", _nonzero)
     assert doctor._tool_version(["failing-tool"]) is None
 
-    def _junk(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
+    def _junk(*args: object, **kwargs: Any) -> sp.CompletedProcess[str]:
         return sp.CompletedProcess([], 0, stdout="no version here", stderr="")
 
-    monkeypatch.setattr(doctor.subprocess, "run", _junk)
+    monkeypatch.setattr(subprocess, "run", _junk)
     assert doctor._tool_version(["quiet-tool"]) is None
 
-    def _stderr_only(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
+    def _stderr_only(*args: object, **kwargs: Any) -> sp.CompletedProcess[str]:
         return sp.CompletedProcess([], 0, stdout="", stderr="Xcode 16.0")
 
-    monkeypatch.setattr(doctor.subprocess, "run", _stderr_only)
+    monkeypatch.setattr(subprocess, "run", _stderr_only)
     assert doctor._tool_version(["xcodebuild"]) == "16.0"
 
 
@@ -1142,7 +1144,9 @@ def test_serve_emit_launchagent_prints_plist_and_exits() -> None:
     assert "bajutsu" in r.output and "serve" in r.output
 
 
-def test_serve_config_from_git_binds_checkout(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_serve_config_from_git_binds_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # `serve --config github:…` materializes the checkout at startup and serves from its root, so
     # the config's relative paths resolve against the fetched tree (BE-0063).
     import bajutsu.config_source as cs
@@ -1163,7 +1167,9 @@ def test_serve_config_from_git_binds_checkout(tmp_path: Path, monkeypatch) -> No
     assert captured["cwd"] == checkout  # served from the checkout root
 
 
-def test_serve_local_config_binds_the_config_directory(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_serve_local_config_binds_the_config_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # A local `--config` in a subdirectory anchors serve's cwd at the config's own directory, not the
     # launch dir, so its relative paths resolve the same wherever serve was started (BE-0242) — the
     # local-config counterpart of the Git bind above. The config lives under a subdir so the config
@@ -1182,7 +1188,9 @@ def test_serve_local_config_binds_the_config_directory(tmp_path: Path, monkeypat
     assert captured["cwd"] == cfg_dir  # anchored at the config's directory, not the launch dir
 
 
-def test_serve_local_relative_config_is_resolved_to_absolute(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_serve_local_relative_config_is_resolved_to_absolute(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # A relative `--config` must reach srv.serve as an absolute path: a run job passes it as `--config`
     # to a subprocess launched with cwd=<config's dir>, so a path left relative to serve's launch dir
     # would no longer resolve once cwd moves. Launch from a directory *other* than the config's so a
@@ -1215,7 +1223,7 @@ def test_serve_rejects_invalid_upload_exec() -> None:
     assert "upload-exec" in r.output
 
 
-def test_serve_upload_exec_env_mirror_and_flag_precedence(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_serve_upload_exec_env_mirror_and_flag_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
     # The flag wins; absent a flag the BAJUTSU_UPLOAD_EXEC env var is honoured (hosted backend).
     import bajutsu.serve as srv
 
@@ -1223,10 +1231,12 @@ def test_serve_upload_exec_env_mirror_and_flag_precedence(monkeypatch) -> None: 
     monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))
     monkeypatch.setenv("BAJUTSU_UPLOAD_EXEC", "deny")
     r = runner.invoke(app, ["serve", "--config", "bajutsu.config.yaml"])
-    assert r.exit_code == 0 and captured["upload_exec"] == "deny"  # env honoured when no flag
+    from_env = captured["upload_exec"]
+    assert r.exit_code == 0 and from_env == "deny"  # env honoured when no flag
     captured.clear()
     r = runner.invoke(app, ["serve", "--upload-exec", "reuse", "--config", "bajutsu.config.yaml"])
-    assert r.exit_code == 0 and captured["upload_exec"] == "reuse"  # flag wins over env
+    from_flag = captured["upload_exec"]
+    assert r.exit_code == 0 and from_flag == "reuse"  # flag wins over env
 
 
 def test_serve_themes_flag_and_default_theme(
@@ -1426,7 +1436,7 @@ def test_crawl_web_builds_one_browser_lane_per_worker(
 
     captured: dict[str, object] = {}
 
-    def fake_crawl(driver: object, reset: object, **kwargs: object) -> crawl_engine.ScreenMap:
+    def fake_crawl(driver: object, reset: object, **kwargs: Any) -> crawl_engine.ScreenMap:
         captured.update(kwargs)
         return crawl_engine.ScreenMap()
 
@@ -1652,7 +1662,9 @@ def test_touch_markers_skips_a_scenario_that_compares_a_screenshot() -> None:
 
 def test_touch_markers_skips_a_step_level_visual_assertion() -> None:
     scenario = _touch_marker_scenario()
-    scenario.steps = [Step(assert_=[Assertion(visual=VisualMatch(baseline="home.png"))])]
+    scenario.steps = [
+        Step.model_validate({"assert": [Assertion(visual=VisualMatch(baseline="home.png"))]})
+    ]
     _apply_touch_markers([scenario], True)
     assert "BAJUTSU_TOUCH_MARKERS" not in scenario.preconditions.launch_env
 

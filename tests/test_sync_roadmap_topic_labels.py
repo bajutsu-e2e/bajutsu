@@ -14,8 +14,12 @@ import io
 import json
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import pytest
+
+if TYPE_CHECKING:  # the module is loaded by path at runtime, so name its types for mypy only
+    from scripts.sync_roadmap_topic_labels import ChangedFile, Plan
 
 _MODULE_PATH = Path(__file__).resolve().parent.parent / "scripts" / "sync_roadmap_topic_labels.py"
 _spec = importlib.util.spec_from_file_location("sync_roadmap_topic_labels", _MODULE_PATH)
@@ -48,8 +52,12 @@ _KNOWN_LABEL = labels.label_for_topic(_KNOWN_TOPIC)
 _OTHER_LABEL = labels.label_for_topic(_OTHER_TOPIC)
 
 
-def _changed(status: str, filename: str, previous_filename: str | None = None) -> object:
-    return labels.ChangedFile(status=status, filename=filename, previous_filename=previous_filename)
+def _changed(status: str, filename: str, previous_filename: str | None = None) -> ChangedFile:
+    changed = labels.ChangedFile(
+        status=status, filename=filename, previous_filename=previous_filename
+    )
+    assert isinstance(changed, labels.ChangedFile)
+    return cast("ChangedFile", changed)
 
 
 # --- scope ------------------------------------------------------------------------
@@ -135,14 +143,16 @@ def test_path_topic_rules_reference_only_real_topic_keys() -> None:
 
 
 def _actions(
-    entries: list[object],
+    entries: list[ChangedFile],
     head: dict[str, str],
     base: dict[str, str] | None = None,
     current: set[str] | None = None,
-) -> object:
+) -> Plan:
     """Run compute_actions with in-memory head/base reads and the PR's current topic labels."""
     base = base or {}
-    return labels.compute_actions(entries, head.get, base.get, current or set())
+    plan = labels.compute_actions(entries, head.get, base.get, current or set())
+    assert isinstance(plan, labels.Plan)
+    return cast("Plan", plan)
 
 
 def test_added_item_emits_a_single_add() -> None:

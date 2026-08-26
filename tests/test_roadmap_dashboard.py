@@ -93,12 +93,12 @@ def test_per_category_progress_is_implemented_share() -> None:
     Rejected items are outside that denominator (BE-0366) — they are never coming back, so they are
     not outstanding work.
     """
-    by_topic: dict[str, list[object]] = {}
+    by_topic: dict[str, list[Any]] = {}
     for item in _ITEMS:
         by_topic.setdefault(item.topic, []).append(item)
     for topic, items in by_topic.items():
-        implemented = sum(1 for it in items if it.bucket == "Implemented")  # type: ignore[attr-defined]
-        outstanding = sum(1 for it in items if it.bucket != "Rejected")  # type: ignore[attr-defined]
+        implemented = sum(1 for it in items if it.bucket == "Implemented")
+        outstanding = sum(1 for it in items if it.bucket != "Rejected")
         pct = round(100 * implemented / outstanding) if outstanding else 100
         assert f'<span class="be-pct">{pct}%</span>' in _PAGE, topic
         assert f">{implemented}/{outstanding} implemented<" in _PAGE
@@ -345,7 +345,9 @@ def _card_for_origin(origin: str) -> str:
             "en": entry_cls(id="BE-9999", slug="x", title="t", status="Proposal", origin=origin)
         },
     )
-    return brd._card(sample)
+    card = brd._card(sample)
+    assert isinstance(card, str)
+    return card
 
 
 def test_origin_item_link_resolves_to_an_absolute_github_url() -> None:

@@ -245,7 +245,7 @@ def test_a_wrong_typed_dropped_actuations_count_does_not_crash_the_render() -> N
     # hand-edited or corrupted manifest) must degrade to "nothing extra disclosed", not raise out of
     # `results_from_manifest` and take the whole report down with it.
     data = json.loads(json.dumps(manifest_dict("r1", [_result()])))
-    step = data["scenarios"][0]["steps"][0]  # type: ignore[index]
+    step = data["scenarios"][0]["steps"][0]
     step["dropped_actuations"] = "oops"
 
     [restored] = results_from_manifest(data)
@@ -257,7 +257,7 @@ def test_a_negative_dropped_actuations_count_degrades_to_zero() -> None:
     # A count is disclosure, not just a type: a negative value is exactly as nonsensical to render
     # ("+-1 actuation(s) missing") as a wrong-typed one, so it must degrade the same way.
     data = json.loads(json.dumps(manifest_dict("r1", [_result()])))
-    step = data["scenarios"][0]["steps"][0]  # type: ignore[index]
+    step = data["scenarios"][0]["steps"][0]
     step["dropped_actuations"] = -1
 
     [restored] = results_from_manifest(data)

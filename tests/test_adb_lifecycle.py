@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -18,6 +19,16 @@ from bajutsu.config import AndroidConfig, Effective
 from bajutsu.drivers.adb import AdbDriver, HierarchyRead
 from bajutsu.platform_lifecycle import AndroidEnvironment, ProvisionProfile, environment_for
 from bajutsu.scenario import Preconditions, Redact
+
+
+def _recorder(calls: list[list[str]]) -> adb.RunFn:
+    """An `adb` RunFn that records each argv and returns empty output."""
+
+    def run(argv: list[str]) -> str:
+        calls.append(argv)
+        return ""
+
+    return run
 
 
 def test_bad_serial_is_rejected() -> None:
@@ -140,7 +151,7 @@ def test_pm_grant_cmd() -> None:
 
 def test_env_grants_each_permission_in_order() -> None:
     calls: list[list[str]] = []
-    adb.Env("S", run=lambda a: calls.append(a) or "").grant_permissions(
+    adb.Env("S", run=_recorder(calls)).grant_permissions(
         "com.x", ["android.permission.CAMERA", "android.permission.POST_NOTIFICATIONS"]
     )
     assert calls == [
@@ -165,11 +176,13 @@ def test_pm_revoke_cmd() -> None:
     ]  # fmt: skip
 
 
-def test_env_apply_permissions_grants_and_revokes_by_service(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_env_apply_permissions_grants_and_revokes_by_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # location splits into two android.permission.* names (fine + coarse); each runs its own
     # pm grant/revoke, in the mapped order (BE-0276).
     calls: list[list[str]] = []
-    adb.Env("S", run=lambda a: calls.append(a) or "").apply_permissions(
+    adb.Env("S", run=_recorder(calls)).apply_permissions(
         "com.x", {"location": "grant", "camera": "revoke"}
     )
     assert calls == [
@@ -192,9 +205,7 @@ def test_env_apply_permissions_fails_loudly_on_an_unknown_action() -> None:
     # scenario — but `_pm_run` must not silently treat anything-but-grant as a revoke.
     calls: list[list[str]] = []
     with pytest.raises(adb.DeviceError, match="unknown pm action"):
-        adb.Env("S", run=lambda a: calls.append(a) or "").apply_permissions(
-            "com.x", {"camera": "bogus"}
-        )
+        adb.Env("S", run=_recorder(calls)).apply_permissions("com.x", {"camera": "bogus"})
     assert calls == []
 
 
@@ -204,7 +215,7 @@ def test_env_apply_permissions_validates_before_touching_the_device() -> None:
     # service before it ever reaches here; this exercises the runtime backstop directly.
     calls: list[list[str]] = []
     with pytest.raises(adb.DeviceError, match="bogus"):
-        adb.Env("S", run=lambda a: calls.append(a) or "").apply_permissions(
+        adb.Env("S", run=_recorder(calls)).apply_permissions(
             "com.x", {"camera": "grant", "bogus": "grant"}
         )
     assert calls == []
@@ -216,7 +227,7 @@ def test_env_apply_permissions_validates_action_before_touching_the_device() -> 
     # later entry's bad action (BE-0276).
     calls: list[list[str]] = []
     with pytest.raises(adb.DeviceError, match="unknown pm action"):
-        adb.Env("S", run=lambda a: calls.append(a) or "").apply_permissions(
+        adb.Env("S", run=_recorder(calls)).apply_permissions(
             "com.x", {"camera": "grant", "microphone": "bogus"}
         )
     assert calls == []
@@ -306,7 +317,7 @@ def _eff(
     )
 
 
-def _resolve_activity_run(calls: list[list[str]]):
+def _resolve_activity_run(calls: list[list[str]]) -> adb.RunFn:
     """An adb `run` that records every argv and answers the two queries the launch makes."""
 
     def run(args: list[str]) -> str:
@@ -344,7 +355,7 @@ def test_android_environment_start_runs_the_adb_sequence() -> None:
     assert any("action.VIEW -d showcasecompose://permissions" in j for j in joined)
 
 
-def test_android_environment_starts_screenrecord_before_launching_the_app(tmp_path) -> None:
+def test_android_environment_starts_screenrecord_before_launching_the_app(tmp_path: Path) -> None:
     # The video must begin before `am start` so the app's cold start is recorded; the running
     # screenrecord is exposed for the sink to adopt rather than started on demand after launch.
     events: list[str] = []
@@ -374,7 +385,7 @@ def test_android_environment_starts_screenrecord_before_launching_the_app(tmp_pa
         events.append("record")
         return _Proc()
 
-    env = AndroidEnvironment("adb", "emulator-5554", adb_run=run, spawn=spawn)  # type: ignore[arg-type]
+    env = AndroidEnvironment("adb", "emulator-5554", adb_run=run, spawn=spawn)
     env.start(_eff(), Preconditions(), record_video_dir=tmp_path)
 
     assert events == ["record", "launch"]  # recording began before the app launched
@@ -385,7 +396,7 @@ def test_android_environment_starts_screenrecord_before_launching_the_app(tmp_pa
     assert started[0].true_start is not None
 
 
-def test_android_environment_stops_the_prestarted_video_when_launch_fails(tmp_path) -> None:
+def test_android_environment_stops_the_prestarted_video_when_launch_fails(tmp_path: Path) -> None:
     # A launch failure after the recording started must finalize it, not leak the local `adb shell`
     # client and the device-side `screenrecord` (which would otherwise run to its ~180s cap).
     stopped: list[int] = []
@@ -415,7 +426,7 @@ def test_android_environment_stops_the_prestarted_video_when_launch_fails(tmp_pa
         spawned = True
         return _Proc()
 
-    env = AndroidEnvironment("adb", "emulator-5554", adb_run=run, spawn=spawn)  # type: ignore[arg-type]
+    env = AndroidEnvironment("adb", "emulator-5554", adb_run=run, spawn=spawn)
     with pytest.raises(adb.DeviceError):
         env.start(_eff(), Preconditions(), record_video_dir=tmp_path)
 
@@ -486,7 +497,7 @@ class _FakeResident:
         self._error = error
         self.stopped = False
 
-    def start(self):  # type: ignore[no-untyped-def]
+    def start(self):
         if self._error is not None:
             raise self._error
         return ResidentChannel(self._fetch, self._clock, lambda _r: True)  # type: ignore[arg-type]
@@ -765,7 +776,7 @@ def test_android_environment_preinstalled_skip_is_about_the_app_not_the_resident
         """A resident server that installs its own APKs over the environment's adb, as the real
         one does."""
 
-        def start(self):  # type: ignore[no-untyped-def]
+        def start(self):
             run(adb.install_cmd("S", "/built/server-debug.apk"))
             return ResidentChannel(
                 lambda _since: HierarchyRead("<hierarchy/>"), lambda: None, lambda _r: True
@@ -902,6 +913,7 @@ def test_relauncher_invalidates_the_driver_settled_cache() -> None:
 
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run([]))
     driver = env.start(_eff(), Preconditions())
+    assert isinstance(driver, AdbDriver)
     driver._settled_key = ()  # seed a stale "proven" key `_settle` must not trust after the relaunch
     relaunch = env.relauncher(_eff(), Scenario(name="t", steps=[]), driver)
     relaunch(Relaunch())
@@ -912,6 +924,7 @@ def test_crawl_reset_invalidates_the_driver_settled_cache() -> None:
     # Same gap as relauncher above, on the crawl entry point.
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run([]))
     driver = env.start(_eff(), Preconditions())
+    assert isinstance(driver, AdbDriver)
     driver._settled_key = ()
     env.crawl_reset(_eff())(driver)
     assert driver._settled_key is None

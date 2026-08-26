@@ -119,8 +119,24 @@ format:
 format-check:
 	uv run ruff format --check .
 
+# BE-0388: `tests/` runs under the same strict mypy as the rest, with one setting relaxed for the
+# pattern a pytest suite conventionally uses — a bare `def test_x():` carries no return annotation,
+# because pytest never inspects one. It is a second invocation rather than a
+# `[[tool.mypy.overrides]]` block because `tests/` has no `__init__.py` (its helper modules are
+# imported by bare name, the way pytest's prepend import mode puts `tests/` on `sys.path`), so mypy
+# names every module under it by basename and no per-module pattern can select them: mypy requires
+# `*` to be a whole component, so neither `tests.*` nor `test_*` matches. Basename naming has a
+# second consequence: no two files under `tests/` may share a name, because a collision aborts the
+# whole run with `Duplicate module named …` and reports no errors at all.
+#
+# `--cache-dir` keeps the two runs off each other's cache. `--allow-untyped-defs` is per-module, and
+# mypy stores the options in every module's cache metadata, so a shared directory would make each
+# run abandon the other's metadata ("options differ") and re-analyse from source — over all of
+# `bajutsu/` too, which `tests` imports. Nesting the second cache under `.mypy_cache/` keeps
+# `.gitignore` as is.
 typecheck:
 	uv run mypy bajutsu demos scripts
+	uv run mypy --cache-dir=.mypy_cache/tests --allow-untyped-defs tests
 
 # BE-0388: the same strict mypy, over `tests/`, with the two settings a pytest suite conventionally
 # needs relaxed. A bare `def test_x():` carries no return annotation because pytest never inspects

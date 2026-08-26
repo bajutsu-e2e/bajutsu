@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -261,7 +262,7 @@ def test_the_capture_budget_clamps_and_then_skips_the_remaining_probes(
     # each `monotonic()` reading advances a fixed step, which walks the budget down predictably.
     monkeypatch.setenv(stall_diagnostics._DIAGNOSTICS_ENV, str(tmp_path))
     ticks = iter(range(10_000))
-    monkeypatch.setattr(stall_diagnostics.time, "monotonic", lambda: float(next(ticks)) * 4.0)
+    monkeypatch.setattr(time, "monotonic", lambda: float(next(ticks)) * 4.0)
     calls = _record_runs(monkeypatch)
     stall_diagnostics.capture("runner-crash", stall_diagnostics.simulator_probes("UDID"))
 

@@ -14,7 +14,7 @@ import pytest
 
 from bajutsu.dom import QUERY_JS, _norm_role, _str_or_none, parse_dom
 from bajutsu.drivers import base
-from bajutsu.drivers.playwright import PlaywrightDriver
+from bajutsu.drivers.playwright import PlaywrightDriver, _Started
 
 
 def _rec(**kw: Any) -> dict[str, Any]:
@@ -480,7 +480,7 @@ def test_reset_context_carries_device_mode() -> None:
     drv = PlaywrightDriver(
         "http://app.test/",
         device_mode="iPhone 13",
-        starter=lambda _h: (pw, browser, initial_ctx, initial_ctx.page),
+        starter=lambda _h: _Started(pw, browser, initial_ctx, initial_ctx.page),
     )
 
     drv.reset_context()
@@ -500,7 +500,7 @@ def test_device_mode_descriptor_is_resolved_once() -> None:
     drv = PlaywrightDriver(
         "http://app.test/",
         device_mode="iPhone 13",
-        starter=lambda _h: (pw, browser, initial_ctx, initial_ctx.page),
+        starter=lambda _h: _Started(pw, browser, initial_ctx, initial_ctx.page),
     )
 
     drv.reset_context()  # first _new_context: resolves + caches the descriptor
@@ -1027,7 +1027,7 @@ def test_reset_context_opens_a_fresh_context_closing_the_old_one() -> None:
     browser = _FakeBrowser([fresh])  # hands `fresh` to the next new_context().new_page()
     drv = PlaywrightDriver(
         "http://app.test/index.html",
-        starter=lambda _h: (pw, browser, initial_ctx, initial_ctx.page),
+        starter=lambda _h: _Started(pw, browser, initial_ctx, initial_ctx.page),
     )
 
     drv.reset_context()
@@ -1074,8 +1074,8 @@ def test_relaunch_replaces_the_browser_process() -> None:
     new_pw, new_browser, new_page = _FakePw(), _FakeBrowser([]), _FakePage([])
     starts = iter(
         [
-            (old_pw, old_browser, _FakeContext(old_page), old_page),  # initial
-            (new_pw, new_browser, _FakeContext(new_page), new_page),  # the relaunch
+            _Started(old_pw, old_browser, _FakeContext(old_page), old_page),  # initial
+            _Started(new_pw, new_browser, _FakeContext(new_page), new_page),  # the relaunch
         ]
     )
     drv = PlaywrightDriver("http://app.test/", starter=lambda _h: next(starts))
@@ -1106,8 +1106,8 @@ def test_relaunch_stops_playwright_even_if_browser_close_fails(
     new_pw, new_browser, new_page = _FakePw(), _FakeBrowser([]), _FakePage([])
     starts = iter(
         [
-            (old_pw, dead_browser, _FakeContext(_FakePage([])), _FakePage([])),
-            (new_pw, new_browser, _FakeContext(new_page), new_page),
+            _Started(old_pw, dead_browser, _FakeContext(_FakePage([])), _FakePage([])),
+            _Started(new_pw, new_browser, _FakeContext(new_page), new_page),
         ]
     )
     drv = PlaywrightDriver("http://app.test/", starter=lambda _h: next(starts))
@@ -1139,7 +1139,7 @@ def test_close_stops_playwright_even_if_browser_close_fails(
     pw, dead_browser = _FakePw(), _DeadBrowser([])
     drv = PlaywrightDriver(
         "http://app.test/",
-        starter=lambda _h: (pw, dead_browser, _FakeContext(_FakePage([])), _FakePage([])),
+        starter=lambda _h: _Started(pw, dead_browser, _FakeContext(_FakePage([])), _FakePage([])),
     )
 
     drv.close()  # must not raise despite the browser's close() raising
@@ -1163,7 +1163,9 @@ def test_close_is_idempotent_after_clearing_its_handles() -> None:
     pw = _OnceOnlyPw()
     drv = PlaywrightDriver(
         "http://app.test/",
-        starter=lambda _h: (pw, _FakeBrowser([]), _FakeContext(_FakePage([])), _FakePage([])),
+        starter=lambda _h: _Started(
+            pw, _FakeBrowser([]), _FakeContext(_FakePage([])), _FakePage([])
+        ),
     )
 
     drv.close()
@@ -1306,7 +1308,10 @@ def _video_driver(video_dir: Any, src: Any) -> tuple[PlaywrightDriver, _VideoBro
     page = _FakeVideoPage([], _FakeVideo(src))
     browser = _VideoBrowser(page)
     pw = _FakePw()
-    starter = lambda _h: (pw, browser, _FakeContext(page), page)  # noqa: E731
+
+    def starter(_h: bool) -> _Started:
+        return _Started(pw, browser, _FakeContext(page), page)
+
     drv = PlaywrightDriver("http://app.test/", record_video_dir=video_dir, starter=starter)
     return drv, browser
 

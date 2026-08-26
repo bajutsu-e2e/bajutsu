@@ -8,6 +8,7 @@ transport, so a change to the policy shows up here rather than only in the two H
 from __future__ import annotations
 
 from bajutsu.serve import gate
+from bajutsu.serve.server.oauth import Identity
 from bajutsu.serve.state import SessionManager
 
 
@@ -93,7 +94,7 @@ class _StubOAuth:
     def authorize_url(self, state: str) -> str:
         return ""
 
-    def fetch_identity(self, code: str):  # type: ignore[no-untyped-def]
+    def fetch_identity(self, code: str) -> Identity | None:
         return None
 
 

@@ -10,6 +10,7 @@ from bajutsu.drivers.base import (
     AmbiguousSelector,
     Element,
     ElementNotFound,
+    Selector,
     find_all,
     resolve_unique,
 )
@@ -227,7 +228,7 @@ _VIEWS: list[Element] = [el("stable_refresh", "更新", ["button"])]
 
 def test_id_list_matches_either_platform_form() -> None:
     # The identical selector resolves against whichever id the app actually renders.
-    sel = {"id": ["stable.refresh", "stable_refresh"]}
+    sel: Selector = {"id": ["stable.refresh", "stable_refresh"]}
     assert resolve_unique(_COMPOSE, sel)["label"] == "更新"
     assert resolve_unique(_VIEWS, sel)["label"] == "更新"
 
@@ -261,7 +262,7 @@ def test_id_matches_list_matches_any_glob() -> None:
     # `count` over a shared scenario: dotted glob for Compose, underscore glob for Views.
     compose = [el("stable.row.1"), el("stable.row.2")]
     views = [el("stable_row_1"), el("stable_row_2")]
-    sel = {"idMatches": ["stable.row.*", "stable_row_*"]}
+    sel: Selector = {"idMatches": ["stable.row.*", "stable_row_*"]}
     assert len(find_all(compose, sel)) == 2
     assert len(find_all(views, sel)) == 2
 
@@ -388,7 +389,7 @@ def test_explicit_other_trait_selector_disambiguates_by_index_too() -> None:
         el("a", "重複", ["other"]),
         el("b", "重複", ["other"]),
     ]
-    sel = {"label": "重複", "traits": ["other"]}
+    sel: Selector = {"label": "重複", "traits": ["other"]}
     assert resolve_unique(screen, {**sel, "index": 0})["identifier"] == "a"
     assert resolve_unique(screen, {**sel, "index": 1})["identifier"] == "b"
 

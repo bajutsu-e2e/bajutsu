@@ -122,7 +122,7 @@ class _TextThenToolMessage:
     """An Anthropic-style reply with a text block preceding the tool-use block."""
 
     def __init__(self) -> None:
-        self.content = [FakeBlock("do", {})]
+        self.content: list[object] = [FakeBlock("do", {})]
         self.content.insert(0, _RawText("thinking out loud"))
         self.usage = None
         self.stop_reason = "tool_use"

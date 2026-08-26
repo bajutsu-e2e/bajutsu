@@ -9,6 +9,7 @@ committed roadmap tree end to end.
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -185,7 +186,7 @@ def test_git_dates_combines_both_files_and_normalises_to_utc(monkeypatch: Any) -
                 return _FakeProc(out)
         return _FakeProc("")
 
-    monkeypatch.setattr(bri.subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess, "run", fake_run)
     created, updated = bri._git_dates([Path("a/en.md"), Path("a/ja.md")])
     assert created == "2026-07-10T00:00:00+00:00"
     assert updated == "2026-07-20T12:00:00+00:00"
@@ -202,7 +203,7 @@ def test_git_dates_normalises_a_non_utc_offset(monkeypatch: Any) -> None:
 
 def test_git_dates_returns_none_when_history_is_empty(monkeypatch: Any) -> None:
     """No commits (a shallow clone, an uncommitted file) yields no invented date."""
-    monkeypatch.setattr(bri.subprocess, "run", lambda *a, **k: _FakeProc(""))
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeProc(""))
     assert bri._git_dates([Path("x.md")]) == (None, None)
 
 
@@ -212,7 +213,7 @@ def test_git_dates_survives_missing_git(monkeypatch: Any) -> None:
     def boom(*_a: Any, **_k: Any) -> _FakeProc:
         raise FileNotFoundError
 
-    monkeypatch.setattr(bri.subprocess, "run", boom)
+    monkeypatch.setattr(subprocess, "run", boom)
     assert bri._git_dates([Path("x.md")]) == (None, None)
 
 

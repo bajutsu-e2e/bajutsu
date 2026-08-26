@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Mapping
 from typing import Any
 
 import pytest
@@ -71,7 +72,7 @@ def test_driver_satisfies_the_protocol() -> None:
 
 
 def test_query_parses_elements_and_does_not_leak_the_handle() -> None:
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         assert (method, path) == ("GET", "/elements")
         return _elements(
             _el_wire("h-title", "home.title", "Home"),
@@ -107,7 +108,7 @@ def test_last_raw_source_is_none_before_the_first_query() -> None:
 def test_query_records_the_raw_elements_body() -> None:
     body = json.dumps({"status": "ok", "elements": [_el_wire("h-ok", "ok", "OK")]}).encode()
 
-    def transport(method: str, path: str, b: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, b: Mapping[str, Any] | None) -> _Reply:
         return _decode(path, 200, body)
 
     driver = _driver(transport)
@@ -120,9 +121,9 @@ def test_query_records_the_raw_elements_body() -> None:
 
 
 def test_tap_resolves_unique_then_sends_that_elements_snapshot_handle() -> None:
-    sent: list[tuple[str, str, dict[str, Any] | None]] = []
+    sent: list[tuple[str, str, Mapping[str, Any] | None]] = []
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(
                 _el_wire("h-title", "home.title", "Home"),
@@ -141,7 +142,7 @@ def test_the_actuation_record_states_the_handle_and_no_coordinate() -> None:
     # This backend never computes a touch point: the runner picks it on the far side of the handle. So
     # the record names the element it resolved and leaves `points` empty rather than writing the frame's
     # centre, which would present a guess as a measurement.
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(_el_wire("h-ok", "ok", "OK", traits=["button"], frame=(4, 8, 20, 12)))
         return _Reply(status="ok")
@@ -162,7 +163,7 @@ def test_a_stale_retry_records_both_attempts_and_ends_on_the_actuated_element() 
     replies = ["stale", "ok"]
     snapshots = 0
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         nonlocal snapshots
         if path == "/elements":
             frame = frames[min(snapshots, len(frames) - 1)]
@@ -195,9 +196,9 @@ def test_tap_resolves_through_a_content_identical_duplicate_registration() -> No
     # label, traits, value, and frame, on both entries. Without `resolve_unique`'s collapsing this
     # selector would raise AmbiguousSelector and force an `index` guess; with it, `tap` resolves
     # and actuates without one.
-    sent: list[tuple[str, str, dict[str, Any] | None]] = []
+    sent: list[tuple[str, str, Mapping[str, Any] | None]] = []
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(
                 _el_wire("h-ok-1", "alert.ok", "OK", traits=["button"]),
@@ -213,9 +214,9 @@ def test_tap_resolves_through_a_content_identical_duplicate_registration() -> No
 def test_back_taps_the_os_back_button() -> None:
     # iOS has no hardware back: `back` resolves and taps the OS navigation back button
     # (identifier "BackButton") — BE-0210.
-    sent: list[tuple[str, str, dict[str, Any] | None]] = []
+    sent: list[tuple[str, str, Mapping[str, Any] | None]] = []
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(_el_wire("h-back", "BackButton", "Back", traits=["button"]))
         sent.append((method, path, body))
@@ -229,9 +230,9 @@ def test_scroll_posts_to_the_non_inertial_scroll_route() -> None:
     # A directional scroll on iOS is non-inertial (BE-0326): it posts to the resident runner's
     # dedicated `/scroll`, which holds the drag at its end before lifting so the scroll view settles
     # where the gesture left it — distinct from `/swipe`, whose drag lifts with residual velocity.
-    sent: list[tuple[str, str, dict[str, Any] | None]] = []
+    sent: list[tuple[str, str, Mapping[str, Any] | None]] = []
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         sent.append((method, path, body))
         return _Reply(status="ok")
 
@@ -243,9 +244,9 @@ def test_viewport_reads_the_screen_route_and_caches() -> None:
     # The `scroll` viewport is the runner's real screen size (BE-0326), fetched once via GET /screen —
     # the flattened tree excludes the app window and buffers off-screen ScrollView children, so it
     # can't supply the viewport.
-    sent: list[tuple[str, str, dict[str, Any] | None]] = []
+    sent: list[tuple[str, str, Mapping[str, Any] | None]] = []
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         sent.append((method, path, body))
         return _Reply(status="ok", size=(390.0, 844.0))
 
@@ -265,9 +266,9 @@ def test_decode_parses_screen_size() -> None:
 
 
 def test_pinch_and_rotate_emit_gesture_requests_with_the_handle() -> None:
-    sent: list[tuple[str, dict[str, Any] | None]] = []
+    sent: list[tuple[str, Mapping[str, Any] | None]] = []
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(_el_wire("h-img", "photo", "Photo"))
         sent.append((path, body))
@@ -285,9 +286,9 @@ def test_pinch_and_rotate_emit_gesture_requests_with_the_handle() -> None:
 def test_text_editing_requests_carry_the_action_payload() -> None:
     # delete/select/copy each POST to their own endpoint; the runner types the native key or key
     # chord on the focused field (BE-0265). Focus is a prior tap the orchestrator issues.
-    sent: list[tuple[str, str, dict[str, Any] | None]] = []
+    sent: list[tuple[str, str, Mapping[str, Any] | None]] = []
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         sent.append((method, path, body))
         return _Reply(status="ok")
 
@@ -342,10 +343,10 @@ def test_capabilities_add_semantic_tap_condition_wait_multi_touch_but_not_networ
 def test_stale_handle_re_resolves_and_recovers_when_the_selector_still_resolves() -> None:
     # `stale` once, then `ok`: the button is present the whole time (a launch-time snapshot race), so
     # the re-resolved unique match re-actuates and the tap succeeds.
-    actuations: list[dict[str, Any] | None] = []
+    actuations: list[Mapping[str, Any] | None] = []
     replies = iter(["stale", "ok"])
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(_el_wire("h-ok", "ok", "OK", traits=["button"]))
         actuations.append(body)
@@ -360,7 +361,7 @@ def test_persistent_stale_exhausts_the_bound_then_fails_loudly() -> None:
     # driver fails with the vanished-element error rather than retrying forever.
     actuations = 0
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         nonlocal actuations
         if path == "/elements":
             return _elements(_el_wire("h-ok", "ok", "OK"))
@@ -378,7 +379,7 @@ def test_stale_then_gone_fails_immediately_as_element_not_found() -> None:
     actuations = 0
     present = iter([True, False])  # resolves once (the first actuate), gone on the re-query
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         nonlocal actuations
         if path == "/elements":
             return _elements(_el_wire("h-ok", "ok", "OK")) if next(present) else _elements()
@@ -396,7 +397,7 @@ def test_stale_then_ambiguous_fails_immediately_and_never_re_actuates() -> None:
     actuations = 0
     first = iter([True, False])  # unique on the first resolve, ambiguous on the re-query
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         nonlocal actuations
         if path == "/elements":
             if next(first):
@@ -416,7 +417,7 @@ def test_stale_then_ambiguous_fails_immediately_and_never_re_actuates() -> None:
 def test_ambiguous_selector_fails_before_any_actuation_request() -> None:
     calls: list[str] = []
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         calls.append(path)
         if path == "/elements":
             return _elements(
@@ -433,7 +434,7 @@ def test_ambiguous_selector_fails_before_any_actuation_request() -> None:
 def test_missing_selector_fails_before_any_actuation_request() -> None:
     calls: list[str] = []
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         calls.append(path)
         return _elements(_el_wire("h-ok", "ok", "OK"))
 
@@ -445,7 +446,7 @@ def test_missing_selector_fails_before_any_actuation_request() -> None:
 def test_tap_raises_element_not_tappable_when_runner_reports_not_hittable() -> None:
     # Distinct from `stale`: the element resolved and the runner's own `isHittable` refused it
     # (covered by another element). No retry inside the driver — that is the orchestrator's job.
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(_el_wire("h-ok", "ok", "OK", traits=["button"]))
         return _Reply(status="not-hittable")
@@ -476,11 +477,11 @@ def _stepper_tree(*, decrement: str, increment: str) -> list[dict[str, Any]]:
 
 
 def _stepper_transport(
-    hittable: dict[str, str], sent: list[tuple[str, dict[str, Any] | None]]
+    hittable: dict[str, str], sent: list[tuple[str, Mapping[str, Any] | None]]
 ) -> TransportFn:
     """A runner that refuses the container and answers `hittable` for each probed child handle."""
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(
                 *_stepper_tree(decrement="log.count-Decrement", increment="log.count-Increment")
@@ -496,7 +497,7 @@ def _stepper_transport(
 
 def test_a_refused_tap_goes_to_the_one_reachable_named_descendant() -> None:
     # The container is refused but exactly one child is reachable, so there is no choice to make.
-    sent: list[tuple[str, dict[str, Any] | None]] = []
+    sent: list[tuple[str, Mapping[str, Any] | None]] = []
     driver = _driver(_stepper_transport({"h-inc": "ok"}, sent))
 
     driver.tap({"id": "log.count"})
@@ -509,7 +510,7 @@ def test_a_refused_tap_goes_to_the_one_reachable_named_descendant() -> None:
 def test_a_refused_tap_with_two_reachable_descendants_names_both_instead_of_choosing() -> None:
     # The real Stepper: both children are reachable, so `tap: {id: log.count}` has no single meaning.
     # Picking one would be the guess prime directive 2 forbids, so the failure names the pair.
-    sent: list[tuple[str, dict[str, Any] | None]] = []
+    sent: list[tuple[str, Mapping[str, Any] | None]] = []
     driver = _driver(_stepper_transport({"h-inc": "ok", "h-dec": "ok"}, sent))
 
     with pytest.raises(base.ElementNotTappable) as exc:
@@ -520,7 +521,7 @@ def test_a_refused_tap_with_two_reachable_descendants_names_both_instead_of_choo
 
 
 def test_a_refused_tap_with_no_reachable_descendant_keeps_the_original_failure() -> None:
-    sent: list[tuple[str, dict[str, Any] | None]] = []
+    sent: list[tuple[str, Mapping[str, Any] | None]] = []
     driver = _driver(_stepper_transport({}, sent))
 
     with pytest.raises(base.ElementNotTappable, match="not hittable"):
@@ -529,7 +530,7 @@ def test_a_refused_tap_with_no_reachable_descendant_keeps_the_original_failure()
 
 def test_a_refused_tap_on_a_container_with_no_named_descendant_re_raises_unchanged() -> None:
     # Nothing to offer, so the original message stands rather than growing a clause about candidates.
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(
                 _el_wire("h-box", "box", "Box", traits=["other"], frame=(0.0, 0.0, 20.0, 20.0)),
@@ -547,7 +548,7 @@ def test_a_refused_tap_spends_no_probe_on_a_crowded_container() -> None:
     row = (0.0, 0.0, 100.0, 100.0)
     sent: list[str] = []
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             kids = [
                 _el_wire(
@@ -571,7 +572,7 @@ def test_a_refused_tap_spends_no_probe_on_a_crowded_container() -> None:
 
 def test_a_long_press_on_a_refused_container_is_not_redirected() -> None:
     # A long-press reaching a child is a different intent, not the same intent reaching its target.
-    sent: list[tuple[str, dict[str, Any] | None]] = []
+    sent: list[tuple[str, Mapping[str, Any] | None]] = []
     driver = _driver(_stepper_transport({"h-inc": "ok"}, sent))
 
     with pytest.raises(base.ElementNotTappable, match=r"^element resolved but not hittable"):
@@ -581,9 +582,9 @@ def test_a_long_press_on_a_refused_container_is_not_redirected() -> None:
 
 
 def test_is_tappable_returns_true_when_the_runner_reports_ok() -> None:
-    sent: list[tuple[str, str, dict[str, Any] | None]] = []
+    sent: list[tuple[str, str, Mapping[str, Any] | None]] = []
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(_el_wire("h-ok", "ok", "OK", traits=["button"]))
         sent.append((method, path, body))
@@ -594,7 +595,7 @@ def test_is_tappable_returns_true_when_the_runner_reports_ok() -> None:
 
 
 def test_is_tappable_returns_false_when_the_runner_reports_not_hittable() -> None:
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(_el_wire("h-ok", "ok", "OK", traits=["button"]))
         return _Reply(status="not-hittable")
@@ -605,7 +606,7 @@ def test_is_tappable_returns_false_when_the_runner_reports_not_hittable() -> Non
 def test_is_tappable_returns_false_when_the_selector_does_not_resolve() -> None:
     calls: list[str] = []
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         calls.append(path)
         return _elements(_el_wire("h-ok", "ok", "OK"))
 
@@ -614,7 +615,7 @@ def test_is_tappable_returns_false_when_the_selector_does_not_resolve() -> None:
 
 
 def test_is_tappable_propagates_ambiguous_selector_rather_than_swallowing_it() -> None:
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(
                 _el_wire("h1", "dup", "A", traits=["button"]),
@@ -627,7 +628,7 @@ def test_is_tappable_propagates_ambiguous_selector_rather_than_swallowing_it() -
 
 
 def test_is_tappable_never_actuates() -> None:
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(_el_wire("h-ok", "ok", "OK", traits=["button"]))
         assert method == "POST" and path == "/isHittable"  # never /tap
@@ -650,7 +651,7 @@ def test_wait_until_polls_xcuitest_until_a_match_appears() -> None:
     # polling xcuitest past the empty snapshot until the element renders.
     snapshots = [[], [_el_wire("h-ok", "ok", "OK")]]  # first empty, then the element renders
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         return _Reply(status="ok", elements=snapshots.pop(0) if snapshots else [])
 
     assert base.wait_until(_driver(transport), {"id": "ok"}, timeout=1.0, poll=0) is True
@@ -714,7 +715,7 @@ def test_health_ready_returns_promptly_on_a_refused_connection() -> None:
 
 
 def test_a_runner_crash_mid_action_fails_loudly_not_as_not_found() -> None:
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(_el_wire("h-ok", "ok", "OK"))
         raise XcuitestChannelError("connection refused")  # runner exited mid-run
@@ -752,7 +753,7 @@ def test_decode_non_200_carries_the_servers_status() -> None:
 
 def test_an_element_without_a_handle_is_a_loud_channel_error() -> None:
     # A malformed /elements item (no handle) must fail loudly, not be coerced to "" and sent back.
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         return _Reply(status="ok", elements=[{"identifier": "ok", "frame": [0, 0, 1, 1]}])
 
     with pytest.raises(XcuitestChannelError, match="without a handle"):
@@ -762,7 +763,7 @@ def test_an_element_without_a_handle_is_a_loud_channel_error() -> None:
 def test_a_runner_error_status_is_an_infra_failure_not_element_not_found() -> None:
     # A non-outcome status (e.g. an "error" decoded from a 500 / malformed response) is a runner
     # failure — it must surface as XcuitestChannelError, never be masked as element-not-found.
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(_el_wire("h-ok", "ok", "OK"))
         return _Reply(status="error")
@@ -774,7 +775,7 @@ def test_a_runner_error_status_is_an_infra_failure_not_element_not_found() -> No
 def test_a_runner_not_found_status_is_a_test_outcome() -> None:
     # `not-found` from the runner is a test outcome (the element could not be actuated), so it maps
     # to the shared ElementNotFound, distinct from an infrastructure error.
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(_el_wire("h-ok", "ok", "OK"))
         return _Reply(status="not-found")
@@ -889,13 +890,13 @@ def test_raw_transport_splits_delivery_on_connect_versus_send(
 # here with a fake inner transport (no Simulator), passing a no-op `sleep` so backoff adds no wall time.
 
 
-def _counting(replies: list) -> tuple[TransportFn, list[int]]:
+def _counting(replies: list[_Reply | Exception]) -> tuple[TransportFn, list[int]]:
     """A fake inner transport that yields *replies* in order; each item is either a `_Reply` to return
     or an `Exception` (e.g. `_TransportFailure`, `XcuitestRunnerCrashError`) to raise. `calls[0]` counts
     how many times it was invoked."""
     calls = [0]
 
-    def inner(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def inner(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         calls[0] += 1
         item = replies.pop(0)
         if isinstance(item, Exception):
@@ -1379,17 +1380,17 @@ def test_a_wait_that_reaches_its_deadline_keeps_the_did_not_recover_diagnostic()
 
 def _alert_transport(
     *button_batches: list[dict[str, Any]],
-) -> tuple[TransportFn, list[tuple[str, str, dict[str, Any] | None]]]:
+) -> tuple[TransportFn, list[tuple[str, str, Mapping[str, Any] | None]]]:
     """A transport whose `/systemAlert/query` yields each batch in turn (last repeats), recording taps.
 
     Successive batches let a test model the prompt appearing only on a later poll; a single batch
     (the common case) just answers every query with it.
     """
-    sent: list[tuple[str, str, dict[str, Any] | None]] = []
+    sent: list[tuple[str, str, Mapping[str, Any] | None]] = []
     batches = iter(button_batches)
     current = next(batches, [])
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         nonlocal current
         if path == "/systemAlert/query":
             batch = current
@@ -1461,7 +1462,7 @@ def test_handle_system_alert_present_but_no_label_match_fails() -> None:
 
 def test_handle_system_alert_reports_a_vanished_button_as_not_found() -> None:
     # The alert dismissed itself between query and tap: the tap reply is not "ok".
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/systemAlert/query":
             return _elements(_el_wire("h-allow", label="Allow", traits=["button"]))
         return _Reply(status="stale")
@@ -1474,7 +1475,7 @@ def test_handle_system_alert_reports_a_vanished_button_as_not_found() -> None:
 
 
 def test_system_alert_labels_reads_button_labels_from_the_query() -> None:
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         assert (method, path) == ("POST", "/systemAlert/query")
         return _elements(
             _el_wire("h-deny", label="Don't Allow", traits=["button"]),
@@ -1521,9 +1522,9 @@ def _tip_element(identifier: str, frame: tuple[float, float, float, float]) -> b
 
 
 def test_dismiss_blocking_tip_taps_the_dismiss_region_and_reports_it() -> None:
-    sent: list[tuple[str, dict[str, Any] | None]] = []
+    sent: list[tuple[str, Mapping[str, Any] | None]] = []
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(
                 _tip_wire("h-scrim", "PopoverDismissRegion"),
@@ -1539,9 +1540,9 @@ def test_dismiss_blocking_tip_taps_the_dismiss_region_and_reports_it() -> None:
 
 def test_dismiss_blocking_tip_reports_false_and_taps_nothing_when_no_tip_is_up() -> None:
     # The common case: both guards ask on every poll, so absence is a plain False, not an exception.
-    sent: list[tuple[str, dict[str, Any] | None]] = []
+    sent: list[tuple[str, Mapping[str, Any] | None]] = []
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(_el_wire("h-refresh", "stable.refresh", "Refresh", traits=["button"]))
         sent.append((path, body))
@@ -1558,7 +1559,7 @@ def test_dismiss_blocking_tip_reports_false_when_the_tip_closes_itself_mid_dismi
     # `PopoverDismissRegion`, an identifier no author wrote, as a wait's failure reason, and would
     # overwrite the real reason on the post-failure path. "The tip is gone" is what the caller asked
     # about, so it reads as no dismissal.
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(_tip_wire("h-scrim", "PopoverDismissRegion"), _tip_container_wire())
         return _Reply(status="not-found")  # the scrim went between the query and the tap
@@ -1569,7 +1570,7 @@ def test_dismiss_blocking_tip_reports_false_when_the_tip_closes_itself_mid_dismi
 def test_dismiss_blocking_tip_fails_loudly_on_two_dismiss_regions() -> None:
     # A shape TipKit should never produce. Distinct frames so `resolve_unique` cannot collapse them
     # as a content-identical duplicate: with a real choice to make, it must refuse to guess.
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         assert path == "/elements", f"no actuation may be attempted, got {path}"
         return _elements(
             _el_wire("h-a", "PopoverDismissRegion", frame=(0.0, 0.0, 402.0, 874.0)),
@@ -1586,7 +1587,7 @@ def test_dismiss_blocking_tip_rules_a_tip_out_from_the_callers_tree_without_quer
     # otherwise a guarded wait polls at half its usual rate and a tight timeout starts to flake.
     calls: list[str] = []
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         calls.append(path)
         return _elements()
 
@@ -1607,9 +1608,9 @@ def test_dismiss_blocking_tip_rules_a_tip_out_from_the_callers_tree_without_quer
 def test_dismiss_blocking_tip_still_queries_when_the_hint_shows_a_tip() -> None:
     # A handle is only valid from the snapshot that minted it, so a tip seen in the caller's tree is
     # re-resolved against this driver's own fresh query before the tap.
-    sent: list[tuple[str, dict[str, Any] | None]] = []
+    sent: list[tuple[str, Mapping[str, Any] | None]] = []
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(_tip_wire("h-scrim", "PopoverDismissRegion"), _tip_container_wire())
         sent.append((path, body))
@@ -1628,9 +1629,9 @@ def test_dismiss_blocking_tip_leaves_an_app_popover_alone() -> None:
     # on-device: same identifier, same label, same full-screen frame. Tapping it would close the
     # app's own dialog, and the scenario would then fail on a missing button with no mention of the
     # guard, so the pair is what the guard requires before it acts.
-    sent: list[tuple[str, dict[str, Any] | None]] = []
+    sent: list[tuple[str, Mapping[str, Any] | None]] = []
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(
                 _tip_wire("h-scrim", "PopoverDismissRegion"),
@@ -1650,7 +1651,7 @@ def test_dismiss_blocking_tip_rules_an_app_popover_out_from_the_callers_tree_wit
     # dialog is up must not pay a query per tick for a dismiss that will never fire.
     calls: list[str] = []
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         calls.append(path)
         return _elements()
 
@@ -1667,9 +1668,9 @@ def test_xcuitest_advertises_the_tipkit_capability() -> None:
 
 
 def test_set_picker_value_posts_the_handle_and_the_value() -> None:
-    sent: list[tuple[str, dict[str, Any] | None]] = []
+    sent: list[tuple[str, Mapping[str, Any] | None]] = []
 
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         sent.append((path, body))
         if path == "/elements":
             return _elements(_el_wire("h-wheel", "form.school", None, "高校", ["pickerWheel"]))
@@ -1684,7 +1685,7 @@ def test_set_picker_value_raises_element_not_found_naming_the_absent_value() -> 
     # its own status rather than `not-found` — whose "no actuatable element" message names the
     # selector and would misreport a perfectly resolved wheel. A SelectorError, so the run loop's
     # existing selector-failure handling covers it (the `select_option` precedent).
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(_el_wire("h-wheel", "form.school", None, "高校", ["pickerWheel"]))
         return _Reply(status="value-not-found")
@@ -1696,7 +1697,7 @@ def test_set_picker_value_raises_element_not_found_naming_the_absent_value() -> 
 def test_set_picker_value_reports_an_unknown_status_as_a_channel_error() -> None:
     # The catch-all still stands behind the new branch: an unrecognized status is a runner failure,
     # not a test outcome, so it must not be masked as a selector failure.
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(_el_wire("h-wheel", "form.school", None, "高校", ["pickerWheel"]))
         return _Reply(status="error")

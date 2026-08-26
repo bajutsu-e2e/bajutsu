@@ -196,5 +196,5 @@ def test_worker_lease_op_rejects_a_malformed_capabilities_payload(
     state = _state(tmp_path, repo)
     repo.enqueue_job("plain", "o", {"job_id": "plain"})
     # A non-list capabilities value must not crash the lease — it advertises nothing.
-    payload, code = ops.worker_lease(state, "w", capabilities="not-a-list")  # type: ignore[arg-type]
+    payload, code = ops.worker_lease(state, "w", capabilities="not-a-list")
     assert code == 200 and payload["job_id"] == "plain"

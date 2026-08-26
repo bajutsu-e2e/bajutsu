@@ -178,7 +178,7 @@ def test_aggregates_every_unsupported_construct() -> None:
 # One representative step per DeviceControl operation, paired with the per-operation capability
 # token it needs (BE-0212 split the coarse `deviceControl` family into these). `relaunch` is
 # excluded: it is gated by the injected RelaunchFn, not DeviceControl.
-_DEVICE_CONTROL_STEPS = (
+_DEVICE_CONTROL_STEPS: tuple[tuple[dict[str, object], str], ...] = (
     ({"setLocation": {"lat": 35.0, "lon": 139.0}}, base.Capability.DC_SET_LOCATION),
     ({"push": {"payload": {"aps": {"alert": "hi"}}}}, base.Capability.DC_PUSH),
     ({"clearKeychain": {}}, base.Capability.DC_CLEAR_KEYCHAIN),
