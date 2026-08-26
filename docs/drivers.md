@@ -143,8 +143,10 @@ than resolving through frame-center coordinates. Needs Xcode's `xcodebuild`.
   the mirror is **pruned** and the service's own tree merged in its place, leaving one tree that is
   complete on both and reports nothing twice. The **dismiss control** is the one chrome identity the
   versions disagree on (iOS 26 identifies it `Close`, iOS 18 leaves it unidentified with the label
-  `Done`), so the runner reports iOS 26's `Close` on both and a scenario addresses it with one
-  selector. A browser element **actuates at its frame centre**: `XCUIElement.tap()` reaches the page
+  `Done`), so the runner reports iOS 26's `Close` as the **identifier** on both and `id: Close`
+  addresses it with one selector. Only the identifier is normalized — the label stays what the
+  platform announces (`Done` on iOS 18), so a `label` selector still does not travel.
+  A browser element **actuates at its frame centre**: `XCUIElement.tap()` reaches the page
   content across the process boundary but is silently dropped by the browser's own chrome. iOS 18's
   disabled `ForwardButton` has no iOS 26 counterpart at all, so a scenario cannot depend on it.
 - `tap(sel)`: `_resolve` confirms uniqueness (**retries not-found, fails ambiguity fast**: a
