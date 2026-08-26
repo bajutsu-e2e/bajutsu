@@ -123,7 +123,7 @@ def test_web_relaunch_forwards_id_namespaces_to_await_ready(
     def fake_await_ready(driver: object, *a: object, **kw: object) -> None:
         seen.update(kw)
 
-    monkeypatch.setattr("bajutsu.platform_lifecycle.readiness._await_ready", fake_await_ready)
+    monkeypatch.setattr("bajutsu.platform_lifecycle.readiness.await_ready", fake_await_ready)
 
     class _WebDriver:
         name = "web"
@@ -361,8 +361,8 @@ def test_web_crawl_seams_drive_the_web_driver() -> None:
 
 def test_web_crawl_reset_makes_a_fresh_context(monkeypatch: pytest.MonkeyPatch) -> None:
     # The web "reset to a clean start" is a fresh BrowserContext (the erase equivalent), then a
-    # readiness wait. (_await_ready is stubbed so the test doesn't poll a fake driver.)
-    monkeypatch.setattr("bajutsu.platform_lifecycle.readiness._await_ready", lambda *a, **k: None)
+    # readiness wait. (await_ready is stubbed so the test doesn't poll a fake driver.)
+    monkeypatch.setattr("bajutsu.platform_lifecycle.readiness.await_ready", lambda *a, **k: None)
 
     class _WebDriver:
         name = "web"
@@ -380,7 +380,7 @@ def test_web_crawl_reset_makes_a_fresh_context(monkeypatch: pytest.MonkeyPatch) 
 
 def test_device_crawl_reset_relaunches_the_app(monkeypatch: pytest.MonkeyPatch) -> None:
     # The device "reset" is a relaunch (terminate then launch), not a full erase — fast per visit.
-    monkeypatch.setattr("bajutsu.platform_lifecycle.readiness._await_ready", lambda *a, **k: None)
+    monkeypatch.setattr("bajutsu.platform_lifecycle.readiness.await_ready", lambda *a, **k: None)
     calls: list[list[str]] = []
 
     def fake_run(args: list[str], extra_env: object = None) -> str:

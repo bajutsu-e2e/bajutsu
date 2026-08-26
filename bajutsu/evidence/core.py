@@ -288,30 +288,34 @@ class NullSink:
 
     def capture(
         self,
-        driver: base.Driver,
-        step_id: str,
-        kinds: list[str],
+        driver: base.Driver,  # noqa: ARG002  # EvidenceSink shape
+        step_id: str,  # noqa: ARG002
+        kinds: list[str],  # noqa: ARG002
         *,
-        elements: list[base.Element] | None = None,
+        elements: list[base.Element] | None = None,  # noqa: ARG002
     ) -> list[Artifact]:
         return []
 
     def wait_diagnostic(
         self,
-        step_id: str,
+        step_id: str,  # noqa: ARG002  # EvidenceSink shape
         *,
-        trace: WaitTrace,
-        elements: list[base.Element],
+        trace: WaitTrace,  # noqa: ARG002
+        elements: list[base.Element],  # noqa: ARG002
     ) -> Artifact | None:
         return None
 
     def start_scenario_intervals(
-        self, scenario_id: str, kinds: list[str]
+        self,
+        scenario_id: str,  # noqa: ARG002  # EvidenceSink shape
+        kinds: list[str],  # noqa: ARG002
     ) -> list[intervals.Interval]:
         return []
 
     def finish_scenario_intervals(
-        self, scenario_id: str, started: list[intervals.Interval]
+        self,
+        scenario_id: str,  # noqa: ARG002  # EvidenceSink shape
+        started: list[intervals.Interval],  # noqa: ARG002
     ) -> list[Artifact]:
         return []
 

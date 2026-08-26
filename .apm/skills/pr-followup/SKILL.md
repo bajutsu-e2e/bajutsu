@@ -39,14 +39,36 @@ gh pr checks <PR>
 
 ### 2. Fix CI failures (if any)
 
-- Read the failing check's log:
+**Classify before fixing.** Run [`investigate-ci-failure`](../investigate-ci-failure/SKILL.md) as a
+sub-step, handing it this PR's number. It returns each failing check with a classification and the
+evidence behind it. Reading `--log-failed` and fixing straight from it — what this step used to
+do — works for a failure whose reason is printed in the log, and misleads on the on-device lanes,
+where the diagnostics that explain a failure are uploaded as artifacts and never appear in that
+output at all. Guessing there costs a full CI cycle when a host flake is read as a regression, and
+ships a defect when a regression is waved off as the usual flake.
+
+Then act on each classification:
+
+- **`gate-mechanical`** — run the fix command the report carries (`uv lock`, `make format`, or
+  `make skills`), then `make check` and push.
+- **`code-defect`** — the original procedure: identify the root cause from the report's log excerpt,
+  make the targeted fix on the PR's branch, run `make check` locally, push.
+- **`e2e-known-flake`** — do **not** change code. Ask for a re-run:
   ```bash
-  gh run view <run-id> --log-failed
+  gh run rerun --failed <run-id>
   ```
-- Identify the root cause from the log output.
-- Make the targeted fix on the PR's branch.
-- Run `make check` locally to verify.
-- Push the fix.
+  Say in this iteration's summary which pattern matched, so a human reading the loop's output can
+  see the re-run was reasoned rather than reflexive. A check that fails the same way after a re-run
+  is no longer a flake — treat the second failure as `e2e-unclassified` and escalate.
+- **`e2e-unclassified`** — escalate (see the Escalation section). Carry what the report ruled out,
+  so the human starts where the investigation stopped.
+
+If the sub-step recorded a newly confirmed pattern (its step 5), it edited
+`.apm/skills/investigate-ci-failure/references/known-ci-failure-patterns.md` and re-ran
+`make skills`. Fold **both** the source edit and the regenerated `.claude/skills/…` deployment into
+the commit this iteration is already making — staging only one of the two leaves the trees
+disagreeing, which `make lint-skills` fails on. The sub-step deliberately does not commit them
+itself.
 
 ### 3. Address review comments
 
@@ -165,6 +187,13 @@ Escalate, rather than pressing on, when step 5 finds its `@claude review` reques
 run's `claude review` job `skipped`, or no run by this account at all: the live pass a later poll is
 waiting for will never arrive, and only a human can grant the trusted-actor association the workflow
 requires.
+
+Escalate too when step 2's classification comes back **`e2e-unclassified`**: the failure matched no
+known pattern and the run history could not call the scenario flaky either. Guessing from there is
+the failure mode the classification exists to prevent, and a re-run of a genuine regression only
+spends another CI cycle to fail the same way. Carry what the investigation ruled out — the patterns
+checked, the artifacts read, and whether the history was merely too thin (`unproven`) rather than
+contradicting the flake reading — so the human continues the investigation instead of restarting it.
 
 If a review comment asks for a **fundamental design change** (new approach,
 architectural rethink, or trade-off the user should weigh), do NOT attempt the

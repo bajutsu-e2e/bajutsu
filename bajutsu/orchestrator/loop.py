@@ -20,6 +20,8 @@ from bajutsu.cancellation import (
     CANCELLED_FAILURE,
     CancelSource,
     RunCancelled,
+    cancelled_teardown_seconds,
+    grace_seconds,
     not_cancelled,
 )
 from bajutsu.drivers import base
@@ -67,6 +69,7 @@ from bajutsu.orchestrator.waits import (
     describe_wait,
 )
 from bajutsu.scenario import (
+    AfterRule,
     Assertion,
     Email,
     Extract,
@@ -427,7 +430,9 @@ def _run_step_body(
             ok = assertions.passed(results)
             return ok, "" if ok else _fail_reason(results), results, tree
         _do_action(driver, step, relaunch, control, bindings, selection)
-        return True, "", [], None
+        # Four branches return from this block; hoisting only the last into an `else` would suggest
+        # the other three are not on the success path.
+        return True, "", [], None  # noqa: TRY300
     except (
         base.SelectorError,
         base.ElementNotTappable,
@@ -475,6 +480,73 @@ def _resolve_video_start_offset(
     return offset
 
 
+def _dispatch_after(
+    rules: list[AfterRule],
+    failure: str | None,
+    run_steps: Callable[[list[Step], CancelSource], str | None],
+    clock: Clock,
+    cancelled: CancelSource,
+) -> tuple[str | None, str]:
+    """Run the `after` rules this run's verdict selects; return the run's composed failure (BE-0392).
+
+    Entries run in declaration order — interleaved, not grouped by `on` — so the scenario-then-config
+    merge order holds across the whole phase rather than only within one outcome group. The verdict
+    is fixed before the first entry runs: an entry's own failure never re-dispatches the ones after
+    it. A failing entry does not stop the phase either, since skipping the remaining cleanup is the
+    outcome teardown exists to avoid.
+
+    Args:
+        failure: The run's failure so far, or None if it was passing. A failing entry becomes the
+            failure on a passing run and is appended to it otherwise, so the reason a reader sees
+            first stays the original cause rather than a symptom of the cleanup it triggered.
+        run_steps: Runs one entry's steps under the `CancelSource` handed to it, returning that
+            entry's failure or None.
+        cancelled: The run's own cancel source, used only when the run was *not* cancelled.
+
+    Returns:
+        The run's failure after the phase, and the verdict it dispatched on — the report needs the
+        latter to know which rules ran, which `failure` alone can no longer say once a cleanup
+        step's own reason has been folded into it.
+    """
+    verdict = "success" if failure is None else "error"
+    # A run that is shutting down cannot be bounded by `cancelled`: that source is latched, so its
+    # first read inside this phase would raise and no cleanup step would run at all. Give the phase
+    # its own deadline instead — cleanup gets a bounded chance to run without pushing the shutdown
+    # tail past the window `serve` waits before an unconditional kill. The latch is read here rather
+    # than inferred from `failure` alone, because a cancel arriving after the last step's boundary
+    # check leaves `steps`/`expect` to finish and `failure` unset (BE-0370 keeps that scenario's real
+    # verdict) while the process is shutting down all the same.
+    bounded = cancelled() or (failure is not None and failure.startswith(CANCELLED_FAILURE))
+    phase_cancelled = cancelled
+    if bounded:
+        deadline = clock.now() + cancelled_teardown_seconds(grace_seconds())
+
+        def phase_cancelled() -> bool:
+            return clock.now() >= deadline
+
+    for rule in rules:
+        if rule.on != "always" and rule.on != verdict:
+            continue
+        try:
+            reason = run_steps(rule.steps, phase_cancelled)
+        except RunCancelled:
+            if bounded:
+                # The teardown budget above, spent. Abandoning the rest is the designed bound, not a
+                # new failure: a run cancelled early already carries that as its reason, and one
+                # cancelled after its last boundary keeps the real verdict BE-0370 gives it. Either
+                # way the After block's not-run rows are what disclose the abandoned entries.
+                _logger.debug("after: teardown budget spent; abandoning the remaining entries")
+                break
+            # A cancel that arrived *during* teardown. On a passing run the failure must still lead
+            # with the cancellation spelling downstream reads (BE-0370).
+            if failure is None:
+                return CANCELLED_FAILURE, verdict
+            return f"{failure}; after: {CANCELLED_FAILURE}", verdict
+        if reason is not None:
+            failure = f"after: {reason}" if failure is None else f"{failure}; after: {reason}"
+    return failure, verdict
+
+
 def run_scenario(
     driver: base.Driver,
     scenario: Scenario,
@@ -520,6 +592,12 @@ def run_scenario(
     `capture:` tokens — the default is empty, so a caller that doesn't pass one (a test
     constructing a scenario directly) sees the unchanged capturePolicy/inline-only behavior.
 
+    The scenario's `before` / `after` lifecycle phases (BE-0392) are read off `scenario` itself,
+    not passed alongside it the way `interrupts` is: `runner.pipeline` folds the target config's own
+    phases into each scenario before the run, so the scenario this function executes and the scenario
+    the report renders are the same object. A caller that builds a `Scenario` directly therefore gets
+    exactly the phases it declared.
+
     `cancelled` (BE-0370) makes a cancelled run land as an ordinary failed scenario: it is read at
     each step boundary and inside the poll loops that back every condition wait, and the resulting
     `RunCancelled` is turned into `failure: "cancelled"` here. The trailing `expect` re-check is
@@ -534,6 +612,12 @@ def run_scenario(
     recordings = sink.start_scenario_intervals(sid, requested_intervals(scenario, capture))
     wants_screen_changed = any(r.on.event == "screenChanged" for r in scenario.capture_policy)
     outcomes: list[StepOutcome] = []
+    before_outcomes: list[StepOutcome] = []
+    after_outcomes: list[StepOutcome] = []
+    after_verdict = ""
+    # One counter for the whole `after` phase: it runs one `run_phase` call per dispatched rule, and
+    # a per-call counter would restart each rule at zero, colliding their evidence `step_id`s.
+    after_counter = _StepCounter()
     expect_results: list[AssertionResult] = []
     expect_alerts: list[AlertEvent] = []
     # The guard's expect-phase dismissing tap: the one actuation that happens outside the step loop, so
@@ -556,15 +640,24 @@ def run_scenario(
     # expect sees the accumulated values.
     live_bindings: dict[str, str] = dict(bindings or {})
 
-    try:
-        failure = _run_steps(
+    def run_phase(
+        steps: list[Step],
+        phase_outcomes: list[StepOutcome],
+        phase: str,
+        phase_cancelled: CancelSource,
+        counter: _StepCounter | None = None,
+    ) -> str | None:
+        # Every phase shares `live_bindings`, so a `before` step's `vars.*` reaches `steps` and an
+        # `after` step can address what `steps` captured; everything else is per-phase.
+        return _run_steps(
             driver,
             scenario,
+            steps,
             clock,
             sink,
             alert_guard,
             wants_screen_changed,
-            outcomes,
+            phase_outcomes,
             wall_offset_s,
             sid,
             network,
@@ -579,37 +672,62 @@ def run_scenario(
             interrupts,
             locale,
             capture,
-            cancelled,
+            phase_cancelled,
+            phase,
+            counter,
         )
-        if failure is None and scenario.expect:
-            expect = _interp_asserts(scenario.expect, live_bindings)
-            clip = _clipboard_for(expect, control)
-            if ctx.visual is not None:
-                ctx.visual.capture_actual(driver)
-            expect_results = _evaluate_expect(
-                driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
+
+    try:
+        try:
+            if scenario.before:
+                # A precondition for the scenario, not a step within it: its failure skips `steps`
+                # and `expect` outright, the way an unsatisfiable `preconditions` already fails a
+                # scenario before this function is reached at all.
+                reason = run_phase(list(scenario.before), before_outcomes, "before", cancelled)
+                if reason is not None:
+                    failure = "before: " + reason
+            if failure is None:
+                failure = run_phase(scenario.steps, outcomes, "", cancelled)
+            if failure is None and scenario.expect:
+                expect = _interp_asserts(scenario.expect, live_bindings)
+                clip = _clipboard_for(expect, control)
+                if ctx.visual is not None:
+                    ctx.visual.capture_actual(driver)
+                expect_results = _evaluate_expect(
+                    driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
+                )
+                if not assertions.passed(expect_results) and alert_guard is not None:
+                    event = alert_guard(driver)
+                    if event is not None:
+                        expect_alerts.append(event)
+                        expect_actuations.extend(drain_actuations(driver).records)
+                        if ctx.visual is not None:
+                            ctx.visual.capture_actual(driver)
+                        # Re-read the clipboard too: clearing the block may have let the app update the
+                        # pasteboard, so the retry must compare against the fresh value, not the stale one.
+                        clip = _clipboard_for(expect, control)
+                        expect_results = _evaluate_expect(
+                            driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
+                        )  # retry once
+                if not assertions.passed(expect_results):
+                    failure = "expect: " + _fail_reason(expect_results)
+        except RunCancelled:
+            # A cancelled run is a failed run, not a silent gap: the scenario the cancel interrupted
+            # (or one whose first boundary was already past it) fails with the one spelling
+            # downstream reads, and the `finally` below still finalizes its intervals — so the
+            # report and the manifest are written exactly as they are for any other failure
+            # (BE-0370).
+            failure = CANCELLED_FAILURE
+        if scenario.after:
+            # Reached on every path out of `steps`/`expect`, the cancelled one included — the same
+            # reason the `finally` below finalizes unconditionally.
+            failure, after_verdict = _dispatch_after(
+                list(scenario.after),
+                failure,
+                lambda steps, src: run_phase(steps, after_outcomes, "after", src, after_counter),
+                clock,
+                cancelled,
             )
-            if not assertions.passed(expect_results) and alert_guard is not None:
-                event = alert_guard(driver)
-                if event is not None:
-                    expect_alerts.append(event)
-                    expect_actuations.extend(drain_actuations(driver).records)
-                    if ctx.visual is not None:
-                        ctx.visual.capture_actual(driver)
-                    # Re-read the clipboard too: clearing the block may have let the app update the
-                    # pasteboard, so the retry must compare against the fresh value, not the stale one.
-                    clip = _clipboard_for(expect, control)
-                    expect_results = _evaluate_expect(
-                        driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
-                    )  # retry once
-            if not assertions.passed(expect_results):
-                failure = "expect: " + _fail_reason(expect_results)
-    except RunCancelled:
-        # A cancelled run is a failed run, not a silent gap: the scenario the cancel interrupted (or
-        # one whose first boundary was already past it) fails with the one spelling downstream reads,
-        # and the `finally` below still finalizes its intervals — so the report and the manifest are
-        # written exactly as they are for any other failure (BE-0370).
-        failure = CANCELLED_FAILURE
     finally:
         artifacts = sink.finish_scenario_intervals(sid, recordings)
 
@@ -626,6 +744,9 @@ def run_scenario(
         wall_offset_s=wall_offset_s,
         expect_alerts=expect_alerts,
         expect_actuations=expect_actuations,
+        before_outcomes=before_outcomes,
+        after_outcomes=after_outcomes,
+        after_verdict=after_verdict,
     )
 
 
@@ -803,7 +924,6 @@ def _tip_poll_hook(
 def _run_if(
     driver: base.Driver,
     if_block: If,
-    clock: Clock,
     network: NetworkSource,
     bindings: dict[str, str],
     exec_steps: _ExecSteps,
@@ -904,6 +1024,11 @@ class _LoopConfig:
     interrupts: list[Interrupt] | None
     locale: str | None
     capture: list[str] | None
+    # Which lifecycle phase this loop is running (BE-0392): "" for the scenario's own `steps`,
+    # "before" / "after" for the hook phases. Each phase counts its steps from zero, so the label
+    # also namespaces their evidence `step_id`s — without it a hook's `step0` would write into the
+    # directory the scenario's own first step already owns.
+    phase: str = ""
     # Whether this run has been asked to stop (BE-0370). Read at each step boundary below and handed
     # to the poll loops that back `wait` / `assert`, so cancellation is noticed at a point the
     # pipeline already tolerates a pause rather than partway through an actuation.
@@ -952,7 +1077,8 @@ class _StepRunner:
         idx = self.state.counter.take()
         outcome = StepOutcome(index=idx, action=kind)
         if self.cfg.progress is not None:
-            self.cfg.progress(f"{self.cfg.sid} · step {idx + 1}: {_step_label(step, kind)}")
+            label = f"{self.cfg.phase} step" if self.cfg.phase else "step"
+            self.cfg.progress(f"{self.cfg.sid} · {label} {idx + 1}: {_step_label(step, kind)}")
         start = self.cfg.clock.now()
         # The absolute instant this step began, converted through the scenario's anchor pair
         # (BE-0348). The video correction is deliberately not applied here — the report derives it
@@ -980,7 +1106,6 @@ class _StepRunner:
         ok, reason = _run_if(
             active_driver,
             step.if_,
-            self.cfg.clock,
             self.cfg.network,
             self.state.bindings,
             self.exec_steps,
@@ -1063,7 +1188,8 @@ class _StepRunner:
         outcome: StepOutcome,
         start: float,
     ) -> str | None:
-        step_id = f"{self.cfg.sid}/{step.name or f'step{idx}'}"
+        prefix = f"{self.cfg.phase}-" if self.cfg.phase else ""
+        step_id = f"{self.cfg.sid}/{prefix}{step.name or f'step{idx}'}"
         # The report's baseline: the screen this step is about to act on, captured before it acts
         # (BE-0341). Reuses `prev_after` — already maintained unconditionally (BE-0234 Unit 2) —
         # rather than a fresh query, so a sink that reads nothing pays nothing here either. The sink
@@ -1214,7 +1340,8 @@ class _StepRunner:
         wait_tick: WaitTick | None = None
         if self.cfg.progress is not None and kind == "wait" and interp_step.wait is not None:
             desc = describe_wait(interp_step.wait)
-            prefix = f"{self.cfg.sid} · step {idx + 1}"
+            phase_label = f"{self.cfg.phase} step" if self.cfg.phase else "step"
+            prefix = f"{self.cfg.sid} · {phase_label} {idx + 1}"
 
             def wait_tick(remaining: float, _desc: str = desc, _prefix: str = prefix) -> None:
                 assert self.cfg.progress is not None
@@ -1505,6 +1632,7 @@ class _StepRunner:
 def _run_steps(
     driver: base.Driver,
     scenario: Scenario,
+    steps: list[Step],
     clock: Clock,
     sink: EvidenceSink,
     alert_guard: AlertGuardConfig | None,
@@ -1525,14 +1653,24 @@ def _run_steps(
     locale: str | None = None,
     capture: list[str] | None = None,
     cancelled: CancelSource = not_cancelled,
+    phase: str = "",
+    counter: _StepCounter | None = None,
 ) -> str | None:
-    """Run the step loop, appending outcomes; return the failure string or None.
+    """Run one phase's step loop, appending outcomes; return the failure string or None.
+
+    ``steps`` is the list to run — the scenario's own, or a `before` / `after` hook's (BE-0392).
+    Each phase gets its own `StepLoopState`, so its steps are numbered from zero and reported as
+    their own block, while ``bindings`` stays the one dict every phase shares.
+
+    ``counter`` continues an already-started phase's numbering. The `after` phase runs one call per
+    dispatched rule, so without it every rule would restart at zero — two rules' first steps would
+    then claim the same evidence `step_id` and overwrite each other's screenshots.
 
     ``bindings`` is a mutable dict (guaranteed by ``run_scenario``) — extract
     steps add ``vars.*`` entries so that subsequent steps and scenario-level
     ``expect`` can reference them."""
     assert bindings is not None
-    state = StepLoopState(counter=_StepCounter(), outcomes=outcomes, bindings=bindings)
+    state = StepLoopState(counter=counter or _StepCounter(), outcomes=outcomes, bindings=bindings)
     cfg = _LoopConfig(
         driver=driver,
         scenario=scenario,
@@ -1553,9 +1691,10 @@ def _run_steps(
         interrupts=interrupts,
         locale=locale,
         capture=capture,
+        phase=phase,
         cancelled=cancelled,
     )
-    result = _StepRunner(state, cfg).exec_steps(scenario.steps, driver)
+    result = _StepRunner(state, cfg).exec_steps(steps, driver)
     _logger.debug("%s: %d runner-issued screen reads (BE-0234)", sid, state.total_reads)
     # No end-of-run safety capture here: every step that acts shoots its own `after.png` in
     # `_handle_action`, so the net only reached the step that returns before acting at all, where it

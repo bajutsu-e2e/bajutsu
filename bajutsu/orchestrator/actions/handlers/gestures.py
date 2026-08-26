@@ -58,9 +58,10 @@ def _tap_with_recovery(
     """
     try:
         actuate()
-        return
     except base.ElementNotTappable as obstruction_exc:
         obstruction = obstruction_exc
+    else:
+        return
     exhausted: Exception | None = None
     for i, direction in enumerate(_TAP_RECOVERY_DIRECTIONS):
         # A later direction starts from the offset its predecessors left behind, so it has to undo

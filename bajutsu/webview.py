@@ -192,22 +192,22 @@ class WebContextDriver:
         self._log_point("doubleTap", point, el)
         self._bridge.tap_element(self._webview_id, point)
 
-    def long_press(self, sel: Selector, duration: float) -> None:
+    def long_press(self, sel: Selector, duration: float) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("long_press is not supported in web context (first slice)")
 
-    def swipe(self, frm: Point, to: Point) -> None:
+    def swipe(self, frm: Point, to: Point) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("swipe is not supported in web context (first slice)")
 
-    def scroll(self, frm: Point, to: Point) -> None:
+    def scroll(self, frm: Point, to: Point) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("scroll is not supported in web context (first slice)")
 
     def back(self) -> None:
         raise UnsupportedAction("back is not supported in web context (first slice)")
 
-    def pinch(self, sel: Selector, scale: float) -> None:
+    def pinch(self, sel: Selector, scale: float) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("pinch is not supported in web context (first slice)")
 
-    def rotate(self, sel: Selector, radians: float) -> None:
+    def rotate(self, sel: Selector, radians: float) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("rotate is not supported in web context (first slice)")
 
     def type_text(self, text: str) -> None:
@@ -215,7 +215,7 @@ class WebContextDriver:
         self._actuations.record(Actuation(gesture="typeText", via="focused", unit=_UNIT))
         self._bridge.type_text(self._webview_id, text)
 
-    def delete_text(self, count: int) -> None:
+    def delete_text(self, count: int) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("delete/clear is not supported in web context (first slice)")
 
     def select_all(self) -> None:
@@ -224,13 +224,13 @@ class WebContextDriver:
     def copy_selection(self) -> None:
         raise UnsupportedAction("copy is not supported in web context (first slice)")
 
-    def select_option(self, sel: Selector, option: str) -> None:
+    def select_option(self, sel: Selector, option: str) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("selectOption is not supported in web context (first slice)")
 
-    def set_picker_value(self, sel: Selector, value: str) -> None:
+    def set_picker_value(self, sel: Selector, value: str) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("setPickerValue is iOS-only; a DOM has no picker wheel")
 
-    def handle_system_alert(self, sel: Selector, timeout: float) -> None:
+    def handle_system_alert(self, sel: Selector, timeout: float) -> None:  # noqa: ARG002  # Driver shape
         # BE-0316 taps an iOS SpringBoard prompt; a WebView DOM context has no OS-level alert, and
         # only the resident-runner XCUITest backend declares the capability, so this never runs.
         raise UnsupportedAction("handleSystemAlert is iOS-only; not supported in web context")
@@ -239,7 +239,7 @@ class WebContextDriver:
         # A WebView DOM context sees no SpringBoard alert layer; the reactive native path never runs.
         return []
 
-    def dismiss_blocking_tip(self, tree: list[Element] | None = None) -> bool:
+    def dismiss_blocking_tip(self, tree: list[Element] | None = None) -> bool:  # noqa: ARG002  # Driver shape
         # A TipKit tip is native UIKit, outside the DOM this context sees; nothing to dismiss here.
         return False
 
@@ -251,7 +251,7 @@ class WebContextDriver:
         """
         return bool(find_all(self.query(), sel))
 
-    def screenshot(self, path: str) -> None:
+    def screenshot(self, path: str) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("screenshot is not supported in web context (first slice)")
 
     def capabilities(self) -> set[str]:

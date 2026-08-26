@@ -27,7 +27,7 @@ AlertGuardFor = Callable[[Scenario], AlertGuardConfig | None]
 
 def _no_replacement() -> None:
     """The neutral replacement request: a lease whose platform cannot mint a device (BE-0354)."""
-    return None
+    return
 
 
 def _never_stalled() -> bool:

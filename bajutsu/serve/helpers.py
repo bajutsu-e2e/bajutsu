@@ -279,7 +279,7 @@ def list_fs(root: Path, sub: str | None) -> dict[str, Any]:
     }
 
 
-def list_simulators(simctl: _simctl.RunFn = _simctl._real_run) -> list[dict[str, Any]]:
+def list_simulators(simctl: _simctl.RunFn = _simctl.real_run) -> list[dict[str, Any]]:
     """Available simulators for the device picker (booted first): udid, name, runtime, booted.
     A run boots any picked-but-shut-down device first, so the UI can start from a cold list."""
     try:

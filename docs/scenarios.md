@@ -67,8 +67,10 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 | `tags` | list[str] | `[]` | Selection labels; the CLI `--tag` / `--exclude` flags pick which scenarios run ([reuse, data, and tags](#reuse-data-and-tags)) |
 | `data` / `dataFile` | list / str | none | Data-driven rows — inline `data`, or `dataFile` (a CSV path). Expands into one run per row, substituting `${row.col}`. Mutually exclusive ([reuse, data, and tags](#reuse-data-and-tags)) |
 | `preconditions` | object | `{}` | Per-test environment setup (below) |
+| `before` | list | `[]` | Setup steps run as their **own phase** ahead of `steps`; a failure there aborts the scenario ([below](#before--after-setup-and-teardown-phases)) |
 | `steps` | list | required | The ordered actions (below) |
 | `expect` | list | `[]` | Final assertions after all steps pass ([selectors](selectors.md#assertion-evaluation)) |
+| `after` | list | `[]` | Teardown rules — each `{ on: always \| success \| error, steps }`, run once the verdict exists, on every path out of `steps` ([below](#before--after-setup-and-teardown-phases)) |
 | `capturePolicy` | list | `[]` | Repeatedly-firing evidence rules ([evidence](evidence.md#a-capturepolicy-rule-based)) |
 | `network` | object | none | `{ filter: { domains: [...] } }` — `filter.domains` scopes which observed requests are interleaved into the report's Steps timeline (by URL host; a parent domain matches subdomains). Unset shows all; the Network tab always lists them all ([reporting](reporting.md#reporthtml)) |
 | `mocks` | list | `[]` | Deterministic network stubs — a matching outgoing request gets a canned response instead of hitting the network ([network mocks](#network-mocks-deterministic-stubs)) |
@@ -398,6 +400,101 @@ handles a screen the tree **can** see with a machine-checkable condition. When t
 No native XCUITest / Espresso / Playwright construct maps onto "check this condition opportunistically
 throughout the whole test," so `codegen` emits a labeled `// TODO` naming the field and each
 configured condition rather than generating code for it — `bajutsu run` is the faithful path.
+
+## `before` / `after` (setup and teardown phases)
+
+`preconditions.setup` ([above](#preconditions-environment-setup)) names a prelude scenario file, and
+the runner prepends that prelude's steps onto this scenario's own `steps` before the run starts. The
+prelude then runs indistinguishably from the scenario's own steps: the report lists them in one
+numbered sequence, and a prelude failure surfaces as an ordinary step failure with no marker showing
+it came from setup. Teardown has no mechanism at all. The only place to put cleanup is the tail of
+`steps`, and the step loop breaks on the first failure ([the run loop](run-loop.md)), so a trailing
+cleanup step runs only when every preceding step already passed — exactly the run that needed
+cleanup least. A scenario that signs up a test user, then hits a broken button three steps later,
+leaves that user behind.
+
+`before` and `after` close both gaps. `before` is an ordered list of steps that runs first, reported
+as its own section, and a failure there aborts the scenario before `steps` and `expect` run at all.
+`after` is a list of rules, each pairing an outcome — `always`, `success`, or `error` — with the
+steps to run for that outcome. The runner evaluates the rules once the scenario's verdict exists,
+and reaches the phase on every path out of `steps`, the failing path included. Both fields reuse the
+ordinary step grammar and the ordinary assertion DSL, so a hook's steps are exactly as
+machine-checkable as the scenario's own, and both share the run's `${vars.*}` bindings
+([runtime variables](#runtime-variables-vars)).
+
+```yaml
+- name: sign up, then release the account
+  before:
+    # the seed endpoint returns the new user's bare id as its response body
+    - http: { method: POST, url: "https://api.test/users", saveBody: userId }
+  steps:
+    - tap:  { id: login.button }
+    - type: { text: "${vars.userId}", into: { id: login.username } }
+  after:
+    - on: always
+      steps:
+        - tap: { id: session.logout }
+    - on: success
+      steps:
+        - http: { method: DELETE, url: "https://api.test/users/${vars.userId}" }
+    - on: error
+      steps:
+        - http: { method: POST, url: "https://api.test/diagnostics", body: '{"failed":true}' }
+```
+
+(real file: [`demos/showcase/scenarios/before_after.yaml`](../demos/showcase/scenarios/before_after.yaml))
+
+More than one rule may carry the same `on` value, and rules composing that way run in declaration
+order — the same way two `capturePolicy` rules may share a trigger. A rule whose own steps fail does
+not stop the phase: the remaining rules still run, because skipping the rest of the cleanup is the
+outcome teardown exists to avoid. What that failure does to the run's verdict depends on where the
+run already stood. On a run that was passing, the failing rule becomes the failure
+(`after: step 0 (tap): …`). On a run that had already failed, the failing rule is appended behind
+the original failure instead of replacing it, so the reason a reader sees first is still the original
+cause rather than a symptom of the cleanup it triggered.
+
+A cancelled run (`SIGTERM`, the `serve` Web UI's Cancel button) reaches the phase too, dispatching
+`after` as an `error` outcome, and the cleanup rules get a bounded slice of the cancellation grace
+window to run in. Once that slice is spent, the remaining rules are abandoned so the shutdown tail
+that writes the report still fits inside the window.
+
+### Both fields at the target-config level
+
+`targets.<name>.before` and `targets.<name>.after` take the same shapes as an app-wide default, and
+the two merge in opposite orders:
+
+| Field | Merge order | Why |
+|---|---|---|
+| `before` | config, then scenario | The app-wide prelude seeds the state this scenario's own setup then builds on — the same config-then-scenario layering `interrupts` follows |
+| `after` | scenario, then config | This scenario releases what it created before the app-wide teardown closes around it, the last-acquired-first-released order a fixture-based teardown pair gives |
+
+`targets.<name>.before` does not replace `targets.<name>.setup`: only `before` is its own report
+phase, and a `before` phase runs ahead of the prelude that `setup` splices onto `steps`. A `before`
+step therefore must not depend on a screen the prelude reaches.
+
+### When to reach for which
+
+Three fields sit near this ground, and each answers a different question:
+
+| Field | Runs | Reported as | For |
+|---|---|---|---|
+| `before` / `after` | as its own phase, before `steps` / after the verdict | its own Before / After block | setup and teardown the reader must be able to tell apart from the scenario under test |
+| `preconditions.setup` | spliced onto the front of `steps` | more numbered steps | a reusable prelude shared by several scenarios, where no separation is wanted |
+| `capturePolicy` | throughout the step loop, per step | evidence attached to a step | capturing extra evidence when a step fails, not running steps |
+
+`capturePolicy`'s `on: { result: error }` trigger and an `after` rule's `on: error` share the word
+`error` for the same idea, at two scales: a `capturePolicy` trigger fires for one failed step,
+wherever in the run it happened, while an `after` rule fires once, for the whole scenario's verdict.
+
+### What `codegen` emits
+
+`before` needs no framework construct: `codegen` emits its steps inline at the top of the generated
+test body under a `// before` divider, which is exactly the phase's meaning — they run first, and a
+failure aborts what follows. `after` needs one, and each target reaches it differently. Playwright and
+UI Automator wrap the test body in `try` / `catch` / `finally`, since an assertion on either target
+throws, so the `catch` sees the very failure the verdict would have been. XCUITest registers a single
+`addTeardownBlock` instead, because `XCTAssert` records a failure rather than throwing, and reads the
+outcome from `testRun?.hasSucceeded` ([codegen](codegen.md)).
 
 ## Selectors (addressing an element)
 

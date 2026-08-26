@@ -36,8 +36,8 @@ def expand_components(
     steps remain, so the run loop is unaffected.
 
     Args:
-        scenarios: The scenarios to expand; their `steps` and every `interrupts` entry's
-            recovery `steps` are rewritten in place.
+        scenarios: The scenarios to expand; their `steps`, their `before` / `after` lifecycle
+            steps, and every `interrupts` entry's recovery `steps` are rewritten in place.
         resolve: Maps a component name to its `Component` (e.g. by loading a shared file).
         max_depth: The deepest `use` nesting allowed before giving up on a runaway chain.
 
@@ -79,9 +79,13 @@ def expand_components(
 
     for scenario in scenarios:
         scenario.steps = expand(scenario.steps, [])
-        # An `interrupts` handler's recovery steps are ordinary steps the run loop executes, so a
-        # `use` there has to be expanded too (BE-0314). Skipping them let one reach `_action_of`
-        # as an action-less step and abort the whole run, not just the scenario.
+        # The lifecycle phases (BE-0392) and an `interrupts` handler's recovery steps (BE-0314)
+        # all take the ordinary step grammar, so a `use` can appear in any of them. Left
+        # unexpanded it reaches the step loop as a step with no action and aborts the whole run
+        # with an `AssertionError`, not one failed scenario.
+        scenario.before = expand(scenario.before, [])
+        for rule in scenario.after:
+            rule.steps = expand(rule.steps, [])
         for entry in scenario.interrupts:
             entry.steps = expand(entry.steps, [])
 

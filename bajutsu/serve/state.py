@@ -543,7 +543,7 @@ class ServeState:
     # unchanged (no hub) — set in `_build_state`/`_build_server_state`, like the seams above.
     project_registry: ProjectRegistry | None = None
     simctl: _simctl.RunFn = (
-        _simctl._real_run
+        _simctl.real_run
     )  # runs `xcrun simctl …` (booting devices, listing them)
     # Cap on concurrently-running run/record jobs so one caller can't monopolize the scarce device
     # (BE-0051). <= 0 means unlimited; serve() sets it from --max-concurrent-runs (default 4).

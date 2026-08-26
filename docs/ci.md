@@ -266,6 +266,16 @@ underlying tools share no surface, so a single action would be a branch on the b
 shared logic. What the two do share is the design — the cheap/heavy split, the `start` / `collect`
 telemetry phases — and, inside `bajutsu`, the capture itself.
 
+**Reading what a red lane collected.** None of this appears in `gh run view --log-failed`: it is
+uploaded inside the failing job's own `runs/` artifact, so a session diagnosing from the log alone
+never sees it. The [`investigate-ci-failure`](../.apm/skills/investigate-ci-failure/SKILL.md) agent
+skill downloads that artifact and matches what it holds against the symptoms recorded in
+[`known-ci-failure-patterns.md`](../.apm/skills/investigate-ci-failure/references/known-ci-failure-patterns.md),
+classifying the failure as a known infrastructure flake, a real defect, or something still
+unclassified. [`pr-followup`](../.apm/skills/pr-followup/SKILL.md) runs it before touching a fix, so
+a host flake is not answered with a code change and a regression is not waved through as a flake.
+The skill reports; it never edits, pushes, or re-runs.
+
 ## Running bajutsu in your app's CI
 
 > bajutsu is pre-release (unpublished). Until it is on PyPI, vendor it (a submodule or a

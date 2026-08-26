@@ -20,11 +20,11 @@ class FakeEnvironment(_DeviceEnvironment):
 
     def start(
         self,
-        eff: Effective,
-        pre: Preconditions,
+        eff: Effective,  # noqa: ARG002  # Environment shape
+        pre: Preconditions,  # noqa: ARG002
         *,
-        extra_env: Mapping[str, str] | None = None,
-        record_video_dir: Path | None = None,
+        extra_env: Mapping[str, str] | None = None,  # noqa: ARG002
+        record_video_dir: Path | None = None,  # noqa: ARG002
         permissions: Mapping[str, str] | None = None,
     ) -> base.Driver:
         # No device, so no mechanism to apply `permissions`. Preflight normally rejects a scenario

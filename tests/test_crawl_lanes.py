@@ -275,7 +275,7 @@ def test_wire_health_web_passes_through_and_wraps_recover() -> None:
     env = _HealthEnv(
         aliveness=lambda _d, _els: True,
         clearer=lambda _d: ["dialog"],
-        recover=lambda d: healed.append(d),
+        recover=healed.append,
     )
     msgs, report = _sink()
     is_alive, clear_blocking, recover = _wire_health(

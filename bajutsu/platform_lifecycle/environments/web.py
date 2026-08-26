@@ -37,9 +37,9 @@ class WebEnvironment:
     def start(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: Preconditions,  # noqa: ARG002  # Environment shape
         *,
-        extra_env: Mapping[str, str] | None = None,
+        extra_env: Mapping[str, str] | None = None,  # noqa: ARG002
         record_video_dir: Path | None = None,
         permissions: Mapping[str, str] | None = None,
     ) -> base.Driver:
@@ -88,23 +88,23 @@ class WebEnvironment:
         # `mocks` param the base Protocol widens to `list[object]`.
         return cast(PlaywrightDriver, driver).network_collector(scenario.mocks)
 
-    def bridge_collector(self, port: int) -> Callable[[], None]:
+    def bridge_collector(self, port: int) -> Callable[[], None]:  # noqa: ARG002  # Environment shape
         return lambda: None  # web observes via the driver; never reached (no external collector)
 
     def relauncher(
         self,
         eff: Effective,
-        scenario: Scenario,
+        scenario: Scenario,  # noqa: ARG002  # Environment shape
         driver: base.Driver,
         *,
-        extra_env: Mapping[str, str] | None = None,
+        extra_env: Mapping[str, str] | None = None,  # noqa: ARG002
     ) -> RelaunchFn:
         return _web_relauncher(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
 
-    def controller(self, eff: Effective) -> DeviceControl | None:
+    def controller(self, eff: Effective) -> DeviceControl | None:  # noqa: ARG002  # Environment shape
         return None  # the driver owns the browser; no simctl device control
 
-    def teardown(self, driver: base.Driver, eff: Effective) -> None:
+    def teardown(self, driver: base.Driver, eff: Effective) -> None:  # noqa: ARG002  # Environment shape
         cast(base.BackendLifecycle, driver).close()  # web-only lifecycle, confined to this env
 
     def has_reusable_resident(self) -> bool:
@@ -122,7 +122,7 @@ class WebEnvironment:
     def has_devices(self) -> bool:
         return False  # one browser per lane, no simctl device behind it
 
-    def plan_lanes(self, udid_arg: str, workers: int) -> list[str]:
+    def plan_lanes(self, udid_arg: str, workers: int) -> list[str]:  # noqa: ARG002  # Environment shape
         # No device to resolve (resolving "booted" would shell out to simctl and crash off-macOS);
         # the worker count alone sizes the browser lanes, each entry just one more browser.
         return ["web"] * max(1, workers)
@@ -132,9 +132,7 @@ class WebEnvironment:
         # carried across visits, so a path recorded in one worker's browser replays in another.
         def reset(driver: base.Driver) -> None:
             cast(base.BackendLifecycle, driver).reset_context()  # web-only (fresh context)
-            readiness._await_ready(
-                driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces
-            )
+            readiness.await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
 
         return reset
 

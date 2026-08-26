@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0392](BE-0392-scenario-before-after-hooks.md) |
 | Author | [@akira-matsuda](https://github.com/akira-matsuda) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0392") |
+| Implementing PR | [#1762](https://github.com/bajutsu-e2e/bajutsu/pull/1762) |
 | Topic | Scenario authoring features |
 | Related | [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md), [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers.md) |
 <!-- /BE-METADATA -->
@@ -276,18 +277,32 @@ already use elsewhere for a target that does not yet.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — `before: list[Step]` / `after: list[AfterRule]` schema on `Scenario` and
+- [x] Unit 1 — `before: list[Step]` / `after: list[AfterRule]` schema on `Scenario` and
       `TargetConfig`.
-- [ ] Unit 2 — config-then-scenario merge for `before`, scenario-then-config merge for `after`.
-- [ ] Unit 3 — runner integration in `run_scenario` (before-phase gate, after-phase outcome
+- [x] Unit 2 — config-then-scenario merge for `before`, scenario-then-config merge for `after`.
+- [x] Unit 3 — runner integration in `run_scenario` (before-phase gate, after-phase outcome
       dispatch, failure-reason composition).
-- [ ] Unit 4 — `before_outcomes` / `after_outcomes` on `RunResult`; report renderer sections; the
+- [x] Unit 4 — `before_outcomes` / `after_outcomes` on `RunResult`; report renderer sections; the
       JUnit `_details` body and the CTRF step list.
-- [ ] Unit 5 — codegen mapping (`beforeEach`/`afterEach` and outcome-aware emission where
+- [x] Unit 5 — codegen mapping (`beforeEach`/`afterEach` and outcome-aware emission where
       supported; TODO fallback elsewhere).
-- [ ] Unit 6 — docs (scenarios.md + ja) with a comparison table, and a showcase fixture.
-- [ ] Unit 7 — tests (schema, both merge orders, verdict-computation matrix, `vars.*` sharing,
+- [x] Unit 6 — docs (scenarios.md + ja) with a comparison table, and a showcase fixture.
+- [x] Unit 7 — tests (schema, both merge orders, verdict-computation matrix, `vars.*` sharing,
       report fields).
+
+Two details of the shipped implementation differ from the Detailed design above, both decided while
+building it:
+
+- **`RunResult` carries a third new field, `after_verdict`.** The report renders the After block by
+  lining each outcome up with the rule that declared it, and the rules a run dispatched cannot be
+  recovered from `failure` once a cleanup step's own reason has been folded into it. Recording the
+  verdict the phase dispatched on is what makes that alignment exact.
+- **No codegen target needed the `// TODO` fallback.** Every target expresses the phase natively.
+  Playwright and UI Automator wrap the test body in `try` / `catch` / `finally` rather than in a
+  `beforeEach`/`afterEach` pair, because a framework hook is registered per describe block or per
+  class while `before`/`after` are per scenario, and both targets' assertions throw, so the `catch`
+  observes the verdict directly. XCUITest registers one `addTeardownBlock` and reads
+  `testRun?.hasSucceeded`, since `XCTAssert` records a failure rather than throwing.
 
 ## References
 

@@ -107,7 +107,7 @@ def test_config_interrupts_resolve() -> None:
 def test_config_interrupts_reject_component_use() -> None:
     # `use` is expanded over scenarios only, and a target config never goes through that pass — so
     # it is rejected at load time rather than reaching the run loop as an action-less step.
-    with pytest.raises(ValidationError, match="`use` is not supported"):
+    with pytest.raises(ValidationError, match="interrupts cannot use a component"):
         load_config(
             """
             defaults: { backend: [web] }

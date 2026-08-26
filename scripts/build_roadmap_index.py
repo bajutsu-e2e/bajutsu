@@ -340,8 +340,8 @@ def _git_dates(paths: Iterable[Path]) -> tuple[str | None, str | None]:
             return None, None
         if proc.returncode != 0:
             continue
-        for line in proc.stdout.splitlines():
-            line = line.strip()
+        for raw in proc.stdout.splitlines():
+            line = raw.strip()
             if line:
                 stamps.append(datetime.fromisoformat(line).astimezone(UTC).isoformat())
     if not stamps:

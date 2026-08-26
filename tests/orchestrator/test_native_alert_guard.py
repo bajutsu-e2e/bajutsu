@@ -9,6 +9,10 @@ with alert buttons, so nothing here needs a Simulator; the on-device confirmatio
 
 from __future__ import annotations
 
+import logging
+
+import pytest
+
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import AlertEvent, AlertGuardConfig
@@ -429,6 +433,187 @@ def test_dismiss_from_tree_taps_a_showing_at_most_once() -> None:
     tap_sel = {"label": "今はしない", "traits": ["button"]}
     assert driver.actions.count(("tap", tap_sel)) == 1  # tapped exactly once
     assert alerts == [AlertEvent(label="今はしない")]  # exactly one dismissal recorded, not several
+
+
+def test_dismiss_from_tree_retries_a_delivered_tap_that_did_not_clear_the_prompt(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # The counterpart to the lingering-fade case above, and the one it cannot be told apart from at
+    # the first poll: a tap the runner *accepts* can still leave the prompt up. Measured on iOS —
+    # testmanagerd logged `touch down`/`touch up` at the target's exact centre and
+    # `confirmed by TouchEventsCompleted`, yet the app never acted on the touch (PR #1686). Where the
+    # fade clears the label within a poll or two, this never does, so the two differ only in what the
+    # tree does *after* the tap.
+    #
+    # `_tree_dismiss_pending` arms on a tap that merely returned without raising, and re-arms only
+    # once the tree stops matching that label — which an unacted-on tap never causes. So one such tap
+    # disarms the in-tree path for the whole remaining wait: the sheet stays up, nothing retries, and
+    # the step burns its full timeout with a dismissal recorded as if it had worked. Like
+    # `ElementNotTappable`, this retries under a bound (`_TREE_DISMISS_MAX_TAPS`) rather than either
+    # giving up after one attempt or hammering the device for the rest of the wait.
+    from bajutsu.orchestrator.waits import _TREE_DISMISS_MAX_TAPS, _wait
+
+    prompt_button = _button("今はしない")
+
+    class _IneffectiveTap(FakeDriver):
+        """Accepts the tap as a real runner does, but the prompt it targets never clears."""
+
+        def __init__(self) -> None:
+            super().__init__([prompt_button])
+            self.tap_calls = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_calls += 1
+            super().tap(sel)  # delivered and recorded; `screen` deliberately left unchanged
+
+    driver = _IneffectiveTap()
+    guard = AlertGuardConfig(vision=_never_vision, labels=["今はしない"], poll_interval=1.0)
+    alerts: list[AlertEvent] = []
+    # A 30s budget, far longer than `_TREE_DISMISS_MAX_TAPS` taps spaced by `_TREE_RETAP_DELAY`, so
+    # what stops the retries here is the tap ceiling rather than the wait running out: no retry at all
+    # taps exactly once, an unbounded one ~30 times over this wait, and only the bound gives 3.
+    with caplog.at_level(logging.WARNING, logger="bajutsu.orchestrator.waits"):
+        ok, _reason, _tree = _wait(
+            driver, _for_wait("ready", 30.0), _LogicalClock(), alert_guard=guard, alerts=alerts
+        )
+    assert not ok  # "ready" never appears either way, so the wait still times out on its own
+    assert driver.tap_calls == _TREE_DISMISS_MAX_TAPS
+    # The dismissal is recorded on the tap — the only moment it can be, since nothing there tells a
+    # tap that lands from one the app never acts on — then withdrawn once the ceiling proves the
+    # prompt never cleared. `AlertEvent` means a prompt the guard *dismissed*, so leaving it would
+    # make the report contradict the warning below: timed out with the sheet still up, reported as
+    # cleared. The retried actuations stay visible in the driver's own log (`tap_calls` above).
+    assert alerts == []
+    # Disclosed once, not silently: the wait is about to burn its whole budget, and without this the
+    # timeout would read as "the awaited element never rendered" rather than "the prompt never left".
+    gave_up = [r for r in caplog.records if "in-tree alert dismiss gave up" in r.message]
+    assert len(gave_up) == 1
+
+
+def test_dismiss_from_tree_retry_that_lands_clears_the_prompt_and_passes_the_wait() -> None:
+    # The payoff the retry exists for, which the never-clears test above cannot show: the second tap
+    # *does* land, so the wait passes at retry latency instead of burning its timeout. Without this,
+    # a change that left the retry inert — an off-by-one in the ceiling, a delay that never elapses
+    # under the real clock — would keep every other in-tree test green while the sheet stays up on
+    # device, since they all either tap once successfully or never clear at all.
+    from bajutsu.orchestrator.waits import _TREE_RETAP_DELAY, _wait
+
+    target = _button("R")
+    target["identifier"] = "ready"
+    prompt_button = _button("今はしない")
+
+    class _SecondTapLands(FakeDriver):
+        """The first tap is accepted but ignored by the app; the second actually dismisses."""
+
+        def __init__(self) -> None:
+            super().__init__([prompt_button])
+            self.tap_calls = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_calls += 1
+            super().tap(sel)
+            if self.tap_calls >= 2:
+                self.screen = [target]  # this one lands
+
+    driver = _SecondTapLands()
+    guard = AlertGuardConfig(vision=_never_vision, labels=["今はしない"], poll_interval=1.0)
+    alerts: list[AlertEvent] = []
+    clock = _LogicalClock()
+    ok, reason, _tree = _wait(
+        driver, _for_wait("ready", 30.0), clock, alert_guard=guard, alerts=alerts
+    )
+    assert ok and reason == ""
+    assert driver.tap_calls == 2  # the retry is what cleared it
+    # Cleared one retry in, nowhere near the 30s budget — the recovery came from the retry, not from
+    # the wait outlasting the prompt.
+    assert clock.now() < _TREE_RETAP_DELAY * 2
+    assert alerts == [AlertEvent(label="今はしない")]  # one prompt, one dismissal
+
+
+def test_dismiss_from_tree_does_not_retry_when_the_tap_moved_the_screen() -> None:
+    # The retry must not fire when the tap plainly *did* land. `_dismiss_from_tree` matches
+    # identifier-less buttons, and a whole app can legitimately have none (`shows_app_ui`'s `-noax`
+    # shape), so a dismissed sheet can reveal an app-authored button carrying the very same label.
+    # Re-tapping that would actuate the app under test — navigating it mid-wait and failing the step
+    # for an unrelated reason — and would end in a warning claiming a prompt is up when none is.
+    # The screen having changed since the tap is what separates the two cases.
+    from bajutsu.orchestrator.waits import _wait
+
+    prompt_button = _button("今はしない")
+    app_button = _button("今はしない")  # identifier-less, app-authored, same label
+    content = _button("Content")
+    content["identifier"] = "home.content"
+
+    class _RevealsSameLabelAppButton(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([prompt_button])
+            self.tap_calls = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_calls += 1
+            super().tap(sel)
+            self.screen = [app_button, content]  # sheet gone; the app's own button still matches
+
+    driver = _RevealsSameLabelAppButton()
+    guard = AlertGuardConfig(vision=_never_vision, labels=["今はしない"], poll_interval=1.0)
+    alerts: list[AlertEvent] = []
+    ok, _reason, _tree = _wait(
+        driver, _for_wait("ready", 5.0), _LogicalClock(), alert_guard=guard, alerts=alerts
+    )
+    assert not ok  # "ready" never appears; the wait times out on its own
+    assert driver.tap_calls == 1  # the app's button was never tapped, despite matching every poll
+    assert alerts == [AlertEvent(label="今はしない")]  # the real dismissal stands
+
+
+def test_dismiss_from_tree_records_a_second_showing_after_an_untapped_other_label() -> None:
+    # A second label can appear and go without ever being tapped — here it collides with an
+    # identically labelled in-app button, so the uniqueness pre-check declines before any tap. That
+    # showing must not leave the *first* label pending: if it did, the first label reappearing would
+    # compare equal to the stale pending, `first_tap` would be False, and a genuine second dismissal
+    # would be tapped but never recorded — under-reporting the run's prompts.
+    from bajutsu.orchestrator.waits import _wait
+
+    target = _button("R")
+    target["identifier"] = "ready"
+    save = _button("今はしない")
+    other = _button("あとで")  # system-owned, but collides with the app button below
+    app_other = _button("あとで")
+    app_other["identifier"] = "screen.home.button.later"
+
+    class _TwoShowings(FakeDriver):
+        """`今はしない` → an untappable `あとで` → `今はしない` again, then the awaited screen."""
+
+        def __init__(self) -> None:
+            super().__init__([save])
+            self.taps: list[str] = []
+
+        def tap(self, sel: base.Selector) -> None:
+            super().tap(sel)
+            label = str(sel["label"])
+            self.taps.append(label)
+            # Each dismissal of the save sheet reveals the next screen in the sequence.
+            self.screen = [other, app_other] if len(self.taps) == 1 else [target]
+
+        def query(self) -> list[base.Element]:
+            # The colliding pair clears on its own after a poll, putting the save sheet back up —
+            # a second, genuine showing that was never tapped in between.
+            if self.screen and self.screen[0] is other:
+                self.screen = [save]
+                return [other, app_other]
+            return list(self.screen)
+
+    driver = _TwoShowings()
+    guard = AlertGuardConfig(
+        vision=_never_vision, labels=["今はしない", "あとで"], poll_interval=1.0
+    )
+    alerts: list[AlertEvent] = []
+    ok, _reason, _tree = _wait(
+        driver, _for_wait("ready", 5.0), _LogicalClock(), alert_guard=guard, alerts=alerts
+    )
+    assert ok
+    assert driver.taps == ["今はしない", "今はしない"]  # the ambiguous `あとで` was never tapped
+    # Both showings recorded — the second is a distinct prompt, not a retry of the first.
+    assert alerts == [AlertEvent(label="今はしない"), AlertEvent(label="今はしない")]
 
 
 def test_dismiss_from_tree_declines_on_not_yet_tappable_then_dismisses() -> None:
