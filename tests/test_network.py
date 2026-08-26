@@ -314,8 +314,8 @@ def test_request_sequence_empty_timeline_fails() -> None:
     assert not r.ok and r.reason
 
 
-def _schemas_dir(tmp_path: object, name: str, schema: dict[str, object]):  # type: ignore[no-untyped-def]
-    d = tmp_path / "schemas"  # type: ignore[operator]
+def _schemas_dir(tmp_path: Path, name: str, schema: dict[str, object]) -> Path:
+    d = tmp_path / "schemas"
     d.mkdir(exist_ok=True)
     (d / name).write_text(json.dumps(schema), encoding="utf-8")
     return d

@@ -475,7 +475,7 @@ def test_load_effective_local_config_rebases_against_the_config_dir(
     eff = _shared._load_effective(str(cfg_dir / "bajutsu.config.yaml"), "demo")
     assert eff.evidence_dirs.scenarios == str(
         cfg_dir / "scn"
-    )  # anchored at the config dir, not cwd (tmp_path: Path)
+    )  # anchored at the config dir, not cwd (tmp_path)
     assert isinstance(eff.platform_config, IosConfig)
     assert eff.platform_config.app_path == str(cfg_dir / "build/Demo.app")
 

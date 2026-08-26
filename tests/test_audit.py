@@ -17,6 +17,7 @@ from typer.testing import CliRunner
 import bajutsu.cli.commands.audit as audit_command
 from bajutsu.analysis import audit as analysis_audit
 from bajutsu.analysis.audit import (
+    AuditReport,
     audit_scenario,
     longitudinal,
     referenced_ids,
@@ -460,7 +461,7 @@ def test_read_manifests_skips_non_dirs_missing_and_non_dict(tmp_path: Path) -> N
     assert read_manifests(runs) == [{"runId": "r1"}]
 
 
-def _audit(yaml: str):  # type: ignore[no-untyped-def]
+def _audit(yaml: str) -> AuditReport:
     [scenario] = load_scenarios(yaml)
     return audit_scenario(scenario)
 

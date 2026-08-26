@@ -21,11 +21,12 @@ from bajutsu.analytics import ledger as usage_ledger
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence.sink import RunArtifactWriter
-from bajutsu.serve.artifacts import Artifact
 from scripts.build_roadmap_index import tracking_issue_url
 
 if TYPE_CHECKING:
     from sqlalchemy import Engine
+
+    from bajutsu.serve.artifacts import Artifact
 
 
 @pytest.fixture(autouse=True)

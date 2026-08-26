@@ -43,11 +43,20 @@ def _scenario(steps: list[Step], expect: list[Assertion] | None = None) -> Scena
 
 
 class _NoSleep:
-    def now(self) -> float:
-        return 0.0  # the enrich loop only sleeps here; time never advances
+    """Logical time: no real waiting, but a deadline wait still reaches its deadline.
 
-    def sleep(self, _seconds: float) -> None:
-        return None
+    `enrich()` passes this clock into `execute`, whose `wait` handling is `_wait`'s deadline loop
+    (`clock.now() >= deadline`), so a frozen `now()` would spin forever rather than fail.
+    """
+
+    def __init__(self) -> None:
+        self._t = 0.0
+
+    def now(self) -> float:
+        return self._t
+
+    def sleep(self, seconds: float) -> None:
+        self._t += seconds
 
 
 class _AdvancingClock:

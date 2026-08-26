@@ -10,7 +10,7 @@ import json
 import threading
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -71,7 +71,7 @@ class FakeProc:
         pass
 
 
-def fake_popen(lines: list[str], code: int = 0):  # type: ignore[no-untyped-def]
+def fake_popen(lines: list[str], code: int = 0) -> Callable[..., FakeProc]:
     def popen(_cmd: list[str], **_kw: Any) -> FakeProc:
         return FakeProc(lines, code)
 

@@ -9,10 +9,10 @@ import typer
 
 from bajutsu.cli._shared import _refuse_out_in_checkout
 from bajutsu.cli.commands.record import _record_out_path, _secret_tokens
-from bajutsu.config import load_config, resolve
+from bajutsu.config import Effective, load_config, resolve
 
 
-def _eff(scenarios: str):  # type: ignore[no-untyped-def]
+def _eff(scenarios: str) -> Effective:
     cfg = load_config(f"targets:\n  x:\n    bundleId: com.x\n    scenarios: {scenarios}\n")
     return resolve(cfg, "x")
 
@@ -80,7 +80,7 @@ def test_record_auto_name_inside_the_checkout_is_refused(
 # --- _secret_tokens: resolving declared secrets from the environment (BE-0120) ---
 
 
-def _eff_with_secrets(*names: str):  # type: ignore[no-untyped-def]
+def _eff_with_secrets(*names: str) -> Effective:
     decl = "".join(f"      - {n}\n" for n in names)
     return resolve(load_config(f"targets:\n  x:\n    bundleId: com.x\n    secrets:\n{decl}"), "x")
 

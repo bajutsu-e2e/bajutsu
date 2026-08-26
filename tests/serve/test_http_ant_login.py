@@ -8,7 +8,9 @@ is ever spawned. Local serve only — a hosted deployment refuses the sign-in.
 from __future__ import annotations
 
 import io
+import itertools
 import shutil
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -39,30 +41,31 @@ class _FakeAnt:
         self._code = -15  # SIGTERM — poll() now reports it exited
 
 
-def _popen_returning(proc: _FakeAnt):  # type: ignore[no-untyped-def]
+class _RecordingPopen:
+    """A fake `popen` that hands back its scripted processes in order and records each call's kwargs.
+
+    A class rather than a function with an attribute bolted on, so `calls` is part of the type a
+    caller sees instead of something only a suppression made reachable (BE-0388).
+    """
+
+    def __init__(self, procs: Iterator[_FakeAnt]) -> None:
+        self._procs = procs
+        self.calls: list[dict[str, Any]] = []
+
+    def __call__(self, _cmd: list[str], **kw: Any) -> _FakeAnt:
+        self.calls.append(kw)
+        return next(self._procs)
+
+
+def _popen_returning(proc: _FakeAnt) -> _RecordingPopen:
     """A fake `popen` that hands back *proc* and records the kwargs of each call."""
-    calls: list[dict[str, Any]] = []
-
-    def popen(_cmd: list[str], **kw: Any) -> _FakeAnt:
-        calls.append(kw)
-        return proc
-
-    popen.calls = calls  # type: ignore[attr-defined]
-    return popen
+    return _RecordingPopen(itertools.repeat(proc))
 
 
-def _popen_sequence(*procs: _FakeAnt):  # type: ignore[no-untyped-def]
+def _popen_sequence(*procs: _FakeAnt) -> _RecordingPopen:
     """A fake `popen` that hands back *procs* in order (one per call) and records the count, so a
     supersede test can watch the first process torn down and a distinct second one spawned."""
-    seq = iter(procs)
-    calls: list[dict[str, Any]] = []
-
-    def popen(_cmd: list[str], **kw: Any) -> _FakeAnt:
-        calls.append(kw)
-        return next(seq)
-
-    popen.calls = calls  # type: ignore[attr-defined]
-    return popen
+    return _RecordingPopen(iter(procs))
 
 
 def _install_ant(monkeypatch: pytest.MonkeyPatch) -> None:

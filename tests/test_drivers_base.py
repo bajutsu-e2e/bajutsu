@@ -23,6 +23,7 @@ class LateDriver(FakeDriver):
     name = "late"
 
     def __init__(self, appear_after: int) -> None:
+        super().__init__([])
         self._appear_after = appear_after
         self.checks = 0
 

@@ -15,6 +15,7 @@ preflight (BE-0212) admits those and fails the rest fast.
 from __future__ import annotations
 
 import base64
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,7 @@ import pytest
 from bajutsu import adb, capability_preflight, platform_lifecycle
 from bajutsu.drivers import base
 from bajutsu.drivers.adb import AdbDriver
+from bajutsu.orchestrator.types import DeviceControl
 from bajutsu.scenario import Scenario, load_scenarios
 
 _PKG = "com.bajutsu.showcase.android.compose"
@@ -178,7 +180,9 @@ def test_android_control_clipboard_round_trip() -> None:
         lambda c: c.clear_status_bar(),
     ],
 )
-def test_android_control_unsupported_operations_raise(call) -> None:  # type: ignore[no-untyped-def]
+def test_android_control_unsupported_operations_raise(
+    call: Callable[[DeviceControl], None],
+) -> None:
     # Operations the emulator can't honor raise UnsupportedAction — the runtime backstop behind the
     # per-operation preflight (BE-0212), never a silent no-op.
     ctrl = platform_lifecycle.android_device_control("E", _PKG, env_run=lambda a: "")

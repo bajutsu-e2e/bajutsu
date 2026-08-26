@@ -18,6 +18,7 @@ from bajutsu.orchestrator.types import (
     match_alert_rule,
     pick_alert_label,
 )
+from bajutsu.scenario import Wait
 
 
 class _LogicalClock:
@@ -240,8 +241,7 @@ def test_call_falls_back_to_vision_on_an_incapable_backend() -> None:
 # --- the mid-wait gate on the native path -----------------------------------------------------------
 
 
-def _for_wait(target_id: str, timeout: float):  # type: ignore[no-untyped-def]
-    from bajutsu.scenario import Wait
+def _for_wait(target_id: str, timeout: float) -> Wait:
 
     return Wait.model_validate({"for": {"id": target_id}, "timeout": timeout})
 

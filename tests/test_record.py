@@ -1129,11 +1129,21 @@ def test_shows_app_ui_recognizes_label_only_screen() -> None:
 
 
 class _NoSleep:
-    def now(self) -> float:
-        return 0.0  # the record loop only sleeps here; time never advances
+    """Logical time: no real waiting, but a deadline wait still reaches its deadline.
 
-    def sleep(self, _seconds: float) -> None:
-        return None
+    `record()` hands this clock straight to `_wait`, whose loop ends on `clock.now() >= deadline`,
+    so a frozen `now()` would spin forever on any wait whose condition never holds — a hung runner
+    instead of a red test.
+    """
+
+    def __init__(self) -> None:
+        self._t = 0.0
+
+    def now(self) -> float:
+        return self._t
+
+    def sleep(self, seconds: float) -> None:
+        self._t += seconds
 
 
 class _AdvancingClock:

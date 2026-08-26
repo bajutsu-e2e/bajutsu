@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
 
 from bajutsu.analysis.coverage import (
+    Coverage,
     ScreenRef,
     coverage,
     endpoint_coverage,
@@ -35,7 +37,7 @@ from bajutsu.scenario import load_scenarios
 runner = CliRunner()
 
 
-def _cov(yaml: str, namespaces: list[str]):  # type: ignore[no-untyped-def]
+def _cov(yaml: str, namespaces: list[str]) -> Coverage:
     return coverage(load_scenarios(yaml), namespaces)
 
 
@@ -459,7 +461,7 @@ def test_render_observed_ids_reports_coverage_gaps_and_off_namespace() -> None:
     assert "off-namespace" in text and "legacy.x" in text
 
 
-def _write_elements(step_dir, identifiers) -> None:  # type: ignore[no-untyped-def]
+def _write_elements(step_dir: Path, identifiers: list[str | None]) -> None:
     step_dir.mkdir(parents=True, exist_ok=True)
     els: list[base.Element] = [
         {
@@ -689,7 +691,7 @@ def test_cli_writes_html_file(tmp_path: Path) -> None:
     assert "home.start" in body and "auth" in body  # a covered id and the gap
 
 
-def _html_only_config(tmp_path: Path):  # type: ignore[no-untyped-def]
+def _html_only_config(tmp_path: Path) -> Path:
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
@@ -777,7 +779,7 @@ def test_render_html_includes_screens_section_when_given() -> None:
     assert "Screens visited" not in render_html(cov)
 
 
-def _screenmap(path, nodes) -> None:  # type: ignore[no-untyped-def]
+def _screenmap(path: Path, nodes: list[dict[str, Any]]) -> None:
     path.write_text(
         json.dumps({"nodes": nodes, "edges": [], "crashes": [], "alerts": []}), encoding="utf-8"
     )
