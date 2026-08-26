@@ -99,6 +99,15 @@ def test_history_separates_a_failed_read_from_an_empty_history(tmp_path: Path) -
     assert "no runs yet" in text  # still the copy for a genuinely empty history, not for a failure
 
 
+def test_crawl_history_separates_a_failed_read_from_an_empty_history(tmp_path: Path) -> None:
+    """The Crawl history is the same surface class as the Replay one — same `wireHistoryList` wiring,
+    same placeholder — so it separates the two states the same way, rather than leaving the sibling
+    list contradicting the rule."""
+    text = _fetch(tmp_path, "/serve.crawl.mjs")
+    assert 'data-testid="crawl.history-error"' in text
+    assert "no crawls yet" in text  # still the copy for a genuinely empty history
+
+
 def test_coverage_run_picker_reports_a_failed_read(tmp_path: Path) -> None:
     text = _fetch(tmp_path, "/serve.panels.mjs")
     assert 'data-testid="coverage.runs-error"' in text
