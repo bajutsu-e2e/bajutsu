@@ -19,7 +19,7 @@ from sqlalchemy import Engine
 
 from bajutsu import serve as srv
 from bajutsu.serve.artifacts import Artifact, LocalArtifactStore
-from bajutsu.serve.operations import stats_html
+from bajutsu.serve.operations import runs_payload, stats_html
 from bajutsu.serve.operations.reads import run_set_manifests
 from bajutsu.serve.server.db import RunRecord, SqlRepository
 from bajutsu.serve.server.models import Base
@@ -247,3 +247,30 @@ def test_stats_route_serves_html_over_http(tmp_path: Path) -> None:
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_stats_window_matches_the_history_its_drilldown_opens(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # #1718: a Stats row deep-links into the History tab filtered to the run ids behind it (BE-0241),
+    # so the two must read the same window. Aggregated over a wider window than the history list
+    # returns, a row counts runs the filtered list silently drops and the detail view contradicts the
+    # row that opened it. 60 runs — past the newest-50 cap the history list used to apply, inside the
+    # shared window both now read.
+    scn_dir, cfg, runs = project(tmp_path)
+    repo = _repo(serve_engine)
+    for i in range(60):
+        run_id = f"20260101-{i:06d}"
+        _write_manifest(runs, run_id, ok=True, scenario_hash="sha256:a", duration_s=1.0)
+        repo.record_run(
+            RunRecord(id=run_id, org_id="default", status="done", ok=True, summary={"id": run_id})
+        )
+    state = srv.ServeState(
+        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, repository=repo
+    )
+
+    html, _ = stats_html(state)
+    listed = runs_payload(state)[0]
+
+    assert "across 60 run(s)" in html
+    assert {r["id"] for r in listed} == {f"20260101-{i:06d}" for i in range(60)}

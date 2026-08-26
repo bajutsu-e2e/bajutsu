@@ -16,7 +16,7 @@ from typing import Any
 
 from bajutsu.analysis.stats import ProjectMetrics, project_metrics
 from bajutsu.serve.artifacts import ArtifactStore
-from bajutsu.serve.operations.reads import _STATS_RUN_LIMIT, run_set_manifests
+from bajutsu.serve.operations.reads import RUN_WINDOW, run_set_manifests
 from bajutsu.serve.project_registry import ProjectRegistry
 from bajutsu.serve.state import ServeState
 
@@ -27,10 +27,10 @@ def compare_projects(
     """The per-project headline metrics for *org*'s registered projects, in registry order.
 
     Reads each project's `project_id`-scoped run set from *store* and rolls it up with the shared
-    `project_metrics`. Asks the registry for at most `_STATS_RUN_LIMIT` run ids — the same window
-    as the single-config dashboard — so the bound is honoured at the source (the DB backend fetches
-    only that window rather than the whole history) and a project with a long history stays a
-    fixed-cost read. An unrun project charts as a blank row rather than being dropped, so the
+    `project_metrics`. Asks the registry for at most `RUN_WINDOW` run ids — the same window as the
+    single-config dashboard — so the bound is honoured at the source (the DB backend fetches only
+    that window rather than the whole history) and a project with a long history stays a fixed-cost
+    read. An unrun project charts as a blank row rather than being dropped, so the
     comparison shows the whole registered set.
 
     Args:
@@ -44,7 +44,7 @@ def compare_projects(
     """
     rows = []
     for project in registry.list_projects(org_id=org):
-        ids = registry.run_ids(org_id=org, project_id=project.id, limit=_STATS_RUN_LIMIT)
+        ids = registry.run_ids(org_id=org, project_id=project.id, limit=RUN_WINDOW)
         manifests = run_set_manifests(store, ids)
         rows.append(project_metrics(project.id, project.name, manifests))
     return rows
