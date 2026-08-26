@@ -548,7 +548,10 @@ so it runs no device, no AI, and computes no verdict; its known limits are `code
 **What it does.** Renders the aggregate run-stats dashboard across the server's run history — the
 `stats` command in the browser. It is **read-only and advisory, not a verdict**: pass-rate over time,
 the slowest and flakiest scenarios, failure hotspots, and run volume, aggregated from each run's
-stored `manifest.json`.
+stored `manifest.json`. Every scenario row names the content fingerprint behind its series.
+Editing a scenario between runs starts a second series, which reads as its own row, not a repeat.
+The dashboard reads the same newest-runs window the Replay tab's history list shows. A drilldown
+opens a history that agrees with the row behind it.
 
 **How to use it.** Open the tab to load the dashboard; use the refresh button to recompute it over
 the current run history. No device, AI, or run is involved.

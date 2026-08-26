@@ -13,6 +13,15 @@
     Only linked when `live` (the serve /stats view) — the `stats --html` standalone export renders
     plain text, since an absolute `/?tab=history…` link is dead opened from disk. Likewise falls back
     to plain text when there are no ids to link to (a run with no runId). -#}
+{#- A scenario row's identity cell, shared by the Slowest and Flaky tables so the two read alike
+    (#1718). Both are keyed by the BE-0049 `(scenarioHash, name)` identity widened with the OS
+    (BE-0358), so the fingerprint sits under the name: without it, the two series an edited scenario
+    leaves behind are two rows with identical text and nothing saying why they split. Mirrors the
+    flakiness panel's cell (`flakiness.html.j2`). A manifest may stamp an empty `scenarioHash`, which
+    names no series — then the name stands alone rather than trailing an empty `<code>`. -#}
+{%- macro scenario_cell(sc) -%}
+{{ sc.name }}{% if sc.scenario_hash %}<br><code>{{ sc.scenario_hash }}</code>{% endif %}
+{%- endmacro -%}
 {%- macro drill(label, run_ids, live) -%}
 {%- set ids = run_ids | select | list -%}
 {%- if ids and live -%}
@@ -121,10 +130,13 @@ a.drill:hover { color: #0071e3; text-decoration: underline; }
 {%- if slowest %}
 <table><thead><tr><th>scenario</th><th>OS</th><th>avg</th><th>max</th><th>runs</th><th>class</th></tr></thead><tbody>
 {%- for sc in slowest[:20] %}
-<tr><td>{{ sc.name }}</td><td>{{ describe_os(sc.device_os) }}</td><td class="num">{{ sc.avg_duration_s | round(2) }}s</td><td class="num">{{ sc.max_duration_s | round(2) }}s</td><td class="num">{{ sc.runs }}</td>
+<tr><td>{{ scenario_cell(sc) }}</td><td>{{ describe_os(sc.device_os) }}</td><td class="num">{{ sc.avg_duration_s | round(2) }}s</td><td class="num">{{ sc.max_duration_s | round(2) }}s</td><td class="num">{{ sc.runs }}</td>
 <td>{% if sc.classification == "flaky" %}<span class="tag flaky">flaky</span>{% else %}{{ sc.classification }}{% endif %}</td></tr>
 {%- endfor %}
 </tbody></table>
+{%- if unknown_os %}
+<p class="sub">{{ unknown_os_note(unknown_os) }}.</p>
+{%- endif %}
 {%- else %}
 <p class="empty">No fingerprinted scenarios to rank{% if stats.scenarios_skipped %} ({{ stats.scenarios_skipped }} run(s) had no scenario fingerprint){% endif %}.</p>
 {%- endif %}
@@ -135,7 +147,7 @@ a.drill:hover { color: #0071e3; text-decoration: underline; }
 <h2>Flaky scenarios</h2>
 <table><thead><tr><th>scenario</th><th>OS</th><th>passed</th><th>runs</th><th>pass-rate</th></tr></thead><tbody>
 {%- for sc in flaky %}
-<tr><td>{{ sc.name }}</td><td>{{ describe_os(sc.device_os) }}</td><td class="num">{{ sc.passed }}</td><td class="num">{{ sc.runs }}</td><td class="num">{{ (sc.pass_rate * 100) | round(0) }}%</td></tr>
+<tr><td>{{ scenario_cell(sc) }}</td><td>{{ describe_os(sc.device_os) }}</td><td class="num">{{ sc.passed }}</td><td class="num">{{ sc.runs }}</td><td class="num">{{ (sc.pass_rate * 100) | round(0) }}%</td></tr>
 {%- endfor %}
 </tbody></table>
 </section>

@@ -19,6 +19,7 @@ from sqlalchemy import Engine, select
 
 from bajutsu.serve import operations as ops
 from bajutsu.serve.artifacts import LocalArtifactStore
+from bajutsu.serve.operations.reads import RUN_WINDOW
 from bajutsu.serve.server.db import RunRecord, SqlRepository
 from bajutsu.serve.server.models import AuditLog, Base
 from bajutsu.serve.state import ServeState
@@ -203,9 +204,10 @@ def test_runs_payload_scoped_keeps_a_multi_scenario_run(tmp_path: Path) -> None:
 def test_runs_payload_scoped_surfaces_a_run_past_the_hosted_cap(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
-    # BE-0262 follow-up: the DB `list_runs` caps at the newest 50 runs. When scoping to a scenario,
-    # that cap must count *scoped* runs — otherwise a run of the loaded scenario that falls outside
-    # the newest-50 global window is silently dropped and the picker can't reach it.
+    # BE-0262 follow-up: the hosted history list caps at the newest `RUN_WINDOW` runs. When scoping
+    # to a scenario, that cap must count *scoped* runs — otherwise a run of the loaded scenario that
+    # falls outside the newest-N global window is silently dropped and the picker can't reach it.
+    # Sized off the constant, so the case stays a past-the-window one if the window ever moves.
     state, repo = _hosted_state(serve_engine, tmp_path)
     base = datetime(2026, 1, 1, tzinfo=UTC)
     repo.record_run(
@@ -215,10 +217,10 @@ def test_runs_payload_scoped_surfaces_a_run_past_the_hosted_cap(
             status="done",
             ok=True,
             summary={"id": "login-run", "scenarios": ["login"]},
-            created_at=base,  # the oldest run — past the newest-50 window below
+            created_at=base,  # the oldest run — past the newest-N window below
         )
     )
-    for i in range(50):
+    for i in range(RUN_WINDOW):
         repo.record_run(
             RunRecord(
                 id=f"other-{i}",
