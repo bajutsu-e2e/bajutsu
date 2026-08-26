@@ -203,7 +203,9 @@ def _count_expr(sel: base.Selector) -> str:
     return f"{query}.count" if query is not None else "0"
 
 
-def _emit_step(step: Step) -> list[str]:
+# One branch per scenario step kind: the count tracks the schema's size, not tangled logic, and a
+# split would leave no single place a new scenario step kind clearly belongs (BE-0386).
+def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
     if step.tap is not None:
         return [f"{_element(step.tap.as_selector())}.tap()"]
     if step.double_tap is not None:
@@ -371,7 +373,9 @@ def _emit_step(step: Step) -> list[str]:
     return ["// TODO: unsupported step"]
 
 
-def _emit_assertion(a: Assertion) -> list[str]:
+# One branch per assertion kind: the count tracks the schema's size, not tangled logic, and a split
+# would leave no single place a new assertion kind clearly belongs (BE-0386).
+def _emit_assertion(a: Assertion) -> list[str]:  # noqa: PLR0911
     if a.exists is not None:
         element = _element(a.exists.sel.as_selector())
         check = "XCTAssertFalse" if a.exists.negate else "XCTAssertTrue"

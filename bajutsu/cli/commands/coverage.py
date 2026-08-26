@@ -60,6 +60,29 @@ def _discovered_screens(screenmap_path: Path) -> list[_coverage.ScreenRef] | Non
     return _coverage.screen_refs(data) if isinstance(data, dict) else []
 
 
+def _screens_coverage(crawl: str, runs_path: Path | None) -> _coverage.ScreenCoverage | None:
+    """The screens dimension for `--crawl <path>`, or None when its evidence is unusable.
+
+    The denominator (discovered screens) comes from *crawl*; the numerator (screens visited) comes
+    from `--runs` evidence, so the dimension needs both. *crawl* may name a crawl dir or the
+    `screenmap.json` inside it. Every unusable-evidence case warns to stderr and returns None, so a
+    missing dimension never fails the command.
+    """
+    crawl_path = Path(crawl)
+    screenmap = crawl_path / "screenmap.json" if crawl_path.is_dir() else crawl_path
+    if not screenmap.is_file():
+        typer.echo(f"--crawl screenmap not found, skipping screens coverage: {crawl}", err=True)
+        return None
+    if runs_path is None or not runs_path.is_dir():
+        typer.echo("--crawl needs --runs to know which screens were visited; skipping", err=True)
+        return None
+    discovered = _discovered_screens(screenmap)
+    if discovered is None:  # unreadable/invalid map — skip the dimension, don't crash
+        typer.echo(f"--crawl screenmap unreadable, skipping screens coverage: {crawl}", err=True)
+        return None
+    return _coverage.screen_coverage(discovered, _visited_screens(runs_path))
+
+
 def coverage(
     target_name: str = typer.Option(..., "--target"),
     config: str = typer.Option(DEFAULT_CONFIG),
@@ -120,24 +143,7 @@ def coverage(
     elif runs:  # don't silently ignore the flag — warn (to stderr) and proceed without run evidence
         typer.echo(f"--runs not found, skipping run-evidence coverage: {runs}", err=True)
     if crawl:
-        # The denominator (discovered screens) comes from --crawl; the numerator (screens visited)
-        # comes from --runs evidence, so the dimension needs both. A run dir is also accepted.
-        crawl_path = Path(crawl)
-        screenmap = crawl_path / "screenmap.json" if crawl_path.is_dir() else crawl_path
-        if not screenmap.is_file():
-            typer.echo(f"--crawl screenmap not found, skipping screens coverage: {crawl}", err=True)
-        elif runs_path is None or not runs_path.is_dir():
-            typer.echo(
-                "--crawl needs --runs to know which screens were visited; skipping", err=True
-            )
-        else:
-            discovered = _discovered_screens(screenmap)
-            if discovered is None:  # unreadable/invalid map — skip the dimension, don't crash
-                typer.echo(
-                    f"--crawl screenmap unreadable, skipping screens coverage: {crawl}", err=True
-                )
-            else:
-                screens = _coverage.screen_coverage(discovered, _visited_screens(runs_path))
+        screens = _screens_coverage(crawl, runs_path)
     if html:
         # Write the report first; the stdout below (text or JSON) stays the same with or without it,
         # so a confirmation goes to stderr rather than polluting a piped `--json` payload. Create the

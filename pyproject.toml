@@ -142,6 +142,7 @@ select = [
     "ARG",
     "B",
     "C4",
+    "C901",
     "DTZ",
     "E",
     "F",
@@ -150,6 +151,9 @@ select = [
     "PERF",
     "PIE",
     "PLE",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
     "PLW",
     "PT",
     "PTH",
@@ -180,6 +184,22 @@ ignore = [
     # noqa would outnumber the exception-raising code it decorates (BE-0387).
     "TRY003",
 ]
+
+# Structural ceilings (BE-0386). Both start deliberately loose and ratchet down in later PRs, the
+# way BE-0117 covered the worst gaps before raising the coverage floor: a ceiling set at the
+# codebase's outliers catches every function that grows past them from here on, where the tools'
+# own defaults would raise 98 findings at once and force a rushed triage.
+[tool.ruff.lint.mccabe]
+max-complexity = 25
+
+# The Pylint-derived function-size rules get thresholds chosen the same way rather than their
+# defaults (6 / 12 / 50), so the two halves of BE-0386 apply one policy instead of two. At the
+# defaults these three raise 88 findings; here they raise 23, across functions that are largely the
+# outliers C901 already names.
+[tool.ruff.lint.pylint]
+max-returns = 12
+max-branches = 20
+max-statements = 80
 
 [tool.ruff.lint.per-file-ignores]
 "demos/**" = ["ANN", "T20", "S"]

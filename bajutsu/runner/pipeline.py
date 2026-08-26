@@ -254,7 +254,10 @@ class _ScenarioRunner:
         """
         return _resolve_now(self.clock)()
 
-    def run_one(self, i: int, s: Scenario) -> RunResult:
+    # Genuinely long: the per-scenario run on the deterministic run path. Splitting it carries real
+    # behavioral risk, so it belongs to BE-0386's ratchet steps rather than the PR that sets the
+    # ceiling.
+    def run_one(self, i: int, s: Scenario) -> RunResult:  # noqa: C901, PLR0912, PLR0915
         """Run one scenario on a freshly leased device and return its result.
 
         Args:
