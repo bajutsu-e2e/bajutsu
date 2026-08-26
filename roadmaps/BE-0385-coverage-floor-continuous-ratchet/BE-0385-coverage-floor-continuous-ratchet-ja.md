@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0385") |
-| 実装 PR | [#PLACEHOLDER](https://github.com/bajutsu-e2e/bajutsu/pull/PLACEHOLDER) |
+| 実装 PR | [#1789](https://github.com/bajutsu-e2e/bajutsu/pull/1789) |
 | トピック | Contributor workflow |
 <!-- /BE-METADATA -->
 
