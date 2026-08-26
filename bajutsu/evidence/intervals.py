@@ -41,7 +41,7 @@ ADB_PROVIDER = "adb"
 def record_video_cmd(udid: str, path: str) -> list[str]:
     """Build the simctl command that records the screen to `path` (h264)."""
     # Validate the udid inline — as simctl's own builders and adb's `screenrecord_cmd`
-    # (via `_checked_serial`) do — so this evidence-capture argv can't carry an option-injecting
+    # (via `checked_serial`) do — so this evidence-capture argv can't carry an option-injecting
     # / metacharacter id even if reached without the earlier `simctl.Env` boundary check.
     return [
         "xcrun",
@@ -170,14 +170,19 @@ class _SubprocessProc:
             self._file.close()
 
 
-def _spawn(argv: list[str], stdout_path: Path | None) -> Proc:
+def spawn(argv: list[str], stdout_path: Path | None) -> Proc:
+    """The real `Spawn`: run `argv` as a child, sending its stdout to `stdout_path`.
+
+    Every capture below takes this as an injectable default, so a test can swap in a fake
+    child without a device.
+    """
     return _SubprocessProc(argv, stdout_path)
 
 
 class _NullProc:
     """A no-op process (the default so constructing an Interval has no side effects)."""
 
-    def stop(self, sig: int, timeout: float) -> None:
+    def stop(self, sig: int, timeout: float) -> None:  # noqa: ARG002  # Proc shape
         return None
 
 
@@ -294,7 +299,7 @@ def _await_video_file_growing(
 
 
 def start_video(
-    udid: str, path: Path, spawn: Spawn = _spawn, *, confirm_started: bool = False
+    udid: str, path: Path, spawn: Spawn = spawn, *, confirm_started: bool = False
 ) -> Interval:
     """Begin recording the screen to `path`; stop() (SIGINT) finalizes the mp4.
 
@@ -334,7 +339,7 @@ def start_video(
 
 
 def start_device_log(
-    udid: str, path: Path, predicate: str | None = None, spawn: Spawn = _spawn
+    udid: str, path: Path, predicate: str | None = None, spawn: Spawn = spawn
 ) -> Interval:
     """Begin streaming the device log to `path`; stop() (SIGTERM) ends the stream."""
     proc = spawn(device_log_cmd(udid, predicate), path)
@@ -559,8 +564,8 @@ SCREENRECORD_BIT_RATE = 2_000_000
 def start_screenrecord(
     serial: str,
     path: Path,
-    spawn: Spawn = _spawn,
-    run: adb.RunFn = adb._real_run,
+    spawn: Spawn = spawn,
+    run: adb.RunFn = adb.real_run,
     *,
     time_limit: int | None = None,
     size: str | None = None,
@@ -635,7 +640,7 @@ def start_screenrecord(
     )
 
 
-def start_logcat(serial: str, path: Path, spawn: Spawn = _spawn) -> Interval:
+def start_logcat(serial: str, path: Path, spawn: Spawn = spawn) -> Interval:
     """Begin streaming `adb logcat` to `path`; stop() (SIGTERM) ends the stream (the deviceLog twin)."""
     proc = spawn(adb.logcat_cmd(serial), path)
     return Interval(
@@ -666,8 +671,8 @@ def parse_app_trace(ndjson_text: str) -> list[dict[str, object]]:
     """Pair '<name> started' / '<name> finished' log lines into timed intervals."""
     begins: dict[str, datetime] = {}
     out: list[dict[str, object]] = []
-    for line in ndjson_text.splitlines():
-        line = line.strip()
+    for raw in ndjson_text.splitlines():
+        line = raw.strip()
         if not line:
             continue
         try:
@@ -699,7 +704,7 @@ def parse_app_trace(ndjson_text: str) -> list[dict[str, object]]:
 
 
 def start_app_trace(
-    udid: str, raw_path: Path, json_path: Path, subsystem: str, spawn: Spawn = _spawn
+    udid: str, raw_path: Path, json_path: Path, subsystem: str, spawn: Spawn = spawn
 ) -> Interval:
     """Stream the app's logs to raw_path; on stop, write the parsed trace to json_path."""
     proc = spawn(app_trace_cmd(udid, subsystem), raw_path)

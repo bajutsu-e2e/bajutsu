@@ -142,9 +142,7 @@ def _actions(
 ) -> object:
     """Run compute_actions with in-memory head/base reads and the PR's current topic labels."""
     base = base or {}
-    return labels.compute_actions(
-        entries, lambda p: head.get(p), lambda p: base.get(p), current or set()
-    )
+    return labels.compute_actions(entries, head.get, base.get, current or set())
 
 
 def test_added_item_emits_a_single_add() -> None:

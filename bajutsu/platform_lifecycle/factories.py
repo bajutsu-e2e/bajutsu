@@ -17,7 +17,7 @@ from bajutsu.platform_lifecycle.protocols import Environment, ProvisionProfile
 def environment_for(
     actuator: str,
     udid: str,
-    env_run: simctl.RunFn = simctl._real_run,
+    env_run: simctl.RunFn = simctl.real_run,
     *,
     provision: ProvisionProfile | None = None,
     respawn: bool = False,

@@ -267,6 +267,6 @@ def test_oplog_import_pulls_no_heavy_deps() -> None:
         "sys.exit(1 if leaked else 0)\n"
     )
     result = subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True, timeout=60
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=60, check=False
     )
     assert result.returncode == 0, f"oplog leaked heavy deps: {result.stdout.strip()}"

@@ -57,7 +57,7 @@ class _LocalProvider:
     locally-attached device boots and installs the app itself), and there is nothing to release.
     """
 
-    def acquire(self, eff: Effective, requested_udid: str) -> DeviceLease:
+    def acquire(self, eff: Effective, requested_udid: str) -> DeviceLease:  # noqa: ARG002  # DeviceProvider shape
         return DeviceLease(udid_spec=requested_udid, provision=ProvisionProfile())
 
 
@@ -81,7 +81,7 @@ class _AppiumProvider:
     entirely, which structurally cannot carry a URL.
     """
 
-    def acquire(self, eff: Effective, requested_udid: str) -> DeviceLease:
+    def acquire(self, eff: Effective, requested_udid: str) -> DeviceLease:  # noqa: ARG002  # DeviceProvider shape
         raw = eff.device_provider.endpoint if eff.device_provider is not None else None
         endpoint = raw.strip() if raw else ""
         # An empty or whitespace-only endpoint is no drivable address, so fail closed at resolution

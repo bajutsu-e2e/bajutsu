@@ -242,7 +242,7 @@ def test_image_is_written_named_in_prompt_and_read_allowed_then_cleaned_up() -> 
     assert "Read" not in _deny_tools(runner.cmd)
     assert resp.first_tool_use() is not None
     # The per-call scratch dir is removed once the call returns.
-    assert not os.path.exists(runner.cwd)
+    assert not Path(runner.cwd).exists()
 
 
 def test_text_only_turn_allows_no_tool_and_writes_no_file() -> None:

@@ -61,7 +61,7 @@ def _string_list(value: Any, field: str) -> tuple[list[str] | None, str | None]:
     return entries, None
 
 
-def list_orgs_view(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+def list_orgs_view(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:  # noqa: ARG001  # uniform operation signature
     """Every live org with its membership — the Orgs page's list and the source its edit form fills.
 
     The rosters themselves, not just their sizes: the membership form replaces all four fields as

@@ -310,7 +310,7 @@ def run_set_manifests(store: ArtifactStore, run_ids: Iterable[Any]) -> list[dict
     return manifests
 
 
-def usage_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int]:
+def usage_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int]:  # noqa: ARG001  # uniform operation signature
     """The AI usage/cost dashboard (BE-0195) as a self-contained HTML page.
 
     Reads the same attributed ledgers the serve process's AI subprocesses append to and aggregates

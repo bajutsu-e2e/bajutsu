@@ -184,7 +184,7 @@ def _set_output(name: str, value: str) -> None:
     """Append a step output, or just print it when run outside Actions (a local invocation)."""
     out = os.environ.get("GITHUB_OUTPUT")
     if out:
-        with open(out, "a", encoding="utf-8") as fh:
+        with Path(out).open("a", encoding="utf-8") as fh:
             fh.write(f"{name}={value}\n")
     print(f"{name}={value}")
 

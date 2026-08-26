@@ -207,7 +207,7 @@ def test_sync_creates_and_closes_via_seams(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setattr(sync, "existing_open_issues", lambda: {"BE-9002": 55})
     monkeypatch.setattr(sync, "ensure_label", lambda: labels.append(True))
     monkeypatch.setattr(sync, "create_issue", lambda item: created.append(item.be_id))
-    monkeypatch.setattr(sync, "close_issue", lambda number: closed.append(number))
+    monkeypatch.setattr(sync, "close_issue", closed.append)
     result = sync.sync(roadmap)
     assert [i.be_id for i in result.to_create] == ["BE-9001"]
     assert result.to_close == ["BE-9002"]

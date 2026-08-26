@@ -75,7 +75,7 @@ class XcuitestLiveEnvironment(_DeviceEnvironment):
         pre: Preconditions,
         *,
         extra_env: Mapping[str, str] | None = None,
-        record_video_dir: Path | None = None,
+        record_video_dir: Path | None = None,  # noqa: ARG002  # Environment shape
         permissions: Mapping[str, str] | None = None,
     ) -> base.Driver:
         # A reserved cloud device is booted with its build installed (the provider's ProvisionProfile),
@@ -137,7 +137,7 @@ class XcuitestLiveEnvironment(_DeviceEnvironment):
             raise
         return driver
 
-    def teardown(self, driver: base.Driver, eff: Effective) -> None:
+    def teardown(self, driver: base.Driver, eff: Effective) -> None:  # noqa: ARG002  # Environment shape
         # Close the WebDriver session; the grid, not this run, owns the device, so there is no simctl
         # terminate (the base's teardown) to run. A grid that already expired the session, or a
         # connection reset while the run winds down, is the same "already-gone resource" the guarded
@@ -165,16 +165,16 @@ class XcuitestLiveEnvironment(_DeviceEnvironment):
         # have `record` tag a scenario with `capture: [video]` that silently records nothing on replay.
         return False
 
-    def controller(self, eff: Effective) -> DeviceControl | None:
+    def controller(self, eff: Effective) -> DeviceControl | None:  # noqa: ARG002  # Environment shape
         # simctl device control cannot reach a cloud device; the preflight (Slice C) narrows the
         # device-control capabilities away, and here the runner reads `None` as "no device control".
         return None
 
-    def crawl_reset(self, eff: Effective) -> Reset:
+    def crawl_reset(self, eff: Effective) -> Reset:  # noqa: ARG002  # Environment shape
         # Crawl reset terminates and relaunches the app via simctl in the base; simctl cannot reach a
         # cloud device. Raise clearly from the closure rather than letting `simctl.Env(endpoint)` crash
         # with a confusing DeviceError (live-route crawl support is a follow-on slice).
-        def reset(driver: base.Driver) -> None:
+        def reset(driver: base.Driver) -> None:  # noqa: ARG001  # Reset shape; refuses instead
             raise base.UnsupportedAction(
                 "crawl_reset is not yet wired on the live WebDriver route (BE-0238 Slice B)"
             )
@@ -183,16 +183,16 @@ class XcuitestLiveEnvironment(_DeviceEnvironment):
 
     def relauncher(
         self,
-        eff: Effective,
-        scenario: Scenario,
-        driver: base.Driver,
+        eff: Effective,  # noqa: ARG002  # Environment shape
+        scenario: Scenario,  # noqa: ARG002
+        driver: base.Driver,  # noqa: ARG002
         *,
-        extra_env: Mapping[str, str] | None = None,
+        extra_env: Mapping[str, str] | None = None,  # noqa: ARG002
     ) -> RelaunchFn:
         # Building the relaunch fn must not touch simctl (the base builds a `simctl.Env(endpoint)`).
         # Relaunch over WebDriver (recreate the session) is Slice B; until then a scenario that
         # actually relaunches fails loudly rather than silently no-op'ing (determinism first).
-        def relaunch(opts: object) -> None:
+        def relaunch(opts: object) -> None:  # noqa: ARG001  # RelaunchFn shape; refuses instead
             raise base.UnsupportedAction(
                 "relaunch is not yet wired on the live WebDriver route (BE-0238 Slice B)"
             )

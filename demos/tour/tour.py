@@ -84,7 +84,7 @@ def run_scenarios(run_id: str) -> tuple[bool, Path]:
     login → home → counter), captures evidence into a real run dir, and writes a report.
     """
 
-    def lease(eff: Effective, scenario: Scenario) -> Lease:
+    def lease(eff: Effective, scenario: Scenario) -> Lease:  # noqa: ARG001  # LeaseFn shape
         run_dir = RUNS / run_id
         return Lease(
             driver=make_app(),

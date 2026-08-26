@@ -130,7 +130,7 @@ def upload_theme(
     # ↔ operations import cycle at module load.
     from bajutsu.serve import handler as _handler
 
-    _handler._index_html.cache_clear()
+    _handler._index_html.cache_clear()  # noqa: SLF001  # clearing the render cache is the point
 
     _log.info("theme %r uploaded by %s (overwrite=%s)", theme_id, actor or "?", overwritten)
     return {"ok": True, "id": theme_id, "overwritten": overwritten}, 200

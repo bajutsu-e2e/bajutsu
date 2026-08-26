@@ -772,7 +772,7 @@ def _emit(relevant: bool, shared: bool, affected: list[str], pool: bool) -> None
     for line in lines:
         print(line)
     if output := os.environ.get("GITHUB_OUTPUT"):
-        with open(output, "a", encoding="utf-8") as fh:
+        with Path(output).open("a", encoding="utf-8") as fh:
             fh.write("\n".join(lines) + "\n")
 
 

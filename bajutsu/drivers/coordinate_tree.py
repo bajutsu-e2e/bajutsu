@@ -124,7 +124,7 @@ class CoordinateTreeDriver(ABC):
         """
         return len(els) < self._READY_MIN and self._max_seen >= self._READY_MIN
 
-    def _is_unrecoverable_empty(self, els: list[base.Element]) -> bool:
+    def _is_unrecoverable_empty(self, els: list[base.Element]) -> bool:  # noqa: ARG002  # Driver shape
         """Whether a degenerate read is one a same-source re-read can never clear.
 
         Default: none. A subclass whose device has such a failure mode (an accessibility-bridge

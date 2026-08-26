@@ -159,13 +159,13 @@ ROUTES: tuple[Route, ...] = (
     ),
     # Running-tool identity (BE-0272): version is open; the Git checkout detail is admin-gated
     # (see `authz.required_role`) because a branch name can encode an in-progress topic.
-    Route("GET", "/api/version", lambda state, ctx: ops.server_version()),
-    Route("GET", "/api/version/checkout", lambda state, ctx: ops.server_checkout()),
+    Route("GET", "/api/version", lambda _state, _ctx: ops.server_version()),
+    Route("GET", "/api/version/checkout", lambda _state, _ctx: ops.server_checkout()),
     Route("GET", "/api/config", lambda state, ctx: ops.config_info(state, actor=ctx.actor())),
-    Route("GET", "/api/config/content", lambda state, ctx: ops.config_content(state)),
+    Route("GET", "/api/config/content", lambda state, _ctx: ops.config_content(state)),
     # The running server's resolved configuration + the bundled iOS runner state (BE-0318). Read-only
     # and open like /api/config; the operation withholds host paths when hosted (BE-0108).
-    Route("GET", "/api/server", lambda state, ctx: ops.server_settings(state)),
+    Route("GET", "/api/server", lambda state, _ctx: ops.server_settings(state)),
     Route("GET", "/api/fs", lambda state, ctx: ops.browse_fs(state, ctx.query("dir"))),
     Route("GET", "/api/apikey", lambda state, ctx: ops.api_key_info(state, ctx.actor())),
     Route(
@@ -180,14 +180,14 @@ ROUTES: tuple[Route, ...] = (
     # so — like the three credential reads above — it carries no role gate.
     Route("GET", "/api/secrets", lambda state, ctx: ops.scenario_secrets_info(state, ctx.actor())),
     Route("GET", "/api/provider", lambda state, ctx: ops.provider_info(state, ctx.actor())),
-    Route("GET", "/api/themecontract", lambda state, ctx: ops.get_theme_contract(state)),
+    Route("GET", "/api/themecontract", lambda state, _ctx: ops.get_theme_contract(state)),
     Route(
         "GET",
         "/api/ant/login",
-        lambda state, ctx: ops.ant_login_status(state),
+        lambda state, _ctx: ops.ant_login_status(state),
         local_only=True,
     ),
-    Route("GET", "/api/simulators", lambda state, ctx: ops.simulators_payload(state)),
+    Route("GET", "/api/simulators", lambda state, _ctx: ops.simulators_payload(state)),
     Route(
         "GET",
         "/api/runs",
@@ -249,7 +249,7 @@ ROUTES: tuple[Route, ...] = (
             structure=ctx.query("structure") == "1",
         ),
     ),
-    Route("GET", "/api/schema", lambda state, ctx: ops.scenario_schema()),
+    Route("GET", "/api/schema", lambda _state, _ctx: ops.scenario_schema()),
     Route(
         "GET",
         "/api/jobs/{job_id}",
@@ -259,7 +259,7 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "GET",
         "/metrics",
-        lambda state, ctx: ops.render_metrics(state),
+        lambda state, _ctx: ops.render_metrics(state),
         content_type=ops.PROMETHEUS_CONTENT_TYPE,
     ),
     Route(
@@ -344,7 +344,7 @@ ROUTES: tuple[Route, ...] = (
         "/api/compose",
         lambda state, ctx: ops.bind_composition(state, ctx.body(), actor=ctx.actor()),
     ),
-    Route("POST", "/api/ant/login", lambda state, ctx: ops.ant_login(state), local_only=True),
+    Route("POST", "/api/ant/login", lambda state, _ctx: ops.ant_login(state), local_only=True),
     Route(
         "POST", "/api/run", lambda state, ctx: ops.start_run(state, ctx.body(), actor=ctx.actor())
     ),
@@ -415,16 +415,16 @@ ROUTES: tuple[Route, ...] = (
         "/api/scenario",
         lambda state, ctx: ops.save_scenario(state, ctx.body(), actor=ctx.actor()),
     ),
-    Route("POST", "/api/lint", lambda state, ctx: ops.lint_scenario(ctx.body())),
+    Route("POST", "/api/lint", lambda _state, ctx: ops.lint_scenario(ctx.body())),
     Route(
         "POST",
         "/api/scenario/apply-selector",
-        lambda state, ctx: ops.apply_selector_edit(ctx.body()),
+        lambda _state, ctx: ops.apply_selector_edit(ctx.body()),
     ),
     Route(
         "POST",
         "/api/scenario/enrich-apply",
-        lambda state, ctx: ops.apply_enrichment_edit(ctx.body()),
+        lambda _state, ctx: ops.apply_enrichment_edit(ctx.body()),
     ),
     Route(
         "POST",

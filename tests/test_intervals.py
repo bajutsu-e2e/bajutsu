@@ -69,7 +69,7 @@ def test_record_video_cmd() -> None:
 
 def test_interval_cmds_reject_unvalidated_udid() -> None:
     # These evidence-capture builders embed the udid in a simctl argv, so they validate it inline
-    # (mirroring adb's `screenrecord_cmd`/`logcat_cmd` via `_checked_serial`) — a bad --udid can't
+    # (mirroring adb's `screenrecord_cmd`/`logcat_cmd` via `checked_serial`) — a bad --udid can't
     # reach xcrun even if evidence capture is entered without the earlier Env-boundary check.
     with pytest.raises(simctl.DeviceError, match="invalid udid"):
         intervals.record_video_cmd("-rf; rm", "/tmp/v.mp4")

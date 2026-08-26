@@ -132,7 +132,7 @@ def request_from_json(payload: str) -> HandoffRequest:
     """
     data = json.loads(payload)
     if not isinstance(data, dict):
-        raise ValueError("handoff request must be a JSON object")
+        raise ValueError("handoff request must be a JSON object")  # noqa: TRY004  # invalid external payload, not a caller type error
     shot = data.get("screenshot")
     return HandoffRequest(
         reason=str(data.get("reason", "")),
@@ -158,5 +158,5 @@ def response_from_json(payload: str) -> HandoffResponse:
     """
     data = json.loads(payload)
     if not isinstance(data, dict):
-        raise ValueError("handoff response must be a JSON object")
+        raise ValueError("handoff response must be a JSON object")  # noqa: TRY004  # invalid external payload, not a caller type error
     return HandoffResponse.from_dict(data)
