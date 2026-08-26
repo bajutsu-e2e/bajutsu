@@ -56,17 +56,31 @@ The Python core needs no Simulator, so the gate is fast and runs anywhere (Linux
 make check        # format-check + lint + lint-docstrings + lint-imports + lint-sh
                   #   + lint-actions + lint-js + lint-roadmap + lint-skills + lint-module-map
                   #   + lint-secrets
-                  #   + lock-check + typecheck + test (coverage floor)   — mirrors CI exactly
+                  #   + lock-check + typecheck + test (total coverage floor)
+                  #   + lint-coverage-floors (per-file floors)   — mirrors CI exactly
 ```
 
 Individual steps: `make format-check` · `make lint` · `make lint-docstrings` · `make lint-imports`
 · `make lint-sh` · `make lint-actions` · `make lint-js` · `make lint-roadmap` · `make lint-skills`
-· `make lint-module-map` · `make lint-secrets` · `make lock-check` · `make typecheck` · `make test`.
-(`make format` rewrites; the gate only checks.) Every step is uv-native and runs on a fresh clone —
+· `make lint-module-map` · `make lint-secrets` · `make lock-check` · `make typecheck` · `make test`
+· `make lint-coverage-floors`.
+(`make format` rewrites; the gate only checks — and so does `lint-coverage-floors`: `make
+coverage-floors` is the deliberate step that rewrites `coverage-floors.json` once coverage has
+risen, [BE-0385](roadmaps/BE-0385-coverage-floor-continuous-ratchet/BE-0385-coverage-floor-continuous-ratchet.md).)
+Every step is uv-native and runs on a fresh clone —
 except `actionlint` and `gitleaks`, two tools that CI installs separately but `make` skips (with a
 notice) when they are absent. CI
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the same steps on every PR —
 keeping the local bar identical is what makes "green locally" predict "green in CI".
+
+**Coverage ratchets both ways it can (BE-0385).** The total floor is `fail_under` in
+`[tool.coverage.report]` ([`pyproject.toml`](pyproject.toml)) — not a `Makefile` flag — and
+`make lint-pr` reminds you to raise it once measured coverage drifts more than two points above it.
+The per-file floors live in [`coverage-floors.json`](coverage-floors.json); `make check` fails when
+a file drops below its own recorded number and never blocks a rise. Raise the snapshot with `make
+coverage-floors` and commit it; that same command is the deliberate escape hatch for a drop you have
+decided to accept. Full guide:
+[`docs/ai-development.md`](docs/ai-development.md#the-coverage-ratchet-be-0385).
 
 On-device E2E (macOS + Simulator) is a separate, heavier path and is **not** part of this
 gate: `make -C demos/showcase run-swiftui` (requires `make deps` first). Don't block core work on it.

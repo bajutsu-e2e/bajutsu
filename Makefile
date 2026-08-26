@@ -1,5 +1,6 @@
 .PHONY: setup hooks install deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck typecheck-tests \
         lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr lint-secrets skills lint-skills \
+        lint-coverage-floors coverage-floors \
         check new-roadmap-item \
         roadmap-status roadmap-dashboard docs docs-serve docs-diagrams runner-bundle
 
@@ -82,9 +83,13 @@ SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg .githooks/pre-commit .g
 DOCSTRING_PATHS := bajutsu/ai bajutsu/drivers bajutsu/assertions bajutsu/evidence/network.py bajutsu/runner bajutsu/scenario bajutsu/mcp bajutsu/cli bajutsu/doctor.py bajutsu/analysis/audit.py bajutsu/analysis/coverage.py bajutsu/analysis/stats.py bajutsu/trace.py bajutsu/triage.py bajutsu/report bajutsu/evidence/core.py bajutsu/evidence/intervals.py bajutsu/evidence/redaction.py bajutsu/config bajutsu/config_source.py bajutsu/codegen/xcuitest.py bajutsu/codegen/common.py bajutsu/codegen/playwright.py bajutsu/backends.py bajutsu/capability_preflight.py bajutsu/requirements.py bajutsu/provision.py bajutsu/crawl/core.py bajutsu/crawl/serialize.py bajutsu/crawl/guide.py bajutsu/crawl/tabs.py bajutsu/agents/protocols.py bajutsu/agents/factory.py bajutsu/agents/claude.py bajutsu/agents/claude_backed.py bajutsu/agents/claude_triage.py bajutsu/agents/alerts.py bajutsu/agents/ai_config.py bajutsu/agents/anthropic_client.py bajutsu/record.py bajutsu/screenshots.py bajutsu/evidence/visual.py bajutsu/web_network.py bajutsu/from_grouping.py
 
 # Run the suite with a coverage floor — a regression that quietly drops coverage fails the gate.
-# The JSON report is a gitignored side artifact CI renders into its job summary (scripts/coverage_summary.py).
+# The floor itself is `fail_under` in pyproject.toml's [tool.coverage.report], not a flag here
+# (BE-0385): pytest-cov adopts that key when `--cov-fail-under` is absent, so the gate, the drift
+# advisory (`lint-pr`), and CI's job summary all read one declarative source.
+# The JSON report is a gitignored side artifact two later steps read — `lint-coverage-floors` below,
+# and CI's job summary (scripts/coverage_summary.py).
 test:
-	uv run pytest -q --cov=bajutsu --cov-report=term-missing:skip-covered --cov-report=json:coverage.json --cov-fail-under=89
+	uv run pytest -q --cov=bajutsu --cov-report=term-missing:skip-covered --cov-report=json:coverage.json
 
 # The whole-tree roadmap date test (`roadmap_dates` marker) is excluded from `test`/the gate: it
 # git-logs every roadmap item twice, so its runtime grows with the tree and once dominated the whole
@@ -241,6 +246,7 @@ new-roadmap-item:
 # missing the prefix). Run before pushing; CI can run it with PR_TITLE set to validate the title.
 lint-pr:
 	uv run python scripts/lint_pr.py
+	uv run python scripts/coverage_drift.py
 
 # Re-scan every tracked file for a committed secret with gitleaks: defense-in-depth alongside the
 # pre-commit hook, which a `--no-verify` commit or a clone that skipped `make setup` never runs.
@@ -307,11 +313,30 @@ roadmap-find:
 repo-map:
 	uv run python scripts/repo_map.py $(ARGS)
 
+# BE-0385: fail when a source file's branch coverage drops below the floor recorded for it in
+# coverage-floors.json. The global `fail_under` is one number over the whole package, so a file can
+# fall from 65% to 40% while the total stays above the floor and the rest of the tree absorbs the
+# loss; a per-file floor catches that. Check-only — it never writes the snapshot, mirroring the
+# `format` / `format-check` split so the gate can't quietly move the bar it enforces. A rise never
+# fails: blocking a PR for improving coverage would punish what the ratchet exists to encourage.
+# `test` is a prerequisite, not just an earlier line in `check`, so the coverage.json this reads is
+# the one this invocation produced — and since make builds a phony target once per run, `make check`
+# still runs the suite exactly once.
+lint-coverage-floors: test
+	uv run python scripts/coverage_floors.py
+
+# The deliberate counterpart to the check above: rewrite coverage-floors.json to what the suite just
+# measured, then commit it. Normally run once coverage has risen; it is also the escape hatch for a
+# drop a human decides to accept, so it prints rises and drops separately. Deliberately NOT in
+# `check` — a gate that rewrote its own bar would ratchet in both directions.
+coverage-floors: test
+	uv run python scripts/coverage_floors.py --write
+
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
 # predicts "green in CI". The uv-native checks run identically everywhere; actionlint and gitleaks
 # are the exceptions — CI installs each one, and the step skips with a notice when it is absent
 # (see lint-actions / lint-secrets above).
-check: hooks format-check lint lint-docstrings lint-imports lint-sh lint-actions lint-js lint-roadmap lint-skills lint-module-map lint-secrets lock-check typecheck test
+check: hooks format-check lint lint-docstrings lint-imports lint-sh lint-actions lint-js lint-roadmap lint-skills lint-module-map lint-secrets lock-check typecheck test lint-coverage-floors
 
 # Generated API reference (BE-0065). Deliberately NOT in `check`: like on-device E2E, the
 # reference build is a separate, heavier path (it pulls the `docs` extra) and must not slow the
