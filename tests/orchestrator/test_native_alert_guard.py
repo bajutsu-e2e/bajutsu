@@ -9,6 +9,10 @@ with alert buttons, so nothing here needs a Simulator; the on-device confirmatio
 
 from __future__ import annotations
 
+import logging
+
+import pytest
+
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import AlertEvent, AlertGuardConfig
@@ -429,6 +433,58 @@ def test_dismiss_from_tree_taps_a_showing_at_most_once() -> None:
     tap_sel = {"label": "今はしない", "traits": ["button"]}
     assert driver.actions.count(("tap", tap_sel)) == 1  # tapped exactly once
     assert alerts == [AlertEvent(label="今はしない")]  # exactly one dismissal recorded, not several
+
+
+def test_dismiss_from_tree_retries_a_delivered_tap_that_did_not_clear_the_prompt(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # The counterpart to the lingering-fade case above, and the one it cannot be told apart from at
+    # the first poll: a tap the runner *accepts* can still leave the prompt up. Measured on iOS —
+    # testmanagerd logged `touch down`/`touch up` at the target's exact centre and
+    # `confirmed by TouchEventsCompleted`, yet the app never acted on the touch (PR #1686). Where the
+    # fade clears the label within a poll or two, this never does, so the two differ only in what the
+    # tree does *after* the tap.
+    #
+    # `_tree_dismiss_pending` arms on a tap that merely returned without raising, and re-arms only
+    # once the tree stops matching that label — which an unacted-on tap never causes. So one such tap
+    # disarms the in-tree path for the whole remaining wait: the sheet stays up, nothing retries, and
+    # the step burns its full timeout with a dismissal recorded as if it had worked. Like
+    # `ElementNotTappable`, this retries under a bound (`_TREE_DISMISS_MAX_TAPS`) rather than either
+    # giving up after one attempt or hammering the device for the rest of the wait.
+    from bajutsu.orchestrator.waits import _TREE_DISMISS_MAX_TAPS, _wait
+
+    prompt_button = _button("今はしない")
+
+    class _IneffectiveTap(FakeDriver):
+        """Accepts the tap as a real runner does, but the prompt it targets never clears."""
+
+        def __init__(self) -> None:
+            super().__init__([prompt_button])
+            self.tap_calls = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_calls += 1
+            super().tap(sel)  # delivered and recorded; `screen` deliberately left unchanged
+
+    driver = _IneffectiveTap()
+    guard = AlertGuardConfig(vision=_never_vision, labels=["今はしない"], poll_interval=1.0)
+    alerts: list[AlertEvent] = []
+    # A 30s budget, far longer than `_TREE_DISMISS_MAX_TAPS` taps spaced by `_TREE_RETAP_DELAY`, so
+    # what stops the retries here is the tap ceiling rather than the wait running out: no retry at all
+    # taps exactly once, an unbounded one ~30 times over this wait, and only the bound gives 3.
+    with caplog.at_level(logging.WARNING, logger="bajutsu.orchestrator.waits"):
+        ok, _reason, _tree = _wait(
+            driver, _for_wait("ready", 30.0), _LogicalClock(), alert_guard=guard, alerts=alerts
+        )
+    assert not ok  # "ready" never appears either way, so the wait still times out on its own
+    assert driver.tap_calls == _TREE_DISMISS_MAX_TAPS
+    # One prompt showing that was never actually cleared must not read as several dismissals; the
+    # retried actuations stay visible in the driver's own log (`tap_calls` above).
+    assert alerts == [AlertEvent(label="今はしない")]
+    # Disclosed once, not silently: the wait is about to burn its whole budget, and without this the
+    # timeout would read as "the awaited element never rendered" rather than "the prompt never left".
+    gave_up = [r for r in caplog.records if "in-tree alert dismiss gave up" in r.message]
+    assert len(gave_up) == 1
 
 
 def test_dismiss_from_tree_declines_on_not_yet_tappable_then_dismisses() -> None:
