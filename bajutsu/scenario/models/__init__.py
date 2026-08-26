@@ -90,11 +90,21 @@ from bajutsu.scenario.models.scenario import (
 )
 from bajutsu.scenario.models.selector import Selector
 from bajutsu.scenario.models.steps import _STEP_ACTIONS as STEP_ACTIONS
-from bajutsu.scenario.models.steps import Extract, ForEach, If, Interrupt, Step, Use, Web
+from bajutsu.scenario.models.steps import (
+    AfterRule,
+    Extract,
+    ForEach,
+    If,
+    Interrupt,
+    Step,
+    Use,
+    Web,
+)
 
 __all__ = [
     "ASSERTION_KINDS",
     "STEP_ACTIONS",
+    "AfterRule",
     "Assertion",
     "Background",
     "CaptureRule",

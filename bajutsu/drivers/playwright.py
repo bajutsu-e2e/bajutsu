@@ -199,7 +199,7 @@ _UNIT = "cssPixel"
 
 
 def _playwright_error_types() -> tuple[type[BaseException], ...]:
-    global _PW_ERRORS
+    global _PW_ERRORS  # noqa: PLW0603  # memoizes the optional import once per process
     if _PW_ERRORS is None:
         try:
             from playwright.sync_api import Error
@@ -414,7 +414,7 @@ class PlaywrightDriver:
         driver = self
 
         class _VideoCapture:
-            def stop(self, sig: int, timeout: float) -> None:
+            def stop(self, sig: int, timeout: float) -> None:  # noqa: ARG002  # Driver shape
                 # timeout is unused: Playwright finalizes the context's video synchronously here,
                 # with no child process to wait on; the signature matches the intervals.Proc protocol.
                 driver._finalize_video(path)
@@ -468,7 +468,7 @@ class PlaywrightDriver:
             on("pageerror", on_pageerror)
 
         class _ConsoleCapture:
-            def stop(self, sig: int, timeout: float) -> None:
+            def stop(self, sig: int, timeout: float) -> None:  # noqa: ARG002  # Driver shape
                 # timeout is unused: detaching listeners is instant (no child process to wait on),
                 # but the signature matches the intervals.Proc protocol.
                 remove = getattr(page, "remove_listener", None)
@@ -943,14 +943,14 @@ class PlaywrightDriver:
         if result == "no-option":
             raise base.ElementNotFound(f"selectOption: no option with value {option!r}: {sel!r}")
 
-    def set_picker_value(self, sel: base.Selector, value: str) -> None:
+    def set_picker_value(self, sel: base.Selector, value: str) -> None:  # noqa: ARG002  # Driver shape
         # The mirror of `select_option`'s iOS/Android refusal (BE-0356): a picker wheel is a native
         # iOS control with no DOM counterpart — a `<select>` is how the web expresses the same intent.
         raise base.UnsupportedAction(
             "setPickerValue is iOS-only; use selectOption for a web <select>"
         )
 
-    def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+    def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:  # noqa: ARG002  # Driver shape
         # BE-0316 is an iOS SpringBoard concept: the web backend has no OS-level permission prompt at
         # all, so it never advertises the capability and preflight rejects the step. Mid-run backstop.
         raise base.UnsupportedAction(
@@ -961,7 +961,7 @@ class PlaywrightDriver:
         # No OS-level SpringBoard prompt on the web; the reactive guard's native path never runs here.
         return []
 
-    def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:
+    def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:  # noqa: ARG002  # Driver shape
         # TipKit is an iOS framework; this backend does not advertise HANDLE_TIPKIT_TIP. A
         # browser-owned dialog, the nearest web analogue, is already auto-dismissed by `_on_dialog`.
         return False

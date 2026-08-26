@@ -181,6 +181,11 @@ def _result(d: dict[str, Any]) -> RunResult:
         **{
             **kw,
             "steps": [_step(s) for s in d.get("steps") or []],
+            # The lifecycle phases' own outcomes (BE-0392), reconstructed through the same `_step`
+            # as the scenario's own — a report re-rendered offline shows the Before / After blocks
+            # a live run showed.
+            "before_outcomes": [_step(s) for s in d.get("before_outcomes") or []],
+            "after_outcomes": [_step(s) for s in d.get("after_outcomes") or []],
             "expect_results": [_assertion(a) for a in d.get("expect_results") or []],
             "artifacts": [Artifact(**_kw(Artifact, a)) for a in d.get("artifacts") or []],
             "expect_alerts": [

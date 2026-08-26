@@ -174,7 +174,7 @@ def probe_screen(
     udid: str,
     eff: Effective,
     *,
-    simctl_run: simctl.RunFn = simctl._real_run,
+    simctl_run: simctl.RunFn = simctl.real_run,
 ) -> list[base.Element]:
     """Query the current screen's elements to score, backend by backend (shared, BE-0199).
 

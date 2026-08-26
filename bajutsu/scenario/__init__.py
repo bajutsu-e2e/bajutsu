@@ -23,6 +23,7 @@ from bajutsu.scenario.load_expanded import (
 from bajutsu.scenario.models import (
     ASSERTION_KINDS,
     STEP_ACTIONS,
+    AfterRule,
     Assertion,
     Background,
     CaptureRule,
@@ -113,6 +114,7 @@ from bajutsu.scenario.system_alerts import (
 __all__ = [
     "ASSERTION_KINDS",
     "STEP_ACTIONS",
+    "AfterRule",
     "Assertion",
     "Background",
     "CaptureRule",

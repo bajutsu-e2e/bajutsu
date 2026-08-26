@@ -503,7 +503,7 @@ def test_run_pbcopy_retries_transient_timeout(monkeypatch: pytest.MonkeyPatch) -
 
     slept: list[float] = []
     monkeypatch.setattr(simctl.subprocess, "run", flaky_run)
-    monkeypatch.setattr(simctl.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(simctl.time, "sleep", slept.append)
 
     simctl.Env("UDID").set_clipboard("x")  # succeeds on the third attempt, no raise
 
@@ -558,7 +558,7 @@ def test_run_pbcopy_fast_fails_non_transient_error(monkeypatch: pytest.MonkeyPat
 
     slept: list[float] = []
     monkeypatch.setattr(simctl.subprocess, "run", bad_device)
-    monkeypatch.setattr(simctl.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(simctl.time, "sleep", slept.append)
 
     with pytest.raises(subprocess.CalledProcessError):
         simctl.Env("UDID").set_clipboard("x")
@@ -793,8 +793,8 @@ def test_every_call_carries_its_bound(monkeypatch: pytest.MonkeyPatch) -> None:
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     monkeypatch.setattr(simctl.subprocess, "run", fake_run)
-    simctl._real_run(simctl.list_booted_cmd())
-    simctl._real_run(simctl.bootstatus_cmd("UDID"))
+    simctl.real_run(simctl.list_booted_cmd())
+    simctl.real_run(simctl.bootstatus_cmd("UDID"))
 
     assert calls[0]["timeout"] == simctl._SIMCTL_TIMEOUT_S
     assert calls[1]["timeout"] == simctl._DEVICE_BLOCKING_TIMEOUT_S
@@ -807,7 +807,7 @@ def test_a_call_that_never_returns_raises_a_device_fault(monkeypatch: pytest.Mon
     sleeper = [sys.executable, "-c", "import time; time.sleep(30)"]
 
     with pytest.raises(simctl.DeviceTimeout) as excinfo:
-        simctl._real_run(sleeper)
+        simctl.real_run(sleeper)
 
     message = str(excinfo.value)
     assert "0.3s" in message  # the deadline it exceeded
@@ -817,11 +817,11 @@ def test_a_call_that_never_returns_raises_a_device_fault(monkeypatch: pytest.Mon
 
 
 def test_the_healthy_path_is_untouched() -> None:
-    assert simctl._real_run([sys.executable, "-c", "print('ok')"]) == "ok\n"
+    assert simctl.real_run([sys.executable, "-c", "print('ok')"]) == "ok\n"
     # A failing command still raises rather than returning empty stdout: the whole error
     # architecture above (`device_error`, the probes' fallbacks) reads that raise, not a "".
     with pytest.raises(subprocess.CalledProcessError):
-        simctl._real_run([sys.executable, "-c", "raise SystemExit(3)"])
+        simctl.real_run([sys.executable, "-c", "raise SystemExit(3)"])
 
 
 def _timing_out(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:

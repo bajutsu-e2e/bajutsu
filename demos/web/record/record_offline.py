@@ -226,7 +226,7 @@ class KeywordAgent:
     def __init__(self, goal: str) -> None:
         self._plan, self._expects = plan_from_goal(goal)
 
-    def plan(self, goal: str) -> list[str]:
+    def plan(self, goal: str) -> list[str]:  # noqa: ARG002  # Agent shape
         # No up-front plan: the record loop treats [] as "decide step by step".
         return []
 

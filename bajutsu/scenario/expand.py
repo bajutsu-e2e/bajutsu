@@ -78,6 +78,12 @@ def expand_components(
 
     for scenario in scenarios:
         scenario.steps = expand(scenario.steps, [])
+        # The lifecycle phases take the ordinary step grammar (BE-0392), so a `use` can appear in
+        # them too. Left unexpanded it reaches the step loop as a step with no action and aborts the
+        # whole run with an `AssertionError`, not one failed scenario.
+        scenario.before = expand(scenario.before, [])
+        for rule in scenario.after:
+            rule.steps = expand(rule.steps, [])
 
 
 def read_csv(text: str) -> list[dict[str, str]]:

@@ -11,17 +11,17 @@ from bajutsu.drivers import base
 from bajutsu.evidence.network import TransitionSource, _no_transitions
 
 # Readiness polling lives with the platform lifecycle now (BE-0009 Phase 0); re-exported here so
-# `from bajutsu.runner import _await_ready` and the crawl path keep their import unchanged.
+# `from bajutsu.runner import await_ready` and the crawl path keep their import unchanged.
 from bajutsu.platform_lifecycle import (
     ReadinessResult,
     RunEnvironment,
-    _await_ready,
+    await_ready,
     environment_for,
 )
 from bajutsu.runner.recovery import guarded_teardown
 from bajutsu.scenario import Preconditions
 
-__all__ = ["ReadinessResult", "_await_ready", "launch_driver"]
+__all__ = ["ReadinessResult", "await_ready", "launch_driver"]
 
 
 def launch_driver(
@@ -29,7 +29,7 @@ def launch_driver(
     eff: Effective,
     actuator: str,
     preconditions: Preconditions | None = None,
-    env_run: simctl.RunFn = simctl._real_run,
+    env_run: simctl.RunFn = simctl.real_run,
     extra_env: Mapping[str, str] | None = None,
     record_video_dir: Path | None = None,
     environment: RunEnvironment | None = None,
@@ -64,7 +64,7 @@ def launch_driver(
             caller's own failure path.
         permissions: The scenario's `permissions` field (BE-0276), applied before the app process
             starts. None (or a platform with no mechanism) applies nothing.
-        transitions: The screen-transition signal (BE-0310) `_await_ready` consults as its strongest
+        transitions: The screen-transition signal (BE-0310) `await_ready` consults as its strongest
             readiness rung; the default reports none, so a caller that doesn't pass one keeps the
             unchanged BE-0218 fallback ladder.
 
@@ -80,7 +80,7 @@ def launch_driver(
     # The per-platform startup (iOS simctl sequence, web browser context, …) lives behind the
     # `Environment` seam, so this path no longer branches on the actuator name (BE-0009 Phase 0).
     env = environment if environment is not None else environment_for(actuator, udid, env_run)
-    # `env.start` can leave a runner (or browser context) up before `_await_ready` finishes; if the
+    # `env.start` can leave a runner (or browser context) up before `await_ready` finishes; if the
     # readiness probe then raises, the driver never reaches the caller. Tear that environment down
     # here so every caller inherits the same guard the pool already had around a failed lease
     # (BE-0342): the pool, `crawl`'s lane builder, `record`, and the on-device suites' lease thunk.
@@ -96,8 +96,7 @@ def launch_driver(
             record_video_dir=record_video_dir,
             permissions=permissions,
         )
-        readiness = _await_ready(driver, ready_sel=eff.ready_when, transitions=transitions)
-        return driver, readiness
+        readiness = await_ready(driver, ready_sel=eff.ready_when, transitions=transitions)
     except BaseException:
         if driver is not None:
             started = driver
@@ -107,3 +106,5 @@ def launch_driver(
                 what=f"tearing down the environment on {udid} after a failed launch",
             )
         raise
+    else:
+        return driver, readiness

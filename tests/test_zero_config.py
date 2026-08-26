@@ -49,7 +49,7 @@ def test_importing_the_cli_pulls_in_no_ai_sdk() -> None:
         "sys.exit(1 if leaked else 0)\n"
     )
     result = subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True, timeout=60
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=60, check=False
     )
     assert result.returncode == 0, (
         "importing the deterministic CLI path loaded an AI SDK at module top "

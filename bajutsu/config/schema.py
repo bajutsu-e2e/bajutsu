@@ -8,7 +8,7 @@ here depends on `resolve` except the one deferred back-reference in `Config`'s v
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 from pydantic import (
     AliasChoices,
@@ -21,7 +21,7 @@ from pydantic import (
 
 from bajutsu.deprecations import warn_deprecated_key
 from bajutsu.drivers import base
-from bajutsu.scenario import Interrupt, Redact, SystemAlertHandling
+from bajutsu.scenario import AfterRule, Interrupt, Redact, Step, SystemAlertHandling
 
 # Playwright rendering engines a web target can drive (BE-0076). Chromium is the default,
 # preserving today's single-engine behaviour; all three run headless on Linux.
@@ -405,6 +405,28 @@ class TargetConfig(_Model):
     # `systemAlertHandling` layers a config default under a per-scenario value. Empty = no app-wide
     # handler.
     interrupts: list[Interrupt] = Field(default_factory=list)
+    # App-wide setup and teardown phases (BE-0392): the same `before` / `after` shapes a scenario
+    # takes, applied to every scenario for this target. `before` runs *ahead* of a scenario's own
+    # (config-then-scenario, like `interrupts`); `after` runs *behind* it (scenario-then-config), so
+    # a scenario releases what it created before the app-wide teardown closes around it. Both empty
+    # = no app-wide phase. `before` does not replace `setup` above: only `before` is its own report
+    # phase, and it runs ahead of the prelude `setup` splices onto `steps`.
+    before: list[Step] = Field(default_factory=list)
+    after: list[AfterRule] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _no_component_in_lifecycle_phases(self) -> Self:
+        # `use` is expanded when a *scenario* file loads, which a target config never passes through:
+        # an app-wide `use` would reach the step loop with no action on it and abort the whole run
+        # with an `AssertionError` rather than fail one scenario. Reject it here, loudly and at load
+        # time, until config-level component resolution exists.
+        phases = [*self.before, *(s for rule in self.after for s in rule.steps)]
+        if any(s.use is not None for s in phases):
+            raise ValueError(
+                "targets.<name>.before / after cannot use a component (`use`): components are "
+                "expanded per scenario file, so an app-wide one is never resolved"
+            )
+        return self
 
     @model_validator(mode="before")
     @classmethod

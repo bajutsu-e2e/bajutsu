@@ -16,7 +16,7 @@ from bajutsu.scenario.models._base import _Model
 from bajutsu.scenario.models.assertions import Assertion
 from bajutsu.scenario.models.evidence import CaptureRule, Network, Redact
 from bajutsu.scenario.models.mocks import Mock
-from bajutsu.scenario.models.steps import Interrupt, Step
+from bajutsu.scenario.models.steps import AfterRule, Interrupt, Step
 from bajutsu.scenario.system_alerts import SystemAlertChoice, SystemAlertPrompt
 
 # The grant/revoke actions a `permissions` entry may take (BE-0276); the service side of the
@@ -194,8 +194,19 @@ class Scenario(_Model):
     data: list[dict[str, str]] | None = None
     data_file: str | None = Field(default=None, alias="dataFile")
     preconditions: Preconditions = Field(default_factory=Preconditions)
+    # Setup that runs as its own phase before `steps` (BE-0392), not spliced into it the way a
+    # `preconditions.setup` prelude is: it gets its own report section, and its failure aborts the
+    # scenario before `steps` runs rather than surfacing as an ordinary step failure. Prepended to
+    # the target config's own `before`, the config-then-scenario order `interrupts` follows. Empty
+    # (the default) means no scenario-level prelude, so it prunes from a dump.
+    before: list[Step] = Field(default_factory=list)
     steps: list[Step]
     expect: list[Assertion] = Field(default_factory=list)
+    # Teardown rules keyed to the run's own verdict (BE-0392), run after `steps`/`expect` on every
+    # path out of them — including the one a failing step took, which trailing `steps` never reach.
+    # Merged scenario-then-config, the reverse of `before`: this scenario's own cleanup releases what
+    # it created before the app-wide one tears down around it.
+    after: list[AfterRule] = Field(default_factory=list)
     capture_policy: list[CaptureRule] = Field(default_factory=list, alias="capturePolicy")
     network: Network | None = None
     mocks: list[Mock] = Field(default_factory=list)

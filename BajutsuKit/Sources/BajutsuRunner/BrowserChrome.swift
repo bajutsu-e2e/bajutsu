@@ -1,7 +1,7 @@
 import Foundation
 
 /// The identifiers `SFSafariViewController`'s own chrome carries, and the one repair that makes a
-/// scenario written against it run unchanged on every iOS version (BE-XXXX).
+/// scenario written against it run unchanged on every iOS version (BE-0396).
 ///
 /// Measured on iOS 18.6 and iOS 26.5, the browser reports the same identifier for every control it
 /// shares between the two — `URL`, `BackButton`, `ShareButton`, `ReloadButton`, `OpenInSafariButton`,

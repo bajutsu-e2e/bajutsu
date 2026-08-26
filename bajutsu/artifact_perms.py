@@ -10,7 +10,6 @@ after the write so the guarantee holds regardless of the ambient umask.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 # The run dir gates every artifact under it; sensitive files are additionally locked so the
@@ -34,7 +33,7 @@ def make_run_dir(path: Path) -> Path:
     if path.is_symlink():
         raise ValueError(f"refusing to use a symlinked run directory: {path}")
     path.mkdir(parents=True, exist_ok=True)
-    os.chmod(path, RUN_DIR_MODE)
+    path.chmod(RUN_DIR_MODE)
     return path
 
 
@@ -45,5 +44,5 @@ def restrict_file(path: Path) -> Path:
     without writing bytes, and there is nothing to protect then.
     """
     if path.exists():
-        os.chmod(path, ARTIFACT_FILE_MODE)
+        path.chmod(ARTIFACT_FILE_MODE)
     return path

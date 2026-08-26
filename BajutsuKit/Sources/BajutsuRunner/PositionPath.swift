@@ -44,7 +44,7 @@ public struct RecordedAttributes {
 /// Which XCUITest application root an element's position path is relative to.
 ///
 /// Almost every element belongs to the app under test. `SFSafariViewController` is the exception
-/// (BE-XXXX): its UI is drawn by the out-of-process `com.apple.SafariViewService`, so from iOS 26
+/// (BE-0396): its UI is drawn by the out-of-process `com.apple.SafariViewService`, so from iOS 26
 /// `app.snapshot()` stops at the remote-view boundary and the browser's own tree — chrome *and*
 /// rendered page content — is reachable only through that service's own application handle. An
 /// element read from there must also be re-derived and actuated there, so the backing records which
@@ -90,7 +90,7 @@ public protocol SnapshotNode {
 ///
 /// - Parameters:
 ///   - elementRoot: recorded on every backing, so actuation re-derives the path against the same
-///     application handle the tree was read from (BE-XXXX).
+///     application handle the tree was read from (BE-0396).
 ///   - prune: a node this answers `true` for contributes neither itself nor its descendants. It
 ///     drops a subtree one root reports that another root reports in full, without disturbing the
 ///     paths of anything else: a pruned child still consumes its own index, so its siblings keep

@@ -236,7 +236,9 @@ def _mask_url(url: str) -> str:
     """Mask a webhook URL for safe logging (host only, path/query redacted)."""
     try:
         parsed = urllib.parse.urlparse(url)
-        return f"{parsed.scheme}://{parsed.hostname}/***"
+        # The f-string is inside the guard on purpose: a urlparse result whose `hostname` access
+        # raises must still mask to "***" rather than leak the URL through the traceback.
+        return f"{parsed.scheme}://{parsed.hostname}/***"  # noqa: TRY300
     except Exception:
         return "***"
 

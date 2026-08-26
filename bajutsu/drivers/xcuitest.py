@@ -1074,7 +1074,7 @@ class XcuitestDriver:
         if reply.status != _OK:
             raise XcuitestChannelError(f"scroll failed ({reply.status})")
 
-    def select_option(self, sel: base.Selector, option: str) -> None:
+    def select_option(self, sel: base.Selector, option: str) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction(
             "selectOption は <select> を持つ web バックエンド専用; iOS ネイティブに <select> はない"
         )

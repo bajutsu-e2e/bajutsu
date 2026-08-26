@@ -10,10 +10,10 @@ touching the machine.
 from __future__ import annotations
 
 import importlib.util
-import os.path
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 from bajutsu import requirements
 
@@ -51,7 +51,7 @@ def _browser_installed(engine: str) -> bool:  # pragma: no cover - needs the pla
         launcher = getattr(p, engine, None)
         if launcher is None:  # an unknown engine is "not installed", not a doctor crash
             return False
-        return os.path.exists(launcher.executable_path)
+        return Path(launcher.executable_path).exists()
 
 
 # Probe for a specific engine's binary, defaulting to Chromium (BE-0076). Injectable so the web

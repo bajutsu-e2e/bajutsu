@@ -426,7 +426,6 @@ def _execute_with_recovery(
     """Execute a step; if it fails because a prompt is covering the app, clear it and retry."""
     try:
         execute(driver, step, clock, selection=selection)
-        return True
     except (base.SelectorError, base.ElementNotTappable):
         if guard is None:
             return False
@@ -436,9 +435,12 @@ def _execute_with_recovery(
         clear_blocking(driver, guard, clock, report=report)
         try:
             execute(driver, step, clock, selection=selection)
-            return True
         except (base.SelectorError, base.ElementNotTappable):
             return False
+        else:
+            return True
+    else:
+        return True
 
 
 def _plan_goal(agent: Agent, goal: str, say: Reporter) -> list[str]:
