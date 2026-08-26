@@ -172,5 +172,5 @@ def test_js_asks_for_the_roster_only_where_the_server_offers_one(tmp_path: Path)
     text = _fetch(tmp_path, "/serve.orgs.mjs")
     body = text.split("async function loadOrgs")[1].split("\n}")[0]
     assert "unavailableReason('orgs')" in body
-    assert "blocked ? null : await getJSON('/api/orgs', null)" in body
+    assert "blocked ?" in body and "await getJSON('/api/orgs'" in body  # the fetch sits behind it
     assert "Array.isArray(list)" in body

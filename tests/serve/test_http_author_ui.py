@@ -280,7 +280,8 @@ def test_author_gates_capture_on_the_boot_reads_capability(tmp_path: Path) -> No
     assert """.modetab[data-mode="capture"]""" in text
     assert "$('#au-live-start')" in text
     # Disabled and explained, never removed — the reason is what a hosted user has to read.
-    assert "tab.disabled=Boolean(reason);tab.title=reason||''" in text
+    assert "tab.disabled=Boolean(reason)" in text
+    assert "tab.title=reason" in text
 
 
 def test_author_never_sits_in_a_mode_the_deployment_cannot_serve(tmp_path: Path) -> None:

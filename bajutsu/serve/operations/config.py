@@ -136,14 +136,20 @@ def config_sources(state: ServeState) -> list[str]:
     return ["git", "upload"] if state.hosted else ["git", "upload", "fs"]
 
 
-# Why a hosted deployment cannot capture: every `/api/capture/*` route is `local_only` (see
-# `serve.routes`), because a capture session drives a device from the serve process itself — hosted,
-# the devices sit on the workers a browser never talks to, so the mode was offered and then 404ed on
-# its first call (#1721).
+# Why a hosted deployment cannot capture: a capture session drives a device from the serve process
+# itself, and hosted the devices sit on the workers a browser never talks to. Every
+# `/api/capture/*` route is `local_only` in consequence, so the mode used to be offered and then
+# 404 on its first call (#1721).
 CAPTURE_HOSTED_REASON = (
     "capture drives a device from the serve process itself, which a hosted deployment has none of "
     "— capture from a local serve instead"
 )
+
+# Why a local deployment that nonetheless serves no `local_only` route cannot capture: `serve
+# --asgi` runs the FastAPI transport with the local backend, and that transport registers no
+# `local_only` route (`serve.server.app.make_app`). The devices are right there, so the reason names
+# the transport rather than the deployment.
+CAPTURE_NO_LOCAL_ROUTES_REASON = "this server does not serve the capture routes — run `bajutsu serve` without `--asgi` to capture"
 
 # Why a caller cannot administer orgs on a deployment that does have a database: the roster
 # discloses one tenant's membership to another, so every `/api/orgs` verb is admin-only.
@@ -154,6 +160,20 @@ def _capability(reason: str | None) -> dict[str, Any]:
     """One capability entry: available when nothing blocks it, else the reason a disabled control
     shows. Always both fields, so the UI reads one shape whichever way the answer falls."""
     return {"available": reason is None, "reason": reason}
+
+
+def _capture_unavailable(state: ServeState) -> str | None:
+    """Why capture is unavailable here, or None when it is available.
+
+    Keyed to whether the transport serves the `local_only` routes, not to `hosted`: both hosted and
+    a local `serve --asgi` go through `make_app` and so serve none of them. Hosted is reported
+    first, since there the devices really are elsewhere and the transport is beside the point.
+    """
+    if state.hosted:
+        return CAPTURE_HOSTED_REASON
+    if not state.serves_local_routes:
+        return CAPTURE_NO_LOCAL_ROUTES_REASON
+    return None
 
 
 def _orgs_unavailable(state: ServeState, actor: str | None) -> str | None:
@@ -183,7 +203,7 @@ def serve_capabilities(state: ServeState, actor: str | None = None) -> dict[str,
     since gone stale widens no gate.
     """
     return {
-        "capture": _capability(CAPTURE_HOSTED_REASON if state.hosted else None),
+        "capture": _capability(_capture_unavailable(state)),
         "orgs": _capability(_orgs_unavailable(state, actor)),
     }
 

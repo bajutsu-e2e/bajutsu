@@ -316,9 +316,11 @@ backend sets `hosted: true`.
   `/api/capture/*` route is local-only and a hosted deployment answers `404`. The boot read
   (`GET /api/config`) reports the absence as a capability flag. A hosted Author tab then
   disables both controls — each showing the server's own reason — and opens in Edit mode, rather
-  than offering a mode whose first call fails (#1721). The Record tab keeps working: `POST
-  /api/record` dispatches a job the way a run does, so a recording made through the AI path still
-  runs hosted.
+  than offering a mode whose first call fails (#1721). A local `bajutsu serve --asgi` runs the same
+  transport, so it serves no capture route either; there the flag's reason names the transport
+  rather than the deployment, since the devices are on the machine after all. The Record tab keeps
+  working: `POST /api/record` dispatches a job the way a run does, so a recording made through the
+  AI path still runs hosted.
 - **App binary.** Neither side has a generic binary-upload endpoint: both resolve `appPath` from the
   bound config and, if it's missing, run the config's `build:` command. Hosted, a Mac worker builds
   from the same checkout or bundle materials the control plane resolved for the job, exchanging bytes

@@ -464,6 +464,10 @@ def make_app(state: ServeState) -> FastAPI:
 
         app.add_api_route(route.path, endpoint, methods=[route.method])
 
+    # Declare the omission on the state the app will serve, so the boot read can report it and the
+    # UI disables Capture instead of offering a mode whose first call 404s (issue 1721). Set here,
+    # beside the loop that causes it, so the two cannot drift.
+    state.serves_local_routes = False
     for route in ROUTES:
         if route.handle is not None and not route.local_only:
             _register(route)

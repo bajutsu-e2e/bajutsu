@@ -596,11 +596,16 @@ if(!NARROW_MQ.matches)initTiling();
       $('#au-screenshot').src=s.screenshotUrl;
       $('#au-screenshot').hidden=false;$('#au-placeholder').hidden=true;
     }else{
-      // No run screenshot and no live session — state how to get a picker rather than sit inert (BE-0262).
+      // No run screenshot and no live session — state how to get a picker rather than sit inert
+      // (BE-0262). Where this deployment cannot serve a live session, the button is disabled, so
+      // say why instead of pointing at it (issue 1721).
       $('#au-screenshot').hidden=true;$('#au-placeholder').hidden=false;
+      const noLive=unavailableReason('capture');
       $('#au-placeholder').textContent=$('#au-run').value
         ?'No screenshot for this step.'
-        :'No run selected — click “Start live session” to pick elements on the current screen.';
+        :noLive
+          ?'No run selected — load a run with stored screenshots to pick elements. '+noLive
+          :'No run selected — click “Start live session” to pick elements on the current screen.';
     }
     $('#au-feedback').hidden=true;
     auResolvedSel=null;

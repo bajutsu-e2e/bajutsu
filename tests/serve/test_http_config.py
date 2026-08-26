@@ -489,6 +489,35 @@ def test_http_config_capabilities_hosted_withholds_capture_with_a_reason(tmp_pat
         server.server_close()
 
 
+def test_capabilities_withhold_capture_where_the_transport_serves_no_local_route(
+    tmp_path: Path,
+) -> None:
+    # `serve --asgi` runs the FastAPI transport with the *local* backend: `hosted` stays False, but
+    # `make_app` registers no `local_only` route, so every capture call 404s there too. Keyed to
+    # `hosted` the flag would report capture as available on a server that cannot serve it — the
+    # exact mismatch the issue exists to remove. The reason names the transport, since a local
+    # deployment's devices are right there (#1721).
+    asgi = srv.ServeState(
+        runs_dir=tmp_path / "runs", root=tmp_path, cwd=tmp_path, serves_local_routes=False
+    )
+    assert config_ops.serve_capabilities(asgi)["capture"] == {
+        "available": False,
+        "reason": config_ops.CAPTURE_NO_LOCAL_ROUTES_REASON,
+    }
+    # A hosted deployment reaches the same transport, and is still reported as hosted: there the
+    # devices really are elsewhere, so naming `--asgi` would send the reader after the wrong cause.
+    hosted = srv.ServeState(
+        runs_dir=tmp_path / "runs",
+        root=tmp_path,
+        cwd=tmp_path,
+        hosted=True,
+        serves_local_routes=False,
+    )
+    assert config_ops.serve_capabilities(hosted)["capture"]["reason"] == (
+        config_ops.CAPTURE_HOSTED_REASON
+    )
+
+
 def test_http_config_capabilities_withhold_orgs_without_a_database(tmp_path: Path) -> None:
     # A database-less serve is single-user by construction and has no tenant to administer, so
     # `GET /api/orgs` can only answer 400. The flag reports it with the endpoint's own wording, so
