@@ -271,7 +271,7 @@ final class LogController: UIViewController {
         }
     }
 
-    /// Transient toast that auto-dismisses ~1.2 s — exercises `wait until gone` (SPEC §5.3).
+    /// Transient toast that auto-dismisses ~3 s — exercises `wait until gone` (SPEC §5.3).
     private func showToast() {
         let toast = UILabel()
         toast.text = "Logged"
@@ -289,7 +289,7 @@ final class LogController: UIViewController {
             toast.widthAnchor.constraint(equalToConstant: 160),
             toast.heightAnchor.constraint(equalToConstant: 44),
         ])
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
             toast.removeFromSuperview()
         }
     }
