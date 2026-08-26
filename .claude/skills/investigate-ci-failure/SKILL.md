@@ -52,7 +52,11 @@ gh run view <run-id> --json jobs --jq '.jobs[] | select(.conclusion == "failure"
 Sort each failing job into one of three routes:
 
 - the `check` job of `ci.yml` → step 2
-- a job of `ios-e2e.yml`, `android-e2e.yml`, or `web-e2e.yml` → step 3
+- a job of `ios-e2e.yml` or `android-e2e.yml` → step 3
+- a job of `web-e2e.yml` → the log route, not step 3. That workflow uploads no `runs/` artifact and
+  has no diagnostic layer, so there is nothing for step 3 to download and no web table in the
+  pattern reference. Read `--log-failed` and classify as `code-defect` — a Playwright traceback is
+  in the log — or `gate-mechanical` on a match.
 - anything else (`pr-title`, `roadmap-id`, `mcp-wire`, `swift`, `serve-db`, `codeql`, …) → treat as
   `code-defect` and report the failing step with its log excerpt. These fail for a reason the log
   states.
@@ -76,10 +80,18 @@ fixes, and the reference says how to tell them apart. Do not shortcut it.
 ### 3. The E2E lanes: match against known infrastructure faults
 
 Download the failing job's own artifact. Its `path: runs/` carries `runs/diagnostics/` inside it, so
-one download brings all three diagnostic layers:
+one download brings all three diagnostic layers.
+
+**Artifact names follow no single pattern — list them rather than guessing.** The Android lane is
+uniform (`android-e2e-<job>-run`), but the iOS lane is not: the jobs that upload through the
+`bajutsu-e2e` composite action pass a bare name, so `run` uploads as `run`, `actuation` as
+`actuation-run`, `golden` as `ios-golden-run`, and `bundled-runner` as two names of its own. Only
+`conformance`, `fault-injection`, `visual`, and `network` match `ios-e2e-<job>-run`. Guessing the
+pattern fails the download on `run`, the lane's primary job.
 
 ```bash
-gh run download <run-id> -n ios-e2e-<job>-run       # or android-e2e-<job>-run
+gh api "repos/{owner}/{repo}/actions/runs/<run-id>/artifacts" --jq '.artifacts[].name'
+gh run download <run-id> -n <the failing job's own name from that list>
 ```
 
 Match what you find against the `e2e-known-flake` tables in
@@ -103,23 +115,35 @@ Assemble a history from the same job's recent runs and hand it to
 [`investigate-scenario-flakiness`](../../../.apm/skills/investigate-scenario-flakiness/SKILL.md):
 
 ```bash
-gh run list --workflow <workflow> -L 20 \
+gh run list --workflow <workflow> -L 40 \
   --json databaseId,conclusion,headBranch,createdAt \
-  --jq '.[] | select(.headBranch == "main") | .databaseId'
+  --jq '.[] | select(.headBranch == "main" or (.headBranch | startswith("gh-readonly-queue/"))) | .databaseId'
 ```
 
 Restrict to runs of `main` and the merge queue: a run of somebody's branch carries that branch's own
-defects, which is noise against the question being asked. Download each run's artifact for the same
-job into one directory, then invoke the sub-skill on it.
+defects, which is noise against the question being asked. Keep the merge-queue runs specifically —
+these lanes trigger on `merge_group`, and a queue run's `headBranch` is
+`gh-readonly-queue/main/pr-<N>-<sha>`, so a bare `== "main"` test drops a large share of exactly the
+clean history this step needs. Note that `-L` bounds the runs *listed*, not the runs kept, so it is
+set above the twenty-artifact budget to leave the filter something to select from.
+
+Download each run's artifact for the same job into one directory — resolving each run's own artifact
+name the way step 3 does, since the name varies by job — then invoke the sub-skill on it.
 
 **Pass no `use_ai`.** What this step needs is the `classification` field; the AI triage pass costs
 `ANTHROPIC_API_KEY` credit and answers a question — *why* it flips — that this classification does
 not ask. The sub-skill's default already omits it.
 
-- The sub-skill reports the scenario `flaky` → `e2e-known-flake`, on the strength of the history
-  rather than a matched pattern. Say which, in the report: a data-backed verdict and a
-  pattern-matched one are different kinds of evidence.
+- The sub-skill reports `flaky` → `e2e-known-flake`, on the strength of the history rather than a
+  matched pattern. Say which, in the report: a data-backed verdict and a pattern-matched one are
+  different kinds of evidence.
 - Anything else → `e2e-unclassified`.
+
+**Read that verdict as being about the run, not a named scenario.** These jobs run whole suites, and
+the sub-skill's ranking groups by content fingerprint and scores the run-level verdict — its `name`
+field is only the first scenario in the run's summary. "This job's verdict flips at a constant
+fingerprint" is the claim that supports `e2e-known-flake`, and it is enough for the classification
+this step makes; "scenario X is flaky" is not what was shown, so do not put it in the report.
 
 This step downloads up to twenty artifacts, which is why it is the last resort and not the first
 move. When the sub-skill's own history is too thin to classify (`unproven`), report
@@ -127,14 +151,21 @@ move. When the sub-skill's own history is too thin to classify (`unproven`), rep
 
 ### 5. Record a newly confirmed pattern
 
-When step 4 produced an `e2e-known-flake` from the history, append it to the `e2e-known-flake` table
-in [`references/known-ci-failure-patterns.md`](references/known-ci-failure-patterns.md): the
-symptom, the artifact path that shows it, and that it was confirmed from run history rather than a
-prior diagnosis. The next investigation then matches it at step 3 and skips twenty downloads.
+When step 4 produced an `e2e-known-flake` from the history, append it to the `e2e-known-flake` table:
+the symptom, the artifact path that shows it, and that it was confirmed from run history rather than
+a prior diagnosis. The next investigation then matches it at step 3 and skips twenty downloads.
 
-**Edit the file and stop there.** Do not commit it, do not push it, and do not run `make skills` —
-report the edit and let the caller fold it into whatever commit it is already making. A skill that
-commits on its own behalf inside somebody else's pull request puts an unrelated change in their diff.
+**Edit the source copy, then redeploy — and stop there.** The file to append to is
+`.apm/skills/investigate-ci-failure/references/known-ci-failure-patterns.md`, named from the
+repository root, never the deployed `.claude/skills/…` copy that a running agent's own relative
+paths resolve to. `CLAUDE.md` forbids hand-editing the deployed tree, and the next `make skills`
+overwrites it — discarding a pattern that cost twenty artifact downloads to establish. After the
+edit run `make skills`, or the two trees disagree and `make lint-skills` fails at the caller's next
+`make check`, manufacturing exactly the `gate-mechanical` drift this skill catalogs.
+
+Report both the edit and the regenerated deployment, then stop. Do not commit and do not push: let
+the caller fold both into whatever commit it is already making, so a skill never drops an unrelated
+change into somebody else's pull request diff.
 
 ### 6. Report
 

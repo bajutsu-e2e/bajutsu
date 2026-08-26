@@ -19,10 +19,27 @@ fix command. No artifact download is needed: `gh run view <run-id> --log-failed`
 | `make format-check` | `ruff format --check` lists files it would reformat | `make format` |
 | `make lint-skills` | `apm audit --ci` reports drift between `.apm/skills/` and `.claude/skills/` | `make skills` |
 
-The `lint-skills` case has one trap worth stating: the drift is usually a **forgotten `make skills`**
-after editing a skill source, but it is equally produced by hand-editing the deployed
-`.claude/skills/` tree, which nothing should ever do. Check which side moved before running the fix,
-because `make skills` resolves the first case and silently discards the second.
+The `lint-skills` case has **three** causes, not one, and the table's fix command only settles two
+of them — so check which side moved before running it.
+
+1. A **forgotten `make skills`** after editing a skill source. The common case; `make skills` fixes
+   it.
+2. A **hand-edited deployed `.claude/skills/` tree**, which nothing should ever do. `make skills`
+   silently discards that edit rather than adopting it, so confirm the edit is not one somebody
+   meant to keep before running it.
+3. A **stale cross-skill link** in a deployed file. APM rewrites relative links between skills at
+   install time, so a link to a skill that did not yet exist is deployed unrewritten, and a later
+   incremental install never revisits the file — its source hash has not changed. `apm audit --ci`
+   replays the install from scratch, produces the rewritten link, and reports the deployed copy as
+   drifted even though it matches both its source byte for byte and the lockfile's recorded hash.
+   **Re-running `make skills` does not clear this one**; only deleting the deployed tree and
+   redeploying does:
+   ```bash
+   rm -rf .claude/skills/<skill> && make skills
+   ```
+   Still `gate-mechanical`, but carry the delete-and-redeploy fix rather than the table's
+   `make skills`. Adding two skills that link to each other, in separate commits, is what produces
+   it — the shape that first surfaced it here.
 
 Every other step of the gate — `make lint`, `make typecheck`, `make test`, `make lint-roadmap`,
 `make lint-module-map`, `make lint-imports`, `make lint-docstrings`, `make lint-secrets` — points at

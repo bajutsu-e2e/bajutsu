@@ -63,9 +63,12 @@ Then act on each classification:
 - **`e2e-unclassified`** — escalate (see the Escalation section). Carry what the report ruled out,
   so the human starts where the investigation stopped.
 
-If the sub-step edited its own `references/known-ci-failure-patterns.md` (its step 5, recording a
-newly confirmed pattern), fold that edit into the commit this iteration is already making. It
-deliberately does not commit that file itself.
+If the sub-step recorded a newly confirmed pattern (its step 5), it edited
+`.apm/skills/investigate-ci-failure/references/known-ci-failure-patterns.md` and re-ran
+`make skills`. Fold **both** the source edit and the regenerated `.claude/skills/…` deployment into
+the commit this iteration is already making — staging only one of the two leaves the trees
+disagreeing, which `make lint-skills` fails on. The sub-step deliberately does not commit them
+itself.
 
 ### 3. Address review comments
 

@@ -67,6 +67,15 @@ Parse the JSON. Its shape is a `FlakinessReport`
 carries `name`, `scenario_hash`, `device_os`, `runs`, `passed`, `failed`, `flip_rate`,
 `classification`, `representative_pass_run_id`, and `representative_fail_run_id`.
 
+**`name` is representative, not a grouping key.** `rank_flakiness` groups by
+`(scenario_hash, device_os)` and scores the *run-level* verdict; `name` is only the first scenario
+listed in that run's summary. The two coincide for a single-scenario run and diverge for a suite,
+where the scenario that flipped may not be the one named — and a CI lane runs a suite. Check the
+history before trusting `name`: when its runs hold more than one scenario, report the entry as a
+run-level flip at that fingerprint rather than as a finding about the named scenario, and reach for
+`bajutsu audit --history` — which keys on the scenario name and so groups per scenario — when a
+per-scenario answer is what the caller needs.
+
 ### 2. Keep only the flaky ones
 
 Filter `scenarios` to `classification == "flaky"` — the verdict flips while the content fingerprint
@@ -102,9 +111,17 @@ Three details about that invocation:
 matches, so a name shared as a prefix by two scenarios never mixes them. Use the `name` exactly as
 step 1 reported it.
 
-A scenario the ranking called flaky always has runs on both sides, so the "nothing to contrast" exit
-should not occur here. If it does, the history changed under the two commands — report that rather
-than treating it as a clean result.
+**On a multi-scenario history, qualify what this diagnosis covers.** Per step 1's caveat, `name` is
+the run's first scenario, while the ranking scored the run-level verdict. Triage therefore contrasts
+the *named* scenario's own passing and failing runs, which on a suite may not be the scenario whose
+failure flipped the run. Say so in the report rather than presenting the diagnosis as the cause of
+the flip.
+
+That gap also makes the "nothing to contrast" exit reachable here, so do not treat it as impossible:
+the ranking can call a fingerprint flaky on run-level verdicts while the named scenario itself passed
+in every run, leaving triage with no failing side. Report that as what it is — the named scenario is
+not the one flipping — and point at the run-level entry, rather than reporting a clean result or a
+changed history.
 
 ### 4. Handle an empty set
 
@@ -125,6 +142,9 @@ Return one Markdown report. Per scenario, carry:
 - `device_os` when the entry carries one — a scenario ranked per OS is not the same finding as one
   ranked across a fleet
 - the triage diagnosis, when step 3 ran
+- **whether the entry's runs held more than one scenario.** If they did, label the entry a run-level
+  flip at that fingerprint and name `scenario_hash` alongside `name`, so a reader is not told that a
+  particular scenario is flaky on evidence that only shows the run flipped.
 
 Close with what was excluded and why: the `deterministic` / `unproven` counts, step 1's `skipped`
 count, and how many flaky scenarios fell outside `limit`.
