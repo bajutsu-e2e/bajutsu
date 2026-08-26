@@ -7,7 +7,9 @@ override parsing, and the `simctl`-inventory derivation driven by captured `simc
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 
+from bajutsu import simctl
 from bajutsu.serve import capabilities as cap
 
 
@@ -51,10 +53,10 @@ def test_parse_capabilities_splits_on_comma_and_whitespace() -> None:
     assert cap.parse_capabilities(None) == set()
 
 
-def _fake_simctl(devices: dict[str, list[dict[str, str]]]):
+def _fake_simctl(devices: dict[str, list[dict[str, str]]]) -> simctl.RunFn:
     """A `simctl` RunFn returning a canned `list devices` JSON payload (keyed by runtime id)."""
 
-    def run(args, extra_env=None):
+    def run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
         return json.dumps({"devices": devices})
 
     return run

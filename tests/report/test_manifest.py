@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from _report import _failing, _passing
+from _report import _failing, _json_obj, _json_str, _passing, _scenarios
 
 from bajutsu.orchestrator import AlertEvent, RunResult, StepOutcome
 from bajutsu.report import junit_xml, manifest_dict, write_report
@@ -31,7 +31,7 @@ def test_manifest_records_backend() -> None:
     # and the manifest summarizes the run's actuator at top level.
     m = manifest_dict("run1", [_passing()])
     assert m["backend"] == "fake"
-    assert m["scenarios"][0]["backend"] == "fake"
+    assert _scenarios(m)[0]["backend"] == "fake"
 
 
 def test_manifest_joins_distinct_backends_across_scenarios() -> None:
@@ -55,7 +55,7 @@ def test_run_provenance_hashes_the_scenario_deterministically() -> None:
     p1 = run_provenance(yaml, git_revision=None)
     p2 = run_provenance(yaml, git_revision=None)
     assert p1["scenarioHash"] == p2["scenarioHash"]  # same content → same fingerprint
-    assert p1["scenarioHash"].startswith("sha256:")
+    assert _json_str(p1["scenarioHash"]).startswith("sha256:")
     # a different scenario fingerprints differently
     assert run_provenance(yaml + "\n", git_revision=None)["scenarioHash"] != p1["scenarioHash"]
 
@@ -132,7 +132,7 @@ def test_manifest_matrix_aggregates_per_engine_verdicts() -> None:
         _engine_result("login", "webkit", ok=False),
     ]
     m = manifest_dict("r", results)
-    matrix = m["matrix"]
+    matrix = _json_obj(m["matrix"])
     assert matrix["engines"] == ["chromium", "webkit"]
     assert matrix["scenarios"] == ["login"]
     cells = matrix["cells"]
@@ -148,7 +148,7 @@ def test_manifest_matrix_keeps_flat_engine_tagged_scenarios() -> None:
         _engine_result("login", "webkit", ok=False),
     ]
     m = manifest_dict("r", results)
-    assert [(s["scenario"], s["engine"]) for s in m["scenarios"]] == [
+    assert [(s["scenario"], s["engine"]) for s in _scenarios(m)] == [
         ("login", "chromium"),
         ("login", "webkit"),
     ]
@@ -211,7 +211,7 @@ def test_write_report(tmp_path: Path) -> None:
 
 def test_manifest_records_scenario_duration() -> None:
     r = RunResult(scenario="s1", ok=True, steps=[], duration_s=2.5)
-    assert manifest_dict("run1", [r])["scenarios"][0]["duration_s"] == 2.5
+    assert _scenarios(manifest_dict("run1", [r]))[0]["duration_s"] == 2.5
 
 
 def test_manifest_persists_video_anchor_s() -> None:
@@ -220,7 +220,7 @@ def test_manifest_persists_video_anchor_s() -> None:
     # absolute started_at beside it (BE-0348). Unlike before this item, it must reach the persisted
     # manifest.
     r = RunResult(scenario="s1", ok=True, steps=[], video_anchor_s=1_700_000_000.5)
-    scenario = manifest_dict("run1", [r])["scenarios"][0]
+    scenario = _scenarios(manifest_dict("run1", [r]))[0]
     assert scenario["video_anchor_s"] == 1_700_000_000.5
 
 
@@ -234,7 +234,7 @@ def test_manifest_excludes_wall_offset_s() -> None:
     from dataclasses import fields
 
     r = RunResult(scenario="s1", ok=True, steps=[], wall_offset_s=123456.789)
-    scenario = manifest_dict("run1", [r])["scenarios"][0]
+    scenario = _scenarios(manifest_dict("run1", [r]))[0]
     assert "wall_offset_s" not in scenario
     # Exactly this one field is missing — not a different field excluded by mistake, and not this
     # field plus others dropped by a broader (over-eager) exclusion.
@@ -244,7 +244,7 @@ def test_manifest_excludes_wall_offset_s() -> None:
 def test_manifest_records_device_environment() -> None:
     r = _passing()
     r.device, r.device_name, r.device_runtime = "SIM-1", "iPhone 15", "iOS 17.2"
-    scenario = manifest_dict("run1", [r])["scenarios"][0]
+    scenario = _scenarios(manifest_dict("run1", [r]))[0]
     assert scenario["device"] == "SIM-1"
     assert scenario["device_name"] == "iPhone 15"
     assert scenario["device_runtime"] == "iOS 17.2"
@@ -259,6 +259,6 @@ def test_manifest_records_dismissed_alerts() -> None:
         expect_alerts=[AlertEvent(label="Allow")],
     )
     m = manifest_dict("run1", [r])
-    scenario = m["scenarios"][0]
+    scenario = _scenarios(m)[0]
     assert scenario["steps"][0]["alerts"] == [{"label": "Not Now"}]
     assert scenario["expect_alerts"] == [{"label": "Allow"}]

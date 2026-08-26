@@ -185,5 +185,7 @@ def test_pixelmatch_diff_image(tmp_path: Path) -> None:
     assert diff_path.exists()
     diff_img = Image.open(diff_path)
     assert diff_img.size == (10, 10)
-    r, _g, _b, _a = diff_img.getpixel((5, 5))
+    pixel = diff_img.getpixel((5, 5))
+    assert isinstance(pixel, tuple)
+    r = pixel[0]
     assert r > 200

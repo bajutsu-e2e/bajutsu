@@ -160,7 +160,9 @@ def test_render_table_shape(tmp_path: Path) -> None:
     assert lines[2] == ("| BE-0009 | Widget | MCP | roadmaps/BE-0009-i/BE-0009-i.md |")
 
 
-def test_main_unknown_status_exits_nonzero(tmp_path: Path, capsys) -> None:
+def test_main_unknown_status_exits_nonzero(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """An unknown status on the CLI prints the valid values and exits non-zero."""
     roadmap = tmp_path / "roadmaps"
     _write_item(roadmap, "BE-0010", "j", _item("Proposal", "MCP", "J", "j", "BE-0010"))
@@ -171,7 +173,7 @@ def test_main_unknown_status_exits_nonzero(tmp_path: Path, capsys) -> None:
     assert "Proposal" in capsys.readouterr().err
 
 
-def test_main_valid_status_prints_table(tmp_path: Path, capsys) -> None:
+def test_main_valid_status_prints_table(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """A valid status prints the filtered table and exits zero."""
     roadmap = tmp_path / "roadmaps"
     _write_item(roadmap, "BE-0011", "k", _item("Proposal", "MCP", "Kappa", "k", "BE-0011"))
@@ -290,7 +292,9 @@ def test_render_table_with_status_adds_a_column(tmp_path: Path) -> None:
     assert lines[2] == "| BE-0033 | Widget | Deferred | MCP | roadmaps/BE-0033-o/BE-0033-o.md |"
 
 
-def test_main_without_a_filter_exits_nonzero(tmp_path: Path, capsys) -> None:
+def test_main_without_a_filter_exits_nonzero(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """An unfiltered CLI call names the filters instead of dumping every item."""
     roadmap = tmp_path / "roadmaps"
     _write_item(roadmap, "BE-0034", "p", _item("Proposal", "MCP", "P", "p", "BE-0034"))
@@ -302,7 +306,9 @@ def test_main_without_a_filter_exits_nonzero(tmp_path: Path, capsys) -> None:
     assert "--grep" in err and "--topic" in err and "--id" in err
 
 
-def test_main_status_query_keeps_the_four_column_table(tmp_path: Path, capsys) -> None:
+def test_main_status_query_keeps_the_four_column_table(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """A --status query renders the original header, so the roadmap-filter skill's shape holds."""
     roadmap = tmp_path / "roadmaps"
     _write_item(roadmap, "BE-0035", "q", _item("Proposal", "MCP", "Q", "q", "BE-0035"))
@@ -311,7 +317,9 @@ def test_main_status_query_keeps_the_four_column_table(tmp_path: Path, capsys) -
     assert capsys.readouterr().out.splitlines()[0] == "| ID | Item | Topic | Path |"
 
 
-def test_main_grep_query_shows_the_status_column(tmp_path: Path, capsys) -> None:
+def test_main_grep_query_shows_the_status_column(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """A keyword query can span statuses, so its table names each row's own Status."""
     roadmap = tmp_path / "roadmaps"
     _write_item(roadmap, "BE-0036", "r", _item("Deferred", "MCP", "Rabbit", "r", "BE-0036"))
@@ -322,7 +330,7 @@ def test_main_grep_query_shows_the_status_column(tmp_path: Path, capsys) -> None
     assert "Deferred" in out[2]
 
 
-def test_main_bad_id_exits_nonzero(tmp_path: Path, capsys) -> None:
+def test_main_bad_id_exits_nonzero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """An unparseable --id fails on the CLI with the accepted shapes named."""
     roadmap = tmp_path / "roadmaps"
     _write_item(roadmap, "BE-0037", "s", _item("Proposal", "MCP", "S", "s", "BE-0037"))

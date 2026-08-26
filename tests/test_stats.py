@@ -736,3 +736,47 @@ def test_render_html_omits_the_unknown_os_note_when_every_series_has_one() -> No
         )
     )
     assert "no single recorded device OS" not in html
+
+
+def test_render_html_unknown_os_note_covers_the_whole_aggregation() -> None:
+    # #1718: the note counts every series, while the Slowest table renders only its top 20 rows, so
+    # the note belongs to the page rather than to that table — printed under a 20-row slice, a count
+    # taken over more series is a row that can't be reconciled with what it sits beneath, the very
+    # problem this dashboard's tables had. Placed after both tables it also covers the Flaky one,
+    # which groups on the same key.
+    scenarios: list[dict[str, Any]] = [
+        {
+            "scenario": f"s{i:02d}",
+            "ok": True,
+            "duration_s": 100.0 - i,
+            "device_runtime": "iOS 18.6",
+        }
+        for i in range(21)
+    ]
+    # The slowest ranking is by descending average duration, so the shortest series sorts last —
+    # off the rendered slice entirely. It is the only one with no recorded OS.
+    scenarios.append({"scenario": "unseen", "ok": True, "duration_s": 0.5})
+    html = _stats.render_html(
+        _stats.aggregate_runs(
+            [
+                _manifest("20260101-000000", scenario_hash="sha256:aaa", scenarios=scenarios),
+                # A second run flips one verdict, so the Flaky table renders too.
+                _manifest(
+                    "20260102-000000",
+                    scenario_hash="sha256:aaa",
+                    scenarios=[
+                        {
+                            "scenario": "s00",
+                            "ok": False,
+                            "duration_s": 100.0,
+                            "device_runtime": "iOS 18.6",
+                        }
+                    ],
+                ),
+            ]
+        )
+    )
+    note = "1 history with no single recorded device OS"
+    assert note in html
+    assert "unseen" not in html  # the counted series is itself off the rendered slice
+    assert html.index("Flaky scenarios") < html.index(note)

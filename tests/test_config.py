@@ -171,10 +171,10 @@ def test_ai_language_resolves_and_target_overrides() -> None:
         "  s:\n    bundleId: com.x\n    ai: { language: ja }\n"
         "  t:\n    bundleId: com.y\n"
     )
-    assert resolve(cfg, "s").ai is not None and resolve(cfg, "s").ai.language == "ja"  # override
-    assert (
-        resolve(cfg, "t").ai is not None and resolve(cfg, "t").ai.language == "en"
-    )  # from defaults
+    s_ai = resolve(cfg, "s").ai
+    assert s_ai is not None and s_ai.language == "ja"  # override
+    t_ai = resolve(cfg, "t").ai
+    assert t_ai is not None and t_ai.language == "en"  # from defaults
 
 
 def test_ai_block_keys_in_config_are_rejected() -> None:

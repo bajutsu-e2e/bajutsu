@@ -4,6 +4,7 @@ run-time interpolation that keeps the value out of the recorded scenario."""
 from __future__ import annotations
 
 from bajutsu.config import load_config, resolve
+from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence.redaction import PLACEHOLDER, Redactor
 from bajutsu.orchestrator import run_scenario
@@ -38,9 +39,20 @@ def test_redactor_masks_literal_value_in_text() -> None:
 
 def test_redactor_masks_value_in_element_tree() -> None:
     r = Redactor(Redact(), values=["s3cr3t"])
-    els = [{"identifier": "f", "label": "token: s3cr3t", "value": "s3cr3t", "frame": (0, 0, 1, 1)}]
-    out = r.redact_elements(els)  # type: ignore[arg-type]
-    assert PLACEHOLDER in out[0]["label"] and out[0]["value"] == PLACEHOLDER
+    els: list[base.Element] = [
+        {
+            "identifier": "f",
+            "label": "token: s3cr3t",
+            "value": "s3cr3t",
+            "traits": [],
+            "frame": (0.0, 0.0, 1.0, 1.0),
+            "nativeZ": None,
+        }
+    ]
+    out = r.redact_elements(els)
+    label = out[0]["label"]
+    assert label is not None and PLACEHOLDER in label
+    assert out[0]["value"] == PLACEHOLDER
 
 
 def test_longer_values_masked_first() -> None:

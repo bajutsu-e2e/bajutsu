@@ -150,14 +150,16 @@ def test_no_plaintext_get_reachable() -> None:
     assert not hasattr(DbSecretStore, "get")
 
 
-def test_fernet_from_env_requires_the_key(monkeypatch) -> None:
+def test_fernet_from_env_requires_the_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("BAJUTSU_SECRETS_KEY", raising=False)
     assert fernet_from_env() is None
     monkeypatch.setenv("BAJUTSU_SECRETS_KEY", Fernet.generate_key().decode("ascii"))
     assert fernet_from_env() is not None
 
 
-def test_fernet_from_env_rejects_a_malformed_key_with_a_named_error(monkeypatch) -> None:
+def test_fernet_from_env_rejects_a_malformed_key_with_a_named_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # A malformed key fails loud, but the message names the offending variable so a startup failure
     # is diagnosable rather than a bare cryptography error.
     monkeypatch.setenv("BAJUTSU_SECRETS_KEY", "not-a-valid-fernet-key")

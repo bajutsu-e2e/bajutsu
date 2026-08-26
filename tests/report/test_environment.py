@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from _report import _passing
+from _report import _passing, _scenarios
 
 from bajutsu.drivers.actuation import Actuation
 from bajutsu.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
@@ -194,7 +194,7 @@ def test_device_shown_in_manifest_and_report() -> None:
     a, b = _passing(), _passing()
     a.device, b.device = "SIM-AAAA", "SIM-BBBB"
     m = manifest_dict("run1", [a, b])
-    assert [s["device"] for s in m["scenarios"]] == ["SIM-AAAA", "SIM-BBBB"]
+    assert [s["device"] for s in _scenarios(m)] == ["SIM-AAAA", "SIM-BBBB"]
     out = html_report("run1", [a, b])
     assert 'class="dev"' in out and "ran on simulator SIM-AAAA" in out  # per-scenario badge
     assert "2 devices" in out  # header summary chip when split across devices

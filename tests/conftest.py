@@ -8,8 +8,9 @@ one place. Plain functions/classes (not fixtures) so they can be used at module 
 
 from __future__ import annotations
 
+import logging
 import os
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -24,6 +25,8 @@ from scripts.build_roadmap_index import tracking_issue_url
 
 if TYPE_CHECKING:
     from sqlalchemy import Engine
+
+    from bajutsu.serve.artifacts import Artifact
 
 
 @pytest.fixture(autouse=True)
@@ -133,6 +136,29 @@ def el(
         "frame": frame,
         "nativeZ": None,
     }
+
+
+# Several public helpers return `dict[str, object]` — an honest type for a JSON document, and one an
+# assertion cannot index into. These narrow a value out of such a document with a real runtime check,
+# so a malformed document fails the test loudly instead of being cast away (BE-0388).
+
+
+def json_obj(value: object) -> dict[str, Any]:
+    """One nested object out of a JSON document."""
+    assert isinstance(value, dict)
+    return value
+
+
+def json_list(value: object) -> list[Any]:
+    """One nested array out of a JSON document."""
+    assert isinstance(value, list)
+    return value
+
+
+def json_str(value: object) -> str:
+    """One string value out of a JSON document."""
+    assert isinstance(value, str)
+    return value
 
 
 class FakeBlock:
@@ -341,3 +367,116 @@ def run_sink(tmp_path: Path) -> RunArtifactWriter:
     from bajutsu.evidence.redaction import Redactor
 
     return RunArtifactWriter(tmp_path, Redactor(None))
+
+
+def log_field(record: logging.LogRecord, name: str) -> object:
+    """One structured `extra=` field off a log record.
+
+    `logging.LogRecord` declares no such attribute — the logging module sets it on the instance — so
+    the read goes through `getattr` rather than a suppression at every assertion (BE-0388).
+    """
+    return getattr(record, name)
+
+
+class FakeObjectStore:
+    """An in-memory `ObjectStore` (BE-0204) for the uploaded-bundle durable-storage tests (BE-0243):
+    holds objects in a plain dict, and every method raises whatever `fail_with` is set to (if any) —
+    used to exercise a store failure (read or write) without a real S3/GCS client.
+
+    It implements the whole `ObjectStore` protocol, not just the slice one test needs, so a serve
+    test subclasses it for its own specialization instead of redefining a partial store that no
+    longer type-checks against the seam (BE-0388)."""
+
+    def __init__(self, objects: dict[str, bytes] | None = None) -> None:
+        self.objects: dict[str, bytes] = dict(objects or {})
+        self.put_calls: list[str] = []
+        self.fail_with: Exception | None = None
+
+    def _fail_if_armed(self) -> None:
+        """Raise the armed failure, when this store is armed to fail.
+
+        Read through a local so what is raised is unambiguously an exception, never the `None` the
+        attribute also admits.
+        """
+        failure = self.fail_with
+        if failure is not None:
+            raise failure
+
+    def exists(self, key: str) -> bool:
+        self._fail_if_armed()
+        return key in self.objects
+
+    def get_bytes(self, key: str) -> bytes | None:
+        self._fail_if_armed()
+        return self.objects.get(key)
+
+    def put_bytes(self, key: str, data: bytes, *, content_type: str = "") -> None:
+        self._fail_if_armed()
+        self.put_calls.append(key)
+        self.objects[key] = data
+
+    def put_file(self, key: str, path: Path, *, content_type: str = "") -> None:
+        self._fail_if_armed()
+        self.put_calls.append(key)
+        self.objects[key] = path.read_bytes()
+
+    def presigned_url(self, key: str) -> str:
+        self._fail_if_armed()
+        return f"https://signed.example/{key}"
+
+    def presigned_put_url(self, key: str, *, content_type: str = "", ttl: int = 900) -> str:
+        self._fail_if_armed()
+        return f"https://signed.example/put/{key}"
+
+    def list_keys(self, prefix: str) -> list[str]:
+        self._fail_if_armed()
+        return [k for k in self.objects if k.startswith(prefix)]
+
+    def delete_key(self, key: str) -> None:
+        self._fail_if_armed()
+        self.objects.pop(key, None)
+
+    def delete_keys(self, keys: Iterable[str]) -> None:
+        for key in keys:
+            self.delete_key(key)
+
+
+class StubArtifactStore:
+    """An `ArtifactStore` that answers "nothing here" to everything (BE-0388).
+
+    A serve test that needs one behavior subclasses this and overrides that method alone, rather
+    than defining a partial store that satisfies neither the protocol nor the next reader.
+    """
+
+    def get(self, rel: str) -> Artifact | None:
+        return None
+
+    def open_bytes(self, rel: str) -> bytes | None:
+        return None
+
+    def exists(self, rel: str) -> bool:
+        return False
+
+    def list_runs(self) -> list[dict[str, Any]]:
+        return []
+
+    def list_crawl_runs(self) -> list[dict[str, Any]]:
+        return []
+
+    def render_report(self, run_id: str) -> Artifact | None:
+        return None
+
+    def archive(self, run_id: str) -> Artifact | None:
+        return None
+
+    def soft_delete_run(self, run_id: str) -> bool:
+        return False
+
+    def restore_run(self, run_id: str) -> bool:
+        return False
+
+    def purge_run(self, run_id: str) -> bool:
+        return False
+
+    def list_trashed_runs(self) -> list[dict[str, Any]]:
+        return []

@@ -32,14 +32,17 @@ def _workflow() -> dict[str, Any]:
     return parsed
 
 
-def _triggers(doc: dict[str, Any]) -> dict[str, Any]:
+def _triggers(doc: dict[Any, Any]) -> dict[str, Any]:
     """The `on:` block, which YAML resolves to the boolean ``True`` rather than the string "on"."""
-    return doc[True] if True in doc else doc["on"]
+    triggers = doc[True] if True in doc else doc["on"]
+    assert isinstance(triggers, dict)
+    return triggers
 
 
 def _step(job: dict[str, Any], name: str) -> dict[str, Any]:
     for step in job["steps"]:
         if step.get("name") == name:
+            assert isinstance(step, dict)
             return step
     raise AssertionError(f"no step named {name!r}")
 

@@ -9,10 +9,14 @@ explicit, since its runner must be signed and is not bundled (BE-0288).
 
 from __future__ import annotations
 
+import hashlib
 import os
 import plistlib
+import subprocess
 import time
+from collections.abc import Buffer
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -61,7 +65,7 @@ def test_missing_test_runner_runs_the_build_command(
     def _fake_run(argv: list[str], check: bool = False) -> None:
         runner.write_bytes(b"")  # the build produces the configured path
 
-    monkeypatch.setattr(xcuitest.subprocess, "run", _fake_run)
+    monkeypatch.setattr(subprocess, "run", _fake_run)
     assert xcuitest._resolve_runner(cfg, "simulator") == runner
 
 
@@ -135,13 +139,13 @@ def test_materialize_copies_once_and_reuses(
     # Count actual copies by the single os.replace each materialize does (copytree recurses into
     # subdirectories, so counting it would over-count a multi-file bundle).
     copies = {"n": 0}
-    real_replace = _bundled_runner.os.replace
+    real_replace = os.replace
 
-    def _counting_replace(src: object, dst: object) -> object:
+    def _counting_replace(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> None:
         copies["n"] += 1
         return real_replace(src, dst)
 
-    monkeypatch.setattr(_bundled_runner.os, "replace", _counting_replace)
+    monkeypatch.setattr(os, "replace", _counting_replace)
 
     first = _bundled_runner.materialize(source, version="1.2.3", cache_root=cache)
     assert first.is_file()
@@ -185,13 +189,13 @@ def test_products_digest_skips_rehashing_an_unchanged_tree(
     source = _products(tmp_path / "bundle")
 
     calls = {"n": 0}
-    real_sha256 = _bundled_runner.hashlib.sha256
+    real_sha256 = hashlib.sha256
 
-    def _counting_sha256(*args: object, **kwargs: object) -> object:
+    def _counting_sha256(data: Buffer = b"", **kwargs: Any) -> hashlib._Hash:
         calls["n"] += 1
-        return real_sha256(*args, **kwargs)
+        return real_sha256(data, **kwargs)
 
-    monkeypatch.setattr(_bundled_runner.hashlib, "sha256", _counting_sha256)
+    monkeypatch.setattr(hashlib, "sha256", _counting_sha256)
 
     first = _bundled_runner._products_digest(source)
     second = _bundled_runner._products_digest(source)
@@ -269,7 +273,7 @@ def test_materialize_survives_a_concurrent_winner(
         _products(dest)
         raise OSError("directory not empty")
 
-    monkeypatch.setattr(_bundled_runner.os, "replace", _racing_replace)
+    monkeypatch.setattr(os, "replace", _racing_replace)
 
     result = _bundled_runner.materialize(source, version="1.2.3", cache_root=cache)
     assert result == dest / "BajutsuRunner.xctestrun"
@@ -288,7 +292,7 @@ def test_materialize_reraises_a_real_failure(
     def _failing_replace(src: object, dst: object) -> object:
         raise OSError("disk full")
 
-    monkeypatch.setattr(_bundled_runner.os, "replace", _failing_replace)
+    monkeypatch.setattr(os, "replace", _failing_replace)
 
     with pytest.raises(OSError, match="disk full"):
         _bundled_runner.materialize(source, version="1.2.3", cache_root=cache)
@@ -363,10 +367,10 @@ def test_runner_source_never_runs_build_or_materializes(
     bundle = _products(tmp_path / "bundle")
     monkeypatch.setattr(xcuitest, "bundled_products_dir", lambda: bundle)
 
-    def _boom(*args: object, **kwargs: object) -> object:
+    def _boom(*args: object, **kwargs: Any) -> object:
         raise AssertionError("runner_source must not run build or materialize")
 
-    monkeypatch.setattr(xcuitest.subprocess, "run", _boom)
+    monkeypatch.setattr(subprocess, "run", _boom)
     monkeypatch.setattr(xcuitest, "materialize", _boom)
 
     assert xcuitest.runner_source(None, "simulator") == "bundled (wheel-shipped Simulator runner)"

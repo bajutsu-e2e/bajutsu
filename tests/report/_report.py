@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import RunResult, run_scenario
@@ -45,3 +47,27 @@ def _failing() -> RunResult:
             }
         ),
     )
+
+
+# The report builders return `dict[str, object]` — an honest type for a JSON document, and one an
+# assertion cannot index into. These narrow a value out of such a document with a real runtime
+# check, so a malformed document fails the test loudly instead of being cast away (BE-0388).
+
+
+def _scenarios(manifest: dict[str, object]) -> list[Any]:
+    """The manifest's per-scenario entries."""
+    entries = manifest["scenarios"]
+    assert isinstance(entries, list)
+    return entries
+
+
+def _json_obj(value: object) -> dict[str, Any]:
+    """One nested object out of a JSON document."""
+    assert isinstance(value, dict)
+    return value
+
+
+def _json_str(value: object) -> str:
+    """One string value out of a JSON document."""
+    assert isinstance(value, str)
+    return value

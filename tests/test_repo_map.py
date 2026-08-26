@@ -208,7 +208,7 @@ def test_a_gitignored_page_is_left_out(tmp_path: Path) -> None:
 
 
 def test_a_gitignored_page_is_left_out_under_a_hook_environment(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A git hook exports GIT_DIR into everything it runs; the map must still answer for `cwd`.
 
@@ -244,13 +244,15 @@ def test_an_untracked_page_is_still_listed(tmp_path: Path) -> None:
     assert [row.name for row in rm.iter_docs(tmp_path / "docs")] == ["Draft"]
 
 
-def test_main_requires_a_mode(capsys) -> None:
+def test_main_requires_a_mode(capsys: pytest.CaptureFixture[str]) -> None:
     """Asking for no map at all is a usage error, not an empty table."""
     with pytest.raises(SystemExit):
         rm.main([])
 
 
-def test_main_prints_a_table_and_is_deterministic(tmp_path: Path, capsys) -> None:
+def test_main_prints_a_table_and_is_deterministic(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """The same tree prints the same bytes, so the map can never drift between two runs."""
     _write(tmp_path / "docs" / "a.md", "# A\n\nProse.\n")
 
@@ -262,7 +264,9 @@ def test_main_prints_a_table_and_is_deterministic(tmp_path: Path, capsys) -> Non
     assert first.splitlines()[0] == "| Path | Lines | Title | Summary |"
 
 
-def test_main_reports_a_missing_file_without_a_traceback(tmp_path: Path, capsys) -> None:
+def test_main_reports_a_missing_file_without_a_traceback(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """A bad --headings path fails with a message a caller can act on."""
     code = rm.main(["--headings", str(tmp_path / "nope.md")])
 

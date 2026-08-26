@@ -274,6 +274,7 @@ def test_text_editing_steps_are_one_action() -> None:
 def test_handle_system_alert_parses_with_label_selector() -> None:
     step = Step.model_validate({"handleSystemAlert": {"sel": {"label": "Allow"}, "timeout": 5}})
     assert step.handle_system_alert is not None
+    assert step.handle_system_alert.sel is not None
     assert step.handle_system_alert.sel.label == "Allow"
     assert step.handle_system_alert.timeout == 5.0
 

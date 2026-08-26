@@ -15,6 +15,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from _shared import FakeObjectStore
 from sqlalchemy import Engine, select
 
 from bajutsu.serve import operations as ops
@@ -317,33 +318,6 @@ def test_runs_payload_sweeps_before_listing(tmp_path: Path) -> None:
     assert state.artifacts.list_trashed_runs() == []
 
 
-class _FakeObjectStore:
-    """A mutable in-memory ObjectStore slice, so the sweep's object-store branch is driven
-    end-to-end (not just the local-filesystem fallback the other hosted tests use)."""
-
-    def __init__(self, objects: dict[str, bytes] | None = None) -> None:
-        self._o = dict(objects or {})
-
-    def exists(self, key: str) -> bool:
-        return key in self._o
-
-    def get_bytes(self, key: str) -> bytes | None:
-        return self._o.get(key)
-
-    def put_bytes(self, key: str, data: bytes, *, content_type: str = "") -> None:
-        self._o[key] = data
-
-    def list_keys(self, prefix: str) -> list[str]:
-        return [k for k in self._o if k.startswith(prefix)]
-
-    def delete_key(self, key: str) -> None:
-        self._o.pop(key, None)
-
-    def delete_keys(self, keys) -> None:
-        for k in list(keys):
-            self._o.pop(k, None)
-
-
 def test_sweep_end_to_end_on_the_object_store_backend(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
@@ -353,7 +327,7 @@ def test_sweep_end_to_end_on_the_object_store_backend(
     from bajutsu.serve.state import StoreBundle
 
     prefix = "artifacts/default/"
-    fake = _FakeObjectStore({f"{prefix}r1/manifest.json": b'{"ok": true, "scenarios": []}'})
+    fake = FakeObjectStore({f"{prefix}r1/manifest.json": b'{"ok": true, "scenarios": []}'})
     art = ObjectStorageArtifactStore(fake, prefix=prefix)
     state, repo = _hosted_state(serve_engine, tmp_path)
     repo.record_run(RunRecord(id="r1", org_id="default", status="done", ok=True))

@@ -8,6 +8,7 @@ import signal
 import subprocess
 import sys
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,17 @@ from bajutsu.cancellation import (
     handler_deadline,
     not_cancelled,
 )
+
+
+def _arm(
+    armed: list[float],
+    real: Callable[..., tuple[float, float]],
+    which: int,
+    seconds: float,
+) -> tuple[float, float]:
+    """Record the interval the code under test asked for, then disarm the real timer."""
+    armed.append(seconds)
+    return real(which, 0.0)
 
 
 def test_sigterm_requests_cancellation_instead_of_ending_the_process() -> None:
@@ -98,7 +110,7 @@ def test_a_second_sigterm_does_not_re_arm_the_deadline(monkeypatch: pytest.Monke
     armed: list[float] = []
     real = signal.setitimer
     monkeypatch.setattr(
-        signal, "setitimer", lambda which, seconds, *a: armed.append(seconds) or real(which, 0.0)
+        signal, "setitimer", lambda which, seconds, *a: _arm(armed, real, which, seconds)
     )
     with graceful_sigterm():
         signal.raise_signal(signal.SIGTERM)

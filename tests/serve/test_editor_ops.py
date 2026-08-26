@@ -188,7 +188,7 @@ def test_resolve_pick_reads_elements_from_object_storage(tmp_path: Path) -> None
     404'd here, even though the elements were present in object storage."""
     state, _runs = _state(tmp_path)
     key = "run1/00-s/step0/elements.json"
-    state.artifacts = ObjectStorageArtifactStore(  # type: ignore[assignment]
+    state.artifacts = ObjectStorageArtifactStore(
         FakeObjectStore({key: json.dumps(_elements()).encode()}), prefix=""
     )
 
@@ -1223,9 +1223,7 @@ def test_read_scenario_with_run_reads_from_object_storage(tmp_path: Path) -> Non
         step_id = f"00-login/step{i}"
         objects[f"run1/{step_id}/elements.json"] = json.dumps(_elements()).encode()
         objects[f"run1/{step_id}/before.png"] = b"PNG"
-    state.artifacts = ObjectStorageArtifactStore(  # type: ignore[assignment]
-        FakeObjectStore(objects), prefix=""
-    )
+    state.artifacts = ObjectStorageArtifactStore(FakeObjectStore(objects), prefix="")
 
     payload, status = ops.read_scenario(
         state,

@@ -18,7 +18,13 @@ from pathlib import Path
 import pytest
 
 from bajutsu import adb, adb_resident
-from bajutsu.drivers.adb import ActRequest, AdbResidentError, HierarchyRead, parse_hierarchy
+from bajutsu.drivers.adb import (
+    ActRequest,
+    AdbActUncertain,
+    AdbResidentError,
+    HierarchyRead,
+    parse_hierarchy,
+)
 
 # One app window (a Views button) — the content the platform `uiautomator dump` returns.
 _APP_WINDOW = """  <node index="0" class="android.widget.FrameLayout" \
@@ -685,14 +691,14 @@ def test_act_separates_a_reply_lost_after_the_send_from_one_never_sent() -> None
         closed = probe.getsockname()[
             1
         ]  # bound only long enough to reserve a port nothing listens on
-    with pytest.raises(adb_resident.AdbResidentError) as never_sent:
+    with pytest.raises(AdbResidentError) as never_sent:
         adb_resident.act(closed, _act_request(), timeout=0.2)
-    assert not isinstance(never_sent.value, adb_resident.AdbActUncertain)
+    assert not isinstance(never_sent.value, AdbActUncertain)
 
     port, server = _serve_once()
     _SourceHandler.act_drop_reply = True
     try:
-        with pytest.raises(adb_resident.AdbActUncertain, match="sent but its reply was lost"):
+        with pytest.raises(AdbActUncertain, match="sent but its reply was lost"):
             adb_resident.act(port, _act_request())
     finally:
         _SourceHandler.act_drop_reply = False

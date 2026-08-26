@@ -16,7 +16,9 @@ def _themes_global(body: bytes) -> list[dict[str, str]]:
     """The `window.__bajutsuThemes=[…]` array the index inlines for the picker."""
     m = re.search(rb"window\.__bajutsuThemes=(\[.*?\]);window\.__bajutsuDefaultTheme=", body)
     assert m, "index did not expose window.__bajutsuThemes"
-    return json.loads(m.group(1))
+    themes = json.loads(m.group(1))
+    assert isinstance(themes, list)
+    return themes
 
 
 def _picker_options(body: bytes) -> list[str]:

@@ -38,6 +38,21 @@ _VIEWPORT: base.Point = (300.0, 800.0)
 _TOP_INSET = 10.0
 
 
+def _scroll_gestures(driver: FakeDriver) -> list[tuple[base.Point, base.Point]]:
+    """Each scroll the driver performed, as its (from, to) points.
+
+    `FakeDriver.actions` logs `(kind, arg)` with `arg` typed `object`, so the read asserts the shape
+    rather than casting it away: a scroll logged as anything else fails the test loudly (BE-0388).
+    """
+    gestures: list[tuple[base.Point, base.Point]] = []
+    for kind, arg in driver.actions:
+        if kind != "scroll":
+            continue
+        assert isinstance(arg, tuple) and len(arg) == 2
+        gestures.append(arg)
+    return gestures
+
+
 def _row(i: int, *, prefix: str = "row", x: float = 0.0, w: float = 280.0) -> base.Element:
     return {
         "identifier": f"{prefix}.{i}",
@@ -548,7 +563,7 @@ def test_an_overshooting_step_shrinks_the_step_and_looks_back() -> None:
     # row that exists as missing.
     driver = _FlingingDriver(rows=40, overshoot=3.0)
     _do_action(driver, Step(scroll=Scroll.model_validate({"to": {"id": "row.10"}})))
-    gestures = [arg for kind, arg in driver.actions if kind == "scroll"]
+    gestures = _scroll_gestures(driver)
     assert len(gestures) == 2
     (_, first_from_y), (_, first_to_y) = gestures[0]
     (_, back_from_y), (_, back_to_y) = gestures[1]
@@ -578,7 +593,7 @@ def test_scrolling_into_an_element_taller_than_the_viewport_is_not_an_overshoot(
     tall = _el("tall", (0.0, _TOP_INSET + 8 * _ROW_H, 280.0, 2400.0))
     driver = _scrollable([*rows, tall])
     _do_action(driver, Step(scroll=Scroll.model_validate({"to": {"id": "tall"}})))
-    gestures = [arg for kind, arg in driver.actions if kind == "scroll"]
+    gestures = _scroll_gestures(driver)
     assert gestures, "expected at least one scroll"
     # Every gesture went the same way: no look-back was triggered, and none was needed.
     assert all(to_y < from_y for (_, from_y), (_, to_y) in gestures)
@@ -674,7 +689,7 @@ def test_within_anchors_the_gesture_on_the_container() -> None:
         driver,
         Step(scroll=Scroll.model_validate({"to": {"id": "c.19"}, "within": {"id": "list"}})),
     )
-    scrolls = [arg for kind, arg in driver.actions if kind == "scroll"]
+    scrolls = _scroll_gestures(driver)
     assert scrolls, "expected at least one scroll"
     (from_x, _from_y), _ = scrolls[0]
     assert from_x == 300.0  # the container's center x (200 + 200/2), not the screen center (200)
@@ -720,7 +735,7 @@ def test_a_horizontal_scroll_compares_positions_along_its_own_axis() -> None:
     )
     frame = base.resolve_unique(driver.query(), {"id": "col.9"})["frame"]
     assert 0.0 <= base.frame_center(frame)[0] <= _VIEWPORT[0]
-    gestures = [arg for kind, arg in driver.actions if kind == "scroll"]
+    gestures = _scroll_gestures(driver)
     assert all(from_y == to_y for (_, from_y), (_, to_y) in gestures)  # a sideways gesture
 
 
@@ -729,7 +744,7 @@ def test_a_lazy_tree_shows_its_motion_through_the_rows_it_drops() -> None:
     # shared across a step and the identity multiset is what carries the motion.
     class _LazyDriver(FakeDriver):
         def query(self) -> list[base.Element]:
-            viewport = base.Frame((0.0, 0.0, _VIEWPORT[0], _VIEWPORT[1]))
+            viewport: base.Frame = (0.0, 0.0, _VIEWPORT[0], _VIEWPORT[1])
             return [el for el in super().query() if base.contains(viewport, el["frame"])]
 
     driver = _LazyDriver(screen=[_row(i) for i in range(20)], viewport=_VIEWPORT)
@@ -802,7 +817,7 @@ def test_scrolling_out_of_an_element_taller_than_the_viewport_is_not_an_overshoo
     rows = [_el(f"row.{i}", (0.0, 2400.0 + 10.0 + i * _ROW_H, 280.0, _ROW_H)) for i in range(10)]
     driver = _scrollable([tall, *rows])
     _do_action(driver, Step(scroll=Scroll.model_validate({"to": {"id": "row.9"}})))
-    gestures = [arg for kind, arg in driver.actions if kind == "scroll"]
+    gestures = _scroll_gestures(driver)
     assert all(to_y < from_y for (_, from_y), (_, to_y) in gestures)  # no look-back was triggered
 
 
@@ -823,7 +838,7 @@ def test_a_list_of_near_full_screen_cards_is_not_read_as_overshooting() -> None:
     cards = [_el(f"card.{i}", (10.0, 10.0 + i * 700.0, 280.0, 690.0)) for i in range(6)]
     driver = _scrollable(cards)
     _do_action(driver, Step(scroll=Scroll.model_validate({"to": {"id": "card.5"}})))
-    gestures = [arg for kind, arg in driver.actions if kind == "scroll"]
+    gestures = _scroll_gestures(driver)
     assert all(to_y < from_y for (_, from_y), (_, to_y) in gestures)  # no look-back was triggered
 
 
@@ -833,7 +848,7 @@ def test_a_look_back_step_cannot_trigger_another_look_back() -> None:
     driver = _FlingingDriver(rows=400, overshoot=10.0)
     with pytest.raises(base.ElementNotFound, match="overshot the region"):
         _do_action(driver, Step(scroll=Scroll.model_validate({"to": {"id": "missing"}})))
-    gestures = [arg for kind, arg in driver.actions if kind == "scroll"]
+    gestures = _scroll_gestures(driver)
     back = [to_y > from_y for (_, from_y), (_, to_y) in gestures]
     assert any(back), "expected the recovery to look back at least once"
     assert not any(a and b for a, b in itertools.pairwise(back))

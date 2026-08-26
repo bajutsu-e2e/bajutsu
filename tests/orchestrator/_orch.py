@@ -1,9 +1,11 @@
-"""Shared harness for the orchestrator test split: a logical clock and a scenario builder."""
+"""Shared harness for the orchestrator test split: a logical clock, a scenario builder, and
+the driver action-log reader the interrupt and guard tests assert on."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
+from bajutsu.drivers.fake import FakeDriver
 from bajutsu.scenario import Scenario
 
 
@@ -25,3 +27,19 @@ class FakeClock:
 
 def _scenario(data: dict[str, object]) -> Scenario:
     return Scenario.model_validate(data)
+
+
+def _tap_ids(driver: FakeDriver) -> list[object]:
+    """The `id` of each tap the driver performed, in order.
+
+    `FakeDriver.actions` logs `(kind, arg)` with `arg` typed `object`, so the read asserts the shape
+    rather than casting it away: a tap logged as something other than a selector mapping fails the
+    test loudly (BE-0388).
+    """
+    ids: list[object] = []
+    for kind, arg in driver.actions:
+        if kind != "tap":
+            continue
+        assert isinstance(arg, dict)
+        ids.append(arg.get("id"))
+    return ids

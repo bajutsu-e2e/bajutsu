@@ -10,11 +10,15 @@ import json
 import threading
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import FakeObjectStore as FakeObjectStore
+from conftest import StubArtifactStore as StubArtifactStore
+from conftest import log_field as log_field
 
 from bajutsu import serve as srv
 
@@ -67,14 +71,14 @@ class FakeProc:
         pass
 
 
-def fake_popen(lines: list[str], code: int = 0):  # type: ignore[no-untyped-def]
+def fake_popen(lines: list[str], code: int = 0) -> Callable[..., FakeProc]:
     def popen(_cmd: list[str], **_kw: Any) -> FakeProc:
         return FakeProc(lines, code)
 
     return popen
 
 
-def _serve(state: srv.ServeState):  # type: ignore[no-untyped-def]
+def _serve(state: srv.ServeState) -> tuple[ThreadingHTTPServer, int]:
     """Start the serve HTTP handler on an ephemeral port; return (server, port)."""
     server = srv.make_server(state, port=0)
     # serve_forever polls the shutdown flag every `poll_interval` (default 0.5s), so each test's
@@ -84,7 +88,9 @@ def _serve(state: srv.ServeState):  # type: ignore[no-untyped-def]
     threading.Thread(
         target=server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True
     ).start()
-    return server, server.server_address[1]
+    port = server.server_address[1]
+    assert isinstance(port, int)
+    return server, port
 
 
 def _get(port: int, path: str) -> tuple[int, bytes, str]:
@@ -134,36 +140,3 @@ def patch_gcs_client(monkeypatch: pytest.MonkeyPatch) -> None:
     from google.cloud import storage
 
     monkeypatch.setattr(storage, "Client", FakeGCSClient)
-
-
-class FakeObjectStore:
-    """An in-memory `ObjectStore` (BE-0204) for the uploaded-bundle durable-storage tests (BE-0243):
-    holds objects in a plain dict, and every method raises whatever `fail_with` is set to (if any) —
-    used to exercise a store failure (read or write) without a real S3/GCS client."""
-
-    def __init__(self, objects: dict[str, bytes] | None = None) -> None:
-        self.objects: dict[str, bytes] = dict(objects or {})
-        self.put_calls: list[str] = []
-        self.fail_with: Exception | None = None
-
-    def exists(self, key: str) -> bool:
-        if self.fail_with is not None:
-            raise self.fail_with
-        return key in self.objects
-
-    def get_bytes(self, key: str) -> bytes | None:
-        if self.fail_with is not None:
-            raise self.fail_with
-        return self.objects.get(key)
-
-    def put_bytes(self, key: str, data: bytes, *, content_type: str = "") -> None:
-        if self.fail_with is not None:
-            raise self.fail_with
-        self.put_calls.append(key)
-        self.objects[key] = data
-
-    def put_file(self, key: str, path: Path, *, content_type: str = "") -> None:
-        if self.fail_with is not None:
-            raise self.fail_with
-        self.put_calls.append(key)
-        self.objects[key] = path.read_bytes()

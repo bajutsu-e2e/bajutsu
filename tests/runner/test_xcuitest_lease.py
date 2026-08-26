@@ -3,14 +3,15 @@
 `launch_driver` and `environment_for` themselves already have off-device coverage
 (`tests/runner/test_launch.py`, `tests/platform_lifecycle/`); what only this module pins is the
 pairing — that the returned teardown closes over the *same* environment `launch_driver` started,
-tearing it down rather than leaving a `driver.close()` no-op. Neither an on-device suite nor mypy
-(`make typecheck` runs over `bajutsu demos scripts`, not `tests/`) exercises this file otherwise.
+tearing it down rather than leaving a `driver.close()` no-op. No on-device suite exercises this file
+otherwise.
 """
 
 from __future__ import annotations
 
 import pytest
 import xcuitest_lease
+from _runner import _eff
 
 
 def test_xcuitest_lease_launch_tears_down_through_the_environment(
@@ -22,7 +23,7 @@ def test_xcuitest_lease_launch_tears_down_through_the_environment(
         def teardown(self, driver: object, eff: object) -> None:
             torn.append((driver, eff))
 
-    env, sentinel, eff = _Env(), object(), object()
+    env, sentinel, eff = _Env(), object(), _eff()
     monkeypatch.setattr(xcuitest_lease, "environment_for", lambda *a, **k: env)
     started_on: list[object] = []
 

@@ -44,8 +44,9 @@ import re
 import shutil
 import subprocess
 import warnings
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator, Iterator
 from pathlib import Path
+from typing import Protocol
 
 import pytest
 
@@ -112,7 +113,9 @@ def xcuitest_video(udid: str, path: Path) -> intervals.Interval:
 
 
 @pytest.hookimpl(wrapper=True)
-def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
+def pytest_runtest_makereport(
+    item: pytest.Item, call: pytest.CallInfo[None]
+) -> Generator[None, pytest.TestReport, pytest.TestReport]:
     """Track this attempt's outcome, and sweep its pending evidence once teardown is the last word.
 
     Deferred to the "teardown" report specifically: by the time it exists, every finalizer for this
@@ -146,10 +149,31 @@ def _slug(nodeid: str) -> str:
     return f"{readable}_{digest}"
 
 
+class _CaptureNode(Protocol):
+    """The slice of a pytest item `capture` reads: the node's id, and its stash for the pending set."""
+
+    @property
+    def nodeid(self) -> str: ...
+
+    @property
+    def stash(self) -> pytest.Stash: ...
+
+
+class _CaptureRequest(Protocol):
+    """The slice of `pytest.FixtureRequest` `capture` reads: the test's node.
+
+    Named rather than taking the whole fixture request so a test can drive this with a node-only
+    stub instead of manufacturing a real request (BE-0388).
+    """
+
+    @property
+    def node(self) -> _CaptureNode: ...
+
+
 def capture(
     serial: str,
     lane: str,
-    request: pytest.FixtureRequest,
+    request: _CaptureRequest,
     *,
     start_video: Callable[[str, Path], intervals.Interval],
     start_log: Callable[[str, Path], intervals.Interval],

@@ -8,6 +8,10 @@ crash-recovery tests then re-exercise it through `run_all`.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
+import pytest
+
 from bajutsu import simctl
 from bajutsu.drivers import base, xcuitest
 from bajutsu.runner.recovery import (
@@ -119,7 +123,7 @@ def test_budget_never_blocks_the_first_respawn() -> None:
     assert first.will_retry and not first.budget_spent
 
 
-def test_crash_retries_default_reads_the_environment(monkeypatch) -> None:
+def test_crash_retries_default_reads_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("BAJUTSU_CRASH_RETRIES", raising=False)
     assert _default_crash_retries() == 1  # unset → the pre-knob default
     monkeypatch.setenv("BAJUTSU_CRASH_RETRIES", "2")
@@ -130,7 +134,9 @@ def test_crash_retries_default_reads_the_environment(monkeypatch) -> None:
     assert _default_crash_retries() == 1  # invalid → the default, never a crash
 
 
-def test_crash_recovery_budget_default_reads_the_environment(monkeypatch) -> None:
+def test_crash_recovery_budget_default_reads_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("BAJUTSU_CRASH_RECOVERY_BUDGET", raising=False)
     assert _default_crash_recovery_budget() is None  # unset → unbounded
     monkeypatch.setenv("BAJUTSU_CRASH_RECOVERY_BUDGET", "300")
@@ -210,7 +216,9 @@ def test_run_budget_given_up_only_after_mark_given_up_not_on_exhaustion_alone() 
     assert budget.given_up() is True
 
 
-def test_run_crash_recovery_budget_default_reads_the_environment(monkeypatch) -> None:
+def test_run_crash_recovery_budget_default_reads_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("BAJUTSU_RUN_CRASH_RECOVERY_BUDGET", raising=False)
     assert _default_run_crash_recovery_budget() is None  # unset → unbounded
     monkeypatch.setenv("BAJUTSU_RUN_CRASH_RECOVERY_BUDGET", "900")
@@ -221,14 +229,14 @@ def test_run_crash_recovery_budget_default_reads_the_environment(monkeypatch) ->
     assert _default_run_crash_recovery_budget() is None  # invalid → unbounded
 
 
-def _raising(exc: BaseException):
+def _raising(exc: BaseException) -> Callable[[], None]:
     def teardown() -> None:
         raise exc
 
     return teardown
 
 
-def test_guarded_teardown_warns_on_called_process_error(caplog) -> None:
+def test_guarded_teardown_warns_on_called_process_error(caplog: pytest.LogCaptureFixture) -> None:
     import logging
     import subprocess
 
@@ -241,7 +249,7 @@ def test_guarded_teardown_warns_on_called_process_error(caplog) -> None:
     assert any("tearing down the warm runner on UDID failed" in r.message for r in caplog.records)
 
 
-def test_guarded_teardown_warns_on_os_error(caplog) -> None:
+def test_guarded_teardown_warns_on_os_error(caplog: pytest.LogCaptureFixture) -> None:
     import logging
 
     with caplog.at_level(logging.WARNING):
@@ -253,7 +261,9 @@ def test_guarded_teardown_warns_on_os_error(caplog) -> None:
     assert any("tearing down the warm runner on UDID failed" in r.message for r in caplog.records)
 
 
-def test_guarded_teardown_warns_on_a_device_timeout_rather_than_calling_it_a_defect(caplog) -> None:
+def test_guarded_teardown_warns_on_a_device_timeout_rather_than_calling_it_a_defect(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """A wedged `simctl terminate` at teardown must not become a wiring defect (BE-0363).
 
     `mid_run=False` re-raises a defect, and the pool's `shutdown()` raises it from `run`'s
@@ -297,7 +307,9 @@ def test_guarded_teardown_propagates_unexpected_when_not_mid_run() -> None:
         )
 
 
-def test_guarded_teardown_swallows_unexpected_when_mid_run(caplog) -> None:
+def test_guarded_teardown_swallows_unexpected_when_mid_run(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     import logging
 
     with caplog.at_level(logging.WARNING):

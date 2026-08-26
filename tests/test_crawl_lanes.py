@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 import typer
@@ -18,6 +19,8 @@ from bajutsu.cli.commands.crawl import (
     _wire_health,
     _write_screenmap,
 )
+from bajutsu.config import Effective
+from bajutsu.crawl.core import AliveCheck, ClearBlocking, Recover, Reset
 from bajutsu.drivers import base
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.evidence.sink import RunArtifactWriter
@@ -29,7 +32,7 @@ def _writer(run_dir: Path) -> RunArtifactWriter:
     return RunArtifactWriter(run_dir, Redactor(None))
 
 
-def _sink() -> tuple[list[str], object]:
+def _sink() -> tuple[list[str], Callable[[str], None]]:
     # A report sink that records what the crawl streamed, so a helper's messages are assertable.
     msgs: list[str] = []
     return msgs, msgs.append
@@ -144,13 +147,28 @@ def test_warm_start_unreadable_map_exits_2(tmp_path: Path) -> None:
 
 
 class _StubEnv:
-    # A minimal CrawlEnvironment stub: plan_lanes returns a fixed pool, the health seams are unused
-    # here (filled per-test in the _wire_health section).
+    # A minimal CrawlEnvironment: plan_lanes returns a fixed pool and the health seams are first-class
+    # nulls (the _wire_health section subclasses this and fills the ones it drives).
     def __init__(self, lanes: list[str]) -> None:
         self._lanes = lanes
 
+    def has_devices(self) -> bool:
+        return True
+
     def plan_lanes(self, udid_arg: str, workers: int) -> list[str]:
         return self._lanes
+
+    def crawl_reset(self, eff: Effective) -> Reset:
+        return lambda _driver: None
+
+    def crawl_aliveness(self) -> AliveCheck | None:
+        return None
+
+    def crawl_recover(self) -> Recover | None:
+        return None
+
+    def crawl_dialog_clearer(self) -> ClearBlocking | None:
+        return None
 
 
 def test_plan_lanes_returns_the_capped_pool() -> None:
@@ -348,7 +366,7 @@ def _plan_for_lane(tmp_path: Path, *, actuator: str = "xcuitest") -> object:
     return _CrawlPlan(
         eff=eff,
         actuator=actuator,
-        redactor=Redactor([]),
+        redactor=Redactor(None),
         target_name="s",
         out_dir=tmp_path,
         writer=_writer(tmp_path),
@@ -401,7 +419,7 @@ def test_build_lane_gives_the_launch_and_the_reset_one_environment(
 
     launched: list[object] = []
 
-    def fake_launch_driver(udid: str, *a: object, **kw: object) -> tuple[object, None]:
+    def fake_launch_driver(udid: str, *a: object, **kw: Any) -> tuple[object, None]:
         launched.append(kw.get("environment"))
         order.append("launch")
         return object(), None

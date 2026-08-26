@@ -14,7 +14,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from _shared import _get, _serve, project
+from _shared import StubArtifactStore, _get, _serve, project
 from sqlalchemy import Engine
 
 from bajutsu import serve as srv
@@ -184,7 +184,7 @@ def test_stats_html_skips_unsafe_run_id_from_repository(
     assert "No runs to aggregate" in html
 
 
-class _RaisingArtifactStore:
+class _RaisingArtifactStore(StubArtifactStore):
     """An ArtifactStore whose reads fail — a run deleted between listing and read, or a remote I/O
     error. Only the methods `_run_manifests` touches are exercised (the storage I/O boundary)."""
 

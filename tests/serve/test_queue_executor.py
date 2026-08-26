@@ -260,7 +260,7 @@ def test_execute_job_spec_streams_logs_to_the_injected_bus(tmp_path: Path) -> No
         cwd=tmp_path,
         bus=bus,
     )
-    replay = list(bus.stream("7"))
+    replay = [line for line in bus.stream("7") if line is not None]
     assert "step 0 ok" in replay
     assert any("20260610-1" in line for line in replay)
 

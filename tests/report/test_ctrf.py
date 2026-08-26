@@ -11,6 +11,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+from _report import _json_obj
 from jsonschema import Draft7Validator
 
 from bajutsu.assertions import AssertionResult
@@ -179,7 +180,7 @@ def test_matrix_aggregate_lives_in_results_extra() -> None:
 def test_single_engine_run_has_no_matrix_extra() -> None:
     doc = ctrf_json("20260704-101500", [_passing()])
     # No engine axis → no matrix surplus (the extra block is omitted, not an empty matrix).
-    extra = doc["results"].get("extra")  # type: ignore[union-attr]
+    extra = _json_obj(doc["results"]).get("extra")
     assert extra is None or "matrix" not in extra
 
 

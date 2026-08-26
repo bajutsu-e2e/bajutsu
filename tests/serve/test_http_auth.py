@@ -17,16 +17,22 @@ from typing import Any
 from _shared import _serve
 
 from bajutsu import serve as srv
+from bajutsu.serve.server.oauth import Identity
+from bajutsu.serve.state import SessionManager
 
 
 class _FakeOAuth:
-    """Stand-in for the GitHub OAuth client — no network."""
+    """Stand-in for the GitHub OAuth client — no network.
+
+    Only the redirect leg is exercised here; the callback exchange has its own tests, so this one
+    reports a failed exchange rather than minting an identity.
+    """
 
     def authorize_url(self, state: str) -> str:
         return f"https://github.test/login/oauth/authorize?state={state}"
 
-    def fetch_login(self, code: str) -> str | None:
-        return "alice"
+    def fetch_identity(self, code: str) -> Identity | None:
+        return None
 
 
 def _request(
@@ -52,7 +58,7 @@ def _state(tmp_path: Path, token: str | None) -> srv.ServeState:
     runs = tmp_path / "runs"
     runs.mkdir()
     return srv.ServeState(
-        runs_dir=runs, root=tmp_path, cwd=tmp_path, auth=srv.SessionManager(token=token)
+        runs_dir=runs, root=tmp_path, cwd=tmp_path, auth=SessionManager(token=token)
     )
 
 

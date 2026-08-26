@@ -13,8 +13,9 @@ import time
 from collections.abc import Callable
 from dataclasses import replace
 
-from conftest import el
+from conftest import el, json_list, json_obj
 
+from bajutsu import device_errors
 from bajutsu.cli.commands.crawl import SCREENMAP_NAME, _write_screenmap
 from bajutsu.crawl import core as crawl
 from bajutsu.crawl import serialize
@@ -92,7 +93,7 @@ def test_candidate_actions_are_actionable_id_bearing_and_id_sorted() -> None:
 # --- crawl traversal over a multi-screen fake app -------------------------------------------
 
 
-def _three_screen_app() -> tuple[Callable[[FakeDriver, str, object], None], list[dict]]:
+def _three_screen_app() -> tuple[Callable[[FakeDriver, str, object], None], list[base.Element]]:
     """home -> {settings, about}; each has a back button to home; settings.toggle self-loops."""
     home = [
         el(identifier="home.settings", traits=["button"]),
@@ -122,7 +123,7 @@ def _three_screen_app() -> tuple[Callable[[FakeDriver, str, object], None], list
     return react, home
 
 
-def _tabbed_app() -> tuple[Callable[[FakeDriver, str, object], None], list[dict]]:
+def _tabbed_app() -> tuple[Callable[[FakeDriver, str, object], None], list[base.Element]]:
     """Two tab buttons (tab.home / tab.settings) sit on every screen — a global control — plus a
     screen-specific button. tab.settings -> settings, tab.home -> home, settings.detail -> detail."""
     tabs = [
@@ -153,7 +154,9 @@ def test_prune_global_explores_a_shared_control_once_and_records_the_rest() -> N
     react, home = _tabbed_app()
     fp_home = crawl.fingerprint(home).value
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     pruned_on = crawl.crawl(
@@ -206,7 +209,9 @@ def test_resume_a_pruned_branch_explores_it_and_appends_to_the_map() -> None:
             here["v"] = dest
             d.screen = list(screens[dest])
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         here["v"] = "home"
         d.screen = list(home)
 
@@ -233,7 +238,9 @@ def test_continue_reconstructs_the_full_frontier_and_finishes_the_crawl() -> Non
     from `paths` + `plan`, keeps exploring, and completes the map a bigger budget would have."""
     react, home = _three_screen_app()
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     # A tight budget stops after one action, so `about` is never reached and a frontier remains.
@@ -261,7 +268,9 @@ def test_continue_through_a_dict_round_trip_matches_a_full_crawl() -> None:
     uninterrupted crawl of the deterministic app would."""
     react, home = _three_screen_app()
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     full = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, max_steps=100)
@@ -278,7 +287,9 @@ def test_continue_with_no_frontier_is_a_noop_and_reports_completed() -> None:
     frontier is empty, so the crawl returns the same nodes and reports `completed`."""
     react, home = _three_screen_app()
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     done = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, max_steps=100)
@@ -294,7 +305,9 @@ def test_continue_runs_the_worker_pool_in_parallel() -> None:
     screens the serial crawl of the whole app does, and genuinely shares the work across devices."""
     react, home = _wide_app(8)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     serial = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, max_steps=100)
@@ -303,7 +316,7 @@ def test_continue_runs_the_worker_pool_in_parallel() -> None:
 
     # A small settle (device-latency stand-in) lets the extra workers actually overlap the primary
     # instead of it draining the synchronous fake alone — the latency the parallel design overlaps.
-    def settle(_d: FakeDriver) -> None:
+    def settle(_d: base.Driver) -> None:
         time.sleep(0.002)
 
     drivers, factories = _pool(react, home, 4)  # 4 workers: primary + 3 extra-worker factories
@@ -324,7 +337,9 @@ def test_continue_skips_a_screen_whose_recorded_path_no_longer_resolves() -> Non
     live one is still explored, and the crawl neither raises nor aborts the whole continuation."""
     react, home = _three_screen_app()
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     partial = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, max_steps=1)
@@ -349,7 +364,9 @@ def test_continue_skips_a_screen_whose_replay_lands_on_a_different_fingerprint()
     seeded under the stale fingerprint (which would misattribute the continuation's edges)."""
     react, home = _three_screen_app()
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     partial = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, max_steps=1)
@@ -376,7 +393,9 @@ def test_continue_preserves_a_frontier_it_cannot_reconstruct_rather_than_complet
     still exists in the map, so the plan and the prior stop reason survive for a retry (BE-0181)."""
     react, home = _three_screen_app()
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     home_fp = crawl.fingerprint(home).value
@@ -405,7 +424,9 @@ def test_continue_that_hits_a_budget_again_reports_the_new_reason_and_keeps_a_fr
     leaves a frontier, so it stays continuable — proving the stop_reason reset, not an inherited value."""
     react, home = _wide_app(8)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     partial = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, max_steps=1)
@@ -428,7 +449,9 @@ def test_screenmap_round_trips_through_dict_for_resume() -> None:
     it as the base."""
     react, home = _tabbed_app()
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     original = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, prune_global=True)
@@ -455,7 +478,9 @@ def test_crawl_discovers_every_reachable_screen() -> None:
     react, home = _three_screen_app()
     driver = FakeDriver(screen=list(home), react=react)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     screen_map = crawl.crawl(driver, reset, max_screens=50, max_steps=100)
@@ -472,7 +497,9 @@ def test_crawl_respects_max_steps_budget() -> None:
     react, home = _three_screen_app()
     driver = FakeDriver(screen=list(home), react=react)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     screen_map = crawl.crawl(driver, reset, max_screens=50, max_steps=1)
@@ -483,7 +510,7 @@ def test_crawl_respects_max_steps_budget() -> None:
 # --- parallel crawl across simulators (BE-0064) --------------------------------------------
 
 
-def _wide_app(n: int) -> tuple[Callable[[FakeDriver, str, object], None], list[dict]]:
+def _wide_app(n: int) -> tuple[Callable[[FakeDriver, str, object], None], list[base.Element]]:
     """A hub (`home`) with `n` distinct leaf screens, each reached by its own button and returning
     home — `n` independent frontier branches for workers to share. The react is a pure function of
     the tap target, so every worker's own FakeDriver explores it independently."""
@@ -514,17 +541,25 @@ def _edge_set(sm: crawl.ScreenMap) -> set[tuple[str, str, str]]:
 
 
 def _pool(
-    react: Callable[[FakeDriver, str, object], None], home: list[dict], n: int
+    react: Callable[[FakeDriver, str, object], None], home: list[base.Element], n: int
 ) -> tuple[list[FakeDriver], list[crawl.WorkerFactory]]:
     """The `n` driver objects (index 0 = primary) plus the `n-1` extra-worker factories that hand
     them out. Each factory returns a pre-made FakeDriver (thread-agnostic) when the engine calls it
     on that worker's own thread (BE-0077); the driver list lets a test inspect what each worker did."""
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     drivers = [FakeDriver(screen=list(home), react=react) for _ in range(n)]
-    return drivers, [(lambda d=d: (d, reset)) for d in drivers[1:]]
+
+    def worker(
+        driver: FakeDriver,
+    ) -> Callable[[], tuple[FakeDriver, Callable[[base.Driver], None]]]:
+        return lambda: (driver, reset)
+
+    return drivers, [worker(d) for d in drivers[1:]]
 
 
 def test_parallel_crawl_discovers_the_same_map_as_serial() -> None:
@@ -533,7 +568,9 @@ def test_parallel_crawl_discovers_the_same_map_as_serial() -> None:
     differ. Here a 4-worker crawl of a wide app matches the single-worker map exactly."""
     react, home = _wide_app(8)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     serial = crawl.crawl(FakeDriver(screen=list(home), react=react), reset)
@@ -541,7 +578,7 @@ def test_parallel_crawl_discovers_the_same_map_as_serial() -> None:
     # A small settle (a stand-in for real device latency) lets the workers actually overlap instead
     # of the primary draining the synchronous fake before the others wake — the very latency the
     # parallel design overlaps across simulators.
-    def settle(_d: FakeDriver) -> None:
+    def settle(_d: base.Driver) -> None:
         time.sleep(0.002)
 
     drivers, extra = _pool(react, home, 4)
@@ -560,7 +597,9 @@ def test_parallel_crawl_honors_the_screen_budget() -> None:
     the in-flight discoveries (at most one per worker), never unbounded."""
     react, home = _wide_app(12)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     drivers, extra = _pool(react, home, 4)
@@ -574,12 +613,14 @@ def test_parallel_crawl_isolates_a_wedged_device() -> None:
     its frontier entries back and retires, while the healthy worker still maps the whole app."""
     react, home = _wide_app(6)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     def wedged(d: FakeDriver, kind: str, _arg: object) -> None:
         if kind == "tap":
-            raise crawl.device_errors.DeviceError("simulator wedged")
+            raise device_errors.DeviceError("simulator wedged")
 
     healthy = FakeDriver(screen=list(home), react=react)
     bad = FakeDriver(screen=list(home), react=wedged)
@@ -601,7 +642,9 @@ def test_parallel_crawl_says_when_it_absorbs_a_device_fault_and_retires_the_devi
 
     react, home = _wide_app(6)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     # The primary is permanently wedged, and the healthy lane is held back until the primary has used
@@ -615,7 +658,7 @@ def test_parallel_crawl_says_when_it_absorbs_a_device_fault_and_retires_the_devi
         faults["n"] += 1
         if faults["n"] >= crawl._MAX_WORKER_DEVICE_ERRORS:
             budget_spent.set()
-        raise crawl.device_errors.DeviceError("simulator wedged: simctl exceeded its deadline")
+        raise device_errors.DeviceError("simulator wedged: simctl exceeded its deadline")
 
     def healthy_lane() -> tuple[FakeDriver, crawl.Reset]:
         assert budget_spent.wait(timeout=30), "the wedged device never used up its fault budget"
@@ -651,14 +694,16 @@ def test_lone_worker_surfaces_a_device_error() -> None:
 
     def boom(d: FakeDriver, kind: str, _arg: object) -> None:
         if kind == "tap":
-            raise crawl.device_errors.DeviceError("device gone")
+            raise device_errors.DeviceError("device gone")
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     try:
         crawl.crawl(FakeDriver(screen=list(home), react=boom), reset)
-    except crawl.device_errors.DeviceError:
+    except device_errors.DeviceError:
         return
     raise AssertionError("a lone worker's device error must propagate")
 
@@ -670,7 +715,9 @@ def test_parallel_crawl_recovers_a_wedged_lane_instead_of_retiring() -> None:
     so it fires deterministically whichever worker reaches it; the whole app is still mapped."""
     react, home = _wide_app(6)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     wedged = {"leaf0": False}  # leaf0's first open wedges once; only one worker holds it at a time
@@ -679,12 +726,12 @@ def test_parallel_crawl_recovers_a_wedged_lane_instead_of_retiring() -> None:
         opening_leaf0 = kind == "tap" and isinstance(arg, dict) and arg.get("id") == "home.leaf0"
         if opening_leaf0 and not wedged["leaf0"]:
             wedged["leaf0"] = True
-            raise crawl.device_errors.DeviceError("browser wedged")
+            raise device_errors.DeviceError("browser wedged")
         react(d, kind, arg)
 
     recovered = {"n": 0}
 
-    def recover(_d: FakeDriver) -> None:
+    def recover(_d: base.Driver) -> None:
         recovered["n"] += 1
 
     drivers = [FakeDriver(screen=list(home), react=flaky) for _ in range(2)]
@@ -705,19 +752,21 @@ def test_lone_worker_ignores_recover_and_surfaces_the_error() -> None:
 
     def boom(d: FakeDriver, kind: str, _arg: object) -> None:
         if kind == "tap":
-            raise crawl.device_errors.DeviceError("device gone")
+            raise device_errors.DeviceError("device gone")
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     calls = {"n": 0}
 
-    def recover(_d: FakeDriver) -> None:
+    def recover(_d: base.Driver) -> None:
         calls["n"] += 1
 
     try:
         crawl.crawl(FakeDriver(screen=list(home), react=boom), reset, recover=recover)
-    except crawl.device_errors.DeviceError:
+    except device_errors.DeviceError:
         assert calls["n"] == 0  # recover was never called for a lone worker
         return
     raise AssertionError("a lone worker's device error must propagate even with recover set")
@@ -730,22 +779,24 @@ def test_parallel_crawl_retires_a_lane_that_never_heals_instead_of_looping() -> 
     the lane retires after MAX faults in a row, and the healthy worker still maps the whole app."""
     react, home = _wide_app(6)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     def always_wedged(d: FakeDriver, kind: str, _arg: object) -> None:
         if kind == "tap":
-            raise crawl.device_errors.DeviceError("browser wedged")
+            raise device_errors.DeviceError("browser wedged")
 
     recovered = {"n": 0}
 
-    def recover(_d: FakeDriver) -> None:  # the lane stays broken; recovery never actually heals it
+    def recover(_d: base.Driver) -> None:  # the lane stays broken; recovery never heals it
         recovered["n"] += 1
 
     # A small settle throttles the healthy worker (it settles after each observe) so the wedged
     # primary — whose taps fault *before* any observe — reliably runs through its fault budget rather
     # than the synchronous fake being fully mapped before the primary acts.
-    def settle(_d: FakeDriver) -> None:
+    def settle(_d: base.Driver) -> None:
         time.sleep(0.002)
 
     primary = FakeDriver(screen=list(home), react=always_wedged)
@@ -770,7 +821,9 @@ def test_extra_worker_driver_is_built_on_its_own_thread() -> None:
 
     react, home = _wide_app(4)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     main_ident = threading.get_ident()
@@ -797,7 +850,9 @@ def test_crawl_records_a_crash_when_app_ui_collapses() -> None:
 
     driver = FakeDriver(screen=list(home), react=react)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     screen_map = crawl.crawl(driver, reset, max_screens=50, max_steps=100)
@@ -812,7 +867,9 @@ def test_screenmap_dict_round_trips_nodes_edges_crashes() -> None:
     react, home = _three_screen_app()
     driver = FakeDriver(screen=list(home), react=react)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     data = serialize.screenmap_dict(crawl.crawl(driver, reset))
@@ -826,12 +883,13 @@ def test_screenmap_dict_round_trips_nodes_edges_crashes() -> None:
         "pruned",
         "stop_reason",
     }
-    assert isinstance(data["nodes"], list) and data["nodes"]
-    assert all({"fingerprint", "kind", "ids", "actions"} <= set(n) for n in data["nodes"])
-    assert all({"src", "action", "dst", "alert"} == set(e) for e in data["edges"])
+    assert json_list(data["nodes"])
+    assert all(
+        {"fingerprint", "kind", "ids", "actions"} <= set(n) for n in json_list(data["nodes"])
+    )
+    assert all({"src", "action", "dst", "alert"} == set(e) for e in json_list(data["edges"]))
     # Every discovered screen carries the replayable path that reached it (empty for the entry).
-    assert isinstance(data["paths"], dict)
-    assert set(data["paths"]) == {n["fingerprint"] for n in data["nodes"]}
+    assert set(json_obj(data["paths"])) == {n["fingerprint"] for n in json_list(data["nodes"])}
     # A fully explored app has no pending operations left, so the plan is empty.
     assert data["plan"] == {}
     assert data["stop_reason"] == "completed"  # the small app is fully explored
@@ -841,7 +899,9 @@ def test_crawl_reports_why_it_stopped() -> None:
     react, home = _three_screen_app()
     driver = FakeDriver(screen=list(home), react=react)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     # Frontier exhausted within budget -> completed; a tight budget -> the limit that was hit.
@@ -859,10 +919,14 @@ def test_crawl_settles_after_every_observation() -> None:
     driver = FakeDriver(screen=list(home), react=react)
     calls = 0
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
-    def settle(d: FakeDriver) -> None:
+    def settle(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         nonlocal calls
         calls += 1
 
@@ -879,7 +943,9 @@ def test_crawl_streams_the_growing_map_via_on_event() -> None:
     react, home = _three_screen_app()
     driver = FakeDriver(screen=list(home), react=react)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     sizes: list[tuple[int, int]] = []
@@ -901,7 +967,9 @@ def test_crawl_exposes_the_live_plan_via_on_event() -> None:
     react, home = _three_screen_app()
     driver = FakeDriver(screen=list(home), react=react)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     plans: list[dict[str, list[str]]] = []
@@ -936,11 +1004,13 @@ def test_crawl_plans_and_explores_a_vision_located_tab() -> None:
 
     driver = FakeDriver(screen=list(home), react=react)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     def guide(
-        _drv: FakeDriver, elements: list[dict], _ctx: crawl.GuideContext
+        _drv: base.Driver, elements: list[base.Element], _ctx: crawl.GuideContext
     ) -> list[crawl.Action]:
         # Mimic the vision fallback: a coordinate tab tap only while the un-addressable bar is shown.
         if any((e.get("label") or "") == "Tab Bar" for e in elements):
@@ -966,12 +1036,14 @@ def test_crawl_fires_on_node_once_per_screen_while_on_it() -> None:
     react, home = _three_screen_app()
     driver = FakeDriver(screen=list(home), react=react)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     seen: list[str] = []
 
-    def on_node(d: FakeDriver, node: crawl.Node) -> None:
+    def on_node(d: base.Driver, node: crawl.Node) -> None:
         seen.append(node.fingerprint)
         d.screenshot(f"{node.fingerprint}.png")
 
@@ -999,7 +1071,7 @@ def test_candidate_actions_tab_bar_items_are_tap_candidates_first() -> None:
 def test_crawl_switches_tabs_and_explores_each_tab() -> None:
     """Tab bar items are tap candidates, so the crawl switches tabs and explores each tab's view."""
 
-    def view(active: str) -> list[dict]:
+    def view(active: str) -> list[base.Element]:
         return [
             el(identifier="tab.a", traits=["tab", *(["selected"] if active == "a" else [])]),
             el(identifier="tab.b", traits=["tab", *(["selected"] if active == "b" else [])]),
@@ -1015,7 +1087,9 @@ def test_crawl_switches_tabs_and_explores_each_tab() -> None:
 
     driver = FakeDriver(screen=list(view("a")), react=react)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         s["tab"] = "a"
         d.screen = list(view("a"))
 
@@ -1078,7 +1152,12 @@ def test_node_targets_normalize_tap_rectangles() -> None:
     assert x < 0.5 < x + w and y < 0.9 < y + h
     # Serialized as a plain {description: [x, y, w, h]} object.
     data = serialize.screenmap_dict(crawl.ScreenMap(nodes={node.fingerprint: node}))
-    assert data["nodes"][0]["targets"]["tap b"] == [40 / 200, 300 / 400, 120 / 200, 50 / 400]
+    assert json_list(data["nodes"])[0]["targets"]["tap b"] == [
+        40 / 200,
+        300 / 400,
+        120 / 200,
+        50 / 400,
+    ]
 
 
 def test_action_tap_point_describe_and_key() -> None:
@@ -1105,7 +1184,7 @@ def test_crawl_crosses_a_two_field_gate_via_compound_fill() -> None:
     the gate in one observable step (submit flips enabled) and the crawl presses it."""
     s: dict[str, object] = {"a": False, "b": False, "focus": None}
 
-    def form() -> list[dict]:
+    def form() -> list[base.Element]:
         on = bool(s["a"]) and bool(s["b"])
         return [
             el(identifier="f.a", traits=["secureTextField"]),  # value never exposed (masked)
@@ -1132,7 +1211,9 @@ def test_crawl_crosses_a_two_field_gate_via_compound_fill() -> None:
 
     driver = FakeDriver(screen=form(), react=react)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         s.update(a=False, b=False, focus=None)
         d.screen = form()
 
@@ -1167,7 +1248,7 @@ def test_fingerprint_distinguishes_enabled_from_disabled() -> None:
     assert crawl.fingerprint(empty).value != crawl.fingerprint(filled).value
 
 
-def _login_form(filled: bool) -> list[dict]:
+def _login_form(filled: bool) -> list[base.Element]:
     """A field + a submit button that is disabled until the field is filled."""
     return [
         el(identifier="login.user", traits=["textField"], value="abc" if filled else None),
@@ -1185,7 +1266,7 @@ def test_crawl_fills_a_form_to_enable_and_press_a_disabled_button() -> None:
     ]
     focus: dict[str, object] = {"id": None}
 
-    def submit_enabled(screen: list[dict]) -> bool:
+    def submit_enabled(screen: list[base.Element]) -> bool:
         return any(
             e.get("identifier") == "login.submit" and "notEnabled" not in (e.get("traits") or [])
             for e in screen
@@ -1201,7 +1282,9 @@ def test_crawl_fills_a_form_to_enable_and_press_a_disabled_button() -> None:
 
     driver = FakeDriver(screen=list(_login_form(False)), react=react)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         focus["id"] = None
         d.screen = list(_login_form(filled=False))
 
@@ -1241,11 +1324,15 @@ def test_crawl_taps_through_an_alert_marks_the_edge_and_replays_through_it() -> 
 
     driver = FakeDriver(screen=list(home), react=react)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         s["screen"] = "home"
         d.screen = list(home)
 
-    def clear_blocking(d: FakeDriver) -> list[str]:
+    def clear_blocking(d: base.Driver) -> list[str]:
+
+        assert isinstance(d, FakeDriver)
         if s["screen"] == "alert":  # the guard dismisses the prompt, revealing `mid`
             s["screen"] = "mid"
             d.screen = list(mid)
@@ -1283,7 +1370,9 @@ def test_crawl_walks_forward_without_resetting_on_a_linear_chain() -> None:
     driver = FakeDriver(screen=list(screens["home"]), react=react)
     resets = 0
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         nonlocal resets
         resets += 1
         s["screen"] = "home"
@@ -1309,11 +1398,13 @@ def test_crawl_uses_a_custom_guide_for_label_based_actions() -> None:
 
     driver = FakeDriver(screen=list(start), react=react)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(start)
 
     def guide(
-        _driver: FakeDriver, elements: list[dict], _ctx: crawl.GuideContext
+        _driver: base.Driver, elements: list[base.Element], _ctx: crawl.GuideContext
     ) -> list[crawl.Action]:
         return [
             crawl.Action("tap", label=e["label"])
@@ -1341,10 +1432,12 @@ def test_is_alive_dispatch_records_a_crash_via_injected_health_check() -> None:
         if kind == "tap" and isinstance(arg, dict) and arg.get("id") == "home.boom":
             d.screen = list(broken)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
-    def is_alive(_d: FakeDriver, elements: list[dict]) -> bool:
+    def is_alive(_d: base.Driver, elements: list[base.Element]) -> bool:
         return not any(e.get("identifier") == "error.page" for e in elements)
 
     screen_map = crawl.crawl(
@@ -1542,11 +1635,13 @@ def test_crawl_screenmap_holds_no_plaintext_value_for_a_named_or_marked_field(
             if landed is not None:
                 d.screen = list(landed)
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     def guide(
-        _driver: FakeDriver, elements: list[dict], _ctx: crawl.GuideContext
+        _driver: base.Driver, elements: list[base.Element], _ctx: crawl.GuideContext
     ) -> list[crawl.Action]:
         # Stands in for the AI guide: the deterministic candidates (so the `secure` flag is derived
         # by the engine, not by the test) carrying the realistic values a model invents.
@@ -1574,7 +1669,7 @@ def test_crawl_screenmap_holds_no_plaintext_value_for_a_named_or_marked_field(
     assert {e["action"] for e in data["edges"]} == {"type settings.apikey", "type auth.password"}
 
 
-def _typed_branch_app() -> tuple[Callable[[FakeDriver, str, object], None], list[dict]]:
+def _typed_branch_app() -> tuple[Callable[[FakeDriver, str, object], None], list[base.Element]]:
     """home -> {other (tap home.go), typed (type into home.q)}; each screen ends there."""
     home = [
         el(identifier="home.go", traits=["button"]),
@@ -1602,7 +1697,9 @@ def test_continue_over_a_pre_be0331_plan_entry_still_explores_the_typed_branch()
     `completed` — claiming a full exploration of a map it never finished."""
     react, home = _typed_branch_app()
 
-    def reset(d: FakeDriver) -> None:
+    def reset(d: base.Driver) -> None:
+
+        assert isinstance(d, FakeDriver)
         d.screen = list(home)
 
     # A tight budget explores the tap (candidates order taps before types) and leaves the type op
@@ -1615,7 +1712,7 @@ def test_continue_over_a_pre_be0331_plan_entry_still_explores_the_typed_branch()
     legacy = serialize.screenmap_dict(partial)
     legacy["plan"] = {
         fp: [f"{e}='test'" if e.startswith("type ") else e for e in ops]
-        for fp, ops in legacy["plan"].items()
+        for fp, ops in json_obj(legacy["plan"]).items()
     }
     continued = crawl.crawl(
         FakeDriver(screen=list(home), react=react),

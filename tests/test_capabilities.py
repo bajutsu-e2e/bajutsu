@@ -7,6 +7,8 @@ This is the MECE guard: the classification is only a trustworthy source of truth
 
 from __future__ import annotations
 
+import typer
+import typer.core
 import typer.main
 
 from bajutsu import capabilities
@@ -14,7 +16,9 @@ from bajutsu.cli import app
 
 
 def _registered_commands() -> set[str]:
-    return set(typer.main.get_command(app).commands.keys())
+    group = typer.main.get_command(app)
+    assert isinstance(group, typer.core.TyperGroup)
+    return set(group.commands)
 
 
 def test_classification_matches_the_registered_command_set_exactly() -> None:
@@ -55,7 +59,10 @@ def test_every_command_lands_in_a_claude_help_panel() -> None:
 def test_flag_gated_commands_name_the_flag_that_reaches_claude() -> None:
     # A Claude-free command with a Claude path behind a flag must record that flag, so the docs /
     # help can say `triage --ai` and `run --system-alert-handling` rather than mislabel the command.
-    assert capabilities.by_command("triage").claude_flag == "--ai"
-    assert capabilities.by_command("run").claude_flag == "--system-alert-handling"
+    triage_cap = capabilities.by_command("triage")
+    assert triage_cap is not None and triage_cap.claude_flag == "--ai"
+    run_cap = capabilities.by_command("run")
+    assert run_cap is not None and run_cap.claude_flag == "--system-alert-handling"
     # An always-Claude command has no flip flag.
-    assert capabilities.by_command("record").claude_flag is None
+    record_cap = capabilities.by_command("record")
+    assert record_cap is not None and record_cap.claude_flag is None

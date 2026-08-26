@@ -8,6 +8,8 @@ bound; it is a disclosure, not a behavior change (no LLM, no effect on `run`/CI)
 
 from __future__ import annotations
 
+import pytest
+
 from bajutsu.cli._shared import _warn_onscreen_secrets
 from bajutsu.config import load_config, resolve
 
@@ -25,7 +27,7 @@ targets:
 """
 
 
-def test_warns_when_secrets_bound(capsys) -> None:
+def test_warns_when_secrets_bound(capsys: pytest.CaptureFixture[str]) -> None:
     eff = resolve(load_config(_WITH_SECRETS), "app")
     _warn_onscreen_secrets(eff)
     captured = capsys.readouterr()
@@ -42,7 +44,7 @@ def test_warns_when_secrets_bound(capsys) -> None:
     assert captured.out == ""
 
 
-def test_silent_when_no_secrets_bound(capsys) -> None:
+def test_silent_when_no_secrets_bound(capsys: pytest.CaptureFixture[str]) -> None:
     eff = resolve(load_config(_NO_SECRETS), "app")
     _warn_onscreen_secrets(eff)
     assert capsys.readouterr().err == ""

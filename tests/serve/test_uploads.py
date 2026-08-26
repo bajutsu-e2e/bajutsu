@@ -9,6 +9,7 @@ packaging: no device, no AI, runs on the Linux gate against fixture zips.
 from __future__ import annotations
 
 import io
+import os
 import stat
 import zipfile
 from pathlib import Path
@@ -243,7 +244,7 @@ def test_materialize_bundle_losing_a_rename_race_reuses_the_winners_entry(
 
     real_rename = Path.rename
 
-    def _rename(self: Path, target: object) -> Path:
+    def _rename(self: Path, target: str | os.PathLike[str]) -> Path:
         if self.parent == uploads_dir and Path(str(target)) == winner_dest:
             raise OSError("simulated: the winner already landed here")
         return real_rename(self, target)
@@ -264,7 +265,7 @@ def test_materialize_bundle_a_genuine_rename_failure_still_raises(
     uploads_dir.mkdir()
     zip_path = _written(tmp_path, _valid_blob())
 
-    def _rename(self: Path, target: object) -> Path:
+    def _rename(self: Path, target: str | os.PathLike[str]) -> Path:
         raise OSError("simulated: permission denied")
 
     monkeypatch.setattr(Path, "rename", _rename)

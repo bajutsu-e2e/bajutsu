@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import socket
 import subprocess
+import time
 import urllib.error
+import urllib.request
 from typing import Any
 
 import pytest
@@ -36,7 +38,7 @@ class _FakeProc:
 def test_no_launch_server_is_noop(monkeypatch: pytest.MonkeyPatch) -> None:
     # No `launchServer` declared: never shells out, and the stop callable is a no-op.
     started: list[Any] = []
-    monkeypatch.setattr(ls.subprocess, "Popen", lambda *a, **k: started.append(a))
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.append(a))
     stop, decision = ls.start_launch_server(_eff())
     stop()
     assert started == []
@@ -47,7 +49,7 @@ def test_reuses_already_serving(monkeypatch: pytest.MonkeyPatch) -> None:
     # readyUrl already answers: reuse the externally-started server, never start or stop one.
     monkeypatch.setattr(ls, "_probe", lambda url, timeout=2.0: True)
     started: list[Any] = []
-    monkeypatch.setattr(ls.subprocess, "Popen", lambda *a, **k: started.append(a))
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.append(a))
     stop, decision = ls.start_launch_server(_eff("launchServer: { cmd: 'serve it' }"))
     stop()
     assert started == []
@@ -59,7 +61,7 @@ def test_starts_and_waits_until_ready(monkeypatch: pytest.MonkeyPatch) -> None:
     probes = iter([False, True])  # reuse-check (down), then first readiness poll (up)
     monkeypatch.setattr(ls, "_probe", lambda url, timeout=2.0: next(probes))
     fake = _FakeProc(code=None)
-    monkeypatch.setattr(ls.subprocess, "Popen", lambda *a, **k: fake)
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: fake)
     terminated: list[Any] = []
     monkeypatch.setattr(ls, "_terminate", lambda proc, say: terminated.append(proc))
     stop, _decision = ls.start_launch_server(_eff("launchServer: { cmd: 'serve it' }"))
@@ -72,12 +74,12 @@ def test_timeout_raises_and_terminates(monkeypatch: pytest.MonkeyPatch) -> None:
     # Server never becomes ready within readyTimeout → terminate what we started and raise.
     monkeypatch.setattr(ls, "_probe", lambda url, timeout=2.0: False)
     fake = _FakeProc(code=None)
-    monkeypatch.setattr(ls.subprocess, "Popen", lambda *a, **k: fake)
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: fake)
     terminated: list[Any] = []
     monkeypatch.setattr(ls, "_terminate", lambda proc, say: terminated.append(proc))
-    monkeypatch.setattr(ls.time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
     times = iter([100.0, 100.0, 200.0])  # deadline=101; enter once, then past it
-    monkeypatch.setattr(ls.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(time, "monotonic", lambda: next(times))
     with pytest.raises(RuntimeError, match="not ready"):
         ls.start_launch_server(_eff("launchServer: { cmd: 'serve it', readyTimeout: 1 }"))
     assert terminated == [fake]
@@ -86,9 +88,9 @@ def test_timeout_raises_and_terminates(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_command_exit_before_ready_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     # The command dies before serving → a clear error (not a readiness timeout).
     monkeypatch.setattr(ls, "_probe", lambda url, timeout=2.0: False)
-    monkeypatch.setattr(ls.subprocess, "Popen", lambda *a, **k: _FakeProc(code=1))
-    monkeypatch.setattr(ls.time, "sleep", lambda s: None)
-    monkeypatch.setattr(ls.time, "monotonic", iter([0.0, 0.0]).__next__)
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: _FakeProc(code=1))
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "monotonic", iter([0.0, 0.0]).__next__)
     with pytest.raises(RuntimeError, match="exited"):
         ls.start_launch_server(_eff("launchServer: { cmd: 'serve it' }"))
 
@@ -118,16 +120,16 @@ def test_probe_status_branches(monkeypatch: pytest.MonkeyPatch) -> None:
         def __enter__(self) -> _Resp:
             return self
 
-        def __exit__(self, *a: object) -> bool:
-            return False
+        def __exit__(self, *a: object) -> None:
+            return None
 
-    monkeypatch.setattr(ls.urllib.request, "urlopen", lambda url, timeout=2.0: _Resp())
+    monkeypatch.setattr(urllib.request, "urlopen", lambda url, timeout=2.0: _Resp())
     assert ls._probe("http://x/") is True
 
     def _raise(url: str, timeout: float = 2.0) -> None:
         raise urllib.error.HTTPError("http://x/", 503, "err", {}, None)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(ls.urllib.request, "urlopen", _raise)
+    monkeypatch.setattr(urllib.request, "urlopen", _raise)
     assert ls._probe("http://x/") is False  # a live 5xx is "up" but not "ready"
 
 
@@ -135,7 +137,7 @@ def test_upload_exec_reuse_accepts_an_external_server(monkeypatch: pytest.Monkey
     # reuse: never runs the uploaded cmd; an externally-answering readyUrl is accepted (decision reused).
     monkeypatch.setattr(ls, "_probe", lambda url, timeout=2.0: True)
     started: list[Any] = []
-    monkeypatch.setattr(ls.subprocess, "Popen", lambda *a, **k: started.append(a))
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.append(a))
     stop, decision = ls.start_launch_server(
         _eff("launchServer: { cmd: 'serve it' }"), upload_exec="reuse"
     )
@@ -153,7 +155,7 @@ def test_upload_exec_deny_fails_loud_with_no_server(monkeypatch: pytest.MonkeyPa
     # deny + nothing answering readyUrl: the run that needs the server fails loud (no bare-host run).
     monkeypatch.setattr(ls, "_probe", lambda url, timeout=2.0: False)
     started: list[Any] = []
-    monkeypatch.setattr(ls.subprocess, "Popen", lambda *a, **k: started.append(a))
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.append(a))
     with pytest.raises(RuntimeError, match="deny"):
         ls.start_launch_server(_eff("launchServer: { cmd: 'serve it' }"), upload_exec="deny")
     assert started == []  # never reaches the bare-host Popen
@@ -189,7 +191,7 @@ def test_upload_exec_sandbox_delegates_to_sandbox(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr(sandbox, "start_sandboxed_server", _fake_sandbox)
     started: list[Any] = []
-    monkeypatch.setattr(ls.subprocess, "Popen", lambda *a, **k: started.append(a))
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.append(a))
     _stop, decision = ls.start_launch_server(
         _eff("launchServer: { cmd: 'serve it', port: 8080, dockerImage: 'img' }"),
         upload_exec="sandbox",
