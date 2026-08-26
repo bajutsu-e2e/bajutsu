@@ -193,6 +193,10 @@ def write_wait_diagnostic(
                 "ready": readiness.ready,
                 "signal": readiness.signal,
                 "elapsedSeconds": readiness.elapsed_s,
+                # `false` says the gate returned on the signal while the screen was still moving,
+                # which is when a synthesized touch is dropped — the reading that separates "this
+                # wait's element never came" from "the actuation before it never landed".
+                "settled": readiness.settled,
             }
         ),
         "trace": {

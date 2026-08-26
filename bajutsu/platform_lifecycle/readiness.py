@@ -26,6 +26,24 @@ _logger = logging.getLogger(__name__)
 # the element-count heuristic rather than declaring the app ready on the first element.
 _READY_MATCH_KEYS = ("id", "idMatches", "label", "labelMatches", "traits", "value")
 
+# How many extra polls the settle confirmation may spend after a readiness signal fires. A screen
+# transition settles well inside this; a screen that never holds still (a clock, a spinner, a looping
+# animation) would otherwise hold every launch to the full readiness deadline, so the budget is small
+# and the gate proceeds on the signal alone once it is spent. Bounded, so this stays a condition wait
+# with a ceiling rather than a wait for something that may never happen.
+_SETTLE_POLLS = 3
+
+
+def _tree_signature(elements: list[base.Element]) -> tuple[object, ...]:
+    """What "the screen stopped moving" compares: each element's identity and where it sits.
+
+    Frames are the half that moves during a transition, and identifier/label are what distinguishes
+    one screen's content from the next, so a tuple of the three separates a settled screen from one
+    still animating. Value is deliberately out: a field mirroring a live counter would keep the tree
+    "moving" forever on a screen that is otherwise still.
+    """
+    return tuple((el["identifier"], el["label"], el["frame"]) for el in elements)
+
 
 def await_boot(env: adb.Env, timeout: float = 60.0, poll: float = 0.5) -> None:
     """Wait until the device reports `sys.boot_completed`, polling to a bounded deadline (a condition wait at `poll` intervals, not a fixed up-front sleep).
@@ -77,14 +95,24 @@ def await_ready(
       in-namespace element proves the app itself is on screen.
     - neither: fall back to "more than the app root element" (any 2+ elements).
 
+    Whichever signal fires, the gate then waits for the screen to **stop moving**: it returns once
+    two consecutive queries report the same `_tree_signature`. Every signal above answers "the app's
+    first content is on screen", which a screen mid-transition satisfies — and a touch synthesized
+    into a moving screen is the one the Simulator drops, leaving the actuation reported as delivered
+    and the failure to surface at some later step's wait timeout. The confirmation costs one extra
+    poll in the common case (the second sample matches the first) and is capped at `_SETTLE_POLLS`,
+    after which the gate returns ready with `settled=False` rather than holding a screen that never
+    holds still. It never turns a ready app into a timeout: the settle only delays the return.
+
     Uses exponential backoff via `base.deadline_ticks`: the first poll is short (the app is often
     ready quickly) and subsequent intervals double up to `poll_max`, reducing wasted subprocess calls
     when the app takes longer to start.
 
     Returns:
         Whether the app became ready, which signal decided it (`screenChanged` / `readyWhen` /
-        `namespace` / `count`, or `timeout` when the deadline passed first), and the elapsed time —
-        recorded on a first-wait timeout so the failure is diagnosable from artifacts (BE-0231).
+        `namespace` / `count`, or `timeout` when the deadline passed first), the elapsed time —
+        recorded on a first-wait timeout so the failure is diagnosable from artifacts (BE-0231) —
+        and whether the tree settled before the gate returned.
         Callers that only need the side effect (the relaunch paths) may ignore the return.
     """
     start = time.monotonic()
@@ -109,7 +137,8 @@ def await_ready(
             # Diagnostic only (BE-0310 Unit 5): confirms the signal actually decided readiness on a
             # real device, so on-device verification needs no extra instrumentation to observe it.
             _logger.debug("readiness satisfied by the screenChanged signal")
-            return ReadinessResult(True, "screenChanged", time.monotonic() - start)
+            settled = _await_settled(driver, timeout, poll_init, poll_max, start)
+            return ReadinessResult(True, "screenChanged", time.monotonic() - start, settled)
         try:
             elements = driver.query()
             if match_sel is not None:
@@ -122,10 +151,57 @@ def await_ready(
             else:
                 ready = len(elements) >= 2
             if ready:
-                return ReadinessResult(True, signal, time.monotonic() - start)
+                # The signal fired against `elements`, so that sample is the settle's own first one —
+                # re-querying for it would compare two post-signal screens and miss a transition that
+                # started between them.
+                settled = _await_settled(
+                    driver, timeout, poll_init, poll_max, start, first=_tree_signature(elements)
+                )
+                return ReadinessResult(True, signal, time.monotonic() - start, settled)
         except (OSError, subprocess.CalledProcessError, ValueError):
             # The app is still coming up: a query before the UI exists can fail (no device
             # yet / empty tree / CLI hiccup). These are expected transient startup errors —
             # swallow them and keep polling until the deadline.
             pass
     return ReadinessResult(False, "timeout", time.monotonic() - start)
+
+
+def _await_settled(
+    driver: base.Driver,
+    timeout: float,
+    poll_init: float,
+    poll_max: float,
+    start: float,
+    *,
+    first: tuple[object, ...] | None = None,
+) -> bool:
+    """Sample until two consecutive queries agree on the tree, or the settle budget runs out.
+
+    The second half of the readiness gate: the signal says the app's content is on screen, this says
+    the screen has stopped moving, so the first actuation is not synthesized into a transition. A
+    query that raises is "couldn't observe", never "unchanged" — it drops the pair being built rather
+    than confirming one, the same rule `GestureRetry`'s `nil` sample follows on the runner side.
+
+    Shares the caller's readiness deadline as a ceiling, so a settle can never push the gate past the
+    timeout its caller asked for; `_SETTLE_POLLS` bounds it well below that in the normal case.
+
+    Returns:
+        Whether two consecutive samples matched within the budget.
+    """
+    remaining = timeout - (time.monotonic() - start)
+    if remaining <= 0:
+        return False
+    previous = first
+    for samples, _ in enumerate(base.deadline_ticks(remaining, poll_init, poll_max), start=1):
+        try:
+            current = _tree_signature(driver.query())
+        except (OSError, subprocess.CalledProcessError, ValueError):
+            previous = None
+        else:
+            if previous is not None and current == previous:
+                return True
+            previous = current
+        if samples >= _SETTLE_POLLS:
+            break
+    _logger.debug("readiness returned before the tree settled; the first actuation may race it")
+    return False
