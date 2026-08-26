@@ -344,8 +344,9 @@ def _usage_ledger_paths(state: ServeState) -> list[Path]:
     Every such subprocess names a target (`resolve` rejects an unknown one), so the set of files it
     can append to is the union over the config's targets — the dashboard is process-wide, not
     target-scoped, so it reads all of them. A config that declares no targets can have no such
-    writer; `defaults.ai` alone then still answers what a `bajutsu` process launched beside it would
-    use. An explicit empty `usageLedger` disables persistence, contributing no path.
+    writer; the dashboard falls back to `defaults.ai` — the config's only statement of where a
+    ledger would live, and what a writer would inherit once a target exists — rather than reading
+    nothing at all. An explicit empty `usageLedger` disables persistence, contributing no path.
 
     Two writers stay outside that union by construction, both pre-existing and neither this
     dashboard's to reach: a job carrying its own `cwd` (a remote worker's workspace, which serve
