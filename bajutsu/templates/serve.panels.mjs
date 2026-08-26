@@ -5,7 +5,7 @@
 // (the record/replay job ids, the selected run, the Run-result show/hide hooks) lives on the shared
 // `state` object rather than module-level lets, since more than one module writes it.
 import {
-  $, esc, getJSON, postJSON, setStatus, setBusy, streamJob, cancelJob, appendLine, startJob,
+  $, esc, getJSON, isFetchError, FETCH_ERROR, postJSON, setStatus, setBusy, streamJob, cancelJob, appendLine, startJob,
   openModal, closeModal, renderGradeBadge, setCfgName, closeFs, loadShared, loadScenarios, loadSims,
   state, scnFiles, aiAvailable,
   restoreRun, purgeRun, wireHistoryList, retentionDays,
@@ -420,7 +420,23 @@ function renderHistFilter(shown){
 // returns (assigned in initPanels); loadHistory re-syncs it after each re-render.
 let histSel=null;
 async function loadHistory(){
-  const runs=await getJSON('/api/runs',null);if(!runs)return;
+  // FETCH_ERROR rather than a bare null-and-return (#1716): returning early left the list showing
+  // whatever was there — at boot, the "no runs yet" placeholder — so a failed read was
+  // indistinguishable from an empty history. Say it failed instead.
+  const runs=await getJSON('/api/runs',FETCH_ERROR);
+  if(isFetchError(runs)){
+    $('#history').innerHTML='<li class="muted" data-testid="replay.history-error">Couldn\u2019t load the run history. Refresh to retry.</li>';
+    // Drop every count the last good read left behind — the tab's "(N)" and the drilldown banner's
+    // "(N runs)" alike. A failed refresh (a delete's reload, a tab revisit, a finished run) would
+    // otherwise leave both advertising a number nothing on screen backs, above copy saying the read
+    // failed: the same false signal in a smaller place. The bare "History" is what an empty list
+    // already shows, and the filter itself stays set, so a retry restores a count it can stand behind.
+    const tab=$('#histtab');if(tab)tab.textContent='History';
+    const box=$('#histfilter');if(box)box.hidden=true;
+    if(histSel)histSel.sync();
+    return;
+  }
+  if(!runs)return;
   const tab=$('#histtab');if(tab)tab.textContent='History'+(runs.length?` (${runs.length})`:'');
   const shown=historyFilter?runs.filter(r=>historyFilter.ids.has(r.id)):runs;
   renderHistFilter(shown.length);
@@ -476,7 +492,13 @@ async function purgeTrashRun(id){
 async function coverageInit(){
   // Fill the run picker from the same history the Replay view lists; a target is already populated by
   // loadShared. Selecting runs is optional — it folds in the endpoint / observed-id dimensions.
-  const runs=await getJSON('/api/runs',[]);
+  // FETCH_ERROR rather than an empty list (#1716): an empty picker reads as "this project has no
+  // runs", which would send you looking for the wrong problem when the read simply failed.
+  const runs=await getJSON('/api/runs',FETCH_ERROR);
+  if(isFetchError(runs)){
+    $('#cov-runs').innerHTML='<option value="" disabled data-testid="coverage.runs-error">couldn\u2019t load runs — reopen to retry</option>';
+    return;
+  }
   $('#cov-runs').innerHTML=runs.map(r=>`<option value="${esc(r.id)}">${esc(r.id)}${r.scenarios&&r.scenarios.length?' · '+esc(r.scenarios.join(', ')):''}</option>`).join('');
 }
 async function loadCoverage(){

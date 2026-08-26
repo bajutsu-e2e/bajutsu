@@ -81,9 +81,34 @@ function streamJob(id,onLog,onDone,onHuman){
 function appendLine(el,line){el.textContent+=(el.textContent?'\n':'')+line;el.scrollTop=el.scrollHeight}
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function setStatus(el,t,c){el.textContent=t;el.className='status '+c}
-// Fetch JSON, resolving to `fallback` on any network/parse failure — every panel degrades this
-// way, so the try/catch lives here once instead of at each call site.
-async function getJSON(url,fallback){try{return await (await fetch(url)).json()}catch(e){return fallback}}
+// The failure value a caller passes as its `fallback` when it must tell "the request failed" apart
+// from "the result was legitimately empty" (#1716). Frozen and compared by identity, so no server
+// payload can ever be mistaken for one.
+const FETCH_ERROR=Object.freeze({fetchError:true});
+function isFetchError(v){return v===FETCH_ERROR}
+// The failure value for `fallback`. An `{error:'…'}` fallback marks a call site that renders
+// `d.error`, so a failing response carrying its own message hands that message through — the server's
+// specific reason beats a generic stand-in. Every other shape (an empty list, null, FETCH_ERROR)
+// passes straight back, so an error body can never reach a caller as data.
+function failedJSON(fallback,body){
+  return fallback&&typeof fallback.error==='string'&&body&&typeof body.error==='string'&&body.error
+    ?{...fallback,error:body.error}
+    :fallback;
+}
+// Fetch JSON, resolving to `fallback` on any failure — a network error, a non-2xx response, or an
+// unparseable body. Every panel degrades this way, so the try/catch lives here once instead of at
+// each call site. `res.ok` is part of that: a non-2xx body is the server's error payload, never data
+// (`handler._json` answers every 4xx/5xx with a parseable `{error}`), so returning it would hand a
+// list-expecting picker an object to `.map` over — a TypeError — or read as a legitimately empty
+// result (#1716). A call site that must show an explicit "failed to load" state passes FETCH_ERROR.
+async function getJSON(url,fallback){
+  let res,data;
+  try{res=await fetch(url);data=await res.json()}catch(e){return failedJSON(fallback,null)}
+  return res.ok?data:failedJSON(fallback,data);
+}
+// No `res.ok` check here, unlike getJSON: a write's non-2xx body is exactly what its callers render
+// — `purgeRun`'s 403 becomes "Only an admin can permanently delete a run", `switchProject`'s 4xx
+// becomes the alert text — so discarding it would replace every specific reason with a generic one.
 async function postJSON(url,body,fallback){
   try{return await (await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json()}
   catch(e){return fallback}
@@ -516,9 +541,9 @@ async function switchOrg(slug){
 function setCfgName(text,hasConfig){$('#cfgname').textContent=text;$('#viewcfg').hidden=!hasConfig}
 // Running-tool identity badge (BE-0272): "which build of bajutsu am I looking at". Version is
 // always shown once the endpoint answers; commit/branch/dirty are appended only when serve runs
-// from a Git checkout AND the caller may see them — the checkout read is admin-gated; a 403 still
-// resolves as JSON (`{error: "forbidden"}`, which lacks `.commit`), so only a network/parse failure
-// actually falls back to {}. Either way a hosted/non-admin/pip-install serve shows the version alone.
+// from a Git checkout AND the caller may see them — the checkout read is admin-gated, and getJSON's
+// `res.ok` check turns its 403 into the `{}` fallback (no `.commit`), the same as a network failure.
+// Either way a hosted/non-admin/pip-install serve shows the version alone.
 // Read on boot; not polled — the running build doesn't change.
 async function loadVersion(){
   const v=await getJSON('/api/version',{});
@@ -1070,10 +1095,10 @@ async function loadSims(){
 // stack. The modal's *static* buttons are wired once at page load (see the bottom of this file), so
 // re-opening the editor cannot duplicate their listeners.
 async function initThemeEditor(){
-  // A distinct sentinel on fetch failure: getJSON swallows a network error into its fallback, so an
-  // empty {colors,transitions} could mean either "server returned nothing" or "request failed". Mark
-  // the fallback so a real failure shows the same "contract not available" status a 500 body gets,
-  // rather than silently rendering an empty form.
+  // An error-shaped fallback, so a failure can't read as "the contract is empty": an empty
+  // {colors,transitions} would otherwise mean either "server returned nothing" or "request failed",
+  // and the editor would silently render an empty form. `error` also makes getJSON hand through the
+  // server's own message when the failing response carried one.
   const contract=await getJSON('/api/themecontract',{error:'unreachable',colors:{},transitions:{}});
   if(contract.error){setStatus($('#themestatus'),'contract not available','ng');return;}
 
@@ -1267,6 +1292,7 @@ if(window.__bajutsuThemesWritable){$('#themesave-upload').hidden=false;$('#theme
 // exported at their declarations above; everything here is a plain shared helper or orchestrator.
 export {
   $, setBusy, cancelJob, streamJob, appendLine, esc, setStatus, getJSON, postJSON, startJob,
+  FETCH_ERROR, isFetchError,
   renderGradeBadge, wireDoctor, NARROW_MQ, prefersReducedMotion, motionOff, initTheme,
   openModal, closeModal, showView, loadConfig, loadVersion, setCfgName, closeFs, loadProjects,
   switchProject, loadShared, loadScenarios, loadSims, refreshAiAvailability, storeGitCred,

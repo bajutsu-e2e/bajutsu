@@ -373,12 +373,16 @@ targets:
 ```
 
 An `interrupts` list set at the **config** level (`targets.<name>.interrupts`) is an app-wide
-default; a scenario's own `interrupts` is **appended** to it, config entries checked first — the same
-config-then-scenario layering `systemAlertHandling` follows. An entry's `steps` share the enclosing
-scenario's `vars.*` bindings, exactly as `if`'s branches do. If a handler's own `steps` never clear
-its `condition` (a broken selector, a screen that re-renders identically), the entry fires only a
-small bounded number of times per step and then the step falls back to its ordinary outcome (pass,
-fail, or timeout) — a mis-set entry fails the step cleanly rather than hanging the run.
+default; a scenario's own `interrupts` is **appended** to it, config entries checked first — the
+same config-then-scenario layering `systemAlertHandling` follows. An entry's `steps` share the
+enclosing scenario's `vars.*` bindings, exactly as `if`'s branches do. A handler may itself `use` a
+[component](#reuse-data-and-tags), which expands before the run. A config-level entry may not: a
+target config never goes through component expansion. A `use` under `targets.<name>.interrupts`
+fails the config load. Inline the steps there, or move the handler to the scenario. If a handler's
+own `steps` never clear its `condition` (a broken selector, a screen that re-renders identically),
+the entry fires only a small bounded number of times per step and then the step falls back to its
+ordinary outcome (pass, fail, or timeout) — a mis-set entry fails the step cleanly rather than
+hanging the run.
 
 The check is the deterministic assertion DSL, never a model call, so `interrupts` adds no AI to the
 `run` verdict. That is the difference from `systemAlertHandling`: the alert guard is the vision path
@@ -1178,7 +1182,7 @@ A small templating and macro layer wraps the core grammar. It runs **at load tim
 
 ### Components (`use` → reusable steps)
 
-A **component** is a separate file containing a list of `params` and a list of `steps` that reference them as `${params.<name>}`. A `use` step invokes it, binding params via `with`. `use` is a **compile-time macro**: `expand_components` (`scenario/expand.py`) replaces it with the component's substituted steps before the run. Expansion is recursive — a component may itself `use` another, up to depth 25. It raises an error on a missing or unknown param, a residual `${params.*}` referencing something undeclared, or a reference cycle. No `use` step survives into the run, so determinism is unaffected.
+A **component** is a separate file containing a list of `params` and a list of `steps` that reference them as `${params.<name>}`. A `use` step invokes it, binding params via `with`. `use` is a **compile-time macro**: `expand_components` (`scenario/expand.py`) replaces it with the component's substituted steps before the run. Expansion is recursive — a component may itself `use` another, up to depth 25. It raises an error on a missing or unknown param, a residual `${params.*}` referencing something undeclared, or a reference cycle. No `use` step survives into the run, so determinism is unaffected. Expansion reaches a scenario's own `steps` and the recovery `steps` of each [`interrupts`](#interrupts-handling-unpredictable-interstitial-screens) entry.
 
 ```yaml
 # login.component.yaml — a component file (a single mapping, loaded separately)

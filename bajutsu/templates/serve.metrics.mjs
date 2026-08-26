@@ -2,7 +2,7 @@
 // (BE-0247); imports its shared helpers from serve.core.mjs. Its body only defines — the one
 // top-level listener is wired by initMetrics(), which the entry module (serve.author.mjs) calls
 // after every section has evaluated.
-import {$, esc, getJSON, switchProject} from './serve.core.mjs';
+import {$, esc, getJSON, isFetchError, FETCH_ERROR, switchProject} from './serve.core.mjs';
 
 // ---- Cross-project comparison (BE-0226 unit 3): the hub's projects ranked side by side ----
 // Client-rendered from the unit-2 /api/metrics/projects model (JSON, not a server-rendered report
@@ -43,7 +43,11 @@ function metricSpark(trend){
 
 async function loadMetrics(){
   const host=$('#metrics-host');
-  const rows=await getJSON('/api/metrics/projects',[]);
+  // FETCH_ERROR, not an empty list (#1716): "no projects registered" and "the comparison couldn't be
+  // read" are different situations and want different copy — the first tells you to register another
+  // project, the second to retry. An empty fallback here reported a healthy hub as an empty one.
+  const rows=await getJSON('/api/metrics/projects',FETCH_ERROR);
+  if(isFetchError(rows)){host.innerHTML='<div class="mempty" data-testid="metrics.error">Couldn\u2019t load the comparison. Refresh to retry.</div>';return}
   metricsCache=Array.isArray(rows)?rows:[];
   if(!metricsCache.length){host.innerHTML='<div class="mempty" data-testid="metrics.empty">No projects to compare — register more than one with <code>bajutsu project add</code>.</div>';return}
   renderMetrics();

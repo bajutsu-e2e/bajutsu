@@ -149,6 +149,80 @@ def test_record_fails_closed_uses_configured_key_env(
     assert "MY_GATEWAY_KEY" in r.output
 
 
+def _kill_switch_config(tmp_path: Path) -> Path:
+    """A config whose `defaults.ai` disables every AI path (BE-0394)."""
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults:\n  ai: { provider: none }\n"
+        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        encoding="utf-8",
+    )
+    return cfg
+
+
+def test_record_refuses_under_provider_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # BE-0394: the kill switch refuses *with the key present*, and the message names the setting
+    # rather than an env var to export — exporting one would not lift it.
+    monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setattr(
+        "anthropic.Anthropic",
+        lambda *a, **k: pytest.fail("client constructed despite ai.provider: none"),
+    )
+    r = runner.invoke(
+        app,
+        [
+            "record",
+            "--out",
+            str(tmp_path / "rec.yaml"),
+            "--target",
+            "demo",
+            "--goal",
+            "x",
+            "--no-system-alert-handling",
+            "--config",
+            str(_kill_switch_config(tmp_path)),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "ai.provider: none" in r.output
+
+
+def test_triage_ai_refuses_under_provider_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The same refusal on the investigation path (BE-0394): the run's verdict is already decided, so
+    # the switch costs nothing deterministic — it only keeps the failure evidence off a model.
+    monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setattr(
+        "anthropic.Anthropic",
+        lambda *a, **k: pytest.fail("client constructed despite ai.provider: none"),
+    )
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "manifest.json").write_text(
+        '{"scenarios": [{"scenario": "s", "ok": false, "failure": "boom", "steps": []}]}',
+        encoding="utf-8",
+    )
+    r = runner.invoke(
+        app,
+        [
+            "triage",
+            str(run_dir),
+            "--ai",
+            "--target",
+            "demo",
+            "--config",
+            str(_kill_switch_config(tmp_path)),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "ai.provider: none" in r.output
+
+
 def test_triage_ai_fails_closed_without_credential(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

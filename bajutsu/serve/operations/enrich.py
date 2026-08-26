@@ -57,13 +57,17 @@ def start_enrich(
         return {"error": f"scenario '{name}' not found in file"}, 404
 
     if agent_factory is None:
+        from bajutsu.agents import availability as ai_availability
         from bajutsu.agents.factory import make_enrichment_agent
         from bajutsu.ai import credential_gap
 
         eff = resolve(config, target)
         gap = credential_gap(eff.ai)
         if gap:
-            return {"error": f"enrichment requires an AI credential ({gap})"}, 400
+            # The phrased message, not the raw token: `ai.provider: none` (BE-0394) is a deliberate
+            # setting, so "requires a credential" would send the reader to Settings to save a key
+            # that can never lift it. The same mapping `claudeHint` renders.
+            return {"error": f"enrichment cannot run: {ai_availability.message(gap, eff.ai)}"}, 400
         agent = make_enrichment_agent(ai=eff.ai)
     else:
         agent = agent_factory()

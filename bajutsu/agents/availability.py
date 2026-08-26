@@ -16,10 +16,18 @@ from __future__ import annotations
 from bajutsu.agents.ai_config import AiConfig
 from bajutsu.agents.anthropic_client import ANT_CLI_MISSING, ANT_CLI_UNAUTHENTICATED, key_env
 from bajutsu.ai.claude_code import CLI_MISSING as CLAUDE_CODE_CLI_MISSING
+from bajutsu.ai.disabled import DISABLED
 
 
 def message(gap: str, ai: AiConfig | None = None) -> str:
     """A specific, actionable one-liner for a gap from `bajutsu.ai.credential_gap`, for `serve` / `doctor`."""
+    if gap == DISABLED:
+        # Not a broken environment: the gap is a deliberate setting (BE-0394), so the wording states
+        # the choice rather than sending the reader off to install or sign in to anything.
+        return (
+            "AI is disabled for this target (ai.provider: none) — select a provider "
+            "(api-key / bedrock / ant / claude-code) to use the AI paths."
+        )
     if gap == CLAUDE_CODE_CLI_MISSING:
         return (
             "the Claude Code CLI (`claude`) is not installed — install Claude Code and sign in "

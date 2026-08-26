@@ -27,7 +27,8 @@ from bajutsu.agents.ai_config import (
     normalize_provider,
 )
 from bajutsu.agents.anthropic_client import ANT_BINARY, ANT_CLI_MISSING, ANTHROPIC_KEY_ENV
-from bajutsu.ai import credential_gap, known_providers, resolved_provider
+from bajutsu.ai import credential_gap, resolved_provider, selectable_providers
+from bajutsu.ai.registry import DISABLED_PROVIDER
 from bajutsu.backends import IMPLEMENTED
 from bajutsu.config import load_config, resolve, xcuitest_pins_runner
 from bajutsu.config_source import materialize, parse_config_spec, source_provenance
@@ -380,28 +381,31 @@ def _load_org_settings(state: ServeState, org: str) -> OrgProviderSettings:
     active = data.settings.get(data.provider)
     if (
         active is None
-        or data.provider not in known_providers()
+        or data.provider not in selectable_providers()
         or not _valid_slot(data.provider, active)
     ):
-        # A well-formed save always records a registered active provider with valid values. A file
-        # that names an unregistered provider, an active provider with no slot, a bedrock slot with a
-        # blank model, or any slot with an invalid effort/model/region is hand-edited or corrupt.
+        # A well-formed save always records a selectable active provider with valid values. A file
+        # that names an unselectable provider (unregistered, or the kill switch `none` the dropdown
+        # never offers — BE-0394), an active provider with no slot, a bedrock slot with a blank
+        # model, or any slot with an invalid effort/model/region is hand-edited or corrupt.
         # Seeding from it would materialize an invalid choice that only fails at the first AI call, so
         # fall back to the env defaults here instead — loud, not silent.
         logging.getLogger(__name__).warning(
-            "ignoring the persisted AI provider settings: the active provider %r is unknown, "
-            "missing, or has an invalid saved slot; falling back to the environment defaults",
+            "ignoring the persisted AI provider settings: the active provider %r is unknown or "
+            "unselectable, missing, or has an invalid saved slot; falling back to the "
+            "environment defaults",
             data.provider,
         )
         return OrgProviderSettings()
-    known = known_providers()
+    known = selectable_providers()
     slots: dict[str, ProviderSettings] = {}
     for name, settings in data.settings.items():
         if name not in known:
-            # A stale/hand-edited file can carry a slot for a provider that no longer exists; skip it
-            # rather than surfacing a bogus entry in the Settings UI. Loud, like the active guard.
+            # A stale/hand-edited file can carry a slot for a provider that no longer exists — or one
+            # registered but not selectable (`none`, BE-0394); skip it rather than surfacing a bogus
+            # entry in the Settings UI. Loud, like the active guard.
             logging.getLogger(__name__).warning(
-                "ignoring a persisted settings slot for the unknown provider %r", name
+                "ignoring a persisted settings slot for the unselectable provider %r", name
             )
             continue
         if not _valid_slot(name, settings):
@@ -863,10 +867,21 @@ def set_provider(state: ServeState, body: dict[str, Any], actor: str | None) -> 
     the org's store so it survives a restart (BE-0184 / BE-0229). The selection is remembered per
     provider (BE-0183) so switching the Settings dropdown no longer discards the model/effort set for
     the provider left behind; only the selected provider's slot is written — the others are
-    untouched. Validated against the BE-0104 registry, so every AI path (authoring, the alert guard,
-    triage) resolves through the same seam."""
+    untouched. Validated against the BE-0104 registry's *selectable* names, so every AI path
+    (authoring, the alert guard, triage) resolves through the same seam while the `none` kill switch
+    stays out of the dropdown: it is a statement a repository commits, and a selection here would
+    reach a job only as an env var the config outranks (BE-0394)."""
     prov = normalize_provider(str(body.get("provider", "") or ""))
-    if prov not in known_providers():
+    if prov == DISABLED_PROVIDER:
+        # Registered, so "unknown provider" would send the caller off to fix a name that is in fact
+        # correct. Say why it is not on offer instead (BE-0394).
+        return {
+            "error": (
+                "the none provider is not selectable here: it disables every AI path and belongs in "
+                "the project's ai.provider config, which outranks this setting"
+            )
+        }, 400
+    if prov not in selectable_providers():
         return {"error": f"unknown provider: {prov or '(empty)'}"}, 400
     # Reasoning effort applies to any provider that supports it (claude-code); a blank value clears
     # it and an unknown level is rejected so a typo is a visible error, not a silent default.

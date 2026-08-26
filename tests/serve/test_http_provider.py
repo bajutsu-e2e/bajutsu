@@ -315,6 +315,72 @@ def test_http_provider_rejects_unknown(tmp_path: Path, monkeypatch: pytest.Monke
         server.server_close()
 
 
+def test_http_provider_rejects_the_disabled_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BE-0394: `none` is registered but not selectable, so the dropdown can never offer it.
+
+    An org's selection reaches a job only as `BAJUTSU_AI_PROVIDER`, and `resolve_provider` reads the
+    configuration first — so picking `none` here would leave a project whose config names a provider
+    still calling the model, with a switch labeled off. The kill switch is a repository statement.
+    """
+    scn_dir, cfg, runs = project(tmp_path)
+    _clean_provider_env(monkeypatch)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        code, body = _post(port, "/api/provider", {"provider": "none"})
+        # Not "unknown provider": the name is registered, so the error says why it is not on offer
+        # rather than sending the caller off to fix a name that is in fact correct.
+        assert code == 400 and "not selectable" in body["error"]
+        assert _get_json(port, "/api/provider")["provider"] != "none"  # nothing was stored
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_provider_settings_still_reads_available_under_a_config_kill_switch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BE-0394's accepted limitation, pinned so it stays a documented fact rather than drifting.
+
+    `provider_info` resolves the provider from the org's saved selection (or the launch env), never
+    from `resolve(config, target).ai` — unlike the enrichment and triage handlers, which do. So a
+    repository that sets `ai.provider: none` still reports `claudeAvailable: true` and the web UI
+    leaves the record / crawl tabs enabled. The switch itself holds: a job started from one of those
+    tabs is a command-line invocation that resolves the config itself and exits 2 before reaching a
+    model. What is missing is only the pre-flight signal that would grey the tab out first —
+    teaching `provider_info` to read the target's `ai` changes reachability reporting for every
+    provider, so it belongs to a follow-up item.
+    """
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text(
+        "- name: alpha\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8"
+    )
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [ios], ai: { provider: none } }\n"
+        f"targets:\n  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",
+        encoding="utf-8",
+    )
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    _clean_provider_env(monkeypatch)
+    monkeypatch.setenv(ac.ANTHROPIC_KEY_ENV, "sk-test")
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        body = _get_json(port, "/api/provider")
+        assert body["provider"] == "api-key"  # the config's `ai` block is not read here
+        assert body["claudeAvailable"] is True
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_http_provider_output_language_round_trip(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -621,3 +621,162 @@ def test_project_metrics_empty_run_set_degrades_to_zeros() -> None:
     assert m.duration_p50_s == 0.0
     assert m.duration_p95_s == 0.0
     assert m.trend == []
+
+
+def test_render_html_shows_the_fingerprint_beside_each_scenario_row() -> None:
+    # #1718: both scenario tables are keyed by (fingerprint, name, OS) but showed only name + OS, so
+    # the two series an edited scenario leaves behind read as one duplicated row. The fingerprint is
+    # part of the key, so it belongs in the cell — the same shape the flakiness panel renders.
+    html = _stats.render_html(
+        _stats.aggregate_runs(
+            [
+                _manifest(
+                    "20260101-000000",
+                    scenario_hash="sha256:aaa",
+                    scenarios=[{"scenario": "login", "ok": True, "duration_s": 1.0}],
+                ),
+                _manifest(
+                    "20260102-000000",
+                    scenario_hash="sha256:bbb",
+                    scenarios=[{"scenario": "login", "ok": True, "duration_s": 2.0}],
+                ),
+            ]
+        )
+    )
+    # One row per series in the Slowest table, each naming the fingerprint that split it off.
+    assert html.count("<code>sha256:aaa</code>") == 1
+    assert html.count("<code>sha256:bbb</code>") == 1
+
+
+def test_render_html_flaky_table_shows_the_fingerprint_too() -> None:
+    # #1718: the Slowest and Flaky tables read the same aggregates, so they must present them alike —
+    # a flaky row without its fingerprint can't be told from the same scenario's other series.
+    html = _stats.render_html(
+        _stats.aggregate_runs(
+            [
+                _manifest(
+                    "20260101-000000",
+                    scenario_hash="sha256:aaa",
+                    scenarios=[{"scenario": "login", "ok": True, "duration_s": 1.0}],
+                ),
+                _manifest(
+                    "20260102-000000",
+                    scenario_hash="sha256:aaa",
+                    scenarios=[{"scenario": "login", "ok": False, "duration_s": 1.0}],
+                ),
+            ]
+        )
+    )
+    # One series, listed by both tables — so its fingerprint is rendered twice, not once.
+    assert "Flaky scenarios" in html
+    assert html.count("<code>sha256:aaa</code>") == 2
+
+
+def test_render_html_empty_fingerprint_leaves_the_name_alone() -> None:
+    # A manifest may stamp an empty `scenarioHash`; it names no series, so the cell must not trail an
+    # empty <code> element.
+    html = _stats.render_html(
+        _stats.aggregate_runs(
+            [
+                _manifest(
+                    "20260101-000000",
+                    scenario_hash="",
+                    scenarios=[{"scenario": "login", "ok": True, "duration_s": 1.0}],
+                )
+            ]
+        )
+    )
+    assert "<code></code>" not in html
+    assert "login" in html
+
+
+def test_render_html_discloses_the_unknown_os_bucket() -> None:
+    # #1718 / BE-0358: the scenario tables group by OS, so a series with no recorded OS is split off
+    # under the unknown one. The flakiness surfaces disclose that in shared words; without the same
+    # line here, the split reads as an unexplained extra row.
+    html = _stats.render_html(
+        _stats.aggregate_runs(
+            [
+                _manifest(
+                    "20260101-000000",
+                    scenario_hash="sha256:aaa",
+                    scenarios=[
+                        {
+                            "scenario": "login",
+                            "ok": True,
+                            "duration_s": 1.0,
+                            "device_runtime": "iOS 18.6",
+                        },
+                        {"scenario": "checkout", "ok": True, "duration_s": 1.0},  # no OS recorded
+                    ],
+                )
+            ]
+        )
+    )
+    assert "1 history with no single recorded device OS" in html
+
+
+def test_render_html_omits_the_unknown_os_note_when_every_series_has_one() -> None:
+    html = _stats.render_html(
+        _stats.aggregate_runs(
+            [
+                _manifest(
+                    "20260101-000000",
+                    scenario_hash="sha256:aaa",
+                    scenarios=[
+                        {
+                            "scenario": "login",
+                            "ok": True,
+                            "duration_s": 1.0,
+                            "device_runtime": "iOS 18.6",
+                        }
+                    ],
+                )
+            ]
+        )
+    )
+    assert "no single recorded device OS" not in html
+
+
+def test_render_html_unknown_os_note_covers_the_whole_aggregation() -> None:
+    # #1718: the note counts every series, while the Slowest table renders only its top 20 rows, so
+    # the note belongs to the page rather than to that table — printed under a 20-row slice, a count
+    # taken over more series is a row that can't be reconciled with what it sits beneath, the very
+    # problem this dashboard's tables had. Placed after both tables it also covers the Flaky one,
+    # which groups on the same key.
+    scenarios: list[dict[str, Any]] = [
+        {
+            "scenario": f"s{i:02d}",
+            "ok": True,
+            "duration_s": 100.0 - i,
+            "device_runtime": "iOS 18.6",
+        }
+        for i in range(21)
+    ]
+    # The slowest ranking is by descending average duration, so the shortest series sorts last —
+    # off the rendered slice entirely. It is the only one with no recorded OS.
+    scenarios.append({"scenario": "unseen", "ok": True, "duration_s": 0.5})
+    html = _stats.render_html(
+        _stats.aggregate_runs(
+            [
+                _manifest("20260101-000000", scenario_hash="sha256:aaa", scenarios=scenarios),
+                # A second run flips one verdict, so the Flaky table renders too.
+                _manifest(
+                    "20260102-000000",
+                    scenario_hash="sha256:aaa",
+                    scenarios=[
+                        {
+                            "scenario": "s00",
+                            "ok": False,
+                            "duration_s": 100.0,
+                            "device_runtime": "iOS 18.6",
+                        }
+                    ],
+                ),
+            ]
+        )
+    )
+    note = "1 history with no single recorded device OS"
+    assert note in html
+    assert "unseen" not in html  # the counted series is itself off the rendered slice
+    assert html.index("Flaky scenarios") < html.index(note)

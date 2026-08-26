@@ -100,3 +100,44 @@ def test_cycle_raises() -> None:
     scns = load_scenarios("- name: s\n  steps:\n    - use: { component: a.yaml }\n")
     with pytest.raises(ValueError, match="cycle detected"):
         expand_components(scns, _resolver(table))
+
+
+def test_use_expands_inside_an_interrupt_handler() -> None:
+    # An `interrupts` handler's recovery steps run through the same step loop, so a `use` there
+    # must be expanded like any other — an unexpanded one reaches the loop with no action at all.
+    scns = load_scenarios(
+        """
+- name: s
+  interrupts:
+    - condition: { exists: { id: onboarding.title } }
+      steps:
+        - use: { component: login.yaml, with: { user: alice, pass: hunter2 } }
+        - tap: { id: onboarding.skip }
+  steps:
+    - tap: { id: home.tab }
+"""
+    )
+    expand_components(scns, _resolver({"login.yaml": LOGIN}))
+    steps = scns[0].interrupts[0].steps
+    assert len(steps) == 4  # 3 component steps + the handler's own tap
+    assert steps[0].type is not None and steps[0].type.text == "alice"
+    assert steps[1].type is not None and steps[1].type.text == "hunter2"
+    assert steps[2].tap is not None and steps[2].tap.id == "auth.submit"
+    assert steps[3].tap is not None and steps[3].tap.id == "onboarding.skip"
+    assert all(s.use is None for s in steps)
+
+
+def test_component_errors_surface_from_an_interrupt_handler() -> None:
+    scns = load_scenarios(
+        """
+- name: s
+  interrupts:
+    - condition: { exists: { id: x } }
+      steps:
+        - use: { component: login.yaml, with: { user: alice } }
+  steps:
+    - tap: { id: home.tab }
+"""
+    )
+    with pytest.raises(ValueError, match="missing required params"):
+        expand_components(scns, _resolver({"login.yaml": LOGIN}))

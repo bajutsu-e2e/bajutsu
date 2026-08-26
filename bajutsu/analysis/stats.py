@@ -27,7 +27,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 from bajutsu import device_os
-from bajutsu.analysis.audit import longitudinal
+from bajutsu.analysis.audit import longitudinal, unknown_os_note
 from bajutsu.device_os import DeviceOS
 
 # A run id opens with a UTC timestamp (`YYYYMMDD-HHMMSS`), so the day is a pure prefix parse; a run
@@ -507,6 +507,11 @@ def render_html(s: Stats, *, live: bool = False) -> str:
             slowest=_slowest(s.scenarios),
             flaky=_flaky(s.scenarios),
             live=live,
+            # The scenario tables group by OS, so the unknown bucket needs the same disclosure the
+            # flakiness surfaces print — without it, runs recorded before the OS was stamped split
+            # off under the unknown OS with nothing saying why (BE-0358, #1718).
+            unknown_os=sum(1 for sc in s.scenarios if sc.device_os is None),
+            unknown_os_note=unknown_os_note,
             # Passed in rather than spelled out in the template, so every surface names an OS — and
             # the unknown one — with the same words (BE-0358).
             describe_os=device_os.describe,
