@@ -8,7 +8,7 @@ wiring is exercised without the ``aws`` extra or any real AWS call.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 import pytest
 
@@ -40,12 +40,22 @@ def test_source_root_points_at_the_checkout_root() -> None:
     assert (root / "bajutsu").is_dir()
 
 
+def _recording_client(regions: list[str]) -> Callable[[str], object]:
+    """A `_make_devicefarm_client` stand-in that records the region it was asked for."""
+
+    def make(region: str) -> object:
+        regions.append(region)
+        return object()
+
+    return make
+
+
 def test_registers_devicefarm_when_project_arn_is_set(monkeypatch: pytest.MonkeyPatch) -> None:
     regions: list[str] = []
     monkeypatch.setattr(
         batch_bootstrap,
         "_make_devicefarm_client",
-        lambda region: regions.append(region) or object(),
+        _recording_client(regions),
     )
     monkeypatch.setattr(batch_bootstrap, "HttpTransfer", object)
 
@@ -68,7 +78,7 @@ def test_region_override_reaches_the_client_factory(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(
         batch_bootstrap,
         "_make_devicefarm_client",
-        lambda region: regions.append(region) or object(),
+        _recording_client(regions),
     )
     monkeypatch.setattr(batch_bootstrap, "HttpTransfer", object)
 

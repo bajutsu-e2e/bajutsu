@@ -13,6 +13,7 @@ from conftest import el
 
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
+from bajutsu.scenario import Scenario
 
 
 def _fake_with_alert(*labels: str) -> FakeDriver:
@@ -21,7 +22,7 @@ def _fake_with_alert(*labels: str) -> FakeDriver:
     return driver
 
 
-def _grant_scenario(steps: list[dict[str, object]] | None = None) -> object:
+def _grant_scenario(steps: list[dict[str, object]] | None = None) -> Scenario:
     return _scenario(
         {
             "name": "grant the prompt",

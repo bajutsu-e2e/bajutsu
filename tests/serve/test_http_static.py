@@ -290,7 +290,7 @@ def test_http_simulators(tmp_path: Path) -> None:
         config=cfg,
         runs_dir=runs,
         cwd=tmp_path,
-        simctl=lambda args, e=None: payload,
+        simctl=lambda args, e: payload,
     )
     server, port = _serve(state)
     try:

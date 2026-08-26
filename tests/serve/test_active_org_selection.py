@@ -15,7 +15,7 @@ import pytest
 
 from bajutsu.serve import operations as ops
 from bajutsu.serve.orgs import orgs_for_identity, parse_orgs
-from bajutsu.serve.server.oauth import Identity
+from bajutsu.serve.server.oauth import Identity, OAuthClient
 from bajutsu.serve.state import ServeState, SessionManager
 
 if TYPE_CHECKING:
@@ -66,7 +66,7 @@ class FakeOAuthClient:
 def _db_state(
     serve_engine: Callable[..., Engine],
     tmp_path: Path,
-    oauth: object,
+    oauth: OAuthClient,
     admin_teams: list[str] | None = None,
 ) -> ServeState:
     from bajutsu.serve.operations.config import seed_orgs_from_bound_config

@@ -18,11 +18,12 @@ from conftest import el
 
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
+from bajutsu.scenario import Scenario
 
 _FLOOR = "BAJUTSU_MIN_WAIT_TIMEOUT"
 
 
-def _double_tap_scenario() -> object:
+def _double_tap_scenario() -> Scenario:
     # Mirrors demos/showcase/scenarios/gestures.yaml: double-tap a target, then expect the
     # mirrored counter to read "1".
     return _scenario(

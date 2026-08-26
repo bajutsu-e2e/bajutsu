@@ -14,7 +14,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import pytest
-from _shared import SCENARIO, fake_popen, project, write_run
+from _shared import SCENARIO, FakeObjectStore, fake_popen, project, write_run
 from fastapi.testclient import TestClient
 
 from bajutsu import serve as srv
@@ -23,6 +23,7 @@ from bajutsu.serve import operations as ops
 from bajutsu.serve.operations.config import seed_orgs_from_bound_config
 from bajutsu.serve.server.app import make_app
 from bajutsu.serve.server.oauth import Identity
+from bajutsu.serve.state import SessionManager
 
 
 def _client(state: srv.ServeState) -> TestClient:
@@ -32,7 +33,7 @@ def _client(state: srv.ServeState) -> TestClient:
 def _state(tmp_path: Path, *, token: str | None = None) -> srv.ServeState:
     _scn_dir, cfg, runs = project(tmp_path)
     return srv.ServeState(
-        config=cfg, runs_dir=runs, root=tmp_path, cwd=tmp_path, auth=srv.SessionManager(token=token)
+        config=cfg, runs_dir=runs, root=tmp_path, cwd=tmp_path, auth=SessionManager(token=token)
     )
 
 
@@ -287,7 +288,7 @@ def test_upload_route_requires_auth_when_token_set(tmp_path: Path) -> None:
         runs_dir=tmp_path / "runs",
         cwd=tmp_path,
         root=tmp_path,
-        auth=srv.SessionManager(token="s3cret"),
+        auth=SessionManager(token="s3cret"),
     )
     (tmp_path / "runs").mkdir()
     resp = _client(state).post("/api/upload?name=x.zip", content=b"x")
@@ -339,7 +340,7 @@ def test_upload_route_returns_400_on_write_failure(
 
 def test_upload_urls_route_signs_put_urls(tmp_path: Path) -> None:
     # The FastAPI shell reaches the same evidence operation as the stdlib handler (BE-0110).
-    class _FakeStore:
+    class _FakeStore(FakeObjectStore):
         def presigned_put_url(self, key: str, *, content_type: str = "", ttl: int = 3600) -> str:
             return f"https://signed.example/{key}"
 
@@ -435,7 +436,7 @@ def _oauth_state(tmp_path: Path, *, login: str | None = "alice") -> srv.ServeSta
         runs_dir=runs,
         root=tmp_path,
         cwd=tmp_path,
-        auth=srv.SessionManager(oauth=_FakeOAuth(login)),
+        auth=SessionManager(oauth=_FakeOAuth(login)),
     )
 
 
@@ -497,7 +498,7 @@ def test_run_audits_the_logged_in_user(tmp_path: Path) -> None:
         root=tmp_path,
         cwd=tmp_path,
         # alice carries the editor Team, so she can trigger the run whose audit entry we assert.
-        auth=srv.SessionManager(oauth=_FakeOAuth("alice", teams=[_EDITOR_TEAM])),
+        auth=SessionManager(oauth=_FakeOAuth("alice", teams=[_EDITOR_TEAM])),
         repository=SqlRepository(engine),
         popen=fake_popen([]),
     )
@@ -542,7 +543,7 @@ def _rbac_state(
         runs_dir=runs,
         root=tmp_path,
         cwd=tmp_path,
-        auth=srv.SessionManager(
+        auth=SessionManager(
             token="t",  # a token makes the gate enforce auth, so the OAuth session's role applies
             oauth=_FakeOAuth(login, teams=teams),
             oauth_admin_teams=tuple(admin_teams or ()),

@@ -18,6 +18,7 @@ from _shared import fake_popen, project, write_run
 from sqlalchemy import Engine, create_engine
 
 from bajutsu import serve as srv
+from bajutsu.serve.artifacts import ArtifactStore
 from bajutsu.serve.operations import crawl_runs_payload, runs_payload
 from bajutsu.serve.server.db import RunRecord, SqlRepository
 from bajutsu.serve.server.models import Base
@@ -189,20 +190,22 @@ def test_run_job_reads_the_run_manifest_only_once(
     class CountingStore:
         # A pass-through over the real LocalArtifactStore that tallies manifest reads — the same
         # store-swap seam test_http_artifacts uses to inject a server-style store.
-        def __init__(self, inner: object) -> None:
+        def __init__(self, inner: ArtifactStore) -> None:
             self._inner = inner
             self.manifest_reads = 0
 
         def open_bytes(self, rel: str) -> bytes | None:
             if rel.endswith("manifest.json"):
                 self.manifest_reads += 1
-            return self._inner.open_bytes(rel)  # type: ignore[attr-defined]
+            data = self._inner.open_bytes(rel)
+            assert data is None or isinstance(data, bytes)
+            return data
 
         def __getattr__(self, name: str) -> Any:
             return getattr(self._inner, name)
 
     counting = CountingStore(state.artifacts)
-    state.artifacts = counting  # type: ignore[assignment]
+    state.artifacts = counting
     srv.run_job(state, state.register(srv.Job(cmd=["x"])))
 
     assert repo.get_run("20260621-r") is not None
