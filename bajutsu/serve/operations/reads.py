@@ -109,14 +109,18 @@ def simulators_payload(state: ServeState) -> tuple[Any, int]:
     return list_simulators(state.simctl), 200
 
 
-# The newest-N run window every history-wide serve surface reads: the history list itself, the
-# `/stats` aggregation (BE-0102), and the per-project roll-up behind the comparison (BE-0226). One
-# window for all of them, because a Stats row and the history its drilldown opens (BE-0241) must
-# agree: aggregated over a wider window than the list shows, a row names runs the filtered list
-# silently drops, so the detail view contradicts the row that opened it (#1718). Also the
-# post-filter cap for a scenario-scoped DB list, so a scoped picker on the server backend stays as
-# bounded as the unscoped one, and the bound on how many `manifest.json` a `/stats` refresh reads
-# out of object storage. Large enough to read a trend, not the whole log.
+# The newest-N run window the DB-backed history list, the `/stats` aggregation (BE-0102), and the
+# per-project roll-up behind the comparison (BE-0226) all read. One window for those three, because
+# a Stats row and the history its drilldown opens (BE-0241) must agree: aggregated over a wider
+# window than the list shows, a row names runs the filtered list silently drops, so the detail view
+# contradicts the row that opened it (#1718). Two history-wide reads stay outside it deliberately:
+# the no-repository history list below is unbounded (a local store has no page to fetch, so its
+# list is a superset and a drilldown still resolves), and the Flaky panel reads
+# `flakiness.DEFAULT_RUN_LIMIT` — move this window and that one has to move with it, or Flaky
+# starts disagreeing with History the way Stats used to. Also the post-filter cap for a
+# scenario-scoped DB list, so a scoped picker on the server backend stays as bounded as the
+# unscoped one, and the bound on how many `manifest.json` a `/stats` refresh reads out of object
+# storage. Large enough to read a trend, not the whole log.
 RUN_WINDOW = 200
 
 
