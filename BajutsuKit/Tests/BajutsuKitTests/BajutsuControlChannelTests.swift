@@ -159,7 +159,7 @@ final class BajutsuControlChannelTests: XCTestCase {
         XCTAssertFalse(BajutsuControlChannel.isRunning)
     }
 
-    func testARejectedTokenOrAnUnservedPathEndsThePollLoop() {
+    func testARejectedTokenOrAnUnservedPathReadsAsTerminal() {
         // Neither answer can be retried into a working channel, and a loop that kept asking would
         // leave a timer running inside the app under test for the rest of its life.
         XCTAssertTrue(BajutsuControlChannel.isTerminal(status: 401))
@@ -215,6 +215,38 @@ final class BajutsuControlChannelTests: XCTestCase {
         XCTAssertEqual(body["applied"] as? Bool, true)
 
         XCTAssertFalse(BajutsuTouch.markersVisible, "the command's state has to have taken effect")
+    }
+
+    func testAnUnservedPathActuallyEndsThePollLoop() throws {
+        // The predicate above says a 404 is terminal; this says the poll round acts on it, so that
+        // dropping `poll`'s terminal branch fails a test instead of silently leaving a 150 ms timer
+        // inside the app for the rest of the process's life.
+        let collector = LoopbackCollectorStub()
+        let port = try collector.start()
+        defer { collector.stop() }
+
+        BajutsuControlChannel.startIfEnabled(
+            environment: [BajutsuControlChannel.activationKey: "1"],
+            // The stub 404s every path but `/commands`, the same way unit 1's `do_GET` does, so a
+            // root carrying an extra segment stands in for a version-skewed poll.
+            collector: URL(string: "http://127.0.0.1:\(port)/skewed")!,
+            token: "run-token"
+        )
+
+        // A condition wait, not a duration: nothing else clears `endpoint`, so the loop going quiet
+        // is the terminal branch having fired.
+        wait(
+            for: [
+                XCTNSPredicateExpectation(
+                    predicate: NSPredicate { _, _ in !BajutsuControlChannel.isRunning }, object: nil
+                )
+            ],
+            timeout: 10
+        )
+        // Asserted after the wait rather than before it, where a 404 answered faster than the test
+        // thread resumes would make it flaky. A recorded drain is what rules out the loop having
+        // never started, which is the other way the wait above could be satisfied.
+        XCTAssertEqual(collector.requests.map(\.path), ["/skewed/commands"])
     }
 }
 

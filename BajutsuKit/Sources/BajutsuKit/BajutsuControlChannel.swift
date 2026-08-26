@@ -154,9 +154,17 @@ enum BajutsuControlChannel {
     private static func poll(_ channel: Endpoint, generation: Int) {
         var request = URLRequest(url: channel.commands)
         request.httpMethod = "GET"
+        // The channel's only `GET`, and the report session carries a cache. Unit 1's 200 sends no
+        // cache directive and no validator, so the policy is pinned here rather than left to
+        // CFNetwork's heuristics: a cached empty drain is a channel that silently never delivers,
+        // which the acknowledgement wait can report only as a blind timeout.
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("Bearer \(channel.token)", forHTTPHeaderField: "Authorization")
         BajutsuNet.reportSession.dataTask(with: request) { data, response, _ in
             let status = (response as? HTTPURLResponse)?.statusCode
+            // Every step below runs on `queue`, applying included: a drain still in flight when
+            // `stop()` lands must not reach the app or acknowledge against the stopped run's
+            // endpoint, which is what `stop()` promises its caller.
             queue.async {
                 // The next round is scheduled from this round's completion rather than by a
                 // repeating timer, so a slow or unreachable collector cannot stack polls on top of
@@ -176,16 +184,16 @@ enum BajutsuControlChannel {
                     guard generation == currentGeneration else { return }
                     poll(channel, generation: generation)
                 }
-            }
-            guard let data, status == 200 else { return }
-            let drained = commands(from: data)
-            // An empty drain is the overwhelmingly common case, and it stops here: an idle channel
-            // never schedules main-thread work, so it cannot perturb the app's own timing — the
-            // very thing the test around it is measuring.
-            guard !drained.isEmpty else { return }
-            DispatchQueue.main.async {
-                for command in drained {
-                    acknowledge(command, apply(command), to: channel)
+                guard let data, status == 200 else { return }
+                let drained = commands(from: data)
+                // An empty drain is the overwhelmingly common case, and it stops here: an idle
+                // channel never schedules main-thread work, so it cannot perturb the app's own
+                // timing — the very thing the test around it is measuring.
+                guard !drained.isEmpty else { return }
+                DispatchQueue.main.async {
+                    for command in drained {
+                        acknowledge(command, apply(command), to: channel)
+                    }
                 }
             }
         }.resume()
