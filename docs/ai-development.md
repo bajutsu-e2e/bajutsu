@@ -66,8 +66,9 @@ you see an accepted drop before committing it.
 
 A file with fewer than ten statements carries no floor at all. One missed branch would move such a
 file's percentage by whole points, failing the gate on measurement noise rather than on a
-regression. Coverage can also differ slightly between operating systems, so a floor recorded on one
-platform can read as a drop on another. `make coverage-floors` is the answer there too.
+regression. Coverage can also differ slightly between environments — a different operating system,
+or a machine missing a tool some test needs — so a floor recorded on one machine can read as a drop
+on another. `make coverage-floors` is the answer there too.
 
 ## One topic per branch
 

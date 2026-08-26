@@ -105,6 +105,26 @@ def test_check_fails_when_the_snapshot_is_missing(
     assert "unenforceable" in capsys.readouterr().err
 
 
+def test_check_fails_when_the_snapshot_records_no_floors(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # An empty snapshot disables the gate exactly as a deleted one does, and the success line would
+    # otherwise claim files were checked when none had a floor.
+    coverage = _write(tmp_path / "coverage.json", _report({"a.py": (10.0, 40)}))
+    snapshot = _snapshot(tmp_path / "floors.json", {})
+    assert cf.main(["--coverage", str(coverage), "--snapshot", str(snapshot)]) == 1
+    assert "records no floors" in capsys.readouterr().err
+
+
+def test_the_success_line_counts_only_the_files_a_floor_applied_to(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    coverage = _write(tmp_path / "coverage.json", _report({"a.py": (95.0, 40), "b.py": (95.0, 40)}))
+    snapshot = _snapshot(tmp_path / "floors.json", {"a.py": 80.0})
+    assert cf.main(["--coverage", str(coverage), "--snapshot", str(snapshot)]) == 0
+    assert "1 file(s) at or above their recorded floor" in capsys.readouterr().out
+
+
 def test_check_notes_a_file_the_snapshot_has_not_recorded_yet(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -11,7 +11,7 @@ its own recorded number.
 Two modes, mirroring the ``format`` / ``format-check`` split so the gate can never quietly move the
 bar it enforces:
 
-``--check`` (the default, wired into ``make check`` as ``make lint-coverage-floors``)
+Check mode (the default — no flag to pass; ``make check`` runs it as ``make lint-coverage-floors``)
     Compare ``coverage.json`` against the snapshot and fail on a drop. Never writes.
 
 ``--write`` (``make coverage-floors``)
@@ -165,6 +165,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"coverage-floors: unreadable snapshot {args.snapshot}: {exc}", file=sys.stderr)
         return 1
 
+    if not args.write and not floors:
+        # An existing-but-empty snapshot disables the gate exactly as a deleted one does — a botched
+        # `--write` against a truncated report, or a merge that resolves `files` to `{}`.
+        print(
+            f"coverage-floors: {args.snapshot} records no floors — the per-file floors are "
+            "unenforceable. Restore the committed file, or seed one with `make coverage-floors`.",
+            file=sys.stderr,
+        )
+        return 1
+
     if args.write:
         changes = render(current, floors)
         save_snapshot(args.snapshot, current)
@@ -189,7 +199,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    print(f"coverage-floors: {len(current)} file(s) at or above their recorded floor.")
+    # Count the files a floor was actually applied to, not every file measured: a file with no
+    # recorded floor was not checked, so counting it would overstate what the gate just enforced.
+    checked = sum(1 for name in current if name in floors)
+    print(f"coverage-floors: {checked} file(s) at or above their recorded floor.")
     for note in notes:
         print(f"  {note}")
     if notes:

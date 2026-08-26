@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -105,3 +106,48 @@ def test_the_repository_floor_is_declared_where_both_readers_look() -> None:
     """The gate, this advisory, and the CI summary all read this one key — it must exist."""
     root = Path(__file__).resolve().parent.parent
     assert cd.read_floor(root / "pyproject.toml") > 0
+
+
+def _throwaway_package(tmp_path: Path, floor: int) -> Path:
+    """A one-file package at 75% branch coverage, beside a pyproject declaring `floor`."""
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "__init__.py").write_text(
+        "def f(x):\n    if x:\n        return 1\n    return 2\n"
+    )
+    (tmp_path / "test_f.py").write_text(
+        "from pkg import f\n\n\ndef test_f():\n    assert f(True) == 1\n"
+    )
+    (tmp_path / "pyproject.toml").write_text(f"[tool.coverage.report]\nfail_under = {floor}\n")
+    return tmp_path
+
+
+@pytest.mark.parametrize(("floor", "expected"), [(99, 1), (50, 0)])
+def test_pytest_cov_still_enforces_the_floor_pyproject_declares(
+    tmp_path: Path, floor: int, expected: int
+) -> None:
+    """Pin the pytest-cov behaviour BE-0385's total floor now rests on.
+
+    Dropping `--cov-fail-under` from the `Makefile` moved enforcement onto pytest-cov adopting
+    `[tool.coverage.report]`'s `fail_under` when the flag is absent. Nothing else in the suite
+    pins that: a dependency bump that stopped adopting the key would leave `make test` passing at
+    any coverage with nothing going red. This runs a throwaway package in its own directory, so it
+    reads that package's pyproject rather than this repository's.
+    """
+    root = _throwaway_package(tmp_path, floor)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            "--cov=pkg",
+            "--cov-report=",
+        ],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == expected, result.stdout + result.stderr
