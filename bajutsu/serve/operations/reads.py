@@ -33,7 +33,6 @@ from bajutsu.serve.helpers import (
 from bajutsu.serve.operations._common import _resolve_org_or_forbid
 from bajutsu.serve.operations.config import FS_DISABLED_ERROR
 from bajutsu.serve.operations.runs import sweep_expired_trash
-from bajutsu.serve.server.db import DEFAULT_RUN_LIMIT as _RUN_HISTORY_LIMIT
 from bajutsu.serve.server.db import RunRecord
 from bajutsu.serve.state import ServeState
 
@@ -110,9 +109,15 @@ def simulators_payload(state: ServeState) -> tuple[Any, int]:
     return list_simulators(state.simctl), 200
 
 
-# The newest-N run window the history list shows: `db.DEFAULT_RUN_LIMIT`, the DB `list_runs` default
-# cap, sourced so the two stay in lock-step. Also the post-filter cap for a scenario-scoped DB list,
-# so a scoped picker on the server backend stays as bounded as the unscoped one.
+# The newest-N run window every history-wide serve surface reads: the history list itself, the
+# `/stats` aggregation (BE-0102), and the per-project roll-up behind the comparison (BE-0226). One
+# window for all of them, because a Stats row and the history its drilldown opens (BE-0241) must
+# agree: aggregated over a wider window than the list shows, a row names runs the filtered list
+# silently drops, so the detail view contradicts the row that opened it (#1718). Also the
+# post-filter cap for a scenario-scoped DB list, so a scoped picker on the server backend stays as
+# bounded as the unscoped one, and the bound on how many `manifest.json` a `/stats` refresh reads
+# out of object storage. Large enough to read a trend, not the whole log.
+RUN_WINDOW = 200
 
 
 def runs_payload(
@@ -132,7 +137,7 @@ def runs_payload(
     # unbounded and cap after filtering, or a run of the loaded scenario that falls outside the
     # newest-N global window is silently dropped and the picker can't reach it (BE-0262 follow-up).
     if state.repository is not None:
-        limit = None if scenario is not None else _RUN_HISTORY_LIMIT
+        limit = None if scenario is not None else RUN_WINDOW
         runs = [
             r.summary for r in state.repository.list_runs(org_id=state.org_of(actor), limit=limit)
         ]
@@ -149,7 +154,7 @@ def runs_payload(
     if scenario is not None:
         runs = [r for r in runs if scenario in (r.get("scenarios") or [])]
         if state.repository is not None:
-            runs = runs[:_RUN_HISTORY_LIMIT]
+            runs = runs[:RUN_WINDOW]
     return runs, 200
 
 
@@ -182,12 +187,6 @@ def trashed_runs_payload(state: ServeState, *, actor: str | None = None) -> tupl
         state, actor=actor
     )  # drop expired trash before listing, as runs_payload does
     return state.for_org(state.org_of(actor)).artifacts.list_trashed_runs(), 200
-
-
-# The newest-N run window a serve `/stats` refresh aggregates. Bounds the per-refresh manifest reads
-# over object storage, and keeps the DB and artifact-store paths aggregating the same set (the DB
-# `list_runs` is itself limit-bounded). A large enough window to read a trend, not the whole history.
-_STATS_RUN_LIMIT = 200
 
 
 def stats_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int]:
@@ -264,7 +263,7 @@ def _run_manifests(state: ServeState, actor: str | None) -> list[dict[str, Any]]
     """The newest runs' parsed `manifest.json` for the actor's org; unreadable/malformed ones skipped.
 
     The ids come from the recorded runs when a repository is wired (org-scoped), else the artifact
-    store's own listing; both are newest-first and bounded to the same `_STATS_RUN_LIMIT` window so a
+    store's own listing; both are newest-first and bounded to the same `RUN_WINDOW` so a
     `/stats` refresh over a large history stays cheap and the two backends aggregate the same set. The
     manifests are always read from the org's artifact store — the seam that holds the full manifest
     whether or not a database indexes the runs — keyed by the canonical run id.
@@ -273,9 +272,9 @@ def _run_manifests(state: ServeState, actor: str | None) -> list[dict[str, Any]]
     artifacts = state.for_org(org).artifacts
     ids: list[Any]
     if state.repository is not None:
-        ids = [r.id for r in state.repository.list_runs(org_id=org, limit=_STATS_RUN_LIMIT)]
+        ids = [r.id for r in state.repository.list_runs(org_id=org, limit=RUN_WINDOW)]
     else:
-        ids = [r.get("id") for r in artifacts.list_runs()[:_STATS_RUN_LIMIT]]
+        ids = [r.get("id") for r in artifacts.list_runs()[:RUN_WINDOW]]
     return run_set_manifests(artifacts, ids)
 
 
