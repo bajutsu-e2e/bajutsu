@@ -490,6 +490,81 @@ def test_dismiss_from_tree_retries_a_delivered_tap_that_did_not_clear_the_prompt
     assert len(gave_up) == 1
 
 
+def test_dismiss_from_tree_retry_that_lands_clears_the_prompt_and_passes_the_wait() -> None:
+    # The payoff the retry exists for, which the never-clears test above cannot show: the second tap
+    # *does* land, so the wait passes at retry latency instead of burning its timeout. Without this,
+    # a change that left the retry inert — an off-by-one in the ceiling, a delay that never elapses
+    # under the real clock — would keep every other in-tree test green while the sheet stays up on
+    # device, since they all either tap once successfully or never clear at all.
+    from bajutsu.orchestrator.waits import _TREE_RETAP_DELAY, _wait
+
+    target = _button("R")
+    target["identifier"] = "ready"
+    prompt_button = _button("今はしない")
+
+    class _SecondTapLands(FakeDriver):
+        """The first tap is accepted but ignored by the app; the second actually dismisses."""
+
+        def __init__(self) -> None:
+            super().__init__([prompt_button])
+            self.tap_calls = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_calls += 1
+            super().tap(sel)
+            if self.tap_calls >= 2:
+                self.screen = [target]  # this one lands
+
+    driver = _SecondTapLands()
+    guard = AlertGuardConfig(vision=_never_vision, labels=["今はしない"], poll_interval=1.0)
+    alerts: list[AlertEvent] = []
+    clock = _LogicalClock()
+    ok, reason, _tree = _wait(
+        driver, _for_wait("ready", 30.0), clock, alert_guard=guard, alerts=alerts
+    )
+    assert ok and reason == ""
+    assert driver.tap_calls == 2  # the retry is what cleared it
+    # Cleared one retry in, nowhere near the 30s budget — the recovery came from the retry, not from
+    # the wait outlasting the prompt.
+    assert clock.now() < _TREE_RETAP_DELAY * 2
+    assert alerts == [AlertEvent(label="今はしない")]  # one prompt, one dismissal
+
+
+def test_dismiss_from_tree_does_not_retry_when_the_tap_moved_the_screen() -> None:
+    # The retry must not fire when the tap plainly *did* land. `_dismiss_from_tree` matches
+    # identifier-less buttons, and a whole app can legitimately have none (`shows_app_ui`'s `-noax`
+    # shape), so a dismissed sheet can reveal an app-authored button carrying the very same label.
+    # Re-tapping that would actuate the app under test — navigating it mid-wait and failing the step
+    # for an unrelated reason — and would end in a warning claiming a prompt is up when none is.
+    # The screen having changed since the tap is what separates the two cases.
+    from bajutsu.orchestrator.waits import _wait
+
+    prompt_button = _button("今はしない")
+    app_button = _button("今はしない")  # identifier-less, app-authored, same label
+    content = _button("Content")
+    content["identifier"] = "home.content"
+
+    class _RevealsSameLabelAppButton(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([prompt_button])
+            self.tap_calls = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_calls += 1
+            super().tap(sel)
+            self.screen = [app_button, content]  # sheet gone; the app's own button still matches
+
+    driver = _RevealsSameLabelAppButton()
+    guard = AlertGuardConfig(vision=_never_vision, labels=["今はしない"], poll_interval=1.0)
+    alerts: list[AlertEvent] = []
+    ok, _reason, _tree = _wait(
+        driver, _for_wait("ready", 5.0), _LogicalClock(), alert_guard=guard, alerts=alerts
+    )
+    assert not ok  # "ready" never appears; the wait times out on its own
+    assert driver.tap_calls == 1  # the app's button was never tapped, despite matching every poll
+    assert alerts == [AlertEvent(label="今はしない")]  # the real dismissal stands
+
+
 def test_dismiss_from_tree_records_a_second_showing_after_an_untapped_other_label() -> None:
     # A second label can appear and go without ever being tapped — here it collides with an
     # identically labelled in-app button, so the uniqueness pre-check declines before any tap. That

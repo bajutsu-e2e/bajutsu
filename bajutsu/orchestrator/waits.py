@@ -114,6 +114,23 @@ _TREE_RETAP_DELAY = 1.0
 _TREE_DISMISS_MAX_TAPS = 3
 
 
+def _tree_signature(elements: list[base.Element]) -> tuple[tuple[str | None, str | None], ...]:
+    """A cheap identity for one poll's screen, used to tell a tap that did nothing from one that did.
+
+    `_dismiss_from_tree` matches identifier-less buttons, and `shows_app_ui`'s docstring records that
+    a whole app can legitimately have none (the label/coordinate-driven `-noax` shape). So a label
+    still matching after a tap is *not* by itself evidence the prompt is still up — an app-authored
+    button carrying the same label, revealed once the sheet closed, matches just as well, and
+    re-tapping that navigates the app under test and fails the step for an unrelated reason.
+
+    A tap the app never acted on leaves the screen byte-identical; a tap that dismissed a sheet does
+    not. Comparing this signature is what makes "the tap did not land" a measured claim rather than
+    an assumption. Labels and identifiers rather than frames, so an animation settling a few pixels
+    does not read as a changed screen.
+    """
+    return tuple((el["label"], el["identifier"]) for el in elements)
+
+
 @dataclass
 class WaitTrace:
     """Poll-by-poll record of a `for` wait, filled in place so a timeout is diagnosable (BE-0231).
@@ -204,6 +221,7 @@ class _AlertGuardGate:
     _gave_up: bool = False
     _tree_dismiss_pending: str | None = None
     _tree_tapped_at: float | None = None
+    _tree_signature: tuple[tuple[str | None, str | None], ...] | None = None
     _tree_event: AlertEvent | None = None
     _tree_taps: int = 0
     _tree_gave_up: bool = False
@@ -357,6 +375,7 @@ class _AlertGuardGate:
             # dismissal it was — only the reference is dropped, so a later give-up cannot withdraw it.
             self._tree_dismiss_pending = None
             self._tree_tapped_at = None
+            self._tree_signature = None
             self._tree_event = None
             self._tree_taps = 0
             self._tree_gave_up = False
@@ -371,6 +390,13 @@ class _AlertGuardGate:
             # remaining wait and the prompt simply stayed up.
             assert self._tree_tapped_at is not None  # set with `_tree_dismiss_pending`, never apart
             if self.clock.now() - self._tree_tapped_at < _TREE_RETAP_DELAY:
+                return None
+            if _tree_signature(elements) != self._tree_signature:
+                # The screen moved, so the tap *did* land. This label still matching is then a
+                # different element — most likely an app-authored button of the same name the sheet
+                # was covering — and re-tapping it would actuate the app, not a prompt. Decline for
+                # the rest of this showing, the same conservative answer the once-per-showing rule
+                # gave before the retry existed, and keep the recorded dismissal: it was real.
                 return None
             if self._tree_taps >= _TREE_DISMISS_MAX_TAPS:
                 # Loudly, once, like `_fire_vision_bounded`'s own ceiling: the wait is about to spend
@@ -395,6 +421,7 @@ class _AlertGuardGate:
             # label is often exactly what it revealed.
             self._tree_dismiss_pending = None
             self._tree_tapped_at = None
+            self._tree_signature = None
             self._tree_event = None
             self._tree_taps = 0
             self._tree_gave_up = False
@@ -441,6 +468,7 @@ class _AlertGuardGate:
         first_tap = label != self._tree_dismiss_pending
         self._tree_dismiss_pending = label
         self._tree_tapped_at = self.clock.now()
+        self._tree_signature = _tree_signature(elements)
         self._tree_taps += 1
         self._tree_not_tappable_label = None
         self._tree_not_tappable_declines = 0
