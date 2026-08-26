@@ -720,8 +720,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 - **Choosing the active org on sign-in** (BE-0395): a login whose GitHub memberships match more than
   one org is no longer pinned to whichever the ranking put first — sign-in records every org a login
   may act as, with the role held in each, and the header offers them through a selector in place of
-  the plain org badge. The active org stays the single column `ServeState.org_of` reads, so every
-  org-scoped read and write goes through the same seam as before; a `users.org_selected_at` marker
+  the plain org badge; an admin admitted by their admin Team is the exception, offered every live org
+  read fresh rather than a set stored at sign-in, so an org they create afterwards needs no re-login.
+  The active org stays the single column `ServeState.org_of` reads, so every org-scoped read and
+  write goes through the same seam as before; a `users.org_selected_at` marker
   distinguishes an org the user picked from one merely resolved for them, so sign-in keeps a pick
   that is still eligible — a user removed from the org they picked lands on the head of their new
   eligible list — and goes on re-resolving the rest. A single-org deployment renders the badge
