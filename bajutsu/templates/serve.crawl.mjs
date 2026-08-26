@@ -32,6 +32,7 @@ async function loadCrawlHistory(){
   const runs=await getJSON('/api/crawl/runs',FETCH_ERROR);
   if(isFetchError(runs)){
     $('#crawl-history').innerHTML='<li class="muted" data-testid="crawl.history-error">Couldn\u2019t load the crawl history. Refresh to retry.</li>';
+    const tab=$('#crawl-histtab');if(tab)tab.textContent='History';  // the "(N)" came from the last good read
     if(crawlSel)crawlSel.sync();
     return;
   }

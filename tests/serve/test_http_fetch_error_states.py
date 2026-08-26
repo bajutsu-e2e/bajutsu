@@ -34,10 +34,16 @@ def _fetch(tmp_path: Path, route: str) -> str:
 
 
 def _fn_body(module: str, signature: str) -> str:
-    """The source of one top-level function, from its signature to the first column-0 `}`."""
+    """The *code* of one top-level function, from its signature to the first column-0 `}`.
+
+    Whole-line `//` comments are dropped: every guarantee below names the thing it pins, so a body
+    that kept its prose would let the comment explaining a call satisfy the assertion about the call
+    — and the check would survive the code being reverted underneath it.
+    """
     start = module.index(signature)
     end = module.index("\n}", start)
-    return module[start:end]
+    lines = module[start:end].splitlines()
+    return "\n".join(ln for ln in lines if not ln.lstrip().startswith("//"))
 
 
 def test_a_failing_api_get_answers_with_parseable_json(tmp_path: Path) -> None:
@@ -63,7 +69,8 @@ def test_a_failing_api_get_answers_with_parseable_json(tmp_path: Path) -> None:
 def test_get_json_rejects_a_non_2xx_body(tmp_path: Path) -> None:
     text = _fetch(tmp_path, "/serve.core.mjs")
     body = _fn_body(text, "async function getJSON(")
-    assert "res.ok" in body  # a non-2xx never resolves to the response body
+    assert "res.ok" in body  # a non-2xx never resolves to the response body…
+    assert "failedJSON(fallback,data)" in body  # …the failure value is substituted for it instead
 
 
 def test_post_json_still_hands_back_a_write_s_error_body(tmp_path: Path) -> None:
@@ -71,7 +78,9 @@ def test_post_json_still_hands_back_a_write_s_error_body(tmp_path: Path) -> None
     non-2xx body (a purge's 403 becomes "Only an admin can permanently delete a run"), so gating it
     on `res.ok` would replace every specific reason with a generic one."""
     text = _fetch(tmp_path, "/serve.core.mjs")
-    assert "res.ok" not in _fn_body(text, "async function postJSON(")
+    # `.ok`, not `res.ok`: postJSON binds no `res`, so a future `if(!r.ok)return fallback` would
+    # slip past the narrower spelling while breaking exactly the contract this pins.
+    assert ".ok" not in _fn_body(text, "async function postJSON(")
 
 
 def test_the_failure_sentinel_ships_and_is_exported(tmp_path: Path) -> None:
@@ -90,13 +99,20 @@ def test_metrics_separates_a_failed_read_from_an_empty_hub(tmp_path: Path) -> No
     assert 'data-testid="metrics.empty"' in text  # the genuine "no projects registered" state
     body = _fn_body(text, "async function loadMetrics(")
     assert "/api/metrics/projects" in body
-    assert "FETCH_ERROR" in body  # so a failed read can't render as an empty hub
+    assert (
+        "FETCH_ERROR" in body
+    )  # the call itself asks for one, so a failed read can't read as empty
 
 
 def test_history_separates_a_failed_read_from_an_empty_history(tmp_path: Path) -> None:
     text = _fetch(tmp_path, "/serve.panels.mjs")
     assert 'data-testid="replay.history-error"' in text
-    assert "no runs yet" in text  # still the copy for a genuinely empty history, not for a failure
+    assert (
+        "'no runs yet'" in text
+    )  # still the copy for a genuinely empty history, not for a failure
+    # The bare assignment, distinct from the success path's `'History'+(runs.length?…)`: a failed
+    # read drops the tab's stale "(N)" rather than advertising a count nothing on screen backs.
+    assert "tab.textContent='History';" in _fn_body(text, "async function loadHistory(")
 
 
 def test_crawl_history_separates_a_failed_read_from_an_empty_history(tmp_path: Path) -> None:
@@ -105,7 +121,8 @@ def test_crawl_history_separates_a_failed_read_from_an_empty_history(tmp_path: P
     list contradicting the rule."""
     text = _fetch(tmp_path, "/serve.crawl.mjs")
     assert 'data-testid="crawl.history-error"' in text
-    assert "no crawls yet" in text  # still the copy for a genuinely empty history
+    assert ">no crawls yet<" in text  # still the copy for a genuinely empty history
+    assert "tab.textContent='History';" in _fn_body(text, "async function loadCrawlHistory(")
 
 
 def test_coverage_run_picker_reports_a_failed_read(tmp_path: Path) -> None:

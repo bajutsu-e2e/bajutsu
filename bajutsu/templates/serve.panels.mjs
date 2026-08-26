@@ -421,14 +421,17 @@ function renderHistFilter(shown){
 let histSel=null;
 async function loadHistory(){
   // FETCH_ERROR rather than a bare null-and-return (#1716): returning early left the list showing
-  // whatever was there — at boot, the "no runs yet" placeholder — so a failed read was indistinguishable
-  // from an empty history. Say it failed, and leave the tab count alone: the real count is unknown.
+  // whatever was there — at boot, the "no runs yet" placeholder — so a failed read was
+  // indistinguishable from an empty history. Say it failed instead.
   const runs=await getJSON('/api/runs',FETCH_ERROR);
   if(isFetchError(runs)){
     $('#history').innerHTML='<li class="muted" data-testid="replay.history-error">Couldn\u2019t load the run history. Refresh to retry.</li>';
-    // Hide the drilldown banner rather than re-render it: its "(N runs)" count came from the last
-    // good read, and leaving it above a load failure states a number nothing here backs. The filter
-    // itself stays set, so a retry restores the banner with a count it can stand behind.
+    // Drop every count the last good read left behind — the tab's "(N)" and the drilldown banner's
+    // "(N runs)" alike. A failed refresh (a delete's reload, a tab revisit, a finished run) would
+    // otherwise leave both advertising a number nothing on screen backs, above copy saying the read
+    // failed: the same false signal in a smaller place. The bare "History" is what an empty list
+    // already shows, and the filter itself stays set, so a retry restores a count it can stand behind.
+    const tab=$('#histtab');if(tab)tab.textContent='History';
     const box=$('#histfilter');if(box)box.hidden=true;
     if(histSel)histSel.sync();
     return;
