@@ -341,10 +341,12 @@ def screen_refs(screenmap: dict[str, Any]) -> list[ScreenRef]:
     """The screens a crawl discovered, from a parsed ``screenmap.json``'s nodes. Pure.
 
     Each node's label is its first stable id, or the short fingerprint when the screen carries none.
-    A node that isn't a dict or carries no ``fingerprint`` is skipped, and an unexpected top-level
-    shape yields no screens — so a hand-corrupted map degrades to an empty denominator rather than
-    raising. Shared by the CLI's ``--crawl`` and the serve Coverage view so the two read one map the
-    same way.
+    A node that isn't a dict or carries no ``fingerprint`` is skipped, an unexpected top-level shape
+    yields no screens, and an ``ids`` that isn't a list falls back to the fingerprint — so a
+    hand-corrupted map degrades to an empty or coarser denominator rather than raising. The map can
+    arrive from outside the process (an uploaded run bundle, BE-0073), where a raise would surface as
+    a 500 instead of the Coverage view's readable error. Shared by the CLI's ``--crawl`` and the serve
+    Coverage view so the two read one map the same way.
     """
     nodes = screenmap.get("nodes")
     refs: list[ScreenRef] = []
@@ -352,8 +354,9 @@ def screen_refs(screenmap: dict[str, Any]) -> list[ScreenRef]:
         if not isinstance(n, dict) or not n.get("fingerprint"):
             continue
         fp = str(n["fingerprint"])
-        ids = n.get("ids") or []
-        refs.append(ScreenRef(fingerprint=fp, label=str(ids[0]) if ids else fp[:7]))
+        ids = n.get("ids")
+        label = str(ids[0]) if isinstance(ids, list) and ids else fp[:7]
+        refs.append(ScreenRef(fingerprint=fp, label=label))
     return refs
 
 

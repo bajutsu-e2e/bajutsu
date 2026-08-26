@@ -282,6 +282,19 @@ def test_no_crawl_leaves_the_screens_dimension_out(tmp_path: Path) -> None:
     assert "screens" not in payload
 
 
+def test_a_crawl_node_with_a_corrupt_ids_field_labels_by_fingerprint(tmp_path: Path) -> None:
+    """A screen map can arrive from outside the process (an uploaded run bundle, BE-0073), so a node
+    whose `ids` is not a list must fall back to the fingerprint label rather than raise — an
+    unhandled raise here would reach the client as a 500, not the readable error every other bad
+    crawl input gets."""
+    state = _state(tmp_path, id_namespaces=["home"])
+    _write_run(state.runs_dir, "r1", "s1", network=[], elements=[{"identifier": "home.title"}])
+    _write_crawl(state.runs_dir, "c1", [{"fingerprint": "nevervisited", "ids": {"a": 1}}])
+    payload, status = ops.coverage_view(state, {"target": "demo", "runs": ["r1"], "crawl": "c1"})
+    assert status == 200
+    assert [s["label"] for s in payload["screens"]["unvisited"]] == ["nevervi"]
+
+
 def test_crawl_without_runs_returns_400(tmp_path: Path) -> None:
     """The crawl supplies only the denominator; with no run there is no visited evidence, so the
     dimension would read as a silent 0% rather than a measurement."""

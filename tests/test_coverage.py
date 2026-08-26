@@ -1046,6 +1046,16 @@ def test_screen_refs_labels_a_node_by_its_first_id_and_falls_back_to_the_hash() 
     ]
 
 
+@pytest.mark.parametrize("ids", [{"a": 1}, 5, "home.title", None, []])
+def test_screen_refs_falls_back_to_the_hash_when_ids_is_not_a_list(ids: object) -> None:
+    """A screen map can arrive from outside the process (an uploaded run bundle, BE-0073), so a
+    hand-corrupted `ids` must degrade to the fingerprint label — a raise would reach the serve
+    Coverage view as a 500 instead of its readable error, and a bare string would label the screen
+    with its first character."""
+    refs = screen_refs({"nodes": [{"fingerprint": "abcdefgh1", "ids": ids}]})
+    assert [(r.fingerprint, r.label) for r in refs] == [("abcdefgh1", "abcdefg")]
+
+
 def test_screen_refs_skips_nodes_without_a_fingerprint_and_a_non_list_nodes_field() -> None:
     assert screen_refs({"nodes": [{"ids": ["home"]}, "not-a-node"]}) == []
     assert screen_refs({"nodes": {"a": 1}}) == []
