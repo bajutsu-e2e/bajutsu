@@ -420,6 +420,19 @@ def test_runs_payload_target_without_a_scenarios_dir_offers_no_run(tmp_path: Pat
     assert ops.runs_payload(state, target="bare")[0] == []
 
 
+def test_runs_payload_target_scoped_keeps_a_data_driven_runs_row_names(tmp_path: Path) -> None:
+    # A data-driven scenario runs once per row, and the run's summary records the per-row names
+    # (`scenario.expand._row_name`), not the undivided one the suite declares. Matching on the raw
+    # name alone would offer the picker nothing for a suite that is entirely data-driven.
+    state = _target_state(tmp_path)
+    _run_dir_for(state, "r1", "login [row 1: user=alice]", "login [row 2: user=bob]")
+    _run_dir_for(state, "r2", "settings [row 1]")
+    # A CSV value is arbitrary text, so the kv part of a row name can itself hold a `]`.
+    _run_dir_for(state, "r3", "login [row 3: note=a]b]")
+    assert [r["id"] for r in ops.runs_payload(state, target="demo")[0]] == ["r3", "r1"]
+    assert [r["id"] for r in ops.runs_payload(state, target="other")[0]] == ["r2"]
+
+
 def test_runs_payload_target_and_scenario_scopes_compose(tmp_path: Path) -> None:
     state = _target_state(tmp_path)
     _run_dir_for(state, "r1", "login")

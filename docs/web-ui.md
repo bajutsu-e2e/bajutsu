@@ -623,7 +623,7 @@ map cannot place. Selecting runs adds the run-evidence dimensions, and selecting
 them adds the screens-visited dimension. No device, AI, or run is involved.
 
 **Opening it directly.** `GET /coverage?target=<name>` renders the same map as a standalone page, so
-a coverage map can be linked or bookmarked the way `/stats`, `/flakiness`, and `/usage` already can.
+you can link or bookmark a coverage map the way `/stats`, `/flakiness`, and `/usage` already allow.
 Add `&runs=<id>,<id>` for the run-evidence dimensions and `&crawl=<id>` for the screens-visited
 dimension.
 

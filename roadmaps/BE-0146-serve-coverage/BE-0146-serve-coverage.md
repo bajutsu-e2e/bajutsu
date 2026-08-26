@@ -42,7 +42,7 @@ Tier-1, read-only; the UI only shells out to the existing aggregation.
   run set is selected — the endpoints-observed-vs-asserted dimension (the union of `network.json`
   across those runs) alongside the observed-id dimension.
 - **A linkable `GET /coverage` page**, carrying its inputs in the query string
-  (`?target=&runs=&crawl=`), so a coverage map can be opened and linked directly. The three other
+  (`?target=&runs=&crawl=`), so a reader can open and link a coverage map directly. The three other
   analytics views (`/stats`, `/flakiness`, `/usage`) each have such a page; the coverage map needs a
   target, which is why its own arrived later.
 - **Read-only, deterministic, AI-free.** Every figure is a deterministic count over declared
@@ -60,9 +60,9 @@ Tier-1, read-only; the UI only shells out to the existing aggregation.
   ([BE-0262](../BE-0262-serve-author-live-step-picker/BE-0262-serve-author-live-step-picker.md)). A run of
   another target's scenarios carries evidence this map cannot place.
 - **A placeholder is not an id.** The suite loader expands components (`params.*`) and data rows
-  (`row.*`) before the map is built; a `${vars.*}` or `${secrets.*}` token left after that expansion
-  is bound at run time and names no element, so the map excludes it rather than counting the token's
-  text and inventing a `${vars` namespace among the off-namespace ids.
+  (`row.*`) before building the map; the run binds a `${vars.*}` or `${secrets.*}` token surviving
+  that expansion, so the token names no element and the map excludes it rather than counting its text
+  and inventing a `${vars` namespace among the off-namespace ids.
 - **An empty denominator is an empty state.** Each dimension's `coverage` is 1.0 when it has nothing
   to measure, so a target declaring no namespaces would otherwise draw a full bar over "0/0" and
   claim complete coverage. Every dimension states that it has nothing to measure instead.

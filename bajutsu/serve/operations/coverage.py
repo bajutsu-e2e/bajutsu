@@ -24,6 +24,7 @@ from bajutsu.config import load_config, resolve
 from bajutsu.evidence.network import NetworkExchange
 from bajutsu.scenario import load_scenarios_dir
 from bajutsu.serve.artifacts import ArtifactStore
+from bajutsu.serve.authz import _target_forbidden
 from bajutsu.serve.helpers import valid_run_id
 from bajutsu.serve.operations.reads import run_set_manifests
 from bajutsu.serve.state import ServeState, _scenarios_dir_for
@@ -189,7 +190,8 @@ def _aggregate(
     Raises:
         _CoverageError: any input the caller can fix — no bound config, a missing/unknown target, a
             target with no scenarios dir, a suite that won't load, a bad run id, or a crawl selected
-            without the runs that say which of its screens were visited.
+            without the runs that say which of its screens were visited — plus the one the caller
+            cannot: a target another org owns, which raises with a 403.
     """
     if state.config is None:
         raise _CoverageError("open a config first")
@@ -199,6 +201,13 @@ def _aggregate(
     config = load_config(state.config.read_text(encoding="utf-8"))
     if target not in config.targets:
         raise _CoverageError(f"unknown target: {target}")
+
+    # The static dimension reads the target's suite straight off the checkout, which is not org-scoped
+    # — so without this guard an actor of one org could read another org's declared namespaces, its
+    # referenced ids, and its gap list (BE-0015). Single-tenant serve never forbids.
+    org = state.org_of(actor)
+    if _target_forbidden(state, org, target):
+        raise _CoverageError("forbidden", status=403)
 
     scenarios_dir = _scenarios_dir_for(state, target)
     if scenarios_dir is None or not scenarios_dir.is_dir():
@@ -222,7 +231,7 @@ def _aggregate(
     if not runs:
         return report
 
-    artifacts = state.for_org(state.org_of(actor)).artifacts
+    artifacts = state.for_org(org).artifacts
     manifests = run_set_manifests(artifacts, runs)
     report = dataclasses.replace(
         report,

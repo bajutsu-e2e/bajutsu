@@ -16,7 +16,7 @@ from bajutsu.analytics.ledger import JsonlLedger, UsageEvent
 from bajutsu.analytics.usage import TokenUsage
 from bajutsu.serve import operations as ops
 from bajutsu.serve.operations.config import seed_orgs_from_bound_config
-from bajutsu.serve.server.db import SqlRepository
+from bajutsu.serve.server.db import RunRecord, SqlRepository
 from bajutsu.serve.server.models import AuditLog, Base
 from bajutsu.serve.server.oauth import Identity
 from bajutsu.serve.server.object_store import org_prefix
@@ -80,6 +80,60 @@ def test_start_run_on_another_orgs_app_is_forbidden(
     )
     assert status == 403
     assert payload == {"error": "forbidden"}
+
+
+def test_coverage_of_another_orgs_app_is_forbidden_on_both_entry_points(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # The coverage map's static dimension reads the target's suite straight off the checkout, which
+    # is not org-scoped — so both the view's POST and the linkable GET page must refuse a target this
+    # actor's org does not own, rather than disclosing its namespaces, ids, and gap list.
+    state = _state(serve_engine, tmp_path)
+    payload, status = ops.coverage_view(state, {"target": "other"}, actor="alice")
+    assert status == 403
+    assert payload == {"error": "forbidden"}
+    page, status = ops.coverage_html(state, "other", None, None, actor="alice")
+    assert status == 403
+    assert "forbidden" in page
+    # The guard doesn't over-fire: alice's own target gets past it and fails on its missing suite.
+    assert ops.coverage_view(state, {"target": "demo"}, actor="alice")[1] == 400
+
+
+def test_target_scoped_run_picker_offers_nothing_for_another_orgs_app(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # The Coverage run picker's scoping key is the target's declared scenario names, so a target
+    # another org owns must resolve to no names — an empty picker, not that org's run history. Both
+    # targets declare a suite holding the same scenario name, and alice's org has a run of it, so the
+    # picker goes empty for `other` only because of the org check, not for want of a name to match.
+    suites = tmp_path / "suites"
+    suites.mkdir()
+    (suites / "suite.yaml").write_text(
+        "- name: settings\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8"
+    )
+    state = _state(
+        serve_engine,
+        tmp_path,
+        CONFIG.replace(
+            "  demo: { bundleId: com.example.demo }",
+            f"  demo: {{ bundleId: com.example.demo, scenarios: {suites} }}",
+        ).replace(
+            "  other: { bundleId: com.example.other }",
+            f"  other: {{ bundleId: com.example.other, scenarios: {suites} }}",
+        ),
+    )
+    assert state.repository is not None
+    state.repository.record_run(
+        RunRecord(
+            id="r1",
+            org_id="acme",
+            status="done",
+            ok=True,
+            summary={"id": "r1", "scenarios": ["settings"]},
+        )
+    )
+    assert [r["id"] for r in ops.runs_payload(state, actor="alice", target="demo")[0]] == ["r1"]
+    assert ops.runs_payload(state, actor="alice", target="other")[0] == []
 
 
 def test_start_run_on_own_orgs_app_passes_the_org_check(
