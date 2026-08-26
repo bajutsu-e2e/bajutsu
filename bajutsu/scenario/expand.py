@@ -6,6 +6,7 @@ and each data row is its own scenario — the runner is unaffected.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from typing import Any, cast
 
@@ -99,6 +100,23 @@ def _row_name(scenario_name: str, row: dict[str, str], index: int) -> str:
     return (
         f"{scenario_name} [row {index + 1}: {kv}]" if kv else f"{scenario_name} [row {index + 1}]"
     )
+
+
+# The inverse of `_row_name`, kept beside it so a change to the per-row naming format is made with
+# both directions in view. A reader that only has a *run's* recorded scenario names — the serve run
+# pickers, which match them against the names a suite declares — cannot otherwise tell a data-driven
+# scenario's rows from a scenario of that name. A `kv` value is interpolated CSV and may hold a `]`
+# of its own, so the pattern anchors on the end of the name rather than the first closing bracket.
+_ROW_NAME = re.compile(r" \[row \d+(?::.*)?\]$", re.DOTALL)
+
+
+def declared_name(run_scenario: str) -> str:
+    """The name a suite declares for the scenario a run recorded as *run_scenario*.
+
+    Strips the row suffix `_row_name` appends; a name carrying none is returned unchanged, so a
+    scenario that is not data-driven passes through.
+    """
+    return _ROW_NAME.sub("", run_scenario)
 
 
 def _instantiate_rows(scenario: Scenario, rows: list[dict[str, str]]) -> list[Scenario]:

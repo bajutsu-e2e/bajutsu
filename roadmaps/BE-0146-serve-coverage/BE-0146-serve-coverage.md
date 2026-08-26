@@ -58,7 +58,11 @@ Tier-1, read-only; the UI only shells out to the existing aggregation.
   own scenarios, matched on the scenario names a run's summary records — the same compatibility key
   the Author picker scopes on
   ([BE-0262](../BE-0262-serve-author-live-step-picker/BE-0262-serve-author-live-step-picker.md)). A run of
-  another target's scenarios carries evidence this map cannot place.
+  another target's scenarios carries evidence this map cannot place. The crawl picker is **not**
+  scoped the same way, because a crawl records no target to scope on: `screenmap.json` and the
+  history entry built from it carry screens, transitions, crashes, and the frontier, and nothing
+  naming the app crawled. A crawl of another app therefore measures as every screen unvisited, so
+  the picker says so in its hint rather than implying a scope it cannot enforce.
 - **A placeholder is not an id.** The suite loader expands components (`params.*`) and data rows
   (`row.*`) before building the map; the run binds a `${vars.*}` or `${secrets.*}` token surviving
   that expansion, so the token names no element and the map excludes it rather than counting its text

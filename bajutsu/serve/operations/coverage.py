@@ -16,7 +16,7 @@ from __future__ import annotations
 import dataclasses
 import html
 import json
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from typing import Any
 
 from bajutsu.analysis import coverage as _coverage
@@ -106,16 +106,25 @@ def read_exchanges_via_store(
     return exchanges
 
 
+def observed_identifiers(rendered: Iterable[list[Any]]) -> list[str]:
+    """Every non-empty stable id across already-parsed ``elements.json`` lists. Pure.
+
+    Split from `read_observed_ids_via_store` so a caller holding the parsed lists can derive the
+    observed-id dimension without re-fetching them.
+    """
+    return [
+        e["identifier"]
+        for data in rendered
+        for e in data
+        if isinstance(e, dict) and isinstance(e.get("identifier"), str) and e["identifier"]
+    ]
+
+
 def read_observed_ids_via_store(store: ArtifactStore, manifests: list[dict[str, Any]]) -> list[str]:
     """`bajutsu.analysis.coverage.read_observed_ids`'s seam-routed counterpart: every stable id across
     *manifests* (e.g. from `run_set_manifests`), reading each step's ``elements.json`` through
     *store* instead of globbing a local ``runs_dir`` (BE-0258)."""
-    return [
-        e["identifier"]
-        for data in _read_json_lists(store, manifests, "elements")
-        for e in data
-        if isinstance(e, dict) and isinstance(e.get("identifier"), str) and e["identifier"]
-    ]
+    return observed_identifiers(_read_json_lists(store, manifests, "elements"))
 
 
 class _CoverageError(Exception):
@@ -233,13 +242,18 @@ def _aggregate(
 
     artifacts = state.for_org(org).artifacts
     manifests = run_set_manifests(artifacts, runs)
+    # The observed-id and screens dimensions both reduce the same per-step `elements.json` set, so
+    # read it once: on a server backend each artifact is an object-store GET, and `_artifact_paths`
+    # yields one per *step* — reading twice would double a whole run set's fetches just because a
+    # crawl was picked.
+    element_lists = list(_read_json_lists(artifacts, manifests, "elements"))
     report = dataclasses.replace(
         report,
         endpoints=_coverage.endpoint_coverage(
             scenarios, read_exchanges_via_store(artifacts, manifests)
         ),
         observed=_coverage.observed_id_coverage(
-            read_observed_ids_via_store(artifacts, manifests), eff.id_namespaces
+            observed_identifiers(element_lists), eff.id_namespaces
         ),
     )
     if not crawl:
@@ -248,7 +262,7 @@ def _aggregate(
         report,
         screens=_coverage.screen_coverage(
             discovered_screens_via_store(artifacts, crawl),
-            _coverage.screen_fingerprints(_read_json_lists(artifacts, manifests, "elements")),
+            _coverage.screen_fingerprints(element_lists),
         ),
     )
 

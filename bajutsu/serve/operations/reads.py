@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
@@ -17,7 +16,7 @@ from bajutsu.analytics import stats as _usage_stats
 from bajutsu.config import Config, load_config, resolve
 from bajutsu.drivers import base as driver_base
 from bajutsu.evidence import displayed_screenshot
-from bajutsu.scenario import load_scenario_file
+from bajutsu.scenario import declared_name, load_scenario_file
 from bajutsu.scenario.models import STEP_ACTIONS, Scenario, Step
 from bajutsu.serve import flakiness as _flakiness
 from bajutsu.serve import jobs
@@ -125,19 +124,6 @@ def simulators_payload(state: ServeState) -> tuple[Any, int]:
 RUN_WINDOW = 200
 
 
-# A data-driven scenario runs once per row under a per-row name (`scenario.expand._row_name` appends
-# `" [row N: k=v]"`), and a run's summary records what ran. The suite listing carries the undivided
-# declared name, so the two line up only once the row suffix is stripped back off. The kv text is
-# interpolated CSV, so it may itself hold a `]` — the greedy `.*` against the `$` anchor consumes
-# those and still requires the suffix's own bracket to close the name.
-_ROW_SUFFIX = re.compile(r" \[row \d+(?::.*)?\]$", re.DOTALL)
-
-
-def _declared_scenario(run_scenario: str) -> str:
-    """The suite name a run's recorded scenario name belongs to — itself, minus any row suffix."""
-    return _ROW_SUFFIX.sub("", run_scenario)
-
-
 def _target_scenario_names(state: ServeState, org: str, target: str) -> set[str]:
     """Every scenario name declared in *target*'s suite, as the run picker's scoping key.
 
@@ -189,14 +175,16 @@ def runs_payload(
     # Scope the Coverage run picker to the selected target (BE-0146 follow-up): the coverage map is
     # built from *that* target's suite, so a run of another target's scenarios contributes evidence
     # the map cannot place. Scenario name is the same compatibility key the scoping just above uses —
-    # a run summary records the names it ran, and no target field — so the two filters compose.
+    # a run summary records the names it ran, and no target field — so the two filters compose. A
+    # data-driven scenario is recorded under its per-row names, which `declared_name` maps back to
+    # the one the suite declares.
     if target is not None:
         names = _target_scenario_names(state, org, target)
         runs = [
             r
             for r in runs
             if any(
-                n in names or _declared_scenario(n) in names
+                n in names or declared_name(n) in names
                 for n in (r.get("scenarios") or [])
                 if isinstance(n, str)
             )

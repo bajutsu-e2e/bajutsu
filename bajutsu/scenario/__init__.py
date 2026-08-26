@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from bajutsu.scenario.expand import (
     apply_setups,
+    declared_name,
     expand_components,
     expand_data,
     read_csv,
@@ -190,6 +191,7 @@ __all__ = [
     "apply_setups",
     "contained_ref",
     "covered_languages",
+    "declared_name",
     "dump_block",
     "dump_mocks",
     "dump_scenario_file",

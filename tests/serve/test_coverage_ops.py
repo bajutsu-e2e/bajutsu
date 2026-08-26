@@ -282,6 +282,26 @@ def test_no_crawl_leaves_the_screens_dimension_out(tmp_path: Path) -> None:
     assert "screens" not in payload
 
 
+def test_selecting_a_crawl_reads_each_elements_artifact_once(tmp_path: Path) -> None:
+    """The observed-id and screens dimensions reduce the same per-step `elements.json` set. On a
+    server backend each artifact is an object-store GET, one per step, so reading it twice would
+    double a whole run set's fetches purely because a crawl was picked."""
+    state = _state(tmp_path, id_namespaces=["home"])
+    _write_run(state.runs_dir, "r1", "s1", network=[], elements=[{"identifier": "home.title"}])
+    _write_crawl(state.runs_dir, "c1", [{"fingerprint": "nevervisited"}])
+    fetched: list[str] = []
+    real = state.artifacts.open_bytes
+
+    def counting(rel: str) -> bytes | None:
+        fetched.append(rel)
+        return real(rel)
+
+    state.artifacts.open_bytes = counting  # type: ignore[method-assign]
+    payload, status = ops.coverage_view(state, {"target": "demo", "runs": ["r1"], "crawl": "c1"})
+    assert status == 200 and "screens" in payload
+    assert fetched.count("r1/s1/step0/elements.json") == 1
+
+
 def test_a_crawl_node_with_a_corrupt_ids_field_labels_by_fingerprint(tmp_path: Path) -> None:
     """A screen map can arrive from outside the process (an uploaded run bundle, BE-0073), so a node
     whose `ids` is not a list must fall back to the fingerprint label rather than raise — an

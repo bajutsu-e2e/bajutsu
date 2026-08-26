@@ -620,7 +620,9 @@ deterministic count, no model is consulted.
 **How to use it.** Pick a target and press **Compute** to render the map. The run picker offers only
 runs of that target's own scenarios, since a run of another target's scenarios carries evidence this
 map cannot place. Selecting runs adds the run-evidence dimensions, and selecting a crawl alongside
-them adds the screens-visited dimension. No device, AI, or run is involved.
+them adds the screens-visited dimension. The crawl list is **not** scoped that way — a crawl records
+no target to scope on — so pick one of the same app's crawls; a crawl of another app measures as
+every screen unvisited. No device, AI, or run is involved.
 
 **Opening it directly.** `GET /coverage?target=<name>` renders the same map as a standalone page, so
 you can link or bookmark a coverage map the way `/stats`, `/flakiness`, and `/usage` already allow.
