@@ -127,17 +127,22 @@ flaky network, and `request` assertions confirm the mocked call happened.
     - tap: { label: "Log", traits: [button] }
     - wait: { for: { id: log.submit }, timeout: 10 }
     - tap: { id: log.submit }
-    - wait: { until: { request: { method: POST, path: /post, status: 201 } }, timeout: 6 }
     - wait: { for: { id: log.toast }, timeout: 4 }
     - wait: { until: { gone: { id: log.toast } }, timeout: 5 }
+    - wait: { until: { request: { method: POST, path: /post, status: 201 } }, timeout: 6 }
   expect:
     - request: { method: POST, path: /post, status: 201 }
     - value: { sel: { id: log.status }, equals: "done" }
 ```
 
 `wait: { until: { gone: … } }` polls until an element *disappears* — useful for a transient toast
-like this one. Full file (the request also carries an `Authorization` header; sensitive headers are
-masked in captured evidence by default, so this scenario needs no `redact` policy of its own for that):
+like this one. Arm a wait for something transient on the step **right after** the action that
+triggers it, as above: a step boundary costs evidence capture (a screenshot and a tree read, which
+on a loaded CI device can run past a second), so a wait reached one step later can arrive to find
+the toast already gone. The `until: { request: … }` wait sits last here for that reason — the toast
+only appears once the response has landed, so by the time it runs, it is already satisfied. Full
+file (the request also carries an `Authorization` header; sensitive headers are masked in captured
+evidence by default, so this scenario needs no `redact` policy of its own for that):
 [`demos/showcase/scenarios/network_mock.yaml`](../demos/showcase/scenarios/network_mock.yaml).
 
 ## Run the same scenario over a data table

@@ -16,9 +16,18 @@
     - tap: { label: "Log", traits: [button] }
     - wait: { for: { id: log.submit }, timeout: 10 }
     - tap: { id: log.submit }
-    - wait: { until: { request: { method: POST, path: /post, status: 201 } }, timeout: 6 }
+    # Armed on the step right after the tap, so it is already polling when the mocked response
+    # lands and raises the toast. The toast is transient (SPEC §5.3) and every step boundary
+    # spends part of its life on evidence capture — 0.2-1.2s per boundary on a CI Simulator — so
+    # a wait reached one step later can find the toast already gone. The `until request` wait
+    # below used to sit here and cost exactly that.
     - wait: { for: { id: log.toast }, timeout: 4 }
     - wait: { until: { gone: { id: log.toast } }, timeout: 5 }
+    # Already satisfied when it runs — the toast the two waits above observed only appears once
+    # the mocked response has landed — so it asserts the exchange without spending the toast's
+    # window. Kept as a step, not folded into `expect` alone, because it is what a scenario
+    # gating on the response would write.
+    - wait: { until: { request: { method: POST, path: /post, status: 201 } }, timeout: 6 }
   expect:
     - request: { method: POST, path: /post, status: 201 }
     - value: { sel: { id: log.status }, equals: "done" }
