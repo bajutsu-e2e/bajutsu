@@ -106,7 +106,9 @@ One skill is **one source directory**, managed with the Agent Package Manager (A
 
 Edit the source, then run `make skills` and commit both sides. `make lint-skills` (part of
 `make check`) runs `apm audit --ci`, which fails when a deployed file no longer matches its source —
-whether it was hand-edited or its `make skills` was forgotten.
+whether it was hand-edited or its `make skills` was forgotten. It audits a scratch mirror of the
+files git sees ([`scripts/audit_skills.py`](scripts/audit_skills.py)), because APM governs
+`.claude/` whole and would otherwise scan every concurrent session's `.claude/worktrees/` checkout.
 
 The one exception to loading `references/` on demand is a **norm set** — `document-writing`,
 `english-document-writing`, `japanese-document-writing` — which this file mandates applying in full
