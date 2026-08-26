@@ -1002,7 +1002,7 @@ def run_and_report(
 
 
 def run_matrix_and_report(
-    eff: Effective,  # positional parity with run_and_report
+    eff: Effective,
     scenarios: list[Scenario],
     engines: list[str],
     run_pass: Callable[[str, Path], list[RunResult]],

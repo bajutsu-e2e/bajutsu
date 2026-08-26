@@ -12,26 +12,9 @@ from __future__ import annotations
 
 import json
 
+from _shared import FakeObjectStore
+
 from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
-
-
-class FakeObjectStore:
-    """The slice of an S3-compatible client the store uses, in memory."""
-
-    def __init__(self, objects: dict[str, bytes]) -> None:
-        self._objects = objects
-
-    def exists(self, key: str) -> bool:
-        return key in self._objects
-
-    def get_bytes(self, key: str) -> bytes | None:
-        return self._objects.get(key)
-
-    def presigned_url(self, key: str) -> str:
-        return f"https://signed.example/{key}"
-
-    def list_keys(self, prefix: str) -> list[str]:
-        return [k for k in self._objects if k.startswith(prefix)]
 
 
 def _manifest(ok: bool, scenarios: list[tuple[str, bool]]) -> bytes:

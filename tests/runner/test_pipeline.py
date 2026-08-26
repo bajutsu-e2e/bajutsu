@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
@@ -92,6 +93,12 @@ def _crash_then_ok_lease() -> tuple[Callable[[Effective, Scenario], Lease], list
     state = {"n": 0}
     events: list[str] = []
 
+    def _release(n: int) -> Callable[[], None]:
+        def release() -> None:
+            events.append(f"release-{n}")
+
+        return release
+
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
         n = state["n"]
@@ -102,7 +109,7 @@ def _crash_then_ok_lease() -> tuple[Callable[[Effective, Scenario], Lease], list
             relaunch=None,
             control=None,
             collector=None,
-            release=lambda n=n: events.append(f"release-{n}"),
+            release=_release(n),
         )
 
     return lease, events
@@ -619,7 +626,7 @@ def test_run_all_skips_forced_erase_on_a_real_device() -> None:
         )
 
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
-    dev = _ios_eff(xcuitest=XcuitestConfig(test_runner="Runner.xctestrun", device_type="device"))
+    dev = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="device"))
     results = run_all(dev, scenarios, lease, actuator="xcuitest")
     assert results[0].ok
     assert erase_seen == [None, None]  # never forced on a real device
@@ -1127,7 +1134,7 @@ def test_real_device_narrowing_reaches_the_preflight_from_run_all() -> None:
     def lease_must_not_run(eff: Effective, s: Scenario) -> Lease:
         raise AssertionError("lease must not be called when the preflight rejects the scenario")
 
-    dev = _ios_eff(xcuitest=XcuitestConfig(test_runner="Runner.xctestrun", device_type="device"))
+    dev = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="device"))
     results = run_all(dev, scenarios, lease_must_not_run, actuator="xcuitest")
     assert len(results) == 1 and not results[0].ok
     assert results[0].backend == "xcuitest"
@@ -1150,7 +1157,7 @@ def test_simulator_still_leases_a_device_control_scenario_on_xcuitest() -> None:
         leased.append(s.name)
         return _lease(eff, s)
 
-    sim = _ios_eff(xcuitest=XcuitestConfig(test_runner="Runner.xctestrun", device_type="simulator"))
+    sim = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="simulator"))
     results = run_all(sim, scenarios, recording_lease, actuator="xcuitest")
     assert leased == ["loc"]
     assert "deviceControl.setLocation" not in (results[0].failure or "")
@@ -1506,7 +1513,7 @@ def test_run_and_report_records_git_config_source(tmp_path: Path) -> None:
 def test_run_and_report_records_upload_exec_decision(tmp_path: Path) -> None:
     # BE-0090: an upload-governed run stamps the launchServer policy decision into the manifest.
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
-    decision = {
+    decision: dict[str, str | None] = {
         "decision": "sandboxed",
         "field": "launchServer",
         "source": "dockerImage",
@@ -1526,32 +1533,30 @@ def test_run_and_report_omits_upload_exec_for_ungoverned_run(tmp_path: Path) -> 
     assert "uploadExec" not in data["provenance"]  # None decision → no key
 
 
-def test_git_revision_maps_failure_and_blank_to_none(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_git_revision_maps_failure_and_blank_to_none(monkeypatch: pytest.MonkeyPatch) -> None:
     # The subprocess is an external dependency, so it's the one place a stub is warranted. A
     # non-zero exit, a thrown error, and a 0-exit-but-blank stdout (a shimmed `git`) all mean
     # "unknown revision" — None, never an empty stamp. The helper lives with run_provenance
     # (report.manifest) so the pool's wait-timeout diagnostic and the report share it (BE-0231).
-    import subprocess as sp
-
     from bajutsu.report import manifest
 
-    def fake(result: sp.CompletedProcess[str] | Exception):  # type: ignore[no-untyped-def]
-        def run(*a: object, **k: object) -> sp.CompletedProcess[str]:
+    def fake(
+        result: subprocess.CompletedProcess[str] | Exception,
+    ) -> Callable[..., subprocess.CompletedProcess[str]]:
+        def run(*a: object, **k: object) -> subprocess.CompletedProcess[str]:
             if isinstance(result, Exception):
                 raise result
             return result
 
         return run
 
-    monkeypatch.setattr(manifest.subprocess, "run", fake(sp.CompletedProcess([], 128, "", "fatal")))
+    monkeypatch.setattr(subprocess, "run", fake(subprocess.CompletedProcess([], 128, "", "fatal")))
     assert manifest.git_revision() is None  # not a repo
-    monkeypatch.setattr(manifest.subprocess, "run", fake(sp.CompletedProcess([], 0, "   \n", "")))
+    monkeypatch.setattr(subprocess, "run", fake(subprocess.CompletedProcess([], 0, "   \n", "")))
     assert manifest.git_revision() is None  # 0 exit but blank stdout → unknown, not ""
-    monkeypatch.setattr(manifest.subprocess, "run", fake(FileNotFoundError("git")))
+    monkeypatch.setattr(subprocess, "run", fake(FileNotFoundError("git")))
     assert manifest.git_revision() is None  # git absent
-    monkeypatch.setattr(
-        manifest.subprocess, "run", fake(sp.CompletedProcess([], 0, "abc123\n", ""))
-    )
+    monkeypatch.setattr(subprocess, "run", fake(subprocess.CompletedProcess([], 0, "abc123\n", "")))
     assert manifest.git_revision() == "abc123"  # normal: trimmed sha
 
 
@@ -1861,7 +1866,10 @@ def test_pipeline_uses_the_single_orchestrator_no_op_network_source() -> None:
     from bajutsu.orchestrator.types import _no_network
     from bajutsu.runner import pipeline, types
 
-    assert pipeline._no_network is _no_network
+    # `pipeline` re-exports the helper rather than owning a second copy, and this identity check is
+    # what pins that. Strict mode's implicit-reexport rule hides an imported name, so the read is
+    # suppressed by code rather than the assertion weakened.
+    assert pipeline._no_network is _no_network  # type: ignore[attr-defined]
     assert _no_network() == []
     assert not hasattr(types, "_no_net")
 

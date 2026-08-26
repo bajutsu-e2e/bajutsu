@@ -18,7 +18,7 @@ from bajutsu.serve.server.db import SqlRepository
 from bajutsu.serve.server.models import AuditLog, Base
 from bajutsu.serve.server.oauth import Identity
 from bajutsu.serve.server.object_store import org_prefix
-from bajutsu.serve.state import StoreBundle
+from bajutsu.serve.state import SessionManager, StoreBundle
 
 CONFIG = """
 targets:
@@ -233,7 +233,7 @@ def test_oauth_login_assigns_the_org_from_github_org_membership(
         runs_dir=tmp_path / "runs",
         config=cfg,
         repository=repo,
-        auth=srv.SessionManager(oauth=_FakeOAuthClient("dave", orgs=["acme-gh"])),
+        auth=SessionManager(oauth=_FakeOAuthClient("dave", orgs=["acme-gh"])),
     )
     seed_orgs_from_bound_config(state)  # the startup seed `serve()` runs (BE-0375)
     _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")

@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from _shared import StubArtifactStore
 from sqlalchemy import Engine, create_engine, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -350,31 +351,37 @@ def test_engine_from_url_builds_a_usable_engine() -> None:
     assert SqlRepository(engine).get_run("absent") is None
 
 
-def test_repository_from_env_is_none_without_a_url(monkeypatch) -> None:
+def test_repository_from_env_is_none_without_a_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
     assert repository_from_env() is None
 
 
-def test_repository_from_env_builds_a_sql_repository(monkeypatch) -> None:
+def test_repository_from_env_builds_a_sql_repository(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
     assert isinstance(repository_from_env(), SqlRepository)
 
 
-def test_repository_from_env_rejects_a_non_numeric_lease_timeout(monkeypatch) -> None:
+def test_repository_from_env_rejects_a_non_numeric_lease_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
     monkeypatch.setenv("BAJUTSU_LEASE_TIMEOUT_SECONDS", "soon")
     with pytest.raises(ValueError, match="BAJUTSU_LEASE_TIMEOUT_SECONDS"):
         repository_from_env()
 
 
-def test_repository_from_env_rejects_a_non_positive_attempt_cap(monkeypatch) -> None:
+def test_repository_from_env_rejects_a_non_positive_attempt_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
     monkeypatch.setenv("BAJUTSU_LEASE_MAX_ATTEMPTS", "0")
     with pytest.raises(ValueError, match="BAJUTSU_LEASE_MAX_ATTEMPTS"):
         repository_from_env()
 
 
-def test_repository_from_env_rejects_a_non_finite_lease_timeout(monkeypatch) -> None:
+def test_repository_from_env_rejects_a_non_finite_lease_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
     monkeypatch.setenv("BAJUTSU_LEASE_TIMEOUT_SECONDS", "inf")  # slips past a bare `<= 0` check
     with pytest.raises(ValueError, match="finite"):
@@ -460,7 +467,7 @@ def test_db_executor_inserts_a_queued_job(serve_engine: Callable[..., Engine]) -
 # ---------------------------------------------------------------------------
 
 
-class _FakeArtifactStore:
+class _FakeArtifactStore(StubArtifactStore):
     def __init__(self, files: dict[str, bytes] | None = None) -> None:
         self._files = files or {}
 

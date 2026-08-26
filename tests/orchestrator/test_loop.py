@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 
+import pytest
 from _orch import FakeClock, _scenario
 from conftest import el
 
@@ -12,7 +14,7 @@ from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import Artifact, FileSink
 from bajutsu.evidence.intervals import Interval
-from bajutsu.orchestrator import run_scenario
+from bajutsu.orchestrator import RunResult, run_scenario
 from bajutsu.orchestrator.waits import WaitTrace
 from bajutsu.report.format import video_seconds
 from bajutsu.scenario import Interrupt, Relaunch
@@ -826,7 +828,9 @@ class _VideoSink:
 _WALL = 1_700_000_000.0
 
 
-def _run_with_video(true_start: float | None, wall_clock=lambda: _WALL):
+def _run_with_video(
+    true_start: float | None, wall_clock: Callable[[], float] = lambda: _WALL
+) -> RunResult:
     driver = FakeDriver([el("go", "Go", ["button"])])
     return run_scenario(
         driver,
@@ -900,7 +904,9 @@ def test_the_wall_clock_is_read_once_so_every_step_shares_one_anchor() -> None:
     assert result.wall_offset_s == _WALL  # scenario_start is 0.0 on a FakeClock
 
 
-def test_an_untrusted_positive_offset_leaves_the_anchor_uncorrected(caplog) -> None:
+def test_an_untrusted_positive_offset_leaves_the_anchor_uncorrected(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     # true_start after scenario_start is not expected in production (BE-0346's Motivation), so the
     # offset is not trusted at all — it is suppressed with a warning rather than applied, which would
     # otherwise pull the anchor *past* the steps it anchors and flatten their derived seconds to 0.0.
