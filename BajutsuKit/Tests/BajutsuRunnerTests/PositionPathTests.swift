@@ -81,7 +81,7 @@ final class PositionPathTests: XCTestCase {
 
     func testFlattenRecordsTheRootTheTreeWasReadFrom() {
         // The browser's tree comes from com.apple.SafariViewService, and every element off it has to
-        // say so — actuation re-derives the path against that same handle (BE-XXXX).
+        // say so — actuation re-derives the path against that same handle (BE-0396).
         let tree = FakeNode(children: [FakeNode(id: "Close", children: [FakeNode(id: "URL")])])
 
         let flat = flattenSnapshot(root: tree, in: .safariViewService)
@@ -92,7 +92,7 @@ final class PositionPathTests: XCTestCase {
 
     func testFlattenPrunesTheMatchedNodeAndItsDescendants() {
         // The app's own snapshot mirrors the browser subtree through iOS 18; it is pruned there so
-        // the copy read from the service root is the only one reported (BE-XXXX).
+        // the copy read from the service root is the only one reported (BE-0396).
         let tree = FakeNode(children: [
             FakeNode(id: "A"),
             FakeNode(id: "BrowserView?IsPageLoaded=true", children: [FakeNode(id: "Close")]),
