@@ -139,6 +139,7 @@ line-length = 100
 [tool.ruff.lint]
 select = [
     "ANN",
+    "ARG",
     "B",
     "C4",
     "DTZ",
@@ -148,12 +149,19 @@ select = [
     "N",
     "PERF",
     "PIE",
+    "PLE",
+    "PLW",
     "PT",
+    "PTH",
+    "RET",
     "RUF",
     "S",
     "SIM",
+    "SLF",
     "T20",
+    "TRY",
     "UP",
+    "W",
 ]
 ignore = [
     "ANN401",  # Any is used intentionally for flexible APIs
@@ -166,11 +174,19 @@ ignore = [
     # the codebase, and bajutsu is never run under -O where asserts would be stripped.
     "S101",
     "S603",
+    # TRY003 fires on every `raise` whose message says anything specific — 721 findings here, and
+    # a specific message is usually the point of the raise, not a smell. Silenced globally (the
+    # rule is noisy everywhere, not only in this codebase) rather than per call site, where the
+    # noqa would outnumber the exception-raising code it decorates (BE-0387).
+    "TRY003",
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "demos/**" = ["ANN", "T20", "S"]
-"tests/**" = ["ANN", "T20", "S"]
+# A test reaching into a fixture's or a fake's private state to assert on it is a normal
+# pattern, not a smell (SLF), and so is a pytest fixture or mock parameter the body never
+# names (ARG).
+"tests/**" = ["ANN", "ARG", "SLF", "T20", "S"]
 # Dev helper scripts print progress (T20) and invoke git/uv via PATH (S607).
 "scripts/**" = ["T20", "S607"]
 # `_Loader` subclasses SafeLoader (it only tweaks on/off/yes/no resolving), so its `yaml.load`

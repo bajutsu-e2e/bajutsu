@@ -145,7 +145,7 @@ def execute_job_spec(
     spec: dict[str, Any],
     *,
     popen: Any = subprocess.Popen,
-    simctl: _simctl.RunFn = _simctl._real_run,
+    simctl: _simctl.RunFn = _simctl.real_run,
     cwd: Path | None = None,
     bus: LogBus | None = None,
     io: WorkerIO | None = None,

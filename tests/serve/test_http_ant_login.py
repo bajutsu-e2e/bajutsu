@@ -8,6 +8,9 @@ is ever spawned. Local serve only — a hosted deployment refuses the sign-in.
 from __future__ import annotations
 
 import io
+import itertools
+import shutil
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -38,35 +41,36 @@ class _FakeAnt:
         self._code = -15  # SIGTERM — poll() now reports it exited
 
 
-def _popen_returning(proc: _FakeAnt):  # type: ignore[no-untyped-def]
+class _RecordingPopen:
+    """A fake `popen` that hands back its scripted processes in order and records each call's kwargs.
+
+    A class rather than a function with an attribute bolted on, so `calls` is part of the type a
+    caller sees instead of something only a suppression made reachable (BE-0388).
+    """
+
+    def __init__(self, procs: Iterator[_FakeAnt]) -> None:
+        self._procs = procs
+        self.calls: list[dict[str, Any]] = []
+
+    def __call__(self, _cmd: list[str], **kw: Any) -> _FakeAnt:
+        self.calls.append(kw)
+        return next(self._procs)
+
+
+def _popen_returning(proc: _FakeAnt) -> _RecordingPopen:
     """A fake `popen` that hands back *proc* and records the kwargs of each call."""
-    calls: list[dict[str, Any]] = []
-
-    def popen(_cmd: list[str], **kw: Any) -> _FakeAnt:
-        calls.append(kw)
-        return proc
-
-    popen.calls = calls  # type: ignore[attr-defined]
-    return popen
+    return _RecordingPopen(itertools.repeat(proc))
 
 
-def _popen_sequence(*procs: _FakeAnt):  # type: ignore[no-untyped-def]
+def _popen_sequence(*procs: _FakeAnt) -> _RecordingPopen:
     """A fake `popen` that hands back *procs* in order (one per call) and records the count, so a
     supersede test can watch the first process torn down and a distinct second one spawned."""
-    seq = iter(procs)
-    calls: list[dict[str, Any]] = []
-
-    def popen(_cmd: list[str], **kw: Any) -> _FakeAnt:
-        calls.append(kw)
-        return next(seq)
-
-    popen.calls = calls  # type: ignore[attr-defined]
-    return popen
+    return _RecordingPopen(iter(procs))
 
 
 def _install_ant(monkeypatch: pytest.MonkeyPatch) -> None:
     """Report the `ant` binary present regardless of the CI host (the op probes with shutil.which)."""
-    monkeypatch.setattr(ops.config.shutil, "which", lambda _exe: "/usr/bin/ant")
+    monkeypatch.setattr(shutil, "which", lambda _exe: "/usr/bin/ant")
 
 
 def test_ant_login_starts_and_reports_ok(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -81,7 +85,7 @@ def test_ant_login_starts_and_reports_ok(tmp_path: Path, monkeypatch: pytest.Mon
     try:
         code, body = _post(port, "/api/ant/login", {})
         assert code == 202 and body["started"] is True and body["state"] == "running"
-        assert len(popen.calls) == 1  # type: ignore[attr-defined]
+        assert len(popen.calls) == 1
         assert _get_json(port, "/api/ant/login") == {"state": "ok"}
     finally:
         server.shutdown()
@@ -107,7 +111,7 @@ def test_ant_login_supersedes_a_running_signin(
         assert first_code == 202 and first["started"] is True
         assert second_code == 202 and second["started"] is True  # a fresh sign-in, not a refusal
         assert first_proc.terminated is True  # the stale attempt was torn down
-        assert len(popen.calls) == 2  # type: ignore[attr-defined]
+        assert len(popen.calls) == 2
         assert state.ant_login_proc is second_proc
     finally:
         server.shutdown()
@@ -128,7 +132,7 @@ def test_ant_login_refused_when_hosted(tmp_path: Path, monkeypatch: pytest.Monke
     try:
         code, body = _post(port, "/api/ant/login", {})
         assert code == 403 and "local serve" in body["error"]
-        assert len(popen.calls) == 0  # type: ignore[attr-defined]
+        assert len(popen.calls) == 0
     finally:
         server.shutdown()
         server.server_close()
@@ -137,7 +141,7 @@ def test_ant_login_refused_when_hosted(tmp_path: Path, monkeypatch: pytest.Monke
 def test_ant_login_missing_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """No `ant` on PATH → 400 with the same install hint the availability check surfaces."""
     scn_dir, cfg, runs = project(tmp_path)
-    monkeypatch.setattr(ops.config.shutil, "which", lambda _exe: None)
+    monkeypatch.setattr(shutil, "which", lambda _exe: None)
     server, port = _serve(
         srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
     )

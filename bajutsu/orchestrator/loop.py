@@ -430,7 +430,9 @@ def _run_step_body(
             ok = assertions.passed(results)
             return ok, "" if ok else _fail_reason(results), results, tree
         _do_action(driver, step, relaunch, control, bindings, selection)
-        return True, "", [], None
+        # Four branches return from this block; hoisting only the last into an `else` would suggest
+        # the other three are not on the success path.
+        return True, "", [], None  # noqa: TRY300
     except (
         base.SelectorError,
         base.ElementNotTappable,
@@ -922,7 +924,6 @@ def _tip_poll_hook(
 def _run_if(
     driver: base.Driver,
     if_block: If,
-    clock: Clock,
     network: NetworkSource,
     bindings: dict[str, str],
     exec_steps: _ExecSteps,
@@ -1105,7 +1106,6 @@ class _StepRunner:
         ok, reason = _run_if(
             active_driver,
             step.if_,
-            self.cfg.clock,
             self.cfg.network,
             self.state.bindings,
             self.exec_steps,

@@ -18,13 +18,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from real_model_support import (  # noqa: F401 — re-exported so the triage tests import from one place
-    RecordingBackend,
-    load_fixture,
-    requires_credential,
-    save_fixture,
-    showcase_screen,
-)
+# Re-exported so the triage tests import from one place. The `as` form is what makes it an explicit
+# re-export under strict mypy, which otherwise treats an imported name as private to this module.
+from real_model_support import RecordingBackend as RecordingBackend
+from real_model_support import load_fixture as load_fixture
+from real_model_support import requires_credential as requires_credential
+from real_model_support import save_fixture as save_fixture
+from real_model_support import showcase_screen as showcase_screen
 
 from bajutsu.agents.claude_triage import _CATEGORIES, NO_DIAGNOSIS_SUMMARY
 from bajutsu.triage import FIX_KINDS, FailedStep, Triage, TriageContext

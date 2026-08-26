@@ -17,6 +17,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from scripts.assert_pool_isolation import (
     artifact_names,
     isolation_violations,
@@ -225,7 +227,9 @@ def test_scenario_window_is_none_when_no_step_recorded_an_instant() -> None:
     assert scenario_window({"steps": []}) is None
 
 
-def test_main_passes_on_a_real_isolated_run_directory(tmp_path: Path, capsys) -> None:
+def test_main_passes_on_a_real_isolated_run_directory(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     scenarios = _isolated_run()
     for sid in _dirs(scenarios):
         (tmp_path / sid).mkdir()
@@ -236,12 +240,16 @@ def test_main_passes_on_a_real_isolated_run_directory(tmp_path: Path, capsys) ->
     assert "pool isolation holds: 4 scenarios across 2 devices" in capsys.readouterr().out
 
 
-def test_main_fails_loudly_on_an_unreadable_manifest(tmp_path: Path, capsys) -> None:
+def test_main_fails_loudly_on_an_unreadable_manifest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     assert _main_with(tmp_path, 2) == 1
     assert "cannot read the run manifest" in capsys.readouterr().out
 
 
-def test_main_fails_when_the_manifest_holds_no_scenarios(tmp_path: Path, capsys) -> None:
+def test_main_fails_when_the_manifest_holds_no_scenarios(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     (tmp_path / "manifest.json").write_text(json.dumps({"schemaVersion": 8}))
     assert _main_with(tmp_path, 2) == 1
     assert "holds no scenario results" in capsys.readouterr().out

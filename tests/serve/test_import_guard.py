@@ -36,7 +36,9 @@ FORBIDDEN = sorted(
 
 def _run_in_child(code: str) -> subprocess.CompletedProcess[str]:
     """Run `code` in a clean child interpreter so no in-session import can contaminate the result."""
-    return subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
+    return subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=60, check=False
+    )
 
 
 def test_default_serve_and_cli_import_no_server_deps() -> None:

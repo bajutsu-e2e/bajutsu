@@ -26,6 +26,7 @@ from bajutsu.ai.base import (
     TextPart,
     ToolChoice,
     ToolDef,
+    ToolUseBlock,
 )
 
 _ANY: ToolChoice = AnyTool()  # module-level singleton (ruff B008: no call in an argument default)
@@ -159,7 +160,9 @@ def test_multi_anytool_maps_several_actions_to_ordered_blocks() -> None:
     resp = claude_code.ClaudeCodeBackend(runner=runner).create_message(
         _request(tools=[_TAP, _FINISH], tool_choice=AnyTool())
     )
-    blocks = [b for b in resp.content if b.name in ("tap", "finish")]
+    blocks = [
+        b for b in resp.content if isinstance(b, ToolUseBlock) and b.name in ("tap", "finish")
+    ]
     assert [b.name for b in blocks] == ["tap", "tap", "finish"]
     assert blocks[0].input == {"id": "email"} and blocks[2].input == {"note": "done"}
 
@@ -242,7 +245,7 @@ def test_image_is_written_named_in_prompt_and_read_allowed_then_cleaned_up() -> 
     assert "Read" not in _deny_tools(runner.cmd)
     assert resp.first_tool_use() is not None
     # The per-call scratch dir is removed once the call returns.
-    assert not os.path.exists(runner.cwd)
+    assert not Path(runner.cwd).exists()
 
 
 def test_text_only_turn_allows_no_tool_and_writes_no_file() -> None:

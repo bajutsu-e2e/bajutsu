@@ -13,21 +13,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from _shared import _post, _serve
+from _shared import FakeObjectStore, _post, _serve
 
 from bajutsu.serve import operations as ops
 from bajutsu.serve.state import ServeState
 
 
-class _FakeStore:
-    """The slice of `ObjectStore` the operations use: a signed PUT/GET URL per key, plus a listing
-    for baselines. In-memory, so the gate needs no cloud SDK or network."""
-
-    def __init__(self) -> None:
-        self.objects: dict[str, bytes] = {}
-
-    def put_bytes(self, key: str, data: bytes, *, content_type: str = "") -> None:
-        self.objects[key] = data
+class _FakeStore(FakeObjectStore):
+    """The shared in-memory store with this suite's own URL shapes: the PUT URL carries the bound
+    content type, and the GET URL is namespaced apart from it."""
 
     def presigned_put_url(self, key: str, *, content_type: str = "", ttl: int = 3600) -> str:
         return f"https://signed.example/put/{key}?ct={content_type}"

@@ -144,12 +144,13 @@ def _terminate_process_group(proc: subprocess.Popen[bytes]) -> None:
         if pgid is not None:
             try:
                 os.killpg(pgid, sig)
-                return
             except OSError:
                 # Gone, not ours, or unsignallable for any other reason — every case is a group this
                 # signal did not reach, so all of them fall through to the process itself. Narrowing
                 # this to the expected errors would let an unexpected one leave the runner alive.
                 pass
+            else:
+                return
         with contextlib.suppress(OSError):
             proc.terminate() if sig == signal.SIGTERM else proc.kill()
 
@@ -432,7 +433,7 @@ class _Recovery:
     fresh_budget: float | None = None
 
 
-def _no_recovery(failure: _AttemptFailure) -> _Recovery | None:
+def _no_recovery(failure: _AttemptFailure) -> _Recovery | None:  # noqa: ARG001  # _RecoverFn shape
     """The neutral recovery: nothing to repair (a real device, or a caller that opts out)."""
     return None
 
@@ -577,7 +578,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         self,
         actuator: str,
         udid: str,
-        env_run: simctl.RunFn = simctl._real_run,
+        env_run: simctl.RunFn = simctl.real_run,
         *,
         respawn: bool = False,
     ) -> None:
@@ -648,7 +649,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         pre: Preconditions,
         *,
         extra_env: Mapping[str, str] | None = None,
-        record_video_dir: Path | None = None,
+        record_video_dir: Path | None = None,  # noqa: ARG002  # Environment shape
         permissions: Mapping[str, str] | None = None,
     ) -> base.Driver:
         ios = require_ios(eff)
@@ -1017,7 +1018,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             simctl.Env(old, run=self._run).shutdown()
         except simctl.DeviceTimeout as exc:
             _logger.warning("quarantining Simulator %s: %s; replacing it anyway", old, exc)
-        note = self._create_replacement(eff, device_type)
+        note = self._create_replacement(device_type)
         # The spawn that follows is a genuine first bring-up — a device just created and booted, with
         # no app installed and no XCTest host this boot — so it earns the full cold readiness ceiling,
         # not the tighter respawn one this environment's history would otherwise select. Exactly the
@@ -1044,7 +1045,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             DeviceError: as `_replacement_target` does — no device type to clone, or no `appPath`.
         """
         old = self._udid
-        note = self._create_replacement(eff, self._replacement_target(eff, why="is gone"))
+        note = self._create_replacement(self._replacement_target(eff, why="is gone"))
         _logger.warning("Simulator %s vanished from CoreSimulator; %s", old, note)
         return f"{old} vanished; {note}"
 
@@ -1081,7 +1082,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             )
         return device_type
 
-    def _create_replacement(self, eff: Effective, device_type: str) -> str:
+    def _create_replacement(self, device_type: str) -> str:
         """Create, boot, and adopt a fresh Simulator of `device_type`; the diagnostic note.
 
         Shared by both rungs that replace a device — the vanished-device rung of a failed cold spawn

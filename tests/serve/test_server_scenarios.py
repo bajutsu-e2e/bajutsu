@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from _shared import FakeObjectStore
+
 from bajutsu.serve.server.scenarios import (
     LocalTreeScenarioStorage,
     ObjectScenarioStorage,
@@ -133,29 +135,7 @@ def test_authored_stamps_a_taken_ref_to_avoid_clobber() -> None:
     )
 
 
-class _FakeObjectStore:
-    """The ObjectStore slice ObjectScenarioStorage uses, in memory."""
-
-    def __init__(self, objects: dict[str, bytes] | None = None) -> None:
-        self.objects = dict(objects or {})
-
-    def exists(self, key: str) -> bool:
-        return key in self.objects
-
-    def get_bytes(self, key: str) -> bytes | None:
-        return self.objects.get(key)
-
-    def put_bytes(self, key: str, data: bytes) -> None:
-        self.objects[key] = data
-
-    def presigned_url(self, key: str) -> str:
-        return f"https://signed.example/{key}"
-
-    def list_keys(self, prefix: str) -> list[str]:
-        return [k for k in self.objects if k.startswith(prefix)]
-
-
-class _PoisonObjectStore(_FakeObjectStore):
+class _PoisonObjectStore(FakeObjectStore):
     """An ObjectStore that fails on any read, so a call proves list/read leaked to object storage."""
 
     def get_bytes(self, key: str) -> bytes | None:
@@ -250,7 +230,7 @@ def test_local_tree_save_delegates_to_the_injected_object_storage(tmp_path: Path
     # reach the injected ObjectScenarioStorage, and the write must not appear in the local tree.
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
-    object_store = _FakeObjectStore()
+    object_store = FakeObjectStore()
     save_storage = ObjectScenarioStorage(object_store, lambda: {"demo"})
     storage = LocalTreeScenarioStorage(_tree_state(scn_dir), save_storage)
     assert storage.save("demo", "new.yaml", SCENARIO) == "new.yaml"

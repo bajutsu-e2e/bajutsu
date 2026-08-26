@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
 
 import bajutsu.cli.commands.audit as audit_command
+from bajutsu.analysis import audit as analysis_audit
 from bajutsu.analysis.audit import (
+    AuditReport,
     audit_scenario,
     longitudinal,
     referenced_ids,
@@ -157,9 +160,11 @@ def test_render_repeat_marks_classification() -> None:
 # --- longitudinal view (mine accumulated runs by scenario hash, BE-0049) ---
 
 
-def _manifest(scenario_hash: str | None, ok: bool, names: tuple[str, ...] = ("s",)) -> dict:
+def _manifest(
+    scenario_hash: str | None, ok: bool, names: tuple[str, ...] = ("s",)
+) -> dict[str, Any]:
     """A minimal manifest dict — the parsed shape `longitudinal` reads (provenance + verdict)."""
-    m: dict = {"ok": ok, "scenarios": [{"scenario": n, "ok": ok} for n in names]}
+    m: dict[str, Any] = {"ok": ok, "scenarios": [{"scenario": n, "ok": ok} for n in names]}
     if scenario_hash is not None:
         m["provenance"] = {"scenarioHash": scenario_hash}
     return m
@@ -392,7 +397,7 @@ def test_repeat_audit_still_stops_the_server_when_shutdown_raises(
         audit_command, "_start_launch_server_or_exit", fake_start_launch_server_or_exit
     )
     monkeypatch.setattr(audit_command, "run_all", lambda *a, **k: [])
-    monkeypatch.setattr(audit_command._audit, "repeat_diff", lambda runs: object())
+    monkeypatch.setattr(analysis_audit, "repeat_diff", lambda runs: object())
 
     with pytest.raises(AttributeError, match="no close on this driver"):
         audit_command._repeat_audit(scenarios, 2, "demo", "", "booted", str(cfg), False)
@@ -456,7 +461,7 @@ def test_read_manifests_skips_non_dirs_missing_and_non_dict(tmp_path: Path) -> N
     assert read_manifests(runs) == [{"runId": "r1"}]
 
 
-def _audit(yaml: str):  # type: ignore[no-untyped-def]
+def _audit(yaml: str) -> AuditReport:
     [scenario] = load_scenarios(yaml)
     return audit_scenario(scenario)
 

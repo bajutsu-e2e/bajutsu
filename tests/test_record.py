@@ -33,12 +33,18 @@ class FakeAgent:
         self._i += 1
         return proposal
 
+    def plan(self, goal: str) -> list[str]:
+        return []  # scripted: no up-front plan, which the loop reads as "none"
+
 
 class LoopAgent:
     """Always proposes tapping `a` (never done) — for max_steps testing."""
 
     def next_action(self, observation: Observation) -> Proposal:
         return Proposal(steps=[Step.model_validate({"tap": {"id": "a"}})])
+
+    def plan(self, goal: str) -> list[str]:
+        return []
 
 
 class SeenAgent(FakeAgent):
@@ -233,7 +239,9 @@ def test_record_records_a_manual_takeover_marker_on_acted() -> None:
 
     manual = [s for s in scenario.steps if s.manual is not None]
     assert len(manual) == 1
+    assert manual[0].manual is not None
     assert manual[0].manual.label == "solve the CAPTCHA"
+    assert manual[0].manual is not None
     assert manual[0].manual.bypass is None  # unreproducible by default
     assert manual[0].from_ is not None and "no deterministic" in manual[0].from_.lower()
     # only the observed marker is recorded — never a raw tap standing in for the human's gesture
@@ -259,6 +267,7 @@ def test_record_marks_a_takeover_bypassable_when_the_agent_proposes_one() -> Non
 
     manual = [s for s in scenario.steps if s.manual is not None]
     assert len(manual) == 1
+    assert manual[0].manual is not None
     assert manual[0].manual.bypass == "disable biometrics behind a test flag"
     assert (
         manual[0].from_ is not None and "disable biometrics behind a test flag" in manual[0].from_
@@ -293,6 +302,7 @@ def test_record_masks_a_secret_in_the_takeover_bypass() -> None:
 
     manual = [s for s in scenario.steps if s.manual is not None]
     assert len(manual) == 1
+    assert manual[0].manual is not None
     assert manual[0].manual.bypass == "disable biometrics with token ${secrets.OTP}"
     # neither the recorded bypass nor any narrated line carries the literal
     assert "s3cr3t" not in (manual[0].manual.bypass or "")
@@ -374,6 +384,7 @@ def test_record_offers_a_takeover_when_a_target_cannot_be_resolved() -> None:
     assert len(handoff.requests) == 1  # the unresolved target raised the takeover
     manual = [s for s in scenario.steps if s.manual is not None]
     assert len(manual) == 1
+    assert manual[0].manual is not None
     assert manual[0].manual.bypass is None  # a loop-detected takeover proposes no bypass
     assert manual[0].from_ is not None and "no deterministic" in manual[0].from_.lower()
     # the loop resumed and recorded the next action; no fabricated tap stands in for the ghost target
@@ -509,7 +520,9 @@ def test_record_records_a_human_value_into_a_vars_placeholder() -> None:
 
     typed = [s for s in scenario.steps if s.type is not None]
     assert len(typed) == 1
+    assert typed[0].type is not None
     assert typed[0].type.into is not None and typed[0].type.into.id == "otp"
+    assert typed[0].type is not None
     assert typed[0].type.text == "${vars.otp_code}"
     assert typed[0].from_ is not None and "totp" in typed[0].from_ and "BE-0046" in typed[0].from_
 
@@ -541,6 +554,7 @@ def test_record_records_a_human_value_into_a_secrets_placeholder() -> None:
     scenario = record(driver, "authorize", agent, handoff=handoff)
     typed = [s for s in scenario.steps if s.type is not None]
     assert len(typed) == 1
+    assert typed[0].type is not None
     assert typed[0].type.text == "${secrets.api_token}"
     assert typed[0].from_ is not None and "secret" in typed[0].from_
     assert "s3cr3t-value" not in dump_scenarios([scenario])
@@ -612,6 +626,7 @@ def test_record_human_value_email_classification_points_at_an_email_step() -> No
     handoff = RecordingHandoff([HandoffResponse(values=["707070"])])
     scenario = record(driver, "log in", agent, handoff=handoff)
     typed = [s for s in scenario.steps if s.type is not None]
+    assert typed[0].type is not None
     assert typed[0].type.text == "${vars.email_code}"
     assert typed[0].from_ is not None and "email" in typed[0].from_ and "BE-0046" in typed[0].from_
 
@@ -634,6 +649,7 @@ def test_record_human_value_derives_a_placeholder_name_from_the_field() -> None:
     handoff = RecordingHandoff([HandoffResponse(values=["111222"])])
     scenario = record(driver, "log in", agent, handoff=handoff)
     typed = [s for s in scenario.steps if s.type is not None]
+    assert typed[0].type is not None
     assert typed[0].type.text == "${vars.login_otp}"
 
 
@@ -755,6 +771,7 @@ def test_record_unclassified_human_value_leaves_a_neutral_todo() -> None:
     handoff = RecordingHandoff([HandoffResponse(values=["999111"])])
     scenario = record(driver, "log in", agent, handoff=handoff)
     typed = [s for s in scenario.steps if s.type is not None]
+    assert typed[0].type is not None
     assert typed[0].type.text == "${vars.mystery}"
     assert typed[0].from_ is not None
     assert "classify" in typed[0].from_ and "a totp step" not in typed[0].from_
@@ -1112,8 +1129,21 @@ def test_shows_app_ui_recognizes_label_only_screen() -> None:
 
 
 class _NoSleep:
-    def sleep(self, _seconds: float) -> None:
-        return None
+    """Logical time: no real waiting, but a deadline wait still reaches its deadline.
+
+    `record()` hands this clock straight to `_wait`, whose loop ends on `clock.now() >= deadline`,
+    so a frozen `now()` would spin forever on any wait whose condition never holds — a hung runner
+    instead of a red test.
+    """
+
+    def __init__(self) -> None:
+        self._t = 0.0
+
+    def now(self) -> float:
+        return self._t
+
+    def sleep(self, seconds: float) -> None:
+        self._t += seconds
 
 
 class _AdvancingClock:

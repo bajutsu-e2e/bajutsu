@@ -24,7 +24,7 @@ from bajutsu.scenario import Preconditions
 
 
 def open_ios_read_driver(
-    udid: str, eff: Effective, env_run: simctl.RunFn = simctl._real_run
+    udid: str, eff: Effective, env_run: simctl.RunFn = simctl.real_run
 ) -> tuple[base.Driver, RunEnvironment]:
     """Start a short-lived XCUITest runner; return its driver and the environment to tear down.
 
@@ -46,7 +46,7 @@ def open_ios_read_driver(
 
 @contextmanager
 def ios_read_session(
-    udid: str, eff: Effective, env_run: simctl.RunFn = simctl._real_run
+    udid: str, eff: Effective, env_run: simctl.RunFn = simctl.real_run
 ) -> Iterator[base.Driver]:
     """A one-shot XCUITest read: bring the runner up, yield the driver, always tear it down."""
     driver, env = open_ios_read_driver(udid, eff, env_run)

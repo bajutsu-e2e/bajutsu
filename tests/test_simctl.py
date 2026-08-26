@@ -6,8 +6,10 @@ import logging
 import plistlib
 import subprocess
 import sys
+import time
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -61,7 +63,7 @@ def test_command_builders() -> None:
 def test_uninstall_is_idempotent() -> None:
     """uninstall() of an app that isn't installed is a no-op, not a crash."""
 
-    def absent(args: list[str], e: object = None) -> str:
+    def absent(args: list[str], e: Mapping[str, str] | None = None) -> str:
         raise subprocess.CalledProcessError(2, args, stderr="not installed")
 
     simctl.Env("U", run=absent).uninstall("com.x")  # swallows the error
@@ -70,10 +72,10 @@ def test_uninstall_is_idempotent() -> None:
 def test_is_installed_reflects_get_app_container() -> None:
     import subprocess
 
-    def present(args: list[str], e: object = None) -> str:
+    def present(args: list[str], e: Mapping[str, str] | None = None) -> str:
         return "/path/to.app"
 
-    def absent(args: list[str], e: object = None) -> str:
+    def absent(args: list[str], e: Mapping[str, str] | None = None) -> str:
         raise subprocess.CalledProcessError(2, args, stderr="No such file or directory")
 
     assert simctl.Env("U", run=present).is_installed("com.x") is True
@@ -93,9 +95,9 @@ def test_booted_udids_parses_simctl() -> None:
             }
         }
     )
-    assert simctl.booted_udids(run=lambda args, e=None: payload) == ["AAA"]
+    assert simctl.booted_udids(run=lambda args, e: payload) == ["AAA"]
 
-    def boom(args: list[str], e: object = None) -> str:
+    def boom(args: list[str], e: Mapping[str, str] | None = None) -> str:
         raise OSError("simctl not found")
 
     assert simctl.booted_udids(run=boom) == []  # failure -> empty, never raises
@@ -114,10 +116,10 @@ def test_device_booted_is_three_valued() -> None:
             }
         }
     )
-    assert simctl.device_booted("AAA", run=lambda args, e=None: payload) is True
-    assert simctl.device_booted("BBB", run=lambda args, e=None: payload) is False
+    assert simctl.device_booted("AAA", run=lambda args, e: payload) is True
+    assert simctl.device_booted("BBB", run=lambda args, e: payload) is False
 
-    def boom(args: list[str], e: object = None) -> str:
+    def boom(args: list[str], e: Mapping[str, str] | None = None) -> str:
         raise OSError("simctl not found")
 
     # A probe that could not run reads as unknown, not as "not booted" — the same distinction
@@ -143,10 +145,10 @@ def test_device_catalog_maps_udid_to_model_and_os() -> None:
             }
         }
     )
-    catalog = simctl.device_catalog(run=lambda args, e=None: payload)
+    catalog = simctl.device_catalog(run=lambda args, e: payload)
     assert catalog == {"AAA": {"name": "iPhone 15", "runtime": "iOS 17.2"}}
 
-    def boom(args: list[str], e: object = None) -> str:
+    def boom(args: list[str], e: Mapping[str, str] | None = None) -> str:
         raise OSError("simctl not found")
 
     assert simctl.device_catalog(run=boom) == {}  # failure -> empty, never raises
@@ -178,10 +180,10 @@ def test_device_available_is_three_valued() -> None:
     payload = json.dumps(
         {"devices": {"com.apple.CoreSimulator.SimRuntime.iOS-26-0": [{"udid": "AAA"}]}}
     )
-    assert simctl.device_available("AAA", run=lambda args, e=None: payload) is True
-    assert simctl.device_available("BBB", run=lambda args, e=None: payload) is False
+    assert simctl.device_available("AAA", run=lambda args, e: payload) is True
+    assert simctl.device_available("BBB", run=lambda args, e: payload) is False
 
-    def boom(args: list[str], e: object = None) -> str:
+    def boom(args: list[str], e: Mapping[str, str] | None = None) -> str:
         raise OSError("simctl not found")
 
     # A probe that could not run reads as unknown, never as "the device is gone": creating a
@@ -204,7 +206,7 @@ def test_device_type_of_reads_the_unfiltered_listing() -> None:
     )
     calls: list[list[str]] = []
 
-    def run(args: list[str], e: object = None) -> str:
+    def run(args: list[str], e: Mapping[str, str] | None = None) -> str:
         calls.append(args)
         return payload
 
@@ -243,7 +245,7 @@ def test_device_type_identifier_and_newest_iphone() -> None:
     # simctl lists devicetypes oldest first, so the last iPhone is the newest installed one.
     assert simctl.newest_iphone_device_type(run=run) == "com.apple.x.iPhone-17-Pro"
 
-    def boom(args: list[str], e: object = None) -> str:
+    def boom(args: list[str], e: Mapping[str, str] | None = None) -> str:
         raise OSError("simctl not found")
 
     assert simctl.device_type_identifier("iPhone 17 Pro", run=boom) is None
@@ -253,7 +255,7 @@ def test_device_type_identifier_and_newest_iphone() -> None:
 def test_create_device_returns_the_new_udid() -> None:
     calls: list[list[str]] = []
 
-    def run(args: list[str], e: object = None) -> str:
+    def run(args: list[str], e: Mapping[str, str] | None = None) -> str:
         calls.append(args)
         return "AAAA-BBBB\n"
 
@@ -264,7 +266,7 @@ def test_create_device_returns_the_new_udid() -> None:
 def test_create_device_pins_the_given_runtime() -> None:
     calls: list[list[str]] = []
 
-    def run(args: list[str], e: object = None) -> str:
+    def run(args: list[str], e: Mapping[str, str] | None = None) -> str:
         calls.append(args)
         return "AAAA-BBBB\n"
 
@@ -284,7 +286,7 @@ def test_create_device_pins_the_given_runtime() -> None:
 def test_create_device_falls_back_when_the_pinned_runtime_is_gone() -> None:
     calls: list[list[str]] = []
 
-    def run(args: list[str], e: object = None) -> str:
+    def run(args: list[str], e: Mapping[str, str] | None = None) -> str:
         calls.append(args)
         if len(calls) == 1:
             raise subprocess.CalledProcessError(1, args, stderr="Invalid runtime")
@@ -312,7 +314,7 @@ def test_create_device_warns_when_it_falls_back_to_unpinned(
     # about what it actually got, so the fallback logs its own warning here, next to the decision.
     calls: list[list[str]] = []
 
-    def run(args: list[str], e: object = None) -> str:
+    def run(args: list[str], e: Mapping[str, str] | None = None) -> str:
         calls.append(args)
         if len(calls) == 1:
             raise subprocess.CalledProcessError(1, args, stderr="Invalid runtime")
@@ -332,7 +334,7 @@ def test_create_device_wraps_an_oserror_from_the_unpinned_retry() -> None:
     # OSError does not apply there — the fallback needs (and had been missing) its own.
     calls: list[list[str]] = []
 
-    def run(args: list[str], e: object = None) -> str:
+    def run(args: list[str], e: Mapping[str, str] | None = None) -> str:
         calls.append(args)
         if len(calls) == 1:
             raise subprocess.CalledProcessError(1, args, stderr="Invalid runtime")
@@ -346,7 +348,7 @@ def test_create_device_wraps_an_oserror_from_the_unpinned_retry() -> None:
 
 
 def test_create_device_fails_loudly_when_no_runtime_remains() -> None:
-    def boom(args: list[str], e: object = None) -> str:
+    def boom(args: list[str], e: Mapping[str, str] | None = None) -> str:
         raise subprocess.CalledProcessError(
             1, args, stderr="Invalid runtime: no runtimes are installed"
         )
@@ -356,7 +358,7 @@ def test_create_device_fails_loudly_when_no_runtime_remains() -> None:
 
     # A device type simctl accepted but printed nothing for leaves no udid to return.
     with pytest.raises(simctl.DeviceError, match="printed no udid"):
-        simctl.create_device("com.apple.x.iPhone-17", run=lambda args, e=None: "\n")
+        simctl.create_device("com.apple.x.iPhone-17", run=lambda args, e: "\n")
 
 
 def test_locale_args() -> None:
@@ -442,7 +444,7 @@ def test_parsers_accept_a_real_captured_payload() -> None:
     """
     payload = _REAL_LIST_DEVICES.read_text(encoding="utf-8")
 
-    catalog = simctl.device_catalog(run=lambda args, e=None: payload)
+    catalog = simctl.device_catalog(run=lambda args, e: payload)
     assert catalog, "the captured payload should yield a non-empty device catalog"
     for udid, entry in catalog.items():
         assert udid  # every catalogued device is keyed by a real udid
@@ -454,7 +456,7 @@ def test_parsers_accept_a_real_captured_payload() -> None:
     # The same payload carries per-device `state`, so the booted filter runs against the real shape;
     # the captured host had booted simulators, so the parser must find them (and each must be in the
     # catalog above — booted devices are a subset of the available ones).
-    booted = simctl.booted_udids(run=lambda args, e=None: payload)
+    booted = simctl.booted_udids(run=lambda args, e: payload)
     assert booted, "the captured payload had booted simulators; the parser should find them"
     assert set(booted) <= set(catalog)
 
@@ -477,11 +479,11 @@ def test_device_error_keeps_command_and_simctl_stderr() -> None:
 def test_run_pbcopy_passes_stdin_and_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[dict[str, object]] = []
 
-    def fake_run(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(cmd: list[str], **kw: Any) -> subprocess.CompletedProcess[str]:
         calls.append({"cmd": cmd, **kw})
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
-    monkeypatch.setattr(simctl.subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess, "run", fake_run)
     simctl.Env("UDID").set_clipboard("hello")
 
     assert len(calls) == 1  # first attempt succeeds, no retry
@@ -495,15 +497,15 @@ def test_run_pbcopy_retries_transient_timeout(monkeypatch: pytest.MonkeyPatch) -
     # simctl exits 60 (ETIMEDOUT) on a flaky pasteboard sync; a re-run clears it.
     attempts = {"n": 0}
 
-    def flaky_run(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+    def flaky_run(cmd: list[str], **kw: Any) -> subprocess.CompletedProcess[str]:
         attempts["n"] += 1
         if attempts["n"] < 3:
             raise subprocess.CalledProcessError(60, cmd, output="", stderr="")
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     slept: list[float] = []
-    monkeypatch.setattr(simctl.subprocess, "run", flaky_run)
-    monkeypatch.setattr(simctl.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(subprocess, "run", flaky_run)
+    monkeypatch.setattr(time, "sleep", slept.append)
 
     simctl.Env("UDID").set_clipboard("x")  # succeeds on the third attempt, no raise
 
@@ -517,14 +519,14 @@ def test_run_pbcopy_recovers_past_three_attempts(monkeypatch: pytest.MonkeyPatch
     assert simctl._PBCOPY_MAX_ATTEMPTS >= 4
     attempts = {"n": 0}
 
-    def flaky_run(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+    def flaky_run(cmd: list[str], **kw: Any) -> subprocess.CompletedProcess[str]:
         attempts["n"] += 1
         if attempts["n"] < 4:
             raise subprocess.CalledProcessError(60, cmd, output="", stderr="")
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
-    monkeypatch.setattr(simctl.subprocess, "run", flaky_run)
-    monkeypatch.setattr(simctl.time, "sleep", lambda s: None)
+    monkeypatch.setattr(subprocess, "run", flaky_run)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     simctl.Env("UDID").set_clipboard("x")  # succeeds on the fourth attempt, no raise
 
@@ -534,12 +536,12 @@ def test_run_pbcopy_recovers_past_three_attempts(monkeypatch: pytest.MonkeyPatch
 def test_run_pbcopy_reraises_after_exhausting_retries(monkeypatch: pytest.MonkeyPatch) -> None:
     attempts = {"n": 0}
 
-    def always_timeout(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+    def always_timeout(cmd: list[str], **kw: Any) -> subprocess.CompletedProcess[str]:
         attempts["n"] += 1
         raise subprocess.CalledProcessError(60, cmd, output="", stderr="")
 
-    monkeypatch.setattr(simctl.subprocess, "run", always_timeout)
-    monkeypatch.setattr(simctl.time, "sleep", lambda s: None)
+    monkeypatch.setattr(subprocess, "run", always_timeout)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     with pytest.raises(subprocess.CalledProcessError):
         simctl.Env("UDID").clear_clipboard()
@@ -552,13 +554,13 @@ def test_run_pbcopy_fast_fails_non_transient_error(monkeypatch: pytest.MonkeyPat
     # surfaces on the first attempt — no retry, no backoff.
     attempts = {"n": 0}
 
-    def bad_device(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+    def bad_device(cmd: list[str], **kw: Any) -> subprocess.CompletedProcess[str]:
         attempts["n"] += 1
         raise subprocess.CalledProcessError(149, cmd, output="", stderr="Invalid device")
 
     slept: list[float] = []
-    monkeypatch.setattr(simctl.subprocess, "run", bad_device)
-    monkeypatch.setattr(simctl.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(subprocess, "run", bad_device)
+    monkeypatch.setattr(time, "sleep", slept.append)
 
     with pytest.raises(subprocess.CalledProcessError):
         simctl.Env("UDID").set_clipboard("x")
@@ -571,14 +573,14 @@ def test_run_pbcopy_retries_python_side_hang(monkeypatch: pytest.MonkeyPatch) ->
     # A hang (no simctl exit) surfaces as TimeoutExpired from the subprocess bound; retry it too.
     attempts = {"n": 0}
 
-    def hang_then_ok(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+    def hang_then_ok(cmd: list[str], **kw: Any) -> subprocess.CompletedProcess[str]:
         attempts["n"] += 1
         if attempts["n"] == 1:
             raise subprocess.TimeoutExpired(cmd, simctl._PBCOPY_TIMEOUT_S)
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
-    monkeypatch.setattr(simctl.subprocess, "run", hang_then_ok)
-    monkeypatch.setattr(simctl.time, "sleep", lambda s: None)
+    monkeypatch.setattr(subprocess, "run", hang_then_ok)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     simctl.Env("UDID").set_clipboard("x")
 
@@ -744,7 +746,7 @@ def test_system_locale_matches_reports_an_unreadable_domain_as_unknown() -> None
     # A payload that parses but is not a dict is unreadable too (a mangled export), unlike a
     # readable domain that merely lacks the key — that one is a mismatch, covered above.
     mangled = plistlib.dumps([]).decode()
-    assert simctl.Env("UDID", run=lambda a, e=None: mangled).system_locale_matches("ja") is None
+    assert simctl.Env("UDID", run=lambda a, e: mangled).system_locale_matches("ja") is None
 
 
 def test_device_type_label_recovers_the_model_name() -> None:
@@ -788,13 +790,13 @@ def test_the_bound_is_chosen_from_the_subcommand() -> None:
 def test_every_call_carries_its_bound(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[dict[str, object]] = []
 
-    def fake_run(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(cmd: list[str], **kw: Any) -> subprocess.CompletedProcess[str]:
         calls.append({"cmd": cmd, **kw})
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
-    monkeypatch.setattr(simctl.subprocess, "run", fake_run)
-    simctl._real_run(simctl.list_booted_cmd())
-    simctl._real_run(simctl.bootstatus_cmd("UDID"))
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    simctl.real_run(simctl.list_booted_cmd())
+    simctl.real_run(simctl.bootstatus_cmd("UDID"))
 
     assert calls[0]["timeout"] == simctl._SIMCTL_TIMEOUT_S
     assert calls[1]["timeout"] == simctl._DEVICE_BLOCKING_TIMEOUT_S
@@ -807,7 +809,7 @@ def test_a_call_that_never_returns_raises_a_device_fault(monkeypatch: pytest.Mon
     sleeper = [sys.executable, "-c", "import time; time.sleep(30)"]
 
     with pytest.raises(simctl.DeviceTimeout) as excinfo:
-        simctl._real_run(sleeper)
+        simctl.real_run(sleeper)
 
     message = str(excinfo.value)
     assert "0.3s" in message  # the deadline it exceeded
@@ -817,11 +819,11 @@ def test_a_call_that_never_returns_raises_a_device_fault(monkeypatch: pytest.Mon
 
 
 def test_the_healthy_path_is_untouched() -> None:
-    assert simctl._real_run([sys.executable, "-c", "print('ok')"]) == "ok\n"
+    assert simctl.real_run([sys.executable, "-c", "print('ok')"]) == "ok\n"
     # A failing command still raises rather than returning empty stdout: the whole error
     # architecture above (`device_error`, the probes' fallbacks) reads that raise, not a "".
     with pytest.raises(subprocess.CalledProcessError):
-        simctl._real_run([sys.executable, "-c", "raise SystemExit(3)"])
+        simctl.real_run([sys.executable, "-c", "raise SystemExit(3)"])
 
 
 def _timing_out(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:

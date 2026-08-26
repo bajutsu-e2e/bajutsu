@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
@@ -751,7 +752,7 @@ def _cross_context() -> triage.CrossRunTriageContext:
                 "label": "Home",
                 "traits": ["button"],
                 "value": None,
-                "frame": [0, 0, 1, 1],
+                "frame": (0.0, 0.0, 1.0, 1.0),
                 "nativeZ": None,
             }
         ],
@@ -768,7 +769,7 @@ def _cross_context() -> triage.CrossRunTriageContext:
                 "label": "Home",
                 "traits": ["button"],
                 "value": None,
-                "frame": [0, 0, 1, 1],
+                "frame": (0.0, 0.0, 1.0, 1.0),
                 "nativeZ": None,
             }
         ],
@@ -828,7 +829,7 @@ def _write_flaky_run(
                     "label": "Home",
                     "traits": ["button"],
                     "value": None,
-                    "frame": [0, 0, 1, 1],
+                    "frame": (0.0, 0.0, 1.0, 1.0),
                     "nativeZ": None,
                 }
             ]
@@ -947,7 +948,7 @@ def test_cli_flaky_requires_ai() -> None:
 
 def _fake_cross_run_agent(fix: Fix | None) -> type:
     class _FakeAgent:
-        def __init__(self, *args: object, **kwargs: object) -> None:
+        def __init__(self, *args: object, **kwargs: Any) -> None:
             pass
 
         def triage_flaky(self, context: triage.CrossRunTriageContext) -> triage.Triage:

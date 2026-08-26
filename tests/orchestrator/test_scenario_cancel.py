@@ -7,10 +7,12 @@ to still writes a manifest, a report, and a history row instead of vanishing.
 
 from __future__ import annotations
 
+import pytest
 from _orch import FakeClock, _scenario
 from conftest import el
 
 from bajutsu.cancellation import CANCELLED_FAILURE
+from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence.network import ScreenTransition
 from bajutsu.orchestrator import run_scenario
@@ -97,7 +99,7 @@ def test_cancel_inside_a_settled_wait_ends_the_settle() -> None:
     assert clock.now() < 1.0
 
 
-def test_cancel_inside_an_assert_poll_ends_the_poll(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_cancel_inside_an_assert_poll_ends_the_poll(monkeypatch: pytest.MonkeyPatch) -> None:
     # A step-level `assert` is a condition wait too (BE-0299), and the wait floor gives it a real
     # budget on the lane that sets one — so it honors a cancel the same way `wait` does.
     monkeypatch.setenv("BAJUTSU_MIN_WAIT_TIMEOUT", "100")
@@ -227,7 +229,7 @@ def test_cancel_inside_a_signal_settled_wait_ends_the_settle() -> None:
         clock=clock,
         # A transition reported after the scenario's start instant, which is what routes the settle
         # onto the signal path rather than the tree-diff fallback.
-        transitions=lambda: [(ScreenTransition(name="detail"), 0.0)],
+        transitions=lambda: [(ScreenTransition(kind="detail"), 0.0)],
         cancelled=_CancelAfter(1),
     )
     assert result.failure == CANCELLED_FAILURE
@@ -257,7 +259,7 @@ def test_a_signal_settle_that_reached_its_deadline_still_passes_under_a_cancel()
         driver,
         _scenario({"name": "x", "steps": [{"wait": {"until": "settled", "timeout": 0.0}}]}),
         clock=FakeClock(),
-        transitions=lambda: [(ScreenTransition(name="detail"), 0.0)],
+        transitions=lambda: [(ScreenTransition(kind="detail"), 0.0)],
         cancelled=_CancelAfter(1),
     )
     assert result.ok
@@ -279,10 +281,11 @@ def test_cancel_inside_the_alert_guard_retry_does_not_burn_its_timeout() -> None
     clock = FakeClock()
     fired = False
 
-    def on_blocked(d: FakeDriver) -> AlertEvent | None:
+    def on_blocked(d: base.Driver) -> AlertEvent | None:
         # The vision guard the (non-native) FakeDriver falls back to, at end of step. Clears the
         # screen so the retry is a genuine re-wait, and arms the cancel for that retry alone.
         nonlocal fired
+        assert isinstance(d, FakeDriver)
         if d.screen:
             d.screen = []
             fired = True

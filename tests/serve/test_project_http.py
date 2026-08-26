@@ -81,9 +81,7 @@ def test_stdlib_handler_project_runs_route(tmp_path: Path) -> None:
 
 def test_fastapi_transport_register_list_run_and_delete(tmp_path: Path) -> None:
     client = TestClient(
-        make_app(
-            _hub_state(tmp_path, popen=fake_popen(["PASS  runs/20260711-1/manifest.json\n"]))  # type: ignore[arg-type]
-        )
+        make_app(_hub_state(tmp_path, popen=fake_popen(["PASS  runs/20260711-1/manifest.json\n"])))
     )
     assert (
         client.post("/api/projects", json={"name": "checkout", "source": None}).status_code == 200

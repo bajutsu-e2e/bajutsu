@@ -9,9 +9,12 @@ from pathlib import Path
 
 import pytest
 from conftest import el
+from PIL import Image
 
-from bajutsu.assertions import EvalContext, evaluate, evaluate_one, passed
+from bajutsu.assertions import EvalContext, VisualContext, evaluate, evaluate_one, passed
 from bajutsu.drivers import base
+from bajutsu.evidence.redaction import Redactor
+from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.scenario import Assertion
 
 SCREEN: list[base.Element] = [
@@ -249,7 +252,7 @@ def test_compile_cache_reuses_compiled_pattern() -> None:
 # --- visual assertion schema (BE-0165) ---
 
 
-def test_visual_match_compare_defaults_to_none():
+def test_visual_match_compare_defaults_to_none() -> None:
     a = _a({"visual": {"baseline": "home.png"}})
     assert a.visual is not None
     assert a.visual.compare is None
@@ -257,24 +260,24 @@ def test_visual_match_compare_defaults_to_none():
     assert a.visual.antialiasing is True
 
 
-def test_visual_match_compare_accepts_exact():
+def test_visual_match_compare_accepts_exact() -> None:
     a = _a({"visual": {"baseline": "home.png", "compare": "exact"}})
     assert a.visual is not None
     assert a.visual.compare == "exact"
 
 
-def test_visual_match_compare_accepts_pixelmatch():
+def test_visual_match_compare_accepts_pixelmatch() -> None:
     a = _a({"visual": {"baseline": "home.png", "compare": "pixelmatch"}})
     assert a.visual is not None
     assert a.visual.compare == "pixelmatch"
 
 
-def test_visual_match_compare_rejects_invalid():
+def test_visual_match_compare_rejects_invalid() -> None:
     with pytest.raises(ValueError, match="Input should be"):
         _a({"visual": {"baseline": "home.png", "compare": "ssim"}})
 
 
-def test_visual_match_color_tolerance_range():
+def test_visual_match_color_tolerance_range() -> None:
     a = _a({"visual": {"baseline": "x.png", "colorTolerance": 0.5}})
     assert a.visual is not None
     assert a.visual.color_tolerance == 0.5
@@ -286,7 +289,7 @@ def test_visual_match_color_tolerance_range():
         _a({"visual": {"baseline": "x.png", "colorTolerance": -0.1}})
 
 
-def test_visual_match_antialiasing_default_true():
+def test_visual_match_antialiasing_default_true() -> None:
     a = _a({"visual": {"baseline": "x.png"}})
     assert a.visual is not None
     assert a.visual.antialiasing is True
@@ -296,12 +299,12 @@ def test_visual_match_antialiasing_default_true():
     assert a2.visual.antialiasing is False
 
 
-def test_visual_match_exact_with_pixelmatch_tolerances_rejected():
+def test_visual_match_exact_with_pixelmatch_tolerances_rejected() -> None:
     with pytest.raises(Exception, match="pixelmatch"):
         _a({"visual": {"baseline": "x.png", "compare": "exact", "colorTolerance": 0.5}})
 
 
-def test_visual_match_none_compare_with_tolerances_ok():
+def test_visual_match_none_compare_with_tolerances_ok() -> None:
     a = _a({"visual": {"baseline": "x.png", "colorTolerance": 0.5}})
     assert a.visual is not None
     assert a.visual.color_tolerance == 0.5
@@ -320,15 +323,12 @@ def _sid_dir(tmp_path: Path) -> Path:
     return d
 
 
-def _run_writer(tmp_path: Path):
+def _run_writer(tmp_path: Path) -> RunArtifactWriter:
     """A run sink over `tmp_path` with nothing configured to mask."""
-    from bajutsu.evidence.redaction import Redactor
-    from bajutsu.evidence.sink import RunArtifactWriter
-
     return RunArtifactWriter(tmp_path, Redactor(None))
 
 
-def test_visual_assertion_pass(tmp_path):
+def test_visual_assertion_pass(tmp_path: Path) -> None:
     from PIL import Image
 
     from bajutsu.assertions import VisualContext
@@ -361,7 +361,7 @@ def test_visual_assertion_pass(tmp_path):
     assert (tmp_path / result.visual.baseline).is_file()
 
 
-def test_visual_assertion_fail(tmp_path):
+def test_visual_assertion_fail(tmp_path: Path) -> None:
     from PIL import Image
 
     from bajutsu.assertions import VisualContext
@@ -390,7 +390,7 @@ def test_visual_assertion_fail(tmp_path):
     assert not result.visual.missing
 
 
-def test_visual_assertion_missing_baseline(tmp_path):
+def test_visual_assertion_missing_baseline(tmp_path: Path) -> None:
     from bajutsu.assertions import VisualContext
 
     vc = VisualContext(
@@ -411,13 +411,13 @@ def test_visual_assertion_missing_baseline(tmp_path):
     assert result.visual.baseline_name == "missing.png"
 
 
-def test_visual_assertion_no_context():
+def test_visual_assertion_no_context() -> None:
     result = evaluate_one(SCREEN, _a({"visual": {"baseline": "x.png"}}))
     assert not result.ok
     assert "no visual context" in result.reason
 
 
-def test_visual_pixelmatch_fields_with_resolved_exact_fails(tmp_path):
+def test_visual_pixelmatch_fields_with_resolved_exact_fails(tmp_path: Path) -> None:
     """Explicit pixelmatch fields + resolved engine exact → clean failure."""
     from PIL import Image
 
@@ -446,7 +446,7 @@ def test_visual_pixelmatch_fields_with_resolved_exact_fails(tmp_path):
     assert "resolved engine is 'exact'" in result.reason
 
 
-def test_visual_evidence_records_engine(tmp_path):
+def test_visual_evidence_records_engine(tmp_path: Path) -> None:
     """VisualEvidence.engine reflects the resolved compare engine."""
     from PIL import Image
 
@@ -473,7 +473,7 @@ def test_visual_evidence_records_engine(tmp_path):
     assert result.visual.engine == "exact"
 
 
-def test_visual_evidence_records_pixelmatch(tmp_path):
+def test_visual_evidence_records_pixelmatch(tmp_path: Path) -> None:
     from PIL import Image
 
     from bajutsu.assertions import VisualContext
@@ -501,7 +501,7 @@ def test_visual_evidence_records_pixelmatch(tmp_path):
     assert result.visual.engine == "pixelmatch"
 
 
-def test_visual_context_default_compare_fallback(tmp_path):
+def test_visual_context_default_compare_fallback(tmp_path: Path) -> None:
     """When the assertion has no compare, VisualContext.default_compare is used."""
     from PIL import Image
 
@@ -549,7 +549,7 @@ def _framed_screen() -> list[base.Element]:
     ]
 
 
-def _vc(tmp_path: Path, screenshot: Path):
+def _vc(tmp_path: Path, screenshot: Path) -> VisualContext:
     from bajutsu.assertions import VisualContext
 
     return VisualContext(
@@ -560,7 +560,9 @@ def _vc(tmp_path: Path, screenshot: Path):
     )
 
 
-def _paint(img, box: tuple[int, int, int, int], color: tuple[int, int, int, int]) -> None:
+def _paint(
+    img: Image.Image, box: tuple[int, int, int, int], color: tuple[int, int, int, int]
+) -> None:
     x, y, w, h = box
     for px in range(x, x + w):
         for py in range(y, y + h):

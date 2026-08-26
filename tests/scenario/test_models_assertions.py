@@ -179,8 +179,11 @@ def test_visual_assertion_with_exclude_and_threshold() -> None:
     )
     assert a.visual is not None
     assert a.visual.threshold == 0.5
+    assert a.visual.exclude is not None
     assert len(a.visual.exclude) == 1
-    assert a.visual.exclude[0].w == 390
+    region = a.visual.exclude[0]
+    assert isinstance(region, ExcludeRegion)
+    assert region.w == 390
 
 
 def test_visual_assertion_requires_baseline() -> None:

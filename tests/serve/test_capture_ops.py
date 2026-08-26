@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from _shared import project
 
+from bajutsu.config import Effective, IosConfig
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence.redaction import Redactor
@@ -59,8 +60,7 @@ def _screen() -> list[base.Element]:
 def _state_with_config(tmp_path: Path) -> ServeState:
     """Build a ServeState with a bound config (needed for capture operations)."""
     scn_dir, cfg, runs = project(tmp_path)
-    state = ServeState(runs_dir=runs, config=cfg, scenarios_dir=scn_dir, cwd=tmp_path)
-    return state
+    return ServeState(runs_dir=runs, config=cfg, scenarios_dir=scn_dir, cwd=tmp_path)
 
 
 # ---------------------------------------------------------------------------
@@ -211,15 +211,17 @@ def test_start_capture_rebases_app_path_against_state_cwd(tmp_path: Path) -> Non
     runs.mkdir()
     state = ServeState(runs_dir=runs, config=cfg, cwd=bundle)
 
-    seen: list[object] = []
+    seen: list[Effective] = []
 
-    def factory(eff: object, _b: list[str], _u: str) -> tuple[FakeDriver, object]:
+    def factory(eff: Effective, _b: list[str], _u: str) -> tuple[FakeDriver, object]:
         seen.append(eff)
         return FakeDriver(_screen()), (lambda: None)
 
     _payload, status = ops.start_capture(state, {"target": "demo"}, driver_factory=factory)
     assert status == 200
-    assert seen[0].platform_config.app_path == str(app_dir)
+    ios = seen[0].platform_config
+    assert isinstance(ios, IosConfig)
+    assert ios.app_path == str(app_dir)
 
 
 def test_start_capture_tears_down_runner_when_bring_up_fails(tmp_path: Path) -> None:
@@ -266,12 +268,13 @@ def test_mark_tap_resolves_and_actuates(tmp_path: Path) -> None:
     assert payload.get("refused") is None
     assert payload["selector"]["id"] == "auth.submit"
     assert payload["rung"] == "id"
+    assert state.capture is not None
     assert len(state.capture.steps) == 1
     assert ("tap", {"id": "auth.submit"}) in driver.actions
 
 
 def test_mark_tap_ambiguous_returns_feedback(tmp_path: Path) -> None:
-    dup_screen = [
+    dup_screen: list[base.Element] = [
         {
             "identifier": "dup",
             "label": "A",
@@ -298,6 +301,7 @@ def test_mark_tap_ambiguous_returns_feedback(tmp_path: Path) -> None:
     payload, status = ops.mark_capture(state, {"kind": "tap", "point": [0.5, 0.3]})
     assert status == 200
     assert payload.get("ambiguity") is not None
+    assert state.capture is not None
     assert len(state.capture.steps) == 0
 
 
@@ -324,6 +328,7 @@ def test_mark_tap_not_tappable_returns_a_clean_error_not_a_crash(tmp_path: Path)
     )
     assert status == 409
     assert "covered by another element" in payload["error"]
+    assert state.capture is not None
     assert len(state.capture.steps) == 0  # never recorded as a captured step
 
 
@@ -359,6 +364,7 @@ def test_mark_type_with_redaction(tmp_path: Path) -> None:
         },
     )
     assert status == 200
+    assert state.capture is not None
     assert len(state.capture.steps) >= 1
     type_step = state.capture.steps[-1]
     assert type_step.type is not None
@@ -443,12 +449,13 @@ def test_resolve_pick_returns_selector_without_side_effects(tmp_path: Path) -> N
     assert status == 200
     assert payload["selector"]["id"] == "auth.submit"
     assert payload["rung"] == "id"
+    assert state.capture is not None
     assert state.capture.steps == []  # no step appended
     assert driver.actions == before  # resolve drove nothing — no tap, no re-screenshot
 
 
 def test_resolve_pick_ambiguous_returns_feedback(tmp_path: Path) -> None:
-    dup_screen = [
+    dup_screen: list[base.Element] = [
         {
             "identifier": "dup",
             "label": "A",
@@ -475,6 +482,7 @@ def test_resolve_pick_ambiguous_returns_feedback(tmp_path: Path) -> None:
     payload, status = ops.resolve_capture_pick(state, {"point": [0.5, 0.3]})
     assert status == 200
     assert payload.get("ambiguity") is not None
+    assert state.capture is not None
     assert state.capture.steps == []
 
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 from bajutsu.analysis.impact import (
     ChangedFile,
     Reference,
+    ReverseIndex,
     impact,
     parse_diff,
     render,
@@ -20,7 +21,7 @@ from bajutsu.analysis.impact import (
 from bajutsu.scenario import load_scenarios
 
 
-def _index(yaml: str):  # type: ignore[no-untyped-def]
+def _index(yaml: str) -> ReverseIndex:
     return reverse_index(load_scenarios(yaml))
 
 

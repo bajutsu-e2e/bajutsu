@@ -22,6 +22,7 @@ from conftest import el
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
+from bajutsu.scenario import Scenario
 
 _FLOOR = "BAJUTSU_MIN_WAIT_TIMEOUT"
 
@@ -53,7 +54,7 @@ class _LateMirrorDriver(FakeDriver):
         return super().query()
 
 
-def _extract_then_assert_scenario(prop: str = "value") -> object:
+def _extract_then_assert_scenario(prop: str = "value") -> Scenario:
     # tap the field, extract its (still-propagating) property into vars.who, then assert the live
     # property equals what was captured — passes only if `extract` waited for it to settle first.
     return _scenario(
@@ -330,7 +331,7 @@ def test_extract_settle_gives_up_at_the_deadline_when_target_never_rests(
     assert clock.now() >= 1.0  # polled to the deadline, then gave up via the fallback branch
 
 
-def _assert_step_scenario() -> object:
+def _assert_step_scenario() -> Scenario:
     # tap, then a step-level `assert` on a value the tap mirrors in a beat late — the Unit 2 site
     # (distinct from the scenario-level `expect` that test_expect_wait covers).
     return _scenario(

@@ -27,6 +27,7 @@ from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import Artifact, FileSink, intervals
 from bajutsu.orchestrator import run_scenario
 from bajutsu.orchestrator.evidence_rules import requested_intervals
+from bajutsu.orchestrator.waits import WaitTrace
 from bajutsu.scenario import Scenario
 
 BASELINE_BEFORE = ["screenshot.before", "elements"]
@@ -78,6 +79,11 @@ class RecordingSink:
         self, scenario_id: str, started: list[intervals.Interval]
     ) -> list[Artifact]:
         return []
+
+    def wait_diagnostic(
+        self, step_id: str, *, trace: WaitTrace, elements: list[base.Element]
+    ) -> Artifact | None:
+        return None  # these tests assert on captures and intervals, never on a wait diagnostic
 
 
 def _el(identifier: str, label: str, traits: list[str] | None = None) -> base.Element:
@@ -409,6 +415,11 @@ class IntervalSink:
     ) -> list[Artifact]:
         self.finished.append(scenario_id)
         return [Artifact(name=str(i.path), kind=i.kind, provider="simctl") for i in started]
+
+    def wait_diagnostic(
+        self, step_id: str, *, trace: WaitTrace, elements: list[base.Element]
+    ) -> Artifact | None:
+        return None  # these tests assert on captures and intervals, never on a wait diagnostic
 
 
 def test_scenario_intervals_opt_in_only() -> None:

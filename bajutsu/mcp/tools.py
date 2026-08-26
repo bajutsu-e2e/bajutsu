@@ -118,7 +118,7 @@ def register_tools(mcp: FastMCP, config_path: Path) -> None:
         if erase:
             cmd.append("--erase")
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600, check=False)
 
         # `run` prints a deterministic final stdout line (PASS/FAIL + manifest path); parse that
         # rather than substring-matching its prose, so the MCP layer isn't coupled to the wording.

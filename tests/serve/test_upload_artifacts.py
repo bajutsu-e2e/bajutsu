@@ -6,6 +6,7 @@ that's `materialize_composition`'s job (see test_composition.py). Pure packaging
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -100,7 +101,7 @@ def test_materialize_artifact_losing_a_rename_race_reuses_the_winners_entry(
 
     real_rename = Path.rename
 
-    def _rename(self: Path, target: object) -> Path:
+    def _rename(self: Path, target: str | os.PathLike[str]) -> Path:
         if self.parent == dest_dir and Path(str(target)) == winner_dest:
             raise OSError("simulated: the winner already landed here")
         return real_rename(self, target)

@@ -516,14 +516,14 @@ class AdbDriver(CoordinateTreeDriver):
     def __init__(
         self,
         serial: str,
-        run: RunFn = adb._real_run,
+        run: RunFn = adb.real_run,
         *,
         fetch_hierarchy: HierarchyFetch | None = None,
         fetch_clock: ClockFetch | None = None,
         act: ActFn | None = None,
     ) -> None:
         super().__init__()
-        self.serial = adb._checked_serial(serial)
+        self.serial = adb.checked_serial(serial)
         self._run = run
         # When set, reads go through the resident channel and fall back to `uiautomator dump` only on
         # failure (BE-0245). Unset (the default) keeps today's dump-every-read behavior exactly.
@@ -713,7 +713,6 @@ class AdbDriver(CoordinateTreeDriver):
                     suffix=".xml",
                     parsed_input=read.text if read.raw is not None else None,
                 )
-                return read.text
             except AdbResidentError as exc:
                 logger.warning(
                     "resident hierarchy read failed (%s); falling back to `uiautomator dump` for "
@@ -735,6 +734,8 @@ class AdbDriver(CoordinateTreeDriver):
                 stall_diagnostics.capture(
                     "resident-read", stall_diagnostics.device_probes(self.serial)
                 )
+            else:
+                return read.text
         # The dump subprocess carries no event mark, so the barrier reverts to its wall-clock budget,
         # and no measured position either, so every element reports the honest absence.
         self._read_mark = None
@@ -1575,17 +1576,17 @@ class AdbDriver(CoordinateTreeDriver):
         self._act(adb.sendevent_gesture_cmd(self.serial, dev.path, raw_start, raw_end))
         self._arm_catchup(pre_key, mark)
 
-    def select_option(self, sel: base.Selector, option: str) -> None:
+    def select_option(self, sel: base.Selector, option: str) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction(
             "selectOption は <select> を持つ web バックエンド専用; Android ネイティブに <select> はない"
         )
 
-    def set_picker_value(self, sel: base.Selector, value: str) -> None:
+    def set_picker_value(self, sel: base.Selector, value: str) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction(
             "setPickerValue は iOS の picker wheel 専用; Android に相当するコントロールはない"
         )
 
-    def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+    def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:  # noqa: ARG002  # Driver shape
         # BE-0316 is iOS-only: Android surfaces a system permission dialog in the topmost-window
         # dump, so an ordinary `tap` already reaches it. Preflight rejects the step before any device
         # work (adb never advertises HANDLE_SYSTEM_ALERT); this is the mid-run backstop.
@@ -1597,7 +1598,7 @@ class AdbDriver(CoordinateTreeDriver):
         # No SpringBoard on Android; the reactive guard's native path never runs here (BE-0315).
         return []
 
-    def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:
+    def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:  # noqa: ARG002  # Driver shape
         # TipKit is an iOS framework. Android's nearest equivalents (`TooltipCompat`, Compose
         # Material3 tooltips) are per-app widgets with no shared tree shape, so they stay BE-0314
         # `interrupts` territory rather than a built-in guard.

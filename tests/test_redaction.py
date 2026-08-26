@@ -31,7 +31,7 @@ TYPED_PASSWORD = "Passw0rd!2026"
 
 
 def _r(**kw: list[str]) -> Redactor:
-    return Redactor(Redact(**kw))
+    return Redactor(Redact.model_validate(kw))
 
 
 def test_redact_text_masks_known_keys() -> None:
@@ -463,7 +463,14 @@ def test_sink_json_survives_a_key_pattern_that_would_eat_the_document(tmp_path: 
     # live — so a document that stops parsing is a broken resume, not a cosmetic blemish.
     writer = RunArtifactWriter(tmp_path / "runs" / "r1", Redactor(Redact(fields=["token"])))
     elements: list[base.Element] = [
-        {"identifier": "auth.token", "label": "token: abc123", "value": "s3cret"}
+        {
+            "identifier": "auth.token",
+            "label": "token: abc123",
+            "value": "s3cret",
+            "traits": [],
+            "frame": (0.0, 0.0, 1.0, 1.0),
+            "nativeZ": None,
+        }
     ]
     wait_timeout = writer.write_json(
         "00-x/step0/wait-timeout.json",

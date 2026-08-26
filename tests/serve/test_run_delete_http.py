@@ -10,6 +10,7 @@ import json
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Any
 
 from _shared import _get_json, _post, _serve
 from fastapi.testclient import TestClient
@@ -34,7 +35,7 @@ def _crawl(state: srv.ServeState, run_id: str) -> None:
     (d / "screenmap.json").write_text('{"nodes": [], "edges": [], "crashes": []}')
 
 
-def _delete(port: int, path: str) -> tuple[int, object]:
+def _delete(port: int, path: str) -> tuple[int, Any]:
     req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", method="DELETE")
     try:
         with urllib.request.urlopen(req) as r:

@@ -13,6 +13,7 @@ not, here they are."
 
 from __future__ import annotations
 
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -63,7 +64,7 @@ def materialize_artifact(
     fd, tmp_name = tempfile.mkstemp(dir=dest_dir, prefix=f".{sha256}.tmp-")
     tmp = Path(tmp_name)
     try:
-        with open(fd, "wb") as out, src_path.open("rb") as src:
+        with os.fdopen(fd, "wb") as out, src_path.open("rb") as src:
             shutil.copyfileobj(src, out)
         try:
             tmp.rename(dest)

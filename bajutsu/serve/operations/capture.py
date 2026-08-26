@@ -202,7 +202,10 @@ def mark_capture(
 
 
 def finish_capture(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState,
+    body: dict[str, Any],  # noqa: ARG001  # uniform operation signature
+    *,
+    actor: str | None = None,
 ) -> tuple[Any, int]:
     """Save the captured scenario and close the session."""
     session = state.capture
@@ -265,7 +268,10 @@ def resolve_capture_pick(
 
 
 def close_capture(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState,
+    body: dict[str, Any],  # noqa: ARG001  # uniform operation signature
+    *,
+    actor: str | None = None,
 ) -> tuple[Any, int]:
     """End a live session without saving a scenario — the live Edit picker's teardown (BE-0262).
 

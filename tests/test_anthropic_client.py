@@ -10,6 +10,7 @@ anthropic[bedrock] extra (boto3) isn't installed.
 
 from __future__ import annotations
 
+import shutil
 import sys
 
 import pytest
@@ -63,7 +64,7 @@ def test_make_client_bedrock(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_make_client_ant_uses_the_cli_bearer_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(aic.PROVIDER_ENV, "ant")
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.setattr(ac.shutil, "which", lambda _exe: "/usr/local/bin/ant")
+    monkeypatch.setattr(shutil, "which", lambda _exe: "/usr/local/bin/ant")
     monkeypatch.setattr(ac, "_ant_token_result", lambda: (0, "oauth-tok-test", ""))
     client = ac.make_client()
     import anthropic
@@ -74,14 +75,14 @@ def test_make_client_ant_uses_the_cli_bearer_token(monkeypatch: pytest.MonkeyPat
 
 def test_make_client_ant_fails_closed_when_binary_absent(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(aic.PROVIDER_ENV, "ant")
-    monkeypatch.setattr(ac.shutil, "which", lambda _exe: None)
+    monkeypatch.setattr(shutil, "which", lambda _exe: None)
     with pytest.raises(RuntimeError, match=r"ant auth login"):
         ac.make_client()
 
 
 def test_make_client_ant_fails_closed_when_unauthenticated(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(aic.PROVIDER_ENV, "ant")
-    monkeypatch.setattr(ac.shutil, "which", lambda _exe: "/usr/local/bin/ant")
+    monkeypatch.setattr(shutil, "which", lambda _exe: "/usr/local/bin/ant")
     monkeypatch.setattr(ac, "_ant_token_result", lambda: (1, "", "not logged in"))
     with pytest.raises(RuntimeError, match=r"no active credential"):
         ac.make_client()
@@ -116,17 +117,17 @@ def test_make_client_fails_closed_when_key_unset(monkeypatch: pytest.MonkeyPatch
 
 
 def test_ant_credential_gap_missing_binary(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ac.shutil, "which", lambda _exe: None)
+    monkeypatch.setattr(shutil, "which", lambda _exe: None)
     assert ac.ant_credential_gap() == ac.ANT_CLI_MISSING
 
 
 def test_ant_credential_gap_unauthenticated(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ac.shutil, "which", lambda _exe: "/usr/local/bin/ant")
+    monkeypatch.setattr(shutil, "which", lambda _exe: "/usr/local/bin/ant")
     monkeypatch.setattr(ac, "_ant_token_result", lambda: (1, "", "not logged in"))
     assert ac.ant_credential_gap() == ac.ANT_CLI_UNAUTHENTICATED
 
 
 def test_ant_credential_gap_authenticated_ok(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ac.shutil, "which", lambda _exe: "/usr/local/bin/ant")
+    monkeypatch.setattr(shutil, "which", lambda _exe: "/usr/local/bin/ant")
     monkeypatch.setattr(ac, "_ant_token_result", lambda: (0, "oauth-tok-test", ""))
     assert ac.ant_credential_gap() is None

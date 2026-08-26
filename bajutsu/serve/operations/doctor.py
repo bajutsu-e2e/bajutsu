@@ -30,7 +30,7 @@ def doctor_check(
     state: ServeState,
     body: dict[str, Any],
     *,
-    actor: str | None = None,
+    actor: str | None = None,  # noqa: ARG001  # uniform operation signature
     screen_query: ScreenQuery | None = None,
 ) -> tuple[Any, int]:
     """Run doctor for a target: config validation, tool runnability, and the screen's convention score.

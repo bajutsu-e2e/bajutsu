@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
+from pathlib import Path
 
 import pytest
 
@@ -12,6 +14,16 @@ from bajutsu.orchestrator import AlertGuardConfig, run_scenario
 from bajutsu.scenario import Foreground, Push, Scenario, SetClipboard, SetLocation, Step
 
 # --- pure command builders ---
+
+
+def _recorder(calls: list[list[str]]) -> simctl.RunFn:
+    """A `simctl` RunFn that records each argv and returns empty output."""
+
+    def run(argv: list[str], extra_env: Mapping[str, str] | None = None) -> str:
+        calls.append(argv)
+        return ""
+
+    return run
 
 
 def test_location_and_push_command_builders() -> None:
@@ -41,7 +53,7 @@ def test_env_push_writes_payload_and_runs() -> None:
     def fake_run(args: list[str], _extra: object = None) -> str:
         calls.append(args)
         # The payload file is the last arg; capture its contents before cleanup.
-        with open(args[-1], encoding="utf-8") as f:
+        with Path(args[-1]).open(encoding="utf-8") as f:
             written.update(json.load(f))
         return ""
 
@@ -52,7 +64,7 @@ def test_env_push_writes_payload_and_runs() -> None:
 
 def test_env_set_location_runs_command() -> None:
     calls: list[list[str]] = []
-    simctl.Env("U", run=lambda a, _e=None: calls.append(a) or "").set_location(1.0, 2.0)
+    simctl.Env("U", run=_recorder(calls)).set_location(1.0, 2.0)
     assert calls == [["xcrun", "simctl", "location", "U", "set", "1.0,2.0"]]
 
 
@@ -63,11 +75,11 @@ def test_foreground_command_builder() -> None:
 
 def test_env_foreground_runs_command() -> None:
     calls: list[list[str]] = []
-    simctl.Env("U", run=lambda a, _e=None: calls.append(a) or "").foreground("com.demo")
+    simctl.Env("U", run=_recorder(calls)).foreground("com.demo")
     assert calls == [["xcrun", "simctl", "launch", "U", "com.demo"]]
 
 
-def test_env_set_clipboard_seeds_pasteboard_with_text(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_env_set_clipboard_seeds_pasteboard_with_text(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
     def fake_pbcopy(cmd: list[str], text: str = "") -> None:
@@ -96,7 +108,7 @@ def test_privacy_command_builder() -> None:
 
 def test_env_apply_permissions_runs_privacy_per_entry() -> None:
     calls: list[list[str]] = []
-    simctl.Env("U", run=lambda a, _e=None: calls.append(a) or "").apply_permissions(
+    simctl.Env("U", run=_recorder(calls)).apply_permissions(
         "com.demo", {"camera": "grant", "location": "revoke"}
     )
     assert calls == [
@@ -109,7 +121,7 @@ def test_env_apply_permissions_fails_clean_on_notifications() -> None:
     # No TCC service backs iOS notification authorization; preflight rejects this per-service
     # before any device work, but the Env method is the runtime backstop.
     with pytest.raises(simctl.DeviceError, match="notifications"):
-        simctl.Env("U", run=lambda a, _e=None: "").apply_permissions(
+        simctl.Env("U", run=lambda a, _e: "").apply_permissions(
             "com.demo", {"notifications": "grant"}
         )
 
@@ -119,7 +131,7 @@ def test_env_apply_permissions_validates_before_touching_the_device() -> None:
     # never partway through, leaving some services already mutated (BE-0276).
     calls: list[list[str]] = []
     with pytest.raises(simctl.DeviceError, match="notifications"):
-        simctl.Env("U", run=lambda a, _e=None: calls.append(a) or "").apply_permissions(
+        simctl.Env("U", run=_recorder(calls)).apply_permissions(
             "com.demo", {"camera": "grant", "notifications": "grant"}
         )
     assert calls == []
@@ -131,7 +143,7 @@ def test_env_apply_permissions_validates_action_before_touching_the_device() -> 
     # mutated ahead of a later entry's bad action (BE-0276).
     calls: list[list[str]] = []
     with pytest.raises(simctl.DeviceError, match="unknown simctl privacy action"):
-        simctl.Env("U", run=lambda a, _e=None: calls.append(a) or "").apply_permissions(
+        simctl.Env("U", run=_recorder(calls)).apply_permissions(
             "com.demo", {"camera": "grant", "microphone": "bogus"}
         )
     assert calls == []
@@ -187,7 +199,7 @@ def test_steps_dispatch_to_control() -> None:
     scn = Scenario(
         name="s",
         steps=[
-            Step(set_location=SetLocation(lat=35.6, lon=139.7)),
+            Step(setLocation=SetLocation(lat=35.6, lon=139.7)),
             Step(push=Push(payload={"aps": {"alert": "ping"}})),
         ],
     )
@@ -213,7 +225,7 @@ def test_override_status_bar_dispatches_to_control() -> None:
     ctrl = _RecordingControl()
     scn = Scenario(
         name="s",
-        steps=[Step(override_status_bar=OverrideStatusBar(time="9:41", battery_level=100))],
+        steps=[Step(overrideStatusBar=OverrideStatusBar(time="9:41", batteryLevel=100))],
     )
     result = run_scenario(FakeDriver(), scn, control=ctrl)
     assert result.ok
@@ -224,7 +236,7 @@ def test_clear_status_bar_dispatches_to_control() -> None:
     from bajutsu.scenario import ClearStatusBar
 
     ctrl = _RecordingControl()
-    scn = Scenario(name="s", steps=[Step(clear_status_bar=ClearStatusBar())])
+    scn = Scenario(name="s", steps=[Step(clearStatusBar=ClearStatusBar())])
     result = run_scenario(FakeDriver(), scn, control=ctrl)
     assert result.ok
     assert ctrl.clear_status_bar_calls == 1
@@ -232,7 +244,7 @@ def test_clear_status_bar_dispatches_to_control() -> None:
 
 def test_set_clipboard_dispatches_to_control() -> None:
     ctrl = _RecordingControl()
-    scn = Scenario(name="s", steps=[Step(set_clipboard=SetClipboard(text="COUPON123"))])
+    scn = Scenario(name="s", steps=[Step(setClipboard=SetClipboard(text="COUPON123"))])
     result = run_scenario(FakeDriver(), scn, control=ctrl)
     assert result.ok
     assert ctrl.clipboards == ["COUPON123"]
@@ -252,7 +264,7 @@ def test_foreground_dispatches_to_control() -> None:
 
 
 def test_device_step_without_control_fails_cleanly() -> None:
-    scn = Scenario(name="s", steps=[Step(set_location=SetLocation(lat=1.0, lon=2.0))])
+    scn = Scenario(name="s", steps=[Step(setLocation=SetLocation(lat=1.0, lon=2.0))])
     result = run_scenario(FakeDriver(), scn)
     assert not result.ok
     assert "setLocation" in (result.failure or "")
@@ -356,7 +368,7 @@ def test_clipboard_expect_retry_rereads_after_on_blocked() -> None:
 
 
 def test_set_clipboard_without_control_fails_cleanly() -> None:
-    scn = Scenario(name="s", steps=[Step(set_clipboard=SetClipboard(text="x"))])
+    scn = Scenario(name="s", steps=[Step(setClipboard=SetClipboard(text="x"))])
     result = run_scenario(FakeDriver(), scn)
     assert not result.ok
     assert "setClipboard" in (result.failure or "")

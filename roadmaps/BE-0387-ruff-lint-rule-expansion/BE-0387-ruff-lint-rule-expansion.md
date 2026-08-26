@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0387](BE-0387-ruff-lint-rule-expansion.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0387") |
+| Implementing PR | [#1761](https://github.com/bajutsu-e2e/bajutsu/pull/1761) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -125,17 +126,54 @@ review can look at one rule's fixes at a time:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add `W` — no fixes needed.
-- [ ] Add `PLE` — no fixes needed.
-- [ ] Add `RET` and apply its 6 fixes (2 in `bajutsu/`, 4 in `tests/`; 4 of the 6 `--fix`-eligible).
-- [ ] Add `PTH` and fix its 26 findings (17 in `bajutsu/`, 6 in `tests/`, 3 in `demos/`/`scripts/`).
-- [ ] Add `SLF`, with a `tests/**` ignore, and fix its 38 findings in `bajutsu/`.
-- [ ] Add `ARG`, with a `tests/**` ignore, and triage its 130 `bajutsu/` findings (94 `ARG002`, 20
+- [x] Add `W` — no fixes needed.
+- [x] Add `PLE` — no fixes needed.
+- [x] Add `RET` and apply its 6 fixes (2 in `bajutsu/`, 4 in `tests/`; 4 of the 6 `--fix`-eligible).
+- [x] Add `PTH` and fix its 26 findings (17 in `bajutsu/`, 6 in `tests/`, 3 in `demos/`/`scripts/`).
+- [x] Add `SLF`, with a `tests/**` ignore, and fix its 38 findings in `bajutsu/`.
+- [x] Add `ARG`, with a `tests/**` ignore, and triage its 134 `bajutsu/` findings (98 `ARG002`, 20
   `ARG001`, 16 `ARG005`) plus fix the 6 in `demos/`/`scripts/` (3 `ARG001`, 2 `ARG002`, 1 `ARG005`).
-- [ ] Add `TRY` with `TRY003` ignored, and fix its 30 remaining findings (`TRY300` / `TRY004` / `TRY400`).
-- [ ] Add `PLW` and fix its findings — 13 in `bajutsu/` (`PLW0603` / `PLW2901` / `PLW1510`) plus 15
-  outside it (13 in `tests/`: 8 `PLW0108` + 5 `PLW1510`; 2 in `demos/`/`scripts/`: 1 `PLW1510`, 1
+- [x] Add `TRY` with `TRY003` ignored, and fix its 31 remaining findings (`TRY300` / `TRY004` / `TRY400`).
+- [x] Add `PLW` and fix its findings — 13 in `bajutsu/` (`PLW0603` / `PLW2901` / `PLW1510`) plus 17
+  outside it (15 in `tests/`: 8 `PLW0108` + 7 `PLW1510`; 2 in `demos/`/`scripts/`: 1 `PLW1510`, 1
   `PLW2901`).
+
+**Log**
+
+- Landed all eight categories, one commit each, in the order the checklist lists them
+  ([#1761](https://github.com/bajutsu-e2e/bajutsu/pull/1761)). The counts above are the measured
+  ones at landing time; they drift slightly from the proposal's (`ARG002` 94 → 98, `TRY004` 10 → 11,
+  `PLW1510` in `tests/` 5 → 7) because the tree grew after the proposal was written. Three
+  treatments differ from what the *Detailed design* anticipated, each for a reason the code only
+  showed once the rule was on:
+  - **`SLF`** turned out to flag no class state at all. All 38 findings are module-level private
+    helpers referenced across module boundaries — `adb._real_run` / `_checked_serial`,
+    `simctl._real_run`, `base._contains`, `readiness._await_ready` / `_await_boot`,
+    `intervals._spawn`, `_yaml._Loader` — several of them the default argument of a *public*
+    function, which makes them part of their module's contract already. Dropping the underscore is
+    the "narrow public accessor" the design asked for, and six of the seven take it. `_yaml._Loader`
+    is the exception: `pyproject.toml`'s file-level `S506` ignore exists so that module's
+    `yaml.load` line stays byte-identical to `main`, where CodeQL dismissed the matching
+    `py/unsafe-deserialization` alert — and a code-scanning dismissal is keyed to a fingerprint that
+    hashes the alert's own source line, so renaming the class would re-open it as a fresh alert to
+    triage. Its three cross-module references carry a noqa instead, alongside `oplog`'s namespaced
+    `_bajutsu_oplog` marker and `theme_editor`'s deliberate cache clear — five noqa in all.
+  - **`TRY004`** kept all eleven exception types behind a noqa rather than switching them to
+    `TypeError`. Ten validate an external payload — a JSON/YAML document, an HTTP response shape —
+    where a wrong type is a data error, not a caller passing the wrong type; several are documented
+    `Raises: ValueError` and their callers catch `ValueError`, so the switch would have silently
+    broken those handlers. The eleventh, in `serve/_cli_flags.py`, guards a typer-registry
+    invariant rather than a payload, and its noqa says so rather than borrowing the other ten's
+    reason.
+  - **`TRY300`** moved 15 of its 17 returns into an `else`. `notify._mask_url` keeps its return
+    inside the `try` because the returned f-string is exactly what the guard protects, and the step
+    dispatcher keeps its own because that block returns from four branches — hoisting only the last
+    would suggest the other three are not on the success path.
+
+  Of `ARG002`'s 98 `bajutsu/` findings, 97 are interface-mandated and keep the parameter behind a
+  noqa naming the shape. The one exception is `XcuitestEnvironment._create_replacement`, a private
+  method with two in-class callers and no protocol obligation, whose `eff` is simply dead — so it
+  joins `_write_pixelmatch_diff`'s `h` and `_run_if`'s `clock` among the removals.
 
 ## References
 

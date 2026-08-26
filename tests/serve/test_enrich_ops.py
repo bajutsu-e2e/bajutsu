@@ -6,10 +6,12 @@ Operations-level tests with FakeDriver + FakeEnrichmentAgent — no HTTP, no Sim
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from _shared import project
 
 from bajutsu.agents.protocols import EnrichmentProposal, StepContext
+from bajutsu.config import Effective, IosConfig
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.scenario import Assertion, Scenario
@@ -51,7 +53,7 @@ def _state_with_config(tmp_path: Path) -> ServeState:
     return ServeState(runs_dir=runs, config=cfg, scenarios_dir=scn_dir, cwd=tmp_path)
 
 
-def _factories(driver: FakeDriver, agent: FakeEnrichmentAgent) -> dict[str, object]:
+def _factories(driver: FakeDriver, agent: FakeEnrichmentAgent) -> dict[str, Any]:
     return {
         "driver_factory": lambda _e, _b, _u: (driver, lambda: None),
         "agent_factory": lambda: agent,
@@ -126,9 +128,9 @@ def test_start_enrich_rebases_app_path_against_state_cwd(tmp_path: Path) -> None
     runs.mkdir()
     state = ServeState(runs_dir=runs, config=cfg, cwd=bundle)
 
-    seen: list[object] = []
+    seen: list[Effective] = []
 
-    def factory(eff: object, _b: list[str], _u: str) -> tuple[FakeDriver, object]:
+    def factory(eff: Effective, _b: list[str], _u: str) -> tuple[FakeDriver, object]:
         seen.append(eff)
         return FakeDriver(_screen()), (lambda: None)
 
@@ -140,7 +142,9 @@ def test_start_enrich_rebases_app_path_against_state_cwd(tmp_path: Path) -> None
         agent_factory=lambda: agent,
     )
     assert status == 200
-    assert seen[0].platform_config.app_path == str(app_dir)
+    ios = seen[0].platform_config
+    assert isinstance(ios, IosConfig)
+    assert ios.app_path == str(app_dir)
 
 
 # ---------------------------------------------------------------------------

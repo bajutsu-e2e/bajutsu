@@ -12,11 +12,12 @@ import math
 import re
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 import bajutsu.drivers.adb as adb_driver_mod
-from bajutsu import adb
+from bajutsu import adb, stall_diagnostics
 from bajutsu.drivers import base
 from bajutsu.drivers.actuation import Actuation
 from bajutsu.drivers.adb import (
@@ -71,6 +72,16 @@ UI hierarchy dumped to: /dev/tty"""
 
 def _by_id(els: list[base.Element], ident: str) -> base.Element:
     return next(e for e in els if e["identifier"] == ident)
+
+
+def _recorder(calls: list[list[str]]) -> adb.RunFn:
+    """An `adb` RunFn that records each argv and returns empty output."""
+
+    def run(argv: list[str]) -> str:
+        calls.append(argv)
+        return ""
+
+    return run
 
 
 def test_parse_hierarchy_selector_mapping() -> None:
@@ -372,7 +383,7 @@ def test_driver_interval_routes_video_and_devicelog_to_adb_starters(
     # runner, so the screenrecord pull/rm go through the same injected run).
     seen: dict[str, tuple[object, ...]] = {}
 
-    def fake_screenrecord(serial: str, path: Path, run: object = None, **kw: object) -> object:
+    def fake_screenrecord(serial: str, path: Path, run: object = None, **kw: Any) -> object:
         seen["video"] = (serial, path, run, kw.get("confirm_started"))
         return intervals.Interval(kind="video", path=path, provider="adb")
 
@@ -416,7 +427,7 @@ def _scripted(responses: list[str]) -> tuple[object, list[int]]:
 
 
 def test_last_raw_source_is_none_before_the_first_read() -> None:
-    driver = AdbDriver("U", run=lambda args: "")  # type: ignore[arg-type]
+    driver = AdbDriver("U", run=lambda args: "")
     assert driver.last_raw_source() is None
 
 
@@ -557,11 +568,9 @@ def _recording_stall_capture(
     would let the driver address the wrong emulator with no test noticing.
     """
     captured: list[tuple[str, str]] = []
-    monkeypatch.setattr(adb_driver_mod.stall_diagnostics, "device_probes", lambda serial: serial)
+    monkeypatch.setattr(stall_diagnostics, "device_probes", lambda serial: serial)
     monkeypatch.setattr(
-        adb_driver_mod.stall_diagnostics,
-        "capture",
-        lambda reason, probes: captured.append((probes, reason)),
+        stall_diagnostics, "capture", lambda reason, probes: captured.append((probes, reason))
     )
     return captured
 
@@ -991,12 +1000,12 @@ def test_select_option_unsupported() -> None:
         driver.select_option({"id": "nav.theme-picker"}, "midnight")
 
 
-def test_screenshot_writes_capture_bytes(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_screenshot_writes_capture_bytes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[list[str]] = []
 
     def fake_capture(cmd: list[str], path: str) -> None:
         captured.append(cmd)
-        with open(path, "wb") as f:
+        with Path(path).open("wb") as f:
             f.write(b"PNG")
 
     monkeypatch.setattr(adb.Env, "_run_capture", staticmethod(fake_capture))
@@ -1355,7 +1364,7 @@ def test_settle_gives_up_at_the_wall_clock_deadline_when_never_stable(
             return _moved(100 + reads[0] * 5)  # every read is a new frame — never settles
         return ""
 
-    driver = AdbDriver("U", run=run)  # type: ignore[arg-type]
+    driver = AdbDriver("U", run=run)
     driver._SETTLE_POLL_S = 0.1
     driver._SETTLE_DEADLINE_S = 0.5
     driver.query()  # cache the first frame
@@ -1418,7 +1427,7 @@ def test_settled_key_resets_when_the_poll_never_converges(
             return _moved(100 + reads[0] * 5)  # every read is a new frame — never settles
         return ""
 
-    driver = AdbDriver("U", run=run)  # type: ignore[arg-type]
+    driver = AdbDriver("U", run=run)
     driver._SETTLE_POLL_S = 0.1
     driver._SETTLE_DEADLINE_S = 0.5
     driver.query()
@@ -2395,7 +2404,7 @@ def test_uninstall_precedes_a_showcase_install() -> None:
     # succeeds it keeps components the new build renamed — leaving the device running a mix of two
     # builds. Removing first makes the install describe the APK alone.
     calls: list[list[str]] = []
-    adb.Env("U", run=lambda a: calls.append(a) or "").uninstall("com.example.app")
+    adb.Env("U", run=_recorder(calls)).uninstall("com.example.app")
     assert calls[-1] == adb.uninstall_cmd("U", "com.example.app")
 
 

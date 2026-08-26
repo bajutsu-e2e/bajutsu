@@ -330,7 +330,7 @@ class FakeDriver:
             caps.add(base.Capability.NETWORK)
         return caps
 
-    def network_collector(self, mocks: list[object] | None = None) -> FakeNetworkCollector:
+    def network_collector(self, mocks: list[object] | None = None) -> FakeNetworkCollector:  # noqa: ARG002  # Driver shape
         """A deterministic collector over the seeded exchanges (read-only evidence; BE-0020)."""
         return FakeNetworkCollector(self._exchanges or [])
 
