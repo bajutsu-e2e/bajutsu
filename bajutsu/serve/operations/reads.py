@@ -332,19 +332,25 @@ def usage_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int
 
 
 def _usage_ledger_paths(state: ServeState) -> list[Path]:
-    """Every ledger file the dashboard reads — resolved exactly as the AI subprocesses resolve it.
+    """Every ledger file the dashboard reads — resolved as the AI subprocesses serve spawns do.
 
     AI work in serve runs as subprocesses that call `usage_ledger.configure_from_ai_config` with the
     *target-merged* `ai` block (`resolve`'s `Effective.ai`, so `targets.<name>.ai.usageLedger`
-    overrides `defaults.ai.usageLedger`), writing relative paths against their cwd — `state.cwd`, the
-    directory `jobs` spawns them in. Resolving the read side any other way is what left the dashboard
-    reading an empty file while a per-target ledger filled up (issue #1717).
+    overrides `defaults.ai.usageLedger`), writing relative paths against their cwd — `state.cwd`,
+    the directory `jobs` spawns them in absent a per-job override. Resolving the read side any other
+    way is what left the dashboard reading an empty file while a per-target ledger filled up (issue
+    #1717).
 
-    A writer always runs under one of the config's targets (`resolve` rejects an unknown one), so the
-    set of files a writer can append to is the union over the targets — the dashboard is
-    process-wide, not target-scoped, so it reads all of them. A config that declares no targets can
-    have no such writer; `defaults.ai` alone then still answers what a `bajutsu` process launched
-    beside it would use. An explicit empty `usageLedger` disables persistence, contributing no path.
+    Every such subprocess names a target (`resolve` rejects an unknown one), so the set of files it
+    can append to is the union over the config's targets — the dashboard is process-wide, not
+    target-scoped, so it reads all of them. A config that declares no targets can have no such
+    writer; `defaults.ai` alone then still answers what a `bajutsu` process launched beside it would
+    use. An explicit empty `usageLedger` disables persistence, contributing no path.
+
+    Two writers stay outside that union by construction, both pre-existing and neither this
+    dashboard's to reach: a job carrying its own `cwd` (a remote worker's workspace, which serve
+    cannot read at all), and a targetless `bajutsu triage --ai` launched beside serve, which resolves
+    no `ai` block of its own and so writes the built-in default rather than the configured ledger.
     """
     loaded = load_serve_config_file(state.config)  # cached parse; None when absent/unreadable
     if loaded is None:
