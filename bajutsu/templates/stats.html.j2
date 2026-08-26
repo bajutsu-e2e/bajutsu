@@ -134,9 +134,6 @@ a.drill:hover { color: #0071e3; text-decoration: underline; }
 <td>{% if sc.classification == "flaky" %}<span class="tag flaky">flaky</span>{% else %}{{ sc.classification }}{% endif %}</td></tr>
 {%- endfor %}
 </tbody></table>
-{%- if unknown_os %}
-<p class="sub">{{ unknown_os_note(unknown_os) }}.</p>
-{%- endif %}
 {%- else %}
 <p class="empty">No fingerprinted scenarios to rank{% if stats.scenarios_skipped %} ({{ stats.scenarios_skipped }} run(s) had no scenario fingerprint){% endif %}.</p>
 {%- endif %}
@@ -151,6 +148,14 @@ a.drill:hover { color: #0071e3; text-decoration: underline; }
 {%- endfor %}
 </tbody></table>
 </section>
+{%- endif %}
+
+{#- The unknown-OS disclosure (BE-0358) counts every series in the aggregation, so it sits after
+    both scenario tables rather than under either one: the Slowest table renders only its top 20
+    rows, and a count of 37 printed under twenty rows is exactly the row-you-can't-reconcile problem
+    #1718 is about. Placed here it also covers the Flaky table, which groups on the same key. -#}
+{%- if unknown_os %}
+<p class="sub">{{ unknown_os_note(unknown_os) }}.</p>
 {%- endif %}
 
 <section>
