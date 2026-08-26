@@ -259,7 +259,14 @@ def test_file_sink_wait_diagnostic_writes_provenance_stamped_artifact(tmp_path: 
     doc = json.loads((tmp_path / "00-x/step0/wait-timeout.json").read_text(encoding="utf-8"))
     assert doc["target"] == "{'id': 'stable.row.1'}"
     assert doc["timeoutSeconds"] == 30.0
-    assert doc["readiness"] == {"ready": True, "signal": "readyWhen", "elapsedSeconds": 2.1}
+    assert doc["readiness"] == {
+        "ready": True,
+        "signal": "readyWhen",
+        "elapsedSeconds": 2.1,
+        # Whether the screen had stopped moving when the gate returned: a dropped actuation
+        # is what a `false` here points at when this very diagnostic is a wait timeout.
+        "settled": True,
+    }
     assert doc["trace"]["polls"] == 120
     assert doc["trace"]["firstNonemptySeconds"] == 0.3
     assert doc["trace"]["elementsAtTimeout"] == 2
