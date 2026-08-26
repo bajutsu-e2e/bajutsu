@@ -48,8 +48,8 @@ The second weakness is that a single number hides where coverage is weak. The **
 close that gap: they live in [`coverage-floors.json`](../coverage-floors.json), a committed snapshot
 recording the branch coverage each source file was last measured at, and `make check` runs
 `make lint-coverage-floors`, which fails when any file drops below its own recorded number. A file
-can fall from 65% to 40% while the total stays above its floor, because the rest of the tree absorbs
-the loss; only the per-file floors notice it.
+can fall from 65% to 40% while the total stays above the total floor, because the rest of the tree
+absorbs the loss; only the per-file floors notice it.
 
 The per-file check only ever blocks a drop. A rise passes without anyone touching the snapshot,
 because failing a pull request for having improved coverage would punish the behavior the
