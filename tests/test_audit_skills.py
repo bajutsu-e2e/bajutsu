@@ -15,6 +15,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -193,6 +194,55 @@ def test_a_source_export_missing_a_manifest_is_refused_too(
 
     assert audit_skills.main(["--root", str(root)]) == 1
     assert not record.exists()
+
+
+# A minimal APM package: enough for a real `apm install` to deploy one skill and record its hash.
+_FIXTURE_APM_YML = """name: fixture
+version: 1.0.0
+description: Fixture package for the audit test.
+targets:
+  - claude
+dependencies:
+  apm: []
+  mcp: []
+includes: auto
+scripts: {}
+"""
+
+_FIXTURE_SKILL = """---
+name: demo
+description: A fixture skill, deployed so the audit has something to find drift in.
+---
+
+# Demo
+
+Body.
+"""
+
+
+def test_a_real_audit_still_finds_drift_through_the_mirror(tmp_path: Path) -> None:
+    """The stub pins where the audit runs; only a real one pins that it still reaches a verdict.
+
+    Every other test here supplies APM's exit code itself, so none of them would notice an APM
+    that resolves its project root by walking up to a git root, or otherwise finds nothing to
+    check in a scratch tree. This drives the real thing end to end instead — offline, since
+    `apm-cli` is a dev dependency and `--no-policy` keeps the install off the network.
+    """
+    root = tmp_path / "repo"
+    (root / ".apm" / "skills" / "demo").mkdir(parents=True)
+    (root / ".apm" / "skills" / "demo" / "SKILL.md").write_text(_FIXTURE_SKILL, encoding="utf-8")
+    (root / "apm.yml").write_text(_FIXTURE_APM_YML, encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    apm = shutil.which("apm")
+    assert apm is not None, "apm-cli is a dev dependency — the suite runs inside its environment"
+    subprocess.run([apm, "install", "--no-policy"], cwd=root, check=True, capture_output=True)
+
+    assert audit_skills.main(["--root", str(root)]) == 0
+
+    deployed = root / ".claude" / "skills" / "demo" / "SKILL.md"
+    deployed.write_text(deployed.read_text(encoding="utf-8") + "\ndrifted\n", encoding="utf-8")
+
+    assert audit_skills.main(["--root", str(root)]) != 0
 
 
 def test_a_broken_git_is_not_read_as_a_missing_checkout(tmp_path: Path) -> None:
