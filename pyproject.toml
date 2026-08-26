@@ -185,10 +185,12 @@ ignore = [
     "TRY003",
 ]
 
-# Structural ceilings (BE-0386). Both start deliberately loose and ratchet down in later PRs, the
-# way BE-0117 covered the worst gaps before raising the coverage floor: a ceiling set at the
-# codebase's outliers catches every function that grows past them from here on, where the tools'
-# own defaults would raise 98 findings at once and force a rushed triage.
+# Structural ceilings (BE-0386). `max-complexity` starts deliberately loose and ratchets down in
+# later PRs, the way BE-0117 covered the worst gaps before raising the coverage floor: a ceiling set
+# at the codebase's outliers catches every function that grows past them from here on, where
+# mccabe's own default of 10 would flag 69 functions at once and force a rushed triage. The pylint
+# thresholds below carry no ratchet of their own; BE-0386 revisits them only if a later measurement
+# finds them loose.
 [tool.ruff.lint.mccabe]
 max-complexity = 25
 

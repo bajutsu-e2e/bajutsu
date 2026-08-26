@@ -28,29 +28,29 @@ floor: cover the worst offenders first, then tighten the number that locks the g
 
 ## Motivation
 
-Measuring `bajutsu/` at mccabe's own default ceiling (10) finds 55 functions over it. The
+Measuring `bajutsu/` at mccabe's own default ceiling (10) finds 59 functions over it. The
 distribution is steep, not flat: raising the ceiling to 20 drops the count to 13, and two functions
 sit far above the rest of that list — `_make_handler`
-([bajutsu/serve/handler.py:90](../../bajutsu/serve/handler.py)) at complexity 99, and `make_app`
-([bajutsu/serve/server/app.py:122](../../bajutsu/serve/server/app.py)) at 54. Both are HTTP-handler
+([bajutsu/serve/handler.py:90](../../bajutsu/serve/handler.py)) at complexity 100, and `make_app`
+([bajutsu/serve/server/app.py:122](../../bajutsu/serve/server/app.py)) at 55. Both are HTTP-handler
 factories that define many endpoint methods in one function body; whether mccabe's count here comes
 from genuine branching inside those bodies or from folding each nested handler's own branches into
 the factory's total is a question the implementation phase needs to answer before deciding whether
 to refactor either function or exempt it — this item does not resolve that ambiguity in advance. The
 other eleven functions over complexity 20 are spread across the codebase with no shared pattern:
-`crawl` (46, `bajutsu/crawl/core.py:849`), `device_pool` (43, `bajutsu/runner/pool.py:71`), `_wait`
+`crawl` (46, `bajutsu/crawl/core.py:849`), `device_pool` (44, `bajutsu/runner/pool.py:71`), `_wait`
 (35, `bajutsu/orchestrator/waits.py:376`), `_emit_step` (26, 23, and 36 in the Playwright, uiautomator,
 and XCUITest codegen modules respectively), `run_one` (32, `bajutsu/runner/pipeline.py:257`),
-`record` (30, `bajutsu/record.py:469`), `_handle_action` (27, `bajutsu/orchestrator/loop.py:1000`),
-`lease` (23, `bajutsu/runner/pool.py:228`), and `_step_selectors` (21, `bajutsu/analysis/audit.py:94`).
+`record` (30, `bajutsu/record.py:469`), `_handle_action` (31, `bajutsu/orchestrator/loop.py:1000`),
+`lease` (24, `bajutsu/runner/pool.py:228`), and `_step_selectors` (21, `bajutsu/analysis/audit.py:94`).
 
 The Pylint-derived function-size rules measure a related but distinct property — not how many
 decision points a function has, but how many statements, branches, or `return`s it accumulates —
 and find more findings at their own defaults: `PLR0911` (too many returns, default ceiling 6) finds
-45, `PLR0912` (too many branches, default ceiling 12) finds 23, and `PLR0915` (too many statements,
-default ceiling 50) finds 14. Outside `bajutsu/`, `C901` at a ceiling of 25 is clean, but `PLR0911`
+44, `PLR0912` (too many branches, default ceiling 12) finds 24, and `PLR0915` (too many statements,
+default ceiling 50) finds 15. Outside `bajutsu/`, `C901` at a ceiling of 25 is clean, but `PLR0911`
 and `PLR0912` add 5 more findings (3 `PLR0911`, 2 `PLR0912`) across `tests/`, `demos/`, and
-`scripts/`, so the combined triage under `ruff check .` is 87 findings, not 82. Two other
+`scripts/`, so the combined triage under `ruff check .` is 88 findings, not 83. Two other
 Pylint-derived rules in the same refactor tier — `PLR0913` (too many arguments, 93 findings) and
 `PLR2004` (a magic value used in a comparison, 73 findings) — measure API surface and literal use,
 not structure, and stay out of this item's scope; see *Alternatives considered*.
@@ -76,7 +76,7 @@ threshold set explicitly rather than left at its default:
    same way as step 1 — a fix where the count reflects a function that should split, a targeted
    `# noqa` where it does not.
 3. **Ratchet `max-complexity` down once step 1's list is clear.** Lowering it to 20 brings 3 more
-   functions into scope, to 15 brings 5 more, and to 12 brings 10 more beyond that — each drop lands
+   functions into scope, to 15 brings 6 more, and to 12 brings 13 more beyond that — each drop lands
    as its own PR once the previous ceiling's list is fully resolved, mirroring
    [BE-0117](../BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet.md)'s "cover, then
    raise the floor" sequencing. Ruff's own default of 10 is a reasonable stopping point rather than
@@ -86,7 +86,7 @@ threshold set explicitly rather than left at its default:
 ### What the counts measure for a function that nests other functions
 
 *Motivation* left one question to the implementation phase: whether `_make_handler`'s complexity of
-99 and `make_app`'s of 54 come from branching inside those factory bodies or from folding each
+100 and `make_app`'s of 55 come from branching inside those factory bodies or from folding each
 nested endpoint handler's own branches into the factory's total. Measurement answers it. `C901` and
 `PLR0915` fold a nested function's count into the function enclosing it, while `PLR0911` and
 `PLR0912` count only the enclosing function's own returns and branches. A function whose body
@@ -127,7 +127,7 @@ self-contained block resolving the screens dimension from `--crawl` evidence. Th
   gate, and `C901` measures the same mccabe cyclomatic complexity that Radon computes and Xenon
   checks against a threshold, at no cost of a second tool or a second `make check` step. This is
   consistent with BE-0067's use of ruff's `S` rules rather than a separate Bandit install.
-- **Set `max-complexity` to ruff's default (10) immediately** — rejected: that flags 55 functions at
+- **Set `max-complexity` to ruff's default (10) immediately** — rejected: that flags 59 functions at
   once, most of them not the outliers that most need attention, and forces a rushed triage rather
   than the staged one this item designs.
 - **Adopt `PLR0913` (too many arguments) and `PLR2004` (magic value comparison) in this item** —
@@ -151,8 +151,8 @@ self-contained block resolving the screens dimension from `--crawl` evidence. Th
 - [x] Add `PLR0911`, `PLR0912`, and `PLR0915` with `max-returns = 12`, `max-branches = 20`, and
   `max-statements = 80`; triage the 23 combined findings.
 - [ ] Ratchet `max-complexity` to 20; triage the 3 additional functions this flags.
-- [ ] Ratchet `max-complexity` to 15; triage the 5 additional functions this flags.
-- [ ] Ratchet `max-complexity` to 12; triage the 10 additional functions this flags.
+- [ ] Ratchet `max-complexity` to 15; triage the 6 additional functions this flags.
+- [ ] Ratchet `max-complexity` to 12; triage the 13 additional functions this flags.
 - [ ] Re-measure against ruff's default of 10; decide whether to ratchet further or stop there.
 
 Log:
