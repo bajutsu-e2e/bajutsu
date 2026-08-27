@@ -27,6 +27,49 @@ core needs no Simulator, so it runs on Linux in seconds. Run it before you call 
 again before you push. On-device E2E (macOS + Simulator) is a separate, heavier path and is
 **not** part of this gate.
 
+## The coverage ratchet (BE-0385)
+
+The gate enforces two coverage floors, and neither one moves on its own.
+
+The **total floor** is `fail_under` in `[tool.coverage.report]` ([`pyproject.toml`](../pyproject.toml)).
+`make test` fails when coverage over the whole `bajutsu` package falls below the total floor. Keeping
+the floor in coverage.py's own configuration, rather than in a `--cov-fail-under` flag on the
+`Makefile`'s pytest line, gives every reader of the floor one declarative source instead of a value
+scraped from a shell recipe, where a later edit could change the floor without anyone noticing.
+
+A single number over the whole package has two weaknesses, and the first is that the number drifts
+below what the suite actually delivers. To catch the drift, `make lint-pr` runs a **drift advisory**
+that compares the measured total against the floor and prints a reminder once the gap passes two
+points. The advisory never fails the build, because failing it would block a pull request that
+happens to add well-tested code, purely for widening the gap further. When the reminder appears, raise `fail_under`
+and commit the new number.
+
+The second weakness is that a single number hides where coverage is weak. The **per-file floors**
+close that gap: they live in [`coverage-floors.json`](../coverage-floors.json), a committed snapshot
+recording the branch coverage each source file was last measured at, and `make check` runs
+`make lint-coverage-floors`, which fails when any file drops below its own recorded number. A file
+can fall from 65% to 40% while the total stays above the total floor, because the rest of the tree
+absorbs the loss; only the per-file floors notice it.
+
+The per-file check only ever blocks a drop. A rise passes without anyone touching the snapshot,
+because failing a pull request for having improved coverage would punish the behavior the
+ratchet exists to encourage. The check also never writes the snapshot, mirroring the `format` /
+`format-check` split: a gate that rewrote the bar it enforces would ratchet in both directions.
+
+```bash
+make coverage-floors   # rewrite coverage-floors.json to what the suite just measured
+```
+
+Run that command deliberately and commit the result once coverage has risen. The same command is
+the escape hatch for a drop you have decided to accept. It prints rises and drops separately, so
+you see an accepted drop before committing it.
+
+A file with fewer than ten statements carries no floor at all. One missed branch would move such a
+file's percentage by whole points, failing the gate on measurement noise rather than on a
+regression. Coverage can also differ slightly between environments — a different operating system,
+or a machine missing a tool some test needs — so a floor recorded on one machine can read as a drop
+on another. `make coverage-floors` is the answer there too.
+
 ## One topic per branch
 
 - Branch off `main`: `claude/<short-topic>` for agents, `<user>/<topic>` for humans.
@@ -192,8 +235,14 @@ produces for other harnesses. `apm.lock.yaml` records a SHA-256 for every deploy
 
 ```bash
 make skills        # uv run apm install --no-policy — deploy .apm/skills/ to .claude/skills/
-make lint-skills   # uv run apm audit --ci --no-policy — fail on drift (part of `make check`)
+make lint-skills   # uv run python scripts/audit_skills.py — fail on drift (part of `make check`)
 ```
+
+`lint-skills` goes through a wrapper rather than calling `apm audit` directly. APM governs the
+whole of `.claude/`, which is also where Claude Code parks a concurrent session's worktree, so a
+direct audit walks every other session's checkout and fails over vendored files this repository
+never wrote. [`scripts/audit_skills.py`](../scripts/audit_skills.py) audits a scratch mirror of
+the files git sees instead — what a fresh clone holds plus the work in hand.
 
 **Both sides are committed** — the source and the deployed `.claude/skills/` tree — so a fresh
 clone has a working skill set before anyone installs APM. The cost is that each skill's bytes are

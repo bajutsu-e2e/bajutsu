@@ -294,6 +294,7 @@ backend sets `hosted: true`.
 | **Config** | File browser + Git + upload; own filesystem, paths unconfined | Git + upload only; file browser disabled, 403 (BE-0108) |
 | **Scenario and run artifacts** | `scenarios/` and `runs/` on disk; soft-delete moves to `runs/.trash/` | Object store (S3/GCS) + Postgres; soft-delete sets `deleted_at` (BE-0239) |
 | **App binary** | `appPath` on disk; build only when missing | Worker builds from checkout/bundle; remote build gated (BE-0121) |
+| **Authoring against a live screen** | Capture mode and Edit's live picker both hold a driver open in the `serve` process | Neither is offered: both controls are disabled, each carrying the reason (#1721) |
 
 - **Config.** Both sides bind from up to three sources, but the file browser disappears the moment
   `hosted` is true (just above). Path confinement follows the *source*, not the tier: a local-file
@@ -308,6 +309,18 @@ backend sets `hosted: true`.
   live in the control plane's object store (`BAJUTSU_SERVER_STORE`, S3-compatible or GCS) plus a
   Postgres row per run, so a soft-delete sets `deleted_at` instead of moving bytes on disk (see
   *Deleting runs, and how long the trash is kept*, below).
+- **Authoring against a live screen.** Capture mode records a scenario by clicking on a
+  screenshot. The Edit mode's live picker resolves a selector against the screen the device is
+  showing. Both hold a driver open inside the `serve` process itself, for as long as the author
+  keeps clicking. Hosted, the devices sit on the workers, which the browser never talks to, so every
+  `/api/capture/*` route is local-only and a hosted deployment answers `404`. The boot read
+  (`GET /api/config`) reports the absence as a capability flag. A hosted Author tab then
+  disables both controls — each showing the server's own reason — and opens in Edit mode, rather
+  than offering a mode whose first call fails (#1721). A local `bajutsu serve --asgi` runs the same
+  transport, so it serves no capture route either; there the flag's reason names the transport
+  rather than the deployment, since the devices are on the machine after all. The Record tab keeps
+  working: `POST /api/record` dispatches a job the way a run does, so a recording made through the
+  AI path still runs hosted.
 - **App binary.** Neither side has a generic binary-upload endpoint: both resolve `appPath` from the
   bound config and, if it's missing, run the config's `build:` command. Hosted, a Mac worker builds
   from the same checkout or bundle materials the control plane resolved for the job, exchanging bytes
