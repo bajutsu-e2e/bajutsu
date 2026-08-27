@@ -101,16 +101,17 @@ same ceiling. Both take a `# noqa: C901` naming the reason. The same reading cov
 `device_pool`, and the `lease` closure inside `device_pool`, whose scores are likewise the sum of
 the closures each one defines.
 
-### Where a count is a shape rather than a smell
+### Where a high count reflects the number of cases rather than tangled logic
 
-Two shapes recur across the triage, and neither is a function that should split. The first is
-exhaustive dispatch over a closed schema: the three backends' `_emit_step` functions and their
-`_emit_assertion` peers carry one branch per scenario step kind or assertion kind, so the count
-tracks the scenario schema's size rather than tangled logic, and splitting one would remove the
-single place a new step kind clearly belongs. The routing policy in `required_role` reads the same
-way, one return per gated route class. The second is a request handler whose returns are validation
-guards, each carrying a distinct HTTP status — the early-return shape `RET505` asks for. Every
-function of either shape takes a targeted `# noqa` naming which shape it is.
+A high count has two sources: logic that tangles, and the number of cases a function must cover. Two
+kinds of function recur across the triage where the count comes from the number of cases. We split
+neither. The first kind is exhaustive dispatch over a closed schema: the three backends'
+`_emit_step` functions and their `_emit_assertion` peers carry one branch per scenario step kind or
+assertion kind, so the count tracks the scenario schema's size, and splitting one of those would
+remove the single place a new step kind clearly belongs. The routing policy in `required_role` reads
+the same way, one return per gated route class. The second kind is a request handler whose returns
+are validation guards, each carrying a distinct HTTP status — the early-return shape `RET505` asks
+for. Every function of either kind takes a targeted `# noqa` naming which of the two kinds it is.
 
 The one function the triage does split is the `coverage` command, whose 21 branches include a
 self-contained block resolving the screens dimension from `--crawl` evidence. That block becomes
