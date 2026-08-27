@@ -236,6 +236,14 @@ testpaths = ["tests"]
 # Branch coverage too: an untested if/else path fails the floor even when every line ran.
 branch = true
 
+[tool.coverage.report]
+# The gate's total-coverage floor (BE-0385). It lives in coverage.py's own config, not as a
+# `--cov-fail-under` flag on the Makefile's pytest line: pytest-cov adopts this key whenever the
+# flag is absent, so the gate and the floor-drift advisory (scripts/coverage_drift.py) read one
+# declarative source instead of a value scraped from a shell recipe that a later edit could
+# silently change. Raise it as measured coverage rises; scripts/coverage_drift.py says when.
+fail_under = 89
+
 [tool.mypy]
 python_version = "3.13"
 strict = true

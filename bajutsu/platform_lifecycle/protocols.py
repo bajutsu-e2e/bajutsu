@@ -143,6 +143,13 @@ class ReadinessResult:
     ready: bool
     signal: Literal["screenChanged", "readyWhen", "namespace", "count", "timeout"]
     elapsed_s: float
+    # Whether the tree stopped changing before the gate returned. A signal fires as soon as the app's
+    # first content appears, which can be mid-transition — and a touch synthesized into a screen still
+    # moving is the one the Simulator drops, surfacing much later as an unrelated step's wait timeout.
+    # False says the gate spent its settle budget without two matching samples and returned on the
+    # signal alone, which is the state to suspect when such a timeout follows. Diagnostic like
+    # `signal`: it never enters a verdict (prime directive 1).
+    settled: bool = True
 
 
 @runtime_checkable

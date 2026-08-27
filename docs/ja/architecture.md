@@ -230,6 +230,7 @@ prime directive 3 は、どの backend も 1 つの `Driver` 界面の背後に�
 - `capabilities()` が観測される挙動と一致します。`QUERY` / `ELEMENTS` の baseline を申告し、multi-touch のジェスチャは `MULTI_TOUCH` を申告したときに限り、全選択とクリップボードへのコピーは `TEXT_SELECTION` を申告したときに限り、ネイティブな `<select>` を値で設定する操作は `SELECT_OPTION` を申告したときに限り動作します（そうでなければそれぞれ `UnsupportedAction` を送出します。BE-0280）。
 - フォーカス中のフィールドでテキスト編集が往復します（入力してから削除すると、報告される文字数が減ります）。また `tap_point`（生の座標タップ。アラート消去の経路）は、フィールドの中心を狙うとそのフィールドをフォーカスし、semantic tap と同じ観測可能な効果を持ちます（BE-0280）。
 - `wait_for` は現在の画面を 1 回だけ判定し、共有の `wait_until` ループがそれを固定 sleep なしの条件待ちに変えます。
+- `scroll` の 1 ステップは、連続するビューポートを重ねたまま残します。ステップの前後の読み取りが、領域の枠に切り取られていない要素を少なくとも 1 つ共有する、という形です。各 backend が非慣性と文書化しているジェスチャを、ツリーが示せる唯一の言葉に言い直したものであり、`scroll` ループの正しさがこの重なりに乗っているため `Driver` 契約の一部です。勢いを残すジェスチャは何も共有しません。実行時に対象がループの 2 回の query のあいだを読まれないまま通り過ぎるより前に、スイートで落ちます（BE-0329）。
 
 backend をこのスイートに加えるには、`ConformanceHarness`（画面を渡すと、それを表示するドライバを返すもの）を実装し、`DriverConformanceContract` を継承します。すると pytest が、継承した契約をその backend に対して走らせます。`FakeDriver` は高速な Linux ゲート（`make check`）で、Playwright は web CI ジョブで、XCUITest は iOS のオンデバイス E2E 経路（`ios-e2e.yml`）で、**adb backend** は起動済みの Android エミュレータ（`android-e2e.yml` の `conformance (adb)` ジョブ、BE-0270）で走ります。契約は同じで、第 2 の仕様はありません。
 

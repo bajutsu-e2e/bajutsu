@@ -6,14 +6,18 @@ output. CI feeds that file to this script, which emits a Markdown table — over
 versus the floor, plus the files that fall short — into ``$GITHUB_STEP_SUMMARY`` so the result
 is visible in the run UI without any external service, token, or PR-write permission.
 
-This is a *presentation* layer only: pass/fail is still decided by ``--cov-fail-under`` in the
-pytest step. The script never fails a run (it is meant to run with ``if: always()`` so the
+This is a *presentation* layer only: pass/fail is still decided by the ``fail_under`` floor the
+pytest step enforces. The script never fails a run (it is meant to run with ``if: always()`` so the
 report shows even when the floor is breached); a missing or malformed ``coverage.json`` only
 prints a notice.
 
+With no ``--floor``, the floor comes from ``[tool.coverage.report]``'s ``fail_under`` in
+``pyproject.toml`` — the same key the gate enforces (BE-0385), so the summary can no longer mark a
+different bar than the one that decided the verdict.
+
 Usage::
 
-    python scripts/coverage_summary.py                     # read coverage.json, floor 85
+    python scripts/coverage_summary.py                      # coverage.json, floor from pyproject
     python scripts/coverage_summary.py --floor 90 cov.json  # custom floor / path
 """
 
@@ -23,12 +27,31 @@ import argparse
 import json
 import os
 import sys
+import tomllib
 from pathlib import Path
 from typing import Any
 
 # Show at most this many under-floor files; the rest collapse into a "+N more" line so the
 # summary stays scannable on a large regression.
 MAX_FILES = 30
+
+# Used only when pyproject.toml can't be read at all — the summary is a report, so it degrades to a
+# plausible bar rather than failing the step it runs in.
+FALLBACK_FLOOR = 85.0
+
+
+def resolve_floor(path: Path = Path("pyproject.toml")) -> float:
+    """The gate's floor, read from the one place BE-0385 keeps it.
+
+    scripts/coverage_drift.py reads the same key and is strict about it, because an absent floor
+    leaves *it* nothing to compare against. Here a report that renders with a slightly wrong bar
+    still beats no report, so a missing key falls back instead of raising.
+    """
+    try:
+        with path.open("rb") as handle:
+            return float(tomllib.load(handle)["tool"]["coverage"]["report"]["fail_under"])
+    except (AttributeError, KeyError, OSError, TypeError, ValueError):
+        return FALLBACK_FLOOR
 
 
 def _load(path: Path) -> dict[str, Any] | None:
@@ -96,8 +119,9 @@ def render(data: dict[str, Any], floor: float) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("path", nargs="?", default="coverage.json", type=Path)
-    parser.add_argument("--floor", type=float, default=85.0)
+    parser.add_argument("--floor", type=float, default=None)
     args = parser.parse_args()
+    floor = resolve_floor() if args.floor is None else args.floor
 
     data = _load(args.path)
     if data is None:
@@ -105,7 +129,7 @@ def main() -> int:
         sys.stderr.write(f"coverage_summary: no readable coverage data at {args.path}\n")
         return 0
 
-    summary = render(data, args.floor)
+    summary = render(data, floor)
 
     out = os.environ.get("GITHUB_STEP_SUMMARY")
     if out:

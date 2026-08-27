@@ -513,6 +513,13 @@ class ServeState:
     # hosted seams; the local backend (stdlib serve, including a self-hosted single Mac) never does,
     # so the file browser stays offered locally and is removed — UI and server-side — when hosted.
     hosted: bool = False
+    # Whether this deployment's transport serves the `local_only` routes (`serve.routes`) — the
+    # `/api/capture/*` family among them. The stdlib server registers every route, so the default
+    # holds there; `make_app` clears it, since the FastAPI transport skips them. Distinct from
+    # `hosted`, which the local `serve --asgi` leaves False while still going through `make_app`:
+    # that deployment keeps the file browser and its host paths but serves no capture route, so the
+    # boot read's `capture` capability is keyed to this field rather than to `hosted` (issue 1721).
+    serves_local_routes: bool = True
     popen: Popen = subprocess.Popen
     # How a created job gets executed. Defaults to in-process threads (LocalExecutor); a server
     # backend swaps in a queue-based executor without touching the handler or run_job (BE-0015).
