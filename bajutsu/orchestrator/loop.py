@@ -1179,7 +1179,10 @@ class _StepRunner:
         self.state.outcomes.append(outcome)
         return None if ok else f"step {idx} ({kind}): {reason}"
 
-    def _handle_action(
+    # Genuinely long: the per-action dispatch on the deterministic run path. Splitting it carries
+    # real behavioral risk, so it belongs to BE-0386's ratchet steps rather than the PR that sets
+    # the ceiling.
+    def _handle_action(  # noqa: C901, PLR0912, PLR0915
         self,
         step: Step,
         active_driver: base.Driver,

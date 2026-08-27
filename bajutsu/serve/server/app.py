@@ -119,7 +119,10 @@ def _serve_artifact(art: Any, request: Request, *, filename: str | None = None) 
     return Response(chunk, status_code=status, media_type=art.content_type, headers=headers)
 
 
-def make_app(state: ServeState) -> FastAPI:
+# C901 and PLR0915 fold each nested function's count into the function enclosing it, so this score
+# measures the endpoint functions defined below, not branching here. Ruff bounds each of those on
+# its own, so the exemption loses no signal (BE-0386).
+def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
     def _authorized(request: Request) -> bool:

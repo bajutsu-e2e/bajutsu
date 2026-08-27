@@ -915,6 +915,35 @@ def test_cli_crawl_without_runs_warns_and_skips(tmp_path: Path) -> None:
     assert "needs --runs" in result.stderr
 
 
+def test_cli_missing_screenmap_warns_and_skips(tmp_path: Path) -> None:
+    """A --crawl path that names no screenmap.json warns and drops the dimension (BE-0386)."""
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        [
+            "coverage",
+            "--target",
+            "demo",
+            "--config",
+            str(config),
+            "--crawl",
+            str(tmp_path / "absent.json"),
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0  # read-only: a missing crawl map is skipped, not fatal
+    assert json.loads(result.stdout).get("screens") is None
+    assert "screenmap not found" in result.stderr
+
+
 def test_cli_malformed_screenmap_warns_and_skips(tmp_path: Path) -> None:
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()

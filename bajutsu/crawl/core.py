@@ -846,7 +846,10 @@ class _Coordinator:
             self._finish(self._sm.stop_reason or "completed")
 
 
-def crawl(
+# C901 and PLR0915 fold each nested function's count into the function enclosing it, so this score
+# measures the worker and bookkeeping closures defined below, not branching here. Ruff bounds each
+# of those on its own, so the exemption loses no signal (BE-0386).
+def crawl(  # noqa: C901, PLR0915
     driver: base.Driver,
     reset: Reset,
     *,

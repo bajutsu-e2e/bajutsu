@@ -499,7 +499,10 @@ class _AlertGuardGate:
                 return
 
 
-def _wait(
+# Genuinely long: the wait state machine on the deterministic run path. Splitting it carries real
+# behavioral risk, so it belongs to BE-0386's ratchet steps rather than the PR that sets the
+# ceiling.
+def _wait(  # noqa: C901, PLR0912
     driver: base.Driver,
     w: Wait,
     clock: Clock,

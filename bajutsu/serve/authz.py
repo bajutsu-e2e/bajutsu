@@ -502,7 +502,9 @@ def role_for(
     return "viewer"
 
 
-def required_role(method: str, path: str) -> str | None:
+# One branch per gated route class: the count tracks the schema's size, not tangled logic, and a
+# split would leave no single place a new gated route class clearly belongs (BE-0386).
+def required_role(method: str, path: str) -> str | None:  # noqa: PLR0911
     """The minimum role a request needs, or None for reads (GET) and the open auth endpoints.
     Cancelling a job or answering its handoff are editor actions (they mutate a running job). The
     gated reads are ``GET /api/config/content``, ``GET /api/artifacts/exists``,
