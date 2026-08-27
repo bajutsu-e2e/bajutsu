@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0385](BE-0385-coverage-floor-continuous-ratchet.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0385") |
+| Implementing PR | [#1789](https://github.com/bajutsu-e2e/bajutsu/pull/1789) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -101,15 +102,15 @@ adds a second coverage collection pass.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Move the coverage floor into `[tool.coverage.report]`'s `fail_under` in `pyproject.toml`;
+- [x] Move the coverage floor into `[tool.coverage.report]`'s `fail_under` in `pyproject.toml`;
   drop `--cov-fail-under` from the `Makefile`'s `test` target.
-- [ ] Add the floor-drift advisory script and wire it into `make lint-pr` (advisory).
-- [ ] Generate the initial `coverage-floors.json` snapshot from today's measured per-file branch
+- [x] Add the floor-drift advisory script and wire it into `make lint-pr` (advisory).
+- [x] Generate the initial `coverage-floors.json` snapshot from today's measured per-file branch
   coverage.
-- [ ] Add the per-file floor check to `make check` (blocking, check-only — never writes).
-- [ ] Add the separate `make coverage-floors` rewrite target that a human runs and commits once
+- [x] Add the per-file floor check to `make check` (blocking, check-only — never writes).
+- [x] Add the separate `make coverage-floors` rewrite target that a human runs and commits once
   coverage has risen.
-- [ ] Document both checks in [CLAUDE.md](../../CLAUDE.md)'s gate list and in
+- [x] Document both checks in [CLAUDE.md](../../CLAUDE.md)'s gate list and in
   [docs/ai-development.md](../../docs/ai-development.md).
 
 ## References

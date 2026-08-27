@@ -30,6 +30,10 @@ The invariants (grounded in the `Driver` Protocol and `drivers/base`):
   it into a condition wait with no fixed sleep.
 * A read taken after a content-moving gesture reflects the moved screen, not the tree from before it
   (`the marked-read contract`, BE-0332): the after-scroll read differs from the before-scroll one.
+* One `scroll` step leaves consecutive viewports overlapping (BE-0329): the reads before and after
+  it share at least one element the region's bounds do not clip. That states the non-inertial
+  contract in the only terms a tree can show it — a gesture that flings shares nothing, so it fails
+  here rather than carrying a target past the viewport unqueried during a run.
 
 The text-editing and `tap_point` invariants need a real editable field on the screen, so every
 conformance screen carries one (`FIELD_ID`) alongside the readiness marker — always present, like
@@ -52,8 +56,13 @@ import pytest
 
 from bajutsu.drivers import base
 from bajutsu.orchestrator.actions.handlers.scroll import (
+    _AXIS,
+    _STEP_FRACTION,
     _center_in_viewport,
+    _region_after_step,
+    _region_view,
     _resolve_target,
+    _step_endpoints,
     _viewport,
     scroll_to_target,
 )
@@ -541,6 +550,31 @@ class DriverConformanceContract:
         driver = harness.scrollable_screen()
         with pytest.raises(base.ElementNotFound):
             scroll_to_target(driver, {"id": "conformance.scroll.absent"}, "down", None, SCROLL_MAX)
+
+    def test_one_scroll_step_leaves_an_unclipped_element_shared(
+        self, harness: ConformanceHarness
+    ) -> None:
+        # Every backend's `scroll` is documented as non-inertial, and until BE-0329 nothing checked
+        # it. This is that property stated in the only terms a tree can show it: one step leaves
+        # consecutive viewports overlapping, so an element neither read's bounds clip survives it.
+        # A gesture that flings shares nothing here — and would otherwise carry a target between two
+        # of the loop's queries unseen, which is a run-time skip no unit test over `FakeDriver` can
+        # catch, since the fake pans exactly as far as it is asked to.
+        driver = harness.scrollable_screen()
+        elements = driver.query()
+        viewport = _viewport(driver, elements)
+        axis = _AXIS["down"]
+        before = _region_view(elements, None, viewport, axis)
+        # One step, not `scroll_to_target`: the loop's own recovery would shrink the fraction and
+        # look back on exactly the step this case exists to reject, hiding the fling it is testing
+        # for. The read after it goes through the loop's own catch-up (condition-backed, bounded by
+        # what the backend declares it may lag), so a late tree fails no backend here.
+        frm, dest = _step_endpoints(elements, "down", None, viewport, _STEP_FRACTION)
+        driver.scroll(frm, dest)
+        after = _region_view(
+            _region_after_step(driver, before, None, viewport, axis), None, viewport, axis
+        )
+        assert before.in_view.keys() & after.in_view.keys()
 
     def test_a_read_postdates_a_content_moving_gesture(self, harness: ConformanceHarness) -> None:
         # The marked-read contract (BE-0332), observed: a read taken after a gesture that moves the

@@ -394,8 +394,12 @@ def test_await_ready_without_selector_returns_on_element_count(
     # No ready selector: the existing "any 2 elements" heuristic still applies (unchanged default).
     _install_bounded_clock(monkeypatch)
     driver = _ScriptedDriver([[_el("home.title", "H"), _el("tab", "T")]])
-    await_ready(driver)  # type: ignore[arg-type]
-    assert driver.calls == 1
+    result = await_ready(driver)  # type: ignore[arg-type]
+    # The count heuristic decided it on the first tree; the settle confirmation then reads again and
+    # finds the same one, so the gate returns settled rather than on the signal alone.
+    assert result.ready is True
+    assert result.signal == "count"
+    assert result.settled is True
 
 
 def test_await_ready_empty_selector_falls_back_to_count(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -443,8 +447,9 @@ def test_await_ready_returns_on_a_single_in_namespace_element(
     # below the 2+ count — the namespace signal is stronger evidence than raw element count.
     _install_bounded_clock(monkeypatch)
     driver = _ScriptedDriver([[_el("stable.row.1", "Row 1")]])
-    await_ready(driver, id_namespaces=["stable"])  # type: ignore[arg-type]
-    assert driver.calls == 1
+    result = await_ready(driver, id_namespaces=["stable"])  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.signal == "namespace"  # below the 2+ count, decided by the namespace instead
 
 
 def test_await_ready_without_namespaces_keeps_count_heuristic(
@@ -454,8 +459,158 @@ def test_await_ready_without_namespaces_keeps_count_heuristic(
     # is unchanged, so behavior for those targets is exactly as before.
     _install_bounded_clock(monkeypatch)
     driver = _ScriptedDriver([[_el("Safari", "S"), _el("Messages", "M")]])
-    await_ready(driver, id_namespaces=[])  # type: ignore[arg-type]
-    assert driver.calls == 1
+    result = await_ready(driver, id_namespaces=[])  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.signal == "count"
+
+
+# --- the settle confirmation: the app's content is up *and* the screen has stopped moving ---
+
+
+def _placed(
+    identifier: str,
+    label: str,
+    *,
+    frame: tuple[float, float, float, float] = (0.0, 0.0, 10.0, 10.0),
+    value: str | None = None,
+) -> base.Element:
+    """`_el` with the two fields the settle signature reads about — where it sits, and its value."""
+    return {**_el(identifier, label), "frame": frame, "value": value}
+
+
+def test_await_ready_waits_for_the_tree_to_stop_moving(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The gap this closes: every signal answers "the first content is on screen", which a screen
+    # mid-transition satisfies. Here the ready tree keeps moving (the row slides into place) for two
+    # more reads before it holds, and the gate must not return until it does — a touch synthesized
+    # into a moving screen is the one the Simulator drops, and the drop surfaces much later as an
+    # unrelated step's wait timeout.
+    _install_bounded_clock(monkeypatch)
+    moving_a = [_placed("stable.row.1", "Row 1", frame=(0.0, 100.0, 300.0, 40.0))]
+    moving_b = [_placed("stable.row.1", "Row 1", frame=(0.0, 140.0, 300.0, 40.0))]
+    settled = [_placed("stable.row.1", "Row 1", frame=(0.0, 168.0, 300.0, 40.0))]
+    driver = _ScriptedDriver([moving_a, moving_b, settled, settled])
+    result = await_ready(driver, id_namespaces=["stable"])  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.settled is True
+    assert driver.calls >= 4  # kept reading while the frame moved, returned once it repeated
+
+
+def test_await_ready_gives_up_settling_rather_than_holding_a_moving_screen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A screen that never holds still (a spinner, a looping animation) must not hold every launch to
+    # the full readiness deadline. The settle budget is spent, the gate returns ready on the signal
+    # alone, and `settled=False` records that it did — the state to suspect when a later step's wait
+    # times out. It never downgrades a ready app to a timeout.
+    _install_bounded_clock(monkeypatch)
+    frames = [
+        [_placed("stable.row.1", "Row 1", frame=(0.0, float(y), 300.0, 40.0))]
+        for y in range(0, 400, 10)
+    ]
+    driver = _ScriptedDriver(frames)
+    result = await_ready(driver, id_namespaces=["stable"])  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.signal == "namespace"
+    assert result.settled is False
+
+
+def test_await_ready_settle_ignores_a_value_only_change(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A live counter mirrored into `value` is not the screen moving, so it must not keep the tree
+    # "unsettled" forever on a screen that is otherwise still — the signature reads identity and
+    # position, not value.
+    _install_bounded_clock(monkeypatch)
+    trees = [
+        [_placed("log.count.value", "Count", value=str(n))]
+        for n in range(10)  # only `value` differs
+    ]
+    driver = _ScriptedDriver(trees)
+    result = await_ready(driver, id_namespaces=["log"])  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.settled is True
+
+
+def test_await_ready_settle_never_confirms_on_an_empty_tree(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Two empty signatures compare equal, so without a guard a launch that rendered nothing would
+    # confirm a settle. An empty tree is the same "couldn't observe" the readiness loop swallows, and
+    # this is reachable through the one rung that reads no tree of its own: `screenChanged` seeds no
+    # first sample, so an always-empty driver would otherwise report the most raced launch as settled.
+    _install_bounded_clock(monkeypatch)
+    driver = _ScriptedDriver([[]])  # always empty
+    live = [(ScreenTransition(kind="screenChanged"), 0.0)]
+    result = await_ready(driver, timeout=1.0, transitions=lambda: live)  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.signal == "screenChanged"
+    assert result.settled is False
+
+
+def test_await_ready_timeout_is_never_recorded_as_settled(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A gate that never became ready observed no settled screen either. The result reaches the
+    # first-wait diagnostic, where `ready: false, settled: true` would read as reassurance in exactly
+    # the case the preceding actuation is most suspect.
+    _install_bounded_clock(monkeypatch)
+    driver = _ScriptedDriver([[_placed("only", "O")]])  # one element: never satisfies the 2+ count
+    result = await_ready(driver, timeout=1.0)  # type: ignore[arg-type]
+    assert result.ready is False
+    assert result.signal == "timeout"
+    assert result.settled is False
+
+
+def test_await_ready_settle_treats_an_unreadable_query_as_not_settled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A query that raises is "couldn't observe", never "unchanged": it drops the pair being built
+    # rather than confirming one, so a transient read failure cannot be mistaken for a settled tree.
+    _install_bounded_clock(monkeypatch)
+    tree = [_placed("stable.row.1", "Row 1")]
+
+    class _FlakyDriver(_ScriptedDriver):
+        def query(self) -> list[base.Element]:
+            self.calls += 1
+            if self.calls == 1:
+                return tree
+            raise OSError("transient read failure")
+
+    driver = _FlakyDriver([tree])
+    result = await_ready(driver, id_namespaces=["stable"])  # type: ignore[arg-type]
+    assert result.ready is True  # the signal fired on the readable first tree
+    assert result.settled is False  # nothing after it could confirm the screen had stopped
+
+
+def test_await_ready_settle_reads_nothing_when_the_deadline_is_already_spent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The settle shares the caller's readiness deadline as a ceiling, so it can never push the gate
+    # past the timeout it was asked for. A signal that fires on the gate's final tick leaves no
+    # budget at all: the settle returns without a query rather than buying one more poll. The fixed
+    # poll makes the tick schedule explicit — ready lands exactly on the deadline.
+    _install_bounded_clock(monkeypatch)
+    ready = [_placed("stable.row.1", "Row 1")]
+    # Ticks at t=0, 0.5, 1.0: readiness fires on the last one, which is the deadline itself.
+    driver = _ScriptedDriver([[], [], ready])
+    result = await_ready(driver, 1.0, 0.5, 0.5, id_namespaces=["stable"])  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.settled is False
+    assert driver.calls == 3  # the readiness polls only; the settle read nothing
+
+
+def test_await_ready_settle_stops_at_the_deadline_before_spending_its_samples(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # `_SETTLE_POLLS` is not the only bound on the settle: with most of the readiness deadline
+    # already spent it runs out of clock first. A screen still moving then reports `settled=False`
+    # after the samples it could afford, rather than holding the gate for ones it cannot.
+    _install_bounded_clock(monkeypatch)
+    moving = [
+        [_placed("stable.row.1", "Row 1", frame=(0.0, float(y), 300.0, 40.0))]
+        for y in range(0, 100, 10)
+    ]
+    driver = _ScriptedDriver([[], [], *moving])  # ready on the tick at t=1.0 of a 1.5s deadline
+    result = await_ready(driver, 1.5, 0.5, 0.5, id_namespaces=["stable"])  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.settled is False
+    assert driver.calls == 5  # 3 readiness polls, then 2 settle samples — short of _SETTLE_POLLS
 
 
 def test_await_ready_selector_takes_precedence_over_namespaces(
@@ -528,8 +683,9 @@ def test_await_ready_screenchanged_signal_beats_the_ladder(monkeypatch: pytest.M
     live = [(ScreenTransition(kind="screenChanged"), 0.0)]  # received at/after this wait's start
     result = await_ready(driver, timeout=1.0, transitions=lambda: live)  # type: ignore[arg-type]
     assert result.ready is True
+    # The signal alone satisfied the ladder — no tree read could have, since every one is empty. The
+    # reads that follow belong to the settle confirmation, which never decides readiness itself.
     assert result.signal == "screenChanged"
-    assert driver.calls == 0  # satisfied before ever needing a tree read
 
 
 def test_await_ready_readywhen_outranks_the_screenchanged_signal(
