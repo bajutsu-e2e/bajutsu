@@ -338,8 +338,16 @@ iframe{width:100%;height:100%;border:1px solid var(--line);border-radius:10px;ba
 .left>.card>.panel{flex:1;min-height:0;overflow-y:auto}
 /* Author stacks three cards on the left; an equal split leaves the controls card two rows tall on
    short viewports, scrolling Run/Load out of reach. Size it to its content — the pickers and the
-   Load button stay visible; Steps and the YAML editor share the rest. */
-.left>.card.au-controls-card{flex:0 0 auto}
+   Load button stay visible; Steps and the YAML editor share the rest.
+   Shrink-enabled (`0 1 auto`, not `0 0 auto`) because refusing to shrink broke the view outright
+   (issue 1715): once .left had less room than the card's natural height, the card kept that
+   height, .panel above never received a bounded one to scroll inside, and .tile-leaf's
+   overflow:hidden clipped the remainder with no scrollbar — at 1280x600 the Load button rendered
+   below the clip and could not be reached at all. Shrinking hands the shortfall to .panel's own
+   overflow-y:auto. Whenever the natural height fits, the two values behave identically, so the
+   content sizing above is unchanged; min-height:0 already comes from .left>.card.
+   (Issue numbers stay unprefixed here: a `#NNNN` would trip the raw-hex-literal check.) */
+.left>.card.au-controls-card{flex:0 1 auto}
 .tabs{flex:0 0 auto;display:flex;gap:.25rem;margin:-.25rem 0 .9rem;border-bottom:1px solid var(--line)}
 .tab{flex:1;background:none;border:0;border-bottom:2px solid transparent;color:var(--mut);padding:.5rem .3rem;font:inherit;font-weight:600;cursor:pointer}
 .tab:hover{color:var(--fg)}.tab.active{color:var(--fg);border-bottom-color:var(--acc)}
