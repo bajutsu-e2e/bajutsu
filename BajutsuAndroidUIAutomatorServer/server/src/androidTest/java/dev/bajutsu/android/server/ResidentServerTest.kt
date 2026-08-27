@@ -163,8 +163,10 @@ class ResidentServerTest {
      * The win is the gap. Resolving here puts the read and the injection microseconds apart in one
      * process, where the host path spends a round trip plus `adb shell input`'s JVM startup between
      * them — the window in which a still-settling screen moves out from under a computed coordinate.
-     * It does not make the accessibility tree itself current: a `since` mark is honored first, exactly
-     * as [respondSource] does, so the bounds read here postdate the gesture the host is following up on.
+     * The tree this resolves against is made current the same way [respondSource]'s is: a `since` mark
+     * is honored first, so the bounds read here postdate the gesture the host is following up on. And
+     * the gesture this injects is followed to its own publish before the answer goes out — see
+     * [publishHeader], which is what lets the host skip the read-lag barrier for it (BE-0339 Unit 5).
      */
     private fun respondAct(out: OutputStream, device: UiDevice, readMark: ReadMark, target: String) {
         // Validated, never defaulted. A missing or malformed field here would otherwise pick an
@@ -200,6 +202,7 @@ class ResidentServerTest {
         // `200 OK` regardless would let a rejected injection reach the host as a landed gesture: no
         // step re-resolves or degrades, and only the scenario's own later assertion could ever catch
         // it. A non-200 here surfaces the rejection immediately (see [INJECT_FAILED_STATUS]).
+        val injectedAt = SystemClock.uptimeMillis()
         val landed = when (kind) {
             "tap" -> device.click(x, y)
             "longPress" -> {
@@ -215,7 +218,27 @@ class ResidentServerTest {
         if (!landed) {
             return respond(out, INJECT_FAILED_STATUS, TEXT, "$kind rejected by the platform\n".bytes())
         }
-        respond(out, "200 OK", TEXT, "ok\n".bytes())
+        respond(out, "200 OK", TEXT, "ok\n".bytes(), publishHeader(readMark, injectedAt))
+    }
+
+    /**
+     * [ACT_PUBLISH_HEADER] naming the event that postdates `injectedAt`, or no header when none came.
+     *
+     * The question the host cannot answer for itself: *has the gesture just injected already reached
+     * the accessibility tree?* Answering it here is the point — this session is already observing the
+     * event stream the answer lives in ([ReadMark]), where the host can only infer it by re-reading
+     * trees a round trip away. A host told "yes" needs no read-lag barrier for this gesture at all;
+     * one told nothing arms it exactly as before (BE-0339 Unit 5).
+     *
+     * Absence is the honest answer for both causes it cannot separate — a gesture that published
+     * nothing because it moved no frame, and one whose publish outran [ACT_PUBLISH_BUDGET_MS] — and
+     * it is also what an older server without this header returns, so the host needs no version
+     * negotiation to read it: a header is a confirmation and nothing else is.
+     */
+    private fun publishHeader(readMark: ReadMark, injectedAt: Long): Map<String, String> {
+        readMark.awaitPostdate(injectedAt.toDouble(), ACT_PUBLISH_BUDGET_MS)
+        val published = readMark.current()
+        return if (published > injectedAt) mapOf(ACT_PUBLISH_HEADER to published.toString()) else emptyMap()
     }
 
     /**
@@ -571,6 +594,24 @@ class ResidentServerTest {
         // stays byte-identical to `uiautomator dump`'s, so `parse_hierarchy` is unchanged. Kept in
         // sync with the host side (`bajutsu/adb_resident.py` `_NATIVE_Z_HEADER`).
         const val NATIVE_Z_HEADER = "X-Bajutsu-Native-Z"
+
+        // The response header POST /act stamps when an accessibility event postdated the injection it
+        // just made (BE-0339 Unit 5): the device-clock time of that event. Its *absence* is the answer
+        // when none came, which is also what an older server returns — see `publishHeader`. Kept in
+        // sync with the host side (`bajutsu/adb_resident.py` `_ACT_PUBLISH_HEADER`).
+        const val ACT_PUBLISH_HEADER = "X-Bajutsu-Act-Publish"
+
+        // How long POST /act waits for its own gesture to publish before answering unconfirmed.
+        //
+        // Not a correctness bound: an unconfirmed answer costs only the read-lag barrier the host
+        // already arms for every gesture today, so this window decides how often that barrier can be
+        // skipped, never whether skipping it is safe. Deliberately an order of magnitude under the
+        // host's own budget (`AdbDriver._READ_LAG_S`, 4 s), because the two waits are not
+        // interchangeable: this one is paid inline on every gesture, while the host's is spent lazily
+        // and is often absorbed by reads the scenario was taking anyway. Long enough for the publish a
+        // healthy gesture makes, short enough that a device which cannot answer quickly hands the
+        // question straight back to the barrier instead of stalling the run.
+        const val ACT_PUBLISH_BUDGET_MS = 500L
 
         // The extra-data key an opted-in view advertises. This server is app-independent by design
         // (see settings.gradle.kts), so it names the key rather than depending on the app-side

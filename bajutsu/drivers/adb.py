@@ -114,11 +114,30 @@ class ActRequest:
     duration_ms: int | None  # press-and-hold length, for "longPress"
 
 
-# Perform one gesture on the device, against an element the host already resolved. True when the device
-# acted; False when it answered `stale` — the identity no longer names the same nodes there, so the host
-# re-resolves rather than letting a coordinate be guessed. Raises `AdbResidentError` when the channel
-# itself fails, which the driver degrades to its own coordinate path.
-ActFn = Callable[[ActRequest], bool]
+@dataclass(frozen=True)
+class ActOutcome:
+    """What the device did with one `ActRequest`, and whether the tree has caught up with it.
+
+    `published_mark` is the whole reason this is not a bare bool. The device answers it from the
+    accessibility event stream it is already observing — the one place the question "has this gesture
+    reached the tree yet?" can be answered directly, rather than inferred by re-reading trees a round
+    trip away. When it is set, the read that follows this gesture cannot describe the pre-gesture
+    screen, so the driver arms no read-lag barrier for it (BE-0339 Unit 5).
+
+    None is the honest answer for every case the device could not confirm — a gesture that published
+    nothing because it moved no frame, one whose publish outran the endpoint's budget, and a server
+    old enough not to report at all — and it restores the barrier exactly as it stood before.
+    """
+
+    acted: bool  # False is the `stale` reply: the identity no longer names the same nodes there
+    published_mark: float | None  # the device-clock time of an event postdating the injection
+
+
+# Perform one gesture on the device, against an element the host already resolved. `acted` is False when
+# it answered `stale` — the identity no longer names the same nodes there, so the host re-resolves rather
+# than letting a coordinate be guessed. Raises `AdbResidentError` when the channel itself fails, which
+# the driver degrades to its own coordinate path.
+ActFn = Callable[[ActRequest], ActOutcome]
 
 logger = logging.getLogger("bajutsu.adb.resident")
 
@@ -1280,7 +1299,7 @@ class AdbDriver(CoordinateTreeDriver):
             # `text` components can hold a resolved `${secrets.*}` (see `actuation.py`, rule 3).
             self._log_identity(kind, el, duration_ms)
             try:
-                acted = self._act_fn(request)
+                outcome = self._act_fn(request)
             except AdbActUnsupported as exc:
                 self._actuations.settle(False)
                 # Permanent for this lease: stop probing, so the degrade costs one round trip rather
@@ -1326,24 +1345,37 @@ class AdbDriver(CoordinateTreeDriver):
                     exc,
                 )
                 return False
-            self._actuations.settle(acted)
-            if acted:
+            self._actuations.settle(outcome.acted)
+            if outcome.acted:
                 logger.debug(
                     "device %s on %r: identity %r, %d of %d", kind, sel, identity, index, len(same)
                 )
-                # The gesture happened on the device, so the cached tree is stale and the next read must
-                # postdate it — the same bookkeeping `_act` does for a coordinate injection. `respondAct`
-                # (the Kotlin `/act` handler) settles the tree it *resolves against* before injecting,
-                # but answers as soon as the injection call returns, with no wait for the gesture's own
-                # accessibility event to publish — so a follow-up read can still describe the pre-gesture
-                # screen exactly as a coordinate injection's follow-up read can. An identity-addressed
-                # follower self-heals via its own `stale` re-resolve; a coordinate-resolving one
-                # (`pinch`, `rotate`, a directional `swipe`/`drag` anchor) has no such check, so the
-                # barrier stays armed for it (an earlier version of this comment claimed the resident
-                # session synchronized with the platform's idle state before answering — it does not;
-                # see BE-0339's Progress log for the correction).
+                # The gesture happened on the device, so the cached tree is stale whichever branch
+                # follows — the same bookkeeping `_act` does for a coordinate injection.
                 self.invalidate_settled_cache()
-                self._arm_catchup(pre_key, mark)
+                if outcome.published_mark is not None:
+                    # The device followed its own gesture to the accessibility event that published it
+                    # before answering (BE-0339 Unit 5), so the next read cannot describe the
+                    # pre-gesture screen and there is nothing left for a barrier to wait out. Skipping
+                    # it is worth a read: `_settle` would otherwise open with `_await_catchup`'s poll
+                    # sleep plus a whole extra `query()`, the dominant per-step cost on this backend
+                    # (BE-0234).
+                    #
+                    # The claim is the device's, never this driver's assumption. A first pass at this
+                    # unit asserted the resident session synchronized with the platform's idle state
+                    # and stopped arming on that basis; it does not, and a coordinate-resolving
+                    # follower (`pinch`, `rotate`, a directional `swipe`/`drag` anchor) has no `stale`
+                    # re-resolve to self-heal with — see BE-0339's Progress log. Only a mark the device
+                    # actually observed clears the barrier now, so an endpoint that cannot confirm
+                    # falls through to the branch below rather than being taken at its word.
+                    logger.debug(
+                        "device %s on %r: publish confirmed at %.0f; no catchup barrier armed",
+                        kind,
+                        sel,
+                        outcome.published_mark,
+                    )
+                else:
+                    self._arm_catchup(pre_key, mark)
                 return True
             logger.debug("device %s on %r: the device called it stale; re-resolving", kind, sel)
         logger.warning(
