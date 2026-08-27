@@ -86,8 +86,11 @@ def git_visible_files(root: Path, paths: Sequence[str] = GOVERNED_PATHS) -> list
             capture_output=True,
             check=True,
             text=True,
-            # git translates its own messages, and the classification below reads one of them.
-            env={**os.environ, "LC_ALL": "C"},
+            # `LC_ALL` because git translates its own messages and the classification below reads
+            # one of them. The `GIT_*` strip because git's location variables override `cwd` for
+            # discovery, so an ambient one — a hook exports `GIT_DIR` into `make check`, absolute in
+            # a linked worktree — would silently answer for the pushing checkout instead of *root*.
+            env={k: v for k, v in os.environ.items() if not k.startswith("GIT_")} | {"LC_ALL": "C"},
         )
     except OSError:
         # No git binary at all: a source export, where nothing is enumerable and nothing is wrong.
