@@ -578,6 +578,41 @@ def test_await_ready_settle_treats_an_unreadable_query_as_not_settled(
     assert result.settled is False  # nothing after it could confirm the screen had stopped
 
 
+def test_await_ready_settle_reads_nothing_when_the_deadline_is_already_spent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The settle shares the caller's readiness deadline as a ceiling, so it can never push the gate
+    # past the timeout it was asked for. A signal that fires on the gate's final tick leaves no
+    # budget at all: the settle returns without a query rather than buying one more poll. The fixed
+    # poll makes the tick schedule explicit — ready lands exactly on the deadline.
+    _install_bounded_clock(monkeypatch)
+    ready = [_placed("stable.row.1", "Row 1")]
+    # Ticks at t=0, 0.5, 1.0: readiness fires on the last one, which is the deadline itself.
+    driver = _ScriptedDriver([[], [], ready])
+    result = await_ready(driver, 1.0, 0.5, 0.5, id_namespaces=["stable"])  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.settled is False
+    assert driver.calls == 3  # the readiness polls only; the settle read nothing
+
+
+def test_await_ready_settle_stops_at_the_deadline_before_spending_its_samples(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # `_SETTLE_POLLS` is not the only bound on the settle: with most of the readiness deadline
+    # already spent it runs out of clock first. A screen still moving then reports `settled=False`
+    # after the samples it could afford, rather than holding the gate for ones it cannot.
+    _install_bounded_clock(monkeypatch)
+    moving = [
+        [_placed("stable.row.1", "Row 1", frame=(0.0, float(y), 300.0, 40.0))]
+        for y in range(0, 100, 10)
+    ]
+    driver = _ScriptedDriver([[], [], *moving])  # ready on the tick at t=1.0 of a 1.5s deadline
+    result = await_ready(driver, 1.5, 0.5, 0.5, id_namespaces=["stable"])  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.settled is False
+    assert driver.calls == 5  # 3 readiness polls, then 2 settle samples — short of _SETTLE_POLLS
+
+
 def test_await_ready_selector_takes_precedence_over_namespaces(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
