@@ -187,7 +187,9 @@ def _act(sel: base.Selector, call: str) -> list[str]:
     return [f"act({by}).{call}"]
 
 
-def _emit_step(step: Step) -> list[str]:
+# One branch per scenario step kind: the count tracks the schema's size, not tangled logic, and a
+# split would leave no single place a new scenario step kind clearly belongs (BE-0386).
+def _emit_step(step: Step) -> list[str]:  # noqa: PLR0911, PLR0912
     if step.tap is not None:
         return _act(step.tap.as_selector(), "click()")
     if step.double_tap is not None:

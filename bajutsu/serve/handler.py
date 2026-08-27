@@ -87,7 +87,10 @@ class _StdlibCtx:
         return self._actor()
 
 
-def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
+# C901 and PLR0915 fold each nested function's count into the function enclosing it, so this score
+# measures the handler methods defined below, not branching here. Ruff bounds each of those on its
+# own, so the exemption loses no signal (BE-0386).
+def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C901
     class Handler(BaseHTTPRequestHandler):
         def end_headers(self) -> None:
             # The shared hardening headers on every response (BE-0051); defined once in `gate` so

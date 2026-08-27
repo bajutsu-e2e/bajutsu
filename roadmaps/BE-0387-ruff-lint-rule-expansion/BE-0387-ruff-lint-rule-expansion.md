@@ -39,7 +39,7 @@ because an unused fixture or mock parameter is the normal pytest pattern, the sa
 item already gives below for its `SLF` tests-ignore. `TRY`'s count is dominated by one rule, `TRY003`
 (438 of 468): it flags any `raise` whose message is longer than a few words, a Pylint-derived heuristic
 widely considered too aggressive in practice, since a specific error message is often the point of a
-`raise`, not a smell. The other three `TRY` rules are a small, precise set instead — `TRY300` (17,
+`raise`, not a mistake. The other three `TRY` rules are a small, precise set instead — `TRY300` (17,
 suggesting an `else` block over code that runs only on a `try`'s success path), `TRY004` (10,
 preferring `TypeError` over a bare `ValueError` for a wrong-type check), and `TRY400` (3, preferring
 `logging.exception` over `logging.error` inside an `except` block, which keeps the traceback in the
@@ -77,11 +77,11 @@ review can look at one rule's fixes at a time:
   `pathlib.Path` method, matching the style the rest of the codebase already favors for new code.
 - **`SLF`**: add, ignoring it in `tests/**` alongside the `ANN` / `T20` / `S` ignores already there
   (a test reaching into a fixture's or a fake's private state to assert on it is a normal pattern,
-  not a smell) — then fix the 38 findings in `bajutsu/` itself, either by exposing a narrow public
+  not a mistake) — then fix the 38 findings in `bajutsu/` itself, either by exposing a narrow public
   accessor where the access is legitimate or by moving the access inside the owning class where it
   is not.
 - **`ARG`**: add, ignoring it in `tests/**` alongside the `SLF` ignore above (an unused fixture or
-  mock parameter is the normal pytest pattern, not a smell) — then triage the 130 `bajutsu/`
+  mock parameter is the normal pytest pattern, not a mistake) — then triage the 130 `bajutsu/`
   findings by cause: a `Driver` Protocol method that legitimately ignores a parameter for one
   backend keeps the parameter and gets a targeted `# noqa: ARG002` with a comment naming which
   protocol it satisfies; a parameter nothing calls with a real value gets removed.

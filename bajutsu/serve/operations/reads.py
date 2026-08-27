@@ -865,7 +865,9 @@ def respond_human(state: ServeState, job_id: str, body: dict[str, Any]) -> tuple
     return {"resumed": resumed}, 200
 
 
-def resolve_scenario_pick(
+# Each return is a distinct HTTP status from a validation guard — the early-return shape RET505
+# itself asks for (BE-0386).
+def resolve_scenario_pick(  # noqa: PLR0911
     state: ServeState, body: dict[str, Any], *, actor: str | None = None
 ) -> tuple[Any, int]:
     """Resolve a point against a step's stored elements.json — no live driver."""

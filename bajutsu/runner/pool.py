@@ -86,7 +86,10 @@ def _alloc_zorder(lease_env: object) -> tuple[int, str] | None:
     return port, secrets.token_urlsafe(16)
 
 
-def device_pool(
+# C901 and PLR0915 fold each nested function's count into the function enclosing it, so this score
+# measures the pool closures defined below, not branching here. Ruff bounds each of those on its
+# own, so the exemption loses no signal (BE-0386).
+def device_pool(  # noqa: C901, PLR0915
     udids: list[str],
     backends: list[str],
     eff: Effective,
@@ -243,7 +246,10 @@ def device_pool(
                     exc_info=exc,
                 )
 
-    def lease(eff: Effective, scenario: Scenario) -> Lease:
+    # C901 and PLR0915 fold each nested function's count into the function enclosing it, so this
+    # score measures the lease-lifecycle closures defined below, not branching here. Ruff bounds
+    # each of those on its own, so the exemption loses no signal (BE-0386).
+    def lease(eff: Effective, scenario: Scenario) -> Lease:  # noqa: PLR0915
         udid = free.get()
         # Resolve the actuator for *this* scenario — the cheapest one its own steps can run on
         # (BE-0240). The single-actuator-per-device rule (DESIGN §3.3/§5) is unchanged; its unit

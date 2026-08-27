@@ -17,8 +17,8 @@
 
 Many parallel sessions and contributors work this repository at once (see
 [ai-development.md](../../docs/ai-development.md)), and pull requests conflict far more often than the
-work is actually semantically overlapping. This item proposes treating *merge conflicts as a
-design smell* and reshaping the file flow so that independent changes touch disjoint files: turn
+work is actually semantically overlapping. This item proposes treating *a merge conflict as a
+design defect* and reshaping the file flow so that independent changes touch disjoint files: turn
 hand-edited shared ledgers into generated artifacts, split monolith modules and test files so new
 work adds files rather than editing shared ones, and add the minimal git-side defenses
 (`rerere`, a lockfile merge driver) that the repo currently lacks.
