@@ -175,3 +175,104 @@ def test_finished_run_is_stamped_with_the_active_project_id_in_the_db(
     assert rec is not None and rec.project_id == p.id
     # The DB partition is the column itself: list_runs(project_id=...) finds the run.
     assert [r.id for r in repo.list_runs(org_id="default", project_id=p.id)] == ["20260711-2"]
+
+
+def test_launch_registration_covers_every_live_org(
+    tmp_path: Path, serve_engine: Callable[..., Engine]
+) -> None:
+    """BE-0393 unit 4: the launch configuration is what a member of *any* org reaches when nothing
+    else is bound, so a multi-tenant deployment registers it for each org rather than for `default`
+    alone — which left every other org staring at an empty hub."""
+    engine = serve_engine()
+    Base.metadata.create_all(engine)
+    repo = SqlRepository(engine)
+    repo.ensure_org("default", slug="default", name="Default")
+    repo.ensure_org("acme", slug="acme", name="Acme")
+    reg = SqlProjectRegistry(repo)
+    state = srv.ServeState(
+        runs_dir=tmp_path / "runs",
+        config=Path("/apps/checkout.yaml"),
+        project_registry=reg,
+        repository=repo,
+    )
+
+    register_launch_project(state)
+
+    for org in ("default", "acme"):
+        active = reg.resolve_active(org_id=org)
+        assert active is not None and active.name == "checkout"
+
+
+def test_launch_registration_without_a_database_stays_the_single_default_org(
+    tmp_path: Path,
+) -> None:
+    reg = LocalProjectRegistry(tmp_path / "projects.json")
+    state = srv.ServeState(
+        runs_dir=tmp_path / "runs", config=Path("/apps/checkout.yaml"), project_registry=reg
+    )
+
+    register_launch_project(state)
+
+    assert [p.name for p in reg.list_projects(org_id="default")] == ["checkout"]
+
+
+def test_launch_registration_never_overwrites_what_an_org_already_remembers(
+    tmp_path: Path, serve_engine: Callable[..., Engine]
+) -> None:
+    """BE-0393: the launch configuration is the fallback, below the configuration an org last bound.
+    Marking it active on every boot would undo the persistence unit 4 exists for — a restart would
+    hand every org back the launch config it had deliberately switched away from."""
+    engine = serve_engine()
+    Base.metadata.create_all(engine)
+    repo = SqlRepository(engine)
+    repo.ensure_org("default", slug="default", name="Default")
+    reg = SqlProjectRegistry(repo)
+    reg.add(org_id="default", name="shop", source={"kind": "git", "locator": {"repo": "shop"}})
+    reg.set_active(org_id="default", name="shop")
+    state = srv.ServeState(
+        runs_dir=tmp_path / "runs",
+        config=Path("/apps/checkout.yaml"),
+        project_registry=reg,
+        repository=repo,
+    )
+
+    register_launch_project(state)
+
+    active = reg.resolve_active(org_id="default")
+    assert active is not None and active.name == "shop"
+    # Registered all the same, so the org can switch to it from the hub.
+    assert sorted(p.name for p in reg.list_projects(org_id="default")) == ["checkout", "shop"]
+
+
+def test_launch_registration_leaves_a_locally_remembered_project_alone(tmp_path: Path) -> None:
+    # The JSON-backed registry persists the active project too, so the same boot clobber applied
+    # there — a `serve --config X` restart used to undo a local operator's `project use`.
+    reg = LocalProjectRegistry(tmp_path / "projects.json")
+    reg.add(org_id="default", name="shop", source=None)
+    reg.set_active(org_id="default", name="shop")
+    state = srv.ServeState(
+        runs_dir=tmp_path / "runs", config=Path("/apps/checkout.yaml"), project_registry=reg
+    )
+
+    register_launch_project(state)
+
+    active = reg.resolve_active(org_id="default")
+    assert active is not None and active.name == "shop"
+
+
+def test_launch_registration_never_rebinds_an_entry_it_finds(tmp_path: Path) -> None:
+    """The launch config's derived name can collide with one a member's bind already registered — two
+    different `bajutsu.config.yaml` files both derive `bajutsu.config` — and `add` rebinds an
+    existing name's source. Boot must leave that entry's source alone, or the org's memory is
+    defeated through the record instead of the active pointer (BE-0393)."""
+    reg = LocalProjectRegistry(tmp_path / "projects.json")
+    remembered: dict[str, object] = {"kind": "file", "locator": {"path": "/members/own.yaml"}}
+    reg.add(org_id="default", name="checkout", source=remembered)
+    state = srv.ServeState(
+        runs_dir=tmp_path / "runs", config=Path("/apps/checkout.yaml"), project_registry=reg
+    )
+
+    register_launch_project(state)
+
+    entry = reg.get(org_id="default", name="checkout")
+    assert entry is not None and entry.source == remembered

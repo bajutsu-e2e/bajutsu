@@ -316,7 +316,7 @@ ROUTES: tuple[Route, ...] = (
         lambda state, ctx: (
             ops.bind_git_config(state, str(ctx.body().get("git") or ""), actor=ctx.actor())
             if "git" in ctx.body()
-            else ops.bind_config(state, str(ctx.body().get("path", "") or ""))
+            else ops.bind_config(state, str(ctx.body().get("path", "") or ""), actor=ctx.actor())
         ),
     ),
     Route(

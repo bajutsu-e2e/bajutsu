@@ -89,7 +89,8 @@ class OrgRecord:
     (BE-0375); a row that predates the move, or one `ensure_org` created at sign-in, carries empty
     lists throughout.
     `membership_seeded_at` is the per-row cutover marker (set = the database owns this org's
-    membership), `deleted_at` the soft-delete marker.
+    membership), `deleted_at` the soft-delete marker, `active_project_id` the configuration the org
+    last bound (BE-0393) — unset, or naming a project since deregistered, both read as "none".
     """
 
     id: str
@@ -102,6 +103,7 @@ class OrgRecord:
     membership_seeded_at: datetime | None = None
     deleted_at: datetime | None = None
     created_at: datetime | None = None
+    active_project_id: str | None = None
 
 
 @dataclass
@@ -193,7 +195,25 @@ class Repository(Protocol):
         """An org's registered projects, ordered by name (BE-0225)."""
 
     def delete_project(self, *, org_id: str, name: str) -> None:
-        """Deregister the org's project named *name*; its run history is retained (BE-0225)."""
+        """Deregister the org's project named *name*; its run history is retained (BE-0225).
+
+        Clears the org's active project when it was the one deregistered (BE-0393), so no org is
+        left pointing at a binding it can no longer resolve.
+        """
+
+    def get_active_project(self, *, org_id: str) -> ProjectRecord | None:
+        """The org's active project — the configuration it last bound (BE-0393), or None.
+
+        None also when the row names a project that no longer exists, which is how a registry that
+        never learned of the deregistration reads it: "no active project", not an error.
+        """
+
+    def set_active_project(self, *, org_id: str, project_id: str | None) -> None:
+        """Make *project_id* the org's active project, or clear it with ``None`` (BE-0393).
+
+        Durable, unlike the process-local choice the registry held before, so a restart restores the
+        configuration the org was working against.
+        """
 
     def ensure_org(self, org_id: str, *, slug: str, name: str) -> None:
         """Create the org if it does not exist yet (idempotent) — 7c-1's single default org.
@@ -423,6 +443,7 @@ def _to_org(row: Org) -> OrgRecord:
         membership_seeded_at=row.membership_seeded_at,
         deleted_at=row.deleted_at,
         created_at=row.created_at,
+        active_project_id=row.active_project_id,
     )
 
 
@@ -621,16 +642,53 @@ class SqlRepository:
             return [_to_project(row) for row in session.scalars(stmt)]
 
     def delete_project(self, *, org_id: str, name: str) -> None:
-        from sqlalchemy import delete
+        from sqlalchemy import select
         from sqlalchemy.orm import Session
 
-        from bajutsu.serve.server.models import Project
+        from bajutsu.serve.server.models import Org, Project
 
         # Only the binding is removed; the run history is retained (BE-0225). On Postgres, the FK's
         # ON DELETE SET NULL (migration 0010) clears `runs.project_id` on the retained rows; on the
         # SQLite gate (FKs unenforced by default) it stays pointing at the now-deregistered id.
         with Session(self._engine) as session:
-            session.execute(delete(Project).where(Project.org_id == org_id, Project.name == name))
+            doomed = session.scalars(
+                select(Project).where(Project.org_id == org_id, Project.name == name)
+            ).first()
+            if doomed is None:
+                return
+            # `orgs.active_project_id` carries no FK (see models.Org), so the clear is explicit here
+            # rather than delegated to an ON DELETE — one place, so every caller of the seam gets it.
+            org = session.get(Org, org_id)
+            if org is not None and org.active_project_id == doomed.id:
+                org.active_project_id = None
+            session.delete(doomed)
+            session.commit()
+
+    def get_active_project(self, *, org_id: str) -> ProjectRecord | None:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Org, Project
+
+        with Session(self._engine) as session:
+            org = session.get(Org, org_id)
+            if org is None or org.active_project_id is None:
+                return None
+            row = session.get(Project, org.active_project_id)
+            # Scoped to the org even though the id is globally unique: the column is written by this
+            # deployment, but reading it back unscoped would hand one org another's project if a
+            # stale id were ever crossed over.
+            return _to_project(row) if row is not None and row.org_id == org_id else None
+
+    def set_active_project(self, *, org_id: str, project_id: str | None) -> None:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Org
+
+        with Session(self._engine) as session:
+            org = session.get(Org, org_id)
+            if org is None:
+                return
+            org.active_project_id = project_id
             session.commit()
 
     def ensure_org(self, org_id: str, *, slug: str, name: str) -> None:

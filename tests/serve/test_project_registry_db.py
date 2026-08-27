@@ -166,3 +166,95 @@ def test_deregister_retains_the_runs_unlabeled(serve_engine: Callable[..., Engin
     # so a per-project listing no longer surfaces it.
     assert repo.get_run("run-1") is not None
     assert reg.run_ids(org_id="default", project_id=p.id) == []
+
+
+def test_the_active_project_survives_a_new_registry_over_the_same_database(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    """BE-0393 unit 4: the active project lives on the org's row, not in a process-local dictionary,
+    so restarting the process that serves an org restores the configuration it was working against.
+    A second registry over the same repository is exactly what a restart leaves behind."""
+    repo, reg = _repo_and_registry(serve_engine)
+    reg.add(org_id="default", name="checkout", source={"kind": "file", "locator": {"path": "a"}})
+    reg.set_active(org_id="default", name="checkout")
+
+    restarted = SqlProjectRegistry(repo)
+
+    active = restarted.resolve_active(org_id="default")
+    assert active is not None and active.name == "checkout"
+
+
+def test_deregistering_the_active_project_clears_the_orgs_memory(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    """`orgs.active_project_id` carries no foreign key, so `delete_project` clears it itself — an org
+    must never be left pointing at a binding that no longer exists."""
+    repo, reg = _repo_and_registry(serve_engine)
+    reg.add(org_id="default", name="checkout", source=None)
+    reg.set_active(org_id="default", name="checkout")
+
+    reg.remove(org_id="default", name="checkout")
+
+    assert repo.get_org("default") is not None
+    assert SqlProjectRegistry(repo).resolve_active(org_id="default") is None
+
+
+def test_deregistering_another_project_leaves_the_active_one_alone(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo, reg = _repo_and_registry(serve_engine)
+    reg.add(org_id="default", name="checkout", source=None)
+    reg.add(org_id="default", name="staging", source=None)
+    reg.set_active(org_id="default", name="checkout")
+
+    reg.remove(org_id="default", name="staging")
+
+    active = SqlProjectRegistry(repo).resolve_active(org_id="default")
+    assert active is not None and active.name == "checkout"
+
+
+def test_one_orgs_active_project_is_not_another_orgs(serve_engine: Callable[..., Engine]) -> None:
+    repo, reg = _repo_and_registry(serve_engine)
+    repo.ensure_org("acme", slug="acme", name="Acme")
+    reg.add(org_id="default", name="checkout", source=None)
+    reg.set_active(org_id="default", name="checkout")
+
+    assert reg.resolve_active(org_id="acme") is None
+
+
+def test_activating_a_project_that_does_not_exist_is_a_no_op(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    reg = _registry(serve_engine)
+    reg.add(org_id="default", name="checkout", source=None)
+    reg.set_active(org_id="default", name="checkout")
+
+    reg.set_active(org_id="default", name="nope")
+
+    active = reg.resolve_active(org_id="default")
+    assert active is not None and active.name == "checkout"
+
+
+def test_deregistering_a_project_that_does_not_exist_is_a_no_op(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    reg = _registry(serve_engine)
+    reg.add(org_id="default", name="checkout", source=None)
+    reg.set_active(org_id="default", name="checkout")
+
+    reg.remove(org_id="default", name="nope")
+
+    assert [p.name for p in reg.list_projects(org_id="default")] == ["checkout"]
+    assert reg.resolve_active(org_id="default") is not None
+
+
+def test_setting_an_unknown_orgs_active_project_is_a_no_op(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    """No org row to write to, so nothing is written — a caller acting as an org this deployment
+    never created gets no phantom row, matching `ensure_org` being the only creator."""
+    repo, _ = _repo_and_registry(serve_engine)
+
+    repo.set_active_project(org_id="ghost", project_id="whatever")
+
+    assert repo.get_active_project(org_id="ghost") is None

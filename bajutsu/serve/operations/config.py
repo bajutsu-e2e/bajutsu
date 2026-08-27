@@ -31,7 +31,12 @@ from bajutsu.ai import credential_gap, resolved_provider, selectable_providers
 from bajutsu.ai.registry import DISABLED_PROVIDER
 from bajutsu.backends import IMPLEMENTED
 from bajutsu.config import load_config, resolve, xcuitest_pins_runner
-from bajutsu.config_source import materialize, parse_config_spec, source_provenance
+from bajutsu.config_source import (
+    materialize,
+    parse_config_spec,
+    source_from_config,
+    source_provenance,
+)
 from bajutsu.platform_lifecycle.environments import (
     bundled_products_dir,
     bundled_runner_build_info,
@@ -700,11 +705,18 @@ def seed_orgs_from_bound_config(state: ServeState) -> None:
         )
 
 
-def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
+def bind_config(
+    state: ServeState, raw: str, *, actor: str | None = None, remember: bool = True
+) -> tuple[Any, int]:
     """Bind a config.yml chosen in the UI's file browser.  The path is confined to ``--root``; we
     validate it loads and its path fields stay within ``--root`` too, then re-point ``state.config``
     at it **and** ``state.cwd`` at its own directory so the config's relative paths resolve from
-    beside it, not serve's launch dir (BE-0242) — mirroring the Git/upload binds."""
+    beside it, not serve's launch dir (BE-0242) — mirroring the Git/upload binds.
+
+    A successful bind is recorded as the acting org's remembered configuration (BE-0393), so the org
+    can be restored to it later. *remember* turns that off for the project switcher, which is already
+    activating a project by its own name and would otherwise register a second one under this
+    function's derived name."""
     if state.hosted:
         # Defense in depth (BE-0108): the file browser is removed from the hosted UI, but a
         # hand-crafted path-bind must be refused too, or hiding it would be merely cosmetic.
@@ -743,11 +755,14 @@ def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
     # resolving outside the directory its relative paths are defined against, regardless of who bound
     # it — orthogonal to, not a relaxation of, this build-trust call.
     state.git_config_from_api = False
+    if remember:
+        name, source = launch_project_identity(target, None)
+        remember_binding(state, state.org_of(actor), name, source)
     return {"ok": True, "config": str(target), "targets": list_targets(target)}, 200
 
 
 def bind_git_config(
-    state: ServeState, spec_str: str, *, actor: str | None = None
+    state: ServeState, spec_str: str, *, actor: str | None = None, remember: bool = True
 ) -> tuple[Any, int]:
     """Bind a config from a Git source chosen in the UI (the "from Git" picker, BE-0063).
 
@@ -758,7 +773,12 @@ def bind_git_config(
     directory. This does not widen the file browser, which stays confined to `--root`; the checkout is
     a Bajutsu-managed cache (`materialize` refuses tar path-traversal on extraction), and each target's
     path fields are **confined to the checkout root** at bind (`Effective.rebased`) so a fetched config
-    can't point serve's scenario/build logic at host paths outside the tree (BE-0063)."""
+    can't point serve's scenario/build logic at host paths outside the tree (BE-0063).
+
+    A successful bind is recorded as the acting org's remembered configuration (BE-0393), under the
+    ref the member asked for rather than the commit it resolved to — restoring the org later should
+    follow the branch they chose, the way `POST /api/projects` already stores a spec. *remember* is
+    off for the project switcher, which is activating a project under its own name."""
     if not spec_str:
         return {"error": "a Git config spec is required"}, 400
     spec = parse_config_spec(spec_str)
@@ -794,7 +814,12 @@ def bind_git_config(
     # A Git-sourced config is bound *as* the acting org, and its content is not this deployment's
     # (the `build:` trust note above says as much), so that org owns every target it declares and
     # its `orgs:` block partitions nothing (BE-0375).
-    state.config_org = state.org_of(actor)
+    org = state.org_of(actor)
+    state.config_org = org
+    if remember:
+        remember_binding(
+            state, org, git_project_name(spec.repo, spec.path), source_from_config(spec_str)
+        )
     return {
         "ok": True,
         "config": str(mat.config_path),
@@ -1068,6 +1093,18 @@ def restore_persisted_provider_settings(state: ServeState) -> None:
     _org_settings(state, DEFAULT_ORG)
 
 
+def git_project_name(repo: str, path: str | None) -> str:
+    """The project name a Git-sourced configuration registers under: its repository, and the in-repo
+    config path when one is known (BE-0393).
+
+    Two configs in the same repository are two projects, so the path is part of the name wherever the
+    caller has it — the runtime Git bind, which holds the parsed spec. The launch registration does
+    not: its provenance stamp carries no config path, so it keeps naming itself for the repository
+    alone. One rule in one place, so the two cannot drift into different spellings of the same repo.
+    """
+    return f"{repo}/{path}" if path else repo
+
+
 def launch_project_identity(
     config: Path, provenance: dict[str, str] | None
 ) -> tuple[str, dict[str, Any]]:
@@ -1080,12 +1117,40 @@ def launch_project_identity(
 
     A serve process launches exactly one config, so this default name never collides within a
     deployment. Two deployments launching different config files from the *same* repo would auto-name
-    both for that repo; disambiguating by the in-repo config path is unit 3's territory, where
-    explicit `POST /api/projects` naming lands (the provenance stamp carries no config path today).
+    both for that repo; the runtime Git bind disambiguates by the in-repo config path instead
+    (`git_project_name`), which the provenance stamp does not carry.
     """
     if provenance is not None and "repo" in provenance:
-        return provenance["repo"], {"kind": "git", "locator": provenance}
+        return git_project_name(provenance["repo"], None), {"kind": "git", "locator": provenance}
     return config.stem, {"kind": "file", "locator": {"path": str(config)}}
+
+
+def remember_binding(state: ServeState, org: str, name: str, source: dict[str, Any]) -> None:
+    """Record *source* as *org*'s project *name* and make it the org's remembered configuration
+    (BE-0393).
+
+    The durable memory behind every bind: an org's members share which configuration it last bound,
+    and it must outlive the process that bound it. `add` is idempotent by name and rebinds an
+    existing name's source, so re-binding the same project repeatedly neither duplicates nor
+    collides.
+
+    A convenience over the bind, never a reason to fail one: a registry I/O error (a read-only runs
+    dir) or a DB error is logged and skipped, the same "logged, not crashing" contract the boot seams
+    hold — the configuration is bound either way, and the member is told nothing they can act on.
+    """
+    registry = state.project_registry
+    if registry is None:
+        return
+    try:
+        registry.add(org_id=org, name=name, source=source)
+        registry.set_active(org_id=org, name=name)
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "failed to record the bound configuration as org %s's project %r",
+            org,
+            name,
+            exc_info=True,
+        )
 
 
 def register_launch_project(state: ServeState) -> None:
@@ -1095,21 +1160,60 @@ def register_launch_project(state: ServeState) -> None:
     owns runs started before any explicit project is created, and the switcher/cross-project
     dashboard have a first entry. Idempotent — safe to run on every boot. A no-op when no registry is
     wired or no config is bound (nothing to register until one is opened in the UI).
+
+    Registered for every live org, not `default` alone (BE-0393): the launch configuration is the one
+    a member of any org reaches when nothing else is bound, so on a multi-tenant deployment each org
+    starts with an entry rather than an empty hub. Without a database there is exactly one org and
+    this is the single `default` registration it always was.
+
+    Marked active only for an org that remembers nothing yet, and never rebinding an entry that
+    already exists — the launch configuration is the *fallback*, below what the org last bound
+    (BE-0393). Either write would make every restart overwrite that memory, which is the very thing
+    persisting it was for: `add` rebinds an existing name's source, and the derived name does collide
+    (a deployment launched from `bajutsu.config.yaml` and a member's file-browser bind of another one
+    both derive `bajutsu.config`). The cost of not rebinding is a launch config that moved on disk
+    leaving a stale entry until something binds it explicitly.
+
+    Covers the orgs that exist at boot. One created afterwards on the Orgs page gains its entry at
+    the next boot, or at its first bind (unit 3) — whichever comes first.
     """
     registry = state.project_registry
     if registry is None or state.config is None:
         return
     name, source = launch_project_identity(state.config, state.config_provenance)
-    # A convenience, never a reason to fail boot: a registry I/O error (a read-only runs dir) or a
-    # DB error must be logged and skipped, not propagated out of serve() — the same "logged, not
-    # crashing" contract the sibling boot seam restore_persisted_provider_settings holds.
+    for org in _launch_orgs(state):
+        # A convenience, never a reason to fail boot: a registry I/O error (a read-only runs dir) or
+        # a DB error is logged and skipped, not propagated out of serve() — the same "logged, not
+        # crashing" contract the sibling boot seam restore_persisted_provider_settings holds.
+        try:
+            if registry.get(org_id=org, name=name) is None:
+                registry.add(org_id=org, name=name, source=source)
+            if registry.resolve_active(org_id=org) is None:
+                registry.set_active(org_id=org, name=name)
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "failed to auto-register the launch config for org %s", org, exc_info=True
+            )
+
+
+def _launch_orgs(state: ServeState) -> list[str]:
+    """The orgs the launch configuration is registered for: every live one, else `default`.
+
+    A repository read failure falls back to `default` rather than propagating — boot must not fail on
+    it, and the fallback is the roster a database-less deployment has anyway.
+    """
+    if state.repository is None:
+        return [DEFAULT_ORG]
     try:
-        registry.add(org_id=DEFAULT_ORG, name=name, source=source)
-        registry.set_active(org_id=DEFAULT_ORG, name=name)
+        orgs = [org.id for org in state.repository.list_orgs()]
     except Exception:
         logging.getLogger(__name__).warning(
-            "failed to auto-register the launch config as the active project", exc_info=True
+            "could not list orgs to register the launch config for; using %s only",
+            DEFAULT_ORG,
+            exc_info=True,
         )
+        return [DEFAULT_ORG]
+    return orgs or [DEFAULT_ORG]
 
 
 def _valid_slot(name: str, settings: ProviderSettings) -> bool:

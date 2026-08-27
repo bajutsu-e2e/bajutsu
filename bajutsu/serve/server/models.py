@@ -55,6 +55,14 @@ class Org(Base):
     # resolution and the admin list, but its row stays so the users / runs / secrets /
     # provider_settings / audit_log foreign keys that still point at it stay intact.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    # The org's active project — the configuration its members last bound, and the one a session
+    # with none of its own inherits (BE-0393). A column on the org row rather than a flag on
+    # `projects` keeps "one active project per org" true by construction, the same reason
+    # `provider_settings` is keyed by `org_id` alone. No foreign key: `orgs` and `projects` already
+    # point at each other through `projects.org_id`, so a second edge would need `use_alter` to make
+    # the DDL sortable and would buy nothing — `delete_project` clears this itself, and a
+    # `resolve_active` that no longer finds the id reads as "no active project".
+    active_project_id: Mapped[str | None] = mapped_column(default=None)
 
 
 class User(Base):

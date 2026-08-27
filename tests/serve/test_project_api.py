@@ -682,3 +682,138 @@ def test_a_registry_error_at_enqueue_leaves_the_run_unlabeled(tmp_path: Path) ->
     assert status == 200
     # resolve_active raised, so the job is enqueued but unlabeled (project_id=None).
     assert state.jobs[payload["jobId"]].project_id is None
+
+
+def test_activate_an_upload_project_restores_from_the_cache_with_no_object_store(
+    tmp_path: Path,
+) -> None:
+    """BE-0393 unit 5: the extracted bundle is keyed by content hash and survives a restart, so a
+    deployment with no object store — the local or single-node shape most likely to have none —
+    restores a bundle it still holds instead of demanding a re-upload."""
+    blob = _bundle_zip()
+    sha256 = hashlib.sha256(blob).hexdigest()
+    uploads_dir = tmp_path / "uploads"
+    (uploads_dir / sha256).mkdir(parents=True)
+    (uploads_dir / sha256 / "bajutsu.config.yaml").write_text("targets: {}\n", encoding="utf-8")
+
+    state = _hub_state(tmp_path, uploads_dir=uploads_dir)
+    assert state.object_store is None
+    ops.register_project(
+        state, {"name": "bundle", "source": {"kind": "upload", "sha256": sha256, "size": len(blob)}}
+    )
+
+    payload, status = ops.activate_project(state, "bundle")
+
+    assert status == 200 and payload["active"] is True
+    assert state.config is not None and state.config.name == "bajutsu.config.yaml"
+
+
+def test_activate_an_upload_project_is_409_with_no_store_and_no_cached_bundle(
+    tmp_path: Path,
+) -> None:
+    # Nothing on disk and nothing to fetch from: the original 409 stands, so "no store configured"
+    # stops meaning "never restorable" without starting to mean "always restorable".
+    state = _hub_state(tmp_path, uploads_dir=tmp_path / "uploads")
+    ops.register_project(
+        state, {"name": "bundle", "source": {"kind": "upload", "sha256": "a" * 64, "size": 1}}
+    )
+    _, status = ops.activate_project(state, "bundle")
+    assert status == 409
+
+
+def test_a_malformed_sha_never_becomes_a_path_even_without_an_object_store(
+    tmp_path: Path,
+) -> None:
+    """BE-0243's validation guards the cache lookup this item moved in front of the object store, so
+    it has to run *before* the hash becomes a path component — a `../`-laden value must be refused
+    outright, not walked out of the cache root."""
+    state = _hub_state(tmp_path, uploads_dir=tmp_path / "uploads")
+    for bad in ("../" * 8 + "etc", "A" * 64, "abc"):
+        assert activate_uploaded_project(state, {"sha256": bad}, org="default") is None, (
+            f"{bad!r} must be refused before it is used as a path"
+        )
+    # Nothing was created under the cache root by the refused lookups.
+    assert not (tmp_path / "uploads").exists()
+
+
+def test_activate_a_composed_project_restores_from_the_composition_cache_with_no_store(
+    tmp_path: Path,
+) -> None:
+    """The composed-triple sibling of the bundle restore above: a replica that already composed this
+    exact triple rebinds it with no object store configured at all."""
+    config_bytes = (
+        b"defaults: { backend: [ios] }\ntargets:\n  demo: { bundleId: com.example.demo }\n"
+    )
+    config_sha = hashlib.sha256(config_bytes).hexdigest()
+    state = _hub_state(tmp_path, uploads_dir=tmp_path / "uploads")
+    src = tmp_path / "config.blob"
+    src.write_bytes(config_bytes)
+    ops.bind_artifact(state, "config", src, sha256=config_sha)
+    # Compose once so the tree is cached, then register the triple as a project and switch to it.
+    _, status = ops.bind_composition(state, {"config": config_sha, "filename": "matrix.zip"})
+    assert status == 200
+    ops.register_project(
+        state,
+        {
+            "name": "matrix",
+            "source": {"kind": "upload", "artifacts": {"config": config_sha}, "filename": "m.zip"},
+        },
+    )
+
+    _, status = ops.activate_project(state, "matrix")
+
+    assert status == 200
+
+
+def test_activate_a_composed_project_is_409_with_no_store_and_no_cached_composition(
+    tmp_path: Path,
+) -> None:
+    state = _hub_state(tmp_path, uploads_dir=tmp_path / "uploads")
+    ops.register_project(
+        state, {"name": "matrix", "source": {"kind": "upload", "artifacts": {"config": "a" * 64}}}
+    )
+    _, status = ops.activate_project(state, "matrix")
+    assert status == 409
+
+
+def test_activate_a_composed_project_restores_from_the_cached_legs_with_no_store(
+    tmp_path: Path,
+) -> None:
+    """A composition cached under a *salted* id (a named single-YAML `scenarios` artifact) cannot be
+    found by the reactivation path, which carries no such name — but its legs are in the local
+    artifact cache, and composing from them needs no object store either (BE-0393)."""
+    config_bytes = (
+        b"defaults: { backend: [ios] }\n"
+        b"targets:\n  demo: { bundleId: com.example.demo, scenarios: ./scenarios }\n"
+    )
+    scenario_bytes = b"- name: a\n  steps: []\n"
+    config_sha = hashlib.sha256(config_bytes).hexdigest()
+    scenarios_sha = hashlib.sha256(scenario_bytes).hexdigest()
+    state = _hub_state(tmp_path, uploads_dir=tmp_path / "uploads")
+    for kind, blob, sha in (
+        ("config", config_bytes, config_sha),
+        ("scenarios", scenario_bytes, scenarios_sha),
+    ):
+        src = tmp_path / f"{kind}.blob"
+        src.write_bytes(blob)
+        ops.bind_artifact(state, kind, src, sha256=sha)  # type: ignore[arg-type]
+    # Composed once *with* a name, so the tree is cached under the salted id only.
+    _, status = ops.bind_composition(
+        state,
+        {"config": config_sha, "scenarios": scenarios_sha, "scenariosName": "smoke.yaml"},
+    )
+    assert status == 200
+    ops.register_project(
+        state,
+        {
+            "name": "matrix",
+            "source": {
+                "kind": "upload",
+                "artifacts": {"config": config_sha, "scenarios": scenarios_sha},
+            },
+        },
+    )
+
+    _, status = ops.activate_project(state, "matrix")
+
+    assert status == 200

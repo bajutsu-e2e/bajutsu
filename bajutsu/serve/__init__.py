@@ -687,16 +687,17 @@ def serve(
     # reflects it rather than resetting to the launch environment (BE-0184). After `_configure_oplog`
     # so a malformed-file warning reaches the live log sink; a no-op when nothing is persisted (BE-0101).
     restore_persisted_provider_settings(state)
-    # Auto-register the launch config as the active project (BE-0225), so a bare `serve --config X`
-    # gains the project hub and its runs are attributed to X from the first one. After the provider
-    # restore, sharing its boot placement; a no-op when no config is bound or no registry is wired.
-    register_launch_project(state)
     # Seed the launch config's `orgs:` block into the database, once per org row (BE-0375), so a
     # deployment upgrading from config-only org membership keeps admitting exactly who it did
     # before the database became the source. Shares the boot placement above for the same reason —
     # its "this entry is no longer read" warning must reach the live log sink — and re-runs at every
     # config rebind; a no-op without a database or a loadable config.
     seed_orgs_from_bound_config(state)
+    # Auto-register the launch config as the active project (BE-0225), so a bare `serve --config X`
+    # gains the project hub and its runs are attributed to X from the first one. After the org
+    # seeding above, not before it: the registration now covers every live org rather than `default`
+    # alone (BE-0393), and a converting deployment's roster does not exist until that seed runs.
+    register_launch_project(state)
     # Where the cloud-batch (Device Farm) package roots — see ServeState.devicefarm_package_root.
     state.devicefarm_package_root = bajutsu_source_root()
     # Fill the batch-provider registry from the environment (BE-0336): with DEVICEFARM_PROJECT_ARN set,

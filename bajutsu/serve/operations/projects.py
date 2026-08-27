@@ -161,8 +161,8 @@ def activate_project(state: ServeState, name: str, *, actor: str | None = None) 
     then flips the active project, so every tab (run / record / crawl / the dashboard) operates
     against the switched-to config with no `serve` restart — the live rebind unit 3's `run_project`
     deferred to here. A `None` source has nothing to bind (400); an `upload` bundle whose bytes
-    aren't durably resolvable (no object store configured, or its key is absent) still gets the
-    original 409. The active project flips only after a successful bind, so a failed rebind never
+    aren't resolvable at all — absent from this replica's extraction cache *and* from the object
+    store, or with no store configured to fetch them from (BE-0393) — still gets the original 409. The active project flips only after a successful bind, so a failed rebind never
     leaves the hub pointing at a config it could not load.
     """
     registry = state.project_registry
@@ -193,8 +193,13 @@ def activate_project(state: ServeState, name: str, *, actor: str | None = None) 
             spec = config_from_source(source)
         except ValueError as e:
             return {"error": str(e)}, 400
+        # `remember=False`: the switch records the org's memory itself through `set_active` below,
+        # under the project's own name — letting the binder register a second project under its
+        # derived name would duplicate the entry on every switch (BE-0393).
         result, status = (
-            bind_git_config(state, spec, actor=actor) if kind == "git" else bind_config(state, spec)
+            bind_git_config(state, spec, actor=actor, remember=False)
+            if kind == "git"
+            else bind_config(state, spec, actor=actor, remember=False)
         )
     if status != 200:
         # The bind failed (a moved file, an unreachable repo, an unresolvable upload). Leave the

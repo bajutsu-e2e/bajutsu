@@ -6,7 +6,8 @@ Two backends sit behind one `ProjectRegistry` accessor, wired in `_build_server_
 `Repository` is present:
 
 - `SqlProjectRegistry` delegates to the DB `Repository` (BE-0225 unit 1) and partitions runs by the
-  `runs.project_id` column; the active project is a per-process choice held in memory.
+  `runs.project_id` column; the active project lives on the org's row (`orgs.active_project_id`,
+  BE-0393), so it survives a restart and is shared across the processes serving that org.
 - `LocalProjectRegistry` is the no-database default: a single JSON file beside serve's run directory,
   holding the project list, the active project, and a project→run-ids index — the local equivalent
   of the `project_id` column so a per-project run listing stays a lookup, not a scan.
@@ -249,14 +250,15 @@ def _from_json(row: dict[str, Any]) -> ProjectRecord:
 class SqlProjectRegistry:
     """A `ProjectRegistry` backed by the DB `Repository` (BE-0225 unit 1).
 
-    The project list and run partition live in the `projects` / `runs` tables; the active project is
-    a per-serve-process choice held in memory (there is no active-project column — "active" is a
-    session notion, not durable state), initialized by auto-registering the launch config.
+    The project list and run partition live in the `projects` / `runs` tables; the active project
+    lives on the org's own row (BE-0393), so which configuration an org last bound survives a restart
+    and is shared by every process serving that org — the durable memory a session with no binding of
+    its own inherits. The file-backed sibling above already persisted it; this backend held it in a
+    process-local dictionary, which made the deployment shape that has orgs the one that forgot.
     """
 
     def __init__(self, repository: Repository) -> None:
         self._repo = repository
-        self._active: dict[str, str] = {}
 
     def list_projects(self, *, org_id: str) -> list[ProjectRecord]:
         return self._repo.list_projects(org_id=org_id)
@@ -277,18 +279,18 @@ class SqlProjectRegistry:
         return added
 
     def remove(self, *, org_id: str, name: str) -> None:
+        # `delete_project` clears the org's active project when it was this one, so the two stay
+        # consistent for every caller of the seam, not just this one.
         self._repo.delete_project(org_id=org_id, name=name)
-        if self._active.get(org_id) == name:
-            del self._active[org_id]
 
     def resolve_active(self, *, org_id: str) -> ProjectRecord | None:
-        name = self._active.get(org_id)
-        return self._repo.get_project(org_id=org_id, name=name) if name is not None else None
+        return self._repo.get_active_project(org_id=org_id)
 
     def set_active(self, *, org_id: str, name: str) -> None:
-        if self._repo.get_project(org_id=org_id, name=name) is None:
+        project = self._repo.get_project(org_id=org_id, name=name)
+        if project is None:
             return
-        self._active[org_id] = name
+        self._repo.set_active_project(org_id=org_id, project_id=project.id)
 
     def tag_run(self, *, org_id: str, project_id: str, run_id: str) -> None:  # noqa: ARG002  # ProjectRegistry shape
         # No-op: the DB path stamps runs.project_id when the run row is recorded (see jobs._persist_run),
