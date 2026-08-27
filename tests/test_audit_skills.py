@@ -62,6 +62,26 @@ def _stub_apm(monkeypatch: pytest.MonkeyPatch, bin_dir: Path, record: Path, exit
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
 
 
+@pytest.fixture(autouse=True)
+def _detached_from_the_caller_repository(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Let the throwaway checkouts below be their own repositories, whatever git the run inherited.
+
+    `git` exports its repository location to hooks, so the whole gate — `make check` under
+    `.githooks/pre-push` — runs with `GIT_DIR` (and friends) already set. In a plain clone that is
+    the relative `.git`, which does not resolve from a `tmp_path` and so falls back to discovery; in
+    a linked worktree it is absolute, and the `git init` / `git add` / `apm install` calls these
+    tests make would be aimed at the pushing checkout rather than at the tree just built. Worktrees
+    are how this repository asks concurrent sessions to work (CLAUDE.md), so without this the gate
+    cannot pass where it is normally run.
+
+    This isolates the commands the tests issue themselves. `git_visible_files` strips the same
+    variables at its own git call, and `test_an_inherited_git_dir_never_supplies_a_scope` sets one
+    back to pin that — the fixture must not be what makes the script look correct.
+    """
+    for name in [key for key in os.environ if key.startswith("GIT_")]:
+        monkeypatch.delenv(name, raising=False)
+
+
 def _checkout(root: Path) -> Path:
     """A git checkout shaped like this repository's audited paths, worktree noise included."""
     root.mkdir(parents=True, exist_ok=True)
@@ -92,6 +112,24 @@ def test_ignored_worktrees_stay_out_of_the_audit(tmp_path: Path) -> None:
 
     assert files is not None
     assert not [rel for rel in files if rel.startswith(".claude/worktrees/")]
+
+
+def test_an_inherited_git_dir_never_supplies_a_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A directory that is no checkout still reports no scope, whatever git the run inherited.
+
+    `GIT_DIR` overrides `cwd` for repository discovery, so an ambient one answers this read from
+    whatever repository it names — the scan returns *that* tree's files, and the audit goes on to
+    mirror and pass on a checkout nobody asked about. A git hook exports exactly that variable into
+    the `make check` it runs, absolute in a linked worktree, which is how CLAUDE.md asks concurrent
+    sessions to work. CI runs no hook, so this is the only place the behaviour is pinned.
+    """
+    elsewhere = _checkout(tmp_path / "elsewhere")
+    monkeypatch.setenv("GIT_DIR", str(elsewhere / ".git"))
+
+    (tmp_path / "not-a-checkout").mkdir()
+    assert audit_skills.git_visible_files(tmp_path / "not-a-checkout") is None
 
 
 def test_repository_content_is_audited(tmp_path: Path) -> None:
