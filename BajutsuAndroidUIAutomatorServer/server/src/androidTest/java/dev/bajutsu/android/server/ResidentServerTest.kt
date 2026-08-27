@@ -234,6 +234,13 @@ class ResidentServerTest {
      * nothing because it moved no frame, and one whose publish outran [ACT_PUBLISH_BUDGET_MS] — and
      * it is also what an older server without this header returns, so the host needs no version
      * negotiation to read it: a header is a confirmation and nothing else is.
+     *
+     * `injectedAt` is taken *before* the injection, not after, which is the same mark the host's own
+     * barrier anchors on (`AdbDriver._capture_mark`, BE-0332 Unit 3) and confirms the same thing it
+     * does: an accessibility event postdates the gesture, not that the particular property a step
+     * reads has been republished. Taking it after would drop an event a still-running injection
+     * already published — a press-and-hold occupies its whole duration inside the call — and report
+     * unconfirmed for a gesture that had in fact landed.
      */
     private fun publishHeader(readMark: ReadMark, injectedAt: Long): Map<String, String> {
         readMark.awaitPostdate(injectedAt.toDouble(), ACT_PUBLISH_BUDGET_MS)
@@ -605,8 +612,8 @@ class ResidentServerTest {
         //
         // Not a correctness bound: an unconfirmed answer costs only the read-lag barrier the host
         // already arms for every gesture today, so this window decides how often that barrier can be
-        // skipped, never whether skipping it is safe. Deliberately an order of magnitude under the
-        // host's own budget (`AdbDriver._READ_LAG_S`, 4 s), because the two waits are not
+        // skipped, never whether skipping it is safe. Deliberately an eighth of the host's own budget
+        // (`AdbDriver._READ_LAG_S`, 4 s), because the two waits are not
         // interchangeable: this one is paid inline on every gesture, while the host's is spent lazily
         // and is often absorbed by reads the scenario was taking anyway. Long enough for the publish a
         // healthy gesture makes, short enough that a device which cannot answer quickly hands the

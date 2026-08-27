@@ -1499,10 +1499,11 @@ class AdbDriver(CoordinateTreeDriver):
         accessibility event postdates the gesture, not that the property being copied out has been
         republished (`_settle_extract_read` says why at length). The driver's own catch-up barrier is
         the remaining ordering consumer, and it reads `_read_mark` directly in `_advance_catchup` rather
-        than through here. The protocol stays declared because the driver conformance suite (BE-0114)
-        checks the marked-read contract against the real backend, and because narrowing the barrier is
-        an open unit of the device-side actuation item — so this is a live contract without a live
-        caller, not a leftover.
+        than through here. Narrowing that barrier (BE-0339 Unit 5) has since landed without needing this
+        seam either: a gesture whose publish the device confirmed arms no barrier at all, so it never
+        sets `_read_ordered`. The protocol stays declared because the driver conformance suite (BE-0114)
+        checks the marked-read contract against the real backend — so this is a live contract without a
+        live caller, not a leftover.
         """
         return self._read_ordered
 
