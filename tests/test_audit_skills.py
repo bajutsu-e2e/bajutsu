@@ -62,6 +62,31 @@ def _stub_apm(monkeypatch: pytest.MonkeyPatch, bin_dir: Path, record: Path, exit
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
 
 
+@pytest.fixture(autouse=True)
+def _detached_from_the_caller_repository(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Let the throwaway checkouts below be their own repositories, whatever git the run inherited.
+
+    `git` exports its repository location to hooks, so the whole gate — `make check` under
+    `.githooks/pre-push` — runs with `GIT_DIR` (and friends) already set. In a plain clone that is
+    the relative `.git`, which does not resolve from a `tmp_path` and so falls back to discovery; in
+    a linked worktree it is absolute, and every `git` call here would then be aimed at the pushing
+    checkout rather than at the tree the test just built. Worktrees are how this repository asks
+    concurrent sessions to work (CLAUDE.md), so without this the gate cannot pass where it is
+    normally run.
+    """
+    for name in (
+        "GIT_DIR",
+        "GIT_COMMON_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_PREFIX",
+        "GIT_NAMESPACE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
 def _checkout(root: Path) -> Path:
     """A git checkout shaped like this repository's audited paths, worktree noise included."""
     root.mkdir(parents=True, exist_ok=True)
