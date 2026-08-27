@@ -103,8 +103,9 @@ the closures each one defines.
 
 ### Where a high count reflects the number of cases rather than tangled logic
 
-A high count has two sources: logic that tangles, and the number of cases a function must cover. Two
-kinds of function recur across the triage where the count comes from the number of cases. We split
+Some counts measure a function's own branching rather than the closures it defines. Such a count has
+two sources: logic that tangles, and the number of cases the function must cover. Two kinds of
+function recur across the triage, and in both the count comes from the number of cases. We split
 neither. The first kind is exhaustive dispatch over a closed schema: the three backends'
 `_emit_step` functions and their `_emit_assertion` peers carry one branch per scenario step kind or
 assertion kind, so the count tracks the scenario schema's size, and splitting one of those would
