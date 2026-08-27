@@ -36,9 +36,9 @@ defines a second `credential_gap`, and `bajutsu/ai_availability.py:20` wraps bot
 `anthropic_client.py:140`, and `_provider_name` / `resolved_provider` in
 `ai/registry.py:105` and `:126`. Because the registry's checks mostly delegate rather than
 duplicate, the three-layer split is not redundant — but a reader can only tell that by reading
-all three files, and the fact that this needs explaining is the smell: a resolver, a
-dispatcher, and a convenience wrapper for the same question should read as one obvious shape,
-not three files a contributor has to reconcile by hand.
+all three files, and the fact that a reader needs that explanation is itself the problem: a
+resolver, a dispatcher, and a convenience wrapper for the same question should read as one
+obvious shape, not three files a contributor has to reconcile by hand.
 
 **`anthropic_client.py` is misnamed.** Despite the vendor name, it holds provider-agnostic
 config resolution used by every backend, including `claude-code`: `resolve_model` (line 236),

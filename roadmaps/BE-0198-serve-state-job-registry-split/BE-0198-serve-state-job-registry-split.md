@@ -58,8 +58,8 @@ enforced by a type whose whole surface is that invariant. Testing the cap logic 
 constructing a full `ServeState` (which resolves stores, secrets, and a launch directory in
 `__post_init__`) even though the caps depend on none of that.
 
-Two lower-level smells compound this. The lock named `_lock` guards *two unrelated things* — the
-`jobs` dict and the `provider_settings` dict (`provider_settings_snapshot` /
+Two lower-level design defects compound this. The lock named `_lock` guards *two unrelated
+things* — the `jobs` dict and the `provider_settings` dict (`provider_settings_snapshot` /
 `set_provider_setting` take the same `_lock`, `bajutsu/serve/jobs.py:364`–`375`) — so a reader
 cannot tell from the name what the lock protects, and two responsibilities contend on one lock for
 no reason. And `_seq` is a mutable counter whose only correct mutation site is `_register`; a

@@ -175,7 +175,7 @@ ignore = [
     "S101",
     "S603",
     # TRY003 fires on every `raise` whose message says anything specific — 721 findings here, and
-    # a specific message is usually the point of the raise, not a smell. Silenced globally (the
+    # a specific message is usually the point of the raise, not a mistake. Silenced globally (the
     # rule is noisy everywhere, not only in this codebase) rather than per call site, where the
     # noqa would outnumber the exception-raising code it decorates (BE-0387).
     "TRY003",
@@ -184,7 +184,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "demos/**" = ["ANN", "T20", "S"]
 # A test reaching into a fixture's or a fake's private state to assert on it is a normal
-# pattern, not a smell (SLF), and so is a pytest fixture or mock parameter the body never
+# pattern, not a mistake (SLF), and so is a pytest fixture or mock parameter the body never
 # names (ARG).
 "tests/**" = ["ANN", "ARG", "SLF", "T20", "S"]
 # Dev helper scripts print progress (T20) and invoke git/uv via PATH (S607).
