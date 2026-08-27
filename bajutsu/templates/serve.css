@@ -640,6 +640,11 @@ header .appversion .dirty{color:var(--acc);font-weight:700}
 .modetab{flex:1;background:var(--bg2);border:1px solid var(--line);color:var(--mut);padding:.35rem .6rem;font:inherit;font-weight:600;font-size:.85em;cursor:pointer;border-radius:8px}
 .modetab:hover{color:var(--fg)}
 .modetab.active{color:var(--on-acc);background:var(--acc);border-color:var(--acc)}
+/* A mode this deployment cannot serve is disabled, not removed (issue 1721) — so it must not read as
+   pressable, and the hover lift above must not fire on it. Matches button.run:disabled /
+   .cfgbtn:disabled; the button's title carries the server's reason. */
+.modetab:disabled{opacity:.5;cursor:not-allowed}
+.modetab:disabled:hover{color:var(--mut)}
 .au-screen-wrap{position:relative;display:flex;flex-direction:column;align-items:center;gap:.5em}
 .au-screenshot{max-width:100%;max-height:70vh;cursor:crosshair;border:1px solid var(--line);border-radius:6px}
 .au-placeholder{padding:2em;text-align:center;color:var(--mut);font-size:.9em}

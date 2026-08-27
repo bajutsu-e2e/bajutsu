@@ -284,6 +284,12 @@ The contract (`tests/driver_conformance.py`) is the "done" definition a new back
   its center, the same observable effect as a semantic tap (BE-0280);
 - `wait_for` is a single-shot check of the current screen, with the shared `wait_until` loop
   turning it into a condition wait with no fixed sleep.
+- one `scroll` step leaves consecutive viewports overlapping — the reads before and after it share
+  at least one element the region's bounds do not clip. That states the non-inertial contract each
+  backend already documents in the only terms a tree can show it, and it belongs to the `Driver`
+  contract because the `scroll` loop's correctness rests on it: a gesture that flings shares
+  nothing, so it fails the suite here rather than carrying a target past the viewport unqueried
+  during a run (BE-0329).
 
 To add a backend to the suite, implement a `ConformanceHarness` (given a screen, return a driver
 showing it) and subclass `DriverConformanceContract`; pytest then runs the inherited contract

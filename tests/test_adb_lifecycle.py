@@ -18,6 +18,7 @@ from bajutsu.adb_resident import ResidentChannel
 from bajutsu.config import AndroidConfig, Effective
 from bajutsu.drivers.adb import AdbDriver, HierarchyRead
 from bajutsu.platform_lifecycle import AndroidEnvironment, ProvisionProfile, environment_for
+from bajutsu.platform_lifecycle.readiness import await_boot
 from bajutsu.scenario import Preconditions, Redact
 
 
@@ -903,6 +904,34 @@ def test_start_raises_clean_device_error_when_adb_is_missing() -> None:
     env = AndroidEnvironment("adb", "emulator-5554", adb_run=no_adb)
     with pytest.raises(adb.DeviceError, match="adb"):
         env.start(_eff(), Preconditions())
+
+
+def test_await_boot_gives_up_at_the_deadline_rather_than_spinning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A device that never reports `sys.boot_completed` must not hold the launch here. The poll is
+    # bounded, and reaching the deadline returns rather than raising: the sequence goes on to fail
+    # loudly on the first `pm clear` / `am start` with a clean DeviceError, which names the device
+    # the wait could only describe as "still not booted".
+    clock = 0.0
+
+    def fake_sleep(seconds: float) -> None:
+        nonlocal clock
+        clock += seconds
+
+    monkeypatch.setattr("bajutsu.drivers.base.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.drivers.base.time.monotonic", lambda: clock)
+
+    polls: list[list[str]] = []
+
+    def never_booted(argv: list[str]) -> str:
+        polls.append(argv)
+        return "0\n"
+
+    await_boot(adb.Env("emulator-5554", never_booted), timeout=1.0, poll=0.5)
+
+    assert len(polls) == 3  # ticks at t=0, 0.5, 1.0 — bounded by the deadline, not spinning
+    assert all("getprop sys.boot_completed" in " ".join(argv) for argv in polls)
 
 
 def test_relauncher_invalidates_the_driver_settled_cache() -> None:
