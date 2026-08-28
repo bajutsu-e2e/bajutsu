@@ -514,6 +514,32 @@ def test_await_ready_gives_up_settling_rather_than_holding_a_moving_screen(
     assert result.settled is False
 
 
+def test_await_ready_skips_the_settle_when_the_deadline_is_already_spent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The settle shares the caller's readiness deadline as a ceiling, so a signal that arrives with
+    # the budget already gone must return unsettled instead of querying once more — otherwise the
+    # confirmation pushes the gate past the timeout its caller asked for, which is the one thing the
+    # shared ceiling exists to prevent. `readiness.time` and `base.time` are the same stdlib module,
+    # so this setattr replaces the clock `_install_bounded_clock` just installed rather than adding
+    # a second one — it must therefore stay after it. The whole gate then reads 0.0 once (`start`)
+    # and 1e6 on every later call: `deadline_ticks` sets its deadline at 1e6 + timeout and still
+    # yields, while the settle's `timeout - (monotonic() - start)` is already negative, which is the
+    # branch under test. `_install_bounded_clock` still contributes the fake `time.sleep`.
+    _install_bounded_clock(monkeypatch)
+    ticks = iter([0.0])
+    monkeypatch.setattr(
+        "bajutsu.platform_lifecycle.readiness.time.monotonic",
+        lambda: next(ticks, 1e6),  # `start` reads 0.0; every later read is far past any deadline
+    )
+    ready = [_placed("stable.row.1", "Row 1", frame=(0.0, 168.0, 300.0, 40.0))]
+    driver = _ScriptedDriver([ready])
+    result = await_ready(driver, id_namespaces=["stable"])  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.settled is False
+    assert driver.calls == 1  # the signal's own read only; the settle never sampled
+
+
 def test_await_ready_settle_ignores_a_value_only_change(monkeypatch: pytest.MonkeyPatch) -> None:
     # A live counter mirrored into `value` is not the screen moving, so it must not keep the tree
     # "unsettled" forever on a screen that is otherwise still — the signature reads identity and
