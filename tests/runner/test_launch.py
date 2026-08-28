@@ -520,9 +520,12 @@ def test_await_ready_skips_the_settle_when_the_deadline_is_already_spent(
     # The settle shares the caller's readiness deadline as a ceiling, so a signal that arrives with
     # the budget already gone must return unsettled instead of querying once more — otherwise the
     # confirmation pushes the gate past the timeout its caller asked for, which is the one thing the
-    # shared ceiling exists to prevent. The readiness loop runs on the patched `base` clock; the
-    # settle reads readiness's own clock, so moving that one past the deadline isolates this branch
-    # without making the loop itself time out.
+    # shared ceiling exists to prevent. `readiness.time` and `base.time` are the same stdlib module,
+    # so this setattr replaces the clock `_install_bounded_clock` just installed rather than adding
+    # a second one — it must therefore stay after it. The whole gate then reads 0.0 once (`start`)
+    # and 1e6 on every later call: `deadline_ticks` sets its deadline at 1e6 + timeout and still
+    # yields, while the settle's `timeout - (monotonic() - start)` is already negative, which is the
+    # branch under test. `_install_bounded_clock` still contributes the fake `time.sleep`.
     _install_bounded_clock(monkeypatch)
     ticks = iter([0.0])
     monkeypatch.setattr(
