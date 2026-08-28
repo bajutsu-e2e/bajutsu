@@ -35,7 +35,7 @@ Every mapping rejects keys it does not declare (`_Model`, `scenario/models/_base
 
 ## 2. Grammar at a glance
 
-The **reference graph** below shows which non-terminal references which. It makes visible the recursion and sharing that the EBNF text below states but does not show directly: `Selector`'s `within` self-loop; `RequestMatch`, shared by the `request` assertion, the `until: { request }` wait, and `Mock.match`; and `Web` and `Component`, which both nest a fresh `Step` list. The diagram omits actions that carry only scalars and reference no shared non-terminal (`relaunch`, `setLocation`, `push`, `http`, `setClipboard`, `foreground`, and the remaining device / status-bar steps) and the `golden` assertion, whose payload is a bare path.
+The **reference graph** below shows which non-terminal references which. It makes visible the recursion and sharing that the EBNF text below states but does not show directly: `Selector`'s `within` self-loop; `RequestMatch`, shared by the `request` assertion, the `until: { request }` wait, and `Mock.match`; `Web` and `Component`, which both nest a fresh `Step` list; and `If`/`ForEach`, the two control-flow steps that each nest a fresh `Step` list of their own (`then`/`else` and `steps` respectively) alongside a `Selector` or `Assertion` reference. The diagram omits actions that carry only scalars and reference no shared non-terminal (`relaunch`, `setLocation`, `push`, `http`, `setClipboard`, `foreground`, and the remaining device / status-bar steps) and the `golden` assertion, whose payload is a bare path.
 
 ```mermaid
 graph LR
@@ -53,17 +53,23 @@ graph LR
   SC -->|after| AR["AfterRule"]
   AR -->|steps| ST
 
-  ST -->|"tap·doubleTap·longPress·<br/>type·swipe·pinch·rotate"| SEL["Selector"]
+  ST -->|"tap·doubleTap·longPress·<br/>type·swipe·pinch·rotate·<br/>select·clear·delete·<br/>selectOption·setPickerValue·<br/>drag·scroll"| SEL["Selector"]
   ST -->|wait| WT["Wait"]
   ST -->|assert| AS
   ST -->|use| CMP["Component"]
   ST -->|web| WEB["Web"]
   ST -->|capture| CT["CaptureToken"]
+  ST -->|if| IF["If"]
+  ST -->|forEach| FE["ForEach"]
   CMP -->|steps| ST
   WEB -->|within| SEL
   WEB -->|steps| ST
   IR -->|condition| AS
   IR -->|steps| ST
+  IF -->|condition| AS
+  IF -->|"then·else"| ST
+  FE -->|sel| SEL
+  FE -->|steps| ST
 
   SEL -->|within| SEL
   WT -->|"for · until:gone"| SEL
