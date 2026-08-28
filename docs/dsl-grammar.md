@@ -35,7 +35,7 @@ Every mapping rejects keys it does not declare (`_Model`, `scenario/models/_base
 
 ## 2. Grammar at a glance
 
-The **reference graph** below shows which non-terminal references which. It makes visible the recursion and sharing that the EBNF text below states but does not show directly: `Selector`'s `within` self-loop; `RequestMatch`, shared by the `request` assertion, the `until: { request }` wait, and `Mock.match`; `Web` and `Component`, which both nest a fresh `Step` list; and `If`/`ForEach`, the two control-flow steps that each nest a fresh `Step` list of their own (`then`/`else` and `steps` respectively) alongside a `Selector` or `Assertion` reference. The diagram omits actions that carry only scalars and reference no shared non-terminal (`relaunch`, `setLocation`, `push`, `http`, `setClipboard`, `foreground`, and the remaining device / status-bar steps) and the `golden` assertion, whose payload is a bare path.
+The **reference graph** below shows which non-terminal references which. It makes visible the recursion and sharing that the EBNF text below states but does not show directly: `Selector`'s `within` self-loop; `RequestMatch`, shared by the `request` assertion, the `until: { request }` wait, and `Mock.match`; `Web` and `Component`, which both nest a fresh `Step` list; and the two control-flow steps — `If`, which nests `then`/`else` under an `Assertion` condition, and `ForEach`, which nests `steps` under a `Selector`. The diagram omits actions that carry only scalars and reference no shared non-terminal (`relaunch`, `setLocation`, `push`, `http`, `setClipboard`, `foreground`, and the remaining device / status-bar steps) and the `golden` assertion, whose payload is a bare path.
 
 ```mermaid
 graph LR
