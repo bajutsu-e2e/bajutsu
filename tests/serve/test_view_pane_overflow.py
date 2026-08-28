@@ -102,6 +102,15 @@ def test_left_column_card_bounds_its_scroll_host() -> None:
     assert re.search(r"\bmin-height\s*:\s*0\b", card), (
         "`.left>.card` must keep `min-height:0` or its children cannot be bounded (issue #1715)"
     )
+    flex = re.search(r"\bflex\s*:\s*([^;}]+)", card)
+    assert flex, "`.left>.card` sets no `flex`, so the cards no longer share the column"
+    parts = flex.group(1).split()
+    # One- and two-value shorthands leave flex-shrink at its `1` default; `none` is `0 0 auto`.
+    shrink = "0" if parts[0] == "none" else parts[1] if len(parts) >= 2 else "1"
+    assert shrink != "0", (
+        "`.left>.card` refuses to shrink, so a short column clips its cards with no scrollbar "
+        "(issue #1715)"
+    )
 
 
 def test_left_column_panel_is_the_scroll_host() -> None:
