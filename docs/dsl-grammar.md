@@ -53,7 +53,7 @@ graph LR
   SC -->|after| AR["AfterRule"]
   AR -->|steps| ST
 
-  ST -->|"tap·doubleTap·longPress·<br/>type·swipe·pinch·rotate·<br/>select·clear·delete·<br/>selectOption·setPickerValue·<br/>drag·scroll"| SEL["Selector"]
+  ST -->|"tap·doubleTap·longPress·<br/>type·swipe·pinch·rotate·<br/>select·clear·delete·<br/>selectOption·setPickerValue·<br/>drag·scroll·handleSystemAlert"| SEL["Selector"]
   ST -->|wait| WT["Wait"]
   ST -->|assert| AS
   ST -->|use| CMP["Component"]
