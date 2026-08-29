@@ -113,10 +113,11 @@ view-switching code hold, and renaming them would churn a surface no reader sees
 
 The repository runs no JavaScript test runtime, so the serve UI's modules are pinned by structural
 tests that fetch the served module and assert on its text. The existing metrics UI test module gains
-cases for the split. The row handler no longer reaches the activation path; the key handlers,
-the activate control, and its confirmation all ship; the refusal maps to the admin sentence; and
-the view's new name reaches the browser. The test asserting the old deep-link behavior is replaced rather than
-kept, since the behavior it pins is the behavior this item removes.
+cases for the split. The row handler no longer reaches the activation path; the row keeps its table
+semantics; the name cell's keyboard-reachable button, the activate control, and its confirmation all
+ship; the refusal maps to the admin sentence; and the view's new name reaches the browser. The test
+asserting the old deep-link behavior is replaced rather than kept, since the behavior it pins is the
+behavior this item removes.
 
 ## Alternatives considered
 
