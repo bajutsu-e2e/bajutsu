@@ -25,7 +25,7 @@ let metricsDetail=null;
 // Each column, and for the sortable ones whether "worst first" is ascending (pass-rate: low is bad)
 // or descending (flaky-rate / duration: high is bad), so a first click surfaces the worst offender.
 const METRIC_COLS=[
-  {key:'name',label:'Project',cell:m=>`<span class="mname">${esc(m.name)}</span>`},
+  {key:'name',label:'Project',cell:m=>metricOpen(m)},
   {key:'runs',label:'Runs',cell:m=>String(m.runs)},
   {key:'pass_rate',label:'Pass-rate',sortable:true,worst:'asc',cell:m=>metricCell(m,metricPct(m.pass_rate))},
   {key:'flaky_rate',label:'Flaky-rate',sortable:true,worst:'desc',cell:m=>metricCell(m,metricPct(m.flaky_rate))},
@@ -49,6 +49,16 @@ function metricAction(m){
   const blocked=unavailableReason('activate');
   return `<button type="button" class="cfgbtn mact" data-act="activate" data-testid="metrics.activate"`
     +`${blocked?` disabled title="${esc(blocked)}"`:''}>Activate</button>`;
+}
+
+// The drill-down's control is a real button in the name cell, not the row itself. Giving the <tr>
+// role="button" would have been the shorter route to keyboard access, but it overrides the row's
+// implicit table semantics — a screen reader loses row/cell navigation over the very ranking this
+// view exists to present — and it nests the row's own Activate button inside an ARIA button, which
+// ARIA forbids. A button keeps the table intact and brings Enter and Space with it, natively.
+function metricOpen(m){
+  return `<button type="button" class="mopen" data-act="open" data-testid="metrics.open"`
+    +` title="Open this project\u2019s run history">${esc(m.name)}</button>`;
 }
 
 function metricPct(v){return Math.round(v*100)+'%'}
@@ -108,24 +118,18 @@ function renderMetrics(){
     const active=c.key===key,arrow=active?(dir==='asc'?'▲':'▼'):'';
     return `<th class="msort${active?' active':''}" data-key="${c.key}" data-testid="metrics.sort.${c.key}">${c.label}<span class="arrow">${arrow}</span></th>`;
   }).join('');
-  // tabindex + role + an accessible name, so the detail a pointer opens is reachable by keyboard
-  // too (#1720): the rows carried a click listener and nothing else, and tabbing skipped them.
   const body=sortedMetrics().map(m=>
-    `<tr class="mrow" data-testid="metrics.row" data-name="${esc(m.name)}" tabindex="0" role="button"`
-    +` aria-label="Open the run history of ${esc(m.name)}">`
+    `<tr class="mrow" data-testid="metrics.row" data-name="${esc(m.name)}">`
     +METRIC_COLS.map(c=>`<td>${c.cell(m)}</td>`).join('')+'</tr>').join('');
   host.innerHTML=`<table class="mtable" data-testid="metrics.table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
   host.querySelectorAll('th.msort').forEach(th=>th.addEventListener('click',()=>sortMetrics(th.dataset.key)));
-  host.querySelectorAll('tr.mrow').forEach(tr=>{
-    const open=()=>openMetricsDetail(tr.dataset.name);
-    // Both handlers ignore an event the row's own button raised, so Activate never also navigates —
-    // one guard on the row instead of a stopPropagation the button could forget.
-    tr.addEventListener('click',e=>{if(!e.target.closest('button'))open()});
-    tr.addEventListener('keydown',e=>{
-      if(e.target!==tr)return;
-      if(e.key==='Enter'||e.key===' '){e.preventDefault();open()}
-    });
-  });
+  host.querySelectorAll('button[data-act="open"]').forEach(b=>
+    b.addEventListener('click',()=>openMetricsDetail(b.closest('tr.mrow').dataset.name)));
+  // Clicking anywhere else on the row is the pointer convenience the view already had. It ignores an
+  // event one of the row's own buttons raised, so Activate never also navigates — one guard on the
+  // row instead of a stopPropagation each button could forget.
+  host.querySelectorAll('tr.mrow').forEach(tr=>
+    tr.addEventListener('click',e=>{if(!e.target.closest('button'))openMetricsDetail(tr.dataset.name)}));
   host.querySelectorAll('button[data-act="activate"]').forEach(b=>
     b.addEventListener('click',()=>activateFromComparison(b.closest('tr.mrow').dataset.name)));
 }
@@ -138,7 +142,7 @@ async function openMetricsDetail(name){
   metricsDetail=name;
   host.innerHTML=`<div class="mdetail" data-testid="metrics.detail">`
     +`<div class="mdetailhead"><button type="button" class="cfgbtn" data-act="back" data-testid="metrics.detail-back">&#8592; Comparison</button>`
-    +`<span class="mname">${esc(name)}</span><span class="muted" style="font-size:.8em">read-only — this project is not activated</span></div>`
+    +`<span class="mname">${esc(name)}</span><span class="muted" style="font-size:.8em">read-only — opening this history activates nothing</span></div>`
     +`<ul class="fslist mruns" data-testid="metrics.detail-runs"><li class="muted">Loading run history\u2026</li></ul></div>`;
   host.querySelector('button[data-act="back"]').addEventListener('click',renderMetrics);
   const runs=await getJSON('/api/projects/'+encodeURIComponent(name)+'/runs',FETCH_ERROR);

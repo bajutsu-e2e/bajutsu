@@ -605,7 +605,7 @@ $('#fsmodal').addEventListener('click',e=>{if(e.target===$('#fsmodal'))closeFs()
 // `serve` is a hub over several named config bindings. Activating one rebinds state.config on the
 // server; we then reload the config label and the shared target/scenario lists so every tab runs
 // against the switched-to config with no restart. Every `serve` implicitly registers its loaded
-// config as one project. The switcher + the cross-project Metrics tab stay hidden until a real hub
+// config as one project. The switcher + the cross-project Comparison tab stay hidden until a real hub
 // exists (more than one project to choose between) — a single-config serve is unchanged there. The
 // Projects *page* (BE-0275) is the exception: it is the hub's home and its Add form is how a
 // single-config serve grows into a hub (the hosted topology has no CLI), so its tab shows for any

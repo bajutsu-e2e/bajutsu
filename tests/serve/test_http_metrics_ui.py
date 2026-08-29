@@ -72,14 +72,23 @@ def test_a_row_no_longer_activates_the_project(tmp_path: Path) -> None:
     assert text.count("await switchProject(name)") == 1
 
 
-def test_rows_are_reachable_by_keyboard(tmp_path: Path) -> None:
+def test_the_drilldown_is_reachable_by_keyboard(tmp_path: Path) -> None:
     text = _fetch(tmp_path, "/serve.metrics.mjs")
-    # Plain <tr> elements with a click listener were unreachable without a pointer (#1720).
-    assert 'tabindex="0"' in text
-    assert 'role="button"' in text
-    assert "aria-label=" in text
-    assert "keydown" in text
-    assert "e.key==='Enter'" in text
+    # Plain <tr> elements with a click listener were unreachable without a pointer (#1720). The
+    # control is a real button in the name cell, so Enter and Space come from the platform.
+    assert 'data-testid="metrics.open"' in text
+    assert '<button type="button" class="mopen"' in text
+
+
+def test_the_row_keeps_its_table_semantics(tmp_path: Path) -> None:
+    # role="button" on the <tr> would reach the keyboard too, but it overrides the row's implicit
+    # table role — losing row/cell navigation over the ranking — and nests the row's own Activate
+    # button inside an ARIA button, which ARIA forbids. The name button avoids both (#1720).
+    text = _fetch(tmp_path, "/serve.metrics.mjs")
+    # Pin the row's own tag rather than the absence of the strings anywhere in the module: the
+    # comment above the name button names the role it deliberately does not use.
+    assert '<tr class="mrow" data-testid="metrics.row" data-name="${esc(m.name)}">' in text
+    assert "tabindex" not in text
 
 
 def test_activation_is_an_explicit_confirmed_button(tmp_path: Path) -> None:

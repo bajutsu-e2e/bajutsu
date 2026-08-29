@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-comparison-row-navigation-vs-activate.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Authoring experience |
 | Related | [BE-0226](../BE-0226-cross-project-metrics-dashboard/BE-0226-cross-project-metrics-dashboard.md), [BE-0275](../BE-0275-serve-projects-management-page/BE-0275-serve-projects-management-page.md), [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md) |
@@ -19,8 +19,9 @@ The `bajutsu serve` web UI's comparison view ranks a hub's registered projects s
 today a click on one of its rows *activates* that project: it rebinds the config the whole
 deployment reads. This item splits that single gesture in two. A row click opens a read-only
 drill-down into the clicked project's run history, and so does the keyboard equivalent the rows
-lack today. Rebinding the deployment moves to an explicit per-row button that asks for confirmation
-first, and that tells a reader who may not use it so before the press rather than after. The tab takes the view's own name at the same time, so
+lack today. Rebinding the deployment moves to an explicit per-row button that asks for
+confirmation first and that, for a reader who may not use it, says so before the press rather than
+after. The tab takes the view's own name at the same time, so
 its label no longer reads as the Prometheus scrape endpoint `serve` exposes at `/metrics`.
 
 ## Motivation
@@ -90,16 +91,21 @@ how the Orgs page already handles the same question.
 
 ### 4. Keyboard access
 
-Each row takes `tabindex="0"`, a button role, and an accessible name identifying the project, plus
-Enter and Space handlers that open the same drill-down the pointer does. A visible focus style
-accompanies them, so the focused row is distinguishable while tabbing. The activate control is a
-real `button` element and is reachable on its own.
+The drill-down's control is a real `button` in the row's name cell, wearing the look that cell
+already had, with a visible focus style. Being a button, it brings Enter and Space with it and needs
+no key handler of its own. Clicking elsewhere on the row stays a pointer convenience.
+
+Giving the `tr` itself `tabindex` and a button role would reach the keyboard in fewer lines, and it
+is the wrong trade twice over. It overrides the row's implicit table semantics, so a screen reader
+loses the row and cell navigation over the very ranking this view exists to present; and it nests
+the row's own activate control inside an Accessible Rich Internet Applications (ARIA) button, which
+the ARIA specification forbids. A control that is already a control avoids both.
 
 ### 5. A name that does not collide
 
-The tab is renamed for the view it opens, matching the heading the view already carries, and the
-heading gains a line distinguishing it from the Prometheus metrics endpoint the same server
-exposes. Element ids
+The tab reads `Comparison`, taken from the view it opens rather than from the endpoint it collided
+with, and the heading — already `Project comparison` — gains a line distinguishing the view from the
+Prometheus metrics endpoint the same server exposes. Element ids
 and `data-testid` values keep their current names: they are the handle the existing tests and the
 view-switching code hold, and renaming them would churn a surface no reader sees.
 
@@ -147,13 +153,13 @@ kept, since the behavior it pins is the behavior this item removes.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] The read-only drill-down panel, rendered from `GET /api/projects/{name}/runs`
-- [ ] The per-row activate button and its confirmation
-- [ ] The `activate` capability in the boot read, and the button disabled with its reason
-- [ ] The `forbidden` refusal mapped to an admin sentence in the shared switch helper
-- [ ] Row keyboard access: `tabindex`, a role and accessible name, Enter and Space, a focus style
-- [ ] The `Project comparison` renaming and the note distinguishing it from `/metrics`
-- [ ] Structural tests for the split, replacing the deep-link test
+- [x] The read-only drill-down panel, rendered from `GET /api/projects/{name}/runs`
+- [x] The per-row activate button and its confirmation
+- [x] The `activate` capability in the boot read, and the button disabled with its reason
+- [x] The `forbidden` refusal mapped to an admin sentence in the shared switch helper
+- [x] Keyboard access through a real button in the name cell, with a focus style
+- [x] The tab renamed to `Comparison`, and the note distinguishing the view from `/metrics`
+- [x] Structural tests for the split, replacing the deep-link test
 
 ## References
 

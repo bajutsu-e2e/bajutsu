@@ -500,9 +500,6 @@ header .appversion .dirty{color:var(--acc);font-weight:700}
 .mtable th.msort .arrow{font-size:.8em;margin-left:.2em}
 .mrow{cursor:pointer}
 .mrow:hover{background:var(--bg2)}
-/* The row is keyboard-reachable (issue 1720), so the focused one has to be visible while tabbing.
-   outline-offset is negative: a table row clips an outline drawn outside its own box. */
-.mrow:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
 .mtable td:last-child{width:1%}
 .mact{padding:.15rem .55rem;font-size:.85em}
 .mactive{color:var(--mut);font-size:.85em}
@@ -511,6 +508,11 @@ header .appversion .dirty{color:var(--acc);font-weight:700}
 .mruns li{cursor:default}
 .mruns li:hover{background:none}
 .mname{font-weight:600;color:var(--acc)}
+/* The drill-down's control: a real button wearing the name cell's old look, so the row keeps its
+   table semantics and the keyboard gets Enter and Space for free (issue 1720). */
+.mopen{background:none;border:0;padding:0;font:inherit;font-weight:600;color:var(--acc);cursor:pointer}
+.mopen:hover{text-decoration:underline}
+.mopen:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:3px}
 .mrow .none{color:var(--mut);font-weight:400}
 .mspark{width:80px;height:22px;vertical-align:middle}
 .mspark polyline{fill:none;stroke:var(--ok);stroke-width:2}
