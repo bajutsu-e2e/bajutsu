@@ -60,9 +60,11 @@ default, or the `--port` you passed). These flags — `--port`, `--config`, `--r
 The header holds nine top-level tabs: **Record**, **Replay**, **Crawl**, **Author**, **Stats**,
 **Flaky**, **Usage**, **Coverage**, and **Trash** (soft-deleted runs, restorable within a
 retention window — see [Trash](#trash--restore-or-permanently-delete-a-deleted-run)). A tenth,
-**Metrics**, appears only once a [project hub](#switching-between-projects) exists (more than one
+**Comparison**, appears only once a [project hub](#switching-between-projects) exists (more than one
 project registered), since it compares projects against each other — see
-[Comparing projects](#comparing-projects).
+[Comparing projects](#comparing-projects). The tab is named for what it shows rather than for the
+Prometheus scrape endpoint the same server exposes at `/metrics`, which is a different surface
+entirely.
 To their right are **Open config** (with the active config's name shown beside it once one is bound,
 and a **View** button to inspect it — see below), **Settings**, and a theme picker that
 follows your system by default. On a deployment where you sign in with GitHub, a small badge beside
@@ -228,16 +230,25 @@ owns none until an entry there names some.
 
 ### Comparing projects
 
-Once a hub holds more than one project, the **Metrics** tab opens a read-only comparison across all
-of them at once — the question a single project's [Stats](#stats--the-run-history-dashboard)
+Once a hub holds more than one project, the **Comparison** tab opens a read-only comparison across
+all of them at once — the question a single project's [Stats](#stats--the-run-history-dashboard)
 dashboard cannot answer. Each project is one row: its run count, latest pass-rate, flaky-rate (the
 share of its scenarios classified flaky over the window), and median (p50) and 95th-percentile (p95)
 per-run duration, plus a pass-rate trend sparkline. Click a column header to rank by pass-rate,
 flaky-rate, or duration — the first click surfaces the worst offender (lowest pass-rate, highest
 flaky-rate or duration), a second click flips the order. A project with no runs yet charts as a blank
-row rather than a misleading zero. Clicking a row switches to that project and opens its single-config
-Stats dashboard, so the comparison is the entry point and the per-project view is the drill-down. Like
-the other dashboards it is advisory only: it re-presents verdicts `run` already decided and never
+row rather than a misleading zero.
+
+Clicking a row opens that project's run history, newest first — a read-only drill-down that leaves
+the hub's active project alone. Rows are reachable by keyboard as well: tab to one and press Enter
+or Space for the same history. Making a project the active one is a separate action, on the row's
+own **Activate** button, and it asks for confirmation first, because activating rebinds the config
+this deployment serves for every tab against it rather than only for the reader who pressed the
+button. Activation is admin-only, and the button says so up front: where the signed-in account may
+not activate, it renders disabled carrying the reason, from the same boot read that decides whether
+the Orgs tab appears. A role that changed since that read still meets the server's refusal, which
+the view spells out rather than showing the raw error. Like the other
+dashboards the comparison is advisory only: it re-presents verdicts `run` already decided and never
 gates anything.
 
 ## Settings

@@ -155,6 +155,13 @@ CAPTURE_NO_LOCAL_ROUTES_REASON = "this server does not serve the capture routes 
 # discloses one tenant's membership to another, so every `/api/orgs` verb is admin-only.
 ORGS_ADMIN_ONLY_REASON = "org management is admin-only"
 
+# Why a caller cannot activate a project: activating rebinds the config the whole deployment reads,
+# so `POST /api/projects/{name}/activate` sits at the same admin tier as binding the config itself.
+ACTIVATE_ADMIN_ONLY_REASON = "activating a project is admin-only"
+# A representative activate path for the role gate below. `required_role` keys the project routes on
+# the verb and the trailing segment, never on which project it is, so any name answers for all.
+_ACTIVATE_PATH = "/api/projects/_/activate"
+
 
 def _capability(reason: str | None) -> dict[str, Any]:
     """One capability entry: available when nothing blocks it, else the reason a disabled control
@@ -190,6 +197,20 @@ def _orgs_unavailable(state: ServeState, actor: str | None) -> str | None:
     return None
 
 
+def _activate_unavailable(state: ServeState, actor: str | None) -> str | None:
+    """Why *actor* cannot activate a project here, or None when they can.
+
+    Read by the comparison view's per-row Activate control (#1720), so a reader who may not rebind
+    the deployment learns it before pressing and confirming rather than from the refusal afterward.
+    Gated through `forbidden_for_role` like `_orgs_unavailable`, on the very path the button posts
+    to, so the flag and the endpoint cannot disagree. The endpoint still refuses on its own: this
+    reports, it does not enforce.
+    """
+    if actor and forbidden_for_role(state, actor, "POST", _ACTIVATE_PATH):
+        return ACTIVATE_ADMIN_ONLY_REASON
+    return None
+
+
 def serve_capabilities(state: ServeState, actor: str | None = None) -> dict[str, Any]:
     """What this deployment can serve *this* caller, for the UI to gate its own surface on (#1721).
 
@@ -205,6 +226,7 @@ def serve_capabilities(state: ServeState, actor: str | None = None) -> dict[str,
     return {
         "capture": _capability(_capture_unavailable(state)),
         "orgs": _capability(_orgs_unavailable(state, actor)),
+        "activate": _capability(_activate_unavailable(state, actor)),
     }
 
 
