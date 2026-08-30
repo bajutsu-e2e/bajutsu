@@ -64,7 +64,7 @@ project-wide rule, including rules answering prompts the scenario never mentione
 that all-or-nothing precedence deliberately, to stop a project-wide rule from inverting a scenario's
 own answer, and it is the strictly safer of the two available readings under today's schema. The cost
 is that an author cannot predict, from the keys in front of them, which of their declarations will
-run: adding `labels` to a scenario silently disables a configuration block in a different file.
+run: adding `instruction` to a scenario silently disables a configuration block in a different file.
 
 A third defect is a state the schema can express and the runtime ignores. `enabled` is an ordinary
 key, so `{ enabled: false, rules: [...] }` parses, and the rules are discarded without a word. Two
@@ -116,10 +116,19 @@ gave them. `labels` is today's `instruction` list form under a name that states 
 
 Each key now reaches exactly one execution path. `rules` and `labels` steer the native path;
 `visionInstruction` steers the vision fallback. `labels` additionally supplies the fallback with a
-derived hint when no layer supplies a `visionInstruction`, which is what the list form already does
-today — the guard renders the candidates as "Tap the button labeled one of, in order: …". A
-`visionInstruction` from any layer outranks the derived hint, because a hint derived from labels is
-not a statement about the fallback and an explicit `visionInstruction` is. `rules`
+derived hint when no layer supplies a `visionInstruction` — the guard renders the candidates as "Tap
+the button labeled one of, in order: …". A `visionInstruction` from any layer outranks that hint,
+because a hint derived from labels is not a statement about the fallback and an explicit
+`visionInstruction` is.
+
+The hint derives from the **innermost layer that supplies `labels`**, not from the concatenation the
+native path walks. The native path compares labels exactly, so a wider candidate list there only
+lengthens a search that still taps a label some layer named. The fallback's instruction is free text
+a locator interprets loosely, and a concatenated list hands it both answers at once: a target
+configuration granting with `labels: ["Allow"]` under a scenario refusing with `labels: ["Don't
+Allow"]` would render "…in order: Don't Allow, Allow", and the locator may take the second. That is
+the hazard `rules` is kept out of the fallback for, one field over, so the same treatment applies —
+the fallback hears one layer, and it is the most specific layer that spoke. `rules`
 still contributes nothing to the fallback, for the reason BE-0382 recorded: every path that reaches
 the fallback is one where no rule identified the alert, so a rule's label is by construction some
 other prompt's answer, and passing it down would steer the locator to accept a prompt the scenario
@@ -132,7 +141,7 @@ The native path runs first and answers by itself when it can; the vision fallbac
 the native path leaves unresolved.
 
 ```
-native path:      rules  →  labels  (empty labels → the built-in dismissive labels)
+native path:      rules  →  labels  (no layer supplies labels → the built-in dismissive labels)
                                 │ nothing resolves
                                 ▼
 vision fallback:  visionInstruction  →  the hint derived from labels  →  the locator's own default
@@ -197,10 +206,17 @@ scenario that supplies its own `labels` or `visionInstruction`. The behavior is 
 specificity ladder, and BE-0382's objection to it was that it is *silent* — a project-wide edit
 changes a scenario that names no prompt.
 
-The guard therefore prints a one-time notice, at construction, naming the scenario and each target
-rule that will answer for it. The notice keeps the composition and removes the silence. It is a
-`warn_once` on the existing deprecation-notice channel (`bajutsu/deprecations.py`), so it costs no
-device work and reaches no model.
+The guard therefore prints a notice, at construction, naming the scenario and each target rule that
+will answer for it. The notice keeps the composition and removes the silence. It rides `warn_once`
+(`bajutsu/deprecations.py`), so it costs no device work and reaches no model.
+
+`warn_once` dedupes by its code for the whole process, and the guard is built once per scenario, so
+the code is the scenario's name together with the rule's prompt. Keyed on the prompt alone, a run of
+many scenarios would warn for the first affected scenario and pass over the rest in the silence this
+section removes. That key is also what makes the notice testable: a two-scenario run raises two
+notices, one per affected scenario, rather than one for both. The module holding `warn_once` is
+scoped by its own docstring to deprecation notices, and a rule reaching a scenario is not a
+deprecation, so the same change widens that docstring to the surface the module actually covers.
 
 ### Removing `enabled`: the type carries on and off
 
@@ -292,8 +308,8 @@ an empty `visionInstruction` raise; `{ enabled: false }` no longer parses while 
 disables the guard; the guard factory concatenates rules and labels across the scenario, flag, and
 target layers and resolves the two scalars by precedence; a target rule answers its prompt in a
 scenario carrying its own labels, and prints the notice once; and the vision fallback receives the
-scenario's `visionInstruction` when given, the derived hint from `labels` when not, and nothing from
-`rules` either way. No assertion depends on a model, and no new call reaches one.
+scenario's `visionInstruction` when given, a hint derived from the innermost layer's `labels` when
+not, and nothing from `rules` either way. No assertion depends on a model, and no new call reaches one.
 
 ## Alternatives considered
 
