@@ -123,11 +123,11 @@ is not responsible: `scroll` and `swipe` agree within noise at every fraction, a
 measurement found content already at rest more than 190 milliseconds before the driver call
 returns, for both gestures alike. What that hold does is worth stating precisely, so unit 1
 measures the right thing: it is not waiting out deceleration, which cannot begin until the lift,
-because the scroll view tracks the finger while the touch is down. It holds still so that the
-release velocity UIKit estimates from the touch's last moments comes out near zero. Whether 0.3
-seconds is always long enough for that estimate to fall to zero is the open question, and it is
-not the one the numbers above answer. A plausible remaining explanation for the overshoot is
-that
+because the scroll view tracks the finger while the touch is down. It holds the finger still so
+that the release velocity UIKit estimates from the touch's last moments comes out near zero.
+Whether 0.3 seconds is always long enough for that estimate to fall to zero is the open question,
+and it is not the one the numbers above answer. A plausible remaining explanation for the
+overshoot is that
 `withVelocity: .default` traverses every drag at one fixed speed, so the finger lifts at a similar
 velocity however short the drag, leaving a similar fling each time — but nothing has tested that,
 and unit 1 below exists to settle it before any correction is designed.
