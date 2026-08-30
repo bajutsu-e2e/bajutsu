@@ -321,8 +321,8 @@ silence that was BE-0382's actual objection.
 **Carry the removed keys as deprecated aliases.** The repository has done exactly that twice for this
 setting, in BE-0317 and BE-0327, and both aliases are still live. It is rejected here because an alias
 for `instruction` cannot be neutral: the key's meaning splits by type, so an alias would have to keep
-routing a string to the vision path and a list to the native path, preserving the defect the proposal
-removes. Once `instruction` must break, carrying the other three names costs a migration the same
+removes. Once `instruction` must break, carrying the other three names would only add to a
+migration the same change already asks for.
 change already asks for.
 
 **Drop `visionInstruction` entirely and let the fallback run on `labels` alone.** The fallback would
