@@ -79,14 +79,15 @@ candidate label, or in-tree dismiss names. That is precisely the case where a hu
 run needs a legible message, not a best-effort guess.
 
 Free-text `instruction` values are the one piece of today's configuration surface that stops working
-once the fallback is gone, and a loud rejection serves an author better than a silent no-op.
+once the fallback is gone. A loud rejection serves an author better than a silent no-op here.
 `SystemAlertHandling.instruction` (`bajutsu/scenario/models/scenario.py:81`) already documents two
-forms: a list of candidate labels the native path resolves deterministically, and "a free-text
-string … the legacy form" that only the vision locator ever interpreted. The native path, per that
-same docstring, "ignores the string and taps a default dismissive label instead." A scenario, a
-target config, or a `--alert-instruction` flag written in the free-text form therefore already has no
-effect on the native-capable iOS backend today. On a backend without the native capability, that
-free-text form is, before this change, the only thing steering the fallback at all. Removing the
+forms. One is a list of candidate labels the native path resolves deterministically. The other is
+"a free-text string … the legacy form" that only the vision locator ever interpreted; the native
+path, per that same docstring, "ignores the string and taps a default dismissive label instead."
+Written in the free-text form, a scenario's setting therefore already has no effect on the
+native-capable iOS backend today — and neither does a target config's or a `--alert-instruction`
+flag's. On a backend without the native capability, that free-text form is, before this change, the
+only thing steering the fallback at all. Removing the
 fallback would make it inert everywhere rather than only on iOS — the same class of silent
 wrong-answer outcome BE-0382's own Motivation section spent its length ruling out for `rules`.
 Rejecting a free-text `instruction` at `run` time, before any scenario's device work begins, keeps
@@ -111,6 +112,17 @@ on anything other than `"dismissed"`, falls through to `self.vision(driver)`. Th
 `NativeAlertState`'s four values, `pick_alert_label`, and `match_alert_rule` stay unchanged; only the
 state a caller can no longer trade for a model call changes.
 
+The same unit widens `probe_native`'s return so the buttons it already read survive the call. The
+method returns `tuple[NativeAlertState, AlertEvent | None]` today and fills the event only for
+`"dismissed"`; on `"unhandled"` it returns `("unhandled", None)`, discarding the `buttons` list it
+just read from `driver.system_alert_labels()` (`bajutsu/orchestrator/types.py:348`). Units 2 and 3
+need exactly that list to name the alert, so the return grows a third member carrying the observed
+labels — `tuple[NativeAlertState, AlertEvent | None, list[str]]`, empty except where a query actually
+saw an alert. Widening the existing return is preferred over re-querying `system_alert_labels()` at
+the `"unhandled"` moment: a second cross-process query costs another round trip on the runner's
+single main thread and reopens the time-of-check/time-of-use window that `probe_native`'s own
+dismiss-race branch exists to close.
+
 ### 2. `_AlertGuardGate` reports an unhandled alert instead of calling vision
 
 `_AlertGuardGate` (`bajutsu/orchestrator/waits.py:189`) is the mid-wait trigger BE-0269 added. Fed
@@ -123,28 +135,45 @@ logging a warning. This unit removes the model call and the machinery that bound
 records instead of acting on:
 
 - On a native-capable backend, `probe_native`'s `"unhandled"` state — an alert is up, but no rule or
-  candidate label names its button — records the alert's own button labels.
+  candidate label names its button — records the button labels that probe now returns (unit 1).
 - On a backend without the native capability, or on a native backend's `"absent"` poll — a
-  non-SpringBoard surface, such as an action sheet or a WKWebView dialog, that the query cannot
-  enumerate — the same debounced collapsed-tree signal that used to trigger vision instead records
-  that the screen looks blocked, with no button labels to name.
+  non-SpringBoard surface the query cannot enumerate, such as an action sheet or a WKWebView
+  dialog — the same debounced collapsed-tree signal that used to trigger vision instead records that
+  the screen looks blocked, naming no button labels.
 
 The gate exposes this note through a method the wait loop consults only when it is about to report a
 timeout, so a transient or self-resolved block never reaches the timeout message. The existing
 debounce (`_GUARD_DEBOUNCE_POLLS`) already filters a transient collapsed frame, and the note reflects
 the gate's most recent observation, not a sticky flag left over from earlier in the wait.
 
-### 3. The wait-timeout message names an unhandled alert
+### 3. Both guard call sites name an unhandled alert in their failure reason
 
-`_wait`'s `for` branch and its `screenChanged` branch (`bajutsu/orchestrator/waits.py:608` and
-`:663`) are the two guarded branches that can report a timeout; `gone` and `request` are not guarded,
-and `settled` never fails. Both already build a plain string, for example
-`f"wait timeout: for {target} ({timeout}s)"`. This unit appends the gate's note (unit 2) to that
-string when one is present at the moment of timeout. A run failing behind an unrecognized system
-prompt then reads, for example, as `wait timeout: for #submit (10.0s) — an unhandled system alert is
-blocking the screen (buttons: Allow, Don't Allow)`, instead of naming only the element that never
-appeared. The hedged, label-less form covers the non-native-capable case: `… the screen appears
-blocked, possibly by a system alert or another overlay outside the app's view`.
+The guard has two call sites, and the Introduction's promise — that a blocked step *or* wait says
+what blocked it — holds only if both carry the note.
+
+The **mid-wait gate** is the first. `_wait`'s `for` branch and its `screenChanged` branch
+(`bajutsu/orchestrator/waits.py:608` and `:663`) are the two guarded branches that can report a
+timeout; `gone` and `request` are not guarded, and `settled` never fails. Both already build a plain
+string, for example `f"wait timeout: for {target} ({timeout}s)"`. This unit appends the gate's note
+(unit 2) to that string when one is present at the moment of timeout. A run failing behind an
+unrecognized system prompt then reads, for example, as `wait timeout: for #submit (10.0s) — an
+unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)`, instead of naming only
+the element that never appeared. The hedged, label-less form covers the non-native-capable case:
+`… the screen appears blocked, possibly by a system alert or another overlay outside the app's view`.
+
+The **end-of-step and `expect` retry** is the second, and it calls `AlertGuardConfig` directly rather
+than through the gate: `alert_guard(driver)` after a failed `expect`
+(`bajutsu/orchestrator/loop.py:700`) and `self.cfg.alert_guard(active_driver)` on the step retry
+(`:1442`). After unit 1 that call returns `None` for every state other than `"dismissed"`, and the
+step keeps its own `reason` untouched. A `tap` blocked by an unanticipated alert outside a wait would
+therefore still fail as a bare `element not found` — the exact reading this proposal exists to
+remove. The gate's note cannot serve here, because the end-of-step retry holds no
+`_AlertGuardGate`. Unit 1's widened `probe_native` return can: `AlertGuardConfig` keeps the labels
+from its most recent probe, and both call sites read the note from there, so the two sites share one
+source instead of growing two notions of "the alert we saw". That state is safe to hold on the config
+because `_guard_for` builds one `AlertGuardConfig` per scenario and a scenario's steps run in
+sequence, so no note crosses a scenario or a worker boundary. The step's failure reason gains the same
+suffix the wait's does.
 
 ### 4. `run`'s CLI wiring stops constructing the vision locator
 
@@ -156,21 +185,43 @@ build each scenario's `AlertGuardConfig` from `labels`, `rules`, and `poll_inter
 1 already dropped the field they were feeding. `_build_alert_locator` and `_build_alert_guard`
 (`bajutsu/cli/_shared.py:460`–`519`) stay unchanged: `record` and `crawl` still call them directly.
 
+The same unit retires `run --alert-instruction` (`bajutsu/cli/commands/run.py:999`). The option takes
+a bare string, so every value a user can pass is the free-text form; unit 5 turns a non-empty one into
+a `run`-time error, and an empty one already normalizes to `None` (`run.py:454`). Its only two
+remaining outcomes would be "no effect" and "abort the run" — trap surface on `run --help` with no
+legal value. It cannot express the list form that replaces it either, since that form is per scenario
+(`instruction: [...]`), so the flag is removed rather than reinterpreted. `record` and `crawl` keep
+their own `--alert-instruction` (`crawl.py:470`, `record.py:145`), which still steers the vision guard
+those two commands retain.
+
 ### 5. A free-text `instruction` is a `run`-time validation error
 
 `SystemAlertHandling.instruction` (`bajutsu/scenario/models/scenario.py:125`) stays a
 `str | list[str] | None` field; the type does not change, since `record` and `crawl` still accept the
 free-text form for their own, unchanged vision guard. What changes is how `run` resolves it. A
-scenario's own `instruction`, a target config's `run_defaults.system_alert_handling.instruction`, and
-the CLI's `--alert-instruction` (`bajutsu/cli/commands/run.py:998`, always a bare string, so any
-non-empty value is inherently the free-text form) are each checked at the point `_alert_guard_factory`
-resolves the effective policy for every scenario, before any scenario's device work begins. A
+Three sources carry the setting: a scenario's own `instruction`, a target config's
+`run_defaults.system_alert_handling.instruction`, and the CLI's `--alert-instruction`. The flag is
+always a bare string (`bajutsu/cli/commands/run.py:999`), so any non-empty value it carries is
+inherently the free-text form. All three are checked by an **eager pass over `scenarios` in
+`_alert_guard_factory`'s own body**, before it returns its per-scenario closure. A
 resolved value that is a `str` — not a `list[str]`, and not empty — stops the whole `run` invocation
 with a message naming the offending scenario or flag and pointing at the list (`instruction: [...]`)
-or `rules` form. This mirrors the early-validation shape `SystemAlertHandling.resolved_locale`
-already uses for an uncovered locale: it raises before that scenario's device work, rather than
-introducing a new failure shape. Because the check runs for every scenario before `run` starts any of
-them, a suite is rejected or accepted as a whole, never partway through a run.
+or `rules` form.
+
+The eager pass is the substance of this unit, not an implementation detail. `_alert_guard_factory`
+returns a lazy `AlertGuardFor` callable (`bajutsu/runner/types.py:25`) that the pipeline invokes per
+scenario inside the run loop, in a worker, after the run has already started
+(`bajutsu/runner/pipeline.py:358`). A check placed inside `_guard_for` would therefore fire on
+scenario N with scenarios 1…N-1 already executed — exactly partway through a run. Running the pass
+over every scenario up front is what makes a suite rejected or accepted as a whole.
+
+That deliberately departs from `SystemAlertHandling.resolved_locale`'s shape. The locale check raises
+from inside `_guard_for`, and the runner catches it as one scenario's failure (`run.py:496-500`), so a
+suite carrying one uncovered locale still runs its other scenarios. An unusable `instruction` is an
+authoring mistake in the file rather than a condition of the run, and it is detectable without a
+device, so it is worth catching before any scenario starts. The behavioral difference between the two
+is real on a mixed suite, which is why this unit names it rather than leaving an implementer to reach
+for the nearer precedent.
 
 ### 6. The Claude-boundary classification and documentation catch up
 
@@ -190,7 +241,7 @@ them, a suite is rejected or accepted as a whole, never partway through a run.
   message, and a free-text `instruction` is rejected at `run` time.
 - `CLAUDE.md`, `CONTRIBUTING.md` / `CONTRIBUTING.ja.md`, and `SECURITY.md` / `SECURITY.ja.md` each
   list the paths that need `ANTHROPIC_API_KEY` as "`record`, `run --system-alert-handling`" (or the
-  Japanese equivalent). All four files drop `run --system-alert-handling` from that list, since `run`
+  Japanese equivalent). All five files drop `run --system-alert-handling` from that list, since `run`
   needs no AI credential under any flag once this lands.
 
 ### Out of scope

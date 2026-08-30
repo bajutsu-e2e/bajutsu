@@ -115,6 +115,17 @@ XCUITest バックエンドでは、
 `pick_alert_label`、`match_alert_rule` は変更しません。呼び出し元がモデル呼び出しに交換できなくなる
 状態が変わるだけです。
 
+本ユニットは同時に、`probe_native` がすでに読んだボタンを呼び出し元まで届くようにするため、その戻り値
+を広げます。現在の戻り値は `tuple[NativeAlertState, AlertEvent | None]` で、イベントを埋めるのは
+`"dismissed"` のときだけです。`"unhandled"` では `("unhandled", None)` を返し、
+`driver.system_alert_labels()` から読んだばかりの `buttons` を捨てています
+（`bajutsu/orchestrator/types.py:348`）。ユニット 2 とユニット 3 はアラートを名指しするのにまさにその
+リストを必要とするため、観測したラベルを運ぶ 3 つ目の要素を戻り値へ足します。
+`tuple[NativeAlertState, AlertEvent | None, list[str]]` とし、照会が実際にアラートを見たとき以外は空
+にします。`"unhandled"` の時点で `system_alert_labels()` を引き直す案よりも、既存の戻り値を広げる案を
+採ります。2 度目のプロセス間照会は runner の単一メインスレッドにもう 1 往復を課すうえ、`probe_native`
+自身の dismiss レース分岐が閉じている time-of-check/time-of-use の窓を開け直すためです。
+
 ### 2. `_AlertGuardGate` は vision を呼ぶ代わりに未処理のアラートを記録する
 
 `_AlertGuardGate`（`bajutsu/orchestrator/waits.py:189`）は、BE-0269 が追加した wait 途中のトリガーで
@@ -126,7 +137,8 @@ XCUITest バックエンドでは、
 試行上限）を取り除きます。代わりに、作用せず記録するだけのメモへ置き換えます。
 
 - ネイティブ対応のバックエンドでは、`probe_native` の `"unhandled"` 状態（アラートは出ているが、どの
-  rule と候補ラベルのどちらもそのボタンを名指しできない）を、アラート自身のボタンラベルとして記録する。
+  rule と候補ラベルのどちらもそのボタンを名指しできない）で、その照会が返すようになったボタンラベル
+  （ユニット 1）を記録する。
 - ネイティブ capability を持たないバックエンド、またはネイティブ対応バックエンドの `"absent"` ポーリ
   ング（アクションシートや WKWebView のダイアログのように問い合わせが列挙できない非 SpringBoard の
   画面）では、vision を起動していた debounce 済みの崩壊ツリー信号を使い、代わりに
@@ -137,18 +149,35 @@ XCUITest バックエンドでは、
 ありません。既存の debounce（`_GUARD_DEBOUNCE_POLLS`）がすでに一時的な崩壊フレームを取り除いており、
 このメモはゲートの直近の観測を反映するものであって、wait の早い段階から残った固定フラグではありません。
 
-### 3. wait タイムアウトのメッセージが未処理のアラートを名指しする
+### 3. ガードの 2 つの呼び出し箇所がどちらも未処理のアラートを失敗理由に名指しする
 
-`_wait` の `for` 分岐と `screenChanged` 分岐（`bajutsu/orchestrator/waits.py:608` と `:663`）が、タイ
-ムアウトを報告し得る、ガード対象の 2 つの分岐です。`gone` と `request` はガード対象外であり、`settled`
-は失敗しません。どちらもすでに `f"wait timeout: for {target} ({timeout}s)"` のような単純な文字列を組
-み立てています。本ユニットは、タイムアウトの瞬間にゲートのメモ（ユニット 2）が存在すれば、それをこの
-文字列へ追記します。認識できないシステムプロンプトの裏で失敗する実行は、たとえば
+ガードには呼び出し箇所が 2 つあります。「ブロックされたステップ**または** wait が、何に阻まれたかを述
+べる」という「はじめに」の約束は、両方がメモを持って初めて成り立ちます。
+
+1 つ目は **wait 途中のゲート**です。`_wait` の `for` 分岐と `screenChanged` 分岐
+（`bajutsu/orchestrator/waits.py:608` と `:663`）が、タイムアウトを報告し得るガード対象の 2 分岐です。
+`gone` と `request` はガード対象外であり、`settled` は失敗しません。どちらもすでに
+`f"wait timeout: for {target} ({timeout}s)"` のような単純な文字列を組み立てています。本ユニットは、タ
+イムアウトの瞬間にゲートのメモ（ユニット 2）が存在すれば、それをこの文字列へ追記します。認識できない
+システムプロンプトの裏で失敗する実行は、たとえば
 `wait timeout: for #submit (10.0s) — an unhandled system alert is blocking the screen (buttons:
 Allow, Don't Allow)` のように読めるようになります。ついに現れなかった要素だけを名指しする今のメッセ
 ージとは違う形です。ネイティブ非対応の場合は、ラベルなしの控えめな言い回しでカバーします。
 `… the screen appears blocked, possibly by a system alert or another overlay outside the app's
 view` です。
+
+2 つ目は**ステップ末尾と `expect` の再試行**で、こちらはゲートを介さず `AlertGuardConfig` を直接呼び
+ます。`expect` が失敗したあとの `alert_guard(driver)`（`bajutsu/orchestrator/loop.py:700`）と、ステッ
+プ再試行の `self.cfg.alert_guard(active_driver)`（`:1442`）です。ユニット 1 のあと、この呼び出しは
+`"incapable"`、`"absent"`、`"unhandled"` のいずれでも `None` を返し、ステップは自分の `reason` をその
+まま保ちます。つまり、wait の外で予期しないアラートに阻まれた `tap` は、素の `element not found` とし
+て失敗したままになります。本提案が取り除こうとしている、まさにその読み方です。ステップ末尾の再試行は
+`_AlertGuardGate` を持たないため、ゲートのメモはここでは使えません。使えるのはユニット 1 で広げた
+`probe_native` の戻り値です。`AlertGuardConfig` が直近の照会で得たラベルを保持し、2 つの呼び出し箇所
+はどちらもそこからメモを読みます。こうすれば「見えたアラート」の概念が 2 つに分かれず、1 つの供給元を
+共有できます。この状態を設定オブジェクトに持たせて安全なのは、`_guard_for` がシナリオごとに
+`AlertGuardConfig` を 1 つ組み立て、1 つのシナリオのステップは順番に実行されるからです。メモがシナリ
+オやワーカーの境界を越えることはありません。ステップの失敗理由には、wait と同じ接尾辞が付きます。
 
 ### 4. `run` の CLI 配線が vision ロケータを組み立てなくなる
 
@@ -161,6 +190,15 @@ view` です。
 `_build_alert_guard`（`bajutsu/cli/_shared.py:460`–`519`）は変更しません。`record` と `crawl` は引き
 続きこれらを直接呼び出します。
 
+本ユニットは同時に `run --alert-instruction`（`bajutsu/cli/commands/run.py:999`）を廃止します。この
+オプションは素の文字列を取るため、利用者が渡せる値はすべて自由テキスト形式です。空でない値はユニット
+5 が `run` 実行時のエラーに変え、空の値はすでに `None` へ正規化されます（`run.py:454`）。つまり残る
+結果は「何も起きない」か「実行を止める」の 2 つだけで、`run --help` には正当な値を持たない罠だけが残
+ります。このフラグは、置き換え先のリスト形式がシナリオ単位（`instruction: [...]`）である以上それを表
+現もできないため、解釈を変えるのではなく削除します。`record` と `crawl` は自前の `--alert-instruction`
+（`crawl.py:470`、`record.py:145`）を残します。この 2 つのコマンドが保持する vision guard を、引き続
+き制御するためです。
+
 ### 5. 自由テキストの `instruction` は `run` 実行時の検証エラーになる
 
 `SystemAlertHandling.instruction`（`bajutsu/scenario/models/scenario.py:125`）は
@@ -168,16 +206,25 @@ view` です。
 い自分たちの vision guard のために、引き続き自由テキスト形式を受け付けるからです。変わるのは `run` に
 よる解決のしかたです。シナリオ自身の `instruction`、ターゲット設定の
 `run_defaults.system_alert_handling.instruction`、CLI の `--alert-instruction`
-（`bajutsu/cli/commands/run.py:998`。常に素の文字列であり、空でない値はすべて自由テキスト形式に当た
-る）の 3 か所を、`_alert_guard_factory` が検証します。検証は、各シナリオの実効方針を解決する時点、
-つまりどのシナリオの端末作業が始まるよりも前に行います。解決された値が `list[str]` ではなく、かつ空でもない `str` である場
-合、`run` の実行全体を止め、該当するシナリオまたはフラグを名指しし、リスト形式（`instruction: [...]`）
-または `rules` 形式へ誘導するメッセージを添えます。これは、
-`SystemAlertHandling.resolved_locale` が未対応のロケールに対してすでに使っている早期検証の形、つまり
-「そのシナリオの端末作業より前でここから送出する」という形をなぞるものであり、新しい失敗の形を持ち込
-むものではありません。検証はどのシナリオについても `run` がどれか 1 つでも実行を始める前に走るため、
-シナリオ一式は全体として受理されるか拒否されるかのどちらかになり、実行の途中で拒否されることはありま
-せん。
+（`bajutsu/cli/commands/run.py:999`。常に素の文字列であり、空でない値はすべて自由テキスト形式に当た
+る）の 3 か所です。**`_alert_guard_factory` の本体で `scenarios` を先に一巡する検証**がこれらを調べま
+す。この一巡は、シナリオごとのクロージャを返すよりも前に走ります。解決された値が `list[str]` ではなく、かつ空
+でもない `str` である場合、`run` の実行全体を止め、該当するシナリオまたはフラグを名指しし、リスト形式
+（`instruction: [...]`）または `rules` 形式へ誘導するメッセージを添えます。
+
+先に一巡することは実装上の細部ではなく、本ユニットの中身そのものです。`_alert_guard_factory` が返すの
+は遅延評価の `AlertGuardFor`（`bajutsu/runner/types.py:25`）であり、パイプラインはこれをシナリオごと
+に、実行ループの内側のワーカーで、実行が始まったあとに呼び出します
+（`bajutsu/runner/pipeline.py:358`）。したがって `_guard_for` の内側に置いた検証は、シナリオ 1 から
+N-1 がすでに実行を終えた状態でシナリオ N について発火します。まさに「実行の途中」です。すべてのシナリ
+オを事前に一巡することが、シナリオ一式を全体として受理するか拒否するかにしている当のものです。
+
+これは `SystemAlertHandling.resolved_locale` の形とは意図的に異なります。ロケールの検証は `_guard_for`
+の内側から送出され、runner はそれを 1 つのシナリオの失敗として捕捉します（`run.py:496-500`）。そのた
+め、未対応のロケールを 1 つ含むシナリオ一式でも、残りのシナリオは実行されます。使えない `instruction`
+は実行時の条件ではなくファイル上の記述ミスであり、端末なしで検出できます。だからこそ、どのシナリオが
+始まるよりも前に捕まえる価値があります。混在したシナリオ一式では両者の挙動の違いが実際に効いてくるた
+め、実装者が近いほうの前例に手を伸ばさないよう、本ユニットで明示します。
 
 ### 6. Claude 境界の分類とドキュメントの追随
 
@@ -198,7 +245,7 @@ view` です。
 - `CLAUDE.md`、`CONTRIBUTING.md` / `CONTRIBUTING.ja.md`、`SECURITY.md` / `SECURITY.ja.md` は、いずれも
   `ANTHROPIC_API_KEY` を必要とする経路を「`record`、`run --system-alert-handling`」（またはその日本語
   訳）として列挙している。本変更が入れば `run` はどのフラグでも AI の認証情報を必要としなくなるた
-  め、4 ファイルすべてでこの一覧から `run --system-alert-handling` を外す。
+  め、5 ファイルすべてでこの一覧から `run --system-alert-handling` を外す。
 
 ### 対象外
 
