@@ -1,6 +1,6 @@
 **English** · [日本語](BE-XXXX-scroll-step-amount-ja.md)
 
-# BE-XXXX — Add an author-tunable step amount to the scroll action
+# BE-XXXX — Make a scroll step travel the distance it asks for and let authors choose it
 
 <!-- BE-METADATA -->
 | Field | Value |
@@ -15,65 +15,116 @@
 
 ## Introduction
 
-The `scroll` action gains an optional `amount` field: the fraction of the viewport each scroll
-step travels. `swipe` and `drag` already expose the same field for their own gestures. An author
-who knows in advance that a screen scrolls fast, or holds a target easy to skip past, can now
-request a smaller step directly, rather than depend only on the scroll loop's own recovery for a
-step that has already skipped a target. Omitting `amount` keeps today's behavior: the loop still
-starts at its own default step and still shrinks that step once it detects a skip.
+A `scroll` step does not travel the distance it asks for. On the device we measured, a step
+requesting 0.05 of the viewport moved the content 6.15 times that far, and no step moved less than
+about 269 points however little it requested. This item makes the realized travel match the
+request, and then exposes that distance to scenario authors as a new optional `amount` field on
+the `scroll` action, matching the field `swipe` and `drag` already carry.
+
+The two halves are one item because neither works alone. Correcting the travel without exposing it
+leaves authors with a single fixed step they still cannot tune. Exposing `amount` without
+correcting the travel hands authors a field whose smaller values the gesture cannot deliver.
 
 ## Motivation
 
+### What a scroll step does today
+
 [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element.md) added
-`scroll: { to: <selector> }`: a bounded, non-inertial loop that advances a fixed step of 0.6 of
-the [viewport](../../docs/scenarios.md), re-queries the element tree, and stops once the target
-[selector](../../docs/glossary.md#scenario-authoring) resolves with its frame's center inside the
-viewport. The step size is a module constant, `_STEP_FRACTION` in
+`scroll: { to: <selector> }`: a bounded loop that scrolls one step, re-queries the element tree,
+and stops once the target [selector](../../docs/glossary.md#scenario-authoring) resolves with its
+frame's center inside the viewport. Each step asks to advance a fixed fraction of the viewport —
+`_STEP_FRACTION = 0.6` in
 [`bajutsu/orchestrator/actions/handlers/scroll.py`](../../bajutsu/orchestrator/actions/handlers/scroll.py).
-No field on the `scroll` scenario step reaches it, so every call takes the same step, whatever the
-screen it scrolls.
+That constant is the only step size the action has; no field on the `scroll` scenario step reaches
+it.
 
-[BE-0329](../BE-0329-scroll-observed-motion-decisions/BE-0329-scroll-observed-motion-decisions.md)
-found that a large step can carry the target past the viewport between two queries, so a scenario
-failed to reach a target the loop reported missing. Its fix is reactive: the loop compares
-consecutive reads, and once it decides a step shared nothing with the read before it, the loop
-halves the step, down to a floor of 0.125 (`swipe`'s own default distance), and takes one step
-backward to look at the span it skipped. That recovery needs a skip to happen first. Each recovery
-step also spends one of the call's `maxScrolls` budget, so a screen that needs several halvings
-before its step is small enough leaves less budget for the steps that follow. A step already at
-the floor that still shares nothing with the read before it fails the whole call, naming the
-overshoot rather than reaching the target.
+BE-0326 states the contract that fraction is meant to honor: each step "advances a fixed
+screen-relative distance and leaves no momentum", so that "one step never flings the target past
+the viewport."
 
-Whether every backend's step is fully non-inertial in practice is itself not settled. On iOS,
-the resident runner holds the touch stationary for a fixed 0.3 seconds before lifting
-(`scrollSettleDuration` in
-[`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift)),
-rather than waiting on a condition that confirms the scroll view has actually stopped. Whether
-that fixed hold always outlasts `UIScrollView`'s own deceleration is a question about on-device
-physics that reading the source cannot answer, and no measurement has confirmed it either way. The
-driver conformance suite's overlap check
-([BE-0329](../BE-0329-scroll-observed-motion-decisions/BE-0329-scroll-observed-motion-decisions.md))
-would not catch a small amount of drift on its own: it asks only whether a step left some element
-shared between two reads, not whether the region stopped exactly where the step left it. A smaller
-`amount` narrows what a drift like that could carry past, whatever its cause, the same way it
-narrows what a detected overshoot recovers from.
+### The measurement
 
-An author who already knows a screen needs a smaller step, because its rows are dense or because
-it holds controls that must stay hittable at rest, has no way to say so today. The only route to a
-smaller step is the reactive halving above, and that route opens only after the loop has already
-overshot at 0.6. This item adds a direct route instead: `amount`, an optional field on the
-`scroll` scenario step, sets the step the loop starts at, in place of `_STEP_FRACTION`. The
-reactive recovery keeps working unchanged; it may still halve further from wherever `amount`
-starts.
+We measured realized travel against requested travel on an iPhone 17 Pro running iOS 26.5, on the
+driver conformance scrollable screen, viewport 402 by 874 points. Each row is ten repeats with
+the list reset to the top before each, and the same five fractions were run again as `swipe` for
+the comparison below, for a hundred measurements in all. Travel was read from the element tree: the driver call
+returns only after the gesture has settled, so the read after it describes a screen at rest, and
+rows carry unique identifiers, so a row present in both reads gives its own displacement directly.
 
-Once this ships, a test can demonstrate the field directly: a `FakeDriver` scroll built so the
-default 0.6 step shares nothing between two reads still reaches its target once `amount` is set
-small enough that no read skips it, and BE-0329's reversing recovery never triggers. No shipped
-backend is known to fling under ordinary use — BE-0329 records that finding — so `amount` is not
-documented here as the fix for a scenario failing today. The concrete, present-day case for it is
-the unsettled iOS question above: a screen an author suspects of residual drift can be given a
-step small enough that the drift, whatever its size, has less viewport left to carry the target
-through.
+| Requested fraction | Requested (pt) | Realized mean (pt) | sd (pt) | Ratio | Excess (pt) |
+|---|---|---|---|---|---|
+| 0.05 | 43.7 | 268.9 | 0.3 | 6.15× | +225.2 |
+| 0.125 | 109.2 | 279.4 | 5.1 | 2.56× | +170.1 |
+| 0.30 | 262.2 | 416.7 | 11.3 | 1.59× | +154.5 |
+| 0.60 (the default) | 524.4 | 657.4 | 0.9 | 1.25× | +133.0 |
+| 0.80 | 699.2 | 825.4 | 0.2 | 1.18× | +126.2 |
+
+The figures are exact rather than estimated. Within every one of the hundred measurements, the
+displacements of the individual rows agreed to 0.0 points, so the list translates rigidly and a
+single row's displacement is the region's travel. Row snapping is ruled out: the row pitch is
+exactly 98.0 points, and none of the realized distances is a multiple of it.
+
+### What the numbers say
+
+**The error is additive, and it leaves a floor.** The excess shrinks from +225 to +126 points as
+the request grows from 44 to 699 points, but it never approaches zero. The clearest statement of
+the defect is the floor it implies: **no step travels less than roughly 269 points, however little
+it asks for.** On the measured viewport that floor is about 0.31 of a screen.
+
+**The error is a systematic bias, not run-to-run scatter.** The standard deviation is between 0.2
+and 11.3 points, at most 2.7 percent of the realized travel, against a bias an order of magnitude
+larger. That distinction decides what kind of problem this is: a reproducible bias is correctable,
+where scatter would only be bounded. It also narrows what a reader should expect this item to
+deliver — it removes a consistent overshoot, and does not claim to make an inherently noisy gesture
+quiet.
+
+**Two consequences follow, and both matter more than the raw error.**
+
+The first is that BE-0326's contract holds only at the default. A 0.6 step realizes 657 points
+against an 874-point viewport, so it stays inside one screen and the target cannot be flung past.
+A 0.125 step realizes 279 points against a request of 109, and the shortfall in overlap is exactly
+what the contract exists to prevent.
+
+The second concerns the recovery in
+[BE-0329](../BE-0329-scroll-observed-motion-decisions/BE-0329-scroll-observed-motion-decisions.md).
+When a step is found to have skipped the target, the loop halves the fraction toward a floor of
+0.125, on the reasoning that a smaller fraction observes the content more finely. The halving does
+still shrink realized travel, from 657 points to about 279. What it cannot do is reach the
+distance its floor names: 0.125 and 0.05 both realize about 270 to 280 points, so **the smallest
+step the loop can actually take is around 0.32 of the viewport, not the 0.125 the code
+documents.** The recovery's final clamp from 0.15 to the 0.125 floor therefore buys almost
+nothing. The halvings above it still shrink real distance.
+
+### Why `amount` alone would not fix this
+
+An author who knows a screen needs a finer step has no way to say so today, and that gap is what
+first motivated this item. But a field that only requests a distance inherits the defect above.
+The values an author would reach for are the small ones, and the small ones are exactly where the
+gesture is least faithful. At 0.125 and at 0.05 — a request differing by a factor of two and a
+half — the content moves the same 270 to 280 points, so across that range the field would be
+inert. Shipping `amount` on today's gesture would hand authors a knob that reads as precise and
+does nothing at the settings they most want.
+
+### The outcome to check
+
+Once this ships, a step requesting 0.125 of the viewport should travel close to the 109 points it
+asks for on the measured device, rather than the 279 it travels today. Cutting a request from
+0.125 to 0.05 should shrink the distance travelled in proportion, where today it changes nothing.
+The driver conformance suite should fail a backend whose realized travel departs from the request
+by more than a stated tolerance, so the property stays checked rather than measured once.
+
+### What we have not established
+
+The measurement covers one host, one device, one operating-system version, and one application —
+a SwiftUI lazy list. We measured the effect and not its cause. The 0.3-second settle hold the
+iOS runner applies before lifting (`scrollSettleDuration` in
+[`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift))
+is not responsible: `scroll` and `swipe` agree within noise at every fraction, and a separate
+measurement found content already at rest more than 190 milliseconds before the driver call
+returns, for both gestures alike. A plausible remaining explanation is that
+`withVelocity: .default` traverses every drag at one fixed speed, so the finger lifts at a similar
+velocity however short the drag, leaving a similar fling each time — but nothing has tested that,
+and unit 1 below exists to settle it before any correction is designed.
 
 ## Detailed design
 
@@ -85,124 +136,186 @@ through.
     amount: 0.2   # each step covers 0.2 of the viewport, instead of the default 0.6
 ```
 
-`amount` is optional. `0 < amount ≤ 1`, the same range `swipe` and `drag` already validate for
-their own `amount` field, and the same unit: a fraction of the viewport along the scroll axis.
-Omitted, the loop keeps its current default of 0.6.
+`amount` is optional and sets the fraction of the viewport one step travels, replacing
+`_STEP_FRACTION` as the loop's starting step. The range is `0 < amount ≤ 1` — the same range and
+the same unit `swipe` and `drag` already validate for their own `amount` field. Omitted, the loop
+keeps its current default of 0.6.
 
-The range does not stop at 0.6, so `amount` can also request a larger step than the loop takes
-today. [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element.md)'s own *Alternatives
-considered* deferred exactly this knob over that risk, worried that a large step reintroduces
-overshoot.
-[BE-0329](../BE-0329-scroll-observed-motion-decisions/BE-0329-scroll-observed-motion-decisions.md)
-closes that gap for any step size, not only the default one: the loop already detects a step that
-shares nothing with the read before it and reacts, whatever fraction produced that step. An
-`amount` near 1 is caught and shrunk by the same recovery a large step from `_STEP_FRACTION` would
-trigger, rather than a silent skip.
+`amount` sets only where the loop starts. BE-0329's recovery is unchanged: on a detected
+overshoot, the loop still halves the current step toward the 0.125 floor, wherever it started. An
+`amount` at or below that floor leaves the recovery no room to shrink further, so the first
+overshoot the loop detects fails the call outright, naming the overshoot. An author who sets
+`amount` that low is choosing a step small enough that the loop should not need to recover.
 
-`amount` sets only the loop's starting step.
-[BE-0329](../BE-0329-scroll-observed-motion-decisions/BE-0329-scroll-observed-motion-decisions.md)'s
-recovery is unchanged: on a detected overshoot, the loop still halves the current step toward a
-floor of 0.125, regardless of where it started. An `amount` at or below that floor leaves the
-recovery no room to shrink further, so the first overshoot the loop detects fails the call
-outright, naming the overshoot, rather than reaching the target through a smaller step. An author
-who sets `amount` that low is choosing a step small enough that the loop should never need to
-recover in the first place; *Alternatives considered* records why the floor itself stays fixed
-rather than tracking `amount`.
+The range deliberately does not stop at the 0.6 default.
+[BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element.md)'s own *Alternatives
+considered* deferred this knob over the risk that a large step reintroduces overshoot. BE-0329
+closed that gap for every step size rather than only the default: the loop detects a step that
+shares nothing with the read before it and reacts, whatever fraction produced that step.
+
+### Making the realized travel match the request
+
+The correction belongs behind `Driver.scroll`, so the handler keeps asking for a fraction and each
+backend delivers it. Which correction is right depends on unit 1's finding, and the candidates
+differ in how much they respect determinism:
+
+- **Tune the gesture's parameters.** If the fixed traversal velocity is the cause, varying it with
+  the drag length — or holding differently before lift — may remove the excess at its source. This
+  is the preferred shape: it corrects the gesture rather than compensating for it.
+- **Apply a per-backend calibration.** A measured relationship between request and realized travel
+  could be inverted, so the driver asks for whatever produces the wanted distance. This risks
+  encoding one device's numbers into the tool, which unit 5's conformance check would then police
+  across backends.
+- **Close the loop.** The handler could measure a step's realized travel from the trees it already
+  reads and adjust the next request. This stays deterministic — it reads frames, not a model — but
+  it changes step sizes mid-scroll, which interacts with BE-0329's halving and would need that
+  interaction spelled out.
+
+Whichever lands, no fixed `sleep` may enter the path, and no per-application branch may appear.
 
 ### Work breakdown (`MECE`)
 
 Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 
-1. **Scenario schema.**
+1. **Establish why a step overshoots.**
+
+   Vary the runner's gesture parameters independently — traversal velocity, the hold before lift,
+   the drag's length — and measure realized travel for each. The goal is to name the mechanism, not
+   to guess it: the correction in unit 2 follows from what this finds. Confirm or refute the
+   fixed-traversal-velocity hypothesis stated in *Motivation*. Record the numbers in this item's
+   *Progress* log so a later reader can see what the correction rests on.
+
+2. **Correct the travel behind `Driver.scroll`.**
+
+   Implement the correction unit 1 points to, in the iOS runner and the driver, keeping the
+   handler's request in viewport fractions. Measure the other backends the same way and correct
+   them if they miss too — the conformance check in unit 5 holds all of them to one contract, so
+   this unit must not fix iOS alone and leave another backend failing.
+
+3. **The `amount` scenario schema.**
 
    Add `amount: float | None = None` to `Scroll` in
    [`bajutsu/scenario/models/actions.py`](../../bajutsu/scenario/models/actions.py). `Scroll` has
    no validator today; `max_scrolls` is constrained inline with `Field(gt=0)`. Constrain `amount`
-   the same way, with `Field(gt=0.0, le=1.0)`, or add a small validator mirroring the
-   `0 < amount ≤ 1` check `Swipe` and `Drag` already run for their own `amount` field.
+   the same way, with `Field(gt=0.0, le=1.0)`, or add a validator mirroring the `0 < amount ≤ 1`
+   check `Swipe` and `Drag` already run.
 
-2. **Handler wiring.**
+   codegen emits nothing new for the field. Both scroll emitters delegate to a native scroll into
+   view — `scrollIntoViewIfNeeded` in [`bajutsu/codegen/playwright.py`](../../bajutsu/codegen/playwright.py)
+   and `UiScrollable.scrollIntoView` in [`bajutsu/codegen/uiautomator.py`](../../bajutsu/codegen/uiautomator.py)
+   — and each does its own stepping, so neither leaves `amount` a faithful mapping, exactly as
+   neither maps `within` today. Add `amount` to the Playwright emitter's comment enumerating the
+   fields its native scroll subsumes, so the record of that decision does not go stale.
+
+4. **Handler wiring.**
 
    Thread `s.amount` from `_do_scroll` through to `scroll_to_target` in
    [`bajutsu/orchestrator/actions/handlers/scroll.py`](../../bajutsu/orchestrator/actions/handlers/scroll.py):
    the loop's `fraction = _STEP_FRACTION` initializer becomes
    `fraction = amount if amount is not None else _STEP_FRACTION`. The recovery path that shrinks
-   `fraction` toward `_MIN_STEP_FRACTION` reads the same variable it already does, unchanged. One
-   line does need to change: the overshoot message at the floor names `_MIN_STEP_FRACTION`
-   directly, and an `amount` below that floor never shrinks before hitting it, so the message must
-   name the actual `fraction` the failing step took, not the constant.
+   `fraction` toward `_MIN_STEP_FRACTION` reads the same variable, unchanged. One further line does
+   need changing: the overshoot message at the floor names `_MIN_STEP_FRACTION` directly, and an
+   `amount` below that floor never shrinks before hitting it, so the message must name the
+   `fraction` the failing step actually took.
 
-3. **Tests.**
+5. **A conformance check on realized travel.**
 
-   Over `FakeDriver`: a call with `amount` set below the default reaches a target that only the
-   default step would overshoot, with the recovery path never triggered. A call omitting `amount`
-   behaves exactly as it does today (a regression guard). A call whose `amount` sits at or below
-   the floor fails on its first detected overshoot, naming the overshoot, rather than shrinking
-   further. Schema tests cover the new field's range validation, mirroring the existing
-   `swipe`/`drag` amount tests.
+   Add a case to [`tests/driver_conformance.py`](../../tests/driver_conformance.py) that requests a
+   step, measures the region's displacement from the trees before and after, and asserts it falls
+   within a stated tolerance of the request. State the tolerance and the reasoning for it in the
+   test, as BE-0329's overlap check does for its own property. This is what keeps the correction
+   from decaying, and what holds every backend to the same contract
+   ([BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md)).
 
-4. **Docs.**
+6. **Guard the settle property that already holds.**
+
+   An on-device test for the neighbouring property — that content is at rest by the time the
+   driver call returns — was written while measuring for this item and verified negatively (with
+   the driver's request made asynchronous, it fails on the intended assertion rather than on a
+   vacuity guard). Land it, and decide whether the `conformance (xcuitest)` job should invoke it:
+   that job names its test file explicitly, and it is a required check, so wiring in a new file is
+   a deliberate choice rather than an oversight.
+
+7. **Tests.**
+
+   Over `FakeDriver`: a call with a small `amount` reaches a target the default step would
+   overshoot, with the recovery never triggered; a call omitting `amount` behaves exactly as it
+   does today; a call whose `amount` sits at or below the floor fails on its first detected
+   overshoot, naming the step it took. Schema tests cover the new field's range, mirroring the
+   existing `swipe` and `drag` amount tests.
+
+8. **Docs.**
 
    Document `amount` in [`docs/scenarios.md`](../../docs/scenarios.md) and its Japanese mirror,
-   beside `direction`, `within`, and `maxScrolls`. State the default (0.6) and the unit (a
-   fraction of the viewport), and cross-reference `swipe`'s and `drag`'s own `amount` for the
-   shared convention.
+   beside `direction`, `within`, and `maxScrolls`. State its default and its unit, and
+   cross-reference `swipe` and `drag` for the shared convention. Record the realized-travel requirement in the
+   driver conformance section of [`docs/architecture.md`](../../docs/architecture.md) and its
+   Japanese mirror, since it becomes part of the `Driver` contract.
 
 ### Prime directives preserved
 
 - **AI never judges.**
 
-  `amount` is a number a scenario author supplies; the loop reads it the same way it reads
-  `max_scrolls` today. No model call enters the field's path.
+  Every part of this is arithmetic over what the backend reported: a displacement read from two
+  element trees, a fraction supplied by the scenario author, a tolerance compared numerically. No
+  model call enters the path.
 
 - **Determinism first.**
 
-  The field changes only the size of a step already bounded by `maxScrolls` and already
-  re-queried after each step. It adds no fixed `sleep` and no new failure mode: an author-supplied
-  `amount` at or below the recovery floor hits the same overshoot failure the default step already
-  hits at that floor, naming whatever step actually ran rather than the default's.
+  The item removes a source of non-determinism rather than adding one. A step that overshoots by a
+  device-dependent amount is precisely the unpredictability prime directive 2 exists to exclude,
+  and correcting it makes the gesture's effect follow from the request. No fixed `sleep` is
+  introduced, and the loop keeps its bounded condition-wait shape. Should the closed-loop candidate
+  be chosen, its adjustment reads frames the loop already has.
 
 - **App-agnostic.**
 
-  `amount` reaches every backend through the one `scroll_to_target` loop; no backend branches on
-  its value.
+  The correction lives behind `Driver.scroll` and `amount` reaches every backend through the one
+  `scroll_to_target` loop. No per-application branch appears, and the conformance check holds every
+  backend to the same realized-travel contract.
 
 ## Alternatives considered
 
+- **Ship `amount` and leave the travel uncorrected.**
+
+  Rejected, and this is the shape the item originally took. The measurement above is what ruled it
+  out: a request of 0.05 and a request of 0.125 move the content the same distance, so the field's
+  small values — the ones an author reaching for it would want — would do nothing. A knob that
+  reads as precise and is inert where it matters is worse than no knob, because a scenario can be
+  written against it and appear correct.
+
+- **Correct the travel and do not expose `amount`.**
+
+  Rejected. Correcting the gesture would make BE-0329's halving reach the distances it names, which
+  is worth having on its own. But it leaves the original gap untouched: an author who knows a
+  screen needs a finer step still cannot request one, and must wait for the loop to overshoot and
+  recover, spending `maxScrolls` budget to arrive where they could have started.
+
 - **Let `amount` also set the recovery floor.**
 
-  Rejected. The floor exists so that a step too small to show any motion at all fails loudly
-  instead of shrinking toward zero forever. Tying the floor to `amount` would let an author who
-  requests a very small step also lower the floor below it, defeating the purpose the floor
-  serves. The floor stays fixed at `swipe`'s own default distance regardless of `amount`; an
-  author who requests a step at or below it accepts the same fail-fast overshoot outcome the loop
-  already gives at that floor today.
+  Rejected. The floor exists so a step too small to show any motion fails loudly instead of
+  shrinking toward zero. Tying it to `amount` would let an author who requests a very small step
+  lower the floor beneath it, defeating what the floor is for. The floor stays fixed regardless of
+  `amount`.
 
-- **Lower `_STEP_FRACTION` itself instead of adding a field.**
+- **Express `amount` as an absolute distance in points or pixels.**
 
-  Rejected. A smaller global default slows every `scroll` call that does not need one, and
-  [BE-0329](../BE-0329-scroll-observed-motion-decisions/BE-0329-scroll-observed-motion-decisions.md)
-  already chose 0.6 for the ordinary case: large enough to leave real overlap between two reads
-  without inviting the reactive recovery on an unremarkable screen. This item is additive — it
-  changes no scenario that omits `amount`.
+  Rejected for the reason `swipe` and `drag` already reject it: an absolute distance means
+  something different on a phone, a tablet, and a desktop browser window, so a scenario tuned on
+  one device would overshoot or undershoot on another. A viewport fraction reads the same on every
+  screen size, keeping the action portable across targets.
 
-- **Express `amount` as an absolute distance (points or pixels) rather than a viewport fraction.**
+- **Cap `amount` below 1 to avoid the overshoot risk BE-0326 deferred over.**
 
-  Rejected for the same reason `swipe` and `drag` already reject it: an absolute distance means
-  something different on a small phone screen than on a tablet or a desktop browser window, so a
-  scenario tuned on one device could overshoot or undershoot on another. A viewport fraction reads
-  the same on every screen size, keeping the action portable across targets (prime directive 3).
+  Rejected. BE-0329's detection and recovery already bounds that risk for every step, not only the
+  default one, and a cap would block an author whose screen scrolls unusually slowly from asking
+  for one large step while adding no protection the recovery does not give.
 
-- **Cap `amount` below 1 (for example, at the 0.6 default) to avoid reintroducing the overshoot risk
-  BE-0326 deferred over.**
+- **Lower `_STEP_FRACTION` instead of adding a field.**
 
-  Rejected.
-  [BE-0329](../BE-0329-scroll-observed-motion-decisions/BE-0329-scroll-observed-motion-decisions.md)'s
-  detection-and-recovery loop already bounds that risk for every step, not only the default one: a
-  step that shares nothing with the read before it triggers the same halving and reversing
-  recovery regardless of the `amount` that produced it. A cap would block a legitimate use — an
-  author whose screen scrolls unusually slowly, who wants one large step — while adding no
-  protection the recovery does not already give.
+  Rejected, and the measurement limits how far it could go anyway. A smaller global default slows
+  every `scroll` call that does not need one, and the realized travel stops responding to the
+  constant once it is lowered past about 0.125.
 
 ## Progress
 
@@ -210,22 +323,43 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — `amount` field on the `Scroll` scenario schema
-- [ ] Unit 2 — handler wiring into `scroll_to_target`'s starting step
-- [ ] Unit 3 — tests (schema range, `FakeDriver` reach-without-recovery, floor fail-fast, no-`amount` regression)
-- [ ] Unit 4 — docs (`docs/scenarios.md` + ja mirror)
+- [ ] Unit 1 — establish the mechanism behind the overshoot
+- [ ] Unit 2 — correct realized travel behind `Driver.scroll`, on every backend that misses
+- [ ] Unit 3 — `amount` field on the `Scroll` scenario schema
+- [ ] Unit 4 — handler wiring, including the overshoot message naming the step actually taken
+- [ ] Unit 5 — conformance check on realized travel against the request
+- [ ] Unit 6 — land the settle test and decide its CI wiring
+- [ ] Unit 7 — tests over `FakeDriver` and the schema
+- [ ] Unit 8 — docs (`docs/scenarios.md`, `docs/architecture.md`, both mirrors)
+
+### Log
+
+- Measured realized travel against requested travel on an iPhone 17 Pro (iOS 26.5), conformance
+  scrollable screen, viewport 402×874 pt, ten repeats per fraction. Realized travel overshoots at
+  every fraction, additively rather than proportionally, leaving a floor near 269 pt; run-to-run
+  scatter stays under 2.7 percent, so the error is a systematic bias. `scroll` and `swipe` agree
+  within noise, so the 0.3-second settle hold is not the cause. The figures are in *Motivation*.
+- A separate measurement ruled out a suspected residual drift after the gesture: sampling the
+  rendered screen from before the gesture to 2.5 seconds after the driver returned found content at
+  rest more than 190 ms *before* the return, in twelve of twelve gesture measurements, with a
+  zero-pixel negative control. What keeps changing after the return is the scroll indicator at the
+  screen's right edge, which fades about 900 ms later. The on-device test in unit 6 came out of
+  that work.
 
 ## References
 
+- [`bajutsu/orchestrator/actions/handlers/scroll.py`](../../bajutsu/orchestrator/actions/handlers/scroll.py) —
+  `scroll_to_target`'s step-fraction loop, `_STEP_FRACTION`, and the overshoot recovery
 - [`bajutsu/scenario/models/actions.py`](../../bajutsu/scenario/models/actions.py) — `Swipe`'s and
   `Drag`'s existing `amount` field, and the `Scroll` model this item extends
-- [`bajutsu/orchestrator/actions/handlers/scroll.py`](../../bajutsu/orchestrator/actions/handlers/scroll.py) —
-  `scroll_to_target`'s step-fraction loop and its overshoot recovery
 - [`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift) —
-  the resident runner's fixed-duration hold before lift, cited in *Motivation* as an open question
-  about XCUITest's non-inertial guarantee
-- [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element.md) — the `scroll` action this
-  item extends; its *Alternatives considered* deferred a per-step `amount` knob
+  the iOS scroll gesture, its `withVelocity: .default` and its fixed settle hold
+- [`tests/driver_conformance.py`](../../tests/driver_conformance.py) — the shared scroll cases the
+  realized-travel check joins
+- [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element.md) — the `scroll` action, its
+  fixed-distance contract, and the *Alternatives considered* that deferred an `amount` knob
 - [BE-0329](../BE-0329-scroll-observed-motion-decisions/BE-0329-scroll-observed-motion-decisions.md) —
-  the overshoot detection and reactive shrink-and-reverse recovery this item complements
+  the overshoot detection and the halving recovery whose floor this item makes reachable
+- [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md) — the suite
+  that turns a driver contract into a checked property
 - [`docs/scenarios.md`](../../docs/scenarios.md) — the `scroll` action's authoring documentation
