@@ -605,7 +605,7 @@ $('#fsmodal').addEventListener('click',e=>{if(e.target===$('#fsmodal'))closeFs()
 // `serve` is a hub over several named config bindings. Activating one rebinds state.config on the
 // server; we then reload the config label and the shared target/scenario lists so every tab runs
 // against the switched-to config with no restart. Every `serve` implicitly registers its loaded
-// config as one project. The switcher + the cross-project Metrics tab stay hidden until a real hub
+// config as one project. The switcher + the cross-project Comparison tab stay hidden until a real hub
 // exists (more than one project to choose between) — a single-config serve is unchanged there. The
 // Projects *page* (BE-0275) is the exception: it is the hub's home and its Add form is how a
 // single-config serve grows into a hub (the hosted topology has no CLI), so its tab shows for any
@@ -631,15 +631,18 @@ function renderSwitcher(){
 // Activate a project (rebind the live config), then re-sync the config label + shared lists + the
 // switcher. A refused switch (e.g. an uploaded bundle with no checkout, a moved file) surfaces the
 // server's error and re-syncs the select so it never lies about what is active.
+//
+// The role-gated refusal gets a sentence rather than the transport's bare `forbidden` (#1720), the
+// way purgeRun already spells out its own 403: activation is admin-only, and the page is never told
+// its role — the server is the single authority — so the refusal is where a reader learns the right
+// they are missing. Mapped here rather than at a call site, so the comparison view's Activate
+// button, the header switcher, and the Projects page's Switch all say the same thing.
 async function switchProject(name,opts){
   const d=await postJSON('/api/projects/'+encodeURIComponent(name)+'/activate',{},{error:'switch failed'});
-  if(d.error){alert(d.error);await loadProjects();return}
+  if(d.error){alert(d.error==='forbidden'?'Only an admin can activate a project.':d.error);await loadProjects();return}
   await loadConfig();
   await loadProjects();
   if(opts&&opts.goReplay)showView('replay');
-  // Deep-link from the comparison view (BE-0226): land on the switched-to project's single-config
-  // dashboard so the comparison is the entry point and BE-0102's Stats view is the drill-down.
-  if(opts&&opts.goStats)showView('stats');
 }
 $('#projectsw').addEventListener('change',e=>switchProject(e.target.value));
 $('#orgsw').addEventListener('change',e=>switchOrg(e.target.value));
