@@ -240,8 +240,9 @@ flaky-rate or duration), a second click flips the order. A project with no runs 
 row rather than a misleading zero.
 
 Clicking a row opens that project's run history, newest first — a read-only drill-down that leaves
-the hub's active project alone. Rows are reachable by keyboard as well: tab to one and press Enter
-or Space for the same history. Making a project the active one is a separate action, on the row's
+the hub's active project alone. The history is reachable by keyboard too: each row's project name is
+a button, so tab to it and press Enter or Space. Making a project the active one is a separate
+action, on the row's
 own **Activate** button, and it asks for confirmation first, because activating rebinds the config
 this deployment serves for every tab against it rather than only for the reader who pressed the
 button. Activation is admin-only, and the button says so up front: where the signed-in account may
