@@ -1,14 +1,14 @@
-[English](BE-XXXX-run-alert-guard-drop-vision-fallback.md) · **日本語**
+[English](BE-0402-run-alert-guard-drop-vision-fallback.md) · **日本語**
 
-# BE-XXXX — run のリアクティブなシステムアラートガードから AI vision フォールバックを廃止する
+# BE-0402 — run のリアクティブなシステムアラートガードから AI vision フォールバックを廃止する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-run-alert-guard-drop-vision-fallback-ja.md) |
+| 提案 | [BE-0402](BE-0402-run-alert-guard-drop-vision-fallback-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0402") |
 | トピック | AI プロバイダ設定 |
 | 関連 | [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md), [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules-ja.md), [BE-0394](../BE-0394-ai-provider-none-kill-switch/BE-0394-ai-provider-none-kill-switch-ja.md) |
 <!-- /BE-METADATA -->

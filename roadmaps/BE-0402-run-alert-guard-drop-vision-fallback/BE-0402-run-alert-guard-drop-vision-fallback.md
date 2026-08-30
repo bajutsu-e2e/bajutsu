@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-run-alert-guard-drop-vision-fallback-ja.md)
+**English** · [日本語](BE-0402-run-alert-guard-drop-vision-fallback-ja.md)
 
-# BE-XXXX — Drop the AI-vision fallback from run's reactive system-alert guard
+# BE-0402 — Drop the AI-vision fallback from run's reactive system-alert guard
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-run-alert-guard-drop-vision-fallback.md) |
+| Proposal | [BE-0402](BE-0402-run-alert-guard-drop-vision-fallback.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0402") |
 | Topic | AI provider configuration |
 | Related | [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md), [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules.md), [BE-0394](../BE-0394-ai-provider-none-kill-switch/BE-0394-ai-provider-none-kill-switch.md) |
 <!-- /BE-METADATA -->
