@@ -85,10 +85,11 @@ def test_the_row_keeps_its_table_semantics(tmp_path: Path) -> None:
     # table role — losing row/cell navigation over the ranking — and nests the row's own Activate
     # button inside an ARIA button, which ARIA forbids. The name button avoids both (#1720).
     text = _fetch(tmp_path, "/serve.metrics.mjs")
-    # Pin the row's own tag rather than the absence of the strings anywhere in the module: the
-    # comment above the name button names the role it deliberately does not use.
+    # Pin the row's own opening tag: it closes right after `data-name`, which is what proves the
+    # <tr> carries neither attribute. Scanning the whole module for "tabindex" would add no
+    # coverage and would fail here for an unrelated reason the first time the attribute is wanted
+    # elsewhere in it — making the drill-down's run list navigable, say.
     assert '<tr class="mrow" data-testid="metrics.row" data-name="${esc(m.name)}">' in text
-    assert "tabindex" not in text
 
 
 def test_activation_is_an_explicit_confirmed_button(tmp_path: Path) -> None:
