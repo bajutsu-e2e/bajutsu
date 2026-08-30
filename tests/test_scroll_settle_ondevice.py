@@ -20,7 +20,6 @@ grab that only the Simulator offers.
 from __future__ import annotations
 
 import os
-import subprocess
 import threading
 import time
 from pathlib import Path
@@ -111,23 +110,30 @@ class _Sampler(threading.Thread):
         self._out = out
         self._stop = threading.Event()
         self.frames: list[tuple[float, Path]] = []
+        self.error: BaseException | None = None
 
     def run(self) -> None:
         i = 0
-        while not self._stop.is_set():
-            path = self._out / f"{i:04d}.png"
-            started = time.monotonic()
-            subprocess.run(
-                ["xcrun", "simctl", "io", UDID, "screenshot", "--type=png", str(path)],
-                check=True,
-                capture_output=True,
-            )
-            self.frames.append((started, path))
-            i += 1
+        try:
+            while not self._stop.is_set():
+                path = self._out / f"{i:04d}.png"
+                started = time.monotonic()
+                # Through `simctl.real_run` so the grab inherits the module's own bound and argv
+                # policy: a wedged CoreSimulator raises `DeviceTimeout` here rather than blocking
+                # this thread — and `stop()` below — for the rest of the job (BE-0378).
+                simctl.real_run(simctl.screenshot_cmd(UDID, str(path)))
+                self.frames.append((started, path))
+                i += 1
+        except Exception as exc:  # kept, not swallowed: `stop()` re-raises it
+            self.error = exc
 
     def stop(self) -> None:
         self._stop.set()
         self.join()
+        if self.error is not None:
+            raise AssertionError(
+                "the framebuffer sampler died mid-run, so its frames prove nothing"
+            ) from self.error
 
 
 def _moved_fraction(a_path: Path, b_path: Path) -> float:
