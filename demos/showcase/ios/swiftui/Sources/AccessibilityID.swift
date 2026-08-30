@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // SPEC §8: the single place identifiers (and state-mirroring values) enter the tree.
 // Both are gated on ACCESSIBLE so the -noax build compiles to a tree with neither —
@@ -21,6 +22,27 @@ extension View {
         return AnyView(self.accessibilityValue(value))
         #else
         return AnyView(self)
+        #endif
+    }
+}
+
+// The same two helpers for the UIKit views this app hosts. `SignInView` wraps a plain UIKit sign-in
+// controller because Password AutoFill did not engage for the same content types inside a SwiftUI
+// `Form`, so its labels and fields need the UIKit form of these — gated on ACCESSIBLE exactly as the
+// SwiftUI ones are, so the -noax twin still carries neither.
+extension UIAccessibilityIdentification {
+    @discardableResult func accessibilityID(_ id: String) -> Self {
+        #if ACCESSIBLE
+        accessibilityIdentifier = id
+        #endif
+        return self
+    }
+}
+
+extension UIView {
+    func accessibilityStateValue(_ value: String?) {
+        #if ACCESSIBLE
+        accessibilityValue = value
         #endif
     }
 }

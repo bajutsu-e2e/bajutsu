@@ -203,12 +203,14 @@ outside that gate, so Unit 6's scenario is what verifies it.
   runner's single main thread.
 * **Reach the save-password alert through the native `springboard.alerts` query.** Rejected on the
   measurement: the alert is raised into the application's process and never appears there.
-* **Raise the alert from the application's own login screen instead of the browser.** Deferred, not
-  rejected — it is a genuinely different route and worth covering. Measured, it needs a
-  `webcredentials:` associated domain, and declaring the entitlement is not enough: with no HTTPS
-  server publishing `apple-app-site-association` and no certificate authority in the Simulator's
-  keychain, no prompt appears at all. That apparatus is a standing prerequisite for a lane that today
-  needs only a built application, so it belongs in its own change.
+* **Commit a fixed test certificate authority for the native route instead of generating one.** It
+  would make that lane reproducible with fewer moving parts. Rejected because a private key in the
+  repository is a secret in the history whatever its purpose, and `make lint-secrets` would rightly
+  object; generating one per run into gitignored `tmp/` and deleting it afterwards costs a few
+  seconds of `openssl` and leaves nothing behind.
+* **Give the native route its own showcase application rather than a launch-env screen.** Rejected as
+  disproportionate: `SHOWCASE_SIGNIN` swaps the whole interface the way `SHOWCASE_GESTURES` already
+  does, so no other scenario's tab bar moves and no second product needs building.
 
 ## Progress
 

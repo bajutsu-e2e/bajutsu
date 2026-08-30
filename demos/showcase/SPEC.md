@@ -241,6 +241,20 @@ demos/showcase e2e-savepassword`):
   scenario cannot tap its way into the stacked state, because an element tap made while a system
   alert is showing is answered by the interruption monitor first
 
+**Sign In** (`SHOWCASE_SIGNIN`, SwiftUI only) — the *other* route iOS raises the same alert from: the
+app's own `.username` / `.password` fields rather than a page in the browser. A launch-env swap like
+`SHOWCASE_GESTURES`, so no other scenario's tab bar moves. Two things about it are load-bearing and
+were measured: the fields are plain `UITextField`s in a plain view controller (Password AutoFill did
+not engage for the same content types inside a SwiftUI `Form`), and submitting **pushes** a different
+view controller so the credential-bearing view goes away, which is the event AutoFill watches for.
+This route also needs the associated-domain apparatus `make -C demos/showcase
+e2e-savepassword-native` stands up; without it iOS offers nothing, so every other lane simply sees a
+sign-in screen. Driven by `save_password_native.yaml`:
+- `signin.username` / `signin.password` — the content-typed fields
+- `signin.submit` — pushes the signed-in screen
+- `signin.value` — `idle` / `signedIn`
+- `signin.signedIn` — element shown only on the pushed screen (a positive condition to wait for)
+
 **System** — a pasteboard round-trip, mirroring state the backend's app-scoped query cannot
 otherwise observe. A value this app itself wrote reads back silently; a pasteboard seeded by another
 process trips iOS's paste-consent prompt, which `paste_system_alert.yaml` answers with

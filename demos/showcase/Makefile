@@ -9,6 +9,7 @@
 	run-swiftui-noax run-uikit-noax doctor record ui-test ui-test-coverage \
 	vrt vrt-approve vrt-swiftui vrt-swiftui-approve vrt-uikit vrt-uikit-approve \
 	e2e-visual e2e-visual-approve e2e-network e2e-browser e2e-savepassword \
+	e2e-savepassword-native \
 	flutter-build flutter-android-build flutter-android-noax-build \
 	run-flutter run-flutter-android clean
 
@@ -365,6 +366,51 @@ e2e-savepassword: swiftui-build uikit-build runner-build
 	xcrun simctl erase $(SIM); \
 	xcrun simctl bootstatus $(SIM) -b >/dev/null; \
 	cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/save_password_browser.yaml \
+		--target showcase-swiftui --udid $(SIM) --backend ios --config $(CONFIG)
+
+# The *native* save-password lane: iOS's own "Save Password" alert raised from the app's own
+# `.username` / `.password` fields, rather than from a page the in-app browser loaded. Unlike the
+# browser route this one needs Password AutoFill's associated-domain check to pass, and measured,
+# declaring the entitlement is not enough — with no HTTPS server publishing
+# `apple-app-site-association` and no certificate authority the Simulator trusts, no prompt appears
+# at all. So this target stands all three up around the run and takes them down after.
+#
+# The certificate authority is generated per run into gitignored `tmp/` and deleted afterwards: a
+# test key committed to the repository would be a secret in the history (and `make lint-secrets`
+# would rightly object). `localtest.me` resolves to 127.0.0.1 in public DNS, so the Simulator reaches
+# this machine with no `/etc/hosts` edit, and `?mode=developer` in the entitlement makes iOS fetch
+# the association from the host instead of Apple's CDN.
+AASA_PORT ?= 8443
+AASA_TLS  := $(HERE)/tmp/savepassword-tls
+e2e-savepassword-native: swiftui-build runner-build
+	@grep -q "localtest.me:$(AASA_PORT)" $(SWIFTUI)/project.yml || \
+	  { echo "AASA_PORT=$(AASA_PORT) does not match the associated domain in ios/swiftui/project.yml" >&2; exit 1; }
+	rm -rf $(AASA_TLS); mkdir -p $(AASA_TLS)
+	openssl req -x509 -newkey rsa:2048 -nodes -days 2 \
+	  -keyout $(AASA_TLS)/ca.key -out $(AASA_TLS)/ca.pem \
+	  -subj "/CN=bajutsu showcase local CA" 2>/dev/null
+	openssl req -newkey rsa:2048 -nodes \
+	  -keyout $(AASA_TLS)/leaf.key -out $(AASA_TLS)/leaf.csr \
+	  -subj "/CN=localtest.me" 2>/dev/null
+	printf "subjectAltName=DNS:localtest.me\nextendedKeyUsage=serverAuth\n" > $(AASA_TLS)/leaf.ext
+	openssl x509 -req -in $(AASA_TLS)/leaf.csr -CA $(AASA_TLS)/ca.pem -CAkey $(AASA_TLS)/ca.key \
+	  -CAcreateserial -days 2 -extfile $(AASA_TLS)/leaf.ext -out $(AASA_TLS)/leaf.pem 2>/dev/null
+	cat $(AASA_TLS)/leaf.pem $(AASA_TLS)/leaf.key > $(AASA_TLS)/server.pem
+	python3 $(HERE)/aasa_server.py $(HERE)/browser $(AASA_PORT) $(AASA_TLS)/server.pem >/dev/null 2>&1 & srv=$$!; \
+	trap 'kill $$srv 2>/dev/null; rm -rf $(AASA_TLS)' EXIT; \
+	ready=0; for i in $$(seq 1 100); do \
+	  if curl -sfk --max-time 2 "https://localtest.me:$(AASA_PORT)/.well-known/apple-app-site-association" \
+	     | grep -q webcredentials; then ready=1; break; fi; \
+	  sleep 0.1; \
+	done; \
+	if [ "$$ready" -ne 1 ]; then \
+	  echo "port $(AASA_PORT) never served the association (already held by another server?)" >&2; exit 1; fi; \
+	xcrun simctl shutdown $(SIM) >/dev/null 2>&1 || true; \
+	xcrun simctl erase $(SIM); \
+	xcrun simctl boot $(SIM) >/dev/null 2>&1 || true; \
+	xcrun simctl bootstatus $(SIM) -b >/dev/null; \
+	xcrun simctl keychain $(SIM) add-root-cert $(AASA_TLS)/ca.pem; \
+	cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/save_password_native.yaml \
 		--target showcase-swiftui --udid $(SIM) --backend ios --config $(CONFIG)
 
 # ---- Flutter (BE-0008) ----------------------------------------------------------------------------

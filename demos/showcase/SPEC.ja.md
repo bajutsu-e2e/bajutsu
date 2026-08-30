@@ -237,6 +237,20 @@ Log から到達するモーダル（5 つの提示様式）：
   出ている最中の要素タップは割り込み監視が先に答えるので、シナリオがタップで重なった状態へ持ち込む
   ことはできないからです
 
+**Sign In**（`SHOWCASE_SIGNIN`、SwiftUI のみ） — iOS が同じアラートを出すもう 1 つの経路です。ブラウザ
+のページではなく、アプリ自身の `.username` / `.password` のフィールドから出します。`SHOWCASE_GESTURES`
+と同じく起動環境変数で画面ごと差し替えるので、他のシナリオのタブバーは動きません。実測で分かった
+要点が 2 つあります。フィールドは素のビューコントローラに置いた素の `UITextField` であること
+（SwiftUI の `Form` に同じ content type を埋めても Password AutoFill は働きませんでした）。そして
+送信で別のビューコントローラを **push** し、資格情報を持つビューを画面から去らせること（AutoFill が
+合図にするのはこれです）。この経路には `make -C demos/showcase e2e-savepassword-native` が用意する
+associated domain の仕掛けも要ります。無ければ iOS は何も申し出ないので、他のレーンは単なるサインイン
+画面を見るだけです。`save_password_native.yaml` が駆動します。
+- `signin.username` / `signin.password` — content type を付けたフィールド
+- `signin.submit` — サインイン後の画面を push します
+- `signin.value` — `idle` / `signedIn`
+- `signin.signedIn` — push された画面にのみ表示される要素（待てる肯定条件）
+
 **System** — ペーストボードの往復で、バックエンドのアプリ内クエリでは本来観測できない状態をミラーします。
 このアプリ自身が書いた値は黙って読み戻せます。別プロセスが仕込んだペーストボードを読むと iOS のペースト同意
 プロンプトが出ます。このプロンプトには `paste_system_alert.yaml` が `handleSystemAlert` で応答します（BE-0369）。iOS の 2 つの

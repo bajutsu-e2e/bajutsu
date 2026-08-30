@@ -71,6 +71,10 @@ final class AppModel: ObservableObject {
     let tipKitMode: Bool
 
     let animationsDisabled: Bool
+    /// Swaps the whole UI for the native sign-in screen (`SHOWCASE_SIGNIN`), the route iOS
+    /// raises its "Save Password" alert from without a browser. A launch-env swap like
+    /// `SHOWCASE_GESTURES` rather than a tab, so no existing scenario's tab bar moves.
+    let signInMode: Bool
 
     private let env: [String: String]
 
@@ -83,6 +87,7 @@ final class AppModel: ObservableObject {
         selectedTab = .stable
         gesturesMode = env["SHOWCASE_GESTURES"] != nil
         pickersMode = env["SHOWCASE_PICKERS"] != nil
+        signInMode = env["SHOWCASE_SIGNIN"] != nil
         tipKitMode = env["SHOWCASE_TIPKIT"] != nil
         conformanceIDs = Self.conformanceIDs(env["SHOWCASE_CONFORMANCE"])
         if conformanceIDs != nil {
