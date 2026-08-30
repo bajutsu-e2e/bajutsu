@@ -33,6 +33,9 @@ final class AppModel {
     /// The page the in-app browser opens (SPEC §5.4). `browser.yaml` points this at a page its own
     /// Makefile lane serves, so the scenario asserts fixed content rather than a live site's.
     let browserURL: String
+    /// Seconds after the in-app browser opens before the notification authorization request is
+    /// raised, or nil to leave it to its own button (see `PermissionsController`).
+    let notifyAfterBrowser: Double?
 
     /// The offline catalog. Fixed at launch — no launch-env seed knob (BE-0079): a scenario
     /// cannot inject a data state, only observe the app's own. Network rows would extend this.
@@ -46,5 +49,6 @@ final class AppModel {
         apiBase = env["SHOWCASE_API_URL"] ?? "https://example.com"
         httpBase = env["SHOWCASE_HTTP_BASE"] ?? "https://httpbin.org"
         browserURL = env["SHOWCASE_BROWSER_URL"] ?? "https://example.com"
+        notifyAfterBrowser = env["SHOWCASE_NOTIF_AFTER_BROWSER"].flatMap(Double.init)
     }
 }

@@ -8,7 +8,7 @@
 	run-swiftui run-uikit run-swiftui-tabs run-uikit-tabs \
 	run-swiftui-noax run-uikit-noax doctor record ui-test ui-test-coverage \
 	vrt vrt-approve vrt-swiftui vrt-swiftui-approve vrt-uikit vrt-uikit-approve \
-	e2e-visual e2e-visual-approve e2e-network e2e-browser \
+	e2e-visual e2e-visual-approve e2e-network e2e-browser e2e-savepassword \
 	flutter-build flutter-android-build flutter-android-noax-build \
 	run-flutter run-flutter-android clean
 
@@ -344,6 +344,28 @@ e2e-browser: swiftui-build uikit-build runner-build
 		--target showcase-swiftui --udid $(SIM) --backend ios --config $(CONFIG) && \
 	cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/browser.yaml \
 		--target showcase-uikit --udid $(SIM) --backend ios --config $(CONFIG)
+
+# The save-password lane: iOS's *real* "Save Password" alert, raised by signing in to a page the
+# in-app browser loads, with the SpringBoard notification request stacked on top of it. Its own
+# target rather than a line in `e2e-browser` because it needs notification authorization still
+# `notDetermined` — hence the `erase` — and leaves the device decided once it has run.
+# Serves the same fixture directory `e2e-browser` does (login.html lives beside index.html).
+e2e-savepassword: swiftui-build uikit-build runner-build
+	@grep -q "http://localhost:$(BROWSER_PORT)/" $(HERE)/scenarios/save_password_browser.yaml || \
+	  { echo "BROWSER_PORT=$(BROWSER_PORT) does not match SHOWCASE_BROWSER_URL in scenarios/save_password_browser.yaml" >&2; exit 1; }
+	python3 -m http.server --directory $(HERE)/browser $(BROWSER_PORT) >/dev/null 2>&1 & srv=$$!; \
+	trap 'kill $$srv 2>/dev/null' EXIT; \
+	ready=0; for i in $$(seq 1 100); do \
+	  if curl -sf --max-time 2 "http://localhost:$(BROWSER_PORT)/login.html" | grep -q "Bajutsu Sign In"; then ready=1; break; fi; \
+	  sleep 0.1; \
+	done; \
+	if [ "$$ready" -ne 1 ]; then \
+	  echo "port $(BROWSER_PORT) never served the sign-in page (already held by another server?)" >&2; exit 1; fi; \
+	xcrun simctl shutdown $(SIM) >/dev/null 2>&1 || true; \
+	xcrun simctl erase $(SIM); \
+	xcrun simctl bootstatus $(SIM) -b >/dev/null; \
+	cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/save_password_browser.yaml \
+		--target showcase-swiftui --udid $(SIM) --backend ios --config $(CONFIG)
 
 # ---- Flutter (BE-0008) ----------------------------------------------------------------------------
 # The Flutter twin (demos/showcase/flutter), one Dart codebase built for both platforms. It adds no

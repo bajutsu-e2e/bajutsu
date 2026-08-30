@@ -224,6 +224,19 @@ Log から到達するモーダル（5 つの提示様式）：
 - `perm.requestLocation` — ボタン → `CLLocationManager.requestWhenInUseAuthorization`。**システムの位置情報プロンプト**を上げる（同じく SpringBoard）。
 - `perm.location.value` — `notDetermined`/`authorizedWhenInUse`/`denied`
 
+**Password AutoFill** — iOS 本物の「パスワードを保存」アラートの上に、通知の要求が重なった組です。
+反応的なガードが答える順序を問われる場面で、ここに模造品はありません。アプリ内ブラウザが読み込む
+ページ（`browser/login.html`）にサインインすると iOS が資格情報の保存を申し出ます。associated domain
+も entitlement も HTTPS も不要です。iOS は Safari と同じく、web フォームのオリジンに対して申し出る
+からです。このアラートは**アプリのツリー**（`app.alerts`、ボタンはラベル付きで識別子なし）に現れ、
+`springboard.alerts` には決して現れません。したがってガードのツリー内消去だけが片付けられます。隣に
+出る通知の要求は別プロセスの SpringBoard のアラートで、ネイティブ経路でしか答えられません。
+`save_password_browser.yaml` が駆動します（`make -C demos/showcase e2e-savepassword`）。
+- `SHOWCASE_NOTIF_AFTER_BROWSER` — アプリ内ブラウザが開いてから通知の要求を上げるまでの秒数です。
+  タップなしで 2 つ目のプロンプトを到達させます。設定するのはこのシナリオだけです。システムアラートが
+  出ている最中の要素タップは割り込み監視が先に答えるので、シナリオがタップで重なった状態へ持ち込む
+  ことはできないからです
+
 **System** — ペーストボードの往復で、バックエンドのアプリ内クエリでは本来観測できない状態をミラーします。
 このアプリ自身が書いた値は黙って読み戻せます。別プロセスが仕込んだペーストボードを読むと iOS のペースト同意
 プロンプトが出ます。このプロンプトには `paste_system_alert.yaml` が `handleSystemAlert` で応答します（BE-0369）。iOS の 2 つの

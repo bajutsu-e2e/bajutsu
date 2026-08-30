@@ -227,6 +227,20 @@ flow is reached directly — plus a System section with a pasteboard round-trip.
 - `perm.requestLocation` — button → `CLLocationManager.requestWhenInUseAuthorization`. Raises the **system location prompt** (also SpringBoard).
 - `perm.location.value` — `notDetermined`/`authorizedWhenInUse`/`denied`
 
+**Password AutoFill** — iOS's *real* "Save Password" alert, with the notification request stacked on
+top of it: the pair whose ordering the reactive guard has to get right. Nothing here is simulated.
+Signing in to the page the in-app browser loads (`browser/login.html`) makes iOS offer to save the
+credential, and it needs no associated domain, entitlement, or HTTPS — iOS offers for a web form's
+own origin exactly as Safari does. The alert reaches the *app's* tree (`app.alerts`, its buttons
+labelled and identifier-less) while `springboard.alerts` never sees it, so only the guard's in-tree
+dismissal can clear it; the notification request beside it is a SpringBoard alert in another process,
+answerable only through the native path. Driven by `save_password_browser.yaml` (`make -C
+demos/showcase e2e-savepassword`):
+- `SHOWCASE_NOTIF_AFTER_BROWSER` — seconds after the in-app browser opens before the notification
+  request is raised, so the second prompt arrives without a tap. Only that scenario sets it: a
+  scenario cannot tap its way into the stacked state, because an element tap made while a system
+  alert is showing is answered by the interruption monitor first
+
 **System** — a pasteboard round-trip, mirroring state the backend's app-scoped query cannot
 otherwise observe. A value this app itself wrote reads back silently; a pasteboard seeded by another
 process trips iOS's paste-consent prompt, which `paste_system_alert.yaml` answers with

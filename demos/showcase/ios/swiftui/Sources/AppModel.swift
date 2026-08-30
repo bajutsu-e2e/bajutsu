@@ -122,6 +122,13 @@ final class AppModel: ObservableObject {
     // The page the in-app browser opens (SPEC §5.4). `browser.yaml` points this at a page its own
     // Makefile lane serves, so the scenario asserts fixed content rather than a live site's.
     var browserURL: String { env["SHOWCASE_BROWSER_URL"] ?? "https://example.com" }
+    // Seconds after the in-app browser opens before the notification authorization request is
+    // raised, or nil to leave it to its own button. Only save_password_browser.yaml sets it: the
+    // save-password alert iOS raises for a browser sign-in has to be *under* a SpringBoard alert
+    // for that scenario to mean anything, and a scenario cannot tap its way there — every element
+    // tap made while a system alert is up fails by design. So the app arms the second prompt
+    // itself, on a delay that outlasts the sign-in the scenario drives.
+    var notifyAfterBrowser: Double? { env["SHOWCASE_NOTIF_AFTER_BROWSER"].flatMap(Double.init) }
     var httpBase: String { env["SHOWCASE_HTTP_BASE"] ?? "https://httpbin.org" }
 
     func horses(matching query: String) -> [Horse] {
