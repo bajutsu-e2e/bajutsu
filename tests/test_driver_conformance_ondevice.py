@@ -258,23 +258,27 @@ class TestXcuitestScrollSettles:
         elements = driver.query()
         viewport = _viewport(driver, elements)
         axis = _AXIS["down"]
-        before = row_offsets(elements, axis)
+        bounds: base.Frame = (0.0, 0.0, viewport[0], viewport[1])
+        before = row_offsets(elements, bounds, axis)
         frm, dest = _step_endpoints(elements, "down", None, viewport, _STEP_FRACTION)
         driver.scroll(frm, dest)
-        settled = row_offsets(driver.query(), axis)
-        # Two guards against a vacuous pass, in the order they can fail: a gesture that moved nothing
-        # would hold still trivially, and a read sharing no row with the first cannot be compared to
-        # it. Both are stated here, so a failure on the assertion below is about motion after the
-        # return and nothing else.
-        assert any(
-            abs(before[i] - settled[i]) > _MOVED_PT for i in before.keys() & settled.keys()
-        ), "the step moved no row, so a still screen proves nothing about settling"
+        settled = row_offsets(driver.query(), bounds, axis)
+        # Two guards against a vacuous pass, each asserted separately so its failure says which one
+        # fired: a read sharing no row with the first cannot be compared to it — the signature of a
+        # gesture that flung, not of one that did nothing — and a gesture that moved nothing would
+        # hold still trivially. Past both, a failure below is about motion after the return and
+        # nothing else.
+        common = before.keys() & settled.keys()
+        assert common, "the read after the step shared no row with the one before it"
+        assert any(abs(before[i] - settled[i]) > _MOVED_PT for i in common), (
+            "the step moved no row, so a still screen proves nothing about settling"
+        )
         deadline = time.monotonic() + _SETTLE_WINDOW_S
         while time.monotonic() < deadline:
             # No sleep between reads: each `query()` is a full snapshot and costs real time, so the
             # window is sampled as fast as the backend can answer — the densest evidence available,
             # and a wait on nothing would only thin it.
-            again = row_offsets(driver.query(), axis)
+            again = row_offsets(driver.query(), bounds, axis)
             shared = settled.keys() & again.keys()
             assert shared, "consecutive reads of a still screen shared no row"
             drift = max(abs(settled[i] - again[i]) for i in shared)

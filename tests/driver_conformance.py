@@ -65,6 +65,7 @@ from bajutsu.orchestrator.actions.handlers.scroll import (
     _region_view,
     _resolve_target,
     _step_endpoints,
+    _unclipped,
     _viewport,
     scroll_to_target,
 )
@@ -84,9 +85,10 @@ SCROLL_LAST_ROW = f"{SCROLL_ROW_PREFIX}{SCROLL_ROW_COUNT - 1}"
 #: How far a scroll step's realized travel may depart from the travel it asked for, as a fraction of
 #: the request, before a backend fails the contract (BE-0400). Covers error that scales with the
 #: distance — sub-pixel rounding, a scale factor between the driver's points and a backend's own
-#: units. Measured error on the corrected iOS gesture is under 2 percent at every step size, so this
-#: leaves room for a slower or coarser device without admitting a fling, which ran from +25 percent
-#: on a full-size step to +515 percent on a small one.
+#: units. On the corrected iOS gesture that part measured zero: every step came back the same fixed
+#: 10.0 points short, which `_TRAVEL_SLACK_PT` below absorbs, not this. So the whole 10 percent is
+#: headroom for a slower or coarser device, and still an order of magnitude under a fling, which ran
+#: from +25 percent on a full-size step to +515 percent on a small one.
 _TRAVEL_TOLERANCE = 0.10
 #: The fixed part of that allowance, in points: a per-gesture loss that does not scale with the
 #: request. A pan recognizer does not move the content until the finger has travelled its slop, and
@@ -177,19 +179,27 @@ def _rows_in_viewport(driver: base.Driver) -> frozenset[int]:
     )
 
 
-def row_offsets(elements: list[base.Element], axis: int) -> dict[str, float]:
-    """Every scroll row one read can see, by identifier, at its frame's leading edge on `axis`.
+def row_offsets(elements: list[base.Element], bounds: base.Frame, axis: int) -> dict[str, float]:
+    """Every unclipped scroll row one read can see, by identifier, at its leading edge on `axis`.
 
     The rows carry unique identifiers and the list translates rigidly, so a row present in two reads
     gives the region's travel between them directly — no per-backend notion of a scroll offset is
     needed, and a lazy tree that drops rows on either side simply contributes fewer of them. Takes
     the read rather than the driver, so a caller that already holds one does not pay a second full
     snapshot, and so its endpoints and its offsets describe the same screen.
+
+    A row the region's bounds cut off is dropped, the same filter and for the same reason as
+    `_region_view`'s: a backend that clips an element to the visible area reports the clipped edge
+    *at* the bounds, so such a row reports the same leading edge before and after a step and would
+    contribute a travel of zero. At the overlap a step leaves, the shared rows are exactly the ones
+    at the edges, so admitting them would measure a correct gesture as falling far short.
     """
     return {
         el["identifier"]: el["frame"][axis]
         for el in elements
-        if el["identifier"] is not None and el["identifier"].startswith(SCROLL_ROW_PREFIX)
+        if el["identifier"] is not None
+        and el["identifier"].startswith(SCROLL_ROW_PREFIX)
+        and _unclipped(el["frame"], bounds, axis)
     }
 
 
@@ -204,14 +214,15 @@ def _measure_one_step(harness: ConformanceHarness, fraction: float) -> tuple[flo
     elements = driver.query()
     viewport = _viewport(driver, elements)
     axis = _AXIS["down"]
+    bounds: base.Frame = (0.0, 0.0, viewport[0], viewport[1])
     before_view = _region_view(elements, None, viewport, axis)
-    before = row_offsets(elements, axis)
+    before = row_offsets(elements, bounds, axis)
     frm, dest = _step_endpoints(elements, "down", None, viewport, fraction)
     driver.scroll(frm, dest)
     # Through the loop's own catch-up, as the overlap check does, so a backend whose tree lags its
     # gesture is measured on the settled screen rather than failed for having been read early. Its
     # return is that settled read, so the travel comes off the very tree the catch-up judged.
-    after = row_offsets(_region_after_step(driver, before_view, None, viewport, axis), axis)
+    after = row_offsets(_region_after_step(driver, before_view, None, viewport, axis), bounds, axis)
     shared = before.keys() & after.keys()
     assert shared, f"a step of {fraction} left no row in common, so its travel cannot be measured"
     # Any shared row gives the travel, the list being rigid; the median keeps one mis-reported frame
