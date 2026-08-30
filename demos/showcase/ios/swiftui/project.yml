@@ -41,10 +41,26 @@ targets:
         # after `simctl privacy grant location` (BE-0276) — since the system withholds the real
         # status from an app that couldn't show a consent string if it were asked for one.
         NSLocationWhenInUseUsageDescription: "Showcase's Permissions tab exercises the location-authorization flow."
+    # Password AutoFill's *native* route (the in-app browser's needs none of this): iOS offers to
+    # save a credential typed into the app's own fields only for an app with a verified
+    # `webcredentials:` associated domain. Declared on the a11y target alone, since
+    # save_password_native.yaml is the only scenario that drives it. Harmless everywhere else — an
+    # associated domain iOS cannot verify simply means no AutoFill save is offered, which is what
+    # every other lane already sees. `?mode=developer` makes iOS fetch the association directly from
+    # the host instead of Apple's CDN, which is what lets `e2e-savepassword-native` serve it locally.
+    entitlements:
+      path: BajutsuShowcaseSwiftUI.entitlements
+      properties:
+        com.apple.developer.associated-domains:
+          - webcredentials:localtest.me:8443?mode=developer
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.ios.swiftui
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: ACCESSIBLE
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGNING_ALLOWED: YES
+        CODE_SIGNING_REQUIRED: YES
   # The no-a11y twin: same Sources/, but ACCESSIBLE is absent, so aid(...) is a no-op
   # and no identifiers or mirrored values reach the tree. doctor --target grades it Blocked.
   BajutsuShowcaseSwiftUINoAx:

@@ -16,7 +16,7 @@ import XCTest
 /// operations at once, because the second operation's `DispatchQueue.main.sync` cannot be drained
 /// while the first's main block is executing. That suite's docstring carries the measurement.
 final class LegacyBackedTransportTests: XCTestCase {
-    /// Registration is one generated call covering all sixteen operations, so an operation dropped
+    /// Registration is one generated call covering all eighteen operations, so an operation dropped
     /// from `openapi.yaml` — or a path renamed in it — would leave the driver with a 404 discovered
     /// only on a device. Pinning the table against the contract's own paths catches it here.
     func testEveryContractOperationRegisters() throws {
@@ -31,6 +31,7 @@ final class LegacyBackedTransportTests: XCTestCase {
                 "POST /setPickerValue",
                 "POST /type", "POST /deleteText", "POST /selectAll", "POST /copy",
                 "POST /systemAlert/query", "POST /systemAlert/tap",
+                "POST /interruptionPolicy", "POST /interruptionPolicy/drain",
             ]
         )
     }

@@ -10,6 +10,7 @@ with alert buttons, so nothing here needs a Simulator; the on-device confirmatio
 from __future__ import annotations
 
 import logging
+from typing import cast
 
 import pytest
 
@@ -572,7 +573,7 @@ def test_dismiss_from_tree_records_a_second_showing_after_an_untapped_other_labe
     # showing must not leave the *first* label pending: if it did, the first label reappearing would
     # compare equal to the stale pending, `first_tap` would be False, and a genuine second dismissal
     # would be tapped but never recorded — under-reporting the run's prompts.
-    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.orchestrator.waits import _POLL, _wait
 
     target = _button("R")
     target["identifier"] = "ready"
@@ -587,6 +588,7 @@ def test_dismiss_from_tree_records_a_second_showing_after_an_untapped_other_labe
         def __init__(self) -> None:
             super().__init__([save])
             self.taps: list[str] = []
+            self.other_polls = 0
 
         def tap(self, sel: base.Selector) -> None:
             super().tap(sel)
@@ -596,10 +598,14 @@ def test_dismiss_from_tree_records_a_second_showing_after_an_untapped_other_labe
             self.screen = [other, app_other] if len(self.taps) == 1 else [target]
 
         def query(self) -> list[base.Element]:
-            # The colliding pair clears on its own after a poll, putting the save sheet back up —
-            # a second, genuine showing that was never tapped in between.
+            # The colliding pair clears on its own, putting the save sheet back up — a second,
+            # genuine showing that was never tapped in between. It has to stay up for longer than
+            # one `poll_interval` to be part of the story: the in-tree path is paced by that
+            # interval, so a showing that came and went inside one would simply never be observed.
             if self.screen and self.screen[0] is other:
-                self.screen = [save]
+                self.other_polls += 1
+                if self.other_polls > int(1.0 / _POLL) + 1:
+                    self.screen = [save]
                 return [other, app_other]
             return list(self.screen)
 
@@ -621,10 +627,12 @@ def test_dismiss_from_tree_declines_on_not_yet_tappable_then_dismisses() -> None
     # A sheet's own scrim can still cover its button while the presentation animation finishes, the
     # platform's hit-test (`isHittable` / `topmost_at_point`) reading the button as unreachable until
     # it settles. `ElementNotTappable` here is the same benign, self-resolved race `ElementNotFound`
-    # and `AmbiguousSelector` already forgive — not a reason to fail the wait. Cleared after 9
-    # declines (~450ms at `_POLL = 0.05`), animation scale for a real presentation (a UIKit sheet
-    # ~0.35-0.5s, an Android dialog enter ~0.25s+) — comfortably inside `_TREE_DISMISS_MAX_DECLINES`,
-    # unlike a bound that only cleared a couple of polls in (150ms), well short of any real animation.
+    # and `AmbiguousSelector` already forgive — not a reason to fail the wait. One decline is what a
+    # real presentation animation now costs: the in-tree path runs once per `poll_interval`, so the
+    # retry arrives a full second later, well past a UIKit sheet's ~0.35-0.5s or an Android dialog's
+    # ~0.25s+. `_TREE_DISMISS_DECLINE_GIVEUP` sits at twice that interval precisely so this retry
+    # happens at all — a give-up horizon equal to the interval would spend itself on the first
+    # attempt and leave the prompt up.
     from bajutsu.orchestrator.waits import _wait
 
     target = _button("R")
@@ -638,7 +646,7 @@ def test_dismiss_from_tree_declines_on_not_yet_tappable_then_dismisses() -> None
 
         def tap(self, sel: base.Selector) -> None:
             self.tap_calls += 1
-            if self.tap_calls < 10:  # the scrim is still animating away
+            if self.tap_calls < 2:  # the scrim is still animating away
                 raise base.ElementNotTappable("covered by the sheet's own scrim")
             super().tap(sel)
             self.screen = [target]  # the animation finishes; the screen updates
@@ -650,17 +658,20 @@ def test_dismiss_from_tree_declines_on_not_yet_tappable_then_dismisses() -> None
         driver, _for_wait("ready", 3.0), _LogicalClock(), alert_guard=guard, alerts=alerts
     )
     assert ok
-    assert driver.tap_calls == 10  # declined 9 times, then dismissed
+    assert driver.tap_calls == 2  # declined once, then dismissed on the next interval
     assert alerts == [AlertEvent(label="今はしない")]
 
 
 def test_dismiss_from_tree_stops_retrying_a_permanently_covered_button() -> None:
     # Unlike the transient scrim above, a genuinely stuck obstruction (a scrim that never lifts, an
-    # `elevation` false positive) must not re-issue a real actuation attempt every `_POLL` for the
-    # rest of the wait: `_TREE_DISMISS_MAX_DECLINES` caps how many times this label's tap is retried
-    # before the wait falls back to its own timeout, the same shape the vision guard's attempt
-    # ceiling already uses for a persistent false positive.
-    from bajutsu.orchestrator.waits import _TREE_DISMISS_MAX_DECLINES, _wait
+    # `elevation` false positive) must not re-issue a real actuation attempt for the rest of the
+    # wait: `_decline_giveup` bounds how long this label's tap keeps being retried before the wait
+    # falls back to its own timeout, the same shape the vision guard's attempt ceiling already uses
+    # for a persistent false positive. Bounding it in seconds rather than polls is what keeps the
+    # bound meaningful at any `poll_interval`, and deriving it *from* that interval is what keeps it
+    # meaningful at a long one: the bound is checked before the tap, so a fixed horizon shorter than
+    # two intervals would spend itself on the first attempt and never retry at all.
+    from bajutsu.orchestrator.waits import _decline_giveup, _wait
 
     prompt_button = _button("今はしない")
 
@@ -679,7 +690,10 @@ def test_dismiss_from_tree_stops_retrying_a_permanently_covered_button() -> None
         driver, _for_wait("ready", 3.0), _LogicalClock(), alert_guard=guard, alerts=[]
     )
     assert not ok  # "ready" never appears; the wait times out on its own deadline
-    assert driver.tap_calls == _TREE_DISMISS_MAX_DECLINES  # bounded, not ~20/s for 3 seconds
+    # Attempted at t=0 and t=1.0 (one `poll_interval` apart), then declined outright at t=2.0 once
+    # the give-up horizon is reached — bounded, not one attempt per poll for the whole 3s wait.
+    assert driver.tap_calls == 2
+    assert _decline_giveup(1.0) == 2.0  # the horizon the count above is derived from
 
 
 def test_dismiss_from_tree_declines_on_an_in_app_label_collision() -> None:
@@ -836,3 +850,382 @@ def test_gate_unhandled_native_alert_falls_back_to_vision_bounded() -> None:
     )
     assert not ok
     assert calls["n"] == _GUARD_MAX_ATTEMPTS  # bounded, not one call per interval for 30s
+
+
+# --- the in-tree dismiss is gated on a fresh "no SpringBoard alert" answer ---------------------
+
+
+def test_dismiss_from_tree_is_withheld_while_a_springboard_alert_is_up() -> None:
+    # The regression this locks in. The save-password prompt is an *app-process* sheet, so it shows
+    # up in the poll's own tree and `_dismiss_from_tree` is the only path that clears it; the
+    # notification request beside it is a SpringBoard alert the app's tree cannot see. `Driver.tap`
+    # resolves an element, and XCUITest answers whatever out-of-process alert is interrupting before
+    # it synthesizes such an interaction — with its own default handler, which taps the alert's
+    # *default* button ("Allow"), the opposite of the guard's least-destructive policy and invisible
+    # to the report. So while the native probe says an alert is up, the in-tree tap must not be
+    # issued at all: the SpringBoard alert is answered natively first, by the scenario's policy.
+    from bajutsu.orchestrator.waits import _wait
+
+    target = _button("R")
+    target["identifier"] = "ready"
+    save_sheet = _button("Not Now")  # identifier-less, the app-attached sheet's own button
+
+    class _AlertOverSheet(FakeDriver):
+        """A SpringBoard alert stands over an app sheet until the native path taps its button."""
+
+        def __init__(self) -> None:
+            super().__init__([save_sheet])
+            # Both prompts are up: the sheet in the tree, the permission request in SpringBoard.
+            self.system_alert_buttons = [_button("Don't Allow"), _button("Allow")]
+            self.tapped: list[str] = []
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tapped.append(str(sel["label"]))
+            super().tap(sel)
+            self.screen = [target]
+
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            super().handle_system_alert(sel, timeout)
+            self.system_alert_buttons = []  # answered by policy; the sheet is now uncovered
+
+    driver = _AlertOverSheet()
+    # One `systemAlertHandling.instruction` covers both prompts, as an author would write it: the
+    # permission request's refusal first, then the sheet's own dismissal. Each path resolves the one
+    # candidate its own surface carries.
+    guard = AlertGuardConfig(
+        vision=_never_vision, labels=["Don't Allow", "Not Now"], poll_interval=1.0
+    )
+    alerts: list[AlertEvent] = []
+    ok, _reason, _tree = _wait(
+        driver, _for_wait("ready", 5.0), _LogicalClock(), alert_guard=guard, alerts=alerts
+    )
+    assert ok
+    # The order is the whole point: the SpringBoard alert is refused natively, and only afterwards
+    # is the app-attached sheet cleared from the tree. Never the reverse, and never both at once.
+    assert alerts == [AlertEvent(label="Don't Allow"), AlertEvent(label="Not Now")]
+    assert driver.tapped == ["Not Now"]  # the in-tree tap fired once, after the alert was gone
+
+
+def test_dismiss_from_tree_is_paced_by_the_native_probe_not_by_the_poll() -> None:
+    # The native probe is rate-limited to `poll_interval` (a per-`_POLL` SpringBoard query would
+    # roughly double the runner's single-main-thread load, BE-0315), so on every other poll the gate
+    # has no current answer about SpringBoard at all. Gating the in-tree tap on a probe that ran
+    # *this* poll is what stops those polls tapping blind — and the observable consequence is the
+    # spacing: a tap that never clears the prompt repeats once per `poll_interval`, not once per
+    # `_TREE_RETAP_DELAY`.
+    #
+    # The interval has to exceed that delay for the assertion to mean anything. At the default 1.0
+    # the two coincide and the retap delay alone would produce the same timings, so this drives a
+    # 2.0 interval: ungated, the second tap lands 1.0s after the first.
+    from itertools import pairwise
+
+    from bajutsu.orchestrator.waits import _wait
+
+    prompt_button = _button("Not Now")
+
+    class _TapNeverLands(FakeDriver):
+        """The prompt stays up however often it is tapped — an unactioned tap (measured on iOS)."""
+
+        def __init__(self) -> None:
+            super().__init__([prompt_button])
+            self.tap_times: list[float] = []
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_times.append(clock.now())
+            super().tap(sel)  # the screen never changes; the prompt stays in the tree
+
+    clock = _LogicalClock()
+    driver = _TapNeverLands()
+    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], poll_interval=2.0)
+    ok, _reason, _tree = _wait(
+        driver, _for_wait("ready", 10.0), clock, alert_guard=guard, alerts=[]
+    )
+    assert not ok  # "ready" never appears; the wait times out on its own deadline
+    assert len(driver.tap_times) > 1, driver.tap_times
+    gaps = [b - a for a, b in pairwise(driver.tap_times)]
+    assert all(gap >= 2.0 for gap in gaps), gaps
+
+
+def test_dismiss_from_tree_still_runs_when_no_springboard_alert_is_up() -> None:
+    # The gate withholds the in-tree tap, it does not retire it: on a poll whose own native probe
+    # reported no SpringBoard alert, the app-attached sheet is cleared exactly as before.
+    from bajutsu.orchestrator.waits import _wait
+
+    target = _button("R")
+    target["identifier"] = "ready"
+    sheet_button = _button("Not Now")
+
+    class _SheetOnly(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([sheet_button])
+            self.tapped: list[str] = []
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tapped.append(str(sel["label"]))
+            super().tap(sel)
+            self.screen = [target]
+
+    driver = _SheetOnly()
+    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], poll_interval=1.0)
+    alerts: list[AlertEvent] = []
+    ok, _reason, _tree = _wait(
+        driver, _for_wait("ready", 5.0), _LogicalClock(), alert_guard=guard, alerts=alerts
+    )
+    assert ok
+    assert driver.tapped == ["Not Now"]
+    assert alerts == [AlertEvent(label="Not Now")]
+
+
+def test_dismiss_from_tree_waits_out_the_retap_delay_at_a_short_poll_interval() -> None:
+    # `_TREE_RETAP_DELAY` still governs the gap between two taps on one showing, independently of the
+    # `poll_interval` the gate now paces the in-tree path by. A scenario that tunes `pollInterval`
+    # below that delay gets several in-tree passes inside one dismiss animation, and every pass but
+    # the first must decline: re-tapping while a sheet is still fading out lands on whatever is
+    # underneath it. So the taps are spaced by the delay, not by the interval, and stop at
+    # `_TREE_DISMISS_MAX_TAPS` rather than continuing for the rest of the wait.
+    from itertools import pairwise
+
+    from bajutsu.orchestrator.waits import _TREE_DISMISS_MAX_TAPS, _TREE_RETAP_DELAY, _wait
+
+    prompt_button = _button("Not Now")
+
+    class _TapNeverLands(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([prompt_button])
+            self.tap_times: list[float] = []
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_times.append(clock.now())
+            super().tap(sel)  # the screen never changes; the prompt stays in the tree
+
+    clock = _LogicalClock()
+    driver = _TapNeverLands()
+    # A fifth of the retap delay: five in-tree passes fit inside one, so a gap of `poll_interval`
+    # between taps would be plainly visible in the timings below.
+    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], poll_interval=0.2)
+    ok, _reason, _tree = _wait(driver, _for_wait("ready", 5.0), clock, alert_guard=guard, alerts=[])
+    assert not ok  # "ready" never appears; the wait times out on its own deadline
+    assert len(driver.tap_times) == _TREE_DISMISS_MAX_TAPS
+    gaps = [b - a for a, b in pairwise(driver.tap_times)]
+    assert all(gap >= _TREE_RETAP_DELAY for gap in gaps), gaps
+
+
+# --- the interruption policy pushed to the backend ---------------------------------------------
+
+
+def test_push_interruption_policy_hands_the_backend_the_guard_s_own_labels() -> None:
+    # The decision stays here: what the backend receives is exactly what `probe_native` would resolve
+    # from — the scenario's rules, then its ordered candidates. Without this the backend answers an
+    # alert that interrupts one of its own interactions with the alert's *default* button, which is
+    # the opposite of the least-destructive policy and reaches no report.
+    from bajutsu.orchestrator import push_interruption_policy
+
+    driver = FakeDriver([])
+    rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Don't Allow"
+    )
+    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], rules=[rule])
+    push_interruption_policy(driver, guard)
+    assert driver.interruption_policy == ([({"Allow", "Don't Allow"}, "Don't Allow")], ["Not Now"])
+
+
+def test_push_interruption_policy_falls_back_to_the_dismissive_defaults() -> None:
+    # A scenario that names no labels of its own still gets a policy, and it is the same
+    # least-destructive list `probe_native` falls back to — not an empty one, which would leave the
+    # backend's own default handler in charge.
+    from bajutsu.orchestrator import push_interruption_policy
+
+    driver = FakeDriver([])
+    push_interruption_policy(driver, AlertGuardConfig(vision=_never_vision))
+    assert driver.interruption_policy is not None
+    assert driver.interruption_policy[1] == list(DEFAULT_DISMISSIVE_LABELS)
+
+
+def test_push_interruption_policy_clears_it_when_the_scenario_disables_the_guard() -> None:
+    # `systemAlertHandling: false` must not inherit the previous scenario's policy from the resident
+    # runner, so the push happens with an empty policy rather than being skipped.
+    from bajutsu.orchestrator import push_interruption_policy
+
+    driver = FakeDriver([])
+    push_interruption_policy(driver, None)
+    assert driver.interruption_policy == ([], [])
+
+
+def test_drain_interruptions_reports_what_the_backend_answered_as_alert_events() -> None:
+    # A prompt answered inside the backend's interruption handling is still a prompt this run
+    # dismissed; reporting it is what keeps that dismissal out of the silence the mechanism exists
+    # to end.
+    from bajutsu.orchestrator import drain_interruptions
+
+    driver = FakeDriver([])
+    driver.interruptions_to_drain = ["Don't Allow", "Not Now"]
+    assert drain_interruptions(driver) == [
+        AlertEvent(label="Don't Allow"),
+        AlertEvent(label="Not Now"),
+    ]
+    assert drain_interruptions(driver) == []  # drained, not repeated onto the next step
+
+
+def test_a_gone_wait_is_guarded_so_an_in_app_prompt_can_be_cleared() -> None:
+    # `gone` went unguarded on the reasoning that a blocking prompt collapses the tree, which already
+    # satisfies "gone". That holds for a SpringBoard prompt and only for those: iOS's "Save Password"
+    # alert is drawn in the app's own process, so it collapses nothing and *adds* its buttons to the
+    # tree. A `gone` wait on one of them then sits unsatisfied for its whole timeout with nothing to
+    # clear it — measured on-device before this branch was guarded.
+    from bajutsu.orchestrator.waits import _wait
+
+    prompt_button = _button("Not Now")
+
+    class _AppOwnedPrompt(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([_button("Sign In"), prompt_button])
+            self.tapped: list[str] = []
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tapped.append(str(sel["label"]))
+            super().tap(sel)
+            self.screen = [_button("Sign In")]  # the alert closes
+
+    driver = _AppOwnedPrompt()
+    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], poll_interval=1.0)
+    alerts: list[AlertEvent] = []
+    ok, _reason, _tree = _wait(
+        driver,
+        Wait.model_validate({"until": {"gone": {"label": "Not Now"}}, "timeout": 10.0}),
+        _LogicalClock(),
+        alert_guard=guard,
+        alerts=alerts,
+    )
+    assert ok  # the guard cleared it, so "gone" became true well inside the timeout
+    assert driver.tapped == ["Not Now"]
+    assert alerts == [AlertEvent(label="Not Now")]
+
+
+def test_the_interruption_policy_is_skipped_on_a_backend_without_the_opt_in() -> None:
+    # A narrow opt-in: only XCUITest interposes on an interaction this way, so a backend that does
+    # not implement it is never asked and contributes no events — the run is otherwise unchanged.
+    from bajutsu.orchestrator import drain_interruptions, push_interruption_policy
+
+    class _NoOptIn:
+        """A backend stub carrying neither half of the opt-in (a web / Android shape)."""
+
+    driver = cast("base.Driver", _NoOptIn())
+    push_interruption_policy(driver, AlertGuardConfig(vision=_never_vision))
+    assert drain_interruptions(driver) == []
+
+
+# --- the end-of-step / expect guard's own in-tree dismissal --------------------------------------
+
+
+def test_the_end_of_step_guard_clears_an_app_owned_prompt_from_the_tree() -> None:
+    # Measured on iOS 26.3/26.4/26.5: the save-password alert can arrive *after* a scenario's last
+    # wait has returned, so the only guard left to meet it is the end-of-step / expect one. Its
+    # native probe reads `springboard.alerts` and sees nothing there, and the vision fallback no-ops
+    # without a credential — so without this the prompt covered the screen and `expect` read a
+    # covered tree.
+    prompt_button = _button("Not Now")
+    driver = FakeDriver([_button("Sign In"), prompt_button])
+    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"])
+    assert guard(driver) == AlertEvent(label="Not Now")
+    assert driver.actions and driver.actions[-1][0] == "tap"
+
+
+def test_the_end_of_step_guard_leaves_the_tree_alone_while_a_springboard_alert_is_up() -> None:
+    # The same licence the mid-wait gate needs: XCUITest answers an interrupting out-of-process alert
+    # before it synthesizes any element interaction, so an app tap issued while one is up is not this
+    # guard's to make. The native path answers that alert first; the tree is next time's business.
+    driver = _fake_with_alert(["Don't Allow", "Allow"])
+    driver.screen = [_button("Not Now")]
+    guard = AlertGuardConfig(vision=_never_vision, labels=["Don't Allow", "Not Now"])
+    assert guard(driver) == AlertEvent(label="Don't Allow")  # the SpringBoard alert, natively
+    assert not any(action[0] == "tap" for action in driver.actions)
+
+
+def test_the_end_of_step_guard_declines_an_ambiguous_in_tree_label() -> None:
+    # Determinism first, exactly as the mid-wait path: two buttons carrying the configured label is
+    # not a prompt this guard may guess at. It falls through to vision instead of tapping one.
+    seen: list[str] = []
+
+    def _vision(_driver: base.Driver) -> AlertEvent | None:
+        seen.append("vision")
+        return None
+
+    driver = FakeDriver([_button("Not Now"), _button("Not Now")])
+    guard = AlertGuardConfig(vision=_vision, labels=["Not Now"])
+    assert guard(driver) is None
+    assert seen == ["vision"]
+    assert not any(action[0] == "tap" for action in driver.actions)
+
+
+def test_the_end_of_step_guard_stays_off_the_tree_without_scenario_labels() -> None:
+    # The in-tree surface is armed only by the scenario's own `instruction`, never by the built-in
+    # dismissive defaults — "Cancel" / "Close" are ordinary UI vocabulary a real screen can show.
+    driver = FakeDriver([_button("Cancel")])
+    guard = AlertGuardConfig(vision=lambda _d: None)
+    assert guard(driver) is None
+    assert not any(action[0] == "tap" for action in driver.actions)
+
+
+def test_the_end_of_step_guard_declines_when_an_identified_button_shares_the_label() -> None:
+    # `pick_alert_label` resolves over the identifier-less subset, so a same-named *identified* app
+    # button does not stop it — but the tap sees the whole tree and would be ambiguous. The
+    # whole-tree uniqueness pre-check is what catches that, exactly as the mid-wait path's does.
+    app_button = _button("Not Now")
+    app_button["identifier"] = "screen.home.button.not-now"
+    driver = FakeDriver([_button("Not Now"), app_button])
+    guard = AlertGuardConfig(vision=lambda _d: None, labels=["Not Now"])
+    assert guard(driver) is None
+    assert not any(action[0] == "tap" for action in driver.actions)
+
+
+def test_the_end_of_step_guard_reports_nothing_when_the_prompt_closes_itself() -> None:
+    # The button left the tree between this guard's own read and its tap. Benign: the prompt is gone,
+    # which is what the caller wanted, and the step's own outcome still decides the verdict.
+    class _VanishingPrompt(FakeDriver):
+        def tap(self, sel: base.Selector) -> None:
+            raise base.ElementNotFound("the prompt closed itself")
+
+    driver = _VanishingPrompt([_button("Not Now")])
+    guard = AlertGuardConfig(vision=lambda _d: None, labels=["Not Now"])
+    assert guard(driver) is None
+
+
+def test_the_decline_give_up_follows_a_tuned_poll_interval() -> None:
+    # The bound is checked *before* the tap, so a horizon shorter than two intervals is spent on the
+    # first attempt and the label is never re-tapped. A scenario that raises `pollInterval` — the
+    # save-password one sets 5 — would hit exactly that with a fixed 2s horizon, which is the
+    # zero-retry case the value exists to avoid. Deriving it from the interval keeps the rationale
+    # true at every cadence, and the floor keeps the animation horizon at short ones.
+    from bajutsu.orchestrator.waits import _decline_giveup
+
+    assert _decline_giveup(0.2) == 2.0  # floored at the presentation-animation horizon
+    assert _decline_giveup(1.0) == 2.0  # the default cadence: two intervals is the floor exactly
+    assert _decline_giveup(5.0) == 10.0  # a tuned interval still buys a retry
+
+
+def test_probe_native_reports_an_ambiguous_alert_as_unhandled_not_absent() -> None:
+    # `AmbiguousSelector` from the tap is not the same race as `ElementNotFound`: the alert is still
+    # up, now offering the label twice. Calling that "absent" would tell `_observe_native` no system
+    # alert is showing, which is the one thing licensing an in-tree tap — and a tap made under a live
+    # alert is what XCUITest answers with its own default button.
+    class _AmbiguousOnTap(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.AmbiguousSelector("the alert offers this label twice")
+
+    driver = _AmbiguousOnTap([])
+    driver.system_alert_buttons = [_button("Don't Allow"), _button("Allow")]
+    guard = AlertGuardConfig(vision=_never_vision, labels=["Don't Allow"])
+    assert guard.probe_native(driver) == ("unhandled", None)
+
+
+def test_probe_native_still_reports_a_vanished_alert_as_absent() -> None:
+    # The other half of the same race keeps its answer: the alert really did go away between the
+    # presence query and the tap, so nothing is blocking and the in-tree path may proceed.
+    class _VanishedOnTap(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the alert vanished")
+
+    driver = _VanishedOnTap([])
+    driver.system_alert_buttons = [_button("Don't Allow"), _button("Allow")]
+    guard = AlertGuardConfig(vision=_never_vision, labels=["Don't Allow"])
+    assert guard.probe_native(driver) == ("absent", None)

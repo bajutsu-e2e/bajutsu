@@ -29,6 +29,8 @@ from bajutsu.orchestrator.types import (
     RunResult,
     SkippedCapture,
     StepOutcome,
+    drain_interruptions,
+    push_interruption_policy,
     scenario_slug,
 )
 from bajutsu.orchestrator.waits import _POLL, _wait
@@ -54,6 +56,8 @@ __all__ = [
     "_interp_asserts",
     "_interp_step",
     "_wait",
+    "drain_interruptions",
+    "push_interruption_policy",
     "run_scenario",
     "scenario_slug",
 ]

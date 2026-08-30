@@ -133,7 +133,7 @@ final class TransportParityTests: XCTestCase {
         return try XCTUnwrap(elements.first?["handle"] as? String)
     }
 
-    // MARK: - The sixteen endpoints
+    // MARK: - The eighteen endpoints
 
     func testReadsServeIdenticallyOverTheWire() throws {
         script { $0.elementsToReturn = [Self.sample] }
@@ -268,6 +268,43 @@ final class TransportParityTests: XCTestCase {
             "/systemAlert/tap"
         )
         XCTAssertEqual(provider.systemAlertTapCalls.count, 1, "the tap must reach the alert provider")
+    }
+
+    func testInterruptionPolicyPairServesIdenticallyOverTheWire() throws {
+        // The `Router` half of this pair is hand-written rather than generated, so nothing else
+        // holds the two stacks to the same answer for it. The policy the driver pushes decides
+        // which button an interrupting alert receives, and a stack that quietly disagreed would
+        // hand the next prompt back to XCUITest's own default handler.
+        let policy: [String: Any] = [
+            "rules": [["identify": ["Allow", "Don't Allow"], "tap": "Don't Allow"]],
+            "candidates": ["Not Now"],
+        ]
+        try assertSame(
+            try wire("POST", "/interruptionPolicy", json: policy),
+            try reference("POST", "/interruptionPolicy", json: policy),
+            "/interruptionPolicy"
+        )
+        try assertSame(
+            try wire("POST", "/interruptionPolicy/drain", json: [:]),
+            try reference("POST", "/interruptionPolicy/drain", json: [:]),
+            "/interruptionPolicy/drain"
+        )
+    }
+
+    func testInterruptionPolicyDrainReportsWhatTheMonitorTapped() throws {
+        // The drain is the only way a prompt answered at interruption time reaches the report, so an
+        // empty drain and a lost one look alike from the driver — this pins that what the monitor
+        // records comes back, once, and that a second drain is empty.
+        InterruptionPolicyStore.shared.setPolicy(InterruptionPolicy(candidates: ["Not Now"]))
+        InterruptionPolicyStore.shared.record("Not Now")
+        let reply = try wire("POST", "/interruptionPolicy/drain", json: [:])
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: reply.body) as? [String: Any])
+        XCTAssertEqual(json["labels"] as? [String], ["Not Now"])
+        let second = try wire("POST", "/interruptionPolicy/drain", json: [:])
+        let secondJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: second.body) as? [String: Any]
+        )
+        XCTAssertEqual(secondJSON["labels"] as? [String], [])
     }
 
     func testScreenshotServesRawPNGOverTheWire() throws {

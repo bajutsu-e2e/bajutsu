@@ -69,9 +69,34 @@ final class XcuitestElementProvider: ElementProviding {
         // The two versions also name the browser's own chrome differently in one place, which
         // `normalizeBrowserChrome` repairs so a scenario's selector travels between them (BE-0396).
         let browser = SnapshotNodeAdapter(browserRoot)
-        return appElements + normalizeBrowserChrome(
+        let browserElements = normalizeBrowserChrome(
             flattenSnapshot(root: browser, in: .safariViewService), root: browser
         )
+        // An alert the *app* raises over the browser — iOS's "Save Password" offer after a web
+        // sign-in is the one that matters — is drawn by the app process and mirrored into the
+        // service's tree as well, so concatenating the two walks reports each of its buttons twice.
+        // The identifier-prefix prune above cannot reach it: the alert is not browser chrome and
+        // carries no `browserViewIDPrefix`. A duplicate like that is one control seen twice rather
+        // than an ambiguity — the same reading `uniquelyIdentifiedElement` already applies to
+        // XCUITest's duplicate registration of an alert button — but the *tree* must say so too,
+        // because a selector resolves over the tree: left in, the pair fails `resolve_unique` and
+        // the guard's in-tree dismissal correctly declines to guess, so the alert is never cleared.
+        // Matched on the whole reported identity, frame included: two genuinely distinct controls do
+        // not share every attribute *and* occupy the same rectangle, so this drops mirrors and
+        // nothing else.
+        let appIdentities = Set(appElements.map(Self.identity))
+        return appElements + browserElements.filter { !appIdentities.contains(Self.identity($0)) }
+    }
+
+    /// Everything the tree reports about one element, as a comparable key — the test for "the same
+    /// control reported twice" in `queryElements`.
+    private static func identity(_ element: ElementSnapshot) -> String {
+        let frame = element.frame
+        return [
+            element.identifier ?? "", element.label ?? "", element.value ?? "",
+            element.traits.joined(separator: ","),
+            "\(frame.x),\(frame.y),\(frame.width),\(frame.height)",
+        ].joined(separator: "\u{1F}")
     }
 
     func screenSize() -> (width: Double, height: Double) {

@@ -15,7 +15,7 @@ import functools
 import math
 import re
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, TypedDict, cast, runtime_checkable
 
@@ -229,6 +229,32 @@ class Selector(TypedDict, total=False):
     value: str  # accessibility value match
     within: Selector  # scope to a parent (needs a hierarchical query; not implemented)
     index: int  # nth of multiple matches (last resort; flaky)
+
+
+@runtime_checkable
+class InterruptionPolicyTarget(Protocol):
+    """A backend that answers an alert interrupting one of its *own* interactions, by our policy.
+
+    A narrow opt-in, like `ViewportProvider` / `ActuationReporter`: a backend that does not implement
+    it is simply never asked, and the run is otherwise unchanged. Only XCUITest needs it. XCUITest
+    resolves an out-of-process alert that interrupts an interaction *before* it synthesizes that
+    interaction, and with nothing installed it answers using the alert's own default button — the
+    opposite of the least-destructive policy the guard applies, and invisible to the run's report.
+
+    `set_interruption_policy` hands over the labels `AlertGuardConfig` has already resolved (a rule's
+    identifying label set with the label it taps, then the ordered fallback candidates), so the
+    decision stays in the orchestrator and the backend only applies it. `drain_interruptions` takes
+    back what it answered, so such a dismissal reaches the report as an `AlertEvent` rather than
+    happening silently.
+    """
+
+    def set_interruption_policy(
+        self, rules: Sequence[tuple[frozenset[str], str]], candidates: Sequence[str]
+    ) -> None:
+        """Hand the backend the buttons it may press on an interrupting alert."""
+
+    def drain_interruptions(self) -> list[str]:
+        """The labels the backend answered since the last call, oldest first."""
 
 
 @runtime_checkable

@@ -355,26 +355,118 @@ class AlertGuardConfig:
             return "unhandled", None
         try:
             driver.handle_system_alert({"label": label}, _NATIVE_TAP_TIMEOUT)
-        except (base.ElementNotFound, base.AmbiguousSelector):
-            # A time-of-check/time-of-use race: the alert changed or vanished between the presence
-            # query and the tap. It is no longer blocking, so treat it as absent rather than failing
-            # the step on a benign, self-resolved race — a genuine channel error still propagates.
+        except base.ElementNotFound:
+            # A time-of-check/time-of-use race: the alert vanished between the presence query and the
+            # tap. It is no longer blocking, so treat it as absent rather than failing the step on a
+            # benign, self-resolved race — a genuine channel error still propagates.
             return "absent", None
+        except base.AmbiguousSelector:
+            # The other half of that race, and *not* the same answer: the alert is still up, now
+            # offering the label twice. Reporting "absent" would say no system alert is showing,
+            # which is the one thing licensing an in-tree tap (`_observe_native`'s `probed_absent`) —
+            # and that tap, made under a live alert, is what XCUITest answers with its own default
+            # button. "unhandled" is what this already is by definition: an alert is up but no
+            # candidate resolves, so it routes to the vision guard and licenses nothing.
+            return "unhandled", None
         return "dismissed", AlertEvent(label=label)
 
+    def dismiss_from_tree_once(self, driver: base.Driver) -> AlertEvent | None:
+        """Tap a scenario-named dismiss button visible in the driver's own tree, once.
+
+        The one-shot twin of `_AlertGuardGate._dismiss_from_tree` (waits.py), for the end-of-step and
+        `expect` retry. It exists for the same prompt that motivated the mid-wait one: iOS raises its
+        "Save Password" alert *inside the app's process*, so `springboard.alerts` never sees it and
+        only a tap in the tree can clear it — and measured, such an alert can arrive after a
+        scenario's last wait has already returned, where only this path is left to meet it.
+
+        One-shot, so it carries none of the mid-wait version's per-showing bookkeeping (retap delay,
+        tap ceiling, decline bound): the caller runs it once per failed step, not per poll, so there
+        is no stream to pace. It matches the same narrow surface — an identifier-less labelled button
+        whose label the scenario's own `instruction` named, resolving uniquely — so it stays off the
+        default dismissive vocabulary a real screen can legitimately show.
+
+        Returns the `AlertEvent` for the button it tapped, or None when nothing matched, the match was
+        ambiguous, or the tap lost a race with the prompt closing itself.
+        """
+        if not self.labels:
+            return None
+        elements = driver.query()
+        buttons = [
+            el["label"]
+            for el in elements
+            if el["label"] and not el["identifier"] and base.Trait.BUTTON in el["traits"]
+        ]
+        label = pick_alert_label(self.labels, buttons)
+        if label is None:
+            return None
+        # The same uniqueness pre-check the mid-wait path applies: a bare `{"label": label}` selector
+        # ignores traits, so an identified app button of the same name would make the tap ambiguous.
+        if (
+            sum(1 for el in elements if el["label"] == label and base.Trait.BUTTON in el["traits"])
+            != 1
+        ):
+            return None
+        try:
+            driver.tap({"label": label, "traits": [base.Trait.BUTTON]})
+        except (base.ElementNotFound, base.AmbiguousSelector, base.ElementNotTappable):
+            # The prompt closed itself, or another button of that name appeared, or it is not yet
+            # reachable. All three are benign here: this is one opportunistic attempt on a step that
+            # has already failed, and the step's own outcome still decides the verdict.
+            return None
+        return AlertEvent(label=label)
+
     def __call__(self, driver: base.Driver) -> AlertEvent | None:
-        # The end-of-step / expect retry: a one-shot dismiss. Here "absent" falls straight through
-        # to vision (a sheet the native query cannot enumerate may still be up). The mid-wait gate
-        # routes "absent" differently — through the debounced, bounded collapsed-tree proxy in
-        # `_AlertGuardGate._observe_native` (waits.py) rather than calling vision unconditionally —
-        # so that half of the policy lives there, not here.
+        # The end-of-step / expect retry: a one-shot dismiss.
         state, event = self.probe_native(driver)
         if state == "dismissed":
             return event
+        if state == "absent":
+            # No *SpringBoard* alert, which is both the licence to tap an app element (XCUITest
+            # answers an interrupting out-of-process alert before synthesizing any interaction) and
+            # the case where an app-owned prompt is the remaining explanation for the failed step.
+            tree_event = self.dismiss_from_tree_once(driver)
+            if tree_event is not None:
+                return tree_event
         # incapable / absent / unhandled: let the vision guard try — it may see a surface the native
         # `springboard.alerts` query cannot enumerate (e.g. an action sheet), and no-ops without a
         # credential. It stays off the pass/fail verdict either way (prime directive 1).
         return self.vision(driver)
+
+
+def push_interruption_policy(driver: base.Driver, guard: AlertGuardConfig | None) -> None:
+    """Hand the backend the buttons it may press on an alert that interrupts its own interactions.
+
+    XCUITest resolves such an alert *before* it synthesizes the interaction, and with nothing
+    installed answers with the alert's own default button — granting a permission the scenario may
+    have refused, with nothing in the report. Pushing the guard's already-resolved labels keeps that
+    decision here: the backend applies `rules` then `candidates` by the same discipline
+    `probe_native` does, and answers nothing else.
+
+    An absent guard (`systemAlertHandling: false`) pushes an empty policy rather than skipping the
+    call, so a scenario that switched the guard off does not inherit the previous scenario's policy
+    from the resident runner. A backend that does not implement `InterruptionPolicyTarget` is simply
+    never asked.
+    """
+    if not isinstance(driver, base.InterruptionPolicyTarget):
+        return
+    rules: list[tuple[frozenset[str], str]] = []
+    candidates: list[str] = []
+    if guard is not None:
+        rules = [(rule.identifying_labels, rule.tap_label) for rule in guard.rules]
+        candidates = list(guard.labels or DEFAULT_DISMISSIVE_LABELS)
+    driver.set_interruption_policy(rules, candidates)
+
+
+def drain_interruptions(driver: base.Driver) -> list[AlertEvent]:
+    """The prompts the backend answered at interruption time since the last drain.
+
+    Reported as ordinary `AlertEvent`s so a dismissal that happened inside the backend's own
+    interruption handling is not missing from the run's report — the silence this mechanism exists
+    to end. A backend without the opt-in contributes nothing.
+    """
+    if not isinstance(driver, base.InterruptionPolicyTarget):
+        return []
+    return [AlertEvent(label=label) for label in driver.drain_interruptions()]
 
 
 def drain_actuations(driver: base.Driver) -> Drained:

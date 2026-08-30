@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bajutsu Showcase Sign In</title>
+    <style>
+      body { font-family: -apple-system, system-ui, sans-serif; margin: 2rem 1rem; }
+      input { font-size: 1.1rem; padding: 0.6rem; width: 90%; margin: 0.4rem 0; }
+      button { font-size: 1.1rem; padding: 0.6rem 1.2rem; }
+    </style>
+  </head>
+  <body>
+    <!--
+      The sign-in page demos/showcase/scenarios/save_password_browser.yaml loads in
+      SFSafariViewController, served by `make -C demos/showcase e2e-browser` beside index.html.
+
+      Submitting it makes iOS raise its *real* "Save Password" alert — the whole point of this
+      fixture. No associated domain, entitlement, or HTTPS is involved: iOS offers to save a
+      credential typed into a web form for the page's own origin, exactly as Safari does, which is
+      why the browser route needs nothing beyond this page. (The app's own login screen is the other
+      route, and that one does need `webcredentials:` — see save_password_native.yaml.)
+
+      `autocomplete` is what marks the two fields as a credential pair; without it iOS has nothing to
+      offer to save. The browser exposes this page to the backend as an accessibility tree rather
+      than a DOM, so the scenario addresses these controls by their visible text and placeholder.
+    -->
+    <h1>Bajutsu Sign In</h1>
+    <form id="login" action="/welcome.html" method="get">
+      <input type="text" name="username" autocomplete="username" placeholder="Username" /><br />
+      <input
+        type="password"
+        name="password"
+        autocomplete="current-password"
+        placeholder="Password"
+      /><br />
+      <button type="submit">Sign In</button>
+    </form>
+    <script>
+      // Hold the submission back briefly. The save alert appears when the form is submitted, and
+      // the scenario needs it to arrive *after* the SpringBoard notification request the app raises
+      // on its own timer — that ordering is what puts the save alert underneath a system alert,
+      // which is the state the run is there to exercise. A scenario cannot arrange it by tapping,
+      // because an element tap made while a system alert is showing fails by design.
+      //
+      // The run never waits on this delay: every wait in the scenario is a condition wait, and this
+      // only shifts when the condition becomes true.
+      var form = document.getElementById("login");
+      form.addEventListener("submit", function (event) {
+        if (form.dataset.armed === "1") return;
+        event.preventDefault();
+        form.dataset.armed = "1";
+        setTimeout(function () {
+          form.submit();
+        }, 6000);
+      });
+    </script>
+  </body>
+</html>

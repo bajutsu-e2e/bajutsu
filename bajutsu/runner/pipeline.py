@@ -42,6 +42,7 @@ from bajutsu.orchestrator import (
     MailboxReader,
     ProgressFn,
     RunResult,
+    push_interruption_policy,
     run_scenario,
     scenario_slug,
 )
@@ -617,6 +618,11 @@ class _ScenarioRunner:
         outcome — pass, assertion failure, unsupported action — comes back as a `RunResult`.
         """
         try:
+            # Hand the backend this scenario's own answer for a prompt that interrupts one of its
+            # interactions, before any of them run. The resident runner outlives a scenario, so this
+            # is set per scenario rather than per lease — including to *empty* when the scenario
+            # disables the guard, so it never inherits the previous scenario's policy.
+            push_interruption_policy(lz.driver, handler)
             # Score the entry screen before the scenario mutates it — the app is freshly launched here,
             # exactly what a standalone `doctor` probe would see, but on the lease this run already holds.
             self._maybe_emit_score(i, lz.driver)

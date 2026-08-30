@@ -60,6 +60,7 @@ struct PermissionsView: View {
                     // process, so while it is up the app's own tree is not what the backend reads.
                     Button("Open Browser") {
                         browser.open(model.browserURL, animated: !model.animationsDisabled)
+                        armNotificationRequest()
                     }
                     .accessibilityID("sys.openBrowser")
                     Text("Browser: \(browser.status)")
@@ -84,6 +85,17 @@ struct PermissionsView: View {
             let text = UIPasteboard.general.string ?? "(none)"
             DispatchQueue.main.async { pasted = text }
         }
+    }
+
+    // Raises the notification request on a delay once the in-app browser is up, when the run asked
+    // for it (`SHOWCASE_NOTIF_AFTER_BROWSER`). This is how the save-password alert iOS raises for a
+    // browser sign-in comes to be stacked *under* a SpringBoard alert: the scenario cannot tap its
+    // way into that state, since an element tap made while a system alert is showing fails by
+    // design, so the second prompt has to arrive on the app's own schedule. No default: every other
+    // scenario opens the browser with nothing behind it.
+    private func armNotificationRequest() {
+        guard let delay = model.notifyAfterBrowser else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { requestNotifications() }
     }
 
     // Raises the SpringBoard notification prompt — out-of-process, so an in-app accessibility query

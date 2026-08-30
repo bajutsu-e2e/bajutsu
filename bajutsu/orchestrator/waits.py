@@ -89,24 +89,43 @@ _GUARD_DEBOUNCE_POLLS = 3  # consecutive collapsed polls before acting
 _GUARD_MAX_ATTEMPTS = 2
 # Min seconds between attempts, so a stuck collapse can't hot-loop the guard.
 _GUARD_COOLDOWN = 1.0
-# Consecutive `ElementNotTappable` declines `_dismiss_from_tree` tolerates for one showing of a
-# label before it stops attempting the tap: unlike `ElementNotFound` (the button left the tree, so
-# the next poll can't re-match it) and `AmbiguousSelector` (guarded by the uniqueness pre-check
-# above it), a genuinely stuck obstruction — a scrim that never lifts, an `elevation` false
-# positive — has neither property, so without its own bound this decline would re-issue a real
-# actuation attempt every `_POLL` for the rest of the wait. Counted in polls, not seconds, so the
-# bound must clear a real presentation animation (a UIKit sheet ~0.35-0.5s, an Android dialog enter
-# ~0.25s+), not just the poll cadence: ~1s at `_POLL`, the same horizon as `_GUARD_COOLDOWN` below.
-_TREE_DISMISS_MAX_DECLINES = 20
+# Seconds of consecutive `ElementNotTappable` declines `_dismiss_from_tree` tolerates for one
+# showing of a label before it stops attempting the tap: unlike `ElementNotFound` (the button left
+# the tree, so the next poll can't re-match it) and `AmbiguousSelector` (guarded by the uniqueness
+# pre-check above it), a genuinely stuck obstruction — a scrim that never lifts, an `elevation`
+# false positive — has neither property, so without its own bound this decline would re-issue a real
+# actuation attempt for the rest of the wait. Clock-based, for the reason `_TREE_RETAP_DELAY` records
+# for itself: what is being waited out is a presentation animation measured in seconds (a UIKit sheet
+# ~0.35-0.5s, an Android dialog enter ~0.25s+). A poll count cannot express that here anyway, because
+# `_dismiss_from_tree` is paced by `guard.poll_interval` rather than `_POLL` (see `_observe_native`)
+# and that interval is configurable per scenario, target, and flag (BE-0177). Twice the default
+# `poll_interval` rather than the animation's own horizon, because the give-up is checked *before*
+# the tap: at one interval the very first attempt would exhaust the budget, leaving a transient scrim
+# no retry at all. That is also why the horizon is *derived* from the interval rather than fixed. A
+# scenario may tune `pollInterval` upwards (the save-password one sets 5), and a fixed 2s would
+# then put the second pass past the horizon before it ever ran — reinstating the zero-retry case
+# this value exists to avoid. The floor keeps the animation horizon intact at short intervals.
+_TREE_DISMISS_DECLINE_GIVEUP_FLOOR = 2.0
+
+
+def _decline_giveup(poll_interval: float) -> float:
+    """Seconds `_dismiss_from_tree` tolerates `ElementNotTappable` on one showing of a label.
+
+    Twice the cadence the path is paced at, floored at the animation horizon: the bound is
+    checked before the tap, so anything under two intervals spends itself on the first attempt.
+    """
+    return max(_TREE_DISMISS_DECLINE_GIVEUP_FLOOR, 2 * poll_interval)
+
+
 # Min seconds before `_dismiss_from_tree` re-taps a label its own tap left still showing. A tap the
 # runner accepts does not always land — measured on iOS, testmanagerd confirmed `touch down`/`touch
 # up` at the target's centre with `TouchEventsCompleted` while the app never acted on it — and a
 # prompt that stays up is indistinguishable, at the poll that follows, from one merely fading out.
 # So wait past any real dismiss animation (the same ~1s horizon as `_GUARD_COOLDOWN`) before
 # concluding the tap did not land: re-tapping inside that window would land on whatever is under a
-# vanishing sheet. Clock-based like `_GUARD_COOLDOWN`, not poll-counted like the declines above,
-# because what is being waited out is an animation measured in seconds — on a backend whose `query()`
-# costs 100-300ms, a poll count would stretch this to several seconds of dead wait.
+# vanishing sheet. Clock-based like `_GUARD_COOLDOWN` and like the decline give-up above, because
+# what is being waited out is an animation measured in seconds — on a backend whose `query()` costs
+# 100-300ms, a poll count would stretch this to several seconds of dead wait.
 _TREE_RETAP_DELAY = 1.0
 # Taps `_dismiss_from_tree` spends on one showing of a label that never clears, mirroring the vision
 # path's `_GUARD_MAX_ATTEMPTS`: a prompt still up after this many is not one more tap will fix, so it
@@ -226,7 +245,7 @@ class _AlertGuardGate:
     _tree_taps: int = 0
     _tree_gave_up: bool = False
     _tree_not_tappable_label: str | None = None
-    _tree_not_tappable_declines: int = 0
+    _tree_not_tappable_since: float | None = None
 
     def __post_init__(self) -> None:
         self._native = base.Capability.HANDLE_SYSTEM_ALERT in self.driver.capabilities()
@@ -243,9 +262,14 @@ class _AlertGuardGate:
         # per-`_POLL` SpringBoard query would roughly double the single-main-thread runner's load
         # (BE-0315). `_last_native` starts None so the first poll probes at once.
         now = self.clock.now()
+        # Whether *this* poll asked SpringBoard and was told no alert is up. `_dismiss_from_tree`
+        # below is gated on it, so a fresh negative answer — not a remembered one — is what licenses
+        # an in-tree tap.
+        probed_absent = False
         if self._last_native is None or now - self._last_native >= self.guard.poll_interval:
             self._last_native = now
             state, event = self.guard.probe_native(self.driver)
+            probed_absent = state == "absent"
             if state == "dismissed" and event is not None:
                 # A SpringBoard alert was up and tapped natively — no model. Clear the proxy debounce
                 # so a later collapse starts fresh, and skip the vision path this poll.
@@ -260,13 +284,22 @@ class _AlertGuardGate:
                 self._fire_vision_bounded()
                 return
             # "absent": no *SpringBoard* alert — fall through to the collapsed-tree proxy below.
-        if self.guard.labels:
-            # Every `_POLL`, on the native path alone, and only once the scenario has named its own
-            # candidate labels: an author who configured `systemAlertHandling.instruction` has opted
-            # into exactly the narrow surface `_dismiss_from_tree` matches against, so the fast in-tree
-            # path is safe to try here. It stays off the *default* dismissive labels (`Cancel`,
-            # `Close`, …) and off every non-native backend, where those are ordinary English UI
-            # vocabulary a real screen can legitimately show (see `_dismiss_from_tree`'s docstring).
+        if self.guard.labels and probed_absent:
+            # Only once the scenario has named its own candidate labels: an author who configured
+            # `systemAlertHandling.instruction` has opted into exactly the narrow surface
+            # `_dismiss_from_tree` matches against, so the fast in-tree path is safe to try here. It
+            # stays off the *default* dismissive labels (`Cancel`, `Close`, …) and off every
+            # non-native backend, where those are ordinary English UI vocabulary a real screen can
+            # legitimately show (see `_dismiss_from_tree`'s docstring).
+            #
+            # And only on a poll whose own native probe just reported no SpringBoard alert. This tap
+            # goes through `Driver.tap`, which resolves an element, and XCUITest answers whatever
+            # out-of-process alert is interrupting *before* it synthesizes such an interaction. The
+            # app's own tree cannot see that alert, so an ungated in-tree tap acts blind: at `_POLL`
+            # it fired ~20x per `poll_interval`, ~19 of them with no idea whether a prompt was up.
+            # Pairing the tap with a same-poll negative answer paces it to `poll_interval` and makes
+            # the order deterministic — the SpringBoard alert is cleared natively by the scenario's
+            # policy first, and only then is an app-attached sheet cleared from the tree.
             event = self._dismiss_from_tree(elements)
             if event is not None:
                 self.alerts.append(event)
@@ -356,7 +389,7 @@ class _AlertGuardGate:
         to have cleared.
 
         A not-yet-reachable button (`ElementNotTappable`) gets a per-showing bound the two decline
-        branches below it do not need, `_TREE_DISMISS_MAX_DECLINES` deep: unlike a vanished button
+        branches below it do not need, `_decline_giveup` long: unlike a vanished button
         or a transient ambiguity, an obstruction can be permanent (a scrim that never lifts, an
         `elevation` false positive in `topmost_at_point`), and the button staying in the tree means
         nothing here re-arms `_tree_dismiss_pending` to stop the retries on its own — so a stuck
@@ -380,7 +413,7 @@ class _AlertGuardGate:
             self._tree_taps = 0
             self._tree_gave_up = False
             self._tree_not_tappable_label = None
-            self._tree_not_tappable_declines = 0
+            self._tree_not_tappable_since = None
             return None
         if label == self._tree_dismiss_pending:
             # This label's own tap left it showing. Inside `_TREE_RETAP_DELAY` that is the dismiss
@@ -427,8 +460,12 @@ class _AlertGuardGate:
             self._tree_gave_up = False
         if label != self._tree_not_tappable_label:
             self._tree_not_tappable_label = label
-            self._tree_not_tappable_declines = 0
-        elif self._tree_not_tappable_declines >= _TREE_DISMISS_MAX_DECLINES:
+            self._tree_not_tappable_since = None
+        elif (
+            self._tree_not_tappable_since is not None
+            and self.clock.now() - self._tree_not_tappable_since
+            >= _decline_giveup(self.guard.poll_interval)
+        ):
             return None  # gave up on this showing; the wait's own timeout takes over
         # Scope the tap to `traits: [BUTTON]`, the same constraint `buttons` above already applied
         # when resolving `label` — matching a bare `{"label": label}` selector against `matches()`
@@ -460,7 +497,8 @@ class _AlertGuardGate:
             # presentation animation. The next poll's tree read tries again, up to the bound above:
             # the same benign self-resolved race as the two branches above, not a reason to fail the
             # wait, but not assumed to always self-resolve either.
-            self._tree_not_tappable_declines += 1
+            if self._tree_not_tappable_since is None:
+                self._tree_not_tappable_since = self.clock.now()
             return None
         # Only the first tap of a showing reports an `AlertEvent`: a retry is the same prompt being
         # cleared again, not a second one, so counting each would inflate one dismissal into several
@@ -471,7 +509,7 @@ class _AlertGuardGate:
         self._tree_signature = _tree_signature(elements)
         self._tree_taps += 1
         self._tree_not_tappable_label = None
-        self._tree_not_tappable_declines = 0
+        self._tree_not_tappable_since = None
         if not first_tap:
             return None
         # Held by identity so the give-up path can withdraw this exact event — two showings of the
@@ -529,10 +567,13 @@ def _wait(  # noqa: C901, PLR0912
     BE-0316's primitive); elsewhere it watches the already-fetched tree for the collapsed-tree
     signature of a blocking prompt and asks the vision guard to clear it (BE-0269). The condition
     check still decides pass/fail; the guard only accelerates recovery, and dismissed alerts are
-    appended to `alerts` (the step's outcome list) for the report. `gone` is
-    *not* guarded: a collapsed tree already satisfies "gone" and returns at once, so no timeout is
-    wasted and there is nothing to accelerate (guarding it would mean redefining "gone" to reject a
-    blank screen). `request` polls the network, not the screen, so it is not guarded either.
+    appended to `alerts` (the step's outcome list) for the report. `gone` is guarded
+    too. It was not, on the reasoning that a collapsed tree already satisfies "gone" and returns at
+    once — true of a SpringBoard prompt, which covers the app and empties its tree, but only of
+    those. A prompt drawn *inside* the app's own process collapses nothing and instead **adds** its
+    buttons to the tree, so a `gone` wait on one of them sits unsatisfied for its whole timeout with
+    nothing to clear it. iOS's "Save Password" alert is exactly that shape, which is how the gap
+    surfaced. `request` polls the network, not the screen, so it is still not guarded.
 
     When `on_interrupt_poll` is given, it is called with each poll's already-fetched tree — after
     the wait's own condition is checked, so it fires only while the wait is still blocked — so a
@@ -613,14 +654,18 @@ def _wait(  # noqa: C901, PLR0912
                 hb.tick(clock.now())
             _adaptive_sleep(clock, t0)
     if isinstance(w.until, Gone):
-        # Not guarded (see the docstring): a collapsed tree already satisfies "gone", so this branch
-        # returns at once under a system alert rather than burning the timeout — nothing to hurry.
         target = w.until.gone.as_selector()
         while True:
             t0 = clock.now()
             elements = driver.query()
             if not _exists(elements, target):
                 return True, "", elements
+            # Guarded like `for` (see the docstring): a prompt the app draws in its own process does
+            # not collapse the tree, it adds to it, so "gone" stays false until something clears the
+            # prompt — and only the guard will. Observed after the condition, so a wait already
+            # satisfied never actuates.
+            if gate is not None:
+                gate.observe(elements)
             if cancelled():
                 raise RunCancelled
             if clock.now() >= deadline:

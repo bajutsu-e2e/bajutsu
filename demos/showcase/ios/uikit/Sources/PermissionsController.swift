@@ -83,6 +83,7 @@ final class PermissionsController: UIViewController, CLLocationManagerDelegate,
         // while it is up the app's own tree is not what the backend reads.
         let openBrowser = UIButton(type: .system, primaryAction: UIAction(title: "Open Browser") { [weak self] _ in
             self?.openBrowser()
+            self?.armNotificationRequest()
         })
         openBrowser.contentHorizontalAlignment = .leading
         openBrowser.accessibilityID("sys.openBrowser")
@@ -106,6 +107,19 @@ final class PermissionsController: UIViewController, CLLocationManagerDelegate,
     }
 
     // MARK: - Notifications
+
+    /// Raises the notification request on a delay once the in-app browser is up, when the run asked
+    /// for it (`SHOWCASE_NOTIF_AFTER_BROWSER`). This is how the save-password alert iOS raises for a
+    /// browser sign-in comes to be stacked *under* a SpringBoard alert: the scenario cannot tap its
+    /// way into that state, since an element tap made while a system alert is showing fails by
+    /// design, so the second prompt has to arrive on the app's own schedule. No default: every other
+    /// scenario opens the browser with nothing behind it.
+    private func armNotificationRequest() {
+        guard let delay = model.notifyAfterBrowser else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            self?.requestNotifications()
+        }
+    }
 
     private func requestNotifications() {
         // Raises the SpringBoard notification prompt (out-of-process).

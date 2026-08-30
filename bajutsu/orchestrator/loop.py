@@ -58,6 +58,7 @@ from bajutsu.orchestrator.types import (
     WallClock,
     _no_network,
     drain_actuations,
+    drain_interruptions,
     scenario_slug,
 )
 from bajutsu.orchestrator.waits import (
@@ -696,6 +697,12 @@ def run_scenario(
                 expect_results = _evaluate_expect(
                     driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
                 )
+                # A prompt the backend answered while it was interrupting one of `expect`'s own
+                # queries. Outside the failure branch below: an `expect` that passed *because* the
+                # interruption was answered still has a dismissal to report, and nothing else drains
+                # this phase — the step loop's drain has already run, and the next scenario's
+                # `setPolicy` clears the buffer outright.
+                expect_alerts.extend(drain_interruptions(driver))
                 if not assertions.passed(expect_results) and alert_guard is not None:
                     event = alert_guard(driver)
                     if event is not None:
@@ -1481,6 +1488,10 @@ class _StepRunner:
         # actuates the native driver during such a step, so nothing is stranded.
         drained = drain_actuations(active_driver)
         outcome.actuations, outcome.dropped_actuations = drained.records, drained.dropped
+        # A prompt the backend answered while it was interrupting one of this step's own
+        # interactions. Drained beside the actuations, and for the same reason: it really happened to
+        # the device during this step, so it belongs on this step's outcome rather than nowhere.
+        outcome.alerts.extend(drain_interruptions(active_driver))
 
         # The post-action shutter, taken here rather than down with the rest of the post-step
         # capture. Every step records `after.png` (the capture call below drops `screenshot.after`

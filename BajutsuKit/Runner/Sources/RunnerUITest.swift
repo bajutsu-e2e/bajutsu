@@ -23,6 +23,40 @@ final class RunnerUITest: XCTestCase {
         // together keep the runner serving; a genuinely failed operation still surfaces to the Python
         // side through its response status.
         continueAfterFailure = true
+
+        // Take the answer to an out-of-process system prompt away from XCUITest. Before it
+        // synthesizes any element interaction — and before some application-level queries — XCUITest
+        // resolves whatever alert is interrupting; with no monitor registered it falls back to its
+        // own default handler, which taps the alert's **default** button. Measured on iOS 18.6, that
+        // grants the notification authorization request ("Allow") the moment any tap lands while the
+        // request is up: the opposite of the scenario's own policy, invisible to the run (no step
+        // fails, no `AlertEvent` is reported), and intermittent, since it depends on an interaction
+        // coinciding with the prompt.
+        //
+        // The monitor answers instead, by the labels `InterruptionPolicy` carries — every one of
+        // them resolved on the Python side from the scenario's `systemAlertHandling` and pushed over
+        // `POST /interruptionPolicy`. It must actually press a button rather than merely claim the
+        // alert: XCUITest verifies the interruption cleared, and a monitor that returns `true` while
+        // the alert is still up is re-invoked on the very next interaction — in a resident runner
+        // that serves queries continuously, an unbounded loop that takes the runner down with it
+        // (measured). Declining (`false`) when the policy names no button on this alert is therefore
+        // the only safe fallback: it hands the alert back to XCUITest's default handler, which is
+        // what happened before this monitor existed and does clear it.
+        _ = addUIInterruptionMonitor(withDescription: "bajutsu: the scenario's policy answers system alerts") { alert in
+            let policy = InterruptionPolicyStore.shared.policy
+            guard !policy.isEmpty else { return false }
+            let buttons = alert.buttons
+            let labels = (0..<buttons.count).map { buttons.element(boundBy: $0).label }
+            guard let label = policy.label(for: labels),
+                  let ordinal = labels.firstIndex(of: label) else { return false }
+            let button = buttons.element(boundBy: ordinal)
+            guard button.exists else { return false }
+            button.tap()
+            // Recorded so the driver can report this as an `AlertEvent`: a prompt answered here
+            // being missing from the report is the failure this mechanism exists to end.
+            InterruptionPolicyStore.shared.record(label)
+            return true
+        }
     }
 
     override func record(_ issue: XCTIssue) {
