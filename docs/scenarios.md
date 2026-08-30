@@ -786,7 +786,7 @@ fails naming the overshoot rather than reporting the target absent.
 and at most 1 — the same unit and the same range `swipe` and `drag` take for their own `amount`.
 Omitted, a step covers 0.6 of the viewport. Lower `amount` for a screen the default step crosses too
 coarsely to land on the target, and raise it for one that reveals so little per step that
-`maxScrolls` runs out before the target does. `amount` decides where the loop starts and nothing else: the
+`maxScrolls` runs out before the target appears. `amount` decides where the loop starts and nothing else: the
 halving above still shrinks the step from wherever `amount` put it, and still stops at the same
 floor, which does not move with `amount`. An `amount` at or below that floor leaves the halving
 nothing to shrink, so the first step that overshoots fails the call outright, naming the step it
