@@ -673,7 +673,14 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   candidate-label policy — no model call, reusing BE-0316's plumbing rather than a parallel API — with
   the AI-vision guard demoted to a fallback for what the native path can't name (a backend lacking the
   capability, a non-enumerable blocking surface, or a free-text `instruction` the native path can't
-  resolve to one label); on by default, `false` disables it per scenario
+  resolve to one label); on by default, `false` disables it per scenario. XCUITest itself intervenes
+  on an alert that interrupts an in-flight interaction *before* this guard ever polls, and left alone
+  answers with the alert's own default button — silently overriding a scenario's policy with nothing
+  in the report. The runner therefore installs an interruption monitor that presses the same
+  policy-named button the reactive guard would, the labels resolved in the orchestrator and pushed
+  once per scenario over `POST /interruptionPolicy`, and records what it pressed as an ordinary
+  `AlertEvent`; a prompt the policy names no button on is left to XCUITest's own default handler,
+  unchanged (BE-0399)
 - DSL `iosTipKitHandling` (BE-0389), an opt-in guard for a blocking Apple TipKit tip: TipKit's
   presentation marks the content it covers accessibility-hidden rather than merely occluding it, so a
   blocked tap can fail as `ElementNotFound`, not only `ElementNotTappable`. The XCUITest backend alone
