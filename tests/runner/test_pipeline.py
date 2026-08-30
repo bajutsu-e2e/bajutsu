@@ -1290,8 +1290,8 @@ def test_run_all_alert_guard_for_selects_per_scenario() -> None:
         return AlertEvent(label="x")
 
     def alert_guard_for(s: Scenario) -> AlertGuardConfig | None:
-        cfg = s.system_alert_handling
-        return None if cfg is not None and not cfg.enabled else AlertGuardConfig(vision=recover)
+        # `false` is the whole off form since BE-0401; a mapping (or an absent key) means on.
+        return None if s.system_alert_handling is False else AlertGuardConfig(vision=recover)
 
     results = run_all(_eff(), scenarios, _lease, alert_guard_for=alert_guard_for)
     assert [r.ok for r in results] == [True, False]

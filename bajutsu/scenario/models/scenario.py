@@ -6,11 +6,11 @@ scenario-file wrapper that ties them together.
 
 from __future__ import annotations
 
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import AliasChoices, Field, field_validator, model_validator
+from pydantic import AliasChoices, BeforeValidator, Field, field_validator, model_validator
 
-from bajutsu.deprecations import warn_deprecated_key
+from bajutsu.deprecations import reject_renamed_key
 from bajutsu.drivers.base import PERMISSION_SERVICES
 from bajutsu.scenario.models._base import _Model
 from bajutsu.scenario.models.assertions import Assertion
@@ -70,7 +70,7 @@ class SystemAlertRule(_Model):
     (its `prompt`/`choice` form) instead of a literal button label, so the same rule grants or denies
     the prompt under any locale `bajutsu.scenario.system_alerts` covers. The reactive guard identifies
     which alert is on screen from this prompt's own two labels — not from an ordering trick over
-    `instruction`, which cannot record which answer belongs to which prompt (see `SystemAlertHandling`
+    `labels`, which cannot record which answer belongs to which prompt (see `SystemAlertHandling`
     below).
     """
 
@@ -86,63 +86,88 @@ class SystemAlertHandling(_Model):
     blocked or a guarded wait finds an alert. The guard is ON by default. On the iOS XCUITest backend
     it clears the prompt deterministically and natively (BE-0315), reusing BE-0316's SpringBoard query
     + tap — no screenshot and no model round trip; where the native path cannot act it falls back to
-    the vision guard (a screenshot the locator reads). With an `instruction` it taps whatever button
-    that names — dismissing *or* accepting (e.g. granting a permission) — so it handles the prompt
-    rather than only dismissing it. This is the *reactive* counterpart to the *proactive*
-    `handleSystemAlert` step (BE-0316): the step taps a named button at an author-chosen point, this
-    guard clears prompts automatically wherever they surface.
-    Three on-disk forms (the bare boolean is shorthand for `{ enabled: <bool> }`):
+    the vision guard (a screenshot the locator reads). This is the *reactive* counterpart to the
+    *proactive* `handleSystemAlert` step (BE-0316): the step taps a named button at an author-chosen
+    point, this guard clears prompts automatically wherever they surface.
+
+    Each key reaches exactly one of those two paths (BE-0401): `rules` and `labels` steer the native
+    path, `visionInstruction` steers the fallback. On-disk forms — the bare boolean carries on and
+    off, so a mapping always means on:
         systemAlertHandling: false                       — disable the guard for this scenario
-        systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] } — deterministic:
-                                                             answer a named prompt by its own choice,
-                                                             regardless of which label it shares with
-                                                             another covered prompt
-        systemAlertHandling: { instruction: ["Allow"] }  — deterministic: tap the first of these
-                                                             labels present on the alert (native path)
-        systemAlertHandling: { instruction: "tap Allow" } — legacy free text the vision locator
-                                                             interprets
-    `rules` is consulted before `instruction`; an alert whose prompt no rule names falls through to
-    `instruction`, or the built-in dismissive default when the scenario gives neither.
+        systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] } — answer a named
+                                                             prompt by its own choice, regardless of
+                                                             which label it shares with another
+        systemAlertHandling: { labels: ["Allow", "OK"] } — tap the first of these labels present on
+                                                             the alert
+        systemAlertHandling: { visionInstruction: "tap Allow" } — free text only the vision fallback
+                                                             reads
+    Within the native path a rule names a prompt and a label names a button, so `rules` is consulted
+    first; an alert whose prompt no rule names falls through to `labels`, and to the built-in
+    dismissive labels when no layer supplies any.
     """
 
-    enabled: bool = True
     # Ordered answers to specific covered prompts, by name rather than by button text. The
     # guard identifies the alert on screen from a rule's own prompt (its resolved label pair), so
     # ordering only matters for two rules whose pairs could both match the same alert — none of the
-    # prompts `system_alerts.py` covers today can. Checked before `instruction` below; an alert no
-    # rule identifies falls through to it.
+    # prompts `system_alerts.py` covers today can. Checked before `labels` below, since a prompt name
+    # is the more specific declaration; an alert no rule identifies falls through to it.
     rules: list[SystemAlertRule] = Field(default_factory=list)
-    # The button to press instead of the default dismissive one. Two forms (BE-0315):
-    #   - a list of candidate labels ("Allow", then "OK") the native path resolves deterministically,
-    #     tapping the first that is present on the alert (via BE-0316's `handle_system_alert`);
-    #   - a free-text string ("tap Allow") the *vision* locator interprets — the legacy form. It steers
-    #     only the vision fallback: the native path needs an exact label, so it ignores the string and
-    #     taps a *default dismissive* label instead. On a native-capable backend (XCUITest, the default
-    #     since BE-0290) that native tap pre-empts vision, so a free-text *grant* ("tap Allow") is
-    #     overridden and denies — use the list form `["Allow"]` to grant natively. The string is not a
-    #     drop-in for the old vision-only behavior on such a backend.
-    # A per-scenario value wins over the CLI `--alert-instruction`.
-    instruction: str | list[str] | None = None
+    # The ordered candidate button labels the native path taps instead of the default dismissive one,
+    # taking the first that is present on the alert (via BE-0316's `handle_system_alert`). Empty means
+    # no layer named a button, which is what the built-in dismissive labels stand in for — they never
+    # extend a supplied list, so a scenario naming its buttons and meeting an alert carrying none of
+    # them drops to the vision fallback rather than tapping a button the author never named.
+    labels: list[str] = Field(default_factory=list)
+    # Free text only the AI vision fallback reads ("tap Allow"), for an alert the native path cannot
+    # name — including every alert on a backend with no native path at all. The native path compares
+    # labels exactly, so it never reads this; `labels` above is what steers it (BE-0401).
+    vision_instruction: str | None = Field(default=None, alias="visionInstruction")
     # How often (seconds) the reactive guard polls the native system-alert presence query while a
     # wait is pending, on its own wall clock decoupled from the wait's condition poll (BE-0315). A
     # heuristic trading detection latency against runner load, so it is a knob rather than hard-coded;
-    # None inherits the built-in default (one second). Rides the same precedence as the rest of
-    # `systemAlertHandling` (BE-0177).
+    # None inherits the built-in default (one second).
     poll_interval: float | None = Field(default=None, alias="pollInterval")
 
     @model_validator(mode="before")
     @classmethod
-    def _coerce_bool(cls, data: Any) -> Any:
-        return {"enabled": data} if isinstance(data, bool) else data
+    def _reject_removed_keys(cls, data: Any) -> Any:
+        # `extra="forbid"` already rejects each of these, but with Pydantic's generic "extra fields
+        # not permitted", which names no replacement. BE-0401 removed them with no alias, so the
+        # error is the whole migration path an author gets — name the key that replaces each.
+        if not isinstance(data, dict):
+            return data
+        if "instruction" in data:
+            replacement = "labels" if isinstance(data["instruction"], list) else "visionInstruction"
+            raise ValueError(
+                "systemAlertHandling.instruction was removed (BE-0401); use "
+                f"'{replacement}' instead — 'labels' is the ordered button labels the native "
+                "path taps, 'visionInstruction' the free text only the vision fallback reads"
+            )
+        if "enabled" in data:
+            raise ValueError(
+                "systemAlertHandling.enabled was removed (BE-0401); write the boolean directly "
+                "(`systemAlertHandling: false` to disable, a mapping to configure the policy)"
+            )
+        return data
 
-    @field_validator("instruction")
+    @field_validator("labels")
     @classmethod
-    def _non_empty_labels(cls, v: str | list[str] | None) -> str | list[str] | None:
-        # A list form must carry only non-empty labels, so a stray "" cannot silently match nothing
-        # (determinism first). An empty list normalizes to None (the default dismissive policy).
-        if isinstance(v, list):
-            labels = [s for s in v if s.strip()]
-            return labels or None
+    def _non_empty_labels(cls, v: list[str]) -> list[str]:
+        # An empty list, or an empty entry among real ones, would fall through to the layers above and
+        # then to the default dismissive policy — so a typo answers the opposite of what the author
+        # wrote. Fail instead, the same reason an ambiguous selector fails rather than tapping its
+        # first match.
+        if not v:
+            raise ValueError("systemAlertHandling.labels must name at least one button label")
+        if any(not s.strip() for s in v):
+            raise ValueError("systemAlertHandling.labels must not contain an empty label")
+        return v
+
+    @field_validator("vision_instruction")
+    @classmethod
+    def _non_empty_vision_instruction(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            raise ValueError("systemAlertHandling.visionInstruction must not be empty")
         return v
 
     @field_validator("poll_interval")
@@ -165,6 +190,22 @@ class SystemAlertHandling(_Model):
                 "each prompt takes exactly one rule"
             )
         return v
+
+
+def _coerce_system_alert_handling(v: Any) -> Any:
+    """`true` is the empty policy (on, no declarations); everything else reaches the union as-is."""
+    return {} if v is True else v
+
+
+# The on-disk type of a `systemAlertHandling` field, shared by the scenario and the target config so
+# the two layers accept exactly the same forms. The boolean carries on and off (BE-0401): `false`
+# disables the guard, a mapping is on and holds the policy, and `None` (the key absent) inherits the
+# layer above. `{ enabled: false, rules: [...] }` — a policy the runtime discarded without a word —
+# is not representable.
+SystemAlertHandlingField = Annotated[
+    Literal[False] | SystemAlertHandling | None,
+    BeforeValidator(_coerce_system_alert_handling),
+]
 
 
 class Scenario(_Model):
@@ -212,12 +253,12 @@ class Scenario(_Model):
     mocks: list[Mock] = Field(default_factory=list)
     redact: Redact | None = None
     # The alert guard runs on by default; unset means "on, tap the prompt's default button" (see
-    # SystemAlertHandling). Kept None when unset so a dumped scenario stays clean. `dismissAlerts`
-    # and `alertHandling` are deprecated input aliases (the latter from BE-0317); a dump emits the
-    # canonical `systemAlertHandling`.
-    system_alert_handling: SystemAlertHandling | None = Field(
+    # SystemAlertHandling). Kept None when unset so a dumped scenario stays clean. The former
+    # `alertHandling` / `dismissAlerts` spellings were deleted with no alias (BE-0401); the
+    # validator below names the replacement.
+    system_alert_handling: SystemAlertHandlingField = Field(
         default=None,
-        validation_alias=AliasChoices("systemAlertHandling", "alertHandling", "dismissAlerts"),
+        validation_alias=AliasChoices("systemAlertHandling"),
         serialization_alias="systemAlertHandling",
     )
     # Dismiss a blocking TipKit tip when one is in the way. Off unless asked for, unlike the alert
@@ -234,16 +275,12 @@ class Scenario(_Model):
 
     @model_validator(mode="before")
     @classmethod
-    def _warn_deprecated_alert_key(cls, data: Any) -> Any:
+    def _reject_renamed_alert_keys(cls, data: Any) -> Any:
         # `systemAlertHandling` renamed `alertHandling`, which had itself renamed `dismissAlerts`
-        # (BE-0317); both old keys still parse via the alias above, but using either earns a
-        # one-time notice on the authoring path (never the run verdict).
-        warn_deprecated_key(
-            data, surface="scenario", old="alertHandling", new="systemAlertHandling"
-        )
-        warn_deprecated_key(
-            data, surface="scenario", old="dismissAlerts", new="systemAlertHandling"
-        )
+        # (BE-0317 / BE-0327). Both aliases were deleted rather than carried a third time (BE-0401),
+        # so name the canonical key here instead of leaving Pydantic's generic extra-field error.
+        for old in ("alertHandling", "dismissAlerts"):
+            reject_renamed_key(data, surface="scenario", old=old, new="systemAlertHandling")
         return data
 
     @field_validator("permissions")

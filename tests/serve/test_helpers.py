@@ -418,7 +418,9 @@ def test_run_command_emits_the_backfilled_flags() -> None:
         network=False,
         log_predicate="subsystem == 'x'",
         log_subsystem="com.example",
-        alert_instruction="tap Allow",
+        alert_labels="Allow,OK",
+        alert_vision_instruction="tap Allow",
+        alert_poll_interval=2.5,
         zip_run=True,
         config_offline=True,
         require_pinned_config=True,
@@ -431,7 +433,9 @@ def test_run_command_emits_the_backfilled_flags() -> None:
     assert cmd[cmd.index("--goldens") + 1] == "/g"
     assert cmd[cmd.index("--log-predicate") + 1] == "subsystem == 'x'"
     assert cmd[cmd.index("--log-subsystem") + 1] == "com.example"
-    assert cmd[cmd.index("--alert-instruction") + 1] == "tap Allow"
+    assert cmd[cmd.index("--alert-labels") + 1] == "Allow,OK"
+    assert cmd[cmd.index("--alert-vision-instruction") + 1] == "tap Allow"
+    assert cmd[cmd.index("--alert-poll-interval") + 1] == "2.5"
     assert "--no-network" in cmd and "--zip" in cmd
     assert "--config-offline" in cmd and "--require-pinned-config" in cmd
     # All omitted when unset (defaults), so a normal run's argv is unchanged.

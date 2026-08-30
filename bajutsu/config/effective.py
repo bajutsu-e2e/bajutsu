@@ -22,7 +22,7 @@ from bajutsu.config.schema import (
     XcuitestConfig,
 )
 from bajutsu.drivers import base
-from bajutsu.scenario import AfterRule, Interrupt, Redact, Step, SystemAlertHandling
+from bajutsu.scenario import AfterRule, Interrupt, Redact, Step, SystemAlertHandlingField
 
 
 @dataclass(frozen=True)
@@ -124,11 +124,12 @@ class RunDefaults:
     """Per-app run-behavior defaults (BE-0177), grouped out of `Effective` (BE-0252).
 
     The layer the run consults when neither a CLI flag nor the scenario sets the value.
-    `system_alert_handling` None = built-in on with the default instruction; `erase` / `network` are
+    `system_alert_handling` takes the on-disk shapes a scenario's own field does (`False`, a
+    policy, or None = built-in on with the default dismissive labels); `erase` / `network` are
     the concrete built-in defaults when unset.
     """
 
-    system_alert_handling: SystemAlertHandling | None = None
+    system_alert_handling: SystemAlertHandlingField = None
     erase: bool = False
     network: bool = True
     ios_tip_kit_handling: bool = False

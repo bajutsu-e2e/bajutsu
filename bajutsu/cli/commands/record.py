@@ -117,18 +117,6 @@ def record(
         "--system-alert-handling/--no-system-alert-handling",
         help="handle unexpected OS prompts while authoring (on by default; uses the same API key)",
     ),
-    alert_handling: bool | None = typer.Option(
-        None,
-        "--alert-handling/--no-alert-handling",
-        hidden=True,
-        help="deprecated alias for --system-alert-handling",
-    ),
-    dismiss_alerts: bool | None = typer.Option(
-        None,
-        "--dismiss-alerts/--no-dismiss-alerts",
-        hidden=True,
-        help="deprecated alias for --system-alert-handling (originally BE-0317)",
-    ),
     max_steps: int = typer.Option(
         30,
         "--max-steps",
@@ -141,8 +129,10 @@ def record(
         help="send a screenshot each turn; --no-screenshot records elements-only (cheaper) when the "
         "app is fully instrumented (BE-0194)",
     ),
-    alert_instruction: str = typer.Option(
-        "", "--alert-instruction", help="how to handle a prompt instead of dismissing it"
+    alert_vision_instruction: str = typer.Option(
+        "",
+        "--alert-vision-instruction",
+        help="free text the AI vision guard reads instead of dismissing the prompt",
     ),
     headed: bool | None = typer.Option(
         None,
@@ -209,12 +199,9 @@ def record(
     authoring_agent = make_agent(ai=eff.ai, redactor=redactor)
     actuator, _ = _select_actuator_or_exit(backend, eff, [])
     alert_guard = None
-    # On by default while authoring; the shared resolver folds in the deprecated --alert-handling /
-    # --dismiss-alerts aliases.
-    if resolve_system_alert_handling_flag(
-        system_alert_handling, alert_handling, dismiss_alerts, default=True
-    ):
-        alert_guard = _build_alert_guard(eff, redactor, alert_instruction)
+    # On by default while authoring (there is no scenario yet to carry its own setting).
+    if resolve_system_alert_handling_flag(system_alert_handling, default=True):
+        alert_guard = _build_alert_guard(eff, redactor, alert_vision_instruction)
     # Web has no simctl udid (launch_driver ignores it for playwright); resolving "booted" would
     # shell out to simctl and crash off-macOS, so skip it for the web backend.
     if actuator != "playwright":

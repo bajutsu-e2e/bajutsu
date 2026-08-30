@@ -7,7 +7,7 @@
 # deterministic gate on iOS. It is kept for 1:1 correspondence with the shared suite, not as a CI gate.
 - name: grant notification permission
   tags: [permission, system]
-  systemAlertHandling: { instruction: "tap Allow" }
+  systemAlertHandling: { visionInstruction: "tap Allow" }
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:

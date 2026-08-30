@@ -86,6 +86,7 @@ from bajutsu.scenario.models.scenario import (
     Scenario,
     ScenarioFile,
     SystemAlertHandling,
+    SystemAlertHandlingField,
     SystemAlertRule,
 )
 from bajutsu.scenario.models.selector import Selector
@@ -162,6 +163,7 @@ __all__ = [
     "Step",
     "Swipe",
     "SystemAlertHandling",
+    "SystemAlertHandlingField",
     "SystemAlertRule",
     "TapPoint",
     "TextMatch",

@@ -19,9 +19,9 @@ from pydantic import (
     model_validator,
 )
 
-from bajutsu.deprecations import warn_deprecated_key
+from bajutsu.deprecations import reject_renamed_key
 from bajutsu.drivers import base
-from bajutsu.scenario import AfterRule, Interrupt, Redact, Step, SystemAlertHandling
+from bajutsu.scenario import AfterRule, Interrupt, Redact, Step, SystemAlertHandlingField
 
 # Playwright rendering engines a web target can drive (BE-0076). Chromium is the default,
 # preserving today's single-engine behaviour; all three run headless on Linux.
@@ -388,11 +388,11 @@ class TargetConfig(_Model):
     # (BE-0177). Each sits *between* the per-scenario value and the built-in default: the flag still
     # overrides for one run, then the scenario's own value, then this, then the built-in — mirroring
     # `--headed`/`headless`. None = unset (fall through to the built-in default).
-    # `dismissAlerts` and `alertHandling` are deprecated input aliases (the latter from BE-0317); a
-    # dump emits `systemAlertHandling`.
-    system_alert_handling: SystemAlertHandling | None = Field(
+    # The former `alertHandling` / `dismissAlerts` spellings were deleted with no alias (BE-0401);
+    # the validator below names the replacement.
+    system_alert_handling: SystemAlertHandlingField = Field(
         default=None,
-        validation_alias=AliasChoices("systemAlertHandling", "alertHandling", "dismissAlerts"),
+        validation_alias=AliasChoices("systemAlertHandling"),
         serialization_alias="systemAlertHandling",
     )
     erase: bool | None = None  # default for preconditions.erase (built-in: off)
@@ -436,12 +436,12 @@ class TargetConfig(_Model):
 
     @model_validator(mode="before")
     @classmethod
-    def _warn_deprecated_alert_key(cls, data: Any) -> Any:
+    def _reject_renamed_alert_keys(cls, data: Any) -> Any:
         # `systemAlertHandling` renamed `alertHandling`, which had itself renamed `dismissAlerts`
-        # (BE-0317); both old keys still parse via the alias above, but using either earns a
-        # one-time notice on the authoring path (never the run verdict).
-        warn_deprecated_key(data, surface="config", old="alertHandling", new="systemAlertHandling")
-        warn_deprecated_key(data, surface="config", old="dismissAlerts", new="systemAlertHandling")
+        # (BE-0317 / BE-0327). Both aliases were deleted rather than carried a third time (BE-0401),
+        # so name the canonical key here instead of leaving Pydantic's generic extra-field error.
+        for old in ("alertHandling", "dismissAlerts"):
+            reject_renamed_key(data, surface="config", old=old, new="systemAlertHandling")
         return data
 
     @field_validator("backend", mode="before")

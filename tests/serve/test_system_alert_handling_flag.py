@@ -1,10 +1,14 @@
-"""The serve dispatch reads the `systemAlertHandling` request flag and still accepts the
-deprecated `alertHandling` (originally BE-0317's canonical name) and `dismissAlerts` keys, the
-back-compat guarantee a saved frontend state or a third-party `/api/run` client depends on. The
-CLI/scenario/config alias surfaces each have a dedicated test; this covers the serve request-body
-fallback branch."""
+"""The serve dispatch reads the `systemAlertHandling` request flag.
+
+The deprecated `alertHandling` (originally BE-0317's canonical name) and `dismissAlerts` body keys
+were deleted with the schema aliases they mirrored (BE-0401), so a client sending one now gets the
+tri-state "unset" and the CLI's own default applies — never the opposite of what it asked for, since
+the key it names no longer decides anything.
+"""
 
 from __future__ import annotations
+
+import pytest
 
 from bajutsu.serve.operations.dispatch import _system_alert_handling_flag
 
@@ -14,29 +18,12 @@ def test_system_alert_handling_canonical_key() -> None:
     assert _system_alert_handling_flag({"systemAlertHandling": False}) is False
 
 
-def test_alert_handling_deprecated_key_still_resolves() -> None:
-    # The old spelling a saved frontend state or a legacy /api/run client may still send.
-    assert _system_alert_handling_flag({"alertHandling": False}) is False
-    assert _system_alert_handling_flag({"alertHandling": True}) is True
-
-
-def test_dismiss_alerts_deprecated_key_still_resolves() -> None:
-    # The oldest spelling a saved frontend state or a legacy /api/run client may still send.
-    assert _system_alert_handling_flag({"dismissAlerts": False}) is False
-    assert _system_alert_handling_flag({"dismissAlerts": True}) is True
-
-
-def test_canonical_key_wins_when_all_present() -> None:
-    assert (
-        _system_alert_handling_flag(
-            {"systemAlertHandling": True, "alertHandling": False, "dismissAlerts": False}
-        )
-        is True
-    )
-
-
-def test_alert_handling_wins_over_dismiss_alerts_when_both_present() -> None:
-    assert _system_alert_handling_flag({"alertHandling": True, "dismissAlerts": False}) is True
+@pytest.mark.parametrize("removed", ["alertHandling", "dismissAlerts"])
+def test_removed_keys_no_longer_decide_the_flag(removed: str) -> None:
+    assert _system_alert_handling_flag({removed: False}) is None
+    assert _system_alert_handling_flag({removed: True}) is None
+    # ...and never displace the canonical key when both are present.
+    assert _system_alert_handling_flag({"systemAlertHandling": True, removed: False}) is True
 
 
 def test_absent_or_non_bool_is_none() -> None:

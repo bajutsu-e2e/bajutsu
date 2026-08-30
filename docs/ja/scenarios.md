@@ -66,7 +66,7 @@ scenarios:
 | `network` | object | なし | `{ filter: { domains: [...] } }`。`filter.domains` は、レポートの Steps タイムラインに差し込む通信を URL ホストで絞る（親ドメインはサブドメインに一致）。未指定なら全件を表示する。Network タブは常に全件を表示する（[reporting](reporting.md#reporthtml)） |
 | `mocks` | list | `[]` | 決定的なネットワークスタブ。一致する送信リクエストには、ネットワークへ行かず定型レスポンスを返す（[ネットワークモック](#ネットワークモック決定的スタブ)） |
 | `redact` | object | なし | 証跡を書き出す前に適用するマスク（[evidence](evidence.md#マスキングredact)） |
-| `systemAlertHandling` | bool / object | なし（ON） | リアクティブな **アラートガード**。iOS バックエンドから見えない OS プロンプトを、XCUITest ではネイティブに（モデルなし、BE-0316 を再利用）片付け、vision をフォールバックにする。既定は ON。`false` で無効化し、`{ instruction: ["Allow"] }` なら ON のまま指定したボタンを押し、`{ pollInterval: 2 }` でネイティブのポーリング間隔を変える。CLI の `--system-alert-handling`/`--no-system-alert-handling` が上書きする（[下記](#systemalerthandlingシステムアラートガード)） |
+| `systemAlertHandling` | bool / object | なし（ON） | リアクティブな **アラートガード**。iOS バックエンドから見えない OS プロンプトを、XCUITest ではネイティブに（モデルなし、BE-0316 を再利用）片付け、vision をフォールバックにする。既定は ON。`false` で無効化し、`{ labels: ["Allow"] }` なら ON のまま指定したボタンを押し、`{ pollInterval: 2 }` でネイティブのポーリング間隔を変える。CLI の `--system-alert-handling`/`--no-system-alert-handling` が上書きする（[下記](#systemalerthandlingシステムアラートガード)） |
 | `iosTipKitHandling` | bool | なし（オフ） | 操作をブロックしている Apple **TipKit** の tip を閉じます。フレームワークが所有する popover であり、同じ回避策をシナリオごとに手で書かずに済ませるためのガードです。ガードは tip を、閉じるための scrim（`PopoverDismissRegion`）とその tip 自身のコンテナ（`TipView`）の両方で判定します。ごく普通の `confirmationDialog` が同一の scrim を設置するため、そちらには手を触れないようにする必要があるからです。同じ理由で、tip 向けの `interrupts` エントリを手で書く場合は `TipView` を手がかりにします（`TipView` は TipKit 自身のコンテナであり、SwiftUI と UIKit のどちらの表示でも存在を計測で確認済みです）。iOS 専用（他の環境では何もしません）で、既定は**オフ**です。tip 自体がシナリオの検証対象になる場合があるからです。CLI の `--ios-tipkit-handling`/`--no-ios-tipkit-handling` が優先します |
 | `permissions` | dict | `{}` | 宣言的な OS 権限の状態（`{ <service>: grant \| revoke }`）。**アプリの起動前**に適用する（[下記](#permissions起動前の権限状態)） |
 | `interrupts` | list | `[]` | **予測できない時点**で現れる差し込み画面のハンドラ。各エントリは `{ condition, steps }` で、画面が現れた場所を問わず随時判定する（[下記](#interrupts予測できない差し込み画面への対処)） |
@@ -116,36 +116,42 @@ iOS バックエンドは **SpringBoard レベルのプロンプト**（通知�
 
 これは **既定で ON** で、**ステップ（または `expect`）がブロックされたとき、あるいはガード対象の `wait` でネイティブのポーリングがアラートを見つけたとき（またはポーリング中の画面がブロックされて見えたとき）**に発火します。そのため、成功するシナリオは余計な処理をしません（ネイティブ照会はモデル呼び出しではありません）。vision フォールバックには `ANTHROPIC_API_KEY` が必要ですが、無くてもネイティブ経路が名指しできるプロンプトはそのまま片付けます。シナリオごとに動作を変えるには `systemAlertHandling` を使います。
 
+**どのキーも 2 つの経路のうち片方だけを指します**（[BE-0401](../../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md)）。`rules` と `labels` はネイティブ経路を、`visionInstruction` は vision フォールバックを方向づけます。ON と OFF は真偽値が担うので、マッピングを書けば常に ON です。
+
 | 形 | 意味 |
 |---|---|
 | （省略） | ON。**最も無害な**ボタンを押す（"Not Now" / "Don't Allow" / "Cancel"） |
 | `systemAlertHandling: false` | このシナリオでは無効 |
 | `systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` | ON。**名指しした対応済みプロンプト**に、他のプロンプトとどのラベルを共有していても、その規則自身の選択で答える |
-| `systemAlertHandling: { instruction: ["Allow", "OK"] }` | ON。ネイティブ経路がこれらのうちアラートに存在する最初の label を押す。たとえば権限を**許可**する場合 |
-| `systemAlertHandling: { instruction: "tap Allow" }` | ON。**vision** guard が解釈する自由文字列（正確な label を要するネイティブ経路は、既定の無害な label 群にフォールバックする） |
+| `systemAlertHandling: { labels: ["Allow", "OK"] }` | ON。ネイティブ経路がこれらのうちアラートに存在する最初の label を押す。たとえば権限を**許可**する場合 |
+| `systemAlertHandling: { visionInstruction: "tap Allow" }` | ON。**vision** フォールバックだけが読む自由文字列。ネイティブ経路が名指しできないアラート向け |
 | `systemAlertHandling: { pollInterval: 2 }` | ON。ネイティブの presence 照会を既定の 1 秒ではなく 2 秒間隔でポーリングする |
-| `systemAlertHandling: { enabled: false }` | 無効（`false` を明示的なオブジェクトで書いた形） |
 
 ```yaml
 - name: grant notification permission
-  systemAlertHandling: { instruction: ["Allow"] }   # accept the prompt instead of dismissing it
+  systemAlertHandling: { labels: ["Allow"] }   # accept the prompt instead of dismissing it
   steps:
     - tap:  { id: sys.requestNotif }
     - wait: { for: { id: sys.notif.authorized }, timeout: 4 }   # the guard taps Allow, then this passes
 ```
 
-自分で `instruction` のラベルを挙げると、iOS ではもう 1 つ、ツリー内の経路も有効になります。相手は SpringBoard のアラートではありません。iOS は「パスワードを保存」アラートを**アプリ自身の**プロセスに出すので、そのボタンはラベルを持ち識別子を持たない形で要素ツリーに現れ、SpringBoard の照会には決して映りません。つまりツリー内のタップだけが、これを片付けられます。
+許可は `visionInstruction` ではなく `labels` で書いてください。XCUITest バックエンドではネイティブのタップが先に走ります。フォールバックしか読まない自由文字列の "tap Allow" を書くと、ネイティブ経路は既定の無害なラベル群のままになり、ファイルが許可と書いたプロンプトを**拒否**します。BE-0401 が単一の `instruction` キーを分割したのは、この反転を書けなくするためです。
+
+自分で `labels` を挙げると、iOS ではもう 1 つ、ツリー内の経路も有効になります。相手は SpringBoard のアラートではありません。iOS は「パスワードを保存」アラートを**アプリ自身の**プロセスに出すので、そのボタンはラベルを持ち識別子を持たない形で要素ツリーに現れ、SpringBoard の照会には決して映りません。つまりツリー内のタップだけが、これを片付けられます。
 
 そのタップは同じ `pollInterval` で間隔を空け、しかも直前の SpringBoard 照会が空だったポーリングでのみ撃ちます。XCUITest は要素への操作を合成する前に、割り込んでいるプロセス外のアラートを解決してしまい、アプリのツリーからはそのアラートが見えないからです。したがって 2 つのプロンプトが同時に出ているときは、まず SpringBoard のアラートに答え、そのあとでアプリ側のアラートをツリーから片付けます。
 
-割り込んできたアラートがどのボタンを受け取るかも、利用者の方針が決めます。XCUITest は割り込まれた操作より先にそのアラートを解決し、放っておけばアラート自身の**デフォルト**ボタンで答えます。`rules` が拒否したはずの権限を許可し、しかも実行結果には何も残りません。そこで runner は、`rules` と `instruction` が名指ししたボタンを押す割り込み監視を入れます。判定の作法はネイティブ経路と同じで、押した結果は通常のアラートイベントとして報告されます。方針がどのボタンも名指ししないプロンプトは XCUITest に委ねます。これは、この仕組みが無かったときの挙動そのものです。
+割り込んできたアラートがどのボタンを受け取るかも、利用者の方針が決めます。XCUITest は割り込まれた操作より先にそのアラートを解決し、放っておけばアラート自身の**デフォルト**ボタンで答えます。`rules` が拒否したはずの権限を許可し、しかも実行結果には何も残りません。そこで runner は、`rules` と `labels` が名指ししたボタンを押す割り込み監視を入れます。判定の作法はネイティブ経路と同じで、押した結果は通常のアラートイベントとして報告されます。方針がどのボタンも名指ししないプロンプトは XCUITest に委ねます。これは、この仕組みが無かったときの挙動そのものです。
 （[`demos/showcase/scenarios/save_password_browser.yaml`](../../demos/showcase/scenarios/save_password_browser.yaml) 実物）
 
-`instruction` は、ネイティブ経路が決定論的に解決する候補 label のリストです（アラートに存在する最初の label を、それを持つボタンがちょうど 1 つのときにだけ押します）。素の文字列は、vision guard が解釈する従来の自由文字列の形です。CLI の `--system-alert-handling` / `--no-system-alert-handling` フラグは**全シナリオを上書き**します（無指定ならシナリオごとの既定が使われます）。`--alert-instruction` は既定のボタン指示を設定するもので、シナリオ自身の `instruction` が優先されます。（[`demos/showcase/scenarios/permission.yaml`](../../demos/showcase/scenarios/permission.yaml) 実物）
+`labels` は、ネイティブ経路が決定論的に解決する候補 label の順序付きリストです（アラートに存在する最初の label を、それを持つボタンがちょうど 1 つのときにだけ押します）。組み込みの無害なラベル群が代わりに使われるのは、`labels` をどの層も与えなかったときだけです。書かれたリストに継ぎ足されることはありません。自分でボタンを名指ししたシナリオが、そのどれも持たないアラートに出会った場合、ネイティブ経路は何も解決せずに vision フォールバックへ落ちます。作者が名指ししていないボタンを押すことはありません。
+
+CLI の `--system-alert-handling` / `--no-system-alert-handling` フラグは**全シナリオを上書き**します。無指定ならシナリオごとの既定が使われます。その run にだけ同じ 3 つのキーを与えるフラグもあります。`--alert-labels "Allow,OK"`、`--alert-vision-instruction`、`--alert-poll-interval` です。入る位置はシナリオとターゲット config の中間です（後述の[層の重ね方](#層の重ね方1-つのキーは-3-か所から届く)を参照）。
+（[`demos/showcase/scenarios/permission.yaml`](../../demos/showcase/scenarios/permission.yaml) 実物）
 
 ### 複数のプロンプトに違う答えを返す: `rules`
 
-順序付きの `instruction` は、ラベル表が対応するプロンプトに対する許可と拒否のどの組み合わせにも到達できます。ただし到達できるのは、2つのプロンプトがたまたま共有するラベルから作者が導いた順序を書いたときだけであり、自然に読める順序を書くと、シナリオが拒否するつもりのプロンプトを黙って許可してしまいます。`rules` は `handleSystemAlert` 自身の `prompt`/`choice` の語彙を再利用して、対応済みのプロンプトに名前で答えます。
+順序付きの `labels` は、ラベル表が対応するプロンプトに対する許可と拒否のどの組み合わせにも到達できます。ただし到達できるのは、2つのプロンプトがたまたま共有するラベルから作者が導いた順序を書いたときだけであり、自然に読める順序を書くと、シナリオが拒否するつもりのプロンプトを黙って許可してしまいます。`rules` は `handleSystemAlert` 自身の `prompt`/`choice` の語彙を再利用して、対応済みのプロンプトに名前で答えます。
 
 ```yaml
 - name: onboarding — accept notifications, refuse tracking
@@ -155,19 +161,50 @@ iOS バックエンドは **SpringBoard レベルのプロンプト**（通知�
         choice: grant
       - prompt: tracking
         choice: deny
-    instruction: ["Not Now"]          # どの規則も同定しなかったアラート
+    labels: ["Not Now"]               # どの規則も同定しなかったアラート
   steps:
     - tap:  { id: onboarding.start }
     - wait: { for: { id: home.title }, timeout: 10 }
 ```
 
-ガードは、規則の順序ではなく、その規則のプロンプトから画面上のどのアラートかを同定します。実行時のロケールで解決した、許可側と拒否側の両方のラベルがアラート上に揃っていなければなりません。同じプロンプトを指定する規則が2つあると解析時に失敗します。`rules` は `instruction` より先に参照され、`instruction` はどの規則も名指ししなかったプロンプトの受け皿として残るので、2つのフィールドは排他ではなく組み合わせて使えます。
+ガードは、規則の順序ではなく、その規則のプロンプトから画面上のどのアラートかを同定します。実行時のロケールで解決した、許可側と拒否側の両方のラベルがアラート上に揃っていなければなりません。同じプロンプトを指定する規則が2つあると解析時に失敗します。規則はプロンプトを名指しし、ラベルはボタンを名指しするので、より限定的な宣言から順に参照します。まず `rules`、次に `labels` であり、`labels` はどの規則も名指ししなかったプロンプトの受け皿として残ります。2つのフィールドは排他ではなく組み合わせて使えます。
 
-`rules` が方向づけるのは**決定論的なネイティブ経路だけ**です。どの規則も同定しなかったアラート、つまりラベル表の外にあるもの、SpringBoard の照会が列挙できない画面、あるいはネイティブ経路を持たないバックエンド上のあらゆるアラートは、AI 視覚のフォールバックに届きます。そしてそのフォールバックに規則は何も伝えません。規則のラベルは別のプロンプトへの答えなので、渡せばシナリオが名指ししていないプロンプトを受諾する方向へモデルを押してしまいます。フォールバックに動いてほしいものには `instruction` を与えてください。規則だけなら、フォールバックは自身の最も無害な既定のままです。
+`rules` が方向づけるのは**決定論的なネイティブ経路だけ**です。どの規則も同定しなかったアラート、つまりラベル表の外にあるもの、SpringBoard の照会が列挙できない画面、あるいはネイティブ経路を持たないバックエンド上のあらゆるアラートは、AI 視覚のフォールバックに届きます。そしてそのフォールバックに規則は何も伝えません。規則のラベルは別のプロンプトへの答えなので、渡せばシナリオが名指ししていないプロンプトを受諾する方向へモデルを押してしまいます。フォールバックに動いてほしいものには `labels`（または `visionInstruction`）を与えてください。規則だけなら、フォールバックは自身の最も無害な既定のままです。
 
-> **`alertHandling` からの改名で、`alertHandling` 自体も `dismissAlerts` からの改名でした。** リアクティブなガードの設定名が「システムアラート」を明示し、下記の `handleSystemAlert` ステップと対で読めるよう、フィールドと CLI フラグを `systemAlertHandling` / `--system-alert-handling` に改名しました。`alertHandling`
-> （[BE-0317](../../roadmaps/BE-0317-rename-dismiss-alerts-to-alert-handling/BE-0317-rename-dismiss-alerts-to-alert-handling-ja.md)）
-> は、却下するだけでなく許可もするガードの挙動を名前が表すよう `dismissAlerts` を改名したものでした。旧来の `alertHandling` / `dismissAlerts` キーと `--alert-handling` / `--dismiss-alerts` フラグは非推奨のエイリアスとして引き続き動作し、使うと新しい名前を指す通知が一度だけ出ます。
+### 層の重ね方：1 つのキーは 3 か所から届く
+
+1 つの設定は、シナリオ、コマンドライン、ターゲット config（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）の 3 か所から run に届きます。キーがリストとスカラーのどちらかによって、2 つの規則がすべてを覆います。
+
+| キー | 型 | 層の合わせ方 |
+|---|---|---|
+| `rules` | リスト | 内側の層から順に連結：シナリオ、次にターゲット |
+| `labels` | リスト | 内側の層から順に連結：シナリオ、次にコマンドライン、次にターゲット |
+| `visionInstruction` | スカラー | 値を持つもっとも内側の層が勝つ：シナリオ、無ければコマンドライン、無ければターゲット |
+| `pollInterval` | スカラー | 値を持つもっとも内側の層が勝つ：シナリオ、無ければコマンドライン、無ければターゲット |
+| ON / OFF | スカラー | `--system-alert-handling` / `--no-system-alert-handling`、無ければシナリオ、無ければターゲット、無ければ ON |
+
+リストを連結にするのは、両方の層のエントリが残るからです。シナリオの答えを先に試し、シナリオが答えなかったものにはターゲットの答えが届きます。スカラーは値を 1 つしか持てないので、もっとも内側の層が勝ちます。どの層の宣言も他の層に消されません。BE-0401 が確立しようとした性質はここにあります。`rules` が 2 層しか使えないのは、プロンプトと選択の組をフラグの値 1 つで読みやすく運べないからです。
+
+ネイティブ経路の中では、**宣言が来た層ではなく限定の度合いが衝突を決めます**。ターゲット config の tracking プロンプト向けの規則は、シナリオが自前の `labels` を持っていても tracking に答えます。規則はそのプロンプトを名指ししており、ラベルはどのプロンプトも名指ししていないからです。両方の宣言が有効なままです。その規則を上書きするには、シナリオ側に同じプロンプトの規則を書きます。上書きが及ぶ範囲は、名指しした 1 つのプロンプトだけです。自前のボタンを名指ししたシナリオにターゲットの規則が実際に答えるとき、ガードは構築時にその旨を通知します。通知は、影響を受けたシナリオとプロンプトの組ごとに 1 回だけ出ます。
+
+vision フォールバックが聞くのは**1 つの層だけ**です。どこかの層に `visionInstruction` があればそれを使います。無ければ `labels` を与えたもっとも内側の層からヒントを組み立てます（"Tap the button labeled one of, in order: …"）。連結したリストを渡すことはありません。渡せばターゲットの "Allow" とシナリオの "Don't Allow" を同時に差し出すことになり、locator がどちらを取ってもおかしくないからです。
+
+### 旧来のキーからの移行
+
+BE-0401 は下記のキーをエイリアスなしで削除しました。書いた内容と違う挙動に解釈されるのではなく、置き換え先を名指しするエラーで読み込みに失敗します。
+
+| 削除されたもの | 代わりに書くもの |
+|---|---|
+| `instruction: ["Allow"]` | `labels: ["Allow"]` |
+| `instruction: "tap Allow"` | `visionInstruction: "tap Allow"` |
+| `enabled: false` | `systemAlertHandling: false` |
+| `enabled: true` | マッピング（または `systemAlertHandling: true`）。マッピングは常に ON |
+| `alertHandling:` / `dismissAlerts:` | `systemAlertHandling:` |
+| `--alert-instruction "Allow,OK"` | `--alert-labels "Allow,OK"` |
+| `--alert-instruction "tap Allow"` | `--alert-vision-instruction "tap Allow"` |
+| `--alert-handling` / `--dismiss-alerts` | `--system-alert-handling` |
+
+空の `labels` リスト、その中の空ラベル、空の `visionInstruction` もエラーになります。いずれも以前は黙って正規化され、既定の無害な方針へ落ちていました。打ち間違いがファイルの記述と正反対の答えを返していたわけです。
 
 このリアクティブなガードと、下記のプロアクティブな `handleSystemAlert` ステップは、いまや**同じ**ネイティブの SpringBoard 機構（BE-0316 の照会と tap）を共有します。違うのは*いつ*発火するかだけです。ガードはプロンプトが現れた場所で自動的に、ステップは作者が置いた 1 か所で発火します。
 
@@ -214,7 +251,7 @@ iOS バックエンドは **SpringBoard レベルのプロンプト**（通知�
 使う前に知っておきたい制限が 2 つあります。
 
 - **Simulator 専用です。** 言語の固定は `simctl` の操作なので、`xcuitest.deviceType: device` の target は実機が持つシステム言語のまま動きます。この形では、画面に出ている保証のない label を解決してしまいます。実機ではボタンを `sel.label` で指定してください。
-- **リアクティブなガードが持つ拒否ラベルの初期値は英語のままです。** `systemAlertHandling` が組み込みで持つラベル（`Don't Allow`、`Not Now`、`Cancel` など）は英語の文字列そのものです。そのため英語以外の `locale` ではネイティブ経路が一致せず、AI 視覚のガードへフォールバックします。ラベル表が対応するプロンプトについては、`rules`（上記）の1エントリが固定した言語向けにラベルを解決するので、決定的なまま保てます。それ以外のプロンプトには `instruction` のリストを明示してください。
+- **リアクティブなガードが持つ拒否ラベルの初期値は英語のままです。** `systemAlertHandling` が組み込みで持つラベル（`Don't Allow`、`Not Now`、`Cancel` など）は英語の文字列そのものです。そのため英語以外の `locale` ではネイティブ経路が一致せず、AI 視覚のガードへフォールバックします。ラベル表が対応するプロンプトについては、`rules`（上記）の1エントリが固定した言語向けにラベルを解決するので、決定的なまま保てます。それ以外のプロンプトには `labels` のリストを明示してください。
 
 （実物は [`demos/showcase/scenarios/permission_system_alert.yaml`](../../demos/showcase/scenarios/permission_system_alert.yaml) と [`demos/showcase/scenarios/paste_system_alert.yaml`](../../demos/showcase/scenarios/paste_system_alert.yaml)）
 

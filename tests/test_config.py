@@ -17,6 +17,7 @@ from bajutsu.config import (
     resolve,
     xcuitest_targets_real_device,
 )
+from bajutsu.scenario import SystemAlertHandling
 
 
 def _ios(eff: Effective) -> IosConfig:
@@ -1069,7 +1070,7 @@ def test_scalar_root_containing_orgs_raises_validationerror_not_attributeerror()
 
 def test_run_behavior_defaults_when_unset() -> None:
     # An unset target resolves to the built-in defaults: guard on (system_alert_handling None → on
-    # with the default instruction), erase off, network on.
+    # with the built-in dismissive labels), erase off, network on.
     eff = resolve(load_config("targets:\n  s:\n    bundleId: com.x\n"), "s")
     assert eff.run_defaults.system_alert_handling is None
     assert eff.run_defaults.erase is False
@@ -1094,41 +1095,30 @@ def test_target_erase_and_network_resolve() -> None:
     assert eff.run_defaults.network is False
 
 
-def test_target_system_alert_handling_bool_shorthand() -> None:
-    # The bare-boolean on-disk form is coerced to `{ enabled: <bool> }`, as on a scenario.
+def test_target_system_alert_handling_bool_carries_off() -> None:
+    # BE-0401: the bare boolean is the only spelling of off, on a target as on a scenario.
     eff = resolve(
         load_config("targets:\n  s:\n    bundleId: com.x\n    systemAlertHandling: false\n"), "s"
     )
-    assert eff.run_defaults.system_alert_handling is not None
-    assert eff.run_defaults.system_alert_handling.enabled is False
-    assert eff.run_defaults.system_alert_handling.instruction is None
+    assert eff.run_defaults.system_alert_handling is False
 
 
 def test_target_system_alert_handling_object_form() -> None:
     cfg = load_config(
-        "targets:\n  s:\n    bundleId: com.x\n    systemAlertHandling: { instruction: Allow }\n"
+        "targets:\n  s:\n    bundleId: com.x\n"
+        "    systemAlertHandling: { labels: [Allow], visionInstruction: tap Allow }\n"
     )
     eff = resolve(cfg, "s")
-    assert eff.run_defaults.system_alert_handling is not None
-    assert eff.run_defaults.system_alert_handling.enabled is True  # object form keeps the guard on
-    assert eff.run_defaults.system_alert_handling.instruction == "Allow"
+    policy = eff.run_defaults.system_alert_handling
+    assert isinstance(policy, SystemAlertHandling)  # a mapping is always on
+    assert policy.labels == ["Allow"]
+    assert policy.vision_instruction == "tap Allow"
 
 
-def test_target_alert_handling_alias_still_resolves() -> None:
-    # The deprecated `alertHandling` config key (originally BE-0317's canonical name) resolves to
-    # the same default as `systemAlertHandling`.
-    eff = resolve(
-        load_config("targets:\n  s:\n    bundleId: com.x\n    alertHandling: false\n"), "s"
-    )
-    assert eff.run_defaults.system_alert_handling is not None
-    assert eff.run_defaults.system_alert_handling.enabled is False
-
-
-def test_target_dismiss_alerts_alias_still_resolves() -> None:
-    # BE-0317: the deprecated `dismissAlerts` config key resolves to the same default as
-    # `systemAlertHandling`.
-    eff = resolve(
-        load_config("targets:\n  s:\n    bundleId: com.x\n    dismissAlerts: false\n"), "s"
-    )
-    assert eff.run_defaults.system_alert_handling is not None
-    assert eff.run_defaults.system_alert_handling.enabled is False
+@pytest.mark.parametrize("old", ["alertHandling", "dismissAlerts"])
+def test_target_renamed_alert_keys_fail_naming_the_canonical_key(old: str) -> None:
+    # BE-0401 deleted both aliases rather than carrying them a third time, so each now fails to load
+    # pointing at `systemAlertHandling` instead of Pydantic's generic extra-field error.
+    with pytest.raises(ValidationError) as exc:
+        load_config(f"targets:\n  s:\n    bundleId: com.x\n    {old}: false\n")
+    assert "systemAlertHandling" in str(exc.value)

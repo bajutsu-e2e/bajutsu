@@ -12,7 +12,7 @@ from bajutsu.run_id import new_run_id
 from bajutsu.serve import oplog
 from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.batch_provider import BatchRequest
-from bajutsu.serve.commands import _int, crawl_command, record_command, run_command
+from bajutsu.serve.commands import _float, _int, crawl_command, record_command, run_command
 from bajutsu.serve.helpers import (
     target_batch_info,
     target_build_info,
@@ -84,13 +84,12 @@ def _bool_flag(body: dict[str, Any], key: str) -> bool | None:
 
 
 def _system_alert_handling_flag(body: dict[str, Any]) -> bool | None:
-    """The `systemAlertHandling` request flag, accepting the deprecated `alertHandling` (originally
-    BE-0317) and `dismissAlerts` keys."""
-    canonical = _bool_flag(body, "systemAlertHandling")
-    if canonical is not None:
-        return canonical
-    legacy = _bool_flag(body, "alertHandling")
-    return legacy if legacy is not None else _bool_flag(body, "dismissAlerts")
+    """The `systemAlertHandling` request flag.
+
+    The `alertHandling` (originally BE-0317) and `dismissAlerts` aliases this once also accepted were
+    deleted with the schema aliases they mirrored (BE-0401).
+    """
+    return _bool_flag(body, "systemAlertHandling")
 
 
 def _request_device_budget(
@@ -232,7 +231,9 @@ def start_run(
         browsers=str(body.get("browsers") or ""),
         network=_bool_flag(body, "network"),
         zip_run=_bool_flag(body, "zip"),
-        alert_instruction=str(body.get("alertInstruction") or ""),
+        alert_labels=str(body.get("alertLabels") or ""),
+        alert_vision_instruction=str(body.get("alertVisionInstruction") or ""),
+        alert_poll_interval=_float(body.get("alertPollInterval")),
         log_predicate=str(body.get("logPredicate") or ""),
         log_subsystem=str(body.get("logSubsystem") or ""),
         # Deliberately NOT sourced from the client body: --schemas / --goldens are host directory

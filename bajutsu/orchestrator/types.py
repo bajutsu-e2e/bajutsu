@@ -302,7 +302,7 @@ def match_alert_rule(rules: Sequence[ResolvedAlertRule], buttons: Sequence[str])
     A rule matches when each of its prompt's two labels is present on the alert exactly once — the
     full pair, not only the label it taps, since a single shared label cannot by itself distinguish
     one covered prompt from another. None means no rule's prompt is identified, so the caller falls
-    through to the ordered `instruction` candidates.
+    through to the ordered `labels` candidates.
     """
     present = list(buttons)
     for rule in rules:
@@ -382,7 +382,7 @@ class AlertGuardConfig:
         One-shot, so it carries none of the mid-wait version's per-showing bookkeeping (retap delay,
         tap ceiling, decline bound): the caller runs it once per failed step, not per poll, so there
         is no stream to pace. It matches the same narrow surface — an identifier-less labelled button
-        whose label the scenario's own `instruction` named, resolving uniquely — so it stays off the
+        whose label the scenario's own `labels` named, resolving uniquely — so it stays off the
         default dismissive vocabulary a real screen can legitimately show.
 
         Returns the `AlertEvent` for the button it tapped, or None when nothing matched, the match was

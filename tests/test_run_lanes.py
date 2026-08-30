@@ -13,6 +13,7 @@ from bajutsu.cli.commands.run import (
     _apply_system_alert_handling,
     _expand_file,
     _filter_scenarios,
+    _flag_alert_policy,
     _load_scenarios,
     _resolve_dir,
     _resolve_evidence_dirs,
@@ -25,7 +26,12 @@ from bajutsu.cli.commands.run import (
 from bajutsu.config import Effective, load_config, resolve
 from bajutsu.orchestrator import DEFAULT_ALERT_POLL_INTERVAL
 from bajutsu.orchestrator.types import match_alert_rule
-from bajutsu.scenario import Scenario, SystemAlertRule, load_scenarios
+from bajutsu.scenario import (
+    Scenario,
+    SystemAlertHandling,
+    SystemAlertRule,
+    load_scenarios,
+)
 from bajutsu.scenario.system_alerts import UncoveredSystemAlertLocale, covered_languages
 
 
@@ -306,7 +312,7 @@ def test_alert_guard_factory_none_when_all_disabled() -> None:
     scenarios = load_scenarios(
         "- name: a\n  systemAlertHandling: false\n" + "  steps:\n    - tap: { id: home.title }\n"
     )
-    assert _alert_guard_factory(scenarios, _eff(), "") is None
+    assert _alert_guard_factory(scenarios, _eff(), None) is None
 
 
 def test_alert_guard_factory_none_when_target_disables() -> None:
@@ -314,7 +320,7 @@ def test_alert_guard_factory_none_when_target_disables() -> None:
     # `systemAlertHandling: false`, so the factory builds no guard at all (the enabled bit resolves
     # scenario > target > built-in on).
     scenarios = load_scenarios(_one_scenario("a"))
-    assert _alert_guard_factory(scenarios, _eff(systemAlertHandling="false"), "") is None
+    assert _alert_guard_factory(scenarios, _eff(systemAlertHandling="false"), None) is None
 
 
 def test_alert_guard_factory_scenario_reenables_over_target() -> None:
@@ -323,7 +329,7 @@ def test_alert_guard_factory_scenario_reenables_over_target() -> None:
     scenarios = load_scenarios(
         "- name: a\n  systemAlertHandling: true\n  steps:\n    - tap: { id: home.title }\n"
     )
-    assert _alert_guard_factory(scenarios, _eff(systemAlertHandling="false"), "") is not None
+    assert _alert_guard_factory(scenarios, _eff(systemAlertHandling="false"), None) is not None
 
 
 # --- _resolve_network: --network/--no-network flag > target `network` config > built-in on (BE-0177)
@@ -354,7 +360,7 @@ def test_alert_guard_factory_vision_noop_without_credential(
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
     scenarios = load_scenarios(_one_scenario("a"))
-    factory = _alert_guard_factory(scenarios, _eff(), "")
+    factory = _alert_guard_factory(scenarios, _eff(), None)
     assert factory is not None
     guard = factory(scenarios[0])
     assert isinstance(guard, AlertGuardConfig)
@@ -382,7 +388,7 @@ def test_alert_guard_factory_vision_noop_under_provider_none(
     usage_ledger.configure_from_ai_config(eff.ai)
     try:
         scenarios = load_scenarios(_one_scenario("a"))
-        factory = _alert_guard_factory(scenarios, eff, "")
+        factory = _alert_guard_factory(scenarios, eff, None)
         assert factory is not None
         guard = factory(scenarios[0])
         assert isinstance(guard, AlertGuardConfig)
@@ -421,9 +427,10 @@ def _tap_scenario(name: str, dismiss: dict[str, object] | None = None) -> Scenar
 
 def test_alert_guard_factory_resolves_native_labels_and_poll_interval() -> None:
     # BE-0315: a scenario's candidate-label list and pollInterval reach the AlertGuardConfig — the
-    # wiring that makes the deterministic native path actually fire with the author's button policy.
-    s = _tap_scenario("a", {"instruction": ["Allow", "OK"], "pollInterval": 2})
-    guard = _alert_guard_factory([s], _eff(), "")(s)  # type: ignore[misc]
+    # wiring that makes the deterministic native path actually fire with the author's button
+    # policy. `labels` is the key that carries it since BE-0401.
+    s = _tap_scenario("a", {"labels": ["Allow", "OK"], "pollInterval": 2})
+    guard = _alert_guard_factory([s], _eff(), None)(s)  # type: ignore[misc]
     assert guard is not None
     assert guard.labels == ["Allow", "OK"]
     assert guard.poll_interval == 2.0
@@ -433,21 +440,39 @@ def test_alert_guard_factory_poll_interval_precedence() -> None:
     # scenario > target > built-in default (BE-0177 / BE-0315).
     eff = _eff(systemAlertHandling="{ pollInterval: 3 }")
     s_override = _tap_scenario("a", {"pollInterval": 5})
-    assert _alert_guard_factory([s_override], eff, "")(s_override).poll_interval == 5.0  # type: ignore[misc,union-attr]
+    assert _alert_guard_factory([s_override], eff, None)(s_override).poll_interval == 5.0  # type: ignore[misc,union-attr]
     s_plain = _tap_scenario("b")
-    assert _alert_guard_factory([s_plain], eff, "")(s_plain).poll_interval == 3.0  # type: ignore[misc,union-attr]
+    assert _alert_guard_factory([s_plain], eff, None)(s_plain).poll_interval == 3.0  # type: ignore[misc,union-attr]
     assert (
-        _alert_guard_factory([s_plain], _eff(), "")(s_plain).poll_interval  # type: ignore[misc,union-attr]
+        _alert_guard_factory([s_plain], _eff(), None)(s_plain).poll_interval  # type: ignore[misc,union-attr]
         == DEFAULT_ALERT_POLL_INTERVAL
     )
 
 
-def test_vision_instruction_renders_a_label_list_and_passes_a_string_through() -> None:
+def test_vision_instruction_prefers_an_explicit_instruction_over_the_label_hint() -> None:
+    # A hint derived from labels is not a statement about the fallback; an explicit
+    # `visionInstruction` is, so it outranks the hint whichever layer each came from (BE-0401).
+    assert _vision_instruction("tap Allow", ["Not Now"]) == "tap Allow"
     assert (
-        _vision_instruction(["Allow", "OK"]) == "Tap the button labeled one of, in order: Allow, OK"
+        _vision_instruction(None, ["Allow", "OK"])
+        == "Tap the button labeled one of, in order: Allow, OK"
     )
-    assert _vision_instruction("tap Allow") == "tap Allow"
-    assert _vision_instruction(None) is None
+    assert _vision_instruction(None, []) is None
+
+
+def test_vision_instruction_hint_comes_from_one_layer_not_the_concatenation() -> None:
+    # The native path compares labels exactly, so a wider candidate list there is harmless. The
+    # fallback's instruction is free text a locator interprets loosely, and a concatenated list would
+    # hand it a target's "Allow" under a scenario's "Don't Allow" — both answers at once (BE-0401).
+    eff = _eff(systemAlertHandling='{ labels: ["Allow"] }')
+    s = _tap_scenario("a", {"labels": ["Don’t Allow"]})
+    guard = _alert_guard_factory([s], eff, None)(s)  # type: ignore[misc]
+    assert guard is not None
+    assert guard.labels == ["Don’t Allow", "Allow"]  # the native path still walks both layers
+    assert (
+        _vision_instruction(None, ["Don’t Allow"])
+        == "Tap the button labeled one of, in order: Don’t Allow"
+    )
 
 
 def test_vision_instruction_ignores_rules() -> None:
@@ -456,28 +481,39 @@ def test_vision_instruction_ignores_rules() -> None:
     # locator to accept a prompt the scenario never named. A rules-only scenario leaves the locator
     # on its least-destructive default, exactly as before `rules` existed.
     s = _tap_scenario("a", {"rules": [{"prompt": "tracking", "choice": "deny"}]})
-    guard = _alert_guard_factory([s], _eff(), "")(s)  # type: ignore[misc]
+    guard = _alert_guard_factory([s], _eff(), None)(s)  # type: ignore[misc]
     assert guard is not None
     assert [r.tap_label for r in guard.rules] == ["Ask App Not to Track"]  # native path still armed
     assert guard.labels == []  # ...but no candidate label, so the locator keeps its own default
 
 
-def test_apply_system_alert_handling_preserves_the_button_policy_and_interval() -> None:
-    # The --no-system-alert-handling flip must keep both the label policy and the poll interval
-    # (BE-0315).
-    s = _tap_scenario("a", {"instruction": ["Allow"], "pollInterval": 2})
+def test_apply_system_alert_handling_off_replaces_the_whole_field() -> None:
+    # BE-0401: off *is* `False` now the boolean carries on and off, and an off guard reads no
+    # policy — so `--no-system-alert-handling` needs to keep nothing.
+    s = _tap_scenario("a", {"labels": ["Allow"], "pollInterval": 2})
     _apply_system_alert_handling([s], False)
-    assert s.system_alert_handling is not None
-    assert s.system_alert_handling.enabled is False
-    assert s.system_alert_handling.instruction == ["Allow"]
+    assert s.system_alert_handling is False
+
+
+def test_apply_system_alert_handling_on_preserves_the_policy_and_re_enables() -> None:
+    s = _tap_scenario("a", {"labels": ["Allow"], "pollInterval": 2})
+    _apply_system_alert_handling([s], True)
+    assert isinstance(s.system_alert_handling, SystemAlertHandling)
+    assert s.system_alert_handling.labels == ["Allow"]
     assert s.system_alert_handling.poll_interval == 2.0
 
+    # A scenario that had switched itself off comes back on with the empty policy.
+    off = Scenario.model_validate(
+        {"name": "b", "systemAlertHandling": False, "steps": [{"tap": {"id": "x"}}]}
+    )
+    _apply_system_alert_handling([off], True)
+    assert off.system_alert_handling == SystemAlertHandling()
 
-def test_apply_system_alert_handling_preserves_rules() -> None:
+
+def test_apply_system_alert_handling_unset_flag_is_a_no_op() -> None:
     s = _tap_scenario("a", {"rules": [{"prompt": "notifications", "choice": "grant"}]})
-    _apply_system_alert_handling([s], False)
-    assert s.system_alert_handling is not None
-    assert s.system_alert_handling.enabled is False
+    _apply_system_alert_handling([s], None)
+    assert isinstance(s.system_alert_handling, SystemAlertHandling)
     assert [(r.prompt, r.choice) for r in s.system_alert_handling.rules] == [
         ("notifications", "grant")
     ]
@@ -508,7 +544,7 @@ def test_resolve_rules_raises_on_an_uncovered_locale() -> None:
     # guard's own remedy, not `handleSystemAlert`'s `sel.label`, which the scenario need not use.
     message = str(exc.value)
     assert "systemAlertHandling.rules" in message
-    assert "instruction" in message
+    assert "labels" in message
     assert "sel.label" not in message
     # The covered languages, like the step's own message reports.
     for language in covered_languages("notifications"):
@@ -532,7 +568,7 @@ def test_alert_guard_factory_resolves_scenario_rules() -> None:
             ]
         },
     )
-    guard = _alert_guard_factory([s], _eff(), "")(s)  # type: ignore[misc]
+    guard = _alert_guard_factory([s], _eff(), None)(s)  # type: ignore[misc]
     assert guard is not None
     assert [r.tap_label for r in guard.rules] == ["Allow", "Ask App Not to Track"]
 
@@ -540,7 +576,7 @@ def test_alert_guard_factory_resolves_scenario_rules() -> None:
 def test_alert_guard_factory_scenario_rule_shadows_target_rule_for_the_same_prompt() -> None:
     eff = _eff(systemAlertHandling="{ rules: [{ prompt: notifications, choice: deny }] }")
     s = _tap_scenario("a", {"rules": [{"prompt": "notifications", "choice": "grant"}]})
-    guard = _alert_guard_factory([s], eff, "")(s)  # type: ignore[misc]
+    guard = _alert_guard_factory([s], eff, None)(s)  # type: ignore[misc]
     assert guard is not None
     # The scenario's rule for `notifications` comes first, so it wins the first-match.
     assert [r.tap_label for r in guard.rules] == ["Allow", "Don’t Allow"]
@@ -550,31 +586,163 @@ def test_alert_guard_factory_scenario_rule_shadows_target_rule_for_the_same_prom
 def test_alert_guard_factory_target_rule_applies_when_scenario_has_none() -> None:
     eff = _eff(systemAlertHandling="{ rules: [{ prompt: tracking, choice: deny }] }")
     s = _tap_scenario("a")
-    guard = _alert_guard_factory([s], eff, "")(s)  # type: ignore[misc]
+    guard = _alert_guard_factory([s], eff, None)(s)  # type: ignore[misc]
     assert guard is not None
     assert [r.tap_label for r in guard.rules] == ["Ask App Not to Track"]
 
 
-def test_alert_guard_factory_scenario_instruction_drops_target_rules() -> None:
-    # A scenario's own `instruction` is a deliberate button-policy override, and must outrank a
-    # mere target-level rule for a *different* prompt too — otherwise a project-wide rule added
-    # later could silently invert what the scenario's instruction already decided.
+def test_alert_guard_factory_target_rule_answers_a_scenario_with_its_own_labels() -> None:
+    # BE-0401 reversed BE-0382's all-or-nothing suppression: specificity, not the layer a
+    # declaration came from, settles the conflict. A target rule names a prompt and a scenario's
+    # labels name no prompt at all, so both stay in effect — the rule answers tracking, the labels
+    # answer everything else.
     eff = _eff(systemAlertHandling="{ rules: [{ prompt: tracking, choice: deny }] }")
-    s = _tap_scenario("a", {"instruction": ["Allow"]})
-    guard = _alert_guard_factory([s], eff, "")(s)  # type: ignore[misc]
+    s = _tap_scenario("a", {"labels": ["Allow"]})
+    guard = _alert_guard_factory([s], eff, None)(s)  # type: ignore[misc]
     assert guard is not None
-    assert guard.rules == []
+    assert [r.tap_label for r in guard.rules] == ["Ask App Not to Track"]
     assert guard.labels == ["Allow"]
 
 
-def test_alert_guard_factory_cli_instruction_flag_drops_target_rules() -> None:
-    # The same for `--alert-instruction`: it sits above target config in the button-policy ladder,
-    # so it must outrank a target rule too.
+def test_alert_guard_factory_notices_a_target_rule_reaching_a_self_answering_scenario(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # The composition above is correct but was *silent* under BE-0382 — a project-wide edit changing
+    # a scenario that names no prompt. The notice removes the silence, and is keyed on the scenario
+    # as well as the prompt, so a run of many scenarios warns once *per affected scenario* rather
+    # than once for the first and silence for the rest.
+    import logging
+
+    from bajutsu import deprecations
+
+    eff = _eff(systemAlertHandling="{ rules: [{ prompt: tracking, choice: deny }] }")
+    scenarios = [_tap_scenario("a", {"labels": ["Allow"]}), _tap_scenario("b", {"labels": ["OK"]})]
+    for s in scenarios:
+        deprecations._emitted.discard(f"systemAlertHandling.targetRule.{s.name}.tracking")
+    factory = _alert_guard_factory(scenarios, eff, None)
+    assert factory is not None
+    with caplog.at_level(logging.WARNING, logger="bajutsu.deprecations"):
+        for s in scenarios:
+            factory(s)
+    noticed = [r.message for r in caplog.records if "tracking" in r.message]
+    assert len(noticed) == 2
+    assert "'a'" in noticed[0] and "'b'" in noticed[1]
+
+    # ...and once per scenario and prompt, not once per guard construction: building the same
+    # scenario's guard again adds nothing.
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="bajutsu.deprecations"):
+        factory(scenarios[0])
+    assert not [r for r in caplog.records if "tracking" in r.message]
+
+
+def test_alert_guard_factory_does_not_notice_a_target_rule_the_scenario_shadows(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # The scenario's own rule for that prompt wins the first-match, so the target's rule never
+    # answers for it — nothing to notice.
+    import logging
+
+    from bajutsu import deprecations
+
+    eff = _eff(systemAlertHandling="{ rules: [{ prompt: tracking, choice: deny }] }")
+    s = _tap_scenario(
+        "a", {"rules": [{"prompt": "tracking", "choice": "grant"}], "labels": ["Allow"]}
+    )
+    deprecations._emitted.discard("systemAlertHandling.targetRule.a.tracking")
+    with caplog.at_level(logging.WARNING, logger="bajutsu.deprecations"):
+        _alert_guard_factory([s], eff, None)(s)  # type: ignore[misc]
+    assert not [r for r in caplog.records if "tracking" in r.message]
+
+
+def test_alert_guard_factory_does_not_notice_when_only_the_target_declares_anything(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # The notice is for a scenario that answers for itself. A scenario declaring nothing, under a
+    # target that supplies both a rule and its own labels, is not that case — reading the composed
+    # label list instead of the scenario's and the flag's own would warn here wrongly.
+    import logging
+
+    from bajutsu import deprecations
+
+    eff = _eff(
+        systemAlertHandling='{ rules: [{ prompt: tracking, choice: deny }], labels: ["Cancel"] }'
+    )
+    s = _tap_scenario("a")
+    deprecations._emitted.discard("systemAlertHandling.targetRule.a.tracking")
+    with caplog.at_level(logging.WARNING, logger="bajutsu.deprecations"):
+        guard = _alert_guard_factory([s], eff, None)(s)  # type: ignore[misc]
+    assert guard is not None and guard.labels == ["Cancel"]
+    assert not [r for r in caplog.records if "tracking" in r.message]
+
+
+def test_alert_guard_factory_notices_when_only_the_flag_answers_for_the_scenario(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # `--alert-labels` sits above the target too, so a flag-supplied button policy makes the run one
+    # that answers for itself just as a scenario's own labels would.
+    import logging
+
+    from bajutsu import deprecations
+
     eff = _eff(systemAlertHandling="{ rules: [{ prompt: tracking, choice: deny }] }")
     s = _tap_scenario("a")
-    guard = _alert_guard_factory([s], eff, "Not Now")(s)  # type: ignore[misc]
+    deprecations._emitted.discard("systemAlertHandling.targetRule.a.tracking")
+    with caplog.at_level(logging.WARNING, logger="bajutsu.deprecations"):
+        _alert_guard_factory([s], eff, _flag_alert_policy("Allow", "", None))(s)  # type: ignore[misc]
+    assert [r for r in caplog.records if "tracking" in r.message]
+
+
+def test_alert_guard_factory_composes_labels_across_all_three_layers() -> None:
+    # A list composes by concatenation, innermost layer first (BE-0401): the scenario's answers are
+    # tried first, and the layers above stay reachable for whatever it did not answer.
+    eff = _eff(systemAlertHandling='{ labels: ["Cancel"] }')
+    s = _tap_scenario("a", {"labels": ["Allow"]})
+    flag = _flag_alert_policy("OK", "", None)
+    guard = _alert_guard_factory([s], eff, flag)(s)  # type: ignore[misc]
     assert guard is not None
-    assert guard.rules == []
+    assert guard.labels == ["Allow", "OK", "Cancel"]
+
+
+def test_alert_guard_factory_scalars_take_the_innermost_layer_that_supplies_one() -> None:
+    # A scalar holds one value, so composition is not available and the innermost layer wins.
+    eff = _eff(
+        systemAlertHandling='{ visionInstruction: "target", pollInterval: 3 }',
+    )
+    flag = _flag_alert_policy("", "flag", 4)
+    s_scenario = _tap_scenario("a", {"visionInstruction": "scenario", "pollInterval": 5})
+    guard = _alert_guard_factory([s_scenario], eff, flag)(s_scenario)  # type: ignore[misc]
+    assert guard is not None and guard.poll_interval == 5.0
+
+    s_plain = _tap_scenario("b")
+    guard = _alert_guard_factory([s_plain], eff, flag)(s_plain)  # type: ignore[misc]
+    assert guard is not None and guard.poll_interval == 4.0  # the flag layer, below the scenario
+
+    guard = _alert_guard_factory([s_plain], eff, None)(s_plain)  # type: ignore[misc]
+    assert guard is not None and guard.poll_interval == 3.0  # then the target config
+
+
+def test_flag_alert_policy_builds_the_command_line_layer() -> None:
+    assert _flag_alert_policy("", "", None) is None
+    policy = _flag_alert_policy("Allow,OK", "tap Allow", 2)
+    assert policy == SystemAlertHandling(
+        labels=["Allow", "OK"], visionInstruction="tap Allow", pollInterval=2
+    )
+
+
+def test_flag_alert_policy_strips_each_label() -> None:
+    # `--alert-labels "Allow, OK"` names two buttons. Without the strip the second would be " OK",
+    # a label the native path compares exactly and so could never match.
+    policy = _flag_alert_policy("Allow, OK", "", None)
+    assert policy is not None and policy.labels == ["Allow", "OK"]
+
+
+def test_flag_alert_policy_rejects_an_empty_label_as_a_cli_error() -> None:
+    # Validated through the same model the file layers use, so a typo cannot resolve to the
+    # dismissive default the flag was written to override — reported as a CLI error, not a traceback.
+    with pytest.raises(typer.Exit) as exc:
+        _flag_alert_policy(",", "", None)
+    assert exc.value.exit_code == 2
 
 
 # --- _resolve_evidence_dirs: baselines/schemas dirs plus the golden context (only when it exists)
