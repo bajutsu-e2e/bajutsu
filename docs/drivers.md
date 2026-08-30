@@ -245,7 +245,8 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   is the device's to give and never the driver's to assume, because a coordinate-resolving follower
   (`pinch`, `rotate`, a directional `swipe`/`drag` anchor) has no `stale` re-resolve to self-heal
   with, unlike an identity-addressed follower.
-  That budget is the same number the `scroll` loop uses to confirm an
+  The barrier's own wall-clock budget — not the device's publish window — is the same number the
+  `scroll` loop uses to confirm an
   end of content before failing (`ReadLagProvider`, BE-0326 / BE-0332; see
   [architecture](architecture.md)) — one publish lag, so one budget, spent across those paths.
   A directional `swipe` and a `drag` are the one exception to *where* the resolve happens: their
