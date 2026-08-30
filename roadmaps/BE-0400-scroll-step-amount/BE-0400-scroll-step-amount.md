@@ -162,12 +162,16 @@ shares nothing with the read before it and reacts, whatever fraction produced th
 That detection also sets a practical ceiling the range itself does not, and unit 8 must document
 it. `_overshot` fires when nothing that was in view before a step is on screen after it, so a step
 travelling a full viewport satisfies it by construction — on a *faithful* backend as much as on a
-flinging one. The ceiling therefore tightens once unit 2 lands: today's 0.8 request overshoots to
-825 points and still leaves a sliver of an 874-point viewport, but a corrected 1.0 would land
-exactly one viewport on and trip the detector on its first step, costing a halving and a reversing
-gesture, both against `maxScrolls`. An author wanting one large step should stay far enough below
-1.0 that consecutive reads still share an element, and should learn that from the documentation
-rather than from spent budget.
+flinging one. The ceiling therefore tightens once unit 2 lands. Today's 0.8 request overshoots to
+825 points, leaving 49 points of the 874-point viewport showing content from before the step —
+against a row pitch of 98 points, so whether an element that was *wholly* in view survives that
+step depends on where a row boundary happens to fall. A corrected 1.0 would land exactly one
+viewport on and trip the detector on its first step, costing two gestures against `maxScrolls` —
+the overshooting step itself and the halved reversing look-back after it, since the halving is an
+assignment and spends nothing — for half a viewport of net progress, where two default steps give
+1.2. An author wanting one large step should stay far enough below 1.0 that consecutive reads
+still share an element, and should learn that from the documentation rather than from spent
+budget.
 
 ### Making the realized travel match the request
 
@@ -327,9 +331,14 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 
 - **Cap `amount` below 1 to avoid the overshoot risk BE-0326 deferred over.**
 
-  Rejected. BE-0329's detection and recovery already bounds that risk for every step, not only the
-  default one, and a cap would block an author whose screen scrolls unusually slowly from asking
-  for one large step while adding no protection the recovery does not give.
+  Rejected, though not for the reason it first appears. BE-0329's detection and recovery does
+  bound the risk for every step, not only the default one. What it cannot do is deliver a step near
+  a full viewport: such a step trips `_overshot` by construction, so the recovery answers the
+  request by halving and reversing rather than granting it. The range keeps its 1.0 top anyway,
+  because a fixed cap is the wrong instrument — where the ceiling sits depends on the screen's
+  content, which the schema cannot know. *The `amount` field* records the ceiling, and unit 8
+  carries it into the documentation, so the constraint reaches an author as guidance rather than as
+  a number guessed on their behalf.
 
 - **Lower `_STEP_FRACTION` instead of adding a field.**
 
@@ -354,7 +363,7 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 - [ ] Unit 5 — conformance check on realized travel against the request
 - [ ] Unit 6 — land the settle test and decide its CI wiring
 - [ ] Unit 7 — tests over `FakeDriver` and the schema
-- [ ] Unit 8 — docs (`docs/scenarios.md`, `docs/architecture.md`, both mirrors)
+- [ ] Unit 8 — docs (`docs/scenarios.md`, `docs/dsl-grammar.md`, `docs/architecture.md`, both mirrors)
 
 ### Log
 
