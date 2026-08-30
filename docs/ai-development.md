@@ -112,7 +112,9 @@ never elsewhere. `make setup` runs it automatically, best-effort, on a fresh che
 point is that protection starts the moment you begin developing, not after a separate step a
 session under time pressure can forget. `make git-guard-install` runs the same installer standalone,
 for a clone set up before this existed, after the installed block was deleted, or with a non-default
-rc file via `BAJUTSU_GUARD_RC_FILE`.
+rc file via `BAJUTSU_GUARD_RC_FILE`. Detection reads `$SHELL`, which names your *login* shell, not
+necessarily the one actually running — so pass `BAJUTSU_GUARD_RC_FILE` explicitly whenever the two
+differ (zsh started under a bash login shell, e.g.).
 
 Treat it as a personal convenience, not a repository-wide guarantee: removing the block, or calling
 `command git push --no-verify` directly, still gets through. CI's independent `make check` re-run

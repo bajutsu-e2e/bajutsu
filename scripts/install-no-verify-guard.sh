@@ -26,7 +26,26 @@ rc_file="${BAJUTSU_GUARD_RC_FILE:-}"
 if [ -z "$rc_file" ]; then
   case "${SHELL:-}" in
     */zsh) rc_file="$HOME/.zshrc" ;;
-    */bash) rc_file="$HOME/.bashrc" ;;
+    */bash)
+      # macOS starts an interactive bash as a *login* shell, which reads the first of
+      # ~/.bash_profile, ~/.bash_login, ~/.profile that exists — never ~/.bashrc. Writing there
+      # on Darwin would install a guard that silently never loads. $SHELL is also the *login*
+      # shell, not necessarily the one actually running (e.g. zsh started under a bash login
+      # shell); BAJUTSU_GUARD_RC_FILE overrides the detection above for that case.
+      if [ "$(uname -s)" = "Darwin" ]; then
+        if [ -f "$HOME/.bash_profile" ]; then
+          rc_file="$HOME/.bash_profile"
+        elif [ -f "$HOME/.bash_login" ]; then
+          rc_file="$HOME/.bash_login"
+        elif [ -f "$HOME/.profile" ]; then
+          rc_file="$HOME/.profile"
+        else
+          rc_file="$HOME/.bash_profile"
+        fi
+      else
+        rc_file="$HOME/.bashrc"
+      fi
+      ;;
     *)
       echo "install-no-verify-guard: unrecognized \$SHELL ('${SHELL:-unset}')." >&2
       echo "install-no-verify-guard: set BAJUTSU_GUARD_RC_FILE=<path to your shell rc> and retry." >&2
@@ -48,19 +67,35 @@ fi
 # `.githooks/no-verify-guard-marker` file. Installed by scripts/install-no-verify-guard.sh
 # (bajutsu); see docs/ai-development.md#never-push-red. Safe to delete this whole block.
 git() {
-  if [ "$1" = "push" ]; then
+  # git accepts its global options before the subcommand (`git -c a=b push …`), so resolve the
+  # subcommand instead of trusting $1 — otherwise `git -c a=b push --no-verify` slips past.
+  __bajutsu_guard_sub=""
+  __bajutsu_guard_skip=0
+  for __bajutsu_guard_arg in "$@"; do
+    if [ "$__bajutsu_guard_skip" = 1 ]; then
+      __bajutsu_guard_skip=0
+      continue
+    fi
+    case "$__bajutsu_guard_arg" in
+      -c|-C|--git-dir|--work-tree|--namespace|--exec-path) __bajutsu_guard_skip=1 ;;
+      -*) ;;
+      *) __bajutsu_guard_sub="$__bajutsu_guard_arg"; break ;;
+    esac
+  done
+  if [ "$__bajutsu_guard_sub" = "push" ]; then
     __bajutsu_guard_top="$(command git rev-parse --show-toplevel 2>/dev/null)" || __bajutsu_guard_top=""
     if [ -n "$__bajutsu_guard_top" ] && [ -f "$__bajutsu_guard_top/.githooks/no-verify-guard-marker" ]; then
       for __bajutsu_guard_arg in "$@"; do
         if [ "$__bajutsu_guard_arg" = "--no-verify" ]; then
           echo "error: git push --no-verify is forbidden in this repository — see docs/ai-development.md#never-push-red" >&2
-          unset __bajutsu_guard_top __bajutsu_guard_arg
+          unset __bajutsu_guard_top __bajutsu_guard_arg __bajutsu_guard_sub __bajutsu_guard_skip
           return 1
         fi
       done
     fi
     unset __bajutsu_guard_top
   fi
+  unset __bajutsu_guard_sub __bajutsu_guard_skip __bajutsu_guard_arg
   command git "$@"
 }
 SNIPPET
