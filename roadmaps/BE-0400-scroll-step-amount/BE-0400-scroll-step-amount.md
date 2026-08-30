@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-scroll-step-amount-ja.md)
+**English** · [日本語](BE-0400-scroll-step-amount-ja.md)
 
-# BE-XXXX — Make a scroll step travel the distance it asks for and let authors choose it
+# BE-0400 — Make a scroll step travel the distance it asks for and let authors choose it
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-scroll-step-amount.md) |
+| Proposal | [BE-0400](BE-0400-scroll-step-amount.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0400") |
 | Topic | Scenario authoring features |
 | Related | [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element.md), [BE-0329](../BE-0329-scroll-observed-motion-decisions/BE-0329-scroll-observed-motion-decisions.md) |
 <!-- /BE-METADATA -->

@@ -1,14 +1,14 @@
-[English](BE-XXXX-scroll-step-amount.md) · **日本語**
+[English](BE-0400-scroll-step-amount.md) · **日本語**
 
-# BE-XXXX — `scroll` のステップを要求どおりの距離だけ動かし、その距離を作者が選べるようにする
+# BE-0400 — `scroll` のステップを要求どおりの距離だけ動かし、その距離を作者が選べるようにする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-scroll-step-amount-ja.md) |
+| 提案 | [BE-0400](BE-0400-scroll-step-amount-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0400") |
 | トピック | Scenario authoring features |
 | 関連 | [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element-ja.md), [BE-0329](../BE-0329-scroll-observed-motion-decisions/BE-0329-scroll-observed-motion-decisions-ja.md) |
 <!-- /BE-METADATA -->
