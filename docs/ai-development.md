@@ -105,15 +105,19 @@ this repo's own `push` confirms it — `git push` and `git push --no-verify` ali
 and run the built-in command unchanged. The only point left that ever sees the raw flag before git
 acts on it is command-name resolution itself, which only a real `git` wrapper controls.
 
-`make git-guard-install` installs that wrapper as an opt-in, per-developer step: a `git()` shell
-function, appended to your shell rc, that refuses `--no-verify` on `push` inside any repository
-whose toplevel carries [`.githooks/no-verify-guard-marker`](../.githooks/no-verify-guard-marker) —
-this one included, and never elsewhere. It lives outside `make setup` / `make hooks` because it
-edits your shell rc rather than the clone, a file those two never touch, so it only runs when a
-developer asks for it. Treat it as a personal convenience, not a repository-wide guarantee:
-removing the block, or calling `command git push --no-verify` directly, still gets through. CI's
-independent `make check` re-run before merge is what makes the rule hold regardless of what ran
-locally — this installer only saves the round trip to that gate.
+`scripts/install-no-verify-guard.sh` installs that wrapper: a `git()` shell function, appended to
+your shell rc, that refuses `--no-verify` on `push` inside any repository whose toplevel carries
+[`.githooks/no-verify-guard-marker`](../.githooks/no-verify-guard-marker) — this one included, and
+never elsewhere. `make setup` runs it automatically, best-effort, on a fresh checkout — the whole
+point is that protection starts the moment you begin developing, not after a separate step a
+session under time pressure can forget. `make git-guard-install` runs the same installer standalone,
+for a clone set up before this existed, after the installed block was deleted, or with a non-default
+rc file via `BAJUTSU_GUARD_RC_FILE`.
+
+Treat it as a personal convenience, not a repository-wide guarantee: removing the block, or calling
+`command git push --no-verify` directly, still gets through. CI's independent `make check` re-run
+before merge is what makes the rule hold regardless of what ran locally — this installer only saves
+the round trip to that gate.
 
 The same `core.hooksPath` also wires a tracked **commit-msg hook**
 ([`.githooks/commit-msg`](../.githooks/commit-msg), BE-0069): it blocks a commit whose subject isn't

@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# Optional, per-developer installer for a personal `git()` shell function that refuses
-# `git push --no-verify` inside any repository whose toplevel carries
-# `.githooks/no-verify-guard-marker` (this repo included).
+# Personal `git()` shell-function installer that refuses `git push --no-verify` inside any
+# repository whose toplevel carries `.githooks/no-verify-guard-marker` (this repo included).
+# `make setup` runs this automatically, best-effort, on a fresh checkout — a forgotten manual
+# step is exactly the accident this exists to prevent — so most contributors never invoke this
+# file directly; `make git-guard-install` remains for (re)running it standalone.
 #
-# Why a shell function, and why it lives outside `make setup` / `make hooks`: `--no-verify` skips
-# every git hook unconditionally, and git refuses to let a config alias override an existing
-# subcommand name (`git help config`: "aliases that hide existing Git commands are ignored" —
-# verified by hand against this repo's own `push`). The only point left that ever sees the raw
-# `--no-verify` flag before git acts on it is command-name resolution itself, which only a real
-# `git` wrapper controls — and that means editing a file outside this repository (the caller's
-# shell rc). `make setup` and `make hooks` only ever touch files inside the clone, so this
-# installer stays a separate, explicit step a developer opts into by running it.
+# Why a shell function at all: `--no-verify` skips every git hook unconditionally, and git
+# refuses to let a config alias override an existing subcommand name (`git help config`:
+# "aliases that hide existing Git commands are ignored" — verified by hand against this repo's
+# own `push`). The only point left that ever sees the raw `--no-verify` flag before git acts on
+# it is command-name resolution itself, which only a real `git` wrapper controls — and that means
+# editing a file outside this repository (the caller's shell rc), unlike `core.hooksPath` and the
+# other settings `make hooks` wires inside the clone.
 #
 # This is a personal safeguard, not a repository-wide guarantee: removing this block, or calling
 # `command git push --no-verify` (or the git binary's full path) directly, still gets through. The

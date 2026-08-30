@@ -5,9 +5,15 @@
         roadmap-status roadmap-dashboard docs docs-serve docs-diagrams runner-bundle
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
-# Simulator). Installs the Python toolchain and wires the tracked git hooks.
+# Simulator). Installs the Python toolchain, wires the tracked git hooks, and best-effort
+# installs the personal `git push --no-verify` guard (git-guard-install below) — so a fresh
+# worktree is protected from the moment development starts, not from a separate step a session
+# can forget to run under time pressure. `|| true`: this edits the caller's shell rc, a file
+# `setup` doesn't otherwise touch, so a failure here (unwritable rc, unrecognized $SHELL) must
+# never block the toolchain install that follows it.
 setup: hooks
 	uv sync --group dev
+	@./scripts/install-no-verify-guard.sh || true
 
 # Wire per-clone local git settings that clone/pull never carry over, so this self-heals
 # existing clones too — `check` runs it before every gate, right when it matters. Idempotent:
@@ -26,11 +32,13 @@ hooks:
 	  && git config rerere.enabled true \
 	  && echo "hooks: uv.lock + apm generated-output merge drivers + rerere wired"
 
-# Optional, per-developer safeguard against `git push --no-verify` (not part of `setup`/`hooks`:
-# those only ever touch files inside the clone, and this one edits the caller's shell rc instead).
-# `--no-verify` skips every git hook unconditionally, and git refuses to let a config alias
-# override an existing subcommand name, so a personal `git()` shell function is the only thing
-# left that can see the flag before git acts on it. Scoped to repos carrying
+# Personal safeguard against `git push --no-verify`. `setup` above already runs this
+# automatically (best-effort) on a fresh checkout; this target exists to (re)run it standalone —
+# on a clone set up before this existed, after deleting the installed block, or with a
+# non-default rc file via BAJUTSU_GUARD_RC_FILE. It edits the caller's shell rc, a file `hooks`
+# never touches, because `--no-verify` skips every git hook unconditionally and git refuses to
+# let a config alias override an existing subcommand name — a personal `git()` shell function is
+# the only thing left that can see the flag before git acts on it. Scoped to repos carrying
 # .githooks/no-verify-guard-marker, so it never fires outside this one. See scripts/install-no-
 # verify-guard.sh and docs/ai-development.md#never-push-red for the full reasoning and limits.
 git-guard-install:

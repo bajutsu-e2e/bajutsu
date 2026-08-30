@@ -149,8 +149,9 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   mechanism can enforce this on its own: `--no-verify` skips every hook unconditionally, and git
   refuses to let a config alias override an existing subcommand
   ([`docs/ai-development.md`](docs/ai-development.md#never-push-red) has the evidence). `make
-  git-guard-install` offers an optional personal shell safeguard; CI's independent `make check`
-  re-run before merge is what actually makes the rule hold regardless of what runs locally.
+  setup` best-effort installs a personal shell safeguard for this (`make git-guard-install` runs it
+  standalone); CI's independent `make check` re-run before merge is what actually makes the rule
+  hold regardless of what runs locally.
 - **Git defenses are wired the same way (BE-0043).** `make hooks` also self-heals the local git
   settings that ease parallel work: a `uv.lock` merge driver, the matching `apm.lock.yaml` one
   (BE-0390), and `rerere`. No manual `git config` needed. Mechanism:
