@@ -1,14 +1,14 @@
-[English](BE-XXXX-comparison-row-navigation-vs-activate.md) · **日本語**
+[English](BE-0398-comparison-row-navigation-vs-activate.md) · **日本語**
 
-# BE-XXXX — 比較ビューの行クリックを読み取り専用の遷移と明示的な有効化に分ける
+# BE-0398 — 比較ビューの行クリックを読み取り専用の遷移と明示的な有効化に分ける
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-comparison-row-navigation-vs-activate-ja.md) |
+| 提案 | [BE-0398](BE-0398-comparison-row-navigation-vs-activate-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0398") |
 | 実装 PR | [#1806](https://github.com/bajutsu-e2e/bajutsu/pull/1806) |
 | トピック | オーサリング体験 |
 | 関連 | [BE-0226](../BE-0226-cross-project-metrics-dashboard/BE-0226-cross-project-metrics-dashboard-ja.md), [BE-0275](../BE-0275-serve-projects-management-page/BE-0275-serve-projects-management-page-ja.md), [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md) |

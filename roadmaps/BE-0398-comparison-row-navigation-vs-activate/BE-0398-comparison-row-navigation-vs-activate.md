@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-comparison-row-navigation-vs-activate-ja.md)
+**English** · [日本語](BE-0398-comparison-row-navigation-vs-activate-ja.md)
 
-# BE-XXXX — Split the comparison view's row click into read-only navigation and an explicit activate action
+# BE-0398 — Split the comparison view's row click into read-only navigation and an explicit activate action
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-comparison-row-navigation-vs-activate.md) |
+| Proposal | [BE-0398](BE-0398-comparison-row-navigation-vs-activate.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0398") |
 | Implementing PR | [#1806](https://github.com/bajutsu-e2e/bajutsu/pull/1806) |
 | Topic | Authoring experience |
 | Related | [BE-0226](../BE-0226-cross-project-metrics-dashboard/BE-0226-cross-project-metrics-dashboard.md), [BE-0275](../BE-0275-serve-projects-management-page/BE-0275-serve-projects-management-page.md), [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md) |
