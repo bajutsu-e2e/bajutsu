@@ -402,10 +402,19 @@ Log:
   The reverted attempt is what sizes the budget. `ACT_PUBLISH_BUDGET_MS` is 500 ms, an eighth of the
   host's own `_READ_LAG_S` (4 s), because the two waits are not interchangeable: this
   one is paid inline on every gesture, while the host's is spent lazily and is often absorbed by
-  reads the scenario was taking anyway. A short window costs a saving and never correctness, since an
-  unconfirmed answer leaves the driver exactly where it stood before this change. What the saving
-  buys is a read: `_settle` would otherwise open with `_await_catchup`'s poll sleep plus a whole
-  extra `query()`, the dominant per-step cost on this backend (BE-0234).
+  reads the scenario was taking anyway. The window is not free: it is spent before the reply goes
+  out, so a gesture that publishes nothing pays it *and then* still arms the barrier — a fixed cost
+  on exactly the gestures that gain nothing, and `_await_catchup`'s own timeout message calls such a
+  gesture routine. What the window buys on the gestures that do confirm is a read: `_settle` would
+  otherwise open with `_await_catchup`'s poll sleep plus a whole extra `query()`, the dominant
+  per-step cost on this backend (BE-0234). Sizing it short is that trade, not a free lunch; what it
+  never decides is whether skipping the barrier is safe.
+
+  The mark the header carries is compared, not merely counted. `since` and the published mark are
+  both `SystemClock.uptimeMillis` readings, so the driver checks that the reported event actually
+  postdates the gesture rather than trusting the header's presence — a value that does not (a server
+  repurposing the header, one carried over from an earlier injection) would otherwise disable the
+  barrier on the strength of the header merely existing.
 
   The fast gate pins both halves of the rule, so the reverted shape cannot return unnoticed: a
   confirmed device tap arms no barrier and leaves the next read carrying no `?since=`, an unconfirmed

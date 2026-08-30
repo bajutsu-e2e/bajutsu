@@ -1353,13 +1353,24 @@ class AdbDriver(CoordinateTreeDriver):
                 # The gesture happened on the device, so the cached tree is stale whichever branch
                 # follows — the same bookkeeping `_act` does for a coordinate injection.
                 self.invalidate_settled_cache()
-                if outcome.published_mark is not None:
+                if outcome.published_mark is not None and (
+                    mark is None or outcome.published_mark > mark
+                ):
                     # The device followed its own gesture to the accessibility event that published it
                     # before answering (BE-0339 Unit 5), so the next read cannot describe the
                     # pre-gesture screen and there is nothing left for a barrier to wait out. Skipping
                     # it is worth a read: `_settle` would otherwise open with `_await_catchup`'s poll
                     # sleep plus a whole extra `query()`, the dominant per-step cost on this backend
                     # (BE-0234).
+                    #
+                    # The mark is compared, not merely counted. `mark` and `published_mark` are both
+                    # `SystemClock.uptimeMillis` readings, so the ordering the header claims is
+                    # checkable here — and a reply whose mark does not actually postdate the gesture
+                    # (a server that repurposes the header, a value carried over from an earlier
+                    # injection) would otherwise disable the barrier on the strength of the header
+                    # merely existing. `mark is None` is the older server with no `/clock` endpoint:
+                    # nothing to compare against, so the presence of a publish is all there is to go
+                    # on, exactly as the barrier itself falls back to its wall-clock budget there.
                     #
                     # The claim is the device's, never this driver's assumption. A first pass at this
                     # unit asserted the resident session synchronized with the platform's idle state
@@ -1501,9 +1512,12 @@ class AdbDriver(CoordinateTreeDriver):
         the remaining ordering consumer, and it reads `_read_mark` directly in `_advance_catchup` rather
         than through here. Narrowing that barrier (BE-0339 Unit 5) has since landed without needing this
         seam either: a gesture whose publish the device confirmed arms no barrier at all, so it never
-        sets `_read_ordered`. The protocol stays declared because the driver conformance suite (BE-0114)
-        checks the marked-read contract against the real backend — so this is a live contract without a
-        live caller, not a leftover.
+        sets `_read_ordered`. Nothing checks the flag either — the conformance suite's marked-read case
+        (`driver_conformance.py::test_a_read_postdates_a_content_moving_gesture`) deliberately asserts
+        the observable ordering instead, because this flag is legitimately false whenever a barrier
+        closes on its budget. So the protocol stays declared for the `ReadOrderProvider` contract
+        alone: a live contract with neither a live caller nor a test, kept because retiring it is a
+        decision about the contract rather than about this driver.
         """
         return self._read_ordered
 

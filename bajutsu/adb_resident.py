@@ -130,6 +130,8 @@ def fetch_source(
         body = resp.read()
         if resp.status != 200:
             raise AdbResidentError(f"resident server returned HTTP {resp.status}")
+        # An absent or malformed mark here degrades the driver's barrier to its wall-clock budget
+        # rather than failing the read: the mark only ever tightens the wait.
         mark = _parse_mark(resp.getheader(_READ_MARK_HEADER))
         native_z = _parse_native_z(resp.getheader(_NATIVE_Z_HEADER))
         # A truncated/garbled body (a mid-write device server) must degrade to the dump fallback, not
@@ -215,10 +217,13 @@ def act(host_port: int, request: ActRequest, *, timeout: float = 10.0) -> ActOut
 
 
 def _parse_mark(raw: str | None) -> float | None:
-    """The `X-Bajutsu-Read-Mark` header as a device-clock float, or None when absent/unparseable.
+    """A device-clock mark header as a float, or None when the header is absent or unparseable.
 
-    A missing header (an older server without the read mark) or a malformed value degrades the barrier
-    to its wall-clock budget rather than failing the read: the mark only ever tightens the wait.
+    Shared by the two headers that carry one: `X-Bajutsu-Read-Mark` on a read and
+    `X-Bajutsu-Act-Publish` on an actuation. What an absent mark *costs* differs between them, so each
+    caller states its own consequence; what they share is that a mark is never required — an older
+    server sends neither header, and reading None rather than raising is what keeps such a server
+    working.
     """
     if raw is None:
         return None

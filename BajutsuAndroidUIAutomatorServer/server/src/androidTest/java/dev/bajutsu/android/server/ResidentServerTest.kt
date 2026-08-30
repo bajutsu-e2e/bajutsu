@@ -610,14 +610,18 @@ class ResidentServerTest {
 
         // How long POST /act waits for its own gesture to publish before answering unconfirmed.
         //
-        // Not a correctness bound: an unconfirmed answer costs only the read-lag barrier the host
-        // already arms for every gesture today, so this window decides how often that barrier can be
-        // skipped, never whether skipping it is safe. Deliberately an eighth of the host's own budget
-        // (`AdbDriver._READ_LAG_S`, 4 s), because the two waits are not
-        // interchangeable: this one is paid inline on every gesture, while the host's is spent lazily
-        // and is often absorbed by reads the scenario was taking anyway. Long enough for the publish a
-        // healthy gesture makes, short enough that a device which cannot answer quickly hands the
-        // question straight back to the barrier instead of stalling the run.
+        // Not a correctness bound — but not free either, and the difference is what sizes it. The
+        // whole window is spent before the reply goes out, so a gesture that publishes nothing pays it
+        // *and then* still arms the read-lag barrier the host armed for every gesture before this
+        // change. The window therefore trades a fixed cost on the gestures that confirm nothing
+        // against a barrier saved on the ones that do; what it never decides is whether skipping that
+        // barrier is safe.
+        //
+        // An eighth of the host's own budget (`AdbDriver._READ_LAG_S`, 4 s), because the two waits are
+        // not interchangeable: this one is paid inline on every gesture, while the host's is spent
+        // lazily and is often absorbed by reads the scenario was taking anyway. Widening it to catch
+        // more publishes is therefore not free — it lengthens every gesture that confirms none, and a
+        // gesture that moves no frame is routine (`AdbDriver._await_catchup` says so at its timeout).
         const val ACT_PUBLISH_BUDGET_MS = 500L
 
         // The extra-data key an opted-in view advertises. This server is app-independent by design

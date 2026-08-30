@@ -2352,12 +2352,38 @@ def test_a_device_tap_whose_publish_the_device_confirmed_arms_no_barrier() -> No
     # `query()`, the dominant per-step cost on this backend.
     act, _ = _recording_act([adb_driver_mod.ActOutcome(acted=True, published_mark=98765.0)])
     run, _calls = _capturing_run([FIXTURE])
-    driver = AdbDriver("U", run=run, act=act)
+    # With a clock, the gesture carries a mark of its own, so this exercises the comparison rather
+    # than the no-clock degrade `test_a_publish_mark_is_trusted_alone_when_the_server_has_no_clock`
+    # covers: the reported publish postdates the mark taken before the gesture.
+    driver = AdbDriver("U", run=run, fetch_clock=lambda: 4200.0, act=act)
     driver.tap({"id": "stable.submit"})
     assert driver._catchup is None
     # Skipping the barrier must not also skip the staleness bookkeeping: the screen moved, so no key
     # proved stable before this tap may survive it.
     assert driver._settled_key is None and driver._tree_current is False
+
+
+def test_a_publish_mark_that_does_not_postdate_the_gesture_still_arms_the_barrier() -> None:
+    # The header's presence is not the test — its mark is. Both marks come from the device's own
+    # `SystemClock.uptimeMillis`, so a reported publish that predates the gesture cannot be that
+    # gesture's, and taking it as one would disable the barrier for a coordinate-resolving follower on
+    # the strength of a header merely existing (BE-0339 Unit 5).
+    act, _ = _recording_act([adb_driver_mod.ActOutcome(acted=True, published_mark=100.0)])
+    run, _calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, fetch_clock=lambda: 4200.0, act=act)
+    driver.tap({"id": "stable.submit"})
+    assert driver._catchup is not None
+
+
+def test_a_publish_mark_is_trusted_alone_when_the_server_has_no_clock() -> None:
+    # An older server serves `/act` but no `/clock`, so the driver holds no mark to compare against.
+    # There is nothing to check the publish against there, and the presence of one is all the evidence
+    # available — the same degrade the barrier itself makes when it falls back to its wall-clock budget.
+    act, _ = _recording_act([adb_driver_mod.ActOutcome(acted=True, published_mark=100.0)])
+    run, _calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)  # no `fetch_clock`: every gesture's mark is None
+    driver.tap({"id": "stable.submit"})
+    assert driver._catchup is None
 
 
 def test_a_confirmed_device_tap_leaves_the_next_read_unblocked() -> None:
