@@ -86,15 +86,20 @@ SCROLL_LAST_ROW = f"{SCROLL_ROW_PREFIX}{SCROLL_ROW_COUNT - 1}"
 #: the request, before a backend fails the contract (BE-0400). Covers error that scales with the
 #: distance — sub-pixel rounding, a scale factor between the driver's points and a backend's own
 #: units. On the corrected iOS gesture that part measured zero: every step came back the same fixed
-#: 10.0 points short, which `_TRAVEL_SLACK_PT` below absorbs, not this. So the whole 10 percent is
-#: headroom for a slower or coarser device, and still an order of magnitude under a fling, which ran
-#: from +25 percent on a full-size step to +515 percent on a small one.
+#: 10.0 points short, which `_TRAVEL_SLACK_VIEWPORT_FRACTION` below absorbs, not this. So the whole
+#: 10 percent is headroom for a slower or coarser device, and still an order of magnitude under a
+#: fling, which ran from +25 percent on a full-size step to +515 percent on a small one.
 _TRAVEL_TOLERANCE = 0.10
-#: The fixed part of that allowance, in points: a per-gesture loss that does not scale with the
-#: request. A pan recognizer does not move the content until the finger has travelled its slop, and
-#: on the measured device that costs exactly 10.0 points whatever the step asks for. Set above it
-#: rather than at it, since the constant belongs to the platform and may differ on another.
-_TRAVEL_SLACK_PT = 16.0
+#: The fixed part of that allowance, as a fraction of the viewport: a per-gesture loss that does not
+#: scale with the request. A pan recognizer does not move the content until the finger has travelled
+#: its slop, which cost a flat 10.0 points per step on the measured iOS device (a 874-point
+#: viewport, so 1.1 percent) and about 87 device pixels on the conformance Android emulator (a
+#: 2400-pixel viewport, so 3.6 percent). Expressed against the viewport rather than in the driver's
+#: own units, which differ per backend, for the reason `scroll`'s `amount` is a fraction too: one
+#: absolute number cannot mean the same thing on a 874-point screen and a 2400-pixel one. Set above
+#: the larger of the two, since the constant belongs to each platform and may differ again on a
+#: third.
+_TRAVEL_SLACK_VIEWPORT_FRACTION = 0.05
 
 #: A step smaller than the loop's own floor, measured because `scroll`'s `amount` reaches below that
 #: floor (BE-0400) and because a short drag is where the overshoot this contract rejects appeared
@@ -203,8 +208,12 @@ def row_offsets(elements: list[base.Element], bounds: base.Frame, axis: int) -> 
     }
 
 
-def _measure_one_step(harness: ConformanceHarness, fraction: float) -> tuple[float, float]:
-    """One scroll step of `fraction` from the top of the scrollable screen: (requested, realized) pt.
+def _measure_one_step(harness: ConformanceHarness, fraction: float) -> tuple[float, float, float]:
+    """One scroll step of `fraction` from the top of the scrollable screen.
+
+    Returns the requested travel, the realized travel, and the viewport's extent along the scroll
+    axis — the last because the allowance is stated against the viewport, and reseeding the screen a
+    second time to read it would cost a real device two more renders.
 
     Reads the travel off `row_offsets` rather than any per-backend scroll offset. The screen is
     re-seeded first, so every measurement starts from the top with a full screen of content below
@@ -227,7 +236,11 @@ def _measure_one_step(harness: ConformanceHarness, fraction: float) -> tuple[flo
     assert shared, f"a step of {fraction} left no row in common, so its travel cannot be measured"
     # Any shared row gives the travel, the list being rigid; the median keeps one mis-reported frame
     # from deciding the case.
-    return abs(dest[axis] - frm[axis]), statistics.median_high(before[i] - after[i] for i in shared)
+    return (
+        abs(dest[axis] - frm[axis]),
+        statistics.median_high(before[i] - after[i] for i in shared),
+        viewport[axis],
+    )
 
 
 def element(
@@ -667,21 +680,36 @@ class DriverConformanceContract:
         # name. `_MIN_STEP_FRACTION` bounds the loop's own halving but not `amount`, which reaches
         # below it, so the smallest measured size is below the floor too — a backend honoring the
         # three honors what the loop and an author can ask for between them.
-        for fraction in (_STEP_FRACTION, _MIN_STEP_FRACTION, _SUB_FLOOR_STEP_FRACTION):
-            requested, realized = _measure_one_step(harness, fraction)
-            # Two allowances, because two different errors are tolerated and neither is a fraction of
-            # the other. `_TRAVEL_SLACK_PT` covers a fixed per-gesture loss — a pan recognizer's slop,
-            # the few points a finger travels before the content starts following it, a constant of
-            # the platform rather than of the distance asked for. `_TRAVEL_TOLERANCE` covers error
-            # that does scale: sub-pixel rounding, or a scale factor between the driver's points and
-            # the backend's own units. Together they stay an order of magnitude tighter than the
-            # overshoot this check exists to reject, which ran to +133 points on a 524-point request
-            # and +170 on a 109-point one.
-            allowance = _TRAVEL_TOLERANCE * requested + _TRAVEL_SLACK_PT
-            assert abs(realized - requested) <= allowance, (
-                f"a scroll step of {fraction} of the viewport asked for {requested:.1f}pt and "
-                f"travelled {realized:.1f}pt (allowed ±{allowance:.1f}pt)"
-            )
+        #
+        # Every size is measured before any is judged, and a failure reports all three. The error
+        # this rejects has a shape — additive or proportional, over or under — and one row cannot
+        # show it, so a reader diagnosing a red run on a device they do not have would otherwise
+        # need a fresh run per step size to see the pattern.
+        measured = [
+            (fraction, *_measure_one_step(harness, fraction))
+            for fraction in (_STEP_FRACTION, _MIN_STEP_FRACTION, _SUB_FLOOR_STEP_FRACTION)
+        ]
+        # Every measurement reseeds the same screen, so they all report the same viewport.
+        slack = _TRAVEL_SLACK_VIEWPORT_FRACTION * measured[0][3]
+        # Two allowances, because two different errors are tolerated and neither is a fraction of the
+        # other. `_TRAVEL_SLACK_VIEWPORT_FRACTION` covers a fixed per-gesture loss — a pan
+        # recognizer's slop, the distance a finger travels before the content starts following it. It
+        # is a fraction of the viewport rather than an absolute distance for the reason `amount`
+        # itself is: the driver's units differ per backend (points on iOS, raw pixels on Android),
+        # so one absolute number would be generous on one and impossibly tight on another.
+        # `_TRAVEL_TOLERANCE` covers error that does scale: sub-pixel rounding, or a scale factor
+        # between the driver's units and the backend's own. Together they stay well inside the
+        # overshoot this check exists to reject, which ran to +133 points on a 524-point request and
+        # +170 on a 109-point one.
+        report = "\n".join(
+            f"  {fraction}: asked {requested:.1f}, travelled {realized:.1f}, "
+            f"off by {realized - requested:+.1f} (allowed ±{_TRAVEL_TOLERANCE * requested + slack:.1f})"
+            for fraction, requested, realized, _ in measured
+        )
+        assert all(
+            abs(realized - requested) <= _TRAVEL_TOLERANCE * requested + slack
+            for _, requested, realized, _ in measured
+        ), f"a scroll step did not travel what it asked for, at these step sizes:\n{report}"
 
     def test_a_read_postdates_a_content_moving_gesture(self, harness: ConformanceHarness) -> None:
         # The marked-read contract (BE-0332), observed: a read taken after a gesture that moves the
