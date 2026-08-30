@@ -370,11 +370,16 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
   10.0-point shortfall is the pan recognizer's slop, left uncorrected so the driver conformance
   suite's tolerance names it instead of the gesture carrying one device's constant.
 - Ran the new realized-travel conformance case against the backends this host can drive (unit 2). It
-  passes against `FakeDriver` and against Playwright with no change to either. The adb backend was
-  not run here — this host has no emulator — so it is held to the same case by the
-  `conformance (adb)` job, which inherits it like every other contract case; its pan already runs
-  over a fixed 600 ms duration for the reason iOS now traverses slowly, which is why it is expected
-  to pass. iOS was the only backend the contract caught on the hardware available.
+  passes against `FakeDriver` and against Playwright with no change to either. This host has no
+  emulator, so adb was left to the `conformance (adb)` job, which inherits the case like every other
+  contract case.
+- That job then caught adb too, which is what unit 2 exists to prevent being missed: a 0.6 step asked
+  for 1440 device pixels and travelled 1153, twenty percent short — an undershoot, where iOS
+  overshot. The cause is the mirror image of the iOS one. adb panned over a fixed 600 ms whatever the
+  distance, so the speed rose with the request until the view stopped tracking the whole path, while
+  iOS held the speed fixed and let a fast traversal fling. adb now holds its *speed* fixed instead,
+  at 550 device pixels per second with a 600 ms floor — the iOS runner's 200 points per second
+  carried across at the two screens' physical scale — so every step size stays honest on both.
 - Settled unit 6's wiring question by placing the settle test in
   `tests/test_driver_conformance_ondevice.py` rather than a file of its own: the
   `conformance (xcuitest)` job then runs it with no wiring change to a required check and no second
