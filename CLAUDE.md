@@ -141,6 +141,16 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   you; run `make setup` once on a fresh clone (web sessions get it automatically). The
   deterministic test suite is the regression net — if you change behavior, a test should change
   with it. Self-heal mechanism: [`docs/ai-development.md`](docs/ai-development.md#never-push-red).
+  **`git push --no-verify` is strictly forbidden — no exceptions, including emergencies.** It
+  skips the same `make check` gate CI would otherwise run first, so it does not save time — it only
+  moves the same red result from your terminal onto the shared PR. If the hook fails on something
+  you believe is a false positive (stale `.claude/worktrees/` state, e.g.), fix the root cause or
+  verify from a clean sibling worktree — never bypass the hook to force a push through. No git-side
+  mechanism can enforce this on its own: `--no-verify` skips every hook unconditionally, and git
+  refuses to let a config alias override an existing subcommand
+  ([`docs/ai-development.md`](docs/ai-development.md#never-push-red) has the evidence). `make
+  git-guard-install` offers an optional personal shell safeguard; CI's independent `make check`
+  re-run before merge is what actually makes the rule hold regardless of what runs locally.
 - **Git defenses are wired the same way (BE-0043).** `make hooks` also self-heals the local git
   settings that ease parallel work: a `uv.lock` merge driver, the matching `apm.lock.yaml` one
   (BE-0390), and `rerere`. No manual `git config` needed. Mechanism:

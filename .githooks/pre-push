@@ -8,7 +8,9 @@
 # Enable once per clone:   git config core.hooksPath .githooks
 # (Claude Code web sessions get this wired automatically by the SessionStart hook.)
 #
-# Bypass for a genuine emergency:   git push --no-verify
+# `git push --no-verify` is forbidden in this repository, no exceptions (CLAUDE.md, "The gate is
+# the contract") — it skips this hook entirely, which git does unconditionally at the flag-parsing
+# level, before any hook or git alias ever runs. See docs/ai-development.md#never-push-red.
 set -euo pipefail
 
 # git feeds ref updates on stdin as: <local ref> <local oid> <remote ref> <remote oid>
@@ -28,7 +30,7 @@ echo "pre-push: running 'make check'…" >&2
 if ! command -v make >/dev/null 2>&1; then
   echo "pre-push: 'make' not found — the gate is 'make check' and can't be run without it." >&2
   echo "pre-push: install make (macOS: 'xcode-select --install' or 'brew install make'; " \
-       "Debian/Ubuntu: 'apt-get install make') and retry, or bypass with 'git push --no-verify'." >&2
+       "Debian/Ubuntu: 'apt-get install make') and retry." >&2
   exit 1
 fi
 

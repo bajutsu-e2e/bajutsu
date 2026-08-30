@@ -1,4 +1,4 @@
-.PHONY: setup hooks install deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck typecheck-tests \
+.PHONY: setup hooks git-guard-install install deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck typecheck-tests \
         lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr lint-secrets skills lint-skills \
         lint-coverage-floors coverage-floors \
         check new-roadmap-item \
@@ -25,6 +25,16 @@ hooks:
 	  && git config merge.apm-generated.driver "./scripts/merge-apm-generated.sh %A %P" \
 	  && git config rerere.enabled true \
 	  && echo "hooks: uv.lock + apm generated-output merge drivers + rerere wired"
+
+# Optional, per-developer safeguard against `git push --no-verify` (not part of `setup`/`hooks`:
+# those only ever touch files inside the clone, and this one edits the caller's shell rc instead).
+# `--no-verify` skips every git hook unconditionally, and git refuses to let a config alias
+# override an existing subcommand name, so a personal `git()` shell function is the only thing
+# left that can see the flag before git acts on it. Scoped to repos carrying
+# .githooks/no-verify-guard-marker, so it never fires outside this one. See scripts/install-no-
+# verify-guard.sh and docs/ai-development.md#never-push-red for the full reasoning and limits.
+git-guard-install:
+	@./scripts/install-no-verify-guard.sh
 
 # Config-aware one-command bootstrap (BE-0164): the base toolchain (`setup`) PLUS exactly the
 # backend deps a project's config needs — not "every backend unconditionally", not "everything".
@@ -75,7 +85,7 @@ preflight:
 
 # Shell scripts the gate lints. pre-push/pre-commit/prepare-commit-msg have no .sh suffix, so
 # they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg .githooks/pre-commit .githooks/prepare-commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/worktree_cleanup.sh scripts/merge-uv-lock.sh scripts/merge-apm-generated.sh scripts/xcuitest-runner-hash.sh scripts/collect_android_diagnostics.sh scripts/android_pool_e2e.sh .claude/hooks/session-start.sh demos/tour/demo.sh
+SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg .githooks/pre-commit .githooks/prepare-commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/worktree_cleanup.sh scripts/merge-uv-lock.sh scripts/merge-apm-generated.sh scripts/install-no-verify-guard.sh scripts/xcuitest-runner-hash.sh scripts/collect_android_diagnostics.sh scripts/android_pool_e2e.sh .claude/hooks/session-start.sh demos/tour/demo.sh
 
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the

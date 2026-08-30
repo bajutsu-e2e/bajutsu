@@ -86,7 +86,30 @@ make setup   # uv sync --group dev + git フックの有効化（クローン直
 入っていませんが、覚えておく必要はありません。`make check`（および `make hooks`）が毎回これを張り直すので、
 push 直前にゲートが自己修復されます。Claude Code の web セッションでも
 [`.claude/hooks/session-start.sh`](../../.claude/hooks/session-start.sh) が自動で設定します。
-本当の緊急時は `git push --no-verify` で回避できますが、その後の CI が PR をゲートします。
+
+**`git push --no-verify` は、緊急時であっても使わないでください。** フックを迂回しても時間の節約には
+なりません。ターミナルの手元で止まるはずだった `make check` の失敗を、共有ブランチに届いた後の CI へ
+先送りするだけだからです。フックが本物の不具合ではなく誤検知で赤くなっているように見えるときは、原因
+そのものを直すか、クリーンな別の worktree で同じチェックを再現してから push してください。たとえば
+`lint-skills` は、`.claude/worktrees/` に残った別セッションの状態が原因で赤くなることがあります。
+
+この規則は、git 内部の仕組みだけでは強制できません。`--no-verify` は、git がフラグを解釈した時点で
+`.githooks/pre-push` を含むすべてのフックを無条件にスキップします。`push` という名前の git エイリアスを
+用意しても、この隙間は埋まりません。git 自身のドキュメントには「既存の Git コマンドを隠すエイリアスは
+無視される」（`git help config`）と明記されています。このリポジトリの `push` に対して実際に試したところ、
+そのとおりでした。エイリアスを設定しても、`git push` と `git push --no-verify` のどちらも、エイリアスを
+無視して組み込みコマンドをそのまま実行します。git がフラグを見る前に残っている唯一の場所は、コマンド名の
+解決そのものであり、これを制御できるのは本物の `git` を置き換えるラッパーだけです。
+
+`make git-guard-install` は、このラッパーを開発者ごとのオプトイン手順として導入します。シェルの設定
+ファイルに追記される `git()` 関数です。`.githooks/no-verify-guard-marker` をトップレベルに持つリポジトリ
+（このリポジトリを含む）の中でだけ、`push` への `--no-verify` を拒否します。それ以外のリポジトリでは
+発動しません。`make setup` や `make hooks` とは別の手順にしているのは、クローンの外にあるシェルの設定
+ファイルを書き換えるからです。この2つのコマンドは、クローン内のファイルしか触りません。導入するかどうかは
+開発者自身の判断に委ねます。これは個人の補助であり、リポジトリ全体を保証する仕組みではありません。この
+ブロックを削除するか、`command git push --no-verify` を直接呼び出せば、素通りします。マージ前に CI が
+`make check` を独立に再実行することが、この規則を実際に成立させている土台であり、このインストーラーは
+その手前の手間を省くだけです。
 
 同じ `core.hooksPath` は、追跡対象の **commit-msg フック**（[`.githooks/commit-msg`](../../.githooks/commit-msg)、BE-0069）も配線します。subject がスコープ付きの conventional subject（`type(scope): …` または `docs: …`）でないコミットをブロックし、機械的な規約をレビューではなくコミット時に捕まえます。意図的に狭く、merge / revert / fixup / squash のコミットは通し、`uv` が PATH に無ければ no-op です。単発の回避は `git commit --no-verify` です。
 
