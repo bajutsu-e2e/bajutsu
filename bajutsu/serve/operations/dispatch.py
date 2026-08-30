@@ -83,13 +83,21 @@ def _bool_flag(body: dict[str, Any], key: str) -> bool | None:
     return value if isinstance(value, bool) else None
 
 
-def _system_alert_handling_flag(body: dict[str, Any]) -> bool | None:
+def _system_alert_handling_flag(
+    body: dict[str, Any],
+) -> tuple[bool | None, tuple[Any, int] | None]:
     """The `systemAlertHandling` request flag.
 
     The `alertHandling` (originally BE-0317) and `dismissAlerts` aliases this once also accepted were
-    deleted with the schema aliases they mirrored (BE-0401).
+    deleted with the schema aliases they mirrored (BE-0401). A request still naming one is rejected
+    loudly, the same as every other layer's removed spellings, rather than silently dropped: `run`'s
+    unset behaviour is per-scenario "on", so dropping a caller's `{removed: false}` would arm the
+    guard on a request that asked to disable it. Returns ``(value, None)`` or ``(None, (error, 400))``.
     """
-    return _bool_flag(body, "systemAlertHandling")
+    for removed in ("alertHandling", "dismissAlerts"):
+        if removed in body:
+            return None, ({"error": f"'{removed}' was removed; use 'systemAlertHandling'"}, 400)
+    return _bool_flag(body, "systemAlertHandling"), None
 
 
 def _request_device_budget(
@@ -186,6 +194,9 @@ def start_run(
     backend, udid, err = _device_args(body)
     if err:
         return err
+    system_alert_handling, alert_err = _system_alert_handling_flag(body)
+    if alert_err:
+        return alert_err
     # When the scenario ships as materials (server backend), the worker has no project on disk, so
     # the config travels too and the run uses workspace-relative paths; locally nothing materializes
     # and the run uses the real config / baselines paths.
@@ -210,7 +221,7 @@ def start_run(
         udid=udid,
         workers=_int(body.get("workers"), 1),
         erase=_bool_flag(body, "erase"),
-        system_alert_handling=_system_alert_handling_flag(body),
+        system_alert_handling=system_alert_handling,
         config=config_arg,
         # An uploaded bundle is self-contained: omit --baselines so its config's `baselines` drives
         # (resolved against the bundle cwd), like the rest of its relative paths (BE-0073).
@@ -440,6 +451,9 @@ def start_record(
     backend, udid, err = _device_args(body)
     if err:
         return err
+    system_alert_handling, alert_err = _system_alert_handling_flag(body)
+    if alert_err:
+        return alert_err
     # On the server backend (authored.save set) the worker has no project on disk: ship the config
     # and use workspace-relative --out / --config; the worker persists the authored file afterward.
     on_worker = authored.save is not None
@@ -455,7 +469,7 @@ def start_record(
         backend=backend,
         udid=udid,
         erase=_bool_flag(body, "erase"),
-        system_alert_handling=_system_alert_handling_flag(body),
+        system_alert_handling=system_alert_handling,
         headed=_bool_flag(body, "headed"),
         config=config_arg,
         upload_exec=state.upload_exec if state.upload is not None else "",
@@ -526,6 +540,9 @@ def start_crawl(
     backend, udid, err = _device_args(body)
     if err:
         return err
+    system_alert_handling, alert_err = _system_alert_handling_flag(body)
+    if alert_err:
+        return alert_err
     cmd = crawl_command(
         target,
         out=str(state.runs_dir / run_id),
@@ -535,7 +552,7 @@ def start_crawl(
         max_screens=_int(body.get("maxScreens"), 50),
         max_steps=_int(body.get("maxSteps"), 200),
         erase=_bool_flag(body, "erase"),
-        system_alert_handling=_system_alert_handling_flag(body),
+        system_alert_handling=system_alert_handling,
         headed=_bool_flag(body, "headed"),
         config=str(cfg),
         resume_src=resume_src if resuming else "",
