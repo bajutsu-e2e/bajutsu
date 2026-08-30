@@ -93,6 +93,7 @@ def test_parse_scroll_defaults() -> None:
     assert s.to.id == "a"
     assert s.direction == "down"  # default reveals below-the-fold content
     assert s.within is None
+    assert s.amount is None  # omitted, the loop keeps its own default step (BE-0400)
     assert s.max_scrolls == 15  # default bound
 
 
@@ -100,17 +101,32 @@ def test_parse_scroll_all_fields() -> None:
     steps = load_scenarios(
         "- name: s\n  steps:\n"
         "    - scroll: { to: { label: Log out }, direction: up, "
-        "within: { id: list }, maxScrolls: 25 }\n"
+        "within: { id: list }, amount: 0.2, maxScrolls: 25 }\n"
     )[0].steps
     s = steps[0].scroll
     assert s is not None
     assert s.direction == "up" and s.within is not None and s.within.id == "list"
+    assert s.amount == 0.2
     assert s.max_scrolls == 25  # camelCase alias maps to the snake_case attribute
 
 
 def test_max_scrolls_must_be_positive() -> None:
     with pytest.raises(ValueError, match=r"greater than 0"):
         Scroll.model_validate({"to": {"id": "a"}, "maxScrolls": 0})
+
+
+@pytest.mark.parametrize("amount", [0.0, -0.5, 1.5])
+def test_scroll_amount_must_be_a_viewport_fraction(amount: float) -> None:
+    # The same range `swipe` and `drag` validate for their own `amount` (BE-0400): a fraction, so it
+    # reads the same on every screen size, and a positive one, so a step always asks for some travel.
+    with pytest.raises(ValueError, match=r"within 0\.\.1"):
+        Scroll.model_validate({"to": {"id": "a"}, "amount": amount})
+
+
+def test_scroll_amount_accepts_a_full_viewport() -> None:
+    # The range deliberately does not stop at the default 0.6: BE-0329's overshoot detection bounds a
+    # large step for every fraction, so a screen that scrolls unusually slowly may ask for a full one.
+    assert Scroll.model_validate({"to": {"id": "a"}, "amount": 1.0}).amount == 1.0
 
 
 def test_direction_literal_is_validated() -> None:
@@ -583,6 +599,76 @@ def test_an_overshoot_that_survives_the_smallest_step_fails_naming_it() -> None:
     driver = _FlingingDriver(rows=400, overshoot=10.0)
     with pytest.raises(base.ElementNotFound, match="overshot the region"):
         _do_action(driver, Step(scroll=Scroll.model_validate({"to": {"id": "missing"}})))
+
+
+# --- the author-chosen step size (BE-0400) ---
+
+
+def test_amount_sets_the_step_the_loop_starts_from() -> None:
+    # The field's whole content: the first gesture travels `amount` of the viewport instead of the
+    # loop's own default. Asserted on the gesture, not on the step count, so the default stays free to
+    # be retuned.
+    default = _scrollable([_row(i) for i in range(20)])
+    _do_action(default, Step(scroll=Scroll.model_validate({"to": {"id": "row.19"}})))
+    chosen = _scrollable([_row(i) for i in range(20)])
+    _do_action(chosen, Step(scroll=Scroll.model_validate({"to": {"id": "row.19"}, "amount": 0.2})))
+
+    def _first_travel(driver: FakeDriver) -> float:
+        (_, from_y), (_, to_y) = _scroll_gestures(driver)[0]
+        return abs(to_y - from_y)
+
+    assert _first_travel(default) == pytest.approx(scroll._STEP_FRACTION * _VIEWPORT[1])
+    assert _first_travel(chosen) == pytest.approx(0.2 * _VIEWPORT[1])
+
+
+def test_a_small_amount_reaches_a_target_the_default_step_overshoots() -> None:
+    # An author who already knows the screen needs a finer step should not have to spend an overshoot
+    # and a look-back to get one. Against the same flinging backend the default step overshoots on
+    # (`test_an_overshooting_step_shrinks_the_step_and_looks_back`), a small `amount` arrives with the
+    # recovery never triggered — every gesture goes the one way, and none is a look-back.
+    driver = _FlingingDriver(rows=40, overshoot=3.0)
+    _do_action(driver, Step(scroll=Scroll.model_validate({"to": {"id": "row.10"}, "amount": 0.1})))
+    gestures = _scroll_gestures(driver)
+    assert gestures, "expected at least one scroll"
+    assert all(to_y < from_y for (_, from_y), (_, to_y) in gestures)
+    frame = base.resolve_unique(driver.query(), {"id": "row.10"})["frame"]
+    assert 0.0 <= base.frame_center(frame)[1] <= _VIEWPORT[1]
+
+
+def test_an_overshooting_amount_above_the_floor_halves_from_where_amount_put_it() -> None:
+    # The recovery shrinks the step the author chose, not the default one: an `amount` that overshoots
+    # halves to half of *itself*. Asserted on the two gestures' travel rather than on the step count,
+    # so the case pins the arithmetic and not `_STEP_FRACTION`.
+    overshoot = 4.0  # enough that 0.3 of the viewport still carries everything in view off it
+    driver = _FlingingDriver(rows=40, overshoot=overshoot)
+    _do_action(driver, Step(scroll=Scroll.model_validate({"to": {"id": "row.10"}, "amount": 0.3})))
+    gestures = _scroll_gestures(driver)
+    assert len(gestures) == 2
+    (_, first_from_y), (_, first_to_y) = gestures[0]
+    (_, back_from_y), (_, back_to_y) = gestures[1]
+    # The fake logs the flung endpoints, not the requested ones, so each travel carries the constant
+    # overshoot factor — which is why the asserted distances divide it back out.
+    assert abs(first_to_y - first_from_y) == pytest.approx(overshoot * 0.3 * _VIEWPORT[1])
+    assert back_to_y > back_from_y  # the look-back went the other way
+    assert abs(back_to_y - back_from_y) == pytest.approx(overshoot * 0.15 * _VIEWPORT[1])
+
+
+@pytest.mark.parametrize("amount", [0.05, scroll._MIN_STEP_FRACTION])
+def test_an_amount_at_or_below_the_floor_fails_on_its_first_overshoot_naming_the_step_it_took(
+    amount: float,
+) -> None:
+    # The floor stays fixed regardless of `amount`, so a step already at or below it has nothing to
+    # shrink to: the first detected overshoot fails the call outright rather than halving toward a
+    # floor it has reached. The message must name the step actually taken — the floor would name a
+    # step a call below it never took. Both sides of the floor comparison are covered, since the
+    # boundary case is exactly where a `<` would silently pass the call on to a halving that cannot
+    # shrink it.
+    driver = _FlingingDriver(rows=400, overshoot=30.0)
+    with pytest.raises(base.ElementNotFound, match=rf"even at {amount} of the viewport"):
+        _do_action(
+            driver, Step(scroll=Scroll.model_validate({"to": {"id": "missing"}, "amount": amount}))
+        )
+    assert _scroll_count(driver) == 1  # failed on the first overshoot, with no shrink attempted
 
 
 def test_scrolling_into_an_element_taller_than_the_viewport_is_not_an_overshoot() -> None:

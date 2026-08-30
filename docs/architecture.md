@@ -290,6 +290,16 @@ The contract (`tests/driver_conformance.py`) is the "done" definition a new back
   contract because the `scroll` loop's correctness rests on it: a gesture that flings shares
   nothing, so it fails the suite here rather than carrying a target past the viewport unqueried
   during a run (BE-0329).
+- one `scroll` step travels the distance its endpoints asked for, within a stated tolerance, at the
+  default step size, at the smallest the loop's own recovery will take, and at a step below that
+  floor, which an author's `amount` can request. Overlap alone does not imply that
+  distance: a step can leave the viewports overlapping and still travel far further than it asked
+  for, which the iOS gesture did until BE-0400 — it traversed every drag at one fixed speed, so the
+  content flung on past the endpoints by up to six times the requested distance and no step travelled
+  less than about a third of a screen however little it asked for. That floor is why the property
+  belongs to the `Driver` contract rather than to one backend's tests: below it, the `scroll` action's
+  author-chosen `amount` and BE-0329's halving recovery both name step sizes no gesture could
+  deliver.
 
 To add a backend to the suite, implement a `ConformanceHarness` (given a screen, return a driver
 showing it) and subclass `DriverConformanceContract`; pytest then runs the inherited contract

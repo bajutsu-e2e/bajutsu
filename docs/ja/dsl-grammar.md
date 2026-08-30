@@ -218,9 +218,10 @@ Swipe ::=
   | { from: <Point>,  to: <Point> }                                                # 座標形      ┘
     # amount（セレクタ形のみ）: 画面に対する移動量の割合。0 < amount ≤ 1。省略時は小さめの既定割合（0.125）
 Drag ::= { on: <Selector>, direction: ("up"|"down"|"left"|"right"), amount?: number }   # 要素アンカーのポインタドラッグ（BE-0227）。amount は Swipe と同じ
-Scroll ::= { to: <Selector>, direction?: ("up"|"down"|"left"|"right"), within?: <Selector>, maxScrolls?: integer }
+Scroll ::= { to: <Selector>, direction?: ("up"|"down"|"left"|"right"), within?: <Selector>, amount?: number, maxScrolls?: integer }
     # `to` のフレーム中心が画面に入るまでスクロールし、入らなければ失敗する（BE-0326）。direction はスクロール方向（既定 "down"）で、Swipe の指方向とは逆。
     # within: ジェスチャを行うスクロール可能なコンテナ（既定は画面全体）。maxScrolls: 失敗までのステップ上限（既定 15、> 0）。
+    # amount: 1 ステップの移動量（ビューポートに対する割合、0 < amount ≤ 1。省略時 0.6）。ループの出発点を決めるもので、リカバリの下限は動かさない（BE-0400）。
 Point ::= [ number, number ]
 
 Generate ::=

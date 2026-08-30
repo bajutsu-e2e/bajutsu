@@ -389,8 +389,9 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         return _emit_drag_direction(loc, step.drag.direction)
     if step.scroll is not None:
         # A Playwright locator auto-scrolls its target into view before acting, so `scroll` maps to
-        # `scrollIntoViewIfNeeded` on the target — `direction` / `within` / `maxScrolls` are
-        # subsumed by the browser's own scroll into view (BE-0326).
+        # `scrollIntoViewIfNeeded` on the target — `direction` / `within` / `maxScrolls` / `amount`
+        # are subsumed by the browser's own scroll into view, which does its own stepping (BE-0326,
+        # BE-0400).
         return _act(step.scroll.to.as_selector(), "scrollIntoViewIfNeeded()")
     if step.wait is not None:
         return _emit_wait(step.wait)

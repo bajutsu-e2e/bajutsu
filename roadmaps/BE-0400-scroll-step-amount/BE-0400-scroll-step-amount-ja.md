@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0400](BE-0400-scroll-step-amount-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0400") |
 | トピック | Scenario authoring features |
 | 関連 | [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element-ja.md), [BE-0329](../BE-0329-scroll-observed-motion-decisions/BE-0329-scroll-observed-motion-decisions-ja.md) |
@@ -322,14 +322,14 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`、互いに排他的かつ�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] Unit 1 — 行き過ぎの機構を確定する
-- [ ] Unit 2 — `Driver.scroll` の内側で、外れているすべてのバックエンドの移動量を補正する
-- [ ] Unit 3 — `Scroll` シナリオスキーマへの `amount` フィールド追加
-- [ ] Unit 4 — ハンドラの配線と、通り過ぎメッセージが名指しするステップの修正
-- [ ] Unit 5 — 実際の移動量を要求と突き合わせる conformance の検査
-- [ ] Unit 6 — 静止テストの取り込みと、その CI 組み込みの判断
-- [ ] Unit 7 — `FakeDriver` とスキーマのテスト
-- [ ] Unit 8 — ドキュメント（`docs/scenarios.md`、`docs/architecture.md`、両言語）
+- [x] Unit 1 — 行き過ぎの機構を確定する
+- [x] Unit 2 — `Driver.scroll` の内側で、外れているすべてのバックエンドの移動量を補正する
+- [x] Unit 3 — `Scroll` シナリオスキーマへの `amount` フィールド追加
+- [x] Unit 4 — ハンドラの配線と、通り過ぎメッセージが名指しするステップの修正
+- [x] Unit 5 — 実際の移動量を要求と突き合わせる conformance の検査
+- [x] Unit 6 — 静止テストの取り込みと、その CI 組み込みの判断
+- [x] Unit 7 — `FakeDriver` とスキーマのテスト
+- [x] Unit 8 — ドキュメント（`docs/scenarios.md`、`docs/architecture.md`、両言語）
 
 ### ログ
 
@@ -343,6 +343,42 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`、互いに排他的かつ�
   返る 190 ミリ秒以上「前」に静止しており、無ジェスチャの対照実験では差分ピクセルがゼロでした。
   呼び出しのあとも変化し続けるのは画面右端のスクロールインジケータで、約 900 ミリ秒後に消えます。
   単位 6 の on-device テストはこの作業から生まれました。
+- 同じ端末と同じ画面で、ジェスチャの 3 つのパラメータを独立に振り、機構を確定しました（単位 1）。
+  原因は走査速度がすべてです。ほかの 2 つは原因ではありません。指を離す前のホールドは 0.0 秒でも
+  0.3 秒でも 1.0 秒でも結果を変えず、最初の押下も 0.1 秒と 0.5 秒で変わりませんでした。押下を 0.0 秒
+  まで落とすと結果は変わりますが、悪い方向へ変わります。後述する一定の不足が 10.0 ポイントより広がり、
+  11.4 ポイントから 13.8 ポイントの範囲になりました。補正後のジェスチャが従来どおり 0.1 秒を
+  保つのは、そのためです。実際の
+  移動量は速度に対して単調に増えます。`XCUIGestureVelocity` の 500 は現在の `.default` を再現し、
+  1000 では 0.125 の要求に対して 5.4 倍、2000 では 10.4 倍に達します。速度を下げると消えます。
+  200 と 100 では、17 ポイントから 525 ポイントまでのどのステップも、要求よりちょうど 10.0 ポイント
+  少ない値を標準偏差 0.0 で返しました。*動機* が立てた走査速度固定の仮説は確認されました。0.3 秒の
+  ホールドは行き過ぎの原因でないだけでなく、そもそも何も効いていません。`scroll` と `swipe` が
+  一致したのは、そのためです。
+- 最初に破れる速度は、長いドラッグではなく短いドラッグの速度だとわかりました（単位 1）。400 では
+  0.6 のステップが正確な一方、0.05 のステップは要求の 5 倍飛びました。300 では 0.05 のステップが
+  正確な一方、17 ポイントのドラッグが 9 倍飛び、26 ポイントのドラッグは繰り返しによって飛んだり
+  飛ばなかったりしました。小さいステップこそ `amount` と半減のリカバリが求めるものなので、補正後の
+  ジェスチャは、通常サイズのステップが耐える最大の速度のすぐ下ではなく、200 に置きました。
+- ジェスチャを補正しました（単位 2）。iOS の runner は、スクロールのドラッグを毎秒 200 ポイントで
+  走査し、ホールドを取りません。0.125 のステップは 109.2 ポイントの要求に対して 99.3 ポイント進み
+  ます。補正前は 279 ポイントでした。0.05 のステップは 43.7 ポイントに対して 33.7 ポイント進みます。
+  補正前は 269 ポイントでした。約 269 ポイントの下限は消え、要求を半分にすれば進む距離も半分に
+  なります。残る 10.0 ポイントの不足はパンジェスチャの slop です。1 つの端末で測った定数を
+  ジェスチャへ埋め込む代わりに、ドライバ conformance スイートの許容差が名指す形にして、補正せず
+  残しました。
+- 新しい実移動量の conformance ケースを、このホストで動かせるバックエンドに対して実行しました
+  （単位 2）。`FakeDriver` と Playwright のどちらに対しても、変更なしで通ります。adb バックエンドは
+  ここでは実行していません。このホストにエミュレータがないためです。adb は `conformance (adb)` の
+  ジョブが同じケースを継承して受け持ちます。adb のパンは、iOS がいま走査を遅くしたのと同じ理由で、
+  すでに 600 ミリ秒の固定時間で動いており、通ると見込まれます。手元のハードウェアで契約が捕まえた
+  のは iOS だけでした。
+- 単位 6 の組み込みの判断を決めました。静止テストは専用のファイルではなく
+  `tests/test_driver_conformance_ondevice.py` に置きます。こうすると `conformance (xcuitest)` の
+  ジョブは、必須チェックへの組み込み変更も、従量課金のランナーでの 2 回目のコールドリースも払わずに
+  実行できます。`DriverConformanceContract` の外に置いたのは、Android が同じ保証を別の機構
+  （BE-0332 のマーク付き読み取り）で得ているからです。共有の契約として述べると、あるバックエンドの
+  時間的性質を別のバックエンドに主張することになります。
 
 ## 参考
 
@@ -351,7 +387,8 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`、互いに排他的かつ�
 - [`bajutsu/scenario/models/actions.py`](../../bajutsu/scenario/models/actions.py) — `Swipe` と
   `Drag` が持つ既存の `amount` フィールド、および本項目が拡張する `Scroll` モデル
 - [`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift) —
-  iOS のスクロールジェスチャと、その `withVelocity: .default` および固定の静止ホールド
+  iOS のスクロールジェスチャと、それを非慣性に保つ固定の走査速度（本項目が `withVelocity: .default`
+  と静止ホールドを置き換えたもの）
 - [`tests/driver_conformance.py`](../../tests/driver_conformance.py) — 実際の移動量の検査が加わる、
   共通のスクロールのケース
 - [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element-ja.md) — `scroll` アクション、

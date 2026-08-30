@@ -220,9 +220,10 @@ Swipe ::=
   | { from: <Point>,  to: <Point> }                                                # coordinate form ┘
     # amount (selector form only): travel as a fraction of the screen, 0 < amount ≤ 1; omitted = a small default fraction (0.125)
 Drag ::= { on: <Selector>, direction: ("up"|"down"|"left"|"right"), amount?: number }   # element-anchored pointer drag (BE-0227), amount as in Swipe
-Scroll ::= { to: <Selector>, direction?: ("up"|"down"|"left"|"right"), within?: <Selector>, maxScrolls?: integer }
+Scroll ::= { to: <Selector>, direction?: ("up"|"down"|"left"|"right"), within?: <Selector>, amount?: number, maxScrolls?: integer }
     # scroll until `to`'s frame center is on-screen, else fail (BE-0326). direction = scroll direction (default "down"), the inverse of Swipe's finger direction.
     # within: the scrollable container to gesture inside (default: the whole screen). maxScrolls: step bound before failing (default 15, > 0).
+    # amount: one step's travel as a fraction of the viewport, 0 < amount ≤ 1; omitted = 0.6. Sets where the loop starts, not its recovery floor (BE-0400).
 Point ::= [ number, number ]
 
 Generate ::=
