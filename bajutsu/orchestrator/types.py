@@ -362,15 +362,63 @@ class AlertGuardConfig:
             return "absent", None
         return "dismissed", AlertEvent(label=label)
 
+    def dismiss_from_tree_once(self, driver: base.Driver) -> AlertEvent | None:
+        """Tap a scenario-named dismiss button visible in the driver's own tree, once.
+
+        The one-shot twin of `_AlertGuardGate._dismiss_from_tree` (waits.py), for the end-of-step and
+        `expect` retry. It exists for the same prompt that motivated the mid-wait one: iOS raises its
+        "Save Password" alert *inside the app's process*, so `springboard.alerts` never sees it and
+        only a tap in the tree can clear it — and measured, such an alert can arrive after a
+        scenario's last wait has already returned, where only this path is left to meet it.
+
+        One-shot, so it carries none of the mid-wait version's per-showing bookkeeping (retap delay,
+        tap ceiling, decline bound): the caller runs it once per failed step, not per poll, so there
+        is no stream to pace. It matches the same narrow surface — an identifier-less labelled button
+        whose label the scenario's own `instruction` named, resolving uniquely — so it stays off the
+        default dismissive vocabulary a real screen can legitimately show.
+
+        Returns the `AlertEvent` for the button it tapped, or None when nothing matched, the match was
+        ambiguous, or the tap lost a race with the prompt closing itself.
+        """
+        if not self.labels:
+            return None
+        elements = driver.query()
+        buttons = [
+            el["label"]
+            for el in elements
+            if el["label"] and not el["identifier"] and base.Trait.BUTTON in el["traits"]
+        ]
+        label = pick_alert_label(self.labels, buttons)
+        if label is None:
+            return None
+        # The same uniqueness pre-check the mid-wait path applies: a bare `{"label": label}` selector
+        # ignores traits, so an identified app button of the same name would make the tap ambiguous.
+        if (
+            sum(1 for el in elements if el["label"] == label and base.Trait.BUTTON in el["traits"])
+            != 1
+        ):
+            return None
+        try:
+            driver.tap({"label": label, "traits": [base.Trait.BUTTON]})
+        except (base.ElementNotFound, base.AmbiguousSelector, base.ElementNotTappable):
+            # The prompt closed itself, or another button of that name appeared, or it is not yet
+            # reachable. All three are benign here: this is one opportunistic attempt on a step that
+            # has already failed, and the step's own outcome still decides the verdict.
+            return None
+        return AlertEvent(label=label)
+
     def __call__(self, driver: base.Driver) -> AlertEvent | None:
-        # The end-of-step / expect retry: a one-shot dismiss. Here "absent" falls straight through
-        # to vision (a sheet the native query cannot enumerate may still be up). The mid-wait gate
-        # routes "absent" differently — through the debounced, bounded collapsed-tree proxy in
-        # `_AlertGuardGate._observe_native` (waits.py) rather than calling vision unconditionally —
-        # so that half of the policy lives there, not here.
+        # The end-of-step / expect retry: a one-shot dismiss.
         state, event = self.probe_native(driver)
         if state == "dismissed":
             return event
+        if state == "absent":
+            # No *SpringBoard* alert, which is both the licence to tap an app element (XCUITest
+            # answers an interrupting out-of-process alert before synthesizing any interaction) and
+            # the case where an app-owned prompt is the remaining explanation for the failed step.
+            tree_event = self.dismiss_from_tree_once(driver)
+            if tree_event is not None:
+                return tree_event
         # incapable / absent / unhandled: let the vision guard try — it may see a surface the native
         # `springboard.alerts` query cannot enumerate (e.g. an action sheet), and no-ops without a
         # credential. It stays off the pass/fail verdict either way (prime directive 1).

@@ -1104,3 +1104,79 @@ def test_the_interruption_policy_is_skipped_on_a_backend_without_the_opt_in() ->
     driver = cast("base.Driver", _NoOptIn())
     push_interruption_policy(driver, AlertGuardConfig(vision=_never_vision))
     assert drain_interruptions(driver) == []
+
+
+# --- the end-of-step / expect guard's own in-tree dismissal --------------------------------------
+
+
+def test_the_end_of_step_guard_clears_an_app_owned_prompt_from_the_tree() -> None:
+    # Measured on iOS 26.3/26.4/26.5: the save-password alert can arrive *after* a scenario's last
+    # wait has returned, so the only guard left to meet it is the end-of-step / expect one. Its
+    # native probe reads `springboard.alerts` and sees nothing there, and the vision fallback no-ops
+    # without a credential — so without this the prompt covered the screen and `expect` read a
+    # covered tree.
+    prompt_button = _button("Not Now")
+    driver = FakeDriver([_button("Sign In"), prompt_button])
+    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"])
+    assert guard(driver) == AlertEvent(label="Not Now")
+    assert driver.actions and driver.actions[-1][0] == "tap"
+
+
+def test_the_end_of_step_guard_leaves_the_tree_alone_while_a_springboard_alert_is_up() -> None:
+    # The same licence the mid-wait gate needs: XCUITest answers an interrupting out-of-process alert
+    # before it synthesizes any element interaction, so an app tap issued while one is up is not this
+    # guard's to make. The native path answers that alert first; the tree is next time's business.
+    driver = _fake_with_alert(["Don't Allow", "Allow"])
+    driver.screen = [_button("Not Now")]
+    guard = AlertGuardConfig(vision=_never_vision, labels=["Don't Allow", "Not Now"])
+    assert guard(driver) == AlertEvent(label="Don't Allow")  # the SpringBoard alert, natively
+    assert not any(action[0] == "tap" for action in driver.actions)
+
+
+def test_the_end_of_step_guard_declines_an_ambiguous_in_tree_label() -> None:
+    # Determinism first, exactly as the mid-wait path: two buttons carrying the configured label is
+    # not a prompt this guard may guess at. It falls through to vision instead of tapping one.
+    seen: list[str] = []
+
+    def _vision(_driver: base.Driver) -> AlertEvent | None:
+        seen.append("vision")
+        return None
+
+    driver = FakeDriver([_button("Not Now"), _button("Not Now")])
+    guard = AlertGuardConfig(vision=_vision, labels=["Not Now"])
+    assert guard(driver) is None
+    assert seen == ["vision"]
+    assert not any(action[0] == "tap" for action in driver.actions)
+
+
+def test_the_end_of_step_guard_stays_off_the_tree_without_scenario_labels() -> None:
+    # The in-tree surface is armed only by the scenario's own `instruction`, never by the built-in
+    # dismissive defaults — "Cancel" / "Close" are ordinary UI vocabulary a real screen can show.
+    driver = FakeDriver([_button("Cancel")])
+    guard = AlertGuardConfig(vision=lambda _d: None)
+    assert guard(driver) is None
+    assert not any(action[0] == "tap" for action in driver.actions)
+
+
+def test_the_end_of_step_guard_declines_when_an_identified_button_shares_the_label() -> None:
+    # `pick_alert_label` resolves over the identifier-less subset, so a same-named *identified* app
+    # button does not stop it — but the tap sees the whole tree and would be ambiguous. The
+    # whole-tree uniqueness pre-check is what catches that, exactly as the mid-wait path's does.
+    app_button = _button("Not Now")
+    app_button["identifier"] = "screen.home.button.not-now"
+    driver = FakeDriver([_button("Not Now"), app_button])
+    guard = AlertGuardConfig(vision=lambda _d: None, labels=["Not Now"])
+    assert guard(driver) is None
+    assert not any(action[0] == "tap" for action in driver.actions)
+
+
+def test_the_end_of_step_guard_reports_nothing_when_the_prompt_closes_itself() -> None:
+    # The button left the tree between this guard's own read and its tap. Benign: the prompt is gone,
+    # which is what the caller wanted, and the step's own outcome still decides the verdict.
+    class _VanishingPrompt(FakeDriver):
+        def tap(self, sel: base.Selector) -> None:
+            raise base.ElementNotFound("the prompt closed itself")
+
+    driver = _VanishingPrompt([_button("Not Now")])
+    guard = AlertGuardConfig(vision=lambda _d: None, labels=["Not Now"])
+    assert guard(driver) is None
