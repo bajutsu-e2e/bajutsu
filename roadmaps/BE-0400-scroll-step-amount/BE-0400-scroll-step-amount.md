@@ -380,6 +380,16 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
   iOS held the speed fixed and let a fast traversal fling. adb now holds its *speed* fixed instead,
   at 550 device pixels per second with a 600 ms floor — the iOS runner's 200 points per second
   carried across at the two screens' physical scale — so every step size stays honest on both.
+- The corrected adb pan then failed the case a second way, and the cause was in the check rather
+  than the gesture: a 0.125 step asked for 300 device pixels and travelled 213. The allowance's fixed
+  part was an absolute distance in the driver's own units, which differ per backend — points on iOS,
+  raw pixels on Android. The pan slop it covers is 10.0 points against a 874-point viewport on iOS
+  and about 87 pixels against a 2400-pixel one on Android, so no single absolute number fits both.
+  Stating it as a fraction of the viewport fits both for the reason `amount` is a fraction, and still
+  rejects the defect by a wide margin, since the uncorrected iOS gesture missed a 44-point request by
+  225 points. Every step size is now measured before any is judged, so a failing run reports all
+  three rather than stopping at the first — a run on a device the reader does not have would
+  otherwise take one cycle per step size to show the error's shape.
 - Settled unit 6's wiring question by placing the settle test in
   `tests/test_driver_conformance_ondevice.py` rather than a file of its own: the
   `conformance (xcuitest)` job then runs it with no wiring change to a required check and no second
