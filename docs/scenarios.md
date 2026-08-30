@@ -144,6 +144,24 @@ It is **on by default** and fires **only when a step (or `expect`) is blocked, o
     - wait: { for: { id: sys.notif.authorized }, timeout: 4 }   # the guard taps Allow, then this passes
 ```
 
+Naming your own `instruction` labels also arms a second, in-tree path on iOS, for a prompt that is
+**not** a SpringBoard alert at all. iOS raises its "Save Password" alert in the *app's own* process:
+its buttons reach the element tree with a label and no identifier, and the SpringBoard query never
+sees it, so only a tap in the tree can clear it. That tap is paced by the same `pollInterval` and
+issued only on a poll whose own SpringBoard query just came back empty — because XCUITest resolves
+whatever out-of-process alert is interrupting *before* it synthesizes an element interaction, and the
+app's tree cannot see that alert. So when both prompts are up, the SpringBoard alert is answered
+first, and the app-attached alert is cleared from the tree afterwards.
+
+Which button an interrupting alert receives is your policy's decision too. XCUITest resolves such an
+alert before the interaction it interrupts, and left alone answers it with the alert's own *default*
+button — granting a permission your `rules` may have refused, with nothing in the run's report. The
+runner therefore installs an interruption monitor that presses the button your `rules` and
+`instruction` name, by the same discipline the native path applies, and the dismissal is reported as
+an ordinary alert event. A prompt your policy names no button on is left to XCUITest, which is what
+happened before this existed.
+(real file: [`demos/showcase/scenarios/save_password_browser.yaml`](../demos/showcase/scenarios/save_password_browser.yaml))
+
 The `instruction` is a list of candidate labels the native path resolves deterministically (it taps
 the first label present on the alert, and only when exactly one button carries it); a bare string is
 the legacy free-text form the vision guard interprets. The CLI `--system-alert-handling` /

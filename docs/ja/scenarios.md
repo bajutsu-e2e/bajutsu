@@ -134,6 +134,13 @@ iOS バックエンドは **SpringBoard レベルのプロンプト**（通知�
     - wait: { for: { id: sys.notif.authorized }, timeout: 4 }   # the guard taps Allow, then this passes
 ```
 
+自分で `instruction` のラベルを挙げると、iOS ではもう 1 つ、ツリー内の経路も有効になります。相手は SpringBoard のアラートではありません。iOS は「パスワードを保存」アラートを**アプリ自身の**プロセスに出すので、そのボタンはラベルを持ち識別子を持たない形で要素ツリーに現れ、SpringBoard の照会には決して映りません。つまりツリー内のタップだけが、これを片付けられます。
+
+そのタップは同じ `pollInterval` で間隔を空け、しかも直前の SpringBoard 照会が空だったポーリングでのみ撃ちます。XCUITest は要素への操作を合成する前に、割り込んでいるプロセス外のアラートを解決してしまい、アプリのツリーからはそのアラートが見えないからです。したがって 2 つのプロンプトが同時に出ているときは、まず SpringBoard のアラートに答え、そのあとでアプリ側のアラートをツリーから片付けます。
+
+割り込んできたアラートがどのボタンを受け取るかも、利用者の方針が決めます。XCUITest は割り込まれた操作より先にそのアラートを解決し、放っておけばアラート自身の**デフォルト**ボタンで答えます。`rules` が拒否したはずの権限を許可し、しかも実行結果には何も残りません。そこで runner は、`rules` と `instruction` が名指ししたボタンを押す割り込み監視を入れます。判定の作法はネイティブ経路と同じで、押した結果は通常のアラートイベントとして報告されます。方針がどのボタンも名指ししないプロンプトは XCUITest に委ねます。これは、この仕組みが無かったときの挙動そのものです。
+（[`demos/showcase/scenarios/save_password_browser.yaml`](../../demos/showcase/scenarios/save_password_browser.yaml) 実物）
+
 `instruction` は、ネイティブ経路が決定論的に解決する候補 label のリストです（アラートに存在する最初の label を、それを持つボタンがちょうど 1 つのときにだけ押します）。素の文字列は、vision guard が解釈する従来の自由文字列の形です。CLI の `--system-alert-handling` / `--no-system-alert-handling` フラグは**全シナリオを上書き**します（無指定ならシナリオごとの既定が使われます）。`--alert-instruction` は既定のボタン指示を設定するもので、シナリオ自身の `instruction` が優先されます。（[`demos/showcase/scenarios/permission.yaml`](../../demos/showcase/scenarios/permission.yaml) 実物）
 
 ### 複数のプロンプトに違う答えを返す: `rules`

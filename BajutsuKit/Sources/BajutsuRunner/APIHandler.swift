@@ -54,6 +54,36 @@ final class APIHandler: APIProtocol {
         self.provider = provider
     }
 
+    // MARK: - Interruption policy
+
+    /// Stores which button the interruption monitor presses. Deliberately off `operations`: it
+    /// touches no XCUITest state, only the shared store the monitor reads, and it must stay
+    /// answerable while a long interaction is in flight — that interaction is exactly the one an
+    /// alert may be interrupting.
+    func setInterruptionPolicy(
+        _ input: Operations.setInterruptionPolicy.Input
+    ) async throws -> Operations.setInterruptionPolicy.Output {
+        guard case let .json(body) = input.body else {
+            return .badRequest(
+                .init(body: .json(.init(status: .error, message: "expected a JSON body")))
+            )
+        }
+        InterruptionPolicyStore.shared.setPolicy(
+            InterruptionPolicy(
+                rules: body.rules.map { InterruptionRule(identify: $0.identify, tap: $0.tap) },
+                candidates: body.candidates
+            )
+        )
+        return .ok(.init(body: .json(.init(status: .ready))))
+    }
+
+    /// Hands back the labels the monitor tapped since the last drain, so the driver can report them.
+    func drainInterruptions(
+        _ input: Operations.drainInterruptions.Input
+    ) async throws -> Operations.drainInterruptions.Output {
+        .ok(.init(body: .json(.init(labels: InterruptionPolicyStore.shared.drain()))))
+    }
+
     // MARK: - Reads
 
     func health(_ input: Operations.health.Input) async throws -> Operations.health.Output {

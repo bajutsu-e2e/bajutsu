@@ -1491,6 +1491,59 @@ def test_system_alert_labels_returns_empty_when_no_alert_is_up() -> None:
     assert _driver(lambda m, p, b: _elements()).system_alert_labels() == []
 
 
+# --- the interruption policy: which button the runner presses on an interrupting alert -----------
+
+
+def test_set_interruption_policy_sends_the_rules_and_candidates() -> None:
+    # The runner's monitor answers an alert that interrupts one of its own interactions. The labels
+    # are resolved here, not there, so this is the whole of what the runner is told. A rule's
+    # identifying labels go out sorted: the set is order-free, and a stable body keeps a replayed
+    # request comparable.
+    sent: list[tuple[str, str, Any]] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        sent.append((method, path, body))
+        return _Reply(status="ok")
+
+    _driver(transport).set_interruption_policy(
+        [(frozenset({"Allow", "Don't Allow"}), "Don't Allow")], ["Not Now", "Cancel"]
+    )
+    assert sent == [
+        (
+            "POST",
+            "/interruptionPolicy",
+            {
+                "rules": [{"identify": ["Allow", "Don't Allow"], "tap": "Don't Allow"}],
+                "candidates": ["Not Now", "Cancel"],
+            },
+        )
+    ]
+
+
+def test_drain_interruptions_reads_the_labels_the_monitor_tapped() -> None:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        assert (method, path) == ("POST", "/interruptionPolicy/drain")
+        return _Reply(status="ok", raw=json.dumps({"labels": ["Don't Allow"]}).encode())
+
+    assert _driver(transport).drain_interruptions() == ["Don't Allow"]
+
+
+def test_drain_interruptions_is_empty_when_the_runner_answered_nothing() -> None:
+    # The common case by far — nothing interrupted this step — so it must cost the caller no special
+    # handling and never fabricate an event.
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        return _Reply(status="ok", raw=json.dumps({"labels": []}).encode())
+
+    assert _driver(transport).drain_interruptions() == []
+
+
+def test_drain_interruptions_is_empty_when_the_reply_carried_no_body() -> None:
+    # A body-less reply is what a caught proxy-in-flux request decodes to. Reporting no dismissals is
+    # the safe reading: inventing one would put an `AlertEvent` in the report for a prompt nobody
+    # answered, and the next drain picks up anything that was really tapped.
+    assert _driver(lambda m, p, b: _Reply(status="ok")).drain_interruptions() == []
+
+
 # --- dismiss_blocking_tip: the TipKit guard's driver half ---
 # The TipKit-internal identifier lives only in this driver, so these tests are what pin it: the
 # orchestrator's guards see a boolean and never name a node.

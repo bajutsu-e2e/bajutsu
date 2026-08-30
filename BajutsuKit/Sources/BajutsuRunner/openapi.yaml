@@ -309,6 +309,54 @@ paths:
                 $ref: "#/components/schemas/ActuationReply"
         "400":
           $ref: "#/components/responses/BadRequest"
+  /interruptionPolicy:
+    post:
+      operationId: setInterruptionPolicy
+      summary: Set which button to press on an alert that interrupts an interaction.
+      description: >-
+        XCUITest resolves an interrupting out-of-process alert before it synthesizes any element
+        interaction, and with no monitor registered it falls back to its own default handler, which
+        taps the alert's *default* button — granting a permission the scenario may have refused, and
+        reporting nothing. This hands the runner's monitor the labels to press instead. Every label
+        is resolved on the driver side from the scenario's `systemAlertHandling`; the runner only
+        applies them, by the same rule the driver would (a rule whose identifying labels are each on
+        the alert exactly once, else the first candidate present exactly once). An empty policy makes
+        the monitor decline, which restores XCUITest's own handling.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InterruptionPolicyRequest"
+      responses:
+        "200":
+          description: The policy was stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthReply"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /interruptionPolicy/drain:
+    post:
+      operationId: drainInterruptions
+      summary: Take the labels the interruption monitor has tapped since the last drain.
+      description: >-
+        The driver folds these into the run's `AlertEvent`s, so a prompt answered at interruption
+        time is not silently missing from the report.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmptyRequest"
+      responses:
+        "200":
+          description: The labels tapped since the last drain, oldest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InterruptionsReply"
 components:
   responses:
     BadRequest:
@@ -402,6 +450,44 @@ components:
           enum: [error]
         message:
           type: string
+    InterruptionPolicyRequest:
+      type: object
+      required: [rules, candidates]
+      properties:
+        rules:
+          type: array
+          description: >-
+            Ordered; the first rule whose `identify` labels are each on the alert exactly once wins.
+          items:
+            $ref: "#/components/schemas/InterruptionRule"
+        candidates:
+          type: array
+          description: >-
+            Ordered fallback labels for an alert no rule identifies; the first present exactly once
+            is tapped.
+          items:
+            type: string
+    InterruptionRule:
+      type: object
+      required: [identify, tap]
+      properties:
+        identify:
+          type: array
+          description: The prompt's full label set — matching needs all of them, not just `tap`.
+          items:
+            type: string
+        tap:
+          type: string
+          description: The label to press once this rule's prompt is identified.
+    InterruptionsReply:
+      type: object
+      required: [labels]
+      properties:
+        labels:
+          type: array
+          description: Labels the monitor tapped since the last drain, oldest first.
+          items:
+            type: string
     EmptyRequest:
       type: object
       description: >-

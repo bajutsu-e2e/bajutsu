@@ -60,6 +60,10 @@ final class Router {
             return tapResultResponse(onMainCatching(self.provider.copySelection))
         case ("POST", "/setPickerValue"):
             return handleSetPickerValue(request)
+        case ("POST", "/interruptionPolicy"):
+            return handleSetInterruptionPolicy(request)
+        case ("POST", "/interruptionPolicy/drain"):
+            return .json(200, ["labels": InterruptionPolicyStore.shared.drain()])
         case ("POST", "/systemAlert/query"):
             return handleSystemAlertQuery()
         case ("POST", "/systemAlert/tap"):
@@ -69,6 +73,26 @@ final class Router {
         default:
             return .error(404, "unknown endpoint")
         }
+    }
+
+    /// Stores which button the interruption monitor presses (see `InterruptionPolicy`). Like
+    /// `/health`, it never takes `actuationLock`: it touches no XCUITest state, and it has to stay
+    /// answerable while the interaction an alert is interrupting is still in flight.
+    private func handleSetInterruptionPolicy(_ request: HTTPRequest) -> HTTPResponse {
+        guard let body = request.body,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            return .error(400, "missing or invalid JSON body")
+        }
+        let rules: [InterruptionRule] = (json["rules"] as? [[String: Any]] ?? []).compactMap {
+            guard let identify = $0["identify"] as? [String], let tap = $0["tap"] as? String else {
+                return nil
+            }
+            return InterruptionRule(identify: identify, tap: tap)
+        }
+        InterruptionPolicyStore.shared.setPolicy(
+            InterruptionPolicy(rules: rules, candidates: json["candidates"] as? [String] ?? [])
+        )
+        return .json(200, ["status": "ready"])
     }
 
     private func handleHealth() -> HTTPResponse {

@@ -377,6 +377,42 @@ class AlertGuardConfig:
         return self.vision(driver)
 
 
+def push_interruption_policy(driver: base.Driver, guard: AlertGuardConfig | None) -> None:
+    """Hand the backend the buttons it may press on an alert that interrupts its own interactions.
+
+    XCUITest resolves such an alert *before* it synthesizes the interaction, and with nothing
+    installed answers with the alert's own default button — granting a permission the scenario may
+    have refused, with nothing in the report. Pushing the guard's already-resolved labels keeps that
+    decision here: the backend applies `rules` then `candidates` by the same discipline
+    `probe_native` does, and answers nothing else.
+
+    An absent guard (`systemAlertHandling: false`) pushes an empty policy rather than skipping the
+    call, so a scenario that switched the guard off does not inherit the previous scenario's policy
+    from the resident runner. A backend that does not implement `InterruptionPolicyTarget` is simply
+    never asked.
+    """
+    if not isinstance(driver, base.InterruptionPolicyTarget):
+        return
+    rules: list[tuple[frozenset[str], str]] = []
+    candidates: list[str] = []
+    if guard is not None:
+        rules = [(rule.identifying_labels, rule.tap_label) for rule in guard.rules]
+        candidates = list(guard.labels or DEFAULT_DISMISSIVE_LABELS)
+    driver.set_interruption_policy(rules, candidates)
+
+
+def drain_interruptions(driver: base.Driver) -> list[AlertEvent]:
+    """The prompts the backend answered at interruption time since the last drain.
+
+    Reported as ordinary `AlertEvent`s so a dismissal that happened inside the backend's own
+    interruption handling is not missing from the run's report — the silence this mechanism exists
+    to end. A backend without the opt-in contributes nothing.
+    """
+    if not isinstance(driver, base.InterruptionPolicyTarget):
+        return []
+    return [AlertEvent(label=label) for label in driver.drain_interruptions()]
+
+
 def drain_actuations(driver: base.Driver) -> Drained:
     """The actuations `driver` has performed since the last drain, or an empty drain if it reports none.
 

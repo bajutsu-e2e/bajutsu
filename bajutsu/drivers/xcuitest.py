@@ -30,7 +30,7 @@ import http.client
 import json
 import logging
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -1142,6 +1142,37 @@ class XcuitestDriver:
         """
         buttons, _ = self._parse_elements(self._transport("POST", "/systemAlert/query", {}))
         return [label for b in buttons if (label := b["label"])]
+
+    def set_interruption_policy(
+        self, rules: Sequence[tuple[frozenset[str], str]], candidates: Sequence[str]
+    ) -> None:
+        """Push the button policy the runner's interruption monitor applies.
+
+        XCUITest resolves an alert that interrupts one of its interactions before synthesizing it,
+        and with no monitor registered answers with the alert's own default button — granting a
+        permission the scenario may have refused, with nothing in the report. The labels pushed here
+        are the ones `AlertGuardConfig` already resolved, so the choice stays on this side; the
+        runner only applies it, by the same rule (`match_alert_rule` then `pick_alert_label`).
+
+        A rule's identifying labels are sent as a sorted list so the request is byte-stable across
+        runs — the set is order-free, and a stable body keeps a replayed request comparable.
+        """
+        self._transport(
+            "POST",
+            "/interruptionPolicy",
+            {
+                "rules": [{"identify": sorted(identify), "tap": tap} for identify, tap in rules],
+                "candidates": list(candidates),
+            },
+        )
+
+    def drain_interruptions(self) -> list[str]:
+        """The labels the runner's interruption monitor tapped since the last drain."""
+        reply = self._transport("POST", "/interruptionPolicy/drain", {})
+        if reply.raw is None:
+            return []
+        labels = json.loads(reply.raw).get("labels")
+        return [str(label) for label in labels] if isinstance(labels, list) else []
 
     def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:
         """Dismiss a showing TipKit tip via its dismiss region; False when no tip is up.
