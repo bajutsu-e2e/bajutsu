@@ -74,7 +74,7 @@ final class APIHandler: APIProtocol {
                 candidates: body.candidates
             )
         )
-        return .ok(.init(body: .json(.init(status: .ready))))
+        return .ok(.init(body: .json(.init(status: .ok))))
     }
 
     /// Hands back the labels the monitor tapped since the last drain, so the driver can report them.

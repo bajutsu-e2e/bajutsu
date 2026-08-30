@@ -355,11 +355,19 @@ class AlertGuardConfig:
             return "unhandled", None
         try:
             driver.handle_system_alert({"label": label}, _NATIVE_TAP_TIMEOUT)
-        except (base.ElementNotFound, base.AmbiguousSelector):
-            # A time-of-check/time-of-use race: the alert changed or vanished between the presence
-            # query and the tap. It is no longer blocking, so treat it as absent rather than failing
-            # the step on a benign, self-resolved race — a genuine channel error still propagates.
+        except base.ElementNotFound:
+            # A time-of-check/time-of-use race: the alert vanished between the presence query and the
+            # tap. It is no longer blocking, so treat it as absent rather than failing the step on a
+            # benign, self-resolved race — a genuine channel error still propagates.
             return "absent", None
+        except base.AmbiguousSelector:
+            # The other half of that race, and *not* the same answer: the alert is still up, now
+            # offering the label twice. Reporting "absent" would say no system alert is showing,
+            # which is the one thing licensing an in-tree tap (`_observe_native`'s `probed_absent`) —
+            # and that tap, made under a live alert, is what XCUITest answers with its own default
+            # button. "unhandled" is what this already is by definition: an alert is up but no
+            # candidate resolves, so it routes to the vision guard and licenses nothing.
+            return "unhandled", None
         return "dismissed", AlertEvent(label=label)
 
     def dismiss_from_tree_once(self, driver: base.Driver) -> AlertEvent | None:

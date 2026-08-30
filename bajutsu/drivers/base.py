@@ -250,9 +250,11 @@ class InterruptionPolicyTarget(Protocol):
 
     def set_interruption_policy(
         self, rules: Sequence[tuple[frozenset[str], str]], candidates: Sequence[str]
-    ) -> None: ...
+    ) -> None:
+        """Hand the backend the buttons it may press on an interrupting alert."""
 
-    def drain_interruptions(self) -> list[str]: ...
+    def drain_interruptions(self) -> list[str]:
+        """The labels the backend answered since the last call, oldest first."""
 
 
 @runtime_checkable

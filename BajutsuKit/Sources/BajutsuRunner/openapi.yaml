@@ -334,7 +334,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthReply"
+                $ref: "#/components/schemas/ActuationReply"
         "400":
           $ref: "#/components/responses/BadRequest"
   /interruptionPolicy/drain:

@@ -101,8 +101,22 @@ _GUARD_COOLDOWN = 1.0
 # and that interval is configurable per scenario, target, and flag (BE-0177). Twice the default
 # `poll_interval` rather than the animation's own horizon, because the give-up is checked *before*
 # the tap: at one interval the very first attempt would exhaust the budget, leaving a transient scrim
-# no retry at all at the default cadence, while a shorter `poll_interval` still gets many.
-_TREE_DISMISS_DECLINE_GIVEUP = 2.0
+# no retry at all. That is also why the horizon is *derived* from the interval rather than fixed. A
+# scenario may tune `pollInterval` upwards (the save-password one sets 5), and a fixed 2s would
+# then put the second pass past the horizon before it ever ran — reinstating the zero-retry case
+# this value exists to avoid. The floor keeps the animation horizon intact at short intervals.
+_TREE_DISMISS_DECLINE_GIVEUP_FLOOR = 2.0
+
+
+def _decline_giveup(poll_interval: float) -> float:
+    """Seconds `_dismiss_from_tree` tolerates `ElementNotTappable` on one showing of a label.
+
+    Twice the cadence the path is paced at, floored at the animation horizon: the bound is
+    checked before the tap, so anything under two intervals spends itself on the first attempt.
+    """
+    return max(_TREE_DISMISS_DECLINE_GIVEUP_FLOOR, 2 * poll_interval)
+
+
 # Min seconds before `_dismiss_from_tree` re-taps a label its own tap left still showing. A tap the
 # runner accepts does not always land — measured on iOS, testmanagerd confirmed `touch down`/`touch
 # up` at the target's centre with `TouchEventsCompleted` while the app never acted on it — and a
@@ -375,7 +389,7 @@ class _AlertGuardGate:
         to have cleared.
 
         A not-yet-reachable button (`ElementNotTappable`) gets a per-showing bound the two decline
-        branches below it do not need, `_TREE_DISMISS_DECLINE_GIVEUP` long: unlike a vanished button
+        branches below it do not need, `_decline_giveup` long: unlike a vanished button
         or a transient ambiguity, an obstruction can be permanent (a scrim that never lifts, an
         `elevation` false positive in `topmost_at_point`), and the button staying in the tree means
         nothing here re-arms `_tree_dismiss_pending` to stop the retries on its own — so a stuck
@@ -449,7 +463,8 @@ class _AlertGuardGate:
             self._tree_not_tappable_since = None
         elif (
             self._tree_not_tappable_since is not None
-            and self.clock.now() - self._tree_not_tappable_since >= _TREE_DISMISS_DECLINE_GIVEUP
+            and self.clock.now() - self._tree_not_tappable_since
+            >= _decline_giveup(self.guard.poll_interval)
         ):
             return None  # gave up on this showing; the wait's own timeout takes over
         # Scope the tap to `traits: [BUTTON]`, the same constraint `buttons` above already applied

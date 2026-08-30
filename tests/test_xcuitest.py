@@ -1757,3 +1757,16 @@ def test_set_picker_value_reports_an_unknown_status_as_a_channel_error() -> None
 
     with pytest.raises(XcuitestChannelError):
         _driver(transport).set_picker_value({"id": "form.school"}, "大学")
+
+
+def test_set_interruption_policy_raises_when_the_runner_did_not_store_it() -> None:
+    # `_decode` turns a non-200 into a `status="error"` reply rather than raising, so a runner build
+    # without this route — a stale `runner-build`, a mixed-version device — would otherwise return
+    # cleanly and leave the store empty. The monitor then declines, XCUITest's default handler taps
+    # the alert's default button, and the permission is granted with no step failure and no
+    # `AlertEvent`: the silent grant this whole mechanism exists to end, reintroduced with no signal.
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        return _Reply(status="error")
+
+    with pytest.raises(XcuitestChannelError, match="interruption policy"):
+        _driver(transport).set_interruption_policy([], ["Not Now"])

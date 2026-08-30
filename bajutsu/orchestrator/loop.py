@@ -697,6 +697,12 @@ def run_scenario(
                 expect_results = _evaluate_expect(
                     driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
                 )
+                # A prompt the backend answered while it was interrupting one of `expect`'s own
+                # queries. Outside the failure branch below: an `expect` that passed *because* the
+                # interruption was answered still has a dismissal to report, and nothing else drains
+                # this phase — the step loop's drain has already run, and the next scenario's
+                # `setPolicy` clears the buffer outright.
+                expect_alerts.extend(drain_interruptions(driver))
                 if not assertions.passed(expect_results) and alert_guard is not None:
                     event = alert_guard(driver)
                     if event is not None:

@@ -665,12 +665,13 @@ def test_dismiss_from_tree_declines_on_not_yet_tappable_then_dismisses() -> None
 def test_dismiss_from_tree_stops_retrying_a_permanently_covered_button() -> None:
     # Unlike the transient scrim above, a genuinely stuck obstruction (a scrim that never lifts, an
     # `elevation` false positive) must not re-issue a real actuation attempt for the rest of the
-    # wait: `_TREE_DISMISS_DECLINE_GIVEUP` bounds how long this label's tap keeps being retried
-    # before the wait falls back to its own timeout, the same shape the vision guard's attempt
-    # ceiling already uses for a persistent false positive. Bounding it in seconds rather than polls
-    # is what keeps the bound meaningful at any `poll_interval`: the in-tree path is paced by that
-    # interval, so a count would mean a different duration for every scenario that tunes it.
-    from bajutsu.orchestrator.waits import _TREE_DISMISS_DECLINE_GIVEUP, _wait
+    # wait: `_decline_giveup` bounds how long this label's tap keeps being retried before the wait
+    # falls back to its own timeout, the same shape the vision guard's attempt ceiling already uses
+    # for a persistent false positive. Bounding it in seconds rather than polls is what keeps the
+    # bound meaningful at any `poll_interval`, and deriving it *from* that interval is what keeps it
+    # meaningful at a long one: the bound is checked before the tap, so a fixed horizon shorter than
+    # two intervals would spend itself on the first attempt and never retry at all.
+    from bajutsu.orchestrator.waits import _decline_giveup, _wait
 
     prompt_button = _button("今はしない")
 
@@ -692,7 +693,7 @@ def test_dismiss_from_tree_stops_retrying_a_permanently_covered_button() -> None
     # Attempted at t=0 and t=1.0 (one `poll_interval` apart), then declined outright at t=2.0 once
     # the give-up horizon is reached — bounded, not one attempt per poll for the whole 3s wait.
     assert driver.tap_calls == 2
-    assert _TREE_DISMISS_DECLINE_GIVEUP == 2.0  # the horizon the count above is derived from
+    assert _decline_giveup(1.0) == 2.0  # the horizon the count above is derived from
 
 
 def test_dismiss_from_tree_declines_on_an_in_app_label_collision() -> None:
@@ -905,13 +906,19 @@ def test_dismiss_from_tree_is_withheld_while_a_springboard_alert_is_up() -> None
     assert driver.tapped == ["Not Now"]  # the in-tree tap fired once, after the alert was gone
 
 
-def test_dismiss_from_tree_is_withheld_on_a_poll_that_did_not_probe() -> None:
+def test_dismiss_from_tree_is_paced_by_the_native_probe_not_by_the_poll() -> None:
     # The native probe is rate-limited to `poll_interval` (a per-`_POLL` SpringBoard query would
     # roughly double the runner's single-main-thread load, BE-0315), so on every other poll the gate
-    # has no current answer about SpringBoard at all. An in-tree tap on those polls would be blind:
-    # at `_POLL = 0.05` against a one-second interval, 19 of every 20 taps would be issued without
-    # knowing whether a prompt was up. A tap that never clears the prompt therefore repeats once per
-    # interval, not once per poll.
+    # has no current answer about SpringBoard at all. Gating the in-tree tap on a probe that ran
+    # *this* poll is what stops those polls tapping blind — and the observable consequence is the
+    # spacing: a tap that never clears the prompt repeats once per `poll_interval`, not once per
+    # `_TREE_RETAP_DELAY`.
+    #
+    # The interval has to exceed that delay for the assertion to mean anything. At the default 1.0
+    # the two coincide and the retap delay alone would produce the same timings, so this drives a
+    # 2.0 interval: ungated, the second tap lands 1.0s after the first.
+    from itertools import pairwise
+
     from bajutsu.orchestrator.waits import _wait
 
     prompt_button = _button("Not Now")
@@ -921,21 +928,22 @@ def test_dismiss_from_tree_is_withheld_on_a_poll_that_did_not_probe() -> None:
 
         def __init__(self) -> None:
             super().__init__([prompt_button])
-            self.tap_calls = 0
+            self.tap_times: list[float] = []
 
         def tap(self, sel: base.Selector) -> None:
-            self.tap_calls += 1
+            self.tap_times.append(clock.now())
             super().tap(sel)  # the screen never changes; the prompt stays in the tree
 
+    clock = _LogicalClock()
     driver = _TapNeverLands()
-    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], poll_interval=1.0)
+    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], poll_interval=2.0)
     ok, _reason, _tree = _wait(
-        driver, _for_wait("ready", 5.0), _LogicalClock(), alert_guard=guard, alerts=[]
+        driver, _for_wait("ready", 10.0), clock, alert_guard=guard, alerts=[]
     )
     assert not ok  # "ready" never appears; the wait times out on its own deadline
-    # `_TREE_DISMISS_MAX_TAPS` still caps the retries of one showing; what this asserts is the floor
-    # the gate puts under them — an ungated path would have issued ~100 taps over these five seconds.
-    assert driver.tap_calls <= 3
+    assert len(driver.tap_times) > 1, driver.tap_times
+    gaps = [b - a for a, b in pairwise(driver.tap_times)]
+    assert all(gap >= 2.0 for gap in gaps), gaps
 
 
 def test_dismiss_from_tree_still_runs_when_no_springboard_alert_is_up() -> None:
@@ -1180,3 +1188,44 @@ def test_the_end_of_step_guard_reports_nothing_when_the_prompt_closes_itself() -
     driver = _VanishingPrompt([_button("Not Now")])
     guard = AlertGuardConfig(vision=lambda _d: None, labels=["Not Now"])
     assert guard(driver) is None
+
+
+def test_the_decline_give_up_follows_a_tuned_poll_interval() -> None:
+    # The bound is checked *before* the tap, so a horizon shorter than two intervals is spent on the
+    # first attempt and the label is never re-tapped. A scenario that raises `pollInterval` — the
+    # save-password one sets 5 — would hit exactly that with a fixed 2s horizon, which is the
+    # zero-retry case the value exists to avoid. Deriving it from the interval keeps the rationale
+    # true at every cadence, and the floor keeps the animation horizon at short ones.
+    from bajutsu.orchestrator.waits import _decline_giveup
+
+    assert _decline_giveup(0.2) == 2.0  # floored at the presentation-animation horizon
+    assert _decline_giveup(1.0) == 2.0  # the default cadence: two intervals is the floor exactly
+    assert _decline_giveup(5.0) == 10.0  # a tuned interval still buys a retry
+
+
+def test_probe_native_reports_an_ambiguous_alert_as_unhandled_not_absent() -> None:
+    # `AmbiguousSelector` from the tap is not the same race as `ElementNotFound`: the alert is still
+    # up, now offering the label twice. Calling that "absent" would tell `_observe_native` no system
+    # alert is showing, which is the one thing licensing an in-tree tap — and a tap made under a live
+    # alert is what XCUITest answers with its own default button.
+    class _AmbiguousOnTap(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.AmbiguousSelector("the alert offers this label twice")
+
+    driver = _AmbiguousOnTap([])
+    driver.system_alert_buttons = [_button("Don't Allow"), _button("Allow")]
+    guard = AlertGuardConfig(vision=_never_vision, labels=["Don't Allow"])
+    assert guard.probe_native(driver) == ("unhandled", None)
+
+
+def test_probe_native_still_reports_a_vanished_alert_as_absent() -> None:
+    # The other half of the same race keeps its answer: the alert really did go away between the
+    # presence query and the tap, so nothing is blocking and the in-tree path may proceed.
+    class _VanishedOnTap(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the alert vanished")
+
+    driver = _VanishedOnTap([])
+    driver.system_alert_buttons = [_button("Don't Allow"), _button("Allow")]
+    guard = AlertGuardConfig(vision=_never_vision, labels=["Don't Allow"])
+    assert guard.probe_native(driver) == ("absent", None)

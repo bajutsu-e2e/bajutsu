@@ -1157,7 +1157,7 @@ class XcuitestDriver:
         A rule's identifying labels are sent as a sorted list so the request is byte-stable across
         runs — the set is order-free, and a stable body keeps a replayed request comparable.
         """
-        self._transport(
+        reply = self._transport(
             "POST",
             "/interruptionPolicy",
             {
@@ -1165,6 +1165,14 @@ class XcuitestDriver:
                 "candidates": list(candidates),
             },
         )
+        if reply.status != _OK:
+            # A runner that did not store the policy answers the next interrupting alert with
+            # XCUITest's own default button, which is the silent grant this method exists to end —
+            # and `_decode` turns a non-200 into a `status="error"` reply rather than raising, so a
+            # runner build without this route (a stale `runner-build`, a mixed-version device) would
+            # otherwise sail through and leave the store empty with no signal at all. Loud, like
+            # every other write here.
+            raise XcuitestChannelError(f"setting the interruption policy failed ({reply.status})")
 
     def drain_interruptions(self) -> list[str]:
         """The labels the runner's interruption monitor tapped since the last drain."""

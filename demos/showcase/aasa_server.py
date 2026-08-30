@@ -43,6 +43,10 @@ def main() -> None:
     handler = functools.partial(_Handler, directory=root)
     httpd = http.server.ThreadingHTTPServer(("0.0.0.0", port), handler)
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    # `PROTOCOL_TLS_SERVER` negotiates down to TLS 1.0 / 1.1, both long deprecated. Nothing sensitive
+    # crosses this socket — it serves one public association file to a Simulator on this machine —
+    # but a server in the repository should not be the one teaching the weaker setting.
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(cert)
     httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
     print(f"serving {root} on https://0.0.0.0:{port}", flush=True)

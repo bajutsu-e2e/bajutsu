@@ -92,7 +92,7 @@ final class Router {
         InterruptionPolicyStore.shared.setPolicy(
             InterruptionPolicy(rules: rules, candidates: json["candidates"] as? [String] ?? [])
         )
-        return .json(200, ["status": "ready"])
+        return .json(200, ["status": "ok"])
     }
 
     private func handleHealth() -> HTTPResponse {
