@@ -647,11 +647,9 @@ def run_scenario(
     scenario_start = clock.now()
     scenario_wall_start = wall_clock()
     wall_offset_s = scenario_wall_start - scenario_start
+    # The offset this interval's recording implies is resolved once it is finalized, in the `finally`
+    # below — the exact answer is the finished file's own duration, which does not exist yet here.
     video_interval = next((r for r in recordings if r.kind == "video"), None)
-    # Resolved for real once the recording is finalized (in the `finally` below), since the exact
-    # answer is the finished file's own duration; this keeps the variable bound for a scenario that
-    # leaves through an exception path before then.
-    video_start_offset = 0.0
     # Mutable bindings: extract steps populate vars.* during the run; scenario-level
     # expect sees the accumulated values.
     live_bindings: dict[str, str] = dict(bindings or {})
