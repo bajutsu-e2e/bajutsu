@@ -395,15 +395,16 @@ not a backend actuator.
 
 ## Artifact provenance (provider)
 
-Every piece of evidence is recorded as an `Artifact(name, kind, provider)`, leaving in the manifest
-**which provider it came from**.
+Every piece of evidence is recorded as an `Artifact(name, kind, provider, depicts)`, leaving in the
+manifest **which provider it came from** and **which screen it shows**.
 
 ```python
 @dataclass
 class Artifact:
-    name: str       # filename (e.g. "before.png")
-    kind: str       # "screenshot" / "elements" / "video" / "deviceLog" / "network" / "waitDiagnostic"
-    provider: str   # who supplied this artifact (see table below)
+    name: str            # filename (e.g. "before.png")
+    kind: str            # "screenshot" / "elements" / "video" / "deviceLog" / "network" / "waitDiagnostic"
+    provider: str        # who supplied this artifact (see table below)
+    depicts: str | None  # the screen it shows, as "<driver>:<moment>" (see below)
 ```
 
 | `provider` value | Meaning |
@@ -418,6 +419,35 @@ class Artifact:
 
 When an evidence kind cannot be supplied by any backend in the list, a `SkippedCapture(kind,
 reason)` is recorded per scenario and disclosed in the manifest — the gap is never silently empty.
+
+## Which screen an artifact shows (`depicts`)
+
+A step's screenshot and its element tree are shown together, and a viewer draws a hovered element's
+frame onto the image — so the two have to describe the same screen. `depicts` is what makes that
+checkable: `"<driver>:<moment>"` names the driver whose read produced the file and which side of the
+step's action it was taken on (`before` or `after`). A native step's `before.png` carries
+`"xcuitest:before"`, and its `after.png` and tree carry `"xcuitest:after"`.
+
+**Two artifacts describe the same screen exactly when their `depicts` values are equal.** A consumer
+compares, and never parses. `evidence.step_view` is where every consumer does the comparison — the
+HTML report's element viewer, the serve editor's element picker, and the triage context handed to a
+failure investigator — so none of them disagrees about which screen a step "is". It resolves a step
+to one screenshot, one tree, and whether the two are paired; an unpaired step keeps its image and
+loses its frames, which is the honest rendering when the frames would land on pixels they never
+described.
+
+Two situations produce an unpaired step. Inside a
+[`web` block](scenarios.md#web-entering-a-webviews-dom) the tree comes from the WebView (in the
+WebView's own coordinate space) while the screenshot comes from the native driver, since a
+`WebContextDriver` cannot take one. And a run whose store no longer holds `after.png` — restored
+from Trash, or synced into an object store that never received the last write — falls back to the
+`before.png` beside it, which the post-action tree does not describe. A step that fails before it
+acts is not one of the two: it records only its pre-action pair, and that pair matches.
+
+`depicts` is absent from every run recorded before it existed (`manifest.json` `schemaVersion` 8 and
+below). Nothing in such a manifest says which side of the action an artifact was taken on, so a
+consumer reproduces the earlier choice — `after.png` over the `before.png` beside it — and treats it
+as paired, rather than dropping frames a stored run has always shown.
 
 ## Visual evidence
 

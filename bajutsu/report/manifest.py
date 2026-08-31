@@ -63,7 +63,12 @@ def _run_backend(results: list[RunResult]) -> str:
 # v8 (BE-0377): a step may carry "generated" — the value a `generate` step produced for `vars.*`.
 #   Absent on every other action and on every older run, so a reader shows no generated-value row
 #   for it rather than failing to load.
-SCHEMA_VERSION = 8
+# v9: an artifact may carry "depicts" — which screen the file shows, as "<driver>:<moment>". A
+#   reader pairs a step's screenshot with its element tree by comparing the two values, and draws no
+#   element frames when they differ. Absent on every older run, where nothing recorded which side of
+#   the action an artifact was taken on, so a reader falls back to the pre-field choice
+#   (`evidence.step_view`) rather than dropping frames a stored run has always shown.
+SCHEMA_VERSION = 9
 
 
 def _matrix(results: list[RunResult]) -> dict[str, object] | None:

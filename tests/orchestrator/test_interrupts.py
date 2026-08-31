@@ -40,6 +40,7 @@ class _RecordingSink:
         kinds: list[str],
         *,
         elements: list[base.Element] | None = None,
+        elements_source: str | None = None,
     ) -> list[Artifact]:
         if kinds:
             self.calls.append((step_id, kinds))
@@ -388,7 +389,11 @@ def test_cleared_interstitial_is_not_misattributed_as_the_steps_screen_change() 
     # add is absent. It carries only the always-on captures every leaf step gets: the pre-step
     # baseline, the post-action shutter, and the tree read that pairs with it (BE-0341).
     step0 = [kinds for sid, kinds in sink.calls if sid == "x/step0"]
-    assert step0 == [["screenshot.before", "elements"], ["screenshot.after"], ["elements"]]
+    assert step0 == [
+        ["screenshot.before", "elements.before"],
+        ["screenshot.after"],
+        ["elements"],
+    ]
 
 
 def test_pre_act_guard_reads_fresh_not_a_stale_prev_after_snapshot() -> None:

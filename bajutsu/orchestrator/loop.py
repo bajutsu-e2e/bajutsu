@@ -1215,7 +1215,11 @@ class _StepRunner:
         # — the run loop's report contract guarantees a pre-step baseline for every leaf step, a
         # failure at this point notwithstanding.
         pre_elements = self.state.prev_after
-        pre_kinds = ["screenshot.before", "elements"]
+        # `elements.before`, not a bare `elements`: the modifier never reaches the filename
+        # (`write_elements` ignores it, so this still writes `elements.json`), but it is what tells
+        # `capture()` which side of the action this tree was read on — the fact `step_view` pairs
+        # the step's image against.
+        pre_kinds = ["screenshot.before", "elements.before"]
         pre_query_was_fresh = False
         if (
             pre_elements is None
@@ -1256,7 +1260,16 @@ class _StepRunner:
         # counterpart to `screenshot.before`, captured in this baseline where `pre_elements` pairs
         # with it. That is a scenario-schema addition, so it belongs to its own item.
         outcome.artifacts.extend(
-            self.cfg.sink.capture(self.cfg.driver, step_id, pre_kinds, elements=pre_elements)
+            self.cfg.sink.capture(
+                self.cfg.driver,
+                step_id,
+                pre_kinds,
+                elements=pre_elements,
+                # The tree came from the active driver, which inside a `web` block is not the one
+                # this call screenshots. Recording each artifact's own source is what lets a viewer
+                # refuse to draw a WebView tree's frames onto a native image.
+                elements_source=active_driver.name,
+            )
         )
         # Interpolate ${...} tokens, then turn a `handleSystemAlert` naming a prompt and a
         # choice into the concrete button label this run's locale renders (BE-0320). Resolving
@@ -1631,7 +1644,9 @@ class _StepRunner:
             else screen.cached
         )
         outcome.artifacts.extend(
-            self.cfg.sink.capture(self.cfg.driver, step_id, instant, elements=els)
+            self.cfg.sink.capture(
+                self.cfg.driver, step_id, instant, elements=els, elements_source=active_driver.name
+            )
         )
         if screen.queried:
             self.state.total_reads += 1

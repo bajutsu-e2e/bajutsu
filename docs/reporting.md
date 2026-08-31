@@ -55,8 +55,10 @@ means the same thing after the run that produced it exits
           "duration_s": 0.12,
           "assertion_results": [],
           "artifacts": [
-            { "name": "before.png", "kind": "screenshot", "provider": "driver" },
-            { "name": "after.png", "kind": "screenshot", "provider": "driver" }
+            { "name": "before.png", "kind": "screenshot", "provider": "driver",
+              "depicts": "xcuitest:before" },
+            { "name": "after.png", "kind": "screenshot", "provider": "driver",
+              "depicts": "xcuitest:after" }
           ]
         }
       ],
@@ -229,7 +231,12 @@ which a step re-reads after acting. Frame and pixels then describe the same mome
 exception: a non-mutating step (`assert`, `wait`) reuses the tree it settled on (BE-0259). That tree
 precedes the screenshot rather than following it. The serve editor's element picker resolves a
 step to the
-same image, for the same reason. In the detail, identifiers (`#home.title`) and literal constants (`“text”`,
+same image, for the same reason. Where the image and the tree describe *different* screens — a
+[`web` block](scenarios.md#web-entering-a-webviews-dom)'s native screenshot beside its WebView tree,
+or a stored run that has lost its `after.png` — the viewer shows both and draws no frames, and the
+tree button says why ([evidence](evidence.md#which-screen-an-artifact-shows-depicts)). The serve
+editor offers no image for such a step at all, since every click there would resolve to an element
+that was never at those pixels. In the detail, identifiers (`#home.title`) and literal constants (`“text”`,
 numbers) are rendered as subtly-styled inline tokens — visually distinct from the solid
 action/assert badges, so variables and constants are distinguishable at a glance. An `assert` step's
 checks become a **nested table**, one row per assertion split into `kind` / `target` / `comparison`

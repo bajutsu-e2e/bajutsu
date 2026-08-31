@@ -1,6 +1,6 @@
 """Tests for evidence firing in the run loop.
 
-Every step captures two instant baselines: a pre-step one (screenshot.before + elements, taken
+Every step captures two instant baselines: a pre-step one (screenshot.before + elements.before, taken
 before the step acts, BE-0341) and a post-step one that always records screenshot.after + elements,
 so both halves of the pair exist for every step whatever the scenario asked for.
 `elements.json` has one fixed filename, so the post-step write replaces the pre-action tree: the
@@ -30,7 +30,7 @@ from bajutsu.orchestrator.evidence_rules import requested_intervals
 from bajutsu.orchestrator.waits import WaitTrace
 from bajutsu.scenario import Scenario
 
-BASELINE_BEFORE = ["screenshot.before", "elements"]
+BASELINE_BEFORE = ["screenshot.before", "elements.before"]
 BASELINE_AFTER = ["screenshot.after"]
 BASELINE_TREE = ["elements"]
 
@@ -57,6 +57,7 @@ class RecordingSink:
         kinds: list[str],
         *,
         elements: list[base.Element] | None = None,
+        elements_source: str | None = None,
     ) -> list[Artifact]:
         if kinds:
             self.calls.append((step_id, kinds))
@@ -398,6 +399,7 @@ class IntervalSink:
         kinds: list[str],
         *,
         elements: list[base.Element] | None = None,
+        elements_source: str | None = None,
     ) -> list[Artifact]:
         return []
 

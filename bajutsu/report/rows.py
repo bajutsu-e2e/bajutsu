@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu.drivers.actuation import Actuation
-from bajutsu.evidence import displayed_screenshot
+from bajutsu.evidence import step_view
 from bajutsu.from_grouping import grouped_provenance
 from bajutsu.orchestrator import RunResult
 from bajutsu.report.format import (
@@ -114,44 +114,39 @@ def _screen_rect(elements: list[dict[str, Any]]) -> tuple[str | None, str | None
 
 
 def _view_data(out: Any, run_dir: Path | None) -> dict[str, Any]:
-    # Build a kind -> artifact index once so later lookups are O(1) instead of repeated
-    # O(n) scans over the same list. Use setdefault so the first artifact of each kind wins, which
-    # is all `elements` needs: the kind can appear more than once (a post-step capture on top of the
-    # pre-step baseline), but it writes one fixed filename, so every entry names the same file.
-    # `screenshot` does not work that way — `before.png` and `after.png` are different files — so it
-    # is resolved by `displayed_screenshot`, the choice the serve editor's picker also makes. Like
-    # the picker, the candidates are filtered to the files that are actually there first: a report
+    # One screenshot and one tree per step, resolved by `step_view` — the same choice the serve
+    # editor's picker and the triage context make, so no consumer disagrees about which screen a
+    # step "is". The candidates are filtered to the files that are actually there: a report
     # re-rendered from a stored run (`serve/artifacts.py`) can name a screenshot the store no longer
     # holds, and choosing it would emit a broken `<img>` and an element viewer with nothing to draw
     # frames on, while the `before.png` beside it sits unused.
-    by_kind: dict[str, Any] = {}
-    for a in out.artifacts:
-        by_kind.setdefault(a.kind, a)
-    shot = displayed_screenshot(
-        [
-            a.name
-            for a in out.artifacts
-            if a.kind == "screenshot" and (run_dir is None or (run_dir / a.name).exists())
-        ]
+    view = step_view(
+        ((a.kind, a.name, a.depicts) for a in out.artifacts),
+        exists=None if run_dir is None else lambda name: (run_dir / name).exists(),
     )
-    tree = by_kind.get("elements")
     # Embed the captured elements inline so the report shows them in an overlay (no
     # new tab), matching how logs/network are embedded for offline (file://) viewing.
     tree_rows: list[dict[str, Any]] | None = None
     screen_w = screen_h = None
-    if tree is not None and run_dir is not None:
-        data = _read_json(run_dir, tree.name)
+    if view.elements is not None and run_dir is not None:
+        data = _read_json(run_dir, view.elements)
         if isinstance(data, list):
             els = [e for e in data if isinstance(e, dict)]
             tree_rows = [_tree_row(e) for e in els]
-            screen_w, screen_h = _screen_rect(els)
+            # The extent goes out only for a pair that describes one screen. It is the whole input
+            # to the viewer's frame mapping, so withholding it is all `report.js` needs to draw no
+            # frame at all (`tvHighlight` hides the box unless the extent is positive) — the honest
+            # rendering when the frames would land on pixels they never described.
+            if view.paired:
+                screen_w, screen_h = _screen_rect(els)
     return {
-        "shot": shot,
-        "tree": tree.name if tree else None,
+        "shot": view.screenshot,
+        "tree": view.elements,
         "tree_rows": tree_rows,
         "tree_count": len(tree_rows) if tree_rows is not None else 0,
         "screen_w": screen_w,
         "screen_h": screen_h,
+        "unpaired": not view.paired,
         "alt": f"step {out.index} result",
     }
 

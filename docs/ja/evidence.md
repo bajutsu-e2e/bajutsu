@@ -240,14 +240,16 @@ class EvidenceSink(Protocol):
 
 ## アーティファクトの来歴（provider）
 
-すべての証跡は `Artifact(name, kind, provider)` として記録し、**どの provider から来たか**を manifest に残します。
+すべての証跡は `Artifact(name, kind, provider, depicts)` として記録し、**どの provider から来たか**と
+**どの画面を写したか**を manifest に残します。
 
 ```python
 @dataclass
 class Artifact:
-    name: str       # ファイル名（例 "before.png"）
-    kind: str       # "screenshot" / "elements" / "video" / "deviceLog" / "network" / "waitDiagnostic"
-    provider: str   # このアーティファクトを供給した provider（下表参照）
+    name: str            # ファイル名（例 "before.png"）
+    kind: str            # "screenshot" / "elements" / "video" / "deviceLog" / "network" / "waitDiagnostic"
+    provider: str        # このアーティファクトを供給した provider（下表参照）
+    depicts: str | None  # 写した画面。"<driver>:<moment>" 形式（後述）
 ```
 
 | `provider` の値 | 意味 |
@@ -261,6 +263,35 @@ class Artifact:
 | `"<backend> (fallback)"` | read-only な証跡フォールバックが供給したアーティファクトです（[BE-0020](../../roadmaps/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md)）。 |
 
 証跡の種別をリスト内のどのバックエンドも供給できない場合は、シナリオごとに `SkippedCapture(kind, reason)` を記録し、manifest で開示します。gap を黙って空にすることはありません。
+
+## アーティファクトが写した画面（`depicts`）
+
+ステップのスクリーンショットと要素ツリーは並べて表示し、ビューアはカーソルを合わせた要素の枠を画像の
+上に描きます。そのため2つは同じ画面を表している必要があります。`depicts` は、その条件を確認できるよう
+にするフィールドです。`"<driver>:<moment>"` の形で、ファイルを生んだ読み取りを行ったドライバの名前と、
+ステップの操作のどちら側で取得したか（`before` または `after`）を表します。ネイティブのステップの
+`before.png` は `"xcuitest:before"` を持ち、同じステップの `after.png` と要素ツリーは
+`"xcuitest:after"` を持ちます。
+
+**2つのアーティファクトが同じ画面を表すのは、`depicts` の値が等しいとき、かつそのときに限ります。**
+利用者は値を比較するだけで、解析はしません。比較する場所は `evidence.step_view` の1箇所です。HTML
+レポートの要素ビューア、serve の編集画面の要素ピッカー、失敗の調査役へ渡すトリアージのコンテキストが、
+いずれもここを通ります。`step_view` は、ステップを1枚のスクリーンショットと1つの要素ツリー、そして2つが
+対応しているかどうかへ解決します。対応が取れないステップは画像を保ったまま枠を失います。枠を描けば、
+それを説明したことのない画素の上に落ちるからです。
+
+対応が取れない状況は2つあります。1つは
+[`web` ブロック](scenarios.md#webwebview-の-dom-コンテキストに入る)の内側です。要素ツリーは WebView
+自身の座標系で返り、スクリーンショットはネイティブドライバから取得します（`WebContextDriver` は
+スクリーンショットを取れません）。もう1つは、`after.png` を保管庫が失った実行
+結果です。ゴミ箱から復元したものや、最後の書き込みを受け取れなかったオブジェクトストレージへ同期した
+ものが該当し、隣の `before.png` へ退避します。この画像を、操作後の要素ツリーは説明しません。なお、操作
+する前に失敗したステップは2つのどちらでもありません。操作前の組だけを記録するため、対応は取れます。
+
+`depicts` は、フィールドが存在する前に記録した実行結果、すなわち `manifest.json` の
+`schemaVersion` が 8 以下の実行結果にはありません。そうした manifest には、操作のどちら側で取得したかがどこにも書かれていません。そのため
+利用者は以前と同じ選択、すなわち隣の `before.png` より `after.png` を優先する選択を再現し、対応が取れて
+いるものとして扱います。古い実行結果がこれまで描けていた枠を失わないようにするためです。
 
 ## ビジュアル証跡
 

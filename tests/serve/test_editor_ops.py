@@ -498,6 +498,74 @@ def test_read_scenario_falls_back_when_the_post_action_screenshot_is_missing(
     assert payload["steps"][0]["screenshotUrl"] == "/runs/run1/00-login/step0/before.png"
 
 
+def test_read_scenario_withholds_an_image_that_does_not_describe_the_steps_tree(
+    tmp_path: Path,
+) -> None:
+    """A `web` block screenshots the native driver while its tree comes from the WebView. The picker
+    turns a click on those pixels into a selector resolved through that tree, so an image the tree
+    does not describe would resolve every click to an element that was never where the author
+    clicked. The step offers no image, and says which of the two reasons it is."""
+    state, runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
+
+    run_dir = runs / "run1"
+    step_dir = run_dir / "00-login/step0"
+    step_dir.mkdir(parents=True)
+    (step_dir / "elements.json").write_text(json.dumps(_elements()), encoding="utf-8")
+    (step_dir / "before.png").write_bytes(b"PNG")
+    (step_dir / "after.png").write_bytes(b"PNG")
+    manifest = {
+        "runId": "run1",
+        "ok": True,
+        "scenarios": [
+            {
+                "scenario": "login",
+                "ok": True,
+                "sid": "00-login",
+                "steps": [
+                    {
+                        "index": 0,
+                        "action": "tap",
+                        "ok": True,
+                        "artifacts": [
+                            {
+                                "name": "00-login/step0/before.png",
+                                "kind": "screenshot",
+                                "provider": "driver",
+                                "depicts": "xcuitest:before",
+                            },
+                            {
+                                "name": "00-login/step0/after.png",
+                                "kind": "screenshot",
+                                "provider": "driver",
+                                "depicts": "xcuitest:after",
+                            },
+                            {
+                                "name": "00-login/step0/elements.json",
+                                "kind": "elements",
+                                "provider": "driver",
+                                "depicts": "webview:after",
+                            },
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    payload, status = ops.read_scenario(
+        state, "demo", str(scn_dir / "login.yaml"), run_id="run1", scenario_name="login"
+    )
+    assert status == 200
+    step = payload["steps"][0]
+    assert step["screenshotUrl"] is None
+    assert step["screenshotUnpaired"] is True
+    # The tree is still offered: it describes a real screen, and only the pairing is in doubt.
+    assert step["elementsUrl"] == "/runs/run1/00-login/step0/elements.json"
+
+
 def test_read_scenario_with_run_resolves_manifest_recorded_names_not_hardcoded(
     tmp_path: Path,
 ) -> None:

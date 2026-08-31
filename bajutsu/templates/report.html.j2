@@ -29,7 +29,7 @@
 {%- endmacro -%}
 
 {%- macro stepview(v) -%}
-{%- if v is none %}—{% else %}{% if v.shot %}<img class="shot" loading="lazy" src="{{ v.shot }}" alt="{{ v.alt }}">{% endif %}{% if v.tree_rows is not none %}<button class="elnk treebtn" type="button" data-count="{{ v.tree_count }}">tree</button><template class="treedata">{{ treetable(v.tree_rows, v.screen_w, v.screen_h) }}</template>{% elif v.tree %}<a class="elnk" href="{{ v.tree }}" target="_blank" rel="noopener">tree</a>{% endif %}{% if not v.shot and not v.tree %}—{% endif %}{% endif -%}
+{%- if v is none %}—{% else %}{% if v.shot %}<img class="shot" loading="lazy" src="{{ v.shot }}" alt="{{ v.alt }}">{% endif %}{% if v.tree_rows is not none %}<button class="elnk treebtn" type="button" data-count="{{ v.tree_count }}"{% if v.unpaired %} title="the screenshot and the element tree describe different screens, so element frames are not drawn on this step"{% endif %}>tree</button><template class="treedata">{{ treetable(v.tree_rows, v.screen_w, v.screen_h) }}</template>{% elif v.tree %}<a class="elnk" href="{{ v.tree }}" target="_blank" rel="noopener">tree</a>{% endif %}{% if not v.shot and not v.tree %}—{% endif %}{% endif -%}
 {%- endmacro -%}
 
 {%- macro actuation(a) -%}

@@ -49,8 +49,10 @@ runs/<runId>/
           "duration_s": 0.12,
           "assertion_results": [],
           "artifacts": [
-            { "name": "before.png", "kind": "screenshot", "provider": "driver" },
-            { "name": "after.png", "kind": "screenshot", "provider": "driver" }
+            { "name": "before.png", "kind": "screenshot", "provider": "driver",
+              "depicts": "xcuitest:before" },
+            { "name": "after.png", "kind": "screenshot", "provider": "driver",
+              "depicts": "xcuitest:after" }
           ]
         }
       ],
@@ -157,6 +159,13 @@ step 1 tap: FAIL 一致なし: {...}</failure>
 同じ瞬間を表します。ただし例外が1つあります。動作しないステップ（`assert` と `wait`）は、
 そのステップが落ち着いたときのツリーを再利用します（BE-0259）。このツリーは、スクリーンショットの
 あとではなく前の瞬間を表します。serve のエディタの要素ピッカーも、同じ理由から同じ画像を使います。
+画像と要素ツリーが *別々の* 画面を表すこともあります。
+[`web` ブロック](scenarios.md#webwebview-の-dom-コンテキストに入る)のネイティブ画像と WebView の要素
+ツリーの組や、`after.png` を失った実行結果が該当します。そのときビューアは、両方を見せたうえで枠を
+描きません。枠がない理由は要素ツリーのボタンに添えます
+（[evidence](evidence.md#アーティファクトが写した画面depicts)）。
+serve のエディタは、そうしたステップでは画像そのものを出しません。出せば、どこをクリックしても、
+その画素にはいなかった要素へ解決してしまうからです。
 detail 中の識別子（`#home.title`）と定数リテラル（`”text”` や数値）は、控えめなインライントークンで
 描画します。ソリッドな action/assert バッジと視覚的に区別されるため、変数と定数を一目で識別できます。`assert` ステップの複数チェックはネストしたテーブルになり、1 アサーション 1 行で
 `kind` / `target` / `comparison` のセルに分割します（読みにくい `a; b; c` 形式を解消）。実行されなかった
