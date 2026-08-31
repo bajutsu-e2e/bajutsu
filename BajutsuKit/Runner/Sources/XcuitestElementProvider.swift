@@ -207,20 +207,44 @@ final class XcuitestElementProvider: ElementProviding {
         return .ok
     }
 
-    /// How long the scroll drag holds stationary at its end before lifting. A hold near zero
-    /// velocity settles the scroll view where the drag left it, so no momentum carries the content
-    /// past the target after lift — the non-inertial contract (BE-0326).
-    private static let scrollSettleDuration: TimeInterval = 0.3
+    /// How fast the scroll drag traverses, in points per second — the whole of what makes the
+    /// gesture non-inertial (BE-0400).
+    ///
+    /// A drag traversed fast enough lifts with the momentum that speed implies, and iOS carries the
+    /// scroll view on past the endpoints: measured on an iPhone 17 Pro (iOS 26.5), `.default`
+    /// overshot a request by +133 points on a full-size step and by +225 on a small one, leaving a
+    /// floor of ~269 points below which no step travelled however little it asked for.
+    ///
+    /// The speed that fails first is the one a *short* drag fails at, not a long one, which is why
+    /// this is set well under where a full-size step still looks correct. At 400 an 875-point
+    /// viewport's 0.6 step was exact while its 0.05 step flung 5x; at 300 the 0.05 step was exact
+    /// while a 17-point drag flung 9x and a 26-point one flung on some repeats and not others. At
+    /// 200 and at 100, every step from 17 points to 525 came back exactly 10.0 points short of its
+    /// request, and the two speeds agreed to the point. Small steps are precisely what `scroll`'s `amount` and the overshoot recovery ask
+    /// for, so the value is chosen where they hold, at a cost of ~0.9s on a full-size step.
+    ///
+    /// The drag is the whole gesture. An earlier `thenHoldForDuration`, meant to settle the view
+    /// before lift, changed nothing at 0.0, 0.3, or 1.0 seconds, at this speed or at `.default`, so
+    /// it is not part of the contract and is not spent.
+    private static let scrollVelocity = XCUIGestureVelocity(rawValue: 200)
+
+    /// How long the scroll drag presses before it starts travelling. Held at the value the gesture
+    /// has always used: dropping it to zero measurably widened the shortfall below (BE-0400).
+    private static let scrollPressDuration: TimeInterval = 0.1
 
     func scroll(fromX: Double, fromY: Double, toX: Double, toY: Double) -> TapResult {
-        // Unlike `swipe` (a plain press-and-drag that lifts with residual velocity, so iOS flings the
-        // scroll view onward), hold at the end before lifting so the release velocity is ~zero and
-        // the content stops where the gesture ended.
+        // Unlike `swipe` (a plain press-and-drag traversed at `.default`, which lifts with residual
+        // velocity so iOS flings the scroll view onward), traverse slowly enough that the content
+        // stops where the gesture ended. The content still falls ~10 points short of the request —
+        // the pan recognizer's slop, which the driver conformance suite's realized-travel tolerance
+        // names rather than the gesture compensating for one device's constant.
         coordinate(fromX, fromY).press(
-            forDuration: 0.1,
+            forDuration: Self.scrollPressDuration,
             thenDragTo: coordinate(toX, toY),
-            withVelocity: .default,
-            thenHoldForDuration: Self.scrollSettleDuration
+            withVelocity: Self.scrollVelocity,
+            // No hold: the only press overload that takes a velocity also requires a hold duration,
+            // and every duration measured the same, so this spends none.
+            thenHoldForDuration: 0
         )
         return .ok
     }

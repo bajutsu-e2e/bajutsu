@@ -625,7 +625,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `setPickerValue` | `setPickerValue: { sel: <Selector>, value: "..." }` | move a wheel-style picker (`UIPickerView`, a wheel-mode `UIDatePicker`) to the row with this value ([below](#setpickervalue)); iOS (XCUITest) only. `sel` addresses one wheel — a multi-component picker's siblings are separated by `within` / `traits` / `index`, one step each |
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` or `swipe: { from: [x,y], to: [x,y] }` | selector form and coordinate form cannot mix; the directional form **scrolls** |
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | a real pointer **drag** of the element (a handle / divider / slider), not a scroll |
-| `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, maxScrolls?: <int> }` | scroll (non-inertially) until `to` is on-screen, or fail at a bound; `direction` is **scroll** direction (default `down`), the inverse of `swipe`'s |
+| `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, amount?: <frac>, maxScrolls?: <int> }` | scroll (non-inertially) until `to` is on-screen, or fail at a bound; `direction` is **scroll** direction (default `down`), the inverse of `swipe`'s |
 | `back` | `back: {}` | navigate back one level, each backend using its platform-correct primitive — the Android system back key, the iOS OS-provided back button, or web history ([BE-0210](../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)) |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | two-finger magnify; `scale > 0` (`>1` zooms in, `<1` out) |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | two-finger rotation; `>0` is clockwise |
@@ -810,6 +810,7 @@ scrolls and moves handles, so the two coincide.
 - tap: { id: notice.row.20 }
 - scroll: { to: { label: "Log out", traits: [button] }, # scroll a specific container …
             within: { id: settings.list }, maxScrolls: 25 }
+- scroll: { to: { id: chart.point.7 }, amount: 0.2 }    # … in finer steps than the default
 ```
 
 `scroll` brings an off-screen element into view: it scrolls one step, re-queries the tree, and stops
@@ -836,6 +837,16 @@ showing one card at a time is not mistaken for it. `scroll` halves the step, scr
 the span that passed, and — when even the smallest step it will take still leaves nothing behind —
 fails naming the overshoot rather than reporting the target absent.
 
+`amount` sets how far one step travels, as a fraction of the viewport, in the range greater than 0
+and at most 1 — the same unit and the same range `swipe` and `drag` take for their own `amount`.
+Omitted, a step covers 0.6 of the viewport. Lower `amount` for a screen the default step crosses too
+coarsely to land on the target, and raise it for one that reveals so little per step that
+`maxScrolls` runs out before the target does. `amount` decides where the loop starts and nothing else: the
+halving above still shrinks the step from wherever `amount` put it, and still stops at the same
+floor, which does not move with `amount`. An `amount` at or below that floor leaves the halving
+nothing to shrink, so the first step that overshoots fails the call outright, naming the step it
+took.
+
 A re-read, not a single query, settles whether a step moved the region. The re-read matters on
 Android. There the accessibility tree arrives after the gesture has already moved the list. A read
 taken meanwhile describes the pre-scroll screen, which looks like the end of the content. Confirming
@@ -846,8 +857,10 @@ scrollable container; omitted, the whole screen scrolls.
 Use `scroll` to **reveal a target**, `swipe` for a **fixed gesture**, and `drag` to **move a grabbed
 handle**. Each step is non-inertial: it advances a bounded, screen-relative distance and leaves no
 momentum, so the same scenario reaches a target identically on a fast device and a slow CI emulator —
-the determinism a hand-tuned `swipe` chain cannot guarantee. A step whose content travels further than
-the step asked for is caught rather than assumed away, by the look-back above.
+the determinism a hand-tuned `swipe` chain cannot guarantee. The distance a step travels is the
+distance it asked for, on every backend: the driver conformance suite measures one step's realized
+travel and fails a backend whose content carries on past the gesture's own endpoints. A step that
+overshoots anyway is caught rather than assumed away, by the look-back above.
 
 > **`scroll`'s `direction` is the direction the content moves, not the finger** — the inverse of
 > `swipe`. `scroll: { direction: down }` reveals below-the-fold content (the driver swipes the finger

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0400](BE-0400-scroll-step-amount.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0400") |
+| Implementing PR | [#1824](https://github.com/bajutsu-e2e/bajutsu/pull/1824) |
 | Topic | Scenario authoring features |
 | Related | [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element.md), [BE-0329](../BE-0329-scroll-observed-motion-decisions/BE-0329-scroll-observed-motion-decisions.md) |
 <!-- /BE-METADATA -->
@@ -356,14 +357,14 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — establish the mechanism behind the overshoot
-- [ ] Unit 2 — correct realized travel behind `Driver.scroll`, on every backend that misses
-- [ ] Unit 3 — `amount` field on the `Scroll` scenario schema
-- [ ] Unit 4 — handler wiring, including the overshoot message naming the step actually taken
-- [ ] Unit 5 — conformance check on realized travel against the request
-- [ ] Unit 6 — land the settle test and decide its CI wiring
-- [ ] Unit 7 — tests over `FakeDriver` and the schema
-- [ ] Unit 8 — docs (`docs/scenarios.md`, `docs/dsl-grammar.md`, `docs/architecture.md`, both mirrors)
+- [x] Unit 1 — establish the mechanism behind the overshoot
+- [x] Unit 2 — correct realized travel behind `Driver.scroll`, on every backend that misses
+- [x] Unit 3 — `amount` field on the `Scroll` scenario schema
+- [x] Unit 4 — handler wiring, including the overshoot message naming the step actually taken
+- [x] Unit 5 — conformance check on realized travel against the request
+- [x] Unit 6 — land the settle test and decide its CI wiring
+- [x] Unit 7 — tests over `FakeDriver` and the schema
+- [x] Unit 8 — docs (`docs/scenarios.md`, `docs/dsl-grammar.md`, `docs/architecture.md`, both mirrors)
 
 ### Log
 
@@ -378,6 +379,56 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
   zero-pixel negative control. What keeps changing after the return is the scroll indicator at the
   screen's right edge, which fades about 900 ms later. The on-device test in unit 6 came out of
   that work.
+- Established the mechanism (unit 1), varying the gesture's three parameters independently on the
+  same device and screen. The traversal velocity is the whole of the cause. Neither of the other two
+  parameters is: the hold before lift changed nothing at 0.0, 0.3, or 1.0 seconds, and the initial
+  press changed nothing at 0.1 or 0.5 seconds. Dropping the press to 0.0 did change something, and
+  in the wrong direction: it widened the fixed shortfall below from 10.0 points to between 11.4 and
+  13.8, which is why the corrected gesture keeps the 0.1 it has always used. Realized travel rises
+  monotonically with the
+  velocity — `XCUIGestureVelocity` 500 reproduces today's `.default`, 1000 reaches 5.4 times a 0.125
+  request, 2000 reaches 10.4 times — and vanishes below it: at 200 and at 100, every step from 17 to
+  525 points came back exactly 10.0 points short of its request, with a standard deviation of 0.0.
+  *Motivation*'s fixed-traversal-velocity hypothesis is confirmed, and the 0.3-second hold is not
+  merely innocent of the overshoot but inert, which is why `scroll` and `swipe` agreed.
+- Found that the speed which fails first is a short drag's, not a long one's (unit 1). At 400 a 0.6
+  step was exact while a 0.05 step flung five times its request; at 300 a 0.05 step was exact while
+  a 17-point drag flung nine times and a 26-point drag flung on some repeats and not others. Small
+  steps are what `amount` and the halving recovery exist to ask for, so the corrected gesture is set
+  at 200 rather than just under the largest speed a full-size step survives.
+- Corrected the gesture (unit 2): the iOS runner now traverses a scroll drag at 200 points per
+  second and spends no hold. A 0.125 step travels 99.3 points against a request of 109.2, where it
+  travelled 279 before, and a 0.05 step travels 33.7 against 43.7, where it travelled 269. The
+  ~269-point floor is gone, and halving a request now halves the distance travelled. The residual
+  10.0-point shortfall is the pan recognizer's slop, left uncorrected so the driver conformance
+  suite's tolerance names it instead of the gesture carrying one device's constant.
+- Ran the new realized-travel conformance case against the backends this host can drive (unit 2). It
+  passes against `FakeDriver` and against Playwright with no change to either. This host has no
+  emulator, so adb was left to the `conformance (adb)` job, which inherits the case like every other
+  contract case.
+- That job then caught adb too, which is what unit 2 exists to prevent being missed: a 0.6 step asked
+  for 1440 device pixels and travelled 1153, twenty percent short — an undershoot, where iOS
+  overshot. The cause is the mirror image of the iOS one. adb panned over a fixed 600 ms whatever the
+  distance, so the speed rose with the request until the view stopped tracking the whole path, while
+  iOS held the speed fixed and let a fast traversal fling. adb now holds its *speed* fixed instead,
+  at 550 device pixels per second with a 600 ms floor — the iOS runner's 200 points per second
+  carried across at the two screens' physical scale — so every step size stays honest on both.
+- The corrected adb pan then failed the case a second way, and the cause was in the check rather
+  than the gesture: a 0.125 step asked for 300 device pixels and travelled 213. The allowance's fixed
+  part was an absolute distance in the driver's own units, which differ per backend — points on iOS,
+  raw pixels on Android. The pan slop it covers is 10.0 points against a 874-point viewport on iOS
+  and about 87 pixels against a 2400-pixel one on Android, so no single absolute number fits both.
+  Stating it as a fraction of the viewport fits both for the reason `amount` is a fraction, and still
+  rejects the defect by a wide margin, since the uncorrected iOS gesture missed a 44-point request by
+  225 points. Every step size is now measured before any is judged, so a failing run reports all
+  three rather than stopping at the first — a run on a device the reader does not have would
+  otherwise take one cycle per step size to show the error's shape.
+- Settled unit 6's wiring question by placing the settle test in
+  `tests/test_driver_conformance_ondevice.py` rather than a file of its own: the
+  `conformance (xcuitest)` job then runs it with no wiring change to a required check and no second
+  cold lease on a metered runner. It sits outside `DriverConformanceContract` because Android
+  reaches the same guarantee through a different mechanism (BE-0332's marked read), so stating it as
+  a shared contract would assert one backend's timing of another's.
 
 ## References
 
@@ -386,7 +437,8 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 - [`bajutsu/scenario/models/actions.py`](../../bajutsu/scenario/models/actions.py) — `Swipe`'s and
   `Drag`'s existing `amount` field, and the `Scroll` model this item extends
 - [`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift) —
-  the iOS scroll gesture, its `withVelocity: .default` and its fixed settle hold
+  the iOS scroll gesture and the fixed traversal velocity that keeps it non-inertial (this item
+  replaced `withVelocity: .default` and the settle hold with it)
 - [`tests/driver_conformance.py`](../../tests/driver_conformance.py) — the shared scroll cases the
   realized-travel check joins
 - [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element.md) — the `scroll` action, its

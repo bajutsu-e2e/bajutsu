@@ -251,7 +251,8 @@ def _emit_step(step: Step) -> list[str]:  # noqa: PLR0911, PLR0912
         # UI Automator has a native scroll-to-element: `UiScrollable.scrollIntoView` searches the
         # scrollable list, bounded by `setMaxSearchSwipes` — the peer of `maxScrolls` (BE-0326).
         # `direction` picks the list orientation; `within` has no faithful UiScrollable scope, so it
-        # is left to the first scrollable container.
+        # is left to the first scrollable container. `amount` has no faithful mapping either —
+        # scrollIntoView does its own stepping (BE-0400).
         sc = step.scroll
         ui = _ui_selector(sc.to.as_selector())
         if ui is None:

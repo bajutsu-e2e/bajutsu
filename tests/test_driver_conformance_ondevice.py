@@ -25,6 +25,7 @@ workers would clobber each other's screen. The `ios-e2e.yml` job passes `-n0`.
 from __future__ import annotations
 
 import os
+import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -36,6 +37,7 @@ from driver_conformance import (
     ConformanceHarness,
     DriverConformanceContract,
     OnDeviceConformanceHarness,
+    row_offsets,
 )
 from ondevice_spec_path import SpecPathMemo, read_data_container
 from xcuitest_lease import xcuitest_lease_launch
@@ -44,6 +46,12 @@ from bajutsu import simctl
 from bajutsu.config import Effective, ios_bundle_id, load_config, resolve
 from bajutsu.drivers import base
 from bajutsu.evidence import intervals
+from bajutsu.orchestrator.actions.handlers.scroll import (
+    _AXIS,
+    _STEP_FRACTION,
+    _step_endpoints,
+    _viewport,
+)
 
 # A resident-runner crash mid-suite (a `base.BackendCrashError` — the `XcuitestRunnerCrashError` that
 # reddened PR #1405, whether raised by a test's actuation or by a query driving the bring-up/readiness
@@ -170,17 +178,21 @@ def _evidence(request: pytest.FixtureRequest) -> Iterator[None]:
     )
 
 
-class TestXcuitestDriverConformance(DriverConformanceContract):
-    @pytest.fixture
-    def harness(
-        self, _backend_lease_holder: LeaseHolder, _spec_paths: SpecPathMemo
-    ) -> ConformanceHarness:
-        # Read the driver off the holder each test: crash-free, it is the one shared lease (the module
-        # scope's amortization); after a crash, the plugin has re-leased, so this is the fresh device.
-        # `for_lease` leases too, so the two agree on which installation the spec path names.
-        driver = _backend_lease_holder.driver
-        return _OnDeviceHarness("xcuitest", driver, _spec_paths.for_lease(_backend_lease_holder))
+@pytest.fixture
+def harness(_backend_lease_holder: LeaseHolder, _spec_paths: SpecPathMemo) -> ConformanceHarness:
+    """The harness every test in this module drives, rebuilt per test off the shared lease.
 
+    Read the driver off the holder each test: crash-free, it is the one shared lease (the module
+    scope's amortization); after a crash, the plugin has re-leased, so this is the fresh device.
+    `for_lease` leases too, so the two agree on which installation the spec path names. Module-level
+    rather than one copy per test class, so the lease and spec-path wiring has a single definition
+    to change.
+    """
+    driver = _backend_lease_holder.driver
+    return _OnDeviceHarness("xcuitest", driver, _spec_paths.for_lease(_backend_lease_holder))
+
+
+class TestXcuitestDriverConformance(DriverConformanceContract):
     # Marked, not skipped from inside the body: a body-level `pytest.skip()` still lets pytest set
     # every fixture up first, so the autouse `_evidence` above would start and stop a video recording
     # and a device log — real `simctl` work on the shared Simulator — for a case that never runs. The
@@ -201,3 +213,76 @@ class TestXcuitestDriverConformance(DriverConformanceContract):
         mistake rather than avoid it. The case still runs deterministically against `FakeDriver` and
         Playwright (`tests/test_driver_conformance.py`, `tests/test_driver_conformance_web.py`).
         """
+
+
+#: How long after `scroll` returns the content must stay put for the read to count as settled
+#: (BE-0400). Generous against what the gesture leaves behind: the measurement that motivated this
+#: found the content already at rest more than 190 ms *before* the driver returned, in twelve of
+#: twelve gestures. It is deliberately longer than the ~900 ms the scroll indicator takes to fade,
+#: even though this compares element frames rather than pixels and never sees the indicator — so a
+#: future reader need not wonder whether the window was cut to dodge it.
+_SETTLE_WINDOW_S = 1.0
+
+#: How far two reads of a row may differ and still count as the same position, in points. Absorbs
+#: sub-pixel rounding between two snapshots without admitting real residual motion, which the
+#: uncorrected gesture expressed in tens of points, not fractions of one.
+_SETTLE_EPSILON_PT = 0.5
+
+#: How far a row must have travelled for the step to count as having moved the content at all, in
+#: points. The guard against a vacuous pass, so it is deliberately a different threshold from the
+#: one above: a gesture that moved nothing would hold still afterwards and prove nothing.
+_MOVED_PT = 1.0
+
+
+class TestXcuitestScrollSettles:
+    """`scroll` returns only once the content has stopped — the property the realized-travel contract rests on.
+
+    Kept in this file rather than one of its own so it runs under the `conformance (xcuitest)` job
+    the way every other on-device case does — that job names its test files explicitly, and a new
+    file would need both a deliberate wiring change to a required check and a second cold lease on a
+    metered runner. It sits outside `DriverConformanceContract` because it is scoped to the backend
+    this item measured: Android reaches the same guarantee through a different mechanism (a marked
+    read that a query waits for, BE-0332), so stating it as a shared contract would assert one
+    backend's timing of another's.
+
+    The property matters because every conclusion the `scroll` loop draws — the target's position,
+    whether the region moved, how far a step travelled — comes from the tree read right after the
+    driver returns. If the content were still decelerating then, each of those would describe a
+    screen the run never actually stopped on.
+    """
+
+    def test_a_scroll_returns_only_once_the_content_is_at_rest(
+        self, harness: ConformanceHarness
+    ) -> None:
+        driver = harness.scrollable_screen()
+        elements = driver.query()
+        viewport = _viewport(driver, elements)
+        axis = _AXIS["down"]
+        bounds: base.Frame = (0.0, 0.0, viewport[0], viewport[1])
+        before = row_offsets(elements, bounds, axis)
+        frm, dest = _step_endpoints(elements, "down", None, viewport, _STEP_FRACTION)
+        driver.scroll(frm, dest)
+        settled = row_offsets(driver.query(), bounds, axis)
+        # Two guards against a vacuous pass, each asserted separately so its failure says which one
+        # fired: a read sharing no row with the first cannot be compared to it — the signature of a
+        # gesture that flung, not of one that did nothing — and a gesture that moved nothing would
+        # hold still trivially. Past both, a failure below is about motion after the return and
+        # nothing else.
+        common = before.keys() & settled.keys()
+        assert common, "the read after the step shared no row with the one before it"
+        assert any(abs(before[i] - settled[i]) > _MOVED_PT for i in common), (
+            "the step moved no row, so a still screen proves nothing about settling"
+        )
+        deadline = time.monotonic() + _SETTLE_WINDOW_S
+        while time.monotonic() < deadline:
+            # No sleep between reads: each `query()` is a full snapshot and costs real time, so the
+            # window is sampled as fast as the backend can answer — the densest evidence available,
+            # and a wait on nothing would only thin it.
+            again = row_offsets(driver.query(), bounds, axis)
+            shared = settled.keys() & again.keys()
+            assert shared, "consecutive reads of a still screen shared no row"
+            drift = max(abs(settled[i] - again[i]) for i in shared)
+            assert drift <= _SETTLE_EPSILON_PT, (
+                f"the content moved {drift:.1f}pt after `scroll` returned, so the read the loop "
+                "takes next describes a screen still in motion"
+            )

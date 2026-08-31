@@ -59,11 +59,14 @@ _AXIS = {"down": 1, "up": 1, "right": 0, "left": 0}
 # between steps keeps a target straddling the fold from slipping between two consecutive viewports
 # unqueried. That overlap holds only while the content travels no further than the gesture asks —
 # a property no backend measures, so the loop also detects a step that shared nothing with the one
-# before it and shrinks the fraction toward the floor below (BE-0329).
+# before it and shrinks the fraction toward the floor below (BE-0329). A scenario's `amount` replaces
+# this as the loop's starting step, for a screen the default size crosses too coarsely (BE-0400).
 _STEP_FRACTION = 0.6
 
 # Floor for the shrunk step: `swipe`'s own default travel. Below it a step would move so little that a
 # clipped frame is even less likely to reveal motion, so the loop fails naming the overshoot instead.
+# Fixed regardless of `amount`: tying the floor to the author's step would let a small `amount` lower
+# it beneath itself, which is exactly what the floor exists to prevent (BE-0400).
 _MIN_STEP_FRACTION = _SWIPE_FRACTION
 
 # Cadence for re-reading a region that looks unchanged, within the backend's own `read_lag` budget,
@@ -447,6 +450,7 @@ def scroll_to_target(
     within: base.Selector | None,
     max_scrolls: int,
     stop: Callable[[base.Frame, base.Point], bool] = _center_in_viewport,
+    amount: float | None = None,
 ) -> None:
     """Scroll until `to` resolves and satisfies `stop`, or fail at a bound (BE-0326, BE-0329).
 
@@ -459,12 +463,16 @@ def scroll_to_target(
         stop: Given the resolved element's frame and the true viewport, whether the loop may return.
             Must be a pure predicate — this loop calls it every iteration once `to` resolves, so it
             must never itself scroll or otherwise actuate.
+        amount: Where the step size starts, as a fraction of the viewport; `None` starts at the
+            default. It moves only the *start*: the recovery below still shrinks toward the fixed
+            floor, so an `amount` already at or below that floor leaves it nothing to shrink and the
+            first detected overshoot fails the call (BE-0400).
 
     Raises:
         ElementNotFound: `to` is still off-screen after `max_scrolls` steps — the message says whether
             the loop could observe the region's motion at all — or two reads showed the region
             standing still with `to` absent (it bottomed out), or a step overshot the viewport even at
-            the smallest step the loop will take.
+            the smallest step this call will take.
         AmbiguousSelector: `to` resolves to more than one element — propagated from `resolve_unique`
             rather than tapping whichever matched first.
     """
@@ -474,7 +482,7 @@ def scroll_to_target(
     # Elements watched moving during this call. It outlives each step because the evidence does: a row
     # that scrolled ten steps ago is still anchored to the content when it comes to rest.
     movers: set[_Key] = set()
-    fraction = _STEP_FRACTION
+    fraction = amount if amount is not None else _STEP_FRACTION
     previous: _RegionView | None = None
     # Settled checksum from the last step no read could judge, kept for comparison against the next
     # such step — two of them in a row with the same render are the end of the content.
@@ -496,10 +504,12 @@ def scroll_to_target(
             movers |= _moved(previous, view)
             if not reversed_step and _overshot(previous, view):
                 if fraction <= _MIN_STEP_FRACTION:
+                    # Naming `fraction`, not the floor: an `amount` set at or below the floor never
+                    # shrinks before reaching here, so the floor would not be the step that overshot.
                     raise base.ElementNotFound(
                         f"scroll: {to!r} not found; a step overshot the region — nothing in view "
-                        f"survived it — even at the smallest step ({_MIN_STEP_FRACTION} of the "
-                        "viewport)"
+                        f"survived it — even at {fraction} of the viewport, the smallest step this "
+                        "call will take"
                     )
                 # Look at the span that passed, and observe the content more finely from here on.
                 fraction = max(fraction / 2, _MIN_STEP_FRACTION)
@@ -612,4 +622,5 @@ def _do_scroll(driver: base.Driver, step: Step, _r: object, _c: object, _b: obje
         s.direction,
         s.within.as_selector() if s.within is not None else None,
         s.max_scrolls,
+        amount=s.amount,
     )

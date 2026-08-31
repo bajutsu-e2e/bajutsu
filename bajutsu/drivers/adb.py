@@ -30,6 +30,7 @@ itself — so a bare `traits: [button]` matches any tappable row or container; p
 from __future__ import annotations
 
 import logging
+import math
 import re
 import subprocess
 import time
@@ -493,7 +494,15 @@ class AdbDriver(CoordinateTreeDriver):
     _SCROLL_RETRIES = 3  # scroll-and-re-query attempts before a deterministic not-found failure
     _SCROLL_FROM_FRAC = 0.7  # swipe start, as a fraction of screen height
     _SCROLL_TO_FRAC = 0.3  # swipe end (< start ⇒ upward ⇒ content scrolls up)
-    _SCROLL_DURATION_MS = 600  # the `scroll` pan duration: long enough to drag, not fling (BE-0326)
+    # The `scroll` pan's traversal speed, in device pixels per second, and the floor on the duration
+    # it implies. A fixed 600 ms duration (what this was until BE-0400) makes the speed depend on the
+    # distance asked for, so a large step traverses fast enough that the view stops tracking the whole
+    # path: a 1440-pixel request travelled 1153 on the conformance emulator, 20 percent short. Holding
+    # the *speed* fixed instead keeps every step size honest, the same correction the iOS runner
+    # applies with `XCUIGestureVelocity`, and the value is that runner's 200 points per second carried
+    # across at the two screens' physical scale. The floor keeps a small step from becoming a flick.
+    _SCROLL_SPEED_PX_PER_S = 550
+    _SCROLL_MIN_DURATION_MS = 600
     # Ceiling on waiting for a read to catch up with a gesture that already moved the content. One
     # number for one phenomenon, shared by two consumers: `read_lag()` hands it to the `scroll` loop
     # (BE-0326), and `_await_catchup` spends it on the actuator path. Android publishes the
@@ -1481,19 +1490,26 @@ class AdbDriver(CoordinateTreeDriver):
         # travel varies by device, which is exactly the non-determinism the `scroll` action removes.
         pre_key = self._pan_baseline()
         mark = self._capture_mark()
+        duration_ms = self._scroll_duration_ms(frm, to)
         self._actuations.record(
             Actuation(
                 gesture="scroll",
                 via="coordinate",
                 unit=_UNIT,
                 points=(frm, to),
-                duration_s=self._SCROLL_DURATION_MS / 1000,
+                duration_s=duration_ms / 1000,
             )
         )
-        self._act(
-            adb.swipe_cmd(self.serial, frm[0], frm[1], to[0], to[1], self._SCROLL_DURATION_MS)
-        )
+        self._act(adb.swipe_cmd(self.serial, frm[0], frm[1], to[0], to[1], duration_ms))
         self._arm_catchup(pre_key, mark)
+
+    def _scroll_duration_ms(self, frm: base.Point, to: base.Point) -> int:
+        """How long this pan should take, so its speed is the same whatever distance it covers."""
+        distance = math.hypot(to[0] - frm[0], to[1] - frm[1])
+        return max(
+            self._SCROLL_MIN_DURATION_MS,
+            round(distance / self._SCROLL_SPEED_PX_PER_S * 1000),
+        )
 
     def back(self) -> None:
         # The true system back: a KEYCODE_BACK key event. Android has no on-screen "back" element to
