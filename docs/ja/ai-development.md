@@ -213,6 +213,38 @@ git worktree remove ../bajutsu-<topic>
 生成物とスクラッチ出力（`runs/`、`tmp/`、`.venv/`、ビルド成果物）は意図的に gitignore 済みです。
 コミットに混ぜず、worktree を独立に保ってください。
 
+### worktree 間で共有してはならない2つの設定
+
+`core.bare` と `core.worktree` は、ただ1つの作業ツリーを指す設定です。そのため git は通常、共有の
+`.git/config` に書かれた値をメインの作業ツリーだけに適用します。リンクされた worktree は、同じ値を
+無視します。ところが `extensions.worktreeConfig` を有効にすると、git はこの例外を取り下げます。共有
+された値が、すべての worktree を支配するようになります。
+[git-worktree(1)](https://git-scm.com/docs/git-worktree#_configuration_file) も、`core.worktree` を
+「共有してはならない」、`core.bare` を「値が `core.bare=true` なら共有してはならない」と定めています。
+
+共有された `core.worktree` は、すべての worktree を一度に、しかも静かに誤った場所へ向けます
+（issue #1803）。`--git-dir` はローカルの位置を返すのに、あらゆるコマンドが読む作業ツリーだけが別の
+ものになるからです。`git status` は、別のブランチのファイルを変更済みとして並べます。`git add` は、
+成功したと報告しながら何も変えません。`git commit --amend` はファイルをコミットから落とし、
+`git checkout -- <path>` は同時に走る別セッションのディレクトリへ書き込みます。`core.worktree` を
+消すと、今度は共有された `core.bare = true` が現れます。以後あらゆる git の呼び出しが
+`fatal: this operation must be run in a work tree` で失敗し、`make check` も通らなくなります。
+
+そこで `make hooks` は、`extensions.worktreeConfig` が有効なまま共有の設定に `core.bare` か
+`core.worktree` があれば、処理を中断します。中断させているのは
+[`scripts/check_worktree_config.sh`](../../scripts/check_worktree_config.sh) です。`check`、`setup`、
+`worktree` はいずれも `make hooks` を経由するので、1箇所で3つとも守れます。中断するだけで、修復は
+しません。2つの設定は、このリポジトリのツールが書いたものではないからです。正しい直し方も、その
+チェックアウトがメインの作業ツリーかリンクされた worktree かで変わります。推測で書き換える代わりに、
+次の手当てを表示します。該当の worktree で実行してください。
+
+```bash
+git config --unset core.worktree       # 共有の設定に書かれている場合だけ
+git config --worktree core.bare false  # 本来の置き場所である worktree 単位へ
+```
+
+どちらかの設定が本当に必要な worktree は、`git config --worktree` で自分の設定ファイルに書きます。
+
 このルールの短縮版は [`CLAUDE.md`](../../CLAUDE.md) にあります。
 
 ## エージェントスキル: 単一のソースと単一の配備先（BE-0390）

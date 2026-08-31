@@ -250,6 +250,37 @@ git worktree remove ../bajutsu-<topic>
 Generated and scratch output — `runs/`, `tmp/`, `.venv/`, build artifacts — is gitignored on
 purpose; keep it out of commits so worktrees stay independent.
 
+### Two settings that must never be shared between worktrees
+
+`core.bare` and `core.worktree` describe *one* working tree, so git normally confines a value found
+in the shared `.git/config` to the main working tree and lets linked worktrees ignore it. Enabling
+`extensions.worktreeConfig` removes that exception: a shared value then governs every worktree, and
+[git-worktree(1)](https://git-scm.com/docs/git-worktree#_configuration_file) says `core.worktree`
+"should never be shared" and `core.bare` "should not be shared if the value is `core.bare=true`".
+
+A shared `core.worktree` misdirects every worktree at once, and it does so quietly (issue #1803):
+`--git-dir` still answers locally while the *working tree* every command reads is somebody else's.
+`git status` lists another branch's files, `git add` reports success and changes nothing, `git
+commit --amend` drops a file from the commit, and `git checkout -- <path>` writes into a concurrent
+session's directory. Clearing it then exposes a shared `core.bare = true`, which fails every
+invocation with `fatal: this operation must be run in a work tree` and takes `make check` down with
+it.
+
+`make hooks` — reached by `check`, `setup`, and `worktree` alike — therefore refuses to proceed when
+it finds either one in the shared config with the extension on
+([`scripts/check_worktree_config.sh`](../scripts/check_worktree_config.sh)). It only reports: nothing
+in this repository's tooling writes either setting, and the right repair depends on whether the
+checkout is the main or a linked worktree, so the guard prints the remedy rather than guessing at
+it. From the affected worktree:
+
+```bash
+git config --unset core.worktree       # only if it is set in the shared config
+git config --worktree core.bare false  # per-worktree, where it belongs
+```
+
+A worktree that genuinely needs either setting keeps it in its own config, written with `git config
+--worktree`.
+
 The short form of this rule is in [`CLAUDE.md`](../CLAUDE.md).
 
 ## Agent skills: one source, one deployment (BE-0390)

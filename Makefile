@@ -23,7 +23,11 @@ setup: hooks
 #   - merge.uv-lock     -> regenerate uv.lock from pyproject.toml on conflict (BE-0043)
 #   - merge.apm-generated -> regenerate apm.lock.yaml and .claude/skills/ from .apm/skills/ (BE-0390)
 #   - rerere            -> replay a once-resolved conflict automatically (BE-0043)
+# It also refuses to proceed when a per-worktree setting has been written to the shared config
+# (issue #1803) — first, before anything else reads or writes this repository, because that
+# misconfiguration silently redirects every git command in every worktree.
 hooks:
+	@./scripts/check_worktree_config.sh
 	@[ -d .githooks ] && git config core.hooksPath .githooks && echo "hooks: core.hooksPath -> .githooks" || true
 	@git config merge.uv-lock.name "regenerate uv.lock from pyproject.toml" \
 	  && git config merge.uv-lock.driver "./scripts/merge-uv-lock.sh %A" \
@@ -93,7 +97,7 @@ preflight:
 
 # Shell scripts the gate lints. pre-push/pre-commit/prepare-commit-msg have no .sh suffix, so
 # they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg .githooks/pre-commit .githooks/prepare-commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/worktree_cleanup.sh scripts/merge-uv-lock.sh scripts/merge-apm-generated.sh scripts/install-no-verify-guard.sh scripts/xcuitest-runner-hash.sh scripts/collect_android_diagnostics.sh scripts/android_pool_e2e.sh .claude/hooks/session-start.sh demos/tour/demo.sh
+SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg .githooks/pre-commit .githooks/prepare-commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/worktree_cleanup.sh scripts/check_worktree_config.sh scripts/merge-uv-lock.sh scripts/merge-apm-generated.sh scripts/install-no-verify-guard.sh scripts/xcuitest-runner-hash.sh scripts/collect_android_diagnostics.sh scripts/android_pool_e2e.sh .claude/hooks/session-start.sh demos/tour/demo.sh
 
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the
