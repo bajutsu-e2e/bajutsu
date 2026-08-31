@@ -108,17 +108,21 @@ _VIDEO_FINALIZE_TIMEOUT = 120.0
 # anchor correction (BE-0348).
 _VIDEO_START_TIMEOUT = 5.0
 _VIDEO_START_TIMEOUT_ENV = "BAJUTSU_VIDEO_START_TIMEOUT"
-# How far a recording's stated duration may exceed the span it was open for before `_measured_start`
-# stops treating that duration as a wall-clock measure. Covers the ordinary sub-frame slop — a
-# container rounds its duration up to a whole frame, and the spawn instant is stamped just before a
-# recorder that begins a beat later — without admitting a nominal-frame-rate timeline, whose excess
-# grows with the recording rather than staying inside one frame.
-_DURATION_SLACK = 0.2
+# How far *before* its own spawn a measured origin may sit before `_measured_start` stops trusting
+# it. Covers the ordinary sub-frame slop — a container rounds its duration up to a whole frame, and
+# the spawn instant is stamped just before a recorder that begins a beat later — without admitting a
+# nominal-frame-rate timeline, whose excess grows with the recording rather than staying inside one
+# frame. The far side of that window is `_video_start_timeout()` instead: an origin *after* the
+# spawn is the recorder's startup, which that ceiling already bounds.
+_ORIGIN_SLACK = 0.2
 # The shared tail of both confirmation-timeout warnings (iOS file-growth, Android device-side
-# process), so the two backends always describe the same uncorrected-anchor condition identically.
+# process), so the two backends always describe the same condition identically. It claims only what
+# the timeout establishes — that the *confirmation* is unavailable. The anchor can still be measured
+# from the finished recording's own duration, which is not known until `stop()`, so an operator
+# debugging a seek must not read this as "the anchor is wrong".
 _ANCHOR_UNCORRECTED_MSG = (
-    "this scenario's video anchor stays uncorrected, so its report seek offsets fall back to "
-    "the scenario's own start"
+    "this scenario's recording start could not be confirmed; its report seek offsets fall back to "
+    "the scenario's own start unless the finished recording can state its duration"
 )
 
 
@@ -257,28 +261,48 @@ def _measured_start(path: Path, ended_at: float, spawned_at: float | None) -> fl
     the instant its first frame was captured — the origin a report's seek offsets are relative to
     (the origin BE-0346 approximates with `true_start`).
 
-    The answer is only as good as the duration being a *wall-clock* measure, which is a property of
-    the recorder, not of this arithmetic: a container written at a nominal frame rate can state more
-    seconds than the recorder was ever open for. `spawned_at` is the bound that catches exactly that
-    — a recording cannot hold more footage than the span between its spawn and its stop — so a
-    duration past it is rejected rather than turned into an origin that precedes the recorder
-    itself. Debug rather than warning on every rejection: falling back to the start-confirmation
-    proxy is the behavior every run had before this, not an evidence gap this function created.
+    The subtraction is only as good as its two inputs, and each has a way of being wrong that the
+    other cannot see:
+
+    - The duration may not be a *wall-clock* measure, which is a property of the recorder rather
+      than of this arithmetic: a container written at a nominal frame rate can state more seconds
+      than the recorder was ever open for. That pushes the origin *before* the spawn.
+    - `ended_at` may not be when the recording ended, because a recorder can stop itself. Android's
+      `screenrecord` does exactly that at its own `SCREENRECORD_TIME_LIMIT_S` ceiling, so a scenario
+      outlasting that ceiling stops signalling a recorder that quit minutes ago. That pushes the
+      origin *after* the first frame, by the whole gap — silently worse than the proxy it outranks.
+
+    `spawned_at` bounds both, because it is the one instant that needs no confirmation. A recording
+    opens on its first frame somewhere between that spawn and the ceiling the start confirmation
+    already allows a recorder for exactly that startup (`_video_start_timeout`); an origin outside
+    that window says one of the two inputs is not describing this recording, so it is discarded
+    rather than trusted. Debug rather than warning on every rejection: falling back to the
+    start-confirmation proxy is the behavior every run had before this, not an evidence gap this
+    function created.
     """
     duration = media.duration_seconds(path)
     if duration is None:
         _logger.debug("could not read %s's duration; its anchor stays on the start proxy", path)
         return None
-    if spawned_at is not None and duration > (ended_at - spawned_at) + _DURATION_SLACK:
+    if spawned_at is None:
+        # No bound, no measurement: a provider that stamps no spawn leaves nothing to check the two
+        # inputs against, and an unchecked origin is exactly what the window below exists to refuse.
+        _logger.debug("%s has no spawn instant to bound its origin; it stays on the proxy", path)
+        return None
+    origin = ended_at - duration
+    # `_ORIGIN_SLACK` on the near side only: a sub-frame overshoot is ordinary rounding, while the
+    # far side is the recorder's real startup and already has a ceiling of its own.
+    if not (spawned_at - _ORIGIN_SLACK) <= origin <= (spawned_at + _video_start_timeout()):
         _logger.debug(
-            "%s states %.3fs of footage but was only open for %.3fs, so its duration is not a "
-            "wall-clock measure; its anchor stays on the start proxy",
+            "%s states %.3fs of footage ending at the stop, which puts its first frame %+.3fs from "
+            "the spawn — outside the window a recording can open in, so its anchor stays on the "
+            "start proxy",
             path,
             duration,
-            ended_at - spawned_at,
+            origin - spawned_at,
         )
         return None
-    return ended_at - duration
+    return origin
 
 
 def adopt(interval: Interval, target: Path) -> Interval:

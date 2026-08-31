@@ -54,6 +54,11 @@ def _element(ident: bytes, payload: bytes) -> bytes:
     return ident + _vint(len(payload)) + payload
 
 
+def _wide_vint(value: int) -> bytes:
+    """`value` as an 8-byte EBML size descriptor — how a finalized mux writes a whole-file size."""
+    return bytes([0x01]) + value.to_bytes(7, "big")
+
+
 def _webm(duration_ticks: float, *, scale: int = 1_000_000, unknown_size: bool = False) -> bytes:
     info = _element(b"\x2a\xd7\xb1", scale.to_bytes(4, "big"))
     info += _element(b"\x44\x89", struct.pack(">d", duration_ticks))
@@ -270,3 +275,25 @@ def test_webm_skips_info_children_it_does_not_read(tmp_path: Path) -> None:
     header = _element(b"\x1a\x45\xdf\xa3", b"\x42\x86\x81\x01")
     data = header + _element(b"\x18\x53\x80\x67", _element(b"\x15\x49\xa9\x66", info))
     assert media.duration_seconds(_write(tmp_path, "v.mp4", data)) == pytest.approx(1.5)
+
+
+def test_webm_duration_in_a_segment_larger_than_the_scan_window(tmp_path: Path) -> None:
+    # The shape a real Playwright recording has: on finalize the mux writes `Segment`'s real
+    # whole-file size, which for a scenario-length clip runs far past the bounded scan this reader
+    # holds. Rejecting a size that overruns the buffer would make every recording worth measuring
+    # read as unknown — the exact case a suite of sub-window fixtures cannot see.
+    info = _element(b"\x2a\xd7\xb1", (1_000_000).to_bytes(4, "big"))
+    info += _element(b"\x44\x89", struct.pack(">d", 12_000.0))
+    header = _element(b"\x1a\x45\xdf\xa3", b"\x42\x86\x81\x01")
+    declared = media._MATROSKA_SCAN_BYTES * 8  # a size no bounded read will ever hold
+    data = header + b"\x18\x53\x80\x67" + _wide_vint(declared) + _element(b"\x15\x49\xa9\x66", info)
+    assert media.duration_seconds(_write(tmp_path, "v.mp4", data)) == pytest.approx(12.0)
+
+
+def test_webm_child_header_straddling_its_parents_end_reads_as_unknown(tmp_path: Path) -> None:
+    # Bounding an over-long size by the buffer must not also swallow a header that begins inside its
+    # parent and ends outside it: there is no element there to read, only the next one's bytes.
+    header = _element(b"\x1a\x45\xdf\xa3", b"\x42\x86\x81\x01")
+    # A `Segment` declaring two bytes, followed by an `Info` header that needs five.
+    data = header + b"\x18\x53\x80\x67" + _vint(2) + b"\x15\x49\xa9\x66" + _vint(0)
+    assert media.duration_seconds(_write(tmp_path, "v.mp4", data)) is None

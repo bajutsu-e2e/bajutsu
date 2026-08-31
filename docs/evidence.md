@@ -281,6 +281,14 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   but the video itself does not exist until a page does, so the stamp waits for `new_page()` rather
   than `new_context()`. A poll that never confirms leaves `true_start` at `None`, so the anchor
   falls back to `scenario_start` — never a guessed number.
+
+  How long that poll may run is the one knob here. Startup jitter in `simctl` and `adb` is
+  measurably worse on a loaded continuous-integration (CI) machine than on a developer's, and a poll
+  that gives up costs the whole scenario its correction. So the ceiling takes an override:
+  `BAJUTSU_VIDEO_START_TIMEOUT` (seconds) replaces the 5-second compiled default, and
+  [`.github/workflows/ios-e2e.yml`](../.github/workflows/ios-e2e.yml) raises it for the iOS lane
+  alongside the three `BAJUTSU_XCUITEST_*` timeouts that already work this way. Raising it costs
+  nothing on the healthy path, because the poll returns the moment the recording confirms.
 - **The finished recording places its own origin, and outranks the confirmation above.** Every
   `true_start` is a *proxy*: a first flushed byte, a device-side process that has
   appeared, a browser page that exists. Each signal arrives at its own distance from the frame the
@@ -299,20 +307,21 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   `measured_start` and falling back to `true_start`, and records the result as
   `RunResult.video_anchor_s`.
 
-  A measured duration is an origin whenever the duration is a wall-clock measure, which is a
-  property of the recorder rather than of the arithmetic. A container written at a nominal frame
-  rate can state more seconds than the recorder was ever open for, and Playwright's short clips do.
-  So `Interval.spawned_at` — the one instant that needs no confirmation — bounds the measurement.
-  A duration past the span between spawn and stop cannot be a wall measure. The reader discards
-  such a duration, and that recording keeps the `true_start` anchor.
+  The subtraction is only as good as its two inputs, and each can be wrong in a way the other
+  cannot see. A duration is not always a wall-clock measure, which is a property of the recorder
+  rather than of the arithmetic: a container written at a nominal frame rate states more seconds
+  than the recorder was ever open for, as Playwright's short clips do, putting the origin *before*
+  the spawn. And `ended_at` is not always when the recording ended, because a recorder can stop
+  itself: Android's `screenrecord` quits at its own `SCREENRECORD_TIME_LIMIT_S` ceiling, so a
+  scenario outlasting that ceiling signals a recorder that stopped minutes earlier, putting the
+  origin *after* the first frame by that whole gap.
 
-  How long that poll may run is the one knob here. Startup jitter in `simctl` and `adb` is
-  measurably worse on a loaded continuous-integration (CI) machine than on a developer's, and a poll
-  that gives up costs the whole scenario its correction. So the ceiling takes an override:
-  `BAJUTSU_VIDEO_START_TIMEOUT` (seconds) replaces the 5-second compiled default, and
-  [`.github/workflows/ios-e2e.yml`](../.github/workflows/ios-e2e.yml) raises it for the iOS lane
-  alongside the three `BAJUTSU_XCUITEST_*` timeouts that already work this way. Raising it costs
-  nothing on the healthy path, because the poll returns the moment the recording confirms.
+  `Interval.spawned_at` bounds both, because it is the one instant that needs no confirmation. A
+  recording opens on its first frame somewhere between that spawn and the ceiling
+  `BAJUTSU_VIDEO_START_TIMEOUT` already allows a recorder for exactly that startup. An origin
+  outside that window says one of the two inputs is not describing this recording, so it is
+  discarded and that recording keeps the `true_start` anchor.
+
 - **The recorded timestamps are absolute; a viewer derives the video-relative offset when it
   renders.** `run_scenario` reads the wall clock once, beside its `time.monotonic()` stamp, giving
   the scenario an anchor pair: any later monotonic instant `t` becomes the wall-clock instant

@@ -988,12 +988,13 @@ def test_start_video_stamps_the_span_its_duration_is_checked_against(tmp_path: P
 def test_stop_measures_where_the_footage_begins_from_the_finished_file(tmp_path: Path) -> None:
     # The origin a report seeks against: the recording states its own duration and `stop()` knows
     # when it ended, so the origin is a measurement rather than the start-confirmation proxy — which
-    # fires at whatever distance from the first frame its own signal happens to have. Spawned 10s
-    # ago, so a 2.5s clip is well inside the span the recorder was open for.
+    # arrives at whatever distance from the first frame its own signal happens to have. A spawn 2.6s
+    # back puts a 2.5s clip's first frame a tenth of a second after it: inside the window a
+    # recording can open in, from both sides.
     path = tmp_path / "v.mp4"
     path.write_bytes(_mp4_bytes(2.5))
     interval = intervals.Interval(
-        kind="video", path=path, spawned_at=time.monotonic() - 10.0, _proc=FakeProc()
+        kind="video", path=path, spawned_at=time.monotonic() - 2.6, _proc=FakeProc()
     )
     before = time.monotonic()
     interval.stop()
@@ -1008,7 +1009,7 @@ def test_a_duration_longer_than_the_recording_was_open_for_is_not_a_measurement(
 ) -> None:
     # A container written at a nominal frame rate can state more seconds than the recorder ever ran
     # — Playwright's short clips do. Trusting that would place the origin before the recorder
-    # existed, so the span between spawn and stop rejects it and the proxy stays in charge.
+    # existed, which is the near side of the window the spawn bounds, so the proxy stays in charge.
     path = tmp_path / "v.mp4"
 
     def spawn(argv: list[str], out: Path | None) -> FakeProc:
@@ -1019,7 +1020,7 @@ def test_a_duration_longer_than_the_recording_was_open_for_is_not_a_measurement(
     with caplog.at_level("DEBUG"):
         interval.stop()
     assert interval.measured_start is None
-    assert any("not a wall-clock measure" in r.message for r in caplog.records)
+    assert any("outside the window a recording can open in" in r.message for r in caplog.records)
 
 
 def test_an_unreadable_recording_leaves_the_origin_to_the_start_proxy(tmp_path: Path) -> None:
@@ -1047,10 +1048,14 @@ def test_the_end_instant_follows_where_the_recording_actually_stops(tmp_path: Pa
     # must place the origin a whole close later, which is exactly the tail the other must not charge
     # to the recording's head.
     close_seconds = 0.05
+    slept = 0.0
 
     class SlowStop:
         def stop(self, sig: int, timeout: float) -> None:
+            nonlocal slept
+            begin = time.monotonic()
             time.sleep(close_seconds)
+            slept = time.monotonic() - begin
 
     def measured(*, stops_when_stop_returns: bool) -> float:
         path = tmp_path / f"v-{stops_when_stop_returns}.mp4"
@@ -1058,7 +1063,7 @@ def test_the_end_instant_follows_where_the_recording_actually_stops(tmp_path: Pa
         interval = intervals.Interval(
             kind="video",
             path=path,
-            spawned_at=time.monotonic() - 10.0,
+            spawned_at=time.monotonic() - 1.1,
             _proc=SlowStop(),
             stops_when_stop_returns=stops_when_stop_returns,
         )
@@ -1067,8 +1072,11 @@ def test_the_end_instant_follows_where_the_recording_actually_stops(tmp_path: Pa
         return interval.measured_start - time.monotonic()  # relative, so the two are comparable
 
     at_signal = measured(stops_when_stop_returns=False)
+    # Against the stop that actually happened, not the one asked for: only the unflagged run charges
+    # its stop to the tail, and a loaded machine oversleeps well past the 0.05s requested.
+    slept_at_signal = slept
     at_return = measured(stops_when_stop_returns=True)
-    assert at_return - at_signal == pytest.approx(close_seconds, abs=0.03)
+    assert at_return - at_signal == pytest.approx(slept_at_signal, abs=0.03)
 
 
 def test_adopt_carries_the_span_bound_onto_the_relocated_capture(tmp_path: Path) -> None:
@@ -1085,7 +1093,7 @@ def test_adopt_measures_the_relocated_file_not_the_temp_one(tmp_path: Path) -> N
     temp.parent.mkdir()
     temp.write_bytes(_mp4_bytes(1.5))
     running = intervals.Interval(
-        kind="video", path=temp, spawned_at=time.monotonic() - 10.0, _proc=FakeProc()
+        kind="video", path=temp, spawned_at=time.monotonic() - 1.6, _proc=FakeProc()
     )
 
     target = tmp_path / "scenario" / "scenario.mp4"
@@ -1094,3 +1102,33 @@ def test_adopt_measures_the_relocated_file_not_the_temp_one(tmp_path: Path) -> N
     assert adopted.stop() == target
     assert adopted.measured_start is not None
     assert before - 1.5 - 0.5 < adopted.measured_start <= before - 1.5 + 0.5
+
+
+def test_a_recorder_that_stopped_itself_is_not_measured(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The opposite failure to an over-long duration, and the one the span bound alone cannot see:
+    # Android's `screenrecord` stops at its own time limit, so a scenario outlasting that ceiling
+    # signals a recorder that quit long before. The duration is comfortably *under* the span, yet
+    # `ended_at` is not when the recording ended, so the origin lands late by that whole gap —
+    # silently worse than the proxy it would outrank. Spawned 60s ago with a 1s clip: the first
+    # frame would sit 59s after the spawn, which no recorder's startup explains.
+    path = tmp_path / "v.mp4"
+    path.write_bytes(_mp4_bytes(1.0))
+    interval = intervals.Interval(
+        kind="video", path=path, spawned_at=time.monotonic() - 60.0, _proc=FakeProc()
+    )
+    with caplog.at_level("DEBUG"):
+        interval.stop()
+    assert interval.measured_start is None
+    assert any("outside the window a recording can open in" in r.message for r in caplog.records)
+
+
+def test_a_recording_with_no_spawn_instant_stays_on_the_proxy(tmp_path: Path) -> None:
+    # `spawned_at` is what the two inputs are checked against, so a provider that stamps none leaves
+    # the origin unvalidated — and an unchecked origin is what the window exists to refuse.
+    path = tmp_path / "v.mp4"
+    path.write_bytes(_mp4_bytes(1.0))
+    interval = intervals.Interval(kind="video", path=path, _proc=FakeProc())
+    interval.stop()
+    assert interval.measured_start is None

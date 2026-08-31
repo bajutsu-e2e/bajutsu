@@ -212,9 +212,12 @@ def _matroska_duration(data: bytes) -> float | None:
 def _element_at(data: bytes, pos: int, end: int) -> tuple[int, int, int] | None:
     """One EBML element header at `pos`, as (id, payload start, payload end).
 
-    An "unknown size" descriptor (every size bit set) runs to the end of what the caller holds —
-    the shape a still-open live mux writes for `Segment` — so it is bounded by `end` rather than
-    rejected.
+    A declared size running past what the caller holds is bounded by `end` rather than rejected,
+    which covers both shapes `Segment` arrives in: the "unknown size" descriptor (every size bit
+    set) a still-open live mux writes, and the real whole-file size a finalized mux writes — larger
+    than the bounded scan above whenever the recording is, which is the ordinary case for a
+    scenario-length clip. A genuinely damaged file still reads as unknown, because the `Info` /
+    `Duration` walk inside then finds nothing to parse.
     """
     ident = _vint(data, pos, keep_marker=True)
     if ident is None:
@@ -224,7 +227,7 @@ def _element_at(data: bytes, pos: int, end: int) -> tuple[int, int, int] | None:
         return None
     body = size[1]
     width = size[1] - ident[1]
-    stop = end if size[0] == (1 << (7 * width)) - 1 else body + size[0]
+    stop = end if size[0] == (1 << (7 * width)) - 1 else min(body + size[0], end)
     if not body <= stop <= end:
         return None
     return ident[0], body, stop
