@@ -365,3 +365,37 @@ def test_redact_totp_secrets_preserves_an_explicit_system_alert_policy() -> None
     assert isinstance(policy, SystemAlertHandling)
     assert policy.labels == ["Allow", "OK"]
     assert policy.poll_interval == 0.5
+
+
+def test_dump_scenario_file_round_trips_an_exact_visual_assertion() -> None:
+    # `VisualMatch._engine_fields` rejects colorTolerance/antialiasing alongside `compare: exact`
+    # by reading `model_fields_set`, which a dump emitting every default makes unusable — the
+    # snapshot written beside a run's results then failed to reload, against this function's own
+    # round-trip contract.
+    scn = load_scenarios(
+        "- name: home\n"
+        "  steps: [{ tap: { id: go } }]\n"
+        "  expect:\n"
+        "    - visual: { baseline: home.png, compare: exact }\n"
+    )
+    text = dump_scenario_file(scn)
+    assert "colorTolerance" not in text and "antialiasing" not in text
+    assert load_scenarios(text)[0].expect[0].visual == scn[0].expect[0].visual
+
+
+def test_dump_scenario_file_keeps_a_declared_pixelmatch_tuning() -> None:
+    # Dropping defaults must not drop a value the author wrote, even one a stricter engine needs.
+    scn = load_scenarios(
+        "- name: home\n"
+        "  steps: [{ tap: { id: go } }]\n"
+        "  expect:\n"
+        "    - visual:\n"
+        "        baseline: home.png\n"
+        "        compare: pixelmatch\n"
+        "        colorTolerance: 0.4\n"
+        "        antialiasing: false\n"
+    )
+    visual = load_scenarios(dump_scenario_file(scn))[0].expect[0].visual
+    assert visual is not None
+    assert visual.color_tolerance == 0.4
+    assert visual.antialiasing is False
