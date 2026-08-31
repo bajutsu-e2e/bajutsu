@@ -110,6 +110,10 @@ def step_view(
     block (a native image beside a WebView tree, in the WebView's own coordinate space) and a run
     whose `after.png` the store no longer holds, leaving `before.png` beside a post-action tree.
 
+    `paired` is false only when there is an image the tree does not describe, so a consumer can read
+    it directly: a step whose screenshots the store no longer holds resolves to no image and reports
+    as paired, since there is nothing there to mispair.
+
     A tree entry carrying no `depicts` is a run recorded before the field existed. Nothing in such a
     manifest distinguishes a pre-action tree from a post-action one, so the result reproduces the
     pre-field choice and reports it as paired: a stored run keeps the frames it has always drawn
@@ -142,9 +146,11 @@ def step_view(
     while fallback is not None and not held(fallback):
         rest = [n for n in rest if n != fallback]
         fallback = _preferred_screenshot(rest)
-    # No screenshot at all leaves nothing to mispair, so it is not a mismatch to report: the tree
-    # stands on its own, and a viewer with no image draws no frames either way.
-    return StepView(fallback, tree_name, tree_depicts is None or not shots)
+    # `paired` is false only when there is an image the tree does not describe. A step left with no
+    # screenshot — none recorded, or none the store still holds — has nothing to mispair, so it
+    # reports as paired: a viewer with no image draws no frames either way, and "these describe
+    # different screens" would state a reason that is not the reason its frames are absent.
+    return StepView(fallback, tree_name, fallback is None or tree_depicts is None)
 
 
 def write_elements(
@@ -309,7 +315,13 @@ def capture(
         kind, _, modifier = token.partition(".")
         if kind == "rawTree":
             out.extend(
-                Artifact(name, "rawTree", "driver", _depicts(tree_source, modifier))
+                # `driver.name`, not `tree_source`: `write_raw_tree` reads `driver`'s own last
+                # reply, so that is the screen this dump depicts even when the tree beside it came
+                # from somewhere else. The two are identical on every path today — the run loop
+                # drops `rawTree` inside a `web` block — and stating the real source here is what
+                # keeps that true if a later `rawTree.before` lands on the pre-step baseline, where
+                # the elements source can be a different driver.
+                Artifact(name, "rawTree", "driver", _depicts(driver.name, modifier))
                 for name in write_raw_tree(driver, writer, prefix)
             )
         elif kind == "elements":

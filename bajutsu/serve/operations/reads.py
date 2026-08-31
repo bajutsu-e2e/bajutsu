@@ -619,9 +619,10 @@ def _step_artifacts(
         # An unpaired step offers no image at all. The picker's whole job is to turn a click on
         # these pixels into a selector resolved through this tree, so an image the tree does not
         # describe would resolve every click to the wrong element — silently, since the two look
-        # like an ordinary pair. `screenshotUnpaired` separates that from a step that simply
-        # recorded no screenshot, which the editor words differently.
-        unpaired = view.screenshot is not None and not view.paired
+        # like an ordinary pair. `step_view` reports unpaired only when an image is actually there,
+        # so this stays distinct from a step that has no screenshot to offer, which the editor
+        # words differently.
+        unpaired = not view.paired
         result.append(
             {
                 "stepId": step_id,

@@ -115,6 +115,21 @@ def test_a_legacy_run_without_after_png_falls_back_to_the_first_screenshot() -> 
     assert (view.screenshot, view.paired) == ("s/shot.png", True)
 
 
+def test_a_step_whose_screenshots_the_store_lost_is_not_a_mismatch() -> None:
+    # Every recorded screenshot is gone from the store, so the fallback finds none. There is no
+    # image left to mispair, and a viewer told "these describe different screens" would state a
+    # reason that is not the reason its frames are absent (review follow-up).
+    view = step_view(
+        _entries(
+            ("screenshot", "s/before.png", "adb:before"),
+            ("screenshot", "s/after.png", "adb:after"),
+            ("elements", "s/elements.json", "adb:after"),
+        ),
+        exists=lambda _name: False,
+    )
+    assert (view.screenshot, view.elements, view.paired) == (None, "s/elements.json", True)
+
+
 def test_a_step_with_no_screenshot_is_not_a_mismatch() -> None:
     # Nothing to mispair: the tree stands on its own, and a viewer with no image draws no frames.
     view = step_view(_entries(("elements", "s/elements.json", "adb:after")))

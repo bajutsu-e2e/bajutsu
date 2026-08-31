@@ -376,6 +376,27 @@ def test_step_whose_elements_have_no_extent_draws_no_frames(tmp_path: Path) -> N
     assert "data-sw=" not in out
 
 
+def test_step_whose_screenshots_the_run_lost_says_nothing_about_two_screens(
+    tmp_path: Path,
+) -> None:
+    # The manifest names both screenshots but the store holds neither, so the step shows its element
+    # table with no image. Frames are absent because there is nothing to draw them on — not because
+    # the image and the tree describe different screens — so the tree button must not claim that
+    # reason (review follow-up).
+    out = _one_step_report(
+        tmp_path,
+        [
+            Artifact("00-s1/step0/before.png", "screenshot", "driver", "adb:before"),
+            Artifact("00-s1/step0/after.png", "screenshot", "driver", "adb:after"),
+            Artifact("00-s1/step0/elements.json", "elements", "driver", "adb:after"),
+        ],
+        missing={"00-s1/step0/before.png", "00-s1/step0/after.png"},
+    )
+    assert 'class="shot"' not in out
+    assert 'class="treedata"' in out
+    assert "describe different screens" not in out
+
+
 def test_html_tree_falls_back_to_link_without_run_dir() -> None:
     # Structure-only render (no run_dir → no element data to embed): keep a link.
     r = RunResult(

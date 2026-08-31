@@ -224,6 +224,23 @@ def test_capture_raw_tree_kind_produces_artifacts(tmp_path: Path) -> None:
     }
 
 
+def test_capture_raw_tree_depicts_the_driver_whose_reply_it_holds(tmp_path: Path) -> None:
+    """`write_raw_tree` reads the *capture* driver's own last reply, so the dump depicts that
+    driver's screen even when the `elements` beside it were read from another one. Stating the real
+    source keeps `depicts` correct on its own, rather than resting on the run loop dropping
+    `rawTree` inside a `web` block (review follow-up)."""
+    driver = _RawSourceStub(base.RawSource(text="<hierarchy/>", suffix=".xml"))
+    written = capture(
+        driver,
+        _writer(tmp_path),
+        "step0",
+        ["rawTree"],
+        elements=[_el("w", "W")],
+        elements_source="webview",
+    )
+    assert [a.depicts for a in written] == ["fake:after"]
+
+
 def test_capture_raw_tree_kind_on_an_unsupported_backend_produces_nothing(tmp_path: Path) -> None:
     driver = FakeDriver([_el("a", "A")])
     assert capture(driver, _writer(tmp_path), "step0", ["rawTree"]) == []
