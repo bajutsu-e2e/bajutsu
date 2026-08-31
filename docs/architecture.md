@@ -695,8 +695,8 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   end-of-step branch, and the dismiss also composes onto BE-0314's `on_interrupt_poll` hook so a tip
   does not hold a wait to its full timeout either. Defaults off (unlike `systemAlertHandling`) because a
   scenario sometimes asserts on the tip itself; `--ios-tipkit-handling`/`--no-ios-tipkit-handling`
-  follows the flag > scenario > target > default precedence `systemAlertHandling`'s own on/off bit
-  rides (BE-0177; its policy keys compose by type instead, BE-0401)
+  follows the same flag > scenario > target > default precedence as `systemAlertHandling`'s own
+  on/off bit (BE-0177); `systemAlertHandling`'s policy keys compose by type instead (BE-0401)
 
 #### Evidence, network observation, and reporting
 
