@@ -211,9 +211,9 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   moved since the host counted it — is retried, bounded; the driver then falls back to a
   host-computed coordinate (`adb shell input tap` at the frame center for `tap`, a same-point swipe
   held for the duration for `long_press`) once retries exhaust, once the channel has no `/act`
-  endpoint (an older server), or once the channel faults outright. When the server injects but
-  cannot confirm it, the driver treats the gesture as done rather than risk a second touch landing on
-  top of the first. `double_tap`'s device path stamps both `MotionEvent`s from one server-side call,
+  endpoint (an older server), or once the channel faults outright. When the server injects but its
+  reply never reaches the host, the driver treats the gesture as done rather than risk a second touch
+  landing on top of the first. `double_tap`'s device path stamps both `MotionEvent`s from one server-side call,
   declaring a fixed interval between them instead of leaving the gap to a round trip's incidental
   timing; see **On-device actuation fidelity** below for its coordinate fallback. `swipe` adds a
   finite duration so it is a real drag; `type_text` is `input text` (spaces sent as its `%s`
@@ -234,11 +234,19 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   stepper — so the actuator that follows one must resolve against the tree the device published
   *after* it, not the pre-tap one; `tapPoint` (raw coordinates) and `back` (no resolved target) do
   not arm the wait, since they have no target-from-a-layout to postdate. The device-side `POST /act`
-  path above settles the tree it *resolves against* before injecting, but answers as soon as the
-  injection call returns — it does not wait for the gesture's own accessibility event to publish —
-  so the barrier still guards the read that follows it: an identity-addressed follower self-heals
-  through its own `stale` re-resolve, but a coordinate-resolving one (`pinch`, `rotate`, a directional
-  `swipe`/`drag` anchor) has no such check. That budget is the same number the `scroll` loop uses to confirm an
+  path above answers the barrier's own question at its source, so a gesture the device confirms arms
+  no barrier at all (BE-0339). Having injected, the resident server waits briefly on the accessibility
+  event stream its warm session already observes, and reports back the device-clock time of the first
+  event that postdates the injection. A gesture confirmed that way has reached the tree before the
+  host is told the gesture landed, which is exactly what the barrier would otherwise have waited for.
+  A gesture the device cannot confirm within that window arms the barrier exactly as a coordinate
+  injection does, and three unrelated causes land there together: a gesture that moved no frame, a
+  publish slower than the window, and a server old enough never to have waited at all. Confirmation
+  is the device's to give and never the driver's to assume, because a coordinate-resolving follower
+  (`pinch`, `rotate`, a directional `swipe`/`drag` anchor) has no `stale` re-resolve to self-heal
+  with, unlike an identity-addressed follower.
+  The barrier's own wall-clock budget — not the device's publish window — is the same number the
+  `scroll` loop uses to confirm an
   end of content before failing (`ReadLagProvider`, BE-0326 / BE-0332; see
   [architecture](architecture.md)) — one publish lag, so one budget, spent across those paths.
   A directional `swipe` and a `drag` are the one exception to *where* the resolve happens: their

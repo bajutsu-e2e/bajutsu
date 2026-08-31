@@ -19,6 +19,7 @@ import pytest
 
 from bajutsu import adb, adb_resident
 from bajutsu.drivers.adb import (
+    ActOutcome,
     ActRequest,
     AdbActUncertain,
     AdbResidentError,
@@ -116,6 +117,9 @@ class _SourceHandler(http.server.BaseHTTPRequestHandler):
     act_status = 200  # what POST /act answers
     last_act_path: str | None = None  # the full POST /act target the client last sent
     act_drop_reply = False  # accept the request, then hang up without answering
+    # The X-Bajutsu-Act-Publish header value, when set (BE-0339 Unit 5). None is the older server that
+    # never waited for its gesture to publish, and the device that waited and saw nothing.
+    act_publish: str | None = None
 
     def do_POST(self) -> None:
         if self.path.split("?", 1)[0] != "/act":
@@ -128,6 +132,8 @@ class _SourceHandler(http.server.BaseHTTPRequestHandler):
             return
         self.send_response(self.act_status)
         self.send_header("Content-Length", "0")
+        if self.act_publish is not None:
+            self.send_header(adb_resident._ACT_PUBLISH_HEADER, self.act_publish)
         self.end_headers()
 
     def do_GET(self) -> None:
@@ -159,6 +165,9 @@ class _SourceHandler(http.server.BaseHTTPRequestHandler):
 def _serve_once(status: int = 200, mark: str | None = None) -> tuple[int, http.server.HTTPServer]:
     _SourceHandler.status = status
     _SourceHandler.mark = mark
+    _SourceHandler.act_publish = (
+        None  # opt in per test; a leaked value would confirm a publish here
+    )
     server = http.server.HTTPServer(("127.0.0.1", 0), _SourceHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server.server_port, server
@@ -634,7 +643,7 @@ def test_act_sends_the_element_identity_and_no_coordinate() -> None:
     port, server = _serve_once()
     _SourceHandler.act_status = 200
     try:
-        assert adb_resident.act(port, _act_request(since=42.0, duration_ms=700)) is True
+        assert adb_resident.act(port, _act_request(since=42.0, duration_ms=700)).acted is True
     finally:
         server.shutdown()
     sent = urllib.parse.parse_qs(urllib.parse.urlparse(_SourceHandler.last_act_path or "").query)
@@ -650,7 +659,37 @@ def test_act_reports_a_stale_target_rather_than_raising() -> None:
     port, server = _serve_once()
     _SourceHandler.act_status = 409
     try:
-        assert adb_resident.act(port, _act_request()) is False
+        assert adb_resident.act(port, _act_request()).acted is False
+    finally:
+        server.shutdown()
+
+
+def test_act_reports_the_publish_the_device_confirmed() -> None:
+    # The header is the device answering "this gesture has already reached the accessibility tree"
+    # (BE-0339 Unit 5) — the one answer that lets the driver skip the read-lag barrier for it, which
+    # it may do only on a mark the device actually observed, never on an assumption of its own.
+    port, server = _serve_once()
+    _SourceHandler.act_status = 200
+    _SourceHandler.act_publish = "98765"
+    try:
+        assert adb_resident.act(port, _act_request()) == ActOutcome(
+            acted=True, published_mark=98765.0
+        )
+    finally:
+        server.shutdown()
+
+
+@pytest.mark.parametrize("header", [None, "not-a-mark"])
+def test_act_reports_no_publish_when_the_device_did_not_confirm_one(header: str | None) -> None:
+    # Two servers answer the same way here, deliberately: one that waited its budget and saw no event,
+    # and an older one that never waited at all and so sends no header. Both mean "unconfirmed", which
+    # leaves the barrier armed exactly as it stood — so neither needs the driver to know which it was.
+    # A malformed value degrades the same way rather than failing a gesture that actually landed.
+    port, server = _serve_once()
+    _SourceHandler.act_status = 200
+    _SourceHandler.act_publish = header
+    try:
+        assert adb_resident.act(port, _act_request()) == ActOutcome(acted=True, published_mark=None)
     finally:
         server.shutdown()
 
