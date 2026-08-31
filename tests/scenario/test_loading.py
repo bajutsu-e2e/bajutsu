@@ -14,7 +14,7 @@ from bajutsu.scenario import (
     load_scenarios,
     redact_totp_secrets,
 )
-from bajutsu.scenario.models.scenario import SCHEMA_VERSION
+from bajutsu.scenario.models.scenario import SCHEMA_VERSION, SystemAlertHandling
 
 # A valid base32 TOTP seed used across the redaction tests below.
 _TOTP_SEED = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
@@ -330,3 +330,72 @@ def test_redact_totp_secrets_reaches_nested_steps() -> None:
     assert for_each is not None and for_each.steps[0].totp is not None
     assert for_each.steps[0].totp.secret == "<redacted>"
     assert _TOTP_SEED not in dump_scenarios([redacted])
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {"rules": [{"prompt": "notifications", "choice": "grant"}]},
+        {"pollInterval": 2},
+        {"visionInstruction": "tap Allow"},
+        {},
+    ],
+    ids=["rules-only", "pollInterval-only", "visionInstruction-only", "empty"],
+)
+def test_redact_totp_secrets_round_trips_a_policy_that_names_no_button(
+    policy: dict[str, object],
+) -> None:
+    # Re-validating a model's own dump must not be able to fail. `systemAlertHandling.labels`
+    # rejects `[]` (BE-0401) while `[]` is also its default, so a policy steering the guard by
+    # anything but button labels used to die here — on the `run` path, after the steps had passed.
+    scn = Scenario.model_validate({"name": "a", "steps": [], "systemAlertHandling": policy})
+    assert redact_totp_secrets(scn).model_dump() == scn.model_dump()
+
+
+def test_redact_totp_secrets_preserves_an_explicit_system_alert_policy() -> None:
+    # Dropping default-valued fields on the way out must not drop a declared one on the way back.
+    scn = Scenario.model_validate(
+        {
+            "name": "a",
+            "steps": [{"totp": {"secret": _TOTP_SEED, "into": {"var": "code"}}}],
+            "systemAlertHandling": {"labels": ["Allow", "OK"], "pollInterval": 0.5},
+        }
+    )
+    policy = redact_totp_secrets(scn).system_alert_handling
+    assert isinstance(policy, SystemAlertHandling)
+    assert policy.labels == ["Allow", "OK"]
+    assert policy.poll_interval == 0.5
+
+
+def test_dump_scenario_file_round_trips_an_exact_visual_assertion() -> None:
+    # `VisualMatch._engine_fields` rejects colorTolerance/antialiasing alongside `compare: exact`
+    # by reading `model_fields_set`, which a dump emitting every default makes unusable — the
+    # snapshot written beside a run's results then failed to reload, against this function's own
+    # round-trip contract.
+    scn = load_scenarios(
+        "- name: home\n"
+        "  steps: [{ tap: { id: go } }]\n"
+        "  expect:\n"
+        "    - visual: { baseline: home.png, compare: exact }\n"
+    )
+    text = dump_scenario_file(scn)
+    assert "colorTolerance" not in text and "antialiasing" not in text
+    assert load_scenarios(text)[0].expect[0].visual == scn[0].expect[0].visual
+
+
+def test_dump_scenario_file_keeps_a_declared_pixelmatch_tuning() -> None:
+    # Dropping defaults must not drop a value the author wrote, even one a stricter engine needs.
+    scn = load_scenarios(
+        "- name: home\n"
+        "  steps: [{ tap: { id: go } }]\n"
+        "  expect:\n"
+        "    - visual:\n"
+        "        baseline: home.png\n"
+        "        compare: pixelmatch\n"
+        "        colorTolerance: 0.4\n"
+        "        antialiasing: false\n"
+    )
+    visual = load_scenarios(dump_scenario_file(scn))[0].expect[0].visual
+    assert visual is not None
+    assert visual.color_tolerance == 0.4
+    assert visual.antialiasing is False
