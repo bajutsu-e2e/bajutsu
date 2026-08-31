@@ -85,7 +85,8 @@ means the same thing after the run that produced it exits
   anchor — instead of forcing a re-run of the scenario
   ([BE-0348](../roadmaps/BE-0348-absolute-timestamp-recording/BE-0348-absolute-timestamp-recording.md)).
 - `video_anchor_s` (per scenario): the absolute wall-clock instant the scenario's video started,
-  taken from the recording's confirmed real start where the confirmation succeeded
+  measured from the finished recording's own duration where that duration is a wall-clock measure,
+  and otherwise from the recording's confirmed start signal
   ([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)). Every viewer subtracts it.
   A run recorded before `schemaVersion` 6 carries no anchor. Its `started_at` values are already
   video-relative, so a viewer reads the missing anchor as `0.0` and renders them unchanged.
@@ -256,9 +257,9 @@ hidden for a report opened from disk). The CLI twin is [`bajutsu approve`](cli.m
 
 Failing rows have a red background. Clicking a step seeks the recording to that step **without
 auto-playing** (a paused video stays paused; a playing one keeps playing) — the seek target is the
-step's `started_at` minus `video_anchor_s` (the **steps** table's `at` column), anchored to the
-video's confirmed or best-known real start rather than the raw moment the scenario's step loop
-began, so the seek lands on what the row actually shows
+step's `started_at` minus `video_anchor_s` (the **steps** table's `at` column). That anchor is the
+recording's own measured origin, or its best-known real start where no measurement was possible —
+not the raw moment the scenario's step loop began — so the seek lands on what the row shows
 ([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)). One visible consequence: for
 a video-capturing Android or web scenario, that derived seconds-into-the-recording value can exceed
 the scenario's own `duration_s`, because the two measure different things on purpose — the video's

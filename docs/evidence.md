@@ -279,10 +279,32 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   `adopt` even runs) is not lost. The web actuator stamps `true_start` right after the recording
   page is created, with no poll: `record_video_dir` enables recording for the pages in a context,
   but the video itself does not exist until a page does, so the stamp waits for `new_page()` rather
-  than `new_context()`. `run_scenario` resolves `video_start_offset = true_start - scenario_start`
-  once per scenario and records the corrected origin as `RunResult.video_anchor_s`. A poll that
-  never confirms leaves `true_start` at `None`, so the offset is `0.0` and the anchor is exactly
-  what it would have been without this correction — never a guessed number.
+  than `new_context()`. A poll that never confirms leaves `true_start` at `None`, so the anchor
+  falls back to `scenario_start` — never a guessed number.
+- **The finished recording places its own origin, and outranks the confirmation above.** Every
+  `true_start` is a *proxy*: a first flushed byte, a device-side process that has
+  appeared, a browser page that exists. Each signal arrives at its own distance from the frame the
+  recorder opens on, so a report anchored to one seeks off by that distance. The recording answers
+  the question itself. A finalized clip states its own duration, and `Interval.stop()` knows the
+  instant it ended, so the subtraction gives the origin outright:
+  `measured_start = ended_at - duration`. The duration comes from the container, with no external
+  tool: [`evidence/media.py`](../bajutsu/evidence/media.py) reads the movie header that `simctl` and
+  `screenrecord` write, and the Matroska segment that Playwright's recorder writes.
+
+  Which instant "ended" names is the recorder's to say. A subprocess recorder stops when the signal
+  lands, then spends its finalize (and, on Android, a pull off the device) writing a clip it already
+  captured. Playwright instead films right through the context close that `stop()` performs. A
+  provider declares which shape it has through `Interval.stops_when_stop_returns`. `run_scenario`
+  then resolves `video_start_offset` *after* `finish_scenario_intervals`, preferring
+  `measured_start` and falling back to `true_start`, and records the result as
+  `RunResult.video_anchor_s`.
+
+  A measured duration is an origin whenever the duration is a wall-clock measure, which is a
+  property of the recorder rather than of the arithmetic. A container written at a nominal frame
+  rate can state more seconds than the recorder was ever open for, and Playwright's short clips do.
+  So `Interval.spawned_at` — the one instant that needs no confirmation — bounds the measurement.
+  A duration past the span between spawn and stop cannot be a wall measure. The reader discards
+  such a duration, and that recording keeps the `true_start` anchor.
 
   How long that poll may run is the one knob here. Startup jitter in `simctl` and `adb` is
   measurably worse on a loaded continuous-integration (CI) machine than on a developer's, and a poll

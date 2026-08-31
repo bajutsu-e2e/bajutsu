@@ -793,10 +793,16 @@ def test_extract_still_reads_the_settled_post_action_value(tmp_path: Path) -> No
 
 
 class _VideoSink:
-    """A NullSink twin that hands back one video interval with a fixed `true_start`."""
+    """A NullSink twin that hands back one video interval with a fixed `true_start`.
 
-    def __init__(self, true_start: float | None) -> None:
+    `measured_start` is settled by the real `Interval.stop()`, which needs a finished file
+    on disk; here it is set on the interval the moment `finish_scenario_intervals` is called, which
+    is the same ordering `run_scenario` depends on — the anchor is resolved *after* the finalize.
+    """
+
+    def __init__(self, true_start: float | None, measured_start: float | None = None) -> None:
         self._true_start = true_start
+        self._measured_start = measured_start
 
     def capture(
         self,
@@ -819,6 +825,8 @@ class _VideoSink:
     def finish_scenario_intervals(
         self, scenario_id: str, started: list[Interval]
     ) -> list[Artifact]:
+        for interval in started:
+            interval.measured_start = self._measured_start
         return []
 
 
@@ -829,14 +837,16 @@ _WALL = 1_700_000_000.0
 
 
 def _run_with_video(
-    true_start: float | None, wall_clock: Callable[[], float] = lambda: _WALL
+    true_start: float | None,
+    wall_clock: Callable[[], float] = lambda: _WALL,
+    measured_start: float | None = None,
 ) -> RunResult:
     driver = FakeDriver([el("go", "Go", ["button"])])
     return run_scenario(
         driver,
         _scenario({"name": "x", "steps": [{"tap": {"id": "go"}}]}),
         clock=FakeClock(),
-        sink=_VideoSink(true_start),
+        sink=_VideoSink(true_start, measured_start),
         wall_clock=wall_clock,
     )
 
@@ -915,3 +925,32 @@ def test_an_untrusted_positive_offset_leaves_the_anchor_uncorrected(
     assert result.steps[0].started_at == _WALL
     assert result.video_anchor_s == _WALL
     assert any("is after scenario_start" in r.message for r in caplog.records)
+
+
+def test_the_recordings_own_origin_wins_over_the_start_confirmation_proxy() -> None:
+    # `true_start` marks when a *side signal* fired — a first flushed byte, a device-side
+    # pid, a browser page that exists — and each sits its own distance from the frame the recording
+    # actually opens on. Once the recording is finalized it states that distance itself, so the
+    # measured origin replaces the proxy rather than averaging with it.
+    result = _run_with_video(true_start=-2.5, measured_start=-4.0)
+    assert result.video_anchor_s == _WALL - 4.0
+
+
+def test_a_measured_origin_after_scenario_start_is_trusted(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # The `true_start` branch treats a positive offset as an anomaly, because a proxy that fires
+    # after scenario_start says the signal is wrong. A *measured* origin says something different
+    # and ordinary: the recorder opened on its first frame a beat after the scenario did. Trust it —
+    # the report's own `max(0.0, …)` floor is what keeps an early step on the recording.
+    with caplog.at_level("WARNING"):
+        result = _run_with_video(true_start=None, measured_start=0.75)
+    assert result.video_anchor_s == _WALL + 0.75
+    assert not any("is after scenario_start" in r.message for r in caplog.records)
+
+
+def test_an_unmeasurable_recording_keeps_the_proxy_anchor() -> None:
+    # The degradation contract: a duration that could not be read (a dropped pull, a truncated
+    # finalize, a container this build cannot parse) leaves every run exactly where BE-0346 left it.
+    result = _run_with_video(true_start=-2.5, measured_start=None)
+    assert result.video_anchor_s == _WALL - 2.5
