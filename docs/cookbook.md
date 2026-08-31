@@ -91,7 +91,7 @@ labels and denies the prompt instead of granting it.
 ```yaml
 - name: grant notification permission
   tags: [permission, system]
-  systemAlertHandling: { instruction: ["Allow"] }
+  systemAlertHandling: { labels: ["Allow"] }
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:

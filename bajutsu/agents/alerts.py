@@ -170,7 +170,7 @@ class ClaudeAlertLocator(ClaudeBackedAgent):
             "button center as pixel coordinates within that range."
         )
         if instruction:
-            # The instruction may be user-supplied (--alert-instruction); mask secrets before it
+            # The instruction may be user-supplied (--alert-vision-instruction); mask secrets before it
             # reaches the model (BE-0047). The screenshot beside it cannot be pixel-masked.
             if self._redactor is not None:
                 instruction = self._redactor.redact_text(instruction)

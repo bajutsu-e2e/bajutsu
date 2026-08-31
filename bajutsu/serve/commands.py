@@ -22,6 +22,14 @@ def _int(value: Any, default: int) -> int:
         return default
 
 
+def _float(value: Any) -> float | None:
+    """Coerce a JSON value to float, or None when absent/unparsable (so the CLI default applies)."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def run_command(
     scenario: str,
     target: str,
@@ -45,7 +53,9 @@ def run_command(
     network: bool | None = None,
     log_predicate: str = "",
     log_subsystem: str = "",
-    alert_instruction: str = "",
+    alert_labels: str = "",
+    alert_vision_instruction: str = "",
+    alert_poll_interval: float | None = None,
     zip_run: bool | None = None,
     config_offline: bool | None = None,
     require_pinned_config: bool | None = None,
@@ -96,7 +106,9 @@ def run_command(
             "network": network,
             "log_predicate": log_predicate,
             "log_subsystem": log_subsystem,
-            "alert_instruction": alert_instruction,
+            "alert_labels": alert_labels,
+            "alert_vision_instruction": alert_vision_instruction,
+            "alert_poll_interval": alert_poll_interval,
             "zip_run": zip_run,
             "config_offline": config_offline,
             "require_pinned_config": require_pinned_config,

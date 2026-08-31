@@ -335,10 +335,12 @@ class SystemAlertGuard:
   適用されるケースでは、従来どおり **wait の途中でも**待ち構えており、すでにポーリング済みの画面のツリーが
   潰れて見えた時点で発火します（デバウンスとクールダウンを挟み、1 回の wait につき最大 2 回まで）。wait
   自体のタイムアウトを待たず、末尾の再試行より前に回復できます（BE-0269）。シナリオ側で
-  `systemAlertHandling: false` で無効化、`{ instruction: ["Allow"] }` でネイティブ経路が決定的に解決する
-  候補ラベルを指定、あるいは視覚フォールバックだけが解釈する旧来の自由記述形式 `{ instruction: "tap Allow" }`
-  も使えます。`--system-alert-handling`/`--no-system-alert-handling` は全シナリオを上書きし、
-  `--alert-instruction "..."` は既定指示を設定します。
+  `systemAlertHandling: false` で無効化、`{ labels: ["Allow"] }` でネイティブ経路が決定的に解決する
+  候補ラベルを指定、あるいは視覚フォールバックだけが読む自由記述
+  `{ visionInstruction: "tap Allow" }` も使えます
+  （[BE-0401](../../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md)）。
+  `--system-alert-handling`/`--no-system-alert-handling` は全シナリオを上書きし、`--alert-labels`・
+  `--alert-vision-instruction`・`--alert-poll-interval` は同じ 3 つのキーをその 1 回の run に与えます。
 - `record --system-alert-handling`: 既定で ON です（オーサリング時はまだシナリオが無いため）。割り込むプロンプトを片付け、
   エージェントに常にクリーンな画面を見せます。**dismissal は環境操作であって記録ステップではありません**
   （リプレイ側は各シナリオの `systemAlertHandling` で対処します）。

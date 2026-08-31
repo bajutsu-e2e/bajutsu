@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0401](BE-0401-system-alert-handling-dsl-consolidation-ja.md) |
 | 提案者 | [@akiramatsuda](https://github.com/akiramatsuda) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0401") |
-| 実装 PR | [#1810](https://github.com/bajutsu-e2e/bajutsu/pull/1810) |
+| 実装 PR | [#1810](https://github.com/bajutsu-e2e/bajutsu/pull/1810), [#1822](https://github.com/bajutsu-e2e/bajutsu/pull/1822) |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md), [BE-0317](../BE-0317-rename-dismiss-alerts-to-alert-handling/BE-0317-rename-dismiss-alerts-to-alert-handling-ja.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md), [BE-0327](../BE-0327-rename-alert-handling-to-system-alert-handling/BE-0327-rename-alert-handling-to-system-alert-handling-ja.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules-ja.md) |
 <!-- /BE-METADATA -->
@@ -352,12 +352,16 @@ Web UIは、コマンドライン自身のオプションのメタデータか�
 > 作業の進行に合わせて最新に保ってください。チェックリストは*詳細設計*のMECEな作業分解を反映し
 > （作業単位ごとに1つ）、ログには変更内容と時期を古い順に記録し、PRへのリンクを添えます。
 
-- [ ] スキーマ — `labels`、`visionInstruction`、`Literal[False]`の共用体、削除したキーのエラー、空の値の検証。
-- [ ] 層の合成 — リストの連結、スカラの優先順位、抑制の削除、通知。
-- [ ] コマンドライン — フラグの追加、改名、削除と、Web UIの対応。
-- [ ] ドキュメント — 6ページとその日本語側、および移行表。
-- [ ] デモのシナリオ — showcaseのシナリオと設定。
-- [ ] テスト — 上の各単位を覆う決定的なテスト群。
+- [x] スキーマ — `labels`、`visionInstruction`、`Literal[False]`の共用体、削除したキーのエラー、空の値の検証。
+- [x] 層の合成 — リストの連結、スカラの優先順位、抑制の削除、通知。
+- [x] コマンドライン — フラグの追加、改名、削除と、Web UIの対応。
+- [x] ドキュメント — 6ページとその日本語側、および移行表。
+- [x] デモのシナリオ — showcaseのシナリオと設定。
+- [x] テスト — 上の各単位を覆う決定的なテスト群。
+
+- 2026-08-30 — 一度の変更で出荷しました。スキーマの分割、型で決まる層の合成と構築時の通知、
+  コマンドラインとWeb UIの surface、6ページのドキュメントとその日本語側、showcaseのシナリオ、
+  決定的なテスト群。
 
 ## 参考
 

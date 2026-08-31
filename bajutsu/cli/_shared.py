@@ -37,7 +37,6 @@ from bajutsu.config_source import (
     parse_config_spec,
     source_provenance,
 )
-from bajutsu.deprecations import warn_once
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.github import GitHubAccessError
 from bajutsu.runner.launch_server import start_launch_server
@@ -52,53 +51,23 @@ if TYPE_CHECKING:
 
 @overload
 def resolve_system_alert_handling_flag(
-    system_alert_handling: bool | None,
-    alert_handling: bool | None,
-    dismiss_alerts: bool | None,
-    *,
-    default: bool,
+    system_alert_handling: bool | None, *, default: bool
 ) -> bool: ...
 @overload
 def resolve_system_alert_handling_flag(
-    system_alert_handling: bool | None,
-    alert_handling: bool | None,
-    dismiss_alerts: bool | None,
-    *,
-    default: None = None,
+    system_alert_handling: bool | None, *, default: None = None
 ) -> bool | None: ...
 def resolve_system_alert_handling_flag(
-    system_alert_handling: bool | None,
-    alert_handling: bool | None,
-    dismiss_alerts: bool | None,
-    *,
-    default: bool | None = None,
+    system_alert_handling: bool | None, *, default: bool | None = None
 ) -> bool | None:
-    """Merge the canonical `--system-alert-handling` flag with its deprecated aliases.
+    """Resolve the `--system-alert-handling` flag against each command's own unset behavior.
 
-    The canonical flag wins when more than one is given, `--alert-handling` next, `--dismiss-alerts`
-    last; using either alias earns a one-time deprecation notice. When none is set, *default*
-    decides: `run` leaves it None (each scenario's own value applies), while `record` and `crawl`
-    pass `default=True` (the guard is on while authoring / crawling). Shared by all three so the
-    aliases behave identically on each.
+    `run` leaves it None (each scenario's own value applies), while `record` and `crawl` pass
+    `default=True` (the guard is on while authoring / crawling). Shared by all three so the flag
+    behaves identically on each. The `--alert-handling` / `--dismiss-alerts` aliases this once merged
+    were deleted with no replacement (BE-0401).
     """
-    if alert_handling is not None:
-        warn_once(
-            "cli.alert-handling",
-            "--alert-handling is deprecated; use --system-alert-handling "
-            "(--alert-handling is still accepted for now).",
-        )
-    if dismiss_alerts is not None:
-        warn_once(
-            "cli.dismiss-alerts",
-            "--dismiss-alerts is deprecated; use --system-alert-handling "
-            "(--dismiss-alerts is still accepted for now).",
-        )
-    resolved = system_alert_handling
-    if resolved is None:
-        resolved = alert_handling
-    if resolved is None:
-        resolved = dismiss_alerts
-    return default if resolved is None else resolved
+    return default if system_alert_handling is None else system_alert_handling
 
 
 def _secret_values(eff: Effective) -> list[str]:
@@ -501,12 +470,13 @@ def _build_alert_locator(eff: Effective, redactor: Redactor) -> ClaudeAlertLocat
 
 
 def _build_alert_guard(
-    eff: Effective, redactor: Redactor, instruction: str
+    eff: Effective, redactor: Redactor, vision_instruction: str
 ) -> Callable[[base.Driver], AlertEvent | None] | None:
-    """The bound alert-dismiss guard for a single-instruction command (`crawl` / `record`), or None (BE-0260).
+    """The bound alert-dismiss guard for a vision-only command (`crawl` / `record`), or None (BE-0260).
 
     Builds the shared locator (`_build_alert_locator`) and binds it to one `SystemAlertGuard` with
-    `instruction` (an empty instruction falls back to the guard's built-in dismissive default).
+    the given vision instruction (an empty one falls back to the guard's built-in dismissive
+    default).
     Returns None when the credential is missing, so the caller's guard simply no-ops. `run` does not
     use this: it shares one locator across per-scenario guards and wraps each in usage attribution,
     so it calls `_build_alert_locator` directly.
@@ -516,4 +486,4 @@ def _build_alert_guard(
     locator = _build_alert_locator(eff, redactor)
     if locator is None:
         return None
-    return SystemAlertGuard(locator, instruction or None).dismiss
+    return SystemAlertGuard(locator, vision_instruction or None).dismiss

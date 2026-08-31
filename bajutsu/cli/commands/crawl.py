@@ -208,7 +208,7 @@ def _wire_health(
     redactor: Redactor,
     *,
     system_alert_handling: bool,
-    alert_instruction: str,
+    alert_vision_instruction: str,
     report: Report,
 ) -> tuple[
     crawl_engine.AliveCheck | None, crawl_engine.ClearBlocking | None, crawl_engine.Recover | None
@@ -237,7 +237,7 @@ def _wire_health(
         # The alert guard dismisses unexpected OS prompts the crawl would otherwise read as a crash.
         # `_require_ai_credential` has already failed closed, so the guard's credential is
         # known-present and the shared helper returns a real guard (never the no-op None branch).
-        guard = _build_alert_guard(eff, redactor, alert_instruction)
+        guard = _build_alert_guard(eff, redactor, alert_vision_instruction)
         if guard is not None:
             from bajutsu.orchestrator import RealClock
 
@@ -276,7 +276,7 @@ class _CrawlPlan:
     prune_global: bool
     erase: bool
     system_alert_handling: bool
-    alert_instruction: str
+    alert_vision_instruction: str
     upload_exec: str
 
 
@@ -359,7 +359,7 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
         plan.eff,
         plan.redactor,
         system_alert_handling=plan.system_alert_handling,
-        alert_instruction=plan.alert_instruction,
+        alert_vision_instruction=plan.alert_vision_instruction,
         report=report,
     )
 
@@ -454,20 +454,10 @@ def crawl(
         "--system-alert-handling/--no-system-alert-handling",
         help="handle unexpected OS prompts while crawling (on by default; uses the same API key)",
     ),
-    alert_handling: bool | None = typer.Option(
-        None,
-        "--alert-handling/--no-alert-handling",
-        hidden=True,
-        help="deprecated alias for --system-alert-handling",
-    ),
-    dismiss_alerts: bool | None = typer.Option(
-        None,
-        "--dismiss-alerts/--no-dismiss-alerts",
-        hidden=True,
-        help="deprecated alias for --system-alert-handling (originally BE-0317)",
-    ),
-    alert_instruction: str = typer.Option(
-        "", "--alert-instruction", help="how to handle a prompt instead of dismissing it"
+    alert_vision_instruction: str = typer.Option(
+        "",
+        "--alert-vision-instruction",
+        help="free text the AI vision guard reads instead of dismissing the prompt",
     ),
     out: str = typer.Option(
         "", "--out", help="run dir for the screen map (default: runs/<timestamp>)"
@@ -575,10 +565,9 @@ def crawl(
     environment = environment_for(actuator, "")
     udids = _plan_lanes(environment, udid, workers, seed_path)
 
-    # On by default while crawling; the shared resolver folds in the deprecated --alert-handling /
-    # --dismiss-alerts aliases.
+    # On by default while crawling (a crawl carries no scenario to hold its own setting).
     system_alert_handling_enabled = resolve_system_alert_handling_flag(
-        system_alert_handling, alert_handling, dismiss_alerts, default=True
+        system_alert_handling, default=True
     )
 
     plan = _CrawlPlan(
@@ -599,7 +588,7 @@ def crawl(
         prune_global=prune_global,
         erase=erase,
         system_alert_handling=system_alert_handling_enabled,
-        alert_instruction=alert_instruction,
+        alert_vision_instruction=alert_vision_instruction,
         upload_exec=upload_exec,
     )
     screen_map = _execute(plan, crawl_guide, say)

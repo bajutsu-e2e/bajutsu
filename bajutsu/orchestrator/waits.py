@@ -286,7 +286,7 @@ class _AlertGuardGate:
             # "absent": no *SpringBoard* alert — fall through to the collapsed-tree proxy below.
         if self.guard.labels and probed_absent:
             # Only once the scenario has named its own candidate labels: an author who configured
-            # `systemAlertHandling.instruction` has opted into exactly the narrow surface
+            # `systemAlertHandling.labels` has opted into exactly the narrow surface
             # `_dismiss_from_tree` matches against, so the fast in-tree path is safe to try here. It
             # stays off the *default* dismissive labels (`Cancel`, `Close`, …) and off every
             # non-native backend, where those are ordinary English UI vocabulary a real screen can
@@ -367,7 +367,7 @@ class _AlertGuardGate:
         buttons, per `shows_app_ui`'s own docstring), so this stays off the generic
         `DEFAULT_DISMISSIVE_LABELS` — ordinary English UI vocabulary ("Cancel", "Close") a real
         screen can legitimately show — and acts only on the scenario author's own explicit
-        `systemAlertHandling.instruction`, the narrow surface this path exists to speed up.
+        `systemAlertHandling.labels`, the narrow surface this path exists to speed up.
 
         Paces its taps on a label rather than tapping every match: unlike the native probe
         (rate-limited to `poll_interval`) and the vision path (debounce + cooldown + attempt ceiling),

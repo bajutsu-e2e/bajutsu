@@ -279,7 +279,7 @@ def test_wire_health_device_no_alerts_is_all_none() -> None:
         _eff(),  # type: ignore[arg-type]
         _redactor(),  # type: ignore[arg-type]
         system_alert_handling=False,
-        alert_instruction="",
+        alert_vision_instruction="",
         report=lambda _m: None,
     )
     assert (is_alive, clear_blocking, recover) == (None, None, None)
@@ -301,7 +301,7 @@ def test_wire_health_web_passes_through_and_wraps_recover() -> None:
         _eff(),  # type: ignore[arg-type]
         _redactor(),  # type: ignore[arg-type]
         system_alert_handling=True,
-        alert_instruction="",
+        alert_vision_instruction="",
         report=report,
     )
     assert is_alive is not None
@@ -326,7 +326,7 @@ def test_wire_health_ios_builds_alert_guard_clear_blocking(
         _eff(),  # type: ignore[arg-type]
         _redactor(),  # type: ignore[arg-type]
         system_alert_handling=True,
-        alert_instruction="",
+        alert_vision_instruction="",
         report=lambda _m: None,
     )
     assert is_alive is None and recover is None  # engine default / no platform recovery
@@ -346,7 +346,7 @@ def test_wire_health_no_credential_leaves_clear_blocking_unwired(
         _eff(),  # type: ignore[arg-type]
         _redactor(),  # type: ignore[arg-type]
         system_alert_handling=True,
-        alert_instruction="",
+        alert_vision_instruction="",
         report=lambda _m: None,
     )
     assert clear_blocking is None
@@ -381,7 +381,7 @@ def _plan_for_lane(tmp_path: Path, *, actuator: str = "xcuitest") -> object:
         prune_global=False,
         erase=False,
         system_alert_handling=False,
-        alert_instruction="",
+        alert_vision_instruction="",
         upload_exec="",
     )
 

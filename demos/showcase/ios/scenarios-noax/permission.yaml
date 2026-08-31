@@ -2,12 +2,16 @@
 # authorized): tap Request Notifications, then assert the visible "Notifications: authorized" mirror
 # (and the "Granted" text the app renders once authorized).
 #
-# Non-deterministic on iOS, exactly like the a11y twin: the SpringBoard prompt is out-of-process and
-# is cleared by the vision alert guard (`systemAlertHandling`), an AI path — so this twin is NOT a
-# deterministic gate on iOS. It is kept for 1:1 correspondence with the shared suite, not as a CI gate.
+# Deterministic on iOS, exactly like the a11y twin: the SpringBoard prompt is out-of-process, so its
+# buttons are resolved by the alert guard's native accessibility query rather than anything this
+# build's app exposes — the identifier-less -noax app is no obstacle to that path. The grant is
+# written as `labels`, not `visionInstruction`, for the same reason the a11y twin is (BE-0401): a
+# `visionInstruction` steers only the vision fallback, so the native tap would fall through to the
+# default dismissive labels and tap "Don't Allow", inverting the grant. It is kept for 1:1
+# correspondence with the shared suite, not because iOS needs a separate gate here.
 - name: grant notification permission
   tags: [permission, system]
-  systemAlertHandling: { instruction: "tap Allow" }
+  systemAlertHandling: { labels: ["Allow"] }
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:

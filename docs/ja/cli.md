@@ -39,7 +39,9 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 | `--erase / --no-erase` | シナリオ › config › off | 各シナリオの `preconditions.erase`（シム全体を wipe）を上書き。省略時は各シナリオの値、次にターゲットの `erase` config、次に off の順で解決（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。アプリはどちらでも毎回 fresh に再インストール（config `appPath` + `preconditions.reinstall`） |
 | `--system-alert-handling / --no-system-alert-handling` | シナリオ › config › ON | 各シナリオの `systemAlertHandling` を上書きします。iOS バックエンドから見えないシステムアラートを消すリアクティブなガードで、XCUITest 上ではネイティブに（モデル不使用、BE-0315）、ネイティブ経路が名指しできないものは視覚フォールバックで処理します。省略時は各シナリオの値、次にターゲットの `systemAlertHandling` config、次に ON の順で解決します（視覚フォールバックは設定した AI プロバイダが必要です。`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報。ネイティブ経路は認証情報不要です。[recording](recording.md#システムアラートの自動対処)） |
 | `--ios-tipkit-handling / --no-ios-tipkit-handling` | シナリオ › config › OFF | 各シナリオの `iosTipKitHandling` を上書きします。操作をブロックしている Apple **TipKit** の tip を閉じます。フレームワークが所有する popover であり、同じ回避策をシナリオごとに手で書かずに済ませるためのガードです。ガードは tip を、閉じるための scrim（`PopoverDismissRegion`）とその tip 自身のコンテナ（`TipView`）の両方で判定します。`confirmationDialog` が同一の scrim を設置するため、そちらには手を触れないようにする必要があるからです。同じ理由で、tip 向けの `interrupts` エントリを手で書く場合は `TipView` を手がかりにします。iOS 専用（他のバックエンドでは何もしません）で、求められない限り **OFF** です。tip 自体がアサーションの対象になる場合があるからです。省略時は各シナリオの値、次にターゲットの `iosTipKitHandling` config、次に OFF の順で解決します。認証情報は不要です（[scenarios](scenarios.md)） |
-| `--alert-instruction` | "" | 既定のボタン指示。シナリオ自身の `systemAlertHandling.instruction` の下位、ターゲットの `systemAlertHandling` config の上位に位置します |
+| `--alert-labels` | "" | ネイティブのアラート経路が押すボタンラベルをカンマ区切りで指定します。シナリオ自身の `systemAlertHandling.labels` の**後ろ**、ターゲット config の前に連結されます |
+| `--alert-vision-instruction` | "" | AI 視覚フォールバックだけが読む自由記述。シナリオ自身の `systemAlertHandling.visionInstruction` の下位、ターゲットの上位に位置します |
+| `--alert-poll-interval` | 未設定 | ネイティブのシステムアラート presence 照会の間隔（秒）。シナリオ自身の `pollInterval` の下位、ターゲットの上位に位置します |
 | `--log-predicate` | "" | `deviceLog` ストリームを絞る NSPredicate（例 subsystem） |
 | `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `bundleId`） |
 | `--network / --no-network` | config › ON | `request` アサーション用にアプリの通信を収集。省略時はターゲットの `network` config、次に ON の順で解決（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。iOS はアプリに BajutsuKit が必要。web は Playwright でネイティブに観測し、シナリオの `mocks` をその場でスタブします |
@@ -336,7 +338,7 @@ bajutsu record --target <name> --goal "<自然言語ゴール>" [--out <file.yam
 | `--screenshot / --no-screenshot` | `--screenshot` | 毎ターン、スクリーンショットを送ります。`--no-screenshot` は要素情報だけを記録し（コストが安い）、id を十分に備えたアプリ向けです（[BE-0194](../../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet-ja.md)） |
 | `--headed / --no-headed` | アプリの `headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでオーサリングします。省略時はアプリの `headless` 設定に従います |
 | `--browser` | アプリの `browser`（既定 chromium） | web backend: オーサリングに使う Playwright のレンダリングエンジン。`chromium` / `firefox` / `webkit` から選びます。省略時はターゲットの `browser` config に従います |
-| `--alert-instruction` | "" | 同上の押下指示 |
+| `--alert-vision-instruction` | "" | プロンプトを片付ける代わりに視覚ガードが読む自由記述 |
 | `--language` | config の `ai.language`（`auto`） | 著すプローズ（`from:` 由来、推論）の AI 出力言語。`ja` / `en` / `auto` から選び `ai.language` を上書きします。`auto` はゴールに追従します（[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)） |
 | `--config` | `bajutsu.config.yaml` | config |
 
@@ -370,7 +372,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--backend` | config | actuator 順 |
 | `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
 | `--system-alert-handling / --no-system-alert-handling` | `--system-alert-handling` | クロール中に予期せぬ OS プロンプトを片付ける（クラッシュ誤判定を防ぐ。設定した AI プロバイダを使用し、`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報） |
-| `--alert-instruction` | "" | 同上の押下指示 |
+| `--alert-vision-instruction` | "" | プロンプトを片付ける代わりに視覚ガードが読む自由記述 |
 | `--headed / --no-headed` | アプリの `headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでクロールする。省略時はアプリの `headless` 設定に従う |
 | `--language` | config の `ai.language`（`auto`） | ガイドの流れる推論の AI 出力言語。`ja` / `en` / `auto` から選び `ai.language` を上書きします。`auto` はクロールでは英語のままです（[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)） |
 | `--out` | `runs/<timestamp>` | 画面マップを書き出す run ディレクトリ |
