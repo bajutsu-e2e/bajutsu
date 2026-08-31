@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Implementing PR | TBD (filled once the PR is opened) |
+| Implementing PR | [#1834](https://github.com/bajutsu-e2e/bajutsu/pull/1834) |
 | Topic | Verification & coverage |
 | Related | [BE-0341](../BE-0341-pre-action-evidence-capture/BE-0341-pre-action-evidence-capture.md), [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) |
 <!-- /BE-METADATA -->
