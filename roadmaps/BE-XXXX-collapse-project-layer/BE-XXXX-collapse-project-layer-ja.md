@@ -118,10 +118,27 @@ target の打刻、読み取り側の画面、そして削除そのものです�
 `projects` テーブルを消すと、この経路が壊れます。
 
 そこで org 行に、現在の project 行が持つのと同じ判別付きレコードを保持するカラムを1つ足します。`git`、
-`file`、`upload` のいずれかの `kind` と、そのロケータです。1つの org が持つレコードはリストではなく
-1つで、`activate_uploaded_project` は project ではなく org からそれを読みます。レコードがすでに受けて
-いる検証はそのままです。ダイジェストは、パスやオブジェクトストアのキーへ変換される前に `_SHA256_RE` と
-一致しなければなりません。レコードの形はクライアントが決められるため、信頼できない値だからです。
+`file`、`upload` のいずれかの `kind` と、そのロケータです。`activate_uploaded_project` は project では
+なく org からそれを読みます。レコードがすでに受けている検証はそのままです。ダイジェストは、パスや
+オブジェクトストアのキーへ変換される前に `_SHA256_RE` と一致しなければなりません。レコードは
+クライアントからサーバへ届く値であり、信頼できないからです。
+
+読みを移すなら、書きも移ります。`upload` 種のレコードが現在 `projects` テーブルへ届く経路は1つだけ
+です。`bind_upload_config` が bundle をバインドして `source` レコードを返し、クライアントが
+`POST /api/projects` を呼んで永続化します。この経路の後半を、単位5が削除します。そこで単位1は、
+bind 自身を書き手にします。`bind_upload_config` と、その合成3つ組の兄弟が、レコードを呼び出し元の
+org 行へ直接打刻します。クライアントに返して登録させる形をやめる、ということです。この移設がないと、
+カラムは読まれるだけで一度も埋まらず、単位1が守ろうとしている復元経路は別の形で死にます。
+
+1つの org が持つレコードはリストではなく1つで、これは意図した損失です。現在は名前付きの upload ごとに
+1行を持つため、同僚が自分の bundle を上げたあとでも、メンバーは以前の bundle を名前で再有効化できます。
+カラム1つに畳むと、2人目の bind が1人目のロケータを上書きし、以前の bundle を取り戻すには上げ直しが
+必要です。それを受け入れます。理由は3つあります。bundle のバイト列はコンテンツハッシュのもとで
+オブジェクトストアに残ります。問題になる場面は、1つの org の2人が手元ビルドのバイナリで競合するときに
+限られます。そして名前付き bundle の一覧は、名前付き project 階層が別名で戻ってきたものです。複数の
+bundle を名前で扱いたい org は、artifact として保持して必要なものを合成する経路を使います。これは
+[BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts-ja.md) が
+すでに用意している seam です。
 
 これは [BE-0393](../BE-0393-per-org-config-memory/BE-0393-per-org-config-memory-ja.md) が org ごとの
 config 記憶のために提案している機構に、逆方向からたどり着いたものです。BE-0393 が `projects` テーブルを
@@ -138,9 +155,12 @@ config 記憶のために提案している機構に、逆方向からたどり�
 デフォルト値は、起動時の処理がすでに計算している文字列です。`launch_project_identity` は、Git から取得
 した config の provenance スタンプからリポジトリ名を導出します。ローカルの config ファイルからは、
 ファイル名の語幹を導出します
-（[`bajutsu/serve/operations/config.py`](../../bajutsu/serve/operations/config.py)）。その導出結果は、
-別の config で起動し直した運用者が欲しい仕切りそのものです。この関数は残ります。変わるのは、結果が
-レジストリではなく run 行に書かれる点だけです。
+（[`bajutsu/serve/operations/config.py`](../../bajutsu/serve/operations/config.py)）。この文字列は
+ローカルのファイルをきれいに仕切ります。しかし Git 由来の config はリポジトリ名だけで名付けるため、
+1つのリポジトリの2つの config が同じ label に畳まれます。現在この衝突を解くのが、明示的な project 名
+です。そこで単位2は、導出にリポジトリ内の config パスを加えます。provenance スタンプはこの値をまだ
+運んでいません。運ぶようになるまでは、同一リポジトリでの再起動は `--label` を渡さないかぎり混ざった
+ままです。この関数は残ります。変わるのは、結果がレジストリではなく run 行に書かれる点だけです。
 
 運用者が run ごとに上書きする手段は、コマンドラインの `bajutsu run --label <値>` と、`POST /api/run` の
 ボディの `label` フィールドです。label はツールにとって不透明な値です。解析されず、config と照合されず、
@@ -197,8 +217,12 @@ label も空のままとなり、絞り込みなしの表示に現れます。�
 
 `bajutsu project` の各コマンドと `run --project` フラグは、非推奨として残さず削除します。非推奨期間を
 設けるということは、それらを提供するためにレジストリを生かしておくということです。そのコードこそ、本項目
-が消そうとしているものです。これらを呼んでいた箇所が欲しかった仕切りには、`run --label` がそのまま代わり
-になります。到達できなかった切り替えのほうには、代替を用意する必要がありません。
+が消そうとしているものです。ただし `run --project X` は仕切りではありません。`_resolve_project_config`
+（[`bajutsu/cli/commands/run.py`](../../bajutsu/cli/commands/run.py)）がこれを
+`run --config <X のソース>` に変換します。状態を持たず、切り替えも要りません。ヘルプはこれを、継続的
+インテグレーションや cron のステップが叩く headless なトリガと呼んでいます。したがって代替は、明示的な
+`run --config <その project のソース指定>` です。呼び出し側はこちらへ移す必要があります。`run --label`
+が代わるのは仕切りだけで、仕切りが欲しかった呼び出し側に対してのものです。
 
 ## 検討した代替案
 
@@ -231,15 +255,18 @@ active project をカラムに永続化し、web UI から project を作れる�
 > 作業の進行に合わせて更新してください。チェックリストは *詳細設計* の作業分解を反映し（作業単位ごとに
 > 1項目）、ログには何がいつ変わったかを古い順に記録し、PR を貼ります。
 
-- [ ] 1 — org が config ソースを1つ持つ。判別付きの `kind` + ロケータのレコードを保持する org 行の
-  カラムと、それを org から読む `activate_uploaded_project`
-- [ ] 2 — run の label。`runs.label` カラム、`launch_project_identity` によるデフォルト値。`Job` に
-  載せて運ぶ enqueue 時の解決と、`run --label` および web からの上書き
+- [ ] 1 — org が config ソースを1つ持つ。判別付きの `kind` + ロケータを保持する org 行のカラム。
+  クライアントに返さず org 行へ直接書く `bind_upload_config` とその合成3つ組の兄弟。それを org から
+  読む `activate_uploaded_project`
+- [ ] 2 — run の label。`runs.label` カラム、リポジトリ内の config パスまで含めるよう拡張した
+  `launch_project_identity` のデフォルト値。`Job` に載せて運ぶ enqueue 時の解決と、`run --label`
+  および web からの上書き
 - [ ] 3 — target の打刻。`RunResult.target`、manifest のキー、`runs.target` カラム
 - [ ] 4 — label で絞り、target で並べる。run 一覧、Replay、run 統計ダッシュボードの label フィルタと、
   target 軸に付け替えた `project_comparison.py`
 - [ ] 5 — project 階層の削除。テーブル、外部キー、レジストリのモジュール、エンドポイント、コマンド、
-  UI の操作面、label を埋めるマイグレーション
+  UI の操作面、label を埋めるマイグレーション。`run --project` の呼び出し側は明示的な `run --config`
+  へ移す
 
 ## 参考
 

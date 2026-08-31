@@ -116,11 +116,30 @@ deployment, which is the one configuration change a hosted org genuinely perform
 `projects` table without moving that record would break the path.
 
 So the org row gains one configuration-source column holding the same discriminated record the
-project row holds today — a `kind` of `git`, `file`, or `upload`, plus its locator. One org holds
-one such record, not a list, and `activate_uploaded_project` reads it from the org instead of from a
-project. The validation the record already receives is unchanged: the digest must match
-`_SHA256_RE` before anything turns it into a path or an object-store key, because a client shapes
-the record, which makes it untrusted.
+project row holds today — a `kind` of `git`, `file`, or `upload`, plus its locator — and
+`activate_uploaded_project` reads it from the org instead of from a project. The validation the
+record already receives is unchanged: the digest must match `_SHA256_RE` before anything turns it
+into a path or an object-store key, because the record reaches the server from a client, which
+makes it untrusted.
+
+The write moves with the read. Today an `upload`-kind record reaches the `projects` table one way
+only: `bind_upload_config` binds the bundle and *returns* a `source` record, which the client then
+persists by calling `POST /api/projects` — the endpoint unit 5 deletes. So unit 1 also makes the
+bind itself the writer: `bind_upload_config`, and its composed-triple sibling, stamp the record
+onto the acting org's row rather than handing it back for a client to register. Without that move
+the column would be read and never populated, and the recovery path this unit exists to preserve
+would die a different death.
+
+One org holds one such record, not a list, and that is a deliberate loss. Today an org holds one
+row per named upload, so a member can re-activate an earlier bundle by name after a colleague
+uploads theirs; collapsed to a single column, the second bind overwrites the first locator and
+recovering the earlier bundle means uploading it again. We accept that: the bundle's bytes stay in
+the object store under their content hash, the case is two members of one org racing on locally
+built binaries, and a list of named bundles is the named-project layer returning under another
+name. An org that needs to keep several bundles addressable should hold them as artifacts and
+compose the one it wants, which is the seam
+[BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md) already
+provides.
 
 This is the mechanism
 [BE-0393](../BE-0393-per-org-config-memory/BE-0393-per-org-config-memory.md) proposes for per-org
@@ -140,9 +159,13 @@ registry.
 The default value is the string the launcher already computes. `launch_project_identity`
 ([`bajutsu/serve/operations/config.py`](../../bajutsu/serve/operations/config.py)) derives a
 repository name from a Git-materialized configuration's provenance stamp and a file stem from a local
-configuration file, and that derived string is exactly the partition an operator wants when
-restarting against a different configuration. The function stays; what changes is that its result is
-written onto the run row instead of into a registry.
+configuration file. That string partitions a local file cleanly, but it names a Git-materialized
+configuration after its repository alone, so two configurations from one repository fold onto one
+label — the collision an explicit project name resolves today. Unit 2 therefore extends the
+derivation with the in-repo configuration path, which the provenance stamp does not carry yet;
+until it does, a same-repo restart stays interleaved unless the operator passes `--label`. The
+function stays; what changes is that its result is written onto the run row instead of into a
+registry.
 
 An operator overrides the default per run with `bajutsu run --label <value>` on the CLI or a `label`
 field in the `POST /api/run` body. The label is opaque to the tool: it is never parsed, never
@@ -201,8 +224,12 @@ under the unfiltered view.
 
 The `bajutsu project` commands and the `run --project` flag are removed rather than deprecated in
 place. A deprecation window would mean keeping the registry alive to serve them, which is the code
-this item exists to delete; a call site that used them has `run --label` as a direct replacement for
-the partition it wanted, and no replacement is needed for the switching it could not reach.
+this item exists to delete. `run --project X` is not a partition, though: `_resolve_project_config`
+([`bajutsu/cli/commands/run.py`](../../bajutsu/cli/commands/run.py)) turns it into
+`run --config <X's source>`, statelessly and without a switch, and its help calls it the headless
+trigger a continuous-integration or cron step invokes. Its replacement is therefore an explicit
+`run --config <the project's source spec>`, which those call sites must be migrated to;
+`run --label` replaces only the partition, for a call site that wanted one.
 
 ## Alternatives considered
 
@@ -237,14 +264,18 @@ the partition it wanted, and no replacement is needed for the switching it could
 > (oldest first), linking the PRs.
 
 - [ ] 1 — The org holds one configuration source: an org-row column carrying the discriminated
-  `kind` + locator record, and `activate_uploaded_project` reading it from the org.
-- [ ] 2 — The run label: the `runs.label` column, the `launch_project_identity` default, the
+  `kind` + locator record, `bind_upload_config` and its composed-triple sibling writing it there
+  instead of returning it for a client to register, and `activate_uploaded_project` reading it from
+  the org.
+- [ ] 2 — The run label: the `runs.label` column, the `launch_project_identity` default extended
+  with the in-repo configuration path so two configurations from one repository do not fold, the
   enqueue-time resolution carried on the `Job`, and the `run --label` / API overrides.
 - [ ] 3 — The target stamp: `RunResult.target`, the manifest key, and the `runs.target` column.
 - [ ] 4 — Reading by label, comparing by target: the label filter on the run list, Replay, and the
   run-stats dashboard; `project_comparison.py` repointed to the target axis.
 - [ ] 5 — Removing the project layer: the table, the foreign key, the registry module, the
-  endpoints, the CLI commands, the UI surfaces, and the label backfill migration.
+  endpoints, the CLI commands (migrating `run --project` call sites to an explicit `run --config`),
+  the UI surfaces, and the label backfill migration.
 
 ## References
 
