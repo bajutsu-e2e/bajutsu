@@ -1,14 +1,14 @@
-[English](BE-XXXX-screenshot-tree-pairing.md) · **日本語**
+[English](BE-0403-screenshot-tree-pairing.md) · **日本語**
 
-# BE-XXXX — ステップのスクリーンショットと、同じ画面を表す要素ツリーを対応付ける
+# BE-0403 — ステップのスクリーンショットと、同じ画面を表す要素ツリーを対応付ける
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-screenshot-tree-pairing-ja.md) |
+| 提案 | [BE-0403](BE-0403-screenshot-tree-pairing-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0403") |
 | 実装 PR | [#1834](https://github.com/bajutsu-e2e/bajutsu/pull/1834) |
 | トピック | Verification & coverage |
 | 関連 | [BE-0341](../BE-0341-pre-action-evidence-capture/BE-0341-pre-action-evidence-capture-ja.md), [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance-ja.md) |
