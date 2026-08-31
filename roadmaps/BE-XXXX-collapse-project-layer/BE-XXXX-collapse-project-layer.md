@@ -48,7 +48,7 @@ auto-registration is hardcoded to the single `default` org
 ([`bajutsu/serve/operations/config.py`](../../bajutsu/serve/operations/config.py)), and so is the
 CLI. The web UI's only way to add a project is the Add form on the Projects view, whose tab stays
 hidden while the org has no projects, and the header picker stays hidden until two or more exist, so
-an org with zero projects cannot reach the form. A member who signs in as a hosted org other than
+an org with zero projects cannot reach the form. A member who signs in to a hosted org other than
 `default` sees an empty project list, a `None` active project, runs recorded with a null
 `project_id`, and no picker; the one path left to that member is a direct call to
 `POST /api/projects`. The member is not blocked by any of it, because the bound configuration is
