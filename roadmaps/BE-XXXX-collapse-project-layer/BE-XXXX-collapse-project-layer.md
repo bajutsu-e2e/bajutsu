@@ -193,7 +193,9 @@ The ordinary run list, Replay, and the run-stats dashboard gain a label filter, 
 against a second configuration yields two readable histories rather than one interleaved list. The
 filter defaults to the label of the bound configuration, which is the behavior an operator
 restarting between configurations expects; an explicit "all labels" choice restores the current
-unfiltered view.
+unfiltered view. The default falls back to unfiltered when the bound label matches no run, so a
+deployment whose history predates the label never opens onto an empty page — the fallback is what
+keeps unit 5's backfill from hiding a migrated history behind a filter the reader cannot see.
 
 The cross-project comparison becomes a cross-target comparison. `project_comparison.py` already runs
 the single-configuration aggregation once per partition and lays the results out side by side; the
@@ -219,8 +221,10 @@ With the preceding four units landed, the following are deleted:
 
 A migration backfills `runs.label` from each run's project name before dropping the column, so a
 history recorded under the project layer keeps the partition it had. Runs whose `project_id` is
-already null — in practice, the runs of hosted orgs other than `default` — receive a null label and appear
-under the unfiltered view.
+already null — in practice, the runs of hosted orgs other than `default` — receive a null label, and
+unit 4's empty-match fallback is what keeps them visible: an org whose every run is unlabeled has no
+run matching the bound label, so its views open unfiltered on the whole history rather than on
+nothing.
 
 The `bajutsu project` commands and the `run --project` flag are removed rather than deprecated in
 place. A deprecation window would mean keeping the registry alive to serve them, which is the code
@@ -272,7 +276,8 @@ trigger a continuous-integration or cron step invokes. Its replacement is theref
   enqueue-time resolution carried on the `Job`, and the `run --label` / API overrides.
 - [ ] 3 — The target stamp: `RunResult.target`, the manifest key, and the `runs.target` column.
 - [ ] 4 — Reading by label, comparing by target: the label filter on the run list, Replay, and the
-  run-stats dashboard; `project_comparison.py` repointed to the target axis.
+  run-stats dashboard, defaulting to the bound label and falling back to unfiltered when it matches
+  no run; `project_comparison.py` repointed to the target axis.
 - [ ] 5 — Removing the project layer: the table, the foreign key, the registry module, the
   endpoints, the CLI commands (migrating `run --project` call sites to an explicit `run --config`),
   the UI surfaces, and the label backfill migration.
