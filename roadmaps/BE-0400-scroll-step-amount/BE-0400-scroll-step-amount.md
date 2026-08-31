@@ -350,12 +350,12 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
   same device and screen. The traversal velocity is the whole of the cause. Neither of the other two
   parameters is: the hold before lift changed nothing at 0.0, 0.3, or 1.0 seconds, and the initial
   press changed nothing at 0.1 or 0.5 seconds. Dropping the press to 0.0 did change something, and
+  in the wrong direction: it widened the fixed shortfall below from 10.0 points to between 11.4 and
   13.8, which is why the corrected gesture keeps the 0.1 it has always used. Realized travel rises
   monotonically with the velocity — `XCUIGestureVelocity` 500 reproduces today's `.default`, 1000
   reaches 5.4 times a 0.125 request, 2000 reaches 10.4 times — and the overshoot vanishes at lower
   speeds: at 200 and at 100, every step from 17 to 525 points came back exactly 10.0 points short
   of its request, with a standard deviation of 0.0.
-  525 points came back exactly 10.0 points short of its request, with a standard deviation of 0.0.
   *Motivation*'s fixed-traversal-velocity hypothesis is confirmed, and the 0.3-second hold is not
   merely innocent of the overshoot but inert, which is why `scroll` and `swipe` agreed.
 - Found that the speed which fails first is a short drag's, not a long one's (unit 1). At 400 a 0.6
