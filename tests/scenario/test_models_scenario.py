@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from bajutsu.scenario import (
     Scenario,
+    SystemAlertHandling,
     dump_scenarios,
     load_scenarios,
 )
@@ -43,30 +44,30 @@ def test_system_alert_handling_default_unset() -> None:
 
 
 def test_system_alert_handling_bool_and_object_forms() -> None:
+    # BE-0401: the boolean carries on and off, so a mapping always means on.
     off = Scenario.model_validate(
         {"name": "x", "systemAlertHandling": False, "steps": [{"tap": {"id": "a"}}]}
     )
-    assert off.system_alert_handling is not None
-    assert (
-        off.system_alert_handling.enabled is False
-    )  # bare bool is shorthand for {enabled: <bool>}
+    assert off.system_alert_handling is False
+
+    on = Scenario.model_validate(
+        {"name": "x", "systemAlertHandling": True, "steps": [{"tap": {"id": "a"}}]}
+    )
+    assert on.system_alert_handling == SystemAlertHandling()  # `true` is the empty policy
 
     instr = Scenario.model_validate(
         {
             "name": "x",
-            "systemAlertHandling": {"instruction": "tap Allow"},
+            "systemAlertHandling": {"visionInstruction": "tap Allow"},
             "steps": [{"tap": {"id": "a"}}],
         }
     )
-    assert instr.system_alert_handling is not None
-    assert instr.system_alert_handling.enabled is True  # object form stays on unless enabled: false
-    assert instr.system_alert_handling.instruction == "tap Allow"
+    assert isinstance(instr.system_alert_handling, SystemAlertHandling)
+    assert instr.system_alert_handling.vision_instruction == "tap Allow"
 
-    # The object form round-trips (the bool form normalizes to {enabled: false}).
     rt = load_scenarios(dump_scenarios([instr]))[0]
-    assert (
-        rt.system_alert_handling is not None and rt.system_alert_handling.instruction == "tap Allow"
-    )
+    assert isinstance(rt.system_alert_handling, SystemAlertHandling)
+    assert rt.system_alert_handling.vision_instruction == "tap Allow"
 
     with pytest.raises(ValidationError):  # extra="forbid" rejects unknown keys
         Scenario.model_validate(
@@ -74,86 +75,86 @@ def test_system_alert_handling_bool_and_object_forms() -> None:
         )
 
 
-def test_alert_handling_alias_parses_and_dumps_canonical(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    # The deprecated `alertHandling` key (originally BE-0317's canonical name) parses to the same
-    # model as `systemAlertHandling`, and a dump emits the canonical name — so an old scenario keeps
-    # working but is rewritten on save.
-    import logging
-
-    from bajutsu import deprecations
-
-    deprecations._emitted.discard("scenario.alertHandling")  # so the one-time notice fires here
-    with caplog.at_level(logging.WARNING, logger="bajutsu.deprecations"):
-        s = Scenario.model_validate(
-            {
-                "name": "x",
-                "alertHandling": {"instruction": "tap Allow"},
-                "steps": [{"tap": {"id": "a"}}],
-            }
-        )
-    assert (
-        s.system_alert_handling is not None and s.system_alert_handling.instruction == "tap Allow"
+def test_system_alert_handling_off_round_trips_as_the_bare_boolean() -> None:
+    # `false` is now a value of the field itself, not a `{ enabled: false }` mapping, so a dumped
+    # scenario must still say `false` — a dump that dropped it would silently re-enable the guard.
+    off = Scenario.model_validate(
+        {"name": "x", "systemAlertHandling": False, "steps": [{"tap": {"id": "a"}}]}
     )
-    dumped = dump_scenarios([s])
-    assert "systemAlertHandling" in dumped and "alertHandling" not in dumped
-    assert any("alertHandling" in r.message and "deprecated" in r.message for r in caplog.records)
+    dumped = dump_scenarios([off])
+    assert "systemAlertHandling: false" in dumped
+    assert load_scenarios(dumped)[0].system_alert_handling is False
 
 
-def test_dismiss_alerts_alias_parses_and_dumps_canonical(
-    caplog: pytest.LogCaptureFixture,
+@pytest.mark.parametrize(
+    ("policy", "replacement"),
+    [
+        ({"instruction": ["Allow"]}, "labels"),
+        ({"instruction": "tap Allow"}, "visionInstruction"),
+        ({"enabled": False}, "systemAlertHandling: false"),
+    ],
+)
+def test_system_alert_handling_removed_keys_name_their_replacement(
+    policy: dict[str, object], replacement: str
 ) -> None:
-    # BE-0317: the deprecated `dismissAlerts` key parses to the same model as `systemAlertHandling`,
-    # and a dump emits the canonical name — so an old scenario keeps working but is rewritten on save.
-    import logging
-
-    from bajutsu import deprecations
-
-    deprecations._emitted.discard("scenario.dismissAlerts")  # so the one-time notice fires here
-    with caplog.at_level(logging.WARNING, logger="bajutsu.deprecations"):
-        s = Scenario.model_validate(
-            {
-                "name": "x",
-                "dismissAlerts": {"instruction": "tap Allow"},
-                "steps": [{"tap": {"id": "a"}}],
-            }
+    # BE-0401 removed `instruction` and `enabled` with no alias, so the load error is the whole
+    # migration path an author gets — `extra="forbid"`'s generic message would name no replacement.
+    with pytest.raises(ValidationError) as exc:
+        Scenario.model_validate(
+            {"name": "x", "systemAlertHandling": policy, "steps": [{"tap": {"id": "a"}}]}
         )
-    assert (
-        s.system_alert_handling is not None and s.system_alert_handling.instruction == "tap Allow"
-    )
-    dumped = dump_scenarios([s])
-    assert "systemAlertHandling" in dumped and "dismissAlerts" not in dumped
-    assert any("dismissAlerts" in r.message and "deprecated" in r.message for r in caplog.records)
+    assert replacement in str(exc.value)
 
 
-def test_system_alert_handling_instruction_accepts_a_label_list() -> None:
-    # BE-0315: the deterministic native form is an ordered list of candidate labels; it round-trips.
+def test_system_alert_handling_rejects_a_non_mapping_value() -> None:
+    # The removed-key check runs `mode="before"`, so it also sees a value that is neither the
+    # boolean nor a mapping — `systemAlertHandling: on-please`, say. It must fall through to
+    # Pydantic's own union error rather than raising on the membership test.
+    with pytest.raises(ValidationError):
+        Scenario.model_validate(
+            {"name": "x", "systemAlertHandling": "on-please", "steps": [{"tap": {"id": "a"}}]}
+        )
+
+
+@pytest.mark.parametrize("old", ["alertHandling", "dismissAlerts"])
+def test_renamed_alert_keys_fail_naming_the_canonical_key(old: str) -> None:
+    # BE-0317 / BE-0327 renamed the field twice and kept both spellings as aliases; BE-0401 deleted
+    # them, so each now fails to load pointing at `systemAlertHandling`.
+    with pytest.raises(ValidationError) as exc:
+        Scenario.model_validate(
+            {"name": "x", old: {"labels": ["Allow"]}, "steps": [{"tap": {"id": "a"}}]}
+        )
+    assert "systemAlertHandling" in str(exc.value)
+
+
+def test_system_alert_handling_labels_accept_an_ordered_list() -> None:
+    # BE-0401: `labels` is the native path's ordered candidate list; it round-trips.
     s = Scenario.model_validate(
         {
             "name": "x",
-            "systemAlertHandling": {"instruction": ["Allow", "OK"]},
+            "systemAlertHandling": {"labels": ["Allow", "OK"]},
             "steps": [{"tap": {"id": "a"}}],
         }
     )
-    assert s.system_alert_handling is not None
-    assert s.system_alert_handling.instruction == ["Allow", "OK"]
+    assert isinstance(s.system_alert_handling, SystemAlertHandling)
+    assert s.system_alert_handling.labels == ["Allow", "OK"]
     rt = load_scenarios(dump_scenarios([s]))[0]
-    assert rt.system_alert_handling is not None
-    assert rt.system_alert_handling.instruction == ["Allow", "OK"]
+    assert isinstance(rt.system_alert_handling, SystemAlertHandling)
+    assert rt.system_alert_handling.labels == ["Allow", "OK"]
 
 
-def test_system_alert_handling_instruction_drops_empty_labels_and_normalizes_to_none() -> None:
-    # A list of only blank labels can match nothing deterministically, so it normalizes to the
-    # default dismissive policy (None) rather than silently matching zero buttons (BE-0315).
-    s = Scenario.model_validate(
-        {
-            "name": "x",
-            "systemAlertHandling": {"instruction": ["", "  "]},
-            "steps": [{"tap": {"id": "a"}}],
-        }
-    )
-    assert s.system_alert_handling is not None and s.system_alert_handling.instruction is None
+@pytest.mark.parametrize(
+    "policy",
+    [{"labels": []}, {"labels": ["Allow", "  "]}, {"visionInstruction": "  "}],
+)
+def test_system_alert_handling_rejects_empty_values(policy: dict[str, object]) -> None:
+    # BE-0401: each of these used to normalize away silently and fall through to the default
+    # dismissive policy — answering the opposite of what the author wrote. Fail instead, the same
+    # reason an ambiguous selector fails rather than tapping its first match.
+    with pytest.raises(ValidationError):
+        Scenario.model_validate(
+            {"name": "x", "systemAlertHandling": policy, "steps": [{"tap": {"id": "a"}}]}
+        )
 
 
 def test_system_alert_handling_poll_interval() -> None:
@@ -161,7 +162,8 @@ def test_system_alert_handling_poll_interval() -> None:
     s = Scenario.model_validate(
         {"name": "x", "systemAlertHandling": {"pollInterval": 2.5}, "steps": [{"tap": {"id": "a"}}]}
     )
-    assert s.system_alert_handling is not None and s.system_alert_handling.poll_interval == 2.5
+    assert isinstance(s.system_alert_handling, SystemAlertHandling)
+    assert s.system_alert_handling.poll_interval == 2.5
     with pytest.raises(ValidationError):
         Scenario.model_validate(
             {
@@ -177,9 +179,10 @@ def test_system_alert_handling_rules_default_empty_and_pruned() -> None:
     assert s.system_alert_handling is None  # unset entirely, same as today
 
     on = Scenario.model_validate(
-        {"name": "x", "systemAlertHandling": {"enabled": True}, "steps": [{"tap": {"id": "a"}}]}
+        {"name": "x", "systemAlertHandling": True, "steps": [{"tap": {"id": "a"}}]}
     )
-    assert on.system_alert_handling is not None and on.system_alert_handling.rules == []
+    assert isinstance(on.system_alert_handling, SystemAlertHandling)
+    assert on.system_alert_handling.rules == []
     assert "rules" not in dump_scenarios([on])  # empty list prunes, like `interrupts`
 
 
@@ -196,34 +199,34 @@ def test_system_alert_handling_rules_parse_and_round_trip() -> None:
             "steps": [{"tap": {"id": "a"}}],
         }
     )
-    assert s.system_alert_handling is not None
+    assert isinstance(s.system_alert_handling, SystemAlertHandling)
     assert [(r.prompt, r.choice) for r in s.system_alert_handling.rules] == [
         ("notifications", "grant"),
         ("tracking", "deny"),
     ]
     rt = load_scenarios(dump_scenarios([s]))[0]
-    assert rt.system_alert_handling is not None
+    assert isinstance(rt.system_alert_handling, SystemAlertHandling)
     assert [(r.prompt, r.choice) for r in rt.system_alert_handling.rules] == [
         ("notifications", "grant"),
         ("tracking", "deny"),
     ]
 
 
-def test_system_alert_handling_rules_and_instruction_compose() -> None:
-    # rules and instruction are not exclusive: instruction stays the catch-all for whatever
-    # prompt no rule names.
+def test_system_alert_handling_rules_and_labels_compose() -> None:
+    # rules and labels are not exclusive: labels stay the catch-all for whatever prompt no rule
+    # names, since a prompt name is the more specific declaration.
     s = Scenario.model_validate(
         {
             "name": "x",
             "systemAlertHandling": {
                 "rules": [{"prompt": "notifications", "choice": "grant"}],
-                "instruction": ["Not Now"],
+                "labels": ["Not Now"],
             },
             "steps": [{"tap": {"id": "a"}}],
         }
     )
-    assert s.system_alert_handling is not None
-    assert s.system_alert_handling.instruction == ["Not Now"]
+    assert isinstance(s.system_alert_handling, SystemAlertHandling)
+    assert s.system_alert_handling.labels == ["Not Now"]
     assert len(s.system_alert_handling.rules) == 1
 
 

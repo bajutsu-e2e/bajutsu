@@ -29,10 +29,6 @@ def test_run_flag_surface_is_fully_classified() -> None:
     # ios_tipkit_handling stays CLI-only: it is a per-scenario iOS guard, and a serve user sets it as
     # `iosTipKitHandling` in the scenario file serve already edits, rather than as a run-wide toggle.
     not_serve_exposed = {"evidence_store", "project", "score", "ios_tipkit_handling"}
-    # `alert_handling` and `dismiss_alerts` are the hidden deprecated aliases of
-    # `--system-alert-handling` (the former originally BE-0317's canonical name); serve renders the
-    # canonical `system_alert_handling`, so the aliases stay CLI-only flags it never passes through.
-    deprecated_aliases = {"alert_handling", "dismiss_alerts"}
     pass_through = {
         "backend",
         "udid",
@@ -52,56 +48,50 @@ def test_run_flag_surface_is_fully_classified() -> None:
         "network",
         "log_predicate",
         "log_subsystem",
-        "alert_instruction",
+        "alert_labels",
+        "alert_vision_instruction",
+        "alert_poll_interval",
         "zip_run",
         "config_offline",
         "require_pinned_config",
         "touch_markers",
     }
-    buckets = [base_handled, not_serve_exposed, deprecated_aliases, pass_through]
+    buckets = [base_handled, not_serve_exposed, pass_through]
     # disjoint
     for i, a in enumerate(buckets):
         for b in buckets[i + 1 :]:
             assert not (a & b), f"buckets overlap: {a & b}"
     # exhaustive: a new CLI flag lands here and fails this until classified.
-    assert base_handled | not_serve_exposed | deprecated_aliases | pass_through == _option_names(
-        "run"
-    )
+    assert base_handled | not_serve_exposed | pass_through == _option_names("run")
     # every pass-through name is a real flag_args can render (no typo in the list above).
     assert not (pass_through - _option_names("run"))
 
 
 def test_record_flag_surface_is_fully_classified() -> None:
     base_handled = {"target_name", "goal", "config", "out"}
-    # name is redundant (serve computes --out); browser/alert_instruction aren't exposed via serve yet.
+    # name is redundant (serve computes --out); browser and the vision instruction aren't exposed
+    # via serve yet.
     # language (BE-0188) is env-driven for serve (BAJUTSU_AI_LANGUAGE, set via /api/provider), like
     # effort/provider — the spawned job inherits it, so serve doesn't pass a per-launch --language.
     # max_steps/screenshot are CLI token-budget knobs (BE-0194); serve doesn't surface them yet.
     not_serve_exposed = {
         "name",
         "browser",
-        "alert_instruction",
+        "alert_vision_instruction",
         "language",
         "max_steps",
         "screenshot",
     }
-    # hidden aliases of --system-alert-handling (the former originally BE-0317's canonical name)
-    deprecated_aliases = {"alert_handling", "dismiss_alerts"}
     pass_through = {"backend", "udid", "erase", "system_alert_handling", "headed", "upload_exec"}
     # serve forces --handoff to `stream` (a human at the browser answers over SSE), never a knob (BE-0179).
     serve_forced = {"handoff"}
-    assert (
-        base_handled | not_serve_exposed | deprecated_aliases | pass_through | serve_forced
-        == _option_names("record")
-    )
+    assert base_handled | not_serve_exposed | pass_through | serve_forced == _option_names("record")
 
 
 def test_crawl_flag_surface_is_fully_classified() -> None:
     base_handled = {"target_name", "out", "config", "max_screens", "max_steps"}
     # language (BE-0188) is env-driven for serve (BAJUTSU_AI_LANGUAGE), like effort — see record above.
-    not_serve_exposed = {"prune_global", "alert_instruction", "language"}
-    # hidden aliases of --system-alert-handling (the former originally BE-0317's canonical name)
-    deprecated_aliases = {"alert_handling", "dismiss_alerts"}
+    not_serve_exposed = {"prune_global", "alert_vision_instruction", "language"}
     pass_through = {
         "backend",
         "udid",
@@ -114,9 +104,7 @@ def test_crawl_flag_surface_is_fully_classified() -> None:
         "continue_crawl",
         "upload_exec",
     }
-    assert base_handled | not_serve_exposed | deprecated_aliases | pass_through == _option_names(
-        "crawl"
-    )
+    assert base_handled | not_serve_exposed | pass_through == _option_names("crawl")
 
 
 def test_triage_flag_surface_is_fully_classified() -> None:

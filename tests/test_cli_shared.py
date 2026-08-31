@@ -74,47 +74,15 @@ def test_credential_gap_message_for_provider_none_names_the_setting() -> None:
     assert "ai.provider: none" in msg and "ANTHROPIC_API_KEY" not in msg
 
 
-def test_resolve_system_alert_handling_flag_canonical_wins() -> None:
-    # --system-alert-handling takes precedence; the deprecated --alert-handling (originally
-    # BE-0317's canonical name) fills in next, then the deprecated --dismiss-alerts.
-    assert resolve_system_alert_handling_flag(True, None, None) is True
-    assert resolve_system_alert_handling_flag(None, True, None) is True
-    assert resolve_system_alert_handling_flag(None, None, False) is False
-    assert (
-        resolve_system_alert_handling_flag(False, True, True) is False
-    )  # canonical wins over both aliases
-    assert resolve_system_alert_handling_flag(None, False, True) is False  # alias wins over dismiss
-    assert resolve_system_alert_handling_flag(None, None, None) is None
-
-
-def test_resolve_system_alert_handling_flag_warns_on_deprecated_alert_handling_alias(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    import logging
-
-    from bajutsu import deprecations
-
-    deprecations._emitted.discard("cli.alert-handling")  # so the one-time notice fires here
-    with caplog.at_level(logging.WARNING, logger="bajutsu.deprecations"):
-        resolve_system_alert_handling_flag(None, True, None)
-    assert any(
-        "--alert-handling" in r.message and "deprecated" in r.message for r in caplog.records
-    )
-
-
-def test_resolve_system_alert_handling_flag_warns_on_deprecated_dismiss_alerts_alias(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    import logging
-
-    from bajutsu import deprecations
-
-    deprecations._emitted.discard("cli.dismiss-alerts")  # so the one-time notice fires here
-    with caplog.at_level(logging.WARNING, logger="bajutsu.deprecations"):
-        resolve_system_alert_handling_flag(None, None, True)
-    assert any(
-        "--dismiss-alerts" in r.message and "deprecated" in r.message for r in caplog.records
-    )
+def test_resolve_system_alert_handling_flag_resolves_against_each_command_default() -> None:
+    # The `--alert-handling` / `--dismiss-alerts` aliases this once merged were deleted (BE-0401),
+    # so the flag resolves against the unset behavior each command asks for: `run` leaves it None
+    # (each scenario's own value applies), `record` / `crawl` pass default=True.
+    assert resolve_system_alert_handling_flag(True) is True
+    assert resolve_system_alert_handling_flag(False) is False
+    assert resolve_system_alert_handling_flag(None) is None
+    assert resolve_system_alert_handling_flag(None, default=True) is True
+    assert resolve_system_alert_handling_flag(False, default=True) is False
 
 
 def test_default_config_is_the_single_config_source_constant() -> None:

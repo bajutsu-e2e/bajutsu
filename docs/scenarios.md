@@ -75,7 +75,7 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 | `network` | object | none | `{ filter: { domains: [...] } }` — `filter.domains` scopes which observed requests are interleaved into the report's Steps timeline (by URL host; a parent domain matches subdomains). Unset shows all; the Network tab always lists them all ([reporting](reporting.md#reporthtml)) |
 | `mocks` | list | `[]` | Deterministic network stubs — a matching outgoing request gets a canned response instead of hitting the network ([network mocks](#network-mocks-deterministic-stubs)) |
 | `redact` | object | none | Masking applied before evidence is written ([evidence](evidence.md#masking-redact)) |
-| `systemAlertHandling` | bool / object | none (on) | The reactive **alert guard** — clears OS prompts the iOS backend cannot see, natively on XCUITest (no model, reusing BE-0316) with vision as the fallback. On by default; `false` disables it, `{ instruction: ["Allow"] }` keeps it on but taps a named button, `{ pollInterval: 2 }` retunes the native poll cadence. CLI `--system-alert-handling`/`--no-system-alert-handling` overrides ([below](#systemalerthandling-the-system-alert-guard)) |
+| `systemAlertHandling` | bool / object | none (on) | The reactive **alert guard** — clears OS prompts the iOS backend cannot see, natively on XCUITest (no model, reusing BE-0316) with vision as the fallback. On by default; `false` disables it, `{ labels: ["Allow"] }` keeps it on but taps a named button, `{ pollInterval: 2 }` retunes the native poll cadence. CLI `--system-alert-handling`/`--no-system-alert-handling` overrides ([below](#systemalerthandling-the-system-alert-guard)) |
 | `iosTipKitHandling` | bool | none (off) | Dismiss a blocking Apple **TipKit** tip — the framework-owned popover, so that no scenario has to hand-author the same recovery. The guard recognizes a tip by its dismiss scrim (`PopoverDismissRegion`) **and** its own container (`TipView`) together, because a plain `confirmationDialog` installs an identical scrim and must be left alone; an author who does write an `interrupts` entry for a tip keys it on `TipView` for the same reason (`TipView` is TipKit's own container, measured on both the SwiftUI and UIKit presentations). iOS only (inert elsewhere), and **off** by default: a tip is sometimes the very thing a scenario asserts on. CLI `--ios-tipkit-handling`/`--no-ios-tipkit-handling` overrides |
 | `permissions` | dict | `{}` | Declarative OS permission state — `{ <service>: grant \| revoke }` — applied **before the app launches** ([below](#permissions-pre-launch-permission-state)) |
 | `interrupts` | list | `[]` | Handlers for an interstitial screen that surfaces at an **unpredictable** point — each `{ condition, steps }`, checked opportunistically wherever the screen appears ([below](#interrupts-handling-unpredictable-interstitial-screens)) |
@@ -126,25 +126,31 @@ The iOS backend cannot see or tap **SpringBoard-level prompts** (a notification 
 
 It is **on by default** and fires **only when a step (or `expect`) is blocked, or — for a guarded `wait` — the native poll finds an alert (or the polled screen looks blocked)**, so a passing scenario does no extra work (a native query is not a model call). The vision fallback requires `ANTHROPIC_API_KEY`; without one it no-ops, but the native path still clears the prompts it can name. Use `systemAlertHandling` to change the behavior per scenario:
 
+**Each key names exactly one of the two paths** ([BE-0401](../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md)): `rules` and `labels` steer the native path, `visionInstruction` steers the vision fallback. The boolean carries on and off, so a mapping always means on.
+
 | Form | Meaning |
 |---|---|
 | (omitted) | on; tap the **least-destructive** button ("Not Now" / "Don't Allow" / "Cancel") |
 | `systemAlertHandling: false` | off for this scenario |
 | `systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` | on; answer a **named, covered prompt** by its own choice, regardless of which label it shares with another prompt |
-| `systemAlertHandling: { instruction: ["Allow", "OK"] }` | on; the native path taps the first of these labels present on the alert — e.g. to **grant** a permission |
-| `systemAlertHandling: { instruction: "tap Allow" }` | on; free-text the **vision** guard interprets (the native path, which needs an exact label, falls back to its default dismissive labels) |
+| `systemAlertHandling: { labels: ["Allow", "OK"] }` | on; the native path taps the first of these labels present on the alert — e.g. to **grant** a permission |
+| `systemAlertHandling: { visionInstruction: "tap Allow" }` | on; free text only the **vision** fallback reads, for an alert the native path cannot name |
 | `systemAlertHandling: { pollInterval: 2 }` | on; poll the native presence query every 2 s instead of the one-second default |
-| `systemAlertHandling: { enabled: false }` | off (the explicit object form of `false`) |
 
 ```yaml
 - name: grant notification permission
-  systemAlertHandling: { instruction: ["Allow"] }   # accept the prompt instead of dismissing it
+  systemAlertHandling: { labels: ["Allow"] }   # accept the prompt instead of dismissing it
   steps:
     - tap:  { id: sys.requestNotif }
     - wait: { for: { id: sys.notif.authorized }, timeout: 4 }   # the guard taps Allow, then this passes
 ```
 
-Naming your own `instruction` labels also arms a second, in-tree path on iOS, for a prompt that is
+Write the grant as `labels`, not as `visionInstruction`. On the XCUITest backend the native tap runs
+first, so a free-text "tap Allow" — which only the fallback reads — would leave the native path on
+its default dismissive labels and **refuse** the prompt the file says to accept. That inversion is
+what BE-0401 split the old single `instruction` key to make unavailable.
+
+Naming your own `labels` also arms a second, in-tree path on iOS, for a prompt that is
 **not** a SpringBoard alert at all. iOS raises its "Save Password" alert in the *app's own* process:
 its buttons reach the element tree with a label and no identifier, and the SpringBoard query never
 sees it, so only a tap in the tree can clear it. That tap is paced by the same `pollInterval` and
@@ -156,26 +162,30 @@ first, and the app-attached alert is cleared from the tree afterwards.
 Which button an interrupting alert receives is your policy's decision too. XCUITest resolves such an
 alert before the interaction it interrupts, and left alone answers it with the alert's own *default*
 button — granting a permission your `rules` may have refused, with nothing in the run's report. The
-runner therefore installs an interruption monitor that presses the button your `rules` and
-`instruction` name, by the same discipline the native path applies, and the dismissal is reported as
+runner therefore installs an interruption monitor that presses the button your `rules` and `labels`
+name, by the same discipline the native path applies, and the dismissal is reported as
 an ordinary alert event. A prompt your policy names no button on is left to XCUITest, which is what
 happened before this existed.
 (real file: [`demos/showcase/scenarios/save_password_browser.yaml`](../demos/showcase/scenarios/save_password_browser.yaml))
 
-The `instruction` is a list of candidate labels the native path resolves deterministically (it taps
-the first label present on the alert, and only when exactly one button carries it); a bare string is
-the legacy free-text form the vision guard interprets. The CLI `--system-alert-handling` /
-`--no-system-alert-handling` flag **overrides every scenario** (otherwise the per-scenario default
-applies); `--alert-instruction` sets a default button instruction that a scenario's own `instruction`
-overrides.
+`labels` is an ordered candidate list the native path resolves deterministically: it taps the first
+label present on the alert, and only when exactly one button carries it. The built-in dismissive
+labels stand in for an *absent* list rather than extending a supplied one — a scenario that names its
+buttons and meets an alert carrying none of them resolves nothing natively and drops to the vision
+fallback, instead of tapping a button you never named.
+
+The CLI `--system-alert-handling` / `--no-system-alert-handling` flag **overrides every scenario**
+(otherwise the per-scenario default applies); `--alert-labels "Allow,OK"`,
+`--alert-vision-instruction`, and `--alert-poll-interval` supply the same three keys for one run,
+between the scenario and the target config (see [layering](#layering-a-key-reaches-a-run-from-three-places) below).
 (real file: [`demos/showcase/scenarios/permission.yaml`](../demos/showcase/scenarios/permission.yaml))
 
 ### Answering more than one prompt differently: `rules`
 
-An ordered `instruction` list can already reach every combination of grant and deny across the
-prompts the label table covers, but only through an ordering an author derives from which labels two
-prompts happen to share — and the ordering that reads naturally can grant the very prompt a scenario
-meant to refuse, silently. `rules` answers a specific covered prompt by name instead, reusing
+An ordered `labels` list can already reach every combination of grant and deny across the prompts the
+label table covers, but only through an ordering an author derives from which labels two prompts
+happen to share — and the ordering that reads naturally can grant the very prompt a scenario meant to
+refuse, silently. `rules` answers a specific covered prompt by name instead, reusing
 `handleSystemAlert`'s own `prompt`/`choice` vocabulary:
 
 ```yaml
@@ -186,7 +196,7 @@ meant to refuse, silently. `rules` answers a specific covered prompt by name ins
         choice: grant
       - prompt: tracking
         choice: deny
-    instruction: ["Not Now"]          # every alert no rule identifies
+    labels: ["Not Now"]               # every alert no rule identifies
   steps:
     - tap:  { id: onboarding.start }
     - wait: { for: { id: home.title }, timeout: 10 }
@@ -194,28 +204,73 @@ meant to refuse, silently. `rules` answers a specific covered prompt by name ins
 
 The guard identifies which alert is on screen from a rule's prompt — both its accepting and refusing
 labels, resolved for the run's locale, must be present on the alert — not from the order rules
-appear in; two rules naming the same prompt fail at parse time. `rules` is checked before
-`instruction`, which stays the catch-all for whatever prompt no rule names, so the two fields
-compose rather than exclude each other.
+appear in; two rules naming the same prompt fail at parse time. A rule names a prompt and a label
+names a button, so the more specific declaration is consulted first: `rules`, then `labels`, which
+stays the catch-all for whatever prompt no rule names. The two fields compose rather than exclude
+each other.
 
 `rules` steers the **deterministic native path only**. An alert no rule identifies — one outside the
 label table, a surface the SpringBoard query cannot enumerate, or any alert at all on a backend
 without the native path — reaches the AI-vision fallback, and the rules tell that fallback nothing:
 a rule's label is another prompt's answer, so handing it over would push the model to accept a prompt
-the scenario never named. Give the guard an `instruction` for anything you want the fallback to act
-on; with rules alone it keeps its own least-destructive default.
+the scenario never named. Give the guard `labels` (or a `visionInstruction`) for anything you want
+the fallback to act on; with rules alone it keeps its own least-destructive default.
 
 This reactive guard and the proactive `handleSystemAlert` step below now share the *same* native
 SpringBoard mechanism (BE-0316's query + tap); they differ only in *when* they fire — the guard
 automatically wherever a prompt surfaces, the step at the one point an author places it.
 
-> **Renamed from `alertHandling`, which itself renamed `dismissAlerts`.** The field and its CLI flag
-> were renamed to `systemAlertHandling` / `--system-alert-handling` so the reactive guard's setting
-> names "system alert" explicitly, pairing with the `handleSystemAlert` step below.
-> `alertHandling` ([BE-0317](../roadmaps/BE-0317-rename-dismiss-alerts-to-alert-handling/BE-0317-rename-dismiss-alerts-to-alert-handling.md))
-> had itself renamed `dismissAlerts` so the name covered granting as well as dismissing.
-> The old `alertHandling` / `dismissAlerts` keys and `--alert-handling` / `--dismiss-alerts` flags
-> still work as deprecated aliases; using one emits a one-time notice pointing at the new name.
+### Layering: a key reaches a run from three places
+
+A setting reaches a run from the scenario, the command line, and the target config
+([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)).
+Two rules cover every key, chosen by whether it holds a list or a scalar:
+
+| Key | Type | How the layers combine |
+|---|---|---|
+| `rules` | list | concatenated, innermost layer first: scenario, then target |
+| `labels` | list | concatenated, innermost layer first: scenario, then command line, then target |
+| `visionInstruction` | scalar | the innermost layer that supplies one wins: scenario, else command line, else target |
+| `pollInterval` | scalar | the innermost layer that supplies one wins: scenario, else command line, else target |
+| on / off | scalar | `--system-alert-handling` / `--no-system-alert-handling`, else the scenario, else the target, else on |
+
+A list composes because concatenation keeps both layers' entries: the scenario's answers are tried
+first, and the target's stay reachable for whatever the scenario did not answer. A scalar holds one
+value, so the innermost layer wins. No layer's declaration is deleted by another's — which is the
+property BE-0401 exists to establish. `rules` names only two layers because no flag carries a prompt
+paired with a choice legibly.
+
+Within the native path, **specificity settles a conflict, not the layer a declaration came from**. A
+target rule for the tracking prompt answers tracking even in a scenario carrying its own `labels`,
+because the rule names that prompt and the labels name no prompt at all; both stay in effect. To
+override that rule, write the scenario's own rule for the same prompt — an override whose reach is
+the one prompt you named. When a target rule does answer inside a scenario that names its own
+buttons, the guard prints a notice at construction saying so, once per affected scenario and prompt.
+
+The vision fallback hears **one** layer: an explicit `visionInstruction` if any layer supplies one,
+otherwise a hint derived from the innermost layer that supplied `labels` ("Tap the button labeled one
+of, in order: …"). It is never handed the concatenated list, which would offer a target's "Allow"
+and a scenario's "Don't Allow" at once and let the locator take either.
+
+### Migrating from the old keys
+
+BE-0401 removed the keys below with no aliases. Each fails to load with an error naming its
+replacement, rather than parsing into something that behaves differently from what it says.
+
+| Removed | Write instead |
+|---|---|
+| `instruction: ["Allow"]` | `labels: ["Allow"]` |
+| `instruction: "tap Allow"` | `visionInstruction: "tap Allow"` |
+| `enabled: false` | `systemAlertHandling: false` |
+| `enabled: true` | a mapping (or `systemAlertHandling: true`) — a mapping always means on |
+| `alertHandling:` / `dismissAlerts:` | `systemAlertHandling:` |
+| `--alert-instruction "Allow,OK"` | `--alert-labels "Allow,OK"` |
+| `--alert-instruction "tap Allow"` | `--alert-vision-instruction "tap Allow"` |
+| `--alert-handling` / `--dismiss-alerts` | `--system-alert-handling` |
+
+An empty `labels` list, an empty label inside one, and an empty `visionInstruction` are errors too:
+each used to normalize away and fall through to the default dismissive policy, so a typo answered the
+opposite of what the file said.
 
 ## handleSystemAlert (the deterministic system-alert step)
 
@@ -300,7 +355,7 @@ Two limits are worth knowing before reaching for it:
   dismissive labels (`Don't Allow`, `Not Now`, `Cancel`, …) are literal English text, so under a
   non-English `locale` the native path finds no match and falls back to the AI-vision guard. For the
   prompts the label table covers, a `rules` entry (above) resolves its labels for the pinned
-  language and keeps the guard deterministic; give it an explicit `instruction` list for any other
+  language and keeps the guard deterministic; give it an explicit `labels` list for any other
   prompt.
 
 (real files:

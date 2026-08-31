@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0401](BE-0401-system-alert-handling-dsl-consolidation.md) |
 | Author | [@akiramatsuda](https://github.com/akiramatsuda) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0401") |
-| Implementing PR | [#1810](https://github.com/bajutsu-e2e/bajutsu/pull/1810) |
+| Implementing PR | [#1810](https://github.com/bajutsu-e2e/bajutsu/pull/1810), [#1822](https://github.com/bajutsu-e2e/bajutsu/pull/1822) |
 | Topic | Scenario authoring features |
 | Related | [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0317](../BE-0317-rename-dismiss-alerts-to-alert-handling/BE-0317-rename-dismiss-alerts-to-alert-handling.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md), [BE-0327](../BE-0327-rename-alert-handling-to-system-alert-handling/BE-0327-rename-alert-handling-to-system-alert-handling.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules.md) |
 <!-- /BE-METADATA -->
@@ -337,9 +337,9 @@ silence that was BE-0382's actual objection.
 **Carry the removed keys as deprecated aliases.** The repository has done exactly that twice for this
 setting, in BE-0317 and BE-0327, and both aliases are still live. It is rejected here because an alias
 for `instruction` cannot be neutral: the key's meaning splits by type, so an alias would have to keep
-removes. Once `instruction` must break, carrying the other three names would only add to a
+sending a string to the vision path and a list to the native one — preserving the very defect this
+proposal removes. Once `instruction` must break, carrying the other three names would only add to a
 migration the same change already asks for.
-change already asks for.
 
 **Drop `visionInstruction` entirely and let the fallback run on `labels` alone.** The fallback would
 then need no free-text key, and every remaining key would be deterministic. It is rejected because the
@@ -353,12 +353,16 @@ intent. Removing the key would leave those alerts with no steering but the built
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Schema — `labels`, `visionInstruction`, the `Literal[False]` union, the removed-key errors, and the empty-value validators.
-- [ ] Layering — list concatenation, scalar precedence, the deleted suppression, and the notice.
-- [ ] Command line — the added, renamed, and deleted flags, and the web interface's mirror.
-- [ ] Documentation — the six pages and their Japanese mirrors, plus the migration table.
-- [ ] Demonstration scenarios — the showcase scenarios and configuration.
-- [ ] Tests — the deterministic suite covering each unit above.
+- [x] Schema — `labels`, `visionInstruction`, the `Literal[False]` union, the removed-key errors, and the empty-value validators.
+- [x] Layering — list concatenation, scalar precedence, the deleted suppression, and the notice.
+- [x] Command line — the added, renamed, and deleted flags, and the web interface's mirror.
+- [x] Documentation — the six pages and their Japanese mirrors, plus the migration table.
+- [x] Demonstration scenarios — the showcase scenarios and configuration.
+- [x] Tests — the deterministic suite covering each unit above.
+
+- 2026-08-30 — Shipped in one change: the schema split, the type-driven layering with its
+  construction-time notice, the command-line and web-interface surfaces, the six documentation pages
+  with their Japanese mirrors, the showcase scenarios, and the deterministic tests.
 
 ## References
 

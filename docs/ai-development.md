@@ -87,8 +87,39 @@ make setup   # uv sync --group dev + wire the git hooks (run once on a fresh clo
 `core.hooksPath` is a per-clone local setting that clone/pull never carry over, so an existing
 clone won't have it — but you don't need to remember: `make check` (and `make hooks`) re-wires it
 every time, so the gate self-heals right before you push. Claude Code web sessions also get it
-automatically via [`.claude/hooks/session-start.sh`](../.claude/hooks/session-start.sh). In a real
-emergency you can bypass with `git push --no-verify`, but the next CI run will still gate the PR.
+automatically via [`.claude/hooks/session-start.sh`](../.claude/hooks/session-start.sh).
+
+**`git push --no-verify` is strictly forbidden, with no exception for emergencies.** Bypassing the
+hook does not save time — it only defers the same `make check` result from your terminal to CI,
+after the push has already reached a shared branch other sessions rebase against. If the hook fails
+on what looks like a false positive rather than a real regression — for example, `lint-skills`
+reddening from a concurrent session's worktree state under `.claude/worktrees/` — fix the underlying
+cause, or reproduce the check in a clean sibling worktree to confirm before pushing. Never use
+`--no-verify` to force a push through a failing gate.
+
+No mechanism inside git can enforce that rule by itself. `--no-verify` skips every hook
+unconditionally, at the point git parses the flag, before `.githooks/pre-push` or any other hook
+ever runs. A `push` git alias cannot close that gap either: git's own documentation states that
+"aliases that hide existing Git commands are ignored" (`git help config`), and testing it against
+this repo's own `push` confirms it — `git push` and `git push --no-verify` alike ignore the alias
+and run the built-in command unchanged. The only point left that ever sees the raw flag before git
+acts on it is command-name resolution itself, which only a real `git` wrapper controls.
+
+`scripts/install-no-verify-guard.sh` installs that wrapper: a `git()` shell function, appended to
+your shell rc, that refuses `--no-verify` on `push` inside any repository whose toplevel carries
+[`.githooks/no-verify-guard-marker`](../.githooks/no-verify-guard-marker) — this one included, and
+never elsewhere. `make setup` runs it automatically, best-effort, on a fresh checkout — the whole
+point is that protection starts the moment you begin developing, not after a separate step a
+session under time pressure can forget. `make git-guard-install` runs the same installer standalone,
+for a clone set up before this existed, after the installed block was deleted, or with a non-default
+rc file via `BAJUTSU_GUARD_RC_FILE`. Detection reads `$SHELL`, which names your *login* shell, not
+necessarily the one actually running — so pass `BAJUTSU_GUARD_RC_FILE` explicitly whenever the two
+differ (zsh started under a bash login shell, e.g.).
+
+Treat it as a personal convenience, not a repository-wide guarantee: removing the block, or calling
+`command git push --no-verify` directly, still gets through. CI's independent `make check` re-run
+before merge is what makes the rule hold regardless of what ran locally — this installer only saves
+the round trip to that gate.
 
 The same `core.hooksPath` also wires a tracked **commit-msg hook**
 ([`.githooks/commit-msg`](../.githooks/commit-msg), BE-0069): it blocks a commit whose subject isn't

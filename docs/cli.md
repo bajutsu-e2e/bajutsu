@@ -43,7 +43,9 @@ specific files in one process, sharing a single warm runner.
 | `--erase / --no-erase` | scenario › config › off | override every scenario's `preconditions.erase` (wipe the simulator first); omit and it resolves each scenario's value, then the target's `erase` config, then off ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). The app is reinstalled fresh either way (config `appPath` + `preconditions.reinstall`) |
 | `--system-alert-handling / --no-system-alert-handling` | scenario › config › on | override every scenario's `systemAlertHandling` — the reactive guard that dismisses system alerts the iOS backend cannot see, natively on XCUITest (no model, BE-0315) with vision as the fallback for what the native path can't name; omit and it resolves each scenario's value, then the target's `systemAlertHandling` config, then on (the vision fallback needs the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock; the native path needs no credential; [recording](recording.md#dismissing-system-alerts-automatically)) |
 | `--ios-tipkit-handling / --no-ios-tipkit-handling` | scenario › config › off | override every scenario's `iosTipKitHandling` — dismiss a blocking Apple **TipKit** tip, the framework-owned popover, so that no scenario has to hand-author the same recovery. The guard recognizes a tip by its dismiss scrim (`PopoverDismissRegion`) **and** its own container (`TipView`) together, because a `confirmationDialog` installs an identical scrim and must be left alone; an author who does write an `interrupts` entry for a tip keys it on `TipView` for the same reason. iOS only (inert on other backends) and **off** unless asked for, since a tip is sometimes the assertion's own subject; omit and it resolves each scenario's value, then the target's `iosTipKitHandling` config, then off. Needs no credential ([scenarios](scenarios.md)) |
-| `--alert-instruction` | "" | default button instruction, below a scenario's own `systemAlertHandling.instruction` and above the target's `systemAlertHandling` config |
+| `--alert-labels` | "" | comma-separated button labels for the native alert path, concatenated **after** a scenario's own `systemAlertHandling.labels` and before the target config's |
+| `--alert-vision-instruction` | "" | free text only the AI vision fallback reads, below a scenario's own `systemAlertHandling.visionInstruction` and above the target's |
+| `--alert-poll-interval` | unset | seconds between the native system-alert presence queries, below a scenario's own `pollInterval` and above the target's |
 | `--log-predicate` | "" | an NSPredicate narrowing the `deviceLog` stream (e.g. subsystem) |
 | `--log-subsystem` | "" | the os_log subsystem for `appTrace` (defaults to the app's `bundleId`) |
 | `--network / --no-network` | config › on | collect the app's network exchanges for `request` assertions; omit and it resolves the target's `network` config, then on ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). iOS needs BajutsuKit in the app; web observes natively via Playwright, and stubs scenario `mocks` in-process |
@@ -517,7 +519,7 @@ bajutsu record --target <name> --goal "<natural-language goal>" [--out <file.yam
 | `--screenshot / --no-screenshot` | `--screenshot` | send a screenshot each turn; `--no-screenshot` records elements-only (cheaper), for an app fully instrumented with ids ([BE-0194](../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet.md)) |
 | `--headed / --no-headed` | app `headless` | web backend: author against a visible (headed, slow-motion) browser instead of headless; omit to use the app's `headless` config |
 | `--browser` | app `browser` (chromium) | web backend: the Playwright rendering engine to author against — `chromium` / `firefox` / `webkit`; omit to use the target's `browser` config |
-| `--alert-instruction` | "" | the press instruction for the above |
+| `--alert-vision-instruction` | "" | free text the vision guard reads instead of dismissing the prompt |
 | `--language` | config `ai.language` (`auto`) | AI output language for the authored prose (`from:` provenance, reasoning) — `ja` / `en` / `auto`; overrides `ai.language`, `auto` follows the goal ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md)) |
 | `--config` | `bajutsu.config.yaml` | config |
 
@@ -556,7 +558,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--backend` | config | actuator order |
 | `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
 | `--system-alert-handling / --no-system-alert-handling` | `--system-alert-handling` | dismiss unexpected OS prompts while crawling (so they aren't read as crashes; uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock) |
-| `--alert-instruction` | "" | the press instruction for the above |
+| `--alert-vision-instruction` | "" | free text the vision guard reads instead of dismissing the prompt |
 | `--headed / --no-headed` | app `headless` | web backend: crawl a visible (headed, slow-motion) browser instead of headless; omit to use the app's `headless` config |
 | `--language` | config `ai.language` (`auto`) | AI output language for the guide's streamed reasoning — `ja` / `en` / `auto`; overrides `ai.language`, `auto` stays English for crawl ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md)) |
 | `--out` | `runs/<timestamp>` | run dir the screen map is written into |

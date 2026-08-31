@@ -682,8 +682,17 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   (default 1s, decoupled from the wait's poll cadence) and dismissing by a deterministic
   candidate-label policy — no model call, reusing BE-0316's plumbing rather than a parallel API — with
   the AI-vision guard demoted to a fallback for what the native path can't name (a backend lacking the
-  capability, a non-enumerable blocking surface, or a free-text `instruction` the native path can't
-  resolve to one label); on by default, `false` disables it per scenario
+  capability, a non-enumerable blocking surface, or an alert carrying none of the policy's labels).
+  Since BE-0401 each key names exactly one of those paths — `rules` and `labels` the native one,
+  `visionInstruction` the fallback — and the three layers compose by the key's type: lists
+  concatenate innermost-first, scalars take the innermost layer that supplies one. XCUITest itself
+  intervenes on an alert that interrupts an in-flight interaction *before* this guard ever polls, and
+  left alone answers with the alert's own default button — silently overriding a scenario's policy
+  with nothing in the report. The runner therefore installs an interruption monitor that presses the
+  same policy-named button the reactive guard would, and records what it pressed as an ordinary
+  `AlertEvent`; the orchestrator resolves the policy's labels and pushes them once per scenario
+  over `POST /interruptionPolicy`. A prompt the policy names no button on is left to XCUITest's
+  own default handler, unchanged (BE-0399). On by default, `false` disables it per scenario
 - DSL `iosTipKitHandling` (BE-0389), an opt-in guard for a blocking Apple TipKit tip: TipKit's
   presentation marks the content it covers accessibility-hidden rather than merely occluding it, so a
   blocked tap can fail as `ElementNotFound`, not only `ElementNotTappable`. The XCUITest backend alone
@@ -696,7 +705,8 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   end-of-step branch, and the dismiss also composes onto BE-0314's `on_interrupt_poll` hook so a tip
   does not hold a wait to its full timeout either. Defaults off (unlike `systemAlertHandling`) because a
   scenario sometimes asserts on the tip itself; `--ios-tipkit-handling`/`--no-ios-tipkit-handling`
-  follows the same flag > scenario > target > default precedence as `systemAlertHandling` (BE-0177)
+  follows the same flag > scenario > target > default precedence as `systemAlertHandling`'s own
+  on/off bit (BE-0177); `systemAlertHandling`'s policy keys compose by type instead (BE-0401)
 
 #### Evidence, network observation, and reporting
 

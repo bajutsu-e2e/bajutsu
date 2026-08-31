@@ -18,7 +18,7 @@ public struct InterruptionRule: Sendable, Equatable {
 /// Which button to press on an out-of-process alert that interrupts an XCUITest interaction.
 ///
 /// This is a *mechanism*, not a policy: every label in it is resolved on the Python side from the
-/// scenario's `systemAlertHandling` (its `rules`, its ordered `instruction` candidates, or the
+/// scenario's `systemAlertHandling` (its `rules`, its ordered `labels` candidates, or the
 /// built-in dismissive defaults) and pushed here before the run. What lives in Swift is only the
 /// matching discipline, and it is the same one Python applies — `match_alert_rule` then
 /// `pick_alert_label`: a rule wins when every one of its identifying labels is on the alert exactly

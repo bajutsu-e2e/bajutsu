@@ -391,7 +391,9 @@ def test_start_run_passes_safe_backfilled_flags_and_withholds_host_paths(tmp_pat
             "browsers": "chromium,firefox",
             "network": False,
             "zip": True,
-            "alertInstruction": "tap Allow",
+            "alertLabels": "Allow,OK",
+            "alertVisionInstruction": "tap Allow",
+            "alertPollInterval": 2.5,
             "logPredicate": "subsystem == 'x'",
             "logSubsystem": "com.example",
             "schemas": "/etc",  # host path — must be withheld (BE-0051)
@@ -406,7 +408,9 @@ def test_start_run_passes_safe_backfilled_flags_and_withholds_host_paths(tmp_pat
     assert cmd[cmd.index("--browsers") + 1] == "chromium,firefox"
     assert "--no-network" in cmd  # network=False forces the off side of the pair
     assert "--zip" in cmd
-    assert cmd[cmd.index("--alert-instruction") + 1] == "tap Allow"
+    assert cmd[cmd.index("--alert-labels") + 1] == "Allow,OK"
+    assert cmd[cmd.index("--alert-vision-instruction") + 1] == "tap Allow"
+    assert cmd[cmd.index("--alert-poll-interval") + 1] == "2.5"
     assert cmd[cmd.index("--log-predicate") + 1] == "subsystem == 'x'"
     assert cmd[cmd.index("--log-subsystem") + 1] == "com.example"
     assert "--schemas" not in cmd and "--goldens" not in cmd

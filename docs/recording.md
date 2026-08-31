@@ -353,11 +353,13 @@ class SystemAlertGuard:
   it is armed **mid-wait** the same way it always was: it fires against the already-polled screen as
   soon as the tree looks collapsed, debounced, cooldown-limited, and capped at two attempts per wait,
   so a blocked wait can recover before its own timeout elapses instead of only at the end-of-step
-  retry (BE-0269). A scenario sets `systemAlertHandling: false` to opt out, `{ instruction: ["Allow"] }`
-  to name a candidate label the native path resolves deterministically, or `{ instruction: "tap Allow" }`
-  for the legacy free-text form only the vision fallback interprets;
-  `--system-alert-handling`/`--no-system-alert-handling` overrides every scenario and
-  `--alert-instruction "..."` sets a default instruction.
+  retry (BE-0269). A scenario sets `systemAlertHandling: false` to opt out, `{ labels: ["Allow"] }`
+  to name a candidate label the native path resolves deterministically, or
+  `{ visionInstruction: "tap Allow" }` for free text only the vision fallback reads
+  ([BE-0401](../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md));
+  `--system-alert-handling`/`--no-system-alert-handling` overrides every scenario, and
+  `--alert-labels`, `--alert-vision-instruction`, and `--alert-poll-interval` supply the same three
+  keys for one run.
 - `record --system-alert-handling`: on by default (authoring has no scenario yet). Clears prompts
   that interrupt authoring so the agent always sees a clean screen. **A dismissal is an environment
   operation, not a recorded step** (replay handles it via each scenario's `systemAlertHandling`).

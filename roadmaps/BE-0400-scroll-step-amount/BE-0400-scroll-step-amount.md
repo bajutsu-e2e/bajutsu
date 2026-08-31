@@ -122,7 +122,13 @@ iOS runner applies before lifting (`scrollSettleDuration` in
 [`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift))
 is not responsible: `scroll` and `swipe` agree within noise at every fraction, and a separate
 measurement found content already at rest more than 190 milliseconds before the driver call
-returns, for both gestures alike. A plausible remaining explanation is that
+returns, for both gestures alike. What that hold does is worth stating precisely, so unit 1
+measures the right thing: it is not waiting out deceleration, which cannot begin until the lift,
+because the scroll view tracks the finger while the touch is down. It holds the finger still so
+that the release velocity UIKit estimates from the touch's last moments comes out near zero.
+Whether 0.3 seconds is always long enough for that estimate to fall to zero is the open question,
+and it is not the one the numbers above answer. A plausible remaining explanation for the
+overshoot is that
 `withVelocity: .default` traverses every drag at one fixed speed, so the finger lifts at a similar
 velocity however short the drag, leaving a similar fling each time — but nothing has tested that,
 and unit 1 below exists to settle it before any correction is designed.
@@ -153,6 +159,20 @@ The range deliberately does not stop at the 0.6 default.
 considered* deferred this knob over the risk that a large step reintroduces overshoot. BE-0329
 closed that gap for every step size rather than only the default: the loop detects a step that
 shares nothing with the read before it and reacts, whatever fraction produced that step.
+
+That detection also sets a practical ceiling the range itself does not, and unit 8 must document
+it. `_overshot` fires when nothing that was in view before a step is on screen after it, so a step
+travelling a full viewport satisfies it by construction — on a *faithful* backend as much as on a
+flinging one. The ceiling therefore tightens once unit 2 lands. Today's 0.8 request overshoots to
+825 points, leaving 49 points of the 874-point viewport showing content from before the step —
+against a row pitch of 98 points, so whether an element that was *wholly* in view survives that
+step depends on where a row boundary happens to fall. A corrected 1.0 would land exactly one
+viewport on and trip the detector on its first step, costing two gestures against `maxScrolls` —
+the overshooting step itself and the halved reversing look-back after it, since the halving is an
+assignment and spends nothing — for half a viewport of net progress, where two default steps give
+1.2. An author wanting one large step should stay far enough below 1.0 that consecutive reads
+still share an element, and should learn that from the documentation rather than from spent
+budget.
 
 ### Making the realized travel match the request
 
@@ -249,9 +269,13 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 
    Document `amount` in [`docs/scenarios.md`](../../docs/scenarios.md) and its Japanese mirror,
    beside `direction`, `within`, and `maxScrolls`. State its default and its unit, and
-   cross-reference `swipe` and `drag` for the shared convention. Record the realized-travel requirement in the
-   driver conformance section of [`docs/architecture.md`](../../docs/architecture.md) and its
-   Japanese mirror, since it becomes part of the `Driver` contract.
+   cross-reference `swipe` and `drag` for the shared convention. Add it to the `Scroll ::=`
+   production in [`docs/dsl-grammar.md`](../../docs/dsl-grammar.md) and its Japanese mirror too:
+   that production enumerates the action's fields, so a reader taking it as the field list would
+   otherwise conclude `scroll` has no `amount`. Document the practical ceiling from *The `amount`
+   field* alongside the range. Record the realized-travel requirement in the driver conformance
+   section of [`docs/architecture.md`](../../docs/architecture.md) and its Japanese mirror, since
+   it becomes part of the `Driver` contract.
 
 ### Prime directives preserved
 
@@ -308,15 +332,24 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 
 - **Cap `amount` below 1 to avoid the overshoot risk BE-0326 deferred over.**
 
-  Rejected. BE-0329's detection and recovery already bounds that risk for every step, not only the
-  default one, and a cap would block an author whose screen scrolls unusually slowly from asking
-  for one large step while adding no protection the recovery does not give.
+  Rejected, though not for the reason it first appears. BE-0329's detection and recovery does
+  bound the risk for every step, not only the default one. What it cannot do is deliver a step near
+  a full viewport: such a step trips `_overshot` by construction, so the recovery answers the
+  request by halving and reversing rather than granting it. The range keeps its 1.0 top anyway,
+  because a fixed cap is the wrong instrument — where the ceiling sits depends on the screen's
+  content, which the schema cannot know. *The `amount` field* records the ceiling, and unit 8
+  carries it into the documentation, so the constraint reaches an author as guidance rather than as
+  a number guessed on their behalf.
 
 - **Lower `_STEP_FRACTION` instead of adding a field.**
 
   Rejected, and the measurement limits how far it could go anyway. A smaller global default slows
-  every `scroll` call that does not need one, and the realized travel stops responding to the
-  constant once it is lowered past about 0.125.
+  every `scroll` call that does not need one; 0.6 is the value
+  [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element.md) chose for the ordinary case
+  and the one
+  [BE-0329](../BE-0329-scroll-observed-motion-decisions/BE-0329-scroll-observed-motion-decisions.md)
+  kept, having rejected a smaller step fraction as its own primary shape; and the realized travel
+  stops responding to the constant once it is lowered past about 0.125.
 
 ## Progress
 
@@ -331,7 +364,7 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 - [x] Unit 5 — conformance check on realized travel against the request
 - [x] Unit 6 — land the settle test and decide its CI wiring
 - [x] Unit 7 — tests over `FakeDriver` and the schema
-- [x] Unit 8 — docs (`docs/scenarios.md`, `docs/architecture.md`, both mirrors)
+- [x] Unit 8 — docs (`docs/scenarios.md`, `docs/dsl-grammar.md`, `docs/architecture.md`, both mirrors)
 
 ### Log
 
