@@ -56,8 +56,15 @@ def redact_totp_secrets(scenario: Scenario) -> Scenario:
     durable credential material, so it is replaced with a placeholder before the snapshot is
     written. A `${secrets.*}` reference is left intact (its resolved value never reaches the
     snapshot — BE-0032). Round-trips through the model so the result stays a valid scenario.
+
+    `exclude_defaults` is what keeps that round-trip total: a field validator may reject a value the
+    author can never write but a dump still emits — `systemAlertHandling.labels` rejects `[]`, which
+    is its own `default_factory` output and which `exclude_none` does not drop — so re-validating a
+    model's own dump would fail on a policy that named no button (BE-0401). Excluding default-valued
+    fields hands `model_validate` only what was declared, and re-validation restores each default, so
+    the returned model is field-for-field the input.
     """
-    data = scenario.model_dump(by_alias=True, exclude_none=True)
+    data = scenario.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)
     return Scenario.model_validate(_mask_totp_secrets(data))
 
 
