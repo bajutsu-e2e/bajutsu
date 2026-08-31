@@ -274,6 +274,108 @@ def test_step_falls_back_to_the_pre_action_screenshot_when_no_after_png_exists(
     assert 'class="shot" loading="lazy" src="00-s1/step0/before.png"' in out
 
 
+def test_step_draws_no_frames_when_its_screenshot_and_tree_describe_two_screens(
+    tmp_path: Path,
+) -> None:
+    # A `web` block screenshots the native driver while its tree comes from the WebView, whose
+    # frames are in the WebView's own coordinate space. The image is still shown — it is the only
+    # picture of the step there is — but the screen extent is withheld, which is all `report.js`
+    # needs to draw no frame (`tvHighlight` hides the box unless the extent is positive).
+    out = _one_step_report(
+        tmp_path,
+        [
+            Artifact("00-s1/step0/before.png", "screenshot", "driver", "adb:before"),
+            Artifact("00-s1/step0/elements.json", "elements", "driver", "webview:before"),
+            Artifact("00-s1/step0/after.png", "screenshot", "driver", "adb:after"),
+            Artifact("00-s1/step0/elements.json", "elements", "driver", "webview:after"),
+        ],
+    )
+    assert 'class="shot" loading="lazy" src="00-s1/step0/after.png"' in out
+    assert "data-sw=" not in out
+    assert "describe different screens" in out  # the tree button says why the frames are absent
+
+
+def test_step_keeps_its_frames_when_the_pair_describes_one_screen(tmp_path: Path) -> None:
+    out = _one_step_report(
+        tmp_path,
+        [
+            Artifact("00-s1/step0/before.png", "screenshot", "driver", "adb:before"),
+            Artifact("00-s1/step0/elements.json", "elements", "driver", "adb:before"),
+            Artifact("00-s1/step0/after.png", "screenshot", "driver", "adb:after"),
+            Artifact("00-s1/step0/elements.json", "elements", "driver", "adb:after"),
+        ],
+    )
+    assert 'class="shot" loading="lazy" src="00-s1/step0/after.png"' in out
+    assert 'data-sw="112" data-sh="76"' in out
+    assert "describe different screens" not in out
+
+
+def test_step_with_an_unreadable_tree_shows_the_screenshot_and_no_element_table(
+    tmp_path: Path,
+) -> None:
+    # `elements.json` is written by the run, but a report can be re-rendered from a stored run whose
+    # copy was truncated or replaced. Anything but a list of elements yields no embedded table (and
+    # so no frames), rather than a half-rendered one.
+    r = RunResult(
+        scenario="s1",
+        ok=True,
+        steps=[
+            StepOutcome(
+                index=0,
+                action="tap",
+                ok=True,
+                started_at=0.0,
+                artifacts=[
+                    Artifact("00-s1/step0/after.png", "screenshot", "driver", "adb:after"),
+                    Artifact("00-s1/step0/elements.json", "elements", "driver", "adb:after"),
+                ],
+            ),
+        ],
+        expect_results=[],
+        artifacts=[],
+    )
+    step_dir = tmp_path / "00-s1" / "step0"
+    step_dir.mkdir(parents=True)
+    (step_dir / "elements.json").write_text('{"not": "a list"}', encoding="utf-8")
+    (step_dir / "after.png").write_bytes(b"PNG")
+    out = html_report("run1", [r], tmp_path)
+    assert 'src="00-s1/step0/after.png"' in out
+    assert "data-sw=" not in out
+    assert 'class="treedata"' not in out
+
+
+def test_step_whose_elements_have_no_extent_draws_no_frames(tmp_path: Path) -> None:
+    # A tree can describe its screen and still place nothing on it: every frame zero-sized, or none
+    # at all (a backend that reports no geometry). There is no extent to map percentages against, so
+    # the viewer draws no frame — the same rendering an unpaired step gets, for a different reason.
+    r = RunResult(
+        scenario="s1",
+        ok=True,
+        steps=[
+            StepOutcome(
+                index=0,
+                action="tap",
+                ok=True,
+                started_at=0.0,
+                artifacts=[
+                    Artifact("00-s1/step0/after.png", "screenshot", "driver", "adb:after"),
+                    Artifact("00-s1/step0/elements.json", "elements", "driver", "adb:after"),
+                ],
+            ),
+        ],
+        expect_results=[],
+        artifacts=[],
+    )
+    step_dir = tmp_path / "00-s1" / "step0"
+    step_dir.mkdir(parents=True)
+    el = {**_el("home.cta", "Buy", ["button"]), "frame": (0.0, 0.0, 0.0, 0.0)}
+    (step_dir / "elements.json").write_text(json.dumps([el]), encoding="utf-8")
+    (step_dir / "after.png").write_bytes(b"PNG")
+    out = html_report("run1", [r], tmp_path)
+    assert 'class="treedata"' in out  # the element table is still there
+    assert "data-sw=" not in out
+
+
 def test_html_tree_falls_back_to_link_without_run_dir() -> None:
     # Structure-only render (no run_dir → no element data to embed): keep a link.
     r = RunResult(

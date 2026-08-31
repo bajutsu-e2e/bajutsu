@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-screenshot-tree-pairing.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Implementing PR | TBD (filled once the PR is opened) |
 | Topic | Verification & coverage |
 | Related | [BE-0341](../BE-0341-pre-action-evidence-capture/BE-0341-pre-action-evidence-capture.md), [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) |
 <!-- /BE-METADATA -->
@@ -199,11 +200,17 @@ draw is honest and needs no new device data; a projection is a feature for its o
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — record `depicts` on every captured artifact.
-- [ ] Unit 2 — tag the run loop's two capture calls.
-- [ ] Unit 3 — resolve the pair in one place.
-- [ ] Unit 4 — honor the resolver in the three viewers.
-- [ ] Unit 5 — bump the manifest schema and the documentation.
+- [x] Unit 1 — record `depicts` on every captured artifact.
+- [x] Unit 2 — tag the run loop's two capture calls.
+- [x] Unit 3 — resolve the pair in one place.
+- [x] Unit 4 — honor the resolver in the three viewers.
+- [x] Unit 5 — bump the manifest schema and the documentation.
+
+### Log
+
+- Proposal and implementation landed together in one pull request (`propose-and-build`): the
+  `depicts` field, the `step_view` resolver behind all three viewers, the manifest schema bump to
+  version 9, and the documentation for both.
 
 ## References
 

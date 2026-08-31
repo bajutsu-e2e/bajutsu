@@ -86,6 +86,36 @@ def test_capture_elements_and_screenshot(tmp_path: Path) -> None:
     assert ("screenshot", str(tmp_path / "step0" / "after.png")) in driver.actions
 
 
+def test_capture_records_which_screen_each_artifact_depicts(tmp_path: Path) -> None:
+    # The pre-step baseline's pair: both files show the screen the step is about to act on, so both
+    # carry the same `depicts` and a viewer pairs them.
+    driver = FakeDriver([_el("a", "A")])
+    before = capture(driver, _writer(tmp_path), "step0", ["screenshot.before", "elements.before"])
+    assert [a.depicts for a in before] == ["fake:before", "fake:before"]
+    # The post-step pair, where a bare token means the post-action moment.
+    after = capture(driver, _writer(tmp_path), "step0", ["screenshot.after", "elements"])
+    assert [a.depicts for a in after] == ["fake:after", "fake:after"]
+
+
+def test_capture_names_the_driver_the_tree_was_read_from(tmp_path: Path) -> None:
+    """A `web` block screenshots the native driver while its tree comes from the WebView, so the two
+    describe different screens — and each artifact says which one it is, rather than looking like an
+    ordinary pair."""
+    driver = FakeDriver([_el("a", "A")])
+    written = capture(
+        driver,
+        _writer(tmp_path),
+        "step0",
+        ["screenshot.after", "elements"],
+        elements=[_el("w", "W")],
+        elements_source="webview",
+    )
+    assert [(a.kind, a.depicts) for a in written] == [
+        ("screenshot", "fake:after"),
+        ("elements", "webview:after"),
+    ]
+
+
 class _RawSourceStub(FakeDriver):
     """A driver whose only addition is `last_raw_source` — nothing else is needed for `isinstance`
     to recognize it as a `base.RawSourceProvider`, since the protocol is `@runtime_checkable` and

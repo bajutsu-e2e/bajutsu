@@ -15,7 +15,7 @@ from bajutsu.analytics import ledger as _usage_ledger
 from bajutsu.analytics import stats as _usage_stats
 from bajutsu.config import Config, load_config, resolve
 from bajutsu.drivers import base as driver_base
-from bajutsu.evidence import displayed_screenshot
+from bajutsu.evidence import StepView, step_view
 from bajutsu.scenario import declared_name, load_scenario_file
 from bajutsu.scenario.models import STEP_ACTIONS, Scenario, Step
 from bajutsu.serve import flakiness as _flakiness
@@ -612,24 +612,31 @@ def _step_artifacts(
     for idx, step in enumerate(matched.steps):
         step_id = f"{sid}/{step.name or f'step{idx}'}"
         action, fields = _step_action_fields(step)
-        elements_name, screenshot_name = _artifact_names(
+        view = _artifact_names(
             artifacts_by_step_id.get(step_id, []),
             lambda name: _safe_exists(artifacts, f"{run_id}/{name}"),
         )
+        # An unpaired step offers no image at all. The picker's whole job is to turn a click on
+        # these pixels into a selector resolved through this tree, so an image the tree does not
+        # describe would resolve every click to the wrong element — silently, since the two look
+        # like an ordinary pair. `screenshotUnpaired` separates that from a step that simply
+        # recorded no screenshot, which the editor words differently.
+        unpaired = view.screenshot is not None and not view.paired
         result.append(
             {
                 "stepId": step_id,
                 "action": action,
                 "fields": fields,
-                "elementsUrl": f"/runs/{run_id}/{elements_name}"
-                if elements_name is not None
-                and _safe_exists(artifacts, f"{run_id}/{elements_name}")
+                "elementsUrl": f"/runs/{run_id}/{view.elements}"
+                if view.elements is not None
+                and _safe_exists(artifacts, f"{run_id}/{view.elements}")
                 else None,
-                # No existence check here: `_artifact_names` chose among the names the store
-                # actually holds, so a name at all means the file is there.
-                "screenshotUrl": f"/runs/{run_id}/{screenshot_name}"
-                if screenshot_name is not None
+                # No existence check here: `step_view` chose among the names the store actually
+                # holds, so a name at all means the file is there.
+                "screenshotUrl": f"/runs/{run_id}/{view.screenshot}"
+                if view.screenshot is not None and view.paired
                 else None,
+                "screenshotUnpaired": unpaired,
             }
         )
     return result
@@ -648,38 +655,40 @@ def _find_scenario(manifest: dict[str, Any], scenario_name: str | None) -> dict[
 
 def _artifact_names(
     step_artifacts: list[dict[str, Any]], exists: Callable[[str], bool]
-) -> tuple[str | None, str | None]:
-    """The `elements` / `screenshot` artifact names the editor shows for a step, or `None` for
-    either the run never recorded (BE-0341).
+) -> StepView:
+    """The `elements` / `screenshot` artifacts the editor shows for a step, or `None` for either
+    the run never recorded (BE-0341), plus whether the two describe the same screen.
 
-    `elements` takes the first recorded name — the file has one fixed name, so every later entry
-    names the same file. `screenshot` goes through `displayed_screenshot`, so the editor's element
-    picker and the HTML report resolve one step to one image: the post-action `after.png` when the
-    run recorded one, else the pre-step baseline's `before.png`.
+    Resolved by `step_view`, so the editor's element picker, the HTML report, and the triage context
+    resolve one step to one image: the post-action `after.png` when the run recorded one, else the
+    pre-step baseline's `before.png`. Both consumers share that one image because only one tree
+    survives the step: the post-step `elements` write replaces the baseline's pre-action tree, so no
+    pre-action pair is left for the picker to resolve against. The picker writes its resolved
+    selector back into the same step, so a step that navigates offers the screen it reached rather
+    than the one it targets — `docs/web-ui.md` (Author → Edit) sends an author to a live session for
+    that case.
 
-    Both consumers share that one image because only one tree survives the step: the post-step
-    `elements` write replaces the baseline's pre-action tree, so no pre-action pair is left for
-    the picker to resolve against. The picker writes its resolved selector back into the same
-    step, so a step that navigates offers the screen it reached rather than the one it targets —
-    `docs/web-ui.md` (Author → Edit) sends an author to a live session for that case.
+    A `StepView` reporting `paired=False` is why the caller withholds the image: the picker resolves
+    a click on those pixels through this tree, so an image the tree does not describe would author a
+    selector for an element that was never where the author clicked.
 
     Args:
+        step_artifacts: the step's manifest entries, already narrowed to `dict`s by the caller — a
+            stray non-`dict` never reaches here, so the `.get` calls below need no guard of their
+            own.
         exists: whether the store actually holds a named artifact. The manifest can name a file the
             store no longer holds (a run restored from Trash, or one synced into an object store
             that never received the last write), and choosing `after.png` from the names alone
             would leave the step with no image to pick against while its `before.png` sits right
-            there. Probed lazily, on the chosen name only, with the rest filtered just for the
-            fallback: this call site's `exists` is a live object-store lookup on the hosted backend,
-            and `read_scenario` walks every step of a scenario, so filtering all candidates up front
-            would cost one round trip per recorded screenshot per step — two, now that every acting
-            step records both — for a fallback that fires almost never.
+            there. `step_view` probes lazily, in preference order: this call site's `exists` is a
+            live object-store lookup on the hosted backend, and `read_scenario` walks every step of
+            a scenario, so filtering all candidates up front would cost one round trip per recorded
+            screenshot per step — two, now that every acting step records both — for a fallback that
+            fires almost never.
     """
-    by_kind: dict[str, str] = {}
-    shots: list[str] = []
+    entries: list[tuple[str, str, str | None]] = []
     for art in step_artifacts:
-        if not isinstance(art, dict):
-            continue
-        kind, name = art.get("kind"), art.get("name")
+        kind, name, depicts = art.get("kind"), art.get("name"), art.get("depicts")
         # Narrowed to `str`, not just non-`None`: a malformed/partially written manifest could carry
         # a non-string value here, which would otherwise flow into the URL/path built from it below.
         # `_valid_step_id` (a generic safe-relative-path check despite its name) also rejects an
@@ -687,13 +696,8 @@ def _artifact_names(
         # `runs_dir`, not per-run, so a traversal-shaped name could otherwise resolve to an
         # unrelated artifact elsewhere in the org's runs tree.
         if isinstance(kind, str) and isinstance(name, str) and _valid_step_id(name):
-            by_kind.setdefault(kind, name)
-            if kind == "screenshot":
-                shots.append(name)
-    chosen = displayed_screenshot(shots)
-    if chosen is not None and not exists(chosen):
-        chosen = displayed_screenshot([n for n in shots if n != chosen and exists(n)])
-    return by_kind.get("elements"), chosen
+            entries.append((kind, name, depicts if isinstance(depicts, str) else None))
+    return step_view(entries, exists=exists)
 
 
 def _safe_exists(store: ArtifactStore, rel: str) -> bool:

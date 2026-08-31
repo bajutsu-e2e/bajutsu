@@ -602,7 +602,11 @@ if(!NARROW_MQ.matches)initTiling();
       $('#au-screenshot').hidden=true;$('#au-placeholder').hidden=false;
       const noLive=unavailableReason('capture');
       $('#au-placeholder').textContent=$('#au-run').value
-        ?'No screenshot for this step.'
+        ?s.screenshotUnpaired
+          // The step has an image, withheld on purpose: it and the element tree describe different
+          // screens, so every click would resolve to an element that was never at those pixels.
+          ?'This step\u2019s screenshot and element tree describe different screens, so picking is unavailable.'
+          :'No screenshot for this step.'
         :noLive
           ?'No run selected — load a run with stored screenshots to pick elements. '+noLive
           :'No run selected — click “Start live session” to pick elements on the current screen.';

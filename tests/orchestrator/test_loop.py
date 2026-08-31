@@ -12,7 +12,7 @@ from conftest import el
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence import Artifact, FileSink
+from bajutsu.evidence import Artifact, FileSink, step_view
 from bajutsu.evidence.intervals import Interval
 from bajutsu.orchestrator import RunResult, run_scenario
 from bajutsu.orchestrator.waits import WaitTrace
@@ -660,6 +660,61 @@ def test_pre_step_capture_downgrades_to_screenshot_only_when_web_query_fails(
     assert sum(1 for a in leaf_outcome.artifacts if a.kind == "elements") == 1
 
 
+def test_a_web_block_step_resolves_to_an_unpaired_screenshot_and_tree(tmp_path: Path) -> None:
+    """End to end: a `web` block's screenshot comes from the native driver (a `WebContextDriver`
+    cannot take one) while its tree comes from the WebView, whose frames are in the WebView's own
+    coordinate space. Each artifact records the driver it came from, so `step_view` refuses to pair
+    them and no viewer draws WebView frames onto a native image."""
+    native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
+    driver = FakeDriver(native_screen)
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "web": {
+                            "within": {"id": "app.webview"},
+                            "steps": [{"type": {"text": "hi"}}],
+                        }
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(tmp_path / "run1"),
+        webview_bridge=_FakeBridge([el("field", "Field", ["textField"])]),
+    )
+    assert result.ok, result.failure
+    leaf = next(s for s in result.steps if s.action == "type")
+    depicts = {(a.kind, a.depicts) for a in leaf.artifacts if a.kind in ("screenshot", "elements")}
+    assert depicts == {
+        ("screenshot", "fake:before"),
+        ("screenshot", "fake:after"),
+        ("elements", "webview:before"),
+        ("elements", "webview:after"),
+    }
+    view = step_view((a.kind, a.name, a.depicts) for a in leaf.artifacts)
+    assert view.screenshot is not None and view.elements is not None and not view.paired
+
+
+def test_a_native_step_resolves_to_a_paired_screenshot_and_tree(tmp_path: Path) -> None:
+    """The ordinary path, pinned beside the `web` block above: one driver reads both halves, so the
+    post-action image and the post-action tree pair and a viewer keeps its element frames."""
+    driver = FakeDriver([el("a", "A", ["button"])])
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"tap": {"id": "a"}}]}),
+        clock=FakeClock(),
+        sink=FileSink(tmp_path / "run1"),
+    )
+    assert result.ok, result.failure
+    view = step_view((a.kind, a.name, a.depicts) for a in result.steps[0].artifacts)
+    assert view.paired
+    assert view.screenshot is not None and view.screenshot.endswith("after.png")
+
+
 def test_pre_step_query_marks_prev_after_fresh_for_the_interrupt_guard(tmp_path: Path) -> None:
     """The pre-step baseline's own `active_driver.query()` for a `web` block's first nested step
     (BE-0341) must count as a *fresh* read for the interrupt guard's `before_is_fresh` bookkeeping,
@@ -805,6 +860,7 @@ class _VideoSink:
         kinds: list[str],
         *,
         elements: list[base.Element] | None = None,
+        elements_source: str | None = None,
     ) -> list[Artifact]:
         return []
 

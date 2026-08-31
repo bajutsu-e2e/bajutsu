@@ -20,7 +20,7 @@ from typing import Any, Protocol
 from pydantic import BaseModel
 
 from bajutsu.drivers import base
-from bajutsu.evidence import displayed_screenshot
+from bajutsu.evidence import step_view
 from bajutsu.scenario import (
     Assertion,
     Gone,
@@ -439,45 +439,73 @@ def _target_id(step: Step) -> str | None:
     return None
 
 
-def _first(artifacts: list[dict[str, Any]]) -> dict[str, Any] | None:
+# A pick chooses one of a step's artifacts of the requested kind. It receives the step's whole
+# artifact list beside them, because choosing a screenshot needs the step's `elements` entry too:
+# the two are only usable together when they describe the same screen.
+type PickArtifact = Callable[[list[dict[str, Any]], list[dict[str, Any]]], dict[str, Any] | None]
+
+
+def _first(
+    of_kind: list[dict[str, Any]],
+    step_artifacts: list[dict[str, Any]],  # noqa: ARG001  # pick shape
+) -> dict[str, Any] | None:
     """The first artifact a step recorded of the requested kind — the manifest's capture order."""
-    return artifacts[0] if artifacts else None
+    return of_kind[0] if of_kind else None
 
 
-def _displayed_screenshot(
-    run_dir: Path,
-) -> Callable[[list[dict[str, Any]]], dict[str, Any] | None]:
-    """A pick that resolves a step to the screenshot a viewer shows, from the files `run_dir` holds.
+def _paired_screenshot(run_dir: Path) -> PickArtifact:
+    """A pick resolving a step to the screenshot a viewer shows, when it describes that step's tree.
 
     A step records more than one screenshot (`before.png` and `after.png`), and its `elements.json`
     has a single fixed name — so taking whichever came first would hand the investigator an image
-    and a tree from different moments. Routing through `displayed_screenshot` keeps triage on the
-    same image the report's element viewer and the serve editor's picker show, and filtering the
-    candidates by existence first keeps it on an image that is actually there: a manifest can name a
-    screenshot the run no longer holds, and choosing that one would cost the investigator the
-    `before.png` beside it — and, since the backward scan commits to whatever this returns, the
-    nearest earlier step's screenshot too.
+    and a tree from different moments. Routing through `step_view` keeps triage on the same image
+    the report's element viewer and the serve editor's picker show, and filtering the candidates by
+    existence first keeps it on an image that is actually there: a manifest can name a screenshot
+    the run no longer holds, and choosing that one would cost the investigator the `before.png`
+    beside it — and, since the backward scan commits to whatever this returns, the nearest earlier
+    step's screenshot too.
+
+    A step whose screenshot does not describe its own tree yields none. The investigator reads the
+    image and the tree as one screen, so an unpaired image would be a false account of the failure
+    rather than thin evidence — and `_nearest_artifact` stops the scan at a step that recorded
+    screenshots this pick could not use, so the answer stays "no image for this failure" instead of
+    an unrelated earlier step's.
     """
 
-    def pick(artifacts: list[dict[str, Any]]) -> dict[str, Any] | None:
-        by_name = {
-            str(a.get("name")): a for a in artifacts if (run_dir / str(a.get("name"))).exists()
-        }
-        name = displayed_screenshot(list(by_name))
-        return by_name.get(name) if name is not None else None
+    def pick(
+        of_kind: list[dict[str, Any]], step_artifacts: list[dict[str, Any]]
+    ) -> dict[str, Any] | None:
+        view = step_view(
+            (
+                (str(a.get("kind")), str(a.get("name")), _str_or_none(a.get("depicts")))
+                for a in step_artifacts
+                if isinstance(a.get("name"), str)
+            ),
+            exists=lambda name: (run_dir / name).exists(),
+        )
+        if view.screenshot is None or not view.paired:
+            return None
+        return next((a for a in of_kind if a.get("name") == view.screenshot), None)
 
     return pick
+
+
+def _str_or_none(value: Any) -> str | None:
+    """`value` when it is a string, else None — a manifest field is only as typed as it was written."""
+    return value if isinstance(value, str) else None
 
 
 def _nearest_artifact(
     steps: list[dict[str, Any]],
     failed_index: int | None,
     kind: str,
-    pick: Callable[[list[dict[str, Any]]], dict[str, Any] | None] = _first,
+    pick: PickArtifact = _first,
 ) -> dict[str, Any] | None:
     """The artifact of `kind` from the failing step, else the nearest earlier step that has one.
 
     `pick` chooses among one step's artifacts of that kind, for a kind a step records more than once.
+    It also receives the step's whole artifact list, since choosing a screenshot needs the step's
+    `elements` entry too: the two are usable together only when they describe the same screen.
 
     A step that recorded artifacts of this kind ends the scan even when `pick` can use none of them,
     rather than reaching back another step. The two callers scan independently — `_elements_near`
@@ -492,12 +520,11 @@ def _nearest_artifact(
         order = list(range(len(steps) - 1, -1, -1))
     for i in order:
         if 0 <= i < len(steps):
-            of_kind = [
-                art
-                for art in steps[i].get("artifacts") or []
-                if isinstance(art, dict) and art.get("kind") == kind
+            step_artifacts = [
+                art for art in steps[i].get("artifacts") or [] if isinstance(art, dict)
             ]
-            if (art := pick(of_kind)) is not None:
+            of_kind = [art for art in step_artifacts if art.get("kind") == kind]
+            if (art := pick(of_kind, step_artifacts)) is not None:
                 return art
             if of_kind:
                 return None
@@ -511,7 +538,7 @@ def _read_artifact[T](
     kind: str,
     loader: Callable[[Path], T | None],
     default: T,
-    pick: Callable[[list[dict[str, Any]]], dict[str, Any] | None] = _first,
+    pick: PickArtifact = _first,
 ) -> T:
     """Find the nearest artifact of `kind` (backward from `failed_index`) and apply `loader`.
 
@@ -556,7 +583,7 @@ def _screenshot_near(
         "screenshot",
         _load_bytes,
         None,
-        _displayed_screenshot(run_dir),
+        _paired_screenshot(run_dir),
     )
 
 
