@@ -119,7 +119,16 @@ means the same thing after the run that produced it exits
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
   It groups accumulated runs by identity, so a verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. Pure metadata — it never enters
-  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `7` today.)
+  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `10` today.)
+- `target` (top, optional): the target the run ran, so "the Android target passes while the iOS
+  target fails" is computable from stored data ([BE-0404](../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)).
+  One run resolves one target, so it sits beside `backend` rather than on each scenario. `serve`
+  mirrors it onto the run row and ranks targets against each other from it. Omitted when the run
+  named no target. (`schemaVersion` is `10` or higher once this key can appear.)
+- `label` (top, optional): the run-history partition — the bound config's own name, or the operator's
+  `run --label` override. Opaque metadata: never parsed, never matched against config, and never an
+  input to `ok`. It is what keeps two configs' runs readable apart after a `serve` restart. Omitted
+  when the run carried no label. (`schemaVersion` is `10` or higher once this key can appear.)
 - `idb` (top, optional, legacy): older manifests may carry an `idb_companion` / client version
   block (BE-0005). It was retired with the idb backend (BE-0290) and is no longer written; an old
   manifest that still has it loads fine, since an unknown top-level key is ignored.
@@ -283,7 +292,7 @@ Device Log / App Trace remain separate tabs.
 ```python
 def write_report(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, provenance=None) -> Path  # all 4 formats; definitions = per-scenario dict, sources = raw YAML, source_name = scenario file name, description = file-level description; provenance = run-identity stamp (BE-0049)
 def write_html_and_junit(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, provenance=None) -> None  # the regenerable half (report.html + junit.xml + ctrf.json), leaving manifest.json untouched — used by re-render; provenance feeds the CTRF tool/environment fields
-def manifest_dict(run_id, results, *, source_name=None, provenance=None) -> dict  # the versioned render model (schemaVersion); the manifest source (for tests / inspection)
+def manifest_dict(run_id, results, *, source_name=None, provenance=None, target=None, label=None) -> dict  # the versioned render model (schemaVersion); the manifest source (for tests / inspection)
 def run_provenance(scenario_yaml, *, git_revision, config_source=None) -> dict  # the run-identity stamp: scenarioHash + toolVersion + optional gitRevision (BE-0049) + optional configSource (BE-0063)
 def ctrf_json(run_id, results, *, provenance=None) -> dict  # the CTRF projection of the result model (BE-0161); provenance feeds tool.version / environment.commit
 def junit_xml(results) -> str

@@ -19,7 +19,12 @@ from bajutsu import serve as srv
 from bajutsu.report.manifest import MAX_LABEL_LENGTH, manifest_dict
 from bajutsu.serve.operations.config import launch_label
 from bajutsu.serve.operations.dispatch import _run_label
-from bajutsu.serve.operations.reads import ALL_LABELS, apply_label_filter, runs_payload
+from bajutsu.serve.operations.reads import (
+    ALL_LABELS,
+    apply_label_filter,
+    runs_payload,
+    stats_html,
+)
 from bajutsu.serve.operations.target_comparison import compare_targets
 
 # --- unit 2: the default label, and the operator's override ---
@@ -113,6 +118,19 @@ def test_an_unlabeled_history_opens_unfiltered_rather_than_empty(tmp_path: Path)
     assert [r["id"] for r in runs_payload(state)[0]] == ["20260101-1"]
 
 
+def test_an_unlabeled_run_stays_visible_once_labeled_runs_arrive(tmp_path: Path) -> None:
+    # An unlabeled run belongs to no partition: it predates the column, or was enqueued with no
+    # config bound. Without this it would drop out of the default view the moment the deployment
+    # records its first labeled run — a history that vanishes on upgrade, which is the outcome the
+    # dropped backfill would otherwise have caused.
+    _scn, cfg, runs = project(tmp_path)
+    write_run(runs, "20260101-1", ok=True, scenarios=[("alpha", True)])
+    write_run(runs, "20260101-2", ok=True, scenarios=[("alpha", True)], label="bajutsu.config")
+    write_run(runs, "20260101-3", ok=True, scenarios=[("alpha", True)], label="other.config")
+    state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
+    assert [r["id"] for r in runs_payload(state)[0]] == ["20260101-2", "20260101-1"]
+
+
 def test_the_filter_is_a_no_op_without_a_bound_config(tmp_path: Path) -> None:
     state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path)
     rows = [{"id": "a", "label": "x"}, {"id": "b", "label": "y"}]
@@ -186,3 +204,73 @@ def test_a_partition_is_not_truncated_by_the_global_window(
 
     rows = runs_payload(state)[0]
     assert [r["id"] for r in rows] == ["20260101-0"]
+
+
+def test_an_unlabeled_run_stays_visible_on_the_database_path(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # The database half of the same guarantee: the query itself must admit a null label, since the
+    # partition is pushed into it rather than post-filtered.
+    from bajutsu.serve.server.db import RunRecord, SqlRepository
+    from bajutsu.serve.server.models import Base
+
+    engine = serve_engine()
+    Base.metadata.create_all(engine)
+    repository = SqlRepository(engine)
+    repository.ensure_org("default", slug="default", name="default")
+    _scn, cfg, runs = project(tmp_path)
+    for run_id, label in (("r-old", None), ("r-mine", "bajutsu.config"), ("r-other", "other")):
+        repository.record_run(
+            RunRecord(
+                id=run_id,
+                org_id="default",
+                status="done",
+                ok=True,
+                label=label,
+                summary={"id": run_id, "ok": True, "label": label or ""},
+            )
+        )
+    state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path, repository=repository)
+
+    assert {r["id"] for r in runs_payload(state)[0]} == {"r-old", "r-mine"}
+    assert {r["id"] for r in runs_payload(state, label=ALL_LABELS)[0]} == {
+        "r-old",
+        "r-mine",
+        "r-other",
+    }
+    # `r-old` carries no label, so it matches every partition — including one no run was recorded
+    # under. The fallback below is what a history of *only* labeled runs needs.
+    assert {r["id"] for r in runs_payload(state, label="never-used")[0]} == {"r-old"}
+
+
+def test_a_label_matching_nothing_opens_the_whole_history(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # A reader is never left staring at an empty page with no filter visible to clear, so a
+    # partition that matches no run at all falls back to the unfiltered history.
+    from bajutsu.serve.server.db import RunRecord, SqlRepository
+    from bajutsu.serve.server.models import Base
+
+    engine = serve_engine()
+    Base.metadata.create_all(engine)
+    repository = SqlRepository(engine)
+    repository.ensure_org("default", slug="default", name="default")
+    _scn, cfg, runs = project(tmp_path)
+    for run_id in ("r-a", "r-b"):
+        write_run(runs, run_id, ok=True, scenarios=[("alpha", True)], label="other.config")
+        repository.record_run(
+            RunRecord(
+                id=run_id,
+                org_id="default",
+                status="done",
+                ok=True,
+                label="other.config",
+                summary={"id": run_id, "ok": True, "label": "other.config"},
+            )
+        )
+    state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path, repository=repository)
+
+    assert {r["id"] for r in runs_payload(state)[0]} == {"r-a", "r-b"}
+    # The run-stats dashboard reads through the same partition and the same fallback, so it
+    # aggregates those two runs rather than reporting nothing to aggregate.
+    assert "nothing to aggregate" not in stats_html(state)[0]

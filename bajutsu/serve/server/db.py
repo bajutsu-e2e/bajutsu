@@ -148,7 +148,8 @@ class Repository(Protocol):
         """An org's runs, newest first, capped at *limit*; ``None`` means unbounded.
 
         *label* and *target* narrow the result to that partition and that target when given
-        (BE-0404 units 2 and 4). Soft-deleted runs are excluded unless *include_deleted* (BE-0239).
+        (BE-0404 units 2 and 4); an unlabeled run matches every *label*, since it belongs to no
+        partition. Soft-deleted runs are excluded unless *include_deleted* (BE-0239).
         """
 
     def soft_delete_run(
@@ -490,7 +491,11 @@ class SqlRepository:
 
         stmt = select(Run).where(Run.org_id == org_id)
         if label is not None:
-            stmt = stmt.where(Run.label == label)
+            # An unlabeled run matches every label filter (BE-0404 unit 4): a run recorded before
+            # the column existed, or one enqueued with no config bound, belongs to no partition, and
+            # hiding it would make a deployment's pre-upgrade history vanish the moment its first
+            # labeled run lands.
+            stmt = stmt.where((Run.label == label) | Run.label.is_(None))
         if target is not None:
             stmt = stmt.where(Run.target == target)
         if not include_deleted:

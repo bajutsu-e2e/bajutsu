@@ -141,24 +141,36 @@ def _target_scenario_names(state: ServeState, org: str, target: str) -> set[str]
 ALL_LABELS = "*"
 
 
-def apply_label_filter(
-    state: ServeState, runs: list[dict[str, Any]], requested: str | None
-) -> list[dict[str, Any]]:
-    """Narrow *runs* to one label partition, defaulting to the bound config's own (BE-0404 unit 4).
+def effective_label(state: ServeState, requested: str | None) -> str | None:
+    """The label partition to read, or None for the whole history (BE-0404 unit 4).
 
-    Restarting `serve` against a second configuration yields two readable histories rather than one
-    interleaved list. `ALL_LABELS` restores the unfiltered view, and so does an empty match: a
-    deployment whose history predates the label has no run carrying the bound one, so its views open
-    on the whole history rather than on an empty page.
+    Defaults to the bound configuration's own label, which is what makes restarting `serve` against
+    a second configuration yield two readable histories rather than one interleaved list.
+    `ALL_LABELS` — and a deployment with nothing bound — asks for everything.
     """
     if requested == ALL_LABELS:
-        return runs
+        return None
     label = requested or (
         launch_label(state.config, state.config_provenance) if state.config else ""
     )
-    if not label:
+    return label or None
+
+
+def apply_label_filter(
+    state: ServeState, runs: list[dict[str, Any]], requested: str | None
+) -> list[dict[str, Any]]:
+    """Narrow *runs* to `effective_label`'s partition — the in-Python half of the filter.
+
+    The database path pushes the same predicate into the query instead (`Repository.list_runs`);
+    this serves the artifact-store path, which has no query to push into. An unlabeled run matches
+    every label, since it belongs to no partition. An empty match still opens the whole history
+    rather than an empty page, so a reader is never left staring at nothing with no filter visible
+    to clear.
+    """
+    label = effective_label(state, requested)
+    if label is None:
         return runs
-    matching = [r for r in runs if r.get("label") == label]
+    matching = [r for r in runs if r.get("label") in (label, "", None)]
     return matching or runs
 
 
@@ -179,21 +191,26 @@ def runs_payload(
     # UI shape is identical. Without one (local / stdlib serve), list straight from the artifact
     # store.
     #
-    # Every filter below is a *post*-filter — the scenario names live in the JSON summary, and the
-    # label narrows to one of several configs — so the DB cap must count filtered runs, not global
-    # ones: capping first silently drops a matching run that falls outside the newest-N global
-    # window, and the picker can't reach it (BE-0262 follow-up). The label filter is active whenever
-    # a config is bound and the reader has not asked for every label, so it joins that condition.
+    # The scenario and target filters below are *post*-filters — the names they match live in the
+    # JSON summary, not an indexed column — so on the DB path the cap must count filtered runs, not
+    # global ones: capping first silently drops a matching run that falls outside the newest-N
+    # global window and the picker can't reach it (BE-0262 follow-up). The label partition is not
+    # one of them: `runs.label` is an ordinary column, so it pushes into the query and the window
+    # stays on, which keeps the most-hit read of all — the default history list — bounded.
     org = state.org_of(actor)
-    labelled = label != ALL_LABELS and (label is not None or state.config is not None)
-    scoped = scenario is not None or target is not None or labelled
+    scoped = scenario is not None or target is not None
     if state.repository is not None:
+        partition = effective_label(state, label)
+        limit = None if scoped else RUN_WINDOW
         runs = [
-            r.summary
-            for r in state.repository.list_runs(org_id=org, limit=None if scoped else RUN_WINDOW)
+            r.summary for r in state.repository.list_runs(org_id=org, label=partition, limit=limit)
         ]
+        if not runs and partition is not None:
+            # The bound label matches no run at all — open the whole history rather than an empty
+            # page, the same fallback the artifact-store path applies.
+            runs = [r.summary for r in state.repository.list_runs(org_id=org, limit=limit)]
     else:
-        runs = state.artifacts.list_runs()
+        runs = apply_label_filter(state, state.artifacts.list_runs(), label)
     # Scope the Author run picker to the loaded scenario (BE-0262): a chosen run's step ids only line
     # up with a scenario of the same name, so a run that never executed it can't feed the picker.
     # Scenario name is the step-id compatibility key the run-backed resolve already keys on (a run's
@@ -221,9 +238,6 @@ def runs_payload(
                 if isinstance(n, str)
             )
         ]
-    # The label partition is applied last, over the already-scoped set, then the window is
-    # re-applied to the result so a scoped list stays as bounded as the unscoped one (BE-0404 unit 4).
-    runs = apply_label_filter(state, runs, label)
     if scoped and state.repository is not None:
         runs = runs[:RUN_WINDOW]
     return runs, 200
@@ -351,15 +365,16 @@ def _run_manifests(
     artifacts = state.for_org(org).artifacts
     rows: list[dict[str, Any]]
     if state.repository is not None:
+        partition = effective_label(state, label)
         rows = [
-            {"id": r.id, "label": r.label or ""}
-            for r in state.repository.list_runs(org_id=org, limit=RUN_WINDOW)
+            {"id": r.id}
+            for r in state.repository.list_runs(org_id=org, label=partition, limit=RUN_WINDOW)
         ]
+        if not rows and partition is not None:
+            rows = [{"id": r.id} for r in state.repository.list_runs(org_id=org, limit=RUN_WINDOW)]
     else:
-        rows = artifacts.list_runs()[:RUN_WINDOW]
-    return run_set_manifests(
-        artifacts, [r.get("id") for r in apply_label_filter(state, rows, label)]
-    )
+        rows = apply_label_filter(state, artifacts.list_runs(), label)[:RUN_WINDOW]
+    return run_set_manifests(artifacts, [r.get("id") for r in rows])
 
 
 def run_set_manifests(store: ArtifactStore, run_ids: Iterable[Any]) -> list[dict[str, Any]]:
