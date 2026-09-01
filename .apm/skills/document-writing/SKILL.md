@@ -181,8 +181,13 @@ Chasing zero therefore buys a long revise-and-rerun loop that can only end in an
 it is the largest single cost in authoring an item. Measuring against the file's own starting count
 ends the loop on a fact instead.
 
-- **Count before you edit.** Run textlint on the file as it stands and keep the number. On a new
-  file that number is zero, so every finding is yours.
+- **Count before you edit.** Run textlint on the file as it stands and keep the number, then clear
+  what you introduced against it.
+- **A new file has no starting count**, so that rule says nothing about one — reading it as "zero"
+  reinstates the unreachable bar this section exists to retire. Calibrate against the corpus
+  instead: run textlint on two or three merged items of comparable length and land in the same
+  order of magnitude. BE-0376 reports 140 English findings, so a new item scoring near that is in
+  family; one at several times it has a real prose problem worth finding.
 - **Clear what you introduced**, and **leave what you inherited** — pre-existing findings in a file
   you are touching in part are outside your lane, and clearing them widens the diff.
 - **A repository norm outranks a textlint rule where the two cannot both hold.** The live case is
