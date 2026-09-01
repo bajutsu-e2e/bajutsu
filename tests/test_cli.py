@@ -44,7 +44,7 @@ def _write(tmp_path: Path) -> tuple[Path, Path]:
     (scn_dir / "demo.yaml").write_text(SCENARIO, encoding="utf-8")
     empty_dir = tmp_path / "empty"
     empty_dir.mkdir()
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "defaults: { backend: [ios] }\n"
         "targets:\n"
@@ -124,7 +124,7 @@ def test_record_fails_closed_uses_configured_key_env(
     monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("MY_GATEWAY_KEY", raising=False)
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "defaults:\n  ai: { keyEnv: MY_GATEWAY_KEY }\n"
         "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
@@ -151,7 +151,7 @@ def test_record_fails_closed_uses_configured_key_env(
 
 def _kill_switch_config(tmp_path: Path) -> Path:
     """A config whose `defaults.ai` disables every AI path (BE-0394)."""
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "defaults:\n  ai: { provider: none }\n"
         "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
@@ -355,7 +355,7 @@ def _fake_run(tmp_path: Path, *, tags: str = "") -> tuple[Path, Path]:
     scn.write_text(
         f"- name: demo\n{tag_line}  steps:\n    - tap: {{ id: home.title }}\n", encoding="utf-8"
     )
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "defaults: { backend: [fake] }\n"
         "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
@@ -385,7 +385,7 @@ def test_record_writes_the_authored_scenario(
     )
     monkeypatch.setattr(rec, "record_loop", lambda *a, **k: authored)
 
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "defaults: { backend: [fake] }\n"
         "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
@@ -464,7 +464,7 @@ def test_record_needs_human_handoff_exits_3(
 
 
 def _fake_record_config(tmp_path: Path) -> Path:
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "defaults: { backend: [fake] }\n"
         "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
@@ -1206,9 +1206,7 @@ def test_serve_refuses_non_loopback_without_token() -> None:
 
 def test_serve_emit_launchagent_prints_plist_and_exits() -> None:
     # --emit-launchagent prints a plist and exits 0 without binding a server (BE-0016 Tier A).
-    r = runner.invoke(
-        app, ["serve", "--emit-launchagent", "--config", "bajutsu.common.config.yaml"]
-    )
+    r = runner.invoke(app, ["serve", "--emit-launchagent", "--config", "bajutsu.config.yaml"])
     assert r.exit_code == 0
     assert "<plist" in r.output
     assert "com.bajutsu.serve" in r.output
@@ -1225,7 +1223,7 @@ def test_serve_config_from_git_binds_checkout(
 
     checkout = tmp_path / "co"
     checkout.mkdir()
-    cfg = checkout / "bajutsu.common.config.yaml"
+    cfg = checkout / "bajutsu.config.yaml"
     cfg.write_text("targets: { demo: { bundleId: com.example.demo } }\n", encoding="utf-8")
     monkeypatch.setattr(
         cs, "materialize", lambda spec, **kw: cs.Materialized(cfg, checkout, "sha1")
@@ -1249,7 +1247,7 @@ def test_serve_local_config_binds_the_config_directory(
 
     cfg_dir = tmp_path / "proj"
     cfg_dir.mkdir()
-    cfg = cfg_dir / "bajutsu.common.config.yaml"
+    cfg = cfg_dir / "bajutsu.config.yaml"
     cfg.write_text("targets: { demo: { bundleId: com.example.demo } }\n", encoding="utf-8")
     captured: dict[str, object] = {}
     monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))  # don't start a server
@@ -1271,7 +1269,7 @@ def test_serve_local_relative_config_is_resolved_to_absolute(
 
     cfg_dir = tmp_path / "proj"
     cfg_dir.mkdir()
-    cfg = cfg_dir / "bajutsu.common.config.yaml"
+    cfg = cfg_dir / "bajutsu.config.yaml"
     cfg.write_text("targets: { demo: { bundleId: com.example.demo } }\n", encoding="utf-8")
     launch_dir = tmp_path / "elsewhere"
     launch_dir.mkdir()
@@ -1279,7 +1277,7 @@ def test_serve_local_relative_config_is_resolved_to_absolute(
     captured: dict[str, object] = {}
     monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))  # don't start a server
     # Path relative to launch_dir, pointing back up into the config's subdir.
-    r = runner.invoke(app, ["serve", "--config", "../proj/bajutsu.common.config.yaml"])
+    r = runner.invoke(app, ["serve", "--config", "../proj/bajutsu.config.yaml"])
     assert r.exit_code == 0
     config = captured["config"]
     assert isinstance(config, Path) and config.is_absolute()  # survives the cwd rebind
@@ -1289,9 +1287,7 @@ def test_serve_local_relative_config_is_resolved_to_absolute(
 
 def test_serve_rejects_invalid_upload_exec() -> None:
     # An unknown --upload-exec mode fails loud at the boundary (BE-0090), never silently defaults.
-    r = runner.invoke(
-        app, ["serve", "--upload-exec", "bogus", "--config", "bajutsu.common.config.yaml"]
-    )
+    r = runner.invoke(app, ["serve", "--upload-exec", "bogus", "--config", "bajutsu.config.yaml"])
     assert r.exit_code == 2
     assert "upload-exec" in r.output
 
@@ -1303,13 +1299,11 @@ def test_serve_upload_exec_env_mirror_and_flag_precedence(monkeypatch: pytest.Mo
     captured: dict[str, object] = {}
     monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))
     monkeypatch.setenv("BAJUTSU_UPLOAD_EXEC", "deny")
-    r = runner.invoke(app, ["serve", "--config", "bajutsu.common.config.yaml"])
+    r = runner.invoke(app, ["serve", "--config", "bajutsu.config.yaml"])
     from_env = captured["upload_exec"]
     assert r.exit_code == 0 and from_env == "deny"  # env honoured when no flag
     captured.clear()
-    r = runner.invoke(
-        app, ["serve", "--upload-exec", "reuse", "--config", "bajutsu.common.config.yaml"]
-    )
+    r = runner.invoke(app, ["serve", "--upload-exec", "reuse", "--config", "bajutsu.config.yaml"])
     from_flag = captured["upload_exec"]
     assert r.exit_code == 0 and from_flag == "reuse"  # flag wins over env
 
@@ -1340,7 +1334,7 @@ def test_serve_themes_flag_absent_passes_none(monkeypatch: pytest.MonkeyPatch) -
 
     captured: dict[str, object] = {}
     monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))
-    r = runner.invoke(app, ["serve", "--config", "bajutsu.common.config.yaml"])
+    r = runner.invoke(app, ["serve", "--config", "bajutsu.config.yaml"])
     assert r.exit_code == 0
     assert captured.get("themes_dir") is None
 

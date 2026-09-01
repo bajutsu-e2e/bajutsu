@@ -4,7 +4,7 @@
 
 ツール本体はアプリ非依存です。アプリ固有の差分はすべて config に置くので、同じバイナリと同じドライバで複数のターゲットを実行できます。ターゲットを追加するときは `targets.<name>` を 1 つ加えるだけです。
 
-実装: `bajutsu/config/resolve.py`（解決） · `bajutsu/doctor.py`（規約充足度スコア）。config はリポジトリのルートには同梱されていません。`--config`（既定のファイル名は `bajutsu.config.yaml`）で渡します。デモにはすぐ動くものが同梱されています（例: [`demos/showcase/showcase.config.yaml`](../../demos/showcase/showcase.config.yaml)（iOS）、[`demos/web/demo.config.yaml`](../../demos/web/demo.config.yaml)（web））。
+実装: `bajutsu/common/config/resolve.py`（解決） · `bajutsu/doctor.py`（規約充足度スコア）。config はリポジトリのルートには同梱されていません。`--config`（既定のファイル名は `bajutsu.config.yaml`）で渡します。デモにはすぐ動くものが同梱されています（例: [`demos/showcase/showcase.config.yaml`](../../demos/showcase/showcase.config.yaml)（iOS）、[`demos/web/demo.config.yaml`](../../demos/web/demo.config.yaml)（web））。
 
 関連: [concepts のアプリ非依存](concepts.md#6-アプリ非依存差分は-config-に寄せる) · [drivers](drivers.md) · [scenarios](scenarios.md)
 
@@ -51,7 +51,7 @@ targets:
 
 ### 解決（`resolve` → `Effective`）
 
-`resolve(config, target)` が 1 ターゲット分の有効値 `Effective`（frozen dataclass）を構築します。ターゲットが未定義の場合は `KeyError` となり、CLI は終了コード 2 で終了します。下記の一部のフィールド――各プラットフォーム自身の識別子、および web 限定の `headless` / `browser` / `device_mode`――は `Effective` の平坦なフィールドではありません。`Effective.platform_config` が、解決済みの `platform` に応じて、互いに排他的なプラットフォームごとの 3 つの config（`IosConfig` / `WebConfig` / `AndroidConfig`）のいずれかに絞り込みます（[BE-0126](../../roadmaps/BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)）。読み取るときは `bajutsu/config/accessors.py` の絞り込み用ヘルパーを使います。1 つのプラットフォームに決まっているコードは `require_ios` / `require_web` / `require_android` を使い、プラットフォームをまたいで値を安全に読みたいコードは「soft」な `ios_bundle_id` / `web_base_url` / `web_engine` / `android_package` を使います。`Effective` に `bundle_id` のようなフィールドは存在しません。
+`resolve(config, target)` が 1 ターゲット分の有効値 `Effective`（frozen dataclass）を構築します。ターゲットが未定義の場合は `KeyError` となり、CLI は終了コード 2 で終了します。下記の一部のフィールド――各プラットフォーム自身の識別子、および web 限定の `headless` / `browser` / `device_mode`――は `Effective` の平坦なフィールドではありません。`Effective.platform_config` が、解決済みの `platform` に応じて、互いに排他的なプラットフォームごとの 3 つの config（`IosConfig` / `WebConfig` / `AndroidConfig`）のいずれかに絞り込みます（[BE-0126](../../roadmaps/BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)）。読み取るときは `bajutsu/common/config/accessors.py` の絞り込み用ヘルパーを使います。1 つのプラットフォームに決まっているコードは `require_ios` / `require_web` / `require_android` を使い、プラットフォームをまたいで値を安全に読みたいコードは「soft」な `ios_bundle_id` / `web_base_url` / `web_engine` / `android_package` を使います。`Effective` に `bundle_id` のようなフィールドは存在しません。
 
 | `Effective` フィールド | 由来 | 備考 |
 |---|---|---|

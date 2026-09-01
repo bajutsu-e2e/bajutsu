@@ -21,7 +21,7 @@ def _state(tmp_path: Path, config_text: str | None = None) -> ServeState:
     if config_text is None:
         _scn_dir, cfg, runs = project(tmp_path)
         return ServeState(runs_dir=runs, config=cfg, cwd=tmp_path)
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(config_text, encoding="utf-8")
     runs = tmp_path / "runs"
     runs.mkdir()

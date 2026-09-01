@@ -125,7 +125,7 @@ def wire(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
     interactions are independent reads/calls, so one session covers them all.
     """
     root = tmp_path_factory.mktemp("mcp_wire")
-    config = root / "bajutsu.common.config.yaml"
+    config = root / "bajutsu.config.yaml"
     config.write_text(
         "defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n    backend: [fake]\n",
         encoding="utf-8",

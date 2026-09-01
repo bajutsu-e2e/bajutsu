@@ -320,7 +320,7 @@ def _audit_project(tmp_path: Path) -> tuple[Path, Path]:
     """A scenario file + a minimal config with a `demo` target, for the --repeat CLI path."""
     scn = tmp_path / "s.yaml"
     scn.write_text("- name: x\n  steps:\n    - tap: { id: home.start }\n", encoding="utf-8")
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n", encoding="utf-8")
     return scn, cfg
 

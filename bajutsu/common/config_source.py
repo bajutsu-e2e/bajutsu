@@ -28,7 +28,7 @@ from typing import Protocol
 
 from bajutsu.github.errors import GitHubAccessError
 
-DEFAULT_CONFIG = "bajutsu.common.config.yaml"
+DEFAULT_CONFIG = "bajutsu.config.yaml"
 
 # The env var serve materializes a UI-entered Git credential into (BE-0224). Deliberately *not*
 # `GITHUB_TOKEN`: an operator commonly exports that themselves, so aliasing it would let the UI's

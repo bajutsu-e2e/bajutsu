@@ -130,7 +130,7 @@ def _android_batch_project(
     apk = tmp_path / "app.apk"
     apk.write_text("APK", encoding="utf-8")
     budget_line = f"    cloudBatchBudget: {budget}\n" if budget is not None else ""
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "targets:\n"
         "  demo:\n"
@@ -168,7 +168,7 @@ def test_relative_app_path_resolves_against_the_config_dir(tmp_path: Path) -> No
         "- name: a\n  steps:\n    - tap: { id: x }\n", encoding="utf-8"
     )
     (tmp_path / "app.apk").write_text("APK", encoding="utf-8")
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "targets:\n"
         "  demo:\n"
@@ -214,7 +214,7 @@ def test_package_root_roots_config_and_scenarios_relative_to_the_source_tree(
         "- name: a\n  steps:\n    - tap: { id: x }\n", encoding="utf-8"
     )
     (proj / "app.apk").write_text("APK", encoding="utf-8")
-    cfg = proj / "bajutsu.common.config.yaml"
+    cfg = proj / "bajutsu.config.yaml"
     cfg.write_text(
         "targets:\n  demo:\n    platform: android\n    package: com.example.demo\n"
         f"    scenarios: {scn_dir}\n    cloudBatch: devicefarm\n    appPath: app.apk\n",
@@ -236,7 +236,7 @@ def test_package_root_roots_config_and_scenarios_relative_to_the_source_tree(
     assert status == 200
     (job,) = executor.jobs
     assert job.batch is not None
-    assert job.batch.config == "proj/bajutsu.common.config.yaml"
+    assert job.batch.config == "proj/bajutsu.config.yaml"
     assert job.batch.scenario == "proj/scenarios/one.yaml"
     assert job.batch.app_path == str(proj / "app.apk")  # appPath still resolves from the config dir
 

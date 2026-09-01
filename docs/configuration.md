@@ -4,7 +4,7 @@
 
 The tool core is app-agnostic. All app-specific differences belong in config, allowing multiple apps to run with the same binary and the same drivers. Adding a target means adding one `targets.<name>` entry.
 
-Implementation: `bajutsu/config/resolve.py` (resolution) · `bajutsu/doctor.py` (convention score). No config ships in the repo root; pass one with `--config` (default filename `bajutsu.config.yaml`) — the demos ship ready-to-run configs, e.g. [`demos/showcase/showcase.config.yaml`](../demos/showcase/showcase.config.yaml) (iOS) and [`demos/web/demo.config.yaml`](../demos/web/demo.config.yaml) (web).
+Implementation: `bajutsu/common/config/resolve.py` (resolution) · `bajutsu/doctor.py` (convention score). No config ships in the repo root; pass one with `--config` (default filename `bajutsu.config.yaml`) — the demos ship ready-to-run configs, e.g. [`demos/showcase/showcase.config.yaml`](../demos/showcase/showcase.config.yaml) (iOS) and [`demos/web/demo.config.yaml`](../demos/web/demo.config.yaml) (web).
 
 Related: [app-agnostic in concepts](concepts.md#6-app-agnostic-push-differences-into-config) · [drivers](drivers.md) · [scenarios](scenarios.md)
 
@@ -62,7 +62,7 @@ An undefined target raises `KeyError` (the CLI exits with code 2). The platform-
 flat `Effective` attributes: `Effective.platform_config` narrows to one of three mutually exclusive
 sub-configs (`IosConfig` / `WebConfig` / `AndroidConfig`) keyed by the resolved `platform`
 ([BE-0126](../roadmaps/BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md)).
-Read them through `bajutsu/config/accessors.py`'s narrowing helpers — `require_ios` / `require_web` /
+Read them through `bajutsu/common/config/accessors.py`'s narrowing helpers — `require_ios` / `require_web` /
 `require_android` for code already committed to one platform, or the "soft" `ios_bundle_id` /
 `web_base_url` / `web_engine` / `android_package` for code that reads a value defensively across
 platforms — rather than `effective.bundle_id` directly, which does not exist.

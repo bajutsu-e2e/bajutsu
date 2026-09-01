@@ -43,7 +43,7 @@ def _post_bytes(port: int, path: str, data: bytes) -> tuple[int, Any]:
 def _zip_bytes() -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("bajutsu.common.config.yaml", "targets: {}\n")
+        zf.writestr("bajutsu.config.yaml", "targets: {}\n")
     return buf.getvalue()
 
 

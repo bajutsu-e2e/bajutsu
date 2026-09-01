@@ -209,9 +209,7 @@ def main(argv: list[str] | None = None) -> int:
         prog="python -m bajutsu.common.provisioning.provision",
         description="Install the extras and external tools a project's configured backends need.",
     )
-    parser.add_argument(
-        "--config", help="config path (default: ./bajutsu.common.config.yaml if present)"
-    )
+    parser.add_argument("--config", help="config path (default: ./bajutsu.config.yaml if present)")
     parser.add_argument(
         "--backend",
         action="append",

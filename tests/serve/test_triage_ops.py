@@ -109,7 +109,7 @@ def test_start_triage_ai_refuses_under_provider_none(tmp_path: Path, monkeypatch
     (scn_dir / "smoke.yaml").write_text(
         "- name: alpha\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8"
     )
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "defaults: { backend: [ios], ai: { provider: none } }\n"
         f"targets:\n  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",

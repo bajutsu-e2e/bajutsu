@@ -617,7 +617,7 @@ def test_doctor_scenario_flag_rejects_directory(
 
     from bajutsu.cli import app
 
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "defaults: { backend: [ios] }\n"
         "targets:\n"

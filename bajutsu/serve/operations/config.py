@@ -772,7 +772,7 @@ def bind_git_config(
         return {"error": f"could not fetch the Git config: {e}"}, 400
     if not mat.config_path.is_file():
         return {
-            "error": f"config not found in the repository at {spec.path or 'bajutsu.common.config.yaml'}"
+            "error": f"config not found in the repository at {spec.path or 'bajutsu.config.yaml'}"
         }, 404
     try:
         cfg = load_config(mat.config_path.read_text(encoding="utf-8"))

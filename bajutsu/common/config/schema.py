@@ -1,4 +1,4 @@
-"""Configuration input schema — the pydantic models a `bajutsu.common.config.yaml` validates into.
+"""Configuration input schema — the pydantic models a `bajutsu.config.yaml` validates into.
 
 The team `defaults` and per-target `targets.<name>` blocks, their field validators, and the
 `Config` root. Resolution (defaults overlaid by target -> `Effective`) lives in the sibling `resolve`
@@ -484,7 +484,7 @@ class TargetConfig(_Model):
 
 
 class Config(_Model):
-    """A parsed `bajutsu.common.config.yaml`: team `defaults` and per-target config.
+    """A parsed `bajutsu.config.yaml`: team `defaults` and per-target config.
 
     The hosted multi-tenancy `orgs:` block is a `serve` concern the core does not model (BE-0129);
     `parse_config_dict` drops it before validation so a run reading an org-bearing config keeps

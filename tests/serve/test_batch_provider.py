@@ -109,7 +109,7 @@ def test_devicefarm_provider_submits_one_scenario_reserving_a_single_device(tmp_
         provider="devicefarm",
         scenario="smoke.yaml",
         target="demo",
-        config="bajutsu.common.config.yaml",
+        config="bajutsu.config.yaml",
         platform="android",
         app_path=str(tmp_path / "app.apk"),
     )
@@ -147,7 +147,7 @@ def _android_request(tmp_path: Path) -> tuple[Path, bp.BatchRequest]:
         provider="devicefarm",
         scenario="smoke.yaml",
         target="demo",
-        config="bajutsu.common.config.yaml",
+        config="bajutsu.config.yaml",
         platform="android",
         app_path=str(tmp_path / "app.apk"),
     )

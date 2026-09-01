@@ -122,13 +122,13 @@ def test_http_open_config_binds_and_lists_apps(tmp_path: Path) -> None:
     try:
         assert _get_json(port, "/api/config")["hasConfig"] is False
         assert _get_json(port, "/api/targets") == []  # nothing until a config is opened
-        status, resp = _post(port, "/api/config", {"path": "bajutsu.common.config.yaml"})
+        status, resp = _post(port, "/api/config", {"path": "bajutsu.config.yaml"})
         assert status == 200 and resp["ok"] is True and resp["targets"] == ["demo", "other"]
         assert _get_json(port, "/api/config")["hasConfig"] is True
         assert [a["name"] for a in _get_json(port, "/api/targets")] == ["demo", "other"]
         # The file browser lists (and posts back) the *absolute* path it built from list_fs's cwd, so
         # an absolute path inside the browse root is the normal case and must bind, not be rejected.
-        abs_in_root = str((tmp_path / "bajutsu.common.config.yaml").resolve())
+        abs_in_root = str((tmp_path / "bajutsu.config.yaml").resolve())
         status, resp = _post(port, "/api/config", {"path": abs_in_root})
         assert status == 200 and resp["ok"] is True and resp["targets"] == ["demo", "other"]
         # A path outside the browse root is rejected.
@@ -152,7 +152,7 @@ def test_http_open_local_config_from_subdir_binds_config_dir(tmp_path: Path) -> 
     (proj / "scn" / "smoke.yaml").write_text(
         "- name: s\n  steps:\n    - tap: { id: x }\n", encoding="utf-8"
     )
-    cfg = proj / "bajutsu.common.config.yaml"
+    cfg = proj / "bajutsu.config.yaml"
     cfg.write_text(
         "defaults: { backend: [ios] }\n"
         "targets:\n  demo: { bundleId: com.example.demo, scenarios: scn }\n",  # relative to the config
@@ -192,7 +192,7 @@ def test_http_open_config_from_git_binds_checkout(
     (checkout / "e2e" / "smoke.yaml").write_text(
         "- name: s\n  steps:\n    - tap: { id: x }\n", encoding="utf-8"
     )
-    git_cfg = checkout / "bajutsu.common.config.yaml"
+    git_cfg = checkout / "bajutsu.config.yaml"
     git_cfg.write_text(
         "defaults: { backend: [ios] }\n"
         "targets:\n  fromgit: { bundleId: com.example.fromgit, scenarios: e2e }\n",
@@ -295,7 +295,7 @@ def test_http_git_config_with_escaping_path_is_refused(
     _, _, runs = project(tmp_path)
     checkout = tmp_path / "gitsrc"
     checkout.mkdir()
-    git_cfg = checkout / "bajutsu.common.config.yaml"
+    git_cfg = checkout / "bajutsu.config.yaml"
     git_cfg.write_text(
         "targets:\n  evil: { bundleId: com.example.evil, scenarios: ../../../etc }\n",
         encoding="utf-8",
@@ -344,7 +344,7 @@ def test_http_local_config_with_escaping_path_is_refused(tmp_path: Path) -> None
     config_dir.mkdir(parents=True)
     secret = tmp_path / "secret"  # outside `root`
     secret.mkdir()
-    local_cfg = config_dir / "bajutsu.common.config.yaml"
+    local_cfg = config_dir / "bajutsu.config.yaml"
     local_cfg.write_text(
         "targets:\n  evil: { bundleId: com.example.evil, scenarios: ../../secret }\n",
         encoding="utf-8",
@@ -373,7 +373,7 @@ def test_http_local_config_sibling_within_root_is_accepted(tmp_path: Path) -> No
     (scenarios_dir / "smoke.yaml").write_text(
         "- name: smoke\n  steps:\n    - tap: { id: x }\n", encoding="utf-8"
     )
-    local_cfg = config_dir / "bajutsu.common.config.yaml"
+    local_cfg = config_dir / "bajutsu.config.yaml"
     local_cfg.write_text(
         "targets:\n  demo: { bundleId: com.example.demo, scenarios: ../scenarios }\n",
         encoding="utf-8",
@@ -429,7 +429,7 @@ def test_http_hosted_refuses_path_bind_but_git_still_binds(
     _, _, runs = project(tmp_path)
     checkout = tmp_path / "gitsrc"
     checkout.mkdir()
-    git_cfg = checkout / "bajutsu.common.config.yaml"
+    git_cfg = checkout / "bajutsu.config.yaml"
     git_cfg.write_text("targets:\n  fromgit: { bundleId: com.example.fromgit }\n", encoding="utf-8")
     monkeypatch.setattr(
         ops, "materialize", lambda spec, **kw: Materialized(git_cfg, checkout, "sha")
@@ -437,7 +437,7 @@ def test_http_hosted_refuses_path_bind_but_git_still_binds(
     state = srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path, hosted=True)
     server, port = _serve(state)
     try:
-        status, resp = _post(port, "/api/config", {"path": "bajutsu.common.config.yaml"})
+        status, resp = _post(port, "/api/config", {"path": "bajutsu.config.yaml"})
         assert status == 403 and "file browser is disabled" in resp["error"]
         assert state.config is None  # the refused path bind changed nothing
         # The Git branch still binds — hosting keeps the two remote-usable sources.

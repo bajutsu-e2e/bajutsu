@@ -47,7 +47,7 @@ def test_api_bound_git_config_is_marked_untrusted(
     _, cfg, runs = project(tmp_path)
     checkout = tmp_path / "gitsrc"
     checkout.mkdir()
-    git_cfg = checkout / "bajutsu.common.config.yaml"
+    git_cfg = checkout / "bajutsu.config.yaml"
     git_cfg.write_text("targets:\n  fromgit: { bundleId: com.example.fromgit }\n", encoding="utf-8")
     monkeypatch.setattr(
         ops, "materialize", lambda spec, **kw: Materialized(git_cfg, checkout, "sha")

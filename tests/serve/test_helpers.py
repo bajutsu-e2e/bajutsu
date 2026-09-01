@@ -31,7 +31,7 @@ def test_list_targets(tmp_path: Path) -> None:
 def test_load_config_cached_reuses_an_unchanged_file(tmp_path: Path) -> None:
     from bajutsu.serve import helpers
 
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text("targets:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
     first = helpers._load_config_cached(cfg)
     # An unchanged file isn't re-parsed: the same object comes back.
@@ -43,7 +43,7 @@ def test_load_config_cached_reparses_when_the_file_changes(tmp_path: Path) -> No
 
     from bajutsu.serve import helpers
 
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text("targets:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
     assert list(helpers._load_config_cached(cfg).targets) == ["demo"]
     # Rewrite with new content; bump mtime so the freshness key changes deterministically.
@@ -59,7 +59,7 @@ def test_load_config_cached_reparses_when_the_file_changes(tmp_path: Path) -> No
 def test_load_serve_config_file_returns_none_on_malformed_yaml(tmp_path: Path) -> None:
     # A YAML syntax error (yaml.YAMLError, not a ValueError) is normalized so the helpers' broad
     # except still turns it into None rather than escaping and crashing request handling.
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text("targets: [unbalanced\n", encoding="utf-8")
     assert srv.load_serve_config_file(cfg) is None
     assert srv.list_targets(cfg) == []
@@ -71,7 +71,7 @@ def test_load_serve_config_file_logs_a_failure_instead_of_swallowing_it_silently
     # BE-0313: the OAuth sign-in gate now depends on this succeeding, so a broken config would
     # otherwise lock out every login under a "user not allowed" message with no signal pointing at
     # the real cause. A warning here is what lets an operator tell the two cases apart.
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text("targets: [unbalanced\n", encoding="utf-8")
     with caplog.at_level("WARNING"):
         assert srv.load_serve_config_file(cfg) is None
@@ -84,13 +84,13 @@ def test_load_config_cached_keys_on_the_resolved_path(tmp_path: Path) -> None:
 
     from bajutsu.serve import helpers
 
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text("targets:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
     # A relative path and the absolute path to the same file share one cache entry (same object).
     cwd = Path.cwd()
     try:
         os.chdir(tmp_path)
-        first = helpers._load_config_cached(Path("bajutsu.common.config.yaml"))
+        first = helpers._load_config_cached(Path("bajutsu.config.yaml"))
         assert helpers._load_config_cached(cfg) is first
     finally:
         os.chdir(cwd)
@@ -99,7 +99,7 @@ def test_load_config_cached_keys_on_the_resolved_path(tmp_path: Path) -> None:
 def test_list_targets_reflects_an_edited_config(tmp_path: Path) -> None:
     import os
 
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text("targets:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
     assert srv.list_targets(cfg) == ["demo"]
     cfg.write_text(

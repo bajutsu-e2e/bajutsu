@@ -41,7 +41,7 @@ orgs:
 def _state(
     serve_engine: Callable[..., Engine], tmp_path: Path, config_text: str = CONFIG
 ) -> srv.ServeState:
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(config_text, encoding="utf-8")
     engine = serve_engine()
     Base.metadata.create_all(engine)
@@ -179,7 +179,7 @@ def test_save_scenario_records_an_audit_entry(
     # upload_scenarios' .zip leg already does — "scenario.save" mirroring "scenarios.upload".
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         f"targets:\n  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",
         encoding="utf-8",
@@ -217,7 +217,7 @@ def test_no_orgs_block_keeps_a_single_tenant(
     # Without an orgs: block every app belongs to the default org, so any user sees them all and
     # nothing is forbidden (single-tenant behavior is unchanged). The user is in the default org,
     # matching what oauth_callback would assign from this config.
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "targets:\n  demo: { bundleId: com.example.demo }\n  other: { bundleId: com.example.other }\n",
         encoding="utf-8",
@@ -276,7 +276,7 @@ def test_oauth_login_assigns_the_org_from_github_org_membership(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
     # A login with no explicit member listing is mapped to a bajutsu org by its GitHub org.
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "targets:\n  demo: { bundleId: com.example.demo }\n"
         "orgs:\n  acme:\n    githubOrgs: [acme-gh]\n    targets: [demo]\n",
@@ -300,7 +300,7 @@ def test_oauth_login_assigns_the_org_from_github_org_membership(
 def test_local_serve_ignores_orgs_without_a_repository(tmp_path: Path) -> None:
     # No system of record (local serve / token mode): `orgs:` is ignored — every app is listed and
     # nothing is forbidden, even for a config that declares orgs.
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(CONFIG, encoding="utf-8")
     state = srv.ServeState(runs_dir=tmp_path / "runs", config=cfg)  # repository defaults to None
     assert state.repository is None
@@ -377,7 +377,7 @@ def test_request_resolves_the_org_once(serve_engine: Callable[..., Engine], tmp_
     inner.ensure_org("default", slug="default", name="default")
     inner.upsert_user("alice", org_id="default", github_login="alice", email="a@x")
     repo = _CountingRepo(inner)
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text("targets:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
     state = srv.ServeState(runs_dir=tmp_path / "runs", config=cfg, repository=repo)  # type: ignore[arg-type]
 

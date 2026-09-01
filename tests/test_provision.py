@@ -188,14 +188,14 @@ def test_load_missing_explicit_config_exits(tmp_path: Path) -> None:
 
 
 def test_load_reads_an_existing_config(tmp_path: Path) -> None:
-    cfg_path = tmp_path / "bajutsu.common.config.yaml"
+    cfg_path = tmp_path / "bajutsu.config.yaml"
     cfg_path.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [ios]\n")
     cfg = provision._load(str(cfg_path))
     assert "demo" in cfg.targets
 
 
 def test_main_dry_run_prints_the_plan_without_installing(tmp_path: Path) -> None:
-    cfg_path = tmp_path / "bajutsu.common.config.yaml"
+    cfg_path = tmp_path / "bajutsu.config.yaml"
     cfg_path.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [ios]\n")
     assert provision.main(["--config", str(cfg_path), "--dry-run"]) == 0
 
@@ -205,6 +205,6 @@ def test_main_forced_backend_dry_run(tmp_path: Path) -> None:
 
 
 def test_main_empty_config_installs_nothing(tmp_path: Path) -> None:
-    cfg_path = tmp_path / "bajutsu.common.config.yaml"
+    cfg_path = tmp_path / "bajutsu.config.yaml"
     cfg_path.write_text("targets:\n  t:\n    bundleId: com.example.t\n    backend: [fake]\n")
     assert provision.main(["--config", str(cfg_path)]) == 0

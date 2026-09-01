@@ -204,7 +204,7 @@ def test_run_warns_and_keeps_its_verdict_when_release_raises(
 
         scn = tmp_path / "s.yaml"
         scn.write_text("- name: demo\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
-        cfg = tmp_path / "bajutsu.common.config.yaml"
+        cfg = tmp_path / "bajutsu.config.yaml"
         cfg.write_text(
             "defaults: { backend: [fake] }\n"
             "targets:\n"

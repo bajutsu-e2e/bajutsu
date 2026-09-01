@@ -58,7 +58,7 @@ Claude を使いません。アラートガード（`--system-alert-handling`。
 
 ## どこで見えるか
 
-分類は一度だけ（`bajutsu/capabilities.py` に）定義し、あらゆる場所がそれを参照します。そのため表示面が
+分類は一度だけ（`bajutsu/common/capability/capabilities.py` に）定義し、あらゆる場所がそれを参照します。そのため表示面が
 食い違うことはありません。
 
 - **`bajutsu --help`** は、各トップレベルコマンドを *Claude-free (zero-config)* か *Uses Claude*

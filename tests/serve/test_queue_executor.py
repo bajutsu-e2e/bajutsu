@@ -162,7 +162,7 @@ def test_start_run_derives_the_jobs_required_capabilities(tmp_path: Path) -> Non
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(SCENARIO, encoding="utf-8")
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "defaults: { backend: [ios] }\ntargets:\n"
         f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir}, requires: [ios18] }}\n",
@@ -321,7 +321,7 @@ def test_execute_job_spec_materializes_files_into_the_workspace(tmp_path: Path) 
         "build": None,
         "materials": {
             "scenarios/smoke.yaml": "- name: a\n  steps: []\n",
-            "bajutsu.common.config.yaml": "targets: {demo: {bundleId: x}}\n",
+            "bajutsu.config.yaml": "targets: {demo: {bundleId: x}}\n",
             "../escape.yaml": "nope",  # must not be written outside the workspace
             "": "root",  # resolves to the workspace root — must be ignored, not write_text a dir
             "scenarios/..": "root2",  # also the workspace root via traversal — ignored
@@ -329,7 +329,7 @@ def test_execute_job_spec_materializes_files_into_the_workspace(tmp_path: Path) 
     }
     execute_job_spec(spec, popen=fake_popen(["ok\n"]), cwd=tmp_path, bus=srv.InMemoryLogBus())
     assert (tmp_path / "scenarios/smoke.yaml").read_text() == "- name: a\n  steps: []\n"
-    assert (tmp_path / "bajutsu.common.config.yaml").exists()
+    assert (tmp_path / "bajutsu.config.yaml").exists()
     assert not (tmp_path.parent / "escape.yaml").exists()  # confinement held
     assert tmp_path.is_dir()  # the root-resolving materials didn't crash or clobber the workspace
 
@@ -353,11 +353,11 @@ def test_start_run_on_the_server_backend_materializes_scenario_and_config(tmp_pa
     spec = q.enqueued[0][1][0]
     cmd = spec["cmd"]
     assert "scenarios/smoke.yaml" in cmd  # workspace-relative --scenario
-    assert "bajutsu.common.config.yaml" in cmd  # workspace-relative --config
+    assert "bajutsu.config.yaml" in cmd  # workspace-relative --config
     assert "baselines" in cmd  # workspace-relative --baselines (materialized on the worker)
     assert spec["materialize_baselines"] is True
     assert spec["materials"]["scenarios/smoke.yaml"] == scenario_text
-    assert "targets:" in spec["materials"]["bajutsu.common.config.yaml"]
+    assert "targets:" in spec["materials"]["bajutsu.config.yaml"]
 
 
 def test_start_run_passes_safe_backfilled_flags_and_withholds_host_paths(tmp_path: Path) -> None:
@@ -551,9 +551,9 @@ def test_start_record_on_the_server_backend_materializes_and_targets_storage(
 
     spec = q.enqueued[0][1][0]
     assert "scenarios/login.yaml" in spec["cmd"]  # workspace-relative --out
-    assert "bajutsu.common.config.yaml" in spec["cmd"]  # config materialized
+    assert "bajutsu.config.yaml" in spec["cmd"]  # config materialized
     assert spec["record_save"] == ["demo", "login.yaml"]
-    assert "targets:" in spec["materials"]["bajutsu.common.config.yaml"]
+    assert "targets:" in spec["materials"]["bajutsu.config.yaml"]
 
 
 def test_execute_job_spec_skips_baseline_download_when_not_requested(tmp_path: Path) -> None:

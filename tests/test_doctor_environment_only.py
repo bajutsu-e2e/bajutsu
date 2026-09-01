@@ -23,7 +23,7 @@ runner = CliRunner()
 
 
 def _config(tmp_path: Path) -> Path:
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text("targets:\n  demo:\n    package: com.example.app\n", encoding="utf-8")
     return cfg
 

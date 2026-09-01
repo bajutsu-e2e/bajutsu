@@ -1488,7 +1488,7 @@ _cli = CliRunner()
 
 
 def _crawl_config(tmp_path: Path) -> Path:
-    cfg = tmp_path / "bajutsu.common.config.yaml"
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "defaults: { backend: [fake] }\n"
         "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
