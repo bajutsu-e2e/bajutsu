@@ -257,7 +257,7 @@ runner を丸ごと落としうるループが起きるのは、割り込みを*
 同じサイレントな許可のままです。何も宣言しないのはそのシナリオの作者自身の選択であり、本提案が拾おうと
 している見落としではないからです。もう 1 つは、本提案のほかの場所で `probe_native` がすでに無害として
 扱っている競走の再来です。ラベル自体は一致したのに、タップの前にそのボタンが消えた場合
-（`guard button.exists else { return false }`）です。これも記録せずに辞退します。そのアラート、
+（`guard button.exists else { return false }`）です。これも記録せずに辞退します。そのアラートは
 未宣言だったのではなく、ボタンが自分自身の消去と競走に負けただけです。`POST /interruptionPolicy/drain`
 の応答は、既存の `labels` と並んで `unmatched` フィールドを得ます。辞退して記録された各アラートにつき
 1 つのボタン一覧で、古い順です。[`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) の

@@ -15,11 +15,11 @@
 
 ## Introduction
 
-Bajutsu answers an operating-system prompt that the application's own accessibility tree cannot see
-over two paths. A [scenario](../../docs/glossary.md#scenario-authoring) places a `handleSystemAlert`
-step at the one point where it expects a prompt, and that step taps a named button. Separately, a
-reactive guard configured by `systemAlertHandling` clears a prompt wherever one interrupts the run,
-tapping a button the scenario's policy names.
+Bajutsu has two paths for answering an operating-system prompt that the application's own
+accessibility tree cannot see. A [scenario](../../docs/glossary.md#scenario-authoring) places a
+`handleSystemAlert` step at the one point where it expects a prompt, and that step taps a named
+button. Separately, a reactive guard configured by `systemAlertHandling` clears a prompt wherever one
+interrupts the run, tapping a button the scenario's policy names.
 
 We propose two changes to that pair. First, the `handleSystemAlert` step gains the guard it does not
 have today: its wait moves out of the XCUITest driver and into the orchestrator, so a declared alert
@@ -33,14 +33,14 @@ SpringBoard.
 
 One surface cannot be re-keyed the same way, and the reason is worth stating up front. XCUITest
 resolves an alert that interrupts one of its interactions *before* it synthesizes that interaction,
-and something always answers it: a monitor that declines — the only safe response to an alert no
-rule identifies, since claiming an interruption without clearing it gets the monitor re-invoked on
-every following interaction, which BE-0399 measured looping until the runner died — hands the alert
-to XCUITest's own default handler, which taps the alert's *default* button and clears it, exactly
-what happened before that monitor existed. Nothing in this proposal can stop that tap from landing.
-What it changes is whether it happens in silence: the interruption monitor now reports the buttons
-of any alert it declined, and the step or `expect` that saw one fails, naming them, rather than the
-run continuing as if nothing had answered on the scenario's behalf.
+and something always answers it. A monitor that declines hands the alert to XCUITest's own default
+handler, which taps the alert's *default* button and clears it, exactly what happened before that
+monitor existed. Declining is the only safe response to an alert no rule identifies: claiming an
+interruption without clearing it gets the monitor re-invoked on every following interaction, which
+BE-0399 measured looping until the runner died. Nothing in this proposal can stop that tap from
+landing. What it changes is whether it happens in silence: the interruption monitor now reports the
+buttons of any alert it declined, and the step or `expect` that saw one fails, naming them, rather
+than the run continuing as if nothing had answered on the scenario's behalf.
 
 Compatibility is deliberately not preserved. A scenario that still writes `labels` fails to load with
 an error naming `rules` as its replacement, which is the same treatment
