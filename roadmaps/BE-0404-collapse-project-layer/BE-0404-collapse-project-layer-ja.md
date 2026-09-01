@@ -1,14 +1,14 @@
-[English](BE-XXXX-collapse-project-layer.md) · **日本語**
+[English](BE-0404-collapse-project-layer.md) · **日本語**
 
-# BE-XXXX — project 階層を org と target に畳む
+# BE-0404 — project 階層を org と target に畳む
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-collapse-project-layer-ja.md) |
+| 提案 | [BE-0404](BE-0404-collapse-project-layer-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0404") |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md), [BE-0226](../BE-0226-cross-project-metrics-dashboard/BE-0226-cross-project-metrics-dashboard-ja.md), [BE-0275](../BE-0275-serve-projects-management-page/BE-0275-serve-projects-management-page-ja.md), [BE-0393](../BE-0393-per-org-config-memory/BE-0393-per-org-config-memory-ja.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md), [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts-ja.md) |
 <!-- /BE-METADATA -->
