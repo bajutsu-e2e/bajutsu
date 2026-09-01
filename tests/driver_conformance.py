@@ -55,8 +55,7 @@ from typing import Protocol, runtime_checkable
 
 import pytest
 
-from bajutsu.drivers import base
-from bajutsu.orchestrator.actions.handlers.scroll import (
+from bajutsu.common.orchestrator.actions.handlers.scroll import (
     _AXIS,
     _MIN_STEP_FRACTION,
     _STEP_FRACTION,
@@ -69,6 +68,7 @@ from bajutsu.orchestrator.actions.handlers.scroll import (
     _viewport,
     scroll_to_target,
 )
+from bajutsu.drivers import base
 
 #: The scroll conformance screen (BE-0326): a scrollable list whose later rows start below the fold.
 #: Each backend realizes the same fixed layout — a marker, `SCROLL_ROW_COUNT` rows, and a row taller

@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from bajutsu import requirements
-from bajutsu.backends import resolve_actuators
+from bajutsu.common.backends import resolve_actuators
 from bajutsu.config import Config, load_config, resolve, web_engine
 from bajutsu.config_source import DEFAULT_CONFIG
 from bajutsu.requirements import Brew, Extra, Manual, Playwright, Tool

@@ -11,8 +11,8 @@ from __future__ import annotations
 import importlib
 import pkgutil
 
-from bajutsu.orchestrator.actions import handlers
-from bajutsu.orchestrator.actions._registry import _action_of, _do_action, _step_label
+from bajutsu.common.orchestrator.actions import handlers
+from bajutsu.common.orchestrator.actions._registry import _action_of, _do_action, _step_label
 
 # Import every handler module so its `@_handler` registrations run.
 for _mod in pkgutil.iter_modules(handlers.__path__):

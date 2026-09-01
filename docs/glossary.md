@@ -77,7 +77,7 @@ The split is the top-level constraint of the project — see
 
 These four name the one platform-specific seam of an otherwise platform-neutral core. They are
 easy to blur, so here is the whole relationship in one place. The source of truth is
-`bajutsu/backends.py` (`PLATFORMS`, `IMPLEMENTED`), not the prose on any page.
+`bajutsu/common/backends.py` (`PLATFORMS`, `IMPLEMENTED`), not the prose on any page.
 
 | Term | What it is |
 |---|---|

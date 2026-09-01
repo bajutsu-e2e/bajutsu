@@ -14,11 +14,11 @@ from __future__ import annotations
 from _orch import FakeClock, _scenario
 from conftest import GUARD_LABEL, AlertingDriver, el
 
+from bajutsu.common.orchestrator import AlertGuardConfig, run_scenario
+from bajutsu.common.orchestrator.actions.handlers._gesture_math import _scroll_gesture
 from bajutsu.drivers import base
 from bajutsu.drivers.actuation import MAX_RECORDS, Actuation, ActuationLog
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator import AlertGuardConfig, run_scenario
-from bajutsu.orchestrator.actions.handlers._gesture_math import _scroll_gesture
 
 _BUTTON = el("settings.open", frame=(20.0, 100.0, 80.0, 40.0))
 _TITLE = el("home.title", frame=(0.0, 0.0, 200.0, 60.0))

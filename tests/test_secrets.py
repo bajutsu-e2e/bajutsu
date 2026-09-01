@@ -3,11 +3,11 @@ run-time interpolation that keeps the value out of the recorded scenario."""
 
 from __future__ import annotations
 
+from bajutsu.common.orchestrator import run_scenario
 from bajutsu.config import load_config, resolve
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence.redaction import PLACEHOLDER, Redactor
-from bajutsu.orchestrator import run_scenario
 from bajutsu.scenario import Redact, Scenario, Selector, Step, TypeText
 
 # --- config ---
@@ -88,7 +88,7 @@ def test_scenario_keeps_token_not_value() -> None:
 def test_interp_step_returns_original_when_no_tokens_match() -> None:
     """When bindings exist but the step has no matching tokens,
     _interp_step returns the original step object (skipping model_validate)."""
-    from bajutsu.orchestrator import _interp_step
+    from bajutsu.common.orchestrator import _interp_step
 
     step = Step(tap=Selector(id="home.submit"))
     result = _interp_step(step, {"secrets.pw": "hunter2"})
@@ -98,7 +98,7 @@ def test_interp_step_returns_original_when_no_tokens_match() -> None:
 
 def test_interp_step_substitutes_when_tokens_match() -> None:
     """When the step contains a token present in bindings, it is substituted."""
-    from bajutsu.orchestrator import _interp_step
+    from bajutsu.common.orchestrator import _interp_step
 
     step = Step(type=TypeText(text="${secrets.pw}"))
     result = _interp_step(step, {"secrets.pw": "hunter2"})

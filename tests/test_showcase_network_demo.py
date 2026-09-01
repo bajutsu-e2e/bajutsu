@@ -225,8 +225,8 @@ def test_an_unmocked_exchange_is_persisted_with_mocked_explicitly_false(tmp_path
     # *those* kwargs (an `exclude_defaults=True` added to shrink evidence, say) fails here instead of
     # only reddening the non-gating macOS lane. Local imports match `tests/runner/test_pipeline.py`'s
     # own `_write_network` tests.
+    from bajutsu.common.runner.pipeline import _write_network
     from bajutsu.evidence.sink import RunArtifactWriter
-    from bajutsu.runner.pipeline import _write_network
 
     exchange = NetworkExchange(
         method="GET", url="https://example.com/horses", path=_LIVE_PATH, status=404

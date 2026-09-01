@@ -14,9 +14,9 @@ from conftest import FakeBackend, FakeBlock
 from bajutsu.agents.claude import ClaudeAgent, proposal_from_call
 from bajutsu.agents.protocols import Observation
 from bajutsu.codegen import to_xcuitest
+from bajutsu.common.orchestrator import _action_of, run_scenario
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator import _action_of, run_scenario
 from bajutsu.scenario import Step, load_scenarios
 
 

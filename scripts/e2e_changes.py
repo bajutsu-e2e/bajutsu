@@ -13,7 +13,7 @@ split into two testable pieces:
   i.e. from the merge base of the two commits to ``head``). ``base`` is the base-branch tip, so a
   two-dot ``git diff base head`` compares the tips directly: when ``base`` has advanced past the
   PR's fork point it reports every file main touched meanwhile as "changed". An unrelated
-  ``bajutsu/runner/…`` commit on main would then trip the filter and burn the metered jobs on, say,
+  ``bajutsu/common/runner/…`` commit on main would then trip the filter and burn the metered jobs on, say,
   a roadmap-only PR. The merge-base diff yields only what the PR itself changed.
 
 - ``is_relevant`` is keyed by lane. Every lane shares ``_RUN_PATH`` — the run / codegen / record
@@ -376,7 +376,7 @@ _LANE_PATHS: dict[str, str] = {
 # composite that mints its first device. Over-selects by directory, the same safe direction the sweep
 # above takes.
 _POOL_PATHS = (
-    r"bajutsu/runner/"
+    r"bajutsu/common/runner/"
     r"|bajutsu/platform_lifecycle/"
     # `_resolve_lanes`: the `--udid` comma list resolved into the pool and `--workers` capped to its
     # size. The split itself lives here, so a change to it belongs on this surface even though the

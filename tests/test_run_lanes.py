@@ -22,9 +22,9 @@ from bajutsu.cli.commands.run import (
     _resolve_rules,
     _resolve_secrets,
 )
+from bajutsu.common.orchestrator import DEFAULT_ALERT_POLL_INTERVAL
+from bajutsu.common.orchestrator.types import match_alert_rule
 from bajutsu.config import Effective, load_config, resolve
-from bajutsu.orchestrator import DEFAULT_ALERT_POLL_INTERVAL
-from bajutsu.orchestrator.types import match_alert_rule
 from bajutsu.scenario import (
     Scenario,
     SystemAlertHandling,
@@ -357,8 +357,8 @@ def test_alert_guard_factory_needs_no_credential_and_reaches_no_model(
     Claude-free by construction rather than by the shell happening to lack a variable.
     """
     from bajutsu.analytics import ledger as usage_ledger
+    from bajutsu.common.orchestrator import AlertGuardConfig
     from bajutsu.drivers.fake import FakeDriver
-    from bajutsu.orchestrator import AlertGuardConfig
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)

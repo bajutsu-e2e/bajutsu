@@ -155,7 +155,7 @@ def test_start_enrich_rebases_app_path_against_state_cwd(tmp_path: Path) -> None
 
 def _recording_factory(seen: list[str]) -> object:
     """A recording factory resolving the backends list the way the default factory does."""
-    from bajutsu import backends
+    from bajutsu.common import backends
 
     def factory(_eff: object, backends_list: list[str], _udid: str) -> tuple[FakeDriver, object]:
         seen.append(backends.select_actuator_cost_first(backends_list, available=lambda a: True))

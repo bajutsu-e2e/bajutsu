@@ -15,8 +15,8 @@ from _report import _json_obj
 from jsonschema import Draft7Validator
 
 from bajutsu.assertions import AssertionResult
+from bajutsu.common.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
 from bajutsu.evidence import Artifact
-from bajutsu.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
 from bajutsu.report import ctrf_json
 
 _SCHEMA = json.loads((Path(__file__).parent / "ctrf.schema.json").read_text(encoding="utf-8"))

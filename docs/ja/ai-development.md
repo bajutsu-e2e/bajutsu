@@ -1194,7 +1194,7 @@ Bajutsu のコメントは、すでに「何を」ではなく「なぜ」を書
 
 - **精密化**：単位、境界が端点を含むのかどうか、`None` の意味、マジックナンバーの由来など、コードが
   開いたままにしている点を、直後の行に対して確定させます。定番の形は行末の 1 行コメントです
-  （[`bajutsu/totp.py`](../../bajutsu/totp.py)）。
+  （[`bajutsu/common/totp.py`](../../bajutsu/common/totp.py)）。
 
   ```python
   cleaned += "=" * (-len(cleaned) % 8)  # b32decode requires the padding authenticators omit

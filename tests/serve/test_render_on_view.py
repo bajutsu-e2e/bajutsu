@@ -13,7 +13,7 @@ from _shared import _get, _serve
 
 from bajutsu import serve as srv
 from bajutsu.assertions import AssertionResult
-from bajutsu.orchestrator import RunResult, StepOutcome
+from bajutsu.common.orchestrator import RunResult, StepOutcome
 from bajutsu.report import rerender_html, scenario_render_inputs, write_report
 from bajutsu.scenario import dump_scenario_file, load_scenarios
 

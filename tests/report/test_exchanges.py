@@ -8,8 +8,8 @@ from typing import Any
 import pytest
 from _report import _passing
 
+from bajutsu.common.orchestrator import RunResult, StepOutcome
 from bajutsu.evidence import Artifact
-from bajutsu.orchestrator import RunResult, StepOutcome
 from bajutsu.report import html_report
 from bajutsu.report.format import _read_json
 

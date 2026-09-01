@@ -1,6 +1,6 @@
 """Build the injected `MailboxReader` for the `email` step, via a transport registry (BE-0046 / BE-0186).
 
-The deterministic match/extract/selection logic is pure (`bajutsu.mailbox`); this is the only place
+The deterministic match/extract/selection logic is pure (`bajutsu.common.mailbox`); this is the only place
 that touches the network. A mailbox is a backend behind one interface: BE-0186 keys the `MailboxReader`
 seam on a transport `kind` (`http`, later `imap`) through a registry that mirrors `bajutsu/ai/registry.py`,
 so adding a transport is *register an adapter*, not *branch the runner*. The registry ships only the
@@ -16,10 +16,10 @@ import urllib.request
 from collections.abc import Callable, Mapping
 
 from bajutsu import interp
+from bajutsu.common.mailbox import MailboxMessage, read_messages
+from bajutsu.common.orchestrator import MailboxReader
 from bajutsu.config import Mailbox
 from bajutsu.drivers import base
-from bajutsu.mailbox import MailboxMessage, read_messages
-from bajutsu.orchestrator import MailboxReader
 
 # An adapter builds a `MailboxReader` for its transport from the resolved mailbox config and the run's
 # secret bindings (the ${secrets.*} the url/headers reference). Keyed on transport, never on vendor:

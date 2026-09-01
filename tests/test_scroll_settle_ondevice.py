@@ -32,15 +32,15 @@ from test_driver_conformance_ondevice import _OnDeviceHarness
 from xcuitest_lease import xcuitest_lease_launch
 
 from bajutsu import simctl
-from bajutsu.config import Effective, ios_bundle_id, load_config, resolve
 
 # The loop's own step geometry, from where it is defined — so this case scrolls exactly as the
 # `scroll` action does rather than re-deriving endpoints that could drift from it.
-from bajutsu.orchestrator.actions.handlers.scroll import (
+from bajutsu.common.orchestrator.actions.handlers.scroll import (
     _STEP_FRACTION,
     _step_endpoints,
     _viewport,
 )
+from bajutsu.config import Effective, ios_bundle_id, load_config, resolve
 
 # No `backend_crash_recovery` mark: this module holds one case, and a re-run would re-pay a lease
 # rather than a retry the suite can absorb. A runner crash here is a real failure to look at.

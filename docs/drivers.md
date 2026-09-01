@@ -9,7 +9,7 @@
 > on Android by the twin `adb` wrapper.
 >
 > Implementation: `bajutsu/drivers/` (`base.py` / `xcuitest.py` / `adb.py` / `playwright.py` / `fake.py`) ·
-> `bajutsu/backends.py` · `bajutsu/simctl.py` · `bajutsu/adb.py`.
+> `bajutsu/common/backends.py` · `bajutsu/simctl.py` · `bajutsu/adb.py`.
 
 Related: [selectors](selectors.md) (resolution) · [the stability ladder](concepts.md#5-the-stability-ladder) · [run-loop](run-loop.md)
 
@@ -582,7 +582,7 @@ FakeDriver(screen=[...], react=react)
 
 ## Backend selection and the actuator
 
-Implementation: `bajutsu/backends.py`.
+Implementation: `bajutsu/common/backends.py`.
 
 ```python
 PLATFORMS = {                              # a platform token expands to its actuators (stability order)

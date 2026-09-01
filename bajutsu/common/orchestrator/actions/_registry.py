@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from bajutsu.common.orchestrator.types import DeviceControl, RelaunchFn, SelectionState
 from bajutsu.drivers import base
-from bajutsu.orchestrator.types import DeviceControl, RelaunchFn, SelectionState
 from bajutsu.scenario import STEP_ACTIONS, Step
 
 # The actions the run loop can see, derived from the scenario model (STEP_ACTIONS) minus the

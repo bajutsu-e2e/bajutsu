@@ -10,12 +10,12 @@ import pytest
 from _orch import FakeClock, _scenario
 from conftest import el
 
+from bajutsu.common.orchestrator import RunResult, run_scenario
+from bajutsu.common.orchestrator.waits import WaitTrace
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import Artifact, FileSink, step_view
 from bajutsu.evidence.intervals import Interval
-from bajutsu.orchestrator import RunResult, run_scenario
-from bajutsu.orchestrator.waits import WaitTrace
 from bajutsu.report.format import video_seconds
 from bajutsu.scenario import Interrupt, Relaunch
 

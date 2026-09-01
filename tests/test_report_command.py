@@ -13,7 +13,7 @@ from typer.testing import CliRunner
 
 from bajutsu.assertions import AssertionResult
 from bajutsu.cli import app
-from bajutsu.orchestrator import RunResult, StepOutcome
+from bajutsu.common.orchestrator import RunResult, StepOutcome
 from bajutsu.report import rerender_html, write_report
 from bajutsu.scenario import dump_scenario_file, load_scenarios
 

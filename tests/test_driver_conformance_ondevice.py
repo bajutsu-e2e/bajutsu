@@ -43,15 +43,15 @@ from ondevice_spec_path import SpecPathMemo, read_data_container
 from xcuitest_lease import xcuitest_lease_launch
 
 from bajutsu import simctl
-from bajutsu.config import Effective, ios_bundle_id, load_config, resolve
-from bajutsu.drivers import base
-from bajutsu.evidence import intervals
-from bajutsu.orchestrator.actions.handlers.scroll import (
+from bajutsu.common.orchestrator.actions.handlers.scroll import (
     _AXIS,
     _STEP_FRACTION,
     _step_endpoints,
     _viewport,
 )
+from bajutsu.config import Effective, ios_bundle_id, load_config, resolve
+from bajutsu.drivers import base
+from bajutsu.evidence import intervals
 
 # A resident-runner crash mid-suite (a `base.BackendCrashError` — the `XcuitestRunnerCrashError` that
 # reddened PR #1405, whether raised by a test's actuation or by a query driving the bring-up/readiness

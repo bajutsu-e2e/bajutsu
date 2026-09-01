@@ -6,19 +6,19 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from bajutsu import simctl
+from bajutsu.common.runner.recovery import guarded_teardown
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.evidence.network import TransitionSource, _no_transitions
 
 # Readiness polling lives with the platform lifecycle now (BE-0009 Phase 0); re-exported here so
-# `from bajutsu.runner import await_ready` and the crawl path keep their import unchanged.
+# `from bajutsu.common.runner import await_ready` and the crawl path keep their import unchanged.
 from bajutsu.platform_lifecycle import (
     ReadinessResult,
     RunEnvironment,
     await_ready,
     environment_for,
 )
-from bajutsu.runner.recovery import guarded_teardown
 from bajutsu.scenario import Preconditions
 
 __all__ = ["ReadinessResult", "await_ready", "launch_driver"]

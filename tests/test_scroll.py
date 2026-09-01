@@ -16,17 +16,17 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator.actions._registry import _do_action, _step_label
-from bajutsu.orchestrator.actions.handlers import scroll
-from bajutsu.orchestrator.actions.handlers.scroll import (
+from bajutsu.common.orchestrator.actions._registry import _do_action, _step_label
+from bajutsu.common.orchestrator.actions.handlers import scroll
+from bajutsu.common.orchestrator.actions.handlers.scroll import (
     _region_moved,
     _region_view,
     _render_digest,
     _settled_render,
     _unclipped,
 )
+from bajutsu.drivers import base
+from bajutsu.drivers.fake import FakeDriver
 from bajutsu.scenario import Scroll, Step, load_scenarios
 
 _ROW_H = 90.0

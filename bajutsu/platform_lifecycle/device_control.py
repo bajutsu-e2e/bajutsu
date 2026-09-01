@@ -8,8 +8,8 @@ rather than in the per-platform environment modules.
 from __future__ import annotations
 
 from bajutsu import adb, simctl
+from bajutsu.common.orchestrator import DeviceControl
 from bajutsu.drivers import base
-from bajutsu.orchestrator import DeviceControl
 
 
 def device_control(

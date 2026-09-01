@@ -31,11 +31,11 @@ from bajutsu.cli._shared import (
     resolve_system_alert_handling_flag,
 )
 from bajutsu.cli.handoff import make_handoff
+from bajutsu.common.runner import launch_driver
 from bajutsu.config import WEB_ENGINES, Effective
 from bajutsu.handoff import HumanHandoffUnavailable
 from bajutsu.platform_lifecycle import environment_for
 from bajutsu.record import record as record_loop
-from bajutsu.runner import launch_driver
 from bajutsu.scenario import Preconditions, dump_scenarios
 
 

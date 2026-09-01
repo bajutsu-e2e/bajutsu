@@ -14,10 +14,10 @@ import base64
 import webbrowser
 from pathlib import Path
 
+from bajutsu.common.orchestrator import run_scenario
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import FileSink
-from bajutsu.orchestrator import run_scenario
 from bajutsu.report import write_report
 from bajutsu.scenario import Scenario, dump_scenarios, scenario_dict
 

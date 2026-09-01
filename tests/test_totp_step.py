@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import pytest
 
+from bajutsu.common.orchestrator.actions.handlers.totp import _do_totp
+from bajutsu.common.orchestrator.substitution import _interp_step
+from bajutsu.common.totp import totp
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator.actions.handlers.totp import _do_totp
-from bajutsu.orchestrator.substitution import _interp_step
 from bajutsu.scenario import Step
-from bajutsu.totp import totp
 
 _SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 
@@ -37,7 +37,9 @@ def test_totp_step_writes_a_six_digit_code_into_vars() -> None:
 
 def test_totp_code_matches_the_pure_function(monkeypatch: pytest.MonkeyPatch) -> None:
     # Pin the clock so the step's code equals the gate-tested pure function at that instant.
-    monkeypatch.setattr("bajutsu.orchestrator.actions.handlers.totp.time.time", lambda: 1111111109)
+    monkeypatch.setattr(
+        "bajutsu.common.orchestrator.actions.handlers.totp.time.time", lambda: 1111111109
+    )
     step = Step.model_validate({"totp": {"secret": _SECRET, "into": {"var": "code"}}})
     bindings: dict[str, str] = {}
     _do_totp(FakeDriver([]), step, None, None, bindings)

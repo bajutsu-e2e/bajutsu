@@ -7,8 +7,8 @@ from pathlib import Path
 
 from _report import _el, _passing
 
+from bajutsu.common.orchestrator import RunResult, StepOutcome
 from bajutsu.evidence import Artifact
-from bajutsu.orchestrator import RunResult, StepOutcome
 from bajutsu.report import html_report
 
 

@@ -12,9 +12,9 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
+from bajutsu.common.orchestrator import RunResult
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.evidence.sink import RunArtifactWriter
-from bajutsu.orchestrator import RunResult
 from bajutsu.report.ctrf import ctrf_json
 from bajutsu.report.format import _fmt_duration
 from bajutsu.report.manifest import _matrix, _run_backend, junit_xml, manifest_dict

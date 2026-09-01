@@ -16,7 +16,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from bajutsu import __version__
-from bajutsu.orchestrator import RunResult, StepOutcome
+from bajutsu.common.orchestrator import RunResult, StepOutcome
 from bajutsu.report.manifest import _details, _matrix
 from bajutsu.run_id import parse_run_id_timestamp
 

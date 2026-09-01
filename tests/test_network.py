@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 
 from bajutsu.assertions import EvalContext, evaluate, evaluate_one
+from bajutsu.common.orchestrator import run_scenario
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import network
 from bajutsu.evidence.network import (
@@ -24,7 +25,6 @@ from bajutsu.evidence.network import (
     NetworkExchange,
     ScreenTransition,
 )
-from bajutsu.orchestrator import run_scenario
 from bajutsu.scenario import (
     Assertion,
     CountOp,
@@ -269,7 +269,7 @@ def test_event_non_json_body_does_not_crash() -> None:
 
 
 def test_event_interpolates_vars_in_body() -> None:
-    from bajutsu.orchestrator import _interp_asserts
+    from bajutsu.common.orchestrator import _interp_asserts
 
     a = _event(url="https://t.example.com/track", body={"amount": "${vars.amount}"})
     [interp] = _interp_asserts([a], {"vars.amount": "300"})

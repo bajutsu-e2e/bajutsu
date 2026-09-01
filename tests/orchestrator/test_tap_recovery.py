@@ -21,9 +21,9 @@ import pytest
 from _orch import FakeClock, _scenario
 from conftest import el
 
+from bajutsu.common.orchestrator import run_scenario
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator import run_scenario
 
 
 class _ClearsOverlayAfterTwoScrollsDriver(FakeDriver):

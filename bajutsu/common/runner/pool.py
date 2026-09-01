@@ -14,24 +14,27 @@ from collections.abc import Callable
 from pathlib import Path
 
 from bajutsu import simctl
-from bajutsu.backends import (
+from bajutsu.common.backends import (
     default_available,
     resolve_evidence_providers,
     select_actuator,
     select_actuator_for_scenario,
 )
-from bajutsu.backends import make_driver as _make_driver
+from bajutsu.common.backends import make_driver as _make_driver
+from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
+from bajutsu.common.orchestrator.evidence_rules import requested_intervals
+from bajutsu.common.runner.launch import launch_driver
+from bajutsu.common.runner.recovery import guarded_teardown
+from bajutsu.common.runner.types import Lease, LeaseFn
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.evidence import FileSink
 from bajutsu.evidence.network import Collector, NetworkCollector, _no_transitions
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.evidence.sink import RunArtifactWriter
-from bajutsu.orchestrator import DeviceControl, RelaunchFn
-from bajutsu.orchestrator.evidence_rules import requested_intervals
 
 # `device_control` / `device_relauncher` live with the platform lifecycle now; re-exported so
-# `from bajutsu.runner import device_control, device_relauncher` keeps its import unchanged.
+# `from bajutsu.common.runner import device_control, device_relauncher` keeps its import unchanged.
 from bajutsu.platform_lifecycle import (
     ProvisionProfile,
     RunEnvironment,
@@ -40,9 +43,6 @@ from bajutsu.platform_lifecycle import (
     environment_for,
 )
 from bajutsu.report import git_revision, run_provenance
-from bajutsu.runner.launch import launch_driver
-from bajutsu.runner.recovery import guarded_teardown
-from bajutsu.runner.types import Lease, LeaseFn
 from bajutsu.scenario import Scenario, dump_scenario_file, redact_totp_secrets
 from bajutsu.webview import WebViewBridge
 

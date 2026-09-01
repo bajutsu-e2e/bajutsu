@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 
 from bajutsu import config
-from bajutsu.runner import launch_server as ls
+from bajutsu.common.runner import launch_server as ls
 
 
 def _eff(extra: str = "") -> config.Effective:
@@ -181,7 +181,7 @@ def test_fail_loud_message_escapes_untrusted_cmd(monkeypatch: pytest.MonkeyPatch
 
 def test_upload_exec_sandbox_delegates_to_sandbox(monkeypatch: pytest.MonkeyPatch) -> None:
     # sandbox mode hands off to the sandbox module rather than the bare-host Popen.
-    from bajutsu.runner import sandbox
+    from bajutsu.common.runner import sandbox
 
     called: list[Any] = []
 

@@ -11,7 +11,7 @@ import os
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from bajutsu.orchestrator import RunResult
+from bajutsu.common.orchestrator import RunResult
 
 
 def _one_line(text: str) -> str:

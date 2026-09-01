@@ -5,8 +5,8 @@ from __future__ import annotations
 from _orch import FakeClock, _scenario
 from conftest import el
 
+from bajutsu.common.orchestrator import run_scenario
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator import run_scenario
 
 
 def test_generated_value_is_available_to_later_steps() -> None:

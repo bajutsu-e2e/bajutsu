@@ -11,10 +11,10 @@ from __future__ import annotations
 
 from backend_crash_recovery import LeaseLaunch, LeaseTeardown
 
+from bajutsu.common.runner.launch import launch_driver
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.platform_lifecycle import environment_for
-from bajutsu.runner.launch import launch_driver
 
 
 def xcuitest_lease_launch(udid: str, eff: Effective, *, extra_env: dict[str, str]) -> LeaseLaunch:

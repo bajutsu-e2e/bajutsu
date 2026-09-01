@@ -256,7 +256,7 @@ def test_main_fails_when_the_manifest_holds_no_scenarios(
 
 
 def test_main_exempts_the_video_staging_directory(tmp_path: Path) -> None:
-    # `bajutsu/runner/pool.py` reserves `_video_tmp` at the run dir's top level on a platform that
+    # `bajutsu/common/runner/pool.py` reserves `_video_tmp` at the run dir's top level on a platform that
     # starts recording before the app launches (Android, web), and leaves the directory behind once
     # the recording has moved into the scenario's own dir. It belongs to no worker, so reading it as
     # an orphan would fail an isolation check the run actually passed.

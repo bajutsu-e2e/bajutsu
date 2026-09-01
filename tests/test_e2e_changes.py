@@ -54,7 +54,7 @@ def test_empty_diff_is_not_relevant() -> None:
 
 
 def test_run_path_subpackage_is_relevant() -> None:
-    assert is_relevant(["bajutsu/runner/pipeline.py"]) is True
+    assert is_relevant(["bajutsu/common/runner/pipeline.py"]) is True
 
 
 def test_run_path_top_level_modules_are_relevant() -> None:
@@ -88,7 +88,7 @@ def test_run_path_top_level_modules_are_relevant() -> None:
         "bajutsu/evidence/redaction.py",
         "bajutsu/evidence/network.py",
         "bajutsu/artifact_perms.py",
-        "bajutsu/mailbox.py",
+        "bajutsu/common/mailbox.py",
         "bajutsu/evidence/intervals.py",
         # record.py unconditionally imports the Agent/EnrichmentAgent protocols from
         # agents.protocols (record is an E2E verb), mirroring the old agent.py entry (now
@@ -172,7 +172,7 @@ def test_new_unclassified_module_fires_every_lane() -> None:
     # in a swept subpackage, and a brand-new CLI command all over-fire until classified.
     for path in (
         "bajutsu/brand_new_module.py",
-        "bajutsu/runner/brand_new.py",
+        "bajutsu/common/runner/brand_new.py",
         "bajutsu/cli/commands/brand_new.py",
     ):
         for lane in ("ios", "android", "web"):
@@ -231,7 +231,7 @@ def test_shared_run_path_is_relevant_on_every_lane() -> None:
     # change to it re-runs all three. Sample the subpackage sweep, a top-level allow-listed module,
     # the assertions package, and the shared deps.
     for lane in ("ios", "android", "web"):
-        assert is_relevant(["bajutsu/runner/pipeline.py"], lane) is True, lane
+        assert is_relevant(["bajutsu/common/runner/pipeline.py"], lane) is True, lane
         assert is_relevant(["bajutsu/interp.py"], lane) is True, lane
         assert is_relevant(["bajutsu/assertions/evaluate.py"], lane) is True, lane
         assert is_relevant(["tests/driver_conformance.py"], lane) is True, lane
@@ -752,7 +752,7 @@ def test_main_respects_the_e2e_lane_env(tmp_path: Path, monkeypatch: pytest.Monk
     _init_repo(tmp_path, monkeypatch)
     _commit(tmp_path, "README.md", "seed")
     _git(tmp_path, "branch", "pr")
-    main_tip = _commit(tmp_path, "bajutsu/runner/pipeline.py", "unrelated on main")
+    main_tip = _commit(tmp_path, "bajutsu/common/runner/pipeline.py", "unrelated on main")
     _git(tmp_path, "checkout", "-q", "pr")
     pr_tip = _commit(tmp_path, "BajutsuAndroid/src/Clipboard.kt", "android app SDK only")
 
@@ -777,7 +777,7 @@ def test_main_raises_on_a_misconfigured_e2e_lane(
     _init_repo(tmp_path, monkeypatch)
     _commit(tmp_path, "README.md", "seed")
     _git(tmp_path, "branch", "pr")
-    main_tip = _commit(tmp_path, "bajutsu/runner/pipeline.py", "unrelated on main")
+    main_tip = _commit(tmp_path, "bajutsu/common/runner/pipeline.py", "unrelated on main")
     _git(tmp_path, "checkout", "-q", "pr")
     pr_tip = _commit(tmp_path, "roadmaps/proposals/BE-XXXX-foo/BE-XXXX-foo.md", "roadmap only")
 
@@ -831,7 +831,9 @@ def test_changed_files_uses_merge_base_not_branch_tips(
     _git(tmp_path, "branch", "pr")
 
     # main advances with an on-device-relevant file the PR never touches.
-    main_tip = _commit(tmp_path, "bajutsu/runner/pipeline.py", "unrelated run-path change on main")
+    main_tip = _commit(
+        tmp_path, "bajutsu/common/runner/pipeline.py", "unrelated run-path change on main"
+    )
 
     # The PR branch, forked before that, changes only a roadmap file.
     _git(tmp_path, "checkout", "-q", "pr")
@@ -866,7 +868,7 @@ def test_main_emits_false_for_a_roadmap_only_pr(
     _init_repo(tmp_path, monkeypatch)
     _commit(tmp_path, "README.md", "seed")
     _git(tmp_path, "branch", "pr")
-    main_tip = _commit(tmp_path, "bajutsu/runner/pipeline.py", "unrelated on main")
+    main_tip = _commit(tmp_path, "bajutsu/common/runner/pipeline.py", "unrelated on main")
     _git(tmp_path, "checkout", "-q", "pr")
     pr_tip = _commit(tmp_path, "roadmaps/proposals/BE-XXXX-foo/BE-XXXX-foo.md", "roadmap only")
 
@@ -891,8 +893,8 @@ def test_main_emits_false_for_a_roadmap_only_pr(
 
 def test_pool_fires_on_the_parallel_run_surface() -> None:
     for path in (
-        "bajutsu/runner/pool.py",
-        "bajutsu/runner/pipeline.py",
+        "bajutsu/common/runner/pool.py",
+        "bajutsu/common/runner/pipeline.py",
         "bajutsu/platform_lifecycle/environments/android.py",
         # `_resolve_lanes` — the comma `--udid` list turned into the pool, and the `--workers` cap.
         "bajutsu/cli/commands/run.py",
@@ -999,7 +1001,7 @@ def test_pool_raises_on_an_unknown_lane() -> None:
     # Same reasoning as `is_relevant`: E2E_LANE is a hard-coded literal, so a typo must fail the
     # `changes` job rather than silently substitute another lane's filter.
     with pytest.raises(ValueError, match="Unknown E2E lane"):
-        touches_pool(["bajutsu/runner/pool.py"], "andorid")
+        touches_pool(["bajutsu/common/runner/pool.py"], "andorid")
 
 
 # --- Change classification (BE-0322) -------------------------------------------------------------
@@ -1041,11 +1043,13 @@ def test_classify_change_ignores_irrelevant_paths_when_partitioning() -> None:
 def test_classify_change_shared_when_a_relevant_non_scenario_path_changes() -> None:
     # Shared driver / runner / app / workflow code can affect any scenario, so any relevant path
     # outside the scenario files fires the whole lane — even alongside a scenario-only edit.
-    assert classify_change(["bajutsu/runner/pipeline.py"]) == "shared"
+    assert classify_change(["bajutsu/common/runner/pipeline.py"]) == "shared"
     assert classify_change(["bajutsu/drivers/xcuitest.py"]) == "shared"
     assert classify_change([".github/workflows/ios-e2e.yml"]) == "shared"
     assert (
-        classify_change(["demos/showcase/scenarios/smoke.yaml", "bajutsu/runner/pipeline.py"])
+        classify_change(
+            ["demos/showcase/scenarios/smoke.yaml", "bajutsu/common/runner/pipeline.py"]
+        )
         == "shared"
     )
 
@@ -1577,7 +1581,7 @@ def test_main_narrows_a_scenario_only_ios_change_to_the_affected_jobs(
     _init_repo(tmp_path, monkeypatch)
     _commit(tmp_path, "README.md", "seed")
     _git(tmp_path, "branch", "pr")
-    main_tip = _commit(tmp_path, "bajutsu/runner/pipeline.py", "unrelated on main")
+    main_tip = _commit(tmp_path, "bajutsu/common/runner/pipeline.py", "unrelated on main")
     _git(tmp_path, "checkout", "-q", "pr")
     pr_tip = _commit(tmp_path, "demos/showcase/scenarios/gestures_multitouch.yaml", "gesture edit")
 

@@ -8,7 +8,7 @@ from dataclasses import asdict
 from xml.etree import ElementTree as ET
 
 from bajutsu import __version__
-from bajutsu.orchestrator import RunResult, scenario_slug
+from bajutsu.common.orchestrator import RunResult, scenario_slug
 
 # A run-history label longer than this is rejected at the boundary rather than truncated (BE-0404
 # unit 2), so an operator learns the label was refused instead of finding a silently shortened one.

@@ -87,7 +87,7 @@ def start_launch_server(
     """
     # Deferred import: sandbox imports this module's probe/log helpers, so importing it at module
     # scope would be circular.
-    from bajutsu.runner.sandbox import SandboxError, start_sandboxed_server
+    from bajutsu.common.runner.sandbox import SandboxError, start_sandboxed_server
 
     ls = eff.launch_server
     if ls is None:

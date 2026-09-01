@@ -17,7 +17,8 @@ import typer
 from bajutsu.agents import ai_config, anthropic_client
 from bajutsu.ai import credential_gap
 from bajutsu.ai import disabled as ai_disabled
-from bajutsu.backends import ensure_web_runtime, select_actuator
+from bajutsu.common.backends import ensure_web_runtime, select_actuator
+from bajutsu.common.runner.launch_server import start_launch_server
 from bajutsu.config import (
     WEB_ENGINES,
     AiConfig,
@@ -39,14 +40,13 @@ from bajutsu.config_source import (
 )
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.github import GitHubAccessError
-from bajutsu.runner.launch_server import start_launch_server
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from bajutsu.agents.alerts import ClaudeAlertLocator
+    from bajutsu.common.orchestrator import AlertEvent
     from bajutsu.drivers import base
-    from bajutsu.orchestrator import AlertEvent
 
 
 @overload

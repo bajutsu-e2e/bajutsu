@@ -28,7 +28,7 @@ from bajutsu.analysis.audit import (
 )
 from bajutsu.assertions import AssertionResult
 from bajutsu.cli import app
-from bajutsu.orchestrator import RunResult, StepOutcome
+from bajutsu.common.orchestrator import RunResult, StepOutcome
 from bajutsu.scenario import load_expanded_scenarios, load_scenarios
 
 runner = CliRunner()

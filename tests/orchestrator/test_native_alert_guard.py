@@ -14,15 +14,15 @@ from typing import cast
 
 import pytest
 
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator import AlertEvent, AlertGuardConfig
-from bajutsu.orchestrator.types import (
+from bajutsu.common.orchestrator import AlertEvent, AlertGuardConfig
+from bajutsu.common.orchestrator.types import (
     DEFAULT_DISMISSIVE_LABELS,
     ResolvedAlertRule,
     match_alert_rule,
     pick_alert_label,
 )
+from bajutsu.drivers import base
+from bajutsu.drivers.fake import FakeDriver
 from bajutsu.scenario import Wait
 
 
@@ -256,7 +256,7 @@ def _for_wait(target_id: str, timeout: float) -> Wait:
 
 
 def test_gate_dismisses_natively_mid_wait_and_records_the_alert() -> None:
-    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.common.orchestrator.waits import _wait
 
     target = _button("R")
     target["identifier"] = "ready"
@@ -280,7 +280,7 @@ def test_gate_absent_native_alert_debounces_a_transient_collapse() -> None:
     # "absent" means the native query saw no *SpringBoard* alert. A single transient collapsed frame
     # under it must not fire the vision path — the debounce filters that false positive (BE-0315 /
     # BE-0269). A *persistent* non-SpringBoard collapse is the separate case the next test covers.
-    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.common.orchestrator.waits import _wait
 
     target = _button("R")
     target["identifier"] = "ready"
@@ -308,7 +308,7 @@ def test_gate_absent_native_alert_reports_a_persistent_collapse_it_cannot_name()
     # native query cannot enumerate reads as absent too while still collapsing the tree. Nothing can
     # clear that since BE-0402, so the wait runs to its own timeout — but the collapsed-tree proxy's
     # observation rides along on the failure, hedged, because no query ever named a button here.
-    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.common.orchestrator.waits import _wait
 
     driver = FakeDriver(
         []
@@ -329,7 +329,7 @@ def test_gate_absent_native_alert_reports_a_persistent_collapse_it_cannot_name()
 def test_gate_polls_the_native_query_on_its_own_interval_not_every_tick() -> None:
     # The native query is rate-limited to one per poll_interval, decoupled from the 50ms condition
     # poll, so it does not roughly double the single-threaded runner's load (BE-0315).
-    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.common.orchestrator.waits import _wait
 
     probes = {"n": 0}
 
@@ -361,7 +361,7 @@ def test_gate_dismisses_an_app_attached_sheet_from_the_tree_without_vision() -> 
     # yet its own labeled, identifier-less buttons keep `shows_app_ui` from seeing a collapsed tree
     # either — both mid-wait detectors used to sit idle for the whole timeout on exactly this shape.
     # The in-tree label match (BE-0316's gap) must clear it within a poll or two, no vision call.
-    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.common.orchestrator.waits import _wait
 
     target = _button("R")
     target["identifier"] = "ready"
@@ -391,7 +391,7 @@ def test_dismiss_from_tree_taps_a_showing_at_most_once() -> None:
     # runs every `_POLL` with no cooldown, so it would re-match and re-tap the same button on every
     # one of those polls — over-counting one dismissal into several `AlertEvent`s and actuating the
     # app repeatedly (a second tap can land on whatever is underneath a fading sheet).
-    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.common.orchestrator.waits import _wait
 
     target = _button("R")
     target["identifier"] = "ready"
@@ -441,7 +441,7 @@ def test_dismiss_from_tree_retries_a_delivered_tap_that_did_not_clear_the_prompt
     # the step burns its full timeout with a dismissal recorded as if it had worked. Like
     # `ElementNotTappable`, this retries under a bound (`_TREE_DISMISS_MAX_TAPS`) rather than either
     # giving up after one attempt or hammering the device for the rest of the wait.
-    from bajutsu.orchestrator.waits import _TREE_DISMISS_MAX_TAPS, _wait
+    from bajutsu.common.orchestrator.waits import _TREE_DISMISS_MAX_TAPS, _wait
 
     prompt_button = _button("今はしない")
 
@@ -462,7 +462,7 @@ def test_dismiss_from_tree_retries_a_delivered_tap_that_did_not_clear_the_prompt
     # A 30s budget, far longer than `_TREE_DISMISS_MAX_TAPS` taps spaced by `_TREE_RETAP_DELAY`, so
     # what stops the retries here is the tap ceiling rather than the wait running out: no retry at all
     # taps exactly once, an unbounded one ~30 times over this wait, and only the bound gives 3.
-    with caplog.at_level(logging.WARNING, logger="bajutsu.orchestrator.waits"):
+    with caplog.at_level(logging.WARNING, logger="bajutsu.common.orchestrator.waits"):
         ok, _reason, _tree = _wait(
             driver, _for_wait("ready", 30.0), _LogicalClock(), alert_guard=guard, alerts=alerts
         )
@@ -493,7 +493,7 @@ def test_dismiss_from_tree_retry_that_lands_clears_the_prompt_and_passes_the_wai
     # a change that left the retry inert — an off-by-one in the ceiling, a delay that never elapses
     # under the real clock — would keep every other in-tree test green while the sheet stays up on
     # device, since they all either tap once successfully or never clear at all.
-    from bajutsu.orchestrator.waits import _TREE_RETAP_DELAY, _wait
+    from bajutsu.common.orchestrator.waits import _TREE_RETAP_DELAY, _wait
 
     target = _button("R")
     target["identifier"] = "ready"
@@ -534,7 +534,7 @@ def test_dismiss_from_tree_does_not_retry_when_the_tap_moved_the_screen() -> Non
     # Re-tapping that would actuate the app under test — navigating it mid-wait and failing the step
     # for an unrelated reason — and would end in a warning claiming a prompt is up when none is.
     # The screen having changed since the tap is what separates the two cases.
-    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.common.orchestrator.waits import _wait
 
     prompt_button = _button("今はしない")
     app_button = _button("今はしない")  # identifier-less, app-authored, same label
@@ -568,7 +568,7 @@ def test_dismiss_from_tree_records_a_second_showing_after_an_untapped_other_labe
     # showing must not leave the *first* label pending: if it did, the first label reappearing would
     # compare equal to the stale pending, `first_tap` would be False, and a genuine second dismissal
     # would be tapped but never recorded — under-reporting the run's prompts.
-    from bajutsu.orchestrator.waits import _POLL, _wait
+    from bajutsu.common.orchestrator.waits import _POLL, _wait
 
     target = _button("R")
     target["identifier"] = "ready"
@@ -626,7 +626,7 @@ def test_dismiss_from_tree_declines_on_not_yet_tappable_then_dismisses() -> None
     # ~0.25s+. `_TREE_DISMISS_DECLINE_GIVEUP` sits at twice that interval precisely so this retry
     # happens at all — a give-up horizon equal to the interval would spend itself on the first
     # attempt and leave the prompt up.
-    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.common.orchestrator.waits import _wait
 
     target = _button("R")
     target["identifier"] = "ready"
@@ -664,7 +664,7 @@ def test_dismiss_from_tree_stops_retrying_a_permanently_covered_button() -> None
     # bound meaningful at any `poll_interval`, and deriving it *from* that interval is what keeps it
     # meaningful at a long one: the bound is checked before the tap, so a fixed horizon shorter than
     # two intervals would spend itself on the first attempt and never retry at all.
-    from bajutsu.orchestrator.waits import _decline_giveup, _wait
+    from bajutsu.common.orchestrator.waits import _decline_giveup, _wait
 
     prompt_button = _button("今はしない")
 
@@ -703,7 +703,7 @@ def test_dismiss_from_tree_declines_on_an_in_app_label_collision() -> None:
     # a decline reached only via `except AmbiguousSelector` would re-issue the on-device tap every
     # `_POLL` for the rest of the wait — count `tap()` calls directly, not `driver.actions`, since a
     # raised `AmbiguousSelector` never reaches `_record` either way.
-    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.common.orchestrator.waits import _wait
 
     prompt_button = _button("Not Now")  # identifier-less, system-owned
     app_button = _button("Not Now")
@@ -735,7 +735,7 @@ def test_dismiss_from_tree_dismisses_despite_a_non_button_label_collision() -> N
     # the intended button being uniquely named among buttons. Scoping both the pre-check and the tap
     # itself to `traits: [BUTTON]` (mirroring the `buttons` filter `label` was resolved against)
     # means a same-labeled caption never blocks dismissal at all.
-    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.common.orchestrator.waits import _wait
 
     target = _button("R")
     target["identifier"] = "ready"
@@ -763,7 +763,7 @@ def test_dismiss_from_tree_never_matches_an_in_app_button_carrying_an_identifier
     # An app screen with its own button that happens to share a policy label (e.g. a real in-app
     # "Not Now") must never be tapped by the guard — only a system-owned, identifier-less button can
     # match, same restriction `system_alert_labels()` already assumes for a genuine SpringBoard alert.
-    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.common.orchestrator.waits import _wait
 
     target = _button("R")
     target["identifier"] = "ready"
@@ -783,7 +783,7 @@ def test_dismiss_from_tree_never_fires_on_a_non_native_backend() -> None:
     # The in-tree match is native-only (the app-attached-sheet case it targets is an iOS one): a
     # web/Android-shaped backend must keep its pre-existing behavior untouched — only the
     # collapsed-tree + vision path (BE-0269) can act there, never the fast in-tree tap.
-    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.common.orchestrator.waits import _wait
 
     target = _button("R")
     target["identifier"] = "ready"
@@ -808,7 +808,7 @@ def test_dismiss_from_tree_never_fires_on_default_dismissive_labels_alone() -> N
     # legitimately show. The fast in-tree path must stay off unless the scenario author opted in
     # with their own `labels`; a default-only guard falls back to the collapsed-tree + vision path,
     # same as before this path existed.
-    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.common.orchestrator.waits import _wait
 
     target = _button("R")
     target["identifier"] = "ready"
@@ -831,7 +831,7 @@ def test_gate_unhandled_native_alert_names_it_in_the_wait_timeout() -> None:
     # An alert is up but no policy label resolves (unknown button). BE-0402 leaves it alone rather
     # than asking a model where to tap — and the wait, which would otherwise report only the element
     # that never appeared, names the alert and the buttons the probe actually read.
-    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.common.orchestrator.waits import _wait
 
     driver = _fake_with_alert(["Weird Button"])  # capable; alert stays up (never dismissed)
     guard = AlertGuardConfig(labels=["Allow"], poll_interval=1.0)
@@ -848,7 +848,7 @@ def test_gate_drops_the_note_once_the_prompt_goes_away() -> None:
     # A prompt that appears and resolves itself mid-wait must leave nothing behind: the note states
     # the latest observation, so a later, unrelated timeout never blames an alert long gone. The app
     # is on screen throughout, so the collapsed-tree proxy has nothing of its own to say either.
-    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.common.orchestrator.waits import _wait
 
     class _SelfResolving(FakeDriver):
         probes = 0
@@ -881,7 +881,7 @@ def test_dismiss_from_tree_is_withheld_while_a_springboard_alert_is_up() -> None
     # *default* button ("Allow"), the opposite of the guard's least-destructive policy and invisible
     # to the report. So while the native probe says an alert is up, the in-tree tap must not be
     # issued at all: the SpringBoard alert is answered natively first, by the scenario's policy.
-    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.common.orchestrator.waits import _wait
 
     target = _button("R")
     target["identifier"] = "ready"
@@ -934,7 +934,7 @@ def test_dismiss_from_tree_is_paced_by_the_native_probe_not_by_the_poll() -> Non
     # 2.0 interval: ungated, the second tap lands 1.0s after the first.
     from itertools import pairwise
 
-    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.common.orchestrator.waits import _wait
 
     prompt_button = _button("Not Now")
 
@@ -964,7 +964,7 @@ def test_dismiss_from_tree_is_paced_by_the_native_probe_not_by_the_poll() -> Non
 def test_dismiss_from_tree_still_runs_when_no_springboard_alert_is_up() -> None:
     # The gate withholds the in-tree tap, it does not retire it: on a poll whose own native probe
     # reported no SpringBoard alert, the app-attached sheet is cleared exactly as before.
-    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.common.orchestrator.waits import _wait
 
     target = _button("R")
     target["identifier"] = "ready"
@@ -1000,7 +1000,7 @@ def test_dismiss_from_tree_waits_out_the_retap_delay_at_a_short_poll_interval() 
     # `_TREE_DISMISS_MAX_TAPS` rather than continuing for the rest of the wait.
     from itertools import pairwise
 
-    from bajutsu.orchestrator.waits import _TREE_DISMISS_MAX_TAPS, _TREE_RETAP_DELAY, _wait
+    from bajutsu.common.orchestrator.waits import _TREE_DISMISS_MAX_TAPS, _TREE_RETAP_DELAY, _wait
 
     prompt_button = _button("Not Now")
 
@@ -1033,7 +1033,7 @@ def test_push_interruption_policy_hands_the_backend_the_guard_s_own_labels() -> 
     # from — the scenario's rules, then its ordered candidates. Without this the backend answers an
     # alert that interrupts one of its own interactions with the alert's *default* button, which is
     # the opposite of the least-destructive policy and reaches no report.
-    from bajutsu.orchestrator import push_interruption_policy
+    from bajutsu.common.orchestrator import push_interruption_policy
 
     driver = FakeDriver([])
     rule = ResolvedAlertRule(
@@ -1048,7 +1048,7 @@ def test_push_interruption_policy_falls_back_to_the_dismissive_defaults() -> Non
     # A scenario that names no labels of its own still gets a policy, and it is the same
     # least-destructive list `probe_native` falls back to — not an empty one, which would leave the
     # backend's own default handler in charge.
-    from bajutsu.orchestrator import push_interruption_policy
+    from bajutsu.common.orchestrator import push_interruption_policy
 
     driver = FakeDriver([])
     push_interruption_policy(driver, AlertGuardConfig())
@@ -1059,7 +1059,7 @@ def test_push_interruption_policy_falls_back_to_the_dismissive_defaults() -> Non
 def test_push_interruption_policy_clears_it_when_the_scenario_disables_the_guard() -> None:
     # `systemAlertHandling: false` must not inherit the previous scenario's policy from the resident
     # runner, so the push happens with an empty policy rather than being skipped.
-    from bajutsu.orchestrator import push_interruption_policy
+    from bajutsu.common.orchestrator import push_interruption_policy
 
     driver = FakeDriver([])
     push_interruption_policy(driver, None)
@@ -1070,7 +1070,7 @@ def test_drain_interruptions_reports_what_the_backend_answered_as_alert_events()
     # A prompt answered inside the backend's interruption handling is still a prompt this run
     # dismissed; reporting it is what keeps that dismissal out of the silence the mechanism exists
     # to end.
-    from bajutsu.orchestrator import drain_interruptions
+    from bajutsu.common.orchestrator import drain_interruptions
 
     driver = FakeDriver([])
     driver.interruptions_to_drain = ["Don't Allow", "Not Now"]
@@ -1087,7 +1087,7 @@ def test_a_gone_wait_is_guarded_so_an_in_app_prompt_can_be_cleared() -> None:
     # alert is drawn in the app's own process, so it collapses nothing and *adds* its buttons to the
     # tree. A `gone` wait on one of them then sits unsatisfied for its whole timeout with nothing to
     # clear it — measured on-device before this branch was guarded.
-    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.common.orchestrator.waits import _wait
 
     prompt_button = _button("Not Now")
 
@@ -1119,7 +1119,7 @@ def test_a_gone_wait_is_guarded_so_an_in_app_prompt_can_be_cleared() -> None:
 def test_the_interruption_policy_is_skipped_on_a_backend_without_the_opt_in() -> None:
     # A narrow opt-in: only XCUITest interposes on an interaction this way, so a backend that does
     # not implement it is never asked and contributes no events — the run is otherwise unchanged.
-    from bajutsu.orchestrator import drain_interruptions, push_interruption_policy
+    from bajutsu.common.orchestrator import drain_interruptions, push_interruption_policy
 
     class _NoOptIn:
         """A backend stub carrying neither half of the opt-in (a web / Android shape)."""
@@ -1202,7 +1202,7 @@ def test_a_blocked_tap_names_the_alert_in_the_step_s_own_failure() -> None:
     # BE-0402's promise for the *step* call site, which holds no mid-wait gate: a `tap` blocked by an
     # alert no rule or candidate label names would otherwise fail as a bare `element not found`, with
     # nothing to say a prompt was on screen at all.
-    from bajutsu.orchestrator import run_scenario
+    from bajutsu.common.orchestrator import run_scenario
     from bajutsu.scenario import load_scenarios
 
     driver = _fake_with_alert(["Weird Button"])  # nothing on screen, and an unnamed prompt over it
@@ -1221,7 +1221,7 @@ def test_a_blocked_wait_names_the_alert_exactly_once() -> None:
     # A guarded `wait` passes through both call sites: the mid-wait gate appends the note to the
     # timeout it returns, and the end-of-step guard then re-probes the same still-unanswered alert.
     # The note states one observation, so it must be said once — not doubled by the second look.
-    from bajutsu.orchestrator import run_scenario
+    from bajutsu.common.orchestrator import run_scenario
     from bajutsu.scenario import load_scenarios
 
     driver = _fake_with_alert(["Weird Button"])
@@ -1239,7 +1239,7 @@ def test_a_blocked_wait_names_the_alert_exactly_once() -> None:
 
 def test_a_blocked_expect_names_the_alert_in_the_scenario_s_own_failure() -> None:
     # The same promise for the `expect` phase, whose retry calls the guard directly too.
-    from bajutsu.orchestrator import run_scenario
+    from bajutsu.common.orchestrator import run_scenario
     from bajutsu.scenario import load_scenarios
 
     driver = _fake_with_alert(["Weird Button"])
@@ -1262,7 +1262,7 @@ def test_a_blocked_expect_names_the_alert_in_the_scenario_s_own_failure() -> Non
 def test_a_step_failing_with_no_alert_up_keeps_its_own_bare_reason() -> None:
     # The note is not a blanket suffix on every failure: with no alert on screen there is nothing to
     # report, and a step that failed for its own reasons must not be made to look blocked.
-    from bajutsu.orchestrator import run_scenario
+    from bajutsu.common.orchestrator import run_scenario
     from bajutsu.scenario import load_scenarios
 
     result = run_scenario(
@@ -1280,7 +1280,7 @@ def test_the_decline_give_up_follows_a_tuned_poll_interval() -> None:
     # save-password one sets 5 — would hit exactly that with a fixed 2s horizon, which is the
     # zero-retry case the value exists to avoid. Deriving it from the interval keeps the rationale
     # true at every cadence, and the floor keeps the animation horizon at short ones.
-    from bajutsu.orchestrator.waits import _decline_giveup
+    from bajutsu.common.orchestrator.waits import _decline_giveup
 
     assert _decline_giveup(0.2) == 2.0  # floored at the presentation-animation horizon
     assert _decline_giveup(1.0) == 2.0  # the default cadence: two intervals is the floor exactly

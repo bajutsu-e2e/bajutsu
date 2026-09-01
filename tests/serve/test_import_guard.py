@@ -123,7 +123,7 @@ def test_default_path_does_not_import_anthropic() -> None:
         "import sys\n"
         "import bajutsu.cli\n"
         "import bajutsu.serve\n"
-        "import bajutsu.runner.pipeline\n"
+        "import bajutsu.common.runner.pipeline\n"
         "leaked = sorted(m for m in sys.modules if m.split('.')[0] == 'anthropic')\n"
         "sys.stdout.write(','.join(leaked))\n"
         "sys.exit(1 if leaked else 0)\n"

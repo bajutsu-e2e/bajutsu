@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from bajutsu.common.orchestrator import RunResult
 from bajutsu.evidence import Artifact
-from bajutsu.orchestrator import RunResult
 from bajutsu.report.format import (
     _LOG_MAX_LINES,
     _artifact,

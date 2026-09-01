@@ -9,7 +9,7 @@
 > ラッパが担います。
 >
 > 実装: `bajutsu/drivers/`（`base.py` / `xcuitest.py` / `adb.py` / `playwright.py` / `fake.py`）・
-> `bajutsu/backends.py` ・ `bajutsu/simctl.py` ・ `bajutsu/adb.py`。
+> `bajutsu/common/backends.py` ・ `bajutsu/simctl.py` ・ `bajutsu/adb.py`。
 
 関連: [selectors](selectors.md)（解決） · [concepts の安定度順ラダー](concepts.md#5-安定度順ラダーstability-ladder) · [run-loop](run-loop.md)
 
@@ -181,7 +181,7 @@ FakeDriver(screen=[...], react=react)
 
 ## バックエンド選択と actuator
 
-実装: `bajutsu/backends.py`。
+実装: `bajutsu/common/backends.py`。
 
 ```python
 PLATFORMS = {                              # プラットフォームトークンは actuator 列へ展開（安定度順）

@@ -15,10 +15,10 @@ from __future__ import annotations
 from _orch import FakeClock, _scenario, _tap_ids
 from conftest import AlertingDriver, el
 
+from bajutsu.common.orchestrator import run_scenario
+from bajutsu.common.orchestrator.types import AlertGuardConfig
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator import run_scenario
-from bajutsu.orchestrator.types import AlertGuardConfig
 
 # Stand in for the two nodes a showing tip is recognized by: TipKit's dismiss region and the tip's
 # own container. The real identifiers live in the XCUITest driver; these are only what the fake was

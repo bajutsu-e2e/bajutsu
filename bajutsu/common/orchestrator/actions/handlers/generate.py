@@ -8,7 +8,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from bajutsu.orchestrator.actions._registry import _handler
+from bajutsu.common.orchestrator.actions._registry import _handler
 from bajutsu.scenario import DatetimeValue, Generate, RandomValue, Step
 
 # A system-entropy source rather than the `random` module's shared Mersenne Twister: the point of a

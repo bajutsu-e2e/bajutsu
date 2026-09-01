@@ -5,7 +5,7 @@ through a module-scoped lease it obtains by calling `launch_driver` directly —
 a `bajutsu run`, so it inherits none of the pipeline's crash recovery. A resident-runner crash
 (`base.BackendCrashError`) is infrastructure, not a contract verdict; this plugin re-leases a fresh
 device (a cold respawn) and re-runs the affected test, bounded by the same count + wall-clock budget
-the pipeline uses (`bajutsu.runner.recovery`), so the two recovery paths cannot drift. A contract
+the pipeline uses (`bajutsu.common.runner.recovery`), so the two recovery paths cannot drift. A contract
 violation is not a `BackendCrashError`, so it is never retried — it keeps failing immediately.
 
 A suite opts in by marking its module `backend_crash_recovery` and exposing a module-scoped
@@ -38,8 +38,7 @@ import pytest
 from _pytest.nodes import Node
 from _pytest.runner import runtestprotocol
 
-from bajutsu.drivers import base
-from bajutsu.runner.recovery import (
+from bajutsu.common.runner.recovery import (
     CrashRecoveryBudget,
     RetryDecision,
     _default_crash_recovery_budget,
@@ -48,6 +47,7 @@ from bajutsu.runner.recovery import (
     is_host_fault,
     recovers_by_respawn,
 )
+from bajutsu.drivers import base
 
 _logger = logging.getLogger(__name__)
 

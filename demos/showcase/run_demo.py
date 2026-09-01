@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from bajutsu.common.orchestrator import RunResult, run_scenario
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator import RunResult, run_scenario
 from bajutsu.scenario import (
     Component,
     Scenario,

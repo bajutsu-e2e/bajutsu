@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from bajutsu.common.orchestrator import RunResult, run_scenario
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator import RunResult, run_scenario
 from bajutsu.scenario import Scenario
 
 

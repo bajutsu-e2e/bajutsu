@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-from bajutsu import backends
+from bajutsu.common import backends
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.platform_lifecycle.environments.ios import _DeviceEnvironment

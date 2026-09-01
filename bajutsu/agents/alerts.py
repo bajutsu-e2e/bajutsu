@@ -31,10 +31,10 @@ from bajutsu.ai import (
     ToolDef,
 )
 from bajutsu.analytics import usage
+from bajutsu.common.orchestrator import AlertEvent
 from bajutsu.drivers import base
 from bajutsu.elements import screen_size_from_elements
 from bajutsu.evidence.redaction import Redactor
-from bajutsu.orchestrator import AlertEvent
 from bajutsu.screenshots import fraction, png_size, screenshot_bytes
 
 # Sonnet over Opus: this fires mid-wait (BE-0269), so its round-trip latency is on the run's

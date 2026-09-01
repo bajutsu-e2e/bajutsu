@@ -8,12 +8,12 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator.actions.handlers.generate import (
+from bajutsu.common.orchestrator.actions.handlers.generate import (
     _datetime_value,
     _do_generate,
     generated_value,
 )
+from bajutsu.drivers.fake import FakeDriver
 from bajutsu.scenario import Step
 
 # A fixed instant every datetime expectation below is derived from, so the assertions state the

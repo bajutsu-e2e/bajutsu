@@ -13,17 +13,17 @@ import pytest
 from _runner import _eff, _el, _web_eff
 
 from bajutsu import simctl
+from bajutsu.common.runner import (
+    ReadinessResult,
+    device_pool,
+    device_relauncher,
+)
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver, FakeNetworkCollector
 from bajutsu.evidence import FileSink
 from bajutsu.evidence.network import NetworkCollector, NetworkExchange, ScreenTransition
 from bajutsu.platform_lifecycle import ProvisionProfile
-from bajutsu.runner import (
-    ReadinessResult,
-    device_pool,
-    device_relauncher,
-)
 from bajutsu.scenario import Relaunch, Scenario
 from bajutsu.webview import WebViewBridge
 
@@ -76,7 +76,7 @@ def test_device_pool_per_device_resources(monkeypatch: pytest.MonkeyPatch) -> No
         return ""
 
     monkeypatch.setattr(
-        "bajutsu.backends.make_driver",
+        "bajutsu.common.backends.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
 
@@ -132,7 +132,7 @@ def test_device_pool_lease_blocks_until_a_held_device_is_returned(
     release (the happy path *and*, per the failure-path tests, an aborted lease) returns the udid so
     the waiting lease can proceed. A never-returned udid would block that worker forever."""
     monkeypatch.setattr(
-        "bajutsu.backends.make_driver",
+        "bajutsu.common.backends.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
     lease, shutdown = device_pool(
@@ -180,7 +180,7 @@ def test_device_pool_wires_readiness_and_provenance_into_the_sink(
     """The lease folds the launch readiness outcome and this scenario's BE-0049 provenance into the
     sink, so a first-wait timeout diagnostic can state them (BE-0231 Unit 1)."""
     monkeypatch.setattr(
-        "bajutsu.backends.make_driver",
+        "bajutsu.common.backends.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),  # 2 → count signal
     )
     lease, shutdown = device_pool(
@@ -224,7 +224,7 @@ def test_device_pool_labels_leased_simulator(monkeypatch: pytest.MonkeyPatch) ->
         return catalog if args == simctl.list_devices_cmd() else ""
 
     monkeypatch.setattr(
-        "bajutsu.backends.make_driver",
+        "bajutsu.common.backends.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
     lease, shutdown = device_pool(
@@ -245,7 +245,7 @@ def test_device_pool_labels_leased_simulator(monkeypatch: pytest.MonkeyPatch) ->
 def test_device_pool_single_device_keeps_full_features(monkeypatch: pytest.MonkeyPatch) -> None:
     """A pool of one is the single-device path: collector + interval sink + control, all on."""
     monkeypatch.setattr(
-        "bajutsu.backends.make_driver",
+        "bajutsu.common.backends.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
     lease, shutdown = device_pool(
@@ -279,7 +279,7 @@ def test_device_pool_no_network_has_no_collector(monkeypatch: pytest.MonkeyPatch
         return ""
 
     monkeypatch.setattr(
-        "bajutsu.backends.make_driver",
+        "bajutsu.common.backends.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
     lease, shutdown = device_pool(
@@ -324,8 +324,10 @@ def test_device_pool_stops_started_collectors_when_one_fails(
         def stop(self) -> None:
             self.stopped = True
 
-    monkeypatch.setattr("bajutsu.runner.pool.NetworkCollector", FlakyCollector)
-    monkeypatch.setattr("bajutsu.backends.make_driver", lambda actuator, udid: FakeDriver([]))
+    monkeypatch.setattr("bajutsu.common.runner.pool.NetworkCollector", FlakyCollector)
+    monkeypatch.setattr(
+        "bajutsu.common.backends.make_driver", lambda actuator, udid: FakeDriver([])
+    )
 
     with pytest.raises(OSError, match="port in use"):
         device_pool(
@@ -364,11 +366,13 @@ def test_device_pool_completes_the_start_rollback_despite_a_stop_failure(
             if self._idx == 1:  # the first device's rollback stop fails too
                 raise OSError("socket already gone")
 
-    monkeypatch.setattr("bajutsu.runner.pool.NetworkCollector", FlakyCollector)
-    monkeypatch.setattr("bajutsu.backends.make_driver", lambda actuator, udid: FakeDriver([]))
+    monkeypatch.setattr("bajutsu.common.runner.pool.NetworkCollector", FlakyCollector)
+    monkeypatch.setattr(
+        "bajutsu.common.backends.make_driver", lambda actuator, udid: FakeDriver([])
+    )
 
     with (
-        caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"),
+        caplog.at_level(logging.WARNING, logger="bajutsu.common.runner.recovery"),
         pytest.raises(OSError, match="port in use"),  # the original bind failure, not masked
     ):
         device_pool(
@@ -408,8 +412,10 @@ def test_device_pool_reserves_a_bridgeable_port_only_where_the_device_mirrors_it
         def stop(self) -> None:
             pass
 
-    monkeypatch.setattr("bajutsu.runner.pool.NetworkCollector", RecordingCollector)
-    monkeypatch.setattr("bajutsu.backends.make_driver", lambda actuator, udid: FakeDriver([]))
+    monkeypatch.setattr("bajutsu.common.runner.pool.NetworkCollector", RecordingCollector)
+    monkeypatch.setattr(
+        "bajutsu.common.backends.make_driver", lambda actuator, udid: FakeDriver([])
+    )
     monkeypatch.setattr(
         "bajutsu.platform_lifecycle.environments.fake.FakeEnvironment."
         "mirrors_collector_port_on_device",
@@ -653,8 +659,8 @@ def test_device_pool_resolves_actuator_per_scenario_and_tears_down_its_own_env(
         created.append(env)
         return env
 
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
-    monkeypatch.setattr("bajutsu.runner.pool.select_actuator_for_scenario", _fake_resolve)
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.common.runner.pool.select_actuator_for_scenario", _fake_resolve)
 
     pinch = Scenario.model_validate(
         {"name": "p", "steps": [{"pinch": {"sel": {"id": "m"}, "scale": 2.0}}]}
@@ -704,7 +710,7 @@ def test_device_pool_gives_each_lease_a_distinct_webview_bridge_port(
         # shape), unlike web where the driver owns the page and no bridge is reserved.
         return _RecordingEnv(actuator, udid, provision)
 
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
     lease, shutdown = device_pool(
         ["UDID-A", "UDID-B"],
         ["ios"],
@@ -749,7 +755,7 @@ def test_device_pool_marks_a_cold_respawn_after_the_first_bring_up(
         respawns.append(respawn)
         return _RecordingEnv(actuator, udid, provision)  # reusable=False: never cached, always cold
 
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
     lease, shutdown = device_pool(
         ["UDID-A"],
         ["ios"],
@@ -790,7 +796,7 @@ def test_device_pool_reuses_a_warm_resident_across_scenarios(
         created.append(env)
         return env
 
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
     lease, shutdown = device_pool(
         ["UDID-A"],
         ["ios"],
@@ -838,7 +844,7 @@ def test_device_pool_evicts_a_warm_resident_whose_end_lease_did_not_finish(
         created.append(env)
         return env
 
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
     lease, shutdown = device_pool(
         ["UDID-A"],
         ["ios"],
@@ -852,7 +858,7 @@ def test_device_pool_evicts_a_warm_resident_whose_end_lease_did_not_finish(
         first = lease(_eff(), _scn("a"))
         env = created[1]  # created[0] is the pool's representative env
         env.raise_on_end_lease = True
-        with caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"):
+        with caplog.at_level(logging.WARNING, logger="bajutsu.common.runner.recovery"):
             first.release()  # must not raise
         assert "at the lease's end" in caplog.text  # logged, not silent
         # The runner process is actually discarded too — a dropped `warm` entry alone would leak
@@ -899,8 +905,8 @@ def test_device_pool_actuator_switch_tears_down_the_warm_resident(
         created.append(env)
         return env
 
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
-    monkeypatch.setattr("bajutsu.runner.pool.select_actuator_for_scenario", _fake_resolve)
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.common.runner.pool.select_actuator_for_scenario", _fake_resolve)
     pinch = Scenario.model_validate(
         {"name": "p", "steps": [{"pinch": {"sel": {"id": "m"}, "scale": 2.0}}]}
     )
@@ -921,7 +927,7 @@ def test_device_pool_actuator_switch_tears_down_the_warm_resident(
         ]  # created[0] is the pool's representative env; [1] is the tap lease env
         assert adb_env.actuator == "adb" and not adb_env.torn  # kept warm after release
         adb_env.teardown_error = teardown_error
-        with caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"):
+        with caplog.at_level(logging.WARNING, logger="bajutsu.common.runner.recovery"):
             pinch_lease = lease(_eff(), pinch)  # resolves to the other actuator
         assert adb_env.torn  # the warm resident was torn down on the actuator switch
         if teardown_error is not None:
@@ -969,7 +975,7 @@ def test_device_pool_evicts_and_tears_down_a_warm_resident_whose_resume_fails(
         created.append(env)
         return env
 
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
     lease, shutdown = device_pool(
         ["UDID-A"],
         ["ios"],
@@ -1024,7 +1030,7 @@ def test_device_pool_tears_down_a_non_reusable_env_when_the_lease_fails_after_la
         created.append(env)
         return env
 
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
     lease, shutdown = device_pool(
         ["UDID-A"],
         ["android"],
@@ -1077,7 +1083,7 @@ def test_device_pool_tears_down_the_launched_env_when_adopt_replacement_fails(
         created.append(env)
         return env
 
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
     lease, shutdown = device_pool(
         ["UDID-A"],
         ["android"],
@@ -1132,7 +1138,7 @@ def test_device_pool_tears_down_the_bridge_when_the_lease_fails_after_launch(
         created.append(env)
         return env
 
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
     lease, shutdown = device_pool(
         ["UDID-A"],
         ["android"],
@@ -1178,7 +1184,7 @@ def test_device_pool_shutdown_tears_down_every_warm_device_despite_a_failure(
         created.append(env)
         return env
 
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
     lease, shutdown = device_pool(
         ["UDID-A", "UDID-B"],
         ["ios"],
@@ -1194,7 +1200,7 @@ def test_device_pool_shutdown_tears_down_every_warm_device_despite_a_failure(
     lb.release()
     warm_a = next(e for e in created if e.udid == "UDID-A" and e.start_count)
     warm_b = next(e for e in created if e.udid == "UDID-B" and e.start_count)
-    with caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"):
+    with caplog.at_level(logging.WARNING, logger="bajutsu.common.runner.recovery"):
         shutdown()  # UDID-A's teardown raises; it must not abort UDID-B's or the collector cleanup
     assert warm_a.torn and warm_b.torn  # both warm residents were torn down
     assert "UDID-A" in caplog.text  # the swallowed teardown failure was logged, not silent
@@ -1226,7 +1232,7 @@ def test_device_pool_shutdown_completes_the_sweep_before_a_wiring_defect_propaga
         created.append(env)
         return env
 
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
     lease, shutdown = device_pool(
         ["UDID-A", "UDID-B"],
         ["ios"],
@@ -1269,7 +1275,7 @@ def test_device_pool_shutdown_logs_every_defect_past_the_first(
         created.append(env)
         return env
 
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
     lease, shutdown = device_pool(
         ["UDID-A", "UDID-B"],
         ["ios"],
@@ -1286,7 +1292,7 @@ def test_device_pool_shutdown_logs_every_defect_past_the_first(
     warm_a = next(e for e in created if e.udid == "UDID-A" and e.start_count)
     warm_b = next(e for e in created if e.udid == "UDID-B" and e.start_count)
     with (
-        caplog.at_level(logging.ERROR, logger="bajutsu.runner.pool"),
+        caplog.at_level(logging.ERROR, logger="bajutsu.common.runner.pool"),
         pytest.raises(RuntimeError, match="broken UDID-A"),  # only the first defect propagates
     ):
         shutdown()
@@ -1311,7 +1317,7 @@ def test_device_pool_shutdown_stops_the_collector_before_a_warm_residents_wiring
 
     monkeypatch.setattr(NetworkCollector, "stop", recording_stop)
     monkeypatch.setattr(
-        "bajutsu.runner.pool.environment_for",
+        "bajutsu.common.runner.pool.environment_for",
         lambda actuator, udid, env_run=None, *, provision=None, respawn=False: _RecordingEnv(
             actuator,
             udid,
@@ -1357,10 +1363,11 @@ def test_device_pool_shutdown_swallows_an_expected_collector_stop_failure(
     device-teardown loop above it — a socket already gone (`OSError`) is an expected process
     failure, warned and skipped, not a defect that fails `shutdown()`."""
     monkeypatch.setattr(
-        "bajutsu.runner.pool.NetworkCollector", _stop_failing_collector(OSError("socket gone"))
+        "bajutsu.common.runner.pool.NetworkCollector",
+        _stop_failing_collector(OSError("socket gone")),
     )
     monkeypatch.setattr(
-        "bajutsu.runner.pool.environment_for",
+        "bajutsu.common.runner.pool.environment_for",
         lambda actuator, udid, env_run=None, *, provision=None, respawn=False: _RecordingEnv(
             actuator, udid, provision
         ),
@@ -1374,7 +1381,7 @@ def test_device_pool_shutdown_swallows_an_expected_collector_stop_failure(
         available=lambda b: True,
         env_run=lambda *a, **k: "",
     )
-    with caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"):
+    with caplog.at_level(logging.WARNING, logger="bajutsu.common.runner.recovery"):
         shutdown()  # must not raise
     assert "UDID-A" in caplog.text  # the expected failure was logged, not silent
 
@@ -1386,11 +1393,11 @@ def test_device_pool_shutdown_completes_the_collector_sweep_before_a_wiring_defe
     not skip the others' `stop()`, and must still fail `shutdown()` loudly — but only the first such
     defect propagates; a later one is logged by udid rather than silently dropped."""
     monkeypatch.setattr(
-        "bajutsu.runner.pool.NetworkCollector",
+        "bajutsu.common.runner.pool.NetworkCollector",
         _stop_failing_collector(AttributeError("no stop on this collector")),
     )
     monkeypatch.setattr(
-        "bajutsu.runner.pool.environment_for",
+        "bajutsu.common.runner.pool.environment_for",
         lambda actuator, udid, env_run=None, *, provision=None, respawn=False: _RecordingEnv(
             actuator, udid, provision
         ),
@@ -1405,7 +1412,7 @@ def test_device_pool_shutdown_completes_the_collector_sweep_before_a_wiring_defe
         env_run=lambda *a, **k: "",
     )
     with (
-        caplog.at_level(logging.ERROR, logger="bajutsu.runner.pool"),
+        caplog.at_level(logging.ERROR, logger="bajutsu.common.runner.pool"),
         pytest.raises(AttributeError, match="no stop on this collector"),  # only the first
     ):
         shutdown()
@@ -1446,7 +1453,7 @@ def test_device_pool_release_swallows_an_expected_process_failure_and_still_free
         created.append(env)
         return env
 
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
     lease, shutdown = device_pool(
         ["UDID-A"],
         ["ios"],
@@ -1465,7 +1472,7 @@ def test_device_pool_release_swallows_an_expected_process_failure_and_still_free
             env.raise_on_end_lease = True
         else:
             env.raise_on_teardown = True
-        with caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"):
+        with caplog.at_level(logging.WARNING, logger="bajutsu.common.runner.recovery"):
             first.release()  # must not raise
         assert env.torn  # the plain arm's own teardown, or the end_lease arm's fallback teardown
         assert "at the lease's end" in caplog.text  # logged, not silent
@@ -1509,7 +1516,7 @@ def test_device_pool_release_defers_a_lease_teardown_wiring_defect_to_shutdown(
         created.append(env)
         return env
 
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
     lease, shutdown = device_pool(
         ["UDID-A"],
         ["ios"],
@@ -1558,7 +1565,7 @@ def test_device_pool_logs_a_second_lease_teardown_defect_rather_than_dropping_it
         created.append(env)
         return env
 
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
     lease, shutdown = device_pool(
         ["UDID-A", "UDID-B"],
         ["ios"],
@@ -1571,7 +1578,7 @@ def test_device_pool_logs_a_second_lease_teardown_defect_rather_than_dropping_it
     la = lease(_eff(), _scn("a"))
     lb = lease(_eff(), _scn("b"))
     la.release()  # the first lease-teardown defect this run hits
-    with caplog.at_level(logging.ERROR, logger="bajutsu.runner.pool"):
+    with caplog.at_level(logging.ERROR, logger="bajutsu.common.runner.pool"):
         lb.release()  # the second — logged here rather than silently dropped
     with pytest.raises(RuntimeError, match="broken UDID-A"):  # only the first propagates
         shutdown()
@@ -1597,7 +1604,7 @@ def test_device_pool_does_not_cache_a_non_reusable_environment(
         created.append(env)
         return env
 
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
     lease, shutdown = device_pool(
         ["UDID-A"],
         ["ios"],
@@ -1638,7 +1645,7 @@ def test_device_pool_bridges_the_collector_before_launch_and_tears_it_down(
         created.append(env)
         return env
 
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
     lease, shutdown = device_pool(
         ["UDID-A"],
         ["android"],
@@ -1681,7 +1688,7 @@ def test_device_pool_release_swallows_a_bridge_teardown_failure_and_still_frees_
         created.append(env)
         return env
 
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
     lease, shutdown = device_pool(
         ["UDID-A"],
         ["android"],
@@ -1694,7 +1701,7 @@ def test_device_pool_release_swallows_a_bridge_teardown_failure_and_still_frees_
     try:
         leased = lease(_eff(), _scn("a"))
         env = created[-1]
-        with caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"):
+        with caplog.at_level(logging.WARNING, logger="bajutsu.common.runner.recovery"):
             leased.release()  # must not raise despite the bridge teardown failing
         assert env.bridge_torn and env.torn  # the rest of release() still ran
         assert "at the lease's end" in caplog.text  # logged, not silent
@@ -1723,7 +1730,7 @@ def test_device_pool_releases_the_bridge_when_launch_fails(
         created.append(env)
         return env
 
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
     lease, shutdown = device_pool(
         ["UDID-A"],
         ["android"],
@@ -1764,7 +1771,7 @@ def test_device_pool_threads_provision_to_pool_and_lease_environments(
         created.append(env)
         return env
 
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
 
     profile = ProvisionProfile(
         boot_ready=True, app_preinstalled=True
@@ -1815,7 +1822,7 @@ def test_device_pool_web_lease(monkeypatch: pytest.MonkeyPatch) -> None:
         fakes.append(d)
         return d
 
-    monkeypatch.setattr("bajutsu.backends.make_driver", fake_make_driver)
+    monkeypatch.setattr("bajutsu.common.backends.make_driver", fake_make_driver)
     lease, shutdown = device_pool(
         ["web"], ["web"], _eff_web(), Path("runs"), network=False, available=lambda b: True
     )
@@ -1858,7 +1865,7 @@ def test_device_pool_web_lease_builds_a_page_hooked_collector(
         fakes.append(d)
         return d
 
-    monkeypatch.setattr("bajutsu.backends.make_driver", fake_make_driver)
+    monkeypatch.setattr("bajutsu.common.backends.make_driver", fake_make_driver)
     lease, shutdown = device_pool(
         ["web"], ["web"], _eff_web(), Path("runs"), network=True, available=lambda b: True
     )
@@ -1898,13 +1905,13 @@ def test_device_pool_release_swallows_a_page_hooked_collector_stop_failure(
         fakes.append(d)
         return d
 
-    monkeypatch.setattr("bajutsu.backends.make_driver", fake_make_driver)
+    monkeypatch.setattr("bajutsu.common.backends.make_driver", fake_make_driver)
     lease, shutdown = device_pool(
         ["web"], ["web"], _eff_web(), Path("runs"), network=True, available=lambda b: True
     )
     try:
         leased = lease(_eff_web(), _scn("a"))
-        with caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"):
+        with caplog.at_level(logging.WARNING, logger="bajutsu.common.runner.recovery"):
             leased.release()  # must not raise despite the collector failing to stop
         assert fakes[0].collector is not None and fakes[0].collector.stopped is True
         assert "at the lease's end" in caplog.text  # logged, not silent
@@ -1918,7 +1925,7 @@ def test_device_pool_release_swallows_a_page_hooked_collector_stop_failure(
 def test_device_pool_web_requires_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
     # A web app with no baseUrl fails cleanly at launch (simctl.DeviceError), not deep in Playwright.
     monkeypatch.setattr(
-        "bajutsu.backends.make_driver",
+        "bajutsu.common.backends.make_driver",
         lambda actuator, udid, base_url=None: FakeDriver([]),
     )
     eff_no_url = _web_eff(base_url=None)
@@ -1936,7 +1943,7 @@ def test_device_pool_uses_a_resolved_network_fallback(monkeypatch: pytest.Monkey
     # When a same-platform read-only provider is resolved (BE-0020), its collector supplies network
     # instead of the actuator's app-side one, and the lease's provenance names it as a fallback.
     monkeypatch.setattr(
-        "bajutsu.backends.make_driver",
+        "bajutsu.common.backends.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
     ex = NetworkExchange(method="GET", path="/items", status=200)
@@ -1968,7 +1975,7 @@ def test_device_pool_releases_resources_when_launch_fails(monkeypatch: pytest.Mo
     # starves later leases. A flaky launch fails once; the retry must then lease the freed device
     # (a never-returned udid would block free.get() forever).
     monkeypatch.setattr(
-        "bajutsu.backends.make_driver",
+        "bajutsu.common.backends.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
 
@@ -2008,7 +2015,7 @@ def test_device_pool_releases_resources_when_launch_fails(monkeypatch: pytest.Mo
             raise simctl.DeviceError("boot failed")
         return FakeDriver([_el("home", "H"), _el("ok", "OK")]), ReadinessResult(True, "count", 0.0)
 
-    monkeypatch.setattr("bajutsu.runner.pool.launch_driver", flaky_launch)
+    monkeypatch.setattr("bajutsu.common.runner.pool.launch_driver", flaky_launch)
 
     lease, shutdown = device_pool(
         ["UDID-A"],
@@ -2042,7 +2049,7 @@ def test_device_pool_network_lease_defaults_to_collector_provenance(
     # With no fallback resolved (today's iOS), the app-side collector supplies network and the
     # provenance stays "collector".
     monkeypatch.setattr(
-        "bajutsu.backends.make_driver",
+        "bajutsu.common.backends.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
     lease, shutdown = device_pool(
@@ -2112,7 +2119,7 @@ def test_device_pool_follows_a_lease_onto_a_replacement_device(
 ) -> None:
     created: list[_RecordingEnv] = []
     monkeypatch.setattr(
-        "bajutsu.runner.pool.environment_for",
+        "bajutsu.common.runner.pool.environment_for",
         _replacing_env_factory(
             created,
             replacement="UDID-NEW",
@@ -2154,7 +2161,7 @@ def test_device_pool_hands_the_lease_its_environments_replacement_request(
     # take the request and drop it.
     created: list[_RecordingEnv] = []
     monkeypatch.setattr(
-        "bajutsu.runner.pool.environment_for",
+        "bajutsu.common.runner.pool.environment_for",
         _replacing_env_factory(created, replacement=None, reusable=True),
     )
     lease, shutdown = device_pool(
@@ -2184,7 +2191,7 @@ def test_device_pool_frees_the_replacement_when_the_lease_fails(
     # or every later lease would spawn onto the one that vanished.
     created: list[_RecordingEnv] = []
     monkeypatch.setattr(
-        "bajutsu.runner.pool.environment_for",
+        "bajutsu.common.runner.pool.environment_for",
         _replacing_env_factory(created, replacement="UDID-NEW", fail_start=True),
     )
     lease, shutdown = device_pool(
@@ -2219,7 +2226,7 @@ def test_device_pool_frees_the_live_replacement_even_when_adopting_it_also_fails
     metadata for a device that is otherwise perfectly leasable."""
     created: list[_RecordingEnv] = []
     monkeypatch.setattr(
-        "bajutsu.runner.pool.environment_for",
+        "bajutsu.common.runner.pool.environment_for",
         _replacing_env_factory(
             created, replacement="UDID-NEW", fail_start=True, fail_device_catalog=True
         ),
@@ -2235,7 +2242,7 @@ def test_device_pool_frees_the_live_replacement_even_when_adopting_it_also_fails
     )
     try:
         with (
-            caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"),
+            caplog.at_level(logging.WARNING, logger="bajutsu.common.runner.recovery"),
             pytest.raises(RuntimeError, match="launch failed"),  # the original error, not masked
         ):
             lease(_eff(), _scn("s"))
@@ -2260,7 +2267,7 @@ def test_device_pool_re_keys_the_collector_onto_the_replacement(
     # restart — but a later lease looks it up by udid, so the key has to move with the device.
     created: list[_RecordingEnv] = []
     monkeypatch.setattr(
-        "bajutsu.runner.pool.environment_for",
+        "bajutsu.common.runner.pool.environment_for",
         _replacing_env_factory(created, replacement="UDID-NEW"),
     )
     lease, shutdown = device_pool(
@@ -2294,7 +2301,7 @@ def test_device_pool_leaves_every_key_alone_when_no_device_was_replaced(
     # pool's bookkeeping exactly as it was.
     created: list[_RecordingEnv] = []
     monkeypatch.setattr(
-        "bajutsu.runner.pool.environment_for",
+        "bajutsu.common.runner.pool.environment_for",
         _replacing_env_factory(created, replacement=None),
     )
     lease, shutdown = device_pool(

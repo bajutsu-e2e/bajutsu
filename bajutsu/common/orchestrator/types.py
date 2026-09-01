@@ -13,11 +13,11 @@ from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
 from bajutsu.assertions import AssertionResult
+from bajutsu.common.mailbox import MailboxMessage
 from bajutsu.drivers import base
 from bajutsu.drivers.actuation import Actuation, ActuationReporter, Drained
 from bajutsu.evidence import Artifact
 from bajutsu.evidence.network import NetworkExchange
-from bajutsu.mailbox import MailboxMessage
 from bajutsu.scenario import Relaunch
 
 # Returns the network exchanges observed so far (for `request` assertions / waits).

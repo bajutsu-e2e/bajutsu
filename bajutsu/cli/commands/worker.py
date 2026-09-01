@@ -25,7 +25,7 @@ from urllib.request import Request, urlopen
 import typer
 
 from bajutsu import simctl
-from bajutsu.backends import PLATFORMS
+from bajutsu.common.backends import PLATFORMS
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.object_store import content_type_for

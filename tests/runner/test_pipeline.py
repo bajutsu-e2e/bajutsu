@@ -11,20 +11,20 @@ import pytest
 from _runner import _eff, _el, _failing_lease, _fake_driver, _ios_eff, _lease
 from conftest import GUARD_LABEL, AlertingDriver
 
+from bajutsu.common.orchestrator import RunResult
+from bajutsu.common.runner import (
+    Lease,
+    run_all,
+    run_and_report,
+    run_matrix_and_report,
+)
 from bajutsu.config import Effective, XcuitestConfig
 from bajutsu.doctor import Score
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import NullSink
 from bajutsu.evidence.network import NetworkExchange, ScreenTransition
-from bajutsu.orchestrator import RunResult
 from bajutsu.report.format import video_seconds
-from bajutsu.runner import (
-    Lease,
-    run_all,
-    run_and_report,
-    run_matrix_and_report,
-)
 from bajutsu.scenario import Scenario
 
 
@@ -192,7 +192,7 @@ def test_run_all_crash_retries_zero_disables_recovery() -> None:
 def test_crash_retries_default_reads_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     # The on-device lane raises the budget via BAJUTSU_CRASH_RETRIES without a code change; unset (or
     # invalid) keeps the default 1, and 0 disables recovery. An explicit run_all arg still wins.
-    from bajutsu.runner.pipeline import _default_crash_retries
+    from bajutsu.common.runner.pipeline import _default_crash_retries
 
     monkeypatch.delenv("BAJUTSU_CRASH_RETRIES", raising=False)
     assert _default_crash_retries() == 1  # unset -> the pre-knob default
@@ -793,7 +793,7 @@ def test_crash_recovery_budget_default_reads_the_environment(
     # A lane caps respawn wall-clock via BAJUTSU_CRASH_RECOVERY_BUDGET without a code change; unset,
     # non-positive, or invalid all read as unbounded (the count stays the only cap) — never as zero,
     # which would be "no recovery at all", crash_retries=0's job, not this knob's.
-    from bajutsu.runner.pipeline import _default_crash_recovery_budget
+    from bajutsu.common.runner.pipeline import _default_crash_recovery_budget
 
     monkeypatch.delenv("BAJUTSU_CRASH_RECOVERY_BUDGET", raising=False)
     assert _default_crash_recovery_budget() is None  # unset -> unbounded
@@ -1018,7 +1018,7 @@ def test_run_all_run_crash_recovery_budget_never_blocks_the_very_first_crash() -
 def test_run_crash_recovery_budget_default_reads_the_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from bajutsu.runner.pipeline import _default_run_crash_recovery_budget
+    from bajutsu.common.runner.pipeline import _default_run_crash_recovery_budget
 
     monkeypatch.delenv("BAJUTSU_RUN_CRASH_RECOVERY_BUDGET", raising=False)
     assert _default_run_crash_recovery_budget() is None  # unset -> unbounded
@@ -1078,8 +1078,8 @@ def test_scenario_runner_runs_one_in_isolation() -> None:
     The promotion's payoff: the per-scenario runner is unit-testable directly, its shared context
     passed as explicit fields rather than reconstructed from all of `run_all`.
     """
+    from bajutsu.common.runner.pipeline import _ScenarioRunner
     from bajutsu.evidence.redaction import Redactor
-    from bajutsu.runner.pipeline import _ScenarioRunner
 
     runner = _ScenarioRunner(
         eff=_eff(),
@@ -1274,7 +1274,7 @@ def test_run_all_releases_after_each_scenario() -> None:
 def test_run_all_alert_guard_for_selects_per_scenario() -> None:
     # The factory picks each scenario's guard from its systemAlertHandling: the guarded scenario
     # recovers from a blocked tap and passes; the one that disabled it fails.
-    from bajutsu.orchestrator import AlertGuardConfig
+    from bajutsu.common.orchestrator import AlertGuardConfig
 
     scenarios = [
         Scenario.model_validate(
@@ -1311,7 +1311,7 @@ def test_run_all_alert_guard_for_uncovered_locale_fails_the_scenario_not_the_run
     # for raises while the guard is still under construction (before any lease is even taken) — the
     # run must turn that into one clean failed RunResult per scenario, not an uncaught exception that
     # would abort every remaining scenario too.
-    from bajutsu.orchestrator import AlertGuardConfig
+    from bajutsu.common.orchestrator import AlertGuardConfig
     from bajutsu.scenario.system_alerts import UncoveredSystemAlertLocale
 
     scenarios = [
@@ -1455,9 +1455,9 @@ def test_reroot_evidence_prefixes_paths_with_engine() -> None:
     # relative to that pass's run_dir. The matrix assembles one report at the top run_dir, so the
     # paths must be re-rooted under the engine subtree or the report's links resolve wrong (BE-0076).
     from bajutsu.assertions import AssertionResult, VisualEvidence
+    from bajutsu.common.orchestrator import StepOutcome
+    from bajutsu.common.runner.pipeline import _reroot_evidence
     from bajutsu.evidence import Artifact
-    from bajutsu.orchestrator import StepOutcome
-    from bajutsu.runner.pipeline import _reroot_evidence
 
     r = RunResult(
         scenario="login",
@@ -1730,9 +1730,9 @@ def test_run_and_report_writes_owner_only_artifacts(tmp_path: Path) -> None:
 
 
 def test_write_network_stamps_the_given_provider(tmp_path: Path) -> None:
+    from bajutsu.common.runner.pipeline import _write_network
     from bajutsu.evidence.redaction import Redactor
     from bajutsu.evidence.sink import RunArtifactWriter
-    from bajutsu.runner.pipeline import _write_network
 
     ex = NetworkExchange(method="GET", path="/a", status=200)
     art = _write_network(
@@ -1750,9 +1750,9 @@ def test_write_network_started_at_is_an_absolute_wall_clock_instant(tmp_path: Pa
     # scenario's own anchor pair, so network.json records the absolute instant the exchange started
     # (received + offset - duration) rather than an already-relative number (BE-0348). No clamp: an
     # absolute epoch has no floor to clamp to, and the report applies its own at render time.
+    from bajutsu.common.runner.pipeline import _write_network
     from bajutsu.evidence.redaction import Redactor
     from bajutsu.evidence.sink import RunArtifactWriter
-    from bajutsu.runner.pipeline import _write_network
 
     ex = NetworkExchange(method="GET", path="/a", status=200, durationMs=250.0)
     art = _write_network(
@@ -1841,8 +1841,8 @@ class _ConstantCollector:
 
 
 def test_run_all_threads_collector_provider_and_discloses_skips(tmp_path: Path) -> None:
+    from bajutsu.common.orchestrator import SkippedCapture
     from bajutsu.evidence import FileSink
-    from bajutsu.orchestrator import SkippedCapture
 
     ex = NetworkExchange(method="GET", path="/items", status=200)
     scn = Scenario.model_validate(
@@ -1872,8 +1872,8 @@ def test_run_all_threads_collector_provider_and_discloses_skips(tmp_path: Path) 
 def test_pipeline_uses_the_single_orchestrator_no_op_network_source() -> None:
     # The runner shares the orchestrator's one no-op NetworkSource rather than owning a copy, so
     # the default "no network was collected" value lives in one place (BE-0251).
-    from bajutsu.orchestrator.types import _no_network
-    from bajutsu.runner import pipeline, types
+    from bajutsu.common.orchestrator.types import _no_network
+    from bajutsu.common.runner import pipeline, types
 
     # `pipeline` re-exports the helper rather than owning a second copy, and this identity check is
     # what pins that. Strict mode's implicit-reexport rule hides an imported name, so the read is

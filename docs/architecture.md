@@ -89,20 +89,21 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `drivers/xcuitest_live.py` | The live-route XCUITest driver: W3C WebDriver (Appium's XCUITest driver) against a reserved device-cloud iOS device, in place of the resident-runner channel, for the `appium` device provider (BE-0238) — session lifecycle, query/tap/screenshot/readiness, gestures, and text entry are wired; `selectAll`/`copy` fail loudly (no Appium XCUITest equivalent); verification against a real device-cloud grid is still open ([BE-0303](../roadmaps/BE-0303-xcuitest-live-real-grid-verification/BE-0303-xcuitest-live-real-grid-verification.md)) | — |
 | `scenario/` | Scenario schema (strict pydantic validation) + YAML load / dump (package: `models` / `load` / `load_expanded` / `expand` / `select` / `serialize` / `edit`) | [scenarios](scenarios.md) |
 | `assertions/` | Machine assertion evaluation (total function — never raises) (package: `evaluate` / `network` / `visual` / `schema` / `_common`, BE-0250) | [selectors](selectors.md#assertion-evaluation) |
-| `orchestrator/` | The deterministic Tier 2 run loop (act → wait → verify) (package: `loop` / `waits` / `substitution` / `evidence_rules` / `actions`) | [run-loop](run-loop.md) |
-| `cancellation.py` | Cooperative cancellation (BE-0370): the read-only `CancelSource` the orchestrator's wait loops and the runner poll, the `RunCancelled` unwind exception a poll loop raises to the nearest safe boundary, and the `SIGTERM`→event bridge `bajutsu run`'s entry point installs — imports nothing from Bajutsu, so the deterministic core, the CLI, and `serve` all reach it | [run-loop](run-loop.md) |
+| `common/orchestrator/` | The deterministic Tier 2 run loop (act → wait → verify) (package: `loop` / `waits` / `substitution` / `evidence_rules` / `actions`) | [run-loop](run-loop.md) |
+| `common/cancellation.py` | Cooperative cancellation (BE-0370): the read-only `CancelSource` the orchestrator's wait loops and the runner poll, the `RunCancelled` unwind exception a poll loop raises to the nearest safe boundary, and the `SIGTERM`→event bridge `bajutsu run`'s entry point installs — imports nothing from Bajutsu, so the deterministic core, the CLI, and `serve` all reach it | [run-loop](run-loop.md) |
 | `evidence/` | Evidence capture, split by role (BE-0257): `core` (instant / interval capture and Sinks), `intervals` (video / deviceLog as simctl child processes), `media` (a finished recording's duration, read from the file), `network` (collector + in-protocol deterministic mocks), `visual` (visual-regression image comparison), `golden` (element-tree comparison), `redaction` (labels / headers / fields + secret values) | [evidence](evidence.md) |
 | `report/` | `manifest.json` + JUnit XML + CTRF JSON + interactive HTML, plus a finished run's `.zip` export and its offline reload for re-rendering (package: `format` / `manifest` / `ctrf` / `rows` / `panels` / `html` / `richtext` / `archive` / `load`) | [reporting](reporting.md) |
 | `interp.py` | `${ns.key}` interpolation primitive (`params.` / `row.` / `secrets.` / `vars.`) | [scenarios](scenarios.md) |
-| `mailbox.py` | Pure, network-free matching/extraction logic for the `email` step (BE-0046): normalize a mailbox provider's messages, match on `to`/`subject`/`subjectMatches`, select only a message that arrived after the step started, and extract a value by regex into `${vars.*}` | [scenarios](scenarios.md) |
+| `common/mailbox.py` | Pure, network-free matching/extraction logic for the `email` step (BE-0046): normalize a mailbox provider's messages, match on `to`/`subject`/`subjectMatches`, select only a message that arrived after the step started, and extract a value by regex into `${vars.*}` | [scenarios](scenarios.md) |
+| `common/totp.py` | RFC 6238 time-based one-time password (TOTP) for the `totp` step (BE-0046): a pure, deterministic function of the shared secret and the time, so a code is derivable with no network and no device | [scenarios](scenarios.md) |
 | `config/` | Team defaults × per-target resolution (`Effective`) (package: `schema` / `effective` / `resolve` / `accessors`) | [configuration](configuration.md) |
-| `backends.py` | Backend availability check · actuator selection (platform-aware registry: `ios` / `android` / `web` / `fake`) · driver construction | [drivers](drivers.md#backend-selection-and-the-actuator) |
+| `common/backends.py` | Backend availability check · actuator selection (platform-aware registry: `ios` / `android` / `web` / `fake`) · driver construction | [drivers](drivers.md#backend-selection-and-the-actuator) |
 | `simctl.py` | `simctl` wrapper (erase/boot/launch/openurl/io) | [drivers](drivers.md#environment-management-simctl) |
-| `platform_lifecycle/` | The `Environment` seam (BE-0009): one `RunEnvironment`/`CrawlEnvironment` Protocol per platform for per-run app bring-up, readiness, relaunch, device control, and teardown, so `runner/` and `cli/commands/crawl.py` drive iOS/Android/web through one interface instead of branching on the actuator name (package: `protocols` / `factories` / `readiness` / `relaunchers` / `device_control` / `read_session`, plus `environments/` — `ios` / `xcuitest` / `xcuitest_live` / `android` / `web` / `fake`) | — |
+| `platform_lifecycle/` | The `Environment` seam (BE-0009): one `RunEnvironment`/`CrawlEnvironment` Protocol per platform for per-run app bring-up, readiness, relaunch, device control, and teardown, so `common/runner/` and `cli/commands/crawl.py` drive iOS/Android/web through one interface instead of branching on the actuator name (package: `protocols` / `factories` / `readiness` / `relaunchers` / `device_control` / `read_session`, plus `environments/` — `ios` / `xcuitest` / `xcuitest_live` / `android` / `web` / `fake`) | — |
 | `preflight.py` | Runnability gate, per backend (iOS: required CLIs + a booted Simulator; web: Playwright + its Chromium browser) | [configuration](configuration.md) |
 | `requirements.py` | One declarative mapping: backend/capability → pip extra + external-tool probe + install method (BE-0164), shared by `preflight` and `provision` | — |
 | `provision.py` | Config-aware environment installer (BE-0164): resolve a config's backends + AI provider, install only their extras/tools idempotently (`make install`) | — |
-| `runner/` | config + scenarios → report; device pool + launch sequence; `device_provider` seam resolves where the run's devices come from — the built-in `local` pass-through, plus an `appium` provider driving a reserved iOS device end to end behind a live Appium/WebDriver endpoint (BE-0238); a further cloud-vendor kind (e.g. Firebase Device Streaming) stays a future addition; `recovery` holds the backend-crash retry-count/wall-clock-budget decision shared with the on-device driver conformance suite (BE-0334), plus the two predicates that classify a failure for it — `recovers_by_respawn` decides a retry, `is_host_fault` diagnoses a failure the host caused, and a wedged CoreSimulator answers the two differently (BE-0378), plus the guarded-teardown policy that the pool's teardown sites, `launch_driver`, and the on-device suites' lease discard all share (BE-0342); `mailbox` resolves the `email` step's transport by a registry keyed on `kind` (the shipped `http` JSON adapter; BE-0186), mirroring `ai/registry.py`'s shape (package: `pipeline` / `pool` / `launch` / `device_provider` / `recovery` / `mailbox`) | [run-loop](run-loop.md#runner-the-run-pipeline) |
+| `common/runner/` | config + scenarios → report; device pool + launch sequence; `device_provider` seam resolves where the run's devices come from — the built-in `local` pass-through, plus an `appium` provider driving a reserved iOS device end to end behind a live Appium/WebDriver endpoint (BE-0238); a further cloud-vendor kind (e.g. Firebase Device Streaming) stays a future addition; `recovery` holds the backend-crash retry-count/wall-clock-budget decision shared with the on-device driver conformance suite (BE-0334), plus the two predicates that classify a failure for it — `recovers_by_respawn` decides a retry, `is_host_fault` diagnoses a failure the host caused, and a wedged CoreSimulator answers the two differently (BE-0378), plus the guarded-teardown policy that the pool's teardown sites, `launch_driver`, and the on-device suites' lease discard all share (BE-0342); `mailbox` resolves the `email` step's transport by a registry keyed on `kind` (the shipped `http` JSON adapter; BE-0186), mirroring `ai/registry.py`'s shape (package: `pipeline` / `pool` / `launch` / `device_provider` / `recovery` / `mailbox`) | [run-loop](run-loop.md#runner-the-run-pipeline) |
 | `doctor.py` | Convention score (id coverage, etc.) | [configuration](configuration.md#doctor-the-convention-score) |
 | `agents/` | AI / authoring-agent periphery (BE-0257): `protocols` + `factory` (the `Observation`/`Proposal`/`Agent` abstraction + construction of the one SDK-backed agent), `claude` (the authoring agent), `claude_backed` (shared base, BE-0246), `claude_enrich`, `claude_triage`, `ai_config` (provider/model/effort/language resolution), `anthropic_client` (SDK client construction), `availability` (credential-gap messaging), `enrich` (the enrichment loop), `alerts` (system-alert guard) | [recording](recording.md) |
 | `ai/` | Vendor-neutral AI backend seam (BE-0104): `AiBackend` protocol + normalized request/response types (`base`), provider registry (`registry`) covering the Anthropic API and Amazon Bedrock via the reference adapter over `agents.anthropic_client` (`anthropic`), the Anthropic CLI `ant` (also via the `anthropic` adapter, BE-0163), the Claude Code CLI (`claude_code`, BE-0176), and the `none` switch whose factory raises so no AI path can construct a backend (`disabled`, BE-0394) | [configuration](configuration.md#ai-provider-ai-be-0047) |
@@ -195,10 +196,10 @@ flowchart TB
 
 </details>
 
-- `orchestrator/` depends only on `base.Driver` and **is not coupled to any concrete driver**.
+- `common/orchestrator/` depends only on `base.Driver` and **is not coupled to any concrete driver**.
   That is why it can be tested with `FakeDriver` without a device, while in production the same
   loop drives XCUITest (iOS) or playwright (web).
-- `runner/` provides the factory that launches the app and returns a ready driver,
+- `common/runner/` provides the factory that launches the app and returns a ready driver,
   decoupling the loop from a real device.
 - `scenario/` (the pydantic authoring model) and `drivers/base.py` (the runtime TypedDict)
   are different things. `Selector.as_selector()` converts the former to the latter.
@@ -212,7 +213,7 @@ notices. The configuration lives in `[tool.importlinter]` in `pyproject.toml`. T
 declared:
 
 1. **Deterministic core** — the path that derives a verdict and evidence with no model and no
-   periphery stack: `orchestrator/`, `runner/`, `drivers/base.py`, `assertions/`, `evidence/`,
+   periphery stack: `common/orchestrator/`, `common/runner/`, `drivers/base.py`, `assertions/`, `evidence/`,
    `report/`, `config/`, `scenario/`, `preflight.py` / `capability_preflight.py` /
    `capabilities.py`, `doctor.py`, `lint.py`. It carries the prime directives.
 2. **Contract** — the stable surfaces a consumer depends on: the scenario schema (`scenario/`) and
@@ -239,11 +240,11 @@ Three contracts are enforced:
   in the hosted topology (which reads an org-bearing config) keeps working while the core never
   models orgs. The same mechanism also drops a top-level `ui:` key (BE-0191) — the serve UI's
   presentation settings (`ui.default_theme`) are a serve concern and are parsed in
-  `bajutsu/serve/themes.py`, not modeled in `Config`. A forbidden import-linter contract keeps `config/`, `drivers/`, `runner/`, and
+  `bajutsu/serve/themes.py`, not modeled in `Config`. A forbidden import-linter contract keeps `config/`, `drivers/`, `common/runner/`, and
   `scenario/` off those extras (`include_external_packages` lets it see the external import), on top
   of the periphery contract that already keeps them off `bajutsu.serve`.
 - **The scenario schema and `Driver` Protocol stay a portable inner contract** — independent of the
-  runtime core (`orchestrator/`, `runner/`, `config/`, …) as well as the periphery. This independence
+  runtime core (`common/orchestrator/`, `common/runner/`, `config/`, …) as well as the periphery. This independence
   keeps the contract a stable layer a consumer can depend on without pulling the runtime, underpinning
   cross-version schema reads (BE-0119) and any future split of the periphery from the core.
 
@@ -374,7 +375,7 @@ gate can otherwise be narrowed, or left permanently green, without a single test
 ### The concurrent-device lane (BE-0298)
 
 Every job described above boots exactly one device, so none of them can observe what
-`runner/pool.py`'s `device_pool` claims for a parallel run: that under `--workers N` each worker
+`common/runner/pool.py`'s `device_pool` claims for a parallel run: that under `--workers N` each worker
 leases its own device and writes evidence only under its own `run_dir/<sid>` subdirectory of the one
 shared run directory, sharing no mock port or index with any other worker's scenario (the
 no-shared-state invariant [`DESIGN.md`](../DESIGN.md) §3.3 states). The fast suite proves that claim
@@ -427,7 +428,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 
 - Selector resolution and ambiguity detection (the determinism core)
 - Platform-aware backend registry: `--backend` / `backend:` accept `ios` / `android` / `web` /
-  `fake` tokens, each expanding to its actuators (`backends.py`) — `ios` expands to `xcuitest`, the
+  `fake` tokens, each expanding to its actuators (`common/backends.py`) — `ios` expands to `xcuitest`, the
   sole iOS actuator since BE-0290 retired idb (`--backend ios` and `--backend xcuitest` are
   equivalent). A platform with more than one actuator would resolve **per scenario** in cost order
   (BE-0240); with iOS now single-actuator, no platform's cost order differs from its stability order
@@ -530,7 +531,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   a latch checked at the top of each scenario, not only inside the crash-retry loop — so a device
   that has already proven it cannot recover does not still cost every remaining scenario one full
   cold-spawn attempt apiece on the way to the same cancellation. The on-device driver conformance suite
-  shares the per-scenario decision (`runner/recovery.py`) so a Simulator infrastructure fault there
+  shares the per-scenario decision (`common/runner/recovery.py`) so a Simulator infrastructure fault there
   recovers the same way, rather than reddening the required check on an unrelated PR (BE-0334). On
   the Simulator XCUITest route the retry has one rung above the erase (BE-0354): a **replacement
   device**, minted through the same path a vanished device's replacement uses and leaving the

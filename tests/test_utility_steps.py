@@ -9,8 +9,8 @@ from threading import Thread
 
 from conftest import el
 
+from bajutsu.common.orchestrator import run_scenario
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator import run_scenario
 from bajutsu.scenario import Scenario, Step
 
 

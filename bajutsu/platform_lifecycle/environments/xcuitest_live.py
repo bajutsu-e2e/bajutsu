@@ -22,6 +22,7 @@ import contextlib
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
+from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.config import Effective, require_ios
 from bajutsu.crawl import Reset
 from bajutsu.drivers import base
@@ -32,7 +33,6 @@ from bajutsu.drivers.xcuitest_live import (
     XcuitestLiveDriver,
     _raw_wd_transport,
 )
-from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.platform_lifecycle.environments.ios import _DeviceEnvironment
 from bajutsu.scenario import Preconditions, Scenario
 

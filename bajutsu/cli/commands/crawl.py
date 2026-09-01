@@ -45,6 +45,7 @@ from bajutsu.cli._shared import (
     _with_headed,
     resolve_system_alert_handling_flag,
 )
+from bajutsu.common.runner import launch_driver
 from bajutsu.config import Effective, web_base_url
 from bajutsu.crawl import flows as crawl_flows
 from bajutsu.crawl import report as crawl_report
@@ -58,7 +59,6 @@ from bajutsu.platform_lifecycle import CrawlEnvironment, environment_for
 from bajutsu.record import clear_blocking as clear_blocking_overlay
 from bajutsu.run_files import RunArtifactReader, runs_root
 from bajutsu.run_id import new_run_id
-from bajutsu.runner import launch_driver
 from bajutsu.scenario import Preconditions
 
 #: The screen map's artifact name inside a crawl's run directory.
@@ -239,7 +239,7 @@ def _wire_health(
         # known-present and the shared helper returns a real guard (never the no-op None branch).
         guard = _build_alert_guard(eff, redactor, alert_vision_instruction)
         if guard is not None:
-            from bajutsu.orchestrator import RealClock
+            from bajutsu.common.orchestrator import RealClock
 
             clock = RealClock()
 

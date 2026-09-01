@@ -258,7 +258,7 @@ class RunCrashRecoveryBudget:
     `CrashRecoveryBudget` resets a fresh deadline for every scenario, so a device that keeps
     degrading pays each scenario's own budget again — this class shares one accumulator across every
     scenario in a run instead. It bills only the time a scenario's own crash-retry loop actually
-    spends recovering (`bajutsu/runner/pipeline.py`'s `run_one` times its own retry loop and reports
+    spends recovering (`bajutsu/common/runner/pipeline.py`'s `run_one` times its own retry loop and reports
     the elapsed seconds via `add_recovery_time`), not wall-clock elapsed since some earlier crash: an
     earlier design armed a single deadline at the first crash and never re-armed it, so a long,
     perfectly healthy stretch between two unrelated one-off crashes silently ate into the same
@@ -268,7 +268,7 @@ class RunCrashRecoveryBudget:
 
     Deliberately keeps no notion of an in-progress "episode" as shared state: `run_all`'s
     `workers > 1` path can run several scenarios' crash-retry loops concurrently
-    (`bajutsu/runner/pool.py`'s `lease_defect_lock` guards shared state across that same
+    (`bajutsu/common/runner/pool.py`'s `lease_defect_lock` guards shared state across that same
     `ThreadPoolExecutor` for the same reason this class needs a lock), and a single shared
     start-of-episode timestamp would let two concurrent recoveries corrupt each other's timing —
     whichever finished first would end "the" episode out from under the other. Each `run_one` call
@@ -281,7 +281,7 @@ class RunCrashRecoveryBudget:
     much sooner and denies a later scenario even its first retry.
 
     `budget` is public (not `_budget`) so a caller that needs the configured seconds for a failure
-    message (`bajutsu/runner/pipeline.py`'s `run_one`) reads it straight from the one object that
+    message (`bajutsu/common/runner/pipeline.py`'s `run_one`) reads it straight from the one object that
     also enforces it, rather than keeping a second field of its own in sync by hand.
 
     `exhausted()` alone is a weaker signal than it looks: the accumulated total bills recovery time

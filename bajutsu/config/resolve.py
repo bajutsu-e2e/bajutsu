@@ -3,7 +3,7 @@
 `resolve()` produces the effective config for one target: the target entry overrides defaults.
 `backend` may be a single string or a list (normalized to a list). `redact` is merged (union).
 Scenario-level overrides (preconditions) are applied later by the runner. This is the only config
-submodule that depends on `bajutsu.backends` (to derive a target's platform from its backend), so
+submodule that depends on `bajutsu.common.backends` (to derive a target's platform from its backend), so
 its import stays a plain top-level one confined here.
 """
 
@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from bajutsu import _yaml
-from bajutsu.backends import platform_of, resolve_actuators
+from bajutsu.common.backends import platform_of, resolve_actuators
 from bajutsu.config.effective import (
     AiConfig,
     AndroidConfig,

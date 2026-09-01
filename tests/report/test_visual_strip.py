@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bajutsu.orchestrator import RunResult
+from bajutsu.common.orchestrator import RunResult
 from bajutsu.report import html_report
 
 

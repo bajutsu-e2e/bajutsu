@@ -13,8 +13,7 @@ from collections.abc import Callable
 import pytest
 
 from bajutsu import simctl
-from bajutsu.drivers import base, xcuitest
-from bajutsu.runner.recovery import (
+from bajutsu.common.runner.recovery import (
     CrashRecoveryBudget,
     RunCrashRecoveryBudget,
     _default_crash_recovery_budget,
@@ -24,6 +23,7 @@ from bajutsu.runner.recovery import (
     is_host_fault,
     recovers_by_respawn,
 )
+from bajutsu.drivers import base, xcuitest
 
 
 class _AdvancingClock:

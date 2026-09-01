@@ -21,7 +21,8 @@ from typing import Any
 
 import pytest
 
-from bajutsu import backends, simctl, stall_diagnostics
+from bajutsu import simctl, stall_diagnostics
+from bajutsu.common import backends
 from bajutsu.config import Effective, load_config, resolve
 from bajutsu.device_os import DeviceOS
 from bajutsu.drivers.fake import FakeDriver
@@ -219,9 +220,9 @@ def test_appium_lease_endpoint_routes_to_the_live_environment() -> None:
     # spec and returns the live WebDriver environment, which drives the reserved device off the simctl
     # / xcodebuild path — so the endpoint reaches the WebDriver session, never the udid machinery
     # (BE-0238).
+    from bajutsu.common.runner import device_provider as dp
     from bajutsu.platform_lifecycle.environments.xcuitest_live import XcuitestLiveEnvironment
     from bajutsu.platform_lifecycle.factories import environment_for
-    from bajutsu.runner import device_provider as dp
 
     cfg = load_config(
         "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: device\n"
@@ -943,7 +944,7 @@ def test_a_discard_terminates_the_xctrunner_app_too(
     # automation session, and the ~5 cold spawns an ios-e2e job makes can stack up that many of them.
     # Its id comes off the .xctestrun, so an explicit testRunner is terminated like the bundled one.
     _, simctl_calls, run = _fake_toolchain(monkeypatch)
-    runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.runner.uitests.xctrunner")
+    runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.common.runner.uitests.xctrunner")
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     env.start(_sim_eff(test_runner=str(runner)), Preconditions())
     simctl_calls.clear()
@@ -953,7 +954,7 @@ def test_a_discard_terminates_the_xctrunner_app_too(
         "simctl",
         "terminate",
         "UDID",
-        "com.bajutsu.runner.uitests.xctrunner",
+        "com.bajutsu.common.runner.uitests.xctrunner",
     ] in simctl_calls
     assert [
         "xcrun",
@@ -971,7 +972,7 @@ def test_a_hung_terminate_is_not_absorbed_by_a_discard(
     # running. A `terminate` that never returns is the opposite case — a wedged CoreSimulator — and
     # absorbing it here would leave the discard path exactly as silent as it was before BE-0363.
     _, _, run = _fake_toolchain(monkeypatch)
-    runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.runner.uitests.xctrunner")
+    runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.common.runner.uitests.xctrunner")
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     env.start(_sim_eff(test_runner=str(runner)), Preconditions())
 
@@ -1033,7 +1034,7 @@ def test_end_lease_leaves_the_xctrunner_app_running(
     # reuse this environment exists to provide, turning every lease back into a cold spawn. Only a
     # discard — which has already given the runner up — reaches it.
     _, simctl_calls, run = _fake_toolchain(monkeypatch)
-    runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.runner.uitests.xctrunner")
+    runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.common.runner.uitests.xctrunner")
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff(test_runner=str(runner))
     driver = env.start(eff, Preconditions())
@@ -1076,7 +1077,7 @@ def test_a_real_device_discard_never_terminates_through_simctl(
     monkeypatch.setattr(subprocess, "Popen", lambda *_a, **_k: _FakeProc())
     monkeypatch.setattr(backends, "make_driver", lambda *_a, **_k: _FakeDriver())
     _patch_group_signals(monkeypatch)
-    runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.runner.uitests.xctrunner")
+    runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.common.runner.uitests.xctrunner")
     env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=_run)
     env.start(_device_eff(test_runner=str(runner)), Preconditions())
     env._discard_runner(warn_on_crash=False, keep_log=True)

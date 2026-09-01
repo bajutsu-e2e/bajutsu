@@ -7,7 +7,7 @@ from pathlib import Path
 
 from _report import _failing, _json_obj, _json_str, _passing, _scenarios
 
-from bajutsu.orchestrator import AlertEvent, RunResult, StepOutcome
+from bajutsu.common.orchestrator import AlertEvent, RunResult, StepOutcome
 from bajutsu.report import junit_xml, manifest_dict, write_report
 
 

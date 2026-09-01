@@ -11,11 +11,11 @@ import pytest
 from _orch import FakeClock, _scenario
 from conftest import AlertingDriver, el
 
-from bajutsu.cancellation import CANCELLED_FAILURE
+from bajutsu.common.cancellation import CANCELLED_FAILURE
+from bajutsu.common.orchestrator import run_scenario
+from bajutsu.common.orchestrator.types import AlertGuardConfig
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence.network import ScreenTransition
-from bajutsu.orchestrator import run_scenario
-from bajutsu.orchestrator.types import AlertGuardConfig
 
 
 class _CancelAfter:
