@@ -8,9 +8,12 @@ AI-free — a label is metadata attached to a run, never an input to a verdict.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 
 from _shared import project, write_run
+from sqlalchemy import Engine
 
 from bajutsu import serve as srv
 from bajutsu.report.manifest import MAX_LABEL_LENGTH, manifest_dict
@@ -137,3 +140,49 @@ def test_the_comparison_ranks_every_declared_target_including_an_unrun_one(
 def test_the_comparison_is_empty_with_no_config_bound(tmp_path: Path) -> None:
     state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path)
     assert compare_targets(state, org="default") == []
+
+
+def test_a_partition_is_not_truncated_by_the_global_window(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # The label is a post-filter, so capping the query first would drop a run of the bound config
+    # that falls outside the newest-N global window — leaving a partition's history shorter than the
+    # window it claims to show. The interleaving this item exists to fix is exactly the shape that
+    # pushes a config's runs past that boundary.
+    from bajutsu.serve.operations.reads import RUN_WINDOW
+    from bajutsu.serve.server.db import RunRecord, SqlRepository
+    from bajutsu.serve.server.models import Base
+
+    engine = serve_engine()
+    Base.metadata.create_all(engine)
+    repository = SqlRepository(engine)
+    repository.ensure_org("default", slug="default", name="default")
+    _scn, cfg, runs = project(tmp_path)
+    # One run of the bound config, then a full window's worth of the other config's newer runs.
+    repository.record_run(
+        RunRecord(
+            id="20260101-0",
+            org_id="default",
+            status="done",
+            ok=True,
+            label="bajutsu.config",
+            summary={"id": "20260101-0", "ok": True, "label": "bajutsu.config"},
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+    )
+    for i in range(RUN_WINDOW):
+        repository.record_run(
+            RunRecord(
+                id=f"20260102-{i}",
+                org_id="default",
+                status="done",
+                ok=True,
+                label="other.config",
+                summary={"id": f"20260102-{i}", "ok": True, "label": "other.config"},
+                created_at=datetime(2026, 1, 2, tzinfo=UTC),
+            )
+        )
+    state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path, repository=repository)
+
+    rows = runs_payload(state)[0]
+    assert [r["id"] for r in rows] == ["20260101-0"]

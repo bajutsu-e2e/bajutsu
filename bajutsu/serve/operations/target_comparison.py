@@ -27,20 +27,29 @@ def compare_targets(state: ServeState, *, org: str) -> list[TargetMetrics]:
 
     The target list comes from the bound config rather than from the run history, so a target
     declared but never run charts as a blank row instead of vanishing — the comparison shows the
-    whole declared set, exactly as the project version showed the whole registered one.
+    whole set the org may reach, exactly as the project version showed the whole registered one.
+
+    Ownership is resolved through the same `targets_for` seam the target list and the dispatch guard
+    use, so a member of one org never sees another org's targets ranked here, nor the run counts
+    that would disclose how much that tenant runs. Local serve has no tenant boundary and lists
+    every declared target, matching `list_targets_payload`.
 
     Args:
         state: The serve state holding the bound config and the org-scoped artifact store.
         org: The org whose targets are compared (`default` locally).
 
     Returns:
-        One `TargetMetrics` per declared target, ordered as the config declares them.
+        One `TargetMetrics` per target the org may run, ordered as the config declares them.
     """
     if state.config is None:
         return []
+    declared = list_targets(state.config)
+    if state.repository is not None:
+        owned = set(state.targets_for(org))
+        declared = [t for t in declared if t in owned]
     artifacts = state.for_org(org).artifacts
     rows = []
-    for target in list_targets(state.config):
+    for target in declared:
         ids = _target_run_ids(state, org=org, target=target)
         rows.append(target_metrics(target, run_set_manifests(artifacts, ids)))
     return rows

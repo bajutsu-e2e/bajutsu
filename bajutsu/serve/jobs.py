@@ -461,6 +461,11 @@ def _persist_run(state: ServeState, job: Job) -> None:
         # cost `_run_summary` was written to avoid.
         manifest = _read_manifest(state, run_id)
         scenario_hash, tool_version, git_revision = _run_provenance(manifest)
+        # The enqueue-time label wins: it is the only source for a cloud-batch run, whose manifest
+        # comes back from the device cloud without one. The manifest is the fallback for a job built
+        # outside the enqueue path.
+        label = job.label or _run_str(manifest, "label")
+        target = _run_str(manifest, "target")
         repo.record_run(
             RunRecord(
                 id=run_id,
@@ -468,16 +473,16 @@ def _persist_run(state: ServeState, job: Job) -> None:
                 status="done",
                 created_by=created_by,
                 ok=ok,
-                summary=_run_summary(run_id, manifest, ok=ok),
+                # The summary carries the same two values as the columns beside it: the DB-backed
+                # history list reads the summary, so a disagreement would hide a run from the very
+                # label filter its column says it belongs to (BE-0404 unit 4).
+                summary=_run_summary(run_id, manifest, ok=ok, label=label, target=target),
                 scenario_hash=scenario_hash,
                 tool_version=tool_version,
                 git_revision=git_revision,
                 device_runtime=_run_device_runtime(manifest),
-                # The enqueue-time label wins: it is the only source for a cloud-batch run, whose
-                # manifest comes back from the device cloud without one. The manifest is the fallback
-                # for a job built outside the enqueue path.
-                label=job.label or _run_str(manifest, "label"),
-                target=_run_str(manifest, "target"),
+                label=label,
+                target=target,
             )
         )
     except Exception:
@@ -538,7 +543,14 @@ def _run_device_runtime(manifest: dict[str, Any] | None) -> str | None:
     return run_os.label if run_os is not None else ""
 
 
-def _run_summary(run_id: str, manifest: dict[str, Any] | None, *, ok: bool) -> dict[str, Any]:
+def _run_summary(
+    run_id: str,
+    manifest: dict[str, Any] | None,
+    *,
+    ok: bool,
+    label: str | None = None,
+    target: str | None = None,
+) -> dict[str, Any]:
     """The run's history-list summary, from just this run's parsed `manifest.json` (not a full
     `list_runs()` scan, which re-reads every run's manifest from object storage). `write_report`
     writes `report.html` alongside the manifest, so a readable manifest means the report exists."""
@@ -550,8 +562,8 @@ def _run_summary(run_id: str, manifest: dict[str, Any] | None, *, ok: bool) -> d
             "scenarios": [],
             "passed": 0,
             "total": 0,
-            "label": "",
-            "target": "",
+            "label": label or "",
+            "target": target or "",
         }
     scenarios = [s for s in (manifest.get("scenarios") or []) if isinstance(s, dict)]
     return {
@@ -563,8 +575,8 @@ def _run_summary(run_id: str, manifest: dict[str, Any] | None, *, ok: bool) -> d
         "total": len(scenarios),
         # Mirrored so the DB-backed history list and the local artifact-store one carry the same
         # shape, and the label filter reads one field either way (BE-0404 unit 4).
-        "label": str(manifest.get("label") or ""),
-        "target": str(manifest.get("target") or ""),
+        "label": label or str(manifest.get("label") or ""),
+        "target": target or str(manifest.get("target") or ""),
     }
 
 

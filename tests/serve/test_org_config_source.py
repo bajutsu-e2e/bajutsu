@@ -139,3 +139,27 @@ def test_a_second_bind_replaces_the_first_locator(
     org = state.repository.get_org("acme")
     assert org is not None and org.config_source is not None
     assert org.config_source["sha256"] == second_sha
+
+
+def test_the_comparison_ranks_only_the_targets_the_org_owns(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # `orgs.<name>.targets` decides which targets an org owns. Ranking every declared target would
+    # disclose another tenant's targets — and, through the run counts, how much it runs.
+    from bajutsu.serve.operations.target_comparison import compare_targets
+
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n"
+        "  acme-web: { baseUrl: 'https://a.test/', backend: [web] }\n"
+        "  globex-web: { baseUrl: 'https://g.test/', backend: [web] }\n"
+        "orgs:\n"
+        "  acme: { targets: [acme-web] }\n"
+        "  globex: { targets: [globex-web] }\n",
+        encoding="utf-8",
+    )
+    state = _state(serve_engine, tmp_path, object_store=FakeObjectStore())
+    state.config = config
+
+    assert [row.name for row in compare_targets(state, org="acme")] == ["acme-web"]
+    assert [row.name for row in compare_targets(state, org="globex")] == ["globex-web"]

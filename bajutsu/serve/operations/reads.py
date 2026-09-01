@@ -179,14 +179,19 @@ def runs_payload(
     # UI shape is identical. Without one (local / stdlib serve), list straight from the artifact
     # store.
     #
-    # When scoping to a scenario, the DB cap must count *scoped* runs, not global ones: the scenario
-    # name lives in the JSON summary, not an indexed column, so it can't push into the query — list
-    # unbounded and cap after filtering, or a run of the loaded scenario that falls outside the
-    # newest-N global window is silently dropped and the picker can't reach it (BE-0262 follow-up).
+    # Every filter below is a *post*-filter — the scenario names live in the JSON summary, and the
+    # label narrows to one of several configs — so the DB cap must count filtered runs, not global
+    # ones: capping first silently drops a matching run that falls outside the newest-N global
+    # window, and the picker can't reach it (BE-0262 follow-up). The label filter is active whenever
+    # a config is bound and the reader has not asked for every label, so it joins that condition.
     org = state.org_of(actor)
+    labelled = label != ALL_LABELS and (label is not None or state.config is not None)
+    scoped = scenario is not None or target is not None or labelled
     if state.repository is not None:
-        limit = None if scenario is not None or target is not None else RUN_WINDOW
-        runs = [r.summary for r in state.repository.list_runs(org_id=org, limit=limit)]
+        runs = [
+            r.summary
+            for r in state.repository.list_runs(org_id=org, limit=None if scoped else RUN_WINDOW)
+        ]
     else:
         runs = state.artifacts.list_runs()
     # Scope the Author run picker to the loaded scenario (BE-0262): a chosen run's step ids only line
@@ -216,11 +221,12 @@ def runs_payload(
                 if isinstance(n, str)
             )
         ]
-    if (scenario is not None or target is not None) and state.repository is not None:
+    # The label partition is applied last, over the already-scoped set, then the window is
+    # re-applied to the result so a scoped list stays as bounded as the unscoped one (BE-0404 unit 4).
+    runs = apply_label_filter(state, runs, label)
+    if scoped and state.repository is not None:
         runs = runs[:RUN_WINDOW]
-    # The label partition is applied last, over the already-scoped window, so it narrows what the
-    # reader would otherwise see rather than widening the query (BE-0404 unit 4).
-    return apply_label_filter(state, runs, label), 200
+    return runs, 200
 
 
 def crawl_runs_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
