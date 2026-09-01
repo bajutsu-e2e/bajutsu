@@ -6,7 +6,7 @@
 
 Device Farm はライブデバイスのプロバイダーではなく、**バッチ**サービスです。ネットワーク越しに操作するデバイスを貸し出すのではなく、Device Farm 側のホスト上で利用者のコマンドを実行します。そのホストには、予約されたデバイスに接続された `adb` がすでに用意されています。したがって、ここで提供するのは実行時のドライバー（取得すべきデバイスは存在しません）ではなく、**CI 側のサブミッター**です。Bajutsu とシナリオをパッケージ化し、`bajutsu run --backend adb` を実行するテスト仕様とともにアップロードして、Device Farm にホスト上で実行させ、成果物を回収します。
 
-サブミッターの中核は決定的なコアの外側、[`bajutsu/cloud/devicefarm.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/cloud/devicefarm.py)（`render_test_spec` / `build_package` / `submit_and_collect` と `DeviceFarmClient` / `Transfer` の seam、BE-0336）にすべて収まっており、他の呼び出し元からも再利用できます。[`scripts/devicefarm_submit.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/scripts/devicefarm_submit.py) は、引数解析と実際の boto3 / urllib アダプタだけを持つ薄いラッパーになりました。アップロード、ポーリング、ダウンロードのしくみは、`run` や CI の判定経路に一切触れません。Bajutsu はローカルと同じように Device Farm の内側で動作し、同じ決定的なコアと、機械的に検査できるアサーションによる同じ合否を用います。そのため、サブミッターが報告する判定は **Bajutsu 自身の `manifest.json`** に由来し、Device Farm 独自の PASSED / FAILED 分類に依存しません。
+サブミッターの中核は決定的なコアの外側、[`bajutsu/common/cloud/devicefarm.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/cloud/devicefarm.py)（`render_test_spec` / `build_package` / `submit_and_collect` と `DeviceFarmClient` / `Transfer` の seam、BE-0336）にすべて収まっており、他の呼び出し元からも再利用できます。[`scripts/devicefarm_submit.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/scripts/devicefarm_submit.py) は、引数解析と実際の boto3 / urllib アダプタだけを持つ薄いラッパーになりました。アップロード、ポーリング、ダウンロードのしくみは、`run` や CI の判定経路に一切触れません。Bajutsu はローカルと同じように Device Farm の内側で動作し、同じ決定的なコアと、機械的に検査できるアサーションによる同じ合否を用います。そのため、サブミッターが報告する判定は **Bajutsu 自身の `manifest.json`** に由来し、Device Farm 独自の PASSED / FAILED 分類に依存しません。
 
 ## バッチトポロジーの注意点
 

@@ -30,7 +30,7 @@ from bajutsu.ai import (
     TextPart,
     ToolDef,
 )
-from bajutsu.analytics import usage
+from bajutsu.common.analytics import usage
 from bajutsu.drivers import base
 from bajutsu.elements import screen_size_from_elements
 from bajutsu.evidence.redaction import Redactor

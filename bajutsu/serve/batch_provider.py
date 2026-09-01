@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from bajutsu.cloud.devicefarm import (
+from bajutsu.common.cloud.devicefarm import (
     APP_UPLOAD_TYPE,
     REQUIREMENTS_TXT,
     DeviceFarmClient,

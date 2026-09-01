@@ -119,9 +119,9 @@ def test_non_run_path_top_level_modules_are_not_relevant() -> None:
         "bajutsu/analysis/stats.py",
         "bajutsu/analysis/audit.py",
         "bajutsu/analysis/coverage.py",
-        "bajutsu/analytics/stats.py",
+        "bajutsu/common/analytics/stats.py",
         "bajutsu/agents/alerts.py",
-        "bajutsu/github/actions.py",
+        "bajutsu/common/github/actions.py",
         # The crawl engine core/serialize/__init__ trigger (above), but the periphery siblings in the
         # same package do not — the on-device run never imports them, so `crawl/**` must not be swept
         # wholesale. All five are pinned so the boundary is fully covered, not just sampled.

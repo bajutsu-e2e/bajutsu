@@ -29,9 +29,9 @@ from bajutsu.cli._shared import (
     _with_headed,
     resolve_system_alert_handling_flag,
 )
+from bajutsu.common.github import actions as github_actions
 from bajutsu.config import WEB_ENGINES, Effective, IosConfig
 from bajutsu.deprecations import warn_once
-from bajutsu.github import actions as github_actions
 from bajutsu.orchestrator import (
     DEFAULT_ALERT_POLL_INTERVAL,
     AlertGuardConfig,

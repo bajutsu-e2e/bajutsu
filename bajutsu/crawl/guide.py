@@ -31,7 +31,7 @@ from bajutsu.ai import (
     ToolDef,
 )
 from bajutsu.ai.prompts import NEVER_JUDGE_BOUNDARY, render_elements
-from bajutsu.analytics import usage
+from bajutsu.common.analytics import usage
 from bajutsu.crawl import core as crawl
 from bajutsu.crawl import tabs as crawl_tabs
 from bajutsu.drivers import base

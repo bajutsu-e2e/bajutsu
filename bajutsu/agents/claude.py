@@ -34,7 +34,7 @@ from bajutsu.ai import (
     ToolUseBlock,
 )
 from bajutsu.ai.prompts import render_elements
-from bajutsu.analytics import usage
+from bajutsu.common.analytics import usage
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.scenario import Assertion, Selector, Step
 

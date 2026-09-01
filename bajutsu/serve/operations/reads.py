@@ -11,8 +11,8 @@ import yaml
 
 from bajutsu import device_os, handoff
 from bajutsu.analysis import stats as _stats
-from bajutsu.analytics import ledger as _usage_ledger
-from bajutsu.analytics import stats as _usage_stats
+from bajutsu.common.analytics import ledger as _usage_ledger
+from bajutsu.common.analytics import stats as _usage_stats
 from bajutsu.config import Config, load_config, resolve
 from bajutsu.drivers import base as driver_base
 from bajutsu.evidence import StepView, step_view

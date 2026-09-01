@@ -25,7 +25,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
-from bajutsu.analytics.ledger import UsageEvent
+from bajutsu.common.analytics.ledger import UsageEvent
 
 # A ledger timestamp is a UTC ISO-8601 string (`datetime.now(UTC).isoformat()`), so the day is the
 # leading `YYYY-MM-DD`; a line whose ts doesn't start that way simply has no day and buckets under "".
@@ -266,9 +266,10 @@ def _day_of(ts: str) -> str:
     return match.group(1) if match else ""
 
 
-# The shared Jinja templates live at the package root (`bajutsu/templates/`), one level up now
-# that this module is packaged under `analytics/` (BE-0257).
-_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
+# The shared Jinja templates live at the package root (`bajutsu/templates/`), two levels up now
+# that this module is packaged under `common/analytics/` (BE-0257; nested under `common/` per the
+# feature-first reorg).
+_TEMPLATE_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
 
 
 @functools.lru_cache(maxsize=1)

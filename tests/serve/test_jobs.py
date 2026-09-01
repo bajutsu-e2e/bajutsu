@@ -45,7 +45,7 @@ def test_run_job_cloud_batch_records_the_manifest_verdict(tmp_path: Path) -> Non
     # run's own manifest — the same pass/fail a local run reports, off the `run`/CI verdict path.
     import json
 
-    from bajutsu.cloud.devicefarm import verdict_from_manifest
+    from bajutsu.common.cloud.devicefarm import verdict_from_manifest
     from bajutsu.serve import batch_provider as bp
 
     scn_dir, cfg, runs = project(tmp_path)
@@ -880,7 +880,7 @@ class _CapturingProvider:
     def submit(self, request: Any, *, work_dir: Path, dest: Path, checkpoint: Any = None) -> Any:
         import json
 
-        from bajutsu.cloud.devicefarm import verdict_from_manifest
+        from bajutsu.common.cloud.devicefarm import verdict_from_manifest
 
         self.checkpoint = checkpoint
         run_dir = dest / "runs" / "20260101-1"

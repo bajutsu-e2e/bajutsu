@@ -356,7 +356,7 @@ def test_alert_guard_factory_needs_no_credential_and_reaches_no_model(
     credential note, and hands back a guard whose every path is native — so the deterministic gate is
     Claude-free by construction rather than by the shell happening to lack a variable.
     """
-    from bajutsu.analytics import ledger as usage_ledger
+    from bajutsu.common.analytics import ledger as usage_ledger
     from bajutsu.drivers.fake import FakeDriver
     from bajutsu.orchestrator import AlertGuardConfig
 

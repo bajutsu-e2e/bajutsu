@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from bajutsu.common.github import GitHubAccessError
 from bajutsu.config import IosConfig
 from bajutsu.config_source import (
     GitConfigSpec,
@@ -25,7 +26,6 @@ from bajutsu.config_source import (
     resolve_github_credential,
     source_provenance,
 )
-from bajutsu.github import GitHubAccessError
 
 # --- parse_config_spec ---
 
@@ -395,7 +395,7 @@ def test_resolve_credential_prefers_a_configured_github_app(
         seen["app_id"], seen["key"] = app_id, key
         return "ghs_apptoken"
 
-    monkeypatch.setattr("bajutsu.github.app.installation_token", fake_installation_token)
+    monkeypatch.setattr("bajutsu.common.github.app.installation_token", fake_installation_token)
     assert resolve_github_credential(_SPEC) == "ghs_apptoken"
     assert seen == {"app_id": "123", "key": "----KEY----"}
 
@@ -409,7 +409,7 @@ def test_resolve_credential_app_key_from_a_file(
     monkeypatch.delenv("BAJUTSU_GITHUB_APP_PRIVATE_KEY", raising=False)
     monkeypatch.setenv("BAJUTSU_GITHUB_APP_PRIVATE_KEY_FILE", str(key_file))
     monkeypatch.setattr(
-        "bajutsu.github.app.installation_token",
+        "bajutsu.common.github.app.installation_token",
         lambda app_id, key, spec, *, installation_id=None: f"tok:{key}",
     )
     assert resolve_github_credential(_SPEC) == "tok:----FILE-KEY----"

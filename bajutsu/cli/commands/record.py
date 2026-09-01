@@ -13,7 +13,6 @@ from bajutsu import simctl as _simctl
 from bajutsu.agents.claude import MODEL as _RECORD_MODEL
 from bajutsu.agents.factory import make_agent
 from bajutsu.ai import announce_ai
-from bajutsu.analytics import usage as _usage
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _ai_redactor,
@@ -31,6 +30,7 @@ from bajutsu.cli._shared import (
     resolve_system_alert_handling_flag,
 )
 from bajutsu.cli.handoff import make_handoff
+from bajutsu.common.analytics import usage as _usage
 from bajutsu.config import WEB_ENGINES, Effective
 from bajutsu.handoff import HumanHandoffUnavailable
 from bajutsu.platform_lifecycle import environment_for

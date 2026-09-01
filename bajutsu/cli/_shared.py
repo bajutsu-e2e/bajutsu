@@ -18,6 +18,7 @@ from bajutsu.agents import ai_config, anthropic_client
 from bajutsu.ai import credential_gap
 from bajutsu.ai import disabled as ai_disabled
 from bajutsu.backends import ensure_web_runtime, select_actuator
+from bajutsu.common.github import GitHubAccessError
 from bajutsu.config import (
     WEB_ENGINES,
     AiConfig,
@@ -38,7 +39,6 @@ from bajutsu.config_source import (
     source_provenance,
 )
 from bajutsu.evidence.redaction import Redactor
-from bajutsu.github import GitHubAccessError
 from bajutsu.runner.launch_server import start_launch_server
 
 if TYPE_CHECKING:
@@ -168,7 +168,7 @@ def _install_usage_ledger(eff: Effective, command: str, *, scenario: str | None 
     spent on. Reporting only — never on the deterministic verdict path. `run` does not use this and
     installs no ledger: since BE-0402 nothing in it reaches a model, so it has nothing to attribute.
     """
-    from bajutsu.analytics import ledger as usage_ledger
+    from bajutsu.common.analytics import ledger as usage_ledger
 
     usage_ledger.configure_from_ai_config(eff.ai)
     usage_ledger.bind_command(command, scenario=scenario)

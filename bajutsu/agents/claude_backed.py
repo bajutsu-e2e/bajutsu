@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from bajutsu.agents.ai_config import AiConfig, resolve_model
 from bajutsu.ai import AiBackend, MessageResponse, create_backend, resolved_provider
-from bajutsu.analytics import usage
+from bajutsu.common.analytics import usage
 from bajutsu.evidence.redaction import Redactor
 
 

@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from bajutsu.cloud.devicefarm import Platform
+from bajutsu.common.cloud.devicefarm import Platform
 from bajutsu.report.manifest import MAX_LABEL_LENGTH
 from bajutsu.run_id import new_run_id
 from bajutsu.serve import oplog

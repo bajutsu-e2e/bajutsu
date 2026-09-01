@@ -15,7 +15,7 @@ test-spec that runs `bajutsu run --backend adb`, let Device Farm execute it on t
 the artifacts.
 
 The submitter core lives entirely outside the deterministic core, at
-[`bajutsu/cloud/devicefarm.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/cloud/devicefarm.py)
+[`bajutsu/common/cloud/devicefarm.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/cloud/devicefarm.py)
 (`render_test_spec` / `build_package` / `submit_and_collect` and the `DeviceFarmClient` / `Transfer`
 seams, BE-0336), reusable by any caller; the CLI at
 [`scripts/devicefarm_submit.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/scripts/devicefarm_submit.py)

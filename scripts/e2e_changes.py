@@ -108,7 +108,7 @@ _PERIPHERY_EXCLUSIONS: tuple[tuple[str, str], ...] = (
         "the AI provider adapters — no run / codegen / record path imports them for a run's verdict",
     ),
     (
-        "bajutsu/analytics/",
+        "bajutsu/common/analytics/",
         "the analytics ledger the report writer feeds; a run writes it but never asserts on it",
     ),
     (
@@ -120,11 +120,11 @@ _PERIPHERY_EXCLUSIONS: tuple[tuple[str, str], ...] = (
         "the Model Context Protocol server — a separate transport, never on the on-device run path",
     ),
     (
-        "bajutsu/github/",
+        "bajutsu/common/github/",
         "the GitHub App / Actions integration, a hosted-CI concern the run never drives",
     ),
     (
-        "bajutsu/cloud/",
+        "bajutsu/common/cloud/",
         "the AWS Device Farm submitter — a hosted batch path, not the local on-device run",
     ),
     (

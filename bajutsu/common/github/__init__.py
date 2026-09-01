@@ -10,6 +10,6 @@ the `orchestrator` it pulls in, keeping the package usable from the deterministi
 
 from __future__ import annotations
 
-from bajutsu.github.errors import GitHubAccessError
+from bajutsu.common.github.errors import GitHubAccessError
 
 __all__ = ["GitHubAccessError"]
