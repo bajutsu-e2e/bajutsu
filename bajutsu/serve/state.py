@@ -93,8 +93,10 @@ class Job:
     # For a server-backend `run`: download the visual baselines into the workspace before running
     # (the cmd points `--baselines` at a workspace dir). False for local (the real dir is used).
     materialize_baselines: bool = False
-    # Working directory override for the spawned run/build (default: state.cwd, which already points
-    # at a Git checkout or an uploaded bundle when one is bound). None uses state.cwd.
+    # The working directory the spawned run/build gets, captured from the binding when the job is
+    # registered (`ServeState._freeze_binding`, BE-0393 unit 2) so a rebind between registration and
+    # spawn cannot repoint an already-accepted run. None only on a worker-rebuilt job, which resolves
+    # its own workspace at spawn.
     cwd: Path | None = None
     # Provenance to record into the produced run's manifest.json after it finishes (the bound bundle's
     # filename + zip sha256 + size). None for a normal run. Set for a run off an uploaded bundle (BE-0073).
@@ -778,7 +780,7 @@ class ServeState:
 
     def register(self, job: Job) -> Job:
         """Assign *job* its id + live-log bus and store it. Delegates to the registry (BE-0198)."""
-        return self.job_registry.register(job)
+        return self.job_registry.register(self._freeze_binding(job))
 
     def try_register(self, job: Job, *, device_budget: int = 0) -> Job | None:
         """Register *job* only if under the concurrency caps, forwarding this state's configured caps
@@ -786,12 +788,29 @@ class ServeState:
         is the per-target cloud-batch device cap (BE-0336 Unit 4); unlike the state-wide caps it is
         per-target, so the dispatcher resolves it from the request's config and passes it per call."""
         return self.job_registry.try_register(
-            job,
+            self._freeze_binding(job),
             max_concurrent=self.max_concurrent,
             max_concurrent_per_user=self.max_concurrent_per_user,
             max_concurrent_per_org=self.max_concurrent_per_org,
             max_concurrent_batch=device_budget,
         )
+
+    def _freeze_binding(self, job: Job) -> Job:
+        """Capture the working directory *job* will spawn against, at registration (BE-0393 unit 2).
+
+        A job's `--config` is already on its command line, so the configuration a run parses is fixed
+        at dispatch. Its working directory was not: `Job.cwd` defaulted to None and no dispatcher set
+        it, so the spawn read the *live* binding at `popen` time — and a rebind between registration
+        and spawn, a window a device boot or an on-demand build can hold open, repointed a run that
+        had already been accepted. Frozen here, at the one point every dispatcher goes through, rather
+        than in each of them, so a sixth dispatcher cannot forget.
+
+        An explicit `job.cwd` is left alone: a worker rebuilds a job from its spec with no captured
+        directory and resolves its own workspace at spawn, which is that fallback's remaining use.
+        """
+        if job.cwd is None:
+            job.cwd = self.binding.cwd
+        return job
 
     def bind_upload(self, upload: Upload) -> None:
         """Make *upload* the active binding (BE-0073), replacing whatever was bound.

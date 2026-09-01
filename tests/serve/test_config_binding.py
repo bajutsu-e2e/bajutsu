@@ -124,3 +124,39 @@ def test_targets_read_the_owner_off_the_binding(tmp_path: Path) -> None:
     state.binding = dataclasses.replace(state.binding, org="acme")
     assert state.targets_for("acme") == ["demo"]
     assert state.targets_for("other") == []
+
+
+# --- the working directory a job spawns against (BE-0393 unit 2) ---
+
+
+def test_a_registered_job_keeps_the_directory_it_was_accepted_against(tmp_path: Path) -> None:
+    """A rebind between registration and spawn must not repoint a run that was already accepted.
+    The `--config` on the command line already froze which configuration the run parses; the
+    directory it resolves relative paths against is frozen here."""
+    uploads = tmp_path / "uploads"
+    state = _state(tmp_path, uploads_dir=uploads)
+    at_enqueue = state.binding.cwd
+
+    job = state.register(srv.Job(cmd=["bajutsu", "run"]))
+    # The member switches to a bundle while the job sits in the queue.
+    state.bind_upload(_bundle(uploads, "u1"))
+
+    assert state.binding.cwd != at_enqueue  # the live binding did move
+    assert job.cwd == at_enqueue  # the accepted job did not
+
+
+def test_the_capped_registration_path_freezes_it_too(tmp_path: Path) -> None:
+    # `try_register` is the path every dispatcher actually takes; a job accepted under the caps must
+    # carry the same frozen directory as one registered directly.
+    state = _state(tmp_path)
+    job = state.try_register(srv.Job(cmd=["bajutsu", "run"]))
+    assert job is not None and job.cwd == state.binding.cwd
+
+
+def test_an_explicit_working_directory_is_left_alone(tmp_path: Path) -> None:
+    # A worker rebuilds a job from its spec and resolves its own workspace; a caller that named a
+    # directory keeps it.
+    state = _state(tmp_path)
+    elsewhere = tmp_path / "workspace"
+    job = state.register(srv.Job(cmd=["bajutsu", "run"], cwd=elsewhere))
+    assert job.cwd == elsewhere
