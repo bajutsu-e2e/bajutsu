@@ -243,8 +243,8 @@ bind は健全な代理になりません——SSH フォワードを見落と�
 しません。
 
 セッション終了時の `AI usage:` 行に続けて、呼び出し元ごとの内訳（`plan` / `next_action` / `alert-guard`）を
-表示します（`analytics/usage.py`、BE-0194）。これにより、トークン削減の効果を測定できます。各カテゴリは記録した
-すべての呼び出しを漏れなく分けるので、合計は running total に一致します。この内訳は報告専用で、`analytics/usage.py`
+表示します（`common/analytics/usage.py`、BE-0194）。これにより、トークン削減の効果を測定できます。各カテゴリは記録した
+すべての呼び出しを漏れなく分けるので、合計は running total に一致します。この内訳は報告専用で、`common/analytics/usage.py`
 の他の部分と同じく pass/fail には一切関与しません。
 
 ## Claude オーサリングエージェント
