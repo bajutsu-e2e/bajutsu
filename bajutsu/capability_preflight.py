@@ -56,7 +56,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator, Set
 from dataclasses import dataclass
 
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 from bajutsu.scenario import Assertion, Scenario, Step
 
 

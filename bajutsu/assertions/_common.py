@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 from bajutsu.scenario import Selector
 
 if TYPE_CHECKING:

@@ -26,8 +26,8 @@ from driver_conformance import (
     element,
 )
 
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver, React
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver, React
 
 # The scroll conformance screen's geometry on the fake (BE-0326): a 300x800 viewport over content
 # taller than it. Rows of `_ROW_H` stack from the top, so the lower rows start below the fold; the

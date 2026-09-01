@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 from bajutsu.scenario import Assertion, Scenario, Selector, Step
 
 # How a human-supplied value (BE-0182) is resolved deterministically at run time: a `totp` / `email`

@@ -8,8 +8,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.evidence import FileSink, intervals
 from bajutsu.evidence.redaction import (
     CREDENTIAL_SHAPES,

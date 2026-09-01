@@ -21,8 +21,8 @@ from typing import Any, cast
 import yaml
 
 from bajutsu.assertions import AssertionResult, VisualEvidence
-from bajutsu.drivers.actuation import Actuation
-from bajutsu.drivers.base import Frame, Point
+from bajutsu.common.drivers.actuation import Actuation
+from bajutsu.common.drivers.base import Frame, Point
 from bajutsu.evidence import Artifact
 from bajutsu.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
 from bajutsu.report.html import html_report, scenario_render_inputs, write_html_and_junit

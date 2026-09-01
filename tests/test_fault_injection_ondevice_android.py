@@ -43,8 +43,8 @@ import ondevice_evidence
 import pytest
 
 from bajutsu import adb
+from bajutsu.common.drivers import base
 from bajutsu.config import Effective, load_config, resolve
-from bajutsu.drivers import base
 from bajutsu.evidence import intervals
 from bajutsu.runner.launch import launch_driver
 
@@ -72,7 +72,7 @@ _TARGET = "showcase-compose"  # the Compose a11y app: its testTag ids surface as
 # smoke scenario waits for, so a case that cannot resolve it after the fault has found a real problem.
 _KNOWN: base.Selector = {"id": "stable.row.1"}
 
-_TREE_LOGGER = "bajutsu.drivers.coordinate_tree"
+_TREE_LOGGER = "bajutsu.common.drivers.coordinate_tree"
 # Fragments of the read path's own log records — what the cases lift the fault on and assert against,
 # so a reworded record fails loudly rather than silently weakening the lane.
 _RETRYING = "a transient empty; retrying"

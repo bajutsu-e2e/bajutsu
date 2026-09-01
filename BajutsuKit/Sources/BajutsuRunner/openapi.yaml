@@ -4,7 +4,7 @@ info:
   version: 1.0.0
   description: >-
     The loopback HTTP contract between the Python `xcuitest` driver
-    (`bajutsu/drivers/xcuitest.py`) and the resident XCUITest runner. The runner binds
+    (`bajutsu/common/drivers/xcuitest.py`) and the resident XCUITest runner. The runner binds
     `127.0.0.1` only and serves exactly one same-host client, so this document describes a
     private channel rather than a published API. It is transcribed from the behaviour
     `Router.swift` already has, so the generated types stay wire-compatible with the driver

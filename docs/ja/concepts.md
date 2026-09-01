@@ -111,10 +111,10 @@ run では AI なしで同じ証跡が再現します（[evidence](evidence.md)�
 
 | 原則 | 主な実装箇所 |
 |---|---|
-| 曖昧セレクタ即失敗 | `drivers/base.py` `resolve_unique` |
+| 曖昧セレクタ即失敗 | `common/drivers/base.py` `resolve_unique` |
 | 条件待機のみ | `orchestrator/waits.py` `_wait` |
 | クリーン環境 | `runner/launch.py` `launch_driver` · `simctl.py` `Env.erase` |
 | 機械アサーション | `assertions/` |
-| 安定度順 / actuator | `backends.py` `select_actuator` · 各 `drivers/*.py` `capabilities()` |
+| 安定度順 / actuator | `backends.py` `select_actuator` · 各 `common/drivers/*.py` `capabilities()` |
 | アプリ非依存 | `config/resolve.py` `resolve` → `Effective` |
 | 証跡ルール | `orchestrator/loop.py` `_collect_captures` · `evidence/core.py` |

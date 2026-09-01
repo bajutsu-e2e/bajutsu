@@ -14,7 +14,7 @@ from pathlib import Path
 from _runner import _eff, _lease
 
 from bajutsu.cancellation import CANCELLED_FAILURE
-from bajutsu.drivers.base import BackendCrashError
+from bajutsu.common.drivers.base import BackendCrashError
 from bajutsu.orchestrator import RunResult
 from bajutsu.runner import run_all, run_and_report, run_matrix_and_report
 from bajutsu.scenario import Scenario

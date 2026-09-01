@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from bajutsu.common.drivers import base as driver_base
 from bajutsu.config import Effective, resolve
 from bajutsu.config.schema import Config
-from bajutsu.drivers import base as driver_base
 from bajutsu.serve.authz import _target_forbidden
 from bajutsu.serve.helpers import (
     valid_backend,

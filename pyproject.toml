@@ -311,8 +311,8 @@ type = "forbidden"
 source_modules = [
     "bajutsu.orchestrator",
     "bajutsu.runner",
-    "bajutsu.drivers.base",
-    "bajutsu.drivers.actuation",
+    "bajutsu.common.drivers.base",
+    "bajutsu.common.drivers.actuation",
     "bajutsu.assertions",
     "bajutsu.evidence",
     "bajutsu.report",
@@ -343,13 +343,13 @@ forbidden_modules = [
 # `bajutsu/serve/` alone. The periphery contract above already keeps the core off `bajutsu.serve`;
 # this forbids a core module from reaching the extras *directly*, which the internal layer graph
 # can't express — so `include_external_packages` lets import-linter see the external import. The
-# whole `bajutsu.drivers` package is covered here, beyond the `bajutsu.drivers.base` above.
+# whole `bajutsu.common.drivers` package is covered here, beyond the `bajutsu.common.drivers.base` above.
 [[tool.importlinter.contracts]]
 name = "Deterministic core stays free of the db/oauth hosting extras"
 type = "forbidden"
 source_modules = [
     "bajutsu.config",
-    "bajutsu.drivers",
+    "bajutsu.common.drivers",
     "bajutsu.runner",
     "bajutsu.scenario",
 ]
@@ -371,10 +371,10 @@ name = "Scenario schema and Driver Protocol stay a portable inner contract"
 type = "forbidden"
 source_modules = [
     "bajutsu.scenario",
-    "bajutsu.drivers.base",
+    "bajutsu.common.drivers.base",
     # The actuation record is part of the same portable contract: a consumer implementing a `Driver`
     # gets the record type without pulling in the orchestrator / runner / report.
-    "bajutsu.drivers.actuation",
+    "bajutsu.common.drivers.actuation",
 ]
 forbidden_modules = [
     "bajutsu.orchestrator",
@@ -387,7 +387,7 @@ forbidden_modules = [
     "bajutsu.doctor",
     "bajutsu.lint",
 ]
-# `drivers/base.py`'s `Collector` Protocol reference is a TYPE_CHECKING-only dependency on the
+# `common/drivers/base.py`'s `Collector` Protocol reference is a TYPE_CHECKING-only dependency on the
 # network-exchange model every driver reports through — pre-dating BE-0257, when `network.py` was a
 # flat sibling module, not part of `bajutsu.evidence`. Packaging it under `evidence/` pulled this
 # one pre-existing edge under the forbidden entry above; scoping the exception to it (rather than
@@ -395,7 +395,7 @@ forbidden_modules = [
 # `evidence/core.py` / `intervals.py` / `visual.py` / `golden.py` / `redaction.py`, which the inner
 # contract must still never reach.
 ignore_imports = [
-    "bajutsu.drivers.base -> bajutsu.evidence.network",
+    "bajutsu.common.drivers.base -> bajutsu.evidence.network",
 ]
 
 # The redaction boundary (BE-0331): `run_root` derives the writable filesystem path of a run

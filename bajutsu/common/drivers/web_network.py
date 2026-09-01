@@ -90,7 +90,7 @@ class WebNetworkCollector:
             # late event rather than let it surface as an unhandled error on Playwright's event loop.
             # Narrow to Playwright's own error family (the same recognition `_wedge_guard` uses) so a
             # genuine bug still fails loudly (prime directive 2) instead of vanishing from the collector.
-            from bajutsu.drivers.playwright import _playwright_error_types
+            from bajutsu.common.drivers.playwright import _playwright_error_types
 
             if not isinstance(exc, _playwright_error_types()):
                 raise

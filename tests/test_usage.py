@@ -8,7 +8,7 @@ from bajutsu.agents.claude import ClaudeAgent
 from bajutsu.agents.protocols import Observation
 from bajutsu.analytics import usage
 from bajutsu.analytics.usage import TokenUsage
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 
 
 def _obs() -> Observation:

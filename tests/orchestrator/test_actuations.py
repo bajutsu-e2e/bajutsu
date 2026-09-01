@@ -14,9 +14,9 @@ from __future__ import annotations
 from _orch import FakeClock, _scenario
 from conftest import GUARD_LABEL, AlertingDriver, el
 
-from bajutsu.drivers import base
-from bajutsu.drivers.actuation import MAX_RECORDS, Actuation, ActuationLog
-from bajutsu.drivers.fake import FakeDriver
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.actuation import MAX_RECORDS, Actuation, ActuationLog
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.orchestrator import AlertGuardConfig, run_scenario
 from bajutsu.orchestrator.actions.handlers._gesture_math import _scroll_gesture
 

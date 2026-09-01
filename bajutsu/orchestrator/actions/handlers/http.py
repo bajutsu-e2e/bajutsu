@@ -3,7 +3,7 @@ optionally save the response body to vars.*."""
 
 from __future__ import annotations
 
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 from bajutsu.orchestrator.actions._registry import _handler
 from bajutsu.scenario import HttpRequest, Step
 

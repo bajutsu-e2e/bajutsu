@@ -19,8 +19,8 @@ from pydantic import (
     model_validator,
 )
 
+from bajutsu.common.drivers import base
 from bajutsu.deprecations import reject_renamed_key
-from bajutsu.drivers import base
 from bajutsu.scenario import AfterRule, Interrupt, Redact, Step, SystemAlertHandlingField
 
 # Playwright rendering engines a web target can drive (BE-0076). Chromium is the default,

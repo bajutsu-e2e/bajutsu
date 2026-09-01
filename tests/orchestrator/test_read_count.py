@@ -16,8 +16,8 @@ from pathlib import Path
 from _orch import FakeClock, _scenario
 from conftest import el
 
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver, React
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver, React
 from bajutsu.evidence import Artifact, FileSink, NullSink
 from bajutsu.evidence.intervals import Interval
 from bajutsu.evidence.network import NetworkExchange

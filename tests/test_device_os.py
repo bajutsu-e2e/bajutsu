@@ -6,8 +6,8 @@ from __future__ import annotations
 import pytest
 
 from bajutsu import backends, device_os
+from bajutsu.common.drivers.xcuitest import XcuitestDriver
 from bajutsu.device_os import DeviceOS
-from bajutsu.drivers.xcuitest import XcuitestDriver
 
 
 @pytest.mark.parametrize(

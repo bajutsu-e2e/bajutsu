@@ -104,9 +104,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
 
+from bajutsu.common.drivers import base
 from bajutsu.config import Effective
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
-from bajutsu.drivers import base
 from bajutsu.evidence import intervals
 from bajutsu.evidence.network import Collector
 from bajutsu.orchestrator import DeviceControl, RelaunchFn

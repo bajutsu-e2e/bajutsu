@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 
 from bajutsu.assertions import EvalContext, evaluate, evaluate_one
-from bajutsu.drivers.fake import FakeDriver
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.evidence import network
 from bajutsu.evidence.network import (
     AppCommandReport,

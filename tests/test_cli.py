@@ -857,7 +857,7 @@ def test_doctor_xcuitest_uses_a_short_lived_runner_for_screen_query(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from bajutsu.cli.commands.doctor import _current_screen
-    from bajutsu.drivers import base
+    from bajutsu.common.drivers import base
     from bajutsu.scenario import Redact
 
     eff = Effective(

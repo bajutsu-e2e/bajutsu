@@ -13,8 +13,8 @@ from bajutsu import device_os, handoff
 from bajutsu.analysis import stats as _stats
 from bajutsu.analytics import ledger as _usage_ledger
 from bajutsu.analytics import stats as _usage_stats
+from bajutsu.common.drivers import base as driver_base
 from bajutsu.config import Config, load_config, resolve
-from bajutsu.drivers import base as driver_base
 from bajutsu.evidence import StepView, step_view
 from bajutsu.scenario import declared_name, load_scenario_file
 from bajutsu.scenario.models import STEP_ACTIONS, Scenario, Step
@@ -1032,7 +1032,7 @@ def resolve_scenario_pick(  # noqa: PLR0911
     except (json.JSONDecodeError, OSError, AttributeError, TypeError):
         return {"error": "elements.json is corrupt or unreadable"}, 400
 
-    from bajutsu.elements import screen_size_from_elements
+    from bajutsu.common.drivers.elements import screen_size_from_elements
     from bajutsu.record_capture import resolve_capture
 
     sw, sh = screen_size_from_elements(elements)

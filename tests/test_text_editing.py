@@ -7,8 +7,8 @@ selection-state contract `copy` relies on — `copy` fails deterministically wit
 
 from __future__ import annotations
 
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
 from bajutsu.scenario import load_scenarios
 

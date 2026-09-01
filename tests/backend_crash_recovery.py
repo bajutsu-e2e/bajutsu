@@ -38,7 +38,7 @@ import pytest
 from _pytest.nodes import Node
 from _pytest.runner import runtestprotocol
 
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 from bajutsu.runner.recovery import (
     CrashRecoveryBudget,
     RetryDecision,

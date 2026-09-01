@@ -31,7 +31,7 @@ that the scenario is already authored — there's no Claude step, so no API key.
 ## No Mac? The same story on a fake device (zero setup)
 
 The identical author → run → modify → diagnose lifecycle also runs against an in-memory
-[`FakeDriver`](../../bajutsu/drivers/fake.py) — no Simulator, no Xcode, no API key, on Linux/CI in
+[`FakeDriver`](../../bajutsu/common/drivers/fake.py) — no Simulator, no Xcode, no API key, on Linux/CI in
 seconds:
 
 ```bash

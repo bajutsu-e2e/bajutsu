@@ -16,11 +16,11 @@ from typing import Any
 
 import pytest
 
-import bajutsu.drivers.adb as adb_driver_mod
+import bajutsu.common.drivers.adb as adb_driver_mod
 from bajutsu import adb, stall_diagnostics
-from bajutsu.drivers import base
-from bajutsu.drivers.actuation import Actuation
-from bajutsu.drivers.adb import (
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.actuation import Actuation
+from bajutsu.common.drivers.adb import (
     AdbActUnsupported,
     AdbDriver,
     AdbResidentError,

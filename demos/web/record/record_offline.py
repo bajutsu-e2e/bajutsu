@@ -31,8 +31,8 @@ import re
 from pathlib import Path
 
 from bajutsu.agents.protocols import Observation, Proposal
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.orchestrator import RunResult, run_scenario
 from bajutsu.record import record
 from bajutsu.scenario import Assertion, Scenario, Step, dump_scenarios

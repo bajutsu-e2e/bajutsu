@@ -8,7 +8,7 @@
 > `request` アサーションが蓄積された通信を照合します。
 >
 > 実装: `bajutsu/evidence/network.py`（モデルとコレクタ）、`bajutsu/assertions/network.py`（`request` の評価）、
-> `bajutsu/web_network.py`（Playwright ネイティブのコレクタとモック、BE-0054）、アプリ内 SDK（software
+> `bajutsu/common/drivers/web_network.py`（Playwright ネイティブのコレクタとモック、BE-0054）、アプリ内 SDK（software
 > development kit、ソフトウェア開発キット） — iOS は [`BajutsuKit`](../../BajutsuKit/README.md)、Android は
 > [`BajutsuAndroid`](../../BajutsuAndroid/README.md)。Web（Playwright）バックエンドは SDK を必要とせず、
 > ページの通信をネイティブに観測します。

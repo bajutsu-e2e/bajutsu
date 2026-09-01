@@ -12,6 +12,8 @@ from conftest import FakeBackend, FakeBlock, ShotDriver, el
 from bajutsu import crawl
 from bajutsu.agents.ai_config import AiConfig
 from bajutsu.ai.base import TextPart
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.crawl import tabs as crawl_tabs
 from bajutsu.crawl.guide import (
     ClaudeActionProposer,
@@ -23,8 +25,6 @@ from bajutsu.crawl.guide import (
     make_guide,
 )
 from bajutsu.crawl.serialize import action_to_dict
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence.redaction import PLACEHOLDER, Redactor
 from bajutsu.scenario import Redact
 

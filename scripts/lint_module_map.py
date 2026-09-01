@@ -59,8 +59,6 @@ GRANDFATHERED = frozenset(
         "device_id.py",
         "device_os.py",
         "diagnostics.py",
-        "dom.py",
-        "elements.py",
         "from_grouping.py",
         "handoff.py",
         "notify.py",
@@ -72,9 +70,6 @@ GRANDFATHERED = frozenset(
         "screenshots.py",
         "stall_diagnostics.py",
         "totp.py",
-        "web_network.py",
-        "webview.py",
-        "zorder.py",
     }
 )
 

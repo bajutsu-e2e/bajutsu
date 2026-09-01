@@ -7,7 +7,7 @@ from conftest import FakeBackend, FakeBlock
 from bajutsu.agents.claude_enrich import ClaudeEnrichmentAgent, _render_enrichment
 from bajutsu.agents.protocols import StepContext
 from bajutsu.ai.base import ImagePart, NamedTool, TextPart
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.scenario import Redact, Scenario, Step
 

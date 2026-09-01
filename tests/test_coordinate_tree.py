@@ -13,9 +13,9 @@ from collections.abc import Callable
 
 import pytest
 
-from bajutsu.drivers import base
-from bajutsu.drivers.adb import AdbDriver
-from bajutsu.drivers.coordinate_tree import CoordinateTreeDriver
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.adb import AdbDriver
+from bajutsu.common.drivers.coordinate_tree import CoordinateTreeDriver
 
 
 def _adb_tree(n: int) -> str:
@@ -50,7 +50,7 @@ BackendFactory = Callable[[list[int]], tuple[CoordinateTreeDriver, list[int]]]
 
 #: The read path's own logger. Both fault-injection lanes (BE-0305) attach to this exact name, so the
 #: tests below assert over it rather than over whatever else `caplog` happened to capture.
-_LOGGER = "bajutsu.drivers.coordinate_tree"
+_LOGGER = "bajutsu.common.drivers.coordinate_tree"
 
 _BACKENDS = pytest.mark.parametrize("backend", [_adb_backend], ids=["adb"])
 

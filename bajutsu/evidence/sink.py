@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu.artifact_perms import restrict_file
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 from bajutsu.evidence.redaction import Redactor, mask_credential_shapes
 
 # Aliased private: imported under its public name, this module would re-export the very path

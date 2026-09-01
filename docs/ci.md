@@ -66,7 +66,7 @@ fails `make check` rather than surfacing months later as a mysteriously green re
 `test_periphery_exclusion_paths_exist` and `test_every_plain_literal_path_in_the_filter_exists` resolve
 every exclusion entry and every plain path against the tree, so a rename or a deletion fails the gate
 instead of leaving a pattern matching nothing. And the shared core sweeps the two per-backend
-directories (`bajutsu/drivers/`, `bajutsu/platform_lifecycle/environments/`) minus the leaves each lane
+directories (`bajutsu/common/drivers/`, `bajutsu/platform_lifecycle/environments/`) minus the leaves each lane
 names, with a test asserting no file under either fires zero lanes and another asserting each
 `_LANE_CLAIMED` leaf is reclaimed by at least one lane — so a newly added backend module over-fires
 rather than going unseen, and a leaf carved out but claimed by nobody fails the gate. The inverted

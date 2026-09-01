@@ -9,8 +9,8 @@ import pytest
 from _orch import FakeClock, _scenario
 from conftest import GUARD_LABEL, AlertingDriver, el
 
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.evidence import FileSink
 from bajutsu.evidence.network import ScreenTransition
 from bajutsu.orchestrator import AlertGuardConfig, _wait, run_scenario

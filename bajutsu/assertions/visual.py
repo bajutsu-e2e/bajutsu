@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from bajutsu.assertions._common import AssertionResult, _resolve_one, sel_str
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.scenario import (
     ExcludeRegion,
@@ -84,7 +84,7 @@ def _visual_scale(
     resolved frame maps onto the actual image. Returns None when there are no elements to size the
     screen from — the caller then can't resolve any selector to a frame.
     """
-    from bajutsu.elements import screen_size_from_elements
+    from bajutsu.common.drivers.elements import screen_size_from_elements
 
     sw, sh = screen_size_from_elements(elements)
     if sw <= 0 or sh <= 0:

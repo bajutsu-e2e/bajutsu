@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from bajutsu.agents.alerts import ClaudeAlertLocator
-    from bajutsu.drivers import base
+    from bajutsu.common.drivers import base
     from bajutsu.orchestrator import AlertEvent
 
 

@@ -19,9 +19,9 @@ from bajutsu.backends import (
     select_actuator_cost_first,
     select_actuator_for_scenario,
 )
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.adb import HierarchyRead
 from bajutsu.config import DeviceProvider, Effective, IosConfig, WebConfig, XcuitestConfig
-from bajutsu.drivers import base
-from bajutsu.drivers.adb import HierarchyRead
 from bajutsu.scenario import Redact, Scenario
 
 # A synthetic two-actuator platform (a "lean" actuator with no native network plus a "rich" one that
@@ -108,8 +108,8 @@ def test_resolve_skips_an_unavailable_provider() -> None:
 
 
 def test_network_seeded_fake_is_a_readonly_evidence_provider() -> None:
-    from bajutsu.drivers.base import EvidenceProvider
-    from bajutsu.drivers.fake import FakeDriver
+    from bajutsu.common.drivers.base import EvidenceProvider
+    from bajutsu.common.drivers.fake import FakeDriver
     from bajutsu.evidence.network import Collector, NetworkExchange
 
     ex = NetworkExchange(method="GET", path="/items", status=200)
@@ -122,7 +122,7 @@ def test_network_seeded_fake_is_a_readonly_evidence_provider() -> None:
 
 
 def test_plain_fake_advertises_no_network() -> None:
-    from bajutsu.drivers.fake import FakeDriver
+    from bajutsu.common.drivers.fake import FakeDriver
 
     assert base.Capability.NETWORK not in FakeDriver().capabilities()
 
@@ -134,7 +134,7 @@ def test_backend_lifecycle_is_runtime_checkable() -> None:
     # BackendLifecycle is a typing umbrella over the full hook set — no single real driver owns the
     # whole set (see the Protocol docstring). @runtime_checkable still lets isinstance verify the
     # structural "has every hook" shape: a class with all of them passes, one missing any does not.
-    from bajutsu.drivers.base import BackendLifecycle
+    from bajutsu.common.drivers.base import BackendLifecycle
 
     class FullLifecycle:
         def navigate(self) -> None: ...
@@ -154,7 +154,7 @@ def test_backend_lifecycle_is_runtime_checkable() -> None:
 def test_playwright_driver_provides_web_lifecycle() -> None:
     # The three web-only lifecycle calls in platform_lifecycle.py resolve to these concrete methods,
     # so the cast(BackendLifecycle, driver) sites there are backed by real implementations.
-    from bajutsu.drivers.playwright import PlaywrightDriver
+    from bajutsu.common.drivers.playwright import PlaywrightDriver
 
     for name in ("navigate", "close", "reset_context"):
         assert callable(getattr(PlaywrightDriver, name))
@@ -162,7 +162,7 @@ def test_playwright_driver_provides_web_lifecycle() -> None:
 
 def test_xcuitest_driver_provides_await_ready() -> None:
     # The xcuitest-only await_ready call resolves to this concrete method.
-    from bajutsu.drivers.xcuitest import XcuitestDriver
+    from bajutsu.common.drivers.xcuitest import XcuitestDriver
 
     assert callable(XcuitestDriver.await_ready)
 
@@ -297,7 +297,7 @@ def test_make_driver_playwright_requires_base_url() -> None:
 def test_make_driver_forwards_browser_engine(monkeypatch: pytest.MonkeyPatch) -> None:
     # make_driver passes `browser=` straight to PlaywrightDriver, so the web environment's
     # eff.browser reaches the launch (BE-0076). Recorded via a stand-in driver — no real browser.
-    import bajutsu.drivers.playwright as pw_mod
+    import bajutsu.common.drivers.playwright as pw_mod
 
     captured: dict[str, object] = {}
 
@@ -312,7 +312,7 @@ def test_make_driver_forwards_browser_engine(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_make_driver_browser_defaults_to_chromium(monkeypatch: pytest.MonkeyPatch) -> None:
-    import bajutsu.drivers.playwright as pw_mod
+    import bajutsu.common.drivers.playwright as pw_mod
 
     captured: dict[str, object] = {}
 
@@ -326,7 +326,7 @@ def test_make_driver_browser_defaults_to_chromium(monkeypatch: pytest.MonkeyPatc
 
 
 def test_make_driver_xcuitest() -> None:
-    from bajutsu.drivers.xcuitest import XcuitestDriver
+    from bajutsu.common.drivers.xcuitest import XcuitestDriver
 
     driver = make_driver("xcuitest", "UDID-1", runner_port=9999)
     assert isinstance(driver, XcuitestDriver)
@@ -349,7 +349,7 @@ def test_make_driver_forwards_the_xcuitest_diagnostics_hook(
 
     # Patched by name so this file keeps one import form for the driver module — `make_driver` imports
     # `XcuitestDriver` from it at call time, so the module attribute is what it reads.
-    monkeypatch.setattr("bajutsu.drivers.xcuitest.XcuitestDriver", _Recorder)
+    monkeypatch.setattr("bajutsu.common.drivers.xcuitest.XcuitestDriver", _Recorder)
     fired: list[bool] = []
     make_driver(
         "xcuitest",
@@ -371,7 +371,7 @@ def test_make_driver_xcuitest_requires_runner_port() -> None:
 
 
 def test_make_driver_adb() -> None:
-    from bajutsu.drivers.adb import AdbDriver
+    from bajutsu.common.drivers.adb import AdbDriver
 
     driver = make_driver("adb", "emulator-5554")
     assert isinstance(driver, AdbDriver)
@@ -455,7 +455,7 @@ def test_capabilities_for_xcuitest_reads_the_driver_constant_without_a_device() 
     # BE-0019: the richer iOS actuator's capabilities are readable before its runner is wired into
     # selection — reading the class constant constructs no driver and starts no runner.
     from bajutsu.backends import capabilities_for
-    from bajutsu.drivers.xcuitest import XcuitestDriver
+    from bajutsu.common.drivers.xcuitest import XcuitestDriver
 
     caps = capabilities_for("xcuitest")
     assert caps == XcuitestDriver.CAPABILITIES
@@ -570,7 +570,7 @@ def test_capabilities_for_run_narrows_to_the_live_driver_set_on_a_webdriver_endp
     # The live route drives Appium's XCUITest `mobile:` commands, not simctl and not the native text
     # selection the local runner does — so preflight must advertise exactly what the live driver drives
     # (its own CAPABILITIES), the single source of truth, rather than the local XCUITest set.
-    from bajutsu.drivers.xcuitest_live import XcuitestLiveDriver
+    from bajutsu.common.drivers.xcuitest_live import XcuitestLiveDriver
 
     caps = capabilities_for_run("xcuitest", _ios_eff(), _LIVE_ENDPOINT)
     assert caps == XcuitestLiveDriver.CAPABILITIES
@@ -583,7 +583,7 @@ def test_capabilities_for_run_narrows_on_a_url_udid_regardless_of_the_provider()
     # udid spec. If the local case failed to narrow, a `--udid https://…` run under it would advertise
     # the full local set and a select/copy scenario would fail late mid-run instead of being skipped up
     # front — the exact divergence this slice closes (BE-0238).
-    from bajutsu.drivers.xcuitest_live import XcuitestLiveDriver
+    from bajutsu.common.drivers.xcuitest_live import XcuitestLiveDriver
 
     local = capabilities_for_run("xcuitest", _ios_eff(device_provider=None), _LIVE_ENDPOINT)
     appium = capabilities_for_run(

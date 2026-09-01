@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from bajutsu.drivers.actuation import Actuation
+from bajutsu.common.drivers.actuation import Actuation
 from bajutsu.evidence import step_view
 from bajutsu.from_grouping import grouped_provenance
 from bajutsu.orchestrator import RunResult

@@ -15,8 +15,8 @@ import pytest
 
 from bajutsu import adb
 from bajutsu.adb_resident import ResidentChannel
+from bajutsu.common.drivers.adb import ActOutcome, AdbDriver, HierarchyRead
 from bajutsu.config import AndroidConfig, Effective
-from bajutsu.drivers.adb import ActOutcome, AdbDriver, HierarchyRead
 from bajutsu.platform_lifecycle import AndroidEnvironment, ProvisionProfile, environment_for
 from bajutsu.platform_lifecycle.readiness import await_boot
 from bajutsu.scenario import Preconditions, Redact
@@ -543,7 +543,7 @@ def test_android_environment_falls_back_to_dump_when_resident_unavailable(
 ) -> None:
     # A resident startup failure is not fatal: start still returns a working adb driver (reading via
     # `uiautomator dump`), logs the degradation loudly, and leaves nothing to tear down.
-    from bajutsu.drivers.adb import AdbResidentError
+    from bajutsu.common.drivers.adb import AdbResidentError
 
     resident = _FakeResident(error=AdbResidentError("not built"))
     env = AndroidEnvironment(
@@ -925,8 +925,8 @@ def test_await_boot_gives_up_at_the_deadline_rather_than_spinning(
         nonlocal clock
         clock += seconds
 
-    monkeypatch.setattr("bajutsu.drivers.base.time.sleep", fake_sleep)
-    monkeypatch.setattr("bajutsu.drivers.base.time.monotonic", lambda: clock)
+    monkeypatch.setattr("bajutsu.common.drivers.base.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.common.drivers.base.time.monotonic", lambda: clock)
 
     polls: list[list[str]] = []
 

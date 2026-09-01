@@ -1,4 +1,4 @@
-"""Tests for the shared driver helpers in `bajutsu.drivers.base`.
+"""Tests for the shared driver helpers in `bajutsu.common.drivers.base`.
 
 `wait_until` is the single deadline-polling loop every backend shares (BE-0118): each
 driver's `wait_for` is a single-shot check, and this helper turns it into a timeout-honouring
@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 
 
 class LateDriver(FakeDriver):

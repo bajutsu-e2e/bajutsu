@@ -14,8 +14,8 @@ from typing import cast
 
 import pytest
 
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.orchestrator import AlertEvent, AlertGuardConfig
 from bajutsu.orchestrator.types import (
     DEFAULT_DISMISSIVE_LABELS,

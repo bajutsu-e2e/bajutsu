@@ -47,8 +47,8 @@ from driver_conformance import (
 )
 
 from bajutsu import adb
+from bajutsu.common.drivers import base
 from bajutsu.config import Effective, load_config, require_android, resolve
-from bajutsu.drivers import base
 from bajutsu.evidence import intervals
 from bajutsu.runner.launch import launch_driver
 

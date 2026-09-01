@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from bajutsu.drivers.fake import FakeDriver
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.orchestrator.actions.handlers.generate import (
     _datetime_value,
     _do_generate,

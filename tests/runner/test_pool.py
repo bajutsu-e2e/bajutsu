@@ -13,9 +13,10 @@ import pytest
 from _runner import _eff, _el, _web_eff
 
 from bajutsu import simctl
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver, FakeNetworkCollector
+from bajutsu.common.drivers.webview import WebViewBridge
 from bajutsu.config import Effective
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver, FakeNetworkCollector
 from bajutsu.evidence import FileSink
 from bajutsu.evidence.network import NetworkCollector, NetworkExchange, ScreenTransition
 from bajutsu.platform_lifecycle import ProvisionProfile
@@ -25,7 +26,6 @@ from bajutsu.runner import (
     device_relauncher,
 )
 from bajutsu.scenario import Relaunch, Scenario
-from bajutsu.webview import WebViewBridge
 
 
 def test_relauncher_relaunches_with_locale_and_overrides() -> None:

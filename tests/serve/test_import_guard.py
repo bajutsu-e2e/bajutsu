@@ -17,7 +17,7 @@ import sys
 
 # Top-level packages that only an opt-in backend may import — never the default path: the
 # (future) server backend, plus the web backend's Playwright (a heavy dep loaded only when a
-# browser is actually started; see bajutsu/drivers/playwright.py).
+# browser is actually started; see bajutsu/common/drivers/playwright.py).
 FORBIDDEN = sorted(
     {
         "redis",

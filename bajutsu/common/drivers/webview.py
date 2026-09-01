@@ -12,9 +12,8 @@ import urllib.parse
 import urllib.request
 from typing import Protocol
 
-from bajutsu.dom import parse_dom
-from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
-from bajutsu.drivers.base import (
+from bajutsu.common.drivers.actuation import Actuation, ActuationLog, Drained
+from bajutsu.common.drivers.base import (
     Capability,
     Element,
     ElementNotFound,
@@ -25,6 +24,7 @@ from bajutsu.drivers.base import (
     frame_center,
     resolve_unique,
 )
+from bajutsu.common.drivers.dom import parse_dom
 
 # A WebView reports its DOM rects in CSS pixels, in the WebView's own coordinate space rather than the
 # device screen's — so a recorded point is read against the WebView, not against a device screenshot.

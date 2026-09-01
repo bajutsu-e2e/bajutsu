@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 from bajutsu.orchestrator.types import DeviceControl, RelaunchFn, SelectionState
 from bajutsu.scenario import STEP_ACTIONS, Step
 

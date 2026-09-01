@@ -14,8 +14,8 @@ import time
 from typing import Literal
 
 from bajutsu import adb
+from bajutsu.common.drivers import base
 from bajutsu.doctor import namespace_of
-from bajutsu.drivers import base
 from bajutsu.evidence.network import TransitionSource, _no_transitions
 from bajutsu.platform_lifecycle.protocols import ReadinessResult
 

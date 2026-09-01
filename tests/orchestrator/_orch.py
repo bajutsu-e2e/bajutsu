@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from bajutsu.drivers.fake import FakeDriver
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.scenario import Scenario
 
 

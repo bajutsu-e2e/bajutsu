@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from bajutsu.drivers.fake import FakeDriver
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.orchestrator.actions.handlers.totp import _do_totp
 from bajutsu.orchestrator.substitution import _interp_step
 from bajutsu.scenario import Step
@@ -63,7 +63,7 @@ def test_totp_step_invalid_secret_fails_the_step_cleanly() -> None:
     # bubble a decode error that aborts the whole run — and the message must not echo the secret.
     import pytest
 
-    from bajutsu.drivers import base
+    from bajutsu.common.drivers import base
 
     secret = "not!valid!base32"
     step = Step.model_validate({"totp": {"secret": secret, "into": {"var": "code"}}})

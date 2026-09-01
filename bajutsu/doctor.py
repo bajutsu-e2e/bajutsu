@@ -14,8 +14,8 @@ from dataclasses import dataclass
 
 from bajutsu import simctl
 from bajutsu.backends import make_driver
+from bajutsu.common.drivers import base
 from bajutsu.config import Effective, require_web, web_base_url
-from bajutsu.drivers import base
 
 # Traits that count as "actionable" (the denominator for id coverage).
 ACTIONABLE_TRAITS = {
@@ -205,7 +205,7 @@ def probe_screen(
             raise DoctorProbeError("web target needs baseUrl (set targets.<name>.baseUrl)")
         web = require_web(eff)
         # Lazy import keeps Playwright (a heavy optional dep) off the default path.
-        from bajutsu.drivers.playwright import PlaywrightDriver, _playwright_error_types
+        from bajutsu.common.drivers.playwright import PlaywrightDriver, _playwright_error_types
 
         # Probe the same device mode the run will use (BE-0228): a mobile context can render a
         # different element tree, so the id-coverage doctor assesses the real target.

@@ -16,8 +16,8 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 from bajutsu import device_os
+from bajutsu.common.drivers import base
 from bajutsu.device_os import DeviceOS
-from bajutsu.drivers import base
 from bajutsu.scenario import Assertion, Gone, Scenario, Step
 
 if TYPE_CHECKING:

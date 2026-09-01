@@ -49,9 +49,9 @@ def test_configure_lets_a_driver_debug_line_through(
     # The point of the whole module: `logger.debug` in the drivers reached nobody before it.
     monkeypatch.setenv(diagnostics.LEVEL_ENV, "DEBUG")
     diagnostics.configure()
-    logging.getLogger("bajutsu.drivers.adb").debug("resolved a frame")
+    logging.getLogger("bajutsu.common.drivers.adb").debug("resolved a frame")
     err = capsys.readouterr().err
-    assert "DEBUG bajutsu.drivers.adb: resolved a frame" in err
+    assert "DEBUG bajutsu.common.drivers.adb: resolved a frame" in err
 
 
 def test_configure_twice_does_not_double_the_output(
@@ -62,7 +62,7 @@ def test_configure_twice_does_not_double_the_output(
     monkeypatch.setenv(diagnostics.LEVEL_ENV, "DEBUG")
     diagnostics.configure()
     diagnostics.configure()
-    logging.getLogger("bajutsu.drivers.adb").debug("once")
+    logging.getLogger("bajutsu.common.drivers.adb").debug("once")
     assert capsys.readouterr().err.count("once") == 1
 
 
@@ -74,7 +74,7 @@ def test_configure_leaves_the_records_reaching_the_root_logger(
     monkeypatch.setenv(diagnostics.LEVEL_ENV, "DEBUG")
     diagnostics.configure()
     with caplog.at_level(logging.WARNING):
-        logging.getLogger("bajutsu.drivers.adb").warning("read lag")
+        logging.getLogger("bajutsu.common.drivers.adb").warning("read lag")
     assert "read lag" in caplog.text
 
 

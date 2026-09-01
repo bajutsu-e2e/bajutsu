@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from bajutsu.common.drivers import base
 from bajutsu.config.schema import (
     DeviceProvider,
     LaunchServer,
@@ -21,7 +22,6 @@ from bajutsu.config.schema import (
     NotifyEndpoint,
     XcuitestConfig,
 )
-from bajutsu.drivers import base
 from bajutsu.scenario import AfterRule, Interrupt, Redact, Step, SystemAlertHandlingField
 
 

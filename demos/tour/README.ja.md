@@ -29,7 +29,7 @@ make -C demos tour                   # または直接:
 ## Mac が無い場合は？ 同じ物語を仮想デバイスで（セットアップ不要）
 
 まったく同じ 著作 → run → 改変 → 診断 のライフサイクルが、メモリ上の
-[`FakeDriver`](../../bajutsu/drivers/fake.py) に対しても動きます。Simulator も Xcode も APIキーも要らず、
+[`FakeDriver`](../../bajutsu/common/drivers/fake.py) に対しても動きます。Simulator も Xcode も APIキーも要らず、
 Linux/CI で数秒です。
 
 ```bash

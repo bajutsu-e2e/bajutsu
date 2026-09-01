@@ -6,7 +6,7 @@ from typing import Self, cast
 
 from pydantic import Field, model_validator
 
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 from bajutsu.scenario.models._base import _Model
 
 

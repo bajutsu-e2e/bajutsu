@@ -16,8 +16,8 @@ import urllib.request
 from collections.abc import Callable, Mapping
 
 from bajutsu import interp
+from bajutsu.common.drivers import base
 from bajutsu.config import Mailbox
-from bajutsu.drivers import base
 from bajutsu.mailbox import MailboxMessage, read_messages
 from bajutsu.orchestrator import MailboxReader
 

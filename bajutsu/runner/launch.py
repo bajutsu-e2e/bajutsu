@@ -6,8 +6,8 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from bajutsu import simctl
+from bajutsu.common.drivers import base
 from bajutsu.config import Effective
-from bajutsu.drivers import base
 from bajutsu.evidence.network import TransitionSource, _no_transitions
 
 # Readiness polling lives with the platform lifecycle now (BE-0009 Phase 0); re-exported here so

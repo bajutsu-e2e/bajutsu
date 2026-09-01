@@ -6,7 +6,7 @@ from __future__ import annotations
 import fnmatch
 from collections.abc import Iterator, Mapping
 
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 from bajutsu.scenario import CaptureRule, Extract, Scenario, Selector, Step
 
 # Scenario-wide interval recordings, in canonical order. These are heavy, so they are opt-in

@@ -87,7 +87,7 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 
 | 語 | 意味 |
 |---|---|
-| **driver** | 抽象的な `Driver` インターフェース（`bajutsu/drivers/base.py` の `Protocol`）です。唯一のプラットフォーム依存の継ぎ目で、どの actuator もこれを実装します。 |
+| **driver** | 抽象的な `Driver` インターフェース（`bajutsu/common/drivers/base.py` の `Protocol`）です。唯一のプラットフォーム依存の継ぎ目で、どの actuator もこれを実装します。 |
 | **backend** | `--backend` と config の `backend:` が受け付けるユーザー向けのトークンです。platform の別名（`ios`）か、actuator の名前そのもの（`xcuitest`）のどちらかです。「backend」は入力トークンの総称で、解決されて actuator になります。 |
 | **actuator** | 実際に操作（tap / type / swipe / query）を担う具体的なエンジンで、driver が実装するものです。backend のトークンは一つの actuator に解決され、run の開始時に確定して以後は固定されます。 |
 | **platform** | 対象の種類を表す粗いトークン（`ios` / `android` / `web` / `fake`）で、安定度順（最も安定するものが先）の actuator のリストに展開されます。 |

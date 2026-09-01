@@ -1,7 +1,7 @@
 """MkDocs hook: rewrite links that escape ``docs/`` (and cross-language links) at build time.
 
 Most ``docs/*.md`` pages link to files *outside* the published tree — ``../DESIGN.md``,
-``../roadmaps/…``, ``../bajutsu/drivers/base.py`` — paths that resolve when GitHub renders the
+``../roadmaps/…``, ``../bajutsu/common/drivers/base.py`` — paths that resolve when GitHub renders the
 source but that ``mkdocs build --strict`` rejects as unresolvable internal links. Rewriting those
 links in the source itself would mean a large two-language diff and would replace GitHub-readable
 relative links with absolute URLs in the very files we want to keep browseable on GitHub.

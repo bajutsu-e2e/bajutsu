@@ -18,7 +18,7 @@ import logging
 import tempfile
 from pathlib import Path
 
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 
 _logger = logging.getLogger(__name__)
 

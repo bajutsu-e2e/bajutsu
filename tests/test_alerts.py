@@ -11,8 +11,8 @@ from conftest import GUARD_LABEL, AlertingDriver, FakeBackend, FakeBlock, ShotDr
 from bajutsu.agents.alerts import AlertDecision, ClaudeAlertLocator, SystemAlertGuard
 from bajutsu.agents.protocols import Proposal
 from bajutsu.ai.base import AnyTool, ImagePart, TextPart
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.evidence import FileSink
 from bajutsu.orchestrator import AlertEvent, AlertGuardConfig, run_scenario
 from bajutsu.record import record as record_loop

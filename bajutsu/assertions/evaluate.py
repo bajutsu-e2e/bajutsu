@@ -30,7 +30,7 @@ from bajutsu.assertions.network import (
 )
 from bajutsu.assertions.schema import SchemaContext, _eval_response_schema
 from bajutsu.assertions.visual import VisualContext, _eval_visual
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 from bajutsu.evidence.network import NetworkExchange
 from bajutsu.scenario import (
     ASSERTION_KINDS,
@@ -335,7 +335,7 @@ def _eval_golden(
     if ctx.screen is not None:
         screen = ctx.screen
     else:
-        from bajutsu.elements import screen_size_from_elements
+        from bajutsu.common.drivers.elements import screen_size_from_elements
 
         sw, sh = screen_size_from_elements(elements)
         screen = (0.0, 0.0, sw, sh)

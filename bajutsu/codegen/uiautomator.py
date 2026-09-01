@@ -38,7 +38,7 @@ from bajutsu.codegen.common import (
     permissions_setup_lines,
     render_test_file,
 )
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 from bajutsu.scenario import AfterRule, Assertion, Gone, Scenario, Step, WaitRequest
 from bajutsu.scenario.models.assertions import CountMatch, TextMatch, Wait
 

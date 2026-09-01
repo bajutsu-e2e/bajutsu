@@ -17,10 +17,10 @@ from conftest import el, json_list, json_obj
 
 from bajutsu import device_errors
 from bajutsu.cli.commands.crawl import SCREENMAP_NAME, _write_screenmap
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.crawl import core as crawl
 from bajutsu.crawl import serialize
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence.redaction import PLACEHOLDER
 from bajutsu.evidence.sink import RunArtifactWriter
 

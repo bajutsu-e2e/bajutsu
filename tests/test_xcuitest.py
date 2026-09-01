@@ -16,8 +16,8 @@ from typing import Any
 
 import pytest
 
-from bajutsu.drivers import base
-from bajutsu.drivers.xcuitest import (
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.xcuitest import (
     _ACTUATION_TIMEOUT_SECONDS,
     _MAX_ATTEMPTS,
     _RECOVERY_TIMEOUT_SECONDS,
@@ -839,7 +839,7 @@ def test_raw_transport_applies_the_per_method_socket_timeout(
         def close(self) -> None:
             pass
 
-    monkeypatch.setattr("bajutsu.drivers.xcuitest.http.client.HTTPConnection", _FakeConn)
+    monkeypatch.setattr("bajutsu.common.drivers.xcuitest.http.client.HTTPConnection", _FakeConn)
     transport = _raw_http_transport("127.0.0.1", 1234)
     transport("GET", "/elements", None)
     transport("POST", "/gesture", {"kind": "pinch"})
@@ -867,7 +867,7 @@ def test_raw_transport_splits_delivery_on_connect_versus_send(
         def close(self) -> None:
             pass
 
-    monkeypatch.setattr("bajutsu.drivers.xcuitest.http.client.HTTPConnection", _Conn)
+    monkeypatch.setattr("bajutsu.common.drivers.xcuitest.http.client.HTTPConnection", _Conn)
     transport = _raw_http_transport("127.0.0.1", 1234)
 
     fail_at = "connect"

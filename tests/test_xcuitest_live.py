@@ -18,15 +18,15 @@ from typing import Any
 
 import pytest
 
-from bajutsu.config import load_config, resolve
-from bajutsu.drivers import base
-from bajutsu.drivers.xcuitest_live import (
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.xcuitest_live import (
     BACKSPACE_KEY,
     ELEMENT_KEY,
     WebDriverClient,
     WebDriverError,
     XcuitestLiveDriver,
 )
+from bajutsu.config import load_config, resolve
 from bajutsu.platform_lifecycle.environments.xcuitest import XcuitestEnvironment
 from bajutsu.platform_lifecycle.environments.xcuitest_live import (
     XcuitestLiveEnvironment,

@@ -8,6 +8,7 @@ from typing import Any
 
 from bajutsu import adb, device_errors, doctor, simctl
 from bajutsu.backends import IMPLEMENTED, resolve_actuators
+from bajutsu.common.drivers import base
 from bajutsu.config import (
     Effective,
     android_package,
@@ -17,7 +18,6 @@ from bajutsu.config import (
     web_base_url,
     web_engine,
 )
-from bajutsu.drivers import base
 from bajutsu.serve.operations._common import _device_args
 from bajutsu.serve.state import ServeState
 

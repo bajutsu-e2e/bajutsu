@@ -32,8 +32,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
 
-from bajutsu.drivers import base
-from bajutsu.elements import screen_size_from_elements
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.elements import screen_size_from_elements
 from bajutsu.orchestrator.actions._registry import _handler
 from bajutsu.orchestrator.actions.handlers._gesture_math import _SWIPE_FRACTION, _scroll_gesture
 from bajutsu.scenario import Step

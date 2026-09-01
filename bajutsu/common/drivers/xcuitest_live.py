@@ -39,8 +39,8 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from bajutsu.drivers import base
-from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.actuation import Actuation, ActuationLog, Drained
 from bajutsu.evidence import intervals
 
 # The W3C element-reference key: `findElements` returns each element as `{ELEMENT_KEY: "<id>"}`, and

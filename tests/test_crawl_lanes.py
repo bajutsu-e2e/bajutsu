@@ -19,9 +19,9 @@ from bajutsu.cli.commands.crawl import (
     _wire_health,
     _write_screenmap,
 )
+from bajutsu.common.drivers import base
 from bajutsu.config import Effective
 from bajutsu.crawl.core import AliveCheck, ClearBlocking, Recover, Reset
-from bajutsu.drivers import base
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.run_files import RunArtifactReader

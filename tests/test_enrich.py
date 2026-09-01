@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from bajutsu.agents.enrich import enrich
 from bajutsu.agents.protocols import EnrichmentProposal, StepContext
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.scenario import Assertion, Scenario, Step
 
 

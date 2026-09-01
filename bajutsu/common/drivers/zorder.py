@@ -13,7 +13,7 @@ import urllib.error
 import urllib.request
 from typing import Protocol
 
-from bajutsu.drivers.base import native_z_from_json
+from bajutsu.common.drivers.base import native_z_from_json
 
 
 class ZOrderSource(Protocol):

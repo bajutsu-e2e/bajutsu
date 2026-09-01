@@ -20,6 +20,7 @@ from bajutsu.backends import (
     select_actuator_for_scenario,
 )
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
+from bajutsu.common.drivers import base
 from bajutsu.config import (
     Effective,
     android_package,
@@ -29,7 +30,6 @@ from bajutsu.config import (
     web_engine,
 )
 from bajutsu.doctor import DoctorProbeError, probe_screen, render, score
-from bajutsu.drivers import base
 from bajutsu.platform_lifecycle.environments.xcuitest import (
     bundled_runner_toolchain_note,
     effective_device_type,

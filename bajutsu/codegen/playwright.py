@@ -31,7 +31,7 @@ from bajutsu.codegen.common import (
     permissions_setup_lines,
     render_test_file,
 )
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 from bajutsu.scenario import AfterRule, Assertion, Gone, RequestMatch, Scenario, Step
 from bajutsu.scenario.models.assertions import CountMatch, TextMatch, Wait, WaitRequest
 
@@ -97,7 +97,7 @@ def _re_raw(pattern: str) -> str:
 # None), so the predicate reads `e.body` and guards `!== null` first (BE-0085).
 
 # Installed before navigation so it captures the whole flow. Captured on 'requestfinished' — the same
-# event the runtime web collector uses (`bajutsu/web_network.py`), so `status` is null when a request
+# event the runtime web collector uses (`bajutsu/common/drivers/web_network.py`), so `status` is null when a request
 # has no response, matching the collector's finished-exchange list (an earlier 'response' hook could
 # not represent that case). The explicit `+` joins keep each list item one string (no implicit
 # adjacent-literal concatenation, which reads as a missing comma).

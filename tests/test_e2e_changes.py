@@ -73,7 +73,7 @@ def test_run_path_top_level_modules_are_relevant() -> None:
         "bajutsu/assertions/network.py",
         "bajutsu/assertions/schema.py",
         "bajutsu/assertions/_common.py",
-        "bajutsu/elements.py",
+        "bajutsu/common/drivers/elements.py",
         "bajutsu/evidence/visual.py",
         "bajutsu/evidence/golden.py",
         "bajutsu/codegen/emit.py",
@@ -301,8 +301,8 @@ def test_serve_analytics_modules_are_relevant_on_no_lane_except_web_serve() -> N
 def test_ios_lane_surface() -> None:
     # iOS (the default lane) drives only the XCUITest driver modules, BajutsuKit, its own showcase
     # apps, its own conformance harness, and its own workflow file.
-    assert is_relevant(["bajutsu/drivers/xcuitest.py"]) is True
-    assert is_relevant(["bajutsu/drivers/xcuitest_live.py"]) is True
+    assert is_relevant(["bajutsu/common/drivers/xcuitest.py"]) is True
+    assert is_relevant(["bajutsu/common/drivers/xcuitest_live.py"]) is True
     assert is_relevant(["BajutsuKit/Sources/x.swift"]) is True
     assert is_relevant(["demos/showcase/ios/swiftui/App.swift"]) is True
     assert is_relevant(["tests/test_driver_conformance_ondevice.py"]) is True
@@ -321,11 +321,11 @@ def test_ios_lane_surface() -> None:
     assert is_relevant(["demos/showcase/network/assert_network_evidence.py"], "android") is False
     assert is_relevant(["demos/showcase/network/assert_network_evidence.py"], "web") is False
     # ...but not another lane's driver, app SDK, or workflow — the regression this fixes: a bare
-    # `bajutsu/drivers/` sweep previously fired the metered macOS jobs on an adb-only or
+    # `bajutsu/common/drivers/` sweep previously fired the metered macOS jobs on an adb-only or
     # playwright-only change that XCUITest never imports.
-    assert is_relevant(["bajutsu/drivers/adb.py"]) is False
-    assert is_relevant(["bajutsu/drivers/coordinate_tree.py"]) is False
-    assert is_relevant(["bajutsu/drivers/playwright.py"]) is False
+    assert is_relevant(["bajutsu/common/drivers/adb.py"]) is False
+    assert is_relevant(["bajutsu/common/drivers/coordinate_tree.py"]) is False
+    assert is_relevant(["bajutsu/common/drivers/playwright.py"]) is False
     assert is_relevant(["BajutsuAndroid/src/Clipboard.kt"]) is False
     assert is_relevant([".github/workflows/web-e2e.yml"]) is False
 
@@ -333,7 +333,7 @@ def test_ios_lane_surface() -> None:
 def test_android_lane_surface() -> None:
     # Android drives only the adb driver (+ the resident channel), its own showcase and app SDKs, its
     # own conformance harness, and its own workflow file.
-    assert is_relevant(["bajutsu/drivers/adb.py"], "android") is True
+    assert is_relevant(["bajutsu/common/drivers/adb.py"], "android") is True
     assert is_relevant(["bajutsu/adb_resident.py"], "android") is True
     assert is_relevant(["demos/showcase/android/Makefile"], "android") is True
     assert is_relevant(["BajutsuAndroid/src/Clipboard.kt"], "android") is True
@@ -355,27 +355,27 @@ def test_android_lane_surface() -> None:
     # codegen CLI command is android-relevant — the one CLI command besides `run` this lane drives.
     assert is_relevant(["bajutsu/cli/commands/codegen.py"], "android") is True
     # ...but not another lane's driver, app, or workflow.
-    assert is_relevant(["bajutsu/drivers/playwright.py"], "android") is False
+    assert is_relevant(["bajutsu/common/drivers/playwright.py"], "android") is False
     assert is_relevant(["BajutsuKit/Sources/x.swift"], "android") is False
     assert is_relevant([".github/workflows/web-e2e.yml"], "android") is False
 
 
 def test_android_lane_catches_the_adb_drivers_own_dependencies() -> None:
-    # adb.py imports `bajutsu.drivers.base` (the Driver Protocol / selector resolution every driver
-    # subclasses) and `bajutsu.drivers.coordinate_tree` (the read/settle core, BE-0254) — a change
+    # adb.py imports `bajutsu.common.drivers.base` (the Driver Protocol / selector resolution every driver
+    # subclasses) and `bajutsu.common.drivers.coordinate_tree` (the read/settle core, BE-0254) — a change
     # to either can change adb's runtime behavior, so both must trigger the
-    # Android lane even though its fragment narrows the rest of `bajutsu/drivers/` to `adb.py` alone.
-    assert is_relevant(["bajutsu/drivers/base.py"], "android") is True
-    assert is_relevant(["bajutsu/drivers/coordinate_tree.py"], "android") is True
+    # Android lane even though its fragment narrows the rest of `bajutsu/common/drivers/` to `adb.py` alone.
+    assert is_relevant(["bajutsu/common/drivers/base.py"], "android") is True
+    assert is_relevant(["bajutsu/common/drivers/coordinate_tree.py"], "android") is True
     # base.py is universal — every lane's driver imports it, so it triggers on every lane too.
     for lane in ("ios", "android", "web"):
-        assert is_relevant(["bajutsu/drivers/base.py"], lane) is True, lane
+        assert is_relevant(["bajutsu/common/drivers/base.py"], lane) is True, lane
 
 
 def test_web_lane_surface() -> None:
     # The web lane drives only the Playwright driver, the serve backend + templates (the serve-UI
     # dogfood), the web + serve-ui demos, its own conformance harness, and its own workflow file.
-    assert is_relevant(["bajutsu/drivers/playwright.py"], "web") is True
+    assert is_relevant(["bajutsu/common/drivers/playwright.py"], "web") is True
     assert is_relevant(["bajutsu/serve/app.py"], "web") is True
     assert is_relevant(["bajutsu/templates/report.html"], "web") is True
     assert is_relevant(["demos/serve-ui/scenario.yaml"], "web") is True
@@ -383,16 +383,16 @@ def test_web_lane_surface() -> None:
     assert is_relevant(["tests/test_driver_conformance_web.py"], "web") is True
     assert is_relevant([".github/workflows/web-e2e.yml"], "web") is True
     # ...but not the Android app SDK, the iOS showcase, another lane's driver, or another lane's
-    # workflow — the regression this fixes: a bare `bajutsu/drivers/` sweep previously fired the
+    # workflow — the regression this fixes: a bare `bajutsu/common/drivers/` sweep previously fired the
     # Playwright jobs on an XCUITest-only or adb-only change that `playwright.py` never imports.
     assert is_relevant(["BajutsuAndroid/src/Clipboard.kt"], "web") is False
     assert is_relevant(["demos/showcase/ios/swiftui/App.swift"], "web") is False
     assert is_relevant([".github/workflows/android-e2e.yml"], "web") is False
     assert is_relevant([".github/actions/setup-android-toolchain/action.yml"], "web") is False
-    assert is_relevant(["bajutsu/drivers/xcuitest.py"], "web") is False
-    assert is_relevant(["bajutsu/drivers/xcuitest_live.py"], "web") is False
-    assert is_relevant(["bajutsu/drivers/adb.py"], "web") is False
-    assert is_relevant(["bajutsu/drivers/coordinate_tree.py"], "web") is False
+    assert is_relevant(["bajutsu/common/drivers/xcuitest.py"], "web") is False
+    assert is_relevant(["bajutsu/common/drivers/xcuitest_live.py"], "web") is False
+    assert is_relevant(["bajutsu/common/drivers/adb.py"], "web") is False
+    assert is_relevant(["bajutsu/common/drivers/coordinate_tree.py"], "web") is False
 
 
 # --- Package sweeps that a module→package split used to silently break ----------------------------
@@ -428,7 +428,7 @@ def test_lifecycle_package_files_are_relevant() -> None:
 
 
 def test_lifecycle_environment_leaves_fire_only_their_own_lane() -> None:
-    # The four per-backend `Environment` leaves follow the `bajutsu/drivers/` contract one layer up:
+    # The four per-backend `Environment` leaves follow the `bajutsu/common/drivers/` contract one layer up:
     # an XCUITest-only lifecycle change must not burn the Android KVM or web Playwright jobs, which
     # never import it. Sweeping the package without this carve-out would trade the under-trigger for
     # an over-trigger on `environments/xcuitest.py`, the most-churned file in the package.
@@ -471,7 +471,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Directories split per backend: a file is either claimed by the lanes whose backend imports it, or
 # swept into the shared core. Neither may leave a file matching nothing on every lane.
-_PER_BACKEND_DIRS = ("bajutsu/drivers", "bajutsu/platform_lifecycle/environments")
+_PER_BACKEND_DIRS = ("bajutsu/common/drivers", "bajutsu/platform_lifecycle/environments")
 
 
 def test_no_per_backend_file_is_orphaned() -> None:
@@ -911,7 +911,7 @@ def test_pool_does_not_fire_on_a_relevant_change_off_that_surface() -> None:
     # The whole point of the narrower key: an ordinary driver or scenario change fires the lane's
     # single-device jobs (`is_relevant` stays true) without paying for two booted emulators.
     for path in (
-        "bajutsu/drivers/adb.py",
+        "bajutsu/common/drivers/adb.py",
         "demos/showcase/scenarios/smoke.yaml",
         "demos/showcase/android/compose/build.gradle.kts",
     ):
@@ -1042,7 +1042,7 @@ def test_classify_change_shared_when_a_relevant_non_scenario_path_changes() -> N
     # Shared driver / runner / app / workflow code can affect any scenario, so any relevant path
     # outside the scenario files fires the whole lane — even alongside a scenario-only edit.
     assert classify_change(["bajutsu/runner/pipeline.py"]) == "shared"
-    assert classify_change(["bajutsu/drivers/xcuitest.py"]) == "shared"
+    assert classify_change(["bajutsu/common/drivers/xcuitest.py"]) == "shared"
     assert classify_change([".github/workflows/ios-e2e.yml"]) == "shared"
     assert (
         classify_change(["demos/showcase/scenarios/smoke.yaml", "bajutsu/runner/pipeline.py"])

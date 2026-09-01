@@ -18,8 +18,8 @@ import pytest
 
 from bajutsu.ai.base import MessageRequest, MessageResponse, ToolUseBlock
 from bajutsu.analytics import ledger as usage_ledger
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.evidence.sink import RunArtifactWriter
 from scripts.build_roadmap_index import tracking_issue_url
 

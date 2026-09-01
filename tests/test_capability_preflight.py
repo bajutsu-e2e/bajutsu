@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from bajutsu import capability_preflight
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 from bajutsu.scenario import Scenario
 
 _LEAN_IOS = (
@@ -106,7 +106,7 @@ def test_adb_does_not_advertise_network_yet_request_runs() -> None:
     # BE-0283: adb captures via the app-side collector (BajutsuNet + `adb reverse`), so it must NOT
     # advertise the `network` token — that means *native* driver observation — yet a `request`
     # assertion must still preflight-clean on the real adb capability set.
-    from bajutsu.drivers.adb import AdbDriver
+    from bajutsu.common.drivers.adb import AdbDriver
 
     assert base.Capability.NETWORK not in AdbDriver.CAPABILITIES
     sc = _sc(
@@ -652,9 +652,9 @@ def test_handle_system_alert_requires_the_capability() -> None:
 
 
 def test_handle_system_alert_passes_on_xcuitest_but_fails_on_android_and_web() -> None:
-    from bajutsu.drivers.adb import AdbDriver
-    from bajutsu.drivers.playwright import PlaywrightDriver
-    from bajutsu.drivers.xcuitest import XcuitestDriver
+    from bajutsu.common.drivers.adb import AdbDriver
+    from bajutsu.common.drivers.playwright import PlaywrightDriver
+    from bajutsu.common.drivers.xcuitest import XcuitestDriver
 
     sc = _sc(steps=[{"handleSystemAlert": {"sel": {"label": "Allow"}, "timeout": 5}}])
     assert base.Capability.HANDLE_SYSTEM_ALERT in XcuitestDriver.CAPABILITIES
