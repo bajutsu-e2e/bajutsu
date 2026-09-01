@@ -59,6 +59,7 @@ def run_command(
     zip_run: bool | None = None,
     config_offline: bool | None = None,
     require_pinned_config: bool | None = None,
+    label: str = "",
 ) -> list[str]:
     """The ``python -m bajutsu run ...`` argv for a launch request.  ``udid`` may be a comma
     list and ``workers > 1`` runs those devices as a parallel pool (capped to the pool size by
@@ -112,6 +113,9 @@ def run_command(
             "zip_run": zip_run,
             "config_offline": config_offline,
             "require_pinned_config": require_pinned_config,
+            # The run-history label the control plane resolved (BE-0404 unit 2), so the manifest
+            # carries it too — the only channel a local `serve` (no history table) has.
+            "label": label,
         },
     )
     return cmd

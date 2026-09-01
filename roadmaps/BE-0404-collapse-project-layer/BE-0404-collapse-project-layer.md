@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0404](BE-0404-collapse-project-layer.md) |
 | Author | [@paihu](https://github.com/paihu) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0404") |
+| Implementing PR | [#1841](https://github.com/bajutsu-e2e/bajutsu/pull/1841) |
 | Topic | Hosting the web UI |
 | Related | [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md), [BE-0226](../BE-0226-cross-project-metrics-dashboard/BE-0226-cross-project-metrics-dashboard.md), [BE-0275](../BE-0275-serve-projects-management-page/BE-0275-serve-projects-management-page.md), [BE-0393](../BE-0393-per-org-config-memory/BE-0393-per-org-config-memory.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md), [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md) |
 <!-- /BE-METADATA -->
@@ -267,20 +268,36 @@ trigger a continuous-integration or cron step invokes. Its replacement is theref
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1 — The org holds one configuration source: an org-row column carrying the discriminated
+- [x] 1 — The org holds one configuration source: an org-row column carrying the discriminated
   `kind` + locator record, `bind_upload_config` and its composed-triple sibling writing it there
-  instead of returning it for a client to register, and `activate_uploaded_project` reading it from
-  the org.
-- [ ] 2 — The run label: the `runs.label` column, the `launch_project_identity` default extended
-  with the in-repo configuration path so two configurations from one repository do not fold, the
-  enqueue-time resolution carried on the `Job`, and the `run --label` / API overrides.
-- [ ] 3 — The target stamp: `RunResult.target`, the manifest key, and the `runs.target` column.
-- [ ] 4 — Reading by label, comparing by target: the label filter on the run list, Replay, and the
+  instead of returning it for a client to register, and the recovery path reading it from the org.
+- [x] 2 — The run label: the `runs.label` column, the launcher's default extended with the in-repo
+  configuration path so two configurations from one repository do not fold, the enqueue-time
+  resolution carried on the `Job`, and the `run --label` / API overrides.
+- [x] 3 — The target stamp: the manifest key and the `runs.target` column.
+- [x] 4 — Reading by label, comparing by target: the label filter on the run list, Replay, and the
   run-stats dashboard, defaulting to the bound label and falling back to unfiltered when it matches
-  no run; `project_comparison.py` repointed to the target axis.
-- [ ] 5 — Removing the project layer: the table, the foreign key, the registry module, the
+  no run; the comparison repointed to the target axis.
+- [x] 5 — Removing the project layer: the table, the foreign key, the registry module, the
   endpoints, the CLI commands (migrating `run --project` call sites to an explicit `run --config`),
-  the UI surfaces, and the label backfill migration.
+  and the UI surfaces.
+
+### Log
+
+- **2026-09-01** — All five units shipped in one change. Three deviations from the design above,
+  each narrower than what it replaces:
+  - **The target is a `manifest_dict` argument, not a `RunResult` field.** A run resolves exactly
+    one target into the `Effective` config it executes against, so the value is a run-level one and
+    the runner already holds it where the report is written. Threading a per-scenario field through
+    the eight `RunResult` construction sites would have recorded the same value eight times.
+  - **The label reaches the manifest as well as the run row.** The design routed it through the
+    `Job` alone, which is the only channel a cloud-batch run has; a local `serve` keeps no run table
+    at all, so its history is read from manifests and would have had no label to filter on. The
+    spawned `run --label` writes it into the manifest too, and `_persist_run` prefers the
+    enqueue-time value.
+  - **No backfill migration.** The design carried each run's project name into `runs.label` before
+    dropping the column. Nothing was using the project layer, so migration `0019` adds and drops
+    columns and moves no data.
 
 ## References
 

@@ -7,7 +7,7 @@ stdlib handler dispatches from. These tests lock that the generated surface matc
 `test_off_loop_routes_are_intercepted_before_registry`), that the Part 4 `local_only` triage really
 keeps the local-only routes off this backend, that the endpoints previously missing here are now
 served, and that a generated route decodes a percent-encoded path param exactly once. No mocks — a
-real `ServeState` with local seams and a real project registry.
+real `ServeState` with local seams.
 """
 
 from __future__ import annotations
@@ -23,13 +23,11 @@ from starlette.requests import Request
 from bajutsu import serve as srv
 from bajutsu.serve.handler import _StdlibCtx
 from bajutsu.serve.operations import config as ops_config
-from bajutsu.serve.project_registry import LocalProjectRegistry
 from bajutsu.serve.routes import ROUTES
 from bajutsu.serve.server.app import _FastapiCtx, make_app
 
 
 def _state(tmp_path: Path, **kw: object) -> srv.ServeState:
-    reg = LocalProjectRegistry(tmp_path / "projects.json")
     scn_dir, cfg, runs = project(tmp_path)
     return srv.ServeState(
         scenarios_dir=scn_dir,
@@ -37,7 +35,6 @@ def _state(tmp_path: Path, **kw: object) -> srv.ServeState:
         runs_dir=runs,
         root=tmp_path,
         cwd=tmp_path,
-        project_registry=reg,
         **kw,  # type: ignore[arg-type]
     )
 

@@ -125,6 +125,21 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 つまり、config の **target** が、ソフトウェアである **app** を指し、それを実行時インスタンスである
 **device** の上で駆動します。
 
+## label
+
+**label（ラベル）**：run 履歴の区切りで、どの run にも記録されます
+（[BE-0404](../../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer-ja.md)）。
+既定値は bind している config 自身の名前です。ローカルファイルならファイル名の語幹、Git から取得した
+config ならリポジトリ名とリポジトリ内のパスになります。運用者は `bajutsu run --label` で run ごとに
+上書きできます。ラベルの役割は、`serve` を再起動したあとに 2 つの config の run を読み分けられる
+ようにすることだけです。run 一覧、Replay、run 統計ダッシュボードは、既定で 1 つのラベルの run を
+表示します。
+
+ラベルはツールにとって**不透明な値**です。解析も、config との照合も、何を実行してよいかの判定への
+参照もしません。ここが [target](#target-app-device) との違いです。target は config が宣言する名前で、
+`orgs.<name>.targets` を通じて権限の重みを持ちます。両者を別々のカラムに置いているのは、運用者の
+自由記述が、権限の判定に使われる値の位置に立てないようにするためです。
+
 ## 証跡 capturePolicy trace triage
 
 **evidence（証跡）**：run の最中に取得する成果物で、どのプロバイダが生成したかのタグが付きます。二つの

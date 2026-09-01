@@ -112,15 +112,9 @@ def test_required_role_maps_endpoints() -> None:
     # The one gated read: the config body is a wider disclosure than the path-only /api/config.
     assert ops.required_role("GET", "/api/config/content") == "admin"
     assert ops.required_role("GET", "/api/config") is None  # the path-only read stays ungated
-    # Project hub (BE-0225): register/deregister/activate repoint a config binding (admin, like
-    # /api/config); triggering a run is an editor action (like /api/run); listing / per-project runs
-    # are reads.
-    assert ops.required_role("GET", "/api/projects") is None
-    assert ops.required_role("GET", "/api/projects/checkout/runs") is None
-    assert ops.required_role("POST", "/api/projects") == "admin"
-    assert ops.required_role("DELETE", "/api/projects/checkout") == "admin"
-    assert ops.required_role("POST", "/api/projects/checkout/run") == "editor"
-    assert ops.required_role("POST", "/api/projects/checkout/activate") == "admin"
+    # Rebinding the org's remembered config (BE-0404 unit 1) repoints what the whole deployment
+    # serves, so it sits at the same admin tier as binding one.
+    assert ops.required_role("POST", "/api/config/restore") == "admin"
     # Choosing which org you act as is nobody's admin action: it moves the caller between orgs that
     # already admit them, and `set_active_org` refuses a non-member itself. Pinned because the
     # org-lifecycle branch one line away matches `/api/orgs` by prefix — narrowing that to

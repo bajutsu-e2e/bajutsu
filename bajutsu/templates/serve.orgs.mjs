@@ -1,6 +1,6 @@
 // serve.orgs.mjs — the admin's Orgs page: create, retire, and re-member a tenant (BE-0375).
 //
-// A serve.*.mjs section module (BE-0247 ES-module split), modelled on serve.projects.mjs. Where
+// A serve.*.mjs section module (BE-0247 ES-module split). Where
 // that page manages what a tenant tests, this one manages the tenant itself: which GitHub login,
 // GitHub organization, or flat GitHub Team signs in as this org, and which Team its editors belong
 // to. All
@@ -25,18 +25,16 @@ function orgRow(o) {
   // The sign-in fallback is listed — an admin admitted by the admin-Team bypass is sitting in it,
   // and hiding that would hide where their own runs and secrets land — but it is not a tenant: the
   // server refuses to create, re-member, or retire it, so offer no control that can only answer 409.
-  const disabled = o.reserved || o.projectCount > 0;
+  const disabled = o.reserved;
   const removeTitle = o.reserved
     ? 'the sign-in fallback cannot be retired — an unmatched sign-in keeps resolving to it'
-    : disabled
-      ? `deregister this org's ${o.projectCount} project(s) first`
-      : 'retire this org — it stops admitting sign-ins; its history is kept';
+    : 'retire this org — it stops admitting sign-ins; its history is kept';
   const editTitle = o.reserved
     ? 'the sign-in fallback has no membership to edit — giving it one would make it a tenant'
     : 'replace this org\'s members, GitHub organizations, GitHub Teams, and editor Teams';
   return `<li class="prjrow orgrow" data-testid="orgs.row" data-slug="${esc(o.slug)}"${o.reserved ? ' data-reserved="1"' : ''}>
     <span class="prjname" data-testid="orgs.slug">${esc(o.slug)}</span>
-    <span class="prjsrc" data-testid="orgs.summary">${o.reserved ? 'sign-in fallback · ' : ''}${o.name && o.name !== o.slug ? esc(o.name) + ' · ' : ''}${o.members.length} member(s) · ${o.githubOrgs.length} GitHub org(s) · ${o.githubTeams.length} Team(s) · ${o.editorTeams.length} editor Team(s) · ${o.projectCount} project(s)</span>
+    <span class="prjsrc" data-testid="orgs.summary">${o.reserved ? 'sign-in fallback · ' : ''}${o.name && o.name !== o.slug ? esc(o.name) + ' · ' : ''}${o.members.length} member(s) · ${o.githubOrgs.length} GitHub org(s) · ${o.githubTeams.length} Team(s) · ${o.editorTeams.length} editor Team(s)</span>
     <button class="cfgbtn" data-act="edit" data-testid="orgs.edit" title="${esc(editTitle)}"${o.reserved ? ' disabled' : ''}>Membership</button>
     <button class="cfgbtn prjremove" data-act="remove" data-testid="orgs.remove" title="${esc(removeTitle)}"${disabled ? ' disabled' : ''}>Delete</button>
   </li>`;

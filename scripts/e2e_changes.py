@@ -191,7 +191,6 @@ _PERIPHERY_EXCLUSIONS: tuple[tuple[str, str], ...] = (
         "the scenario-lint command, a static-check path no run drives",
     ),
     ("bajutsu/cli/commands/mcp.py", "the MCP-server command, a separate transport"),
-    ("bajutsu/cli/commands/project.py", "the project-management command, a serve-config path"),
     ("bajutsu/cli/commands/report.py", "the report command, a reporting path"),
     ("bajutsu/cli/commands/schema.py", "the schema-dump command, a tooling path"),
     (

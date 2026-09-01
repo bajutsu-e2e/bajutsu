@@ -95,8 +95,7 @@ def test_http_serves_each_js_module(tmp_path: Path) -> None:
             "serve.core.mjs": "function startJob",  # shared helpers
             "serve.panels.mjs": "function loadGenerated",  # Record/Replay/Triage
             "serve.crawl.mjs": "function openShot",  # crawl graph / lightbox
-            "serve.metrics.mjs": "function renderMetrics",  # cross-project comparison
-            "serve.projects.mjs": "function renderProjectsView",  # the Projects page (BE-0275)
+            "serve.metrics.mjs": "function renderMetrics",  # cross-target comparison
             "serve.orgs.mjs": "function renderOrgsView",  # the Orgs page (BE-0375)
             "serve.author.mjs": "function initTiling",  # layout + Author + boot
         }

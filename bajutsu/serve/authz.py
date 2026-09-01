@@ -419,6 +419,9 @@ _ROLE_RANK = {"viewer": 0, "editor": 1, "admin": 2}
 _ADMIN_PATHS = frozenset(
     {
         "/api/config",
+        # Rebinding the org's remembered config (BE-0404 unit 1) repoints what the whole deployment
+        # serves, exactly like binding one — the same admin tier as `/api/config` itself.
+        "/api/config/restore",
         "/api/upload",
         # The three independently-uploadable artifacts (BE-0268) repoint what a future composed
         # run serves, same as `/api/upload`. `/api/artifacts/exists` (a GET) is deliberately NOT
@@ -504,7 +507,7 @@ def role_for(
 
 # One branch per gated route class: the count tracks the schema's size, not tangled logic, and a
 # split would leave no single place a new gated route class clearly belongs (BE-0386).
-def required_role(method: str, path: str) -> str | None:  # noqa: PLR0911
+def required_role(method: str, path: str) -> str | None:
     """The minimum role a request needs, or None for reads (GET) and the open auth endpoints.
     Cancelling a job or answering its handoff are editor actions (they mutate a running job). The
     gated reads are ``GET /api/config/content``, ``GET /api/artifacts/exists``,
@@ -533,16 +536,6 @@ def required_role(method: str, path: str) -> str | None:  # noqa: PLR0911
     # (`/api/version`) stays open. Same early-case reason as the two GETs above.
     if method == "GET" and path == "/api/version/checkout":
         return "admin"
-    # Project hub (BE-0225): registering / deregistering a project, or activating one (unit 4's
-    # switcher rebinds the live config), all repoint a config binding, so each is an admin action like
-    # `/api/config`; triggering a run is an editor action like `/api/run`. Listing is a read. Handled
-    # ahead of the `method != "POST"` guard below because deregister is a DELETE.
-    if path == "/api/projects" or path.startswith("/api/projects/"):
-        if method == "POST" and path.endswith("/run"):
-            return "editor"
-        if method in ("POST", "DELETE"):
-            return "admin"
-        return None
     # Org lifecycle (BE-0375): creating, deleting, or re-membering an org decides who else can sign
     # in and write, so every verb is admin — the list included, since it discloses one tenant's
     # membership to another. Handled ahead of the `method != "POST"` guard below because the list is

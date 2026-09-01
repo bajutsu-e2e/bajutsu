@@ -22,7 +22,6 @@ from bajutsu.analytics import usage as _usage
 from bajutsu.assertions import GoldenContext
 from bajutsu.backends import select_actuator_for_scenario
 from bajutsu.cancellation import CancelSource, graceful_sigterm
-from bajutsu.cli._projects import config_from_source, open_registry
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _ai_redactor,
@@ -47,7 +46,7 @@ from bajutsu.orchestrator import (
 from bajutsu.orchestrator.types import ResolvedAlertRule
 from bajutsu.platform_lifecycle import ProvisionProfile, environment_for
 from bajutsu.report.archive import archive_run_dir
-from bajutsu.report.manifest import _run_backend
+from bajutsu.report.manifest import MAX_LABEL_LENGTH, _run_backend
 from bajutsu.run_files import DEFAULT_RUNS_DIR
 from bajutsu.run_id import new_run_id
 from bajutsu.runner import device_pool, run_all, run_and_report, run_matrix_and_report
@@ -736,6 +735,9 @@ class _RunPlan:
     # `--score`: emit the app's entry-screen convention score once (doctor's grade, inline) so CI needs
     # no separate `doctor` cold-spawn. Diagnostic only — never on the verdict path.
     score: bool
+    # The run-history partition stamped into the manifest (BE-0404 unit 2). Empty = the config's own
+    # name, which `serve` derives; a bare CLI run keeps whatever the operator passed.
+    label: str
     # Reports whether a `SIGTERM` has asked this run to stop (BE-0370). The pipeline reads it at
     # each scenario, step, and condition-wait boundary and fails whatever it did not finish, so a
     # cancelled run still writes its manifest and report instead of vanishing from the history.
@@ -842,6 +844,7 @@ def _dispatch_single(
             resolve_actuator=lambda s: select_actuator_for_scenario(plan.backends, s),
             config_source=plan.config_source,
             exec_provenance=exec_decision,
+            label=plan.label or None,
             golden_context=plan.golden_context,
             lease_udid_spec=plan.udid_spec,
             # `--score`: fold doctor's entry-screen grade into this run's own first lease, so CI reads
@@ -914,6 +917,7 @@ def _dispatch_matrix(
         source_name=plan.source_name,
         description=plan.description,
         secret_values=plan.secret_values,
+        label=plan.label or None,
         config_source=plan.config_source,
         exec_provenance=exec_decision,
         cancelled=plan.cancelled,
@@ -1002,27 +1006,6 @@ def _finish(
     if spent.calls:
         typer.echo(spent.render(), err=True)
     raise typer.Exit(0 if ok else 1)
-
-
-def _resolve_project_config(project: str, runs_dir: str) -> str:
-    """The `--config` spec for the named project — so `run --project X` is `run --config <X's source>`.
-
-    Reads the same project store the `project` subcommands and `serve` share (the DB when
-    `BAJUTSU_DATABASE_URL` is set, else the on-disk JSON beside *runs_dir*), resolves the project in
-    the local `default` org, and reconstructs its config spec. Unlike the API trigger — which runs the
-    serve-bound active project only — the CLI is stateless and resolves the config fresh each call, so
-    it runs any named project without a switch.
-    """
-    from bajutsu.serve.orgs import DEFAULT_ORG
-
-    registry = open_registry(runs_dir)
-    record = registry.get(org_id=DEFAULT_ORG, name=project)
-    if record is None:
-        raise typer.BadParameter(f"no project named {project!r}", param_hint="--project")
-    try:
-        return config_from_source(record.source)
-    except ValueError as e:
-        raise typer.BadParameter(str(e), param_hint="--project") from e
 
 
 def run(
@@ -1189,12 +1172,12 @@ def run(
     ),
     # --- Config sourcing ---
     config: str = typer.Option(DEFAULT_CONFIG),
-    project: str = typer.Option(
+    label: str = typer.Option(
         "",
-        "--project",
-        help="run a project registered with `bajutsu project add` by name — resolves its config "
-        "source and runs it, the headless trigger a CI/cron step calls (BE-0225). Mutually "
-        "exclusive with --config",
+        "--label",
+        help="tag this run's history entry with a short free-text label, so runs of two configs "
+        "stay readable apart (BE-0404). Opaque to the tool — never parsed or matched against "
+        "config; defaults to the config's own name",
     ),
     config_offline: bool = typer.Option(
         False,
@@ -1212,14 +1195,12 @@ def run(
     Pass/fail is machine-only; the sole AI is the alert guard (on by default per scenario), which
     only fires to clear an OS prompt that blocked a step — see each scenario's `systemAlertHandling`.
     """
-    # `--project` names a registered project; resolve its config source into the ordinary `--config`
-    # spec so the rest of the run path is unchanged — a project only says where the config comes from.
-    if project:
-        if config != DEFAULT_CONFIG:
-            raise typer.BadParameter(
-                "pass one of --project or --config, not both", param_hint="--project"
-            )
-        config = _resolve_project_config(project, runs_dir)
+    if len(label) > MAX_LABEL_LENGTH:
+        # Rejected, never truncated (BE-0404 unit 2): an operator learns the label was refused
+        # instead of finding a silently shortened one in the history.
+        raise typer.BadParameter(
+            f"a label must be at most {MAX_LABEL_LENGTH} characters", param_hint="--label"
+        )
     # Resolve the run's inputs from the flags — each step is an independently testable helper — then
     # assemble the plan and hand it to dispatch/finish. `run` itself stays a thin sequence.
     eff, config_source, engines = _resolve_config_and_engines(
@@ -1309,6 +1290,7 @@ def run(
                 log_subsystem=log_subsystem,
                 progress=progress,
                 zip_run=zip_run,
+                label=label,
                 evidence_store=evidence_store,
                 upload_exec=upload_exec,
                 score=score,

@@ -8,13 +8,12 @@
 // which serve.core.mjs (and panels) call at runtime, forming a safe import cycle with core.
 import {
   $, esc, getJSON, renderGradeBadge, wireDoctor, NARROW_MQ, prefersReducedMotion, motionOff,
-  initTheme, showView, loadConfig, loadVersion, loadProjects, loadSims, refreshAiAvailability, state,
+  initTheme, showView, loadConfig, loadVersion, loadSims, refreshAiAvailability, state, loadLabels,
   unavailableReason,
 } from './serve.core.mjs';
 import {loadHistory, setHistoryFilter, showTab, initPanels} from './serve.panels.mjs';
 import {initCrawl} from './serve.crawl.mjs';
 import {initMetrics} from './serve.metrics.mjs';
-import {initProjectsView} from './serve.projects.mjs';
 import {initOrgsView} from './serve.orgs.mjs';
 
 // authorInit / authorRefresh / applyCaptureCapability are assigned by the Author-tab IIFE below and
@@ -30,7 +29,6 @@ let authorInit=()=>{}, authorRefresh=()=>{}, applyCaptureCapability=()=>{};
 initPanels();
 initCrawl();
 initMetrics();
-initProjectsView();
 initOrgsView();
 
 // Device UI is platform-specific: iOS controls (simulators, device pickers, erase, alert-dismiss)
@@ -1074,7 +1072,7 @@ if(!NARROW_MQ.matches)initTiling();
 initTheme();
 loadConfig();
 loadVersion();
-loadProjects();
+loadLabels();
 // The orgs probe is no longer booted here: it needs the capability block to know whether this
 // deployment has orgs to administer at all, so loadConfig fires it once that has arrived (#1721).
 refreshAiAvailability();

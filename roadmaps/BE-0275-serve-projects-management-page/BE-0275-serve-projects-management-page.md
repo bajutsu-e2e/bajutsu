@@ -12,6 +12,7 @@
 | Implementing PR | [#1123](https://github.com/bajutsu-e2e/bajutsu/pull/1123) |
 | Topic | Surfacing CLI features in the serve Web UI |
 | Related | [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md), [BE-0226](../BE-0226-cross-project-metrics-dashboard/BE-0226-cross-project-metrics-dashboard.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md), [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) |
+| Superseded by | [BE-0404](../BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction

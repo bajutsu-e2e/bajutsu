@@ -164,11 +164,15 @@ def write_report(
     description: str | None = None,
     provenance: dict[str, object] | None = None,
     writer: RunArtifactWriter | None = None,
+    target: str | None = None,
+    label: str | None = None,
 ) -> Path:
     """Write manifest.json (the versioned render model), junit.xml, and report.html under run_dir.
 
     `definitions` / `sources`, aligned with `results`, feed the report's merged Result tab and its
     Rich/YAML toggle. `provenance` is the run-identity stamp (BE-0049). `writer` is the run's sink.
+    `target` / `label` are the target the run ran and its history label, stamped into the
+    manifest (BE-0404 units 2 and 3).
 
     Returns:
         The manifest.json path.
@@ -176,7 +180,14 @@ def write_report(
     sink = _sink(run_dir, writer)
     manifest_path = sink.write_json(
         "manifest.json",
-        manifest_dict(run_id, results, source_name=source_name, provenance=provenance),
+        manifest_dict(
+            run_id,
+            results,
+            source_name=source_name,
+            provenance=provenance,
+            target=target,
+            label=label,
+        ),
     )
     write_html_and_junit(
         run_dir, run_id, results, definitions, sources, source_name, description, provenance, sink

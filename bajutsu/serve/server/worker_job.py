@@ -78,10 +78,10 @@ def job_spec(job: Job) -> dict[str, Any]:
         # Per-run evidence-upload prefix (BE-0110): the worker relays it when requesting presigned
         # PUT URLs, so the run's evidence lands under the lifecycle path CI chose.
         "evidence_prefix": job.evidence_prefix,
-        # The project the run belongs to (BE-0225 unit 3), resolved on the control plane at enqueue.
-        # The worker's `_persist_run` stamps `runs.project_id` from this — the worker has no registry
-        # to resolve an active project of its own.
-        "project_id": job.project_id,
+        # The run-history label (BE-0404 unit 2), resolved on the control plane at enqueue. The
+        # worker's `_persist_run` stamps `runs.label` from this — the worker holds no bound config
+        # to derive one of its own.
+        "label": job.label,
         # The requesting org's AI provider env overlay (BE-0229), resolved on the control plane from
         # that org's saved selection. The worker merges it onto the spawn env, so the run uses the
         # org's provider/model/effort without the worker holding any provider settings of its own.
@@ -198,9 +198,9 @@ def execute_job_spec(
         # Carry org + actor so the recorded run is attributed correctly (BE-0015).
         org=org,
         actor=spec.get("actor"),
-        # Carry the project the control plane resolved at enqueue, so `_persist_run` stamps
-        # `runs.project_id` here where the run actually executes (BE-0225 unit 3).
-        project_id=spec.get("project_id"),
+        # Carry the label the control plane resolved at enqueue, so `_persist_run` stamps
+        # `runs.label` here where the run actually executes (BE-0404 unit 2).
+        label=spec.get("label"),
         # The org's AI provider overlay the control plane resolved at enqueue (BE-0229); `run_job`'s
         # `_spawn_env` merges it onto the child env so the run uses the org's selection.
         env_overlay=dict(spec.get("env_overlay") or {}),

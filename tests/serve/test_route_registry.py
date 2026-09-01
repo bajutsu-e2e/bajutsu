@@ -49,10 +49,8 @@ _EXPECTED: frozenset[tuple[str, str]] = frozenset(
         ("GET", "/api/ant/login"),
         ("GET", "/api/simulators"),
         ("GET", "/api/runs"),
-        ("GET", "/api/projects"),
-        ("GET", "/api/projects/{name}/runs"),
         ("GET", "/api/orgs"),
-        ("GET", "/api/metrics/projects"),
+        ("GET", "/api/metrics/targets"),
         ("GET", "/api/crawl/runs"),
         ("GET", "/api/runs/trash"),
         ("GET", "/api/artifacts/exists"),
@@ -89,9 +87,7 @@ _EXPECTED: frozenset[tuple[str, str]] = frozenset(
         ("POST", "/api/ant/login"),
         ("POST", "/api/run"),
         ("POST", "/api/run-set"),
-        ("POST", "/api/projects"),
-        ("POST", "/api/projects/{name}/run"),
-        ("POST", "/api/projects/{name}/activate"),
+        ("POST", "/api/config/restore"),
         ("POST", "/api/org"),
         ("POST", "/api/orgs"),
         ("POST", "/api/orgs/{slug}/membership"),
@@ -127,7 +123,6 @@ _EXPECTED: frozenset[tuple[str, str]] = frozenset(
         # --- DELETE ---
         ("DELETE", "/api/crawl/runs/{run_id}"),
         ("DELETE", "/api/runs/{run_id}"),
-        ("DELETE", "/api/projects/{name}"),
         ("DELETE", "/api/orgs/{slug}"),
     }
 )
@@ -217,18 +212,18 @@ def test_match_trailing_segment() -> None:
 
 
 def test_match_infix_with_suffix() -> None:
-    result = match_route(ROUTES, "POST", "/api/projects/my-proj/run")
+    result = match_route(ROUTES, "POST", "/api/orgs/acme/membership")
     assert result is not None
     route, params = result
-    assert route.path == "/api/projects/{name}/run"
-    assert params == {"name": "my-proj"}
+    assert route.path == "/api/orgs/{slug}/membership"
+    assert params == {"slug": "acme"}
 
 
 def test_match_delete_trailing() -> None:
-    result = match_route(ROUTES, "DELETE", "/api/projects/foo")
+    result = match_route(ROUTES, "DELETE", "/api/orgs/acme")
     assert result is not None
     route, _ = result
-    assert route.path == "/api/projects/{name}"
+    assert route.path == "/api/orgs/{slug}"
 
 
 def test_match_respects_method() -> None:

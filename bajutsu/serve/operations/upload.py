@@ -2,14 +2,16 @@
 
 BE-0243 adds durable, cross-replica resolution on top of the local extraction sandbox: when
 `state.object_store` is configured (the hosted `server` backend), the raw zip is persisted
-content-addressed by its sha256 so `activate_project` can fetch-and-extract it on any replica
-instead of refusing an `upload`-kind project with a `409`. Local `serve` (no object store) is
-unchanged — the bundle stays exactly as ephemeral as BE-0073 shipped it.
+content-addressed by its sha256 so another replica can fetch-and-extract it instead of refusing an
+`upload`-kind bind. Local `serve` (no object store) is unchanged — the bundle stays exactly as
+ephemeral as BE-0073 shipped it. The record naming those bytes lives on the org row (BE-0404 unit
+1), written by the bind itself.
 """
 
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import re
 import tempfile
@@ -41,8 +43,10 @@ from bajutsu.serve.uploads import (
     validate_bundle_config,
 )
 
+_logger = logging.getLogger(__name__)
+
 # The kinds beyond `config` a composed triple's `artifacts` locator may name — `config` is the only
-# always-required leg (see `_activate_composed_project`); `scenarios`/`binary` are required only when
+# always-required leg (see `_restore_composed_config`); `scenarios`/`binary` are required only when
 # the config itself needs them (`materialize_composition`'s coherence check). Derived from
 # `ARTIFACT_KINDS` (the authoritative closed set) rather than hand-duplicated, so a future fourth
 # kind can't silently drift between the two.
@@ -51,9 +55,9 @@ _COMPOSED_KINDS: tuple[ArtifactKind, ...] = tuple(k for k in ARTIFACT_KINDS if k
 # A full, lowercase hex sha256 digest — exactly what hashlib.sha256().hexdigest() produces, and the
 # only shape `_upload_store_key`/`_org_uploads_dir` may safely turn into a path component or an
 # object-store key. `bind_upload_config`'s own sha256 always matches (server-computed while
-# streaming the upload); `activate_uploaded_project`'s comes from a stored project record a client
-# can shape via `register_project` (BE-0225), so it is untrusted and must be checked before it ever
-# reaches `uploads_dir / sha256` — an unchecked `../`-laden value would let a registered record walk
+# streaming the upload); `restore_uploaded_config`'s comes from the org's stored record, whose
+# locator a client shaped at bind, so it is untrusted and must be checked before it ever
+# reaches `uploads_dir / sha256` — an unchecked `../`-laden value would let a stored record walk
 # a materialize call outside the cache root (mirrors the Git source's own `_FULL_SHA_RE` guard on a
 # resolved commit SHA, `bajutsu/config_source.py`).
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -78,7 +82,7 @@ def _org_uploads_dir(state: ServeState, org: str) -> Path:
 
     Mirrors `_upload_store_key`'s org-scoping with the same `org_prefix` helper: `state.uploads_dir`
     is one shared path across every org on the server backend (unlike the per-org object-store
-    prefix), so without this an org could claim another org's `sha256` in a registered project's
+    prefix), so without this an org could claim another org's `sha256` in its own stored
     source record and cache-hit straight into that org's already-extracted tree, bypassing the
     object store's own org scoping entirely. `org_prefix("", "default")` is `""`, and
     `Path(...) / ""` is a no-op, so local (always-`default`-org) serve is unaffected."""
@@ -121,6 +125,23 @@ def _locate_config_or_heal(dest: Path) -> tuple[Any, int]:
     if config_path is None:
         return {"error": "cached bundle is missing its config (try re-uploading)"}, 500
     return config_path, 200
+
+
+def _remember_org_config_source(state: ServeState, org: str, source: dict[str, Any]) -> None:
+    """Record *source* as the last bundle this org uploaded (BE-0404 unit 1).
+
+    The durable half of the recovery path: `restore_uploaded_config` reads this back on a replica
+    that never received the upload. Guarded like the other database reaches on this path — a flaky
+    backend must leave the bind itself standing, since the bytes are already in the object store and
+    the binding in this process is complete.
+    """
+    repo = state.repository
+    if repo is None:
+        return
+    try:
+        repo.set_org_config_source(org, source)
+    except Exception:
+        _logger.warning("failed to remember the org's config source", exc_info=True)
 
 
 def bind_upload_config(
@@ -175,11 +196,16 @@ def bind_upload_config(
     state.bind_upload(upload)
     state.config_org = upload.org  # the bundle is this org's; its `orgs:` owns nothing (BE-0375)
     _record_audit(state, actor, org, "upload", upload.filename, {"sha256": sha256})
+    source = {"kind": "upload", "filename": upload.filename, "sha256": sha256, "size": size}
+    # The bind is the writer (BE-0404 unit 1): before this item the caller had to re-register the
+    # returned record through the project registry this item deletes, so a record nobody persisted
+    # would leave the recovery path with nothing to read.
+    _remember_org_config_source(state, org, source)
     return {
         "ok": True,
         "config": str(config_path),
         "targets": list_targets(config_path),
-        "source": {"kind": "upload", "filename": upload.filename, "sha256": sha256, "size": size},
+        "source": source,
     }, 200
 
 
@@ -242,8 +268,8 @@ def bind_artifact(
     (`materialize_artifact`). *sha256* is the digest the handler computed while streaming the upload
     to *src_path*, same as `bind_upload_config`.
 
-    This does not bind anything as the active config — one artifact alone is not runnable; a project
-    binds a triple, composed lazily by `activate_uploaded_project` (BE-0268 widens its `upload`
+    This does not bind anything as the active config — one artifact alone is not runnable; a bind
+    takes a triple, composed lazily by `restore_uploaded_config` (BE-0268 widens the `upload`
     source locator from one bundle sha to `{"config", "scenarios", "binary"}` shas)."""
     size = src_path.stat().st_size
     org = state.org_of(actor)
@@ -344,7 +370,7 @@ def _fetch_artifact(
 ) -> tuple[Path, int] | tuple[dict[str, Any], int]:
     """Resolve *kind*'s *sha256* artifact to a local path for composition: a cache hit reuses it
     as-is, a miss fetches it from the object store. The composed-triple sibling of
-    `activate_uploaded_project`'s own fetch-or-cache shape, generalized to a single artifact file
+    `restore_uploaded_config`'s own fetch-or-cache shape, generalized to a single artifact file
     instead of a whole bundle tree. With no object store configured a local-cache miss means the
     artifact was never uploaded on this replica — a clean 404, not a crash — so the compose-picker
     path (`bind_composition`) works from the just-uploaded local cache on a plain `make serve`."""
@@ -378,7 +404,7 @@ def _collect_optional_shas(
     artifacts: dict[str, Any], shas: dict[str, str]
 ) -> tuple[Any, int] | None:
     """Validate the optional `scenarios`/`binary` legs and add each present one to *shas* (which
-    already holds the required `config` leg). Every leg is untrusted (a client-shaped project record
+    already holds the required `config` leg). Every leg is untrusted (a client-shaped stored record
     or compose request), so a present sha must be a full lowercase hex digest (`_SHA256_RE`) before
     it is ever turned into a path or object-store key — the same guard the `config` leg gets in each
     caller. Returns an `(error, 400)` tuple on an invalid present leg, else `None`. An absent or
@@ -404,7 +430,7 @@ def _compose_and_bind(
     scenarios_filename: str | None = None,
 ) -> tuple[Upload, int] | tuple[dict[str, Any], int]:
     """Resolve a validated triple's legs, materialize the composition, and bind it as the active
-    config — the shared core of `_activate_composed_project` (reactivating a stored record) and
+    config — the shared core of `_restore_composed_config` (reactivating a stored record) and
     `bind_composition` (the compose picker). Returns `(upload, 200)` on success — the bound `Upload`,
     so a caller can read back its display-safe `filename` for an audit line / response without
     re-sanitizing — or an `(error, status)` pair. *filename* is the raw, untrusted provenance name
@@ -483,7 +509,7 @@ def _compose_and_bind(
     return upload, 200
 
 
-def _activate_composed_project(
+def _restore_composed_config(
     state: ServeState,
     source: dict[str, Any],
     artifacts: dict[str, Any],
@@ -491,15 +517,15 @@ def _activate_composed_project(
     org: str,
     actor: str | None = None,
 ) -> tuple[Any, int] | None:
-    """Fetch-and-compose fallback for reactivating a triple-bound `upload`-kind project (BE-0268) —
-    the composed-triple sibling of `activate_uploaded_project`'s legacy single-sha path.
+    """Fetch-and-compose fallback for restoring a triple-bound `upload`-kind source (BE-0268) —
+    the composed-triple sibling of `restore_uploaded_config`'s legacy single-sha path.
 
     Returns ``None`` when there is nothing to restore from — no object store configured, or the
     `config` leg (the triple's only always-required artifact) is missing or not a valid sha — so the
-    caller falls back to the existing `409`. Every leg in *artifacts* is untrusted (a stored
-    `register_project` record a client shapes), so each present sha is validated with `_SHA256_RE`
+    caller falls back to the existing `409`. Every leg in *artifacts* is untrusted (the org's stored
+    record, whose locator a client shaped at bind), so each present sha is validated with `_SHA256_RE`
     before it is ever turned into a path or object-store key, the same reasoning
-    `activate_uploaded_project`'s legacy path already applies to its own single `sha256`."""
+    `restore_uploaded_config`'s legacy path already applies to its own single `sha256`."""
     config_sha = artifacts.get("config")
     if (
         state.object_store is None
@@ -568,11 +594,13 @@ def bind_composition(
         return result, status
     assert isinstance(result, Upload)  # `status == 200` only ever pairs with a bound Upload
     _record_audit(state, actor, org, "compose", result.filename, {"artifacts": shas})
+    source = {"kind": "upload", "artifacts": shas, "filename": result.filename}
+    _remember_org_config_source(state, org, source)
     return {
         "ok": True,
         "config": str(result.config),
         "targets": list_targets(result.config),
-        "source": {"kind": "upload", "artifacts": shas, "filename": result.filename},
+        "source": source,
     }, 200
 
 
@@ -598,14 +626,36 @@ def compose_current(state: ServeState, *, actor: str | None = None) -> tuple[Any
     return {"artifacts": artifacts}, 200
 
 
-def activate_uploaded_project(
+def restore_org_config(state: ServeState, *, org: str, actor: str | None = None) -> tuple[Any, int]:
+    """Rebind the last bundle *org* uploaded, from the record on its row (BE-0404 unit 1).
+
+    The reason the org row holds a config-source record at all: a hosted replica that never received
+    the upload recovers it from the object store by the digests the record names. Only an upload
+    bind writes that record, so this restores the org's last *bundle* rather than whatever it bound
+    most recently — a `git` or `file` config is something the caller rebinds through
+    `POST /api/config` directly, needing no durable copy of its own.
+    """
+    repo = state.repository
+    if repo is None:
+        return {"error": "this deployment keeps no config memory"}, 400
+    record = repo.get_org(org)
+    source = record.config_source if record is not None else None
+    if not isinstance(source, dict) or source.get("kind") != "upload":
+        return {"error": "this org has no remembered uploaded config to restore"}, 404
+    restored = restore_uploaded_config(state, source, org=org, actor=actor)
+    if restored is None:
+        return {"error": "the remembered bundle is no longer resolvable; re-upload it"}, 409
+    return restored
+
+
+def restore_uploaded_config(
     state: ServeState, source: dict[str, Any], *, org: str, actor: str | None = None
 ) -> tuple[Any, int] | None:
-    """Fetch-and-extract fallback for reactivating an `upload`-kind project (BE-0243).
+    """Fetch-and-extract an `upload`-kind config source back into a live binding (BE-0243).
 
     Returns ``None`` when there is nothing to restore from — no object store configured, or *source*
-    carries no usable `sha256` — so the caller (`activate_project`) falls back to its existing `409`.
-    *source* is a stored project record a client shapes via `register_project` (BE-0225), so its
+    carries no usable `sha256` — so the caller falls back to its own "re-upload it" error. *source*
+    reached the org row from a client-shaped bind, so its
     `sha256` is untrusted: it must be a full lowercase hex digest (`_SHA256_RE`) before it is ever
     turned into a path (`uploads_dir / sha256`) or object-store key, the same way the Git source
     validates a resolved commit SHA before doing the same (`bajutsu/config_source.py`) — an
@@ -617,11 +667,11 @@ def activate_uploaded_project(
     ``None`` fallback.
 
     A `source["artifacts"]` dict (BE-0268's composed-triple locator, `{"config", "scenarios",
-    "binary"}` shas) branches to `_activate_composed_project` instead — the legacy single-`sha256`
+    "binary"}` shas) branches to `_restore_composed_config` instead — the legacy single-`sha256`
     path below never runs for it, and vice versa; the two locator shapes are mutually exclusive."""
     artifacts = source.get("artifacts")
     if isinstance(artifacts, dict):
-        return _activate_composed_project(state, source, artifacts, org=org, actor=actor)
+        return _restore_composed_config(state, source, artifacts, org=org, actor=actor)
     sha256 = source.get("sha256")
     if (
         state.object_store is None

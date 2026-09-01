@@ -22,7 +22,6 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from bajutsu.serve.batch_provider import BatchRequest
-    from bajutsu.serve.project_registry import ProjectRegistry
     from bajutsu.serve.provider_store import ProviderSettingsStore
     from bajutsu.serve.server.db import Repository
     from bajutsu.serve.server.oauth import OAuthClient
@@ -113,11 +112,12 @@ class Job:
     # `ipad`). Travels in the job spec so the hosted router leases it only to a capable worker; empty
     # for a local run (one worker, no routing).
     capabilities: list[str] = field(default_factory=list)
-    # The project this run belongs to, resolved from the active project when the run is enqueued
-    # (BE-0225 unit 3). Travels in the job spec so a remote worker's `_persist_run` stamps
-    # `runs.project_id` without a registry of its own — a run started for project A stays labeled A
-    # even if the active project changed before it finished. None when no project hub is wired.
-    project_id: str | None = None
+    # The run-history partition this run belongs to, resolved once when the run is enqueued
+    # (BE-0404 unit 2): the label derived from the bound config, or the operator's `--label`.
+    # Travels in the job spec so a remote worker's `_persist_run` stamps `runs.label` without
+    # consulting any registry — a run keeps the label it was enqueued under even if `serve` is
+    # rebound before it finishes. None when no config is bound to derive one from.
+    label: str | None = None
     # The requesting org's resolved AI provider env (BE-0229): provider/model/effort/language, merged
     # onto the spawn's inherited env by `_spawn_env` so the job uses *this* org's selection without
     # the serve process ever mutating its shared `os.environ` — the tenant-isolation guarantee.
@@ -544,11 +544,6 @@ class ServeState:
     # server backend assigns a SqlRepository only when BAJUTSU_DATABASE_URL is set, so behavior is
     # unchanged without one. Annotated as a string (lazy) so the default path never loads SQLAlchemy.
     repository: Repository | None = None
-    # The project registry seam (BE-0225): list/switch the configs this serve holds and partition
-    # runs by project. Local serve wires a JSON-file-backed store; a server backend with a database
-    # wires the DB-backed one, else the same local JSON store. None leaves the single-config behavior
-    # unchanged (no hub) — set in `_build_state`/`_build_server_state`, like the seams above.
-    project_registry: ProjectRegistry | None = None
     simctl: _simctl.RunFn = (
         _simctl.real_run
     )  # runs `xcrun simctl …` (booting devices, listing them)

@@ -55,7 +55,7 @@ def baseline_prefix(base: str = "") -> str:
 def upload_prefix(base: str = "") -> str:
     """The object-key prefix for durably-persisted uploaded zip bundles under *base*
     (``<base>uploads/<sha256>.zip``, BE-0243). Shared by the upload bind and the
-    `activate_project` fetch-and-extract fallback, so both agree on keys."""
+    `restore_uploaded_config` fetch-and-extract fallback, so both agree on keys."""
     return f"{base}uploads/"
 
 

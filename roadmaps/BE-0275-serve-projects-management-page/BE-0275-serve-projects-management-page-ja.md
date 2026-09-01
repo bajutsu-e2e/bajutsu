@@ -12,6 +12,7 @@
 | 実装 PR | [#1123](https://github.com/bajutsu-e2e/bajutsu/pull/1123) |
 | トピック | serve Web UI への CLI 機能の取り込み |
 | 関連 | [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md), [BE-0226](../BE-0226-cross-project-metrics-dashboard/BE-0226-cross-project-metrics-dashboard-ja.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md), [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md), [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md) |
+| 無効化 | [BE-0404](../BE-0404-collapse-project-layer/BE-0404-collapse-project-layer-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに

@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0393") |
 | Topic | Configuration sourcing |
-| Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md), [BE-0229](../BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution.md), [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md), [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md), [BE-0375](../BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management.md) |
+| Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md), [BE-0229](../BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution.md), [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md), [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md), [BE-0375](../BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management.md), [BE-0404](../BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -271,8 +271,13 @@ does not need, and a trigger written against sign-in misses an org change within
 
 - [ ] 1. Group the binding's fields into one `ConfigBinding` value.
 - [ ] 2. Key the binding by session, settle the actorless readers, and capture a job's binding at enqueue.
-- [ ] 3. Record a project on every bind as the acting org's remembered configuration.
-- [ ] 4. Persist the active project per org in the database, and drop the `default`-org launch registration.
+- [x] 3. Record a project on every bind as the acting org's remembered configuration. **Delivered
+  by [BE-0404](../BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md) unit 1**, which
+  collapses the requirement to one `orgs.config_source` column written by the bind itself — the
+  named-project registry this unit assumed is gone.
+- [x] 4. Persist the active project per org in the database, and drop the `default`-org launch
+  registration. **Delivered by the same unit**: with one config source per org there is no "active"
+  pointer left to persist, and no launch registration to drop.
 - [ ] 5. Restore an uploaded bundle from the local cache with no object store configured.
 - [ ] 6. Restore the org's remembered configuration into a session lazily on first use, best-effort.
 - [ ] 7. Show the session's binding and its origin, and audit a restore.

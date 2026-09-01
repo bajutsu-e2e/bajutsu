@@ -1,69 +1,51 @@
-// serve.metrics.mjs — the hub's cross-project comparison view. A serve.*.mjs section module
-// (BE-0247); imports its shared helpers from serve.core.mjs. Its body only defines — the one
-// top-level listener is wired by initMetrics(), which the entry module (serve.author.mjs) calls
-// after every section has evaluated.
-import {$, esc, getJSON, isFetchError, FETCH_ERROR, switchProject, projectsCache, unavailableReason} from './serve.core.mjs';
+// serve.metrics.mjs — the cross-target comparison view. A serve.*.mjs section module (BE-0247);
+// imports its shared helpers from serve.core.mjs. Its body only defines — the one top-level listener
+// is wired by initMetrics(), which the entry module (serve.author.mjs) calls after every section has
+// evaluated.
+import {$, esc, getJSON, isFetchError, FETCH_ERROR} from './serve.core.mjs';
 
-// ---- Cross-project comparison (BE-0226 unit 3): the hub's projects ranked side by side ----
-// Client-rendered from the unit-2 /api/metrics/projects model (JSON, not a server-rendered report
+// ---- Cross-target comparison (BE-0226 unit 3, repointed by BE-0404): the org's targets ranked ----
+// Client-rendered from the unit-2 /api/metrics/targets model (JSON, not a server-rendered report
 // like /stats) because the surface is interactive: sortable columns and a row that opens the
-// project's run history. Read-only — it re-presents the deterministic verdicts `run` already
-// decided, adding no LLM to the path. The tab is revealed only when a real hub exists
-// (loadProjects, >1 project); a single-config serve never sees it, since there is nothing to
+// target's run history. Read-only — it re-presents the deterministic verdicts `run` already
+// decided, adding no LLM to the path. The tab is revealed only when the bound config declares more
+// than one target (loadShared); a single-target config never sees it, since there is nothing to
 // compare.
 //
-// Navigating and activating are deliberately separate gestures (#1720). A row click used to POST
-// .../activate, so a reader ranking projects rebound the config every tab against the deployment
-// reads, having pressed nothing that announced a write. The row now only opens a read-only detail;
-// rebinding takes the row's own Activate button and a confirmation.
+// Nothing here writes. The earlier per-row Activate rebound the deployment's config; a
+// target is not a binding, so the comparison is now purely a read — which is what a reader ranking
+// rows expected of it all along (#1720).
 let metricsCache=[];
-let metricsSort={key:'pass_rate',dir:'asc'};  // default: worst pass-rate first — the project to look at
-// The project whose read-only detail is open, or null for the ranking. Doubles as the guard that
-// drops an in-flight detail fetch whose reader has already gone back or opened another project.
+let metricsSort={key:'pass_rate',dir:'asc'};  // default: worst pass-rate first — the target to look at
+// The target whose read-only detail is open, or null for the ranking. Doubles as the guard that
+// drops an in-flight detail fetch whose reader has already gone back or opened another target.
 let metricsDetail=null;
 
 // Each column, and for the sortable ones whether "worst first" is ascending (pass-rate: low is bad)
 // or descending (flaky-rate / duration: high is bad), so a first click surfaces the worst offender.
 const METRIC_COLS=[
-  {key:'name',label:'Project',cell:m=>metricOpen(m)},
+  {key:'name',label:'Target',cell:m=>metricOpen(m)},
   {key:'runs',label:'Runs',cell:m=>String(m.runs)},
   {key:'pass_rate',label:'Pass-rate',sortable:true,worst:'asc',cell:m=>metricCell(m,metricPct(m.pass_rate))},
   {key:'flaky_rate',label:'Flaky-rate',sortable:true,worst:'desc',cell:m=>metricCell(m,metricPct(m.flaky_rate))},
   {key:'duration_p50_s',label:'p50',sortable:true,worst:'desc',cell:m=>metricCell(m,metricSecs(m.duration_p50_s))},
   {key:'duration_p95_s',label:'p95',sortable:true,worst:'desc',cell:m=>metricCell(m,metricSecs(m.duration_p95_s))},
   {key:'trend',label:'Trend',cell:m=>metricSpark(m.trend)},
-  {key:'act',label:'',cell:m=>metricAction(m)},
 ];
-
-// The row's one state-changing control, or the marker that says there is nothing to change. Mirrors
-// how the Projects page distinguishes the active binding from a switchable one (BE-0275), so the two
-// surfaces read the same.
-//
-// A reader who may not activate gets the button disabled with the server's own reason on it, from
-// the boot read's capability block (#1721) — the same seam the Orgs tab gates on. The flag reports;
-// it never gates: the endpoint still refuses on its own, and switchProject spells that refusal out
-// for a role that changed since boot.
-function metricAction(m){
-  const active=projectsCache.find(p=>p.name===m.name);
-  if(active&&active.active)return '<span class="mactive" data-testid="metrics.active">active</span>';
-  const blocked=unavailableReason('activate');
-  return `<button type="button" class="cfgbtn mact" data-act="activate" data-testid="metrics.activate"`
-    +`${blocked?` disabled title="${esc(blocked)}"`:''}>Activate</button>`;
-}
 
 // The drill-down's control is a real button in the name cell, not the row itself. Giving the <tr>
 // role="button" would have been the shorter route to keyboard access, but it overrides the row's
 // implicit table semantics — a screen reader loses row/cell navigation over the very ranking this
-// view exists to present — and it nests the row's own Activate button inside an ARIA button, which
-// ARIA forbids. A button keeps the table intact and brings Enter and Space with it, natively.
+// view exists to present. A button keeps the table intact and brings Enter and Space with it,
+// natively.
 function metricOpen(m){
   return `<button type="button" class="mopen" data-act="open" data-testid="metrics.open"`
-    +` title="Open this project\u2019s run history">${esc(m.name)}</button>`;
+    +` title="Open this target’s run history">${esc(m.name)}</button>`;
 }
 
 function metricPct(v){return Math.round(v*100)+'%'}
 function metricSecs(v){return v.toFixed(1)+'s'}
-// An unrun project's scalars are all 0.0 (a blank row, not a real zero) — dash them so it never
+// An unrun target's scalars are all 0.0 (a blank row, not a real zero) — dash them so it never
 // looks like the best pass-rate or the fastest run.
 function metricCell(m,txt){return m.runs?txt:'<span class="none">—</span>'}
 
@@ -78,21 +60,21 @@ function metricSpark(trend){
 
 async function loadMetrics(){
   const host=$('#metrics-host');
-  // FETCH_ERROR, not an empty list (#1716): "no projects registered" and "the comparison couldn't be
-  // read" are different situations and want different copy — the first tells you to register another
-  // project, the second to retry. An empty fallback here reported a healthy hub as an empty one.
-  const rows=await getJSON('/api/metrics/projects',FETCH_ERROR);
-  if(isFetchError(rows)){host.innerHTML='<div class="mempty" data-testid="metrics.error">Couldn\u2019t load the comparison. Refresh to retry.</div>';return}
+  // FETCH_ERROR, not an empty list (#1716): "no targets declared" and "the comparison couldn't be
+  // read" are different situations and want different copy — the first tells you to bind a config,
+  // the second to retry. An empty fallback here reported a healthy config as an empty one.
+  const rows=await getJSON('/api/metrics/targets',FETCH_ERROR);
+  if(isFetchError(rows)){host.innerHTML='<div class="mempty" data-testid="metrics.error">Couldn’t load the comparison. Refresh to retry.</div>';return}
   metricsCache=Array.isArray(rows)?rows:[];
-  if(!metricsCache.length){host.innerHTML='<div class="mempty" data-testid="metrics.empty">No projects to compare — register more than one with <code>bajutsu project add</code>.</div>';return}
+  if(!metricsCache.length){host.innerHTML='<div class="mempty" data-testid="metrics.empty">No targets to compare — open a config that declares some.</div>';return}
   renderMetrics();
 }
 
 function sortedMetrics(){
   const {key,dir}=metricsSort;
   return metricsCache.slice().sort((a,b)=>{
-    // An unrun project's scalars are all 0.0 (no signal, not a real worst) — keep it out of the
-    // ranking so pass-rate-ascending never puts it ahead of a project that genuinely scores low.
+    // An unrun target's scalars are all 0.0 (no signal, not a real worst) — keep it out of the
+    // ranking so pass-rate-ascending never puts it ahead of a target that genuinely scores low.
     if(!a.runs!==!b.runs)return a.runs?-1:1;
     const av=a[key],bv=b[key];
     const c=typeof av==='string'?av.localeCompare(bv):av-bv;
@@ -126,45 +108,37 @@ function renderMetrics(){
   host.querySelectorAll('button[data-act="open"]').forEach(b=>
     b.addEventListener('click',()=>openMetricsDetail(b.closest('tr.mrow').dataset.name)));
   // Clicking anywhere else on the row is the pointer convenience the view already had. It ignores an
-  // event one of the row's own buttons raised, so Activate never also navigates — one guard on the
-  // row instead of a stopPropagation each button could forget.
+  // event one of the row's own buttons raised — one guard on the row instead of a stopPropagation
+  // each button could forget.
   host.querySelectorAll('tr.mrow').forEach(tr=>
     tr.addEventListener('click',e=>{if(!e.target.closest('button'))openMetricsDetail(tr.dataset.name)}));
-  host.querySelectorAll('button[data-act="activate"]').forEach(b=>
-    b.addEventListener('click',()=>activateFromComparison(b.closest('tr.mrow').dataset.name)));
 }
 
-// The read-only drill-down a row opens: that project's run history, newest first. Served by the
-// project hub's existing per-project runs route, which answers the same run-summary shape the Replay
-// history renders — so nothing is added server-side and the two lists agree on shape.
+// The read-only drill-down a row opens: that target's run history, newest first. Read from the
+// ordinary run list, scoped server-side by the run's own `target` stamp (`ranTarget`, BE-0404
+// unit 3) so the list is the same newest-N window of *this* target the ranking row was computed
+// over — a client-side filter over a global window would let the detail contradict the row that
+// opened it (#1718). The label filter is opened to every label, since the comparison ranks a
+// config's targets rather than one partition of them.
 async function openMetricsDetail(name){
   const host=$('#metrics-host');
   metricsDetail=name;
   host.innerHTML=`<div class="mdetail" data-testid="metrics.detail">`
     +`<div class="mdetailhead"><button type="button" class="cfgbtn" data-act="back" data-testid="metrics.detail-back">&#8592; Comparison</button>`
-    +`<span class="mname">${esc(name)}</span><span class="muted" style="font-size:.8em">read-only — opening this history activates nothing</span></div>`
-    +`<ul class="fslist mruns" data-testid="metrics.detail-runs"><li class="muted">Loading run history\u2026</li></ul></div>`;
+    +`<span class="mname">${esc(name)}</span><span class="muted" style="font-size:.8em">read-only — opening this history changes nothing</span></div>`
+    +`<ul class="fslist mruns" data-testid="metrics.detail-runs"><li class="muted">Loading run history…</li></ul></div>`;
   host.querySelector('button[data-act="back"]').addEventListener('click',renderMetrics);
-  const runs=await getJSON('/api/projects/'+encodeURIComponent(name)+'/runs',FETCH_ERROR);
-  // The reader may have gone back, or opened another project, while the fetch was in flight —
-  // rendering into whatever is on screen now would attribute one project's runs to another.
+  const runs=await getJSON('/api/runs?label=*&ranTarget='+encodeURIComponent(name),FETCH_ERROR);
+  // The reader may have gone back, or opened another target, while the fetch was in flight —
+  // rendering into whatever is on screen now would attribute one target's runs to another.
   if(metricsDetail!==name)return;
   const ul=host.querySelector('[data-testid="metrics.detail-runs"]');
   if(!ul)return;
-  if(isFetchError(runs)){ul.innerHTML='<li class="muted" data-testid="metrics.detail-error">Couldn\u2019t load this project\u2019s runs. Go back and retry.</li>';return}
-  if(!Array.isArray(runs)||!runs.length){ul.innerHTML='<li class="muted" data-testid="metrics.detail-empty">No runs recorded for this project yet.</li>';return}
+  if(isFetchError(runs)){ul.innerHTML='<li class="muted" data-testid="metrics.detail-error">Couldn’t load this target’s runs. Go back and retry.</li>';return}
+  if(!Array.isArray(runs)||!runs.length){ul.innerHTML='<li class="muted" data-testid="metrics.detail-empty">No runs recorded for this target yet.</li>';return}
   ul.innerHTML=runs.map(r=>`<li data-testid="metrics.detail-run"><span class="dot ${r.ok?'ok':'ng'}"></span>`
     +`<span class="hid">${esc(r.id)}</span>`
-    +`<span class="hsum">${r.passed}/${r.total}${r.scenarios&&r.scenarios.length?' \u00b7 '+esc(r.scenarios.join(', ')):''}</span></li>`).join('');
-}
-
-// Activate from the comparison: an explicit press, confirmed first, naming what the rebind reaches.
-// The confirm is the whole point of the split — activation is deployment-wide state, not a per-viewer
-// preference, so the reader has to have meant it.
-async function activateFromComparison(name){
-  if(!window.confirm(`Activate project "${name}"?\n\nThis rebinds the live config this deployment serves — every tab against this server follows, not just yours. It does not change any recorded run.`))return;
-  await switchProject(name);  // surfaces its own error, including the admin-only refusal
-  renderMetrics();  // move the "active" marker to whatever the server now reports
+    +`<span class="hsum">${r.passed}/${r.total}${r.scenarios&&r.scenarios.length?' · '+esc(r.scenarios.join(', ')):''}</span></li>`).join('');
 }
 
 // Wire the one static listener. Called once by the entry module's boot after every section evaluates.

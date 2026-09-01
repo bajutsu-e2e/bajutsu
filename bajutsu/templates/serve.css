@@ -25,7 +25,7 @@ header .brand{font-weight:700}
    tabs always get their own row beneath the config controls — the header's third row, unless
    .brandrow itself wraps to two lines (see header .brandrow above), which pushes them down one. */
 .toptabs{display:flex;align-items:center;gap:.3rem;flex-wrap:wrap}
-/* Config controls (name, Open config, View, project switcher): one flex item so its buttons never
+/* Config controls (name, Open config, View, org switcher): one flex item so its buttons never
    interleave with the view tabs — which, per .viewtabs below, now always sit on their own row
    beneath it. flex-wrap stays nowrap here (own line as a single row) — it only turns on at the phone
    breakpoint, where header .cfgname's forced flex-basis:100% relies on it to push the rest below.
@@ -471,26 +471,18 @@ header .appversion .dirty{color:var(--acc);font-weight:700}
 .fslist li .ic{width:1.2em;text-align:center}
 .fslist li.file .nm{color:var(--acc)}
 .fslist li.muted{color:var(--mut);cursor:default}.fslist li.muted:hover{background:none}
-/* Project hub (BE-0225 unit 4): the header switcher + the projects list rows. */
+/* The header org switcher, and the list rows the Orgs page reuses. */
 .projectsw{max-width:11rem;color:var(--fg);background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:.2rem .5rem;font:inherit;cursor:pointer}
 .projectsw:hover{border-color:var(--acc)}
 .prjlist li.prjrow{cursor:default;gap:.6rem}
 .prjlist li.prjrow:hover{background:none}
 .prjname{font-weight:600}
 .prjsrc{color:var(--mut);font-size:.85em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
-.prjv{font-size:.8em;font-weight:600;padding:.1rem .4rem;border-radius:6px}
-.prjv.ok{color:var(--ok)}.prjv.ng{color:var(--ng)}.prjv.none{color:var(--mut);font-weight:400}
-.prjactive{color:var(--ok);font-size:.8em;font-weight:600}
-/* Projects page (BE-0275): the top-level view's Add form + per-row Remove. The list reuses the
-   .fslist/.prj* rows above; only the add form and the destructive Remove need their own rules. */
 .prj-add{margin:0 0 .8rem}
 .prj-add .gitsrcrow{gap:.4rem}
-.prj-add #projects-add-name{flex:0 0 12rem}
-.prj-add #projects-add-cred{width:100%;margin-top:.4rem;color:var(--fg);background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:.35rem .5rem;font:inherit}
-.prj-add #projects-add-status{display:block;margin-top:.3rem}
 .prjremove{color:var(--ng);border-color:var(--ng)}
 .prjremove:hover{background:var(--ng);color:var(--on-acc)}
-/* Cross-project comparison (BE-0226 unit 3): the sortable ranking table + per-project sparkline. */
+/* Cross-target comparison (BE-0226 unit 3, BE-0404 unit 4): the sortable ranking table + sparkline. */
 .mtable{width:100%;border-collapse:collapse;font-size:.9em}
 .mtable th,.mtable td{padding:.45rem .6rem;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
 .mtable th:first-child,.mtable td:first-child{text-align:left}
@@ -501,9 +493,7 @@ header .appversion .dirty{color:var(--acc);font-weight:700}
 .mrow{cursor:pointer}
 .mrow:hover{background:var(--bg2)}
 .mtable td:last-child{width:1%}
-.mact{padding:.15rem .55rem;font-size:.85em}
-.mactive{color:var(--mut);font-size:.85em}
-/* The read-only drill-down a row opens: the project's run history, with the way back above it. */
+/* The read-only drill-down a row opens: the target's run history, with the way back above it. */
 .mdetailhead{display:flex;align-items:center;gap:.6rem;margin-bottom:.6rem}
 .mruns li{cursor:default}
 .mruns li:hover{background:none}
@@ -727,9 +717,9 @@ header .appversion .dirty{color:var(--acc);font-weight:700}
    left with dead space beside it. Each gets a grid that fills the available width instead.
    The read-only dashboards (Stats / Flaky / Usage / Coverage / Metrics) are a single card: one
    full-width column. */
-#view-stats,#view-flaky,#view-usage,#view-coverage,#view-metrics,#view-projects,#view-orgs{grid-template-columns:1fr}
+#view-stats,#view-flaky,#view-usage,#view-coverage,#view-metrics,#view-orgs{grid-template-columns:1fr}
 /* A disabled .cfgbtn must not read as pressable. The Orgs page is the first place one is disabled
-   (the sign-in fallback's row, and a Delete on an org that still owns projects), and without this it
+   (the sign-in fallback's row, whose Membership and Delete are both refused), and without this it
    rendered identically to a live button. Matches button.run:disabled / .shotnav:disabled. */
 .cfgbtn:disabled{opacity:.5;cursor:default}
 /* Which org this session acts as (BE-0375), beside the config name it acts on. Reads as a quiet

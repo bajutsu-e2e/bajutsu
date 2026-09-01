@@ -43,20 +43,32 @@ def project(tmp_path: Path) -> tuple[Path, Path, Path]:
     return scn_dir, cfg, runs
 
 
-def write_run(runs: Path, run_id: str, *, ok: bool, scenarios: list[tuple[str, bool]]) -> None:
-    """Write a minimal run dir (manifest.json + report.html) for the listing/HTTP tests."""
+def write_run(
+    runs: Path,
+    run_id: str,
+    *,
+    ok: bool,
+    scenarios: list[tuple[str, bool]],
+    label: str = "",
+    target: str = "",
+) -> None:
+    """Write a minimal run dir (manifest.json + report.html) for the listing/HTTP tests.
+
+    `label` / `target` stamp the run's partition and its target axis (BE-0404); both are omitted
+    from the manifest when empty, which is what a run recorded before those stamps looks like.
+    """
     d = runs / run_id
     d.mkdir(parents=True)
-    (d / "manifest.json").write_text(
-        json.dumps(
-            {
-                "runId": run_id,
-                "ok": ok,
-                "scenarios": [{"scenario": n, "ok": o} for n, o in scenarios],
-            }
-        ),
-        encoding="utf-8",
-    )
+    manifest: dict[str, Any] = {
+        "runId": run_id,
+        "ok": ok,
+        "scenarios": [{"scenario": n, "ok": o} for n, o in scenarios],
+    }
+    if label:
+        manifest["label"] = label
+    if target:
+        manifest["target"] = target
+    (d / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     (d / "report.html").write_text("<html></html>", encoding="utf-8")
 
 

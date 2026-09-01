@@ -10,7 +10,6 @@
 // time. serve.author.mjs is the entry module the page loads.
 import {loadHistory, loadStats, loadFlaky, loadUsage, coverageInit, showInfo, replayAudit, onSimChange, loadTrash, seedComposeFromCurrent} from './serve.panels.mjs';
 import {loadMetrics} from './serve.metrics.mjs';
-import {renderProjectsView} from './serve.projects.mjs';
 import {loadOrgs} from './serve.orgs.mjs';
 import {onCrawlSimChange} from './serve.crawl.mjs';
 import {applyCaptureCapability, authorInit, authorRefresh, syncPlatform, replayCodegen} from './serve.author.mjs';
@@ -107,8 +106,8 @@ async function getJSON(url,fallback){
   return res.ok?data:failedJSON(fallback,data);
 }
 // No `res.ok` check here, unlike getJSON: a write's non-2xx body is exactly what its callers render
-// — `purgeRun`'s 403 becomes "Only an admin can permanently delete a run", `switchProject`'s 4xx
-// becomes the alert text — so discarding it would replace every specific reason with a generic one.
+// — `purgeRun`'s 403 becomes "Only an admin can permanently delete a run", a rebind's 4xx becomes
+// the alert text — so discarding it would replace every specific reason with a generic one.
 async function postJSON(url,body,fallback){
   try{return await (await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json()}
   catch(e){return fallback}
@@ -486,7 +485,7 @@ function openModal(el){
 // ---- top-level Record / Replay / Crawl views ----
 function showView(name){
   document.querySelectorAll('.toptab').forEach(t=>t.classList.toggle('active',t.dataset.view===name));
-  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';$('#view-flaky').hidden=name!=='flaky';$('#view-usage').hidden=name!=='usage';$('#view-coverage').hidden=name!=='coverage';$('#view-metrics').hidden=name!=='metrics';$('#view-projects').hidden=name!=='projects';$('#view-orgs').hidden=name!=='orgs';$('#view-trash').hidden=name!=='trash';
+  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';$('#view-flaky').hidden=name!=='flaky';$('#view-usage').hidden=name!=='usage';$('#view-coverage').hidden=name!=='coverage';$('#view-metrics').hidden=name!=='metrics';$('#view-orgs').hidden=name!=='orgs';$('#view-trash').hidden=name!=='trash';
   // The incoming view animates in (enter-only: the outgoing one is hidden instantly, so two sibling
   // views never overlap in the flex column). The picked theme decides the motion via --motion-view-*.
   const shown=$('#view-'+name);if(shown)playEnter(shown,'--motion-view-enter');
@@ -497,7 +496,6 @@ function showView(name){
   if(name==='usage')loadUsage();
   if(name==='coverage')coverageInit();
   if(name==='metrics')loadMetrics();
-  if(name==='projects')loadProjects();  // re-fetch so the page reflects any CLI-side add/remove
   if(name==='orgs')loadOrgs();  // re-fetch so the page reflects an org another admin just changed
   if(name==='trash')loadTrash();  // BE-0239: list soft-deleted runs on entry
 }
@@ -511,7 +509,7 @@ async function loadConfig(){
   const c=await getJSON('/api/config',{hasConfig:false});
   if(typeof c.retentionDays==='number')retentionDays=c.retentionDays;  // BE-0239: trash window for the delete confirms
   // Keep the last block on a failed re-read, like retentionDays above: loadConfig runs again on a
-  // rebind or a project switch, and resetting to {} would read as "unknown", which means available
+  // rebind, and resetting to {} would read as "unknown", which means available
   // — re-enabling Capture on a deployment that 404s it until the next successful read.
   if(c.capabilities&&typeof c.capabilities==='object')capabilities=c.capabilities;
   fsSourceEnabled=!c.configSources||c.configSources.includes('fs');
@@ -545,7 +543,7 @@ function setOrgBadge(actor,org,orgs){
     sw.title=`signed in as ${actor} — acting as org "${org}"`;
   }
 }
-// Switching org repoints every tab at once (runs, evidence, secrets, projects), so the page is
+// Switching org repoints every tab at once (runs, evidence, secrets), so the page is
 // reloaded rather than each view refreshed: a partial update would leave already-rendered views
 // showing the previous tenant's data. On refusal the boot read runs again, so the select re-syncs to
 // the org still in force instead of showing one the server rejected.
@@ -601,50 +599,39 @@ $('#opencfg').addEventListener('click',openFs);
 $('#fsclose').addEventListener('click',closeFs);
 $('#fsmodal').addEventListener('click',e=>{if(e.target===$('#fsmodal'))closeFs()});
 
-// ---- project hub (BE-0225 unit 4; page BE-0275): the header switcher + the Projects page ----
-// `serve` is a hub over several named config bindings. Activating one rebinds state.config on the
-// server; we then reload the config label and the shared target/scenario lists so every tab runs
-// against the switched-to config with no restart. Every `serve` implicitly registers its loaded
-// config as one project. The switcher + the cross-project Comparison tab stay hidden until a real hub
-// exists (more than one project to choose between) — a single-config serve is unchanged there. The
-// Projects *page* (BE-0275) is the exception: it is the hub's home and its Add form is how a
-// single-config serve grows into a hub (the hosted topology has no CLI), so its tab shows for any
-// project count. The page (list + add + remove) lives in serve.projects.mjs; this section owns the
-// shared fetch/switch the page and the switcher both drive.
-export let projectsCache=[];
-async function loadProjects(){
-  const list=await getJSON('/api/projects',[]);
-  projectsCache=Array.isArray(list)?list:[];
-  const hub=projectsCache.length>1;
-  $('#projectsw').hidden=!hub;
-  // The cross-project comparison (BE-0226) only means anything with a real hub, so its tab tracks the
-  // switcher's visibility — a single-config serve has nothing to compare and never shows it.
-  const mtab=document.querySelector('.toptab[data-view="metrics"]');if(mtab)mtab.hidden=!hub;
-  // The Projects tab (BE-0275) shows whenever there is a project to manage — single-config included,
-  // so the hub can be grown from the UI — and hides only with no registry/project at all.
-  const ptab=document.querySelector('.toptab[data-view="projects"]');if(ptab)ptab.hidden=!projectsCache.length;
-  renderSwitcher();renderProjectsView();
+
+// ---- Run-history label filter (BE-0404 unit 4) ----
+// A `serve` process binds one config at a time, so restarting it against a second config used to
+// leave both configs' runs interleaved in one history. Every run now records the config it ran, and
+// the Replay history, Stats, and Flaky all read one label's runs — by default the bound config's.
+// The switcher names the partitions the history actually holds plus an "all labels" entry, and stays
+// hidden while there is only one, so a single-config serve sees no control it has no use for.
+export const ALL_LABELS='*';
+let labelChoice=null;  // null = the server's default (the bound config's own label)
+// The `?label=` fragment every history read appends, or '' for the default.
+function labelParam(prefix){return labelChoice?prefix+'label='+encodeURIComponent(labelChoice):''}
+function setLabelChoice(value){labelChoice=value||null}
+// Rebuild the switcher from the labels present in the whole history. Called at boot and after a
+// rebind, since binding another config changes which partition is the default.
+async function loadLabels(){
+  const sw=$('#labelsw');
+  if(!sw)return;
+  const runs=await getJSON('/api/runs?label='+encodeURIComponent(ALL_LABELS),[]);
+  const labels=[...new Set((Array.isArray(runs)?runs:[]).map(r=>r&&r.label).filter(Boolean))].sort();
+  // One partition (or none) is nothing to tell apart — hide the control rather than offer a choice
+  // with a single outcome.
+  sw.hidden=labels.length<2;
+  if(sw.hidden){labelChoice=null;sw.innerHTML='';return;}
+  // A stale selection (its runs deleted, or a rebind) falls back to the default rather than pinning
+  // the history to a label nothing matches.
+  if(labelChoice&&labelChoice!==ALL_LABELS&&!labels.includes(labelChoice))labelChoice=null;
+  const opts=labels.map(l=>`<option value="${esc(l)}"${l===labelChoice?' selected':''}>${esc(l)}</option>`);
+  opts.push(`<option value="${esc(ALL_LABELS)}"${labelChoice===ALL_LABELS?' selected':''}>all labels</option>`);
+  // The default is the server's own choice, so it carries no value of its own.
+  opts.unshift(`<option value=""${labelChoice?'':' selected'}>this config</option>`);
+  sw.innerHTML=opts.join('');
 }
-function renderSwitcher(){
-  $('#projectsw').innerHTML=projectsCache.map(p=>`<option value="${esc(p.name)}"${p.active?' selected':''}>${esc(p.name)}</option>`).join('');
-}
-// Activate a project (rebind the live config), then re-sync the config label + shared lists + the
-// switcher. A refused switch (e.g. an uploaded bundle with no checkout, a moved file) surfaces the
-// server's error and re-syncs the select so it never lies about what is active.
-//
-// The role-gated refusal gets a sentence rather than the transport's bare `forbidden` (#1720), the
-// way purgeRun already spells out its own 403: activation is admin-only, and the page is never told
-// its role — the server is the single authority — so the refusal is where a reader learns the right
-// they are missing. Mapped here rather than at a call site, so the comparison view's Activate
-// button, the header switcher, and the Projects page's Switch all say the same thing.
-async function switchProject(name,opts){
-  const d=await postJSON('/api/projects/'+encodeURIComponent(name)+'/activate',{},{error:'switch failed'});
-  if(d.error){alert(d.error==='forbidden'?'Only an admin can activate a project.':d.error);await loadProjects();return}
-  await loadConfig();
-  await loadProjects();
-  if(opts&&opts.goReplay)showView('replay');
-}
-$('#projectsw').addEventListener('change',e=>switchProject(e.target.value));
+
 $('#orgsw').addEventListener('change',e=>switchOrg(e.target.value));
 
 // ---- Git config-source credential (BE-0224): the write-once token for a private repo, stored via
@@ -1073,6 +1060,13 @@ $('#gitspec').addEventListener('keydown',e=>{if(e.key==='Enter')chooseGitConfig(
 // ---- shared data: targets, scenarios, simulators (used by both views) ----
 async function loadShared(){
   targets=await getJSON('/api/targets',[]);
+  // A rebind changes which partition is the default, and can introduce a label the switcher has
+  // never listed — so rebuild it alongside the target list every bind reloads (BE-0404 unit 4).
+  loadLabels();
+  // The cross-target comparison (BE-0226, repointed by BE-0404) only means something with more than
+  // one target to compare, so its tab tracks the bound config's target count — a single-target
+  // config never shows it, exactly as a single-config serve never showed the earlier version.
+  const mtab=document.querySelector('.toptab[data-view="metrics"]');if(mtab)mtab.hidden=targets.length<2;
   // each target carries its primary backend (data-backend) so the UI shows only that platform's device controls
   const opts=targets.map(a=>{const n=typeof a==='string'?a:a.name,b=typeof a==='string'?'':(a.backend||'');
     return `<option value="${esc(n)}" data-backend="${esc(b)}">${esc(n)}</option>`;}).join('');
@@ -1317,7 +1311,7 @@ export {
   $, setBusy, cancelJob, streamJob, appendLine, esc, setStatus, getJSON, postJSON, startJob,
   FETCH_ERROR, isFetchError, unavailableReason,
   renderGradeBadge, wireDoctor, NARROW_MQ, prefersReducedMotion, motionOff, initTheme,
-  openModal, closeModal, showView, loadConfig, loadVersion, setCfgName, closeFs, loadProjects,
-  switchProject, loadShared, loadScenarios, loadSims, refreshAiAvailability, storeGitCred,
-  restoreRun, purgeRun, wireHistoryList,
+  openModal, closeModal, showView, loadConfig, loadVersion, setCfgName, closeFs,
+  loadShared, loadScenarios, loadSims, refreshAiAvailability, storeGitCred,
+  restoreRun, purgeRun, wireHistoryList, labelParam, loadLabels, setLabelChoice,
 };

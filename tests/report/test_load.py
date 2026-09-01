@@ -93,8 +93,8 @@ def test_round_trip_through_manifest_is_lossless() -> None:
 
 def test_manifest_carries_schema_version_and_source_name() -> None:
     data = manifest_dict("r1", [_result()], source_name="smoke.yaml")
-    # bumped for an artifact's optional `depicts` (which screen the file shows)
-    assert data["schemaVersion"] == 9
+    # bumped for the optional top-level `target` / `label` stamps (BE-0404)
+    assert data["schemaVersion"] == 10
     assert data["sourceName"] == "smoke.yaml"
 
 

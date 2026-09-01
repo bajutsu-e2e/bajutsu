@@ -952,6 +952,7 @@ def run_and_report(
     resolve_actuator: Callable[[Scenario], str] | None = None,
     config_source: dict[str, str] | None = None,
     exec_provenance: dict[str, str | None] | None = None,
+    label: str | None = None,
     golden_context: GoldenContext | None = None,
     lease_udid_spec: str = "booted",
     on_score: Callable[[Score], None] | None = None,
@@ -1006,6 +1007,8 @@ def run_and_report(
         secret_values=secret_values,
         config_source=config_source,
         exec_provenance=exec_provenance,
+        target=eff.target,
+        label=label,
     )
     return results, manifest
 
@@ -1023,6 +1026,7 @@ def run_matrix_and_report(
     secret_values: list[str] | None = None,
     config_source: dict[str, str] | None = None,
     exec_provenance: dict[str, str | None] | None = None,
+    label: str | None = None,
     cancelled: CancelSource = not_cancelled,
 ) -> tuple[list[RunResult], Path]:
     """Run the scenarios once per engine, then assemble ONE report at `runs_dir/run_id` (BE-0076).
@@ -1082,6 +1086,8 @@ def run_matrix_and_report(
         secret_values=secret_values,
         config_source=config_source,
         exec_provenance=exec_provenance,
+        target=eff.target,
+        label=label,
     )
     return results, manifest
 
@@ -1151,6 +1157,8 @@ def _assemble_report(
     secret_values: list[str] | None = None,
     config_source: dict[str, str] | None = None,
     exec_provenance: dict[str, str | None] | None = None,
+    target: str | None = None,
+    label: str | None = None,
 ) -> Path:
     """Write the run's report artifacts under `run_dir` from its (possibly engine-tagged) results.
 
@@ -1192,4 +1200,6 @@ def _assemble_report(
         description=description,
         provenance=provenance,
         writer=writer,
+        target=target,
+        label=label,
     )
