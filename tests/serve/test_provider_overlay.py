@@ -19,7 +19,7 @@ import pytest
 from sqlalchemy import Engine
 
 from bajutsu import serve as srv
-from bajutsu.agents import ai_config as aic
+from bajutsu.common.agents import ai_config as aic
 from bajutsu.serve import operations as ops
 from bajutsu.serve.jobs import _spawn_env
 from bajutsu.serve.operations.config import provider_env, resolve_provider_env

@@ -2,7 +2,7 @@
 
 The provider registry's `credential_gap()` (BE-0104) answers *whether* Claude is reachable for the
 resolved provider — the Anthropic key, a Bedrock model id, the `ant` CLI's sign-in (BE-0163), or the
-`claude-code` CLI. Callers read that gap directly from `bajutsu.ai.credential_gap`; this module turns
+`claude-code` CLI. Callers read that gap directly from `bajutsu.common.ai.credential_gap`; this module turns
 the returned token into a specific, actionable one-liner, so the `serve` and `doctor` surfaces render
 the same reason whichever provider a target selects (BE-0246 dropped the former `availability`
 passthrough, which only forwarded to `credential_gap`).
@@ -13,14 +13,14 @@ deterministic path (BE-0101).
 
 from __future__ import annotations
 
-from bajutsu.agents.ai_config import AiConfig
-from bajutsu.agents.anthropic_client import ANT_CLI_MISSING, ANT_CLI_UNAUTHENTICATED, key_env
-from bajutsu.ai.claude_code import CLI_MISSING as CLAUDE_CODE_CLI_MISSING
-from bajutsu.ai.disabled import DISABLED
+from bajutsu.common.agents.ai_config import AiConfig
+from bajutsu.common.agents.anthropic_client import ANT_CLI_MISSING, ANT_CLI_UNAUTHENTICATED, key_env
+from bajutsu.common.ai.claude_code import CLI_MISSING as CLAUDE_CODE_CLI_MISSING
+from bajutsu.common.ai.disabled import DISABLED
 
 
 def message(gap: str, ai: AiConfig | None = None) -> str:
-    """A specific, actionable one-liner for a gap from `bajutsu.ai.credential_gap`, for `serve` / `doctor`."""
+    """A specific, actionable one-liner for a gap from `bajutsu.common.ai.credential_gap`, for `serve` / `doctor`."""
     if gap == DISABLED:
         # Not a broken environment: the gap is a deliberate setting (BE-0394), so the wording states
         # the choice rather than sending the reader off to install or sign in to anything.
