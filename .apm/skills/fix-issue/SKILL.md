@@ -127,9 +127,12 @@ of any documentation whose behavior you changed, then self-review the diff again
 review/plan pass that classifies findings and never edits, and an implement pass that applies its
 instructions
 ([BE-0347](../../../roadmaps/BE-0347-bounded-ci-review-cycle/BE-0347-bounded-ci-review-cycle.md)).
-Run the two roles as separate Agent-tool subagents on different models: `opus` for the review/plan
-pass, and for the implement pass `sonnet` when the fix stays within `docs/`, `opus` when it touches
-product code. The `pr-review-toolkit` plugin supplies the specialized lenses.
+Run the two roles as separate, freshly-spawned Agent-tool subagents with non-overlapping
+instructions — judge-only and apply-only: `opus` for the review/plan pass, and for the implement
+pass `sonnet` when the fix stays within `docs/`, `opus` when it touches product code. For a
+product-code fix the two land on the same model, so it is the separate cold spawn, not a model
+difference, that keeps the judge from patching its own finding. The `pr-review-toolkit` plugin
+supplies the specialized lenses.
 One input differs from `implement-be`'s: there is no roadmap `Status` flip pending here, so the
 review/plan pass needs no note about one. Keep fixing and re-running a fresh review/plan pass until
 it comes back empty, under the 3-round cap that step's
