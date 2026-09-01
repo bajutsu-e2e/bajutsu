@@ -230,8 +230,8 @@ git worktree remove ../bajutsu-<topic>
 消すと、今度は共有された `core.bare = true` が現れます。以後あらゆる git の呼び出しが
 `fatal: this operation must be run in a work tree` で失敗し、`make check` も通らなくなります。
 
-そこで `make hooks` は、`extensions.worktreeConfig` が有効なまま共有の設定に `core.bare` か
-`core.worktree` があれば、処理を中断します。中断させているのは
+そこで `make hooks` は、`extensions.worktreeConfig` が有効なまま、共有の設定に `core.worktree` か
+`true` の `core.bare` があれば中断します。中断させているのは
 [`scripts/check_worktree_config.sh`](../../scripts/check_worktree_config.sh) です。`check`、`setup`、
 `worktree` はいずれも `make hooks` を経由するので、1箇所で3つとも守れます。中断するだけで、修復は
 しません。2つの設定は、このリポジトリのツールが書いたものではないからです。正しい直し方も、その
@@ -239,8 +239,8 @@ git worktree remove ../bajutsu-<topic>
 次の手当てを表示します。該当の worktree で実行してください。
 
 ```bash
-GIT_WORK_TREE=. git config --unset core.worktree   # 共有の設定にある場合だけ
-GIT_WORK_TREE=. git config --unset core.bare       # 共有の値が true の場合だけ
+GIT_WORK_TREE=. git config --unset-all core.worktree   # 共有の設定にある場合だけ
+GIT_WORK_TREE=. git config --unset-all core.bare       # 共有の値が true の場合だけ
 ```
 
 この2点は、どちらも省けません。`GIT_WORK_TREE=.` は飾りではありません。git は、依頼された処理を
@@ -248,7 +248,8 @@ GIT_WORK_TREE=. git config --unset core.bare       # 共有の値が true の場
 いると、修復コマンド自体が `fatal: Invalid path` で落ちます。上書きしない限り、この状態は続きます。
 もう1点は、共有のファイルから消す必要があることです。`git config --worktree core.bare false` は手元の
 worktree しか直しません。共有の値は残り、ほかのすべての worktree を支配し続けます。今回の設定ミスが
-気付かれなかったのも、そのためです。
+気付かれなかったのも、そのためです。なお `--unset` ではなく `--unset-all` を使うのは、キーが複数の値を
+持つとき `--unset` が実行を拒むからです。値が1つなら、どちらも同じ結果になります。
 
 どちらかの設定が本当に必要な worktree もあります。たとえば、`core.bare = true` を保つベアリポジトリ
 です。消したあとで `git config --worktree` を使い、自分の設定ファイルに書き戻します。共有のファイル

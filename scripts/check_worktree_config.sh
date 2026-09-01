@@ -105,6 +105,7 @@ fi
 # The answer lands in `shared_value` instead of on stdout so that an unreadable file can exit the
 # script. Returned through a command substitution, the `exit` below would only end the subshell.
 shared_value=""
+shared_found=0
 shared_read() {
   local status=0
   # `--type=bool` where the caller asks for one, so git decides what counts as true: it accepts
@@ -116,10 +117,13 @@ shared_read() {
     shared_value="$(git config --file "$shared_config" --get "$1" 2>"$err_file")" || status=$?
   fi
   case "$status" in
-    0) ;;
+    0) shared_found=1 ;;
     # git exits 1 for "the key is absent" and 128 for "could not read at all". Only the first is an
     # answer; folding the second into it would clear a repository whose config git cannot parse.
-    1) shared_value="" ;;
+    1)
+      shared_value=""
+      shared_found=0
+      ;;
     *) report_git_failure "could not read '$1' from $shared_config:" ;;
   esac
 }
@@ -131,9 +135,13 @@ shared_read extensions.worktreeConfig bool
 # first-class target here — treats an empty array as unset under `set -u`.
 offenders=""
 
+# Presence, not a non-empty value: a shared `core.worktree` set to the empty string offends just as
+# much, and leaves git unable to run at all ("cannot chdir to ''"). Passing it for want of a value to
+# print would hand the next command that cryptic message instead of this one's remedy.
 shared_read core.worktree
 worktree_value="$shared_value"
-if [ -n "$worktree_value" ]; then
+worktree_present="$shared_found"
+if [ "$worktree_present" -eq 1 ]; then
   offenders="${offenders}    core.worktree = ${worktree_value}
 "
 fi
@@ -164,11 +172,14 @@ fi
   echo "  session's worktree. See issue #1803."
   echo
   echo "  Clear it from the shared config, then re-run:"
-  if [ -n "$worktree_value" ]; then
-    echo "      GIT_WORK_TREE=. git config --unset core.worktree"
+  # `--unset-all` rather than `--unset`, which refuses (exit 5) when the key carries more than one
+  # value and so would leave the reader following a command that changes nothing. For the ordinary
+  # single value the two behave identically.
+  if [ "$worktree_present" -eq 1 ]; then
+    echo "      GIT_WORK_TREE=. git config --unset-all core.worktree"
   fi
   if [ -n "$bare_value" ]; then
-    echo "      GIT_WORK_TREE=. git config --unset core.bare"
+    echo "      GIT_WORK_TREE=. git config --unset-all core.bare"
   fi
   echo
   # Without the prefix the remedy dies in the very state that motivates it, and a reader who takes

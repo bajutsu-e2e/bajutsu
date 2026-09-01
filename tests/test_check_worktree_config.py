@@ -252,9 +252,59 @@ def test_a_shared_bare_true_fails(tmp_path: Path, value: str) -> None:
     result = _run(root)
 
     assert result.returncode == 1
-    assert "core.bare = true" in result.stderr
+    # The leading indentation is what makes this the offender line rather than the epilogue prose,
+    # which names `core.bare = true` too while explaining where the setting does belong.
+    assert "    core.bare = true\n" in result.stderr
     # Nothing to unset for core.worktree here, so that remedy line must not be offered.
-    assert "git config --unset core.worktree" not in result.stderr
+    assert "git config --unset-all core.worktree" not in result.stderr
+
+
+def test_an_empty_shared_core_worktree_fails(tmp_path: Path) -> None:
+    """Presence offends, not just a non-empty value.
+
+    An empty `core.worktree` leaves git unable to run at all — every command dies with `fatal:
+    cannot chdir to ''` — so passing it for want of a value to print would hand the caller that
+    cryptic message instead of this guard's remedy. `make hooks` would fail on its very next git
+    line, naming nothing and suggesting nothing.
+    """
+    root = _checkout(tmp_path / "repo")
+    _set_shared(root, "extensions.worktreeConfig", "true")
+    _set_shared(root, "core.worktree", "")
+
+    result = _run(root)
+
+    assert result.returncode == 1
+    assert "    core.worktree = \n" in result.stderr
+    assert "GIT_WORK_TREE=. git config --unset-all core.worktree" in result.stderr
+
+
+def test_a_multi_valued_offender_gets_a_remedy_that_works(tmp_path: Path) -> None:
+    """`--unset` refuses outright on a key with more than one value; `--unset-all` clears it.
+
+    A remedy that exits 5 and changes nothing leaves the reader red with no idea why, which is the
+    same defect as printing one that writes the wrong file.
+    """
+    root = _checkout(tmp_path / "repo")
+    _set_shared(root, "extensions.worktreeConfig", "true")
+    for path in ("/gone/one", "/gone/two"):
+        subprocess.run(
+            ["git", "config", "--file", str(_shared_config(root)), "--add", "core.worktree", path],
+            check=True,
+            capture_output=True,
+            env=_clean_env(GIT_WORK_TREE=str(root)),
+        )
+
+    assert _run(root).returncode == 1
+
+    subprocess.run(
+        ["git", "config", "--unset-all", "core.worktree"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        env=_clean_env(GIT_WORK_TREE="."),
+    )
+
+    assert _run(root).returncode == 0
 
 
 @pytest.mark.parametrize("value", ["yes", "on", "1"])
@@ -284,14 +334,14 @@ def test_the_incident_state_reports_both_offenders_and_a_remedy_that_works(tmp_p
     result = _run(root)
 
     assert result.returncode == 1
-    assert "core.worktree = /gone/session-worktree" in result.stderr
-    assert "core.bare = true" in result.stderr
+    assert "    core.worktree = /gone/session-worktree\n" in result.stderr
+    assert "    core.bare = true\n" in result.stderr
 
     for key in ("core.worktree", "core.bare"):
-        assert f"GIT_WORK_TREE=. git config --unset {key}" in result.stderr
+        assert f"GIT_WORK_TREE=. git config --unset-all {key}" in result.stderr
         # The prefix is what makes the command survive the stale path; run it exactly as printed.
         subprocess.run(
-            ["git", "config", "--unset", key],
+            ["git", "config", "--unset-all", key],
             cwd=root,
             check=True,
             capture_output=True,

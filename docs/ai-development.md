@@ -267,15 +267,15 @@ invocation with `fatal: this operation must be run in a work tree` and takes `ma
 it.
 
 `make hooks` — reached by `check`, `setup`, and `worktree` alike — therefore refuses to proceed when
-it finds either one in the shared config with the extension on
+it finds `core.worktree`, or `core.bare` set to `true`, in the shared config with the extension on
 ([`scripts/check_worktree_config.sh`](../scripts/check_worktree_config.sh)). It only reports: nothing
 in this repository's tooling writes either setting, and the right repair depends on whether the
 checkout is the main or a linked worktree, so the guard prints the remedy rather than guessing at
 it. From the affected worktree:
 
 ```bash
-GIT_WORK_TREE=. git config --unset core.worktree   # only if it is in the shared config
-GIT_WORK_TREE=. git config --unset core.bare       # only if the shared value is true
+GIT_WORK_TREE=. git config --unset-all core.worktree   # only if it is in the shared config
+GIT_WORK_TREE=. git config --unset-all core.bare       # only if the shared value is true
 ```
 
 Both details matter. The `GIT_WORK_TREE=.` prefix is not decoration: git resolves `core.worktree`
@@ -283,7 +283,9 @@ during repository setup, before it runs the command you asked for, so once the s
 worktree that has been removed, the repair command itself dies with `fatal: Invalid path` until
 something overrides it. And the repair has to clear the *shared* file — `git config --worktree
 core.bare false` fixes only the worktree in hand and leaves the shared value governing every other
-one, which is how the misconfiguration went unnoticed in the first place.
+one, which is how the misconfiguration went unnoticed in the first place. (`--unset-all` rather than
+`--unset` because `--unset` refuses outright when the key carries more than one value; for a single
+value the two are the same.)
 
 A worktree that genuinely needs either setting — a bare main repository keeping `core.bare = true` —
 adds it back afterwards with `git config --worktree`, never to the shared file.
