@@ -47,7 +47,7 @@ serve_uses_xcuitest() {
   uv run python - "$config" <<'PY'
 import sys
 
-from bajutsu.backends import resolve_actuators
+from bajutsu.common.backends import resolve_actuators
 from bajutsu.config import load_config, resolve
 
 try:

@@ -213,7 +213,7 @@ jobs:
     #
     # This job runs the largest scenario set in the lane (Compose full set + Views subset), so it is
     # the one most exposed to a mid-run backend crash (BAJUTSU_CRASH_RETRIES/
-    # BAJUTSU_CRASH_RECOVERY_BUDGET, bajutsu/runner/pipeline.py) — unset elsewhere in this workflow,
+    # BAJUTSU_CRASH_RECOVERY_BUDGET, bajutsu/common/runner/pipeline.py) — unset elsewhere in this workflow,
     # falling back to one retry and an unbounded per-scenario budget. These two numbers were sized
     # against a *bare* in-place respawn and, unlike ios-e2e.yml's own knobs (re-derived in 2115b10),
     # were not re-measured once a crash-triggered retry (attempt > 1) started forcing the same `erase`

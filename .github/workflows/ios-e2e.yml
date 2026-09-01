@@ -221,7 +221,7 @@ env:
   # session is simply steadier.
   BAJUTSU_XCUITEST_MAX_WARM_REUSES: "1"
   # Raise the scenario-level backend-crash retry budget from the default 1 for the metered on-device
-  # lane (`_default_crash_retries`, bajutsu/runner/pipeline.py). The resident XCTest host still crashes
+  # lane (`_default_crash_retries`, bajutsu/common/runner/pipeline.py). The resident XCTest host still crashes
   # more here than on a real Mac even with the runner's re-entrancy serialization (Router.actuationLock)
   # removing the concurrent-snapshot abort; 2 (three attempts) rides out the residual one-off crash so a
   # single unlucky scenario does not redden the fourteen-scenario `run` job. A crash on *every* attempt still
@@ -232,11 +232,11 @@ env:
   # from here rather than pinning their own and drifting apart.
   BAJUTSU_CRASH_RETRIES: "2"
   # Cap the *wall-clock* the scenario-level crash recovery may spend respawning, on top of the count
-  # above (bajutsu/runner/pipeline.py, _default_crash_recovery_budget). The count alone is unbounded in
+  # above (bajutsu/common/runner/pipeline.py, _default_crash_recovery_budget). The count alone is unbounded in
   # time: a runner that crashes and never comes back keeps respawning, and each respawn runs simctl prep
   # and re-runs the scenario. BAJUTSU_XCUITEST_RESPAWN_TIMEOUT (90s, above) caps a *bare* in-place
   # respawn's readiness wait, but a crash-triggered retry (attempt > 1) now forces the same `erase`
-  # precondition a scenario already gets from `erase: true` (bajutsu/runner/pipeline.py's forced-erase
+  # precondition a scenario already gets from `erase: true` (bajutsu/common/runner/pipeline.py's forced-erase
   # retry) unless the scenario opts out or the route rejects `erase` outright — and `erase` is exactly
   # what makes `is_respawn` false (bajutsu/platform_lifecycle/environments/xcuitest.py:661), so that
   # attempt pays the *full* 300s STARTUP_TIMEOUT ceiling plus the unbounded erase/boot/install prep
@@ -250,7 +250,7 @@ env:
   # `timeout-minutes`, while still riding out a genuine one-off (the first respawn is never blocked) — a
   # backstop on top of the per-respawn ceiling, not a substitute for it.
   BAJUTSU_CRASH_RECOVERY_BUDGET: "300"
-  # The run-level counterpart to BAJUTSU_CRASH_RECOVERY_BUDGET (bajutsu/runner/pipeline.py,
+  # The run-level counterpart to BAJUTSU_CRASH_RECOVERY_BUDGET (bajutsu/common/runner/pipeline.py,
   # _default_run_crash_recovery_budget): a wall-clock cap on crash recovery across the *whole* run,
   # not reset per scenario — but sized against a *single* scenario's own worst case above (≈450s), not
   # the ≈90s a bare-respawn-only design would cost. 900s (15min) clears that single-scenario worst case
