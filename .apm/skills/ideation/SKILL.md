@@ -184,9 +184,16 @@ ideation conversation —
 the CI reviewer also runs cold, with no memory of the authoring discussion, so a subagent that
 inherited this session's context would not reproduce that. Give it exactly two inputs: the contract
 at [`.github/claude-review-prompt.md`](../../../.github/claude-review-prompt.md) and the working
-diff. Stage new files first with `git add roadmaps/` — `make new-roadmap-item`'s output starts out
-untracked, so a bare `git diff` would omit it entirely — then run `git diff origin/main --
-roadmaps/`. Scope both the add and the diff to `roadmaps/` rather than the whole tree: this skill
+diff. Stage new files first with `git add -N roadmaps/` — `make new-roadmap-item`'s output starts
+out untracked, so a bare `git diff` would omit it entirely, and `-N` records the path without
+staging its content, so this judge-only pass never changes what a later commit picks up — then diff
+against the **branch point**: `git diff $(git merge-base HEAD origin/main) -- roadmaps/`.
+
+Diff against the branch point rather than `origin/main` itself. A worktree whose `HEAD` is not a
+descendant of `origin/main` otherwise shows every item merged since as a deletion: one run reviewed
+20 files and 2,068 lines in place of the 2 it had written. These are the same two commands
+[`claude-review`](../claude-review/SKILL.md) gives for a working diff, which is the point — the two
+are meant to stay in step. Scope both to `roadmaps/` rather than the whole tree: this skill
 only ever touches that directory, and a stray file elsewhere — scratch output, unrelated
 in-progress work in a parallel worktree — shouldn't get staged or reviewed along with it. There is
 no PR yet, so nothing to run `gh pr diff` against. Ask it to apply every lens in the contract — the
