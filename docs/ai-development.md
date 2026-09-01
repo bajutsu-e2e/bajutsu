@@ -69,10 +69,10 @@ command rewrites every floor it measures, not the one that prompted the rewrite 
 behind `main` measures every other file as it stood when the branch left. Recording from such a
 tree writes two kinds of wrong number. A stale rewrite lowers a floor that rose on `main` after the
 branch left. The gate never catches a lowered floor: the per-file check blocks a coverage drop,
-nothing else. The same rewrite also keeps a floor for a file another merged pull request has since
-lowered. Neither pull request fails its own gate, since each one measured the tree it had. The
-unreachable floor appears in the merged result alone. Every contributor then hits the unreachable
-floor in the pre-push hook. Rebasing first keeps a snapshot and the code it measured together.
+nothing else. The same rewrite also restores a floor that another merged pull request has since
+lowered to accept a drop. Neither pull request fails its own gate, since each one measured the tree
+it had. The unreachable floor appears only in the merged result, and every contributor then hits it
+in the pre-push hook. Rebasing first keeps a snapshot and the code it measured together.
 `make preflight` does the fetch and the rebase before running the gate.
 
 Recovering from an unreachable floor on `main` takes the same command. Run `make coverage-floors`
