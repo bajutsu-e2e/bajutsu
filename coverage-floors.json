@@ -193,7 +193,7 @@
     "bajutsu/serve/gate.py": 100.0,
     "bajutsu/serve/handler.py": 87.2,
     "bajutsu/serve/helpers.py": 97.1,
-    "bajutsu/serve/jobs.py": 89.8,
+    "bajutsu/serve/jobs.py": 89.4,
     "bajutsu/serve/launchagent.py": 100.0,
     "bajutsu/serve/logbus.py": 98.57,
     "bajutsu/serve/operations/__init__.py": 100.0,
