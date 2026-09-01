@@ -351,7 +351,9 @@ class SystemAlertGuard:
   alert no policy label names, or a surface the query cannot enumerate whose button the scenario's
   own `labels` do not name either (those it does name, the in-tree path taps) — the guard does
   nothing ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)),
-  and the blocked step or `wait` names what it saw in its own timeout instead. On step failure the
+  and what it saw rides the failure instead: a guarded `wait` always carries the note, and a blocked
+  step outside a wait carries it only where the native query enumerated the alert — with no native
+  query there is nothing to name, so such a step fails exactly as it did before. On step failure the
   guard clears the prompt and **retries that step exactly once**
   ([run-loop](run-loop.md#run_scenario-running-one-scenario)). For a `wait` step
   (`for`/`gone`/`settled`/`screenChanged`), the native path is additionally polled on its own

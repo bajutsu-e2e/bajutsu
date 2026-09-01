@@ -95,7 +95,10 @@ def test_record_and_crawl_still_accept_alert_vision_instruction(tmp_path: Path) 
         ),
         ops.start_crawl(state, {"target": "demo", "alertVisionInstruction": "x"}),
     ):
-        assert code != 400 or payload != _VISION_ERROR
+        # `code != 400 or payload != _VISION_ERROR` would hold for *any* outcome but that one
+        # payload, so the dispatch could start rejecting these calls for an unrelated reason and
+        # the test would stay green covering nothing. Assert they are accepted outright.
+        assert code != 400, payload
 
 
 def test_absent_or_non_bool_is_none() -> None:

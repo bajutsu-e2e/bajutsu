@@ -333,8 +333,9 @@ class SystemAlertGuard:
   （[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）。
   能力を持たないバックエンド（adb、Playwright）、どのポリシーラベルも名指ししないアラート、照会が列挙できず
   シナリオ自身の `labels` もそのボタンを名指ししていない画面がこれにあたります（`labels` が名指しする
-  ボタンは、ツリー内のタップが片付けます）。ブロックされたステップまたは `wait` が、自身のタイムアウトで
-  見たものを名指しします。
+  ボタンは、ツリー内のタップが片付けます）。見たものは失敗に乗ります。ガード対象の `wait` は必ず注記を
+  運び、wait の外のステップは、ネイティブ照会がアラートを列挙できたときだけ運びます。ネイティブ照会が
+  なければ名指しする材料がないため、そのステップは従来どおり失敗します。
   ステップ失敗時にはガードがプロンプトを片付け、**そのステップを 1 回だけ再試行**します
   （[run-loop](run-loop.md#run_scenario1-シナリオの実行)）。`wait` ステップ
   （`for`/`gone`/`settled`/`screenChanged`）では、ネイティブ経路はさらに独自の間隔（既定 1 秒。wait 自体の
