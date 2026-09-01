@@ -685,9 +685,11 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   a step or `wait` is blocked, polling `handleSystemAlert`'s SpringBoard query on its own interval
   (default 1s, decoupled from the wait's poll cadence) and dismissing by a deterministic
   candidate-label policy — no model call, reusing BE-0316's plumbing rather than a parallel API. Since
-  BE-0402 the guard is deterministic throughout: where the native path can't act (a backend lacking
-  the capability, a non-enumerable blocking surface, or an alert carrying none of the policy's
-  labels) it does nothing, and the blocked step or `wait` names what it saw in its own timeout —
+  BE-0402 the guard is deterministic throughout: where nothing deterministic can act (a backend lacking
+  the capability, an alert carrying none of the policy's labels, or a non-enumerable blocking
+  surface whose button the scenario's own `labels` do not name either — the ones they do name, an
+  in-tree tap takes on) it does nothing, and the blocked step or `wait` names what it saw in its own
+  timeout —
   `… — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)`, or a hedged
   form where no query enumerated the surface. `visionInstruction` steered only that fallback, so `run`
   rejects it before any scenario starts rather than ignoring it — the silent inversion BE-0401 split

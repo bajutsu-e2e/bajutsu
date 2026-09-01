@@ -329,9 +329,12 @@ class SystemAlertGuard:
   を構築し `on_blocked` として渡します。`HANDLE_SYSTEM_ALERT` を宣言するバックエンド（XCUITest）では、
   決定的なネイティブ経路を優先します。[`handleSystemAlert`](scenarios.md#handlesystemalert決定的なシステムアラートステップ)
   （BE-0316）と同じ SpringBoard 照会を読み、ポリシーが名指しした最初のボタンを `resolve_unique` 経由でラベルで
-  タップし、モデル呼び出しは不要です。その経路が対処できない場合、つまり能力を持たないバックエンド（adb、
-  Playwright）、照会が列挙できない画面、どのポリシーラベルも名指ししないアラートでは、ガードは何もせず
-  （[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）、ブロックされたステップまたは `wait` が自身のタイムアウトで見たものを名指しします。
+  タップし、モデル呼び出しは不要です。決定的な経路がどれも対処できない場合、ガードは何もしません
+  （[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）。
+  能力を持たないバックエンド（adb、Playwright）、どのポリシーラベルも名指ししないアラート、照会が列挙できず
+  シナリオ自身の `labels` もそのボタンを名指ししていない画面がこれにあたります（`labels` が名指しする
+  ボタンは、ツリー内のタップが片付けます）。ブロックされたステップまたは `wait` が、自身のタイムアウトで
+  見たものを名指しします。
   ステップ失敗時にはガードがプロンプトを片付け、**そのステップを 1 回だけ再試行**します
   （[run-loop](run-loop.md#run_scenario1-シナリオの実行)）。`wait` ステップ
   （`for`/`gone`/`settled`/`screenChanged`）では、ネイティブ経路はさらに独自の間隔（既定 1 秒。wait 自体の

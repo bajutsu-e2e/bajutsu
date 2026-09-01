@@ -21,6 +21,7 @@ from bajutsu.orchestrator.types import (
     _no_network,
     alert_block_note,
     pick_alert_label,
+    uncleared_prompt_note,
 )
 from bajutsu.scenario import Gone, Wait, WaitRequest
 
@@ -233,11 +234,13 @@ class _AlertGuardGate:
 
     Where the backend lacks the capability — or an alert is up but no policy label resolves, or the
     native query reports no SpringBoard alert yet a non-SpringBoard surface (an action sheet, a
-    WKWebView JS dialog) it cannot enumerate is blocking — nothing here can clear it. BE-0402 removed
-    the AI-vision fallback that used to answer those cases from `run`, so the gate records what it
-    saw in `blocked_note` and the wait polls on to its own deadline, where `_wait` appends the note to
-    the timeout it reports. The note is the gate's *latest* observation, cleared the moment a poll
-    shows an unblocked screen, so a block that resolved itself never reaches a later timeout message.
+    WKWebView JS dialog) it cannot enumerate is blocking and the scenario's own `labels` do not
+    name its button (the one such surface `_dismiss_from_tree` below still taps) — nothing here can
+    clear it. BE-0402 removed the AI-vision fallback that used to answer those cases from `run`, so
+    the gate records what it saw in `blocked_note` and the wait polls on to its own deadline, where
+    `_wait` appends the note to the timeout it reports. The note is the gate's *latest* observation,
+    cleared the moment a poll shows an unblocked screen, so a block that resolved itself never
+    reaches a later timeout message.
     """
 
     driver: base.Driver
@@ -448,8 +451,10 @@ class _AlertGuardGate:
                 # could not clear, and a silent give-up would leave the eventual timeout looking like
                 # the awaited element simply never rendered. The note carries the same disclosure
                 # onto the failure itself (BE-0402) — an app-attached sheet does not collapse the
-                # tree, so the proxy below would otherwise report nothing at all about it.
-                self.blocked_note = alert_block_note([label])
+                # tree, so the proxy below would otherwise report nothing at all about it. It is
+                # `uncleared_prompt_note`, not the "unhandled" one: this label *did* resolve, so
+                # reporting it as unnamed would send the author to add a label they already wrote.
+                self.blocked_note = uncleared_prompt_note(label)
                 if not self._tree_gave_up:
                     self._tree_gave_up = True
                     self._withdraw_tree_event()
@@ -486,7 +491,7 @@ class _AlertGuardGate:
             # a permanently obstructed sheet keeps its own labelled buttons in the tree, so the
             # collapsed-tree proxy reads the screen as unblocked and would erase the note (BE-0402).
             self._tree_gave_up = True
-            self.blocked_note = alert_block_note([label])
+            self.blocked_note = uncleared_prompt_note(label)
             return None
         # Scope the tap to `traits: [BUTTON]`, the same constraint `buttons` above already applied
         # when resolving `label` — matching a bare `{"label": label}` selector against `matches()`

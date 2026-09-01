@@ -481,7 +481,10 @@ def test_dismiss_from_tree_retries_a_delivered_tap_that_did_not_clear_the_prompt
     # And the same disclosure rides the failure, not only the log (BE-0402). This is the one case the
     # collapsed-tree proxy cannot cover for: an app-attached sheet keeps the tree looking like
     # ordinary app UI, so without the note here the timeout would say nothing about the prompt at all.
-    assert "an unhandled system alert is blocking the screen (buttons: 今はしない)" in _reason
+    # Not the "unhandled" wording: this label *did* resolve and was tapped, and telling the author no
+    # candidate was named would send them to add a label they already wrote.
+    assert "a system prompt the guard could not clear is still up (button: 今はしない)" in _reason
+    assert "unhandled system alert" not in _reason
 
 
 def test_dismiss_from_tree_retry_that_lands_clears_the_prompt_and_passes_the_wait() -> None:
@@ -685,8 +688,10 @@ def test_dismiss_from_tree_stops_retrying_a_permanently_covered_button() -> None
     assert driver.tap_calls == 2
     assert _decline_giveup(1.0) == 2.0  # the horizon the count above is derived from
     # And the give-up says what it gave up on (BE-0402), like the tap-budget one: an obstructed sheet
-    # keeps its own labelled buttons in the tree, so nothing else on this path would report it.
-    assert "an unhandled system alert is blocking the screen (buttons: 今はしない)" in _reason
+    # keeps its own labelled buttons in the tree, so nothing else on this path would report it — and
+    # in the same "could not clear" wording, since the label resolved here too.
+    assert "a system prompt the guard could not clear is still up (button: 今はしない)" in _reason
+    assert "unhandled system alert" not in _reason
 
 
 def test_dismiss_from_tree_declines_on_an_in_app_label_collision() -> None:

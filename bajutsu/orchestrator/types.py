@@ -268,24 +268,37 @@ DEFAULT_DISMISSIVE_LABELS: tuple[str, ...] = (
 # but no candidate label resolves, so nothing clears it and the caller reports it instead).
 NativeAlertState = Literal["incapable", "absent", "dismissed", "unhandled"]
 
-# The two halves of the note a blocked step or wait appends to its own failure reason when the guard
-# saw something it could not clear (BE-0402). Without it, a `tap` or `wait` stuck behind an
+# The notes a blocked step or wait appends to its own failure reason when the guard saw something it
+# could not clear (BE-0402). Without it, a `tap` or `wait` stuck behind an
 # unanticipated prompt reads as a bare "element not found" — the reading BE-0402 exists to remove.
 _UNHANDLED_ALERT_NOTE = "an unhandled system alert is blocking the screen"
 _BLOCKED_SCREEN_NOTE = "the screen appears blocked, possibly by a system alert or another overlay outside the app's view"
+_UNCLEARED_PROMPT_NOTE = "a system prompt the guard could not clear is still up"
 
 
 def alert_block_note(buttons: Sequence[str]) -> str:
     """What the guard saw blocking the screen, for a failure reason to name (BE-0402).
 
-    *buttons* are the labels a native probe read off an alert no rule or candidate label names.
-    Empty means the block was inferred from the collapsed-tree proxy rather than enumerated — a
-    surface `springboard.alerts` cannot see, or a backend with no native query at all — so the note
-    hedges rather than naming buttons nobody read.
+    *buttons* are the labels a native probe read off an alert no rule or candidate label names —
+    `probe_native`'s `"unhandled"` answer, and only that. Empty means the block was inferred from
+    the collapsed-tree proxy rather than enumerated — a surface `springboard.alerts` cannot see, or
+    a backend with no native query at all — so the note hedges rather than naming buttons nobody
+    read. A prompt the policy *did* name and the in-tree dismiss failed to clear is a different
+    story, and gets `uncleared_prompt_note` below instead.
     """
     if buttons:
         return f"{_UNHANDLED_ALERT_NOTE} (buttons: {', '.join(buttons)})"
     return _BLOCKED_SCREEN_NOTE
+
+
+def uncleared_prompt_note(label: str) -> str:
+    """The in-tree dismiss's own give-up: a prompt it named and could not clear (BE-0402).
+
+    Deliberately not `alert_block_note`: "unhandled" would tell the author no candidate label
+    resolved, when their label resolved and only the tap failed — it did not take, or never became
+    deliverable — sending them to add a label they already wrote instead of to the stuck prompt.
+    """
+    return f"{_UNCLEARED_PROMPT_NOTE} (button: {label})"
 
 
 def pick_alert_label(candidates: Sequence[str], buttons: Sequence[str]) -> str | None:

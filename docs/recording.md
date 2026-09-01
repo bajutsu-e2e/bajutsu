@@ -347,8 +347,10 @@ class SystemAlertGuard:
   prefers a deterministic native path: it reads the same SpringBoard query
   [`handleSystemAlert`](scenarios.md#handlesystemalert-the-deterministic-system-alert-step) (BE-0316)
   uses, taps the first policy-named button by label through `resolve_unique`, and needs no model
-  call. Where that path cannot act — a backend without the capability (adb, Playwright), a surface
-  the query cannot enumerate, or an alert no policy label names — the guard does nothing ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)),
+  call. Where nothing deterministic can act — a backend without the capability (adb, Playwright), an
+  alert no policy label names, or a surface the query cannot enumerate whose button the scenario's
+  own `labels` do not name either (those it does name, the in-tree path taps) — the guard does
+  nothing ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)),
   and the blocked step or `wait` names what it saw in its own timeout instead. On step failure the
   guard clears the prompt and **retries that step exactly once**
   ([run-loop](run-loop.md#run_scenario-running-one-scenario)). For a `wait` step
