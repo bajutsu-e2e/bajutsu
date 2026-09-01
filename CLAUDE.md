@@ -31,6 +31,11 @@ fraction of the page long. Reading a file whole is a last resort, once you can s
 path would not answer. In `roadmaps/`, the `-ja.md` mirror holds nothing the English file lacks — read the `.md`
 alone.
 
+**See a class's full method surface without opening the file.** `make repo-map ARGS="--methods
+<path>"` walks one file or a whole package and lists every class (with its bases), every method
+(signature + docstring), and every top-level function — one level deeper than `--code`, which names
+only a module's top-level declarations. `--grep <word>` narrows it the same way.
+
 **Don't read a file back after editing it.** `Edit` and `Write` fail loudly when a change does not
 apply. A Read afterwards confirms nothing and pays for the file twice. Every tool result is re-sent
 on each later turn, so one needless read keeps costing.

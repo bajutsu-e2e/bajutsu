@@ -9,6 +9,7 @@ neither carries an index a session can read instead::
     python3 scripts/repo_map.py --code                    # every package and top-level module
     python3 scripts/repo_map.py --docs --grep driver      # just the rows naming a driver
     python3 scripts/repo_map.py --headings docs/cli.md    # where to Read inside one file
+    python3 scripts/repo_map.py --methods bajutsu/drivers  # every class/method in one package
 
 Nothing is written: the map goes to standard output and is never committed. A committed index
 would drift from the tree it describes, and the drift is the expensive failure — a session that
@@ -17,7 +18,9 @@ makes that impossible, and follows what ``roadmap_query.py`` and ``build_roadmap
 already do for the roadmap.
 
 ``--headings`` serves the reading discipline the map exists to support: find the heading whose
-span covers what you need, then read that line range instead of the whole file.
+span covers what you need, then read that line range instead of the whole file. ``--methods`` goes
+one level deeper than ``--code``: it walks into a package's class bodies, so a session can see every
+method's signature and docstring without opening the file.
 
 The map is derived, deterministic, and offline. It reads the tree with the standard library alone,
 so any Python 3.11 or newer interpreter runs it without the project's virtual environment built
@@ -240,6 +243,146 @@ def _join_names(names: list[str]) -> str:
     return f"{kept}, … ({len(names)} in all)"
 
 
+def _doc_summary(node: ast.AsyncFunctionDef | ast.FunctionDef | ast.ClassDef) -> str:
+    """The first line of ``node``'s docstring, or an empty string when it has none."""
+    doc = ast.get_docstring(node, clean=True)
+    if not doc:
+        return ""
+    return doc.strip().splitlines()[0].strip()
+
+
+def _format_arg(arg: ast.arg, default: ast.expr | None) -> str:
+    """One parameter as source-like text: its name, its annotation, and its default."""
+    text = arg.arg
+    if arg.annotation is not None:
+        text += f": {ast.unparse(arg.annotation)}"
+    if default is not None:
+        text += f" = {ast.unparse(default)}"
+    return text
+
+
+def _is_static_or_class_method(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Whether ``node`` is decorated ``@staticmethod``/``@classmethod`` — the two cases where a
+    method's first parameter is not the receiver a reader already knows about."""
+    return any(
+        isinstance(d, ast.Name) and d.id in ("staticmethod", "classmethod")
+        for d in node.decorator_list
+    )
+
+
+def _signature(node: ast.FunctionDef | ast.AsyncFunctionDef, *, drop_first: bool) -> str:
+    """The call signature as source-like text.
+
+    ``drop_first`` removes the leading parameter (``self``/``cls``) for a bound method — a reader
+    of the map already knows the receiver, and the positional-only marker (``/``) is left out as a
+    detail this map does not need to be exact about.
+    """
+    positional = [*node.args.posonlyargs, *node.args.args]
+    if drop_first and positional:
+        positional = positional[1:]
+    pad: list[ast.expr | None] = [None] * (len(positional) - len(node.args.defaults))
+    parts = [
+        _format_arg(p, d) for p, d in zip(positional, pad + list(node.args.defaults), strict=True)
+    ]
+    if node.args.vararg is not None:
+        parts.append(f"*{_format_arg(node.args.vararg, None)}")
+    elif node.args.kwonlyargs:
+        parts.append("*")
+    parts.extend(
+        _format_arg(kw, default)
+        for kw, default in zip(node.args.kwonlyargs, node.args.kw_defaults, strict=True)
+    )
+    if node.args.kwarg is not None:
+        parts.append(f"**{_format_arg(node.args.kwarg, None)}")
+    returns = f" -> {ast.unparse(node.returns)}" if node.returns is not None else ""
+    return f"({', '.join(parts)}){returns}"
+
+
+def _def_row(
+    node: ast.FunctionDef | ast.AsyncFunctionDef, file_path: str, *, name: str, drop_first: bool
+) -> Row:
+    """One row for a top-level function or a method: its signature, and its docstring if it has
+    one."""
+    kind = "async def" if isinstance(node, ast.AsyncFunctionDef) else "def"
+    signature = _signature(node, drop_first=drop_first)
+    summary = _doc_summary(node)
+    return Row(
+        path=f"{file_path}:{node.lineno}",
+        size=kind,
+        name=name,
+        detail=f"{signature} — {summary}" if summary else signature,
+    )
+
+
+def _class_rows(cls: ast.ClassDef, file_path: str) -> list[Row]:
+    """One row for a class (with its bases) and one for each method it defines, in source order."""
+    bases = ", ".join(ast.unparse(base) for base in cls.bases)
+    rows = [
+        Row(
+            path=f"{file_path}:{cls.lineno}",
+            size="class",
+            name=f"{cls.name}({bases})" if bases else cls.name,
+            detail=_doc_summary(cls),
+        )
+    ]
+    for node in cls.body:
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            drop_first = not _is_static_or_class_method(node)
+            rows.append(
+                _def_row(node, file_path, name=f"{cls.name}.{node.name}", drop_first=drop_first)
+            )
+    return rows
+
+
+def _file_method_rows(path: Path) -> list[Row]:
+    """Every class/method and top-level function one file defines, in source order.
+
+    A module that does not parse contributes no rows, matching :func:`_declarations`: the map is a
+    navigation aid, and one unparseable file should not stop the rest of a package from mapping.
+    """
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError):
+        return []
+    file_path = path.as_posix()
+    rows: list[Row] = []
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef):
+            rows.extend(_class_rows(node, file_path))
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            rows.append(_def_row(node, file_path, name=node.name, drop_first=False))
+    return rows
+
+
+def iter_methods(target: Path) -> list[Row]:
+    """Return one row per class/method and top-level function, for one file or a whole package.
+
+    Goes one level deeper than :func:`iter_code`: that function names a module's top-level
+    declarations only, so a class's methods are invisible until the file is opened. This walks into
+    every class body instead, with each method's signature and docstring — the file/class/method
+    granularity a call-order or class-relationship write-up is drafted from, without opening the
+    package by hand.
+
+    Args:
+        target: a single ``.py`` file, or a directory walked recursively for every tracked ``.py``
+            file inside it.
+
+    Raises:
+        OSError: if ``target`` does not exist.
+    """
+    if not target.exists():
+        raise OSError(f"{target}: not found")
+    if target.is_file():
+        return _file_method_rows(target)
+    files = _tracked(
+        sorted(p for p in target.rglob("*.py") if "__pycache__" not in p.parts), target
+    )
+    rows: list[Row] = []
+    for path in files:
+        rows.extend(_file_method_rows(path))
+    return rows
+
+
 def iter_headings(path: Path) -> list[Row]:
     """Return one row per Markdown heading in ``path``: its line, its text, and its span.
 
@@ -319,6 +462,9 @@ def main(argv: list[str]) -> int:
     mode.add_argument("--docs", action="store_true", help="map every page under docs/")
     mode.add_argument("--code", action="store_true", help="map every package and top-level module")
     mode.add_argument("--headings", type=Path, help="map one file's headings, with line spans")
+    mode.add_argument(
+        "--methods", type=Path, help="map every class/method/function in a file or package"
+    )
     parser.add_argument("--grep", help="keep only the rows matching this word (case-insensitive)")
     parser.add_argument("--docs-root", type=Path, default=DOCS, help="the docs tree to walk")
     parser.add_argument("--package", type=Path, default=PACKAGE, help="the package to walk")
@@ -329,6 +475,8 @@ def main(argv: list[str]) -> int:
             rows, headers = iter_docs(args.docs_root), ("Path", "Lines", "Title", "Summary")
         elif args.code:
             rows, headers = iter_code(args.package), ("Path", "Size", "Kind", "Holds")
+        elif args.methods:
+            rows, headers = iter_methods(args.methods), ("File:line", "Kind", "Name", "Signature")
         else:
             rows, headers = iter_headings(args.headings), ("File:line", "Span", "Level", "Heading")
     except OSError as exc:
