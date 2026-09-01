@@ -314,10 +314,12 @@ ClaudeAgent(client=fake_client)    # api: tests
 
 The iOS accessibility query is scoped to the foreground app, so **SpringBoard-level prompts** (e.g.
 iOS "Save Password?") are invisible to it; the app's element tree collapses to a single window node
-and the run is silently blocked. `agents/alerts.py`'s vision guard handles clearing these; `run`
-additionally has a deterministic native path (BE-0315, below) that clears the common prompts without
-a model call, reusing [`handleSystemAlert`](scenarios.md#handlesystemalert-the-deterministic-system-alert-step)'s
-(BE-0316) second SpringBoard handle.
+and the run is silently blocked. `agents/alerts.py`'s vision guard clears these for **`record` and
+`crawl`**, the Tier-1 authoring paths. `run` has a deterministic native path instead (BE-0315,
+below) that clears the common prompts without a model call, reusing
+[`handleSystemAlert`](scenarios.md#handlesystemalert-the-deterministic-system-alert-step)'s (BE-0316)
+second SpringBoard handle — and, since [BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md), *only* that path: `run` reaches the vision
+guard nowhere.
 
 ```python
 class AlertLocator(Protocol):
@@ -345,28 +347,28 @@ class SystemAlertGuard:
   prefers a deterministic native path: it reads the same SpringBoard query
   [`handleSystemAlert`](scenarios.md#handlesystemalert-the-deterministic-system-alert-step) (BE-0316)
   uses, taps the first policy-named button by label through `resolve_unique`, and needs no model
-  call; a backend without the capability (adb, Playwright) keeps the collapsed-tree-proxy-plus-vision
-  behavior described above, unchanged. On step failure the guard clears the prompt and **retries
-  that step exactly once** ([run-loop](run-loop.md#run_scenario-running-one-scenario)). For a `wait`
-  step (`for`/`settled`/`screenChanged`), the native path is additionally polled on its own interval
-  (default 1s, decoupled from the wait's own condition poll); where the vision fallback still applies
-  it is armed **mid-wait** the same way it always was: it fires against the already-polled screen as
-  soon as the tree looks collapsed, debounced, cooldown-limited, and capped at two attempts per wait,
-  so a blocked wait can recover before its own timeout elapses instead of only at the end-of-step
-  retry (BE-0269). A scenario sets `systemAlertHandling: false` to opt out, `{ labels: ["Allow"] }`
-  to name a candidate label the native path resolves deterministically, or
-  `{ visionInstruction: "tap Allow" }` for free text only the vision fallback reads
+  call. Where that path cannot act — a backend without the capability (adb, Playwright), a surface
+  the query cannot enumerate, or an alert no policy label names — the guard does nothing ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)),
+  and the blocked step or `wait` names what it saw in its own timeout instead. On step failure the
+  guard clears the prompt and **retries that step exactly once**
+  ([run-loop](run-loop.md#run_scenario-running-one-scenario)). For a `wait` step
+  (`for`/`gone`/`settled`/`screenChanged`), the native path is additionally polled on its own
+  interval (default 1s, decoupled from the wait's own condition poll), so a blocked wait can recover
+  before its own timeout elapses instead of only at the end-of-step retry (BE-0269). A scenario sets
+  `systemAlertHandling: false` to opt out, or `{ labels: ["Allow"] }` to name a candidate label the
+  native path resolves deterministically
   ([BE-0401](../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md));
+  `{ visionInstruction: … }` reaches no path under `run` and is refused before any scenario starts.
   `--system-alert-handling`/`--no-system-alert-handling` overrides every scenario, and
-  `--alert-labels`, `--alert-vision-instruction`, and `--alert-poll-interval` supply the same three
-  keys for one run.
+  `--alert-labels` and `--alert-poll-interval` supply those two keys for one run.
 - `record --system-alert-handling`: on by default (authoring has no scenario yet). Clears prompts
   that interrupt authoring so the agent always sees a clean screen. **A dismissal is an environment
   operation, not a recorded step** (replay handles it via each scenario's `systemAlertHandling`).
 
 > The vision guard needs `ANTHROPIC_API_KEY` ([.env in cli](cli.md#environment-variables-env));
-> without one it is **best-effort** and simply no-ops, never failing a run — for `record`/`crawl`,
-> which have no native path, that means no alert clearing at all, while `run`'s iOS native path
-> (BE-0315) still clears the common prompts credential-free, and only its vision fallback no-ops. The
-> guard fires only to clear a blocking prompt — pass/fail stays machine-only and AI-independent
+> without one it is **best-effort** and simply no-ops, never failing a run. That applies to
+> `record` and `crawl`, which have no native path — for them it means no alert clearing at all.
+> `run` never asks: its guard is the native path alone (BE-0315), which clears the common prompts
+> credential-free. Either way the guard fires only to clear a blocking prompt — pass/fail stays
+> machine-only and AI-independent
 > ([concepts](concepts.md#1-ai-is-the-author-and-the-investigator-never-the-judge)).

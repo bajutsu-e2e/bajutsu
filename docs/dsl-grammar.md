@@ -147,11 +147,12 @@ Preconditions ::= {
 }
 
 # ── SystemAlertHandling (reactive system-alert guard; on by default) ───
-# Native SpringBoard query + tap on XCUITest (no model, reusing BE-0316); AI-vision fallback (BE-0315).
+# Native SpringBoard query + tap on XCUITest (no model, reusing BE-0316; BE-0315). An alert that path
+# cannot name is reported on the blocked step's own failure, never guessed at (BE-0402).
 SystemAlertHandling ::= boolean                                   # true = on with the default policy, false = off
                | { rules?: [<SystemAlertRule>],             # answer a named prompt by choice — native path
-                   labels?: [string],                       # ordered button labels — native path (+ a vision hint)
-                   visionInstruction?: string,              # free text — AI vision fallback only
+                   labels?: [string],                       # ordered button labels — native path
+                   visionInstruction?: string,              # free text; reaches no command — `run` rejects it
                    pollInterval?: number }                   # native poll cadence, seconds (default 1)
 SystemAlertRule ::= { prompt: notifications|tracking|paste, choice: grant|deny }  # unique prompt per list
 
@@ -405,7 +406,7 @@ Omitted optional keys take these values (so a minimal scenario is just `name` + 
 | `Preconditions.launchEnv` | `{}` |
 | `SystemAlertHandling.rules` | `[]` (no named-prompt rules; `labels`/the built-in dismissive labels answer every prompt) |
 | `SystemAlertHandling.labels` | `[]` (no layer named a button; the built-in dismissive labels stand in) |
-| `SystemAlertHandling.visionInstruction` | unset (the fallback takes a hint derived from `labels`, else its own default) |
+| `SystemAlertHandling.visionInstruction` | unset — and no other value is usable: `run` refuses one (BE-0402) and `record` / `crawl` read the free text only from their own `--alert-vision-instruction` flag |
 | `TypeText.submit` | `false` |
 | `Exists.negate` | `false` |
 | `MockResponse.status` | `200` |

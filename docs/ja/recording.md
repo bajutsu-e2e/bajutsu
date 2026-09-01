@@ -297,10 +297,12 @@ ClaudeAgent(client=fake_client)    # api: テスト
 
 iOS のアクセシビリティクエリは前面アプリにスコープされるため、**SpringBoard レベルのプロンプト**
 （iOS の「パスワードを保存しますか?」等）は見えず、アプリの要素ツリーが 1 つの window ノードに
-縮退して run が静かにブロックされます。`agents/alerts.py` の視覚ガードがこれを片付けます。`run` は
-さらに、モデル呼び出しなしで一般的なプロンプトを片付ける決定的なネイティブ経路も備えます（BE-0315。
-下記）。これは [`handleSystemAlert`](scenarios.md#handlesystemalert決定的なシステムアラートステップ)
-（BE-0316）の 2 つ目の SpringBoard ハンドルを再利用します。
+縮退して run が静かにブロックされます。`agents/alerts.py` の視覚ガードは、Tier 1 のオーサリング経路である
+**`record` と `crawl`** のためにこれを片付けます。`run` が持つのは、モデル呼び出しなしで一般的なプロンプトを
+片付ける決定的なネイティブ経路です（BE-0315。下記）。これは
+[`handleSystemAlert`](scenarios.md#handlesystemalert決定的なシステムアラートステップ)（BE-0316）の 2 つ目の
+SpringBoard ハンドルを再利用します。[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md) 以降、`run` が持つのはこの経路*だけ*で、視覚ガードには
+どこからも到達しません。
 
 ```python
 class AlertLocator(Protocol):
@@ -327,26 +329,26 @@ class SystemAlertGuard:
   を構築し `on_blocked` として渡します。`HANDLE_SYSTEM_ALERT` を宣言するバックエンド（XCUITest）では、
   決定的なネイティブ経路を優先します。[`handleSystemAlert`](scenarios.md#handlesystemalert決定的なシステムアラートステップ)
   （BE-0316）と同じ SpringBoard 照会を読み、ポリシーが名指しした最初のボタンを `resolve_unique` 経由でラベルで
-  タップし、モデル呼び出しは不要です。その能力を持たないバックエンド（adb、Playwright）は、上記の
-  ツリー縮退プロキシ＋視覚という従来どおりの挙動のままです。ステップ失敗時にはガードがプロンプトを片付け、
-  **そのステップを 1 回だけ再試行**します（[run-loop](run-loop.md#run_scenario1-シナリオの実行)）。
-  `wait` ステップ（`for`/`settled`/`screenChanged`）では、ネイティブ経路はさらに独自の間隔（既定 1 秒。
-  wait 自体の条件ポーリングとは切り離しています）でポーリングされます。視覚フォールバックが依然として
-  適用されるケースでは、従来どおり **wait の途中でも**待ち構えており、すでにポーリング済みの画面のツリーが
-  潰れて見えた時点で発火します（デバウンスとクールダウンを挟み、1 回の wait につき最大 2 回まで）。wait
-  自体のタイムアウトを待たず、末尾の再試行より前に回復できます（BE-0269）。シナリオ側で
-  `systemAlertHandling: false` で無効化、`{ labels: ["Allow"] }` でネイティブ経路が決定的に解決する
-  候補ラベルを指定、あるいは視覚フォールバックだけが読む自由記述
-  `{ visionInstruction: "tap Allow" }` も使えます
+  タップし、モデル呼び出しは不要です。その経路が対処できない場合、つまり能力を持たないバックエンド（adb、
+  Playwright）、照会が列挙できない画面、どのポリシーラベルも名指ししないアラートでは、ガードは何もせず
+  （[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）、ブロックされたステップまたは `wait` が自身のタイムアウトで見たものを名指しします。
+  ステップ失敗時にはガードがプロンプトを片付け、**そのステップを 1 回だけ再試行**します
+  （[run-loop](run-loop.md#run_scenario1-シナリオの実行)）。`wait` ステップ
+  （`for`/`gone`/`settled`/`screenChanged`）では、ネイティブ経路はさらに独自の間隔（既定 1 秒。wait 自体の
+  条件ポーリングとは切り離しています）でポーリングされるため、wait 自体のタイムアウトを待たず、末尾の
+  再試行より前に回復できます（BE-0269）。シナリオ側では `systemAlertHandling: false` で無効化、
+  `{ labels: ["Allow"] }` でネイティブ経路が決定的に解決する候補ラベルを指定できます
   （[BE-0401](../../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md)）。
-  `--system-alert-handling`/`--no-system-alert-handling` は全シナリオを上書きし、`--alert-labels`・
-  `--alert-vision-instruction`・`--alert-poll-interval` は同じ 3 つのキーをその 1 回の run に与えます。
+  `{ visionInstruction: … }` は `run` ではどの経路にも届かないため、どのシナリオも実行する前に拒否されます。
+  `--system-alert-handling`/`--no-system-alert-handling` は全シナリオを上書きし、`--alert-labels` と
+  `--alert-poll-interval` はその 2 つのキーをその 1 回の run に与えます。
 - `record --system-alert-handling`: 既定で ON です（オーサリング時はまだシナリオが無いため）。割り込むプロンプトを片付け、
   エージェントに常にクリーンな画面を見せます。**dismissal は環境操作であって記録ステップではありません**
   （リプレイ側は各シナリオの `systemAlertHandling` で対処します）。
 
 > 視覚ガードは `ANTHROPIC_API_KEY` が必要です（[cli の .env](cli.md#環境変数env)）。無くても
-> **ベストエフォート**で単に no-op し、run を失敗させません — ネイティブ経路を持たない `record`/`crawl`
-> ではこれがそのままアラート未対処を意味しますが、`run` の iOS ネイティブ経路（BE-0315）は認証情報なしで
-> 一般的なプロンプトを片付け続け、no-op するのは視覚フォールバックだけです。ガードはブロックしたプロンプトを
-> 片付けるためだけに動作し、合否は機械判定のみで AI 非依存です（[concepts](concepts.md#1-ai-は著者と調査役であり判定者ではない)）。
+> **ベストエフォート**で単に no-op し、run を失敗させません。これが当てはまるのはネイティブ経路を持たない
+> `record` と `crawl` で、両者ではそのままアラート未対処を意味します。`run` はそもそも参照しません。
+> ガードはネイティブ経路だけであり（BE-0315）、認証情報なしで一般的なプロンプトを片付けます。いずれにせよ
+> ガードはブロックしたプロンプトを片付けるためだけに動作し、合否は機械判定のみで AI 非依存です
+> （[concepts](concepts.md#1-ai-は著者と調査役であり判定者ではない)）。

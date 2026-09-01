@@ -103,12 +103,12 @@ def _fake_config(tmp_path: Path) -> tuple[Path, Path]:
 
 
 @pytest.mark.usefixtures("_no_ai_setup")
-def test_run_alert_guard_degrades_to_a_no_op_without_a_credential(
+def test_run_alert_guard_needs_no_credential_at_all(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`run`'s alert guard (its `--system-alert-handling` Claude path, on by default) **degrades to a
-    no-op** with no credential — it never fails closed on "no AI credential" and never constructs a
-    client (the fixture fails if the SDK or an agent is built).
+    """`run`'s alert guard (on by default) is deterministic throughout since BE-0402, so it neither
+    fails closed on a missing credential nor prints a note about one — it never looks. The fixture
+    fails if the SDK or an agent is built, which no longer depends on the environment.
 
     This is a Claude-free claim, not a device-free one: the CLI's device wiring (simulator-udid
     resolution + the device-pool lease) shells to `xcrun simctl`, absent on the Linux gate, so it is
@@ -144,5 +144,7 @@ def test_run_alert_guard_degrades_to_a_no_op_without_a_credential(
         ],
     )
     assert result.exit_code == 7  # reached execution, i.e. never bailed on a missing credential
-    assert "no AI credential" not in result.output
-    assert "the vision alert guard will no-op" in result.output
+    # And nothing was said about a credential. Named substrings rather than an empty stream, so an
+    # unrelated notice `run` may print later does not break a test about the AI boundary.
+    for said in ("no AI credential", "ANTHROPIC_API_KEY", "alert guard", "Bedrock"):
+        assert said not in result.output

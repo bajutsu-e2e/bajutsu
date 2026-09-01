@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0402](BE-0402-run-alert-guard-drop-vision-fallback.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0402") |
+| Implementing PR | [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) |
 | Topic | AI provider configuration |
 | Related | [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md), [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules.md), [BE-0394](../BE-0394-ai-provider-none-kill-switch/BE-0394-ai-provider-none-kill-switch.md) |
 <!-- /BE-METADATA -->
@@ -275,7 +276,21 @@ for the nearer precedent.
 
 ## Progress
 
-- [ ] Not started.
+- [x] Unit 1 — `AlertGuardConfig` drops its `vision` field; `probe_native` returns the buttons it read.
+- [x] Unit 2 — `_AlertGuardGate` records what blocks the screen instead of calling vision; the
+      cooldown and per-wait attempt ceiling that bounded the model call are gone with it.
+- [x] Unit 3 — both guard call sites name an unhandled alert in their failure reason. The `gone`
+      branch carries the note too: it became guarded after this proposal was written.
+- [x] Unit 4 — `run`'s CLI wiring stops constructing the vision locator, and `--alert-vision-instruction`
+      is retired (`serve`'s CLI mirror follows). `run` also drops the AI usage ledger it installed
+      only to attribute the guard's tokens, since nothing in it can spend any.
+- [x] Unit 5 — a `visionInstruction` from a scenario or a target config stops the whole `run`
+      invocation before any scenario's device work begins. BE-0401 landed between this proposal and
+      its implementation and split the old free-text `instruction` into `labels` (native) and
+      `visionInstruction` (vision-only), so the check names the latter rather than a string form.
+      `serve`'s HTTP body rejects `alertVisionInstruction` with a 400 on the same reasoning, so no
+      entry point is left inverting a caller's intent silently.
+- [x] Unit 6 — the Claude-boundary classification and the documentation catch up in both languages.
 
 ## References
 

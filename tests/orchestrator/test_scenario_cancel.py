@@ -9,14 +9,13 @@ from __future__ import annotations
 
 import pytest
 from _orch import FakeClock, _scenario
-from conftest import el
+from conftest import AlertingDriver, el
 
 from bajutsu.cancellation import CANCELLED_FAILURE
-from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence.network import ScreenTransition
 from bajutsu.orchestrator import run_scenario
-from bajutsu.orchestrator.types import AlertEvent, AlertGuardConfig
+from bajutsu.orchestrator.types import AlertGuardConfig
 
 
 class _CancelAfter:
@@ -277,27 +276,25 @@ def test_cancel_inside_the_alert_guard_retry_does_not_burn_its_timeout() -> None
     *uncancelled* for the retry to exist at all, and counting reads to land after that would encode the
     poll cadence. So the observable is the clock — one timeout's worth of waiting, not two.
     """
-    driver = FakeDriver([el("blocker", "Allow", ["button"])])
     clock = FakeClock()
     fired = False
 
-    def on_blocked(d: base.Driver) -> AlertEvent | None:
-        # The vision guard the (non-native) FakeDriver falls back to, at end of step. Clears the
-        # screen so the retry is a genuine re-wait, and arms the cancel for that retry alone.
+    def on_dismiss(d: AlertingDriver) -> None:
+        # The end-of-step dismiss cleared the prompt. Clear the screen so the retry is a genuine
+        # re-wait, and arm the cancel for that retry alone.
         nonlocal fired
-        assert isinstance(d, FakeDriver)
-        if d.screen:
-            d.screen = []
-            fired = True
-            return AlertEvent(label="Allow")
-        return None
+        d.screen = []
+        fired = True
 
+    driver = AlertingDriver(
+        [el("blocker", "Allow", ["button"])], label="Allow", on_dismiss=on_dismiss
+    )
     result = run_scenario(
         driver,
         _scenario({"name": "x", "steps": [{"wait": {"for": {"id": "never"}, "timeout": 10.0}}]}),
         clock=clock,
         cancelled=lambda: fired,
-        alert_guard=AlertGuardConfig(vision=on_blocked),
+        alert_guard=AlertGuardConfig(labels=["Allow"]),
     )
     assert not result.ok
     assert fired, "the alert guard never fired, so the retry path was never exercised"

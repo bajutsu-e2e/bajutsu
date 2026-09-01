@@ -25,7 +25,7 @@ Bajutsu is a defensive end-to-end (E2E) testing tool built on a backend-agnostic
 Simulator (XCUITest), a web (Playwright) backend, and an Android (adb) backend are all landed. A
 few project-specific points are worth keeping in mind:
 
-- **API keys / secrets.** Only the AI paths (`record`, `run --system-alert-handling`)
+- **API keys / secrets.** Only the AI paths (`record`, `crawl`, `triage --ai`)
   need `ANTHROPIC_API_KEY`. Never commit or share API keys; keep them in `.env`
   (gitignored). The deterministic `run`/CI gate needs no secrets. A tracked pre-commit hook and a
   CI re-scan, both backed by [gitleaks](https://github.com/gitleaks/gitleaks), catch a secret

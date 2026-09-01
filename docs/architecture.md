@@ -684,12 +684,17 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 - DSL `systemAlertHandling` (BE-0315), the reactive counterpart: an alert guard that fires only when
   a step or `wait` is blocked, polling `handleSystemAlert`'s SpringBoard query on its own interval
   (default 1s, decoupled from the wait's poll cadence) and dismissing by a deterministic
-  candidate-label policy — no model call, reusing BE-0316's plumbing rather than a parallel API — with
-  the AI-vision guard demoted to a fallback for what the native path can't name (a backend lacking the
-  capability, a non-enumerable blocking surface, or an alert carrying none of the policy's labels).
-  Since BE-0401 each key names exactly one of those paths — `rules` and `labels` the native one,
-  `visionInstruction` the fallback — and the three layers compose by the key's type: lists
-  concatenate innermost-first, scalars take the innermost layer that supplies one. XCUITest itself
+  candidate-label policy — no model call, reusing BE-0316's plumbing rather than a parallel API. Since
+  BE-0402 the guard is deterministic throughout: where the native path can't act (a backend lacking
+  the capability, a non-enumerable blocking surface, or an alert carrying none of the policy's
+  labels) it does nothing, and the blocked step or `wait` names what it saw in its own timeout —
+  `… — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)`, or a hedged
+  form where no query enumerated the surface. `visionInstruction` steered only that fallback, so `run`
+  rejects it before any scenario starts rather than ignoring it — the silent inversion BE-0401 split
+  the old single `instruction` key to expose. Since BE-0401 each key names exactly one path, and
+  after BE-0402 only the native one has keys left naming it: `rules` and `labels` compose across the
+  three layers by concatenation, innermost-first, and the sole remaining scalar, `pollInterval`,
+  takes the innermost layer that supplies one. XCUITest itself
   intervenes on an alert that interrupts an in-flight interaction *before* this guard ever polls, and
   left alone answers with the alert's own default button — silently overriding a scenario's policy
   with nothing in the report. The runner therefore installs an interruption monitor that presses the

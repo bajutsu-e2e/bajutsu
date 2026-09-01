@@ -12,12 +12,12 @@ independently of the driver.
 from __future__ import annotations
 
 from _orch import FakeClock, _scenario
-from conftest import el
+from conftest import GUARD_LABEL, AlertingDriver, el
 
 from bajutsu.drivers import base
 from bajutsu.drivers.actuation import MAX_RECORDS, Actuation, ActuationLog
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator import AlertEvent, AlertGuardConfig, run_scenario
+from bajutsu.orchestrator import AlertGuardConfig, run_scenario
 from bajutsu.orchestrator.actions.handlers._gesture_math import _scroll_gesture
 
 _BUTTON = el("settings.open", frame=(20.0, 100.0, 80.0, 40.0))
@@ -117,11 +117,12 @@ def test_each_step_carries_only_its_own_actuations() -> None:
     assert [[a.target for a in step] for step in steps] == [["settings.open"], [], ["home.title"]]
 
 
-class _FlakyTapDriver(FakeDriver):
+class _FlakyTapDriver(AlertingDriver):
     """Records its tap, then fails it once — an actuation that landed on a step that still failed.
 
     The realistic shape of the guard's retry: the touch really went to the device (an overlay swallowed
-    it), so the record must survive on the step even though the step failed and ran again.
+    it), so the record must survive on the step even though the step failed and ran again. The
+    swallowing prompt is a real seeded one, so the guard clears it the one way it still can (BE-0402).
     """
 
     def __init__(self, screen: list[base.Element]) -> None:
@@ -142,44 +143,49 @@ def test_a_step_retried_after_an_alert_carries_both_attempts_in_order() -> None:
     steps = _run(
         [{"tap": {"id": "blocked.button"}}],
         driver,
-        alert_guard=AlertGuardConfig(vision=lambda _d: AlertEvent(label="Not Now")),
+        alert_guard=AlertGuardConfig(labels=[GUARD_LABEL]),
     )
 
-    # Two taps of the same element: the attempt that failed, then the one after the dismiss.
+    # Everything that really reached the device during this step, in order: the tap that failed, the
+    # guard's own dismiss (by handle, out of the app's coordinate space, so no target), and the tap
+    # that then succeeded.
     assert [(a.gesture, a.target) for a in steps[0]] == [
         ("tap", "blocked.button"),
+        ("systemAlert", None),
         ("tap", "blocked.button"),
     ]
 
 
 def test_the_expect_phase_guard_records_onto_the_scenario_result() -> None:
     """The one actuation with no step to carry it lands on `RunResult.expect_actuations`."""
-    button = el("alert.ok", frame=(10.0, 10.0, 30.0, 30.0))
-    driver = FakeDriver([button])
 
-    def on_blocked(d: base.Driver) -> AlertEvent | None:
-        assert isinstance(d, FakeDriver)
-        if not any(e["identifier"] == "verified" for e in d.screen):
-            d.tap({"id": "alert.ok"})  # the guard's own dismissing tap
-            d.screen.append(el("verified", frame=(0.0, 0.0, 5.0, 5.0)))
-            return AlertEvent(label="OK")
-        return None
+    def react(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "tap":  # the prompt closes and the app finishes what it was blocked on
+            d.screen = [el("verified", frame=(0.0, 0.0, 5.0, 5.0))]
+
+    # The in-tree dismiss is the guard path that actuates the app's own screen: an identifier-less
+    # button the scenario's own `labels` named, tapped through `Driver.tap` (BE-0315). It is the one
+    # guard path that still logs a gesture now the vision fallback is gone (BE-0402); the native
+    # path taps out of the app's coordinate space by handle, so it records no in-app actuation.
+    prompt = el(None, "OK", ["button"], frame=(10.0, 10.0, 30.0, 30.0))
+    driver = FakeDriver([prompt], react=react)
 
     result = run_scenario(
         driver,
         _scenario(
             {
                 "name": "expect retry",
-                "steps": [{"assert": [{"exists": {"id": "alert.ok"}}]}],
+                "steps": [{"assert": [{"exists": {"label": "OK"}}]}],
                 "expect": [{"exists": {"id": "verified"}}],
             }
         ),
         clock=FakeClock(),
-        alert_guard=AlertGuardConfig(vision=on_blocked),
+        alert_guard=AlertGuardConfig(labels=["OK"]),
     )
 
     assert result.ok
-    assert [(a.gesture, a.target) for a in result.expect_actuations] == [("tap", "alert.ok")]
+    # No identifier on the prompt's button, so the record carries the gesture and no authored target.
+    assert [(a.gesture, a.target) for a in result.expect_actuations] == [("tap", None)]
     # And it is not double-counted onto the step that ran before the expect phase.
     assert result.steps[0].actuations == []
 
