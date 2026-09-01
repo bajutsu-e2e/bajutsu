@@ -181,7 +181,16 @@ def runs_payload(
     scenario: str | None = None,
     target: str | None = None,
     label: str | None = None,
+    ran_target: str | None = None,
 ) -> tuple[Any, int]:
+    """The run history for the actor's org, newest first.
+
+    Two different target filters, deliberately named apart. *target* scopes to the runs whose
+    scenarios belong to that target's suite — the Coverage picker's question, answered from the
+    scenario names in each run's summary. *ran_target* scopes to the runs the target actually ran,
+    read from the `runs.target` stamp (BE-0404 unit 3), which is what the cross-target comparison's
+    drill-down needs so its list cannot contradict the row that opened it.
+    """
     # Opportunistically purge trash past the retention window before listing (BE-0239) — the lazy
     # sweep, on the history read rather than a background daemon (SqlSessionStore's expiry-on-read
     # precedent). A no-op when retention is disabled; scoped to the actor's org.
@@ -194,23 +203,35 @@ def runs_payload(
     # The scenario and target filters below are *post*-filters — the names they match live in the
     # JSON summary, not an indexed column — so on the DB path the cap must count filtered runs, not
     # global ones: capping first silently drops a matching run that falls outside the newest-N
-    # global window and the picker can't reach it (BE-0262 follow-up). The label partition is not
-    # one of them: `runs.label` is an ordinary column, so it pushes into the query and the window
-    # stays on, which keeps the most-hit read of all — the default history list — bounded.
+    # global window and the picker can't reach it (BE-0262 follow-up). The label partition and
+    # *ran_target* are not among them: `runs.label` and `runs.target` are ordinary columns, so both
+    # push into the query and the window stays on — which keeps the most-hit read of all (the
+    # default history list) bounded, and keeps the comparison's drill-down reading the same
+    # newest-N window of one target the ranking row beside it was computed over.
     org = state.org_of(actor)
     scoped = scenario is not None or target is not None
     if state.repository is not None:
         partition = effective_label(state, label)
         limit = None if scoped else RUN_WINDOW
         runs = [
-            r.summary for r in state.repository.list_runs(org_id=org, label=partition, limit=limit)
+            r.summary
+            for r in state.repository.list_runs(
+                org_id=org, label=partition, target=ran_target, limit=limit
+            )
         ]
         if not runs and partition is not None:
             # The bound label matches no run at all — open the whole history rather than an empty
             # page, the same fallback the artifact-store path applies.
-            runs = [r.summary for r in state.repository.list_runs(org_id=org, limit=limit)]
+            runs = [
+                r.summary
+                for r in state.repository.list_runs(org_id=org, target=ran_target, limit=limit)
+            ]
     else:
         runs = apply_label_filter(state, state.artifacts.list_runs(), label)
+        if ran_target is not None:
+            # The artifact-store listing carries the manifest's own `target` stamp, so the same
+            # partition is a post-filter here — the local stand-in, as the label filter is.
+            runs = [r for r in runs if r.get("target") == ran_target]
     # Scope the Author run picker to the loaded scenario (BE-0262): a chosen run's step ids only line
     # up with a scenario of the same name, so a run that never executed it can't feed the picker.
     # Scenario name is the step-id compatibility key the run-backed resolve already keys on (a run's

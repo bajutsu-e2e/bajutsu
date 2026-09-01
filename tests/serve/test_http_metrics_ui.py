@@ -55,11 +55,10 @@ def test_js_fetches_the_comparison_endpoint(tmp_path: Path) -> None:
 
 def test_a_row_opens_the_read_only_run_history(tmp_path: Path) -> None:
     text = _fetch(tmp_path, "/serve.metrics.mjs")
-    # The drill-down reads the ordinary run list with every label in view, then narrows by each run's
-    # own `target` stamp — no new server surface, and no partition default hiding another config's
-    # runs from a comparison that ranks across them.
-    assert "'/api/runs?label=*'" in text
-    assert "r.target===name" in text
+    # The drill-down reads the ordinary run list scoped server-side by the run's own `target` stamp,
+    # so it reads the same newest-N window of one target the ranking row was computed over. Every
+    # label is in view, since the comparison ranks a config's targets rather than one partition.
+    assert "'/api/runs?label=*&ranTarget='+encodeURIComponent(name)" in text
     assert "openMetricsDetail" in text
     assert 'data-testid="metrics.detail"' in text
 

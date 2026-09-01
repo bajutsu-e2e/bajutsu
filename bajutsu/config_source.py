@@ -250,15 +250,19 @@ class _GitHubTransport:
 
 
 def source_provenance(spec: GitConfigSpec, mat: Materialized) -> dict[str, str]:
-    """The run-provenance stamp for a Git config source: repo + the ref it was asked for + the SHA.
+    """The run-provenance stamp for a Git config source: repo + subtree + the ref asked for + the SHA.
 
     Recording the resolved `sha` makes a branch-based run reproducible after the fact (BE-0063) — it
-    states the exact commit executed, not just the moving branch.
+    states the exact commit executed, not just the moving branch. `path` is the config's location
+    within the repository, empty when the spec named none (the repo's `DEFAULT_CONFIG` at the root):
+    it is what tells two configs of one repository apart, so a deployment's run-history label
+    partitions them instead of folding both onto the repository name (BE-0404 unit 2).
     """
     return {
         "host": spec.host,
         "owner": spec.owner,
         "repo": spec.repo,
+        "path": spec.path or "",
         "ref": spec.ref or "(default)",
         "sha": mat.sha,
     }

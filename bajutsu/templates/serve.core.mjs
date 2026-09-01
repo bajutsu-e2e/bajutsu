@@ -614,13 +614,14 @@ function setLabelChoice(value){labelChoice=value||null}
 // Rebuild the switcher from the labels present in the whole history. Called at boot and after a
 // rebind, since binding another config changes which partition is the default.
 async function loadLabels(){
-  const sw=$('#labelsw');if(!sw)return;
+  const sw=$('#labelsw');
+  if(!sw)return;
   const runs=await getJSON('/api/runs?label='+encodeURIComponent(ALL_LABELS),[]);
   const labels=[...new Set((Array.isArray(runs)?runs:[]).map(r=>r&&r.label).filter(Boolean))].sort();
   // One partition (or none) is nothing to tell apart — hide the control rather than offer a choice
   // with a single outcome.
   sw.hidden=labels.length<2;
-  if(sw.hidden){labelChoice=null;sw.innerHTML='';return}
+  if(sw.hidden){labelChoice=null;sw.innerHTML='';return;}
   // A stale selection (its runs deleted, or a rebind) falls back to the default rather than pinning
   // the history to a label nothing matches.
   if(labelChoice&&labelChoice!==ALL_LABELS&&!labels.includes(labelChoice))labelChoice=null;

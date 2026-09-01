@@ -197,6 +197,7 @@ ROUTES: tuple[Route, ...] = (
             scenario=ctx.query("scenario"),
             target=ctx.query("target"),
             label=ctx.query("label"),
+            ran_target=ctx.query("ranTarget"),
         ),
     ),
     # The org roster an admin administers (BE-0375). Admin-gated in `authz.required_role`, which

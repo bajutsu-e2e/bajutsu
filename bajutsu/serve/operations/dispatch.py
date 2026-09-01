@@ -64,7 +64,11 @@ def _run_label(
             return override, None
     if state.config is None:
         return None, None
-    return launch_label(state.config, state.config_provenance), None
+    # Bounded, unlike the override above: this default is spawned as `run --label`, whose own guard
+    # would refuse an over-long value and fail every run from that deployment with a usage error for
+    # a label the operator never typed. "Refuse, never truncate" protects an operator's own input —
+    # a value the tool derived from a long file stem or a deep in-repo path is the tool's to trim.
+    return launch_label(state.config, state.config_provenance)[:MAX_LABEL_LENGTH], None
 
 
 def _boot_targets(udid: str) -> list[str]:

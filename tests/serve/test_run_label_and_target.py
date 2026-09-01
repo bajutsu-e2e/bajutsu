@@ -38,12 +38,21 @@ def test_launch_label_names_a_local_config_by_its_file_stem(tmp_path: Path) -> N
 def test_launch_label_disambiguates_two_configs_from_one_repository() -> None:
     # Naming a Git-materialized config for its repository alone folded two configs of one repo onto
     # one label — the collision an explicit project name used to resolve. The in-repo config path
-    # is what keeps them apart.
-    one = launch_label(Path("x.yaml"), {"repo": "shop", "path": "web/bajutsu.config.yaml"})
-    two = launch_label(Path("x.yaml"), {"repo": "shop", "path": "ios/bajutsu.config.yaml"})
-    assert one != two
-    # A stamp carrying no path still labels by the repository rather than producing a trailing slash.
-    assert launch_label(Path("x.yaml"), {"repo": "shop"}) == "shop"
+    # is what keeps them apart, so the stamp is built the way `serve` actually builds it rather than
+    # hand-shaped: a hand-built dict would pass against a stamp that carries no path at all.
+    from bajutsu.config_source import GitConfigSpec, Materialized, source_provenance
+
+    mat = Materialized(Path("/c/cfg.yaml"), Path("/c"), "deadbeef")
+    web = source_provenance(
+        GitConfigSpec("github.com", "acme", "shop", "main", "web/cfg.yaml"), mat
+    )
+    ios = source_provenance(
+        GitConfigSpec("github.com", "acme", "shop", "main", "ios/cfg.yaml"), mat
+    )
+    assert launch_label(Path("x.yaml"), web) != launch_label(Path("x.yaml"), ios)
+    # A spec naming no path labels by the repository rather than producing a trailing slash.
+    bare = source_provenance(GitConfigSpec("github.com", "acme", "shop", None, None), mat)
+    assert launch_label(Path("x.yaml"), bare) == "shop"
 
 
 def test_the_label_defaults_to_the_bound_config_and_the_body_overrides_it(tmp_path: Path) -> None:
@@ -66,6 +75,20 @@ def test_an_oversized_label_is_refused_rather_than_truncated(tmp_path: Path) -> 
     label, err = _run_label(state, {"label": 7})
     assert label is None
     assert err is not None and err[1] == 400
+
+
+def test_a_long_derived_default_is_trimmed_rather_than_failing_every_run(tmp_path: Path) -> None:
+    # The default is spawned as `run --label`, whose own guard refuses an over-long value — so an
+    # unbounded default would kill every run from a deployment whose config file has a long name,
+    # for a label the operator never typed. "Refuse, never truncate" guards the operator's input;
+    # a value the tool derived is the tool's to trim.
+    _scn, _cfg, runs = project(tmp_path)
+    long_config = tmp_path / (("c" * (MAX_LABEL_LENGTH + 40)) + ".yaml")
+    long_config.write_text("targets: {}\n", encoding="utf-8")
+    state = srv.ServeState(config=long_config, runs_dir=runs, cwd=tmp_path)
+    label, err = _run_label(state, {})
+    assert err is None
+    assert label is not None and len(label) == MAX_LABEL_LENGTH
 
 
 def test_a_deployment_with_no_bound_config_records_no_label(tmp_path: Path) -> None:
@@ -154,6 +177,22 @@ def test_the_comparison_ranks_every_declared_target_including_an_unrun_one(
     assert rows[0].runs == 2
     assert rows[0].pass_rate == 0.5
     assert rows[1].runs == 0
+
+
+def test_the_drilldown_reads_the_same_target_partition_as_the_row(tmp_path: Path) -> None:
+    # The comparison's ranking row is computed over one target's newest-N runs, so its drill-down
+    # must read that same partition server-side. A client-side filter over a *global* window lets a
+    # quiet target render "no runs" beside a row reporting a full history (#1718).
+    _scn, cfg, runs = project(tmp_path)
+    write_run(runs, "20260101-1", ok=True, scenarios=[("alpha", True)], target="demo")
+    write_run(runs, "20260101-2", ok=True, scenarios=[("alpha", True)], target="other")
+    state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
+    assert [r["id"] for r in runs_payload(state, label=ALL_LABELS, ran_target="demo")[0]] == [
+        "20260101-1"
+    ]
+    assert [r["id"] for r in runs_payload(state, label=ALL_LABELS, ran_target="other")[0]] == [
+        "20260101-2"
+    ]
 
 
 def test_the_comparison_is_empty_with_no_config_bound(tmp_path: Path) -> None:

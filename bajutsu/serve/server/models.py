@@ -55,10 +55,14 @@ class Org(Base):
     # resolution and the admin list, but its row stays so the users / runs / secrets /
     # provider_settings / audit_log foreign keys that still point at it stay intact.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
-    # The one config source this org last bound, as the discriminated `{"kind", "locator"}` record
-    # (BE-0404 unit 1) — the durable memory a hosted replica reads to recover an uploaded bundle it
-    # did not itself receive. One record, not a list: an org that needs several bundles addressable
-    # holds them as artifacts and composes one (BE-0268). Null until the org binds something.
+    # The one uploaded config source this org last bound (BE-0404 unit 1) — the durable memory a
+    # hosted replica reads to recover a bundle it did not itself receive. A flat record whose `kind`
+    # is always `upload`, carrying either a single `sha256` or BE-0268's `artifacts` triple, exactly
+    # as `restore_uploaded_config` reads it. Only an upload bind writes here: a `git` or `file` bind
+    # names something the caller can rebind through `POST /api/config` directly, and neither writes
+    # nor clears this, so the column answers "the last bundle this org uploaded" rather than "what it
+    # is serving now". One record, not a list: an org that needs several bundles addressable holds
+    # them as artifacts and composes one (BE-0268). Null until the org uploads something.
     config_source: Mapped[dict[str, Any] | None] = mapped_column(_JSON, default=None)
 
 

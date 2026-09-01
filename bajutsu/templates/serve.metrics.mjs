@@ -115,9 +115,11 @@ function renderMetrics(){
 }
 
 // The read-only drill-down a row opens: that target's run history, newest first. Read from the
-// ordinary run list with the label filter opened to every label, then narrowed by each row's own
-// `target` stamp (BE-0404 unit 3) — the comparison ranks across labels, so a partition default here
-// would hide the runs of whichever config is not currently bound.
+// ordinary run list, scoped server-side by the run's own `target` stamp (`ranTarget`, BE-0404
+// unit 3) so the list is the same newest-N window of *this* target the ranking row was computed
+// over — a client-side filter over a global window would let the detail contradict the row that
+// opened it (#1718). The label filter is opened to every label, since the comparison ranks a
+// config's targets rather than one partition of them.
 async function openMetricsDetail(name){
   const host=$('#metrics-host');
   metricsDetail=name;
@@ -126,15 +128,14 @@ async function openMetricsDetail(name){
     +`<span class="mname">${esc(name)}</span><span class="muted" style="font-size:.8em">read-only — opening this history changes nothing</span></div>`
     +`<ul class="fslist mruns" data-testid="metrics.detail-runs"><li class="muted">Loading run history…</li></ul></div>`;
   host.querySelector('button[data-act="back"]').addEventListener('click',renderMetrics);
-  const all=await getJSON('/api/runs?label=*',FETCH_ERROR);
+  const runs=await getJSON('/api/runs?label=*&ranTarget='+encodeURIComponent(name),FETCH_ERROR);
   // The reader may have gone back, or opened another target, while the fetch was in flight —
   // rendering into whatever is on screen now would attribute one target's runs to another.
   if(metricsDetail!==name)return;
   const ul=host.querySelector('[data-testid="metrics.detail-runs"]');
   if(!ul)return;
-  if(isFetchError(all)){ul.innerHTML='<li class="muted" data-testid="metrics.detail-error">Couldn’t load this target’s runs. Go back and retry.</li>';return}
-  const runs=Array.isArray(all)?all.filter(r=>r.target===name):[];
-  if(!runs.length){ul.innerHTML='<li class="muted" data-testid="metrics.detail-empty">No runs recorded for this target yet.</li>';return}
+  if(isFetchError(runs)){ul.innerHTML='<li class="muted" data-testid="metrics.detail-error">Couldn’t load this target’s runs. Go back and retry.</li>';return}
+  if(!Array.isArray(runs)||!runs.length){ul.innerHTML='<li class="muted" data-testid="metrics.detail-empty">No runs recorded for this target yet.</li>';return}
   ul.innerHTML=runs.map(r=>`<li data-testid="metrics.detail-run"><span class="dot ${r.ok?'ok':'ng'}"></span>`
     +`<span class="hid">${esc(r.id)}</span>`
     +`<span class="hsum">${r.passed}/${r.total}${r.scenarios&&r.scenarios.length?' · '+esc(r.scenarios.join(', ')):''}</span></li>`).join('');

@@ -128,7 +128,7 @@ def _locate_config_or_heal(dest: Path) -> tuple[Any, int]:
 
 
 def _remember_org_config_source(state: ServeState, org: str, source: dict[str, Any]) -> None:
-    """Record *source* as the org's remembered config source (BE-0404 unit 1).
+    """Record *source* as the last bundle this org uploaded (BE-0404 unit 1).
 
     The durable half of the recovery path: `restore_uploaded_config` reads this back on a replica
     that never received the upload. Guarded like the other database reaches on this path — a flaky
@@ -627,13 +627,13 @@ def compose_current(state: ServeState, *, actor: str | None = None) -> tuple[Any
 
 
 def restore_org_config(state: ServeState, *, org: str, actor: str | None = None) -> tuple[Any, int]:
-    """Rebind the config *org* last bound, from its remembered source record (BE-0404 unit 1).
+    """Rebind the last bundle *org* uploaded, from the record on its row (BE-0404 unit 1).
 
     The reason the org row holds a config-source record at all: a hosted replica that never received
-    the upload recovers it from the object store by the digests the record names. Reads the record,
-    then hands it to `restore_uploaded_config` — an `upload` record is the only kind whose bytes this
-    path can recover, since a `git` or `file` record names something the caller can rebind through
-    `POST /api/config` directly.
+    the upload recovers it from the object store by the digests the record names. Only an upload
+    bind writes that record, so this restores the org's last *bundle* rather than whatever it bound
+    most recently — a `git` or `file` config is something the caller rebinds through
+    `POST /api/config` directly, needing no durable copy of its own.
     """
     repo = state.repository
     if repo is None:
