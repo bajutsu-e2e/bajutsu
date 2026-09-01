@@ -274,12 +274,19 @@ checkout is the main or a linked worktree, so the guard prints the remedy rather
 it. From the affected worktree:
 
 ```bash
-git config --unset core.worktree       # only if it is set in the shared config
-git config --worktree core.bare false  # per-worktree, where it belongs
+GIT_WORK_TREE=. git config --unset core.worktree   # only if it is in the shared config
+GIT_WORK_TREE=. git config --unset core.bare       # only if the shared value is true
 ```
 
-A worktree that genuinely needs either setting keeps it in its own config, written with `git config
---worktree`.
+Both details matter. The `GIT_WORK_TREE=.` prefix is not decoration: git resolves `core.worktree`
+during repository setup, before it runs the command you asked for, so once the setting names a
+worktree that has been removed, the repair command itself dies with `fatal: Invalid path` until
+something overrides it. And the repair has to clear the *shared* file — `git config --worktree
+core.bare false` fixes only the worktree in hand and leaves the shared value governing every other
+one, which is how the misconfiguration went unnoticed in the first place.
+
+A worktree that genuinely needs either setting — a bare main repository keeping `core.bare = true` —
+adds it back afterwards with `git config --worktree`, never to the shared file.
 
 The short form of this rule is in [`CLAUDE.md`](../CLAUDE.md).
 

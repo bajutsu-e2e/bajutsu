@@ -31,7 +31,7 @@ echo "pre-push: running 'make check'…" >&2
 # worktree — the way CLAUDE.md asks concurrent sessions to work. Nothing in `make check` wants an
 # inherited repository location; the steps that need one discover it from their own directory, and
 # the tests that exercise this behaviour set the variables themselves.
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR
 
 # The gate is defined once, in `make check`. A hand-rolled fallback drifts from it silently
 # (it used to run only ruff+mypy+pytest, skipping format/docstrings/imports/lock/roadmap/shell),

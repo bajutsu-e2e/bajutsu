@@ -239,11 +239,20 @@ git worktree remove ../bajutsu-<topic>
 次の手当てを表示します。該当の worktree で実行してください。
 
 ```bash
-git config --unset core.worktree       # 共有の設定に書かれている場合だけ
-git config --worktree core.bare false  # 本来の置き場所である worktree 単位へ
+GIT_WORK_TREE=. git config --unset core.worktree   # 共有の設定にある場合だけ
+GIT_WORK_TREE=. git config --unset core.bare       # 共有の値が true の場合だけ
 ```
 
-どちらかの設定が本当に必要な worktree は、`git config --worktree` で自分の設定ファイルに書きます。
+この2点は、どちらも省けません。`GIT_WORK_TREE=.` は飾りではありません。git は、依頼された処理を
+実行する前にリポジトリの準備段階で `core.worktree` を解決します。設定が削除済みの worktree を指して
+いると、修復コマンド自体が `fatal: Invalid path` で落ちます。上書きしない限り、この状態は続きます。
+もう1点は、共有のファイルから消す必要があることです。`git config --worktree core.bare false` は手元の
+worktree しか直しません。共有の値は残り、ほかのすべての worktree を支配し続けます。今回の設定ミスが
+気付かれなかったのも、そのためです。
+
+どちらかの設定が本当に必要な worktree もあります。たとえば、`core.bare = true` を保つベアリポジトリ
+です。消したあとで `git config --worktree` を使い、自分の設定ファイルに書き戻します。共有のファイル
+には書きません。
 
 このルールの短縮版は [`CLAUDE.md`](../../CLAUDE.md) にあります。
 
