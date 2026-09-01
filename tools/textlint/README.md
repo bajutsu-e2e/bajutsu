@@ -85,14 +85,13 @@ All four kanji-range rules are pinned in `package.json` but left disabled (`fals
   kanji to an even narrower set than 常用漢字, stricter still. Turn one on individually, with an
   allow-list, only if a specific document needs a bounded kanji set.
 
-`preset-ja-technical-writing`'s own `no-mix-dearu-desumasu` is likewise pinned but disabled, for the
-same kind of reason: it requires every bulleted or numbered list in a document to use plain (である)
-style, and fails the moment even one list item ends in です/ます — regardless of how the rest of the
-document is written. `japanese-document-writing` and `CLAUDE.md` both require every BE roadmap item
-and every `docs/ja/` page to stay in 敬体 (ですます) throughout, with no 常体 exception for lists, so a
-list written to satisfy that mandate can never satisfy this rule. Disabling it is the same trade the
-kanji-range rules already make: the alternative is prose that violates the project's own style
-mandate purely to please one preset default.
+`preset-ja-technical-writing`'s own `no-mix-dearu-desumasu` stays enabled, even though it requires
+every bulleted or numbered list in a document to use plain (である) style, and fails the moment even
+one list item ends in です/ます. `japanese-document-writing` and `CLAUDE.md` both require every BE
+roadmap item and every `docs/ja/` page to stay in 敬体 (ですます) throughout, with no 常体 exception
+for lists, so a list written to satisfy that mandate leaves this rule's findings behind rather than
+clearing them — see `document-writing`'s "Mandatory textlint verification after drafting" section
+for the count-based bar that accepts this residue instead of chasing an unreachable zero.
 
 ### English
 

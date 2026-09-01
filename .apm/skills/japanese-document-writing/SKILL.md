@@ -45,15 +45,6 @@ description: 日本語の技術文書を執筆、翻訳、推敲するときに�
 連体修飾節や接続・条件の形（「〜する場合」「〜すると」「〜であり」）は常体のままにする。見出しや純粋な
 体言止めのラベルには繋辞を付けない。
 
-## 箇条書きも敬体を崩さない
-
-箇条書き・番号付きリストの項目も、文書本体と同じ文体で書く。`docs/ja/`とロードマップ項目では敬体である。
-`preset-ja-technical-writing`の`no-mix-dearu-desumasu`は、リスト項目を常体で書くことをデフォルトで
-要求する。このルールは、このリポジトリの敬体統一方針と両立しない。そのため
-[`tools/textlint/.textlintrc.json`](../../../tools/textlint/.textlintrc.json)で無効化してある。理由は
-[`tools/textlint/README.md`](../../../tools/textlint/README.md)に書いてある。**指摘が出ないからといって、
-リストだけ常体に変えてはならない。** 常体を避けるという本スキルの規範が、このルールより優先する。
-
 ## 一文を短く、読点を絞る
 
 このリポジトリのtextlintは、1文の長さと読点の数にも上限を課す。`ja-technical-writing/sentence-length`は、

@@ -13,7 +13,7 @@
         "forceAppendPeriod": false
       },
       "ja-no-redundant-expression": true,
-      "no-mix-dearu-desumasu": false,
+      "no-mix-dearu-desumasu": true,
       "no-double-negative-ja": true,
       "ja-no-abusage": true,
       "no-dropping-the-ra": true,
