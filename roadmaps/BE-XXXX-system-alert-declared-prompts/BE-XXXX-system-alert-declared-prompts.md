@@ -150,12 +150,22 @@ an `AmbiguousSelector` means it is still up and now offers the selector's label 
 the step's verdict: the handler keeps polling to its deadline, so a benign race costs one poll
 rather than the step.
 
-The step polls on the guard's own `pollInterval` rather than the wait machinery's `_POLL`. Three
-reads in a poll cross a process boundary — the SpringBoard query in step 1, the tree query
-`gate.observe` consumes, and the gate's own SpringBoard probe — and BE-0315 already records that querying SpringBoard once per `_POLL`
-would roughly double the load on the runner's single main thread. The step's driver-side loop polls
-at 0.2 seconds today, so the guard's one-second default is the slower of the two; a scenario that
-needs the old cadence sets `pollInterval` down.
+The outer loop polls at `_POLL` (0.05s), matching `_wait`'s own cadence, but that tick is a cheap
+timestamp comparison, not a cross-process read on every iteration: the two reads it may trigger keep
+their own, independent rates, unchanged from what each already pays today. Step 1's own
+`system_alert_labels()` read is throttled to `_SYSTEM_ALERT_POLL_SECONDS` (0.2s) internally, exactly
+the cadence the driver's own polling loop paid before this unit moved it — the step's response to
+its own target prompt is no slower than it is today. `gate.observe()`'s cross-process SpringBoard
+probe keeps its existing, separate throttle: `_observe_native` already rate-limits itself to
+`guard.poll_interval` regardless of how often `observe()` is called (`_last_native`, unchanged by
+this proposal), which is the same load BE-0315 already accepts for every `wait` step a guard covers.
+Coupling the two to one shared cadence — which an earlier draft of this unit did — was the error:
+it would have forced `save_password_browser.yaml`'s deliberately wide `pollInterval: 5` (set so both
+stacked prompts stay up across a probe) onto the step's own responsiveness too, leaving a `tap`-sized
+window inside a 5-second gap for the Unit 4 regression scenario's `handleSystemAlert` step to notice
+its own target in. Decoupling the two rates removes that tension: a scenario that needs a wide
+`pollInterval` for the guard's SpringBoard probe pays nothing for it in how fast the step notices its
+own prompt.
 
 Reusing the gate rather than lifting `_dismiss_from_tree` out of it is what makes the cross-poll
 state work. The re-tap delay, the decline give-up, and the per-label tap ceiling are all fields on
@@ -185,7 +195,7 @@ appeared at all, an alert appeared whose buttons the selector did not match, or 
 held the screen for the wait. The third case carries the buttons that were on screen, so a reader
 of the report can add the rule the scenario was missing.
 
-### Unit 2 — declare an alert by its prompt, and re-key every path that matched a label
+### Unit 2a — declare an alert by its prompt, and re-key every path that matched a label
 
 `labels` is removed from `SystemAlertHandling` in `bajutsu/scenario/models/scenario.py`, and the
 `--alert-labels` option is removed from `run`, so `_flag_alert_policy` in
@@ -235,14 +245,30 @@ not in-tree-only, so a later SpringBoard-reachable shape needing an exclusion fa
 reaching the monitor with its exclusion silently dropped — which is the subset-match collision, one
 table entry later.
 
+Besides `push_interruption_policy`'s candidate fallback, now removed, one more place reads `labels`,
+and it is not a matching site: `_warn_target_rules_reach` in `bajutsu/cli/commands/run.py` reads
+`any(layer.labels for layer in inner_layers)` to decide whether a scenario answers for itself. The
+predicate is re-keyed to `any(layer.rules for layer in inner_layers)`. There is no vision-fallback
+instruction to re-key alongside it: BE-0402 already deleted `_vision_instruction` with `run`'s
+fallback, so a scenario's `labels` has not steered anything there since that landed.
+
+`_resolve_rules` raises `UncoveredSystemAlertLocale` naming `labels` as the remedy for an uncovered
+language. The message is rewritten to name the remaining two remedies: add the language to
+`bajutsu/scenario/system_alerts.py`, or pin a locale the table covers.
+
+A scenario that still writes `labels` fails to load with an error naming `rules`. BE-0401 removed
+`enabled` and two deprecated spellings the same way, and stated plainly that compatibility was not
+preserved; this proposal follows that precedent rather than carrying an alias.
+
+### Unit 2b — report the interruption monitor's declined alerts
+
 `DEFAULT_DISMISSIVE_LABELS` is removed rather than kept, and the Swift-side matching it fed is
 removed with it: `InterruptionPolicy.candidates` in
 `BajutsuKit/Sources/BajutsuRunner/InterruptionPolicy.swift` is deleted, `label(for:)` matches `rules`
-alone, `Driver.set_interruption_policy` drops its `candidates` parameter, and
-`InterruptionPolicyRequest` in `openapi.yaml` drops the matching field. The reason is that declining
-is already documented as the *safe* answer at this surface, not merely the least bad one.
-`docs/architecture.md:698-699` records that a prompt the policy names no button on "is left to
-XCUITest's own default handler, unchanged (BE-0399)," and `docs/scenarios.md:167-168` that it "is
+alone, and `InterruptionPolicyRequest` in `openapi.yaml` drops the matching field. The reason is
+that declining is already documented as the *safe* answer at this surface, not merely the least bad
+one. `docs/architecture.md:708-709` records that a prompt the policy names no button on "is left to
+XCUITest's own default handler, unchanged (BE-0399)," and `docs/scenarios.md:168-169` that it "is
 left to XCUITest, which is what happened before this existed." `RunnerUITest.swift`'s own comment
 calls declining "the only safe fallback… what happened before this monitor existed and does clear
 it" — the loop that can take a resident runner down comes from a monitor that *claims* an
@@ -250,24 +276,38 @@ interruption without clearing it, never from one that hands it back. Nothing, th
 monitor to guess an answer for an alert `rules` does not name; the built-in candidates only narrowed
 how often an alert reached that unrecorded grant, never closed it.
 
-What replaces the guess is a report, and only for the case the guard actually governs. The monitor
-now records what it could not answer before it declines: `InterruptionPolicyStore` gains a second
-drained list beside the one it already keeps for tapped labels — the button labels of each alert
-`label(for:)` returned `nil` for, on a poll whose policy was not itself empty — and the monitor
-appends to it, then returns `false` exactly as before, so the tap that follows (XCUITest's own,
-whichever button that alert calls its default) is unchanged, because nothing at that point can
-change it. Two related declines record nothing, deliberately. `guard !policy.isEmpty else { return
-false }` in `RunnerUITest.swift` runs first and short-circuits before `label(for:)` is ever called:
-a scenario with `systemAlertHandling: false` pushes an empty policy precisely so it does not inherit
-the previous scenario's, and an alert interrupting *that* scenario keeps today's silent grant, since
-declaring nothing is the author's own choice, not an omission this proposal exists to catch. And the
-race `probe_native` already treats as benign elsewhere in this proposal recurs here: a label that did
-match, whose button then vanished before the tap (`guard button.exists else { return false }`),
-declines without recording anything, because the alert was not undeclared — its button simply lost a
-race with its own dismissal. `POST /interruptionPolicy/drain`'s reply gains an `unmatched` field
-beside its existing `labels`, one button list per declined-and-recorded alert, oldest first.
-`Driver.drain_interruptions` in `bajutsu/drivers/base.py` changes its return type from `list[str]` to
-a small pair — the tapped labels, unchanged, and the button lists of what was declined — and
+What replaces the guess is a report — but "the guard actually governs" is not the same fact as "the
+pushed rule list is non-empty," and today's `isEmpty` check conflates them. `InterruptionPolicy`
+gains a `governs: Bool` field alongside `rules` (and no longer `candidates`), and
+`Driver.set_interruption_policy` and `InterruptionPolicyRequest` swap their `candidates`
+parameter/field for that same `governs` one. `push_interruption_policy` sets it
+to `guard is not None`: true for any scenario whose `systemAlertHandling` is on, independent of
+whether any of that scenario's rules survived the in-tree-only filter above. Without it, a scenario
+whose *only* rule is `savePassword` — exactly what Unit 4 makes `save_password_native.yaml` — pushes
+an empty rule list once the in-tree-only filter drops it, and an `isEmpty` check reading that as "this
+scenario declared nothing" would silently reopen the grant Unit 2b exists to close for every *other*
+alert that scenario never ruled on: a real declaration, filtered down to nothing this surface can act
+on, is not the same as no declaration at all. `governs` is true in exactly the first case and false
+only when `guard is None` — an absent guard or `systemAlertHandling: false` — which is the one case
+still meant to keep today's silent, unrecorded grant, since declaring nothing is the author's own
+choice.
+
+The monitor records what it could not answer before it declines: `InterruptionPolicyStore` gains a
+second drained list beside the one it already keeps for tapped labels — the button labels of each
+alert `label(for:)` returned `nil` for, on a poll whose policy `governs` — and the monitor appends to
+it, then returns `false` exactly as before, so the tap that follows (XCUITest's own, whichever
+button that alert calls its default) is unchanged, because nothing at that point can change it. Two
+related declines record nothing, deliberately. `guard policy.governs else { return false }` in
+`RunnerUITest.swift` runs first and short-circuits before `label(for:)` is ever called: an absent
+guard's decline keeps today's silent grant, since declaring nothing is the author's own choice, not
+an omission this proposal exists to catch. And the race `probe_native` already treats as benign
+elsewhere in this proposal recurs here: a label that did match, whose button then vanished before the
+tap (`guard button.exists else { return false }`), declines without recording anything, because the
+alert was not undeclared — its button simply lost a race with its own dismissal. `POST
+/interruptionPolicy/drain`'s reply gains an `unmatched` field beside its existing `labels`, one
+button list per declined-and-recorded alert, oldest first. `Driver.drain_interruptions` in
+`bajutsu/drivers/base.py` changes its return type from `list[str]` to a small pair — the tapped
+labels, unchanged, and the button lists of what was declined — and
 `bajutsu/orchestrator/types.py`'s `drain_interruptions` wrapper turns the second half into
 `UndeclaredInterruption` records rather than `AlertEvent`s, since nothing was answered on the
 scenario's behalf for them to report as a dismissal.
@@ -287,21 +327,6 @@ failure. So the retry gains the second drain the comment describes as absent, fo
 `UndeclaredInterruption`s into the same check before `failure` is decided. Neither call site's
 handling of a *matched* interruption changes: those still become `AlertEvent`s and never fail
 anything on their own.
-
-Besides `push_interruption_policy`'s candidate fallback, now removed, one more place reads `labels`,
-and it is not a matching site: `_warn_target_rules_reach` in `bajutsu/cli/commands/run.py` reads
-`any(layer.labels for layer in inner_layers)` to decide whether a scenario answers for itself. The
-predicate is re-keyed to `any(layer.rules for layer in inner_layers)`. There is no vision-fallback
-instruction to re-key alongside it: BE-0402 already deleted `_vision_instruction` with `run`'s
-fallback, so a scenario's `labels` has not steered anything there since that landed.
-
-`_resolve_rules` raises `UncoveredSystemAlertLocale` naming `labels` as the remedy for an uncovered
-language. The message is rewritten to name the remaining two remedies: add the language to
-`bajutsu/scenario/system_alerts.py`, or pin a locale the table covers.
-
-A scenario that still writes `labels` fails to load with an error naming `rules`. BE-0401 removed
-`enabled` and two deprecated spellings the same way, and stated plainly that compatibility was not
-preserved; this proposal follows that precedent rather than carrying an alias.
 
 ### Unit 3 — add the save-password prompt to the label table
 
@@ -370,7 +395,34 @@ tree, not over one alert's buttons — `_dismiss_from_tree` builds its candidate
 `shows_app_ui`'s docstring records that a whole application can legitimately have no identifiers at
 all. There is no "the alert's button set" for those paths to compare against. An exclusion is a
 question about the same flat list the identifying labels are already asked about, so it holds
-wherever they do, and its failure mode is a non-match rather than a wrong tap.
+wherever they do — for the web-form and 18.6 in-app shapes, whose identifying pairs ("Save Password",
+"Never for This Website") are specific enough that a coincidental match elsewhere on screen is
+unlikely.
+
+The 26.5 pair is a weaker case, and worth stating plainly rather than leaving a later reader to find
+it. "Save" and "Not Now" are ordinary application vocabulary — the same category BE-0399 flagged
+"Cancel" and "Close" as — and the flat-tree match this shape shares with every other in-tree rule
+carries both directions of risk, not only the one the exclusion closes. An application screen that
+happens to show identifier-less "Save" and "Not Now" buttons with no save sheet up satisfies the pair
+and gets tapped: a false match the exclusion set does nothing for, since it only rules out the
+credit-card sheet. And `match_alert_rule` requires each identifying label present *exactly once*
+(`bajutsu/orchestrator/types.py:342`), so a second identifier-less "Save" anywhere else in the same
+tree — behind the sheet, on the screen it covers — pushes the count to two and the shape stops
+matching at all: a false non-match that reinstates the very timeout this proposal exists to fix, on
+that one iOS version. Neither risk is new to this proposal; single-label matching against the whole
+tree (`labels: ["Not Now"]`, in production before this proposal) already carries the same two-sided
+risk for any word a screen might repeat, and a two-label pair narrows rather than widens it. What is
+new is relying on a pair this ordinary for a save/deny decision an author cannot see coming, and this
+proposal has no recourse for it within `systemAlertHandling`: `savePassword` is declared as a rule
+only, `handleSystemAlert` rejects it, and the in-tree path is the sole mechanism that ever reaches
+this alert, so there is no second declaration route to fall back on the way there is for a
+SpringBoard prompt. Both `_dismiss_from_tree` call sites filter to identifier-less buttons, so the
+one lever left is the application's own accessibility markup: a colliding "Save" button that carries
+an identifier stops matching the flat list this mechanism scans, at the cost of a change outside a
+scenario author's own control when the application under test is not theirs to edit. Given that, this
+is accepted as a bounded, known risk rather than a solved one — no worse than the single-label
+matching already shipping, narrower than it in the cases the pair does disambiguate, and confined to
+one iOS version's one shape.
 
 ### Unit 4 — migrate the demos and add the regression scenario
 
@@ -380,9 +432,12 @@ which its `expect` depends on, so the `savePassword` entry joins that list rathe
 `save_password_native.yaml` declares no rules today and gains the single-entry list. `save_password_browser.yaml` additionally drops its
 `wait: { until: { gone: { label: "Not Now" … } } }`, which exists only to give the guard a step to
 run inside. `save_password_native.yaml` keeps its `wait: { for: { id: signin.value, value:
-"signedIn" } }`: that wait is the scenario's synchronization for an asynchronous sign-in, not an
-alert window, and `expect` is evaluated once, so dropping it would leave the scenario racing the
-submission.
+"signedIn" } }`: that wait both synchronizes an asynchronous sign-in and is the window the in-tree
+dismissal runs in — its own comment measures the save-password alert landing before that condition
+on iOS 18.6 and after it on 26.3, 26.4, and 26.5, and explains why a `gone` wait on the alert's own
+button could not serve instead. It stays the scenario's only guarded step once Unit 1 lands, since
+`handleSystemAlert` never appears in it, and `expect` is evaluated once, so dropping the wait would
+leave the scenario racing the submission on top of losing the alert's clearing window.
 
 A third scenario is added for the case this proposal is written from: it places a
 `handleSystemAlert` step for the notification prompt at a point where the save-password alert holds
@@ -439,15 +494,18 @@ the gap Unit 2b closes to bring the two surfaces to the same standard.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — move the `handleSystemAlert` wait into the orchestrator, driving one gate per step on
+- [ ] Unit 1 — move the `handleSystemAlert` wait into the orchestrator, driving one gate per step
+      at `_POLL`, with the step's own read throttled to `_SYSTEM_ALERT_POLL_SECONDS` independent of
       the guard's `pollInterval`, and fail with a reason that names the alert that held the screen.
-- [ ] Unit 2a — remove `labels`, `--alert-labels`, and `DEFAULT_DISMISSIVE_LABELS`; re-key the
-      native probe, both in-tree dismissals, and the interruption monitor to `rules` alone; reject a
-      scenario that still writes `labels`.
-- [ ] Unit 2b — record the interruption monitor's declined alerts, except a disabled guard's own
-      decline and a matched button lost to a benign race; extend the drain endpoint and the
-      `Driver.drain_interruptions` protocol to carry them; add the second `expect`-phase drain the
-      alert-guard retry is currently missing; and fail the step or `expect` that met one.
+- [ ] Unit 2a — remove `labels` and `--alert-labels`; re-key the native probe and both in-tree
+      dismissals to `rules` alone; reject a scenario that still writes `labels`.
+- [ ] Unit 2b — remove `DEFAULT_DISMISSIVE_LABELS` and the Swift-side candidate matching it fed; add
+      `governs` to `InterruptionPolicy`/`set_interruption_policy`/`InterruptionPolicyRequest` so a
+      scenario whose rules are all in-tree-only still governs; record the interruption monitor's
+      declined alerts, except a non-governing policy's own decline and a matched button lost to a
+      benign race; extend the drain endpoint and the `Driver.drain_interruptions` protocol to carry
+      them; add the second `expect`-phase drain the alert-guard retry is currently missing; and fail
+      the step or `expect` that met one.
 - [ ] Unit 3 — key a prompt's language entry to a list of shapes with an optional exclusion-label
       set, add `savePassword` with its three shapes and the per-prompt surface record, and reject it
       in a `handleSystemAlert` step.
