@@ -13,7 +13,7 @@
         "forceAppendPeriod": false
       },
       "ja-no-redundant-expression": true,
-      "no-mix-dearu-desumasu": true,
+      "no-mix-dearu-desumasu": false,
       "no-double-negative-ja": true,
       "ja-no-abusage": true,
       "no-dropping-the-ra": true,
@@ -50,7 +50,9 @@
     },
     "write-good": true,
     "stop-words": true,
-    "unexpanded-acronym": true,
+    "unexpanded-acronym": {
+      "ignore_acronyms": ["MECE", "XXXX"]
+    },
     "abbr-within-parentheses": true,
     "alex": true,
     "ukraine": true

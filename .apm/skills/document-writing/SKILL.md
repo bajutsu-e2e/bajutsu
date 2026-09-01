@@ -165,6 +165,28 @@ Then run the same four rereads under the layer for your language:
 This reread is a human-judgment pass. It does not replace the mechanical textlint check below —
 run both.
 
+## Draft to pass textlint the first time
+
+This repo's textlint config enforces added mechanical limits, beyond the judgment calls above. It
+lives at [`tools/textlint/`](../../../tools/textlint/). Write to meet these limits in the first
+draft. A short paragraph, fixed right away, costs less than a finished document with dozens of
+findings.
+
+- **One clause, one sentence.** `ja-technical-writing/sentence-length` fails a long sentence. The cap
+  sits near 100 characters, in both languages. Split a sentence that needs "because", "which", or
+  "so that". Turn a sentence that needs a colon before a list into a bullet list instead. Draft short
+  sentences from the start; do not plan a later splitting pass.
+- **Cap reading marks at three.** `ja-technical-writing/max-comma` covers English commas. A matching
+  rule, `max-ten`, covers 読点 in ja prose. Both fail a sentence on a fourth mark. A fourth comma or
+  読点 is the same signal as a too-long sentence. Split the sentence. Or turn the enumeration into a
+  list.
+- **Prefer a list or a table.** A two-item list beats one long sentence naming both options. Put a
+  comparison across options in a table instead. A table's cells carry no sentence-length or comma
+  limit. A long caveat per option fits a table cell, not list-item prose.
+- **Run textlint section by section, while drafting.** Check a section right after writing it. A
+  document drafted straight through, then checked once at the end, compounds every habit above.
+  The result is dozens of findings. Catch each one right away; each costs little to fix on its own.
+
 ## Mandatory textlint verification after drafting
 
 The norms above guide human judgment; they are not machine-checkable. Once a piece is drafted, run

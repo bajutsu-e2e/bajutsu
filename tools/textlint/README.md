@@ -85,11 +85,26 @@ All four kanji-range rules are pinned in `package.json` but left disabled (`fals
   kanji to an even narrower set than 常用漢字, stricter still. Turn one on individually, with an
   allow-list, only if a specific document needs a bounded kanji set.
 
+`preset-ja-technical-writing`'s own `no-mix-dearu-desumasu` is likewise pinned but disabled, for the
+same kind of reason: it requires every bulleted or numbered list in a document to use plain (である)
+style, and fails the moment even one list item ends in です/ます — regardless of how the rest of the
+document is written. `japanese-document-writing` and `CLAUDE.md` both require every BE roadmap item
+and every `docs/ja/` page to stay in 敬体 (ですます) throughout, with no 常体 exception for lists, so a
+list written to satisfy that mandate can never satisfy this rule. Disabling it is the same trade the
+kanji-range rules already make: the alternative is prose that violates the project's own style
+mandate purely to please one preset default.
+
 ### English
 
 - `write-good` — English style issues such as passive voice and wordiness
 - `stop-words` — filler words, buzzwords, and clichés
-- `unexpanded-acronym` — whether an acronym is expanded in the document
+- `unexpanded-acronym` — whether an acronym is expanded in the document. It only recognizes an
+  expansion spelled as capitalized words matching the acronym's letters (`ABC` next to `Australian
+  Broadcasting Commission`), so a lowercase gloss such as `MECE (mutually exclusive, collectively
+  exhaustive)` still fires. `ignore_acronyms` in `.textlintrc.json` lists `MECE` (BE roadmap items'
+  own jargon, defined once in `docs/ai-development.md` and reused without re-expansion everywhere
+  else) and `XXXX` (the literal `BE-XXXX` placeholder every unallocated roadmap item carries — not
+  an acronym, so no expansion could ever satisfy the rule)
 - `abbr-within-parentheses` — abbreviation-in-parentheses form
 - `alex` — gender-, race-, or religion-insensitive phrasing
 - `ukraine` — Ukrainian place and person names spelled the Russian way
