@@ -11,7 +11,7 @@ import Foundation
 /// - **The dismiss control.** iOS 26 identifies it `Close`; iOS 18 gives it no identifier at all,
 ///   leaving only the label `Done`. `normalizeBrowserChrome` gives the iOS 18 control the identifier
 ///   iOS 26 already uses, so `id: Close` addresses it on both. Adopting the platform's own name
-///   rather than inventing one follows `OS_BACK_BUTTON` (`bajutsu/drivers/base.py`), where the iOS
+///   rather than inventing one follows `OS_BACK_BUTTON` (`bajutsu/common/drivers/base.py`), where the iOS
 ///   convention `BackButton` is likewise the cross-platform vocabulary.
 /// - **The forward button.** iOS 18 has a (disabled) `ForwardButton`; iOS 26 has no such control.
 ///   Nothing can be normalized here — a control that does not exist cannot be reported — so a

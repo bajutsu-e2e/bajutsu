@@ -627,7 +627,7 @@ class ResidentServerTest {
         // The extra-data key an opted-in view advertises. This server is app-independent by design
         // (see settings.gradle.kts), so it names the key rather than depending on the app-side
         // library that answers it — kept in sync with `BajutsuAndroid`'s `BajutsuZOrder` and with
-        // `bajutsu/drivers/adb.py`.
+        // `bajutsu/common/drivers/adb.py`.
         const val NATIVE_Z_KEY = "dev.bajutsu.EXTRA_DATA_NATIVE_Z"
 
         // Past this the reading is dropped rather than truncated (see `nativeZHeader`).

@@ -135,7 +135,7 @@ final class LegacyBackedTransport: ServerTransport {
             // status's reason phrase, never `ServerError.description`: that one interpolates
             // `requestBody` and `operationInput`, which can hold a typed string or a picker row
             // value. The driver reads `status` and never `message` (`_decode` in
-            // `bajutsu/drivers/xcuitest.py`), so the diagnostic belongs in the runner log instead.
+            // `bajutsu/common/drivers/xcuitest.py`), so the diagnostic belongs in the runner log instead.
             //
             // Both fields are logged, and neither echoes the body (measured, including the
             // `dataCorrupted` case, which reports "Unexpected end of file" with no content).

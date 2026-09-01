@@ -184,7 +184,7 @@ public func uniqueMatchingIndex(
 /// reporting different content are the ambiguity a selector must fail on rather than guess at.
 ///
 /// This is the runner-side twin of the host's `_collapse_identical_duplicates`
-/// (`bajutsu/drivers/base.py`), which collapses the same artifact in an `/elements` reply, and the two
+/// (`bajutsu/common/drivers/base.py`), which collapses the same artifact in an `/elements` reply, and the two
 /// deliberately key on the same fields — identifier, label, traits, value, frame. Keep them in step:
 /// this path is reached by `liveElement(for:)` re-resolving a *recorded* handle at actuation time, a
 /// candidate set no `/elements` reply gated, so a field the host treats as distinguishing has to

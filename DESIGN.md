@@ -115,7 +115,7 @@ Reporter (manifest.json + JUnit/CTRF/HTML + スクショ/録画)
 
 ## 4. 実装言語 = Python に伴う構成
 
-Bajutsu は Python パッケージとして実装します。現行のパッケージ構造（`serve/`、`crawl`、`mcp/`、`drivers`、`orchestrator`、`runner` ほか、5 万行超）の正となる一覧は [`docs/ja/architecture.md`](docs/ja/architecture.md) にあります。ここで構造の全体像を凍結すると実装とすぐに乖離するため、本文では設計上の中核の継ぎ目だけを述べます。その継ぎ目とは `drivers/base.py` の Driver 抽象で、バックエンド差はここで吸収し、XCUITest / adb / Playwright といった実体をこのインターフェースの背後に収めます（§5）。
+Bajutsu は Python パッケージとして実装します。現行のパッケージ構造（`serve/`、`crawl`、`mcp/`、`drivers`、`orchestrator`、`runner` ほか、5 万行超）の正となる一覧は [`docs/ja/architecture.md`](docs/ja/architecture.md) にあります。ここで構造の全体像を凍結すると実装とすぐに乖離するため、本文では設計上の中核の継ぎ目だけを述べます。その継ぎ目とは `common/drivers/base.py` の Driver 抽象で、バックエンド差はここで吸収し、XCUITest / adb / Playwright といった実体をこのインターフェースの背後に収めます（§5）。
 
 **技術選定**
 - CLI：`Typer`（or Click）／設定とシナリオの検証：`pydantic`
@@ -130,7 +130,7 @@ Bajutsu は Python パッケージとして実装します。現行のパッケ�
 バックエンドを差し替えられるよう、**共通インターフェースを最初に固定**し、能力差は抽象側で吸収します。現状の登録バックエンドは XCUITest（iOS）、adb（Android）、Playwright（web）です。XCUITest は iOS の唯一の backend です（[BE-0290](roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) で idb を撤去。当初のヘッドレスな idb と対置する第一候補として入れたのが [BE-0019](roadmaps/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md) の経緯です）。adb は fast ゲートとエミュレータ上の e2e CI まで到達済みです（[BE-0208](roadmaps/BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md)）。将来の追加に備えて、この抽象を維持します。
 
 ```python
-# drivers/base.py（概念）
+# common/drivers/base.py（概念）
 Point = tuple[float, float]               # x, y (points)
 
 class Element(TypedDict):

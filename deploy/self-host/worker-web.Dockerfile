@@ -24,7 +24,7 @@ COPY --from=build /opt/venv /opt/venv
 
 # Install ONLY the Chromium headless shell, not the full headed Chromium (BE-0173): `--only-shell`
 # skips the ~60-70 MB full build and pulls a lighter apt set. Playwright auto-selects the shell for
-# headless launches, so the driver (bajutsu/drivers/playwright.py) needs no change — a Linux worker is
+# headless launches, so the driver (bajutsu/common/drivers/playwright.py) needs no change — a Linux worker is
 # always headless. The explicit `chromium` matters: without it, `install` would also fetch full
 # firefox + webkit (the shell substitution only applies to chromium), re-inflating the image. This
 # image therefore serves Chromium web runs (the default engine), not firefox/webkit (BE-0076).

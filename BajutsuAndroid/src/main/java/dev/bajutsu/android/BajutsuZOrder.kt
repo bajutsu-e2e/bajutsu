@@ -20,7 +20,7 @@ import android.view.accessibility.AccessibilityNodeInfo
  * child at `0` under a parent at `8` still composites in front of that parent's sibling at `4`.
  */
 object BajutsuZOrder {
-    /** The extra-data key bajutsu asks for. Must match `bajutsu/drivers/adb.py`. */
+    /** The extra-data key bajutsu asks for. Must match `bajutsu/common/drivers/adb.py`. */
     const val EXTRA_DATA_KEY: String = "dev.bajutsu.EXTRA_DATA_NATIVE_Z"
 
     /**
