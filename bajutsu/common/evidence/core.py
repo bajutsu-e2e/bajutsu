@@ -16,10 +16,10 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Protocol
 
+from bajutsu.common.evidence import intervals
+from bajutsu.common.evidence.redaction import Redactor
+from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.drivers import base
-from bajutsu.evidence import intervals
-from bajutsu.evidence.redaction import Redactor
-from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.scenario import Redact
 
 if TYPE_CHECKING:

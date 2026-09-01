@@ -12,9 +12,9 @@ from conftest import el
 from PIL import Image
 
 from bajutsu.assertions import EvalContext, VisualContext, evaluate, evaluate_one, passed
+from bajutsu.common.evidence.redaction import Redactor
+from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.drivers import base
-from bajutsu.evidence.redaction import Redactor
-from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.scenario import Assertion
 
 SCREEN: list[base.Element] = [

@@ -11,14 +11,14 @@ import pytest
 from _runner import _eff, _el, _failing_lease, _fake_driver, _ios_eff, _lease
 from conftest import GUARD_LABEL, AlertingDriver
 
+from bajutsu.common.evidence import NullSink
+from bajutsu.common.evidence.network import NetworkExchange, ScreenTransition
+from bajutsu.common.report.format import video_seconds
 from bajutsu.config import Effective, XcuitestConfig
 from bajutsu.doctor import Score
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence import NullSink
-from bajutsu.evidence.network import NetworkExchange, ScreenTransition
 from bajutsu.orchestrator import RunResult
-from bajutsu.report.format import video_seconds
 from bajutsu.runner import (
     Lease,
     run_all,
@@ -1078,7 +1078,7 @@ def test_scenario_runner_runs_one_in_isolation() -> None:
     The promotion's payoff: the per-scenario runner is unit-testable directly, its shared context
     passed as explicit fields rather than reconstructed from all of `run_all`.
     """
-    from bajutsu.evidence.redaction import Redactor
+    from bajutsu.common.evidence.redaction import Redactor
     from bajutsu.runner.pipeline import _ScenarioRunner
 
     runner = _ScenarioRunner(
@@ -1455,7 +1455,7 @@ def test_reroot_evidence_prefixes_paths_with_engine() -> None:
     # relative to that pass's run_dir. The matrix assembles one report at the top run_dir, so the
     # paths must be re-rooted under the engine subtree or the report's links resolve wrong (BE-0076).
     from bajutsu.assertions import AssertionResult, VisualEvidence
-    from bajutsu.evidence import Artifact
+    from bajutsu.common.evidence import Artifact
     from bajutsu.orchestrator import StepOutcome
     from bajutsu.runner.pipeline import _reroot_evidence
 
@@ -1547,7 +1547,7 @@ def test_git_revision_maps_failure_and_blank_to_none(monkeypatch: pytest.MonkeyP
     # non-zero exit, a thrown error, and a 0-exit-but-blank stdout (a shimmed `git`) all mean
     # "unknown revision" — None, never an empty stamp. The helper lives with run_provenance
     # (report.manifest) so the pool's wait-timeout diagnostic and the report share it (BE-0231).
-    from bajutsu.report import manifest
+    from bajutsu.common.report import manifest
 
     def fake(
         result: subprocess.CompletedProcess[str] | Exception,
@@ -1700,7 +1700,7 @@ def test_run_and_report_writes_owner_only_artifacts(tmp_path: Path) -> None:
     # can carry secrets, and a shared CI runner is exactly where another local account can read it.
     import stat
 
-    from bajutsu.evidence import FileSink
+    from bajutsu.common.evidence import FileSink
 
     run_dir = tmp_path / "runs" / "run1"
     ex = NetworkExchange(method="GET", path="/items", status=200)
@@ -1730,8 +1730,8 @@ def test_run_and_report_writes_owner_only_artifacts(tmp_path: Path) -> None:
 
 
 def test_write_network_stamps_the_given_provider(tmp_path: Path) -> None:
-    from bajutsu.evidence.redaction import Redactor
-    from bajutsu.evidence.sink import RunArtifactWriter
+    from bajutsu.common.evidence.redaction import Redactor
+    from bajutsu.common.evidence.sink import RunArtifactWriter
     from bajutsu.runner.pipeline import _write_network
 
     ex = NetworkExchange(method="GET", path="/a", status=200)
@@ -1750,8 +1750,8 @@ def test_write_network_started_at_is_an_absolute_wall_clock_instant(tmp_path: Pa
     # scenario's own anchor pair, so network.json records the absolute instant the exchange started
     # (received + offset - duration) rather than an already-relative number (BE-0348). No clamp: an
     # absolute epoch has no floor to clamp to, and the report applies its own at render time.
-    from bajutsu.evidence.redaction import Redactor
-    from bajutsu.evidence.sink import RunArtifactWriter
+    from bajutsu.common.evidence.redaction import Redactor
+    from bajutsu.common.evidence.sink import RunArtifactWriter
     from bajutsu.runner.pipeline import _write_network
 
     ex = NetworkExchange(method="GET", path="/a", status=200, durationMs=250.0)
@@ -1772,8 +1772,8 @@ def test_network_json_anchors_to_the_video_corrected_start(tmp_path: Path) -> No
     # that the report's render-time derivation reproduces the video-corrected seconds. Proven here
     # by a video whose confirmed `true_start` precedes scenario_start, so an uncorrected anchor
     # would yield a different number than the one derived.
-    from bajutsu.evidence import FileSink
-    from bajutsu.evidence.intervals import Interval
+    from bajutsu.common.evidence import FileSink
+    from bajutsu.common.evidence.intervals import Interval
 
     run_dir = tmp_path / "runs" / "run1"
     prestarted_video = tmp_path / "prestart.mp4"
@@ -1841,7 +1841,7 @@ class _ConstantCollector:
 
 
 def test_run_all_threads_collector_provider_and_discloses_skips(tmp_path: Path) -> None:
-    from bajutsu.evidence import FileSink
+    from bajutsu.common.evidence import FileSink
     from bajutsu.orchestrator import SkippedCapture
 
     ex = NetworkExchange(method="GET", path="/items", status=200)

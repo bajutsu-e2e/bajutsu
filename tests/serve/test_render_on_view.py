@@ -13,8 +13,8 @@ from _shared import _get, _serve
 
 from bajutsu import serve as srv
 from bajutsu.assertions import AssertionResult
+from bajutsu.common.report import rerender_html, scenario_render_inputs, write_report
 from bajutsu.orchestrator import RunResult, StepOutcome
-from bajutsu.report import rerender_html, scenario_render_inputs, write_report
 from bajutsu.scenario import dump_scenario_file, load_scenarios
 
 SCENARIO = "- name: smoke\n  steps:\n    - tap: { id: home.start }\n  expect:\n    - exists: { id: home.title }\n"

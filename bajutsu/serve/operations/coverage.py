@@ -20,8 +20,8 @@ from collections.abc import Iterable, Iterator
 from typing import Any
 
 from bajutsu.analysis import coverage as _coverage
+from bajutsu.common.evidence.network import NetworkExchange
 from bajutsu.config import load_config, resolve
-from bajutsu.evidence.network import NetworkExchange
 from bajutsu.scenario import load_scenarios_dir
 from bajutsu.serve.artifacts import ArtifactStore
 from bajutsu.serve.authz import _target_forbidden
@@ -33,10 +33,10 @@ from bajutsu.serve.state import ServeState, _scenarios_dir_for
 def _artifact_paths(manifests: list[dict[str, Any]], kind: str) -> Iterator[str]:
     """Every run-relative artifact path of *kind* referenced by *manifests* (BE-0258).
 
-    Each parsed ``manifest.json`` carries its own ``runId`` (`bajutsu.report.manifest.manifest_dict`)
+    Each parsed ``manifest.json`` carries its own ``runId`` (`bajutsu.common.report.manifest.manifest_dict`)
     alongside its per-scenario ``artifacts`` (scenario-level, e.g. ``network``) and per-step
     ``steps[].artifacts`` (e.g. ``elements``) entries, whose ``name`` is relative to the *run* —
-    the writers (`bajutsu.runner.pipeline`, `bajutsu.evidence`) stamp it with the scenario's ``sid``
+    the writers (`bajutsu.runner.pipeline`, `bajutsu.common.evidence`) stamp it with the scenario's ``sid``
     (and, for a step artifact, the step id) at write time. Prefixing with the manifest's own
     ``runId`` gives the same path `bajutsu.analysis.coverage._evidence_files` globs for, with no store-side
     glob/list primitive needed.

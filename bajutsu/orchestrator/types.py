@@ -13,10 +13,10 @@ from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
 from bajutsu.assertions import AssertionResult
+from bajutsu.common.evidence import Artifact
+from bajutsu.common.evidence.network import NetworkExchange
 from bajutsu.drivers import base
 from bajutsu.drivers.actuation import Actuation, ActuationReporter, Drained
-from bajutsu.evidence import Artifact
-from bajutsu.evidence.network import NetworkExchange
 from bajutsu.mailbox import MailboxMessage
 from bajutsu.scenario import Relaunch
 

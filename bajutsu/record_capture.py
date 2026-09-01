@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from typing import Literal
 
 from bajutsu import doctor
+from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.drivers import base
-from bajutsu.evidence.redaction import Redactor
 from bajutsu.scenario.models import Selector, Step, Swipe, TypeText
 
 

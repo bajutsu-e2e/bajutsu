@@ -74,22 +74,22 @@ def test_run_path_top_level_modules_are_relevant() -> None:
         "bajutsu/assertions/schema.py",
         "bajutsu/assertions/_common.py",
         "bajutsu/elements.py",
-        "bajutsu/evidence/visual.py",
-        "bajutsu/evidence/golden.py",
+        "bajutsu/common/evidence/visual.py",
+        "bajutsu/common/evidence/golden.py",
         "bajutsu/codegen/emit.py",
         "bajutsu/record.py",
         "bajutsu/adb.py",
         "bajutsu/simctl.py",
         # runner/pipeline.py and orchestrator/loop.py unconditional imports
-        "bajutsu/evidence/core.py",
-        # `bajutsu.evidence.core` executes `evidence/__init__.py` on import, same as
+        "bajutsu/common/evidence/core.py",
+        # `bajutsu.common.evidence.core` executes `evidence/__init__.py` on import, same as
         # `crawl/__init__.py` / `agents/__init__.py` below.
-        "bajutsu/evidence/__init__.py",
-        "bajutsu/evidence/redaction.py",
-        "bajutsu/evidence/network.py",
+        "bajutsu/common/evidence/__init__.py",
+        "bajutsu/common/evidence/redaction.py",
+        "bajutsu/common/evidence/network.py",
         "bajutsu/artifact_perms.py",
         "bajutsu/mailbox.py",
-        "bajutsu/evidence/intervals.py",
+        "bajutsu/common/evidence/intervals.py",
         # record.py unconditionally imports the Agent/EnrichmentAgent protocols from
         # agents.protocols (record is an E2E verb), mirroring the old agent.py entry (now
         # agent_protocols.py, packaged by BE-0257). Its sibling agents.factory (the old
@@ -135,16 +135,16 @@ def test_non_run_path_top_level_modules_are_not_relevant() -> None:
 
 
 def test_report_package_is_relevant_on_every_lane() -> None:
-    # The headline miss BE-0333 fixes: `bajutsu/report/` holds the manifest writer every run invokes
+    # The headline miss BE-0333 fixes: `bajutsu/common/report/` holds the manifest writer every run invokes
     # through `runner/pipeline.py`, yet the old positive list never swept the package, so a change to
     # it fired no lane and the required aggregators reported green without exercising it. The inverted
     # default sweeps the whole package in; the HTML renderer no lane asserts on rides along as a
     # cheap over-fire rather than being carved out file by file.
     for lane in ("ios", "android", "web"):
         for path in (
-            "bajutsu/report/manifest.py",
-            "bajutsu/report/__init__.py",
-            "bajutsu/report/html.py",
+            "bajutsu/common/report/manifest.py",
+            "bajutsu/common/report/__init__.py",
+            "bajutsu/common/report/html.py",
         ):
             assert is_relevant([path], lane) is True, (lane, path)
     # ...but the MCP server stays a classified periphery subpackage the E2E never exercises.
@@ -160,7 +160,7 @@ def test_previously_missed_run_path_modules_now_fire() -> None:
         "bajutsu/deprecations.py",
         "bajutsu/object_store.py",
         "bajutsu/record_capture.py",
-        "bajutsu/from_grouping.py",
+        "bajutsu/common/report/from_grouping.py",
     ):
         assert is_relevant([module]) is True, module
 
@@ -896,8 +896,8 @@ def test_pool_fires_on_the_parallel_run_surface() -> None:
         "bajutsu/platform_lifecycle/environments/android.py",
         # `_resolve_lanes` — the comma `--udid` list turned into the pool, and the `--workers` cap.
         "bajutsu/cli/commands/run.py",
-        "bajutsu/evidence/core.py",
-        "bajutsu/evidence/sink.py",
+        "bajutsu/common/evidence/core.py",
+        "bajutsu/common/evidence/sink.py",
         "scripts/assert_pool_isolation.py",
         "scripts/android_pool_e2e.sh",
         # Mints the first emulator; the script boots the second beside it.

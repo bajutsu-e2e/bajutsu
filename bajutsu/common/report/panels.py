@@ -10,9 +10,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from bajutsu.evidence import Artifact
-from bajutsu.orchestrator import RunResult
-from bajutsu.report.format import (
+from bajutsu.common.evidence import Artifact
+from bajutsu.common.report.format import (
     _LOG_MAX_LINES,
     _artifact,
     _fmt_duration,
@@ -22,13 +21,14 @@ from bajutsu.report.format import (
     _truncate,
     video_seconds,
 )
-from bajutsu.report.rows import (
+from bajutsu.common.report.rows import (
     _after_rows,
     _expects_data,
     _merged_rows,
     _phase_rows,
     _preconditions_rows,
 )
+from bajutsu.orchestrator import RunResult
 
 # --- panel data (Result / Network / Device Log / App Trace) ---
 

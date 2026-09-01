@@ -23,9 +23,9 @@ from bajutsu import crawl
 from bajutsu.agents.protocols import Proposal
 from bajutsu.ai import credential_gap
 from bajutsu.ai.base import AiBackend, MessageRequest, MessageResponse, ToolUseBlock
+from bajutsu.common.evidence.golden import load_golden
 from bajutsu.crawl import guide
 from bajutsu.drivers import base
-from bajutsu.evidence.golden import load_golden
 
 ROOT = Path(__file__).resolve().parent.parent
 GOLDENS = ROOT / "demos" / "showcase" / "scenarios" / "golden" / "goldens"

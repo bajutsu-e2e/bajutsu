@@ -26,8 +26,8 @@ import typer
 
 from bajutsu import simctl
 from bajutsu.backends import PLATFORMS
-from bajutsu.evidence.redaction import Redactor
-from bajutsu.evidence.sink import RunArtifactWriter
+from bajutsu.common.evidence.redaction import Redactor
+from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.object_store import content_type_for
 from bajutsu.run_files import DEFAULT_RUNS_DIR
 from bajutsu.serve import InMemoryLogBus

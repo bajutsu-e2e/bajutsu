@@ -18,9 +18,9 @@ import pytest
 
 from bajutsu.ai.base import MessageRequest, MessageResponse, ToolUseBlock
 from bajutsu.analytics import ledger as usage_ledger
+from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence.sink import RunArtifactWriter
 from scripts.build_roadmap_index import tracking_issue_url
 
 if TYPE_CHECKING:
@@ -408,7 +408,7 @@ def run_sink(tmp_path: Path) -> RunArtifactWriter:
     Unconfigured is the interesting default: the two element-level defaults and the pattern backstop
     run anyway, so a test that seeds no `redact:` still exercises the masking a real `crawl` gets.
     """
-    from bajutsu.evidence.redaction import Redactor
+    from bajutsu.common.evidence.redaction import Redactor
 
     return RunArtifactWriter(tmp_path, Redactor(None))
 

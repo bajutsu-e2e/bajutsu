@@ -31,9 +31,9 @@ from bajutsu.ai import (
     ToolDef,
 )
 from bajutsu.analytics import usage
+from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.drivers import base
 from bajutsu.elements import screen_size_from_elements
-from bajutsu.evidence.redaction import Redactor
 from bajutsu.orchestrator import AlertEvent
 from bajutsu.screenshots import fraction, png_size, screenshot_bytes
 

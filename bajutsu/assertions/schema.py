@@ -13,7 +13,7 @@ from pathlib import Path
 
 from bajutsu.assertions._common import AssertionResult
 from bajutsu.assertions.network import match_request, request_label
-from bajutsu.evidence.network import NetworkExchange
+from bajutsu.common.evidence.network import NetworkExchange
 from bajutsu.scenario import ResponseSchemaMatch
 
 

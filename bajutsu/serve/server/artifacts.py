@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import Any
 
-from bajutsu.report.archive import zip_tree
+from bajutsu.common.report.archive import zip_tree
 from bajutsu.serve.artifacts import Artifact
 from bajutsu.serve.helpers import crawl_run_summary, valid_run_id
 from bajutsu.serve.server.object_store import ObjectStore

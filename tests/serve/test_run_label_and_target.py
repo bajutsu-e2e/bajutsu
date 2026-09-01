@@ -16,7 +16,7 @@ from _shared import project, write_run
 from sqlalchemy import Engine
 
 from bajutsu import serve as srv
-from bajutsu.report.manifest import MAX_LABEL_LENGTH, manifest_dict
+from bajutsu.common.report.manifest import MAX_LABEL_LENGTH, manifest_dict
 from bajutsu.serve.operations.config import launch_label
 from bajutsu.serve.operations.dispatch import _run_label
 from bajutsu.serve.operations.reads import (

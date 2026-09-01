@@ -5,9 +5,9 @@ Pure-core tests over literal Element lists — no Simulator, no mocks beyond Red
 
 from __future__ import annotations
 
+from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.drivers import base
 from bajutsu.elements import screen_size_from_elements
-from bajutsu.evidence.redaction import Redactor
 from bajutsu.record_capture import (
     hit_test,
     resolve_capture,

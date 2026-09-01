@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Protocol
 
 from bajutsu import adb, simctl, stall_diagnostics
-from bajutsu.evidence import media
+from bajutsu.common.evidence import media
 
 _logger = logging.getLogger(__name__)
 

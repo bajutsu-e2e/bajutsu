@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from bajutsu.evidence.visual import compare_images
+from bajutsu.common.evidence.visual import compare_images
 from bajutsu.scenario import ExcludeRegion
 
 

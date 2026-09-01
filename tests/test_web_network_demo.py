@@ -20,7 +20,7 @@ from typing import Any
 import pytest
 import yaml
 
-from bajutsu.evidence.redaction import PLACEHOLDER, Redactor
+from bajutsu.common.evidence.redaction import PLACEHOLDER, Redactor
 from bajutsu.scenario import load_scenario_file
 from bajutsu.scenario.models.evidence import Redact
 from demos.web.network.assert_redaction import (

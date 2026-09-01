@@ -17,10 +17,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from bajutsu.common.evidence.redaction import Redactor
+from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.crawl.core import Action, Crash, ScreenMap, value_for_field
 from bajutsu.drivers import base
-from bajutsu.evidence.redaction import Redactor
-from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.scenario.models import Scenario, Selector, Step, TypeText
 from bajutsu.scenario.serialize import dump_scenario_file
 

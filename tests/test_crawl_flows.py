@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from bajutsu.common.evidence.redaction import PLACEHOLDER
+from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.crawl import Action, ScreenMap, screenmap_dict, screenmap_from_dict
 from bajutsu.crawl.flows import write_flows
-from bajutsu.evidence.redaction import PLACEHOLDER
-from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.scenario.load import load_scenarios
 
 

@@ -382,8 +382,8 @@ _POOL_PATHS = (
     # size. The split itself lives here, so a change to it belongs on this surface even though the
     # shared `bajutsu/` sweep above already makes the module lane-relevant.
     r"|bajutsu/cli/commands/run\.py$"
-    r"|bajutsu/evidence/core\.py$"
-    r"|bajutsu/evidence/sink\.py$"
+    r"|bajutsu/common/evidence/core\.py$"
+    r"|bajutsu/common/evidence/sink\.py$"
     r"|scripts/assert_pool_isolation\.py$"
     r"|scripts/e2e_changes\.py$"
     r"|scripts/android_pool_e2e\.sh$"

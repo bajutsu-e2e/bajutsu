@@ -17,7 +17,7 @@ import ondevice_evidence
 import pytest
 
 from bajutsu import adb
-from bajutsu.evidence import intervals
+from bajutsu.common.evidence import intervals
 
 # The inner conftest registers the real plugin, the same way the real on-device suites' own
 # conftest.py does, so its `pytest_runtest_makereport` hook tags each item's stash.

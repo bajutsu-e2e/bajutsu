@@ -15,15 +15,15 @@ from typing import Any
 import pytest
 
 from bajutsu.assertions import EvalContext, evaluate, evaluate_one
-from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence import network
-from bajutsu.evidence.network import (
+from bajutsu.common.evidence import network
+from bajutsu.common.evidence.network import (
     AppCommandReport,
     InAppCapability,
     NetworkCollector,
     NetworkExchange,
     ScreenTransition,
 )
+from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
 from bajutsu.scenario import (
     Assertion,

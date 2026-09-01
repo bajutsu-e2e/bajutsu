@@ -10,9 +10,9 @@ from dataclasses import dataclass, field
 
 from bajutsu import assertions
 from bajutsu.cancellation import CancelSource, RunCancelled, not_cancelled
+from bajutsu.common.evidence.network import TransitionSource, _no_transitions
 from bajutsu.drivers import base
 from bajutsu.elements import shows_app_ui
-from bajutsu.evidence.network import TransitionSource, _no_transitions
 from bajutsu.orchestrator.types import (
     AlertEvent,
     AlertGuardConfig,

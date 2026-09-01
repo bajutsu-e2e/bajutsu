@@ -25,11 +25,11 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu.artifact_perms import restrict_file
+from bajutsu.common.evidence.redaction import Redactor, mask_credential_shapes
 from bajutsu.drivers import base
-from bajutsu.evidence.redaction import Redactor, mask_credential_shapes
 
 # Aliased private: imported under its public name, this module would re-export the very path
-# derivation the import contract withholds, so `from bajutsu.evidence.sink import run_dir_for_write`
+# derivation the import contract withholds, so `from bajutsu.common.evidence.sink import run_dir_for_write`
 # would hand a caller a writable run directory while still passing `lint-imports`.
 from bajutsu.run_root import run_dir_for_write as _run_dir_for_write
 

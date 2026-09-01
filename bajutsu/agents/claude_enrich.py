@@ -28,7 +28,7 @@ from bajutsu.ai import (
     ToolDef,
 )
 from bajutsu.ai.prompts import render_elements
-from bajutsu.evidence.redaction import Redactor
+from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.record import describe_step, settle_step
 from bajutsu.scenario import Scenario
 

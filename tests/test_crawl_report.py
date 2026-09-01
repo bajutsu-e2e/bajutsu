@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from bajutsu.common.evidence.redaction import Redactor
+from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.crawl import Alert, Crash, Edge, Node, ScreenMap
 from bajutsu.crawl.report import layout, render_html, write_html
-from bajutsu.evidence.redaction import Redactor
-from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.run_files import RunArtifactReader
 
 

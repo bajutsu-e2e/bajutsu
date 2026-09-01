@@ -19,8 +19,8 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel
 
+from bajutsu.common.evidence import step_view
 from bajutsu.drivers import base
-from bajutsu.evidence import step_view
 from bajutsu.scenario import (
     Assertion,
     Gone,

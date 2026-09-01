@@ -11,11 +11,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from bajutsu import adb, backends
+from bajutsu.common.evidence import intervals
+from bajutsu.common.evidence.network import Collector
 from bajutsu.config import Effective, require_android
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 from bajutsu.drivers import base
-from bajutsu.evidence import intervals
-from bajutsu.evidence.network import Collector
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.platform_lifecycle import readiness
 from bajutsu.platform_lifecycle.device_control import android_device_control

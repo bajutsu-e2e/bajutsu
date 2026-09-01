@@ -8,7 +8,7 @@ frames onto pixels those frames never described is told not to.
 
 from __future__ import annotations
 
-from bajutsu.evidence import StepView, step_view
+from bajutsu.common.evidence import StepView, step_view
 
 
 def _entries(*rows: tuple[str, str, str | None]) -> list[tuple[str, str, str | None]]:
