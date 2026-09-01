@@ -329,13 +329,12 @@ forbidden_modules = [
     "bajutsu.mcp",
     "bajutsu.codegen",
     "bajutsu.agents",
-    "bajutsu.triage.heuristic",
-    "bajutsu.record.loop",
-    "bajutsu.record.capture",
+    "bajutsu.triage",
+    "bajutsu.record",
     "bajutsu.common.screenshots",
     "bajutsu.crawl.guide",
     "bajutsu.github.actions",
-    "bajutsu.run.notify",
+    "bajutsu.run",
 ]
 
 # The deterministic core must also stay free of the hosting-only third-party extras (BE-0129): the
