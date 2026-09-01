@@ -25,7 +25,7 @@ def start_triage(
     scenario-save path (``POST /api/scenario``). AI (``ai``) is opt-in and only an investigator; the
     deterministic heuristic agent is the default.
     """
-    cfg = state.config
+    cfg = state.binding.config
     if cfg is None:
         return {"error": "open a config first"}, 400
     run_id = str(body.get("runId") or "")
@@ -54,7 +54,7 @@ def start_triage(
     if runnable.materials:
         return {"error": "triage in the web UI is not yet available on the server backend"}, 400
     # Resolve against base_cwd (serve's launch dir) so the run dir is absolute: the spawned triage
-    # runs with cwd=state.cwd, which a Git/upload config bind can repoint away from where runs live
+    # runs with cwd=state.binding.cwd, which a Git/upload config bind can repoint away from where runs live
     # (BE-0063/BE-0073) — a relative runs_dir would then resolve against the wrong tree.
     run_dir = (state.base_cwd / state.runs_dir / run_id).resolve()
     # A missing run is a client error, not a job that fails mid-stream (and would write triage.json

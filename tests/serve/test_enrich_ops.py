@@ -108,7 +108,7 @@ def test_start_enrich_returns_proposed_assertions(tmp_path: Path) -> None:
 
 def test_start_enrich_rebases_app_path_against_state_cwd(tmp_path: Path) -> None:
     # Mirrors test_capture_ops.py's regression test: `resolve()` alone copies a relative `appPath`
-    # verbatim from the raw YAML, so start_enrich must rebase it against `state.cwd` before handing
+    # verbatim from the raw YAML, so start_enrich must rebase it against `state.binding.cwd` before handing
     # the Effective to the driver factory (BE-0063/BE-0073/BE-0242).
     bundle = tmp_path / "bundle"
     scn_dir = bundle / "scenarios"

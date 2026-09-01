@@ -193,8 +193,8 @@ def bind_upload_config(
     computed while streaming the upload to *zip_path* (so the file is read once, not again to hash).
     We extract it into a serve-owned, sha256-keyed cache (`materialize_bundle`), persist the raw zip
     to the object store when one is configured (BE-0243, so another replica can fetch it later), then
-    bind it exactly like the Git source binds a checkout (`bind_git_config`): `state.config` points at
-    the bundle's config and `state.cwd` at the bundle root, so the config's relative
+    bind it exactly like the Git source binds a checkout (`bind_git_config`): `state.binding.config` points at
+    the bundle's config and `state.binding.cwd` at the bundle root, so the config's relative
     `appPath`/`scenarios`/`baselines` resolve against the extracted tree and the Replay / Record /
     Crawl tabs all run from it. Every target's path fields are confined to the bundle at bind
     (`Effective.rebased`), so an uploaded config can't point serve's scenario/build logic at host
@@ -232,7 +232,6 @@ def bind_upload_config(
         actor=actor,
     )
     state.bind_upload(upload)
-    state.config_org = upload.org  # the bundle is this org's; its `orgs:` owns nothing (BE-0375)
     _record_audit(state, actor, org, "upload", upload.filename, {"sha256": sha256})
     source = {"kind": "upload", "filename": upload.filename, "sha256": sha256, "size": size}
     # The bind is the writer (BE-0404 unit 1): before this item the caller had to re-register the
@@ -543,7 +542,6 @@ def _compose_and_bind(
         ),
     )
     state.bind_upload(upload)
-    state.config_org = upload.org  # the bundle is this org's; its `orgs:` owns nothing (BE-0375)
     return upload, 200
 
 
@@ -653,10 +651,10 @@ def compose_current(state: ServeState, *, actor: str | None = None) -> tuple[Any
 
     Returns `{"artifacts": {}}` with HTTP 200 when nothing composed is bound (no config, a Git/fs
     bind, a legacy zip bind, or another org's bind) so the UI treats "nothing to inherit" as an
-    empty seed — never a 404. Does not materialize or rebind; it only reports what `state.upload`
+    empty seed — never a 404. Does not materialize or rebind; it only reports what `state.binding.upload`
     already holds. The POST body of `/api/compose` stays a pure function of its request — this GET
     never fills omitted legs on the server."""
-    upload = state.upload
+    upload = state.binding.upload
     if upload is None or upload.artifact_shas is None:
         return {"artifacts": {}}, 200
     if upload.org != state.org_of(actor):
@@ -761,5 +759,4 @@ def restore_uploaded_config(
         actor=actor,
     )
     state.bind_upload(upload)
-    state.config_org = upload.org  # the bundle is this org's; its `orgs:` owns nothing (BE-0375)
     return {"ok": True, "config": str(config_path)}, 200

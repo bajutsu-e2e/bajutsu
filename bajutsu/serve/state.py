@@ -16,7 +16,7 @@ import subprocess
 import threading
 from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import InitVar, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -446,10 +446,48 @@ class ProviderSettingsManager:
             store.save(PersistedProviderSettings(provider=provider, settings=slots))
 
 
+@dataclass(frozen=True)
+class ConfigBinding:
+    """The configuration `serve` is bound to, as one value (BE-0393 unit 1).
+
+    These six were six independent mutable attributes on `ServeState` that had to be written
+    together — and were: each binder set all of them, and a separate `release_upload` cleared three to
+    keep a stale bundle's directory from leaking into the next bind. Frozen and replaced whole, the
+    incomplete combinations are unrepresentable, and there is one thing to key by session rather
+    than six (unit 2).
+
+    Attributes:
+        config: The bound configuration file, or None until one is opened.
+        cwd: What the configuration's relative paths resolve against — its own directory for a local
+            file, the checkout root for a Git source, the extraction root for a bundle (BE-0242).
+        provenance: Git-source provenance (host/owner/repo/ref/sha) when the configuration came from
+            one, else None, so the UI can show which commit an opaque cache path was materialized
+            from.
+        upload: The bound uploaded bundle, or None when the configuration came from the file browser,
+            Git, or startup.
+        git_from_api: Whether this is a Git source bound at runtime through the API rather than
+            pre-configured by the operator. Such a source is untrusted: its `build:` is nulled unless
+            `allow_remote_build` opts in (BE-0121).
+        org: The org that bound this configuration through the API — an uploaded bundle, a composed
+            triple, or a Git source (BE-0375). None for the launch configuration, whose own `orgs:`
+            block then partitions targets as the operator wrote it.
+    """
+
+    config: Path | None = None
+    cwd: Path = field(default_factory=Path.cwd)
+    provenance: dict[str, str] | None = None
+    upload: Upload | None = None
+    git_from_api: bool = False
+    org: str | None = None
+
+
 @dataclass
 class ServeState:
     runs_dir: Path
-    config: Path | None = None  # None until a config is opened from the UI
+    # Init-only: folded into `binding` by `__post_init__`, so `ServeState(config=…)` keeps working
+    # while there is no ambient `state.config` left to read (BE-0393 unit 1). Read the bound value
+    # through `binding` instead.
+    config: InitVar[Path | None] = None
     scenarios_dir: Path | None = None  # override; default is the selected app's configured dir
     root: Path = field(default_factory=Path.cwd)  # the file browser's browse ceiling
     # where `visual` baselines live (and where Approve promotes to); serve() defaults it to
@@ -465,9 +503,22 @@ class ServeState:
     themes_dir: Path | None = None
     # The `ui.default_theme` initial selection, read from the startup config; None follows the OS.
     default_theme: str | None = None
-    cwd: Path = field(default_factory=Path.cwd)
+    # Init-only, like `config` above: `ServeState(cwd=…)` seeds the binding's `cwd`, and readers go
+    # through `binding.cwd`.
+    cwd: InitVar[Path | None] = None
+    # Init-only seeds for the rest of the launch binding, so `serve()` and the tests can construct a
+    # Git-sourced or bundle-sourced state in one call as before.
+    config_provenance: InitVar[dict[str, str] | None] = None
+    upload: InitVar[Upload | None] = None
+    git_config_from_api: InitVar[bool] = False
+    config_org: InitVar[str | None] = None
+    # The configuration this deployment is bound to (BE-0393 unit 1), replaced whole by a bind. Unit
+    # 2 keys a binding by session and acting org on top of this one, which then becomes the fallback
+    # a session with nothing of its own reads.
+    binding: ConfigBinding = field(init=False)
     # serve's launch directory, captured at construction (see __post_init__) before a config bind can
-    # repoint `cwd`. Runs off a Git/upload bind still land their tree here (BE-0063/BE-0073).
+    # repoint the binding's `cwd`. Runs off a Git/upload bind still land their tree here
+    # (BE-0063/BE-0073).
     base_cwd: Path = field(init=False)
     # Root the cloud-batch (Device Farm) test package is built from. Device Farm's
     # APPIUM_PYTHON_TEST_PACKAGE validation needs Bajutsu's own `tests/` and `pyproject.toml` at the
@@ -476,10 +527,6 @@ class ServeState:
     # serve() sets it to the source root when serving from a checkout; None falls back to `cwd` (the
     # in-process test model, where the config, scenarios, and source all sit in one tmp tree).
     devicefarm_package_root: Path | None = None
-    # The currently bound uploaded bundle (BE-0073), or None when the active config came from the
-    # file browser / Git / startup. Holds the extraction sandbox (removed when another config is
-    # bound) and the run provenance. Only one bundle is bound at a time.
-    upload: Upload | None = None
     # Policy for an uploaded bundle's launchServer command (and the latent mockServer.cmd, once it is
     # wired) (BE-0090): deny | reuse | sandbox. Default `sandbox` runs it in a throwaway container,
     # never on the serve host; it applies only to upload-sourced configs (a local/Git config is
@@ -490,21 +537,6 @@ class ServeState:
     # enumerated — disables the check; a loopback/named bind enforces its own names, closing the
     # DNS-rebinding path to endpoints like /api/apikey.
     allowed_hosts: frozenset[str] = frozenset()
-    # Whether the active config is a Git source bound at runtime via the API (BE-0121), rather than
-    # one the operator pre-configured at startup. An API-bound Git config is untrusted: its `build:`
-    # command is nulled like an uploaded bundle's (never run) unless `allow_remote_build` opts in.
-    git_config_from_api: bool = False
-    # Git-source provenance of the active config when it came from a Git source (host/owner/repo/ref/
-    # resolved sha, `config_source.source_provenance`), else None for a local file or uploaded bundle.
-    # Surfaced by `/api/config/content` so the UI can show *which* commit the opaque cache-path config
-    # was materialized from, not just the path. Set at startup (Git `--config`) and on an API bind.
-    config_provenance: dict[str, str] | None = None
-    # The org that bound the active configuration through the API — an uploaded bundle, a composed
-    # triple, or a Git source (BE-0375). None for the launch configuration, whose own `orgs:` block
-    # then partitions targets between orgs as an operator wrote it. An API-bound configuration's
-    # `orgs:` block decides nothing: it was bound *as* this org, and its content is not the
-    # deployment's, the same reason such a bind seeds no membership either.
-    config_org: str | None = None
     # Opt-in to run an API-bound Git config's `build:` command on the host (BE-0121). Off by default;
     # serve() sets it from --allow-remote-build / BAJUTSU_ALLOW_REMOTE_BUILD.
     allow_remote_build: bool = False
@@ -610,11 +642,32 @@ class ServeState:
     # registration/counting surface to it and exposes `jobs` as a read-through of its dict.
     job_registry: JobRegistry = field(init=False)
 
-    def __post_init__(self) -> None:
-        # serve's own launch directory, captured before any config bind repoints `cwd` at a Git
-        # checkout / uploaded bundle. A run off such a bind writes its tree into `base_cwd/runs_dir`
-        # (serve's store), not under the transient checkout/bundle (BE-0063/BE-0073).
-        self.base_cwd = self.cwd
+    def __post_init__(
+        self,
+        config: Path | None,
+        cwd: Path | None,
+        config_provenance: dict[str, str] | None,
+        upload: Upload | None,
+        git_config_from_api: bool,
+        config_org: str | None,
+    ) -> None:
+        # Fold the init-only seeds into the one binding value (BE-0393 unit 1). `cwd` defaults here
+        # rather than on the field so the launch binding and `base_cwd` below read the same launch
+        # directory even when the caller passed none.
+        launch_cwd = cwd if cwd is not None else Path.cwd()
+        self.binding = ConfigBinding(
+            config=config,
+            cwd=launch_cwd,
+            provenance=config_provenance,
+            upload=upload,
+            git_from_api=git_config_from_api,
+            org=config_org,
+        )
+        # serve's own launch directory, captured before any config bind repoints the binding's `cwd`
+        # at a Git checkout / uploaded bundle. A run off such a bind writes its tree into
+        # `base_cwd/runs_dir` (serve's store), not under the transient checkout/bundle
+        # (BE-0063/BE-0073).
+        self.base_cwd = launch_cwd
         # Anchor a relative runs_dir / baselines_dir at serve's launch cwd (Path.cwd(), which serve
         # never changes) so each store, the run subprocess's `--runs-dir` / `--baselines`, and the
         # manifest reads in `jobs`/`triage` all resolve to one directory. Without this a subdir config
@@ -741,15 +794,17 @@ class ServeState:
         )
 
     def bind_upload(self, upload: Upload) -> None:
-        """Make *upload* the active binding (BE-0073): release any previously bound bundle, then
-        point `config`/`cwd` at this one so runs/record/crawl resolve from the extracted tree."""
-        self.release_upload()
-        self.upload = upload
-        self.config = upload.config
-        self.cwd = upload.root
-        self.config_provenance = None  # a bundle is not a Git source — no commit provenance to show
-        self.git_config_from_api = (
-            False  # a bundle is governed by upload_exec, not the Git trust flag
+        """Make *upload* the active binding (BE-0073), replacing whatever was bound.
+
+        The whole binding is replaced rather than mutated field by field, so no reader can observe a
+        bundle paired with the previous source's `cwd` or provenance (BE-0393 unit 1). A bundle is not
+        a Git source, so it carries no commit provenance and is governed by `upload_exec` rather than
+        the Git trust flag. The owning org is read off the bundle rather than stamped by the caller
+        afterwards: every caller set it to exactly this, and a caller that forgot left the previous
+        owner's partition in place (BE-0375).
+        """
+        self.binding = ConfigBinding(
+            config=upload.config, cwd=upload.root, upload=upload, org=upload.org
         )
 
     def targets_for(self, org: str) -> list[str]:
@@ -761,24 +816,10 @@ class ServeState:
         configuration's own `orgs:` block partitions targets between orgs. Empty when no
         configuration is bound or it cannot be read.
         """
-        parsed = load_serve_config_file(self.config)
+        parsed = load_serve_config_file(self.binding.config)
         if parsed is None:
             return []
-        return targets_for_org(parsed[1], parsed[0].targets, org, bound_by=self.config_org)
-
-    def release_upload(self) -> None:
-        """Drop the currently bound bundle's binding, if any, and reset `cwd` to serve's launch
-        directory. Called whenever a new config is bound (from any source), so the file-browser/Git
-        sources don't inherit a stale bundle cwd. Unlike before BE-0243, this no longer removes
-        `upload.dir`: it is now a sha256-keyed entry in `uploads_dir`'s shared extraction cache (a
-        cache other binds, and other replicas via the object store, may still resolve to), not a
-        disposable per-bind sandbox — its lifetime is independent of any single bind, the same way
-        unbinding a Git-sourced config never sweeps that source's own checkout cache."""
-        self.upload = None
-        # The next bind sets this if it owns the config; clearing here means a bind that forgets to
-        # falls back to the `orgs:`-declared partition rather than inheriting the previous owner.
-        self.config_org = None
-        self.cwd = self.base_cwd
+        return targets_for_org(parsed[1], parsed[0].targets, org, bound_by=self.binding.org)
 
 
 def _scenarios_dir_for(state: ServeState, target: str | None) -> Path | None:
@@ -791,9 +832,10 @@ def _scenarios_dir_for(state: ServeState, target: str | None) -> Path | None:
     the config file rather than from where serve was started (BE-0063, BE-0242)."""
     if state.scenarios_dir is not None:
         return state.scenarios_dir
-    if state.config is None or not target:
+    binding = state.binding
+    if binding.config is None or not target:
         return None
-    configured = target_scenarios_dir(state.config, target)
+    configured = target_scenarios_dir(binding.config, target)
     if configured is None or configured.is_absolute():
         return configured
-    return state.cwd / configured
+    return binding.cwd / configured

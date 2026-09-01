@@ -31,7 +31,7 @@ def generate_codegen(
         options offered track the target's backend, so an iOS target rejects ``playwright``
         rather than emitting a broken test (honest about limits, mirroring ``--emit``).
     """
-    cfg = state.config
+    cfg = state.binding.config
     if cfg is None:
         return {"error": "open a config first"}, 400
     if not body.get("target"):

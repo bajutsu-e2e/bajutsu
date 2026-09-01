@@ -48,9 +48,9 @@ def _resolve_org_or_forbid(
 
 
 def _session_effective(state: ServeState, config: Config, target: str) -> Effective:
-    """Effective config for a live capture/enrich session, rebased against `state.cwd` like the
+    """Effective config for a live capture/enrich session, rebased against `state.binding.cwd` like the
     CLI does for `run`/`record`; `confine=False` since bind already confined this config's paths."""
-    return resolve(config, target).rebased(state.cwd, confine=False)
+    return resolve(config, target).rebased(state.binding.cwd, confine=False)
 
 
 def _close_quietly(driver: driver_base.Driver) -> None:

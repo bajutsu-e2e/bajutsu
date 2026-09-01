@@ -229,9 +229,9 @@ def test_composed_bind_records_triple_sha_provenance(tmp_path: Path) -> None:
         state, {"config": config_sha, "scenarios": scenarios_sha, "binary": binary_sha}
     )
     assert status == 200
-    assert state.upload is not None
-    prov = state.upload.provenance
-    assert prov["compositionId"] == state.upload.sha256
+    assert state.binding.upload is not None
+    prov = state.binding.upload.provenance
+    assert prov["compositionId"] == state.binding.upload.sha256
     assert prov["configSha"] == config_sha
     assert prov["scenariosSha"] == scenarios_sha
     assert prov["binarySha"] == binary_sha
@@ -318,8 +318,8 @@ def test_compose_current_empty_for_another_orgs_bind(tmp_path: Path) -> None:
     _, status = ops.bind_composition(
         state, {"config": config_sha, "scenarios": scenarios_sha, "filename": "cfg.yaml"}
     )
-    assert status == 200 and state.upload is not None
-    state.upload.org = "other-org"
+    assert status == 200 and state.binding.upload is not None
+    state.binding.upload.org = "other-org"
     body, code = ops.compose_current(state)
     assert code == 200 and body == {"artifacts": {}}
 

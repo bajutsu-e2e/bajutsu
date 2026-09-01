@@ -137,12 +137,12 @@ def _resolve_org_model(state: ServeState) -> _OrgModel:
     """
     if state.repository is not None:
         return _OrgModel(orgs=orgs_from_db(state.repository), from_db=True)
-    parsed = load_serve_config_file(state.config)
+    parsed = load_serve_config_file(state.binding.config)
     return _OrgModel(
         orgs=parsed[1] if parsed is not None else {},
         from_db=False,
         parsed=parsed,
-        config=state.config,
+        config=state.binding.config,
     )
 
 
@@ -388,7 +388,7 @@ def _target_forbidden(state: ServeState, org: str, target: str) -> bool:
     """
     if state.repository is None:
         return False
-    parsed = load_serve_config_file(state.config)
+    parsed = load_serve_config_file(state.binding.config)
     if parsed is None or target not in parsed[0].targets:
         return False
     return target not in state.targets_for(org)

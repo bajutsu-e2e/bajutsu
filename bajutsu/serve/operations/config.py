@@ -49,7 +49,7 @@ from bajutsu.serve.orgs import (
     seed_orgs_from_config,
 )
 from bajutsu.serve.provider_store import ProviderSettingsError
-from bajutsu.serve.state import OrgProviderSettings, ProviderSettings, ServeState
+from bajutsu.serve.state import ConfigBinding, OrgProviderSettings, ProviderSettings, ServeState
 
 # The logical name of the Claude API key in the secret store (BE-0136). The store holds each named
 # credential under its own name; the second one below is the `claude-code` provider's OAuth token.
@@ -111,9 +111,9 @@ def active_key_env(state: ServeState) -> str:
     Falls back to ``ANTHROPIC_API_KEY`` when no config is bound, the config has no ``keyEnv``,
     or the name fails validation (not an identifier, or a known system variable).
     """
-    if state.config is not None:
+    if state.binding.config is not None:
         try:
-            cfg = load_config(state.config.read_text(encoding="utf-8"))
+            cfg = load_config(state.binding.config.read_text(encoding="utf-8"))
             ai_settings = cfg.defaults.ai if cfg.defaults else None
             if ai_settings and ai_settings.key_env and _valid_key_env_name(ai_settings.key_env):
                 return ai_settings.key_env
@@ -220,8 +220,8 @@ def config_info(state: ServeState, *, actor: str | None = None) -> tuple[Any, in
     """
     sources = config_sources(state)
     return {
-        "config": str(state.config) if state.config else None,
-        "hasConfig": state.config is not None,
+        "config": str(state.binding.config) if state.binding.config else None,
+        "hasConfig": state.binding.config is not None,
         # The file browser's browse ceiling — only meaningful to the fs source, so it is withheld
         # when that source is not offered (hosted), where the absolute host path is dead information
         # and needless exposure (BE-0108).
@@ -278,10 +278,10 @@ def config_content(state: ServeState) -> tuple[Any, int]:
     The text is verbatim: any ``${secrets.*}`` placeholders are shown as written, never resolved, so
     this discloses nothing beyond the file already committed to Git or uploaded in the bundle.
     """
-    if state.config is None:
+    if state.binding.config is None:
         return {"error": "no config bound"}, 404
     try:
-        content = state.config.read_text(encoding="utf-8")
+        content = state.binding.config.read_text(encoding="utf-8")
     except OSError as e:
         # The bound path was validated at bind time; a read failure here means it moved/was removed
         # under us (a transient checkout, a deleted file) — report it rather than 500 with a traceback.
@@ -297,10 +297,10 @@ def config_content(state: ServeState) -> tuple[Any, int]:
     except yaml.YAMLError:
         parsed = None
     return {
-        "config": str(state.config),
+        "config": str(state.binding.config),
         "content": content,
         "parsed": parsed,
-        "provenance": state.config_provenance,  # None for a local file / uploaded bundle
+        "provenance": state.binding.provenance,  # None for a local file / uploaded bundle
     }, 200
 
 
@@ -316,10 +316,10 @@ def _config_overrides_ios_runner(state: ServeState) -> bool:
     runner on another (the row is the tab's sharpest signal), so a per-target failure is logged and
     skipped rather than collapsing the whole answer to ``False``.
     """
-    if state.config is None:
+    if state.binding.config is None:
         return False
     try:
-        cfg = load_config(state.config.read_text(encoding="utf-8"))
+        cfg = load_config(state.binding.config.read_text(encoding="utf-8"))
     except Exception:
         logging.getLogger(__name__).debug(
             "cannot load config to check the xcuitest.testRunner override", exc_info=True
@@ -380,10 +380,10 @@ def server_settings(state: ServeState) -> tuple[Any, int]:
         # `state.hosted` directly, so a second boolean here would only be a redundant encoding of it.
         "mode": "hosted" if state.hosted else "local",
         "version": __version__,
-        "hasConfig": state.config is not None,
+        "hasConfig": state.binding.config is not None,
         # The config's Git source (host/owner/repo/ref/sha), or None for a local file / uploaded
         # bundle — the "where the bound config came from" the version row's commit deliberately isn't.
-        "configSource": state.config_provenance,
+        "configSource": state.binding.provenance,
         # The backends this build has a driver for (fake / playwright / xcuitest / adb) — a static
         # server-wide fact, sorted for a stable display; not a per-backend availability probe (the
         # tab makes exactly one filesystem probe, the iOS runner below).
@@ -400,7 +400,7 @@ def server_settings(state: ServeState) -> tuple[Any, int]:
     }
     if not state.hosted:
         # Host filesystem paths: meaningful only on a local deployment (BE-0108), so withheld hosted.
-        payload["config"] = str(state.config) if state.config else None
+        payload["config"] = str(state.binding.config) if state.binding.config else None
         payload["runsDir"] = str(state.runs_dir)
         payload["baselinesDir"] = str(state.baselines_dir)
     return payload, 200
@@ -660,7 +660,7 @@ def seed_orgs_from_bound_config(state: ServeState) -> None:
     """
     if state.repository is None:
         return
-    parsed = load_serve_config_file(state.config)
+    parsed = load_serve_config_file(state.binding.config)
     if parsed is None:
         return
     try:
@@ -702,8 +702,8 @@ def seed_orgs_from_bound_config(state: ServeState) -> None:
 
 def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
     """Bind a config.yml chosen in the UI's file browser.  The path is confined to ``--root``; we
-    validate it loads and its path fields stay within ``--root`` too, then re-point ``state.config``
-    at it **and** ``state.cwd`` at its own directory so the config's relative paths resolve from
+    validate it loads and its path fields stay within ``--root`` too, then re-point ``state.binding.config``
+    at it **and** ``state.binding.cwd`` at its own directory so the config's relative paths resolve from
     beside it, not serve's launch dir (BE-0242) — mirroring the Git/upload binds."""
     if state.hosted:
         # Defense in depth (BE-0108): the file browser is removed from the hosted UI, but a
@@ -721,7 +721,7 @@ def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
     except (OSError, ValueError, yaml.YAMLError) as e:
         return {"error": f"invalid config: {e}"}, 400
     # Validate path fields stay within `--root` (BE-0051): resolved against the config's own
-    # directory (matching `state.cwd` below), but confined to the broader browse root rather than
+    # directory (matching `state.binding.cwd` below), but confined to the broader browse root rather than
     # that one directory, so an in-root sibling reference (`../scenarios` from a config nested under
     # `<root>/configs/`) still resolves — only an escape past `--root` itself is refused.
     config_dir = target.resolve().parent
@@ -730,19 +730,20 @@ def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
             resolve(cfg, name).rebased(config_dir, confine=True, confine_to=state.root)
     except ValueError as e:
         return {"error": f"config path validation failed: {e}"}, 400
-    state.release_upload()  # a fresh config replaces any bound bundle and resets cwd to serve's launch dir
-    state.config = target
-    state.cwd = config_dir  # the config's relative paths resolve from its own directory (BE-0242)
-    state.config_provenance = None  # a local file has no Git commit provenance to show
+    # Replacing the binding whole is what drops any bound bundle: its directory, its owner, and the
+    # bundle itself cannot survive into a value built from this file alone (BE-0393 unit 1). `cwd` is
+    # the config's own directory, so its relative paths resolve from beside it (BE-0242).
+    #
     # A local file's *build:* stays trusted even when bound through this API endpoint (BE-0121), unlike
     # a Git spec or an upload: this endpoint can only bind a file `_confined_config_path` already found
     # inside `--root`, so the operator (who chose what lives under `--root`) already controls every
     # candidate's content — there is no path by which this bind hands an attacker-authored `build:` to
-    # the host, the exact capability BE-0121 gates behind `--allow-remote-build`. The `confine=True`
-    # above is a separate, narrower guard: it stops an in-`--root` config's own path *fields* from
-    # resolving outside the directory its relative paths are defined against, regardless of who bound
-    # it — orthogonal to, not a relaxation of, this build-trust call.
-    state.git_config_from_api = False
+    # the host, the exact capability BE-0121 gates behind `--allow-remote-build`. Leaving
+    # `git_from_api` at its default is what expresses that. The `confine=True` above is a separate,
+    # narrower guard: it stops an in-`--root` config's own path *fields* from resolving outside the
+    # directory its relative paths are defined against, regardless of who bound it — orthogonal to,
+    # not a relaxation of, this build-trust call.
+    state.binding = ConfigBinding(config=target, cwd=config_dir)
     return {"ok": True, "config": str(target), "targets": list_targets(target)}, 200
 
 
@@ -753,7 +754,7 @@ def bind_git_config(
 
     *spec_str* is a `github:owner/repo@ref:path` (or `git+https://…`) string. We materialize the
     repo subtree at the ref into the content-addressed cache, validate the config loads, then point
-    `state.config` at the checkout's config **and** `state.cwd` at the checkout root — so the config's
+    `state.binding.config` at the checkout's config **and** `state.binding.cwd` at the checkout root — so the config's
     relative `scenarios` / `appPath` / `build` resolve against the fetched tree, not serve's launch
     directory. This does not widen the file browser, which stays confined to `--root`; the checkout is
     a Bajutsu-managed cache (`materialize` refuses tar path-traversal on extraction), and each target's
@@ -783,18 +784,22 @@ def bind_git_config(
             resolve(cfg, name).rebased(mat.root, confine=True)
     except (OSError, ValueError, yaml.YAMLError) as e:
         return {"error": f"invalid config: {e}"}, 400
-    state.release_upload()  # switching to a Git config drops any bound bundle's sandbox
-    state.config = mat.config_path
-    state.cwd = mat.root  # the checkout root: the config's relative paths resolve from here
     provenance = source_provenance(spec, mat)
-    state.config_provenance = provenance  # so /api/config/content can show the resolved commit
-    # A Git config bound here came in over the API, not from the operator's startup flags, so its
-    # `build:` command is untrusted and stays ungoverned until --allow-remote-build opts in (BE-0121).
-    state.git_config_from_api = True
-    # A Git-sourced config is bound *as* the acting org, and its content is not this deployment's
-    # (the `build:` trust note above says as much), so that org owns every target it declares and
-    # its `orgs:` block partitions nothing (BE-0375).
-    state.config_org = state.org_of(actor)
+    # Replacing the binding whole drops any bound bundle, and states this source's three facts
+    # together (BE-0393 unit 1): `cwd` is the checkout root, so the config's relative paths resolve
+    # from the fetched tree; the provenance lets `/api/config/content` show the resolved commit; and
+    # `git_from_api` marks it as arriving over the API rather than from the operator's startup flags,
+    # so its `build:` command is untrusted and stays ungoverned until --allow-remote-build opts in
+    # (BE-0121). A Git-sourced config is bound *as* the acting org, and its content is not this
+    # deployment's, so that org owns every target it declares and its `orgs:` block partitions
+    # nothing (BE-0375).
+    state.binding = ConfigBinding(
+        config=mat.config_path,
+        cwd=mat.root,
+        provenance=provenance,
+        git_from_api=True,
+        org=state.org_of(actor),
+    )
     return {
         "ok": True,
         "config": str(mat.config_path),
@@ -876,10 +881,10 @@ def declared_secret_names(state: ServeState) -> list[str]:
     Claude Code OAuth token, or the Git credential. No config bound, an empty ``secrets:``, or a
     config that fails to load yields an empty list (the panel then shows nothing to configure); a
     load failure is logged at debug, matching ``active_key_env``."""
-    if state.config is None:
+    if state.binding.config is None:
         return []
     try:
-        cfg = load_config(state.config.read_text(encoding="utf-8"))
+        cfg = load_config(state.binding.config.read_text(encoding="utf-8"))
         names: dict[str, None] = {}
         for target in cfg.targets:
             for name in resolve(cfg, target).secrets:

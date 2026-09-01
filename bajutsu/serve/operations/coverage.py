@@ -202,12 +202,12 @@ def _aggregate(
             without the runs that say which of its screens were visited — plus the one the caller
             cannot: a target another org owns, which raises with a 403.
     """
-    if state.config is None:
+    if state.binding.config is None:
         raise _CoverageError("open a config first")
     if not target:
         raise _CoverageError("target is required")
 
-    config = load_config(state.config.read_text(encoding="utf-8"))
+    config = load_config(state.binding.config.read_text(encoding="utf-8"))
     if target not in config.targets:
         raise _CoverageError(f"unknown target: {target}")
 

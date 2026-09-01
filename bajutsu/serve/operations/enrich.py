@@ -24,7 +24,7 @@ def start_enrich(
     agent_factory: Any | None = None,
 ) -> tuple[Any, int]:
     """Replay a scenario's steps and propose assertions via an enrichment agent."""
-    cfg = state.config
+    cfg = state.binding.config
     if cfg is None:
         return {"error": "open a config first"}, 400
     if not body.get("target"):

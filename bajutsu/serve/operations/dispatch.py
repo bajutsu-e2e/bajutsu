@@ -37,9 +37,9 @@ def _governed_build(state: ServeState, build: str | None) -> str | None:
     operator opted in with --allow-remote-build (BE-0121). A local or startup-bound config is
     operator-trusted and keeps its build.
     """
-    if state.upload is not None:
+    if state.binding.upload is not None:
         return None
-    if state.git_config_from_api and not state.allow_remote_build:
+    if state.binding.git_from_api and not state.allow_remote_build:
         return None
     return build
 
@@ -62,13 +62,13 @@ def _run_label(
             return None, ({"error": f"label must be at most {MAX_LABEL_LENGTH} characters"}, 400)
         if override:
             return override, None
-    if state.config is None:
+    if state.binding.config is None:
         return None, None
     # Bounded, unlike the override above: this default is spawned as `run --label`, whose own guard
     # would refuse an over-long value and fail every run from that deployment with a usage error for
     # a label the operator never typed. "Refuse, never truncate" protects an operator's own input —
     # a value the tool derived from a long file stem or a deep in-repo path is the tool's to trim.
-    return launch_label(state.config, state.config_provenance)[:MAX_LABEL_LENGTH], None
+    return launch_label(state.binding.config, state.binding.provenance)[:MAX_LABEL_LENGTH], None
 
 
 def _boot_targets(udid: str) -> list[str]:
@@ -216,7 +216,7 @@ def _register_and_dispatch(
 def start_run(
     state: ServeState, body: dict[str, Any], *, actor: str | None = None
 ) -> tuple[Any, int]:
-    cfg = state.config
+    cfg = state.binding.config
     if cfg is None:
         return {"error": "open a config first"}, 400
     if not body.get("scenario") or not body.get("target"):
@@ -278,13 +278,13 @@ def start_run(
         # An uploaded bundle is self-contained: omit --baselines so its config's `baselines` drives
         # (resolved against the bundle cwd), like the rest of its relative paths (BE-0073).
         baselines=""
-        if state.upload is not None
+        if state.binding.upload is not None
         else ("baselines" if on_worker else str(state.baselines_dir)),
         headed=_bool_flag(body, "headed"),
         runs_dir=runs_dir,
         # Govern the uploaded bundle's launchServer command (BE-0090); a local/Git config is
         # operator-trusted and ungoverned, so it gets no flag.
-        upload_exec=state.upload_exec if state.upload is not None else "",
+        upload_exec=state.upload_exec if state.binding.upload is not None else "",
         # The rest of `run`'s flag surface, now reachable from the request body (BE-0134). These are
         # safe to take from the client: tag selectors, the web engine axis (the CLI validates the
         # engine names), the network toggle, the post-verdict --zip, and the alert/log knobs.
@@ -324,7 +324,9 @@ def start_run(
             build=build,
             materials=materials,
             materialize_baselines=on_worker,
-            provenance=state.upload.provenance if state.upload is not None else None,
+            provenance=state.binding.upload.provenance
+            if state.binding.upload is not None
+            else None,
             actor=actor,
             org=org,
             evidence_prefix=evidence_prefix,
@@ -363,7 +365,7 @@ def start_run_set(  # noqa: PLR0911, PLR0912
     run. Returns the dispatched job ids. The device budget that bounds how many of these reserve a
     device at once arrives in a later unit; here the fan-out simply enumerates and registers.
     """
-    cfg = state.config
+    cfg = state.binding.config
     if cfg is None:
         return {"error": "open a config first"}, 400
     if not body.get("target"):
@@ -400,14 +402,14 @@ def start_run_set(  # noqa: PLR0911, PLR0912
     # each to the target's own dir).
     # The provider packages work_dir at the zip root, so the config and scenarios below it travel as
     # package-relative paths; devicefarm_package_root roots that at the source tree (see its field),
-    # falling back to state.cwd for the in-process tests.
-    work_dir = state.devicefarm_package_root or state.cwd
-    # A relative appPath resolves against the config's own directory (state.cwd) like every other
+    # falling back to state.binding.cwd for the in-process tests.
+    work_dir = state.devicefarm_package_root or state.binding.cwd
+    # A relative appPath resolves against the config's own directory (state.binding.cwd) like every other
     # config path (BE-0242) — not against the package root or serve's process cwd. The batch provider
     # reads the APK/IPA in-process, against the process cwd, so resolve it to an absolute path here —
     # otherwise a relative appPath is read from serve's launch dir and the upload fails opaquely on
     # the cloud host with "No such file". An absolute appPath is left as the operator wrote it.
-    app_path = app_path if Path(app_path).is_absolute() else str(state.cwd / app_path)
+    app_path = app_path if Path(app_path).is_absolute() else str(state.binding.cwd / app_path)
     config_arg = os.path.relpath(cfg, work_dir)
     if _escapes(config_arg):
         # The provider packages work_dir at the package root, so a config outside it would travel as
@@ -486,7 +488,7 @@ def start_record(
 ) -> tuple[Any, int]:
     """Author a scenario from a natural-language goal (the Record tab).  The authored file lands in
     the selected target's configured scenarios dir."""
-    cfg = state.config
+    cfg = state.binding.config
     if cfg is None:
         return {"error": "open a config first"}, 400
     if not body.get("goal") or not body.get("target"):
@@ -525,7 +527,7 @@ def start_record(
         system_alert_handling=system_alert_handling,
         headed=_bool_flag(body, "headed"),
         config=config_arg,
-        upload_exec=state.upload_exec if state.upload is not None else "",
+        upload_exec=state.upload_exec if state.binding.upload is not None else "",
     )
     app_path, build = target_build_info(cfg, body["target"])
     build = _governed_build(state, build)
@@ -557,7 +559,7 @@ def start_crawl(
 ) -> tuple[Any, int]:
     """Explore a target breadth-first and build a screen map (the Crawl tab).  The screen map is
     streamed into ``runs/<runId>/screenmap.json``; the returned ``runId`` lets the UI poll it."""
-    cfg = state.config
+    cfg = state.binding.config
     if cfg is None:
         return {"error": "open a config first"}, 400
     if not body.get("target"):
@@ -611,7 +613,7 @@ def start_crawl(
         resume_src=resume_src if resuming else "",
         resume_key=resume_key if resuming else "",
         continue_crawl=continuing,
-        upload_exec=state.upload_exec if state.upload is not None else "",
+        upload_exec=state.upload_exec if state.binding.upload is not None else "",
     )
     app_path, build = target_build_info(cfg, target)
     build = _governed_build(state, build)

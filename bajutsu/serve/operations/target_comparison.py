@@ -41,9 +41,9 @@ def compare_targets(state: ServeState, *, org: str) -> list[TargetMetrics]:
     Returns:
         One `TargetMetrics` per target the org may run, ordered as the config declares them.
     """
-    if state.config is None:
+    if state.binding.config is None:
         return []
-    declared = list_targets(state.config)
+    declared = list_targets(state.binding.config)
     if state.repository is not None:
         owned = set(state.targets_for(org))
         declared = [t for t in declared if t in owned]

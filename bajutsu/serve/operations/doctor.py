@@ -47,7 +47,7 @@ def doctor_check(
             device allow-lists (BE-0051) before selecting the actuator or reaching a driver.
         screen_query: overrides the live screen query for testing; defaults to the real one.
     """
-    cfg = state.config
+    cfg = state.binding.config
     if cfg is None:
         return {"error": "open a config first"}, 400
     if not body.get("target"):

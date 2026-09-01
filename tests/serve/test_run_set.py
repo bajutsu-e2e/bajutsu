@@ -215,7 +215,7 @@ def test_fan_out_rejects_an_empty_scenario_subset(tmp_path: Path) -> None:
 
 
 def test_fan_out_rejects_a_config_outside_the_run_directory(tmp_path: Path) -> None:
-    # The provider packages the run directory (state.cwd) at the package root, so a config living
+    # The provider packages the run directory (state.binding.cwd) at the package root, so a config living
     # outside it would travel as a `../…` path the cloud host can't find. Fail loud at the endpoint.
     scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
     run_dir = tmp_path / "elsewhere"

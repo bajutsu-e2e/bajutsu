@@ -69,7 +69,7 @@ def test_a_stored_bundle_is_fetched_extracted_and_bound(tmp_path: Path) -> None:
 
     result = restore_uploaded_config(state, source, org="default")
     assert result is not None and result[1] == 200
-    assert state.config is not None and state.config.name == "bajutsu.config.yaml"
+    assert state.binding.config is not None and state.binding.config.name == "bajutsu.config.yaml"
 
 
 def test_nothing_to_restore_from_answers_none(tmp_path: Path) -> None:
@@ -179,7 +179,7 @@ def test_a_composed_triple_is_fetched_and_composed(tmp_path: Path) -> None:
 
     result = restore_uploaded_config(state, source, org="default")
     assert result is not None and result[1] == 200
-    assert state.config is not None and state.config.name == "bajutsu.config.yaml"
+    assert state.binding.config is not None and state.binding.config.name == "bajutsu.config.yaml"
 
 
 def test_a_composed_triple_answers_none_with_nothing_cached_and_no_store_or_a_bad_sha(

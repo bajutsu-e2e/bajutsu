@@ -158,7 +158,7 @@ def _register_devicefarm(*, manifest_ok: bool) -> tuple[_FakeClient, _FakeTransf
 
 
 def test_relative_app_path_resolves_against_the_config_dir(tmp_path: Path) -> None:
-    # A config's relative appPath resolves against the config's own directory (state.cwd), like every
+    # A config's relative appPath resolves against the config's own directory (state.binding.cwd), like every
     # other config path (BE-0242) — not against serve's process cwd. The batch provider reads the APK
     # in-process, so start_run_set must hand it an absolute path; a raw relative appPath would be read
     # from serve's launch dir and the Device Farm upload would fail with "No such file".

@@ -30,7 +30,7 @@ def start_capture(
     redactor: Redactor | None = None,
 ) -> tuple[Any, int]:
     """Open a capture session: boot a live driver, take the initial screenshot + query."""
-    cfg = state.config
+    cfg = state.binding.config
     if cfg is None:
         return {"error": "open a config first"}, 400
     if not body.get("target"):

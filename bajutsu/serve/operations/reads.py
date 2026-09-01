@@ -79,16 +79,16 @@ def _primary_backend(config: Config, name: str) -> str:
 def list_targets_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
     # Each target carries its primary backend, so the UI shows only that platform's device controls
     # (iOS controls, or the web headed toggle) without the user typing the backend by hand.
-    if state.config is None:
+    if state.binding.config is None:
         return [], 200
-    parsed = load_serve_config_file(state.config)
+    parsed = load_serve_config_file(state.binding.config)
     if parsed is None:
         return [], 200
     config = parsed[0]
     # Org scoping applies only on a server backend with a system of record; local serve / token mode
     # ignores `orgs:` and lists every target (BE-0015 multi-tenancy).
     if state.repository is None:
-        names = list_targets(state.config)
+        names = list_targets(state.binding.config)
     else:
         names = sorted(state.targets_for(state.org_of(actor)))
     return [{"name": n, "backend": _primary_backend(config, n)} for n in names], 200
@@ -151,7 +151,7 @@ def effective_label(state: ServeState, requested: str | None) -> str | None:
     if requested == ALL_LABELS:
         return None
     label = requested or (
-        launch_label(state.config, state.config_provenance) if state.config else ""
+        launch_label(state.binding.config, state.binding.provenance) if state.binding.config else ""
     )
     return label or None
 
@@ -468,7 +468,7 @@ def _usage_ledger_paths(state: ServeState, actor: str | None) -> list[Path]:
 
     AI work in serve runs as subprocesses that call `usage_ledger.configure_from_ai_config` with the
     *target-merged* `ai` block (`resolve`'s `Effective.ai`, so `targets.<name>.ai.usageLedger`
-    overrides `defaults.ai.usageLedger`), writing relative paths against their cwd — `state.cwd`,
+    overrides `defaults.ai.usageLedger`), writing relative paths against their cwd — `state.binding.cwd`,
     the directory `jobs` spawns them in absent a per-job override. Resolving the read side any other
     way is what left the dashboard reading an empty file while a per-target ledger filled up (issue
     #1717).
@@ -489,7 +489,9 @@ def _usage_ledger_paths(state: ServeState, actor: str | None) -> list[Path]:
     cannot read at all), and a targetless `bajutsu triage --ai` launched beside serve, which resolves
     no `ai` block of its own and so writes the built-in default rather than the configured ledger.
     """
-    loaded = load_serve_config_file(state.config)  # cached parse; None when absent/unreadable
+    loaded = load_serve_config_file(
+        state.binding.config
+    )  # cached parse; None when absent/unreadable
     if loaded is None:
         return _absolute_ledger_paths(state, [None])
     config = loaded[0]
@@ -527,7 +529,7 @@ def _absolute_ledger_paths(state: ServeState, configured: Iterable[str | None]) 
         if path is None:  # persistence disabled for this target
             continue
         if not path.is_absolute():
-            path = state.cwd / path
+            path = state.binding.cwd / path
         try:
             key = path.resolve()
         except OSError:  # a symlink loop or an unreadable parent — dedupe on the unresolved path
@@ -972,7 +974,7 @@ def resolve_scenario_pick(  # noqa: PLR0911
     state: ServeState, body: dict[str, Any], *, actor: str | None = None
 ) -> tuple[Any, int]:
     """Resolve a point against a step's stored elements.json — no live driver."""
-    cfg = state.config
+    cfg = state.binding.config
     if cfg is None:
         return {"error": "open a config first"}, 400
 
