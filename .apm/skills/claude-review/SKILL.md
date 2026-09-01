@@ -72,7 +72,7 @@ Read every changed file in full before finishing; a shallow first pass that leav
 
 When another skill's self-review step spawns this pass, it runs as a fresh Agent-tool subagent with
 no memory of the calling conversation, and the caller may override the model for that call (for
-example `pr-followup` runs it on `fable`). Give that subagent **only** the contract text and the
+example `pr-followup` runs it on `opus`). Give that subagent **only** the contract text and the
 diff — not the calling skill's authoring conversation. The CI reviewer runs cold, with no memory of
 why a line was written; a subagent that inherited that context would not reproduce its judgment.
 

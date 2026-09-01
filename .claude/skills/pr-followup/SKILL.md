@@ -98,7 +98,7 @@ itself.
 If step 2 or 3 made a change this iteration, mirror the CI "Claude review" workflow locally before
 pushing whatever hasn't shipped yet, following [`ideation`](../../../.apm/skills/ideation/SKILL.md) step 5's
 two-role procedure exactly — a review/plan pass that classifies findings and never edits, then an
-implement pass that applies its instructions (BE-0347) — on different models: `fable` for the
+implement pass that applies its instructions (BE-0347) — on different models: `opus` for the
 review/plan pass, and for the implement pass `sonnet` when the fix stays within `roadmaps/` or
 `docs/`, `opus` when it touches product code. There are three differences from that procedure. First, give the
 review/plan pass a local `git diff` against the

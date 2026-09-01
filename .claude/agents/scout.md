@@ -1,7 +1,7 @@
 ---
 name: scout
 description: Locate things in this repository — where a symbol is defined, which page documents a behavior, whether a roadmap item already covers a topic — and answer with paths and line ranges rather than file contents. Read-only; never edits, commits, or pushes. Use it instead of running the search yourself whenever the answer needs more than two or three lookups.
-model: fable
+model: sonnet
 tools: Read, Grep, Glob, Bash
 color: cyan
 ---

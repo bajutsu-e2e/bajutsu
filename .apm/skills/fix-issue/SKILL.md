@@ -127,7 +127,7 @@ of any documentation whose behavior you changed, then self-review the diff again
 review/plan pass that classifies findings and never edits, and an implement pass that applies its
 instructions
 ([BE-0347](../../../roadmaps/BE-0347-bounded-ci-review-cycle/BE-0347-bounded-ci-review-cycle.md)).
-Run the two roles as separate Agent-tool subagents on different models: `fable` for the review/plan
+Run the two roles as separate Agent-tool subagents on different models: `opus` for the review/plan
 pass, and for the implement pass `sonnet` when the fix stays within `docs/`, `opus` when it touches
 product code. The `pr-review-toolkit` plugin supplies the specialized lenses.
 One input differs from `implement-be`'s: there is no roadmap `Status` flip pending here, so the

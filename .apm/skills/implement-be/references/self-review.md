@@ -13,7 +13,7 @@ classifies findings and never edits, then an implement pass that applies its ins
 [`.github/claude-review-prompt.md`](../../../../.github/claude-review-prompt.md) contract. Read
 that contract and hand it to the **review/plan** pass as text, so no review command is invoked.
 
-Both roles run as fresh Agent-tool subagents, on different models: `fable` for the review/plan
+Both roles run as fresh Agent-tool subagents, on different models: `opus` for the review/plan
 pass, and for the implement pass `sonnet` when the fix stays within `roadmaps/` or `docs/`, `opus`
 when it touches product code.
 

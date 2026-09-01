@@ -527,7 +527,7 @@ The frontmatter can't reach interactive and delegated work, so choose there by h
 Passing `model` at spawn time is a thing to remember, not a mechanism, and it gets forgotten.
 A discovery fan-out that nobody routed runs at whatever the driver is paying for.
 [`.claude/agents/scout.md`](../.claude/agents/scout.md) closes that gap for discovery.
-The agent pins `fable` in its own frontmatter and holds its reply to paths and line ranges.
+The agent pins `sonnet` in its own frontmatter and holds its reply to paths and line ranges.
 Naming `scout` buys the cheap path without anyone choosing it.
 
 Deliberately **not gate-enforced**: which model a session used isn't recoverable from the diff, and
@@ -538,7 +538,7 @@ contributor workflow ([BE-0069](../roadmaps/BE-0069-executable-contributor-guard
 ### The local self-review's two roles (BE-0347)
 
 The pre-push self-review that mirrors the CI review contract runs as two roles on two models, not as
-one agent on one. A **`fable`** review/plan pass judges the diff against
+one agent on one. An **`opus`** review/plan pass judges the diff against
 [`.github/claude-review-prompt.md`](../.github/claude-review-prompt.md) and writes fix instructions;
 it never edits a file. A separate implement pass applies those instructions, on **`sonnet`** when the
 fix stays inside `roadmaps/` or `docs/` and **`opus`** when it touches product code — the same
