@@ -35,8 +35,8 @@ from bajutsu.ai import (
 )
 from bajutsu.ai.prompts import render_elements
 from bajutsu.analytics import usage
+from bajutsu.common.scenario import Assertion, Selector, Step
 from bajutsu.evidence.redaction import Redactor
-from bajutsu.scenario import Assertion, Selector, Step
 
 MODEL = "claude-opus-4-8"
 

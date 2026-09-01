@@ -10,6 +10,7 @@ import pytest
 from _orch import FakeClock, _scenario
 from conftest import el
 
+from bajutsu.common.scenario import Interrupt, Relaunch
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import Artifact, FileSink, step_view
@@ -17,7 +18,6 @@ from bajutsu.evidence.intervals import Interval
 from bajutsu.orchestrator import RunResult, run_scenario
 from bajutsu.orchestrator.waits import WaitTrace
 from bajutsu.report.format import video_seconds
-from bajutsu.scenario import Interrupt, Relaunch
 
 
 class _QueryLoggingDriver(FakeDriver):
@@ -226,7 +226,7 @@ def test_step_level_assert_drops_visual_context(tmp_path: Path) -> None:
     screenshot is taken, so those inputs are dropped there even when the run carries a visual
     context (they run only at scenario `expect`). Locks the intentional asymmetry (BE-0250 Unit 2).
     """
-    from bajutsu.assertions import EvalContext, VisualContext
+    from bajutsu.common.assertions import EvalContext, VisualContext
     from bajutsu.evidence.redaction import Redactor
     from bajutsu.evidence.sink import RunArtifactWriter
 
@@ -261,7 +261,7 @@ def test_step_level_assert_drops_schema_context() -> None:
     """
     from pathlib import Path
 
-    from bajutsu.assertions import EvalContext, SchemaContext
+    from bajutsu.common.assertions import EvalContext, SchemaContext
 
     result = run_scenario(
         FakeDriver([el("home.title", "ホーム")]),

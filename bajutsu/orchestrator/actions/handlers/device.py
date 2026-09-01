@@ -4,10 +4,10 @@ the injected device control (or relauncher); without one — e.g. the fake drive
 
 from __future__ import annotations
 
+from bajutsu.common.scenario import Step
 from bajutsu.drivers import base
 from bajutsu.orchestrator.actions._registry import _handler, _need_control
 from bajutsu.orchestrator.types import DeviceControl, RelaunchFn
-from bajutsu.scenario import Step
 
 
 @_handler("relaunch")

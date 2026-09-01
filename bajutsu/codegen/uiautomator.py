@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import re
 
-from bajutsu.assertions import request_label
 from bajutsu.codegen.common import (
     AfterEmission,
     class_name,
@@ -38,9 +37,10 @@ from bajutsu.codegen.common import (
     permissions_setup_lines,
     render_test_file,
 )
+from bajutsu.common.assertions import request_label
+from bajutsu.common.scenario import AfterRule, Assertion, Gone, Scenario, Step, WaitRequest
+from bajutsu.common.scenario.models.assertions import CountMatch, TextMatch, Wait
 from bajutsu.drivers import base
-from bajutsu.scenario import AfterRule, Assertion, Gone, Scenario, Step, WaitRequest
-from bajutsu.scenario.models.assertions import CountMatch, TextMatch, Wait
 
 # The adb backend has no network-interception surface (drivers/adb.py CAPABILITIES), so a network
 # `request` assertion / `until: { request }` wait has no faithful translation — a labeled TODO

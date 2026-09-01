@@ -14,9 +14,9 @@ from bajutsu.agents.claude_triage import (
     _render_cross_run,
 )
 from bajutsu.ai.base import AnyTool, ImagePart, TextPart
+from bajutsu.common.scenario import Redact
 from bajutsu.drivers import base
 from bajutsu.evidence.redaction import Redactor
-from bajutsu.scenario import Redact
 from bajutsu.triage import CrossRunTriageContext, FailedStep, RunEvidence, TriageContext
 
 

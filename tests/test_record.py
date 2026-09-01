@@ -6,6 +6,7 @@ import pytest
 from conftest import ShotDriver
 
 from bajutsu.agents.protocols import Observation, Proposal
+from bajutsu.common.scenario import Assertion, Selector, Step, dump_scenarios, load_scenarios
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.elements import shows_app_ui
@@ -20,7 +21,6 @@ from bajutsu.record import (
     execute,
     record,
 )
-from bajutsu.scenario import Assertion, Selector, Step, dump_scenarios, load_scenarios
 
 
 class FakeAgent:

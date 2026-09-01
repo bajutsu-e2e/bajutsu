@@ -13,6 +13,7 @@ import pytest
 from _runner import _eff, _el, _web_eff
 
 from bajutsu import simctl
+from bajutsu.common.scenario import Relaunch, Scenario
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver, FakeNetworkCollector
@@ -24,7 +25,6 @@ from bajutsu.runner import (
     device_pool,
     device_relauncher,
 )
-from bajutsu.scenario import Relaunch, Scenario
 from bajutsu.webview import WebViewBridge
 
 

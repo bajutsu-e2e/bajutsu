@@ -10,10 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator import RunResult, run_scenario
-from bajutsu.scenario import (
+from bajutsu.common.scenario import (
     Component,
     Scenario,
     expand_components,
@@ -22,6 +19,9 @@ from bajutsu.scenario import (
     load_scenarios,
     select_scenarios,
 )
+from bajutsu.drivers import base
+from bajutsu.drivers.fake import FakeDriver
+from bajutsu.orchestrator import RunResult, run_scenario
 
 SCENARIOS = Path(__file__).parent / "scenarios"
 

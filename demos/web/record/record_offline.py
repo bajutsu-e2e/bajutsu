@@ -31,11 +31,11 @@ import re
 from pathlib import Path
 
 from bajutsu.agents.protocols import Observation, Proposal
+from bajutsu.common.scenario import Assertion, Scenario, Step, dump_scenarios
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import RunResult, run_scenario
 from bajutsu.record import record
-from bajutsu.scenario import Assertion, Scenario, Step, dump_scenarios
 
 DEFAULT_GOAL = (
     "Get started, sign in with email a@b.com and password pw, "

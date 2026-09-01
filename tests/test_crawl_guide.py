@@ -12,6 +12,7 @@ from conftest import FakeBackend, FakeBlock, ShotDriver, el
 from bajutsu import crawl
 from bajutsu.agents.ai_config import AiConfig
 from bajutsu.ai.base import TextPart
+from bajutsu.common.scenario import Redact
 from bajutsu.crawl import tabs as crawl_tabs
 from bajutsu.crawl.guide import (
     ClaudeActionProposer,
@@ -26,7 +27,6 @@ from bajutsu.crawl.serialize import action_to_dict
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence.redaction import PLACEHOLDER, Redactor
-from bajutsu.scenario import Redact
 
 _NONE_SECURE = _secure_fields([])  # a screen the platform marked no field on
 

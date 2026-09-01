@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from bajutsu.common.scenario import Step
 from bajutsu.drivers import base
 from bajutsu.elements import screen_size_from_elements
 from bajutsu.orchestrator.actions._registry import _handler
 from bajutsu.orchestrator.actions.handlers._gesture_math import _scroll_gesture
 from bajutsu.orchestrator.actions.handlers.scroll import scroll_until_tappable
-from bajutsu.scenario import Step
 
 # The recovery scroll's step bound: small, well under `scroll`'s own default of 15, for the first
 # direction tried below. A later direction gets a multiple of this bound, since it must first undo

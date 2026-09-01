@@ -13,7 +13,7 @@ import yaml
 from pydantic import ValidationError
 
 from bajutsu import _yaml
-from bajutsu.scenario import Scenario, load_scenario_file
+from bajutsu.common.scenario import Scenario, load_scenario_file
 
 
 class Diagnostic(TypedDict):
@@ -85,7 +85,7 @@ def scenario_json_schema() -> str:
     ``{description, scenarios}`` mapping."""
     import json
 
-    from bajutsu.scenario import Scenario, ScenarioFile
+    from bajutsu.common.scenario import Scenario, ScenarioFile
 
     file_schema = ScenarioFile.model_json_schema()
     list_schema = {"type": "array", "items": {"$ref": "#/$defs/Scenario"}}

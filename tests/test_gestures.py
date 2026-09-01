@@ -10,10 +10,10 @@ from __future__ import annotations
 import pytest
 
 from bajutsu.codegen import to_xcuitest
+from bajutsu.common.scenario import load_scenarios
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
-from bajutsu.scenario import load_scenarios
 
 
 def _points(arg: object) -> tuple[base.Point, base.Point]:

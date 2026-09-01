@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from bajutsu.codegen import CodegenError, class_name_for, to_xcuitest
-from bajutsu.scenario import load_scenarios
+from bajutsu.common.scenario import load_scenarios
 
 
 def _gen(yaml: str, env: dict[str, str] | None = None) -> str:

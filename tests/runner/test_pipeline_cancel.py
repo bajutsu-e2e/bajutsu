@@ -14,10 +14,10 @@ from pathlib import Path
 from _runner import _eff, _lease
 
 from bajutsu.cancellation import CANCELLED_FAILURE
+from bajutsu.common.scenario import Scenario
 from bajutsu.drivers.base import BackendCrashError
 from bajutsu.orchestrator import RunResult
 from bajutsu.runner import run_all, run_and_report, run_matrix_and_report
-from bajutsu.scenario import Scenario
 
 
 def _scenarios(*names: str) -> list[Scenario]:
