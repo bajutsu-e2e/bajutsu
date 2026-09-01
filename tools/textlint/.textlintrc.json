@@ -50,7 +50,9 @@
     },
     "write-good": true,
     "stop-words": true,
-    "unexpanded-acronym": true,
+    "unexpanded-acronym": {
+      "ignore_acronyms": ["MECE", "XXXX"]
+    },
     "abbr-within-parentheses": true,
     "alex": true,
     "ukraine": true

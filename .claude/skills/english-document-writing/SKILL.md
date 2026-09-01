@@ -47,6 +47,25 @@ Like the rest of the prose norm, this is a review-time expectation checked by pe
   use the numeral when it is a noun or ten or above.
 - **Colon.** Introduce a list or an elaboration with a colon only after a complete sentence.
 
+## Words this repo's textlint flags
+
+This repo's `write-good`, `stop-words`, and `alex` checks flag specific constructs. They live at
+[`tools/textlint/`](../../../tools/textlint/). Write around them from the start; do not wait to
+discover them at the verification pass.
+
+- **Passive voice.** Some forms get flagged, like "is set" or "are coupled". Name the actual agent
+  as the subject. Write "the caller sets the flag". Skip "the flag is set".
+- **"only", "therefore", "exclusively", "solely".** Each is a common word. Each still gets flagged,
+  as weakening, wordy, or a stop word. Try **"purely"** or **"merely"** in its place. A rewrite with
+  **"alone"** works too — "that lane alone provides...". Confirm a substitute against the config
+  first. A near-synonym can trip a different rule than the one you meant to dodge.
+- **A sentence-initial "So".** This gets flagged for adding no meaning. Drop the opener.
+- **"it is" / "there is".** Both get flagged as unnecessary verbiage. Restate with a real subject.
+- **`alex` produces false positives.** Plain words can get flagged: "easy", "trap", "failure",
+  "just". The check targets biased language, not technical prose. Reword it when a clean substitute
+  exists. Try "issue" for "trap". Try "what breaks" for "the failure mode". Skip an awkward rewrite
+  when the flagged word is genuinely the clearest term.
+
 ## Verify your work
 
 Reread the English draft once against the mechanics above, alongside the language-agnostic reread in

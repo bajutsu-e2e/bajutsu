@@ -85,11 +85,25 @@ All four kanji-range rules are pinned in `package.json` but left disabled (`fals
   kanji to an even narrower set than 常用漢字, stricter still. Turn one on individually, with an
   allow-list, only if a specific document needs a bounded kanji set.
 
+`preset-ja-technical-writing`'s own `no-mix-dearu-desumasu` stays enabled, even though it requires
+every bulleted or numbered list in a document to use plain (である) style, and fails the moment even
+one list item ends in です/ます. `japanese-document-writing` and `CLAUDE.md` both require every BE
+roadmap item and every `docs/ja/` page to stay in 敬体 (ですます) throughout, with no 常体 exception
+for lists, so a list written to satisfy that mandate leaves this rule's findings behind rather than
+clearing them — see `document-writing`'s "Mandatory textlint verification after drafting" section
+for the count-based bar that accepts this residue instead of chasing an unreachable zero.
+
 ### English
 
 - `write-good` — English style issues such as passive voice and wordiness
 - `stop-words` — filler words, buzzwords, and clichés
-- `unexpanded-acronym` — whether an acronym is expanded in the document
+- `unexpanded-acronym` — whether an acronym is expanded in the document. It only recognizes an
+  expansion spelled as capitalized words matching the acronym's letters (`ABC` next to `Australian
+  Broadcasting Commission`), so a lowercase gloss such as `MECE (mutually exclusive, collectively
+  exhaustive)` still fires. `ignore_acronyms` in `.textlintrc.json` lists `MECE` (BE roadmap items'
+  own jargon, defined once in `docs/ai-development.md` and reused without re-expansion everywhere
+  else) and `XXXX` (the literal `BE-XXXX` placeholder every unallocated roadmap item carries — not
+  an acronym, so no expansion could ever satisfy the rule)
 - `abbr-within-parentheses` — abbreviation-in-parentheses form
 - `alex` — gender-, race-, or religion-insensitive phrasing
 - `ukraine` — Ukrainian place and person names spelled the Russian way
