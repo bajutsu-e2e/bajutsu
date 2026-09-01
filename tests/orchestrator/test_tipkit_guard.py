@@ -13,12 +13,12 @@ rather than `ElementNotTappable`, and a plain `is_tappable` occlusion model woul
 from __future__ import annotations
 
 from _orch import FakeClock, _scenario, _tap_ids
-from conftest import el
+from conftest import AlertingDriver, el
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
-from bajutsu.orchestrator.types import AlertEvent, AlertGuardConfig
+from bajutsu.orchestrator.types import AlertGuardConfig
 
 # Stand in for the two nodes a showing tip is recognized by: TipKit's dismiss region and the tip's
 # own container. The real identifiers live in the XCUITest driver; these are only what the fake was
@@ -133,22 +133,18 @@ def test_a_tip_and_a_system_alert_are_both_recovered_in_one_step() -> None:
     # must not consume the failure and leave the alert — the case the alert guard exists for — unhandled.
     def react(d: FakeDriver, kind: str, arg: object) -> None:
         if kind == "tap" and getattr(arg, "get", lambda _k: None)("id") == _SCRIM:
-            # The tip goes, but the target is still behind the alert until the alert guard fires.
-            d.screen = [el("sys.alert", "Allow")]
+            # The tip goes, but the target stays behind the SpringBoard prompt until the guard
+            # answers it — which is the whole point: one failure, two blocks, both cleared.
+            d.screen = []
 
-    driver = FakeDriver([el(_SCRIM, "dismiss popup"), el(_CONTAINER)], react=react)
+    driver = AlertingDriver(
+        [el(_SCRIM, "dismiss popup"), el(_CONTAINER)],
+        label="Allow",
+        on_dismiss=lambda d: setattr(d, "screen", [el("stable.refresh", "Refresh", ["button"])]),
+    )
+    driver._react = react
     driver.tipkit_dismiss_id = _SCRIM
     driver.tipkit_container_id = _CONTAINER
-    dismissed: list[str] = []
-
-    def alert_guard(d: base.Driver) -> AlertEvent | None:
-        # Stands in for the SpringBoard dismiss: clears the alert so the retry can find the target.
-        assert isinstance(d, FakeDriver)
-        if any(e["identifier"] == "sys.alert" for e in d.screen):
-            dismissed.append("sys.alert")
-            d.screen = [el("stable.refresh", "Refresh", ["button"])]
-            return AlertEvent(label="Allow")
-        return None
 
     result = run_scenario(
         driver,
@@ -156,10 +152,10 @@ def test_a_tip_and_a_system_alert_are_both_recovered_in_one_step() -> None:
             {"name": "e", "iosTipKitHandling": True, "steps": [{"tap": {"id": "stable.refresh"}}]}
         ),
         clock=FakeClock(),
-        alert_guard=AlertGuardConfig(vision=alert_guard),
+        alert_guard=AlertGuardConfig(labels=["Allow"]),
     )
     assert result.ok, result.failure
-    assert dismissed == ["sys.alert"], (
+    assert driver.dismissals == 1, (
         "the tip dismiss swallowed the failure and starved the alert guard"
     )
 
@@ -248,9 +244,9 @@ def test_a_scrim_that_never_closes_is_tapped_a_bounded_number_of_times() -> None
     # tip was covering. `_TIP_MAX_DISMISSES` caps it and the wait degrades to its ordinary timeout,
     # the same way a mis-set `interrupts` entry goes inert.
     #
-    # The bound is composed the way the alert guard's already is (`_GUARD_MAX_ATTEMPTS` + 1): the
-    # mid-wait hook is capped, and the end-of-step dismiss adds its own single attempt. One hook is
-    # built per step and shared by both retries, so neither re-arms the mid-wait counter.
+    # The bound is composed the way the alert guard's in-tree dismiss already is: the mid-wait hook
+    # is capped, and the end-of-step dismiss adds its own single attempt. One hook is built per step
+    # and shared by both retries, so neither re-arms the mid-wait counter.
     # No `react`: the tip outlives every tap.
     driver = FakeDriver([el(_SCRIM, "dismiss popup"), el(_CONTAINER)])
     driver.tipkit_dismiss_id = _SCRIM

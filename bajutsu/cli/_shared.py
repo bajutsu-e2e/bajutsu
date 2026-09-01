@@ -165,8 +165,8 @@ def _install_usage_ledger(eff: Effective, command: str, *, scenario: str | None 
 
     The one-line entry point every AI CLI command shares: configure the ledger from `eff.ai`, then
     bind `command` (and an optional `scenario`) so each recorded event says what its tokens were
-    spent on. Reporting only — never on the deterministic verdict path. `run` does not use this: it
-    binds per-scenario at the alert guard so attribution reaches the runner's worker threads.
+    spent on. Reporting only — never on the deterministic verdict path. `run` does not use this and
+    installs no ledger: since BE-0402 nothing in it reaches a model, so it has nothing to attribute.
     """
     from bajutsu.analytics import ledger as usage_ledger
 
@@ -434,35 +434,35 @@ def _build_alert_locator(eff: Effective, redactor: Redactor) -> ClaudeAlertLocat
     rather than constructing a client that would fall back to a hosted default, keeping the
     deterministic gate Claude-free. `ai.provider: none` (BE-0394) arrives through the same seam as a
     gap that can never close, so the switch needs no branch of its own here — only its own wording.
-    Shared by `run` (one locator across its per-scenario guards) and by `_build_alert_guard` (the
-    single-guard `crawl` / `record` path).
+    Serves `_build_alert_guard` below, and through it the `crawl` / `record` path. `run` no longer
+    reaches here at all: BE-0402 removed its alert guard's vision fallback.
     """
     from bajutsu.agents.alerts import ClaudeAlertLocator
 
     # The credential is provider-specific: the key named by ai.keyEnv (default ANTHROPIC_API_KEY) for
     # Anthropic, a provider-prefixed model for Bedrock (AWS credentials authenticate there), and for
     # `none` a gap that is the policy itself rather than a missing value — a key exported into the
-    # shell no longer re-enables the fallback. When there is a gap we don't construct the locator at
-    # all — the vision fallback no-ops rather than falling back.
-    # Only the *vision* fallback needs the credential; the iOS XCUITest native alert path (BE-0315)
-    # still clears the common system prompts without one, so the note names the vision fallback, not
-    # "the whole guard", to avoid implying the run has no alert handling at all.
+    # shell no longer re-enables the guard. When there is a gap we don't construct the locator at all
+    # and the guard no-ops rather than falling back to a hosted default. Only `record` and `crawl`
+    # reach here (BE-0402), and neither has a native alert path, so each note says plainly that no
+    # prompt will be cleared — the version that pointed at `run`'s native path was the right thing to
+    # say only while `run` was also a caller.
     gap = credential_gap(eff.ai)
     if gap == ai_disabled.DISABLED:
         typer.echo(
             "note: alert-handling is on but the vision alert guard is off (ai.provider: none) — "
-            "no screenshot is sent (on the iOS XCUITest backend the native path still clears common prompts)"
+            "no screenshot is sent, and no system prompt will be cleared"
         )
     elif gap == "anthropic-key":
         typer.echo(
             f"note: alert-handling is on but ${anthropic_client.key_env(eff.ai)} is unset — "
-            "the vision alert guard will no-op (on the iOS XCUITest backend the native path still clears common prompts)"
+            "the vision alert guard will no-op, so no system prompt will be cleared"
         )
     elif gap == "bedrock-model":
         typer.echo(
             "note: alert-handling is on but no Bedrock model id is set "
-            "(ai.model / BAJUTSU_BEDROCK_MODEL) — the vision alert guard will no-op "
-            "(on the iOS XCUITest backend the native path still clears common prompts)"
+            "(ai.model / BAJUTSU_BEDROCK_MODEL) — the vision alert guard will no-op, "
+            "so no system prompt will be cleared"
         )
     if gap is not None:
         return None
@@ -477,9 +477,7 @@ def _build_alert_guard(
     Builds the shared locator (`_build_alert_locator`) and binds it to one `SystemAlertGuard` with
     the given vision instruction (an empty one falls back to the guard's built-in dismissive
     default).
-    Returns None when the credential is missing, so the caller's guard simply no-ops. `run` does not
-    use this: it shares one locator across per-scenario guards and wraps each in usage attribution,
-    so it calls `_build_alert_locator` directly.
+    Returns None when the credential is missing, so the caller's guard simply no-ops.
     """
     from bajutsu.agents.alerts import SystemAlertGuard
 

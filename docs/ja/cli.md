@@ -19,7 +19,7 @@
 
 ## `run`
 
-シナリオを **決定的に実行**します。合否は機械判定のみです。唯一の AI コンポーネントは**アラートガード**の視覚フォールバック（シナリオごとに既定 ON）で、ステップをブロックした OS プロンプトのうち、ネイティブの SpringBoard 経路（iOS XCUITest、モデル不使用）が名指しできないものを片付けるためだけに動作します。詳しくは [`systemAlertHandling`](scenarios.md#systemalerthandlingシステムアラートガード) を参照してください。
+シナリオを **決定的に実行**します。合否は機械判定のみで、[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md) 以降は**どのフラグを付けてもモデルに到達しません**。**アラートガード**（シナリオごとに既定 ON）は、ステップをブロックした OS プロンプトをネイティブの SpringBoard 経路（iOS XCUITest、モデル不使用）で片付けます。その経路が名指しできないプロンプトには手を触れず、ブロックされたステップ自身の失敗理由に書き出します。詳しくは [`systemAlertHandling`](scenarios.md#systemalerthandlingシステムアラートガード) を参照してください。
 
 ```bash
 bajutsu run --target <name> [--scenario <file.yaml>] [options]
@@ -37,10 +37,9 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 | `--exclude` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオをスキップ |
 | `--udid` | `booted` | 対象 Simulator（カンマ区切り = `--workers` 用のデバイスプール） |
 | `--erase / --no-erase` | シナリオ › config › off | 各シナリオの `preconditions.erase`（シム全体を wipe）を上書き。省略時は各シナリオの値、次にターゲットの `erase` config、次に off の順で解決（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。アプリはどちらでも毎回 fresh に再インストール（config `appPath` + `preconditions.reinstall`） |
-| `--system-alert-handling / --no-system-alert-handling` | シナリオ › config › ON | 各シナリオの `systemAlertHandling` を上書きします。iOS バックエンドから見えないシステムアラートを消すリアクティブなガードで、XCUITest 上ではネイティブに（モデル不使用、BE-0315）、ネイティブ経路が名指しできないものは視覚フォールバックで処理します。省略時は各シナリオの値、次にターゲットの `systemAlertHandling` config、次に ON の順で解決します（視覚フォールバックは設定した AI プロバイダが必要です。`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報。ネイティブ経路は認証情報不要です。[recording](recording.md#システムアラートの自動対処)） |
+| `--system-alert-handling / --no-system-alert-handling` | シナリオ › config › ON | 各シナリオの `systemAlertHandling` を上書きします。iOS バックエンドから見えないシステムアラートを消すリアクティブなガードで、XCUITest 上ではネイティブに処理します（モデル不使用、BE-0315）。決定的な経路がどれも片付けられないアラートには何もしません。ガード対象の `wait` は見たものを自身のタイムアウトで必ず名指しし、wait の外のステップは、ネイティブ照会がアラートを列挙できたときだけ名指しします。ネイティブ照会を持たないバックエンドでは名指しする材料がないため、そのステップは従来どおり失敗します（BE-0402）。省略時は各シナリオの値、次にターゲットの `systemAlertHandling` config、次に ON の順で解決します。AI 認証情報は一切不要です（[recording](recording.md#システムアラートの自動対処)） |
 | `--ios-tipkit-handling / --no-ios-tipkit-handling` | シナリオ › config › OFF | 各シナリオの `iosTipKitHandling` を上書きします。操作をブロックしている Apple **TipKit** の tip を閉じます。フレームワークが所有する popover であり、同じ回避策をシナリオごとに手で書かずに済ませるためのガードです。ガードは tip を、閉じるための scrim（`PopoverDismissRegion`）とその tip 自身のコンテナ（`TipView`）の両方で判定します。`confirmationDialog` が同一の scrim を設置するため、そちらには手を触れないようにする必要があるからです。同じ理由で、tip 向けの `interrupts` エントリを手で書く場合は `TipView` を手がかりにします。iOS 専用（他のバックエンドでは何もしません）で、求められない限り **OFF** です。tip 自体がアサーションの対象になる場合があるからです。省略時は各シナリオの値、次にターゲットの `iosTipKitHandling` config、次に OFF の順で解決します。認証情報は不要です（[scenarios](scenarios.md)） |
 | `--alert-labels` | "" | ネイティブのアラート経路が押すボタンラベルをカンマ区切りで指定します。シナリオ自身の `systemAlertHandling.labels` の**後ろ**、ターゲット config の前に連結されます |
-| `--alert-vision-instruction` | "" | AI 視覚フォールバックだけが読む自由記述。シナリオ自身の `systemAlertHandling.visionInstruction` の下位、ターゲットの上位に位置します |
 | `--alert-poll-interval` | 未設定 | ネイティブのシステムアラート presence 照会の間隔（秒）。シナリオ自身の `pollInterval` の下位、ターゲットの上位に位置します |
 | `--log-predicate` | "" | `deviceLog` ストリームを絞る NSPredicate（例 subsystem） |
 | `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `bundleId`） |
@@ -65,9 +64,8 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 - 証跡は `FileSink(runs/<runId>, udid=..., log_predicate=...)` に書きます（[evidence](evidence.md#sink証跡の出力先)）。
 - `runId` は `YYYYMMDD-HHMMSS`。
 - 出力: `PASS|FAIL  runs/<runId>/manifest.json`。**終了コードは全シナリオ成功で 0、失敗で 1**。
-- run 内で唯一 AI を使うアラートガードの視覚フォールバックが実際に発火したときは、結果の後に消費トークン量を示す
-  `AI usage:` 行を **stderr** に出力します（stdout は機械可読の結果 1 行のままです）。AI を使わな
-  かった run では何も出力しません。
+- `AI usage:` 行は出力しません。`run` はどのフラグを付けてもトークンを消費しないため（BE-0402）、
+  使用量台帳を導入せず、報告もしません。`record`、`crawl`、`triage --ai` は従来どおり出力します。
 
 ```bash
 bajutsu run --target showcase-swiftui --udid <UDID> --backend ios --no-erase            # アプリのシナリオディレクトリ全体

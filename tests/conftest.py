@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -75,6 +75,50 @@ class ShotDriver(FakeDriver):
     def screenshot(self, path: str) -> None:
         Path(path).write_bytes(b"\x89PNG\r\n\x1a\n fake")
         self.actions.append(("screenshot", path))
+
+
+# The dismissive button `AlertingDriver` shows by default; every candidate-label test that does not
+# care which button it is names this one.
+GUARD_LABEL = "Not Now"
+
+
+class AlertingDriver(FakeDriver):
+    """A FakeDriver showing one SpringBoard prompt the alert guard's native path can tap.
+
+    The way a test makes the reactive guard actually *clear* something since BE-0402 removed the
+    AI-vision fallback: the one path left is BE-0316's SpringBoard query and tap, so the prompt is
+    seeded where that query reads it (`system_alert_buttons`) rather than injected as a callable.
+    Answering it runs `on_dismiss`, which is where a test scripts what the screen does next — the
+    role the old vision stub's body played.
+    """
+
+    def __init__(
+        self,
+        screen: list[base.Element] | None = None,
+        *,
+        label: str = GUARD_LABEL,
+        on_dismiss: Callable[[AlertingDriver], None] | None = None,
+    ) -> None:
+        super().__init__(screen if screen is not None else [])
+        self._on_dismiss = on_dismiss
+        self.dismissals = 0
+        self.system_alert_buttons = [
+            {
+                "identifier": None,
+                "label": label,
+                "traits": ["button"],
+                "value": None,
+                "frame": (0.0, 0.0, 10.0, 10.0),
+                "nativeZ": None,
+            }
+        ]
+
+    def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+        super().handle_system_alert(sel, timeout)
+        self.dismissals += 1
+        self.system_alert_buttons = []  # answered, so the next probe reports no alert
+        if self._on_dismiss is not None:
+            self._on_dismiss(self)
 
 
 ROADMAP_HEADINGS_EN = ("Introduction", "Motivation", "Detailed design", "Alternatives considered")

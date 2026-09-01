@@ -229,9 +229,9 @@ class RunResult:
 
 
 # on_blocked(driver) -> the AlertEvent it dismissed if it cleared a blocking condition
-# (e.g. a system alert), so the step/expect is worth retrying; else None. The vision guard's
-# `SystemAlertGuard.dismiss` is one; `AlertGuardConfig` (below) is another, layering the native path
-# (BE-0316's `handle_system_alert`) over it.
+# (e.g. a system alert), so the step/expect is worth retrying; else None. `record` / `crawl` pass the
+# vision guard's `SystemAlertGuard.dismiss`; `run` passes `AlertGuardConfig` (below), whose every
+# path is deterministic (BE-0402).
 BlockedHandler = Callable[[base.Driver], "AlertEvent | None"]
 
 # The reactive guard's default native presence-query cadence (seconds), overridable per scenario /
@@ -249,8 +249,9 @@ _NATIVE_TAP_TIMEOUT = 0.0
 # preference order: least-destructive first — the notification prompt's "Don't Allow" (straight and
 # curly apostrophe, since iOS renders U+2019), App Tracking Transparency's "Ask App Not to Track",
 # then generic dismissive labels. A prompt whose dismissive button is none of these resolves to no
-# candidate and falls through to the vision guard. Keep this in step with the vision locator's own
-# dismissive-button policy prose (`agents/alerts.py` `LOCATOR_SYSTEM`) so the two paths agree.
+# candidate, and `run` then leaves it alone and names it in the blocked step's own failure reason
+# (BE-0402). Keep this in step with the vision locator's own dismissive-button policy prose
+# (`agents/alerts.py` `LOCATOR_SYSTEM`), which `record` / `crawl` still run, so the two paths agree.
 DEFAULT_DISMISSIVE_LABELS: tuple[str, ...] = (
     "Don't Allow",
     "Don’t Allow",
@@ -264,8 +265,40 @@ DEFAULT_DISMISSIVE_LABELS: tuple[str, ...] = (
 
 # What a native probe found: "incapable" (backend has no native path), "absent" (no alert — a
 # deterministic fact), "dismissed" (a policy-named button was tapped), "unhandled" (an alert is up
-# but no candidate label resolves, so the caller falls back to vision).
+# but no candidate label resolves, so nothing clears it and the caller reports it instead).
 NativeAlertState = Literal["incapable", "absent", "dismissed", "unhandled"]
+
+# The notes a blocked step or wait appends to its own failure reason when the guard saw something it
+# could not clear (BE-0402). Without it, a `tap` or `wait` stuck behind an
+# unanticipated prompt reads as a bare "element not found" — the reading BE-0402 exists to remove.
+_UNHANDLED_ALERT_NOTE = "an unhandled system alert is blocking the screen"
+_BLOCKED_SCREEN_NOTE = "the screen appears blocked, possibly by a system alert or another overlay outside the app's view"
+_UNCLEARED_PROMPT_NOTE = "a system prompt the guard could not clear is still up"
+
+
+def alert_block_note(buttons: Sequence[str]) -> str:
+    """What the guard saw blocking the screen, for a failure reason to name (BE-0402).
+
+    *buttons* are the labels a native probe read off an alert no rule or candidate label names —
+    `probe_native`'s `"unhandled"` answer, and only that. Empty means the block was inferred from
+    the collapsed-tree proxy rather than enumerated — a surface `springboard.alerts` cannot see, or
+    a backend with no native query at all — so the note hedges rather than naming buttons nobody
+    read. A prompt the policy *did* name and the in-tree dismiss failed to clear is a different
+    story, and gets `uncleared_prompt_note` below instead.
+    """
+    if buttons:
+        return f"{_UNHANDLED_ALERT_NOTE} (buttons: {', '.join(buttons)})"
+    return _BLOCKED_SCREEN_NOTE
+
+
+def uncleared_prompt_note(label: str) -> str:
+    """The in-tree dismiss's own give-up: a prompt it named and could not clear (BE-0402).
+
+    Deliberately not `alert_block_note`: "unhandled" would tell the author no candidate label
+    resolved, when their label resolved and only the tap failed — it did not take, or never became
+    deliverable — sending them to add a label they already wrote instead of to the stuck prompt.
+    """
+    return f"{_UNCLEARED_PROMPT_NOTE} (button: {label})"
 
 
 def pick_alert_label(candidates: Sequence[str], buttons: Sequence[str]) -> str | None:
@@ -273,7 +306,7 @@ def pick_alert_label(candidates: Sequence[str], buttons: Sequence[str]) -> str |
 
     Exactly once — not merely present — so an alert with two identically labeled buttons never
     resolves to "whichever matched first" (determinism first, mirroring `resolve_unique`). None means
-    no candidate resolves uniquely, so the caller falls back to the vision guard.
+    no candidate resolves uniquely, so the caller reports the alert rather than tapping one of them.
     """
     present = list(buttons)
     for label in candidates:
@@ -315,22 +348,31 @@ def match_alert_rule(rules: Sequence[ResolvedAlertRule], buttons: Sequence[str])
 class AlertGuardConfig:
     """The reactive system-alert guard's per-scenario configuration and dismiss entry point (BE-0315).
 
-    Callable as the `BlockedHandler` it replaces — `guard(driver)` clears a blocking system alert,
-    preferring the deterministic native path (BE-0316's SpringBoard query + `handle_system_alert`)
-    when the backend advertises `HANDLE_SYSTEM_ALERT`, and falling back to the injected `vision` guard
-    otherwise. `rules` are checked first — each answers one named prompt regardless of which label it
-    shares with another; `labels` are the ordered candidate button labels the native path
-    falls back to for whatever no rule identifies (empty → the built-in dismissive default);
-    `poll_interval` is the native presence-query cadence the mid-wait gate polls on, decoupled from
-    the wait's own condition poll.
+    Callable as the `BlockedHandler` it replaces — `guard(driver)` clears a blocking system alert
+    through the deterministic native path (BE-0316's SpringBoard query + `handle_system_alert`) on a
+    backend advertising `HANDLE_SYSTEM_ALERT`, or through the in-tree dismiss for an app-owned prompt
+    that query cannot see. Every path here is deterministic: BE-0402 removed the AI-vision fallback
+    from `run`, so where neither path can act the guard does nothing and records `blocked_note` for
+    the blocked step to report. `rules` are checked first — each answers one named prompt regardless
+    of which label it shares with another; `labels` are the ordered candidate button labels the
+    native path falls back to for whatever no rule identifies (empty → the built-in dismissive
+    default); `poll_interval` is the native presence-query cadence the mid-wait gate polls on,
+    decoupled from the wait's own condition poll.
     """
 
-    vision: BlockedHandler
     labels: list[str] = field(default_factory=list)
     rules: list[ResolvedAlertRule] = field(default_factory=list)
     poll_interval: float = DEFAULT_ALERT_POLL_INTERVAL
+    # What the most recent `__call__` saw blocking the screen and could not clear, for the end-of-step
+    # and `expect` retry to append to the step's own failure reason (BE-0402). Rewritten on every
+    # call, never accumulated: it states what the last probe saw, not that a block was ever seen.
+    # Safe to hold here because `_guard_for` builds one config per scenario and a scenario's steps run
+    # in sequence, so no note crosses a scenario or a worker boundary.
+    blocked_note: str = field(default="", init=False)
 
-    def probe_native(self, driver: base.Driver) -> tuple[NativeAlertState, AlertEvent | None]:
+    def probe_native(
+        self, driver: base.Driver
+    ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
         """Query and, where possible, clear a system alert natively; report what happened.
 
         Reads BE-0316's SpringBoard query (`system_alert_labels`) to learn the alert's buttons, picks
@@ -338,37 +380,43 @@ class AlertGuardConfig:
         and taps it through BE-0316's `handle_system_alert`. The returned `AlertEvent` is set only for
         `"dismissed"`. `"absent"` is a deterministic no-*SpringBoard*-alert fact — but the native query
         only sees `springboard.alerts`, so a non-enumerable surface (an action sheet, a WKWebView
-        dialog) reads as `"absent"` too, and the caller still routes it to the vision guard (`__call__`
-        one-shot; the mid-wait gate via its debounced collapsed-tree proxy). `"unhandled"` means an
-        alert is up but no rule or candidate label resolves, so the caller falls back to the vision
-        guard.
+        dialog) reads as `"absent"` too, and only the mid-wait gate's debounced collapsed-tree proxy
+        can notice it. `"unhandled"` means an alert is up but no rule or candidate label resolves, so
+        nothing here can clear it.
+
+        The third member carries the buttons this query actually read, empty unless an alert was
+        seen. `"unhandled"` is the state that needs them: BE-0402 left that alert on screen, so the
+        labels are all a blocked step or wait has to name what stopped it, and they would otherwise
+        be discarded here. Returned rather than re-queried at that moment, since a second
+        cross-process query costs another round trip on the runner's single main thread and reopens
+        the time-of-check/time-of-use window the dismiss-race branches below exist to close.
         """
         if base.Capability.HANDLE_SYSTEM_ALERT not in driver.capabilities():
-            return "incapable", None
+            return "incapable", None, []
         buttons = driver.system_alert_labels()
         if not buttons:
-            return "absent", None
+            return "absent", None, []
         label = match_alert_rule(self.rules, buttons) or pick_alert_label(
             self.labels or DEFAULT_DISMISSIVE_LABELS, buttons
         )
         if label is None:
-            return "unhandled", None
+            return "unhandled", None, list(buttons)
         try:
             driver.handle_system_alert({"label": label}, _NATIVE_TAP_TIMEOUT)
         except base.ElementNotFound:
             # A time-of-check/time-of-use race: the alert vanished between the presence query and the
             # tap. It is no longer blocking, so treat it as absent rather than failing the step on a
             # benign, self-resolved race — a genuine channel error still propagates.
-            return "absent", None
+            return "absent", None, []
         except base.AmbiguousSelector:
             # The other half of that race, and *not* the same answer: the alert is still up, now
             # offering the label twice. Reporting "absent" would say no system alert is showing,
             # which is the one thing licensing an in-tree tap (`_observe_native`'s `probed_absent`) —
             # and that tap, made under a live alert, is what XCUITest answers with its own default
             # button. "unhandled" is what this already is by definition: an alert is up but no
-            # candidate resolves, so it routes to the vision guard and licenses nothing.
-            return "unhandled", None
-        return "dismissed", AlertEvent(label=label)
+            # candidate resolves, so it licenses nothing and is reported instead.
+            return "unhandled", None, list(buttons)
+        return "dismissed", AlertEvent(label=label), list(buttons)
 
     def dismiss_from_tree_once(self, driver: base.Driver) -> AlertEvent | None:
         """Tap a scenario-named dismiss button visible in the driver's own tree, once.
@@ -416,9 +464,10 @@ class AlertGuardConfig:
         return AlertEvent(label=label)
 
     def __call__(self, driver: base.Driver) -> AlertEvent | None:
-        # The end-of-step / expect retry: a one-shot dismiss.
-        state, event = self.probe_native(driver)
+        """The end-of-step / expect retry: a one-shot dismiss, or None with `blocked_note` set."""
+        state, event, buttons = self.probe_native(driver)
         if state == "dismissed":
+            self.blocked_note = ""
             return event
         if state == "absent":
             # No *SpringBoard* alert, which is both the licence to tap an app element (XCUITest
@@ -426,11 +475,14 @@ class AlertGuardConfig:
             # the case where an app-owned prompt is the remaining explanation for the failed step.
             tree_event = self.dismiss_from_tree_once(driver)
             if tree_event is not None:
+                self.blocked_note = ""
                 return tree_event
-        # incapable / absent / unhandled: let the vision guard try — it may see a surface the native
-        # `springboard.alerts` query cannot enumerate (e.g. an action sheet), and no-ops without a
-        # credential. It stays off the pass/fail verdict either way (prime directive 1).
-        return self.vision(driver)
+        # "unhandled": an alert is up that no rule or candidate label names. BE-0402 leaves it alone
+        # rather than asking a model where to tap, so the step keeps failing — but on its own timeout
+        # with the alert named, not as an unexplained missing element. "incapable" and a bare
+        # "absent" clear the note instead: neither is evidence of anything blocking the screen.
+        self.blocked_note = alert_block_note(buttons) if state == "unhandled" else ""
+        return None
 
 
 def push_interruption_policy(driver: base.Driver, guard: AlertGuardConfig | None) -> None:

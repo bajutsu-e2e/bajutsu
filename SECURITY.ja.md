@@ -27,7 +27,7 @@ Android（adb）バックエンドがいずれも実装済みです。本プロ�
 挙げます。
 
 - **API キー / シークレット。** `ANTHROPIC_API_KEY` が必要なのは AI パス（`record`、
-  `run --system-alert-handling`）だけです。API キーはコミットしたり共有したりせず、`.env`
+  `crawl`、`triage --ai`）だけです。API キーはコミットしたり共有したりせず、`.env`
   （gitignore 済み）に保管してください。決定的な `run`／CI ゲートにシークレットは不要です。
   追跡対象の pre-commit フックと CI での再スキャンが、どちらも
   [gitleaks](https://github.com/gitleaks/gitleaks) を使ってシークレットをブランチに

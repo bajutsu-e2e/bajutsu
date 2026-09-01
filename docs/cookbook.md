@@ -84,9 +84,11 @@ A runtime permission prompt (notifications, location, …) is an **out-of-proces
 part of the app's own UI — the iOS backend can't tap it directly. `systemAlertHandling` hands that one
 tap to the reactive alert guard, which watches for the prompt and taps "Allow" through a deterministic
 native accessibility query, with no screenshot and no model call, while every assertion around it
-stays machine-checked. The `instruction` must take the list form (`["Allow"]`): the native path
-resolves a list deterministically, but a free-text string falls back to the guard's default dismissive
-labels and denies the prompt instead of granting it.
+stays machine-checked. Name the button with `labels: ["Allow"]`: that is the key the native path
+resolves. `visionInstruction` steered the vision fallback and now reaches no command from a
+scenario, so `run` refuses it rather than falling through to the default dismissive labels and
+denying the prompt
+([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)).
 
 ```yaml
 - name: grant notification permission

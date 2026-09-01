@@ -277,10 +277,11 @@ target's device `locale`.
 **Claude API key** (shown when the Anthropic API provider is selected) is **write-once**: enter a
 key and **Save**, and it is shown only masked and never
 displayed again — to change it, set a new one; **Clear** removes it. It powers the Anthropic API
-provider and the alert guard's vision fallback (Bedrock uses AWS credentials instead). Only the AI
-paths need it: **Record**, **Crawl**, and Replay with alert-dismiss on — Replay's iOS native path
-(BE-0315) clears common prompts without it, so the key there only backs the vision fallback for
-what the native path can't name.
+provider (Bedrock uses AWS credentials instead). Only the AI paths need it: **Record** and
+**Crawl**. Replay does not — since
+[BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)
+its alert guard is the native path alone (BE-0315), which clears the common prompts with no key and
+consults none.
 
 **Scenario secrets** ([BE-0274](../roadmaps/BE-0274-serve-scenario-secrets/BE-0274-serve-scenario-secrets.md))
 lists the secrets the *bound config* declares — the environment-variable names under its `secrets:`
