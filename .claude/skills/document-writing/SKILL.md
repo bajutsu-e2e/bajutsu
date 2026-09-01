@@ -168,12 +168,34 @@ run both.
 ## Mandatory textlint verification after drafting
 
 The norms above guide human judgment; they are not machine-checkable. Once a piece is drafted, run
-it through [textlint](https://github.com/textlint/textlint) and **keep revising and rerunning until
-every finding is gone**. Do not call a piece done with findings still outstanding. textlint is a
-mechanical floor, not a substitute for the norms above — passing it does not mean the piece
-satisfies them. This applies to English and Japanese prose alike; the same config and runtime cover
-both. When a norm here conflicts with a textlint rule, textlint takes priority: clear the finding by
-revising the prose, not by loosening the config to dodge it.
+it through [textlint](https://github.com/textlint/textlint) and revise until it introduces **no new
+findings**. The bar is the file you started from, not zero. textlint is a mechanical floor, not a
+substitute for the norms above — clearing it does not mean the piece satisfies them. This applies to
+English and Japanese prose alike; the same config and runtime cover both.
+
+Zero is not the bar because zero is not reachable here, and a target nobody reaches is a target
+nobody aims at. Every merged roadmap item carries findings — BE-0390's Japanese side reports 77,
+BE-0376's 59 — and 69 of BE-0390's 77 come from a single rule, `no-mix-dearu-desumasu`, which
+demands bullets in である調, the register [`CLAUDE.md`](../../../CLAUDE.md) forbids for `*-ja.md`.
+Chasing zero therefore buys a long revise-and-rerun loop that can only end in an arbitrary stop, and
+it is the largest single cost in authoring an item. Measuring against the file's own starting count
+ends the loop on a fact instead.
+
+- **Count before you edit.** Run textlint on the file as it stands and keep the number, then clear
+  what you introduced against it.
+- **A new file has no starting count**, so that rule says nothing about one — reading it as "zero"
+  reinstates the unreachable bar this section exists to retire. Calibrate against the corpus
+  instead: run textlint on two or three merged items of comparable length and land in the same
+  order of magnitude. BE-0376 reports 140 English findings, so a new item scoring near that is in
+  family; one at several times it has a real prose problem worth finding.
+- **Clear what you introduced**, and **leave what you inherited** — pre-existing findings in a file
+  you are touching in part are outside your lane, and clearing them widens the diff.
+- **A repository norm outranks a textlint rule where the two cannot both hold.** The live case is
+  register: CLAUDE.md puts every `*-ja.md` in 敬体, **bullet lists included** — so unify the whole
+  document, never just its running prose, and leave the `no-mix-dearu-desumasu` findings that
+  unification leaves behind. Switching the file to である調 to clear them inverts the hierarchy.
+- **Everywhere else textlint wins**: clear the finding by revising the prose, never by loosening the
+  config or raising a threshold to dodge it.
 
 ### Running it
 
