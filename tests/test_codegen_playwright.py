@@ -400,7 +400,7 @@ def test_describe_name_for_humanizes_stem() -> None:
 
 def _cli_setup(tmp_path: Path) -> tuple[Path, Path]:
     """A config with one web app (baseUrl) and one iOS app (bundleId), plus a scenario file."""
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(
         "targets:\n"
         "  web: { baseUrl: 'http://localhost:3000', idNamespaces: [home] }\n"

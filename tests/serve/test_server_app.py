@@ -75,7 +75,7 @@ def test_scenario_secrets_delegate_to_operations(
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(SCENARIO, encoding="utf-8")
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(
         "defaults: { backend: [ios] }\n"
         "targets:\n"
@@ -154,7 +154,7 @@ def test_upload_route_binds_bundle_like_stdlib(tmp_path: Path) -> None:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(
-            "bajutsu.config.yaml",
+            "bajutsu.common.config.yaml",
             "defaults: { backend: [fake] }\n"
             "targets:\n  demo: { bundleId: com.example.demo, scenarios: ./scenarios }\n",
         )
@@ -863,7 +863,7 @@ def test_doctor_endpoint_returns_checks(tmp_path: Path) -> None:
     """POST /api/doctor via FastAPI returns the same shape as the stdlib handler (BE-0024)."""
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(
         "defaults: { backend: [fake] }\ntargets:\n"
         f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",

@@ -3,7 +3,7 @@ run-time interpolation that keeps the value out of the recorded scenario."""
 
 from __future__ import annotations
 
-from bajutsu.config import load_config, resolve
+from bajutsu.common.config import load_config, resolve
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence.redaction import PLACEHOLDER, Redactor

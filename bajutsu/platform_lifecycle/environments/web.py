@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import cast
 
 from bajutsu import backends, simctl
-from bajutsu.config import Effective, require_web
+from bajutsu.common.config import Effective, require_web
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 from bajutsu.drivers import base
 from bajutsu.evidence import intervals

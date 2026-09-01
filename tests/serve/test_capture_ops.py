@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from _shared import project
 
-from bajutsu.config import Effective, IosConfig
+from bajutsu.common.config import Effective, IosConfig
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence.redaction import Redactor
@@ -110,7 +110,7 @@ def _ios_state(tmp_path: Path) -> ServeState:
     """A ServeState whose `ios` target declares `backend: [ios]` (BE-0267)."""
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(
         "defaults: { backend: [ios] }\n"
         "targets:\n"
@@ -200,7 +200,7 @@ def test_start_capture_rebases_app_path_against_state_cwd(tmp_path: Path) -> Non
     scn_dir.mkdir(parents=True)
     app_dir = bundle / "app" / "MyApp.app"
     app_dir.mkdir(parents=True)
-    cfg = bundle / "bajutsu.config.yaml"
+    cfg = bundle / "bajutsu.common.config.yaml"
     cfg.write_text(
         "defaults: { backend: [ios] }\n"
         "targets:\n"

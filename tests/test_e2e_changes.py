@@ -277,12 +277,13 @@ def test_doctors_ai_availability_half_stays_excluded() -> None:
 
 
 def test_provision_is_web_only() -> None:
-    # The web lane's `onboarding (doctor / provision)` job runs `python -m bajutsu.provision
-    # --backend web` to install Chromium for real (BE-0304), so a provisioner change is web-relevant.
-    # No other lane invokes it: neither runs `scripts/install.sh`, its only other caller.
-    assert is_relevant(["bajutsu/provision.py"], "web") is True
-    assert is_relevant(["bajutsu/provision.py"], "ios") is False
-    assert is_relevant(["bajutsu/provision.py"], "android") is False
+    # The web lane's `onboarding (doctor / provision)` job runs
+    # `python -m bajutsu.common.provisioning.provision --backend web` to install Chromium for real
+    # (BE-0304), so a provisioner change is web-relevant. No other lane invokes it: neither runs
+    # `scripts/install.sh`, its only other caller.
+    assert is_relevant(["bajutsu/common/provisioning/provision.py"], "web") is True
+    assert is_relevant(["bajutsu/common/provisioning/provision.py"], "ios") is False
+    assert is_relevant(["bajutsu/common/provisioning/provision.py"], "android") is False
 
 
 def test_serve_analytics_modules_are_relevant_on_no_lane_except_web_serve() -> None:
@@ -559,14 +560,14 @@ def test_periphery_exclusions_carry_a_reason() -> None:
 # run-path file is either gated or explicitly excluded.
 
 # The files the three lanes actually execute — `bajutsu run` / `codegen` / `record` / `doctor`, the
-# web lane's `python -m bajutsu.provision`, and the on-device conformance harness. Their transitive
-# `bajutsu` imports are the run path this check must keep fully classified.
+# web lane's `python -m bajutsu.common.provisioning.provision`, and the on-device conformance
+# harness. Their transitive `bajutsu` imports are the run path this check must keep fully classified.
 _RUN_ENTRYPOINTS = (
     "bajutsu/cli/commands/run.py",
     "bajutsu/cli/commands/codegen.py",
     "bajutsu/cli/commands/record.py",
     "bajutsu/cli/commands/doctor.py",
-    "bajutsu/provision.py",
+    "bajutsu/common/provisioning/provision.py",
     "tests/driver_conformance.py",
 )
 

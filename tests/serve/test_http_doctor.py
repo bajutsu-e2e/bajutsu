@@ -87,7 +87,7 @@ def test_doctor_fake_backend_returns_ok(tmp_path: Path) -> None:
     """A target with the 'fake' backend needs no tools, so all checks pass."""
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(
         "defaults: { backend: [fake] }\ntargets:\n"
         f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",
@@ -114,7 +114,7 @@ def test_doctor_web_target_missing_base_url(tmp_path: Path) -> None:
     """A web target without baseUrl fails the config check."""
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(
         "defaults: { backend: [playwright] }\ntargets:\n"
         f"  webapp: {{ bundleId: com.example, scenarios: {scn_dir} }}\n",
@@ -142,7 +142,7 @@ def test_doctor_score_present_for_fake_backend(tmp_path: Path) -> None:
     empty, so the score grades it Blocked — but the point is the score section is present."""
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(
         "defaults: { backend: [fake] }\ntargets:\n"
         f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",
@@ -167,7 +167,7 @@ def test_doctor_score_null_when_unrunnable(tmp_path: Path) -> None:
     """When the runnability gate fails there is no reachable screen, so the score is null."""
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(
         "defaults: { backend: [playwright] }\ntargets:\n"
         f"  webapp: {{ bundleId: com.example, scenarios: {scn_dir} }}\n",
@@ -205,7 +205,7 @@ def test_doctor_web_target_with_base_url(tmp_path: Path) -> None:
     """A web target with baseUrl passes the config check (runnability may still fail)."""
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(
         "defaults: { backend: [playwright] }\ntargets:\n"
         f"  webapp: {{ baseUrl: 'http://localhost:3000', scenarios: {scn_dir} }}\n",

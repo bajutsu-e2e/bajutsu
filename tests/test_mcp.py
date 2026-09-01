@@ -25,7 +25,7 @@ def _run(coro: Any) -> Any:
 
 
 def test_create_server_returns_fastmcp(tmp_path: Path) -> None:
-    config = tmp_path / "bajutsu.config.yaml"
+    config = tmp_path / "bajutsu.common.config.yaml"
     config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
     from bajutsu.mcp import create_server
 
@@ -37,7 +37,7 @@ def test_create_server_returns_fastmcp(tmp_path: Path) -> None:
 
 
 def test_doctor_tool_returns_score(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = tmp_path / "bajutsu.config.yaml"
+    config = tmp_path / "bajutsu.common.config.yaml"
     config.write_text(
         "defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n    idNamespaces: [home]\n",
         encoding="utf-8",
@@ -69,7 +69,7 @@ def test_doctor_tool_reports_probe_config_error(
 ) -> None:
     # A DoctorProbeError (e.g. a web target with no baseUrl) is a fixable config error, not a
     # crash — the tool returns its message instead of raising through the MCP transport.
-    config = tmp_path / "bajutsu.config.yaml"
+    config = tmp_path / "bajutsu.common.config.yaml"
     config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
     from fastmcp import FastMCP
 
@@ -95,7 +95,7 @@ def test_doctor_tool_reports_device_error(tmp_path: Path, monkeypatch: pytest.Mo
     # A runner that never comes up (no booted Simulator, a dead `/health`, ...) surfaces a
     # DeviceError from the probe; the tool reports it as a clean message, matching the CLI's UX,
     # rather than an unhandled exception.
-    config = tmp_path / "bajutsu.config.yaml"
+    config = tmp_path / "bajutsu.common.config.yaml"
     config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
     from fastmcp import FastMCP
 
@@ -145,7 +145,7 @@ def test_parse_verdict_empty_stdout_yields_empty_path() -> None:
 
 
 def test_run_tool_returns_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = tmp_path / "bajutsu.config.yaml"
+    config = tmp_path / "bajutsu.common.config.yaml"
     config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
     runs_dir = tmp_path / "runs"
     runs_dir.mkdir()
@@ -178,7 +178,7 @@ def test_run_tool_returns_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_run_tool_returns_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = tmp_path / "bajutsu.config.yaml"
+    config = tmp_path / "bajutsu.common.config.yaml"
     config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
     runs_dir = tmp_path / "runs"
     runs_dir.mkdir()
@@ -215,7 +215,7 @@ def test_run_tool_no_manifest_keeps_stderr_off_the_verdict_line(
     # When `run` crashes before emitting a verdict line, there is no manifest path. stderr must not
     # land in the manifest slot ("FAIL  <stderr>") — the first line stays the verdict, stderr goes
     # on its own line, so the `PASS|FAIL  <manifest>` first-line shape is never faked.
-    config = tmp_path / "bajutsu.config.yaml"
+    config = tmp_path / "bajutsu.common.config.yaml"
     config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
     (tmp_path / "runs").mkdir()
 
@@ -465,7 +465,7 @@ def test_cli_mcp_starts_server(
             started["transport"] = transport  # record instead of blocking on a real server
 
     monkeypatch.setattr("bajutsu.mcp.create_server", lambda _cfg, _runs: _FakeServer())
-    config = tmp_path / "bajutsu.config.yaml"
+    config = tmp_path / "bajutsu.common.config.yaml"
     config.write_text("defaults: {}\ntargets: {}\n", encoding="utf-8")
     r = runner.invoke(app, ["mcp", "--config", str(config), "--transport", transport])
     assert r.exit_code == 0

@@ -20,7 +20,7 @@ from collections.abc import Iterable, Iterator
 from typing import Any
 
 from bajutsu.analysis import coverage as _coverage
-from bajutsu.config import load_config, resolve
+from bajutsu.common.config import load_config, resolve
 from bajutsu.evidence.network import NetworkExchange
 from bajutsu.scenario import load_scenarios_dir
 from bajutsu.serve.artifacts import ArtifactStore

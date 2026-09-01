@@ -21,7 +21,7 @@ from bajutsu.backends import (
     select_actuator_for_scenario,
 )
 from bajutsu.backends import make_driver as _make_driver
-from bajutsu.config import Effective
+from bajutsu.common.config import Effective
 from bajutsu.drivers import base
 from bajutsu.evidence import FileSink
 from bajutsu.evidence.network import Collector, NetworkCollector, _no_transitions

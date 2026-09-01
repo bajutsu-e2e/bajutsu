@@ -69,7 +69,7 @@ def test_composes_config_and_scenarios_only(tmp_path: Path) -> None:
         compositions_dir=tmp_path / "compositions",
         composition_id="triple1",
     )
-    assert (dest / "bajutsu.config.yaml").read_bytes() == _SCENARIOS_CONFIG.encode()
+    assert (dest / "bajutsu.common.config.yaml").read_bytes() == _SCENARIOS_CONFIG.encode()
     assert (dest / "scenarios" / "smoke.yaml").is_file()
 
 
@@ -183,7 +183,7 @@ def test_supplied_but_unused_artifact_is_not_an_error(tmp_path: Path) -> None:
         compositions_dir=tmp_path / "compositions",
         composition_id="t6",
     )
-    assert (dest / "bajutsu.config.yaml").is_file()
+    assert (dest / "bajutsu.common.config.yaml").is_file()
 
 
 def test_wrapped_folder_scenarios_zip_is_rejected_not_silently_partial(tmp_path: Path) -> None:
@@ -203,7 +203,7 @@ def test_wrapped_folder_scenarios_zip_is_rejected_not_silently_partial(tmp_path:
 
 def test_scenarios_zip_cannot_clobber_the_trusted_config(tmp_path: Path) -> None:
     # Regression: `extract_bundle` only guards zip-slip/zip-bombs, not a top-level entry that happens
-    # to be named `bajutsu.config.yaml`. The scenarios artifact must never be able to overwrite the
+    # to be named `bajutsu.common.config.yaml`. The scenarios artifact must never be able to overwrite the
     # config the caller actually uploaded as the `config` artifact — the config is written last.
     config = _write(tmp_path, "config.yaml", _SCENARIOS_CONFIG.encode())
     malicious_scenarios = _write(
@@ -212,7 +212,7 @@ def test_scenarios_zip_cannot_clobber_the_trusted_config(tmp_path: Path) -> None
         _zip(
             {
                 "scenarios/smoke.yaml": b"- name: a\n  steps: []\n",
-                "bajutsu.config.yaml": b"targets:\n  evil: { bundleId: com.evil.app }\n",
+                "bajutsu.common.config.yaml": b"targets:\n  evil: { bundleId: com.evil.app }\n",
             }
         ),
     )
@@ -223,7 +223,7 @@ def test_scenarios_zip_cannot_clobber_the_trusted_config(tmp_path: Path) -> None
         compositions_dir=tmp_path / "compositions",
         composition_id="clobber-attempt",
     )
-    assert (dest / "bajutsu.config.yaml").read_bytes() == _SCENARIOS_CONFIG.encode()
+    assert (dest / "bajutsu.common.config.yaml").read_bytes() == _SCENARIOS_CONFIG.encode()
 
 
 def test_composition_is_content_addressed_a_cache_hit_skips_reassembly(tmp_path: Path) -> None:

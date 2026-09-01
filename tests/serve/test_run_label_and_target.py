@@ -40,7 +40,7 @@ def test_launch_label_disambiguates_two_configs_from_one_repository() -> None:
     # one label — the collision an explicit project name used to resolve. The in-repo config path
     # is what keeps them apart, so the stamp is built the way `serve` actually builds it rather than
     # hand-shaped: a hand-built dict would pass against a stamp that carries no path at all.
-    from bajutsu.config_source import GitConfigSpec, Materialized, source_provenance
+    from bajutsu.common.config_source import GitConfigSpec, Materialized, source_provenance
 
     mat = Materialized(Path("/c/cfg.yaml"), Path("/c"), "deadbeef")
     web = source_provenance(
@@ -58,10 +58,10 @@ def test_launch_label_disambiguates_two_configs_from_one_repository() -> None:
 def test_the_label_defaults_to_the_bound_config_and_the_body_overrides_it(tmp_path: Path) -> None:
     _scn, cfg, runs = project(tmp_path)
     state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
-    assert _run_label(state, {}) == ("bajutsu.config", None)
+    assert _run_label(state, {}) == ("bajutsu.common.config", None)
     assert _run_label(state, {"label": "nightly"}) == ("nightly", None)
     # A blank override is not a label — fall back to the default rather than recording "".
-    assert _run_label(state, {"label": "   "}) == ("bajutsu.config", None)
+    assert _run_label(state, {"label": "   "}) == ("bajutsu.common.config", None)
 
 
 def test_an_oversized_label_is_refused_rather_than_truncated(tmp_path: Path) -> None:
@@ -114,7 +114,9 @@ def test_the_manifest_records_the_target_and_the_label() -> None:
 
 def _labelled(tmp_path: Path) -> srv.ServeState:
     _scn, cfg, runs = project(tmp_path)
-    write_run(runs, "20260101-1", ok=True, scenarios=[("alpha", True)], label="bajutsu.config")
+    write_run(
+        runs, "20260101-1", ok=True, scenarios=[("alpha", True)], label="bajutsu.common.config"
+    )
     write_run(runs, "20260101-2", ok=True, scenarios=[("alpha", True)], label="other.config")
     return srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
 
@@ -149,7 +151,9 @@ def test_an_unlabeled_run_stays_visible_once_labeled_runs_arrive(tmp_path: Path)
     # dropped backfill would otherwise have caused.
     _scn, cfg, runs = project(tmp_path)
     write_run(runs, "20260101-1", ok=True, scenarios=[("alpha", True)])
-    write_run(runs, "20260101-2", ok=True, scenarios=[("alpha", True)], label="bajutsu.config")
+    write_run(
+        runs, "20260101-2", ok=True, scenarios=[("alpha", True)], label="bajutsu.common.config"
+    )
     write_run(runs, "20260101-3", ok=True, scenarios=[("alpha", True)], label="other.config")
     state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
     assert [r["id"] for r in runs_payload(state)[0]] == ["20260101-2", "20260101-1"]
@@ -223,8 +227,8 @@ def test_a_partition_is_not_truncated_by_the_global_window(
             org_id="default",
             status="done",
             ok=True,
-            label="bajutsu.config",
-            summary={"id": "20260101-0", "ok": True, "label": "bajutsu.config"},
+            label="bajutsu.common.config",
+            summary={"id": "20260101-0", "ok": True, "label": "bajutsu.common.config"},
             created_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
     )
@@ -253,7 +257,9 @@ def test_flaky_reads_the_bound_partition_on_both_backends(tmp_path: Path) -> Non
     from bajutsu.serve.operations.reads import _flakiness_report
 
     _scn, cfg, runs = project(tmp_path)
-    write_run(runs, "20260101-1", ok=True, scenarios=[("alpha", True)], label="bajutsu.config")
+    write_run(
+        runs, "20260101-1", ok=True, scenarios=[("alpha", True)], label="bajutsu.common.config"
+    )
     write_run(runs, "20260101-2", ok=False, scenarios=[("alpha", False)], label="other.config")
     state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
     # The ranking sees one run — the bound config's — not both configs' interleaved. (These runs
@@ -278,7 +284,11 @@ def test_an_unlabeled_run_stays_visible_on_the_database_path(
     repository = SqlRepository(engine)
     repository.ensure_org("default", slug="default", name="default")
     _scn, cfg, runs = project(tmp_path)
-    for run_id, label in (("r-old", None), ("r-mine", "bajutsu.config"), ("r-other", "other")):
+    for run_id, label in (
+        ("r-old", None),
+        ("r-mine", "bajutsu.common.config"),
+        ("r-other", "other"),
+    ):
         repository.record_run(
             RunRecord(
                 id=run_id,

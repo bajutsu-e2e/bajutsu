@@ -21,7 +21,7 @@ from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from bajutsu.config import Effective, LaunchServer, web_base_url
+from bajutsu.common.config import Effective, LaunchServer, web_base_url
 from bajutsu.runner.launch_server import _POLL_INTERVAL, _default_log, _probe
 
 # The container runs as a long-lived process we must poll for early exit; the short docker commands

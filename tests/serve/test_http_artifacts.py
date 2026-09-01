@@ -147,7 +147,7 @@ def test_relative_runs_dir_is_anchored_at_launch_cwd(tmp_path: Path, monkeypatch
     cfgdir = tmp_path / "cfgdir"
     scn_dir = cfgdir / "scenarios"
     scn_dir.mkdir(parents=True)
-    cfg = cfgdir / "bajutsu.config.yaml"
+    cfg = cfgdir / "bajutsu.common.config.yaml"
     cfg.write_text(
         f"defaults: {{ backend: [ios] }}\ntargets:\n  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",
         encoding="utf-8",

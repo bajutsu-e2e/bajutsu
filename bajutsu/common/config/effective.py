@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from bajutsu.config.schema import (
+from bajutsu.common.config.schema import (
     DeviceProvider,
     LaunchServer,
     Mailbox,

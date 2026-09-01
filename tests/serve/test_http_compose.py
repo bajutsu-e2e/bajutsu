@@ -95,7 +95,7 @@ def test_compose_binds_a_stored_triple_as_the_active_config(tmp_path: Path) -> N
             "binary": binary_sha,
         }
         # The bound config is the one written into the composed tree, not the raw artifact blob.
-        assert Path(resp["config"]).name == "bajutsu.config.yaml"
+        assert Path(resp["config"]).name == "bajutsu.common.config.yaml"
         assert Path(resp["config"]).read_bytes() == _FULL_CONFIG
     finally:
         server.shutdown()
@@ -295,13 +295,13 @@ def test_compose_current_returns_the_active_composed_legs(tmp_path: Path) -> Non
                 "config": config_sha,
                 "scenarios": scenarios_sha,
                 "binary": binary_sha,
-                "filename": "bajutsu.config.yaml",
+                "filename": "bajutsu.common.config.yaml",
             },
         )
         assert status == 200
         seed = _get_json(port, "/api/compose/current")
         assert seed["artifacts"] == {
-            "config": {"sha256": config_sha, "filename": "bajutsu.config.yaml"},
+            "config": {"sha256": config_sha, "filename": "bajutsu.common.config.yaml"},
             "scenarios": {"sha256": scenarios_sha, "filename": "scenarios.zip"},
             "binary": {"sha256": binary_sha, "filename": "binary"},
         }

@@ -30,8 +30,8 @@ from bajutsu.agents.anthropic_client import ANT_BINARY, ANT_CLI_MISSING, ANTHROP
 from bajutsu.ai import credential_gap, resolved_provider, selectable_providers
 from bajutsu.ai.registry import DISABLED_PROVIDER
 from bajutsu.backends import IMPLEMENTED
-from bajutsu.config import load_config, resolve, xcuitest_pins_runner
-from bajutsu.config_source import materialize, parse_config_spec, source_provenance
+from bajutsu.common.config import load_config, resolve, xcuitest_pins_runner
+from bajutsu.common.config_source import materialize, parse_config_spec, source_provenance
 from bajutsu.platform_lifecycle.environments import (
     bundled_products_dir,
     bundled_runner_build_info,
@@ -772,7 +772,7 @@ def bind_git_config(
         return {"error": f"could not fetch the Git config: {e}"}, 400
     if not mat.config_path.is_file():
         return {
-            "error": f"config not found in the repository at {spec.path or 'bajutsu.config.yaml'}"
+            "error": f"config not found in the repository at {spec.path or 'bajutsu.common.config.yaml'}"
         }, 404
     try:
         cfg = load_config(mat.config_path.read_text(encoding="utf-8"))

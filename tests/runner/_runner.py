@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from bajutsu.config import Effective, IosConfig, WebConfig
+from bajutsu.common.config import Effective, IosConfig, WebConfig
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import NullSink

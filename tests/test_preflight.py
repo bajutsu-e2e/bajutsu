@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from bajutsu import preflight
+from bajutsu.common.capability import preflight
 
 
 def _which(present: set[str]) -> Callable[[str], str | None]:

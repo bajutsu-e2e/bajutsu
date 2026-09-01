@@ -23,11 +23,11 @@ from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-from bajutsu import requirements
 from bajutsu.backends import resolve_actuators
-from bajutsu.config import Config, load_config, resolve, web_engine
-from bajutsu.config_source import DEFAULT_CONFIG
-from bajutsu.requirements import Brew, Extra, Manual, Playwright, Tool
+from bajutsu.common.config import Config, load_config, resolve, web_engine
+from bajutsu.common.config_source import DEFAULT_CONFIG
+from bajutsu.common.provisioning import requirements
+from bajutsu.common.provisioning.requirements import Brew, Extra, Manual, Playwright, Tool
 
 Which = Callable[[str], str | None]
 Runner = Callable[[list[str]], None]
@@ -206,10 +206,12 @@ def _load(config_arg: str | None) -> Config:
 def main(argv: list[str] | None = None) -> int:
     """Resolve a plan from ``--config`` (or forced ``--backend``) and provision it."""
     parser = argparse.ArgumentParser(
-        prog="python -m bajutsu.provision",
+        prog="python -m bajutsu.common.provisioning.provision",
         description="Install the extras and external tools a project's configured backends need.",
     )
-    parser.add_argument("--config", help="config path (default: ./bajutsu.config.yaml if present)")
+    parser.add_argument(
+        "--config", help="config path (default: ./bajutsu.common.config.yaml if present)"
+    )
     parser.add_argument(
         "--backend",
         action="append",

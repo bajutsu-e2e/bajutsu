@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from bajutsu import config
+from bajutsu.common import config
 from bajutsu.runner import launch_server as ls
 
 

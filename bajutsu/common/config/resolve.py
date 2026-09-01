@@ -13,7 +13,7 @@ from typing import Any
 
 from bajutsu import _yaml
 from bajutsu.backends import platform_of, resolve_actuators
-from bajutsu.config.effective import (
+from bajutsu.common.config.effective import (
     AiConfig,
     AndroidConfig,
     DoctorThresholds,
@@ -24,7 +24,7 @@ from bajutsu.config.effective import (
     RunDefaults,
     WebConfig,
 )
-from bajutsu.config.schema import AiSettings, Config, Defaults, TargetConfig
+from bajutsu.common.config.schema import AiSettings, Config, Defaults, TargetConfig
 from bajutsu.scenario import Redact
 
 

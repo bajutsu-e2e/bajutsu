@@ -44,7 +44,7 @@ from backend_crash_recovery import LeaseHolder, LeaseTeardown
 from driver_conformance import OnDeviceConformanceHarness
 from xcuitest_lease import xcuitest_lease_launch
 
-from bajutsu.config import Effective, load_config, resolve
+from bajutsu.common.config import Effective, load_config, resolve
 from bajutsu.drivers import base
 from bajutsu.drivers.xcuitest import XcuitestRunnerCrashError
 from bajutsu.evidence import intervals

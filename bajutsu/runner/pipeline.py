@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from bajutsu.doctor import Score
     from bajutsu.drivers import base
 
-from bajutsu import capability_preflight, device_errors
+from bajutsu import device_errors
 from bajutsu.assertions import (
     AssertionResult,
     EvalContext,
@@ -30,7 +30,8 @@ from bajutsu.backends import (
     erase_precondition_supported,
 )
 from bajutsu.cancellation import CANCELLED_FAILURE, CancelSource, not_cancelled
-from bajutsu.config import Effective
+from bajutsu.common.capability import capability_preflight
+from bajutsu.common.config import Effective
 from bajutsu.drivers.base import BackendCrashError
 from bajutsu.evidence import Artifact
 from bajutsu.evidence.network import NetworkExchange, _no_transitions

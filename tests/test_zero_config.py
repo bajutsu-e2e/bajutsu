@@ -21,8 +21,8 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from bajutsu import capabilities
 from bajutsu.cli import app
+from bajutsu.common.capability import capabilities
 
 runner = CliRunner()
 
@@ -92,7 +92,7 @@ def test_claude_free_command_help_needs_no_ai_setup(command: str) -> None:
 def _fake_config(tmp_path: Path) -> tuple[Path, Path]:
     scn = tmp_path / "s.yaml"
     scn.write_text("- name: demo\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(
         "defaults: { backend: [fake] }\n"
         "targets:\n"

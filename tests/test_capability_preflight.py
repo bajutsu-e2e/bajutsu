@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu import capability_preflight
+from bajutsu.common.capability import capability_preflight
 from bajutsu.drivers import base
 from bajutsu.scenario import Scenario
 
@@ -617,7 +617,7 @@ def test_doctor_scenario_flag_rejects_directory(
 
     from bajutsu.cli import app
 
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(
         "defaults: { backend: [ios] }\n"
         "targets:\n"

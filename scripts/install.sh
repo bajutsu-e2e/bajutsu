@@ -14,4 +14,4 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-exec uv run python -m bajutsu.provision "$@"
+exec uv run python -m bajutsu.common.provisioning.provision "$@"

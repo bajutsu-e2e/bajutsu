@@ -383,7 +383,7 @@ def _target_state(tmp_path: Path) -> ServeState:
             "".join(f"- name: {n}\n  steps:\n    - tap: {{ id: home.title }}\n" for n in names),
             encoding="utf-8",
         )
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(
         "defaults: { backend: [fake] }\ntargets:\n"
         f"  demo: {{ bundleId: com.example.demo, scenarios: {tmp_path / 'demo'} }}\n"

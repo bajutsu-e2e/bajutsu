@@ -359,7 +359,7 @@ def test_http_provider_settings_still_reads_available_under_a_config_kill_switch
     (scn_dir / "smoke.yaml").write_text(
         "- name: alpha\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8"
     )
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(
         "defaults: { backend: [ios], ai: { provider: none } }\n"
         f"targets:\n  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",

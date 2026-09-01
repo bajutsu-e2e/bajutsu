@@ -11,8 +11,8 @@ import typer
 import typer.core
 import typer.main
 
-from bajutsu import capabilities
 from bajutsu.cli import app
+from bajutsu.common.capability import capabilities
 
 
 def _registered_commands() -> set[str]:

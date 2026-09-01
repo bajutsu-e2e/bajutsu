@@ -14,7 +14,7 @@ import pytest
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519, padding, rsa
 
-from bajutsu.config_source import GitConfigSpec
+from bajutsu.common.config_source import GitConfigSpec
 from bajutsu.github import GitHubAccessError
 from bajutsu.github.app import _app_jwt, _fetch, installation_token
 

@@ -49,7 +49,7 @@ def _write_entry(zf: zipfile.ZipFile, name: str, content: str | bytes) -> None:
 def _bundle_zip(config: str = _CONFIG, scenario: str = _SCENARIO) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        _write_entry(zf, "bajutsu.config.yaml", config)
+        _write_entry(zf, "bajutsu.common.config.yaml", config)
         _write_entry(zf, "scenarios/smoke.yaml", scenario)
     return buf.getvalue()
 
@@ -144,7 +144,7 @@ def test_upload_binds_as_active_config(tmp_path: Path) -> None:
     try:
         status, resp = _post_bytes(port, "/api/upload?name=suite.zip", _bundle_zip())
         assert status == 200 and resp["ok"] is True
-        assert resp["config"].endswith("bajutsu.config.yaml")
+        assert resp["config"].endswith("bajutsu.common.config.yaml")
         assert "demo" in resp["targets"]
         assert resp["source"]["kind"] == "upload" and resp["source"]["filename"] == "suite.zip"
         assert len(resp["source"]["sha256"]) == 64
@@ -178,7 +178,7 @@ def test_run_from_bound_bundle_into_serve_runs(tmp_path: Path) -> None:
         assert (tmp_path / "uploads").resolve() in bundle_root.resolve().parents
         # …but the run is written into serve's runs store (an absolute --runs-dir), not the sandbox.
         assert cmd[cmd.index("--runs-dir") + 1] == str((tmp_path / "runs").resolve())
-        assert cmd[cmd.index("--config") + 1].endswith("bajutsu.config.yaml")
+        assert cmd[cmd.index("--config") + 1].endswith("bajutsu.common.config.yaml")
         assert cmd[cmd.index("--scenario") + 1].endswith("smoke.yaml")
         assert "--baselines" not in cmd  # the bundle config drives baselines, resolved against cwd
     finally:
@@ -352,7 +352,7 @@ def test_upload_store_write_failure_binds_nothing_but_keeps_the_local_cache(
 def test_upload_rejects_zip_slip_bundle(tmp_path: Path) -> None:
     server, port = _serve(_state(tmp_path))
     try:
-        slip = _zip_with({"bajutsu.config.yaml": _CONFIG.encode(), "../escape.txt": b"x"})
+        slip = _zip_with({"bajutsu.common.config.yaml": _CONFIG.encode(), "../escape.txt": b"x"})
         status, resp = _post_bytes(port, "/api/upload?name=evil.zip", slip)
         assert status == 400 and "invalid bundle" in resp["error"]
         assert not (tmp_path / "escape.txt").exists()
@@ -372,7 +372,9 @@ def test_upload_rejects_config_path_outside_bundle(tmp_path: Path) -> None:
             "targets:\n  demo: { bundleId: com.example.demo, appPath: ../../../etc/passwd }\n",
         ):
             status, resp = _post_bytes(
-                port, "/api/upload?name=evil.zip", _zip_with({"bajutsu.config.yaml": cfg.encode()})
+                port,
+                "/api/upload?name=evil.zip",
+                _zip_with({"bajutsu.common.config.yaml": cfg.encode()}),
             )
             assert status == 400 and "invalid bundle" in resp["error"]
         assert _extracted_dirs(tmp_path) == []
@@ -387,7 +389,7 @@ def test_upload_rejects_bundle_without_config(tmp_path: Path) -> None:
         status, resp = _post_bytes(
             port, "/api/upload?name=nope.zip", _zip_with({"readme.txt": b"hi"})
         )
-        assert status == 400 and "no bajutsu.config.yaml" in resp["error"]
+        assert status == 400 and "no bajutsu.common.config.yaml" in resp["error"]
     finally:
         server.shutdown()
         server.server_close()

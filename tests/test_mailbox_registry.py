@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from bajutsu.config import Mailbox
+from bajutsu.common.config import Mailbox
 from bajutsu.mailbox import MailboxMessage
 from bajutsu.orchestrator import MailboxReader
 from bajutsu.runner import mailbox as mb

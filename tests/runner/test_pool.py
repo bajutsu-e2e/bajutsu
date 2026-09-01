@@ -13,7 +13,7 @@ import pytest
 from _runner import _eff, _el, _web_eff
 
 from bajutsu import simctl
-from bajutsu.config import Effective
+from bajutsu.common.config import Effective
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver, FakeNetworkCollector
 from bajutsu.evidence import FileSink

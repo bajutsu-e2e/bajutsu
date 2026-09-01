@@ -40,7 +40,7 @@ def _android_batch_project(
     apk = tmp_path / "app.apk"
     apk.write_text("APK", encoding="utf-8")
     budget_line = f"    cloudBatchBudget: {budget}\n" if budget is not None else ""
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(
         "targets:\n"
         "  demo:\n"
@@ -93,7 +93,7 @@ def test_fan_out_registers_one_batch_job_per_scenario(tmp_path: Path) -> None:
         assert job.batch.provider == "devicefarm"
         assert job.batch.target == "demo"
         assert job.batch.platform == "android"
-        assert job.batch.config == "bajutsu.config.yaml"
+        assert job.batch.config == "bajutsu.common.config.yaml"
         assert job.batch.app_path == str(tmp_path / "app.apk")
 
 
@@ -119,7 +119,7 @@ def test_fan_out_rejects_a_target_not_wired_for_cloud_batch(tmp_path: Path) -> N
     (scn_dir / "one.yaml").write_text(
         "- name: a\n  steps:\n    - tap: { id: x }\n", encoding="utf-8"
     )
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(
         f"targets: {{ demo: {{ platform: android, package: com.example.demo, scenarios: {scn_dir} }} }}\n",
         encoding="utf-8",
@@ -140,7 +140,7 @@ def test_fan_out_rejects_a_web_target(tmp_path: Path) -> None:
     (scn_dir / "one.yaml").write_text(
         "- name: a\n  steps:\n    - tap: { id: x }\n", encoding="utf-8"
     )
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(
         "targets:\n"
         "  demo:\n"
@@ -182,7 +182,7 @@ def test_fan_out_rejects_a_target_with_no_app_to_install(tmp_path: Path) -> None
     (scn_dir / "one.yaml").write_text(
         "- name: a\n  steps:\n    - tap: { id: x }\n", encoding="utf-8"
     )
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(
         "targets:\n"
         "  demo:\n"

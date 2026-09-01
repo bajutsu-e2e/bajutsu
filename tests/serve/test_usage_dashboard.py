@@ -37,13 +37,13 @@ def _event(
 
 
 def _state_with_ledger(tmp_path: Path, ledger: Path) -> srv.ServeState:
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(f"defaults:\n  ai:\n    usageLedger: {ledger}\n", encoding="utf-8")
     return srv.ServeState(runs_dir=tmp_path / "runs", config=cfg)
 
 
 def _state_with_config(tmp_path: Path, yaml_text: str) -> srv.ServeState:
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(yaml_text, encoding="utf-8")
     return srv.ServeState(runs_dir=tmp_path / "runs", config=cfg, cwd=tmp_path)
 
@@ -115,7 +115,7 @@ def test_usage_dashboard_degrades_when_ledger_is_unreadable(tmp_path: Path) -> N
 
 def test_usage_dashboard_empty_when_persistence_disabled(tmp_path: Path) -> None:
     # An explicit empty `usageLedger` disables recording; the dashboard reads nothing and says so.
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text('defaults:\n  ai:\n    usageLedger: ""\n', encoding="utf-8")
     state = srv.ServeState(runs_dir=tmp_path / "runs", config=cfg)
 

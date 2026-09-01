@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from bajutsu.config import (
+from bajutsu.common.config import (
     AndroidConfig,
     Effective,
     IosConfig,

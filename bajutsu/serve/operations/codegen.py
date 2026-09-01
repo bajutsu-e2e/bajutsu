@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu.codegen import EMIT_TARGETS, CodegenError, generate_test
-from bajutsu.config import load_config, resolve
+from bajutsu.common.config import load_config, resolve
 from bajutsu.scenario import load_scenarios
 from bajutsu.serve.operations._common import _resolve_org_or_forbid
 from bajutsu.serve.state import ServeState

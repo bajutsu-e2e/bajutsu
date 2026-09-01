@@ -15,8 +15,8 @@ from conftest import el
 from pydantic import ValidationError
 
 from bajutsu.cancellation import RunCancelled, cancelled_teardown_seconds, grace_seconds
-from bajutsu.capability_preflight import unsupported
-from bajutsu.config import load_config, resolve
+from bajutsu.common.capability.capability_preflight import unsupported
+from bajutsu.common.config import load_config, resolve
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario

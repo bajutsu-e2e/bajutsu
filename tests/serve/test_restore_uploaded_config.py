@@ -27,7 +27,7 @@ from bajutsu.serve.operations.upload import restore_uploaded_config
 def _bundle_zip() -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("bajutsu.config.yaml", "targets: {}\n")
+        zf.writestr("bajutsu.common.config.yaml", "targets: {}\n")
     return buf.getvalue()
 
 
@@ -68,7 +68,7 @@ def test_a_stored_bundle_is_fetched_extracted_and_bound(tmp_path: Path) -> None:
 
     result = restore_uploaded_config(state, source, org="default")
     assert result is not None and result[1] == 200
-    assert state.config is not None and state.config.name == "bajutsu.config.yaml"
+    assert state.config is not None and state.config.name == "bajutsu.common.config.yaml"
 
 
 def test_nothing_to_restore_from_answers_none(tmp_path: Path) -> None:
@@ -109,7 +109,7 @@ def test_a_local_cache_hit_never_touches_the_store(tmp_path: Path) -> None:
     sha256 = hashlib.sha256(blob).hexdigest()
     cached = tmp_path / "uploads" / sha256
     cached.mkdir(parents=True)
-    (cached / "bajutsu.config.yaml").write_text("targets: {}\n", encoding="utf-8")
+    (cached / "bajutsu.common.config.yaml").write_text("targets: {}\n", encoding="utf-8")
 
     class _PoisonedStore(FakeObjectStore):
         def get_bytes(self, key: str) -> bytes | None:
@@ -134,7 +134,7 @@ def test_one_org_never_cache_hits_into_another_s_extracted_tree(tmp_path: Path) 
     sha256 = hashlib.sha256(blob).hexdigest()
     org_a = tmp_path / "uploads" / "orgA" / sha256
     org_a.mkdir(parents=True)
-    (org_a / "bajutsu.config.yaml").write_text("targets: {}\n", encoding="utf-8")
+    (org_a / "bajutsu.common.config.yaml").write_text("targets: {}\n", encoding="utf-8")
 
     state = _state(tmp_path, object_store=FakeObjectStore())
     source = {"kind": "upload", "filename": "x.zip", "sha256": sha256, "size": len(blob)}
@@ -178,7 +178,7 @@ def test_a_composed_triple_is_fetched_and_composed(tmp_path: Path) -> None:
 
     result = restore_uploaded_config(state, source, org="default")
     assert result is not None and result[1] == 200
-    assert state.config is not None and state.config.name == "bajutsu.config.yaml"
+    assert state.config is not None and state.config.name == "bajutsu.common.config.yaml"
 
 
 def test_a_composed_triple_answers_none_without_a_store_or_a_valid_config_sha(

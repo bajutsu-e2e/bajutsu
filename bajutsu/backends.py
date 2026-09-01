@@ -24,7 +24,7 @@ from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 
 if TYPE_CHECKING:
-    from bajutsu.config import Effective
+    from bajutsu.common.config import Effective
     from bajutsu.device_os import DeviceOS
     from bajutsu.drivers.adb import ActFn, ClockFetch, HierarchyFetch
     from bajutsu.scenario import Scenario
@@ -213,9 +213,9 @@ def capabilities_for_run(
 
     Every other backend, and the Simulator default, is unchanged.
     """
-    # Lazy import: `bajutsu.config` imports this module (`resolve` -> `platform_of`), so a top-level
+    # Lazy import: `bajutsu.common.config` imports this module (`resolve` -> `platform_of`), so a top-level
     # import would close the cycle. By call time config is fully loaded.
-    from bajutsu.config import xcuitest_targets_real_device
+    from bajutsu.common.config import xcuitest_targets_real_device
 
     caps = capabilities_for(actuator)
     if actuator == "xcuitest":
@@ -254,7 +254,7 @@ def erase_precondition_supported(
     """
     if actuator != "xcuitest":
         return True
-    from bajutsu.config import xcuitest_targets_real_device
+    from bajutsu.common.config import xcuitest_targets_real_device
     from bajutsu.platform_lifecycle.environments.xcuitest_live import is_webdriver_endpoint
 
     return not (is_webdriver_endpoint(udid_spec) or xcuitest_targets_real_device(eff))
@@ -294,7 +294,7 @@ def device_replacement_supported(
         and erase_precondition_supported(actuator, eff, udid_spec)
     ):
         return False
-    from bajutsu.config import require_ios
+    from bajutsu.common.config import require_ios
 
     return require_ios(eff).app_path is not None
 
@@ -386,7 +386,7 @@ def select_actuator_for_scenario(
     if avail is None:
         return select_actuator(backends, available)  # hard pin / none available (may raise)
     # Lazy import: keeps this module's import free of the scenario/preflight graph (used only here).
-    from bajutsu import capability_preflight
+    from bajutsu.common.capability import capability_preflight
 
     for actuator in avail:
         if not capability_preflight.unsupported(scenario, caps(actuator)):

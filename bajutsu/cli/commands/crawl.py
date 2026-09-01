@@ -45,7 +45,7 @@ from bajutsu.cli._shared import (
     _with_headed,
     resolve_system_alert_handling_flag,
 )
-from bajutsu.config import Effective, web_base_url
+from bajutsu.common.config import Effective, web_base_url
 from bajutsu.crawl import flows as crawl_flows
 from bajutsu.crawl import report as crawl_report
 from bajutsu.crawl import repro as crawl_repro

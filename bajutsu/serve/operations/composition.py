@@ -4,7 +4,7 @@ The runner needs a single self-contained tree its config's relative `scenarios`/
 `baselines`/`setup` resolve against — exactly what BE-0073's combined bundle already gives it.
 This module is the sibling that assembles the same shape from three independently-uploaded,
 content-addressed artifacts instead of one zip: the `config` artifact's bytes become
-`bajutsu.config.yaml` at the tree root, and the `binary` artifact is placed at each target's
+`bajutsu.common.config.yaml` at the tree root, and the `binary` artifact is placed at each target's
 resolved `appPath` — extracted as a directory when the config declares a `.app` bundle, written as a
 raw file otherwise (an `.ipa`, an Android `.apk`).
 
@@ -28,7 +28,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from bajutsu.config import WebConfig, load_config, resolve
+from bajutsu.common.config import WebConfig, load_config, resolve
 from bajutsu.serve.uploads import extract_bundle, validate_bundle_config
 
 # Everything a single-file `scenarios` artifact's basename may NOT contain. The dropped filename is
@@ -90,7 +90,7 @@ def _place_scenarios_and_binaries_and_check_coherence(
     into the config-named directory instead, since the target is unknown until the config loads.
     `resolve(...).rebased(root)` already confines every path to *root*. A supplied-but-unused artifact
     is not an error — one artifact may be composed against several configs that don't all need it."""
-    config_path = root / "bajutsu.config.yaml"
+    config_path = root / "bajutsu.common.config.yaml"
     cfg = load_config(config_path.read_text(encoding="utf-8"))
     placed: set[Path] = set()
     for name in cfg.targets:
@@ -160,14 +160,14 @@ def materialize_composition(
     try:
         # Extract a zip scenarios artifact *before* writing the config: it is untrusted content, and
         # `extract_bundle` only guards against zip-slip/zip-bombs, not a top-level entry that
-        # happens to be named `bajutsu.config.yaml`. Writing the trusted config bytes last means
+        # happens to be named `bajutsu.common.config.yaml`. Writing the trusted config bytes last means
         # such an entry is silently overwritten by the real config, never the other way around —
         # composition never binds/validates a config the caller didn't upload as the `config`
         # artifact. A single-YAML scenarios artifact carries no such entry; it is placed later, once
         # the config names its directory.
         if scenarios_path is not None and scenarios_is_zip:
             extract_bundle(scenarios_path, tmp)
-        (tmp / "bajutsu.config.yaml").write_bytes(config_path.read_bytes())
+        (tmp / "bajutsu.common.config.yaml").write_bytes(config_path.read_bytes())
         _place_scenarios_and_binaries_and_check_coherence(
             tmp, scenarios_path, scenarios_is_zip, scenarios_filename, binary_path
         )

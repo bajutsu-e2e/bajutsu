@@ -10,7 +10,7 @@ from typer.testing import CliRunner
 from bajutsu.cli import app
 from bajutsu.codegen import EMIT_TARGETS, CodegenError, generate_test
 from bajutsu.codegen.uiautomator import class_name_for, to_uiautomator
-from bajutsu.config import load_config, resolve
+from bajutsu.common.config import load_config, resolve
 from bajutsu.scenario import load_scenarios
 
 PACKAGE = "com.example.app"
@@ -831,7 +831,7 @@ def test_generate_test_uiautomator_on_non_android_target_fails() -> None:
 
 def _cli_setup(tmp_path: Path) -> tuple[Path, Path]:
     """A config with one Android app (package) and one web app (baseUrl), plus a scenario file."""
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(
         "targets:\n"
         "  droid: { package: com.example.app, idNamespaces: [home] }\n"

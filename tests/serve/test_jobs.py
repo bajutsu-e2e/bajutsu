@@ -705,7 +705,7 @@ def test_try_register_forwards_the_per_call_device_budget(tmp_path: Path) -> Non
         provider="devicefarm",
         scenario="scenarios/s.yaml",
         target="demo",
-        config="bajutsu.config.yaml",
+        config="bajutsu.common.config.yaml",
         platform="android",
         app_path="app.apk",
     )
@@ -776,7 +776,7 @@ def test_job_registry_caps_concurrent_batch_by_provider_pool() -> None:
             provider=provider,
             scenario="scenarios/s.yaml",
             target="demo",
-            config="bajutsu.config.yaml",
+            config="bajutsu.common.config.yaml",
             platform="android",
             app_path="app.apk",
         )
@@ -800,7 +800,7 @@ def test_job_registry_batch_budget_unlimited_by_default() -> None:
         provider="devicefarm",
         scenario="scenarios/s.yaml",
         target="demo",
-        config="bajutsu.config.yaml",
+        config="bajutsu.common.config.yaml",
         platform="android",
         app_path="app.apk",
     )
@@ -825,7 +825,7 @@ def _bundle(uploads_dir: Path, name: str) -> Upload:
     """An Upload backed by a real extraction dir under *uploads_dir* (BE-0073)."""
     d = uploads_dir / name
     d.mkdir(parents=True)
-    cfg = d / "bajutsu.config.yaml"
+    cfg = d / "bajutsu.common.config.yaml"
     cfg.write_text("targets: {}\n", encoding="utf-8")
     return Upload(dir=d, config=cfg, filename=f"{name}.zip", sha256="x", size=1, org="default")
 

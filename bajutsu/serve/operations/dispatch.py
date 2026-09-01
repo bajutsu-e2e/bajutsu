@@ -253,7 +253,7 @@ def start_run(
     # and the run uses the real config / baselines paths.
     materials = dict(runnable.materials)
     on_worker = bool(materials)
-    config_arg = "bajutsu.config.yaml" if on_worker else str(cfg)
+    config_arg = "bajutsu.common.config.yaml" if on_worker else str(cfg)
     if on_worker:
         materials[config_arg] = cfg.read_text(encoding="utf-8")
     # Always point --runs-dir at serve's own store (`state.runs_dir`, absolutized at launch in
@@ -513,7 +513,7 @@ def start_record(
     materials: dict[str, str] = {}
     config_arg = str(cfg)
     if on_worker:
-        config_arg = "bajutsu.config.yaml"
+        config_arg = "bajutsu.common.config.yaml"
         materials[config_arg] = cfg.read_text(encoding="utf-8")
     cmd = record_command(
         authored.out,

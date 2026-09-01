@@ -17,13 +17,13 @@ import pytest
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
-from bajutsu.preflight import Check
+from bajutsu.common.capability.preflight import Check
 
 runner = CliRunner()
 
 
 def _config(tmp_path: Path) -> Path:
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text("targets:\n  demo:\n    package: com.example.app\n", encoding="utf-8")
     return cfg
 
@@ -61,7 +61,7 @@ def test_environment_only_passes_without_probing_the_screen(
     _forbid_probe(monkeypatch)
     _adb_available(monkeypatch)
     monkeypatch.setattr(
-        "bajutsu.preflight.doctor_environment_checks",
+        "bajutsu.common.capability.preflight.doctor_environment_checks",
         lambda *a, **k: [Check("device attached", True, "1 attached")],
     )
     r = runner.invoke(
@@ -88,7 +88,7 @@ def test_environment_only_fails_loudly_on_a_broken_gate(
     _forbid_probe(monkeypatch)
     _adb_available(monkeypatch)
     monkeypatch.setattr(
-        "bajutsu.preflight.doctor_environment_checks",
+        "bajutsu.common.capability.preflight.doctor_environment_checks",
         lambda *a, **k: [Check("device attached", False, "attach a device")],
     )
     r = runner.invoke(

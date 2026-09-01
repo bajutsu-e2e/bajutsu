@@ -26,7 +26,7 @@ _CONFIG = "targets:\n  docs: { baseUrl: 'https://example.test/', backend: [web] 
 def _bundle(tmp_path: Path) -> tuple[Path, str]:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("bajutsu.config.yaml", _CONFIG)
+        zf.writestr("bajutsu.common.config.yaml", _CONFIG)
     blob = buf.getvalue()
     path = tmp_path / "bundle.zip"
     path.write_bytes(blob)
@@ -127,7 +127,9 @@ def test_a_second_bind_replaces_the_first_locator(
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("bajutsu.config.yaml", _CONFIG + "  extra: { baseUrl: 'https://x.test/' }\n")
+        zf.writestr(
+            "bajutsu.common.config.yaml", _CONFIG + "  extra: { baseUrl: 'https://x.test/' }\n"
+        )
     blob = buf.getvalue()
     second = tmp_path / "second.zip"
     second.write_bytes(blob)
@@ -148,7 +150,7 @@ def test_the_comparison_ranks_only_the_targets_the_org_owns(
     # disclose another tenant's targets — and, through the run counts, how much it runs.
     from bajutsu.serve.operations.target_comparison import compare_targets
 
-    config = tmp_path / "bajutsu.config.yaml"
+    config = tmp_path / "bajutsu.common.config.yaml"
     config.write_text(
         "targets:\n"
         "  acme-web: { baseUrl: 'https://a.test/', backend: [web] }\n"

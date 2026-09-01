@@ -74,7 +74,7 @@ class _FakeOAuth:
 
 
 def _config(tmp_path: Path, body: str = _COLLIDING_YAML) -> Path:
-    path = tmp_path / "bajutsu.config.yaml"
+    path = tmp_path / "bajutsu.common.config.yaml"
     path.write_text(body, encoding="utf-8")
     return path
 
@@ -336,7 +336,7 @@ def test_an_uploaded_bundle_belongs_to_the_org_that_bound_it(
     )
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("bajutsu.config.yaml", body)
+        zf.writestr("bajutsu.common.config.yaml", body)
     blob = buf.getvalue()
     zip_path = tmp_path / "bundle.zip"
     zip_path.write_bytes(blob)
@@ -363,14 +363,14 @@ def test_a_git_bound_config_belongs_to_the_org_that_bound_it(
 ) -> None:
     # Same rule for a Git source: an arbitrary repository and ref is no more the deployment's own
     # content than an uploaded zip, and BE-0121 already says so of the same file's `build:`.
-    from bajutsu.config_source import Materialized
+    from bajutsu.common.config_source import Materialized
 
     state = _state(serve_engine, tmp_path)
     assert state.repository is not None
     state.repository.upsert_user("kazu", org_id="acme", github_login="kazu", email="k@x")
     checkout = tmp_path / "gitsrc"
     checkout.mkdir()
-    git_config = checkout / "bajutsu.config.yaml"
+    git_config = checkout / "bajutsu.common.config.yaml"
     git_config.write_text(
         "targets:\n  docs: { baseUrl: 'https://example.test/', backend: [web] }\n"
         "orgs:\n  someone-else:\n    targets: [docs]\n",
@@ -772,13 +772,13 @@ def test_binding_a_config_from_the_file_browser_does_not_seed(
 def test_binding_a_git_config_does_not_seed(
     serve_engine: Callable[..., Engine], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from bajutsu.config_source import Materialized
+    from bajutsu.common.config_source import Materialized
 
     state = _unconverted(serve_engine, tmp_path)
     assert state.repository is not None
     checkout = tmp_path / "gitsrc"
     checkout.mkdir()
-    git_config = checkout / "bajutsu.config.yaml"
+    git_config = checkout / "bajutsu.common.config.yaml"
     git_config.write_text(_ORGS_ONLY_YAML, encoding="utf-8")
     # Patched by dotted path rather than through a second import of a module this file already
     # imports a name from: `bind_git_config` resolves `materialize` in its own module globals, so the
@@ -805,7 +805,7 @@ def test_binding_an_uploaded_zip_does_not_seed(
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("bajutsu.config.yaml", _ORGS_ONLY_YAML)
+        zf.writestr("bajutsu.common.config.yaml", _ORGS_ONLY_YAML)
     blob = buf.getvalue()
     zip_path = tmp_path / "bundle.zip"
     zip_path.write_bytes(blob)
@@ -829,7 +829,7 @@ def test_restoring_an_uploaded_config_does_not_seed(
     sha256 = "c" * 64
     cached = tmp_path / "uploads" / "acme" / sha256  # an org-scoped cache hit: nothing to fetch
     cached.mkdir(parents=True)
-    (cached / "bajutsu.config.yaml").write_text(_ORGS_ONLY_YAML, encoding="utf-8")
+    (cached / "bajutsu.common.config.yaml").write_text(_ORGS_ONLY_YAML, encoding="utf-8")
     state = _unconverted(
         serve_engine,
         tmp_path,

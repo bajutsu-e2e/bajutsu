@@ -39,7 +39,7 @@ def run_command(
     workers: int = 1,
     erase: bool | None = None,
     system_alert_handling: bool | None = None,
-    config: str = "bajutsu.config.yaml",
+    config: str = "bajutsu.common.config.yaml",
     baselines: str = "",
     headed: bool | None = None,
     runs_dir: str = "",
@@ -129,7 +129,7 @@ def record_command(
     erase: bool | None = None,
     system_alert_handling: bool | None = None,
     headed: bool | None = None,
-    config: str = "bajutsu.config.yaml",
+    config: str = "bajutsu.common.config.yaml",
     upload_exec: str = "",
 ) -> list[str]:
     """The ``python -m bajutsu record --out OUT --target … --goal …`` argv for an authoring request —
@@ -181,7 +181,7 @@ def crawl_command(
     erase: bool | None = None,
     system_alert_handling: bool | None = None,
     headed: bool | None = None,
-    config: str = "bajutsu.config.yaml",
+    config: str = "bajutsu.common.config.yaml",
     resume_src: str = "",
     resume_key: str = "",
     continue_crawl: bool = False,
@@ -243,7 +243,7 @@ def triage_command(
     ai: bool = False,
     apply_path: str = "",
     json_out: str = "",
-    config: str = "bajutsu.config.yaml",
+    config: str = "bajutsu.common.config.yaml",
 ) -> list[str]:
     """The ``python -m bajutsu triage <run_dir> …`` argv for a serve triage job (BE-0147).
 

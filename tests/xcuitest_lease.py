@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from backend_crash_recovery import LeaseLaunch, LeaseTeardown
 
-from bajutsu.config import Effective
+from bajutsu.common.config import Effective
 from bajutsu.drivers import base
 from bajutsu.platform_lifecycle import environment_for
 from bajutsu.runner.launch import launch_driver

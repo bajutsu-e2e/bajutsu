@@ -12,7 +12,7 @@ import pytest
 from _shared import project
 
 from bajutsu.agents.protocols import EnrichmentProposal, StepContext
-from bajutsu.config import Effective, IosConfig
+from bajutsu.common.config import Effective, IosConfig
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.scenario import Assertion, Scenario
@@ -68,7 +68,7 @@ def _ios_state(tmp_path: Path) -> ServeState:
     (scn_dir / "smoke.yaml").write_text(
         "- name: alpha\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8"
     )
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(
         "defaults: { backend: [ios] }\n"
         "targets:\n"
@@ -118,7 +118,7 @@ def test_start_enrich_rebases_app_path_against_state_cwd(tmp_path: Path) -> None
     )
     app_dir = bundle / "app" / "MyApp.app"
     app_dir.mkdir(parents=True)
-    cfg = bundle / "bajutsu.config.yaml"
+    cfg = bundle / "bajutsu.common.config.yaml"
     cfg.write_text(
         "defaults: { backend: [ios] }\n"
         "targets:\n"
@@ -255,7 +255,7 @@ def test_start_enrich_refuses_under_provider_none(
     (scn_dir / "smoke.yaml").write_text(
         "- name: alpha\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8"
     )
-    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg = tmp_path / "bajutsu.common.config.yaml"
     cfg.write_text(
         "defaults: { backend: [fake], ai: { provider: none } }\n"
         f"targets:\n  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",

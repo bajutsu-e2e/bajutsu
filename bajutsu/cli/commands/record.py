@@ -31,7 +31,7 @@ from bajutsu.cli._shared import (
     resolve_system_alert_handling_flag,
 )
 from bajutsu.cli.handoff import make_handoff
-from bajutsu.config import WEB_ENGINES, Effective
+from bajutsu.common.config import WEB_ENGINES, Effective
 from bajutsu.handoff import HumanHandoffUnavailable
 from bajutsu.platform_lifecycle import environment_for
 from bajutsu.record import record as record_loop

@@ -11,7 +11,7 @@ from collections.abc import Callable, Mapping
 from typing import cast
 
 from bajutsu import simctl
-from bajutsu.config import Effective, require_ios
+from bajutsu.common.config import Effective, require_ios
 from bajutsu.drivers import base
 from bajutsu.orchestrator import RelaunchFn
 from bajutsu.platform_lifecycle import readiness

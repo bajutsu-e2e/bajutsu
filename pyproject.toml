@@ -316,11 +316,11 @@ source_modules = [
     "bajutsu.assertions",
     "bajutsu.evidence",
     "bajutsu.report",
-    "bajutsu.config",
+    "bajutsu.common.config",
     "bajutsu.scenario",
-    "bajutsu.preflight",
-    "bajutsu.capability_preflight",
-    "bajutsu.capabilities",
+    "bajutsu.common.capability.preflight",
+    "bajutsu.common.capability.capability_preflight",
+    "bajutsu.common.capability.capabilities",
     "bajutsu.doctor",
     "bajutsu.lint",
 ]
@@ -348,7 +348,7 @@ forbidden_modules = [
 name = "Deterministic core stays free of the db/oauth hosting extras"
 type = "forbidden"
 source_modules = [
-    "bajutsu.config",
+    "bajutsu.common.config",
     "bajutsu.drivers",
     "bajutsu.runner",
     "bajutsu.scenario",
@@ -382,8 +382,8 @@ forbidden_modules = [
     "bajutsu.assertions",
     "bajutsu.evidence",
     "bajutsu.report",
-    "bajutsu.config",
-    "bajutsu.preflight",
+    "bajutsu.common.config",
+    "bajutsu.common.capability.preflight",
     "bajutsu.doctor",
     "bajutsu.lint",
 ]

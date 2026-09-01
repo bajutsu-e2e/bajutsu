@@ -48,13 +48,13 @@ def _mapping(pl: dict[str, object], key: str) -> dict[str, object]:
 
 
 def test_plist_runs_serve_with_host_port_config() -> None:
-    pl = _plist(host="127.0.0.1", port=8765, config="bajutsu.config.yaml", token=None)
+    pl = _plist(host="127.0.0.1", port=8765, config="bajutsu.common.config.yaml", token=None)
     assert pl["Label"] == "com.bajutsu.serve"
     args = _args(pl)
     assert args[1:4] == ["-m", "bajutsu", "serve"]
     assert args[args.index("--host") + 1] == "127.0.0.1"
     assert args[args.index("--port") + 1] == "8765"
-    assert args[args.index("--config") + 1] == "bajutsu.config.yaml"
+    assert args[args.index("--config") + 1] == "bajutsu.common.config.yaml"
 
 
 def test_plist_carries_non_default_upload_exec() -> None:

@@ -29,7 +29,7 @@ def _target(tmp_path: Path, scenario: str) -> Path:
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(scenario, encoding="utf-8")
-    config = tmp_path / "bajutsu.config.yaml"
+    config = tmp_path / "bajutsu.common.config.yaml"
     config.write_text(
         "targets:\n  demo:\n    bundleId: com.example.demo\n"
         f"    scenarios: {scn_dir}\n    idNamespaces: [login, home]\n",
@@ -172,7 +172,7 @@ def test_malformed_scenario_exits_2(tmp_path: Path) -> None:
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "bad.yaml").write_text("- name: x\n  steps: not-a-list\n", encoding="utf-8")
-    config = tmp_path / "bajutsu.config.yaml"
+    config = tmp_path / "bajutsu.common.config.yaml"
     config.write_text(
         "targets:\n  demo:\n    bundleId: com.example.demo\n"
         f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
@@ -186,7 +186,7 @@ def test_malformed_scenario_exits_2(tmp_path: Path) -> None:
 
 
 def test_missing_scenarios_dir_exits_2(tmp_path: Path) -> None:
-    config = tmp_path / "bajutsu.config.yaml"
+    config = tmp_path / "bajutsu.common.config.yaml"
     config.write_text(
         "targets:\n  demo:\n    bundleId: com.example.demo\n    idNamespaces: [home]\n",
         encoding="utf-8",

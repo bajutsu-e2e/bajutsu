@@ -29,7 +29,7 @@ def launchagent_plist(
     """Build the LaunchAgent plist (XML) for a `bajutsu serve` invocation.
 
     `python` defaults to the current interpreter (the venv's), so the agent uses the same
-    environment. `working_dir` defaults to the current directory so a relative `bajutsu.config.yaml`
+    environment. `working_dir` defaults to the current directory so a relative `bajutsu.common.config.yaml`
     resolves. A token, if given, is placed in EnvironmentVariables, not the program arguments.
     Path values are expanded (`~` → home): launchd does not perform shell expansion, so the plist
     must carry absolute paths or the agent's logs land nowhere.

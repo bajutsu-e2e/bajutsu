@@ -59,7 +59,7 @@ _COMPOSED_KINDS: tuple[ArtifactKind, ...] = tuple(k for k in ARTIFACT_KINDS if k
 # locator a client shaped at bind, so it is untrusted and must be checked before it ever
 # reaches `uploads_dir / sha256` — an unchecked `../`-laden value would let a stored record walk
 # a materialize call outside the cache root (mirrors the Git source's own `_FULL_SHA_RE` guard on a
-# resolved commit SHA, `bajutsu/config_source.py`).
+# resolved commit SHA, `bajutsu/common/config_source.py`).
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -150,7 +150,7 @@ def bind_upload_config(
     """Bind an uploaded zip bundle as the active config (BE-0073) — a third source in the "Open
     config" UI, alongside the file browser and the Git picker.
 
-    The zip is a self-contained checkout — a ``bajutsu.config.yaml``, its scenario tree, and the
+    The zip is a self-contained checkout — a ``bajutsu.common.config.yaml``, its scenario tree, and the
     built ``appPath`` binary it names — delivered over the wire. *sha256* is the digest the handler
     computed while streaming the upload to *zip_path* (so the file is read once, not again to hash).
     We extract it into a serve-owned, sha256-keyed cache (`materialize_bundle`), persist the raw zip
@@ -330,13 +330,13 @@ def _artifact_display_names(
     """Per-leg display names for a composed bind's UI seed (`GET /api/compose/current`).
 
     Provenance only — `materialize_composition` never reads these. Config uses the request's
-    `filename` (falling back to `bajutsu.config.yaml`); a single-YAML scenarios leg keeps the
+    `filename` (falling back to `bajutsu.common.config.yaml`); a single-YAML scenarios leg keeps the
     dropped `scenariosName` (needed to replay the cache-key salt); a zip scenarios leg and a binary
     leg get stable defaults when the request carries no display name."""
     names: dict[str, str] = {}
     if "config" in shas:
         raw = filename if isinstance(filename, str) else ""
-        names["config"] = _safe_filename(raw, default="bajutsu.config.yaml")
+        names["config"] = _safe_filename(raw, default="bajutsu.common.config.yaml")
     if "scenarios" in shas:
         if scenarios_filename:
             names["scenarios"] = _safe_filename(scenarios_filename, default="scenario.yaml")
@@ -493,7 +493,7 @@ def _compose_and_bind(
         return {"error": f"invalid composition: {e}"}, 400
     upload = Upload(
         dir=dest,
-        config=dest / "bajutsu.config.yaml",
+        config=dest / "bajutsu.common.config.yaml",
         filename=_safe_filename(filename if isinstance(filename, str) else ""),
         sha256=composition_id,
         size=size,
@@ -658,7 +658,7 @@ def restore_uploaded_config(
     reached the org row from a client-shaped bind, so its
     `sha256` is untrusted: it must be a full lowercase hex digest (`_SHA256_RE`) before it is ever
     turned into a path (`uploads_dir / sha256`) or object-store key, the same way the Git source
-    validates a resolved commit SHA before doing the same (`bajutsu/config_source.py`) — an
+    validates a resolved commit SHA before doing the same (`bajutsu/common/config_source.py`) — an
     unvalidated value could otherwise walk `materialize_bundle` outside the cache root (a `../`) or
     step into a different, already-extracted cache entry. Otherwise resolves the org-scoped
     sha256-keyed local cache (`materialize_bundle`, reused as-is on a hit — the same replica already

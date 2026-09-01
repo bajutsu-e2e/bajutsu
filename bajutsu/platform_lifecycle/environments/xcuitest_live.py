@@ -22,7 +22,7 @@ import contextlib
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from bajutsu.config import Effective, require_ios
+from bajutsu.common.config import Effective, require_ios
 from bajutsu.crawl import Reset
 from bajutsu.drivers import base
 from bajutsu.drivers.xcuitest_live import (

@@ -12,7 +12,7 @@ import json
 
 from _report import _el
 
-from bajutsu.config import load_config, resolve
+from bajutsu.common.config import load_config, resolve
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import RunResult, run_scenario
 from bajutsu.report import html_report, junit_xml, manifest_dict

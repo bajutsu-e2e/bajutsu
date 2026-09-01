@@ -12,7 +12,7 @@ from pathlib import Path
 from conftest import json_list
 
 from bajutsu import _yaml
-from bajutsu.config import AndroidConfig, Config, IosConfig, load_config, resolve
+from bajutsu.common.config import AndroidConfig, Config, IosConfig, load_config, resolve
 from bajutsu.scenario import load_scenarios
 
 ROOT = Path(__file__).resolve().parent.parent

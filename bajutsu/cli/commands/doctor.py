@@ -9,7 +9,7 @@ from pathlib import Path
 import typer
 
 from bajutsu import adb as _adb
-from bajutsu import capability_preflight, device_errors, preflight
+from bajutsu import device_errors
 from bajutsu import simctl as _simctl
 from bajutsu.agents import availability as ai_availability
 from bajutsu.ai import credential_gap
@@ -20,7 +20,8 @@ from bajutsu.backends import (
     select_actuator_for_scenario,
 )
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
-from bajutsu.config import (
+from bajutsu.common.capability import capability_preflight, preflight
+from bajutsu.common.config import (
     Effective,
     android_package,
     ios_bundle_id,

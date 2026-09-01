@@ -15,7 +15,7 @@ import pytest
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
-from bajutsu.config import AndroidConfig, DeviceProvider, Effective
+from bajutsu.common.config import AndroidConfig, DeviceProvider, Effective
 from bajutsu.github import actions as github_actions
 from bajutsu.platform_lifecycle import ProvisionProfile
 from bajutsu.runner import device_provider as dp
@@ -204,7 +204,7 @@ def test_run_warns_and_keeps_its_verdict_when_release_raises(
 
         scn = tmp_path / "s.yaml"
         scn.write_text("- name: demo\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
-        cfg = tmp_path / "bajutsu.config.yaml"
+        cfg = tmp_path / "bajutsu.common.config.yaml"
         cfg.write_text(
             "defaults: { backend: [fake] }\n"
             "targets:\n"

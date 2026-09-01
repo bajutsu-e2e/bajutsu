@@ -49,14 +49,14 @@ def _dest(tmp_path: Path) -> Path:
 def test_extracts_a_valid_bundle(tmp_path: Path) -> None:
     blob = _zip(
         {
-            "bajutsu.config.yaml": b"targets: {}\n",
+            "bajutsu.common.config.yaml": b"targets: {}\n",
             "scenarios/smoke.yaml": b"- name: a\n  steps: []\n",
             "build/App.app/Info.plist": b"<plist/>",
         }
     )
     dest = _dest(tmp_path)
     extract_bundle(_written(tmp_path, blob), dest)
-    assert (dest / "bajutsu.config.yaml").read_bytes() == b"targets: {}\n"
+    assert (dest / "bajutsu.common.config.yaml").read_bytes() == b"targets: {}\n"
     assert (dest / "scenarios" / "smoke.yaml").is_file()
     assert (dest / "build" / "App.app" / "Info.plist").is_file()  # nested dirs are created
 
@@ -135,16 +135,16 @@ def test_corrupt_member_is_a_bundle_error(tmp_path: Path) -> None:
 
 
 def test_find_bundle_config_at_root(tmp_path: Path) -> None:
-    (tmp_path / "bajutsu.config.yaml").write_text("targets: {}\n", encoding="utf-8")
-    assert find_bundle_config(tmp_path) == tmp_path / "bajutsu.config.yaml"
+    (tmp_path / "bajutsu.common.config.yaml").write_text("targets: {}\n", encoding="utf-8")
+    assert find_bundle_config(tmp_path) == tmp_path / "bajutsu.common.config.yaml"
 
 
 def test_find_bundle_config_one_level_down(tmp_path: Path) -> None:
     # A zip made from a folder nests everything under one dir; the config is found a level down.
     sub = tmp_path / "my-suite"
     sub.mkdir()
-    (sub / "bajutsu.config.yaml").write_text("targets: {}\n", encoding="utf-8")
-    assert find_bundle_config(tmp_path) == sub / "bajutsu.config.yaml"
+    (sub / "bajutsu.common.config.yaml").write_text("targets: {}\n", encoding="utf-8")
+    assert find_bundle_config(tmp_path) == sub / "bajutsu.common.config.yaml"
 
 
 def test_find_bundle_config_one_level_down_ignores_macos_cruft(tmp_path: Path) -> None:
@@ -153,8 +153,8 @@ def test_find_bundle_config_one_level_down_ignores_macos_cruft(tmp_path: Path) -
     (tmp_path / ".git").mkdir()
     sub = tmp_path / "my-suite"
     sub.mkdir()
-    (sub / "bajutsu.config.yaml").write_text("targets: {}\n", encoding="utf-8")
-    assert find_bundle_config(tmp_path) == sub / "bajutsu.config.yaml"
+    (sub / "bajutsu.common.config.yaml").write_text("targets: {}\n", encoding="utf-8")
+    assert find_bundle_config(tmp_path) == sub / "bajutsu.common.config.yaml"
 
 
 def test_find_bundle_config_in_underscore_named_folder(tmp_path: Path) -> None:
@@ -162,8 +162,8 @@ def test_find_bundle_config_in_underscore_named_folder(tmp_path: Path) -> None:
     # with `__` must still be found, not mistaken for cruft and dropped.
     sub = tmp_path / "__suite"
     sub.mkdir()
-    (sub / "bajutsu.config.yaml").write_text("targets: {}\n", encoding="utf-8")
-    assert find_bundle_config(tmp_path) == sub / "bajutsu.config.yaml"
+    (sub / "bajutsu.common.config.yaml").write_text("targets: {}\n", encoding="utf-8")
+    assert find_bundle_config(tmp_path) == sub / "bajutsu.common.config.yaml"
 
 
 def test_find_bundle_config_absent(tmp_path: Path) -> None:
@@ -175,7 +175,7 @@ def test_find_bundle_config_absent(tmp_path: Path) -> None:
 
 
 def _valid_blob() -> bytes:
-    return _zip({"bajutsu.config.yaml": b"targets: {}\n"})
+    return _zip({"bajutsu.common.config.yaml": b"targets: {}\n"})
 
 
 def test_materialize_bundle_extracts_on_a_miss(tmp_path: Path) -> None:
@@ -183,7 +183,7 @@ def test_materialize_bundle_extracts_on_a_miss(tmp_path: Path) -> None:
     zip_path = _written(tmp_path, _valid_blob())
     dest = materialize_bundle(zip_path, uploads_dir, "abc123")
     assert dest == uploads_dir / "abc123"
-    assert (dest / "bajutsu.config.yaml").is_file()
+    assert (dest / "bajutsu.common.config.yaml").is_file()
     # No leftover temp dir beside the resolved entry.
     assert [p.name for p in uploads_dir.iterdir()] == ["abc123"]
 
@@ -195,7 +195,7 @@ def test_materialize_bundle_reuses_an_existing_entry(tmp_path: Path) -> None:
     zip_path.unlink()  # a cache hit must not need the zip again
     dest = materialize_bundle(zip_path, uploads_dir, "abc123")
     assert dest == uploads_dir / "abc123"
-    assert (dest / "bajutsu.config.yaml").is_file()
+    assert (dest / "bajutsu.common.config.yaml").is_file()
 
 
 def test_materialize_bundle_runs_validate_only_on_a_miss(tmp_path: Path) -> None:
@@ -239,7 +239,7 @@ def test_materialize_bundle_losing_a_rename_race_reuses_the_winners_entry(
     uploads_dir.mkdir()
     winner_dest = uploads_dir / "abc123"
     winner_dest.mkdir()
-    (winner_dest / "bajutsu.config.yaml").write_text("targets: {}\n", encoding="utf-8")
+    (winner_dest / "bajutsu.common.config.yaml").write_text("targets: {}\n", encoding="utf-8")
     zip_path = _written(tmp_path, _valid_blob())
 
     real_rename = Path.rename

@@ -19,7 +19,7 @@ from bajutsu.cli.commands.crawl import (
     _wire_health,
     _write_screenmap,
 )
-from bajutsu.config import Effective
+from bajutsu.common.config import Effective
 from bajutsu.crawl.core import AliveCheck, ClearBlocking, Recover, Reset
 from bajutsu.drivers import base
 from bajutsu.evidence.redaction import Redactor
@@ -260,7 +260,7 @@ class _HealthEnv:
 
 
 def _eff() -> object:
-    from bajutsu.config import load_config, resolve
+    from bajutsu.common.config import load_config, resolve
 
     return resolve(load_config("targets:\n  x:\n    bundleId: com.x\n"), "x")
 
@@ -358,7 +358,7 @@ def test_wire_health_no_credential_leaves_clear_blocking_unwired(
 def _plan_for_lane(tmp_path: Path, *, actuator: str = "xcuitest") -> object:
     """A `_CrawlPlan` filled with the few fields `_build_lane` reads, and inert values elsewhere."""
     from bajutsu.cli.commands.crawl import _CrawlPlan
-    from bajutsu.config import load_config, resolve
+    from bajutsu.common.config import load_config, resolve
     from bajutsu.evidence.redaction import Redactor
     from bajutsu.platform_lifecycle import environment_for
 

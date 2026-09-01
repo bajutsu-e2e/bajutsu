@@ -8,7 +8,7 @@ inline `isinstance` at each call site.
 
 from __future__ import annotations
 
-from bajutsu.config.effective import AndroidConfig, Effective, IosConfig, WebConfig
+from bajutsu.common.config.effective import AndroidConfig, Effective, IosConfig, WebConfig
 
 
 def require_ios(eff: Effective) -> IosConfig:

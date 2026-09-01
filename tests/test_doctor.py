@@ -7,7 +7,7 @@ from collections.abc import Callable
 
 import pytest
 
-from bajutsu.config import load_config, resolve
+from bajutsu.common.config import load_config, resolve
 from bajutsu.doctor import DoctorProbeError, probe_screen, render, score
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
@@ -334,7 +334,7 @@ def test_probe_screen_web_without_base_url_raises_probe_error() -> None:
     # target, so we resolve a valid one and null the baseUrl to exercise the defensive backstop.
     import dataclasses
 
-    from bajutsu.config import WebConfig
+    from bajutsu.common.config import WebConfig
 
     eff = dataclasses.replace(
         resolve(load_config("targets: { web: { baseUrl: 'http://x' } }"), "web"),

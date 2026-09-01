@@ -22,7 +22,7 @@ from bajutsu.cli._shared import (
     _require_ai_credential,
     _warn_onscreen_secrets,
 )
-from bajutsu.config import Effective, IosConfig
+from bajutsu.common.config import Effective, IosConfig
 from bajutsu.run_files import DEFAULT_RUNS_DIR
 
 

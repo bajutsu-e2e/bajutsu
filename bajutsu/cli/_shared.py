@@ -18,7 +18,7 @@ from bajutsu.agents import ai_config, anthropic_client
 from bajutsu.ai import credential_gap
 from bajutsu.ai import disabled as ai_disabled
 from bajutsu.backends import ensure_web_runtime, select_actuator
-from bajutsu.config import (
+from bajutsu.common.config import (
     WEB_ENGINES,
     AiConfig,
     Effective,
@@ -28,10 +28,10 @@ from bajutsu.config import (
     resolve,
     web_engine,
 )
-from bajutsu.config_source import (
+from bajutsu.common.config_source import (
     DEFAULT_CONFIG as DEFAULT_CONFIG,  # re-exported: the single owner is config_source (BE-0251)
 )
-from bajutsu.config_source import (
+from bajutsu.common.config_source import (
     is_full_sha,
     materialize,
     parse_config_spec,

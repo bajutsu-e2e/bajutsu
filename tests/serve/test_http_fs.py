@@ -22,7 +22,7 @@ def test_http_fs_lists_and_blocks_traversal(tmp_path: Path) -> None:
     server, port = _serve(srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path))
     try:
         got = _get_json(port, "/api/fs")
-        assert "bajutsu.config.yaml" in got["files"] and "scenarios" in got["dirs"]
+        assert "bajutsu.common.config.yaml" in got["files"] and "scenarios" in got["dirs"]
         # A dir escaping the root is rejected (400), never listed.
         with pytest.raises(urllib.error.HTTPError, match="400"):
             _get(port, "/api/fs?dir=" + urllib.parse.quote(".."))

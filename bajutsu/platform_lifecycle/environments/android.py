@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from bajutsu import adb, backends
-from bajutsu.config import Effective, require_android
+from bajutsu.common.config import Effective, require_android
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 from bajutsu.drivers import base
 from bajutsu.evidence import intervals

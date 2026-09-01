@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu import provision, requirements
-from bajutsu.config import load_config
-from bajutsu.requirements import Brew, Extra, Playwright, Tool
+from bajutsu.common.config import load_config
+from bajutsu.common.provisioning import provision, requirements
+from bajutsu.common.provisioning.requirements import Brew, Extra, Playwright, Tool
 
 # --- plan(): resolve exactly what a config's backends + AI provider need ---------------------
 
@@ -62,7 +62,7 @@ def test_plan_without_ai_config_omits_the_ai_extra() -> None:
 def test_plan_with_no_targets_installs_no_backend() -> None:
     # Backends come from targets.*; a config that declares no target references no backend, so a
     # bare `make install` at a repo with no config installs nothing beyond the base (BE-0164).
-    from bajutsu.config import Config
+    from bajutsu.common.config import Config
 
     assert provision.plan(Config()).is_empty
     assert provision.plan(load_config("defaults:\n  backend: [web]\n")).is_empty
@@ -188,14 +188,14 @@ def test_load_missing_explicit_config_exits(tmp_path: Path) -> None:
 
 
 def test_load_reads_an_existing_config(tmp_path: Path) -> None:
-    cfg_path = tmp_path / "bajutsu.config.yaml"
+    cfg_path = tmp_path / "bajutsu.common.config.yaml"
     cfg_path.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [ios]\n")
     cfg = provision._load(str(cfg_path))
     assert "demo" in cfg.targets
 
 
 def test_main_dry_run_prints_the_plan_without_installing(tmp_path: Path) -> None:
-    cfg_path = tmp_path / "bajutsu.config.yaml"
+    cfg_path = tmp_path / "bajutsu.common.config.yaml"
     cfg_path.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [ios]\n")
     assert provision.main(["--config", str(cfg_path), "--dry-run"]) == 0
 
@@ -205,6 +205,6 @@ def test_main_forced_backend_dry_run(tmp_path: Path) -> None:
 
 
 def test_main_empty_config_installs_nothing(tmp_path: Path) -> None:
-    cfg_path = tmp_path / "bajutsu.config.yaml"
+    cfg_path = tmp_path / "bajutsu.common.config.yaml"
     cfg_path.write_text("targets:\n  t:\n    bundleId: com.example.t\n    backend: [fake]\n")
     assert provision.main(["--config", str(cfg_path)]) == 0

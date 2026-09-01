@@ -1,7 +1,7 @@
 """Receive a config + scenarios + app-binary bundle as an uploaded zip and materialize it (BE-0073).
 
 An uploaded ``.zip`` is treated as "a tree to materialize" — the same self-contained checkout a
-local ``bajutsu run`` already consumes (``bajutsu.config.yaml`` + its scenario tree + the built
+local ``bajutsu run`` already consumes (``bajutsu.common.config.yaml`` + its scenario tree + the built
 ``appPath`` binary), just delivered over the wire. This module owns the security-sensitive
 extraction: every entry is validated to land **strictly under** the extraction root (zip-slip), and
 resource bounds (entry count, total uncompressed size, per-entry compression ratio) abort a
@@ -27,7 +27,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from bajutsu.config import load_config, resolve
+from bajutsu.common.config import load_config, resolve
 
 # Resource bounds (zip-bomb defense). Extraction aborts the moment one is crossed. Sized for a real
 # bundle — a config + a scenario tree + a built ``.app``/``.ipa`` (an app bundle holds many small
@@ -42,7 +42,7 @@ _RATIO_FLOOR = (
 _CHUNK = 1024 * 1024  # stream entries in 1 MiB chunks so a huge member never loads into memory
 
 # The config file a bundle must contain at its root (or one level down, see find_bundle_config).
-_CONFIG_NAMES = ("bajutsu.config.yaml", "bajutsu.config.yml")
+_CONFIG_NAMES = ("bajutsu.common.config.yaml", "bajutsu.common.config.yml")
 
 # Top-level entries that aren't the bundle's real nesting folder: the `__MACOSX/` dir macOS Archive
 # Utility adds beside the zipped folder. Dot-prefixed dirs (`.git/`, …) are skipped separately, so a
@@ -116,7 +116,7 @@ class Upload:
     presents the derived key as if it were a verifiable hash."""
 
     dir: Path  # the sha256-keyed extraction cache entry (BE-0243); outlives this bind
-    config: Path  # the bundle's bajutsu.config.yaml (its parent is the runs' cwd)
+    config: Path  # the bundle's bajutsu.common.config.yaml (its parent is the runs' cwd)
     filename: str
     sha256: str
     size: int
@@ -399,7 +399,7 @@ def materialize_bundle(
 
 
 def find_bundle_config(root: Path) -> Path | None:
-    """Locate the bundle's config: ``bajutsu.config.yaml`` at the extraction *root*, or — for a zip
+    """Locate the bundle's config: ``bajutsu.common.config.yaml`` at the extraction *root*, or — for a zip
     that wraps everything in a single top-level folder — one level down. Returns the config path (its
     parent is the bundle root the run runs from), or None if it's absent or the layout is ambiguous
     (no single nesting folder)."""
@@ -433,7 +433,7 @@ def validate_bundle_config(root: Path) -> None:
     triple-artifact bind (BE-0268) — both hand it a materialized tree to validate the same way."""
     config_path = find_bundle_config(root)
     if config_path is None:
-        raise BundleError("has no bajutsu.config.yaml")
+        raise BundleError("has no bajutsu.common.config.yaml")
     cfg = load_config(config_path.read_text(encoding="utf-8"))
     for name in cfg.targets:
         resolve(cfg, name).rebased(config_path.parent, confine=True)

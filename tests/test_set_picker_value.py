@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from bajutsu.capability_preflight import unsupported
+from bajutsu.common.capability.capability_preflight import unsupported
 from bajutsu.drivers import base
 from bajutsu.drivers.adb import AdbDriver
 from bajutsu.drivers.fake import FakeDriver
