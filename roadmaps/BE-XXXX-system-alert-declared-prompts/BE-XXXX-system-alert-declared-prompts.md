@@ -189,12 +189,13 @@ of the report can add the rule the scenario was missing.
 
 `labels` is removed from `SystemAlertHandling` in `bajutsu/scenario/models/scenario.py`, and the
 `--alert-labels` option is removed from `run`, so `_flag_alert_policy` in
-`bajutsu/cli/commands/run.py` keeps only `--alert-vision-instruction` and `--alert-poll-interval`. No
-flag replaces it: a rule pairs a prompt with a choice, which BE-0401 already recorded as the reason
-no flag carries `rules` legibly, so a per-prompt declaration stays a scenario-file and
+`bajutsu/cli/commands/run.py` keeps only `--alert-poll-interval` — BE-0402 already retired
+`--alert-vision-instruction` from `run` with the fallback it steered. No
+flag replaces `rules`: an entry pairs a prompt with a choice, which BE-0401 already recorded as the
+reason no flag carries it legibly, so a per-prompt declaration stays a scenario-file and
 target-config declaration. `AlertGuardConfig` loses its `labels` field, and the layering table
 BE-0401 established loses one row — `rules` stays a list key concatenated innermost layer first,
-`visionInstruction` and `pollInterval` stay scalars resolved by the innermost layer that supplies
+`pollInterval` stays the sole scalar resolved by the innermost layer that supplies
 one, and the on/off boolean is unchanged.
 
 Three call sites matched against `labels`, and each is re-keyed rather than deleted:
@@ -287,16 +288,12 @@ failure. So the retry gains the second drain the comment describes as absent, fo
 handling of a *matched* interruption changes: those still become `AlertEvent`s and never fail
 anything on their own.
 
-Besides `push_interruption_policy`'s candidate fallback, now removed, two more places read `labels`,
-and neither is a matching site. `_vision_instruction` in `bajutsu/cli/commands/run.py` derives the
-vision fallback's instruction from the innermost layer that supplied labels, and
-`_warn_target_rules_reach` reads `layer.labels or layer.vision_instruction` to decide whether a
-scenario answers for itself. `_vision_instruction` loses its label argument, and the predicate is
-re-keyed to `layer.rules or layer.vision_instruction`. The vision fallback's own behavior is
-unchanged by this: its docstring already records that a rules-only scenario leaves the locator on
-its least-destructive default, because a rule's tap label is by construction some other prompt's
-answer and must never steer the fallback. Removing `labels` makes every scenario a rules-only
-scenario, which is a path that function already takes.
+Besides `push_interruption_policy`'s candidate fallback, now removed, one more place reads `labels`,
+and it is not a matching site: `_warn_target_rules_reach` in `bajutsu/cli/commands/run.py` reads
+`any(layer.labels for layer in inner_layers)` to decide whether a scenario answers for itself. The
+predicate is re-keyed to `any(layer.rules for layer in inner_layers)`. There is no vision-fallback
+instruction to re-key alongside it: BE-0402 already deleted `_vision_instruction` with `run`'s
+fallback, so a scenario's `labels` has not steered anything there since that landed.
 
 `_resolve_rules` raises `UncoveredSystemAlertLocale` naming `labels` as the remedy for an uncovered
 language. The message is rewritten to name the remaining two remedies: add the language to
@@ -405,28 +402,23 @@ waits live.
 
 ### Out of scope
 
-This proposal changes no code path of the artificial-intelligence (AI) vision fallback. It does
-narrow one input: with `labels` gone, no scenario can supply the label-derived hint
-`_vision_instruction` renders, so every scenario becomes the rules-only case that function already
-handles by leaving the locator on its least-destructive default. `visionInstruction` remains the one
-way to steer it. Removing the fallback from `run` altogether is
-[BE-0402](../BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)'s
-subject, the removal is decided, and the work is under way as a separate change.
+This proposal changes no code path of the artificial-intelligence (AI) vision fallback, because `run`
+no longer has one:
+[BE-0402](../BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)
+removed it in [#1843](https://github.com/bajutsu-e2e/bajutsu/pull/1843), already merged. Every path
+through `AlertGuardConfig` is deterministic now, and `run` rejects a layer that still supplies
+`visionInstruction` outright (`_reject_vision_instruction`) rather than reading it, so `labels`
+leaving the schema removes no input that fallback still consumed.
 
-The two proposals meet at the `"unhandled"` value `probe_native` returns for an alert no rule names.
-This one narrows what reaches that return, by removing the `labels` matching and the built-in
-defaults from the guard's own resolution. BE-0402 removes what happens after it. Neither item
-depends on the other's order, so whichever lands first is correct on its own.
-
-Unit 2b makes an *interrupting* alert fail on its own; a *blocking* one still does not. When an alert
-merely holds a step or `wait` open rather than resolving an in-flight XCUITest interaction,
-`AlertGuardConfig.__call__` reaches the same `"unhandled"` value and hands it to the vision fallback,
-which may dismiss it with only an `AlertEvent` recorded — no forced failure. The two are not the same
-situation: a blocking alert that nothing clears already fails the step through its own condition-wait
-timeout, so the failure this proposal is after is already there; an interrupting one lets XCUITest's
-own resolution complete and the step's interaction proceed as if nothing had happened, which is
-exactly the silent success Unit 2b closes. Bringing the blocking surface to the same forced-failure
-standard is a question for whatever proposal next revisits `AlertGuardConfig.__call__`, not this one.
+BE-0402 also gave the `"unhandled"` value `probe_native` returns a use this proposal builds on rather
+than duplicates: `blocked_note`, appended to a blocked step's or `wait`'s own failure reason so it
+names the buttons it saw rather than reading as a bare "element not found." Unit 2b is the same idea
+applied to the surface BE-0402 could not reach — an *interrupting* alert, one XCUITest resolves
+before synthesizing the interaction it interrupted, rather than one merely *blocking* a step from
+completing. A blocking alert nothing clears already fails on its own condition-wait timeout, with
+`blocked_note` naming what stopped it; an interrupting alert let XCUITest's own resolution complete
+and the interaction proceed as if nothing had happened, with no failure and no note at all, which is
+the gap Unit 2b closes to bring the two surfaces to the same standard.
 
 ## Alternatives considered
 
@@ -487,4 +479,5 @@ standard is a question for whatever proposal next revisits `AlertGuardConfig.__c
   — the consolidation that gave each answer path its own key and introduced `labels`, and the
   precedent for removing a key without an alias.
 - [BE-0402](../BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)
-  — the proposal that removes the vision fallback this one leaves in place.
+  — the merged item that removed `run`'s AI-vision fallback and added `blocked_note`, the
+  blocking-surface precedent Unit 2b brings the interrupting surface to parity with.

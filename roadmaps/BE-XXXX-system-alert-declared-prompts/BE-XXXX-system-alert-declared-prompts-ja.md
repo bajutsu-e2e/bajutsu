@@ -186,13 +186,15 @@ within <timeout>s` を置き換え、3 つの場合を区別する理由にな�
 
 `labels` を [`bajutsu/scenario/models/scenario.py`](../../bajutsu/scenario/models/scenario.py) の
 `SystemAlertHandling` から削除します。`run` からは `--alert-labels` オプションを削除します。
-`_flag_alert_policy` に残すのは、`--alert-vision-instruction` と `--alert-poll-interval` だけです。
-このオプションは [`bajutsu/cli/commands/run.py`](../../bajutsu/cli/commands/run.py) にあります。代わりのフラグは設けません。
-ルールはプロンプトと選択の組であり、それを読みやすく運べるフラグはないと BE-0401 がすでに記録して
-います。プロンプトごとの宣言は、シナリオファイルとターゲット設定の宣言のままにします。
-`AlertGuardConfig` は `labels` フィールドを失います。BE-0401 が確立した層合成の表は、行を 1 つ失います。
-`rules` は内側の層から順に連結されるリストのキーのままです。`visionInstruction` と `pollInterval` は、
-値を与えるもっとも内側の層が勝つスカラーのままです。有効と無効の真偽値も変わりません。
+`_flag_alert_policy` に残すのは `--alert-poll-interval` だけです。
+`--alert-vision-instruction` は、BE-0402 がそのフラグの誘導していたフォールバックごと、すでに
+`run` から退けています。このオプションは
+[`bajutsu/cli/commands/run.py`](../../bajutsu/cli/commands/run.py) にあります。`rules` の代わりの
+フラグは設けません。ルールはプロンプトと選択の組であり、それを読みやすく運べるフラグはないと
+BE-0401 がすでに記録しています。プロンプトごとの宣言は、シナリオファイルとターゲット設定の宣言の
+ままにします。`AlertGuardConfig` は `labels` フィールドを失います。BE-0401 が確立した層合成の表は、
+行を 1 つ失います。`rules` は内側の層から順に連結されるリストのキーのままです。`pollInterval` は、
+値を与えるもっとも内側の層が勝つ唯一のスカラーになります。有効と無効の真偽値も変わりません。
 
 `labels` に対して照合していた呼び出し元は 3 つあり、いずれも削除ではなく付け替えます。
 
@@ -285,16 +287,12 @@ drain するものはない」とすでに記録しているとおりです。�
 どおり `AlertEvent` になり、それ自体では何も失敗させません。
 
 `labels` を読む場所は、いま削除した `push_interruption_policy` の候補のフォールバックを除くと、
-あと 2 つです。どちらも照合の場所ではありません。
-[`bajutsu/cli/commands/run.py`](../../bajutsu/cli/commands/run.py) の `_vision_instruction` は、ラベルを
-与えたもっとも内側の層から、ビジョンのフォールバックへの指示を組み立てます。
-`_warn_target_rules_reach` は `layer.labels or layer.vision_instruction` を読み、シナリオが自分で答えて
-いるかどうかを判定します。`_vision_instruction` からはラベルの引数を落とし、判定は
-`layer.rules or layer.vision_instruction` へ付け替えます。これでビジョンのフォールバック自身の挙動は
-変わりません。ルールだけのシナリオでは locator がもっとも破壊の少ないデフォルトのままになると、その関数の
-docstring がすでに記録しているからです。ルールのタップラベルは構成上ほかのプロンプトの
-答えなので、フォールバックを誘導してはならない、という理由です。`labels` を削ると、すべてのシナリオが
-ルールだけのシナリオになります。その関数がすでに通っている経路です。
+あと 1 つです。ここも照合の場所ではありません。
+[`bajutsu/cli/commands/run.py`](../../bajutsu/cli/commands/run.py) の `_warn_target_rules_reach` です。
+`any(layer.labels for layer in inner_layers)` を読み、シナリオが自分で答えているかどうかを判定します。
+判定は `any(layer.rules for layer in inner_layers)` へ付け替えます。これと並べて付け替えるビジョンの
+フォールバック向けの指示は、もうありません。`run` がそのフォールバックごと `_vision_instruction` を削除したのが BE-0402 です。
+シナリオの `labels` がそこを誘導していたのは、その変更が着地するまでのことでした。
 
 `_resolve_rules` は、覆っていない言語に対して `UncoveredSystemAlertLocale` を送出し、その救済として
 `labels` を案内しています。このメッセージを、残る 2 つの救済を名指しする形に書き直します。言語を
@@ -401,30 +399,23 @@ Web フォームのアラートも満たします。ただし無害です。ど�
 
 ### 今回の範囲外
 
-本提案は、人工知能（AI）によるビジョンのフォールバックのコード経路に手を加えません。ただし入力を 1 つ
-だけ狭めます。`labels` がなくなると、`_vision_instruction` が組み立てるラベル由来のヒントを、どのシナリオも
-供給できなくなります。そのためすべてのシナリオが、その関数のすでに扱うルールだけの場合になります。
-locator はもっとも破壊の少ないデフォルトに置かれたままです。誘導する手段として残るのは
-`visionInstruction` だけです。`run` からそのフォールバックそのものを削除するのは
+本提案は、人工知能（AI）によるビジョンのフォールバックのコード経路に手を加えません。`run` に
+その経路がもうないからです。
 [BE-0402](../BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)
-の主題です。削除はすでに決まっており、別の変更として作業が進んでいます。
+が [#1843](https://github.com/bajutsu-e2e/bajutsu/pull/1843) でそれを削除し、すでにマージ済みです。
+`AlertGuardConfig` を通るすべての経路は、今では決定的です。`run` は `visionInstruction` をまだ渡す層を
+読むのではなく、はっきり拒否します（`_reject_vision_instruction`）。そのため `labels` がスキーマから
+消えても、そのフォールバックが今も汲んでいる入力は 1 つも失われません。
 
-2 つの提案は、どのルールも名指ししないアラートに対して `probe_native` が返す `"unhandled"` で接します。
-本提案は、その返り値に到達するものを絞ります。ガード自身の解決から `labels` の照合と組み込みの
-デフォルト値を取り除くからです。BE-0402 は、その返り値のあとに起きることを取り除きます。どちらの項目も、
-相手の順序に依存しません。先に着地したほうも、それ自体で成り立ちます。
-
-単位 2b が無条件で失敗させるのは、**割り込む**アラートだけです。**塞ぐ**アラートは、そのままです。
-アラートが進行中の XCUITest のインタラクションを解決するのではなく、単に step や `wait` を塞いで
-いるだけのときを考えます。`AlertGuardConfig.__call__` は同じ `"unhandled"` にたどり着きます。それを
-ビジョンの
-フォールバックへ渡します。フォールバックは `AlertEvent` を 1 つ記録するだけで片付けてしまうことが
-あり、強制的な失敗にはなりません。この 2 つは同じ状況ではありません。何にも塞がれたままのアラートは、
-その step 自身の条件待機のタイムアウトを通じて、すでに step を失敗させています。本提案が追い求めて
-いる失敗は、すでにそこにあります。一方、割り込むアラートは XCUITest 自身の解決を完了させ、step の
-インタラクションはまるで何も起きなかったかのように進みます。これこそ単位 2b が塞ぐサイレントな成功
-です。塞ぐ面のほうも同じ強制失敗の基準に合わせるかどうかは、次に `AlertGuardConfig.__call__` を
-見直す提案が問う問いであって、本提案の問いではありません。
+BE-0402 は `probe_native` が返す `"unhandled"` にも用途を与えていて、本提案はそれを重ねて作るのでは
+なく積み上げます。`blocked_note` です。塞がれた step または `wait` 自身の失敗理由に、見えたボタンを
+添え、「element not found」という素っ気ない読み方にしません。単位 2b は、同じ発想を BE-0402 が届かな
+かった面に適用したものです。**割り込む**アラート、すなわち XCUITest が割り込んだインタラクションを
+合成する前に解決してしまうアラートです。単に step を**塞ぐ**だけのアラートとは違います。何にも塞がれた
+ままのアラートは、その step 自身の条件待機のタイムアウトを通じてすでに失敗し、`blocked_note` がそれを
+止めたものを名指しします。一方、割り込むアラートは XCUITest 自身の解決を完了させ、インタラクションは
+まるで何も起きなかったかのように進みます。失敗はなく、注記も一切ありませんでした。単位 2b が閉じる
+のは、この隙間です。2 つの面を同じ基準にそろえます。
 
 ## 検討した代替案
 
@@ -480,4 +471,5 @@ locator はもっとも破壊の少ないデフォルトに置かれたままで
 - [BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md)
   — `labels` を導入した経路ごとのキーの整理と、別名を置かずにキーを削除する先例。
 - [BE-0402](../BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)
-  — 本提案が残すビジョンのフォールバックを削除する提案。
+  — `run` の AI ビジョンのフォールバックを削除し、`blocked_note` を加えた、すでにマージ済みの項目。
+  塞ぐ面の先例であり、単位 2b はその先例に割り込む面をそろえる。
