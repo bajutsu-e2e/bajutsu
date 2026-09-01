@@ -17,6 +17,12 @@ Both roles run as fresh Agent-tool subagents, on different models: `fable` for t
 pass, and for the implement pass `sonnet` when the fix stays within `roadmaps/` or `docs/`, `opus`
 when it touches product code.
 
+**Where the host has no Agent tool or no `pr-review-toolkit`** — a subagent running `implement-be`
+has neither — keep the two roles as two passes of your own rather than dropping the procedure: judge
+the diff against the contract first and write the findings down, then fix them in a second pass, and
+read the lenses below as a checklist you apply yourself. Say in your report that the pass ran
+single-handed, so the reader knows which findings had no independent second opinion behind them.
+
 Two inputs differ from `ideation`'s procedure:
 
 - **Don't scope the staged diff to `roadmaps/`.** This skill's changes land wherever the item needs
