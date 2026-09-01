@@ -26,9 +26,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Literal, cast
 
-from bajutsu import backends, device_os, simctl, stall_diagnostics
+from bajutsu import backends
+from bajutsu.common import stall_diagnostics
+from bajutsu.common.backend_cli import simctl
+from bajutsu.common.devices import os as device_os
+from bajutsu.common.devices.os import DeviceOS
 from bajutsu.config import Effective, XcuitestConfig, require_ios
-from bajutsu.device_os import DeviceOS
 from bajutsu.drivers import base
 from bajutsu.platform_lifecycle.environments._bundled_runner import (
     bundled_products_dir,

@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from bajutsu.lint import lint_diagnostics, scenario_json_schema
+from bajutsu.common.lint import lint_diagnostics, scenario_json_schema
 
 
 def lint_scenario(body: dict[str, Any]) -> tuple[Any, int]:

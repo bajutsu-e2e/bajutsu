@@ -19,7 +19,7 @@ import select
 import sys
 from collections.abc import Callable
 
-from bajutsu.handoff import (
+from bajutsu.common.handoff import (
     DEFAULT_TIMEOUT_SECONDS,
     REQUEST_LINE_PREFIX,
     Handoff,

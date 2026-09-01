@@ -1408,7 +1408,7 @@ acquisition timing per kind, and which are captured, are in
 ## YAML caveat
 
 PyYAML (YAML 1.1) resolves `on`/`off`/`yes`/`no` to booleans. To prevent the `capturePolicy`
-trigger key `on:` from becoming `True`, Bajutsu's YAML loader (`_yaml.py`) treats **only
+trigger key `on:` from becoming `True`, Bajutsu's YAML loader (`common/_yaml.py`) treats **only
 `true`/`false` as booleans** and keeps `on`/`off`/`yes`/`no` as strings.
 
 ## `from` (provenance)

@@ -33,8 +33,8 @@ from bajutsu.ai import (
     ToolDef,
 )
 from bajutsu.ai.prompts import NEVER_JUDGE_BOUNDARY
+from bajutsu.common.screenshots import fraction, png_size
 from bajutsu.drivers import base
-from bajutsu.screenshots import fraction, png_size
 
 TAB_LOCATOR_MODEL = "claude-opus-4-8"
 

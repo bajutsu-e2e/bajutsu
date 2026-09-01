@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 from _runner import _eff, _ios_eff, _web_eff
 
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.platform_lifecycle import (
@@ -76,7 +76,7 @@ def test_resolve_device_routes_through_the_platform_resolver(
     # via simctl, Android via adb, web (no device) as a passthrough — no actuator string at the call
     # site.
     monkeypatch.setattr(simctl, "resolve_udid", lambda udid, run=None: f"simctl:{udid}")
-    from bajutsu import adb
+    from bajutsu.common.backend_cli import adb
 
     monkeypatch.setattr(adb, "resolve_serial", lambda serial, run=None: f"adb:{serial}")
 

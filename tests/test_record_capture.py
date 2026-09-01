@@ -8,7 +8,7 @@ from __future__ import annotations
 from bajutsu.drivers import base
 from bajutsu.elements import screen_size_from_elements
 from bajutsu.evidence.redaction import Redactor
-from bajutsu.record_capture import (
+from bajutsu.record.capture import (
     hit_test,
     resolve_capture,
     selector_for_element,

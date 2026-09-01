@@ -20,7 +20,8 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu import adb, capability_preflight, platform_lifecycle
+from bajutsu import capability_preflight, platform_lifecycle
+from bajutsu.common.backend_cli import adb
 from bajutsu.drivers import base
 from bajutsu.drivers.adb import AdbDriver
 from bajutsu.orchestrator.types import DeviceControl

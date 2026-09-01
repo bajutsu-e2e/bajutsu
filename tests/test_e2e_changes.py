@@ -60,7 +60,7 @@ def test_run_path_subpackage_is_relevant() -> None:
 def test_run_path_top_level_modules_are_relevant() -> None:
     # The run / codegen / record surface: the run loop, assertions, the element model, the driver
     # helpers, the visual/golden dimensions, codegen, the run-pipeline's direct dependencies
-    # (evidence, redaction, artifact_perms, mailbox), and record.py's direct imports (the agent
+    # (evidence, redaction, artifact_perms, mailbox), and record/loop.py's direct imports (the agent
     # protocols, crawl core, handoff). Under the BE-0333 inverted default these fire because the
     # shared core sweeps `bajutsu/` and none of them is a classified periphery exclusion.
     for module in (
@@ -77,9 +77,9 @@ def test_run_path_top_level_modules_are_relevant() -> None:
         "bajutsu/evidence/visual.py",
         "bajutsu/evidence/golden.py",
         "bajutsu/codegen/emit.py",
-        "bajutsu/record.py",
-        "bajutsu/adb.py",
-        "bajutsu/simctl.py",
+        "bajutsu/record/loop.py",
+        "bajutsu/common/backend_cli/adb.py",
+        "bajutsu/common/backend_cli/simctl.py",
         # runner/pipeline.py and orchestrator/loop.py unconditional imports
         "bajutsu/evidence/core.py",
         # `bajutsu.evidence.core` executes `evidence/__init__.py` on import, same as
@@ -87,10 +87,10 @@ def test_run_path_top_level_modules_are_relevant() -> None:
         "bajutsu/evidence/__init__.py",
         "bajutsu/evidence/redaction.py",
         "bajutsu/evidence/network.py",
-        "bajutsu/artifact_perms.py",
+        "bajutsu/common/run_meta/artifact_perms.py",
         "bajutsu/mailbox.py",
         "bajutsu/evidence/intervals.py",
-        # record.py unconditionally imports the Agent/EnrichmentAgent protocols from
+        # record/loop.py unconditionally imports the Agent/EnrichmentAgent protocols from
         # agents.protocols (record is an E2E verb), mirroring the old agent.py entry (now
         # agent_protocols.py, packaged by BE-0257). Its sibling agents.factory (the old
         # agents.py / agent_factory.py) is deliberately excluded — see the parity test below.
@@ -104,7 +104,7 @@ def test_run_path_top_level_modules_are_relevant() -> None:
         # on that path as well (the periphery siblings are not — see the parity test below).
         "bajutsu/crawl/__init__.py",
         "bajutsu/crawl/serialize.py",
-        "bajutsu/handoff.py",
+        "bajutsu/common/handoff.py",
     ):
         assert is_relevant([module]) is True, module
 
@@ -157,9 +157,9 @@ def test_previously_missed_run_path_modules_now_fire() -> None:
     # deprecation shims, the object store, record capture, or the grouping helper), so a change to it
     # must re-run the lanes; the inverted default sweeps each in.
     for module in (
-        "bajutsu/deprecations.py",
-        "bajutsu/object_store.py",
-        "bajutsu/record_capture.py",
+        "bajutsu/common/deprecations.py",
+        "bajutsu/common/run_meta/object_store.py",
+        "bajutsu/record/capture.py",
         "bajutsu/from_grouping.py",
     ):
         assert is_relevant([module]) is True, module
@@ -252,14 +252,14 @@ def test_doctor_onboarding_gate_code_is_relevant_on_every_lane() -> None:
     # skipped every lane that exercises it — the gate could regress with all three lanes green.
     for lane in ("ios", "android", "web"):
         for path in (
-            "bajutsu/doctor.py",
+            "bajutsu/common/doctor.py",
             "bajutsu/cli/commands/doctor.py",
             "bajutsu/preflight.py",
             # `preflight.py` builds every `environment:` check's tool list and remedy strings from
             # this, so a change here moves the section the gate asserts on too.
             "bajutsu/requirements.py",
             # The platform-neutral DeviceError base (BE-0260) that both `run` and doctor catch.
-            "bajutsu/device_errors.py",
+            "bajutsu/common/devices/errors.py",
         ):
             assert is_relevant([path], lane) is True, (lane, path)
 
@@ -334,7 +334,7 @@ def test_android_lane_surface() -> None:
     # Android drives only the adb driver (+ the resident channel), its own showcase and app SDKs, its
     # own conformance harness, and its own workflow file.
     assert is_relevant(["bajutsu/drivers/adb.py"], "android") is True
-    assert is_relevant(["bajutsu/adb_resident.py"], "android") is True
+    assert is_relevant(["bajutsu/common/backend_cli/adb_resident.py"], "android") is True
     assert is_relevant(["demos/showcase/android/Makefile"], "android") is True
     assert is_relevant(["BajutsuAndroid/src/Clipboard.kt"], "android") is True
     assert is_relevant(["BajutsuAndroidUIAutomatorServer/src/Server.kt"], "android") is True

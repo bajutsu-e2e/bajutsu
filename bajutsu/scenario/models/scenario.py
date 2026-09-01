@@ -10,7 +10,7 @@ from typing import Annotated, Any, Literal, Self
 
 from pydantic import AliasChoices, BeforeValidator, Field, field_validator, model_validator
 
-from bajutsu.deprecations import reject_renamed_key
+from bajutsu.common.deprecations import reject_renamed_key
 from bajutsu.drivers.base import PERMISSION_SERVICES
 from bajutsu.scenario.models._base import _Model
 from bajutsu.scenario.models.assertions import Assertion

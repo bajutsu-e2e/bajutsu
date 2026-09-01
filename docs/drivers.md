@@ -9,7 +9,7 @@
 > on Android by the twin `adb` wrapper.
 >
 > Implementation: `bajutsu/drivers/` (`base.py` / `xcuitest.py` / `adb.py` / `playwright.py` / `fake.py`) ·
-> `bajutsu/backends.py` · `bajutsu/simctl.py` · `bajutsu/adb.py`.
+> `bajutsu/backends.py` · `bajutsu/common/backend_cli/simctl.py` · `bajutsu/common/backend_cli/adb.py`.
 
 Related: [selectors](selectors.md) (resolution) · [the stability ladder](concepts.md#5-the-stability-ladder) · [run-loop](run-loop.md)
 
@@ -645,7 +645,7 @@ details.
 
 ## Environment management (simctl)
 
-Implementation: `bajutsu/simctl.py`. Command builders are pure functions (unit-tested); execution goes
+Implementation: `bajutsu/common/backend_cli/simctl.py`. Command builders are pure functions (unit-tested); execution goes
 through an injectable `RunFn`.
 
 | Method | Command | Notes |

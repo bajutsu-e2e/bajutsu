@@ -31,10 +31,10 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
-from bajutsu import device_os
 from bajutsu.analysis.audit import canonical_os, classify_stability, unknown_os_note
-from bajutsu.device_os import DeviceOS
-from bajutsu.run_id import parse_run_id_timestamp
+from bajutsu.common.devices import os as device_os
+from bajutsu.common.devices.os import DeviceOS
+from bajutsu.common.run_meta.id import parse_run_id_timestamp
 from bajutsu.serve.server.db import RunRecord
 
 # The newest-N run window both flakiness surfaces mine from the database — the serve panel

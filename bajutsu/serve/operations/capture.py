@@ -18,7 +18,7 @@ from bajutsu.serve.state import CaptureSession, ServeState
 if TYPE_CHECKING:
     # Only for annotations — resolve_capture (and CaptureResult) are imported lazily at call sites
     # to keep this module's import light, so the type stays out of the runtime import graph.
-    from bajutsu.record_capture import CaptureResult
+    from bajutsu.record.capture import CaptureResult
 
 
 def start_capture(
@@ -130,7 +130,7 @@ def _resolve_point(
     except (TypeError, ValueError):
         return None, ({"error": "point values must be numeric"}, 400)
 
-    from bajutsu.record_capture import resolve_capture
+    from bajutsu.record.capture import resolve_capture
 
     sw, sh = session.screen_size
     result = resolve_capture(session.elements, (nx * sw, ny * sh), session.namespaces)
@@ -169,7 +169,7 @@ def mark_capture(
     if (feedback := _feedback_payload(result)) is not None:
         return feedback
 
-    from bajutsu.record_capture import step_for_tap, step_for_type
+    from bajutsu.record.capture import step_for_tap, step_for_type
 
     sel = result.selector
     raw = sel.as_selector()

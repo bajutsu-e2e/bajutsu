@@ -26,9 +26,9 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
-from bajutsu import device_os
 from bajutsu.analysis.audit import longitudinal, unknown_os_note
-from bajutsu.device_os import DeviceOS
+from bajutsu.common.devices import os as device_os
+from bajutsu.common.devices.os import DeviceOS
 
 # A run id opens with a UTC timestamp (`YYYYMMDD-HHMMSS`), so the day is a pure prefix parse; a run
 # id that doesn't match (a custom label) simply has no day and buckets under "" (unknown).

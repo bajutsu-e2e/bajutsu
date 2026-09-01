@@ -15,8 +15,8 @@ from dataclasses import replace
 
 from conftest import el, json_list, json_obj
 
-from bajutsu import device_errors
 from bajutsu.cli.commands.crawl import SCREENMAP_NAME, _write_screenmap
+from bajutsu.common.devices import errors as device_errors
 from bajutsu.crawl import core as crawl
 from bajutsu.crawl import serialize
 from bajutsu.drivers import base

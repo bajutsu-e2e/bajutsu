@@ -20,7 +20,7 @@ from typing import Literal
 
 import yaml
 
-from bajutsu import _yaml
+from bajutsu.common import _yaml
 
 _log = logging.getLogger(__name__)
 

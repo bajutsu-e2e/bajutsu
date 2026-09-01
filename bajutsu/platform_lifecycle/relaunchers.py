@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import cast
 
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 from bajutsu.config import Effective, require_ios
 from bajutsu.drivers import base
 from bajutsu.orchestrator import RelaunchFn

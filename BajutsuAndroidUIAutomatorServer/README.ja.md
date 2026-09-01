@@ -35,7 +35,7 @@ UI Automator インストルメンテーションです。実行のあいだ `Ui
 ウィンドウの差異が一つあり、Python 側で揃えます。`dumpWindowHierarchy()` はすべてのウィンドウをたどる
 ので、その XML にはプラットフォームの `uiautomator dump` が対象ウィンドウに絞って除く SystemUI の
 ステータスバー（時計、Wi-Fi、電池、通知アイコン、29 ノード）も入ります。アプリの内容は同一です。
-`bajutsu.adb_resident.narrow_to_active_window` が SystemUI の装飾ウィンドウを取り除き、両方の経路が
+`bajutsu.common.backend_cli.adb_resident.narrow_to_active_window` が SystemUI の装飾ウィンドウを取り除き、両方の経路が
 同じ Element を返すようにします（ロードマップ項目の作業単位 2 が求める等価化です）。
 
 このソケットに届く Python 側（`adb forward`、`fetch_hierarchy` の配線、デバイスのリース（貸し出し）

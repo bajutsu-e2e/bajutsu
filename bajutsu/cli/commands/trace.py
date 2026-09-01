@@ -7,7 +7,7 @@ from pathlib import Path
 import typer
 
 from bajutsu import trace as _trace
-from bajutsu.run_files import DEFAULT_RUNS_DIR
+from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.scenario import load_expanded_scenarios
 
 

@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from bajutsu import adb
+from bajutsu.common.backend_cli import adb
 from bajutsu.drivers.adb import (
     ActFn,
     ActOutcome,

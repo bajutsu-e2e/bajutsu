@@ -610,7 +610,7 @@ def test_alert_guard_factory_notices_a_target_rule_reaching_a_self_answering_sce
     # than once for the first and silence for the rest.
     import logging
 
-    from bajutsu import deprecations
+    from bajutsu.common import deprecations
 
     eff = _eff(systemAlertHandling="{ rules: [{ prompt: tracking, choice: deny }] }")
     scenarios = [_tap_scenario("a", {"labels": ["Allow"]}), _tap_scenario("b", {"labels": ["OK"]})]
@@ -618,7 +618,7 @@ def test_alert_guard_factory_notices_a_target_rule_reaching_a_self_answering_sce
         deprecations._emitted.discard(f"systemAlertHandling.targetRule.{s.name}.tracking")
     factory = _alert_guard_factory(scenarios, eff, None)
     assert factory is not None
-    with caplog.at_level(logging.WARNING, logger="bajutsu.deprecations"):
+    with caplog.at_level(logging.WARNING, logger="bajutsu.common.deprecations"):
         for s in scenarios:
             factory(s)
     noticed = [r.message for r in caplog.records if "tracking" in r.message]
@@ -628,7 +628,7 @@ def test_alert_guard_factory_notices_a_target_rule_reaching_a_self_answering_sce
     # ...and once per scenario and prompt, not once per guard construction: building the same
     # scenario's guard again adds nothing.
     caplog.clear()
-    with caplog.at_level(logging.WARNING, logger="bajutsu.deprecations"):
+    with caplog.at_level(logging.WARNING, logger="bajutsu.common.deprecations"):
         factory(scenarios[0])
     assert not [r for r in caplog.records if "tracking" in r.message]
 
@@ -640,14 +640,14 @@ def test_alert_guard_factory_does_not_notice_a_target_rule_the_scenario_shadows(
     # answers for it — nothing to notice.
     import logging
 
-    from bajutsu import deprecations
+    from bajutsu.common import deprecations
 
     eff = _eff(systemAlertHandling="{ rules: [{ prompt: tracking, choice: deny }] }")
     s = _tap_scenario(
         "a", {"rules": [{"prompt": "tracking", "choice": "grant"}], "labels": ["Allow"]}
     )
     deprecations._emitted.discard("systemAlertHandling.targetRule.a.tracking")
-    with caplog.at_level(logging.WARNING, logger="bajutsu.deprecations"):
+    with caplog.at_level(logging.WARNING, logger="bajutsu.common.deprecations"):
         _alert_guard_factory([s], eff, None)(s)  # type: ignore[misc]
     assert not [r for r in caplog.records if "tracking" in r.message]
 
@@ -660,14 +660,14 @@ def test_alert_guard_factory_does_not_notice_when_only_the_target_declares_anyth
     # label list instead of the scenario's and the flag's own would warn here wrongly.
     import logging
 
-    from bajutsu import deprecations
+    from bajutsu.common import deprecations
 
     eff = _eff(
         systemAlertHandling='{ rules: [{ prompt: tracking, choice: deny }], labels: ["Cancel"] }'
     )
     s = _tap_scenario("a")
     deprecations._emitted.discard("systemAlertHandling.targetRule.a.tracking")
-    with caplog.at_level(logging.WARNING, logger="bajutsu.deprecations"):
+    with caplog.at_level(logging.WARNING, logger="bajutsu.common.deprecations"):
         guard = _alert_guard_factory([s], eff, None)(s)  # type: ignore[misc]
     assert guard is not None and guard.labels == ["Cancel"]
     assert not [r for r in caplog.records if "tracking" in r.message]
@@ -680,12 +680,12 @@ def test_alert_guard_factory_notices_when_only_the_flag_answers_for_the_scenario
     # that answers for itself just as a scenario's own labels would.
     import logging
 
-    from bajutsu import deprecations
+    from bajutsu.common import deprecations
 
     eff = _eff(systemAlertHandling="{ rules: [{ prompt: tracking, choice: deny }] }")
     s = _tap_scenario("a")
     deprecations._emitted.discard("systemAlertHandling.targetRule.a.tracking")
-    with caplog.at_level(logging.WARNING, logger="bajutsu.deprecations"):
+    with caplog.at_level(logging.WARNING, logger="bajutsu.common.deprecations"):
         _alert_guard_factory([s], eff, _flag_alert_policy("Allow", None))(s)  # type: ignore[misc]
     assert [r for r in caplog.records if "tracking" in r.message]
 

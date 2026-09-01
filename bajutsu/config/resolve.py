@@ -11,8 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from bajutsu import _yaml
 from bajutsu.backends import platform_of, resolve_actuators
+from bajutsu.common import _yaml
 from bajutsu.config.effective import (
     AiConfig,
     AndroidConfig,

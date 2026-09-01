@@ -10,7 +10,8 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from bajutsu.config import NotifyEndpoint
-from bajutsu.notify import (
+from bajutsu.orchestrator import RunResult
+from bajutsu.run.notify import (
     FailureSummary,
     RunNotification,
     _deliver,
@@ -22,7 +23,6 @@ from bajutsu.notify import (
     emit,
     emit_start,
 )
-from bajutsu.orchestrator import RunResult
 
 
 def _res(name: str, ok: bool, failure: str | None = None, duration: float = 1.0) -> RunResult:
@@ -396,7 +396,7 @@ def test_deliver_retry_on_error(monkeypatch: Any) -> None:
         return resp
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
-    monkeypatch.setattr("bajutsu.notify._RETRY_DELAY", 0.0)
+    monkeypatch.setattr("bajutsu.run.notify._RETRY_DELAY", 0.0)
     assert _deliver("https://hook", {"text": "hi"}) is True
     assert call_count == 2
 
@@ -406,7 +406,7 @@ def test_deliver_never_raises(monkeypatch: Any) -> None:
         raise OSError("network down")
 
     monkeypatch.setattr(urllib.request, "urlopen", explode)
-    monkeypatch.setattr("bajutsu.notify._RETRY_DELAY", 0.0)
+    monkeypatch.setattr("bajutsu.run.notify._RETRY_DELAY", 0.0)
     assert _deliver("https://hook", {"text": "hi"}) is False
 
 
@@ -614,7 +614,7 @@ def test_deliver_exhausts_all_retries(monkeypatch: Any) -> None:
         raise urllib.error.HTTPError("https://hook", 500, "ISE", {}, None)  # type: ignore[arg-type]
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
-    monkeypatch.setattr("bajutsu.notify._RETRY_DELAY", 0.0)
+    monkeypatch.setattr("bajutsu.run.notify._RETRY_DELAY", 0.0)
     assert _deliver("https://hook", {"text": "hi"}) is False
     assert call_count == 3  # initial + 2 retries
 
@@ -624,7 +624,7 @@ def test_emit_delivery_failure_returns_false(monkeypatch: Any) -> None:
         raise OSError("network down")
 
     monkeypatch.setattr(urllib.request, "urlopen", explode)
-    monkeypatch.setattr("bajutsu.notify._RETRY_DELAY", 0.0)
+    monkeypatch.setattr("bajutsu.run.notify._RETRY_DELAY", 0.0)
     results = [_res("s", False, "err")]
     fired = emit(
         results,

@@ -21,9 +21,11 @@ from typing import Any
 
 import pytest
 
-from bajutsu import backends, simctl, stall_diagnostics
+from bajutsu import backends
+from bajutsu.common import stall_diagnostics
+from bajutsu.common.backend_cli import simctl
+from bajutsu.common.devices.os import DeviceOS
 from bajutsu.config import Effective, load_config, resolve
-from bajutsu.device_os import DeviceOS
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.drivers.xcuitest import XcuitestChannelError
 from bajutsu.platform_lifecycle.environments import xcuitest as xcuitest_env

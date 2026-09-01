@@ -38,8 +38,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from bajutsu import adb, simctl
-from bajutsu.artifact_perms import make_run_dir, restrict_file
+from bajutsu.common.backend_cli import adb, simctl
+from bajutsu.common.run_meta.artifact_perms import make_run_dir, restrict_file
 
 _logger = logging.getLogger(__name__)
 

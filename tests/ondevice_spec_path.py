@@ -17,7 +17,7 @@ from pathlib import Path
 
 from backend_crash_recovery import LeaseHolder
 
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 
 
 def read_data_container(

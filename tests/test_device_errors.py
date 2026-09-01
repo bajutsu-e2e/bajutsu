@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from bajutsu import adb, device_errors, simctl
+from bajutsu.common.backend_cli import adb, simctl
+from bajutsu.common.devices import errors as device_errors
 
 
 def test_backend_errors_share_the_neutral_base() -> None:

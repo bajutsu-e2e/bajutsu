@@ -11,7 +11,7 @@ from collections.abc import Callable
 import pytest
 
 from bajutsu.cli.handoff import PromptHandoff, StreamHandoff, make_handoff
-from bajutsu.handoff import (
+from bajutsu.common.handoff import (
     REQUEST_LINE_PREFIX,
     HandoffRequest,
     HandoffResponse,

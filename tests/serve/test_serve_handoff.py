@@ -11,7 +11,7 @@ from typing import Any
 from _shared import FakeProc, fake_popen, project
 
 from bajutsu import serve as srv
-from bajutsu.handoff import (
+from bajutsu.common.handoff import (
     REQUEST_LINE_PREFIX,
     HandoffRequest,
     request_to_json,

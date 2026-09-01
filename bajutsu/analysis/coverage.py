@@ -22,8 +22,8 @@ from jinja2 import Environment, FileSystemLoader
 
 from bajutsu.analysis.audit import referenced_ids
 from bajutsu.assertions import match_request, request_label
+from bajutsu.common.doctor import namespace_of
 from bajutsu.crawl import fingerprint
-from bajutsu.doctor import namespace_of
 from bajutsu.drivers import base
 from bajutsu.evidence.network import NetworkExchange
 from bajutsu.interp import find_tokens

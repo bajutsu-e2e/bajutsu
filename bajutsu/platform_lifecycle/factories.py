@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 from bajutsu.platform_lifecycle.environments.android import AndroidEnvironment
 from bajutsu.platform_lifecycle.environments.fake import FakeEnvironment
 from bajutsu.platform_lifecycle.environments.web import WebEnvironment

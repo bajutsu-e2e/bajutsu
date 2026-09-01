@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from bajutsu.object_store import StoreURI, parse_store_uri
+from bajutsu.common.run_meta.object_store import StoreURI, parse_store_uri
 
 
 def test_parses_s3_bucket_and_prefix() -> None:

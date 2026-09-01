@@ -1,7 +1,7 @@
 """Tests for the shared screenshot / pixel-coordinate helpers (BE-0246 Unit 6).
 
 These functions used to be underscore-prefixed helpers in ``record.py`` / ``alerts.py``
-with cross-module callers; the move to ``bajutsu.screenshots`` makes the public surface
+with cross-module callers; the move to ``bajutsu.common.screenshots`` makes the public surface
 honest. The behavior is unchanged, so these tests pin the same contract — the best-effort
 capture (returns bytes / None, distinguishing an empty capture from a failure) and the two
 pure pixel-coordinate helpers.
@@ -16,8 +16,8 @@ from pathlib import Path
 import pytest
 from conftest import ShotDriver
 
+from bajutsu.common.screenshots import fraction, png_size, screenshot_bytes
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.screenshots import fraction, png_size, screenshot_bytes
 
 
 def _png(width: int, height: int) -> bytes:
@@ -69,7 +69,7 @@ def test_screenshot_bytes_returns_captured_png() -> None:
 def test_screenshot_bytes_none_when_nothing_captured(caplog: pytest.LogCaptureFixture) -> None:
     # The base FakeDriver writes no bytes: a genuine empty capture, not a failure — so it
     # returns None without logging a warning (the empty case must stay distinct from failure).
-    with caplog.at_level(logging.WARNING, logger="bajutsu.screenshots"):
+    with caplog.at_level(logging.WARNING, logger="bajutsu.common.screenshots"):
         assert screenshot_bytes(FakeDriver([])) is None
     assert not caplog.records
 
@@ -80,7 +80,7 @@ def test_screenshot_bytes_surfaces_failure_instead_of_swallowing(
     # A real capture failure must not be indistinguishable from an empty capture: it returns
     # None (best-effort, callers continue) but leaves a warning in the log so it is visible.
     driver = _RaisingShotDriver([])
-    with caplog.at_level(logging.WARNING, logger="bajutsu.screenshots"):
+    with caplog.at_level(logging.WARNING, logger="bajutsu.common.screenshots"):
         assert screenshot_bytes(driver) is None
     assert any(r.levelno == logging.WARNING for r in caplog.records)
     assert "simulator gone" in caplog.text

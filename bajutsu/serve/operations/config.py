@@ -12,7 +12,7 @@ from typing import Any
 
 import yaml
 
-from bajutsu import __version__, _yaml
+from bajutsu import __version__
 from bajutsu.agents import availability as ai_availability
 from bajutsu.agents.ai_config import (
     BEDROCK_MODEL_ENV,
@@ -30,6 +30,7 @@ from bajutsu.agents.anthropic_client import ANT_BINARY, ANT_CLI_MISSING, ANTHROP
 from bajutsu.ai import credential_gap, resolved_provider, selectable_providers
 from bajutsu.ai.registry import DISABLED_PROVIDER
 from bajutsu.backends import IMPLEMENTED
+from bajutsu.common import _yaml
 from bajutsu.config import load_config, resolve, xcuitest_pins_runner
 from bajutsu.config_source import materialize, parse_config_spec, source_provenance
 from bajutsu.platform_lifecycle.environments import (

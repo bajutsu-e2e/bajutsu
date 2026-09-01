@@ -18,8 +18,8 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
-from bajutsu import device_errors
-from bajutsu.device_id import is_valid_device_id
+from bajutsu.common.devices import errors as device_errors
+from bajutsu.common.devices.id import is_valid_device_id
 
 _logger = logging.getLogger(__name__)
 

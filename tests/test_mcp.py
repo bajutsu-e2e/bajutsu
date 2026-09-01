@@ -73,7 +73,7 @@ def test_doctor_tool_reports_probe_config_error(
     config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
     from fastmcp import FastMCP
 
-    from bajutsu.doctor import DoctorProbeError
+    from bajutsu.common.doctor import DoctorProbeError
     from bajutsu.mcp.tools import register_tools
 
     mcp = FastMCP("test")
@@ -99,7 +99,7 @@ def test_doctor_tool_reports_device_error(tmp_path: Path, monkeypatch: pytest.Mo
     config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
     from fastmcp import FastMCP
 
-    from bajutsu import device_errors
+    from bajutsu.common.devices import errors as device_errors
     from bajutsu.mcp.tools import register_tools
 
     mcp = FastMCP("test")

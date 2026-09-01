@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
-from bajutsu import simctl as _simctl
+from bajutsu.common.backend_cli import simctl as _simctl
 
 # The backend axis (idb vs web vs android): `platform:ios` is served by a Mac idb worker,
 # `platform:web` by the Linux Playwright worker container (BE-0173). Kept a distinct prefix so a

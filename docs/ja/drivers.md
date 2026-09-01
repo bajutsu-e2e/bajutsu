@@ -9,7 +9,7 @@
 > ラッパが担います。
 >
 > 実装: `bajutsu/drivers/`（`base.py` / `xcuitest.py` / `adb.py` / `playwright.py` / `fake.py`）・
-> `bajutsu/backends.py` ・ `bajutsu/simctl.py` ・ `bajutsu/adb.py`。
+> `bajutsu/backends.py` ・ `bajutsu/common/backend_cli/simctl.py` ・ `bajutsu/common/backend_cli/adb.py`。
 
 関連: [selectors](selectors.md)（解決） · [concepts の安定度順ラダー](concepts.md#5-安定度順ラダーstability-ladder) · [run-loop](run-loop.md)
 
@@ -212,7 +212,7 @@ def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  
 
 ## 環境管理（simctl）
 
-実装: `bajutsu/simctl.py`。コマンドビルダは純関数（単体テスト済み）で、実行は注入可能な `RunFn` 経由です。
+実装: `bajutsu/common/backend_cli/simctl.py`。コマンドビルダは純関数（単体テスト済み）で、実行は注入可能な `RunFn` 経由です。
 
 | メソッド | コマンド | 備考 |
 |---|---|---|

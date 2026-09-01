@@ -10,10 +10,10 @@ Two mechanical checks pin it down, both decidable from source rather than from a
 
 - an import contract (`lint-imports`) forbidding every module but `bajutsu.evidence.sink` from
   importing this one, so the property holds over the whole import graph;
-- a literal check failing a run-root path literal outside `bajutsu.run_files`, closing the remaining
+- a literal check failing a run-root path literal outside `bajutsu.common.run_meta.files`, closing the remaining
   way to rebuild the path without importing the provider.
 
-Reading is unrestricted and lives in `bajutsu.run_files`: `serve`, the evidence readers, `export`
+Reading is unrestricted and lives in `bajutsu.common.run_meta.files`: `serve`, the evidence readers, `export`
 and the comparison commands all need to read a run, and none of those operations can create an
 artifact. So does the runs root's *name*, which is a string rather than a writable handle — a flag
 default every command needs, and one the contract could not hand out from here without opening the
@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bajutsu.artifact_perms import make_run_dir
+from bajutsu.common.run_meta.artifact_perms import make_run_dir
 
 
 def run_dir_for_write(runs_dir: str | Path, run_id: str) -> Path:

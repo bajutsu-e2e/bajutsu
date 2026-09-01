@@ -39,7 +39,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from bajutsu import adb, stall_diagnostics
+from bajutsu.common import stall_diagnostics
+from bajutsu.common.backend_cli import adb
 from bajutsu.drivers import base
 from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
 from bajutsu.drivers.coordinate_tree import CoordinateTreeDriver, StableKey

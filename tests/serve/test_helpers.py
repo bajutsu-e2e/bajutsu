@@ -11,7 +11,7 @@ import pytest
 from _shared import project, write_run
 
 from bajutsu import serve as srv
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 
 
 def test_list_scenarios_parses_names(tmp_path: Path) -> None:

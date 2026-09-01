@@ -19,7 +19,7 @@ import zipfile
 from collections.abc import Iterable
 from pathlib import Path
 
-from bajutsu.run_files import RunArtifactReader
+from bajutsu.common.run_meta.files import RunArtifactReader
 
 # A fixed timestamp for every entry so the same tree zips to identical bytes (zip stores mtimes,
 # which would otherwise vary run to run). The value is arbitrary; only its constancy matters.

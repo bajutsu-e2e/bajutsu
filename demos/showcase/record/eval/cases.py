@@ -11,7 +11,7 @@ from pathlib import Path
 
 from grade import ExpectedOp  # local module (this dir is on sys.path when run directly)
 
-from bajutsu import _yaml
+from bajutsu.common import _yaml
 
 CASES_YAML = Path(__file__).with_name("cases.yaml")
 

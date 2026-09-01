@@ -19,7 +19,7 @@ from pydantic import (
     model_validator,
 )
 
-from bajutsu.deprecations import reject_renamed_key
+from bajutsu.common.deprecations import reject_renamed_key
 from bajutsu.drivers import base
 from bajutsu.scenario import AfterRule, Interrupt, Redact, Step, SystemAlertHandlingField
 

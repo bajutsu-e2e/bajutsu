@@ -8,7 +8,7 @@ from pathlib import Path
 
 import typer
 
-from bajutsu.run_files import DEFAULT_RUNS_DIR
+from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 
 
 def _is_loopback(host: str) -> bool:
@@ -136,7 +136,7 @@ def serve(
     # handling below. The server holds the credentials; workers upload via presigned PUT URLs.
     evidence = None
     if evidence_store:
-        from bajutsu.object_store import evidence_target_from_uri
+        from bajutsu.common.run_meta.object_store import evidence_target_from_uri
 
         try:
             evidence = evidence_target_from_uri(evidence_store)

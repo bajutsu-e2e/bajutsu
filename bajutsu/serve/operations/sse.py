@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Generator, Iterator
 
-from bajutsu.handoff import REQUEST_LINE_PREFIX
+from bajutsu.common.handoff import REQUEST_LINE_PREFIX
 from bajutsu.serve.state import Job, ServeState
 
 

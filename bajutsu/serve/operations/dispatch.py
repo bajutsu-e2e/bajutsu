@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu.cloud.devicefarm import Platform
+from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.report.manifest import MAX_LABEL_LENGTH
-from bajutsu.run_id import new_run_id
 from bajutsu.serve import oplog
 from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.batch_provider import BatchRequest

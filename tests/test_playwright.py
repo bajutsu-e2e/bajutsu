@@ -1193,7 +1193,7 @@ def test_wedge_surfaces_as_device_error_but_selection_errors_pass_through(
     """A wedged browser raises a Playwright error from a page op; the driver re-raises it as the
     crawl's recoverable `simctl.DeviceError` (BE-0077), so a pool worker relaunches instead of the crawl
     aborting. A selection failure is not a wedge and still propagates unchanged."""
-    from bajutsu import simctl
+    from bajutsu.common.backend_cli import simctl
 
     class _PwError(Exception):
         pass

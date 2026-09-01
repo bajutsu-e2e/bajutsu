@@ -10,7 +10,8 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from bajutsu import adb, backends
+from bajutsu import backends
+from bajutsu.common.backend_cli import adb
 from bajutsu.config import Effective, require_android
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 from bajutsu.drivers import base
@@ -23,7 +24,7 @@ from bajutsu.platform_lifecycle.protocols import ProvisionProfile
 from bajutsu.scenario import Preconditions, Relaunch, Scenario
 
 if TYPE_CHECKING:
-    from bajutsu.adb_resident import ResidentChannel
+    from bajutsu.common.backend_cli.adb_resident import ResidentChannel
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ _RESIDENT_ENV = "BAJUTSU_ADB_RESIDENT"
 
 @runtime_checkable
 class ResidentServerLike(Protocol):
-    """The lease-lifecycle slice of `bajutsu.adb_resident.ResidentServer` the environment drives."""
+    """The lease-lifecycle slice of `bajutsu.common.backend_cli.adb_resident.ResidentServer` the environment drives."""
 
     def start(self) -> ResidentChannel: ...
 
@@ -191,7 +192,7 @@ class AndroidEnvironment:
     def _make_resident(self) -> ResidentServerLike | None:
         if self._resident_factory is not None:
             return self._resident_factory()
-        from bajutsu.adb_resident import ResidentServer, server_apks_built
+        from bajutsu.common.backend_cli.adb_resident import ResidentServer, server_apks_built
 
         override = os.environ.get(_RESIDENT_ENV, "").strip().lower()
         if override in {"0", "false", "no"}:

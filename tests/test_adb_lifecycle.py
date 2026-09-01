@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu import adb
-from bajutsu.adb_resident import ResidentChannel
+from bajutsu.common.backend_cli import adb
+from bajutsu.common.backend_cli.adb_resident import ResidentChannel
 from bajutsu.config import AndroidConfig, Effective
 from bajutsu.drivers.adb import ActOutcome, AdbDriver, HierarchyRead
 from bajutsu.platform_lifecycle import AndroidEnvironment, ProvisionProfile, environment_for
@@ -574,7 +574,7 @@ def test_android_environment_skips_resident_when_the_server_is_not_built(
     # never ran `make -C BajutsuAndroidUIAutomatorServer build` is never worse off than before.
     import logging
 
-    import bajutsu.adb_resident as adb_resident
+    import bajutsu.common.backend_cli.adb_resident as adb_resident
 
     monkeypatch.delenv("BAJUTSU_ADB_RESIDENT", raising=False)
     monkeypatch.setattr(adb_resident, "server_apks_built", lambda *a: False)
@@ -595,7 +595,7 @@ def test_the_suite_pins_the_resident_gate_to_a_fresh_clone() -> None:
     # the BE-0236 install-skip assertion below) and a real background `adb instrument`. Asserting the
     # pin directly makes such a failure name its own cause; CI, which never builds the server APKs,
     # is green either way.
-    import bajutsu.adb_resident as adb_resident
+    import bajutsu.common.backend_cli.adb_resident as adb_resident
 
     assert "BAJUTSU_ADB_RESIDENT" not in os.environ
     assert not adb_resident.server_apks_built()
@@ -606,7 +606,7 @@ def test_make_resident_defaults_on_when_the_server_apks_are_built(
 ) -> None:
     # The default (env unset) now routes reads through the resident channel automatically once the
     # server is built — no opt-in flag needed. Construction only stores params (no device contact).
-    import bajutsu.adb_resident as adb_resident
+    import bajutsu.common.backend_cli.adb_resident as adb_resident
 
     monkeypatch.delenv("BAJUTSU_ADB_RESIDENT", raising=False)
     monkeypatch.setattr(adb_resident, "server_apks_built", lambda *a: True)
@@ -621,7 +621,7 @@ def test_make_resident_env_off_opts_out_even_when_built(
     # for pinning the fallback path (the Android e2e lane uses it to guard the dump path, PR-D).
     import logging
 
-    import bajutsu.adb_resident as adb_resident
+    import bajutsu.common.backend_cli.adb_resident as adb_resident
 
     monkeypatch.setenv("BAJUTSU_ADB_RESIDENT", "0")
     monkeypatch.setattr(adb_resident, "server_apks_built", lambda *a: True)
@@ -639,7 +639,7 @@ def test_make_resident_env_on_forces_a_server_even_when_not_built(
     # An explicit truthy override forces the resident channel even before a build; start() then
     # degrades loudly to dump if the APKs are missing (tested in test_adb_resident). Construction
     # only stores params, so this stays hermetic. (monkeypatch auto-restores the env var.)
-    import bajutsu.adb_resident as adb_resident
+    import bajutsu.common.backend_cli.adb_resident as adb_resident
 
     monkeypatch.setenv("BAJUTSU_ADB_RESIDENT", "1")
     monkeypatch.setattr(adb_resident, "server_apks_built", lambda *a: False)

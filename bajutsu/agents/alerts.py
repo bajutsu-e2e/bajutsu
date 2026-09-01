@@ -31,11 +31,11 @@ from bajutsu.ai import (
     ToolDef,
 )
 from bajutsu.analytics import usage
+from bajutsu.common.screenshots import fraction, png_size, screenshot_bytes
 from bajutsu.drivers import base
 from bajutsu.elements import screen_size_from_elements
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.orchestrator import AlertEvent
-from bajutsu.screenshots import fraction, png_size, screenshot_bytes
 
 # Sonnet over Opus: this fires mid-wait (BE-0269), so its round-trip latency is on the run's
 # critical path — a locate-a-button task doesn't need Opus's extra reasoning depth.

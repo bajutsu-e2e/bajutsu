@@ -12,7 +12,7 @@ from typing import TypedDict
 import yaml
 from pydantic import ValidationError
 
-from bajutsu import _yaml
+from bajutsu.common import _yaml
 from bajutsu.scenario import Scenario, load_scenario_file
 
 

@@ -6,8 +6,10 @@ import functools
 from collections.abc import Callable
 from typing import Any
 
-from bajutsu import adb, device_errors, doctor, simctl
 from bajutsu.backends import IMPLEMENTED, resolve_actuators
+from bajutsu.common import doctor
+from bajutsu.common.backend_cli import adb, simctl
+from bajutsu.common.devices import errors as device_errors
 from bajutsu.config import (
     Effective,
     android_package,

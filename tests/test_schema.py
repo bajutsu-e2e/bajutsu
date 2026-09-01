@@ -7,7 +7,7 @@ import json
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
-from bajutsu.lint import scenario_json_schema
+from bajutsu.common.lint import scenario_json_schema
 
 runner = CliRunner()
 

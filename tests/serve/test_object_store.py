@@ -18,7 +18,7 @@ import pytest
 from _shared import patch_gcs_client
 from botocore.exceptions import ClientError
 
-from bajutsu.object_store import GCSObjectStore
+from bajutsu.common.run_meta.object_store import GCSObjectStore
 from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
 from bajutsu.serve.server.object_store import S3ObjectStore, artifact_prefix, object_store_from_env
 

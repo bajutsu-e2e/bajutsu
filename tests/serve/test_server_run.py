@@ -973,7 +973,7 @@ def test_build_state_server_wires_a_gcs_object_store_from_a_gs_uri(
 ) -> None:
     # A gs:// BAJUTSU_SERVER_STORE builds the server backend on GCSObjectStore instead of S3 (BE-0204)
     # — a fake storage.Client keeps the real object_store_from_uri path off the network.
-    from bajutsu.object_store import GCSObjectStore
+    from bajutsu.common.run_meta.object_store import GCSObjectStore
 
     patch_gcs_client(monkeypatch)
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "gs://bucket/tenant")

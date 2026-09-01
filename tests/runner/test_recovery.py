@@ -12,7 +12,7 @@ from collections.abc import Callable
 
 import pytest
 
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 from bajutsu.drivers import base, xcuitest
 from bajutsu.runner.recovery import (
     CrashRecoveryBudget,
@@ -272,7 +272,7 @@ def test_guarded_teardown_warns_on_a_device_timeout_rather_than_calling_it_a_def
     """
     import logging
 
-    from bajutsu import simctl
+    from bajutsu.common.backend_cli import simctl
 
     with caplog.at_level(logging.WARNING):
         guarded_teardown(
@@ -286,7 +286,7 @@ def test_guarded_teardown_warns_on_a_device_timeout_rather_than_calling_it_a_def
 def test_guarded_teardown_still_treats_a_plain_device_error_as_a_defect() -> None:
     import pytest
 
-    from bajutsu import simctl
+    from bajutsu.common.backend_cli import simctl
 
     with pytest.raises(simctl.DeviceError, match="refused"):
         guarded_teardown(

@@ -20,7 +20,7 @@ from unittest import mock
 
 import pytest
 
-from bajutsu.adb_resident import _parse_native_z
+from bajutsu.common.backend_cli.adb_resident import _parse_native_z
 from bajutsu.dom import parse_dom
 from bajutsu.drivers import base
 from bajutsu.drivers.adb import parse_hierarchy, parse_hierarchy_with_identities

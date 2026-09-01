@@ -7,7 +7,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
-from bajutsu.lint import lint_diagnostics, lint_file, lint_text, provenance_coverage
+from bajutsu.common.lint import lint_diagnostics, lint_file, lint_text, provenance_coverage
 from bajutsu.scenario import load_scenario_file
 
 runner = CliRunner()

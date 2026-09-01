@@ -38,7 +38,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 from bajutsu.drivers import base
 
 _logger = logging.getLogger(__name__)

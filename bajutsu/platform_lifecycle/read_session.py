@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.platform_lifecycle.environments.xcuitest_live import is_webdriver_endpoint

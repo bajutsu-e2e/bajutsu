@@ -12,7 +12,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
-from bajutsu.object_store import GCSObjectStore
+from bajutsu.common.run_meta.object_store import GCSObjectStore
 
 
 class _FakeBlob:

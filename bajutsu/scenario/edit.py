@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import yaml
 
-from bajutsu import _yaml
+from bajutsu.common import _yaml
 from bajutsu.scenario.load import load_scenario_file
 from bajutsu.scenario.models import STEP_ACTIONS, Assertion, Scenario, Selector, Step
 from bajutsu.scenario.serialize import dump_block

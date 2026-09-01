@@ -11,7 +11,7 @@ def lint(
     scenario: str = typer.Argument(..., help="Path to a scenario *.yaml file"),
 ) -> None:
     """Validate a scenario file without running it."""
-    from bajutsu.lint import lint_text, provenance_coverage
+    from bajutsu.common.lint import lint_text, provenance_coverage
     from bajutsu.scenario import load_scenario_file
 
     path = Path(scenario)

@@ -27,7 +27,7 @@ runs/<runId>/
     └── device.log    # deviceLog (interval)
 ```
 
-The CLI assigns `runId` as `YYYYMMDD-HHMMSS`. `bajutsu/run_id.py`
+The CLI assigns `runId` as `YYYYMMDD-HHMMSS`. `bajutsu/common/run_meta/id.py`
 ([BE-0200](../roadmaps/BE-0200-run-id-contract/BE-0200-run-id-contract.md)) mints it once, so every
 call site shares one format. `stepId` is `step.name` or `step<i>`.
 

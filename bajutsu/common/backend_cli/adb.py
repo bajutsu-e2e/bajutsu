@@ -23,8 +23,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from bajutsu import device_errors
-from bajutsu.device_id import is_valid_device_id
+from bajutsu.common.devices import errors as device_errors
+from bajutsu.common.devices.id import is_valid_device_id
 
 # argv -> stdout. adb needs no parent-process env (unlike simctl's SIMCTL_CHILD_*).
 RunFn = Callable[[list[str]], str]

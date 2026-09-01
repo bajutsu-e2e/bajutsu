@@ -113,7 +113,7 @@ run では AI なしで同じ証跡が再現します（[evidence](evidence.md)�
 |---|---|
 | 曖昧セレクタ即失敗 | `drivers/base.py` `resolve_unique` |
 | 条件待機のみ | `orchestrator/waits.py` `_wait` |
-| クリーン環境 | `runner/launch.py` `launch_driver` · `simctl.py` `Env.erase` |
+| クリーン環境 | `runner/launch.py` `launch_driver` · `common/backend_cli/simctl.py` `Env.erase` |
 | 機械アサーション | `assertions/` |
 | 安定度順 / actuator | `backends.py` `select_actuator` · 各 `drivers/*.py` `capabilities()` |
 | アプリ非依存 | `config/resolve.py` `resolve` → `Effective` |

@@ -8,8 +8,6 @@ from pathlib import Path
 
 import typer
 
-from bajutsu import device_errors
-from bajutsu import simctl as _simctl
 from bajutsu.agents.claude import MODEL as _RECORD_MODEL
 from bajutsu.agents.factory import make_agent
 from bajutsu.ai import announce_ai
@@ -31,10 +29,12 @@ from bajutsu.cli._shared import (
     resolve_system_alert_handling_flag,
 )
 from bajutsu.cli.handoff import make_handoff
+from bajutsu.common.backend_cli import simctl as _simctl
+from bajutsu.common.devices import errors as device_errors
+from bajutsu.common.handoff import HumanHandoffUnavailable
 from bajutsu.config import WEB_ENGINES, Effective
-from bajutsu.handoff import HumanHandoffUnavailable
 from bajutsu.platform_lifecycle import environment_for
-from bajutsu.record import record as record_loop
+from bajutsu.record.loop import record as record_loop
 from bajutsu.runner import launch_driver
 from bajutsu.scenario import Preconditions, dump_scenarios
 

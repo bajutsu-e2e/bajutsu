@@ -50,7 +50,7 @@ from typing import Protocol
 
 import pytest
 
-from bajutsu import adb
+from bajutsu.common.backend_cli import adb
 from bajutsu.evidence import intervals
 
 _logger = logging.getLogger(__name__)

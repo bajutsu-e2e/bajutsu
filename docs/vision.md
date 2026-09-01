@@ -71,7 +71,7 @@ rides those same iOS/Android backends unchanged, needing no new actuator (BE-000
 
 **The abstraction is already platform-shaped.** Only three seams are platform-specific: the
 **actuator** (drives the UI — `drivers/xcuitest.py`, `drivers/adb.py`, …), the **environment manager**
-(boot / erase / launch — `simctl.py` on iOS, its Android counterpart), and the **stable-id
+(boot / erase / launch — `common/backend_cli/simctl.py` on iOS, its Android counterpart), and the **stable-id
 convention** (`accessibilityIdentifier` on iOS, `resource-id` on Android, `data-testid` on the web —
 [concepts §4](concepts.md#4-stable-selectors-prefer-accessibilityidentifier)). Everything else —
 scenario DSL, selector resolution, machine assertions, the orchestrator, evidence, the reporter —

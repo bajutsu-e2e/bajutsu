@@ -215,7 +215,7 @@ max-statements = 80
 # is safe. Ignore S506 at the file level rather than inline, so the line stays byte-identical to
 # main — where CodeQL already dismissed the same py/unsafe-deserialization finding as a false
 # positive (an inline change re-surfaces it as a new PR alert).
-"bajutsu/_yaml.py" = ["S506"]
+"bajutsu/common/_yaml.py" = ["S506"]
 # backends.py installs the web extra via `uv`/`playwright` on PATH (S607); launch_server.py probes a
 # config-driven readiness URL (S310). Both are intentional; ignored at the file level so the lines
 # stay byte-identical to main (an inline noqa could re-surface a dismissed-on-main CodeQL finding).
@@ -321,21 +321,21 @@ source_modules = [
     "bajutsu.preflight",
     "bajutsu.capability_preflight",
     "bajutsu.capabilities",
-    "bajutsu.doctor",
-    "bajutsu.lint",
+    "bajutsu.common.doctor",
+    "bajutsu.common.lint",
 ]
 forbidden_modules = [
     "bajutsu.serve",
     "bajutsu.mcp",
     "bajutsu.codegen",
     "bajutsu.agents",
-    "bajutsu.triage",
-    "bajutsu.record",
-    "bajutsu.record_capture",
-    "bajutsu.screenshots",
+    "bajutsu.triage.heuristic",
+    "bajutsu.record.loop",
+    "bajutsu.record.capture",
+    "bajutsu.common.screenshots",
     "bajutsu.crawl.guide",
     "bajutsu.github.actions",
-    "bajutsu.notify",
+    "bajutsu.run.notify",
 ]
 
 # The deterministic core must also stay free of the hosting-only third-party extras (BE-0129): the
@@ -384,8 +384,8 @@ forbidden_modules = [
     "bajutsu.report",
     "bajutsu.config",
     "bajutsu.preflight",
-    "bajutsu.doctor",
-    "bajutsu.lint",
+    "bajutsu.common.doctor",
+    "bajutsu.common.lint",
 ]
 # `drivers/base.py`'s `Collector` Protocol reference is a TYPE_CHECKING-only dependency on the
 # network-exchange model every driver reports through — pre-dating BE-0257, when `network.py` was a
@@ -406,13 +406,13 @@ ignore_imports = [
 # that does not exist is already forbidden the moment it does. A `forbidden` contract cannot say it:
 # with `source_modules = ["bajutsu"]` it silently passes (the forbidden module is a descendant of
 # the source package), and listing today's writers instead would reintroduce exactly the
-# on-its-honor gap this item removes. Reading (`bajutsu.run_files`, which returns content and never
-# a path) and the runs root's *name* stay unrestricted: neither confers a writable handle.
+# on-its-honor gap this item removes. Reading (`bajutsu.common.run_meta.files`, which returns content
+# and never a path) and the runs root's *name* stay unrestricted: neither confers a writable handle.
 [[tool.importlinter.contracts]]
 name = "Only the artifact sink can derive a writable run directory"
 type = "protected"
 protected_modules = [
-    "bajutsu.run_root",
+    "bajutsu.common.run_meta.root",
 ]
 allowed_importers = [
     "bajutsu.evidence.sink",

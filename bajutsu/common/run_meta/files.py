@@ -14,7 +14,7 @@ sink — the import contract would hold on paper while the boundary leaked.
 The *name* of the runs root belongs on this side by the same test. It is a string, not a handle: every
 command needs it for a flag default, and knowing where runs land grants no more than knowing that they
 land somewhere. Deriving one run's writable directory is the restricted operation, and that lives in
-`bajutsu.run_root`, which only the sink may import. Naming the root here rather than repeating the
+`bajutsu.common.run_meta.root`, which only the sink may import. Naming the root here rather than repeating the
 literal is what gives the literal check exactly one place to allow.
 """
 

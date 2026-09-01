@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from bajutsu import doctor
+from bajutsu.common import doctor
 from bajutsu.drivers import base
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.scenario.models import Selector, Step, Swipe, TypeText

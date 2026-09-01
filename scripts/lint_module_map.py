@@ -15,6 +15,10 @@ Three rules, in order of what the tree can support today:
 2. Every *top-level* subpackage appears, either as its own row or through one of the files
    inside it. A nested one (``cli/commands/``, ``serve/server/``) is not compared, because the
    table documents those subtrees in a row's role prose rather than in the cell this reads.
+   ``common/`` is the one exception: it aggregates many otherwise-unrelated subpackages (BE-0257's
+   successor reorg), so being satisfied by any single row somewhere under ``common/`` would let the
+   others go undocumented silently. Rule 2 therefore also walks one level into ``common/`` and
+   checks each ``common/<subpackage>/`` individually, the same way it checks a top-level one.
 3. Every top-level module appears — except the ones in ``GRANDFATHERED`` below.
 
 Rule 3 carries an allowlist because the modules missing when the check landed predate it, and
@@ -48,29 +52,12 @@ _NAME_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_./]*)`")
 # opportunistically by the next change that touches the module — not in one sweeping rewrite.
 GRANDFATHERED = frozenset(
     {
-        "adb.py",
-        "adb_resident.py",
-        "artifact_perms.py",
         "capabilities.py",
         "capability_preflight.py",
         "config_source.py",
-        "deprecations.py",
-        "device_errors.py",
-        "device_id.py",
-        "device_os.py",
-        "diagnostics.py",
         "dom.py",
         "elements.py",
         "from_grouping.py",
-        "handoff.py",
-        "notify.py",
-        "object_store.py",
-        "record_capture.py",
-        "run_files.py",
-        "run_id.py",
-        "run_root.py",
-        "screenshots.py",
-        "stall_diagnostics.py",
         "totp.py",
         "web_network.py",
         "webview.py",
@@ -105,16 +92,39 @@ def missing_from_tree(names: set[str], package: Path) -> list[str]:
 
 
 def undocumented_packages(names: set[str], package: Path) -> list[str]:
-    """The subpackages the table never mentions, by name or through a file inside them."""
+    """The subpackages the table never mentions, by name or through a file inside them.
+
+    ``common/`` is checked one level deeper than every other top-level package (see rule 2 in the
+    module docstring): a ``common/<subpackage>/`` must be mentioned on its own, not merely by some
+    other row anywhere under ``common/``.
+    """
     mentioned = {name.split("/", 1)[0] for name in names if "/" in name}
-    return sorted(
+    missing = [
         f"{d.name}/"
         for d in package.iterdir()
         if d.is_dir()
         and d.name != "__pycache__"
         and any(d.glob("*.py"))
         and d.name not in mentioned
-    )
+    ]
+
+    common_dir = package / "common"
+    if common_dir.is_dir():
+        common_mentioned = {
+            parts[1]
+            for name in names
+            if len(parts := name.split("/", 2)) > 1 and parts[0] == "common"
+        }
+        missing.extend(
+            f"common/{d.name}/"
+            for d in common_dir.iterdir()
+            if d.is_dir()
+            and d.name != "__pycache__"
+            and any(d.glob("*.py"))
+            and d.name not in common_mentioned
+        )
+
+    return sorted(missing)
 
 
 def undocumented_modules(names: set[str], package: Path) -> list[str]:

@@ -9,10 +9,11 @@ from typing import Any
 
 import yaml
 
-from bajutsu import device_os, handoff
 from bajutsu.analysis import stats as _stats
 from bajutsu.analytics import ledger as _usage_ledger
 from bajutsu.analytics import stats as _usage_stats
+from bajutsu.common import handoff
+from bajutsu.common.devices import os as device_os
 from bajutsu.config import Config, load_config, resolve
 from bajutsu.drivers import base as driver_base
 from bajutsu.evidence import StepView, step_view
@@ -1033,7 +1034,7 @@ def resolve_scenario_pick(  # noqa: PLR0911
         return {"error": "elements.json is corrupt or unreadable"}, 400
 
     from bajutsu.elements import screen_size_from_elements
-    from bajutsu.record_capture import resolve_capture
+    from bajutsu.record.capture import resolve_capture
 
     sw, sh = screen_size_from_elements(elements)
     px, py = nx * sw, ny * sh

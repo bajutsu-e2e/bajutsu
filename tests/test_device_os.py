@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import pytest
 
-from bajutsu import backends, device_os
-from bajutsu.device_os import DeviceOS
+from bajutsu import backends
+from bajutsu.common.devices import os as device_os
+from bajutsu.common.devices.os import DeviceOS
 from bajutsu.drivers.xcuitest import XcuitestDriver
 
 

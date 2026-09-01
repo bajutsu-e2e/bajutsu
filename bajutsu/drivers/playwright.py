@@ -26,7 +26,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, cast
 
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 from bajutsu.dom import QUERY_JS, parse_dom
 from bajutsu.drivers import base
 from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained

@@ -13,7 +13,6 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 
-from bajutsu import simctl
 from bajutsu.backends import (
     default_available,
     resolve_evidence_providers,
@@ -21,6 +20,7 @@ from bajutsu.backends import (
     select_actuator_for_scenario,
 )
 from bajutsu.backends import make_driver as _make_driver
+from bajutsu.common.backend_cli import simctl
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.evidence import FileSink

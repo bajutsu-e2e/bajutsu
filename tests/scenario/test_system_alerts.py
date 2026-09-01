@@ -11,7 +11,7 @@ from typing import get_args
 
 import pytest
 
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 from bajutsu.scenario import (
     SystemAlertChoice,
     SystemAlertPrompt,

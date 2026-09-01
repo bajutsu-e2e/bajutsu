@@ -12,7 +12,6 @@ from pathlib import Path
 import typer
 
 from bajutsu import trace as _trace
-from bajutsu import triage as _triage
 from bajutsu.analytics import usage as _usage
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
@@ -22,8 +21,9 @@ from bajutsu.cli._shared import (
     _require_ai_credential,
     _warn_onscreen_secrets,
 )
+from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.config import Effective, IosConfig
-from bajutsu.run_files import DEFAULT_RUNS_DIR
+from bajutsu.triage import heuristic as _triage
 
 
 def triage(

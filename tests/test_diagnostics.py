@@ -6,7 +6,7 @@ import logging
 
 import pytest
 
-from bajutsu import diagnostics
+from bajutsu.common import diagnostics
 
 
 @pytest.fixture(autouse=True)

@@ -12,10 +12,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from bajutsu.doctor import Score
+    from bajutsu.common.doctor import Score
     from bajutsu.drivers import base
 
-from bajutsu import capability_preflight, device_errors
+from bajutsu import capability_preflight
 from bajutsu.assertions import (
     AssertionResult,
     EvalContext,
@@ -30,6 +30,7 @@ from bajutsu.backends import (
     erase_precondition_supported,
 )
 from bajutsu.cancellation import CANCELLED_FAILURE, CancelSource, not_cancelled
+from bajutsu.common.devices import errors as device_errors
 from bajutsu.config import Effective
 from bajutsu.drivers.base import BackendCrashError
 from bajutsu.evidence import Artifact
@@ -229,7 +230,7 @@ class _ScenarioRunner:
         # Lazy import: `doctor` pulls in the platform lifecycle, which imports `namespace_of` back from
         # it — a module-level import here would risk a cycle, and the default (no `on_score`) path must
         # not pay for loading it at all.
-        from bajutsu.doctor import score
+        from bajutsu.common.doctor import score
 
         try:
             self.on_score(

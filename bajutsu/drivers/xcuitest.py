@@ -36,7 +36,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from bajutsu.device_os import DeviceOS
+from bajutsu.common.devices.os import DeviceOS
 from bajutsu.drivers import base
 from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
 from bajutsu.zorder import ZOrderSource

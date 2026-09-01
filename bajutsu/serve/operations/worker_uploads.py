@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from bajutsu.object_store import content_type_for
+from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve.helpers import valid_relative_key, valid_run_id, valid_scenario_ref
 from bajutsu.serve.operations.presign import sign_put_urls
 from bajutsu.serve.orgs import DEFAULT_ORG

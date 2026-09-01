@@ -33,7 +33,7 @@ included into an app's build.
 One window difference is reconciled on the Python side: `dumpWindowHierarchy()` traverses every
 window, so its XML also carries the SystemUI status bar (clock, wifi, battery, notification icons —
 29 nodes) that the platform `uiautomator dump` omits by scoping to the active window. The app content
-is identical; `bajutsu.adb_resident.narrow_to_active_window` drops the SystemUI decor windows so both
+is identical; `bajutsu.common.backend_cli.adb_resident.narrow_to_active_window` drops the SystemUI decor windows so both
 paths yield the same Elements (the equivalence unit 2 of the roadmap item requires).
 
 The Python side that reaches this socket — `adb forward`, the `fetch_hierarchy` wiring, and the

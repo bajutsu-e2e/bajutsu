@@ -6,7 +6,7 @@ S3-compatible bucket (Cloudflare R2, AWS S3, MinIO) or a Google Cloud Storage bu
 the single ``BAJUTSU_SERVER_STORE`` URI (BE-0204).
 
 `ObjectStore`, `S3ObjectStore`, and `store_target_from_uri` live in the top-level
-`bajutsu.object_store` (BE-0110) so ``run`` and ``serve`` share one seam; the first two are
+`bajutsu.common.run_meta.object_store` (BE-0110) so ``run`` and ``serve`` share one seam; the first two are
 re-exported here for the existing server imports. `object_store_from_env` (BE-0204) rebuilds the
 server factory on that same URI machinery — `store_target_from_uri`, the "URI → (store, prefix)"
 resolution ``--evidence-store``'s `evidence_target_from_uri` also builds on — instead of hand-rolling
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import os
 
-from bajutsu.object_store import ObjectStore, S3ObjectStore, store_target_from_uri
+from bajutsu.common.run_meta.object_store import ObjectStore, S3ObjectStore, store_target_from_uri
 
 __all__ = [
     "ObjectStore",

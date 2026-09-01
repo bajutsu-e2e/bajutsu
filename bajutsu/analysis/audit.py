@@ -15,8 +15,8 @@ from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
-from bajutsu import device_os
-from bajutsu.device_os import DeviceOS
+from bajutsu.common.devices import os as device_os
+from bajutsu.common.devices.os import DeviceOS
 from bajutsu.drivers import base
 from bajutsu.scenario import Assertion, Gone, Scenario, Step
 

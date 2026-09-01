@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from bajutsu import _yaml
+from bajutsu.common import _yaml
 from bajutsu.scenario.models import Component, Scenario, ScenarioFile
 from bajutsu.scenario.models.scenario import SCHEMA_VERSION
 
