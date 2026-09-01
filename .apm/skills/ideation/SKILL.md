@@ -57,6 +57,10 @@ Before ideating, pull in what already exists:
 
 - `make roadmap-find ARGS="--grep <topic>"` — the items already on the topic, in one table.
   The roadmap runs to close to 400 items. Grepping it returns far more than the query does.
+  A **multi-word** topic needs inner quotes — `ARGS="--grep 'known failure'"`. The Makefile
+  expands `$(ARGS)` unquoted, so without them the shell splits the phrase and the parser rejects
+  the stray word. This bites on the most natural query for a request, so reach for the quotes
+  first rather than after the error.
 - `make roadmap-status STATUS="Proposal"` — the open backlog, when a keyword misses the framing.
 - `make repo-map ARGS="--headings docs/architecture.md"` names the groups under **Implemented**.
   That section records what already exists. Read the group covering the area, not the whole
@@ -91,6 +95,12 @@ which you're choosing and why:
 - **Overlaps an existing BE item** → don't create a duplicate. Augment that item's files
   (both languages): sharpen Motivation / Detailed design, add the new angle, or record it
   as a related consideration. Note in the chat which item you extended.
+  When the item it overlaps is already `Implemented`, there is usually **nothing to augment**:
+  restating a shipped item's own Motivation adds noise, not information. Say so instead — name
+  the item and the PR that shipped it, and show the user how to reach the behaviour that already
+  exists, since a request for something shipped usually means they could not find it. If what
+  they describe contradicts the shipped behaviour, that is a defect for
+  [`record-issue`](../record-issue/SKILL.md), not a proposal.
 - **Novel and scoped enough for an item** → draft a new BE item (step 4).
 - **Still unformed** → add a bullet under **Unsorted ideas** in both READMEs. Promote it
   to a numbered item later, once scope is clear. (This mirrors the roadmap's own rule.)
@@ -109,7 +119,12 @@ This creates `roadmaps/BE-XXXX-<slug>/` with both `BE-XXXX-<slug>.md` and its `-
 mirror — the bilingual header link, the metadata block (`Proposal` / `Author` / `Status` /
 `Topic`), and the five sections (`Introduction` / `Motivation` / `Detailed design` /
 `Alternatives considered` / `References`) seeded with `TBD`. `TOPIC` is validated against the
-index's known topics; `HANDLE` is the author's GitHub handle (defaults from `git config`).
+index's known topics. `HANDLE` is the author's GitHub handle, resolved from `HANDLE=`, then
+`$GITHUB_ACTOR`, then `git config github.user` — a **non-standard key that a fresh clone and most
+Claude Code sessions leave unset**, so the command hard-exits instead of guessing. That exit is
+correct behaviour, not an obstacle to route around: the `Author` row is permanent, and a guessed
+handle credits a real person who did not write the item. **Ask the user for their handle and pass
+it as `HANDLE=`.** Never reuse a handle you saw on another item, and never invent one.
 
 Then **fill the `TBD` sections** with what the discussion produced. Before you draft that prose,
 invoke the [`document-writing`](../document-writing/SKILL.md) skill — it is the authoritative norm for BE
@@ -162,6 +177,14 @@ no PR yet, so nothing to run `gh pr diff` against. Ask it to apply every lens in
 prose-quality lenses and the functional ones alike — and skip the two parts that need a live PR:
 "read the existing discussion first" (`gh pr view <PR_NUMBER> --comments`, since there is no PR
 number yet) and posting findings as inline PR comments.
+
+**When the host exposes no subagent tool.** Some sessions have no Agent tool, so the two-role
+split cannot run as written. Running both roles yourself is not a substitute: what BE-0347 buys is
+a reviewer with no memory of the authoring conversation, and you cannot be blind to a draft you
+just wrote. Do the closest available thing — invoke [`claude-review`](../claude-review/SKILL.md)
+for the judging pass and keep it strictly separate from the pass that edits — then **tell the user
+the review ran without a cold reviewer**, so they know the PR's own review is the first genuinely
+independent look at the item.
 
 This pass **never edits a file**; it classifies. Every finding that clears the contract's severity
 floor comes back as one of two things:
