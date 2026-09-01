@@ -691,7 +691,8 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   in-tree tap takes on) it does nothing, and the blocked step or `wait` names what it saw in its own
   timeout —
   `… — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)`, or a hedged
-  form where no query enumerated the surface. `visionInstruction` steered only that fallback, so `run`
+  form where no query enumerated the surface. Before BE-0402 that case fell back to an AI-vision
+  guard reading a screenshot, and `visionInstruction` steered that fallback alone, so `run`
   rejects it before any scenario starts rather than ignoring it — the silent inversion BE-0401 split
   the old single `instruction` key to expose. Since BE-0401 each key names exactly one path, and
   after BE-0402 only the native one has keys left naming it: `rules` and `labels` compose across the
