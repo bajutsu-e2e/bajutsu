@@ -113,7 +113,7 @@ def _query(sel: base.Selector) -> str | None:
     """
     if "within" in sel:
         # `within` is a *geometric* frame-containment constraint (the candidate's frame must sit
-        # inside the container's; see drivers/base.py). XCUITest queries are tree-based, not
+        # inside the container's; see common/drivers/base.py). XCUITest queries are tree-based, not
         # geometric, so there is no faithful structural form — it stays unsupported.
         return None
     base_query = "app.descendants(matching: .any)"
@@ -152,7 +152,7 @@ def _element(sel: base.Selector) -> str:
     if index is None:
         return f"{query}.firstMatch"
     if index < 0:
-        # A negative index counts from the end (`candidates[i]` in drivers/base.py); `boundBy:`
+        # A negative index counts from the end (`candidates[i]` in common/drivers/base.py); `boundBy:`
         # takes no negative literal, so offset from the live `count` — `count - 1` is the last.
         return f"{query}.element(boundBy: {query}.count - {-index})"
     return f"{query}.element(boundBy: {index})"
@@ -190,7 +190,7 @@ def _system_alert_element(sel: base.Selector) -> str | None:
     if index is None:
         return f"{buttons}.firstMatch"
     if index < 0:
-        # A negative index counts from the end (`candidates[i]` in drivers/base.py); `boundBy:` takes
+        # A negative index counts from the end (`candidates[i]` in common/drivers/base.py); `boundBy:` takes
         # no negative literal, so offset from the live `count`, exactly as `_element` does.
         return f"{buttons}.element(boundBy: {buttons}.count - {-index})"
     return f"{buttons}.element(boundBy: {index})"
