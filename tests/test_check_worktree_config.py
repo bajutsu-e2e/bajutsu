@@ -186,8 +186,9 @@ def test_a_directory_that_is_no_checkout_passes(tmp_path: Path) -> None:
     root = tmp_path / "export"
     _install_script(root)
 
-    # GIT_CEILING_DIRECTORIES so discovery cannot walk up into the real checkout this test runs in.
-    result = _run(root, GIT_CEILING_DIRECTORIES=str(tmp_path))
+    # The early `.git` check is what stops this, and it is the only thing that does: the script
+    # unsets GIT_CEILING_DIRECTORIES itself, so the discovery bound cannot be handed in from here.
+    result = _run(root)
 
     assert result.returncode == 0
     assert result.stderr == ""
@@ -403,6 +404,22 @@ def test_an_unreadable_repository_is_reported_not_waved_through(tmp_path: Path) 
     assert "cannot read the repository" in result.stderr
     # git's own words must reach the human, or the message is unactionable.
     assert "bogusthing" in result.stderr.lower()
+
+
+def test_an_unreadable_shared_config_is_reported_not_waved_through(tmp_path: Path) -> None:
+    """The shared config is the file under judgement, so failing to read it must exit 1, not 0.
+
+    Untested, a later refactor could relax this branch to a quiet pass with the suite still green,
+    reintroducing the silence the guard exists to end. Unlinking rather than `chmod`, so the test
+    still fails for the right reason when the suite runs as root in a container.
+    """
+    root = _checkout(tmp_path / "repo")
+    _shared_config(root).unlink()
+
+    result = _run(root)
+
+    assert result.returncode == 1
+    assert "shared configuration cannot be checked" in result.stderr
 
 
 def test_a_pruned_worktree_admin_directory_is_reported_not_waved_through(tmp_path: Path) -> None:

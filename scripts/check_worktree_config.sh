@@ -30,7 +30,9 @@ cd "$(dirname "$0")/.."
 # git's location variables override discovery from `cwd`, and a hook exports them into everything it
 # runs — absolute in a linked worktree. Left set, every read below would answer for the pushing
 # checkout instead of this one, which is the class of bug this script is here to catch.
-# `GIT_COMMON_DIR` earns its place in the list twice over: it names the very file this guard reads.
+# `GIT_COMMON_DIR` earns its place twice over: it names the very file this guard reads.
+# `GIT_CEILING_DIRECTORIES` is here for the opposite reason — it *bounds* the upward search rather
+# than redirecting it, and an inherited bound could stop git finding the checkout that is right here.
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR \
   GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_CEILING_DIRECTORIES
 
