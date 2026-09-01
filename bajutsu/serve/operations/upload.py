@@ -3,10 +3,13 @@
 BE-0243 adds durable, cross-replica resolution on top of the local extraction sandbox: when
 `state.object_store` is configured (the hosted `server` backend), the raw zip is persisted
 content-addressed by its sha256 so another replica can fetch-and-extract it instead of refusing an
-`upload`-kind bind. BE-0393 unit 5 lets a replica resolve its own extraction cache before an object
-store is required, so a local or single-node `serve` restores a bundle it still holds on disk rather
-than refusing the source it can already see. The record naming those bytes lives on the org row
-(BE-0404 unit 1), written by the bind itself.
+`upload`-kind bind. BE-0393 unit 5 resolves a replica's own extraction cache before an object store
+is required, so a replica that already holds the extracted bundle rebinds it without a fetch. No
+shipping configuration reaches the no-store branch yet — `restore_org_config`, the only caller,
+needs a repository, and the one construction that assigns one also requires `BAJUTSU_SERVER_STORE`
+— so it is groundwork for the deployment shapes units 6 and 7 open, not a recovery an operator can
+perform today. The record naming those bytes lives on the org row (BE-0404 unit 1), written by the
+bind itself.
 """
 
 from __future__ import annotations
@@ -559,8 +562,8 @@ def _restore_composed_config(
     always-required artifact) is missing or not a valid sha, or this replica holds neither the
     composed tree nor all of its legs and has no object store to fetch them from — so the caller
     falls back to the existing `409`. Both local caches are resolved before an object store is
-    required (BE-0393): they survive a restart, so the deployment shape least likely to have a store
-    is the one that already holds what it needs. Every leg in *artifacts* is untrusted (the org's
+    required (BE-0393): they survive a restart, so a replica that already composed this triple
+    rebinds it without a fetch. Every leg in *artifacts* is untrusted (the org's
     stored record, whose locator a client shaped at bind), so each present sha is validated with
     `_SHA256_RE` before it is ever turned into a path or object-store key, the same reasoning
     `restore_uploaded_config`'s legacy path already applies to its own single `sha256`."""
@@ -695,7 +698,9 @@ def restore_uploaded_config(
 
     Returns ``None`` when there is nothing to restore from — *source* carries no usable `sha256`, or
     its bundle is neither in this replica's extraction cache nor fetchable (no object store
-    configured) — so the caller falls back to its own "re-upload it" error. *source*
+    configured) — so the caller falls back to its own "re-upload it" error. The cache is resolved
+    first (BE-0393): the extracted tree is keyed by content hash and survives a restart, so a replica
+    that still holds it rebinds without a fetch. *source*
     reached the org row from a client-shaped bind, so its
     `sha256` is untrusted: it must be a full lowercase hex digest (`_SHA256_RE`) before it is ever
     turned into a path (`uploads_dir / sha256`) or object-store key, the same way the Git source

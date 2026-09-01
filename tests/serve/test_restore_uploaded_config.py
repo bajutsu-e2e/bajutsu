@@ -256,9 +256,10 @@ def test_a_composed_cache_hit_never_touches_the_store(tmp_path: Path) -> None:
 
 
 def test_a_cached_bundle_is_restored_with_no_object_store(tmp_path: Path) -> None:
-    """The extracted tree is keyed by content hash and survives a restart, so the deployment shape
-    least likely to have an object store — a local or single-node `serve` — restores a bundle it
-    still holds instead of refusing the source it can already see."""
+    """The extracted tree is keyed by content hash and survives a restart, so a replica that still
+    holds it rebinds without a fetch. No shipping configuration reaches this branch yet — a
+    deployment that keeps a config memory also has a store — so this pins the groundwork units 6 and
+    7 build on rather than a recovery an operator performs today."""
     blob = _bundle_zip()
     sha256 = hashlib.sha256(blob).hexdigest()
     cached = tmp_path / "uploads" / sha256
