@@ -3,9 +3,9 @@
 `record`, `triage`, alert-dismissal, and `crawl` reach Claude through this one factory, so the
 provider is swappable without touching the call sites. Whatever is genuinely Anthropic-SDK-specific
 lives here — the client construction and the `ant` CLI token IO — while the provider-agnostic config
-resolution every backend shares (model / effort / language, and the provider-name resolution
-itself) lives in `bajutsu.ai_config`, and the cross-provider registry / credential dispatch in
-`bajutsu.common.ai` (BE-0246). The provider (`ai.provider` / ``BAJUTSU_AI_PROVIDER``, resolved by
+resolution every backend shares (model / effort / language, and the provider-name resolution itself)
+lives in `bajutsu.common.agents.ai_config`, and the cross-provider registry / credential dispatch
+in `bajutsu.common.ai` (BE-0246). The provider (`ai.provider` / ``BAJUTSU_AI_PROVIDER``, resolved by
 `ai_config.resolve_provider`) selects the Anthropic-SDK variant:
 
 - ``api-key`` (default) → ``anthropic.Anthropic()``, authenticated by the key in ``ai.keyEnv``
