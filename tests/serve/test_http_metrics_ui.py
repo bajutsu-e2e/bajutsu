@@ -90,3 +90,31 @@ def test_the_comparison_writes_nothing(tmp_path: Path) -> None:
     assert "switchProject" not in text
     assert "postJSON" not in text
     assert "confirm" not in text
+
+
+def test_the_label_switcher_ships_and_repoints_every_history_view(tmp_path: Path) -> None:
+    # The label filter is on by default, so a deployment must be able to see which partition it is
+    # reading and widen it — an invisible default-on filter would silently narrow the history with
+    # no control to clear (BE-0404 unit 4).
+    scn_dir, cfg, runs = project(tmp_path)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        index = _get(port, "/")[1].decode("utf-8")
+        core = _get(port, "/serve.core.mjs")[1].decode("utf-8")
+        panels = _get(port, "/serve.panels.mjs")[1].decode("utf-8")
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert 'data-testid="nav.label"' in index
+    assert "async function loadLabels(" in core
+    assert "all labels" in core
+    # One change repoints all three history-backed views, so they cannot disagree about the partition.
+    assert "async function onLabelChange(" in panels
+    for read in (
+        "'/api/runs'+labelParam('?')",
+        "'/stats'+labelParam('?')",
+        "'/flakiness'+labelParam('?')",
+    ):
+        assert read in panels

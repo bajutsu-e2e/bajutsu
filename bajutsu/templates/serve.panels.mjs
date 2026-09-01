@@ -8,7 +8,7 @@ import {
   $, esc, getJSON, isFetchError, FETCH_ERROR, postJSON, setStatus, setBusy, streamJob, cancelJob, appendLine, startJob,
   openModal, closeModal, renderGradeBadge, setCfgName, closeFs, loadShared, loadScenarios, loadSims,
   state, scnFiles, aiAvailable,
-  restoreRun, purgeRun, wireHistoryList, retentionDays,
+  restoreRun, purgeRun, wireHistoryList, retentionDays, labelParam, loadLabels, setLabelChoice,
 } from './serve.core.mjs';
 import {replayCodegen} from './serve.author.mjs';
 
@@ -372,7 +372,7 @@ async function loadStats(){
   let html;
   // Treat a network error or a non-2xx (e.g. 401/500) as unavailable, and render the error into the
   // shadow root so a failed refresh replaces the stale dashboard instead of leaving it on screen.
-  try{const r=await fetch('/stats');if(!r.ok)throw 0;html=await r.text();}
+  try{const r=await fetch('/stats'+labelParam('?'));if(!r.ok)throw 0;html=await r.text();}
   catch(e){setShadowContent(host,'<div style="color:#6e6e73;font-style:italic">stats unavailable</div>');return;}
   renderReportInShadow(host,html,{leftAlign:true});
 }
@@ -382,7 +382,7 @@ async function loadStats(){
 async function loadFlaky(){
   const host=$('#flaky-host');
   let html;
-  try{const r=await fetch('/flakiness');if(!r.ok)throw 0;html=await r.text();}
+  try{const r=await fetch('/flakiness'+labelParam('?'));if(!r.ok)throw 0;html=await r.text();}
   catch(e){setShadowContent(host,'<div style="color:#6e6e73;font-style:italic">flaky scenarios unavailable</div>');return;}
   renderReportInShadow(host,html,{leftAlign:true});
 }
@@ -423,7 +423,7 @@ async function loadHistory(){
   // FETCH_ERROR rather than a bare null-and-return (#1716): returning early left the list showing
   // whatever was there — at boot, the "no runs yet" placeholder — so a failed read was
   // indistinguishable from an empty history. Say it failed instead.
-  const runs=await getJSON('/api/runs',FETCH_ERROR);
+  const runs=await getJSON('/api/runs'+labelParam('?'),FETCH_ERROR);
   if(isFetchError(runs)){
     $('#history').innerHTML='<li class="muted" data-testid="replay.history-error">Couldn\u2019t load the run history. Refresh to retry.</li>';
     // Drop every count the last good read left behind — the tab's "(N)" and the drilldown banner's
@@ -686,6 +686,9 @@ async function composeAndLoad(){
 
 // Wire every static listener. Called once by the entry module's boot after all sections evaluate.
 function initPanels(){
+  // The run-history label switcher (BE-0404 unit 4), beside the config name it partitions by.
+  const labelsw=$('#labelsw');
+  if(labelsw)labelsw.addEventListener('change',e=>onLabelChange(e.target.value));
   // Record.
   $('#rec-simrefresh').addEventListener('click',loadSims);
   $('#rec-go').addEventListener('click',async()=>{
@@ -817,7 +820,17 @@ function initPanels(){
   const cmpRun=$('#cmp-run');if(cmpRun)cmpRun.addEventListener('click',composeAndLoad);
 }
 
+// Repoint every history-backed view at the chosen partition at once: the Replay list, the Stats
+// dashboard, and the Flaky panel all read the same run history, so leaving one on the previous
+// label would have the three disagree about what the deployment ran (BE-0404 unit 4).
+async function onLabelChange(value){
+  setLabelChoice(value);
+  await loadHistory();
+  if(!$('#view-stats').hidden)loadStats();
+  if(!$('#view-flaky').hidden)loadFlaky();
+}
+
 export {
   loadHistory, loadStats, loadFlaky, loadUsage, coverageInit, showInfo, replayAudit, onSimChange,
-  setHistoryFilter, showTab, initPanels, loadTrash, seedComposeFromCurrent,
+  setHistoryFilter, showTab, initPanels, loadTrash, seedComposeFromCurrent, onLabelChange,
 };

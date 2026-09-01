@@ -22,6 +22,7 @@ from bajutsu.serve.operations.dispatch import _run_label
 from bajutsu.serve.operations.reads import (
     ALL_LABELS,
     apply_label_filter,
+    flakiness_html,
     runs_payload,
     stats_html,
 )
@@ -206,6 +207,25 @@ def test_a_partition_is_not_truncated_by_the_global_window(
     assert [r["id"] for r in rows] == ["20260101-0"]
 
 
+def test_flaky_reads_the_bound_partition_on_both_backends(tmp_path: Path) -> None:
+    # A flakiness score computed across two configs' interleaved histories is the same defect the
+    # label exists to fix, so the panel reads one partition — and the artifact-store backend must
+    # agree with the database one about which.
+    from bajutsu.serve.operations.reads import _flakiness_report
+
+    _scn, cfg, runs = project(tmp_path)
+    write_run(runs, "20260101-1", ok=True, scenarios=[("alpha", True)], label="bajutsu.config")
+    write_run(runs, "20260101-2", ok=False, scenarios=[("alpha", False)], label="other.config")
+    state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
+    # The ranking sees one run — the bound config's — not both configs' interleaved. (These runs
+    # carry no provenance fingerprint, so they land in `skipped`; the count is the partition.)
+    assert _flakiness_report(state, None).skipped == 1
+    # Opened to every label, both configs' runs are back in one history.
+    assert _flakiness_report(state, None, ALL_LABELS).skipped == 2
+    # The rendered panel goes through the same seam, so it is enough to pin that it renders.
+    assert flakiness_html(state)[1] == 200
+
+
 def test_an_unlabeled_run_stays_visible_on_the_database_path(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
@@ -274,3 +294,9 @@ def test_a_label_matching_nothing_opens_the_whole_history(
     # The run-stats dashboard reads through the same partition and the same fallback, so it
     # aggregates those two runs rather than reporting nothing to aggregate.
     assert "nothing to aggregate" not in stats_html(state)[0]
+    # Flaky reads the same partition through the same fallback, so the three history-backed views
+    # never disagree about what this deployment ran.
+    from bajutsu.serve.operations.reads import _flakiness_report
+
+    assert _flakiness_report(state, None).skipped == 2
+    assert flakiness_html(state)[1] == 200

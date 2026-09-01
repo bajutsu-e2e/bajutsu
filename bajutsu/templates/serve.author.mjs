@@ -8,7 +8,7 @@
 // which serve.core.mjs (and panels) call at runtime, forming a safe import cycle with core.
 import {
   $, esc, getJSON, renderGradeBadge, wireDoctor, NARROW_MQ, prefersReducedMotion, motionOff,
-  initTheme, showView, loadConfig, loadVersion, loadSims, refreshAiAvailability, state,
+  initTheme, showView, loadConfig, loadVersion, loadSims, refreshAiAvailability, state, loadLabels,
   unavailableReason,
 } from './serve.core.mjs';
 import {loadHistory, setHistoryFilter, showTab, initPanels} from './serve.panels.mjs';
@@ -1072,6 +1072,7 @@ if(!NARROW_MQ.matches)initTiling();
 initTheme();
 loadConfig();
 loadVersion();
+loadLabels();
 // The orgs probe is no longer booted here: it needs the capability block to know whether this
 // deployment has orgs to administer at all, so loadConfig fires it once that has arrived (#1721).
 refreshAiAvailability();

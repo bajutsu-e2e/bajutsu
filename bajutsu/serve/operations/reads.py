@@ -293,7 +293,9 @@ def stats_html(
     )
 
 
-def flakiness_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int]:
+def flakiness_html(
+    state: ServeState, *, actor: str | None = None, label: str | None = None
+) -> tuple[str, int]:
     """The ranked flaky-scenario panel (BE-0220, Half 1) as a self-contained HTML page, org-scoped.
 
     Ranks the actor's org run history by how much each scenario's verdict flips at a constant
@@ -301,18 +303,28 @@ def flakiness_html(state: ServeState, *, actor: str | None = None) -> tuple[str,
     provenance stamp the BE-0220 prerequisite added to the run row is the grouping key, so no
     manifest re-read is needed; without one (local / stdlib serve) the same records are built from
     each run's `manifest.json`. Read-only and AI-free: it displays the ranking, deciding no verdict.
+    *label* narrows the history to one partition, defaulting to the bound config's own (BE-0404
+    unit 4): a flakiness score computed across two configs' interleaved histories is the same defect
+    the label exists to fix, so this reads the same partition the run list and `/stats` do.
     """
-    return _flakiness.render_html(_flakiness_report(state, actor)), 200
+    return _flakiness.render_html(_flakiness_report(state, actor, label)), 200
 
 
-def _flakiness_report(state: ServeState, actor: str | None) -> _flakiness.FlakinessReport:
+def _flakiness_report(
+    state: ServeState, actor: str | None, label: str | None = None
+) -> _flakiness.FlakinessReport:
     """Rank the actor's org run history — from the DB provenance stamp when wired, else manifests."""
     org = state.org_of(actor)
     if state.repository is not None:
-        records = state.repository.list_runs(org_id=org, limit=_flakiness.DEFAULT_RUN_LIMIT)
+        partition = effective_label(state, label)
+        records = state.repository.list_runs(
+            org_id=org, label=partition, limit=_flakiness.DEFAULT_RUN_LIMIT
+        )
+        if not records and partition is not None:
+            records = state.repository.list_runs(org_id=org, limit=_flakiness.DEFAULT_RUN_LIMIT)
         _fill_device_runtime(state, org, records)
     else:
-        records = _flakiness.records_from_manifests(_run_manifests(state, actor))
+        records = _flakiness.records_from_manifests(_run_manifests(state, actor, label))
     return _flakiness.rank_flakiness(records)
 
 

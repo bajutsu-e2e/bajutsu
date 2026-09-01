@@ -267,7 +267,7 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "GET",
         "/flakiness",
-        lambda state, ctx: ops.flakiness_html(state, actor=ctx.actor()),
+        lambda state, ctx: ops.flakiness_html(state, actor=ctx.actor(), label=ctx.query("label")),
         content_type=_HTML,
     ),
     Route(

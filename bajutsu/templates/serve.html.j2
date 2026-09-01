@@ -75,6 +75,12 @@
         <select class="projectsw" id="orgsw" data-testid="nav.org-switch" aria-label="acting as org" hidden></select>
         <button class="cfgbtn" id="opencfg" data-testid="nav.open-config">Open config</button>
         <button class="cfgbtn" id="viewcfg" data-testid="nav.view-config" hidden>View</button>
+        {#- Run-history label filter (BE-0404 unit 4): a native <select> naming the partitions this
+            deployment's history holds. Changing it repoints the Replay history, Stats, and Flaky at
+            once, since all three read the same history. It stays hidden while every run carries the
+            same label — one config, nothing to tell apart — so a single-config `serve` looks exactly
+            as it did. -#}
+        <select class="projectsw" id="labelsw" data-testid="nav.label" aria-label="run-history label" hidden></select>
       </div>
       <div class="viewtabs">
         <button class="toptab active" data-view="record" data-testid="nav.record">Record</button>

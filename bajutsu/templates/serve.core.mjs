@@ -599,6 +599,38 @@ $('#opencfg').addEventListener('click',openFs);
 $('#fsclose').addEventListener('click',closeFs);
 $('#fsmodal').addEventListener('click',e=>{if(e.target===$('#fsmodal'))closeFs()});
 
+
+// ---- Run-history label filter (BE-0404 unit 4) ----
+// A `serve` process binds one config at a time, so restarting it against a second config used to
+// leave both configs' runs interleaved in one history. Every run now records the config it ran, and
+// the Replay history, Stats, and Flaky all read one label's runs — by default the bound config's.
+// The switcher names the partitions the history actually holds plus an "all labels" entry, and stays
+// hidden while there is only one, so a single-config serve sees no control it has no use for.
+export const ALL_LABELS='*';
+let labelChoice=null;  // null = the server's default (the bound config's own label)
+// The `?label=` fragment every history read appends, or '' for the default.
+function labelParam(prefix){return labelChoice?prefix+'label='+encodeURIComponent(labelChoice):''}
+function setLabelChoice(value){labelChoice=value||null}
+// Rebuild the switcher from the labels present in the whole history. Called at boot and after a
+// rebind, since binding another config changes which partition is the default.
+async function loadLabels(){
+  const sw=$('#labelsw');if(!sw)return;
+  const runs=await getJSON('/api/runs?label='+encodeURIComponent(ALL_LABELS),[]);
+  const labels=[...new Set((Array.isArray(runs)?runs:[]).map(r=>r&&r.label).filter(Boolean))].sort();
+  // One partition (or none) is nothing to tell apart — hide the control rather than offer a choice
+  // with a single outcome.
+  sw.hidden=labels.length<2;
+  if(sw.hidden){labelChoice=null;sw.innerHTML='';return}
+  // A stale selection (its runs deleted, or a rebind) falls back to the default rather than pinning
+  // the history to a label nothing matches.
+  if(labelChoice&&labelChoice!==ALL_LABELS&&!labels.includes(labelChoice))labelChoice=null;
+  const opts=labels.map(l=>`<option value="${esc(l)}"${l===labelChoice?' selected':''}>${esc(l)}</option>`);
+  opts.push(`<option value="${esc(ALL_LABELS)}"${labelChoice===ALL_LABELS?' selected':''}>all labels</option>`);
+  // The default is the server's own choice, so it carries no value of its own.
+  opts.unshift(`<option value=""${labelChoice?'':' selected'}>this config</option>`);
+  sw.innerHTML=opts.join('');
+}
+
 $('#orgsw').addEventListener('change',e=>switchOrg(e.target.value));
 
 // ---- Git config-source credential (BE-0224): the write-once token for a private repo, stored via
@@ -1027,6 +1059,9 @@ $('#gitspec').addEventListener('keydown',e=>{if(e.key==='Enter')chooseGitConfig(
 // ---- shared data: targets, scenarios, simulators (used by both views) ----
 async function loadShared(){
   targets=await getJSON('/api/targets',[]);
+  // A rebind changes which partition is the default, and can introduce a label the switcher has
+  // never listed — so rebuild it alongside the target list every bind reloads (BE-0404 unit 4).
+  loadLabels();
   // The cross-target comparison (BE-0226, repointed by BE-0404) only means something with more than
   // one target to compare, so its tab tracks the bound config's target count — a single-target
   // config never shows it, exactly as a single-config serve never showed the earlier version.
@@ -1277,5 +1312,5 @@ export {
   renderGradeBadge, wireDoctor, NARROW_MQ, prefersReducedMotion, motionOff, initTheme,
   openModal, closeModal, showView, loadConfig, loadVersion, setCfgName, closeFs,
   loadShared, loadScenarios, loadSims, refreshAiAvailability, storeGitCred,
-  restoreRun, purgeRun, wireHistoryList,
+  restoreRun, purgeRun, wireHistoryList, labelParam, loadLabels, setLabelChoice,
 };
