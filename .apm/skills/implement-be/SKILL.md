@@ -248,7 +248,7 @@ judge — the gate (step 9) is still the only verdict, and no LLM touches the `r
 two-role procedure (a judge-only review/plan pass, then an implement pass), the two inputs that
 differ from `ideation`'s, the specialized review lenses, and the loop's 3-round cap.
 
-If this host offers no Agent tool and no `pr-review-toolkit` — a subagent running this skill has
+If this host offers no Agent tool or no `pr-review-toolkit` — a subagent running this skill has
 neither — apply the review contract to the diff yourself and record in your report that the pass ran
 single-handed. A degraded review beats a skipped one.
 
@@ -271,14 +271,15 @@ Either way, in **both** language files: tick the `Progress` box for the unit you
 than overwriting it — the row accumulates, as in `[#1699](…) (unit 1), [#1788](…) (unit 2)`. That
 row goes directly **after `Tracking issue`**, the slot
 [`scripts/check_roadmap_format.py`](../../../scripts/check_roadmap_format.py) enforces; put it
-anywhere else and `make check` fails on metadata field order. It can only be filled once the PR
-number exists, so the ordinary path adds it at step 10 and the item legitimately carries a status
-with no PR row between steps 8 and 10.
+anywhere else and `make check` fails on metadata field order. That row and the `Log` entry's leading
+PR link both need a number that does not exist yet, so the ordinary path writes both at step 10, and
+the item legitimately carries a status with neither between steps 8 and 10.
 
 **The Japanese mirror uses Japanese field names and values**, so translate instead of copying the
 English across: `Status` → `状態`, `Proposal` → `提案`, `In progress` → `実装中`, `Implemented` →
 `実装済み`, `Tracking issue` → `トラッキング Issue`, `Implementing PR` → `実装 PR`, `Progress` →
-`進捗`, `Unit N` → `単位 N`. Write the log entry as natural Japanese under the
+`進捗`, `Log:` → `ログ：` (a fullwidth colon), `Unit N` → `単位 N`. Write the log entry as natural
+Japanese under the
 [`japanese-document-writing`](../japanese-document-writing/SKILL.md) skill, not as a literal
 rendering of the English one.
 
@@ -330,7 +331,8 @@ source of truth it names).
   the repository guidance's "documentation-only PRs open Ready for review" rule takes precedence: open it
   **Ready** (omit `--draft`) with `--reviewer bajutsu-e2e/steering-committee`. (BE-0230 itself is
   exactly this case.)
-- Then **fill the `Implementing PR:` row** in both BE files with the real number and push that
+- Then **append this PR to the `Implementing PR:` row** in both BE files, keeping any PRs already
+  there (per step 8), write the `Log` entry's leading PR link with the same number, and push that
   follow-up, so the shipped record points at its PR.
 - The Draft + never-mark-ready-while-red rules from the repository guidance still hold: a Draft PR is only
   marked ready (`gh pr ready`) by the **human**, never automatically while CI is red.
