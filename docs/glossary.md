@@ -139,7 +139,7 @@ never stand where an authorization-bearing value is read.
 **evidence** — Artifacts captured during a run, each tagged with the provider that produced it.
 Two shapes: **instant** (screenshot / element hierarchy, captured per step) and **interval**
 (video / device log / app trace, captured across a scenario). See [evidence](evidence.md);
-defined in `bajutsu/evidence/core.py`.
+defined in `bajutsu/common/evidence/core.py`.
 
 **capturePolicy / CaptureRule / "rule"** — Three names for one concept, reconciled here:
 

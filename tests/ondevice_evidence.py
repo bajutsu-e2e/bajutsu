@@ -2,7 +2,7 @@
 
 `conformance (adb)`, `fault-injection (adb)`, and their iOS twins drive their backend straight from
 pytest (`launch_driver`, never `bajutsu run`), so none of them inherits the scenario pipeline's
-evidence capture (`bajutsu/evidence/core.py`'s `capture:`-driven `FileSink`) — a failure in any of
+evidence capture (`bajutsu/common/evidence/core.py`'s `capture:`-driven `FileSink`) — a failure in any of
 them has no video or device log to diagnose it, unlike every scenario-driven CI job. This module
 wires the same interval primitives the pipeline itself uses (`bajutsu.common.evidence.intervals`) directly
 around each test, the way `demos/showcase/android/screenrecord.py` already does for the codegen
