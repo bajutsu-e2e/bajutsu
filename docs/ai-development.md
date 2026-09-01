@@ -64,6 +64,20 @@ Run that command deliberately and commit the result once coverage has risen. The
 the escape hatch for a drop you have decided to accept. It prints rises and drops separately, so
 you see an accepted drop before committing it.
 
+Run `make coverage-floors` on a tree that is up to date with `main`, never on one behind it. The
+command rewrites every floor it measures, not the one that prompted the rewrite alone. A tree
+behind `main` measures every other file as it stood when the branch left. Recording from such a
+tree writes two kinds of wrong number. A stale rewrite lowers a floor that rose on `main` after the
+branch left. The gate never catches a lowered floor: the per-file check blocks a coverage drop,
+nothing else. The same rewrite also keeps a floor for a file another merged pull request has since
+lowered. Neither pull request fails its own gate, since each one measured the tree it had. The
+unreachable floor appears in the merged result alone. Every contributor then hits the unreachable
+floor in the pre-push hook. Rebasing first keeps a snapshot and the code it measured together.
+`make preflight` does the fetch and the rebase before running the gate.
+
+Recovering from an unreachable floor on `main` takes the same command. Run `make coverage-floors`
+once on a fresh checkout of `main`, then commit the corrected snapshot.
+
 A file with fewer than ten statements carries no floor at all. One missed branch would move such a
 file's percentage by whole points, failing the gate on measurement noise rather than on a
 regression. Coverage can also differ slightly between environments — a different operating system,
