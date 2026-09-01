@@ -31,13 +31,16 @@ clear an alert living in the application's own process. Making the motivating ca
 adding iOS's save-password alert to the prompt table, which is the first entry there not owned by
 SpringBoard.
 
-One built-in default survives, and the reason is worth stating up front because it qualifies the
-claim above. XCUITest answers an alert that interrupts one of its interactions before it synthesizes
-that interaction, and a monitor that declines to answer does not leave the alert alone: XCUITest's
-own default handler takes it and taps its *default* button, which grants. At that one surface the
-choice is not between answering and not answering, so the ordered dismissive defaults stay as the
-policy pushed to the runner's interruption monitor. Everywhere the guard itself acts, it acts only on
-what a scenario declared.
+One surface cannot be re-keyed the same way, and the reason is worth stating up front. XCUITest
+resolves an alert that interrupts one of its interactions *before* it synthesizes that interaction,
+and something always answers it: a monitor that declines — the only safe response to an alert no
+rule identifies, since claiming an interruption without clearing it gets the monitor re-invoked on
+every following interaction, which BE-0399 measured looping until the runner died — hands the alert
+to XCUITest's own default handler, which taps the alert's *default* button and clears it, exactly
+what happened before that monitor existed. Nothing in this proposal can stop that tap from landing.
+What it changes is whether it happens in silence: the interruption monitor now reports the buttons
+of any alert it declined, and the step or `expect` that saw one fails, naming them, rather than the
+run continuing as if nothing had answered on the scenario's behalf.
 
 Compatibility is deliberately not preserved. A scenario that still writes `labels` fails to load with
 an error naming `rules` as its replacement, which is the same treatment
@@ -97,12 +100,26 @@ the poll's own tree, and they are the only mechanism in the codebase that can cl
 `springboard.alerts` cannot see. Re-keying them to `rules` is what lets a scenario say *which* alert
 it expects the guard to clear, rather than which words it is willing to see tapped.
 
+One answer path cannot simply leave an unmatched alert alone, and today it does not fail on one
+either — it grants it. XCUITest resolves an interrupting alert before it synthesizes the interaction
+it interrupted, and the runner's interruption monitor answers that resolution one way or another:
+matching a rule and tapping it, or declining and handing the alert to XCUITest's own default
+handler, which taps whichever button that alert calls its default — the same silent grant this
+document opens with, for any alert `rules` does not name. `bajutsu/orchestrator/types.py`'s
+`DEFAULT_DISMISSIVE_LABELS`, pushed as the monitor's fallback candidates today, narrows how often an
+alert reaches that grant, by answering conservatively for whatever alert happens to offer one of its
+words — but it does not close the gap. An alert offering none of them is declined exactly as before, and
+Unit 2 traces exactly why that decline is unavoidable and, since BE-0399, deliberately safe.
+
 A later reader can tell whether this proposal arrived by running a showcase scenario that places a
 `handleSystemAlert` step for the notification prompt while the save-password alert holds the screen.
 That scenario fails today with the timeout quoted above, and passes afterwards with no `wait` step
 placed to cover the interruption. The migrated demos are the second observable difference: both answer the
 save prompt with a `savePassword` rule in place of `labels: ["Not Now"]`, and
-`save_password_browser.yaml` drops the `gone` wait it carries as a workaround.
+`save_password_browser.yaml` drops the `gone` wait it carries as a workaround. The third is a
+scenario that runs an ordinary `tap` while an alert no `rules` entry names interrupts it: today that
+step passes (or fails for an unrelated reason the alert's own default answer happened to cause), and
+after this proposal it fails by name, with the alert's buttons in the report.
 
 ## Detailed design
 
@@ -196,9 +213,7 @@ act on it. Everything else about those two paths is untouched: the uniqueness pr
 tap, the re-tap delay, the decline give-up, the per-label tap ceiling, and BE-0399's rule that an
 in-tree tap is issued only on a poll whose own probe reported no SpringBoard alert. What changes is
 only the question they ask of the tree — which declared alert is showing, instead of which
-acceptable word is on a button. Those three are `pick_alert_label`'s only callers, so the function
-is deleted with `labels`; the Swift side keeps its own ordered-candidate matching for the
-interruption monitor, which is the one surface that still needs it.
+acceptable word is on a button. Those three are `pick_alert_label`'s only Python callers, so the function is deleted with `labels`.
 
 "In-tree-capable" in the table above is not a new concept but the per-prompt surface record Unit 3
 introduces, read from the other side. Arming the in-tree paths on *any* rule would widen them past
@@ -213,40 +228,79 @@ process that interrupts an XCUITest interaction, and an alert living in the appl
 process never reaches it. Dropping it is not merely tidy: `InterruptionPolicy.label(for:)` matches a
 rule by subset, so pushing `savePassword`'s in-app shape would re-open on the Swift side exactly the
 collision Unit 3 closes on the Python side. With those rules never pushed, no rule the monitor sees
-carries an exclusion set, and `BajutsuKit` needs no change. That holds by construction rather than
-by coincidence: the push refuses a rule that carries an exclusion set and is not in-tree-only, so a
-later SpringBoard-reachable shape needing an exclusion fails loudly instead of reaching the monitor
-with its exclusion silently dropped — which is the subset-match collision, one table entry later.
+carries an exclusion set, and neither of the two changes below has to account for one. That holds by
+construction rather than by coincidence: the push refuses a rule that carries an exclusion set and is
+not in-tree-only, so a later SpringBoard-reachable shape needing an exclusion fails loudly instead of
+reaching the monitor with its exclusion silently dropped — which is the subset-match collision, one
+table entry later.
 
-`DEFAULT_DISMISSIVE_LABELS` survives, scoped to `set_interruption_policy`'s `candidates` alone. The
-reason is that declining is not a neutral act at that surface. XCUITest resolves an alert
-interrupting one of its interactions before it synthesizes the interaction, and a monitor that
-declines hands the alert back to XCUITest's own default handler, which taps the alert's *default*
-button — granting a permission the scenario never spoke about, with no `AlertEvent` in the report.
-That silence is what BE-0399 exists to end, and `save_password_browser.yaml`'s `expect` asserts
-against it by name. So an empty candidate list is not "answer nothing" but "let XCUITest grant it",
-and the ordered dismissive defaults stay as the deny-first answer for an alert no rule identifies.
-The guard's own two surfaces — the native probe and the in-tree dismissal — answer only declared
-prompts; the interruption monitor answers everything, because it has no third option.
+`DEFAULT_DISMISSIVE_LABELS` is removed rather than kept, and the Swift-side matching it fed is
+removed with it: `InterruptionPolicy.candidates` in
+`BajutsuKit/Sources/BajutsuRunner/InterruptionPolicy.swift` is deleted, `label(for:)` matches `rules`
+alone, `Driver.set_interruption_policy` drops its `candidates` parameter, and
+`InterruptionPolicyRequest` in `openapi.yaml` drops the matching field. The reason is that declining
+is already documented as the *safe* answer at this surface, not merely the least bad one.
+`docs/architecture.md:698-699` records that a prompt the policy names no button on "is left to
+XCUITest's own default handler, unchanged (BE-0399)," and `docs/scenarios.md:167-168` that it "is
+left to XCUITest, which is what happened before this existed." `RunnerUITest.swift`'s own comment
+calls declining "the only safe fallback… what happened before this monitor existed and does clear
+it" — the loop that can take a resident runner down comes from a monitor that *claims* an
+interruption without clearing it, never from one that hands it back. Nothing, then, requires the
+monitor to guess an answer for an alert `rules` does not name; the built-in candidates only narrowed
+how often an alert reached that unrecorded grant, never closed it.
 
-Besides `push_interruption_policy`'s candidate fallback, which the paragraph above already
-resolves, two more places read `labels`, and neither is a matching site. `_vision_instruction` in
-`bajutsu/cli/commands/run.py` derives the vision fallback's instruction from the innermost layer
-that supplied labels, and `_warn_target_rules_reach` reads `layer.labels or layer.vision_instruction`
-to decide whether a scenario answers for itself. `_vision_instruction` loses its label argument, and
-the predicate is re-keyed to `layer.rules or layer.vision_instruction`. The vision fallback's own
-behavior is unchanged by this: its docstring already records that a rules-only scenario leaves the
-locator on its least-destructive default, because a rule's tap label is by construction some other
-prompt's answer and must never steer the fallback. Removing `labels` makes every scenario a
-rules-only scenario, which is a path that function already takes.
+What replaces the guess is a report, and only for the case the guard actually governs. The monitor
+now records what it could not answer before it declines: `InterruptionPolicyStore` gains a second
+drained list beside the one it already keeps for tapped labels — the button labels of each alert
+`label(for:)` returned `nil` for, on a poll whose policy was not itself empty — and the monitor
+appends to it, then returns `false` exactly as before, so the tap that follows (XCUITest's own,
+whichever button that alert calls its default) is unchanged, because nothing at that point can
+change it. Two related declines record nothing, deliberately. `guard !policy.isEmpty else { return
+false }` in `RunnerUITest.swift` runs first and short-circuits before `label(for:)` is ever called:
+a scenario with `systemAlertHandling: false` pushes an empty policy precisely so it does not inherit
+the previous scenario's, and an alert interrupting *that* scenario keeps today's silent grant, since
+declaring nothing is the author's own choice, not an omission this proposal exists to catch. And the
+race `probe_native` already treats as benign elsewhere in this proposal recurs here: a label that did
+match, whose button then vanished before the tap (`guard button.exists else { return false }`),
+declines without recording anything, because the alert was not undeclared — its button simply lost a
+race with its own dismissal. `POST /interruptionPolicy/drain`'s reply gains an `unmatched` field
+beside its existing `labels`, one button list per declined-and-recorded alert, oldest first.
+`Driver.drain_interruptions` in `bajutsu/drivers/base.py` changes its return type from `list[str]` to
+a small pair — the tapped labels, unchanged, and the button lists of what was declined — and
+`bajutsu/orchestrator/types.py`'s `drain_interruptions` wrapper turns the second half into
+`UndeclaredInterruption` records rather than `AlertEvent`s, since nothing was answered on the
+scenario's behalf for them to report as a dismissal.
+
+`run_scenario` in `bajutsu/orchestrator/loop.py` reads that second list everywhere it already drains
+the first, which is three points rather than two once the retry is counted. At the end of a step —
+`outcome.alerts.extend(drain_interruptions(active_driver))`, reached after `outcome.ok`/`outcome.reason`
+are set from the step's own body — an undeclared interruption overrides them: the step fails,
+unconditionally, naming the buttons the alert offered, even one that otherwise passed. A step that
+passed while an unnamed prompt was silently resolved is exactly the appearance of success this
+proposal exists to stop trusting, on this surface as much as the other two. During `expect` —
+`expect_alerts.extend(drain_interruptions(driver))` — the same override sets `failure` before the
+assertion results are consulted. That drain runs once before the phase's own alert-guard retry, and
+today nothing drains again after it: the retry's comment already records that "nothing else drains
+this phase," which used to cost only a missing `AlertEvent` and would otherwise now cost a missed
+failure. So the retry gains the second drain the comment describes as absent, folding its
+`UndeclaredInterruption`s into the same check before `failure` is decided. Neither call site's
+handling of a *matched* interruption changes: those still become `AlertEvent`s and never fail
+anything on their own.
+
+Besides `push_interruption_policy`'s candidate fallback, now removed, two more places read `labels`,
+and neither is a matching site. `_vision_instruction` in `bajutsu/cli/commands/run.py` derives the
+vision fallback's instruction from the innermost layer that supplied labels, and
+`_warn_target_rules_reach` reads `layer.labels or layer.vision_instruction` to decide whether a
+scenario answers for itself. `_vision_instruction` loses its label argument, and the predicate is
+re-keyed to `layer.rules or layer.vision_instruction`. The vision fallback's own behavior is
+unchanged by this: its docstring already records that a rules-only scenario leaves the locator on
+its least-destructive default, because a rule's tap label is by construction some other prompt's
+answer and must never steer the fallback. Removing `labels` makes every scenario a rules-only
+scenario, which is a path that function already takes.
 
 `_resolve_rules` raises `UncoveredSystemAlertLocale` naming `labels` as the remedy for an uncovered
 language. The message is rewritten to name the remaining two remedies: add the language to
 `bajutsu/scenario/system_alerts.py`, or pin a locale the table covers.
-
-The Swift side keeps `InterruptionPolicy.candidates`, since the interruption monitor is exactly the
-consumer that still needs it, and `Driver.set_interruption_policy` keeps both arguments. Nothing in
-`BajutsuKit` changes in this unit.
 
 A scenario that still writes `labels` fails to load with an error naming `rules`. BE-0401 removed
 `enabled` and two deprecated spellings the same way, and stated plainly that compatibility was not
@@ -342,9 +396,12 @@ scenarios on the `ios-e2e` lane, beside the two it complements.
 
 `docs/scenarios.md` and its `docs/ja/` mirror lose the `labels` key and its layering row, gain
 `savePassword` and the rule-only restriction on it, and record that the `handleSystemAlert` step now
-answers a declared interruption while it waits. `docs/architecture.md` and its mirror record the
-wait's move from the driver to the orchestrator, since that page describes where each layer's waits
-live.
+answers a declared interruption while it waits. Both pages' account of the interruption monitor is
+rewritten too: "a prompt the policy names no button on is left to XCUITest[’s] own default handler"
+stops being the whole sentence — it still happens, unchanged, but the step or `expect` that met it
+now fails, naming the buttons the alert offered. `docs/architecture.md` and its mirror also record
+the wait's move from the driver to the orchestrator, since that page describes where each layer's
+waits live.
 
 ### Out of scope
 
@@ -361,6 +418,16 @@ This one narrows what reaches that return, by removing the `labels` matching and
 defaults from the guard's own resolution. BE-0402 removes what happens after it. Neither item
 depends on the other's order, so whichever lands first is correct on its own.
 
+Unit 2b makes an *interrupting* alert fail on its own; a *blocking* one still does not. When an alert
+merely holds a step or `wait` open rather than resolving an in-flight XCUITest interaction,
+`AlertGuardConfig.__call__` reaches the same `"unhandled"` value and hands it to the vision fallback,
+which may dismiss it with only an `AlertEvent` recorded — no forced failure. The two are not the same
+situation: a blocking alert that nothing clears already fails the step through its own condition-wait
+timeout, so the failure this proposal is after is already there; an interrupting one lets XCUITest's
+own resolution complete and the step's interaction proceed as if nothing had happened, which is
+exactly the silent success Unit 2b closes. Bringing the blocking surface to the same forced-failure
+standard is a question for whatever proposal next revisits `AlertGuardConfig.__call__`, not this one.
+
 ## Alternatives considered
 
 | Option | Outline | Why not adopted |
@@ -368,7 +435,8 @@ depends on the other's order, so whichever lands first is correct on its own.
 | Pass a poll callback into the driver | Give `handle_system_alert` an `on_poll` parameter and let the driver's existing loop call back into the orchestrator's guard each iteration | The loop keeps its place, but the change lands on the `Driver` interface, so every backend, the fake driver, and the conformance suite move with it. The wait is orchestration, not actuation, and the orchestrator already owns every other condition wait |
 | Return application-owned alerts from the SpringBoard query | Extend `querySystemAlertButtons` to read `app.alerts` alongside `springboard.alerts` | Would let a `handleSystemAlert` step name `savePassword` directly, which Unit 3 otherwise has to forbid. It erases the boundary BE-0399 measured and relies on, and the reactive guard loses the `probed_absent` signal that licenses its in-tree tap — the signal that orders the two prompts correctly |
 | Delete the label matching instead of re-keying it | Remove `labels` and let the in-tree dismissal go with it, so the guard acts only through the native SpringBoard path | The simplest reading of "declare prompts, not buttons", and wrong: the in-tree dismissal is the only path that can clear an application-owned alert, so removing it would make `savePassword` undeclarable in practice and leave the motivating timeout unfixed |
-| Drop `DEFAULT_DISMISSIVE_LABELS` along with `labels` | Push an empty candidate list to the interruption monitor, so nothing undeclared is ever answered | Reads as the strictest option and is the least safe. An empty policy makes the monitor decline, and XCUITest's default handler then grants the alert with nothing in the report — the silence BE-0399 ended. "Answer nothing" is not available at that surface |
+| Keep `DEFAULT_DISMISSIVE_LABELS` as a conservative guess | Leave the interruption monitor answering an alert offering one of its words, rather than reporting and failing on every unmatched one | The first draft of this proposal did exactly this, on the mistaken belief that declining was itself unsafe (it is not — BE-0399, `docs/architecture.md`, `docs/scenarios.md`, and `RunnerUITest.swift`'s own comment all record declining as the safe fallback). Once decline is known to be safe, guessing an answer for an undeclared alert is the same silent auto-decision this proposal removes from the native probe and the in-tree dismissal, kept at the one surface that could not resist it either way |
+| Attach unmatched interruptions to failures only, never on their own | Report the alert's buttons alongside a step's own failure reason, but never turn a step that otherwise passed into a failure by itself | Leaves an unintended grant that happened to not break anything downstream without consequence, which is the exact appearance of success this whole proposal argues a scenario should not get to keep. An interrupting alert no rule named is evidence a scenario's assumptions were wrong regardless of what the step checked afterward |
 | Match a shape on the alert's exact button set | Separate the 26.5 in-app save sheet from the credit-card update sheet by requiring the shape's labels to equal the alert's whole button set, instead of excluding a label | Reads as the cleanest disambiguation and is not computable where it would be needed. A `savePassword` rule is only ever matched by the in-tree paths, which see every identifier-less labelled button in the poll's whole tree rather than one alert's buttons, so a set equality would fail against any application that carries another such button anywhere on screen |
 | Document the workaround | Record in `docs/scenarios.md` that a `wait` step belongs before `handleSystemAlert` where an interruption is possible | Costs no implementation, and remains available if this proposal is deferred. It asks an author to predict the operating system's timing, and it cannot be written when that timing is unknown, which is the case the showcase scenarios' comments already describe |
 | Add a step-local declaration | Give `handleSystemAlert` its own field naming the interruptions to clear while it waits | Puts the author's intent directly above the step that needs it. It duplicates `systemAlertHandling` for one step kind, and needs its own schema, locale resolution, bilingual documentation, and codegen support |
@@ -381,15 +449,20 @@ depends on the other's order, so whichever lands first is correct on its own.
 
 - [ ] Unit 1 — move the `handleSystemAlert` wait into the orchestrator, driving one gate per step on
       the guard's `pollInterval`, and fail with a reason that names the alert that held the screen.
-- [ ] Unit 2 — remove `labels` and `--alert-labels`, re-key the native probe and both in-tree
-      dismissals to `rules`, keep `DEFAULT_DISMISSIVE_LABELS` scoped to the interruption monitor,
-      and reject a scenario that still writes `labels`.
+- [ ] Unit 2a — remove `labels`, `--alert-labels`, and `DEFAULT_DISMISSIVE_LABELS`; re-key the
+      native probe, both in-tree dismissals, and the interruption monitor to `rules` alone; reject a
+      scenario that still writes `labels`.
+- [ ] Unit 2b — record the interruption monitor's declined alerts, except a disabled guard's own
+      decline and a matched button lost to a benign race; extend the drain endpoint and the
+      `Driver.drain_interruptions` protocol to carry them; add the second `expect`-phase drain the
+      alert-guard retry is currently missing; and fail the step or `expect` that met one.
 - [ ] Unit 3 — key a prompt's language entry to a list of shapes with an optional exclusion-label
       set, add `savePassword` with its three shapes and the per-prompt surface record, and reject it
       in a `handleSystemAlert` step.
 - [ ] Unit 4 — migrate both save-password demos to `rules`, drop the browser demo's workaround wait,
       and add the regression scenario to the `ios-e2e` lane.
-- [ ] Unit 5 — update `docs/scenarios.md`, `docs/architecture.md`, and both `docs/ja/` mirrors.
+- [ ] Unit 5 — update `docs/scenarios.md`, `docs/architecture.md`, and both `docs/ja/` mirrors,
+      including the interruption monitor's now-consequential decline.
 
 ## References
 
