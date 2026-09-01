@@ -163,7 +163,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:35b287a87a2ff59f5b5b22eee7241e9a8eb6e3880fd73027b8135025ba767724
+  content_hash: sha256:404bcb330bd92e89101c35a65d032f1ad3b78a379e953f98b45dc885c70bf087
 - kind: project-relative
   target: claude
   value: .claude/skills/implement-be/references/pr-followup-loop.md
@@ -412,7 +412,7 @@ local_deployed_file_hashes:
   .claude/skills/fix-issue/SKILL.md: sha256:1537d98d267b2f8d77a6cf553a36a99baa31f72ee3eaa16cf939f3eee23e2074
   .claude/skills/git-sync/SKILL.md: sha256:f9c2eb3a39c02a4a415294e9874c7dca8feb1654ffc5950d1705f84fe68970ea
   .claude/skills/ideation/SKILL.md: sha256:45f7fd729f83eef0a4a397cc5dd0353de16fd6428b89cf418df38daa747550e8
-  .claude/skills/implement-be/SKILL.md: sha256:35b287a87a2ff59f5b5b22eee7241e9a8eb6e3880fd73027b8135025ba767724
+  .claude/skills/implement-be/SKILL.md: sha256:404bcb330bd92e89101c35a65d032f1ad3b78a379e953f98b45dc885c70bf087
   .claude/skills/implement-be/references/pr-followup-loop.md: sha256:ec348d5744e26d9641bfbb015a2811da6cdfaef90280beabf618fdfe4c2516d6
   .claude/skills/implement-be/references/self-review.md: sha256:2c49d1b029f9abb6b7acb54404ca4442d9cbbeb4b0fd044c65a47b61e5444017
   .claude/skills/investigate-ci-failure/SKILL.md: sha256:e28b872f930723eaa11dffe61d9d0016f479c8815539b2ae7e1eeb54b5b78a95

@@ -79,13 +79,14 @@ the first time.
 
 Then branch on its `Status` (the metadata field, not a directory — the layout is flat):
 
-- **`Proposal`** — the normal case. Note that implementing it *accepts* it: this PR flips it to
-  `Implemented`. Say so.
+- **`Proposal`** — the normal case. Note that implementing it *accepts* it: this PR moves it off
+  `Proposal` — to `Implemented` when your change completes the whole work breakdown, to
+  `In progress` when units remain (step 8). Say so.
 - **`In progress`** — part of it has already shipped, so the `Progress` checklist, not the metadata
   row, is the real state. Read which units are ticked, and read the `Log` entries and the
   `Implementing PR` row to see what those PRs landed. Resolve the request to a **specific unticked
   unit**, name it, and treat the ticked units as code you build on rather than rebuild. Step 8 keeps
-  the item `In progress` unless your unit is the last one.
+  the item `In progress` unless your unit is the last one still unticked.
 - **`Implemented`** — it has shipped. Stop and confirm what the user actually wants (extend it? a
   follow-up item? a bug fix?) before doing anything.
 - **`Deferred`** — surface that it was deliberately parked, and read *why*. When the item's own text
