@@ -66,12 +66,10 @@ from bajutsu.serve.jobs import cancel_job, run_job
 from bajutsu.serve.launchagent import launchagent_plist
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 from bajutsu.serve.operations.config import (
-    register_launch_project,
     restore_persisted_provider_settings,
     seed_orgs_from_bound_config,
 )
 from bajutsu.serve.orgs import DEFAULT_ORG
-from bajutsu.serve.project_registry import LocalProjectRegistry, SqlProjectRegistry
 from bajutsu.serve.provider_store import LocalProviderSettingsStore
 from bajutsu.serve.scenarios import (
     LocalScenarioScope,
@@ -288,10 +286,6 @@ def _build_state(
         providers=ProviderSettingsManager(
             store=LocalProviderSettingsStore(runs_dir.parent / "provider-settings.json")
         ),
-        # The project hub's registry (BE-0225): local serve persists it to a JSON file beside
-        # runs_dir, the local stand-in for the DB's projects/runs tables. serve() auto-registers the
-        # launch config as the active project on boot, once logging is live.
-        project_registry=LocalProjectRegistry(runs_dir.parent / "projects.json"),
     )
 
 
@@ -496,14 +490,6 @@ def _build_server_state(
             else InMemoryLogBus()
         ),
         repository=repo,
-        # The project hub's registry (BE-0225): DB-backed when a database is wired, else the same
-        # local JSON store the local backend uses — matching how the executor/logbus above fall back
-        # to their in-process defaults when no repository is present.
-        project_registry=(
-            SqlProjectRegistry(repo)
-            if repo is not None
-            else LocalProjectRegistry(runs_dir.parent / "projects.json")
-        ),
         # The authentication cluster (BE-0248): the shared token, the login-session store (a
         # DB-backed one when a database is wired so sessions survive restarts, else in-memory), and
         # the GitHub OAuth client + the server-wide admin Teams (BE-0313).
@@ -687,10 +673,6 @@ def serve(
     # reflects it rather than resetting to the launch environment (BE-0184). After `_configure_oplog`
     # so a malformed-file warning reaches the live log sink; a no-op when nothing is persisted (BE-0101).
     restore_persisted_provider_settings(state)
-    # Auto-register the launch config as the active project (BE-0225), so a bare `serve --config X`
-    # gains the project hub and its runs are attributed to X from the first one. After the provider
-    # restore, sharing its boot placement; a no-op when no config is bound or no registry is wired.
-    register_launch_project(state)
     # Seed the launch config's `orgs:` block into the database, once per org row (BE-0375), so a
     # deployment upgrading from config-only org membership keeps admitting exactly who it did
     # before the database became the source. Shares the boot placement above for the same reason —

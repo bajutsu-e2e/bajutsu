@@ -31,7 +31,7 @@ def test_public_functions_live_in_their_resource_submodule() -> None:
         "read_scenario": "bajutsu.serve.operations.reads",
         "start_enrich": "bajutsu.serve.operations.enrich",
         "worker_lease": "bajutsu.serve.operations.worker",
-        "register_project": "bajutsu.serve.operations.projects",
+        "target_metrics_view": "bajutsu.serve.operations.target_comparison",
     }
     for name, module in expected.items():
         assert getattr(ops, name).__module__ == module, name

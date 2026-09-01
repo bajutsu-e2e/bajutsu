@@ -60,23 +60,23 @@ default, or the `--port` you passed). These flags — `--port`, `--config`, `--r
 The header holds nine top-level tabs: **Record**, **Replay**, **Crawl**, **Author**, **Stats**,
 **Flaky**, **Usage**, **Coverage**, and **Trash** (soft-deleted runs, restorable within a
 retention window — see [Trash](#trash--restore-or-permanently-delete-a-deleted-run)). A tenth,
-**Comparison**, appears only once a [project hub](#switching-between-projects) exists (more than one
-project registered), since it compares projects against each other — see
-[Comparing projects](#comparing-projects). The tab is named for what it shows rather than for the
+**Comparison**, appears only once the bound config declares more than one
+[target](glossary.md#target-app-device), since it compares targets against each other — see
+[Comparing targets](#comparing-targets). The tab is named for what it shows rather than for the
 Prometheus scrape endpoint the same server exposes at `/metrics`, which is a different surface
 entirely.
 To their right are **Open config** (with the active config's name shown beside it once one is bound,
 and a **View** button to inspect it — see below), **Settings**, and a theme picker that
 follows your system by default. On a deployment where you sign in with GitHub, a small badge beside
 the config name names the **org** this session acts as: every tab is scoped to it — the targets you
-can run, the runs and evidence you see, the secrets and the project list — so it is worth being able
+can run, the runs and evidence you see, and the secrets — so it is worth being able
 to read at a glance, particularly for an admin who administers several. Hovering it names the login
 too. A local or shared-token `serve` has no signed-in identity and no tenants, so the badge does not
 appear there.
 
 If your GitHub memberships admit you to more than one org, that badge is a dropdown instead: pick
-another org and the page reloads acting as it, with that tenant's runs, evidence, secrets, and
-projects — and with the role that tenant grants you, which may differ from the one you held in the
+another org and the page reloads acting as it, with that tenant's runs, evidence, and secrets — and
+with the role that tenant grants you, which may differ from the one you held in the
 last. The choice sticks: your next sign-in lands you in the org you picked rather than re-deciding
 for you. It stops sticking only if that org stops admitting you, in which case the next sign-in moves
 you to the best remaining match. An admin who is a member of one of the deployment's admin Teams can
@@ -175,29 +175,22 @@ disclosure beyond the file itself. It is not a redactor, though — a secret wri
 a local or uploaded config is shown as-is, so keeping secrets in `${secrets.*}` refs rather than in
 the file is what keeps them out of this view. In a hosted deployment the endpoint is admin-only.
 
-### Switching between projects
+### Telling two configs' runs apart
 
-When you maintain several configs — several apps, or several targets of one app — `serve` is a
-**hub** over them, not a single-config launcher. A **project** is a named binding to a config source.
-The header carries a **switcher** (a picker beside the config viewer) that stays hidden until more
-than one project is registered, and a top-level **Projects** tab that is the hub's home. Unlike the
-switcher, the Projects tab shows whenever there is a project to manage — single-config included — so
-you can grow into a hub from the UI itself.
+A `serve` process binds one config at a time. Restart it against a second config and both configs'
+runs land in one history, interleaved. The **label** keeps them apart
+([BE-0404](../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)): every run
+records a short string naming the config it ran, taken from the config's own name — its file stem
+for a local file, its repository and in-repo path for a config fetched from Git — and the run list,
+Replay, and the [Stats](#stats--the-run-history-dashboard) dashboard show that label's runs by
+default. Choose **all labels** to see the whole history again. A deployment whose runs predate the
+label has none carrying it, so its views open unfiltered rather than on an empty page.
 
-On the Projects page each row shows the project name, its config source, and its latest run verdict.
-**Switch** on a row **activates** that project: the server rebinds the active config to its source
-with no restart, and every tab (Replay, Record, Crawl, the Stats dashboard) then operates against it
-(the header switcher does the same quick switch). A project whose source is an uploaded bundle cannot
-be switched to (there is no checkout to re-materialize); re-upload its config to bind it.
-
-**Add a project** from the page with a name and a single config-source string — a Git spec
-(`github:owner/repo[@ref][:path]`) or a local path — the same source
-[`bajutsu project add --config`](cli.md#project) takes; an optional credential covers a private
-repository. Re-adding an existing name rebinds its source. **Remove** deregisters a project after a
-confirmation; its run history is kept, only the binding is dropped. The `bajutsu project` CLI edits
-the same shared store, so a project added either way appears in both. Registering, removing, and
-switching all rebind the active config, so in a hosted deployment they are admin actions like binding
-a config — the server enforces that restriction, and a refused action shows inline on the page.
+An operator who wants a different partition sets one per run: `bajutsu run --label <value>` on the
+command line, or a `label` field in the `POST /api/run` body. The label is opaque to Bajutsu — never
+parsed, never matched against config, and never consulted when deciding what you may run. A value
+longer than 120 characters is refused rather than silently shortened, so you learn about it here
+instead of finding a truncated label in the history.
 
 ### Managing orgs
 
@@ -210,7 +203,7 @@ deployment, and nowhere else: on any other deployment the server declines to lis
 what keeps the tab hidden.
 
 Each row shows an org's slug, how many members, GitHub organizations, and GitHub Teams it holds,
-its editor Team, and how many projects it owns — plus its display name, when that differs from the slug the row
+its editor Team — plus its display name, when that differs from the slug the row
 already leads with. **Create** takes a slug and an optional display name, and the new org
 starts with no members at all — nobody can sign in as it until you fill in its membership, which the
 page says inline so an empty tenant does not read as a bug. The slug `default` is refused: it is
@@ -219,8 +212,7 @@ a real tenant there would take the namespace an admin recovers through. That row
 the list, marked as the fallback and with both its controls disabled, since an admin who arrived
 that way is sitting in it. **Membership** opens a form that replaces
 all four fields at once, prefilled from what the server holds right now; a change takes effect on
-each member's next sign-in. **Delete** retires an org, and stays greyed out while the org still owns
-a project (deregister those first). Retiring signs out everyone holding a session as that org at the
+each member's next sign-in. **Delete** retires an org. Retiring signs out everyone holding a session as that org at the
 same moment, so nobody keeps acting as it on a cookie issued beforehand; it keeps the org's runs and
 audit history, and keeps its slug reserved. The confirmation states all three, since a reader would
 otherwise discover none of them until afterwards.
@@ -228,29 +220,22 @@ otherwise discover none of them until afterwards.
 Which targets an org owns still comes from the config file's `orgs:` block, so an org created here
 owns none until an entry there names some.
 
-### Comparing projects
+### Comparing targets
 
-Once a hub holds more than one project, the **Comparison** tab opens a read-only comparison across
-all of them at once — the question a single project's [Stats](#stats--the-run-history-dashboard)
-dashboard cannot answer. Each project is one row: its run count, latest pass-rate, flaky-rate (the
-share of its scenarios classified flaky over the window), and median (p50) and 95th-percentile (p95)
-per-run duration, plus a pass-rate trend sparkline. Click a column header to rank by pass-rate,
-flaky-rate, or duration — the first click surfaces the worst offender (lowest pass-rate, highest
-flaky-rate or duration), a second click flips the order. A project with no runs yet charts as a blank
-row rather than a misleading zero.
+Once the bound config declares more than one target, the **Comparison** tab opens a read-only
+comparison across all of them at once — "the Android target passes while the iOS target fails", the
+question a single [Stats](#stats--the-run-history-dashboard) dashboard cannot answer. Each target is
+one row: its run count, latest pass-rate, flaky-rate (the share of its scenarios classified flaky
+over the window), and median (p50) and 95th-percentile (p95) per-run duration, plus a pass-rate trend
+sparkline. Click a column header to rank by pass-rate, flaky-rate, or duration — the first click
+surfaces the worst offender (lowest pass-rate, highest flaky-rate or duration), a second click flips
+the order. A target with no runs yet charts as a blank row rather than a misleading zero.
 
-Clicking a row opens that project's run history, newest first — a read-only drill-down that leaves
-the hub's active project alone. The history is reachable by keyboard too: each row's project name is
-a button, so tab to it and press Enter or Space. Making a project the active one is a separate
-action, on the row's
-own **Activate** button, and it asks for confirmation first, because activating rebinds the config
-this deployment serves for every tab against it rather than only for the reader who pressed the
-button. Activation is admin-only, and the button says so up front: where the signed-in account may
-not activate, it renders disabled carrying the reason, from the same boot read that decides whether
-the Orgs tab appears. A role that changed since that read still meets the server's refusal, which
-the view spells out rather than showing the raw error. Like the other
-dashboards the comparison is advisory only: it re-presents verdicts `run` already decided and never
-gates anything.
+Clicking a row opens that target's run history, newest first — a read-only drill-down across every
+label, since the comparison ranks a config's targets rather than one partition of them. The history
+is reachable by keyboard too: each row's target name is a button, so tab to it and press Enter or
+Space. The view writes nothing at all: like the other dashboards it re-presents verdicts `run`
+already decided, and never gates anything.
 
 ## Settings
 

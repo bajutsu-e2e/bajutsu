@@ -10,6 +10,10 @@ from xml.etree import ElementTree as ET
 from bajutsu import __version__
 from bajutsu.orchestrator import RunResult, scenario_slug
 
+# A run-history label longer than this is rejected at the boundary rather than truncated (BE-0404
+# unit 2), so an operator learns the label was refused instead of finding a silently shortened one.
+MAX_LABEL_LENGTH = 120
+
 
 def git_revision() -> str | None:
     """The current git commit, or None when the run isn't inside a git checkout.
@@ -68,7 +72,11 @@ def _run_backend(results: list[RunResult]) -> str:
 #   element frames when they differ. Absent on every older run, where nothing recorded which side of
 #   the action an artifact was taken on, so a reader falls back to the pre-field choice
 #   (`evidence.step_view`) rather than dropping frames a stored run has always shown.
-SCHEMA_VERSION = 9
+# v10 (BE-0404): optional top-level "target" and "label" — the target the run ran (so "the Android
+#   target passes while the iOS target fails" is computable from stored data) and the run-history
+#   partition an operator may set. Absent on every older run, which reads as "this run named
+#   neither": it drops out of a per-target comparison and stays visible under any label filter.
+SCHEMA_VERSION = 10
 
 
 def _matrix(results: list[RunResult]) -> dict[str, object] | None:
@@ -138,6 +146,8 @@ def manifest_dict(
     *,
     source_name: str | None = None,
     provenance: dict[str, object] | None = None,
+    target: str | None = None,
+    label: str | None = None,
 ) -> dict[str, object]:
     """Build the manifest — the run's canonical, versioned render model (BE-0068).
 
@@ -149,6 +159,11 @@ def manifest_dict(
     re-render can recover it.
 
     `provenance` is the run-identity stamp from `run_provenance` (BE-0049), never part of the verdict.
+    `target` is the target the run ran (BE-0404 unit 3), recorded rather than injected: the runner
+    already resolved it into the `Effective` config the run executed against. It is a run-level
+    value, not a per-scenario one — one run resolves one target — so it sits at the top level
+    beside `backend` rather than on each scenario. `label` is the run-history partition (unit 2),
+    opaque operator free-text: never parsed, never matched against config, never authorized on.
     """
     manifest: dict[str, object] = {
         "schemaVersion": SCHEMA_VERSION,
@@ -158,6 +173,10 @@ def manifest_dict(
         "sourceName": source_name,
         "scenarios": [_scenario_dict(r) for r in results],
     }
+    if target:
+        manifest["target"] = target
+    if label:
+        manifest["label"] = label
     if provenance:
         manifest["provenance"] = provenance
     # The engine x scenario matrix for a `--browsers` run (BE-0076), a pure aggregation of the

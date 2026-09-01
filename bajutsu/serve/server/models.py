@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ForeignKey, Index, UniqueConstraint, func
+from sqlalchemy import ForeignKey, Index, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import JSON, DateTime
@@ -55,6 +55,11 @@ class Org(Base):
     # resolution and the admin list, but its row stays so the users / runs / secrets /
     # provider_settings / audit_log foreign keys that still point at it stay intact.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    # The one config source this org last bound, as the discriminated `{"kind", "locator"}` record
+    # (BE-0404 unit 1) — the durable memory a hosted replica reads to recover an uploaded bundle it
+    # did not itself receive. One record, not a list: an org that needs several bundles addressable
+    # holds them as artifacts and composes one (BE-0268). Null until the org binds something.
+    config_source: Mapped[dict[str, Any] | None] = mapped_column(_JSON, default=None)
 
 
 class User(Base):
@@ -93,21 +98,6 @@ class UserOrg(Base):
     role: Mapped[str]  # viewer | editor | admin, resolved for this (user, org) pair
 
 
-class Project(Base):
-    __tablename__ = "projects"
-    __table_args__ = (UniqueConstraint("org_id", "name"),)
-
-    id: Mapped[str] = mapped_column(primary_key=True)
-    org_id: Mapped[str] = mapped_column(ForeignKey("orgs.id"))
-    name: Mapped[str]  # the config target name
-    # The config source this project binds, as a discriminated record (`kind` + `locator`)
-    # covering file / Git / zip upload sources — the shape BE-0225 unit 1 defines, stored here
-    # so the hosted backend can resolve it through its own store without a schema change. Null
-    # for a row created before the binding was recorded (e.g. BE-0015's unwired scaffolding).
-    source: Mapped[dict[str, Any] | None] = mapped_column(_JSON, default=None)
-    created_at: Mapped[datetime] = _created_at()
-
-
 class Run(Base):
     __tablename__ = "runs"
     # scenario_hash is half the flakiness grouping key: the DB-level score groups by it together
@@ -118,9 +108,6 @@ class Run(Base):
 
     id: Mapped[str] = mapped_column(primary_key=True)
     org_id: Mapped[str] = mapped_column(ForeignKey("orgs.id"))
-    project_id: Mapped[str | None] = mapped_column(
-        ForeignKey("projects.id", ondelete="SET NULL"), default=None
-    )
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), default=None)
     status: Mapped[str] = mapped_column(default="")
     ok: Mapped[bool | None] = mapped_column(default=None)
@@ -137,6 +124,16 @@ class Run(Base):
     # determined" — a row recorded before this column existed — as distinct from the empty string,
     # which records that the run named no single OS; see `db.RunRecord`.
     device_runtime: Mapped[str | None] = mapped_column(default=None)
+    # The run-history partition, resolved at enqueue and carried on the `Job` (BE-0404 unit 2):
+    # the label the launcher derives from the bound config, or the operator's `--label` override.
+    # Opaque — never parsed, never matched against config, never consulted by authorization. Null
+    # for a run recorded before the column existed, which unit 4's empty-match fallback keeps visible.
+    label: Mapped[str | None] = mapped_column(default=None)
+    # The target this run ran, mirrored from the manifest like `scenario_hash` and `device_runtime`
+    # (BE-0404 unit 3), so "Android passes while iOS fails" is computable from stored data. A column
+    # of its own rather than a reserved `label` value: a target name is config-declared and carries
+    # authorization weight (`orgs.<name>.targets`), while a label is untrusted operator free-text.
+    target: Mapped[str | None] = mapped_column(default=None)
     # Soft-delete (BE-0239): a run with `deleted_at` set is trashed — hidden from `list_runs` but
     # restorable within the retention window; `deleted_by` records the user id who did it, for the
     # audit reach. Null for a live run. `deleted_by` is a plain column, not an FK to users.id like

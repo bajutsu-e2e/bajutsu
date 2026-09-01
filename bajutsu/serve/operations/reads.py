@@ -31,7 +31,7 @@ from bajutsu.serve.helpers import (
     valid_scenario_ref,
 )
 from bajutsu.serve.operations._common import _resolve_org_or_forbid
-from bajutsu.serve.operations.config import FS_DISABLED_ERROR
+from bajutsu.serve.operations.config import FS_DISABLED_ERROR, launch_label
 from bajutsu.serve.operations.runs import sweep_expired_trash
 from bajutsu.serve.server.db import RunRecord
 from bajutsu.serve.state import ServeState
@@ -110,7 +110,7 @@ def simulators_payload(state: ServeState) -> tuple[Any, int]:
 
 
 # The newest-N run window the DB-backed history list, the `/stats` aggregation (BE-0102), and the
-# per-project roll-up behind the comparison (BE-0226) all read. One window for those three, because
+# per-target roll-up behind the comparison (BE-0226) all read. One window for those three, because
 # a Stats row and the history its drilldown opens (BE-0241) must agree: aggregated over a wider
 # window than the list shows, a row names runs the filtered list silently drops, so the detail view
 # contradicts the row that opened it (#1718). Two history-wide reads stay outside it deliberately:
@@ -136,12 +136,39 @@ def _target_scenario_names(state: ServeState, org: str, target: str) -> set[str]
     return {n for f in (scope.list() if scope else []) for n in f.get("names") or []}
 
 
+# The label filter's "every label" choice, so a reader can restore the unfiltered history the
+# default (the bound config's own label) narrows away (BE-0404 unit 4).
+ALL_LABELS = "*"
+
+
+def apply_label_filter(
+    state: ServeState, runs: list[dict[str, Any]], requested: str | None
+) -> list[dict[str, Any]]:
+    """Narrow *runs* to one label partition, defaulting to the bound config's own (BE-0404 unit 4).
+
+    Restarting `serve` against a second configuration yields two readable histories rather than one
+    interleaved list. `ALL_LABELS` restores the unfiltered view, and so does an empty match: a
+    deployment whose history predates the label has no run carrying the bound one, so its views open
+    on the whole history rather than on an empty page.
+    """
+    if requested == ALL_LABELS:
+        return runs
+    label = requested or (
+        launch_label(state.config, state.config_provenance) if state.config else ""
+    )
+    if not label:
+        return runs
+    matching = [r for r in runs if r.get("label") == label]
+    return matching or runs
+
+
 def runs_payload(
     state: ServeState,
     *,
     actor: str | None = None,
     scenario: str | None = None,
     target: str | None = None,
+    label: str | None = None,
 ) -> tuple[Any, int]:
     # Opportunistically purge trash past the retention window before listing (BE-0239) — the lazy
     # sweep, on the history read rather than a background daemon (SqlSessionStore's expiry-on-read
@@ -191,7 +218,9 @@ def runs_payload(
         ]
     if (scenario is not None or target is not None) and state.repository is not None:
         runs = runs[:RUN_WINDOW]
-    return runs, 200
+    # The label partition is applied last, over the already-scoped window, so it narrows what the
+    # reader would otherwise see rather than widening the query (BE-0404 unit 4).
+    return apply_label_filter(state, runs, label), 200
 
 
 def crawl_runs_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
@@ -225,17 +254,23 @@ def trashed_runs_payload(state: ServeState, *, actor: str | None = None) -> tupl
     return state.for_org(state.org_of(actor)).artifacts.list_trashed_runs(), 200
 
 
-def stats_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int]:
+def stats_html(
+    state: ServeState, *, actor: str | None = None, label: str | None = None
+) -> tuple[str, int]:
     """The aggregate run-stats dashboard (BE-0102) as a self-contained HTML page, org-scoped.
 
     Reuses the deterministic aggregator over the actor's org run history: read-only, no verdict, no
     LLM. The run-id list comes from the same seam as `runs_payload` (the system of record when wired,
     else the artifact store); each run's full `manifest.json` is read from the artifact store either
-    way, since the DB `summary` carries only the compact history-list shape.
+    way, since the DB `summary` carries only the compact history-list shape. *label* narrows the
+    history to one partition, defaulting to the bound config's own (BE-0404 unit 4).
     """
     # live=True: this is the serve /stats view, so the day/backend/hotspot cells render as drilldown
     # deep links into the SPA's run history (BE-0241); the CLI --html export leaves them plain text.
-    return _stats.render_html(_stats.aggregate_runs(_run_manifests(state, actor)), live=True), 200
+    return (
+        _stats.render_html(_stats.aggregate_runs(_run_manifests(state, actor, label)), live=True),
+        200,
+    )
 
 
 def flakiness_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int]:
@@ -295,7 +330,9 @@ def _fill_device_runtime(state: ServeState, org: str, records: list[RunRecord]) 
         record.device_runtime = run_os.label if run_os is not None else ""
 
 
-def _run_manifests(state: ServeState, actor: str | None) -> list[dict[str, Any]]:
+def _run_manifests(
+    state: ServeState, actor: str | None, label: str | None = None
+) -> list[dict[str, Any]]:
     """The newest runs' parsed `manifest.json` for the actor's org; unreadable/malformed ones skipped.
 
     The ids come from the recorded runs when a repository is wired (org-scoped), else the artifact
@@ -306,19 +343,24 @@ def _run_manifests(state: ServeState, actor: str | None) -> list[dict[str, Any]]
     """
     org = state.org_of(actor)
     artifacts = state.for_org(org).artifacts
-    ids: list[Any]
+    rows: list[dict[str, Any]]
     if state.repository is not None:
-        ids = [r.id for r in state.repository.list_runs(org_id=org, limit=RUN_WINDOW)]
+        rows = [
+            {"id": r.id, "label": r.label or ""}
+            for r in state.repository.list_runs(org_id=org, limit=RUN_WINDOW)
+        ]
     else:
-        ids = [r.get("id") for r in artifacts.list_runs()[:RUN_WINDOW]]
-    return run_set_manifests(artifacts, ids)
+        rows = artifacts.list_runs()[:RUN_WINDOW]
+    return run_set_manifests(
+        artifacts, [r.get("id") for r in apply_label_filter(state, rows, label)]
+    )
 
 
 def run_set_manifests(store: ArtifactStore, run_ids: Iterable[Any]) -> list[dict[str, Any]]:
     """Read the parsed `manifest.json` of each run in *run_ids* from *store*, skipping bad ones.
 
     The `ServeState`/actor-free core of `_run_manifests`: it takes the run set explicitly, so the
-    same aggregation can be run once per project over a project-scoped run set (BE-0226) rather than
+    same aggregation can be run once per target over a target-scoped run set (BE-0226) rather than
     only over the active config's org run history. An id that is not a single safe segment is
     rejected before it becomes a path (serve's containment model, BE-0015), and an unreadable or
     malformed manifest is skipped — the aggregator never fails on one bad run. Each manifest already

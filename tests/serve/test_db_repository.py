@@ -1,11 +1,8 @@
-"""The `Repository` seam (BE-0015 7a / BE-0225): the run round-trip, org-scoped listing, the
-env-driven factory, and the project CRUD methods. Most tests build their schema through the
+"""The `Repository` seam (BE-0015 7a): the run round-trip, org-scoped listing, the label/target
+partitions (BE-0404), and the env-driven factory. Most tests build their schema through the
 `serve_engine` fixture, which runs them against in-memory SQLite in the fast gate and, behind the
-`postgres` marker, against a real Postgres service in the serve-db.yml lane (BE-0309). One test
-(`test_delete_project_removes_binding_but_keeps_run_history`) stays SQLite-only: it asserts the
-FKs-off dangling-`project_id` behavior that only holds with FK enforcement off — the Postgres
-`ON DELETE SET NULL` path is covered by a sibling test. `ProjectRecord` and the project methods
-arrived with BE-0225; orgs/users/audit_log are tested elsewhere in this file (7b/7c)."""
+`postgres` marker, against a real Postgres service in the serve-db.yml lane (BE-0309).
+orgs/users/audit_log are tested elsewhere in this file (7b/7c)."""
 
 from __future__ import annotations
 
@@ -15,13 +12,11 @@ from pathlib import Path
 
 import pytest
 from _shared import StubArtifactStore
-from sqlalchemy import Engine, create_engine, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from bajutsu import serve as srv
 from bajutsu.serve.server.db import (
-    ProjectRecord,
     RunRecord,
     SqlRepository,
     engine_from_url,
@@ -58,9 +53,9 @@ def _engine_repo(serve_engine: Callable[..., Engine]) -> tuple[Engine, SqlReposi
 
 
 def _seed_orgs(repo: SqlRepository, *org_ids: str) -> None:
-    """Create the org rows a test's runs and projects reference.
+    """Create the org rows a test's runs reference.
 
-    `_repo` leaves SQLite's FKs off, so a run or project can name an org that was never inserted;
+    `_repo` leaves SQLite's FKs off, so a run can name an org that was never inserted;
     Postgres enforces the org_id FK, so the parent org must exist first. Seeding it keeps each
     calling test dialect-agnostic.
     """
@@ -204,145 +199,6 @@ def test_record_run_is_idempotent_by_id(serve_engine: Callable[..., Engine]) -> 
     assert got.status == "done"
     assert got.ok is True
     assert len(repo.list_runs(org_id="o1")) == 1
-
-
-def test_create_then_list_and_get_project(serve_engine: Callable[..., Engine]) -> None:
-    repo = _repo(serve_engine)
-    _seed_orgs(repo, "o1", "o2")
-    repo.create_project(
-        ProjectRecord(
-            id="p1",
-            org_id="o1",
-            name="checkout",
-            source={"kind": "file", "locator": {"path": "a.yaml"}},
-        )
-    )
-    repo.create_project(ProjectRecord(id="p2", org_id="o1", name="search"))
-    repo.create_project(ProjectRecord(id="p3", org_id="o2", name="other"))
-
-    assert [p.name for p in repo.list_projects(org_id="o1")] == ["checkout", "search"]
-    got = repo.get_project(org_id="o1", name="checkout")
-    assert got is not None
-    assert got.id == "p1"
-    assert got.source == {"kind": "file", "locator": {"path": "a.yaml"}}
-    # A missing name, and another org's project, both read as not found (org-scoped).
-    assert repo.get_project(org_id="o1", name="nope") is None
-    assert repo.get_project(org_id="o1", name="other") is None
-
-
-def test_create_project_is_idempotent_by_id_and_rebinds_source(
-    serve_engine: Callable[..., Engine],
-) -> None:
-    repo = _repo(serve_engine)
-    _seed_orgs(repo, "o1")
-    repo.create_project(
-        ProjectRecord(id="p1", org_id="o1", name="checkout", source={"kind": "file"})
-    )
-    # Re-registering the same id rebinds the source in place rather than colliding (BE-0225).
-    repo.create_project(
-        ProjectRecord(id="p1", org_id="o1", name="checkout", source={"kind": "git"})
-    )
-    got = repo.get_project(org_id="o1", name="checkout")
-    assert got is not None
-    assert got.source == {"kind": "git"}
-    assert len(repo.list_projects(org_id="o1")) == 1
-
-
-def test_create_project_rejects_a_name_collision_under_a_different_id(
-    serve_engine: Callable[..., Engine],
-) -> None:
-    # `Project` carries UniqueConstraint("org_id", "name") and create_project merges by id only,
-    # so minting a *fresh* id for a name the org already uses is a genuine collision — not an
-    # idempotent rebind. The DB-backed Repository surfaces it as IntegrityError; a caller must
-    # resolve the existing id via get_project first rather than rely on this to upsert by name
-    # (BE-0225).
-    repo = _repo(serve_engine)
-    _seed_orgs(repo, "o1")
-    repo.create_project(ProjectRecord(id="p1", org_id="o1", name="checkout"))
-    with pytest.raises(IntegrityError):
-        repo.create_project(ProjectRecord(id="p2", org_id="o1", name="checkout"))
-
-
-def test_delete_project_on_delete_set_null_keeps_run_history_fk_enforced(
-    serve_engine: Callable[..., Engine],
-) -> None:
-    # Uses FK-enforcing helper to catch the Postgres-vs-SQLite gap: without ondelete="SET NULL"
-    # on Run.project_id, deleting a project raises IntegrityError on Postgres but silently
-    # succeeds on the gate's SQLite. With the fix, the run is retained and project_id is NULL.
-    repo = _repo_fk(serve_engine)
-    repo.ensure_org("o1", slug="o1", name="Org1")
-    repo.create_project(ProjectRecord(id="p1", org_id="o1", name="checkout"))
-    repo.record_run(RunRecord(id="r1", org_id="o1", status="done", project_id="p1"))
-
-    repo.delete_project(org_id="o1", name="checkout")
-
-    assert repo.list_projects(org_id="o1") == []
-    got = repo.get_run("r1")
-    assert got is not None
-    assert got.project_id is None  # SET NULL by FK — run history retained, association cleared
-
-
-def test_create_project_source_none_does_not_clobber_existing_binding(
-    serve_engine: Callable[..., Engine],
-) -> None:
-    repo = _repo(serve_engine)
-    _seed_orgs(repo, "o1")
-    repo.create_project(
-        ProjectRecord(id="p1", org_id="o1", name="checkout", source={"kind": "file"})
-    )
-    # Re-registering with source=None (the default) must not wipe out an existing binding.
-    repo.create_project(ProjectRecord(id="p1", org_id="o1", name="checkout"))
-    got = repo.get_project(org_id="o1", name="checkout")
-    assert got is not None
-    assert got.source == {"kind": "file"}
-
-
-def test_delete_project_removes_binding_but_keeps_run_history() -> None:
-    # SQLite-only (not parametrized over the Postgres lane): `_repo` leaves SQLite's FKs off, so
-    # deleting the project leaves the run's project_id dangling rather than cleared. Postgres
-    # enforces the ondelete="SET NULL" instead, which the sibling
-    # test_delete_project_on_delete_set_null_keeps_run_history_fk_enforced covers — so this
-    # no-enforcement assertion stays on SQLite alone.
-    engine = create_engine("sqlite://")
-    Base.metadata.create_all(engine)
-    repo = SqlRepository(engine)
-    repo.create_project(ProjectRecord(id="p1", org_id="o1", name="checkout"))
-    repo.record_run(RunRecord(id="r1", org_id="o1", status="done", project_id="p1"))
-
-    repo.delete_project(org_id="o1", name="checkout")
-
-    assert repo.list_projects(org_id="o1") == []
-    # Deregistering removes only the binding — the run history is retained (BE-0225).
-    got = repo.get_run("r1")
-    assert got is not None
-    assert got.project_id == "p1"
-
-
-def test_list_runs_filters_by_project(serve_engine: Callable[..., Engine]) -> None:
-    repo = _repo(serve_engine)
-    _seed_orgs(repo, "o1")
-    repo.create_project(ProjectRecord(id="p1", org_id="o1", name="p1"))
-    repo.create_project(ProjectRecord(id="p2", org_id="o1", name="p2"))
-    base = datetime(2026, 1, 1, tzinfo=UTC)
-    repo.record_run(
-        RunRecord(
-            id="a", org_id="o1", status="done", project_id="p1", created_at=base.replace(hour=1)
-        )
-    )
-    repo.record_run(
-        RunRecord(
-            id="b", org_id="o1", status="done", project_id="p2", created_at=base.replace(hour=2)
-        )
-    )
-    repo.record_run(
-        RunRecord(
-            id="c", org_id="o1", status="done", project_id="p1", created_at=base.replace(hour=3)
-        )
-    )
-
-    assert [r.id for r in repo.list_runs(org_id="o1", project_id="p1")] == ["c", "a"]
-    # No project filter → the whole org's run history, as before.
-    assert len(repo.list_runs(org_id="o1")) == 3
 
 
 def test_engine_from_url_builds_a_usable_engine() -> None:

@@ -78,7 +78,7 @@ class Route:
 
     Attributes:
         method: HTTP method — "GET", "POST", or "DELETE".
-        path: FastAPI-style path template (e.g. "/api/projects/{name}/runs").
+        path: FastAPI-style path template (e.g. "/api/orgs/{slug}/membership").
         handle: The uniform `(state, ctx) -> (payload, status)` adapter, or None for an
             `off_loop` route each backend handles bespoke.
         off_loop: The route writes its own response (streaming, file serve, raw upload, redirect)
@@ -196,23 +196,16 @@ ROUTES: tuple[Route, ...] = (
             actor=ctx.actor(),
             scenario=ctx.query("scenario"),
             target=ctx.query("target"),
+            label=ctx.query("label"),
         ),
-    ),
-    Route(
-        "GET", "/api/projects", lambda state, ctx: ops.list_projects_view(state, actor=ctx.actor())
-    ),
-    Route(
-        "GET",
-        "/api/projects/{name}/runs",
-        lambda state, ctx: ops.project_runs(state, ctx.path_param("name"), actor=ctx.actor()),
     ),
     # The org roster an admin administers (BE-0375). Admin-gated in `authz.required_role`, which
     # needs its own early case for this path since two of the four routes here aren't POST.
     Route("GET", "/api/orgs", lambda state, ctx: ops.list_orgs_view(state, actor=ctx.actor())),
     Route(
         "GET",
-        "/api/metrics/projects",
-        lambda state, ctx: ops.project_metrics_view(state, actor=ctx.actor()),
+        "/api/metrics/targets",
+        lambda state, ctx: ops.target_metrics_view(state, actor=ctx.actor()),
     ),
     Route(
         "GET",
@@ -268,7 +261,7 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "GET",
         "/stats",
-        lambda state, ctx: ops.stats_html(state, actor=ctx.actor()),
+        lambda state, ctx: ops.stats_html(state, actor=ctx.actor(), label=ctx.query("label")),
         content_type=_HTML,
     ),
     Route(
@@ -367,22 +360,14 @@ ROUTES: tuple[Route, ...] = (
         "/api/run-set",
         lambda state, ctx: ops.start_run_set(state, ctx.body(), actor=ctx.actor()),
     ),
+    # Rebind the org's remembered config (BE-0404 unit 1) — the recovery path for a replica that
+    # never received the upload itself. Admin-gated like the other whole-deployment rebinds.
     Route(
         "POST",
-        "/api/projects",
-        lambda state, ctx: ops.register_project(state, ctx.body(), actor=ctx.actor()),
-    ),
-    Route(
-        "POST",
-        "/api/projects/{name}/run",
-        lambda state, ctx: ops.run_project(
-            state, ctx.path_param("name"), ctx.body(), actor=ctx.actor()
+        "/api/config/restore",
+        lambda state, ctx: ops.restore_org_config(
+            state, org=state.org_of(ctx.actor()), actor=ctx.actor()
         ),
-    ),
-    Route(
-        "POST",
-        "/api/projects/{name}/activate",
-        lambda state, ctx: ops.activate_project(state, ctx.path_param("name"), actor=ctx.actor()),
     ),
     Route(
         "POST",
@@ -399,7 +384,7 @@ ROUTES: tuple[Route, ...] = (
     ),
     # Replacing an org's membership is a whole-value write, which REST would spell PUT; it is a POST
     # because that is the only body-carrying verb both transports implement (BE-0375), and every
-    # other whole-value write in `serve` — `/api/projects/{name}/activate`, `/api/provider` — is
+    # other whole-value write in `serve` — `/api/provider`, `/api/config` — is
     # already one. Widening the transports to a fourth verb is a cross-cutting change this item has
     # no other need for.
     Route(
@@ -580,11 +565,6 @@ ROUTES: tuple[Route, ...] = (
             purge=ctx.query("purge") == "true",
             actor=ctx.actor(),
         ),
-    ),
-    Route(
-        "DELETE",
-        "/api/projects/{name}",
-        lambda state, ctx: ops.deregister_project(state, ctx.path_param("name"), actor=ctx.actor()),
     ),
     Route(
         "DELETE",

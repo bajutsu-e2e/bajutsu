@@ -1,0 +1,139 @@
+"""BE-0404: the run-history label and the target stamp that replace the project layer.
+
+Units 2 and 3 are what make a restart between two configs readable apart, and "the Android target
+passes while the iOS target fails" computable from stored data. Unit 4 reads both back: the label
+filter over the run list, and the per-target comparison. Everything here is deterministic and
+AI-free — a label is metadata attached to a run, never an input to a verdict.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from _shared import project, write_run
+
+from bajutsu import serve as srv
+from bajutsu.report.manifest import MAX_LABEL_LENGTH, manifest_dict
+from bajutsu.serve.operations.config import launch_label
+from bajutsu.serve.operations.dispatch import _run_label
+from bajutsu.serve.operations.reads import ALL_LABELS, apply_label_filter, runs_payload
+from bajutsu.serve.operations.target_comparison import compare_targets
+
+# --- unit 2: the default label, and the operator's override ---
+
+
+def test_launch_label_names_a_local_config_by_its_file_stem(tmp_path: Path) -> None:
+    assert launch_label(tmp_path / "checkout.config.yaml", None) == "checkout.config"
+
+
+def test_launch_label_disambiguates_two_configs_from_one_repository() -> None:
+    # Naming a Git-materialized config for its repository alone folded two configs of one repo onto
+    # one label — the collision an explicit project name used to resolve. The in-repo config path
+    # is what keeps them apart.
+    one = launch_label(Path("x.yaml"), {"repo": "shop", "path": "web/bajutsu.config.yaml"})
+    two = launch_label(Path("x.yaml"), {"repo": "shop", "path": "ios/bajutsu.config.yaml"})
+    assert one != two
+    # A stamp carrying no path still labels by the repository rather than producing a trailing slash.
+    assert launch_label(Path("x.yaml"), {"repo": "shop"}) == "shop"
+
+
+def test_the_label_defaults_to_the_bound_config_and_the_body_overrides_it(tmp_path: Path) -> None:
+    _scn, cfg, runs = project(tmp_path)
+    state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
+    assert _run_label(state, {}) == ("bajutsu.config", None)
+    assert _run_label(state, {"label": "nightly"}) == ("nightly", None)
+    # A blank override is not a label — fall back to the default rather than recording "".
+    assert _run_label(state, {"label": "   "}) == ("bajutsu.config", None)
+
+
+def test_an_oversized_label_is_refused_rather_than_truncated(tmp_path: Path) -> None:
+    # An operator must learn the label was refused, instead of finding a silently shortened one in
+    # the history that no longer matches what they filter on.
+    _scn, cfg, runs = project(tmp_path)
+    state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
+    label, err = _run_label(state, {"label": "x" * (MAX_LABEL_LENGTH + 1)})
+    assert label is None
+    assert err is not None and err[1] == 400
+    label, err = _run_label(state, {"label": 7})
+    assert label is None
+    assert err is not None and err[1] == 400
+
+
+def test_a_deployment_with_no_bound_config_records_no_label(tmp_path: Path) -> None:
+    state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path)
+    assert _run_label(state, {}) == (None, None)
+
+
+# --- unit 3: the target stamp ---
+
+
+def test_the_manifest_records_the_target_and_the_label() -> None:
+    data = manifest_dict("r1", [], target="ios", label="checkout")
+    assert data["target"] == "ios"
+    assert data["label"] == "checkout"
+    # Absent rather than null when the run named neither, so an older reader sees the same shape it
+    # always did.
+    assert "target" not in manifest_dict("r1", [])
+    assert "label" not in manifest_dict("r1", [])
+
+
+# --- unit 4: reading by label ---
+
+
+def _labelled(tmp_path: Path) -> srv.ServeState:
+    _scn, cfg, runs = project(tmp_path)
+    write_run(runs, "20260101-1", ok=True, scenarios=[("alpha", True)], label="bajutsu.config")
+    write_run(runs, "20260101-2", ok=True, scenarios=[("alpha", True)], label="other.config")
+    return srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
+
+
+def test_the_run_list_defaults_to_the_bound_config_s_partition(tmp_path: Path) -> None:
+    rows, status = runs_payload(_labelled(tmp_path))
+    assert status == 200
+    assert [r["id"] for r in rows] == ["20260101-1"]
+
+
+def test_an_explicit_label_selects_another_partition_and_the_star_restores_all(
+    tmp_path: Path,
+) -> None:
+    state = _labelled(tmp_path)
+    assert [r["id"] for r in runs_payload(state, label="other.config")[0]] == ["20260101-2"]
+    assert len(runs_payload(state, label=ALL_LABELS)[0]) == 2
+
+
+def test_an_unlabeled_history_opens_unfiltered_rather_than_empty(tmp_path: Path) -> None:
+    # A deployment whose history predates the label has no run carrying the bound one. Filtering it
+    # to nothing would hide the whole history behind a filter the reader cannot see.
+    _scn, cfg, runs = project(tmp_path)
+    write_run(runs, "20260101-1", ok=True, scenarios=[("alpha", True)])
+    state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
+    assert [r["id"] for r in runs_payload(state)[0]] == ["20260101-1"]
+
+
+def test_the_filter_is_a_no_op_without_a_bound_config(tmp_path: Path) -> None:
+    state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path)
+    rows = [{"id": "a", "label": "x"}, {"id": "b", "label": "y"}]
+    assert apply_label_filter(state, rows, None) == rows
+
+
+# --- unit 4: comparing by target ---
+
+
+def test_the_comparison_ranks_every_declared_target_including_an_unrun_one(
+    tmp_path: Path,
+) -> None:
+    _scn, cfg, runs = project(tmp_path)
+    write_run(runs, "20260101-1", ok=True, scenarios=[("alpha", True)], target="demo")
+    write_run(runs, "20260101-2", ok=False, scenarios=[("alpha", False)], target="demo")
+    state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
+    rows = compare_targets(state, org="default")
+    # Declaration order, and `other` charts as a blank row rather than dropping out of the ranking.
+    assert [r.name for r in rows] == ["demo", "other"]
+    assert rows[0].runs == 2
+    assert rows[0].pass_rate == 0.5
+    assert rows[1].runs == 0
+
+
+def test_the_comparison_is_empty_with_no_config_bound(tmp_path: Path) -> None:
+    state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path)
+    assert compare_targets(state, org="default") == []

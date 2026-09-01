@@ -23,8 +23,8 @@ from bajutsu.serve.state import ServeState
 _logger = logging.getLogger(__name__)
 
 # A database is what makes an org more than a name, so every operation here needs one. 400 rather
-# than 404: the endpoint exists, this deployment just isn't shaped to serve it — the same shape
-# `projects` uses for a serve with no project hub. The reason is named separately because the boot
+# than 404: the endpoint exists, this deployment just isn't shaped to serve it. The reason is named
+# separately because the boot
 # read reports it too, as the `orgs` capability's reason (#1721) — one string, so the flag the UI
 # gates on and the answer it would have got can never say different things.
 NO_ORG_STORE_ERROR = "org management needs a database"
@@ -71,8 +71,6 @@ def list_orgs_view(state: ServeState, *, actor: str | None = None) -> tuple[Any,
     one unit, so it has to start from the current values or the first save would silently empty
     what it never showed. Only an admin can reach this (`authz.required_role`), which is the same
     tier that could already read the `orgs:` block through `GET /api/config/content`.
-    `projectCount` is what the delete action is disabled on, so it is read here rather than left to
-    a second round-trip per row.
     """
     if state.repository is None:
         return _NO_ORG_STORE
@@ -85,7 +83,6 @@ def list_orgs_view(state: ServeState, *, actor: str | None = None) -> tuple[Any,
             "githubOrgs": org.github_orgs,
             "githubTeams": org.github_teams,
             "editorTeams": org.editor_teams,
-            "projectCount": len(repository.list_projects(org_id=org.id)),
             # The fallback an unmatched sign-in resolves to is listed (an admin admitted by the
             # bypass is sitting in it, and hiding that would hide where their own work lands) but is
             # not a tenant: all three mutations refuse it, so the page marks it rather than offering
@@ -215,13 +212,12 @@ def delete_org(state: ServeState, slug: str, *, actor: str | None = None) -> tup
 
     A soft delete, because `users`, `runs`, `secrets`, `provider_settings`, and `audit_log` all
     still hold foreign keys on the org's id — including this deletion's own audit entry, which
-    would have nothing left to point at. Its history stays queryable, exactly as a deregistered
-    project's run history survives deregistration (BE-0225): an admin action removes a tenant's
-    ability to act, not the record of what it already did.
+    would have nothing left to point at. Its history stays queryable: an admin action removes a
+    tenant's ability to act, not the record of what it already did.
 
-    Refused while the org still owns a project (409, deregister them first) and for the `default`
-    org outright, which `serve` hardcodes as the fallback an unmatched bypass sign-in resolves to
-    regardless of table state — deleting it would only leave a retired org users keep landing on.
+    Refused for the `default` org outright, which `serve` hardcodes as the fallback an unmatched
+    bypass sign-in resolves to regardless of table state — deleting it would only leave a retired
+    org users keep landing on.
     """
     if state.repository is None:
         return _NO_ORG_STORE
@@ -231,11 +227,6 @@ def delete_org(state: ServeState, slug: str, *, actor: str | None = None) -> tup
         }, 409
     if state.repository.get_org(slug) is None:
         return {"error": f"no org named {slug!r}"}, 404
-    projects = state.repository.list_projects(org_id=slug)
-    if projects:
-        return {
-            "error": f"org {slug!r} still owns {len(projects)} project(s); deregister them first"
-        }, 409
     # Read the roster before the delete so the revocation below has it, then retire the org first:
     # the row is what turns away the *next* sign-in, so it must land even if session cleanup fails.
     members = state.repository.list_org_user_ids(slug)

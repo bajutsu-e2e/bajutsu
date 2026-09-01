@@ -58,7 +58,7 @@ CLI（コマンドラインインターフェース）が配線されている�
 uv run bajutsu --help
 ```
 
-`run` / `doctor` / `record` / `crawl` / `codegen` / `trace` / `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` / `audit` / `coverage` / `export` / `flakiness` / `impact` / `project` / `report` / `stats` のコマンドが表示されるはずです
+`run` / `doctor` / `record` / `crawl` / `codegen` / `trace` / `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` / `audit` / `coverage` / `export` / `flakiness` / `impact` / `report` / `stats` のコマンドが表示されるはずです
 （完全なリファレンスは [cli](../cli.md)）。
 
 web トラックは、この上にもう 1 つだけインストール手順を足します（Playwright のブラウザ）。iOS

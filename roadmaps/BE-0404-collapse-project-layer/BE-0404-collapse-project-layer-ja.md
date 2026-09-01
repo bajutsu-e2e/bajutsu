@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0404](BE-0404-collapse-project-layer-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0404") |
+| 実装 PR | [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/0) |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md), [BE-0226](../BE-0226-cross-project-metrics-dashboard/BE-0226-cross-project-metrics-dashboard-ja.md), [BE-0275](../BE-0275-serve-projects-management-page/BE-0275-serve-projects-management-page-ja.md), [BE-0393](../BE-0393-per-org-config-memory/BE-0393-per-org-config-memory-ja.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md), [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts-ja.md) |
 <!-- /BE-METADATA -->
@@ -259,19 +260,34 @@ active project をカラムに永続化し、web UI から project を作れる�
 > 作業の進行に合わせて更新してください。チェックリストは *詳細設計* の作業分解を反映し（作業単位ごとに
 > 1項目）、ログには何がいつ変わったかを古い順に記録し、PR を貼ります。
 
-- [ ] 1 — org が config ソースを1つ持つ。判別付きの `kind` + ロケータを保持する org 行のカラム。
+- [x] 1 — org が config ソースを1つ持つ。判別付きの `kind` + ロケータを保持する org 行のカラム。
   クライアントに返さず org 行へ直接書く `bind_upload_config` とその合成3つ組の兄弟。それを org から
-  読む `activate_uploaded_project`
-- [ ] 2 — run の label。`runs.label` カラム、リポジトリ内の config パスまで含めるよう拡張した
-  `launch_project_identity` のデフォルト値。`Job` に載せて運ぶ enqueue 時の解決と、`run --label`
+  読む復元の経路
+- [x] 2 — run の label。`runs.label` カラム、リポジトリ内の config パスまで含めるよう拡張した
+  起動時のデフォルト値。`Job` に載せて運ぶ enqueue 時の解決と、`run --label`
   および web からの上書き
-- [ ] 3 — target の打刻。`RunResult.target`、manifest のキー、`runs.target` カラム
-- [ ] 4 — label で絞り、target で並べる。run 一覧、Replay、run 統計ダッシュボードの label フィルタ。
+- [x] 3 — target の打刻。manifest のキーと `runs.target` カラム
+- [x] 4 — label で絞り、target で並べる。run 一覧、Replay、run 統計ダッシュボードの label フィルタ。
   デフォルトはバインド中の label で、一致する run がなければ絞り込みなしへ退避する。target 軸に
-  付け替えた `project_comparison.py`
-- [ ] 5 — project 階層の削除。テーブル、外部キー、レジストリのモジュール、エンドポイント、コマンド、
-  UI の操作面、label を埋めるマイグレーション。`run --project` の呼び出し側は明示的な `run --config`
-  へ移す
+  付け替えた比較
+- [x] 5 — project 階層の削除。テーブル、外部キー、レジストリのモジュール、エンドポイント、コマンド、
+  UI の操作面。`run --project` の呼び出し側は明示的な `run --config` へ移す
+
+### ログ
+
+- **2026-09-01** — 5つのユニットを1つの変更で実装しました。設計からの逸脱が3点あり、いずれも
+  置き換える対象より狭い実装です。
+  - **target は `RunResult` のフィールドではなく `manifest_dict` の引数にしました。** 1つの run が
+    解決する target は、実行対象の `Effective` config に1つだけです。値は run 単位のものであり、
+    ランナーはレポートを書く場所で既にその値を持っています。シナリオ単位のフィールドを
+    `RunResult` の8箇所の生成地点へ通すと、同じ値を8回記録することになります。
+  - **label は run 行だけでなく manifest にも刻みます。** 設計は `Job` だけを経路にしていました。
+    クラウドバッチの run にはその経路しかないからです。一方ローカルの `serve` は run のテーブルを
+    持たず、履歴を manifest から読むので、絞り込むべき label がどこにもありませんでした。起動する
+    `run --label` が manifest にも書き、`_persist_run` は enqueue 時の値を優先します。
+  - **データを移すマイグレーションはありません。** 設計では、カラムを落とす前に各 run の
+    プロジェクト名を `runs.label` へ書き写す想定でした。project 階層は誰も使っていなかったため、
+    マイグレーション `0019` はカラムの追加と削除だけを行い、データは動かしません。
 
 ## 参考
 

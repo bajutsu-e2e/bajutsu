@@ -155,13 +155,6 @@ CAPTURE_NO_LOCAL_ROUTES_REASON = "this server does not serve the capture routes 
 # discloses one tenant's membership to another, so every `/api/orgs` verb is admin-only.
 ORGS_ADMIN_ONLY_REASON = "org management is admin-only"
 
-# Why a caller cannot activate a project: activating rebinds the config the whole deployment reads,
-# so `POST /api/projects/{name}/activate` sits at the same admin tier as binding the config itself.
-ACTIVATE_ADMIN_ONLY_REASON = "activating a project is admin-only"
-# A representative activate path for the role gate below. `required_role` keys the project routes on
-# the verb and the trailing segment, never on which project it is, so any name answers for all.
-_ACTIVATE_PATH = "/api/projects/_/activate"
-
 
 def _capability(reason: str | None) -> dict[str, Any]:
     """One capability entry: available when nothing blocks it, else the reason a disabled control
@@ -197,20 +190,6 @@ def _orgs_unavailable(state: ServeState, actor: str | None) -> str | None:
     return None
 
 
-def _activate_unavailable(state: ServeState, actor: str | None) -> str | None:
-    """Why *actor* cannot activate a project here, or None when they can.
-
-    Read by the comparison view's per-row Activate control (#1720), so a reader who may not rebind
-    the deployment learns it before pressing and confirming rather than from the refusal afterward.
-    Gated through `forbidden_for_role` like `_orgs_unavailable`, on the very path the button posts
-    to, so the flag and the endpoint cannot disagree. The endpoint still refuses on its own: this
-    reports, it does not enforce.
-    """
-    if actor and forbidden_for_role(state, actor, "POST", _ACTIVATE_PATH):
-        return ACTIVATE_ADMIN_ONLY_REASON
-    return None
-
-
 def serve_capabilities(state: ServeState, actor: str | None = None) -> dict[str, Any]:
     """What this deployment can serve *this* caller, for the UI to gate its own surface on (#1721).
 
@@ -226,7 +205,6 @@ def serve_capabilities(state: ServeState, actor: str | None = None) -> dict[str,
     return {
         "capture": _capability(_capture_unavailable(state)),
         "orgs": _capability(_orgs_unavailable(state, actor)),
-        "activate": _capability(_activate_unavailable(state, actor)),
     }
 
 
@@ -1090,48 +1068,18 @@ def restore_persisted_provider_settings(state: ServeState) -> None:
     _org_settings(state, DEFAULT_ORG)
 
 
-def launch_project_identity(
-    config: Path, provenance: dict[str, str] | None
-) -> tuple[str, dict[str, Any]]:
-    """The project name and config-source record to auto-register the launch config under (BE-0225).
+def launch_label(config: Path, provenance: dict[str, str] | None) -> str:
+    """The default run-history label for the bound config (BE-0404 unit 2).
 
-    A Git-materialized config (its *provenance* stamp is present) is named for its repository and
-    records a ``git`` source with the resolved commit; any other config is a local file, named for
-    the config's file stem with a ``file`` source locating its path. The ``{"kind", "locator"}``
-    shape is the discriminated source record unit 1 stores.
-
-    A serve process launches exactly one config, so this default name never collides within a
-    deployment. Two deployments launching different config files from the *same* repo would auto-name
-    both for that repo; disambiguating by the in-repo config path is unit 3's territory, where
-    explicit `POST /api/projects` naming lands (the provenance stamp carries no config path today).
+    A Git-materialized config (its *provenance* stamp is present) is named ``<repo>/<path>`` — the
+    repository plus the config's path within it — so two configs from one repository partition
+    apart rather than folding onto the repository name. Any other config is a local file, named for
+    its file stem. An operator overrides this per run with ``--label``.
     """
     if provenance is not None and "repo" in provenance:
-        return provenance["repo"], {"kind": "git", "locator": provenance}
-    return config.stem, {"kind": "file", "locator": {"path": str(config)}}
-
-
-def register_launch_project(state: ServeState) -> None:
-    """Auto-register the launch config as the active project on serve boot (BE-0225).
-
-    So a bare ``serve --config X`` gains the project hub for free: X becomes the active project that
-    owns runs started before any explicit project is created, and the switcher/cross-project
-    dashboard have a first entry. Idempotent — safe to run on every boot. A no-op when no registry is
-    wired or no config is bound (nothing to register until one is opened in the UI).
-    """
-    registry = state.project_registry
-    if registry is None or state.config is None:
-        return
-    name, source = launch_project_identity(state.config, state.config_provenance)
-    # A convenience, never a reason to fail boot: a registry I/O error (a read-only runs dir) or a
-    # DB error must be logged and skipped, not propagated out of serve() — the same "logged, not
-    # crashing" contract the sibling boot seam restore_persisted_provider_settings holds.
-    try:
-        registry.add(org_id=DEFAULT_ORG, name=name, source=source)
-        registry.set_active(org_id=DEFAULT_ORG, name=name)
-    except Exception:
-        logging.getLogger(__name__).warning(
-            "failed to auto-register the launch config as the active project", exc_info=True
-        )
+        path = provenance.get("path") or ""
+        return f"{provenance['repo']}/{path}" if path else provenance["repo"]
+    return config.stem
 
 
 def _valid_slot(name: str, settings: ProviderSettings) -> bool:

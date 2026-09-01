@@ -1,15 +1,13 @@
-"""Structural tests for the cross-project comparison UI (BE-0226 unit 3).
+"""Structural tests for the cross-target comparison UI (BE-0226 unit 3, BE-0404 unit 4).
 
 The comparison dashboard's markup ships inlined in the index; its JS ships as the serve.metrics.mjs
-ES module (BE-0247). Like the project-hub UI tests, these assert the markup ships (from the index)
-and the module JS wires the comparison endpoint and the read-only drill-down. The aggregation and
-sorting semantics are covered by the unit-1/2 operation tests; here we pin that the surface exists
-and targets the right endpoint.
+ES module (BE-0247). These assert the markup ships (from the index) and the module JS wires the
+comparison endpoint and the read-only drill-down. The aggregation and sorting semantics are covered
+by the unit-1/2 operation tests; here we pin that the surface exists and targets the right endpoint.
 
-Since #1720 the surface also has to keep navigation and activation apart, so the cases below pin the
-split itself: a row opens the per-project run history and nothing else, the rows are reachable by
-keyboard, and rebinding the deployment takes an explicit confirmed button whose refusal names the
-right it needs.
+The surface writes nothing at all since BE-0404 collapsed the project layer: a target is not a
+binding, so the per-row Activate that used to rebind the deployment is gone and the cases below pin
+that a row only ever opens a read-only history, reachable by keyboard.
 """
 
 from __future__ import annotations
@@ -51,25 +49,19 @@ def test_the_view_is_named_apart_from_the_prometheus_endpoint(tmp_path: Path) ->
 def test_js_fetches_the_comparison_endpoint(tmp_path: Path) -> None:
     text = _fetch(tmp_path, "/serve.metrics.mjs")
     # The dashboard reads the unit-2 comparison model and renders it client-side.
-    assert "/api/metrics/projects" in text
+    assert "/api/metrics/targets" in text
     assert "loadMetrics" in text
 
 
 def test_a_row_opens_the_read_only_run_history(tmp_path: Path) -> None:
     text = _fetch(tmp_path, "/serve.metrics.mjs")
-    # The drill-down reads the project hub's existing per-project runs route — no new server surface.
-    assert "'/api/projects/'+encodeURIComponent(name)+'/runs'" in text
+    # The drill-down reads the ordinary run list with every label in view, then narrows by each run's
+    # own `target` stamp — no new server surface, and no partition default hiding another config's
+    # runs from a comparison that ranks across them.
+    assert "'/api/runs?label=*'" in text
+    assert "r.target===name" in text
     assert "openMetricsDetail" in text
     assert 'data-testid="metrics.detail"' in text
-
-
-def test_a_row_no_longer_activates_the_project(tmp_path: Path) -> None:
-    text = _fetch(tmp_path, "/serve.metrics.mjs")
-    # The row's own handler opens the detail; the only switchProject call sits behind the confirmed
-    # Activate button. `goStats` was the deep-link option that made a row click rebind the config.
-    assert "goStats" not in text
-    assert "switchProject(tr.dataset.name" not in text
-    assert text.count("await switchProject(name)") == 1
 
 
 def test_the_drilldown_is_reachable_by_keyboard(tmp_path: Path) -> None:
@@ -82,8 +74,7 @@ def test_the_drilldown_is_reachable_by_keyboard(tmp_path: Path) -> None:
 
 def test_the_row_keeps_its_table_semantics(tmp_path: Path) -> None:
     # role="button" on the <tr> would reach the keyboard too, but it overrides the row's implicit
-    # table role — losing row/cell navigation over the ranking — and nests the row's own Activate
-    # button inside an ARIA button, which ARIA forbids. The name button avoids both (#1720).
+    # table role, losing row/cell navigation over the ranking. The name button avoids that (#1720).
     text = _fetch(tmp_path, "/serve.metrics.mjs")
     # Pin the row's own opening tag: it closes right after `data-name`, which is what proves the
     # <tr> carries neither attribute. Scanning the whole module for "tabindex" would add no
@@ -92,26 +83,10 @@ def test_the_row_keeps_its_table_semantics(tmp_path: Path) -> None:
     assert '<tr class="mrow" data-testid="metrics.row" data-name="${esc(m.name)}">' in text
 
 
-def test_activation_is_an_explicit_confirmed_button(tmp_path: Path) -> None:
+def test_the_comparison_writes_nothing(tmp_path: Path) -> None:
+    # A target is not a binding, so there is nothing here to rebind (BE-0404 unit 4). The view is a
+    # pure read: no switch call, no POST, and no confirm dialog guarding one.
     text = _fetch(tmp_path, "/serve.metrics.mjs")
-    assert 'data-testid="metrics.activate"' in text
-    # The confirm has to say the rebind reaches every tab, not only the reader's own.
-    assert "window.confirm" in text
-    assert "every tab against this server follows" in text
-
-
-def test_the_activate_button_gates_on_the_boot_capability(tmp_path: Path) -> None:
-    # A reader who may not activate should learn it before pressing and confirming, so the button
-    # reads the boot read's capability block (#1721) and renders disabled with the server's reason
-    # (#1720). The block reports; the endpoint still refuses on its own.
-    text = _fetch(tmp_path, "/serve.metrics.mjs")
-    assert "unavailableReason('activate')" in text
-    assert "disabled title=" in text
-
-
-def test_a_refused_activation_names_the_right_it_needs(tmp_path: Path) -> None:
-    # The second line, for a role that changed since boot: the server answers a role-gated activate
-    # with a bare {"error": "forbidden"}, and the shared switch helper turns that into a sentence
-    # rather than showing the transport's own word (#1720).
-    text = _fetch(tmp_path, "/serve.core.mjs")
-    assert "Only an admin can activate a project." in text
+    assert "switchProject" not in text
+    assert "postJSON" not in text
+    assert "confirm" not in text

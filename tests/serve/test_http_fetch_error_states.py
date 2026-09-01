@@ -93,12 +93,12 @@ def test_the_failure_sentinel_ships_and_is_exported(tmp_path: Path) -> None:
     assert "isFetchError" in exports
 
 
-def test_metrics_separates_a_failed_read_from_an_empty_hub(tmp_path: Path) -> None:
+def test_metrics_separates_a_failed_read_from_an_empty_comparison(tmp_path: Path) -> None:
     text = _fetch(tmp_path, "/serve.metrics.mjs")
     assert 'data-testid="metrics.error"' in text
-    assert 'data-testid="metrics.empty"' in text  # the genuine "no projects registered" state
+    assert 'data-testid="metrics.empty"' in text  # the genuine "no targets declared" state
     body = _fn_body(text, "async function loadMetrics(")
-    assert "/api/metrics/projects" in body
+    assert "/api/metrics/targets" in body
     assert (
         "FETCH_ERROR" in body
     )  # the call itself asks for one, so a failed read can't read as empty
