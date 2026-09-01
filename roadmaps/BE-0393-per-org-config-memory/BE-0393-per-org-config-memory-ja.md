@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0393](BE-0393-per-org-config-memory-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0393") |
 | トピック | Configuration sourcing |
 | 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md)、[BE-0229](../BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution-ja.md)、[BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md)、[BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts-ja.md)、[BE-0375](../BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management-ja.md), [BE-0404](../BE-0404-collapse-project-layer/BE-0404-collapse-project-layer-ja.md) |
@@ -293,7 +293,7 @@ config source」を org の行へ直接持たせる案です。それならユ�
 - [x] 4. active なプロジェクトを org ごとにデータベースへ永続化し、起動時の登録から `default` org の
   固定を外す。**同じユニットが実現しました。** org が持つ config ソースが 1 つになったので、
   永続化すべき「active」のポインタも、外すべき起動時の登録も残っていません
-- [ ] 5. オブジェクトストアなしのデプロイで、ローカルキャッシュから upload 済み bundle を復元する
+- [x] 5. オブジェクトストアなしのデプロイで、ローカルキャッシュから upload 済み bundle を復元する
 - [ ] 6. 最初の必要が生じた時点で、org の覚えている config をセッションへ best-effort で復元する
 - [ ] 7. セッションのバインドとその由来を表示し、復元を監査ログに残す
 
