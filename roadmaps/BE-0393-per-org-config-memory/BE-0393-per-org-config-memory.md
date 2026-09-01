@@ -9,6 +9,7 @@
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0393") |
+| Implementing PR | [#1844](https://github.com/bajutsu-e2e/bajutsu/pull/1844) |
 | Topic | Configuration sourcing |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md), [BE-0229](../BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution.md), [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md), [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md), [BE-0375](../BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management.md), [BE-0404](../BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md) |
 <!-- /BE-METADATA -->
