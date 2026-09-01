@@ -19,7 +19,9 @@ from bajutsu.orchestrator.types import (
     Clock,
     NetworkSource,
     _no_network,
+    alert_block_note,
     pick_alert_label,
+    uncleared_prompt_note,
 )
 from bajutsu.scenario import Gone, Wait, WaitRequest
 
@@ -83,12 +85,10 @@ class _Heartbeat:
 # Mid-wait system-alert guard (BE-0269). A SpringBoard-level prompt collapses the iOS app-scoped tree
 # to bare content (`not shows_app_ui`); rather than let a wait burn its whole timeout before the
 # end-of-step guard looks, watch the already-fetched poll tree and ask the guard to clear it early.
-# A hair above _SETTLE_POLLS: a false positive here costs a real AI-vision call, not a cheap re-poll.
-_GUARD_DEBOUNCE_POLLS = 3  # consecutive collapsed polls before acting
-# AI-vision calls per wait: caps a persistent false positive / a dismiss that never takes.
-_GUARD_MAX_ATTEMPTS = 2
-# Min seconds between attempts, so a stuck collapse can't hot-loop the guard.
-_GUARD_COOLDOWN = 1.0
+# A hair above _SETTLE_POLLS, so a transient collapsed frame does not read as a blocked screen: since
+# BE-0402 a trip costs no model call, only the note a timeout would then carry, and a note naming a
+# block that was never there is the one wrong answer this path can still give.
+_GUARD_DEBOUNCE_POLLS = 3  # consecutive collapsed polls before recording the note
 # Seconds of consecutive `ElementNotTappable` declines `_dismiss_from_tree` tolerates for one
 # showing of a label before it stops attempting the tap: unlike `ElementNotFound` (the button left
 # the tree, so the next poll can't re-match it) and `AmbiguousSelector` (guarded by the uniqueness
@@ -127,9 +127,9 @@ def _decline_giveup(poll_interval: float) -> float:
 # what is being waited out is an animation measured in seconds — on a backend whose `query()` costs
 # 100-300ms, a poll count would stretch this to several seconds of dead wait.
 _TREE_RETAP_DELAY = 1.0
-# Taps `_dismiss_from_tree` spends on one showing of a label that never clears, mirroring the vision
-# path's `_GUARD_MAX_ATTEMPTS`: a prompt still up after this many is not one more tap will fix, so it
-# degrades to the wait's own timeout rather than actuating the device for the rest of it.
+# Taps `_dismiss_from_tree` spends on one showing of a label that never clears: a prompt still up
+# after this many is not one more tap will fix, so it degrades to the wait's own timeout rather than
+# actuating the device for the rest of it.
 _TREE_DISMISS_MAX_TAPS = 3
 
 
@@ -193,6 +193,18 @@ def _exists(elements: list[base.Element], sel: base.Selector) -> bool:
     return len(base.find_all(elements, sel)) >= 1
 
 
+def _with_block_note(reason: str, gate: _AlertGuardGate | None) -> str:
+    """The wait's timeout reason, plus what the guard last saw blocking the screen (BE-0402).
+
+    Read only at the moment a timeout is reported, and only from the gate's latest observation, so a
+    prompt that appeared and resolved mid-wait leaves nothing behind. Without it a `wait` stuck
+    behind a prompt no rule or candidate label names reports only the element that never appeared.
+    """
+    if gate is None or not gate.blocked_note:
+        return reason
+    return f"{reason} \u2014 {gate.blocked_note}"
+
+
 def _adaptive_sleep(clock: Clock, before: float) -> None:
     """Sleep only the remainder of _POLL after subtracting time already spent (e.g. in query).
 
@@ -222,10 +234,13 @@ class _AlertGuardGate:
 
     Where the backend lacks the capability — or an alert is up but no policy label resolves, or the
     native query reports no SpringBoard alert yet a non-SpringBoard surface (an action sheet, a
-    WKWebView JS dialog) it cannot enumerate is blocking — it falls back to the vision path, whose
-    three bounds keep a real AI-vision call rare: a debounce (a transient collapsed frame is
-    ignored), a cooldown between attempts, and a hard per-wait attempt ceiling after which it goes
-    inert and the wait falls back to polling its own deadline.
+    WKWebView JS dialog) it cannot enumerate is blocking and the scenario's own `labels` do not
+    name its button (the one such surface `_dismiss_from_tree` below still taps) — nothing here can
+    clear it. BE-0402 removed the AI-vision fallback that used to answer those cases from `run`, so
+    the gate records what it saw in `blocked_note` and the wait polls on to its own deadline, where
+    `_wait` appends the note to the timeout it reports. The note is the gate's *latest* observation,
+    cleared the moment a poll shows an unblocked screen, so a block that resolved itself never
+    reaches a later timeout message.
     """
 
     driver: base.Driver
@@ -235,9 +250,14 @@ class _AlertGuardGate:
     _native: bool = field(init=False)
     _last_native: float | None = None
     _collapsed_polls: int = 0
-    _attempts: int = 0
-    _last_attempt: float | None = None
-    _gave_up: bool = False
+    # Whether the most recent native probe found an alert it could not name. The native query runs
+    # once per `poll_interval` while the collapsed-tree proxy below samples every `_POLL`, so without
+    # this the proxy would overwrite the probe's own button-naming note with its hedged one on every
+    # tick in between — reporting less than the guard actually knows.
+    _native_unhandled: bool = False
+    # What this gate last saw blocking the screen and could not clear (BE-0402), for `_wait` to
+    # append to a timeout it is about to report. Empty whenever the latest poll showed no block.
+    blocked_note: str = ""
     _tree_dismiss_pending: str | None = None
     _tree_tapped_at: float | None = None
     _tree_signature: tuple[tuple[str | None, str | None], ...] | None = None
@@ -251,11 +271,11 @@ class _AlertGuardGate:
         self._native = base.Capability.HANDLE_SYSTEM_ALERT in self.driver.capabilities()
 
     def observe(self, elements: list[base.Element]) -> None:
-        """Inspect one poll; clear a blocking system prompt if warranted (native first, then vision)."""
+        """Inspect one poll; clear a blocking system prompt if warranted, else note what blocks it."""
         if self._native:
             self._observe_native(elements)
         else:
-            self._observe_vision(elements)
+            self._observe_collapsed(elements)
 
     def _observe_native(self, elements: list[base.Element]) -> None:
         # Rate-limit only the cross-process native query to `poll_interval`, not the whole gate: a
@@ -268,20 +288,28 @@ class _AlertGuardGate:
         probed_absent = False
         if self._last_native is None or now - self._last_native >= self.guard.poll_interval:
             self._last_native = now
-            state, event = self.guard.probe_native(self.driver)
+            state, event, buttons = self.guard.probe_native(self.driver)
             probed_absent = state == "absent"
+            self._native_unhandled = state == "unhandled"
+            if state != "unhandled" and not self._tree_gave_up:
+                # Nothing the native query names is blocking, so any note it left is stale. The proxy
+                # below may still set its hedged one for a surface the query cannot enumerate. An
+                # in-tree give-up standing is the exception: `springboard.alerts` never saw that
+                # prompt in the first place, so "absent" is not evidence it went away.
+                self.blocked_note = ""
             if state == "dismissed" and event is not None:
                 # A SpringBoard alert was up and tapped natively — no model. Clear the proxy debounce
-                # so a later collapse starts fresh, and skip the vision path this poll.
+                # so a later collapse starts fresh.
                 self.alerts.append(event)
                 self._collapsed_polls = 0
                 return
             if state == "unhandled":
                 # An alert is up but no policy label resolves — an unknown button, or a query that
-                # could not name it. Hand to the vision guard, bounded by the same cooldown / attempt
-                # ceiling so a persistently unhandled alert cannot fire an unbounded stream of calls.
+                # could not name it. Nothing here can clear it (BE-0402 removed the vision fallback),
+                # so record the buttons the probe read and let the wait run to its own deadline: a
+                # timeout naming the alert beats a guessed tap (prime directive 2).
                 self._collapsed_polls = 0
-                self._fire_vision_bounded()
+                self.blocked_note = alert_block_note(buttons)
                 return
             # "absent": no *SpringBoard* alert — fall through to the collapsed-tree proxy below.
         if self.guard.labels and probed_absent:
@@ -304,54 +332,41 @@ class _AlertGuardGate:
             if event is not None:
                 self.alerts.append(event)
                 self._collapsed_polls = 0
+                self.blocked_note = ""
                 return
+        if self._native_unhandled:
+            # The last probe named an alert nothing will clear, and the proxy can only say less about
+            # the same block. Keep the specific note until a probe reports the screen unblocked.
+            return
+        if self._tree_gave_up:
+            # The in-tree path spent its tap budget on a prompt still showing, and said so in the
+            # note. Keep it: an app-attached sheet does *not* collapse the tree, so the proxy below
+            # would read the screen as unblocked and erase the one disclosure the eventual timeout
+            # has (BE-0402). It lifts on its own once the label stops matching the tree.
+            return
         # Every `_POLL`, whether or not the native query ran this tick, drive the debounced collapsed-
         # tree proxy: `system_alert_labels()` only sees `springboard.alerts`, so an action sheet or a
-        # WKWebView JS dialog reads as absent yet still collapses the tree, and the vision guard exists
-        # to clear exactly those (BE-0269). Sampling every `_POLL` (not once per `poll_interval`) keeps
-        # its recovery latency at ~`_GUARD_DEBOUNCE_POLLS * _POLL`; the debounce filters transient
-        # frames. A SpringBoard alert that surfaces inside a sub-interval window may be seen here before
-        # the next native probe, but the vision path is attempt-bounded and no-ops without a credential,
-        # so the run stays deterministic (prime directive 1).
-        self._observe_vision(elements)
+        # WKWebView JS dialog reads as absent yet still collapses the tree, and only this proxy
+        # notices those (BE-0269). Sampling every `_POLL` (not once per `poll_interval`) keeps its
+        # latency at ~`_GUARD_DEBOUNCE_POLLS * _POLL`; the debounce filters transient frames.
+        self._observe_collapsed(elements)
 
-    def _observe_vision(self, elements: list[base.Element]) -> None:
-        """The collapsed-tree-proxy + vision path: for a backend without the native capability, and
-        for a native backend's `"absent"` polls, where a non-SpringBoard surface the native query
-        cannot enumerate may still be blocking."""
+    def _observe_collapsed(self, elements: list[base.Element]) -> None:
+        """The collapsed-tree proxy: for a backend without the native capability, and for a native
+        backend's `"absent"` polls, where a non-SpringBoard surface the native query cannot enumerate
+        may still be blocking.
+
+        It reads a correlation, not a fact — no query named a button here — so past the debounce it
+        records the hedged, label-less note rather than one claiming a system alert (BE-0402).
+        """
         if shows_app_ui(elements):
             self._collapsed_polls = 0
+            self.blocked_note = ""
             return
         self._collapsed_polls += 1
         if self._collapsed_polls < _GUARD_DEBOUNCE_POLLS:
             return
-        self._collapsed_polls = 0
-        self._fire_vision_bounded()
-
-    def _fire_vision_bounded(self) -> None:
-        """Fire the vision guard under the shared per-wait bounds (cooldown + attempt ceiling).
-
-        Shared by the collapsed-tree path and the native "unhandled" fallback so an AI-vision call
-        stays rare on both: a cooldown spaces attempts and a hard ceiling stops them, after which it
-        goes inert once (loudly) and the wait falls back to its own timeout (never fail silently).
-        """
-        if self._attempts >= _GUARD_MAX_ATTEMPTS:
-            if not self._gave_up:
-                self._gave_up = True
-                _logger.warning(
-                    "mid-wait alert guard gave up after %d vision attempts; the prompt still looks "
-                    "blocking — falling back to the wait's own timeout",
-                    _GUARD_MAX_ATTEMPTS,
-                )
-            return
-        now = self.clock.now()
-        if self._last_attempt is not None and now - self._last_attempt < _GUARD_COOLDOWN:
-            return
-        self._last_attempt = now
-        self._attempts += 1
-        event = self.guard.vision(self.driver)
-        if event is not None:
-            self.alerts.append(event)
+        self.blocked_note = alert_block_note([])
 
     def _dismiss_from_tree(self, elements: list[base.Element]) -> AlertEvent | None:
         """Tap a scenario-named dismiss button already visible in this poll's own tree — no model call.
@@ -370,7 +385,7 @@ class _AlertGuardGate:
         `systemAlertHandling.labels`, the narrow surface this path exists to speed up.
 
         Paces its taps on a label rather than tapping every match: unlike the native probe
-        (rate-limited to `poll_interval`) and the vision path (debounce + cooldown + attempt ceiling),
+        (rate-limited to `poll_interval`) and the collapsed-tree proxy (debounced),
         this runs every `_POLL`, so without its own guard a dismiss animation that keeps the button in
         the tree for a few frames — or a target screen that renders a poll or two later — would
         re-match and re-tap it on every one of those polls, over-counting one dismissal into several
@@ -432,9 +447,14 @@ class _AlertGuardGate:
                 # gave before the retry existed, and keep the recorded dismissal: it was real.
                 return None
             if self._tree_taps >= _TREE_DISMISS_MAX_TAPS:
-                # Loudly, once, like `_fire_vision_bounded`'s own ceiling: the wait is about to spend
-                # its whole budget on a prompt this path could not clear, and a silent give-up would
-                # leave the eventual timeout looking like the awaited element simply never rendered.
+                # Loudly, once: the wait is about to spend its whole budget on a prompt this path
+                # could not clear, and a silent give-up would leave the eventual timeout looking like
+                # the awaited element simply never rendered. The note carries the same disclosure
+                # onto the failure itself (BE-0402) — an app-attached sheet does not collapse the
+                # tree, so the proxy below would otherwise report nothing at all about it. It is
+                # `uncleared_prompt_note`, not the "unhandled" one: this label *did* resolve, so
+                # reporting it as unnamed would send the author to add a label they already wrote.
+                self.blocked_note = uncleared_prompt_note(label)
                 if not self._tree_gave_up:
                     self._tree_gave_up = True
                     self._withdraw_tree_event()
@@ -466,7 +486,13 @@ class _AlertGuardGate:
             and self.clock.now() - self._tree_not_tappable_since
             >= _decline_giveup(self.guard.poll_interval)
         ):
-            return None  # gave up on this showing; the wait's own timeout takes over
+            # Gave up on this showing; the wait's own timeout takes over — but says what it gave up
+            # on, like the tap-budget branch below. Latched on `_tree_gave_up` for the same reason:
+            # a permanently obstructed sheet keeps its own labelled buttons in the tree, so the
+            # collapsed-tree proxy reads the screen as unblocked and would erase the note (BE-0402).
+            self._tree_gave_up = True
+            self.blocked_note = uncleared_prompt_note(label)
+            return None
         # Scope the tap to `traits: [BUTTON]`, the same constraint `buttons` above already applied
         # when resolving `label` — matching a bare `{"label": label}` selector against `matches()`
         # (base.py) ignores `traits` entirely, so a non-button element sharing the exact text (a
@@ -565,9 +591,11 @@ def _wait(  # noqa: C901, PLR0912
     whole timeout) — drive the guard mid-wait, then resume polling against the *same* `deadline`. On
     an iOS backend the guard queries SpringBoard natively on its own interval (BE-0315, reusing
     BE-0316's primitive); elsewhere it watches the already-fetched tree for the collapsed-tree
-    signature of a blocking prompt and asks the vision guard to clear it (BE-0269). The condition
-    check still decides pass/fail; the guard only accelerates recovery, and dismissed alerts are
-    appended to `alerts` (the step's outcome list) for the report. `gone` is guarded
+    signature of a blocking prompt (BE-0269). The condition check still decides pass/fail; the guard
+    only accelerates recovery, and dismissed alerts are appended to `alerts` (the step's outcome
+    list) for the report. A block it cannot clear is not acted on at all (BE-0402) — it is appended
+    to the timeout this returns, so the failure names the alert instead of only the element that
+    never appeared. `gone` is guarded
     too. It was not, on the reasoning that a collapsed tree already satisfies "gone" and returns at
     once — true of a SpringBoard prompt, which covers the app and empties its tree, but only of
     those. A prompt drawn *inside* the app's own process collapses nothing and instead **adds** its
@@ -649,7 +677,11 @@ def _wait(  # noqa: C901, PLR0912
             if clock.now() >= deadline:
                 if trace is not None:
                     trace.elements_at_timeout = len(elements)
-                return False, f"wait timeout: for {target} ({timeout}s)", elements
+                return (
+                    False,
+                    _with_block_note(f"wait timeout: for {target} ({timeout}s)", gate),
+                    elements,
+                )
             if hb is not None:
                 hb.tick(clock.now())
             _adaptive_sleep(clock, t0)
@@ -669,7 +701,11 @@ def _wait(  # noqa: C901, PLR0912
             if cancelled():
                 raise RunCancelled
             if clock.now() >= deadline:
-                return False, f"wait timeout: gone {target} ({timeout}s)", elements
+                return (
+                    False,
+                    _with_block_note(f"wait timeout: gone {target} ({timeout}s)", gate),
+                    elements,
+                )
             if hb is not None:
                 hb.tick(clock.now())
             _adaptive_sleep(clock, t0)
@@ -708,7 +744,11 @@ def _wait(  # noqa: C901, PLR0912
         if cancelled():
             raise RunCancelled
         if clock.now() >= deadline:
-            return False, f"wait timeout: screenChanged ({timeout}s)", current
+            return (
+                False,
+                _with_block_note(f"wait timeout: screenChanged ({timeout}s)", gate),
+                current,
+            )
         if hb is not None:
             hb.tick(clock.now())
         _adaptive_sleep(clock, t0)

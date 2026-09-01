@@ -6,7 +6,7 @@ import json
 import struct
 from pathlib import Path
 
-from conftest import FakeBackend, FakeBlock, ShotDriver
+from conftest import GUARD_LABEL, AlertingDriver, FakeBackend, FakeBlock, ShotDriver
 
 from bajutsu.agents.alerts import AlertDecision, ClaudeAlertLocator, SystemAlertGuard
 from bajutsu.agents.protocols import Proposal
@@ -154,20 +154,18 @@ def test_on_blocked_retries_step_after_recovery() -> None:
         "frame": (0.0, 0.0, 10.0, 10.0),
         "nativeZ": None,
     }
-    driver = FakeDriver([])  # empty screen -> the tap fails to resolve
-
-    def on_blocked(d: base.Driver) -> AlertEvent | None:
-        assert isinstance(d, FakeDriver)
-        d.screen = [target]  # "dismiss the alert": the app reappears
-        return AlertEvent(label="Not Now")
+    # Empty screen -> the tap fails to resolve, and a SpringBoard prompt is what is covering it.
+    driver = AlertingDriver(on_dismiss=lambda d: setattr(d, "screen", [target]))
 
     result = run_scenario(
-        driver, load_scenarios(_TAP_GO)[0], alert_guard=AlertGuardConfig(vision=on_blocked)
+        driver,
+        load_scenarios(_TAP_GO)[0],
+        alert_guard=AlertGuardConfig(labels=[GUARD_LABEL]),
     )
     assert result.ok is True
     assert ("tap", {"id": "go"}) in driver.actions
     # The dismissal is recorded on the retried step's outcome (for the report).
-    assert result.steps[0].alerts == [AlertEvent(label="Not Now")]
+    assert result.steps[0].alerts == [AlertEvent(label=GUARD_LABEL)]
 
 
 def test_end_of_step_alert_guard_retry_preserves_correct_before_after_evidence(
@@ -193,19 +191,15 @@ def test_end_of_step_alert_guard_retry_preserves_correct_before_after_evidence(
         "frame": (0.0, 0.0, 10.0, 10.0),
         "nativeZ": None,
     }
-    driver = FakeDriver([])  # empty screen -> the first tap fails to resolve
-
-    def on_blocked(d: base.Driver) -> AlertEvent | None:
-        assert isinstance(d, FakeDriver)
-        d.screen = [go, nxt]  # "dismiss the alert": the app reappears with both targets
-        return AlertEvent(label="Not Now")
+    # Empty screen -> the first tap fails to resolve; answering the prompt reveals both targets.
+    driver = AlertingDriver(on_dismiss=lambda d: setattr(d, "screen", [go, nxt]))
 
     yaml = "- name: t\n  steps:\n    - tap: { id: go }\n    - tap: { id: next }\n"
     run_dir = tmp_path / "run1"
     result = run_scenario(
         driver,
         load_scenarios(yaml)[0],
-        alert_guard=AlertGuardConfig(vision=on_blocked),
+        alert_guard=AlertGuardConfig(labels=[GUARD_LABEL]),
         sink=FileSink(run_dir),
     )
     assert result.ok is True, result.failure
@@ -239,18 +233,14 @@ def test_end_of_step_alert_guard_retry_on_the_last_step_still_gets_a_final_captu
         "frame": (0.0, 0.0, 10.0, 10.0),
         "nativeZ": None,
     }
-    driver = FakeDriver([])  # empty screen -> the tap fails to resolve
-
-    def on_blocked(d: base.Driver) -> AlertEvent | None:
-        assert isinstance(d, FakeDriver)
-        d.screen = [go]
-        return AlertEvent(label="Not Now")
+    # Empty screen -> the tap fails to resolve until the prompt covering it is answered.
+    driver = AlertingDriver(on_dismiss=lambda d: setattr(d, "screen", [go]))
 
     run_dir = tmp_path / "run1"
     result = run_scenario(
         driver,
         load_scenarios(_TAP_GO)[0],
-        alert_guard=AlertGuardConfig(vision=on_blocked),
+        alert_guard=AlertGuardConfig(labels=[GUARD_LABEL]),
         sink=FileSink(run_dir),
     )
     assert result.ok is True, result.failure
@@ -289,12 +279,8 @@ def test_on_blocked_retries_expect_after_recovery() -> None:
     # A system alert can cover the screen exactly when expect runs; the guard must
     # clear it there too, not only during steps.
     here, later = _el("here"), _el("later")
-    driver = FakeDriver([here])  # 'later' is missing until the alert is dismissed
-
-    def on_blocked(d: base.Driver) -> AlertEvent | None:
-        assert isinstance(d, FakeDriver)
-        d.screen = [here, later]
-        return AlertEvent(label="Allow")
+    # 'later' is missing until the alert is dismissed.
+    driver = AlertingDriver([here], label="Allow", on_dismiss=lambda d: d.screen.append(later))
 
     yaml = (
         "- name: e\n"
@@ -302,7 +288,7 @@ def test_on_blocked_retries_expect_after_recovery() -> None:
         "  expect:\n    - exists: { id: later }\n"
     )
     result = run_scenario(
-        driver, load_scenarios(yaml)[0], alert_guard=AlertGuardConfig(vision=on_blocked)
+        driver, load_scenarios(yaml)[0], alert_guard=AlertGuardConfig(labels=["Allow"])
     )
     assert result.ok is True
     # The expect-phase dismissal is recorded on the run result (not on any step).

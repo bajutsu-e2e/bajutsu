@@ -599,19 +599,33 @@ def test_run_zip_writes_artifact_after_the_verdict(
     assert (manifest.parent.parent / f"{manifest.parent.name}.zip").is_file()
 
 
-def test_run_system_alert_handling_notes_no_op_without_credential(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    ("provider", "key"),
+    [(None, None), (None, "sk-test"), ("bedrock", None)],
+)
+def test_run_never_consults_an_ai_credential(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, provider: str | None, key: str | None
 ) -> None:
-    # The alert guard is on by default, but with no AI credential it degrades to a no-op and never
-    # constructs a client (a Claude-free deterministic run). The note surfaces; the run still runs.
+    """BE-0402: `run` reaches no model under any flag, so it asks about no credential either.
+
+    Before, the alert guard's vision fallback was built here, and the three cases below each printed
+    their own note about it — a missing Anthropic key, a Bedrock provider with no model id, and a key
+    that was actually present (which built the client). Now none of them says anything, and the run
+    is the same deterministic run in all three: the Claude-free claim holds by construction rather
+    than by which variables the shell happens to export.
+    """
     from bajutsu.orchestrator import RunResult
 
     monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)
-    monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    for name, value in (("BAJUTSU_AI_PROVIDER", provider), ("ANTHROPIC_API_KEY", key)):
+        if value is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, value)
+    monkeypatch.delenv("BAJUTSU_BEDROCK_MODEL", raising=False)
     monkeypatch.setattr(
         "anthropic.Anthropic",
-        lambda *a, **k: pytest.fail("client constructed despite missing credential"),
+        lambda *a, **k: pytest.fail("run constructed an AI client"),
     )
     _stub_execution(
         monkeypatch, results=[RunResult("demo", True, [])], manifest=_manifest_at(tmp_path)
@@ -619,28 +633,9 @@ def test_run_system_alert_handling_notes_no_op_without_credential(
     cfg, scn = _fake_run(tmp_path)
     r = runner.invoke(app, _run_argv(cfg, scn, tmp_path))
     assert r.exit_code == 0
-    assert "the vision alert guard will no-op" in r.output
-
-
-def test_run_system_alert_handling_bedrock_note_without_a_model(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # The Bedrock provider authenticates the alert guard with AWS credentials but still needs a
-    # model id; with none set the guard no-ops and says so — a distinct note from the Anthropic-key
-    # gap, and still no client is constructed on this deterministic run.
-    from bajutsu.orchestrator import RunResult
-
-    monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)
-    monkeypatch.setenv("BAJUTSU_AI_PROVIDER", "bedrock")
-    monkeypatch.delenv("BAJUTSU_BEDROCK_MODEL", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    _stub_execution(
-        monkeypatch, results=[RunResult("demo", True, [])], manifest=_manifest_at(tmp_path)
-    )
-    cfg, scn = _fake_run(tmp_path)
-    r = runner.invoke(app, _run_argv(cfg, scn, tmp_path))
-    assert r.exit_code == 0
-    assert "no Bedrock model id is set" in r.output
+    assert "alert guard" not in r.output
+    assert "ANTHROPIC_API_KEY" not in r.output
+    assert "Bedrock" not in r.output
 
 
 def test_run_tag_no_match_exits_2(tmp_path: Path) -> None:

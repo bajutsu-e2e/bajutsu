@@ -44,12 +44,15 @@ no login, no AI runtime. Clone the repo and it works immediately.
 | **Uses Claude** | `record` | author a scenario by driving the app with Claude |
 | | `crawl` | explore an app autonomously with Claude to build a screen map |
 | | `triage --ai` | diagnose a failed run with Claude instead of the rule-based agent |
-| | `run --system-alert-handling` | the alert guard — Claude clears an OS prompt that blocked a step |
 
 The classification is at the granularity of the **path**, not the command name: `triage` is
-Claude-free, and a single `--ai` flag flips it onto the Claude path; `run` is Claude-free, and the
-alert guard (`--system-alert-handling`, on by default per scenario) is its Claude path. When there is no
-credential, that guard **degrades to a no-op** — it never blocks a deterministic run.
+Claude-free, and a single `--ai` flag flips it onto the Claude path. `run` is Claude-free with **no
+flag-gated exception at all** since
+[BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md).
+Its alert guard (`--system-alert-handling`, on by default per scenario) used to be one: where the
+native SpringBoard path could not name a prompt, the guard read a screenshot with a model and tapped
+where it was told. That fallback is gone from `run`, so the guard needs no credential, consults none,
+and leaves a prompt it cannot name alone — naming it in the blocked step's own failure instead.
 
 This split is the [Tier-1 / Tier-2 boundary](concepts.md) made visible; nothing here puts a model on
 the `run` / CI gate.
@@ -79,7 +82,7 @@ dependency at all.
   `codegen`, `trace`, `approve`, and the rest of the Claude-free column above). No AI SDK is
   installed, and nothing here reaches a model.
 - `pip install bajutsu[ai]` — adds the Anthropic SDK for the Claude paths (`record`, `crawl`,
-  `triage --ai`, `run --system-alert-handling`) under the API-key, Bedrock, or `ant` provider. Use
+  `triage --ai`) under the API-key, Bedrock, or `ant` provider. Use
   `bajutsu[bedrock]` instead for the Amazon Bedrock provider; it layers the Bedrock variant onto the
   same SDK. The `claude-code` provider needs neither extra — it shells out to the external `claude`
   CLI rather than the SDK.
@@ -113,8 +116,8 @@ classification above is the same regardless of which you pick.
 
 The mechanisms above are opt-in, so a project that configures none of them reaches no model. That
 silence is still an accident of the environment rather than a statement in the repository: nothing a
-reviewer reads records the intent, and a key exported to author one scenario with `record`
-re-enables the alert guard's vision fallback for every `run` in the same shell. Setting the provider
+reviewer reads records the intent, and a key exported to author one scenario with `record` is
+enough to put `record` and `crawl` on a model in every later shell. Setting the provider
 to `none` states the policy instead
 ([BE-0394](../roadmaps/BE-0394-ai-provider-none-kill-switch/BE-0394-ai-provider-none-kill-switch.md)):
 
@@ -126,9 +129,8 @@ defaults:
 
 With that line committed, the three authoring and investigation commands — `record`, `crawl`, and
 `triage --ai` — exit with a message naming the setting rather than starting, and no code path can
-construct an AI backend at all. `run --system-alert-handling` behaves differently, because only half
-of it reaches a model: the guard's vision fallback becomes a no-op, while the deterministic native
-alert path, which needs no credential, keeps clearing the system prompts it can. A configured
+construct an AI backend at all. `run` is unaffected either way: BE-0402 removed the one path of its
+own that ever reached a model, so it neither needs the switch nor notices it. A configured
 `ai.provider` outranks `$BAJUTSU_AI_PROVIDER`, so the setting also holds on a continuous-integration
 runner whose environment nobody controls. The
 [configuration guide](configuration.md#ai-provider-ai-be-0047) covers the precedence rules and the

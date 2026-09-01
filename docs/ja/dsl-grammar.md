@@ -145,11 +145,12 @@ Preconditions ::= {
 }
 
 # ── SystemAlertHandling（リアクティブなシステムアラートガード; 既定 ON）─
-# XCUITest ではネイティブの SpringBoard 照会 + tap（モデルなし、BE-0316 を再利用）。AI 視覚はフォールバック（BE-0315）。
+# XCUITest ではネイティブの SpringBoard 照会 + tap（モデルなし、BE-0316 を再利用。BE-0315）。
+# その経路が名指しできないアラートは、推測せずブロックされたステップの失敗理由に書き出す（BE-0402）。
 SystemAlertHandling ::= boolean                              # true=既定の方針で ON、false=OFF
                | { rules?: [<SystemAlertRule>],             # 名指ししたプロンプトに choice で答える。ネイティブ経路
-                   labels?: [string],                       # 順序付きのボタンラベル。ネイティブ経路（＋視覚へのヒント）
-                   visionInstruction?: string,              # 自由記述。AI 視覚フォールバック専用
+                   labels?: [string],                       # 順序付きのボタンラベル。ネイティブ経路
+                   visionInstruction?: string,              # 自由記述。どのコマンドにも届かない。run は拒否する
                    pollInterval?: number }                   # ネイティブのポーリング間隔・秒（既定 1）
 SystemAlertRule ::= { prompt: notifications|tracking|paste, choice: grant|deny }  # 1リストにつきプロンプトは一意
 
@@ -393,7 +394,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Preconditions.launchEnv` | `{}` |
 | `SystemAlertHandling.rules` | `[]`（名指しした規則なし。`labels`／組み込みの否定的ラベルがすべてのプロンプトに答える） |
 | `SystemAlertHandling.labels` | `[]`（どの層もボタンを名指ししない。組み込みの否定的ラベルが代わりに使われる） |
-| `SystemAlertHandling.visionInstruction` | 未設定（フォールバックは `labels` から導いたヒント、無ければ自身の既定を使う） |
+| `SystemAlertHandling.visionInstruction` | 未設定。ほかの値は使えません。`run` は拒否し（BE-0402）、`record` / `crawl` は自由記述を自身の `--alert-vision-instruction` フラグからのみ読みます |
 | `TypeText.submit` | `false` |
 | `Exists.negate` | `false` |
 | `MockResponse.status` | `200` |

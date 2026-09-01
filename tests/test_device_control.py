@@ -339,17 +339,10 @@ def test_clipboard_assertion_read_failure_fails_cleanly() -> None:
 def test_clipboard_expect_retry_rereads_after_on_blocked() -> None:
     # When on_blocked clears a block and the app then updates the pasteboard, the expect retry must
     # compare against the fresh clipboard, not the stale pre-block value.
-    from conftest import el
-
-    from bajutsu.drivers import base
-    from bajutsu.orchestrator.types import AlertEvent
+    from conftest import GUARD_LABEL, AlertingDriver, el
 
     ctrl = _RecordingControl()
     ctrl.clipboard_value = "STALE"
-
-    def on_blocked(_driver: base.Driver) -> AlertEvent:
-        ctrl.clipboard_value = "COUPON123"  # the cleared block let the app write the pasteboard
-        return AlertEvent(label="Not Now")
 
     scn = Scenario.model_validate(
         {
@@ -359,12 +352,16 @@ def test_clipboard_expect_retry_rereads_after_on_blocked() -> None:
         }
     )
     result = run_scenario(
-        FakeDriver([el("a", "A", ["button"])]),
+        # Answering the prompt is what lets the app write the pasteboard.
+        AlertingDriver(
+            [el("a", "A", ["button"])],
+            on_dismiss=lambda _d: setattr(ctrl, "clipboard_value", "COUPON123"),
+        ),
         scn,
         control=ctrl,
-        alert_guard=AlertGuardConfig(vision=on_blocked),
+        alert_guard=AlertGuardConfig(labels=[GUARD_LABEL]),
     )
-    assert result.ok  # first read STALE failed, on_blocked fired, re-read COUPON123 passed
+    assert result.ok  # first read STALE failed, the guard fired, re-read COUPON123 passed
 
 
 def test_set_clipboard_without_control_fails_cleanly() -> None:

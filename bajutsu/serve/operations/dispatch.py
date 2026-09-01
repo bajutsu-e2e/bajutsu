@@ -103,11 +103,49 @@ def _system_alert_handling_flag(
     loudly, the same as every other layer's removed spellings, rather than silently dropped: `run`'s
     unset behaviour is per-scenario "on", so dropping a caller's `{removed: false}` would arm the
     guard on a request that asked to disable it. Returns ``(value, None)`` or ``(None, (error, 400))``.
+
+    Shared by `start_run`, `start_record`, and `start_crawl`, so it holds only what all three
+    reject. `alertVisionInstruction` is `run`'s alone (`_reject_run_vision_instruction` below):
+    `record` and `crawl` keep the vision guard that reads it.
     """
     for removed in ("alertHandling", "dismissAlerts"):
         if removed in body:
             return None, ({"error": f"'{removed}' was removed; use 'systemAlertHandling'"}, 400)
     return _bool_flag(body, "systemAlertHandling"), None
+
+
+def _run_alert_flags(
+    body: dict[str, Any],
+) -> tuple[bool | None, tuple[Any, int] | None]:
+    """`run`'s alert-key checks: the shared `systemAlertHandling` flag, then its own refusal.
+
+    One entry point so `start_run` spends a single early return on the pair — `record` / `crawl` call
+    `_system_alert_handling_flag` alone, since the refusal below is `run`'s.
+    """
+    value, err = _system_alert_handling_flag(body)
+    if err:
+        return None, err
+    return value, _reject_run_vision_instruction(body)
+
+
+def _reject_run_vision_instruction(body: dict[str, Any]) -> tuple[Any, int] | None:
+    """Refuse an `alertVisionInstruction` on a `run` request, or None when the body carries none.
+
+    BE-0402 retired the flag this key rendered. Dropping it silently would leave the HTTP API the one
+    entry point that inverts a caller's intent without saying so: a request sending "tap Allow" to
+    *grant* a permission would fall through to the built-in dismissive labels and deny it, which is
+    exactly the outcome the scenario and target-config layers now exit 2 to prevent. `run` only —
+    `record` and `crawl` still take the free-text form on their own `--alert-vision-instruction`
+    flag, so a body naming this key must not fail their jobs (serve does not surface it to them yet,
+    so it is simply unused there).
+    """
+    if "alertVisionInstruction" not in body:
+        return None
+    return {
+        "error": "'alertVisionInstruction' is not supported by run (BE-0402); "
+        "name the buttons with 'alertLabels', or write the scenario's own "
+        "systemAlertHandling.rules"
+    }, 400
 
 
 def _request_device_budget(
@@ -204,7 +242,7 @@ def start_run(
     backend, udid, err = _device_args(body)
     if err:
         return err
-    system_alert_handling, alert_err = _system_alert_handling_flag(body)
+    system_alert_handling, alert_err = _run_alert_flags(body)
     if alert_err:
         return alert_err
     label, label_err = _run_label(state, body)
@@ -257,7 +295,6 @@ def start_run(
         network=_bool_flag(body, "network"),
         zip_run=_bool_flag(body, "zip"),
         alert_labels=str(body.get("alertLabels") or ""),
-        alert_vision_instruction=str(body.get("alertVisionInstruction") or ""),
         alert_poll_interval=_float(body.get("alertPollInterval")),
         log_predicate=str(body.get("logPredicate") or ""),
         log_subsystem=str(body.get("logSubsystem") or ""),

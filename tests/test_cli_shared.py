@@ -54,13 +54,30 @@ def test_build_alert_guard_no_op_under_provider_none(
 ) -> None:
     # BE-0394: the kill switch holds *with the key present in the environment* — the difference from
     # the unset-key case above, and the whole point of committing the policy to the config. The note
-    # names the setting rather than an env var to export, and says the native path still clears prompts.
+    # names the setting rather than an env var to export.
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     eff = _eff("targets:\n  x:\n    bundleId: com.x\n    ai: { provider: none }\n")
     assert _build_alert_locator(eff, _ai_redactor(eff)) is None
     assert _build_alert_guard(eff, _ai_redactor(eff), "") is None
     out = capsys.readouterr().out
-    assert "ai.provider: none" in out and "native path" in out
+    assert "ai.provider: none" in out
+    # And it says outright that nothing will be cleared. Only `record` / `crawl` reach here since
+    # BE-0402, and neither has a native path to fall back on, so the note must not imply one.
+    assert "no system prompt will be cleared" in out
+
+
+def test_build_alert_guard_names_the_bedrock_model_gap(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Bedrock authenticates with AWS credentials but still needs a model id; with none set the guard
+    # no-ops and says which setting is missing, distinct from the Anthropic-key note above.
+    monkeypatch.setenv("BAJUTSU_AI_PROVIDER", "bedrock")
+    monkeypatch.delenv("BAJUTSU_BEDROCK_MODEL", raising=False)
+    eff = _eff()
+    assert _build_alert_locator(eff, _ai_redactor(eff)) is None
+    out = capsys.readouterr().out
+    assert "no Bedrock model id is set" in out
+    assert "no system prompt will be cleared" in out
 
 
 def test_credential_gap_message_for_provider_none_names_the_setting() -> None:

@@ -58,11 +58,13 @@ def test_every_command_lands_in_a_claude_help_panel() -> None:
 
 def test_flag_gated_commands_name_the_flag_that_reaches_claude() -> None:
     # A Claude-free command with a Claude path behind a flag must record that flag, so the docs /
-    # help can say `triage --ai` and `run --system-alert-handling` rather than mislabel the command.
+    # help can say `triage --ai` rather than mislabel the command.
     triage_cap = capabilities.by_command("triage")
     assert triage_cap is not None and triage_cap.claude_flag == "--ai"
+    # `run` no longer has one: BE-0402 removed its alert guard's vision fallback, the only path any
+    # flag of its own could reach a model through. It is Claude-free with no exception to name.
     run_cap = capabilities.by_command("run")
-    assert run_cap is not None and run_cap.claude_flag == "--system-alert-handling"
-    # An always-Claude command has no flip flag.
+    assert run_cap is not None and run_cap.claude_flag is None
+    # An always-Claude command has no flip flag either.
     record_cap = capabilities.by_command("record")
     assert record_cap is not None and record_cap.claude_flag is None

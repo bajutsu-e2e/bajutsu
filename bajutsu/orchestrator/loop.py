@@ -637,6 +637,8 @@ def run_scenario(
     # it is drained here rather than left in the driver's log with no step to carry it (see BE-0315's
     # `expect_alerts` beside it).
     expect_actuations: list[Actuation] = []
+    # What the guard saw blocking the screen during the `expect` retry and could not clear (BE-0402).
+    expect_block_note = ""
     failure: str | None = None
     artifacts: list[Artifact] = []
     # The anchor pair: a monotonic instant every in-run duration is measured from, and the wall-clock
@@ -718,6 +720,12 @@ def run_scenario(
                 expect_alerts.extend(drain_interruptions(driver))
                 if not assertions.passed(expect_results) and alert_guard is not None:
                     event = alert_guard(driver)
+                    if event is None and alert_guard.blocked_note:
+                        # The guard saw a prompt it could not clear (BE-0402 leaves an alert no rule
+                        # or candidate label names alone rather than guessing where to tap). Name it
+                        # on the `expect` failure below, which would otherwise report only the
+                        # assertion that never held.
+                        expect_block_note = alert_guard.blocked_note
                     if event is not None:
                         expect_alerts.append(event)
                         expect_actuations.extend(drain_actuations(driver).records)
@@ -731,6 +739,8 @@ def run_scenario(
                         )  # retry once
                 if not assertions.passed(expect_results):
                     failure = "expect: " + _fail_reason(expect_results)
+                    if expect_block_note:
+                        failure += f" \u2014 {expect_block_note}"
         except RunCancelled:
             # A cancelled run is a failed run, not a silent gap: the scenario the cancel interrupted
             # (or one whose first boundary was already past it) fails with the one spelling
@@ -1477,12 +1487,20 @@ class _StepRunner:
                     ok, reason = False, guard.failure
                 elif not ok and not guard_done and self.cfg.alert_guard is not None:
                     event = self.cfg.alert_guard(active_driver)
+                    note = self.cfg.alert_guard.blocked_note
+                    if event is None and note and note not in reason:
+                        # Same as the `expect` site: an alert the guard will not guess at still
+                        # explains the failure, so the step says so instead of failing as a bare
+                        # `element not found` (BE-0402). `not in reason` because a guarded `wait`
+                        # already carried the note out of `_wait`: this guard re-probes the same
+                        # still-unanswered alert, so appending unconditionally would say it twice.
+                        reason = f"{reason} \u2014 {note}"
                     if event is not None:
                         outcome.alerts.append(event)
                         wait_trace = WaitTrace() if wait_trace is not None else None
                         # The retry is the end-of-step "one more shot": it does not re-arm the
-                        # mid-wait guard (no alert_guard passed), so a step's AI-vision calls stay
-                        # bounded at _GUARD_MAX_ATTEMPTS (mid-wait) + 1 (this end-of-step dismiss).
+                        # mid-wait guard (no alert_guard passed), so one dismissed prompt buys one
+                        # extra attempt and no more.
                         ok, reason, results, snapshot = _run_step_body(
                             active_driver,
                             interp_step,
