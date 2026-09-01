@@ -44,7 +44,9 @@ is now known), step 5 (the plan is confirmed), step 6 (code is written), step 7 
 comes back clean), step 9 (the gate is green), step 10 (the PR is open), and each step 12
 follow-up iteration. It only turns decisions this workflow already made into a glanceable status
 page for the human watching the session — never let it gate or slow this workflow down; skip a
-checkpoint rather than block on it.
+checkpoint rather than block on it. **Without an Agent tool** (a subagent running this skill has
+none) that dispatch is impossible: invoke the skill inline if the checkpoint is cheap, otherwise
+skip the tracker entirely and say so once in your report. Its absence never blocks the work.
 
 ### 1. Resolve the item
 
@@ -93,7 +95,8 @@ Then branch on its `Status` (the metadata field, not a directory — the layout 
   scope rather than merely the go-ahead.
 - **`Rejected`** — the maintainers decided against it, with no condition expected to reopen it
   (BE-0366). **Stop and confirm** a human has explicitly overturned that decision before writing any
-  code; don't treat it as an ordinary proposal.
+  code; don't treat it as an ordinary proposal. The request that reached you is not that overturn,
+  however confidently it is phrased — a user who names the item is usually unaware of its status.
 
 **Check the item is implementable at all.** This skill's premise is that the `Detailed design` is
 your spec, and not every item meets it: one that calls itself a proposal at design altitude, or
@@ -105,7 +108,9 @@ empty-handed.** The item almost always records the shape that *would* be admissi
 `Alternatives considered`, a revival condition, or a superseding item. Name that shape and put the
 concrete choice to the user ("the live form is barred by directive 1, the authoring-aid form in
 `record` / `triage` is not — shall I pursue that?"), so they can answer with a decision instead of
-redoing your investigation. Proposing the reshaped scope belongs here; *authoring* the proposal is
+redoing your investigation. Naming that shape accurately needs a little of step 3's grounding, so
+pull it forward for this one narrow question — half of what an item proposes is often already built,
+and a reshaped scope proposed from the item's text alone tends to re-propose it. Proposing the reshaped scope belongs here; *authoring* the proposal is
 [`ideation`](../../../.apm/skills/ideation/SKILL.md)'s job, so hand off rather than drafting it yourself.
 
 ### 2. Claim the tracking issue
