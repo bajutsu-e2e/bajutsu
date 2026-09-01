@@ -175,7 +175,12 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   that worktree with `make worktree TOPIC=<topic>` (BE-0069). Pass `PREFIX=<user>` for a human
   branch. Claude Code keeps its own tooling under `.claude/worktrees/`. Do not invent ad-hoc
   `git worktree add` paths on Cursor, Codex, or other environments. Generated/scratch output
-  (`runs/`, `tmp/`, `.venv/`) is gitignored — keep it that way. Recipe:
+  (`runs/`, `tmp/`, `.venv/`) is gitignored — keep it that way. **Never put `core.worktree`, or
+  `core.bare = true`, in the shared `.git/config`** — with `extensions.worktreeConfig` on, git drops
+  its exception for those two, so a shared value governs *every* worktree at once: `core.worktree`
+  silently points them all at one directory, and `core.bare = true` fails every command that needs a
+  work tree. `make hooks` refuses to run until the value is cleared from the shared config; a
+  worktree that genuinely needs one adds it back with `git config --worktree` (issue #1803). Recipe:
   [`docs/ai-development.md`](docs/ai-development.md#isolate-concurrent-sessions-with-worktrees).
 - **Right-size the model and reasoning effort (BE-0103).** Match a session's model/effort to the
   task: heavy work (implementing, refactors, design) runs on a capable model at high effort; light

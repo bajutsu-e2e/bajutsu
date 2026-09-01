@@ -264,6 +264,46 @@ git worktree remove ../bajutsu-<topic>
 Generated and scratch output — `runs/`, `tmp/`, `.venv/`, build artifacts — is gitignored on
 purpose; keep it out of commits so worktrees stay independent.
 
+### Two settings that must never be shared between worktrees
+
+`core.bare` and `core.worktree` describe *one* working tree, so git normally confines a value found
+in the shared `.git/config` to the main working tree and lets linked worktrees ignore it. Enabling
+`extensions.worktreeConfig` removes that exception: a shared value then governs every worktree, and
+[git-worktree(1)](https://git-scm.com/docs/git-worktree#_configuration_file) says `core.worktree`
+"should never be shared" and `core.bare` "should not be shared if the value is `core.bare=true`".
+
+A shared `core.worktree` misdirects every worktree at once, and it does so quietly (issue #1803):
+`--git-dir` still answers locally while the *working tree* every command reads is somebody else's.
+`git status` lists another branch's files, `git add` reports success and changes nothing, `git
+commit --amend` drops a file from the commit, and `git checkout -- <path>` writes into a concurrent
+session's directory. Clearing it then exposes a shared `core.bare = true`, which fails every
+invocation with `fatal: this operation must be run in a work tree` and takes `make check` down with
+it.
+
+`make hooks` — reached by `check`, `setup`, and `worktree` alike — therefore refuses to proceed when
+it finds `core.worktree`, or `core.bare` set to `true`, in the shared config with the extension on
+([`scripts/check_worktree_config.sh`](../scripts/check_worktree_config.sh)). It only reports: nothing
+in this repository's tooling writes either setting, and the right repair depends on whether the
+checkout is the main or a linked worktree, so the guard prints the remedy rather than guessing at
+it. From the affected worktree:
+
+```bash
+GIT_WORK_TREE=. git config --unset-all core.worktree   # only if it is in the shared config
+GIT_WORK_TREE=. git config --unset-all core.bare       # only if the shared value is true
+```
+
+Both details matter. The `GIT_WORK_TREE=.` prefix is not decoration: git resolves `core.worktree`
+during repository setup, before it runs the command you asked for, so once the setting names a
+worktree that has been removed, the repair command itself dies with `fatal: Invalid path` until
+something overrides it. And the repair has to clear the *shared* file — `git config --worktree
+core.bare false` fixes only the worktree in hand and leaves the shared value governing every other
+one, which is how the misconfiguration went unnoticed in the first place. (`--unset-all` rather than
+`--unset` because `--unset` refuses outright when the key carries more than one value; for a single
+value the two are the same.)
+
+A worktree that genuinely needs either setting — a bare main repository keeping `core.bare = true` —
+adds it back afterwards with `git config --worktree`, never to the shared file.
+
 The short form of this rule is in [`CLAUDE.md`](../CLAUDE.md).
 
 ## Agent skills: one source, one deployment (BE-0390)

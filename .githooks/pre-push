@@ -23,6 +23,16 @@ fi
 
 echo "pre-push: running 'make check'…" >&2
 
+# git exports its own location into every hook, and those variables override discovery from `cwd`
+# for every git command the gate runs — including the ones pytest issues against the throwaway
+# checkouts it builds. In a linked worktree they are absolute, so they aim at the pushing checkout
+# rather than at the tree under test, and the gate fails here while passing when the same command is
+# run directly (issue #1803). Scrubbing them once, here, is what keeps the gate runnable from a
+# worktree — the way CLAUDE.md asks concurrent sessions to work. Nothing in `make check` wants an
+# inherited repository location; the steps that need one discover it from their own directory, and
+# the tests that exercise this behaviour set the variables themselves.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR
+
 # The gate is defined once, in `make check`. A hand-rolled fallback drifts from it silently
 # (it used to run only ruff+mypy+pytest, skipping format/docstrings/imports/lock/roadmap/shell),
 # so a push could pass the hook yet fail CI — the exact "green locally predicts green in CI"
