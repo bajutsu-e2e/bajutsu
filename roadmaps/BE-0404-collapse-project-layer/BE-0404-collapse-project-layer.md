@@ -9,7 +9,7 @@
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0404") |
-| Implementing PR | [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/0) |
+| Implementing PR | [#1841](https://github.com/bajutsu-e2e/bajutsu/pull/1841) |
 | Topic | Hosting the web UI |
 | Related | [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md), [BE-0226](../BE-0226-cross-project-metrics-dashboard/BE-0226-cross-project-metrics-dashboard.md), [BE-0275](../BE-0275-serve-projects-management-page/BE-0275-serve-projects-management-page.md), [BE-0393](../BE-0393-per-org-config-memory/BE-0393-per-org-config-memory.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md), [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md) |
 <!-- /BE-METADATA -->

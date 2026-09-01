@@ -9,7 +9,7 @@
 | 提案者 | [@paihu](https://github.com/paihu) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0404") |
-| 実装 PR | [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/0) |
+| 実装 PR | [#1841](https://github.com/bajutsu-e2e/bajutsu/pull/1841) |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md), [BE-0226](../BE-0226-cross-project-metrics-dashboard/BE-0226-cross-project-metrics-dashboard-ja.md), [BE-0275](../BE-0275-serve-projects-management-page/BE-0275-serve-projects-management-page-ja.md), [BE-0393](../BE-0393-per-org-config-memory/BE-0393-per-org-config-memory-ja.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md), [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts-ja.md) |
 <!-- /BE-METADATA -->
