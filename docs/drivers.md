@@ -176,7 +176,7 @@ than resolving through frame-center coordinates. Needs Xcode's `xcodebuild`.
 
 Headless, coordinate-based — the only coordinate backend. With no semantic tap, the
 abstraction resolves **id → frame center → coordinate tap**. Implementation:
-`drivers/adb.py` + `bajutsu/adb.py` (roadmap
+`drivers/adb.py` + `bajutsu/common/backend_cli/adb.py` (roadmap
 [BE-0007](../roadmaps/BE-0007-android-backend/BE-0007-android-backend.md)).
 
 ### Reading the tree and resolving a selector

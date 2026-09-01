@@ -20,7 +20,7 @@ walks three phases:
 2. **Modify** — change the expected favorite state to a wrong value → the deterministic check
    **FAILS** (a machine assertion caught it, not an LLM) → fix it → it **PASSES** again.
 3. **Diagnose** — rename a selector so it no longer resolves (a selector that drifted out from
-   under the test) → the run **FAILS** → [`triage`](../../bajutsu/triage.py) reads the failed run
+   under the test) → the run **FAILS** → [`triage`](../../bajutsu/triage/heuristic.py) reads the failed run
    and diagnoses it: the category (`selector`) plus a *"did you mean `stable.row.3`?"* fix lifted
    from the captured element tree → restore the selector → it **PASSES**.
 
@@ -39,7 +39,7 @@ uv run python demos/tour/tour.py
 ```
 
 This version additionally shows **authoring**: a natural-language goal becomes the scenario via
-the real [`record`](../../bajutsu/record.py) loop, with a keyword stand-in for Claude
+the real [`record`](../../bajutsu/record/loop.py) loop, with a keyword stand-in for Claude
 ([`KeywordAgent`](../record/generate_from_nl.py)) so it needs no key. Everything except that
 stand-in brain is the production code path — the same orchestrator, assertion engine, report
 writer, and heuristic triage. It writes a real `report.html` under `demos/tour/runs/` you can

@@ -39,7 +39,7 @@ UI Automator インストルメンテーションです。実行のあいだ `Ui
 同じ Element を返すようにします（ロードマップ項目の作業単位 2 が求める等価化です）。
 
 このソケットに届く Python 側（`adb forward`、`fetch_hierarchy` の配線、デバイスのリース（貸し出し）
-に結んだライフサイクル）は、[`bajutsu/adb_resident.py`](../bajutsu/adb_resident.py) にあり、
+に結んだライフサイクル）は、[`bajutsu/common/backend_cli/adb_resident.py`](../bajutsu/common/backend_cli/adb_resident.py) にあり、
 `bajutsu/platform_lifecycle.py` で Android のリースに配線しています（BE-0245 PR-C）。Android の
 e2e レーンがサーバをビルドして導入するまでは、環境変数 `BAJUTSU_ADB_RESIDENT` によるオプトインです。
 設定しなければ、adb バックエンドはこれまでどおり `uiautomator dump` で読み取ります。

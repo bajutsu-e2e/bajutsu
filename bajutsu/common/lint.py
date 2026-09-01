@@ -135,7 +135,7 @@ def _diagnostics_from_validation(text: str, e: ValidationError) -> list[Diagnost
     the real document; a compose failure (unreachable here — the YAML already parsed) degrades to
     unanchored diagnostics rather than raising."""
     try:
-        root = yaml.compose(text, Loader=_yaml._Loader)  # noqa: SLF001  # see bajutsu/_yaml.py
+        root = yaml.compose(text, Loader=_yaml._Loader)  # noqa: SLF001  # see bajutsu/common/_yaml.py
     except yaml.YAMLError:
         root = None
     return [

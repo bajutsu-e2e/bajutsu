@@ -6,7 +6,7 @@
 > then writes out a **deterministic scenario**. AI is involved only here (at record time). The
 > resulting YAML is AI-independent and is owned by the user from that point forward.
 >
-> Implementation: `bajutsu/record.py` (the loop) · `bajutsu/agents/protocols.py` + `bajutsu/agents/factory.py`
+> Implementation: `bajutsu/record/loop.py` (the loop) · `bajutsu/agents/protocols.py` + `bajutsu/agents/factory.py`
 > (the abstraction + construction) · `bajutsu/agents/claude.py` (the SDK authoring agent) ·
 > `bajutsu/agents/alerts.py` (system-alert handling). The breadth-first explorer `bajutsu/crawl/` shares
 > the same agent.

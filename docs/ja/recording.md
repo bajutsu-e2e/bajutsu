@@ -5,7 +5,7 @@
 > [Tier 1](glossary.md#2-つの層) = AI ライブ操作です。自然言語のゴールから AI がアプリを探索しながら操作し、**決定的シナリオ**
 > を書き出します。AI が関与するのはここ（記録時）だけです。生成された YAML は AI 非依存で、以後はユーザーが管理します。
 >
-> 実装: `bajutsu/record.py`（ループ）、`bajutsu/agents/protocols.py` + `bajutsu/agents/factory.py`（抽象 + 構築）、
+> 実装: `bajutsu/record/loop.py`（ループ）、`bajutsu/agents/protocols.py` + `bajutsu/agents/factory.py`（抽象 + 構築）、
 > `bajutsu/agents/claude.py`（SDK オーサリングエージェント）、`bajutsu/agents/alerts.py`（システムアラート対処）。
 > 幅優先の探索 `bajutsu/crawl/` も同じエージェントを使います。
 

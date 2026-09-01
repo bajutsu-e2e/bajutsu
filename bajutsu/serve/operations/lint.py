@@ -1,6 +1,6 @@
 """Inline scenario validation for the serve editor (BE-0138).
 
-Static and AI-free: `lint_scenario` runs the same `bajutsu/lint.py` the CLI does, and
+Static and AI-free: `lint_scenario` runs the same `bajutsu/common/lint.py` the CLI does, and
 `scenario_schema` serves the scenario JSON Schema. Neither touches a device, a model, or the
 filesystem — they validate the YAML the editor sends, so they need no `ServeState`."""
 

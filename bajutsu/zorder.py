@@ -70,7 +70,7 @@ class ZOrderResponder:
             # below. Neither is necessarily "no responder" either — the app terminating mid-reply
             # at scenario end produces exactly a truncated or garbled body — so this degrades the
             # one read rather than latching off the rest of the lease (`fetch_source` in
-            # `bajutsu/adb_resident.py` catches both for the same reason).
+            # `bajutsu/common/backend_cli/adb_resident.py` catches both for the same reason).
             return {}
         except (urllib.error.URLError, OSError) as exc:
             # No app-side responder at all (connection refused, or nothing ever listened) — this

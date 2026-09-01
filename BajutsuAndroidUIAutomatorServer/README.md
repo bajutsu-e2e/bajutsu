@@ -37,7 +37,7 @@ is identical; `bajutsu.common.backend_cli.adb_resident.narrow_to_active_window` 
 paths yield the same Elements (the equivalence unit 2 of the roadmap item requires).
 
 The Python side that reaches this socket — `adb forward`, the `fetch_hierarchy` wiring, and the
-lifecycle tied to the device lease — lives in [`bajutsu/adb_resident.py`](../bajutsu/adb_resident.py)
+lifecycle tied to the device lease — lives in [`bajutsu/common/backend_cli/adb_resident.py`](../bajutsu/common/backend_cli/adb_resident.py)
 and is wired into the Android lease in `bajutsu/platform_lifecycle.py` (BE-0245 PR-C). It is opt-in
 behind the `BAJUTSU_ADB_RESIDENT` environment variable until the Android e2e lane builds and installs
 the server; unset, the adb backend reads via `uiautomator dump` exactly as before.

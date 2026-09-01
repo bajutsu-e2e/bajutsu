@@ -81,7 +81,7 @@ def apply_selector(
         dumped[alias] = holder
     new_step = Step.model_validate(dumped)
 
-    root = yaml.compose(text, Loader=_yaml._Loader)  # noqa: SLF001  # see bajutsu/_yaml.py
+    root = yaml.compose(text, Loader=_yaml._Loader)  # noqa: SLF001  # see bajutsu/common/_yaml.py
     step_node = _steps_node(root, scenario.name).value[step_index]
     lines = text.split("\n")
     start, end = _content_span(step_node)
@@ -111,7 +111,7 @@ def apply_enrichment(
     assertions = [Assertion.model_validate(a) for a in expect]
     settle_step = Step.model_validate(settle) if settle else None
 
-    root = yaml.compose(text, Loader=_yaml._Loader)  # noqa: SLF001  # see bajutsu/_yaml.py
+    root = yaml.compose(text, Loader=_yaml._Loader)  # noqa: SLF001  # see bajutsu/common/_yaml.py
     scenario_node = _find_scenario_node(root, scenario_name)
     steps_node = _mapping_get(scenario_node, "steps")
     lines = text.split("\n")

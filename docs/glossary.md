@@ -157,7 +157,7 @@ Distinct from a step's inline `capture:`, which is a *one-shot* capture at that 
   app trace), or with `--explain` previews how a scenario's `capturePolicy` would fire. It is
   deterministic and observational — no AI, no verdict. Engine in `bajutsu/trace.py`.
 - **`triage`** (CLI verb) is *AI diagnosing a failed run* and proposing a minimal fix. It is a
-  Tier-1, advisory activity — it never gates CI. Engine in `bajutsu/triage.py`.
+  Tier-1, advisory activity — it never gates CI. Engine in `bajutsu/triage/heuristic.py`.
 
 > `trace` is overloaded: besides the verb, **`appTrace`** is an interval evidence kind
 > (os_signpost / os_log intervals). Both senses are observational; neither decides pass/fail.

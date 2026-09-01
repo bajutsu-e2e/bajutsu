@@ -151,7 +151,7 @@ def _disarms_its_own_failure(node: dict[str, Any]) -> bool:
     """Whether a job or a step declares its own failure not to count.
 
     Read as text rather than compared against `True`: importing `bajutsu` narrows PyYAML's bool
-    resolver process-wide (`bajutsu/_yaml.py`), so under this suite the value arrives as the string
+    resolver process-wide (`bajutsu/common/_yaml.py`), so under this suite the value arrives as the string
     `"true"` and an `is True` check would never fire — itself the never-firing assertion this file
     exists to rule out. Text holds whichever way it parses, and counts a `${{ }}` expression as
     disarming too, since nothing on the verdict path has business making its own red conditional.
